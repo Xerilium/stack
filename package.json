@@ -1,0 +1,27 @@
+{
+  "name": "stack",
+  "version": "1.0.0",
+  "description": "Stack 'em up. Burn 'em down. Simple, multi-project task management and prioritization.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "task-management",
+    "prioritization",
+    "stack"
+  ],
+  "author": "Xerilium",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Xerilium/stack.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Xerilium/stack/issues"
+  },
+  "homepage": "https://github.com/Xerilium/stack#readme",
+  "dependencies": {
+    "@xerilium/catalyst": "^0.1.3"
+  }
+}
