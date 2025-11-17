@@ -1,5 +1,7 @@
 // Stack - Simple, multi-project task management and prioritization
 
-export const version = '0.0.1';
+import { version as pkgVersion } from '../package.json';
+
+export const version = pkgVersion;
 
 export default {};

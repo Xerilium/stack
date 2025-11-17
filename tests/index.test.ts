@@ -1,7 +1,8 @@
 import { version } from '../src/index';
+import { version as pkgVersion } from '../package.json';
 
 describe('Stack', () => {
-  it('should export version', () => {
-    expect(version).toBe('0.0.1');
+  it('should export version from package.json', () => {
+    expect(version).toBe(pkgVersion);
   });
 });
