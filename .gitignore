@@ -17,3 +17,8 @@ npm-debug.log*
 # Build output
 dist/
 build/
+*.tsbuildinfo
+
+# Coverage
+coverage/
+.nyc_output/
