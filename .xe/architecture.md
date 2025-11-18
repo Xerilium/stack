@@ -23,9 +23,9 @@ For the development process, see [`.xe/process/development.md`](process/developm
 
 ## Repository Structure
 
-```text
-# Feature-based modules with shared core logic
+This project uses a **shared codebase approach** where all platforms (CLI, web, mobile) share a single package with common core logic. This maximizes code reuse and simplifies dependency management during initial development.
 
+```text
 stack/
 ├── src/
 │   ├── core/           # Shared business logic (task management, Git operations)
@@ -40,8 +40,10 @@ stack/
 │   ├── process/        # Development process documentation
 │   └── rollouts/       # Active rollout orchestration plans
 ├── dist/               # Compiled JavaScript output
-└── package.json        # npm package configuration
+└── package.json        # Single package for CLI and shared core logic
 ```
+
+**Note:** As web and mobile platforms are added to `src/web/` and `src/mobile/`, they will initially share this package structure. If platform-specific dependency conflicts arise, the project may evolve to a monorepo structure with separate packages managed by npm/yarn/pnpm workspaces.
 
 ## Technical Architecture Patterns
 
