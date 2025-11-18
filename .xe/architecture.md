@@ -23,46 +23,27 @@ For the development process, see [`.xe/process/development.md`](process/developm
 
 ## Repository Structure
 
-This project uses a **shared codebase approach** where all platforms (CLI, web, mobile) share a single package with common core logic. This maximizes code reuse and simplifies dependency management during initial development.
+All platforms (CLI, web, mobile) share a single package with common core logic to maximize reuse and simplify dependency management.
 
 ```text
 stack/
+├── .xe/                # Catalyst context and specifications
+├── dist/               # Consolidated build outputs with subfolders per app/library
 ├── src/
-│   ├── core/           # Shared business logic (task management, Git operations)
-│   ├── cli/            # CLI-specific interface code
-│   ├── models/         # Data models and interfaces (Task, Project, etc.)
-│   ├── services/       # External integrations (Git, GitHub API, AI)
-│   └── utils/          # Helper functions and utilities
-├── tests/              # Unit and integration tests
+│   ├── cli/            # CLI application code
+│   ├── core/           # Core Stack library
+│   ├── mobile/         # Mobile application (future)
+│   ├── shared/         # Code shared across apps (if any)
+│   └── web/            # Web application (future)
 ├── tasks/              # Example task files (markdown per project)
-├── .xe/                # Project context and specifications
-│   ├── features/       # Feature specifications and plans
-│   ├── process/        # Development process documentation
-│   └── rollouts/       # Active rollout orchestration plans
-├── dist/               # Compiled JavaScript output
-└── package.json        # Single package for CLI and shared core logic
+├── tests/              # Tests with subfolders per app/library
+├── jest.config.js      # Root test configuration
+├── package.json        # Single package.json
+└── tsconfig.json       # Root TypeScript config
 ```
-
-**Note:** As web and mobile platforms are added to `src/web/` and `src/mobile/`, they will initially share this package structure. If platform-specific dependency conflicts arise, the project may evolve to a monorepo structure with separate packages managed by npm/yarn/pnpm workspaces.
 
 ## Technical Architecture Patterns
 
 ### Dependency Abstraction
 
 Isolate external dependencies (Git CLI, GitHub API, AI APIs) behind abstraction layers for testability, swappability, and consistent error handling.
-
-### Shared Core Logic
-
-The `src/core/` directory contains all business logic that can be reused across CLI, web, and mobile applications. Platform-specific code lives in separate directories (e.g., `src/cli/`, future `src/web/`, `src/mobile/`).
-
-### Markdown as Data Store
-
-Tasks are stored as structured markdown files with YAML frontmatter for metadata. This provides human readability, Git-friendly diffs, and easy parsing with existing libraries.
-
-### Git-Centric Workflow
-
-All task changes are committed to Git automatically. The application treats the Git repository as the "database" and uses commits for audit trails, synchronization, and rollback capabilities.
-
-### Summary File Generation
-
-Summary files (README.md, projects.md, stack.md, scheduling.md) are auto-generated from task files. This can be triggered manually via CLI or automatically via GitHub Actions on push events.
