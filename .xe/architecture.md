@@ -45,7 +45,7 @@ stack/
 
 ## Technical Architecture Patterns
 
-### External Dependencies
+### Dependency Abstraction
 
 Isolate external dependencies (Git CLI, GitHub API, AI APIs) behind abstraction layers for testability, swappability, and consistent error handling.
 
@@ -53,7 +53,7 @@ Isolate external dependencies (Git CLI, GitHub API, AI APIs) behind abstraction 
 
 The `src/core/` directory contains all business logic that can be reused across CLI, web, and mobile applications. Platform-specific code lives in separate directories (e.g., `src/cli/`, future `src/web/`, `src/mobile/`).
 
-### Markdown as Data Format
+### Markdown as Data Store
 
 Tasks are stored as structured markdown files with YAML frontmatter for metadata. This provides human readability, Git-friendly diffs, and easy parsing with existing libraries.
 

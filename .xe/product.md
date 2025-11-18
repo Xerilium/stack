@@ -18,25 +18,13 @@ Stack is an AI-powered, smart task-tracking application that helps users manage 
 - **Transparent: Work in the open**
   > All task changes are tracked via Git commits, providing a complete audit trail. Every task update, priority change, and status modification is reversible and traceable.
 
-- **Simple: Markdown as the source of truth**
-  > Tasks are stored in simple markdown files within a `tasks/` folder. No external databases or complex schemas—just files developers already understand and can edit with any text editor.
-
-- **Integrated: Git/GitHub as the platform**
-  > Leverage Git for synchronization, GitHub for authentication, and GitHub Actions for automation. No separate backend infrastructure required.
-
-- **AI-Augmented: Intelligent task management**
-  > Use AI to provide auto-prioritization, intelligent task breakdown, effort estimation, and context-aware suggestions during task execution.
-
-- **Cross-Platform: Reusable logic**
-  > Build a TypeScript core that can be shared across CLI, web, and mobile applications, ensuring consistent behavior and reducing duplication.
-
 ## Technical Requirements
 
 - Git must be installed and configured for CLI operations
 - GitHub account required for repository access and authentication
 - Node.js runtime for CLI execution
 - Markdown files stored in `tasks/` folder (one file per project)
-- Summary files generated at repo root (README.md, projects.md, stack.md, scheduling.md)
+- Summary files generated at repo root (e.g., README.md, projects.md, stack.md, my-day.md)
 - Git commits for all task changes (audit trail and sync)
 - GitHub Actions for automation and CI/CD integration
 - Cross-platform compatibility (macOS, Windows, Linux)
@@ -53,10 +41,8 @@ Stack is an AI-powered, smart task-tracking application that helps users manage 
 
 ## Non-Goals
 
-- External database dependencies (Git serves as the database)
 - Python-based implementations (prefer TypeScript/C#/PowerShell ecosystem)
 - Complex task hierarchies beyond simple project grouping
-- Real-time collaboration features in initial phases
 
 ## Team
 
@@ -68,4 +54,5 @@ Stack is an AI-powered, smart task-tracking application that helps users manage 
 
 **AI Reviewers:**
 
+- Claude Code
 - @copilot
