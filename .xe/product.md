@@ -41,8 +41,6 @@ Stack is an AI-powered, smart task-tracking application that helps users manage 
 
 ## Non-Goals
 
-- Python-based implementations (prefer TypeScript/C#/PowerShell ecosystem)
-- Complex task hierarchies beyond simple project grouping
 
 ## Team
 
