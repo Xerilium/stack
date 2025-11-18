@@ -46,7 +46,7 @@ Following `.xe/features/blueprint/tasks.md`:
 - [x] **T000-9**: Create `.xe/rollouts/README.md` index
 - [x] **T000-10**: Create rollout plan (this file)
 - [x] **T000-11**: Create feature branch `xe/blueprint`
-- [ ] **T000-12**: Commit all blueprint files
+- [x] **T000-12**: Commit all blueprint files
 - [ ] **T000-13**: Create pull request for review
 
 ## Post-Implementation Actions
