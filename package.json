@@ -4,7 +4,11 @@
   "description": "Stack 'em up. Burn 'em down. Simple, multi-project task management and prioritization.",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:core && npm run build:cli",
+    "build:core": "tsc -p tsconfig.core.json",
+    "build:cli": "tsc -p tsconfig.cli.json",
+    "clean": "rimraf dist",
+    "lint": "eslint . --ext .ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

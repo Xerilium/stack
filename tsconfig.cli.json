@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist/cli",
+    "rootDir": "./src/cli",
+    "module": "commonjs",
+    "declaration": true
+  },
+  "include": ["src/cli/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
