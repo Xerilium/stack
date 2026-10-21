@@ -25,7 +25,7 @@ describe('rollRecurring', () => {
     expect(rollRecurring('- [ ] 📅 Mar 2, 2026: 🔄 Yearly: X', ref)).toContain('Mar 2, 2027');
   });
   it('clamps to month end', () => {
-    expect(rollRecurring('- [ ] 📅 Jan 31, 2026: 🔄 Monthly: X', ref)).toContain('Feb 28, 2026');
+    expect(rollRecurring('- [ ] 📅 Jan 31, 2028: 🔄 Monthly: X', ref)).toContain('Feb 29, 2028');
   });
   it('shifts weekends to Monday', () => {
     // Jul 15 2026 is Wed; Aug 15 2026 is Sat -> Mon Aug 17
