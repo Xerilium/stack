@@ -117,7 +117,7 @@ classDiagram
 
 ## Roadmap
 
-Goal: a secure, $0-cost, anywhere-accessible task system (git markdown truth, Azure Static Web Apps host) that tells the owner what to do next and lets AI work the stack. Legacy `~/dev/todo` is the parity target; agents never touch it.
+Goal: a secure, $0-cost, anywhere-accessible task system (git markdown truth, Azure Static Web Apps host) that tells the owner what to do next and lets AI work the stack. The legacy system is the parity target; agents never touch it.
 
 ```mermaid
 gantt
@@ -164,13 +164,13 @@ _Core and CLI at legacy parity, byte-exact round-trip, golden-tested scoring._
 
 - **task-parser** (Large) — lossless emoji-markdown parse/serialize
   - Scope: in: byte-exact round-trip on legacy files, quirks (BOM, blockquotes, metadata bullets); out: storage
-  - Dependencies: task-model. Existing work: PR 7
+  - Dependencies: task-model
 - **recurring-rows** (Medium) — cadence roll for 🔄 rows
   - Scope: in: daily..yearly, weekday names, `Quarterly-EOM+1`, both row forms, no weekend drift, subtask reset; out: wiring to complete
-  - Dependencies: task-model. Existing work: PR 6
+  - Dependencies: task-model
 - **config** (Small) — legacy config shape, defaults, time blocks, weights
   - Scope: in: parse/validate/defaults, active time block; out: file IO
-  - Dependencies: task-model. Built: PR 10
+  - Dependencies: task-model
 
 #### Wave 1.3
 
