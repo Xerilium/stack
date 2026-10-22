@@ -192,7 +192,7 @@ export function rollRecurring(block: string, today: Date = new Date(), options: 
       default: next = mk(y, mo + 4, 0); // Quarterly-EOM+1: month end 3 months on
     }
     const shown = shifted(next, shiftOn);
-    const clamped = !p.cad.endsWith('eom+1') && next.getUTCDate() < day;
+    const clamped = (p.cad === 'monthly' || p.cad === 'quarterly' || p.cad === 'yearly') && next.getUTCDate() < day;
     // Daily has no nominal day: it advances from the shown date.
     if (p.cad !== 'daily' && (shown.getTime() !== next.getTime() || clamped)) {
       marker = `<!--nominal:${iso(next)}${clamped ? ` day:${day}` : ''}-->`;

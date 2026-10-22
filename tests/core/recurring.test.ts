@@ -70,6 +70,11 @@ describe('rollRecurring', () => {
     // Aug 16 2026 is Sun -> Mon Aug 17
     expect(rollRecurring('- [ ] 📅 Aug 9, 2026: 🔄 Weekly: X', ref)).toBe('- [ ] 📅 Aug 17, 2026: 🔄 Weekly: X <!--nominal:2026-08-16-->');
   });
+  // @req FR:recurring-rows/roll.nominal
+  it('weekly month wrap has no clamp marker', () => {
+    expect(rollRecurring('- [x] 📅 Jan 26, 2026: 🔄 Weekly: a', ref)).toBe('- [ ] 📅 Feb 2, 2026: 🔄 Weekly: a');
+    expect(rollRecurring('- [x] 📅 Jan 29, 2026: 🔄 Daily: a', ref)).not.toContain('day:');
+  });
   // @req FR:recurring-rows/preserve.unchecked @req FR:recurring-rows/preserve.text @req FR:recurring-rows/preserve.subtasks
   it('resets subtasks and preserves other text', () => {
     const out = rollRecurring('- [x] 📅 Mar 2, 2026: 🔄 Weekly: X 🟢\n  - [x] sub', ref);

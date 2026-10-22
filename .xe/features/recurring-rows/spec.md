@@ -22,7 +22,7 @@ Recurring deadlines (bills, tax filings) need one row per obligation. Hand-editi
 
 ### FR:format: Row format
 
-- **FR:format.row** (P1): Canonical form `- [ ] 📅 {date}: 🔄 {Cadence}: {title} {emoji...}`; `{date}` is `Mon D` or `Mon D, YYYY` (month case-insensitive)
+- **FR:format.row** (P1): Canonical form `- [ ] 📅 {date}: 🔄 {Cadence}: {title} {emoji...}`; `{date}` is `Mon D` or `Mon D, YYYY` (month case-insensitive on input; the rolled date is re-emitted as `Mon D`, canonical case, day unpadded)
 - **FR:format.legacy** (P1): Legacy form `- [ ] 🔄 {Cadence}: 📅 {date}: {title}` MUST parse and roll identically; the form is preserved on output
 - **FR:format.cadence** (P1): Cadences: Daily, Weekly, Monthly, Quarterly, Yearly (case-insensitive; written case preserved) and the token `Quarterly-EOM+1`
 - **FR:format.weekday** (P1): `{date}` MAY be a weekday name (`Mon`, `Monday`, `Mondays`, case-insensitive) on Weekly rows in either form. The name is the recurrence: rolling unchecks the row and resets subtasks but leaves the text unchanged
