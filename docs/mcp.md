@@ -1,6 +1,20 @@
 # MCP server
 
-Tools: `next`, `list`, `add`, `complete`, `start`, `skip`, `resume`, `suspend`, `set`. Each maps to one API route and needs that route's scope (`tasks:read` for `next`/`list`; `tasks:write` for the rest; `read`/`write` also cover). Tools outside the token's scopes are hidden and denied.
+Tools: `next`, `list`, `add`, `complete`, `start`, `skip`, `resume`, `suspend`, `set`. Each maps to one API route and needs that route's scope; tools outside the token's scopes are hidden and denied.
+
+| Tool | Route | Scope |
+| --- | --- | --- |
+| `next` | `GET /next` | `tasks:read` |
+| `list` | `GET /tasks` | `tasks:read` |
+| `add` | `POST /tasks` | `tasks:write` |
+| `complete` | `POST /tasks/complete` | `tasks:write` |
+| `start` | `POST /tasks/start` | `tasks:write` |
+| `skip` | `POST /tasks/skip` | `tasks:write` |
+| `resume` | `POST /tasks/resume` | `tasks:write` |
+| `suspend` | `POST /tasks/suspend` | `tasks:write` |
+| `set` | `POST /tasks/set` | `tasks:write` |
+
+`read` and `write` also cover these. Mint a token as the owner (see [runbook](runbook.md)); give agents only the scopes they need.
 
 ## HTTP (Azure Functions)
 
@@ -20,3 +34,27 @@ POST only, stateless JSON responses. Send `Authorization: Bearer stk_...` (or `X
 `stack-mcp [--dir <path>] [--scopes read,write]` (env `STACK_DIR`, `STACK_MCP_SCOPES`). Runs against the local project; scopes default to `read,write`: any stdio client gets full read and write access to the project unless you narrow it with `--scopes` (which overrides `STACK_MCP_SCOPES`).
 
 Replies are short text: refs for mutations (`added alpha:12`), JSON for `next` and `list`.
+
+## Client config
+
+Local (Claude Desktop, Claude Code `.mcp.json`, Cursor):
+
+```json
+{
+  "mcpServers": {
+    "stack": {
+      "command": "stack-mcp",
+      "args": ["--dir", "/path/to/my-tasks", "--scopes", "tasks:read,tasks:write"]
+    }
+  }
+}
+```
+
+Remote (Claude Code):
+
+```sh
+claude mcp add --transport http stack https://<your-app>.azurestaticapps.net/api/mcp \
+  --header "Authorization: Bearer stk_..."
+```
+
+If the host strips `Authorization`, use `--header "X-Stack-Token: stk_..."`.

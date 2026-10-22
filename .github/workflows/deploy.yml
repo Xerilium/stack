@@ -1,0 +1,55 @@
+name: Deploy
+# Deploys the web app and managed Functions to Azure Static Web Apps on push to main.
+# The owner must add the repo secret AZURE_STATIC_WEB_APPS_API_TOKEN first (docs/runbook.md).
+# Without it the job builds nothing and exits green.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SWA_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+    steps:
+      - id: gate
+        run: echo "has_token=${{ env.SWA_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - name: Skip notice
+        if: steps.gate.outputs.has_token != 'true'
+        run: echo "AZURE_STATIC_WEB_APPS_API_TOKEN is not set; skipping deploy."
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.has_token == 'true'
+      - uses: pnpm/action-setup@v4
+        if: steps.gate.outputs.has_token == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.has_token == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Build
+        if: steps.gate.outputs.has_token == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm --filter ./web run build
+      - name: Stage Functions
+        if: steps.gate.outputs.has_token == 'true'
+        run: |
+          mkdir -p api
+          cp -r dist api/dist
+          cp package.json pnpm-lock.yaml api/
+          [ -f api/host.json ] || echo '{"version":"2.0"}' > api/host.json
+          (cd api && pnpm install --prod --frozen-lockfile --ignore-workspace)
+          [ -f web/dist/staticwebapp.config.json ] || cp staticwebapp.config.json web/dist/ 2>/dev/null || true
+      - uses: Azure/static-web-apps-deploy@v1
+        if: steps.gate.outputs.has_token == 'true'
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: web/dist
+          api_location: api
+          skip_app_build: true
+          skip_api_build: true
