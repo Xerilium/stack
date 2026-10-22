@@ -15,9 +15,16 @@ export interface Project {
   setChecked(task: Task, checked: boolean): void;
 }
 
+/** Indent width with tabs counted as 4 columns. */
+const width = (ws: string) => ws.replace(/\t/g, '    ').length;
 const TASK = /^(\s*)- \[([ xX])\] ?(.*)$/;
 const META = /^- \*\*(.+?):\*\*\s*(.*)$/;
 
+/**
+ * @req FR:task-parser/parse.@function @req FR:task-parser/parse.title @req FR:task-parser/parse.metadata @req FR:task-parser/parse.sections
+ * @req FR:task-parser/parse.tree @req FR:task-parser/parse.tree.tabs @req FR:task-parser/parse.tree.orphan @req FR:task-parser/task.state @req FR:task-parser/task.notes
+ * @req FR:task-parser/mutate.set-checked
+ */
 export function parseProject(src: string): Project {
   const lines = src.split('\n');
   const clean = (l: string) => l.replace(/^﻿/, '').replace(/\r$/, '');
@@ -41,7 +48,7 @@ export function parseProject(src: string): Project {
     }
     const t = TASK.exec(l);
     if (t && section) {
-      const depth = t[1].length;
+      const depth = width(t[1]);
       const task: Task = { checked: t[2] !== ' ', text: t[3], children: [], notes: [], line: i, depth };
       while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
       (stack.length ? stack[stack.length - 1].children : section.tasks).push(task);
@@ -54,7 +61,7 @@ export function parseProject(src: string): Project {
       return;
     }
     if (/^\s+\S/.test(l) && stack.length) {
-      const indent = l.length - l.trimStart().length;
+      const indent = width(l.slice(0, l.length - l.trimStart().length));
       let owner: Task | undefined;
       for (let k = stack.length - 1; k >= 0; k--) {
         if (stack[k].depth < indent) { owner = stack[k]; break; }
@@ -65,6 +72,7 @@ export function parseProject(src: string): Project {
   return project;
 }
 
+/** @req FR:task-parser/roundtrip.exact */
 export function serializeProject(p: Project): string {
   return p.lines.join('\n');
 }
