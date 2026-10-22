@@ -134,7 +134,7 @@ export class GitStorage extends FsStorage {
     return { version: versionOf(content) };
   }
 
-  /** One commit (and one push) for all changed paths. @req FR:storage-git/write.many */
+  /** One commit (and one push) for all changed paths; serialized per adapter instance only. @req FR:storage-git/write.many @req FR:storage-git/git.concurrency */
   protected async lockedMany(writes: FileWrite[], message?: string): Promise<void> {
     await this.checkBranch();
     if (this.remote) await this.sync();
