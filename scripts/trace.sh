@@ -2,10 +2,13 @@
 # Manual spec -> test -> code traceability (stand-in while `catalyst check` is broken in 0.3.2).
 # For every requirement `- **FR:<id>**` in .xe/features/<feature>/spec.md, finds `@req FR:<feature>/<id>`
 # in src/ (code) and tests/ (test). Prints per-feature counts and lists uncovered ids.
-# Usage: scripts/trace.sh [-v]    Exits 1 while any requirement lacks a test or code tag. Code tags are read from src, web/src, host, infra, .github, docs, scripts and package.json; test tags from tests, web/tests, web/e2e (only docs.*, cli/parity.script, cli/run.bin and docs.swa rely on non-src tags: docs/script deliverables are their own implementation); test tags from tests.
+# Usage: scripts/trace.sh [-v]    Exits 1 while any requirement lacks a test or code tag.
+# Code tags are read from src, web/src, web/vite.config.ts, host/main.ts, infra, .github, docs, scripts, package.json and CONTRIBUTING.md
+# (docs.*, cli/parity.script, cli/run.bin and docs.swa rely on non-src tags: docs/script deliverables are their own implementation).
+# Test tags are read from tests, web/tests and web/e2e.
 cd "$(dirname "$0")/.."
 tags() { grep -rhoE "@req (N?FR):[A-Za-z0-9._@-]+/[A-Za-z0-9._@-]+" $1 | sed 's/^@req //' | sort -u; }
-tags "src web/src web/vite.config.ts host/main.ts infra .github docs scripts package.json CONTRIBUTING.md README.md" > "${TMPDIR:-/tmp}/trace-code.$$"; tags "tests web/tests web/e2e" > "${TMPDIR:-/tmp}/trace-test.$$"
+tags "src web/src web/vite.config.ts host/main.ts infra .github docs scripts package.json CONTRIBUTING.md" > "${TMPDIR:-/tmp}/trace-code.$$"; tags "tests web/tests web/e2e" > "${TMPDIR:-/tmp}/trace-test.$$"
 trap 'rm -f "${TMPDIR:-/tmp}/trace-code.$$" "${TMPDIR:-/tmp}/trace-test.$$"' EXIT
 bad=0; tot=0; nocode=0; notest=0
 printf '%-18s %5s %5s %5s\n' feature reqs code test
