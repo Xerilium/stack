@@ -11,3 +11,4 @@
 - Traceability tags: of 382 requirements, 45 lack a code `@req` tag and 15 lack a test `@req` tag (run `scripts/trace.sh`). Mostly interface (`@function`) and docs requirements whose tests/code exist untagged. Untagged tests: authorize/session/token `@function`, session.input, chat-bots cmd.ref and github.deliver, quick-capture speech.*, query-tasks expand/github/refresh/trigger `@function`, github.inject, github.parse. Retag; add tests where behavior is genuinely unchecked.
 - `catalyst check` is broken in 0.3.2, so `scripts/trace.sh` is the traceability check.
 - `src/cli/run.ts` shows 0% in jest coverage because e2e tests run it in a subprocess; it is outside the core threshold.
+- 2026-10-22: ai-triage-assist in review; autonomy gate (deny by default), triage/claim/record-result via core, API, MCP, CLI.

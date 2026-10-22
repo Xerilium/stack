@@ -41,13 +41,13 @@ describe('triage tools', () => {
   it('triage -> claim -> record-result with fixed refs-only replies', async () => {
     const s = await setup(); await seed(s);
     const t = await s.mint('write');
-    expect(await s.text(t, 'triage', { ref: 'alpha:5', agent: 'Secret plan text', priority: '🔺' })).toBe('triaged alpha:5');
-    expect(await s.text(t, 'triage', { ref: 'alpha:5', agent: 'Secret plan text', priority: '🔺' })).toBe('no change');
     expect(await s.text(t, 'claim', { ref: 'alpha:7' })).toBe('claimed alpha:7');
     expect(await s.text(t, 'claim', { ref: 'alpha:7' })).toBe('no change');
     expect(await s.text(t, 'record-result', { ref: 'alpha:7', outcome: 'done', summary: 'ok SUMMARY' })).toBe('logged alpha:7');
     expect(await s.text(t, 'record-result', { ref: 'alpha:7', outcome: 'done', summary: 'ok', complete: true })).toBe('logged alpha:7 completed');
     expect(await s.text(t, 'record-result', { ref: 'alpha:6', outcome: 'done', summary: 'ok', complete: true })).toMatch(/^logged alpha:6 deferred alpha:\d+$/);
+    expect(await s.text(t, 'triage', { ref: 'alpha:5', agent: 'Secret plan text', priority: '🔺' })).toBe('triaged alpha:5');
+    expect(await s.text(t, 'triage', { ref: 'alpha:5', agent: 'Secret plan text', priority: '🔺' })).toBe('no change');
   });
 
   it('denied autonomy is a tool error and moves on', async () => {
@@ -65,7 +65,7 @@ describe('triage tools', () => {
     await s.text(t, 'record-result', { ref: 'alpha:7', outcome: 'done', summary: 'x' });
     const log = (await s.storage.read('tasks/logs/alpha.md')).content;
     expect(log).toMatch(/actor: mcp:[0-9a-f]{16}\b/);
-    const body = await s.apiCalls[s.apiCalls.length - 1].clone().json();
+    const body = (await s.apiCalls[s.apiCalls.length - 1].clone().json()) as { actor: string };
     expect(body.actor).toMatch(/^mcp:[0-9a-f]{16}$/);
   });
 

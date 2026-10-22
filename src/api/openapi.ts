@@ -70,6 +70,29 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears' },
     responses: mutation('200'),
   },
+  'tasks.triage': {
+    operationId: 'triageTask', summary: 'Apply a triage suggestion (needs autonomy triage or higher; 403 otherwise)',
+    desc: {
+      agent: 'One-line 🪄 subtask an agent can do', human: 'One-line 🙋 subtask needing a person',
+      priority: 'Only fills a missing priority', actor: 'Who is acting; the MCP layer sets it from the token',
+    },
+    responses: ok('Applied', {
+      type: 'object',
+      properties: { changed: { type: 'boolean' }, ref: { type: 'string' }, applied: { type: 'array', items: { type: 'string' } }, added: { type: 'array', items: { type: 'string' } } },
+    }),
+  },
+  'tasks.claim': {
+    operationId: 'claimTask', summary: 'Claim a task (needs autonomy assist or higher; never a 🙋 row)',
+    responses: ok('Claimed', { type: 'object', properties: { changed: { type: 'boolean' }, ref: { type: 'string' } } }),
+  },
+  'tasks.result': {
+    operationId: 'recordResult', summary: 'Log an agent result in tasks/logs; completes only within autonomy, else defers to a 🙋 subtask',
+    desc: { summary: 'One line; secrets are redacted', complete: 'Request completion; honored only within the task autonomy' },
+    responses: ok('Logged', {
+      type: 'object',
+      properties: { logged: { type: 'boolean' }, completed: { type: 'boolean' }, deferred: { type: 'boolean' }, ref: { type: 'string' }, human: { type: 'string' } },
+    }),
+  },
   'tasks.removeCompleted': {
     operationId: 'removeCompleted', summary: 'Remove completed tasks',
     responses: ok('Removed count', { type: 'object', properties: { removed: { type: 'integer' }, files: { type: 'array', items: { type: 'string' } } } }),

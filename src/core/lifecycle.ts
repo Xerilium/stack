@@ -42,9 +42,9 @@ export interface NextTask { ref: TaskRef; text: string; project: string; score: 
 // ------------------------------------------------------------------ constants
 
 const STATUS = ['🚧', '⏸️', '👀', '⏳', '⛔️'] as const;
-const PRIORITY = ['🚨', '‼️', '🔺', '🔻'] as const;
-const EFFORT = ['🟢', '🟡', '🟠', '🔴', '⚫️'] as const;
-const IMPACT = ['⬆️', '↔️', '⬇️'] as const;
+export const PRIORITY = ['🚨', '‼️', '🔺', '🔻'] as const;
+export const EFFORT = ['🟢', '🟡', '🟠', '🔴', '⚫️'] as const;
+export const IMPACT = ['⬆️', '↔️', '⬇️'] as const;
 const SPECIAL = ['💤', '☀️', '🅿️', '🏷️'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

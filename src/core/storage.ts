@@ -53,10 +53,12 @@ export const versionOf = (content: string): string =>
 /** Dotfiles are rejected (list() hides them, so every adapter must agree). */
 const TASK_PATH = /^tasks\/[^/\\\0.][^/\\\0]*\.md$/;
 const SUMMARY_PATH = /^(README|stack|projects|my-day)\.md$/;
+/** Agent result logs live beside the tasks, in their own folder, and are never projects. */
+const LOG_PATH = /^tasks\/logs\/(?!readme\.md$)[A-Za-z0-9][A-Za-z0-9._-]*\.md$/i;
 
 /** @req FR:storage-git/interface.paths */
 export function validatePath(path: string): string {
-  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path)) || path.split('/').includes('..')) {
+  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path)) || path.split('/').includes('..')) {
     throw new PathError(`Invalid task path: ${JSON.stringify(path)}`);
   }
   return path;
@@ -70,7 +72,7 @@ export class MemoryStorage implements Storage {
   private files = new Map<string, string>();
   private queue: Promise<unknown> = Promise.resolve();
 
-  async list(): Promise<string[]> { return [...this.files.keys()].filter(p => p.startsWith(`${TASKS_DIR}/`)).sort(); }
+  async list(): Promise<string[]> { return [...this.files.keys()].filter(p => TASK_PATH.test(p)).sort(); }
 
   async read(path: string): Promise<StoredFile> {
     validatePath(path);

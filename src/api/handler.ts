@@ -9,6 +9,7 @@ import {
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
+import { applyTriage, claimTask, OUTCOMES, recordResult, type ResultInput, type Suggestion } from '../core/triage';
 import type { Storage } from '../core/storage';
 import { generateSummaries } from '../core/summaries';
 import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
@@ -53,6 +54,10 @@ const PROPS: Record<string, Spec> = {
   suspend: { t: 'str', max: 40, pattern: /^(?:|[A-Za-z]{3} \d{1,2}(?: \d{2}:\d{2})?|\d{1,2}:\d{2})$/ }, clearEmojis: { t: 'bool' },
 };
 const REF: Spec = { t: 'ref' };
+const ACTOR: Spec = { t: 'str', max: 64, pattern: /^[A-Za-z0-9._:-]{1,64}$/ };
+const some = (v: readonly string[]): Spec => ({ t: 'enum', values: v.filter((x) => x !== 'None') });
+const LINE200: Spec = { t: 'str', max: 200, line: true };
+const caller = (b: { actor?: string }) => ({ actor: b.actor ?? 'api' });
 
 const FIELDS_Q: Record<string, Spec> = { fields: { t: 'str' } };
 const STATES = ['open', 'done', 'all'] as const;
@@ -83,6 +88,20 @@ const ACTION_BODIES: Record<(typeof ACTIONS)[number], { schema: Record<string, S
   complete: { schema: { ref: REF, summary: { t: 'str', max: 10000, line: true }, remove: { t: 'bool' } }, required: [] },
   suspend: { schema: { ref: REF, days: { t: 'int', min: 1, max: 365 }, hours: { t: 'int', min: 1, max: 8760 } }, required: [] },
   set: { schema: { ref: REF, ...PROPS }, required: ['ref'] },
+};
+const TRIAGE_BODY = {
+  schema: {
+    ref: REF, agent: LINE200, human: LINE200, priority: some(ENUMS.priority), effort: some(ENUMS.effort), impact: some(ENUMS.impact), actor: ACTOR,
+  } satisfies Record<string, Spec>,
+  required: ['ref'],
+};
+const CLAIM_BODY = { schema: { ref: REF, actor: ACTOR } satisfies Record<string, Spec>, required: ['ref'] };
+const RESULT_BODY = {
+  schema: {
+    ref: REF, outcome: { t: 'enum', values: OUTCOMES }, summary: { t: 'str', required: true, max: 500, line: true },
+    complete: { t: 'bool' }, human: LINE200, actor: ACTOR,
+  } satisfies Record<string, Spec>,
+  required: ['ref', 'outcome', 'summary'],
 };
 const REMOVE_BODY = { schema: { project: { t: 'str', max: 200, line: true } } satisfies Record<string, Spec>, required: [] as string[] };
 const PROJECT_BODY = {
@@ -247,6 +266,35 @@ export const ROUTES: Route[] = [
       noQuery(c);
       const b = validate<{ project?: string }>(await readBody(c.req), REMOVE_BODY.schema);
       return json(200, await removeCompleted(c.life, { project: b.project }));
+    },
+  },
+  {
+    method: 'POST', doc: '/tasks/triage', name: 'tasks.triage', body: TRIAGE_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<Suggestion & { ref: NonNullable<ReturnType<typeof parseRef>>; actor?: string }>(await readBody(c.req), TRIAGE_BODY.schema, TRIAGE_BODY.required);
+      const { ref, actor, ...s } = b;
+      const r = await applyTriage(c.life, ref, s, caller({ actor }));
+      return json(200, { changed: r.changed, ref: formatRef(r.ref), applied: r.applied, added: r.added.map(formatRef) });
+    },
+  },
+  {
+    method: 'POST', doc: '/tasks/claim', name: 'tasks.claim', body: CLAIM_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; actor?: string }>(await readBody(c.req), CLAIM_BODY.schema, CLAIM_BODY.required);
+      const r = await claimTask(c.life, b.ref, caller(b));
+      return json(200, { changed: r.changed, ref: formatRef(r.ref!) });
+    },
+  },
+  {
+    method: 'POST', doc: '/tasks/result', name: 'tasks.result', body: RESULT_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<ResultInput & { ref: NonNullable<ReturnType<typeof parseRef>>; actor?: string }>(await readBody(c.req), RESULT_BODY.schema, RESULT_BODY.required);
+      const { ref, actor, ...r } = b;
+      const out = await recordResult(c.life, ref, r, caller({ actor }));
+      return json(200, { logged: out.logged, completed: out.completed, deferred: out.deferred, ref: formatRef(out.ref), ...(out.human ? { human: formatRef(out.human) } : {}) });
     },
   },
   {

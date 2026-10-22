@@ -137,7 +137,7 @@ describe('applyTriage', () => {
   });
   it('rejects bad subtask text and bad props', async () => {
     const { ctx, text } = await setup();
-    const bad = ['', '   ', 'a\nb', 'a\rb', 'a b', 'a\u0085b', 'a\u0000b', 'x'.repeat(201), '🪄 nested', '🙋 nested', '💤 Oct 30: later', '⛔️ blocked', '🅿️ parked', '🚧 doing'];
+    const bad = ['', '   ', 'a\nb', 'a\rb', 'a\u2028b', 'a\u0085b', 'a\u0000b', 'x'.repeat(201), '🪄 nested', '🙋 nested', '💤 Oct 30: later', '⛔️ blocked', '🅿️ parked', '🚧 doing'];
     for (const b of bad) await expect(applyTriage(ctx, ref(L.triage), { agent: b }, agent)).rejects.toThrow();
     for (const b of bad) await expect(applyTriage(ctx, ref(L.triage), { human: b }, agent)).rejects.toThrow();
     await expect(applyTriage(ctx, ref(L.triage), { priority: 'None' as never }, agent)).rejects.toThrow();
@@ -217,7 +217,7 @@ describe('recordResult', () => {
     expect(r.human).toBeDefined();
     const t = await text();
     expect(t).toContain('- [ ] Assist task 🤖:assist');
-    expect(t).toMatch(/  - \[ \] 🙋 Review and complete/);
+    expect(t).toMatch(/ {2}- \[ \] 🙋 Review and complete/);
     expect(await log()).toMatch(/completed: deferred/);
     // idempotent review subtask
     await recordResult(ctx, ref(L.assist), { outcome: 'done', summary: 'again', complete: true }, agent);
@@ -263,7 +263,7 @@ describe('recordResult', () => {
     const { ctx } = await setup();
     const base = { outcome: 'done' as const, summary: 'ok' };
     await expect(recordResult(ctx, ref(L.agentChild), { ...base, outcome: 'merged' as never }, agent)).rejects.toThrow();
-    for (const s of ['', 'a\nb', 'a b', 'x'.repeat(501)]) await expect(recordResult(ctx, ref(L.agentChild), { ...base, summary: s }, agent)).rejects.toThrow();
+    for (const s of ['', 'a\nb', 'a\u2028b', 'x'.repeat(501)]) await expect(recordResult(ctx, ref(L.agentChild), { ...base, summary: s }, agent)).rejects.toThrow();
     for (const a of ['', 'a b', 'a\nb', 'x'.repeat(65), '../x', 'a`b']) await expect(recordResult(ctx, ref(L.agentChild), base, { actor: a })).rejects.toThrow();
   });
   it('writes the log under tasks/logs, never as a project', async () => {

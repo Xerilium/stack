@@ -391,6 +391,173 @@ paths:
                       type: string
         default:
           $ref: "#/components/responses/Error"
+  /tasks/triage:
+    post:
+      summary: Apply a triage suggestion (needs autonomy triage or higher; 403 otherwise)
+      operationId: triageTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                agent:
+                  type: string
+                  maxLength: 200
+                  description: One-line 🪄 subtask an agent can do Single line.
+                human:
+                  type: string
+                  maxLength: 200
+                  description: One-line 🙋 subtask needing a person Single line.
+                priority:
+                  type: string
+                  enum:
+                    - 🚨
+                    - ‼️
+                    - 🔺
+                    - 🔻
+                  description: Only fills a missing priority
+                effort:
+                  type: string
+                  enum:
+                    - 🟢
+                    - 🟡
+                    - 🟠
+                    - 🔴
+                    - ⚫️
+                impact:
+                  type: string
+                  enum:
+                    - ⬆️
+                    - ↔️
+                    - ⬇️
+                actor:
+                  type: string
+                  maxLength: 64
+                  pattern: ^[A-Za-z0-9._:-]{1,64}$
+                  description: Who is acting; the MCP layer sets it from the token
+      responses:
+        "200":
+          description: Applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+                  ref:
+                    type: string
+                  applied:
+                    type: array
+                    items:
+                      type: string
+                  added:
+                    type: array
+                    items:
+                      type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /tasks/claim:
+    post:
+      summary: Claim a task (needs autonomy assist or higher; never a 🙋 row)
+      operationId: claimTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                actor:
+                  type: string
+                  maxLength: 64
+                  pattern: ^[A-Za-z0-9._:-]{1,64}$
+      responses:
+        "200":
+          description: Claimed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+                  ref:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /tasks/result:
+    post:
+      summary: Log an agent result in tasks/logs; completes only within autonomy, else defers to a 🙋 subtask
+      operationId: recordResult
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+                - outcome
+                - summary
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                outcome:
+                  type: string
+                  enum:
+                    - done
+                    - partial
+                    - blocked
+                    - needs-human
+                summary:
+                  type: string
+                  maxLength: 500
+                  description: One line; secrets are redacted Single line.
+                complete:
+                  type: boolean
+                  description: Request completion; honored only within the task autonomy
+                human:
+                  type: string
+                  maxLength: 200
+                  description: Single line.
+                actor:
+                  type: string
+                  maxLength: 64
+                  pattern: ^[A-Za-z0-9._:-]{1,64}$
+      responses:
+        "200":
+          description: Logged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logged:
+                    type: boolean
+                  completed:
+                    type: boolean
+                  deferred:
+                    type: boolean
+                  ref:
+                    type: string
+                  human:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
   /projects:
     get:
       summary: List projects
