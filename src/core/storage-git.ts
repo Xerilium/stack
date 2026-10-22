@@ -123,8 +123,13 @@ export class GitStorage extends FsStorage {
     if (cur !== this.branch) throw new StorageError(`Configured branch ${this.branch} is not the current branch (${cur ?? 'detached HEAD'})`);
   }
 
-  /** Fetch and rebase onto the remote (no-op without a remote). */
-  async sync(): Promise<void> {
+  /** Fetch and rebase onto the remote (no-op without a remote). Serialized with writes. */
+  sync(): Promise<void> {
+    return this.enqueue(() => this.syncNow());
+  }
+
+  /** Unqueued sync; only for callers already inside the write queue. */
+  private async syncNow(): Promise<void> {
     if (!this.remote) return;
     await this.checkBranch();
     if (!(await this.fetch())) return;
@@ -142,7 +147,7 @@ export class GitStorage extends FsStorage {
   /** One commit (and one push) for all changed paths; serialized per adapter instance only. @req FR:storage-git/write.many @req FR:storage-git/git.concurrency */
   protected async lockedMany(writes: FileWrite[], message?: string): Promise<void> {
     await this.checkBranch();
-    if (this.remote) await this.sync();
+    if (this.remote) await this.syncNow();
     const paths = writes.map(w => w.path);
     const priors: (string | null)[] = [];
     for (const w of writes) {

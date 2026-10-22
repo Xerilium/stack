@@ -157,6 +157,13 @@ export class FsStorage implements Storage {
   private queue: Promise<unknown> = Promise.resolve();
   constructor(readonly root: string) {}
 
+  /** Run `fn` in the same serial queue as writes. */
+  protected enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const p = this.queue.then(fn, fn);
+    this.queue = p.catch(() => undefined);
+    return p;
+  }
+
   /**
    * Resolve a relative path under root, refusing any symlink on the way (a tracked link must never
    * read or write outside the work tree). Missing components are fine.

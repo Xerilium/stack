@@ -84,3 +84,30 @@ describe('azure-host git token store', () => {
     expect(seen).toEqual(['TypeError']);
   });
 });
+
+describe('azure-host sync is serialized with writes', () => {
+  /** @req FR:azure-host/tokens.git */
+  it('sync waits for an in-flight write instead of interleaving', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stack-q-'));
+    try {
+      const bare = join(dir, 'o.git');
+      g(dir, 'init', '-q', '--bare', '-b', 'main', bare);
+      const w = join(dir, 'w');
+      g(dir, 'clone', '-q', bare, w);
+      g(w, 'checkout', '-q', '-B', 'main'); g(w, 'config', 'user.name', 'S'); g(w, 'config', 'user.email', 's@x');
+      g(w, 'commit', '-q', '--allow-empty', '-m', 'i'); g(w, 'push', '-q', 'origin', 'main');
+      const st = new GitStorage(w, { remote: 'origin', branch: 'main' });
+      const order: string[] = [];
+      let release!: () => void;
+      st.beforePush = () => new Promise<void>((r) => { order.push('push-wait'); release = r; });
+      const write = st.writeAux(TOKEN_PATH, '{}', { expectedVersion: null }).then(() => order.push('write-done'));
+      await new Promise((r) => setTimeout(r, 300));
+      const sync = st.sync().then(() => order.push('sync-done'));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(order).toEqual(['push-wait']); // sync has not run while the write is mid-push
+      release();
+      await Promise.all([write, sync]);
+      expect(order).toEqual(['push-wait', 'write-done', 'sync-done']);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
