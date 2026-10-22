@@ -3,7 +3,7 @@
  * @req FR:web-app/api.edit @req FR:web-app/api.move
  */
 import { LifecycleError } from '../core/lifecycle';
-import type { Storage } from '../core/storage';
+import { ConflictError, type Storage } from '../core/storage';
 
 interface TaskRef { path: string; line: number }
 export interface EditResult { changed: boolean; ref: TaskRef; before?: string; after?: string; message: string }
@@ -13,9 +13,10 @@ const bare = (l: string) => l.replace(/\r$/, '');
 const unbom = (l: string) => l.replace(/^﻿/, '');
 const brief = (s: string) => (s.length > 60 ? `${s.slice(0, 57)}...` : s);
 
-function rowAt(lines: string[], line: number): RegExpExecArray {
+function rowAt(lines: string[], line: number, expect?: string): RegExpExecArray {
   const m = lines[line] === undefined ? null : ROW.exec(unbom(bare(lines[line])));
   if (!m) throw new LifecycleError('Task not found');
+  if (expect !== undefined && m[2] !== expect) throw new ConflictError('Row changed since it was read');
   return m;
 }
 
@@ -33,10 +34,10 @@ function blockEnd(lines: string[], i: number): number {
 }
 
 /** Replace the text after the checkbox of one row. */
-export async function editTask(storage: Storage, ref: TaskRef, text: string): Promise<EditResult> {
+export async function editTask(storage: Storage, ref: TaskRef, text: string, expect?: string): Promise<EditResult> {
   const f = await storage.read(ref.path);
   const lines = f.content.split('\n');
-  const m = rowAt(lines, ref.line);
+  const m = rowAt(lines, ref.line, expect);
   const cr = lines[ref.line].endsWith('\r') ? '\r' : '';
   const bom = lines[ref.line].startsWith('﻿') ? '﻿' : '';
   const before = m[2];
@@ -47,12 +48,12 @@ export async function editTask(storage: Storage, ref: TaskRef, text: string): Pr
 }
 
 /** Move a task block before or after another task block in the same file. */
-export async function moveTask(storage: Storage, ref: TaskRef, target: TaskRef, position: 'before' | 'after'): Promise<EditResult> {
+export async function moveTask(storage: Storage, ref: TaskRef, target: TaskRef, position: 'before' | 'after', expect?: { ref?: string; target?: string }): Promise<EditResult> {
   if (ref.path !== target.path) throw new LifecycleError('Target must be in the same project');
   const f = await storage.read(ref.path);
   const lines = f.content.split('\n');
-  const m = rowAt(lines, ref.line);
-  rowAt(lines, target.line);
+  const m = rowAt(lines, ref.line, expect?.ref);
+  rowAt(lines, target.line, expect?.target);
   const start = ref.line;
   const end = blockEnd(lines, start);
   if (target.line >= start && target.line < end) throw new LifecycleError('Cannot move a task next to itself or its own subtasks');

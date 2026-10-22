@@ -216,20 +216,20 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/tasks/edit', name: 'tasks.edit',
     async run(c) {
       noQuery(c);
-      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string }>(await readBody(c.req), {
-        ref: REF, text: { t: 'str', required: true, max: 2000, line: true },
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; expect?: string }>(await readBody(c.req), {
+        ref: REF, text: { t: 'str', required: true, max: 2000, line: true }, expect: { t: 'str', max: 2000, line: true },
       }, ['ref', 'text']);
-      return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text)));
+      return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text, b.expect)));
     },
   },
   {
     method: 'POST', doc: '/tasks/move', name: 'tasks.move',
     async run(c) {
       noQuery(c);
-      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; target: NonNullable<ReturnType<typeof parseRef>>; position: 'before' | 'after' }>(await readBody(c.req), {
-        ref: REF, target: REF, position: { t: 'enum', values: ['before', 'after'] },
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; target: NonNullable<ReturnType<typeof parseRef>>; position: 'before' | 'after'; expect?: string; expectTarget?: string }>(await readBody(c.req), {
+        ref: REF, target: REF, position: { t: 'enum', values: ['before', 'after'] }, expect: { t: 'str', max: 2000, line: true }, expectTarget: { t: 'str', max: 2000, line: true },
       }, ['ref', 'target', 'position']);
-      return json(200, fmtEdit(await moveTask(c.deps.storage, b.ref, b.target, b.position)));
+      return json(200, fmtEdit(await moveTask(c.deps.storage, b.ref, b.target, b.position, { ref: b.expect, target: b.expectTarget })));
     },
   },
   {

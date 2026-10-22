@@ -212,6 +212,7 @@ paths:
               properties:
                 ref: { $ref: '#/components/schemas/Ref' }
                 text: { type: string, maxLength: 2000, description: Row text after the checkbox, single line }
+                expect: { type: string, maxLength: 2000, description: Expected current row text at ref; 409 conflict when the row differs (stale line number) }
       responses:
         '200': { $ref: '#/components/responses/Mutation' }
         default: { $ref: '#/components/responses/Error' }
@@ -231,6 +232,8 @@ paths:
                 ref: { $ref: '#/components/schemas/Ref' }
                 target: { $ref: '#/components/schemas/Ref' }
                 position: { type: string, enum: [before, after] }
+                expect: { type: string, maxLength: 2000, description: Expected current row text at ref; 409 conflict on mismatch }
+                expectTarget: { type: string, maxLength: 2000, description: Expected current row text at target; 409 conflict on mismatch }
       responses:
         '200': { $ref: '#/components/responses/Mutation' }
         default: { $ref: '#/components/responses/Error' }

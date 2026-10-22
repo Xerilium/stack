@@ -13,6 +13,7 @@ type Phase = 'loading' | 'ready' | 'denied' | 'error';
 interface Command { id: string; label: string; hint?: string; run: () => void }
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
+const toLogin = () => location.assign(`/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
 const projectOf = (ref: string) => ref.slice(0, ref.lastIndexOf(':'));
 
 export function App() {
@@ -59,7 +60,7 @@ export function App() {
       const [n, t, p] = await Promise.all([api.next(), api.tasks(), api.projects()]);
       setNext(n); setTasks(t); setProjects(p); setPhase('ready');
     } catch (e) {
-      if (e instanceof ApiFailure && e.status === 401) { location.assign(`/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`); return; }
+      if (e instanceof ApiFailure && e.status === 401) { toLogin(); return; }
       if (e instanceof ApiFailure && e.status === 403) { setPhase('denied'); return; }
       setLoadError(e instanceof Error ? e.message : 'Failed to load'); setPhase((p) => (p === 'ready' ? p : 'error'));
       if (phase === 'ready') toast(e instanceof Error ? e.message : 'Refresh failed', 'err');
@@ -104,7 +105,7 @@ export function App() {
       await refresh();
       return r;
     } catch (e) {
-      if (e instanceof ApiFailure && e.status === 401) { location.assign(`/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`); return; }
+      if (e instanceof ApiFailure && e.status === 401) { toLogin(); return; }
       if (e instanceof ApiFailure && e.status === 409) { toast('Changed elsewhere. Reloaded; try again.', 'err'); await refresh(); }
       else toast(e instanceof Error ? e.message : 'Failed', 'err');
     } finally { setBusy(false); }
@@ -112,63 +113,88 @@ export function App() {
 
   const propsFor = (g: GroupName, e: string): SetProps => ({ [g]: e }) as SetProps;
 
+  /** Find the row a stale ref meant: same ref with the same text, else the only row with that text in the project. */
+  const resolve = (fresh: Task[], ref: string, text: string): string | null => {
+    if (fresh.find((t) => t.ref === ref)?.text === text) return ref;
+    const hits = fresh.filter((t) => t.text === text && t.project === projectOf(ref));
+    return hits.length === 1 ? hits[0].ref : null;
+  };
+
+  /** Run one call per selected row, one at a time. Line numbers can shift after each write, so reload and re-resolve each ref by text first. */
+  const sweep = async (refs: string[], fn: (ref: string) => Promise<unknown>) => {
+    const texts = new Map(refs.map((r) => [r, tasks.find((t) => t.ref === r)?.text ?? '']));
+    let ok = 0, why = '', stop = false;
+    const left: string[] = [];
+    setBusy(true);
+    try {
+      for (const ref of refs) {
+        if (stop) { left.push(ref); continue; }
+        try {
+          const target = resolve(await api.tasks(), ref, texts.get(ref)!);
+          if (!target) throw new ApiFailure(409, 'conflict', 'Changed elsewhere');
+          await fn(target); ok++;
+        } catch (err) {
+          if (err instanceof ApiFailure && err.status === 401) { toLogin(); return null; }
+          why ||= err instanceof Error ? err.message : 'Failed';
+          left.push(ref);
+          if (err instanceof ApiFailure && err.status === 409) { stop = true; why = 'Changed elsewhere. Reloaded; try again.'; }
+        }
+      }
+    } finally { setBusy(false); }
+    return { ok, why, left, failed: left.length };
+  };
+
+  const finishSweep = async (r: Awaited<ReturnType<typeof sweep>>, n: number, okWord: string) => {
+    if (!r) return;
+    toast(r.failed ? (n === 1 ? r.why : `${r.ok} ${okWord}, ${r.failed} failed. ${r.why}`) : n > 1 ? `${r.ok} ${okWord === 'done' ? 'done' : 'updated'}` : okWord === 'done' ? 'Done' : 'Updated', r.failed ? 'err' : 'ok');
+    setSelected(new Set(r.left));
+    await refresh();
+  };
+
   const applyPick = async (refs: string[], g: GroupName, e: string) => {
     setPicker(null);
-    let ok = 0, why = '';
-    const failed: string[] = [];
-    setBusy(true);
-    for (const ref of refs) {
-      try { await api.set(ref, propsFor(g, e)); ok++; } catch (err) { failed.push(ref); why ||= err instanceof Error ? err.message : 'Failed'; if (err instanceof ApiFailure && err.status === 409) break; }
-    }
-    setBusy(false);
-    toast(failed.length ? (refs.length === 1 ? why : `${ok} done, ${failed.length} failed`) : refs.length > 1 ? `${ok} updated` : 'Updated', failed.length ? 'err' : 'ok');
-    if (failed.length) setSelected(new Set(failed));
-    else setSelected(new Set());
-    await refresh();
+    await finishSweep(await sweep(refs, (ref) => api.set(ref, propsFor(g, e))), refs.length, 'updated');
   };
 
   const bulk = async (kind: 'complete' | 'skip') => {
     const refs = [...selected];
-    let ok = 0; const failed: string[] = [];
-    setBusy(true);
-    for (const ref of refs) { try { await api.action(kind, ref); ok++; } catch { failed.push(ref); } }
-    setBusy(false);
-    toast(`${ok} done, ${failed.length} failed`, failed.length ? 'err' : 'ok');
-    setSelected(new Set(failed));
-    await refresh();
+    await finishSweep(await sweep(refs, (ref) => api.action(kind, ref)), refs.length, 'done');
   };
 
   const nextAct = async (a: 'start' | 'done' | 'skip' | 'suspend', days?: number) => {
     if (!next) return;
     const ref = next.ref;
     if (a === 'done') {
-      await run(() => api.action('complete', ref), () => '');
-      toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
+      if (await run(() => api.action('complete', ref), () => '')) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
     } else if (a === 'suspend') await run(() => api.action('suspend', ref, { days: days ?? 1 }));
     else await run(() => api.action(a, ref));
   };
 
   const toggleDone = async (t: Task) => {
     if (t.done) { await run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Reopened'); return; }
-    await run(() => api.action('complete', t.ref), () => '');
-    toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
+    if (await run(() => api.action('complete', t.ref), () => '')) toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
   };
 
   const save = async (ref: string, text: string) => {
     const cur = tasks.find((t) => t.ref === ref);
     setEditing(null);
     if (!cur || cur.text === text) return;
-    await run(() => api.edit(ref, text));
+    await run(() => api.edit(ref, text, cur.text));
   };
 
   const doMove = async (ref: string, plan: { target: string; position: 'before' | 'after' } | null) => {
-    if (!plan) return;
-    const r = await run(() => api.move(ref, plan.target, plan.position), (x) => (x.changed ? 'Moved' : ''));
+    if (!plan || busy) return;
+    const expect = { ref: tasks.find((t) => t.ref === ref)?.text, target: tasks.find((t) => t.ref === plan.target)?.text };
+    const r = await run(() => api.move(ref, plan.target, plan.position, expect), (x) => (x.changed ? 'Moved' : ''));
     if (r?.ref) setCursor(r.ref);
   };
 
+  const dragOff = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragOff.current?.(), []);
   const onDragStart = (ref: string, e: PointerEvent) => {
     e.preventDefault();
+    if (busy) return;
+    dragOff.current?.();
     setDrag({ ref, over: null, half: 'bottom' });
     const find = (ev: PointerEvent) => {
       const el = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-ref]');
@@ -184,6 +210,7 @@ export function App() {
       if (hit.over) void doMoveLatest.current(ref, moveTarget(latest.current.positions, ref, hit.over, hit.half));
     };
     const cancel = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel); setDrag(null); };
+    dragOff.current = cancel;
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel);
   };
 
@@ -192,11 +219,12 @@ export function App() {
   useEffect(() => {
     const text = captureText.trim();
     if (!text) { setPreview(null); return; }
+    let stale = false;
     const h = setTimeout(async () => {
-      try { const r = await api.capture(text, { project: defaultProject(), dryRun: true }); setPreview({ spec: r.spec }); }
-      catch (e) { setPreview({ error: e instanceof Error ? e.message : 'Cannot parse' }); }
+      try { const r = await api.capture(text, { project: defaultProject(), dryRun: true }); if (!stale) setPreview({ spec: r.spec }); }
+      catch (e) { if (!stale) setPreview({ error: e instanceof Error ? e.message : 'Cannot parse' }); }
     }, 250);
-    return () => clearTimeout(h);
+    return () => { stale = true; clearTimeout(h); };
   }, [captureText, next, projects]);
 
   const submitCapture = async () => {
@@ -287,7 +315,7 @@ export function App() {
       else if (k === 'k' || k === 'ArrowUp') { e.preventDefault(); step(-1); }
       else if ((k === 'Enter' || k === 'e') && L.cursor) { e.preventDefault(); setEditing(L.cursor); }
       else if (k === 'x' && L.cursor) setSelected((s) => { const n = new Set(s); if (n.has(L.cursor!)) n.delete(L.cursor!); else n.add(L.cursor!); return n; });
-      else if (k === 'Escape') { setSelected(new Set()); }
+      else if (k === 'Escape') { setSelected(new Set()); setCursor(null); }
       else if (k === 'd') { const t = L.rows.find((r) => r.ref === L.cursor); if (L.selected.size) void A.bulk('complete'); else if (t) void A.toggleDone(t); }
       else if (k === 's' && L.cursor) void run(() => api.action('start', L.cursor!));
       else if (k === 'p' || k === 't' || k === 'f' || k === 'i') A.openPicker([GROUP_NAMES.find((g) => GROUPS[g].key === k)!]);

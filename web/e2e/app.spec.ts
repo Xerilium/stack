@@ -212,7 +212,7 @@ test.describe('pickers and bulk edit', () => {
     let n = 0;
     await page.route('**/api/tasks/set', async (route) => { n++; if (n === 2) return route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: { code: 'invalid', message: 'nope' } }) }); return route.fallback(); });
     await page.getByRole('dialog').getByRole('button', { name: /Critical/ }).click();
-    await expect(page.getByText('2 done, 1 failed')).toBeVisible();
+    await expect(page.getByText('2 updated, 1 failed. nope')).toBeVisible();
     await expect(page.getByRole('toolbar')).toContainText('1 selected');
     expect(m.calls.filter((c) => c.path === '/tasks/set').map((c) => c.body.ref)).toEqual(['alpha:7', 'beta:4']);
     expect(n).toBe(3);
@@ -224,9 +224,68 @@ test.describe('pickers and bulk edit', () => {
     await page.getByLabel('Select Write docs').check();
     await page.getByLabel('Select Plan the trip').check();
     await page.getByRole('toolbar').getByRole('button', { name: 'Done' }).click();
-    await expect(page.getByText('2 done, 0 failed')).toBeVisible();
+    await expect(page.getByText('2 done')).toBeVisible();
     expect(m.calls.filter((c) => c.path === '/tasks/complete')).toHaveLength(2);
     await expect(page.getByRole('toolbar')).toHaveCount(0);
+  });
+});
+
+test.describe('stale line numbers', () => {
+  // @req FR:web-app/api.edit
+  test('edit with a stale ref gets 409, writes nothing, and reloads', async ({ page }) => {
+    const m = await mockApi(page);
+    await page.goto('/#/list');
+    await expect(rows(page).first()).toContainText('Ship the');
+    m.insertAbove('alpha', 'Added by someone else');
+    await page.locator('.row[data-ref="alpha:7"] .title').dblclick();
+    await page.getByLabel('Edit task text').fill('Write the docs 🟢');
+    await page.getByLabel('Edit task text').press('Enter');
+    await expect(page.getByText('Changed elsewhere')).toBeVisible();
+    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:7', expect: 'Write docs 🟢' } });
+    expect(m.tasks.map((t) => t.text)).toContain('Write docs 🟢');
+    expect(m.tasks.find((t) => t.ref === 'alpha:7')!.text).toContain('Ship the');
+    await expect(page.locator('.row[data-ref="alpha:6"]')).toContainText('Added by someone else');
+  });
+
+  // @req FR:web-app/api.move
+  test('move with a stale ref gets 409 and changes nothing', async ({ page }) => {
+    const m = await mockApi(page);
+    await page.goto('/#/list');
+    await expect(rows(page).first()).toContainText('Ship the');
+    m.tasks.find((t) => t.ref === 'alpha:9')!.text = 'Retitled by someone else';
+    const before = m.tasks.map((t) => t.ref + t.text);
+    const from = await page.locator('.row[data-ref="alpha:9"] .handle').boundingBox();
+    const to = await page.locator('.row[data-ref="alpha:6"]').boundingBox();
+    await page.mouse.move(from!.x + 5, from!.y + 5);
+    await page.mouse.down();
+    await page.mouse.move(to!.x + 60, to!.y + 6, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByText('Changed elsewhere')).toBeVisible();
+    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/move', body: { ref: 'alpha:9', expect: 'Review pull requests 🟠', expectTarget: '‼️ 📅 Oct 23: Ship the **web app** 🟡' } });
+    expect(m.tasks.map((t) => t.ref + t.text)).toEqual(before);
+  });
+
+  // @req FR:web-app/bulk.bar
+  test('bulk done re-resolves shifted refs by text', async ({ page }) => {
+    const m = await mockApi(page);
+    await page.goto('/#/list');
+    await page.getByLabel('Select Write docs').check();
+    await page.getByLabel('Select Review pull requests').check();
+    m.insertAbove('alpha', 'Added by someone else');
+    await page.getByRole('toolbar').getByRole('button', { name: 'Done' }).click();
+    await expect(page.getByText('2 done')).toBeVisible();
+    expect(m.calls.filter((c) => c.path === '/tasks/complete').map((c) => c.body.ref)).toEqual(['alpha:8', 'alpha:10']);
+    expect(m.tasks.filter((t) => t.done && t.project === 'alpha').map((t) => t.text)).toEqual(['Write docs 🟢', 'Review pull requests 🟠']);
+  });
+
+  // @req FR:web-app/next.act
+  test('a failed complete shows an error, not Done with Undo', async ({ page }) => {
+    const m = await mockApi(page);
+    await page.goto('/');
+    m.fail.set('/tasks/complete', { status: 500, code: 'internal', message: 'Boom' });
+    await page.getByRole('button', { name: 'Done' }).click();
+    await expect(page.getByText('Boom')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
   });
 });
 

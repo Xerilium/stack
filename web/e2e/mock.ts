@@ -1,7 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
-export interface Mock { tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean }
+export interface Mock { tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
 const vs = (s: string) => s.replace(/️/g, '');
@@ -19,13 +19,21 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 
 /** In-memory fake of the Stack api plus SWA's `/.auth/me`. */
 export async function mockApi(page: Page, opts: { tasks?: MockTask[] } = {}): Promise<Mock> {
-  const m: Mock = { tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false };
+  const m: Mock = { tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
   const proj = [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
   ];
   const find = (ref: string) => m.tasks.find((t) => t.ref === ref);
   const strip = (t: MockTask, group: string) => { for (const e of EMOJI[group]) t.text = t.text.split(e).join('').split(vs(e)).join(''); t.text = t.text.replace(/\s+/g, ' ').trim(); };
+
+  /** Another writer adds a row at the top of a project: every later line number in that file moves down by one. */
+  m.insertAbove = (project, text) => {
+    const mine = m.tasks.filter((t) => t.project === project);
+    const first = Number(mine[0].ref.split(':').pop());
+    for (const t of mine) t.ref = `${project}:${Number(t.ref.split(':').pop()) + 1}`;
+    m.tasks.splice(m.tasks.indexOf(mine[0]), 0, { ref: `${project}:${first}`, text, project, section: mine[0].section, done: false, depth: 0, notes: [] });
+  };
 
   await page.route('**/.auth/me', (r) => json(r, 200, { clientPrincipal: m.anonymous ? null : { userDetails: 'octocat', userRoles: ['authenticated'] } }));
   await page.route('**/api/**', async (route) => {
@@ -61,6 +69,9 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[] } = {}): Pr
     }
     const t = body?.ref ? find(body.ref) : open[0];
     if (!t && path.startsWith('/tasks/')) return json(route, 404, { error: { code: 'not_found', message: 'Task not found' } });
+    const stale = (r: string | undefined, x: MockTask) => r !== undefined && r !== x.text;
+    if (path === '/tasks/edit' && stale(body.expect, t!)) return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
+    if (path === '/tasks/move' && (stale(body.expect, t!) || stale(body.expectTarget, find(body.target) ?? t!))) return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
     switch (path) {
       case '/tasks/start': strip(t!, 'status'); t!.text = `🚧 ${t!.text}`; return json(route, 200, { changed: true, ref: t!.ref, message: 'Started' });
       case '/tasks/skip': strip(t!, 'status'); t!.text = `⏸️ ${t!.text}`; m.tasks.push(m.tasks.splice(m.tasks.indexOf(t!), 1)[0]); return json(route, 200, { changed: true, ref: t!.ref, message: 'Skipped' });

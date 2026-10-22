@@ -22,6 +22,7 @@ describe('staticwebapp.config.json', () => {
     const h = web.globalHeaders;
     expect(h['Content-Security-Policy']).toContain("default-src 'self'");
     expect(h['Content-Security-Policy']).toContain("frame-ancestors 'none'");
+    expect(h['Content-Security-Policy']).not.toMatch(/unsafe-/);
     expect(h['Content-Security-Policy']).not.toMatch(/unsafe-inline.*script|script-src[^;]*unsafe/);
     expect(h['X-Content-Type-Options']).toBe('nosniff');
     expect(h['Referrer-Policy']).toBe('same-origin');

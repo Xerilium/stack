@@ -91,6 +91,49 @@ describe('POST /tasks/move', () => {
 });
 
 // @req FR:web-app/api.edit @req FR:web-app/api.move
+describe('expected row text (stale line numbers)', () => {
+  it('edit writes when expect matches and 409s when it does not', async () => {
+    const { call, rows } = await mk();
+    expect((await call('/tasks/edit', { ref: 'alpha:9', text: 'X', expect: 'First 🟢' })).status).toBe(409);
+    expect((await rows()).join('|')).not.toContain('- [ ] X');
+    expect((await call('/tasks/edit', { ref: 'alpha:6', text: 'First 🟡', expect: 'First 🟢' })).status).toBe(200);
+  });
+  it('move 409s on a stale ref or target and leaves the file alone', async () => {
+    const { call, rows, storage } = await mk();
+    const before = (await storage.read('tasks/alpha.md')).content;
+    expect((await call('/tasks/move', { ref: 'alpha:6', target: 'alpha:9', position: 'after', expect: 'Second 🔴' })).status).toBe(409);
+    expect((await call('/tasks/move', { ref: 'alpha:6', target: 'alpha:9', position: 'after', expectTarget: 'nope' })).status).toBe(409);
+    expect((await storage.read('tasks/alpha.md')).content).toBe(before);
+    expect((await call('/tasks/move', { ref: 'alpha:6', target: 'alpha:9', position: 'after', expect: 'First 🟢', expectTarget: 'Second 🔴' })).status).toBe(200);
+    expect((await rows())[0]).toBe('- [ ] Second 🔴');
+  });
+});
+
+describe('handler scope and CSRF mapping', () => {
+  const body = JSON.stringify({ ref: 'a:4', text: 'Two' });
+  const mkh = async (authorize: any) => {
+    const storage = new MemoryStorage();
+    await storage.write('tasks/a.md', '# A\n\n## Active\n\n- [ ] One\n');
+    return createApiHandler({ storage, authorize });
+  };
+  it('passes route info with write=true and honors a deny', async () => {
+    const seen: unknown[] = [];
+    const h = await mkh((_r: Request, route: unknown) => { seen.push(route); return true; });
+    await h(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json' }, body }));
+    await h(new Request('https://x.test/api/tasks/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'a:4', target: 'a:4', position: 'after' }) }));
+    expect(seen).toEqual([{ name: 'tasks.edit', method: 'POST', write: true }, { name: 'tasks.move', method: 'POST', write: true }]);
+    const deny = await mkh(() => false);
+    expect((await deny(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json' }, body }))).status).toBe(403);
+    expect((await deny(new Request('https://x.test/api/tasks/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body }))).status).toBe(403);
+  });
+  it('rejects GET, query strings, and non-JSON bodies', async () => {
+    const h = await mkh(() => true);
+    expect((await h(new Request('https://x.test/api/tasks/edit'))).status).toBeGreaterThanOrEqual(400);
+    expect((await h(new Request('https://x.test/api/tasks/edit?x=1', { method: 'POST', headers: { 'content-type': 'application/json' }, body }))).status).toBe(422);
+    expect((await h(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'text/plain' }, body }))).status).toBeGreaterThanOrEqual(400);
+  });
+});
+
 describe('conflicts and docs', () => {
   it('returns 409 when the file changed under the write', async () => {
     const storage = new MemoryStorage();

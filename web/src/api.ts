@@ -36,8 +36,9 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     projects: async () => (await call<{ items: Project[] }>('/projects?fields=name,title,open,done,metadata')).items,
     action: (name: ActionName, ref?: string, extra: Record<string, unknown> = {}) => call<Mutation>(`/tasks/${name}`, { ...(ref ? { ref } : {}), ...extra }),
     set: (ref: string, props: SetProps) => call<Mutation>('/tasks/set', { ref, ...props }),
-    edit: (ref: string, text: string) => call<Mutation>('/tasks/edit', { ref, text }),
-    move: (ref: string, target: string, position: Position) => call<Mutation>('/tasks/move', { ref, target, position }),
+    edit: (ref: string, text: string, expect?: string) => call<Mutation>('/tasks/edit', { ref, text, ...(expect !== undefined ? { expect } : {}) }),
+    move: (ref: string, target: string, position: Position, expect?: { ref?: string; target?: string }) =>
+      call<Mutation>('/tasks/move', { ref, target, position, ...(expect?.ref !== undefined ? { expect: expect.ref } : {}), ...(expect?.target !== undefined ? { expectTarget: expect.target } : {}) }),
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
   };
 }
