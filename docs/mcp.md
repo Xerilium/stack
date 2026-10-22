@@ -1,3 +1,4 @@
+<!-- @req FR:deploy-docs/docs.mcp -->
 # MCP server
 
 Tools: `next`, `list`, `add`, `complete`, `start`, `skip`, `resume`, `suspend`, `set`, `triage`, `claim`, `record-result`. Each maps to one API route and needs that route's scope; tools outside the token's scopes are hidden and denied.

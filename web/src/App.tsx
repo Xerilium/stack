@@ -1,3 +1,10 @@
+/**
+ * Requirement map for the shell (the pieces live in App.tsx and its helpers).
+ * @req FR:web-app/list.nav @req FR:web-app/keys.global @req FR:web-app/reorder.drag
+ * @req FR:web-app/bulk.bar @req FR:web-app/capture.box @req FR:web-app/capture.project
+ * @req FR:web-app/edit.notes @req FR:web-app/host.auth @req FR:web-app/host.nosecrets
+ * @req FR:web-app/ux.feedback @req FR:web-app/ux.responsive
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, createClient } from './api';
 import { capacityRows } from './capacity';

@@ -1,3 +1,4 @@
+<!-- @req FR:deploy-docs/docs.process @req FR:deploy-docs/docs.links -->
 # Contributing
 
 Stack is built with the [Catalyst](https://github.com/Xerilium/catalyst) process: spec, plan, tests first, code, independent review, squash-merge on green CI.

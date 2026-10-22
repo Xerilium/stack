@@ -1,3 +1,4 @@
+# @req FR:deploy-docs/ci.valid (all workflows) @req FR:deploy-docs/ci.deploy
 name: Deploy
 # Deploys the web app and managed Functions to Azure Static Web Apps on push to main.
 # The owner must add the repo secret AZURE_STATIC_WEB_APPS_API_TOKEN first (docs/runbook.md).

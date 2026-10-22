@@ -1,3 +1,5 @@
+// @req FR:web-app/host.static @req FR:web-app/host.swa (public/staticwebapp.config.json ships in dist)
+// @req FR:web-app/arch.deps (web/package.json: preact only at runtime) @req FR:web-app/arch.tsconfig (web/tsconfig.json is separate from the root configs)
 import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
 
