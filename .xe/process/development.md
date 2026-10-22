@@ -217,9 +217,9 @@ Use the following development process when assigned to a task or asked to genera
 
 All validation steps below must pass before proceeding to Phase 6.
 
-- `npm run format` - Format all markdown and code files
-- `npm run lint` - Run linting checks (zero critical issues required)
-- `npm run test` - Execute all unit and integration tests (no failures or warnings)
+- `pnpm format` - Format all markdown and code files
+- `pnpm lint` - Run linting checks (zero critical issues required)
+- `pnpm test` - Execute all unit and integration tests (no failures or warnings)
 - Verify code coverage meets target per `.xe/engineering.md`
 - Ensure all standards in `.xe/standards/` are applied
 - Code quality review (readability, maintainability, patterns)
