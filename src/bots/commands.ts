@@ -78,7 +78,7 @@ export async function runCommand(client: Client, cmd: Command, onError?: (name: 
     }
   } catch (e) {
     const status = typeof e === "object" && e !== null ? (e as { status?: unknown }).status : undefined;
-    if (typeof status !== "number" || status >= 500) onError?.(e instanceof Error ? e.constructor.name : "unknown");
+    if (typeof status !== "number" || status >= 500 || status === 401 || status === 403) onError?.(e instanceof Error ? e.constructor.name : "unknown");
     return failText(e);
   }
 }

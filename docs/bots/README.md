@@ -4,7 +4,7 @@
 
 Commands: `next` (also `what's next`, `?`), `add <project> <text>`, `start [ref]`, `done [ref] [summary]`, `skip [ref]`, `help`. Refs look like `project:12`.
 
-All channels: `POST {basePath}/{channel}` (default `/bots`), body max 64 KiB, deny by default (no secret means the channel is off; empty allow-list means every sender gets 403). Sender match is case-insensitive. Failures are fixed JSON errors; no message or task data is logged.
+All channels: `POST {basePath}/{channel}` (default `/bots`), body max 64 KiB, deny by default (no secret means the channel is off; empty allow-list means every sender gets 403). Sender match is case-insensitive. Signatures are verified over the body decoded as UTF-8, so a validly signed non-UTF-8 body is rejected (fails closed, never bypassed). Failures are fixed JSON errors; no message or task data is logged.
 
 | Channel | Path | Signature | Sender |
 | --- | --- | --- | --- |
@@ -25,7 +25,9 @@ The bridge is a small local process on the user's Mac that reads new messages (f
 
 ## GitHub Actions
 
-Point a repository webhook (content type JSON, event: Issue comments) at `/github`. A new comment starting with `/stack ` runs the rest as a command if the commenter is in the allow-list; the response is `{"reply": "..."}` for a workflow to post. Other events return `{"ignored": true}`; `ping` returns `{"pong": true}`.
+Point a repository webhook (content type JSON, event: Issue comments) at `/github`. A new comment starting with `/stack ` runs the rest as a command if the commenter is in the allow-list; the response is `{"reply": "..."}` for a workflow to post.
+
+**Warning:** the reply to `next` contains private task text. A workflow that posts it as a public issue comment leaks it. Use private repositories only, or post the reply nowhere public. GitHub sends no timestamp, so there is no replay protection beyond the secret. Other events return `{"ignored": true}`; `ping` returns `{"pong": true}`.
 
 ## Wiring
 

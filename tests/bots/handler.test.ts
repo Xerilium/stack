@@ -233,3 +233,18 @@ describe('routing and errors', () => {
     expect(r.json).toEqual({ error: { code: 'unauthorized', message: 'Unauthorized' } });
   });
 });
+
+// @req FR:chat-bots/sig.order
+describe('non-UTF-8 body', () => {
+  it('signed over raw bytes is rejected (fails closed, 401)', async () => {
+    const { h, calls } = mk();
+    const raw = Buffer.concat([Buffer.from('{"a":"'), Buffer.from([0xff, 0xfe]), Buffer.from('"}')]);
+    const sig = createHmac('sha256', 'gh').update(raw).digest('hex');
+    const r = await h(new Request('https://x.test/bots/github', {
+      method: 'POST', body: raw,
+      headers: { 'content-type': 'application/json', 'x-github-event': 'issue_comment', 'x-hub-signature-256': `sha256=${sig}` },
+    }));
+    expect(r.status).toBe(401);
+    expect(calls).toEqual([]);
+  });
+});

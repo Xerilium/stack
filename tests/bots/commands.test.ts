@@ -1,4 +1,5 @@
 import { parseCommand, runCommand, type Client } from '../../src/bots/commands';
+import { BotApiError } from '../../src/bots/client';
 
 // @req FR:chat-bots/cmd.parse
 describe('parseCommand', () => {
@@ -70,6 +71,12 @@ describe('runCommand', () => {
     expect(await t(404)).toBe('Not found');
     expect(await t(422)).toBe('Invalid input');
     expect(await t(500)).toBe('Failed');
+    for (const st of [401, 403]) {
+      const errs: string[] = [];
+      const out = await runCommand(fake({ start: async () => { throw new BotApiError(st); } }), { kind: 'start' }, (n) => errs.push(n));
+      expect(out).toBe('Failed');
+      expect(errs).toEqual(['BotApiError']);
+    }
     expect(await runCommand(fake({ start: async () => { throw new Error('SECRET'); } }), { kind: 'start' })).toBe('Failed');
   });
 });
