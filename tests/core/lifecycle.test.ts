@@ -185,7 +185,7 @@ describe('nextTask', () => {
     const s = await mem({ 'tasks/alpha.md': ALPHA, 'tasks/beta.md': BETA });
     const r = await startTask(ctx(s));
     expect(r.ref).toEqual({ path: 'tasks/beta.md', line: 4 });
-    expect(await text(s, 'tasks/beta.md')).toContain('- [ ] 🚨 🚧 Urgent thing');
+    expect(await text(s, 'tasks/beta.md')).toContain('- [ ] 🚧 Urgent thing 🚨');
   });
 });
 
@@ -238,7 +238,7 @@ describe('completeTask', () => {
     await completeTask(ctx(s), { path: 'tasks/a.md', line: 4 }, { summary: 'Done' });
     expect(await text(s, 'tasks/a.md')).toBe(
       doc('- [x] Task\n  > ✅ **COMPLETED**: Done\n- [ ] next\n  > Prompt: not mine\n  - [ ] sub\n'));
-    await completeTask(ctx(s), { path: 'tasks/a.md', line: 7 }, { summary: 'Nested' });
+    await completeTask(ctx(s), { path: 'tasks/a.md', line: 8 }, { summary: 'Nested' });
     expect(await text(s, 'tasks/a.md')).toContain('  - [x] sub\n    > ✅ **COMPLETED**: Nested\n');
   });
 
@@ -461,7 +461,7 @@ describe('addProject', () => {
       aliases: ['cool', 'mcp'], priority: 2, capacity: { Work: 10, Project: 4 },
     });
     expect(r.path).toBe('tasks/my-cool-project.md');
-    expect(await text(s, r.path)).toBe(`# My Cool Project
+    expect(await text(s, r.path)).toBe(`${BOM}# My Cool Project
 
 About it.
 
@@ -488,6 +488,7 @@ Tasks to pick up when active work is completed.
 Future work and ideas.
 
 - [ ] 
+
 `);
   });
 
