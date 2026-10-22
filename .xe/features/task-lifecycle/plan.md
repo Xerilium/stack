@@ -18,6 +18,11 @@
 - Due-date escalation and query-task refresh stay out (follow-ups).
 - Multi-file ops write file by file; a conflict stops the run and earlier files stay written.
 
+## Known limitations
+
+- A `TaskRef` is a bare line index with no text check. A stale ref can target a different task if the file changed after the ref was read. Writes are guarded by the file version check (`ConflictError`), so a changed file never gets overwritten silently. An expected-text guard is a possible follow-up.
+- Suspend sweeps with date-only or date+time markers use the current year (legacy parity), so a "Jan 4" marker written in late December fires immediately. Follow-up.
+
 ## Verification
 
 Besides the committed synthetic goldens, a local run on a COPY of the live legacy tasks (never committed) matched: `nextTask` = README top task; start/complete/skip/suspend changed the same line identically to the legacy commands; `removeCompleted` output was byte-identical across all 12 files.

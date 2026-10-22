@@ -208,6 +208,27 @@ describe('startTask', () => {
   });
 });
 
+describe('startTask checked rows', () => {
+  // @req FR:task-lifecycle/start.already
+  it('is a no-op on checked rows', async () => {
+    const src = '# A\n\n## 🔄 Active\n\n- [x] done\n';
+    const s = await mem({ 'tasks/a.md': src });
+    const r = await startTask(ctx(s), { path: 'tasks/a.md', line: 4 });
+    expect(r.changed).toBe(false);
+    expect(await text(s, 'tasks/a.md')).toBe(src);
+  });
+});
+
+describe('editLine BOM', () => {
+  // @req FR:task-lifecycle/doc.lossless
+  it('keeps the BOM when the edited task is on line 0', async () => {
+    const s = await mem({ 'tasks/a.md': `${BOM}- [ ] first\n- [ ] second\n` });
+    const r = await startTask(ctx(s), { path: 'tasks/a.md', line: 0 });
+    expect(r.changed).toBe(true);
+    expect(await text(s, 'tasks/a.md')).toBe(`${BOM}- [ ] 🚧 first\n- [ ] second\n`);
+  });
+});
+
 describe('completeTask', () => {
   const doc = (body: string) => `# A\n\n## 🔄 Active\n\n${body}`;
 
@@ -259,6 +280,21 @@ describe('completeTask', () => {
     expect(r).toMatchObject({ changed: true, rolled: true });
     expect(await text(s, 'tasks/a.md')).toBe(
       doc('- [ ] 📅 Nov 23, 2026: 🔄 Monthly: Pay bills 🟡\n  - [ ] Mortgage\n  - [ ] Card\n- [ ] other\n'));
+  });
+
+  // @req FR:task-lifecycle/complete.recurring
+  it('remove:true rolls a recurring row instead of deleting it', async () => {
+    const s = await mem({ 'tasks/a.md': doc('- [ ] 📅 Oct 22, 2026: 🔄 Monthly: Pay bills\n  - [x] a\n- [ ] other\n') });
+    const r = await completeTask(ctx(s), { path: 'tasks/a.md', line: 4 }, { remove: true });
+    expect(r).toMatchObject({ changed: true, rolled: true });
+    expect(await text(s, 'tasks/a.md')).toBe(doc('- [ ] 📅 Nov 23, 2026: 🔄 Monthly: Pay bills\n  - [ ] a\n- [ ] other\n'));
+  });
+
+  // @req FR:task-lifecycle/complete.recurring
+  it('remove:true deletes a recurring row whose roll is null', async () => {
+    const s = await mem({ 'tasks/a.md': doc('- [ ] 📅 Feb 31, 2026: 🔄 Monthly: Bad\n- [ ] keep\n') });
+    await completeTask(ctx(s), { path: 'tasks/a.md', line: 4 }, { remove: true });
+    expect(await text(s, 'tasks/a.md')).toBe(doc('- [ ] keep\n'));
   });
 
   // @req FR:task-lifecycle/complete.recurring

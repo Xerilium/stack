@@ -331,7 +331,8 @@ const noop = (ref: TaskRef, message: string): LifecycleResult => ({ changed: fal
 async function editLine(ctx: LifecycleContext, t: Target, next: string, msg: string): Promise<LifecycleResult> {
   const lines = [...t.doc.project.lines];
   const before = bare(lines[t.ref.line]);
-  lines[t.ref.line] = next + crOf(lines[t.ref.line]);
+  const bom = t.ref.line === 0 && lines[0].startsWith('\uFEFF') ? '\uFEFF' : '';
+  lines[t.ref.line] = bom + next + crOf(lines[t.ref.line]);
   const changed = await commit(ctx, t.doc, lines, msg);
   return { changed, ref: t.ref, before: stripBom(before), after: next };
 }
@@ -342,6 +343,7 @@ async function editLine(ctx: LifecycleContext, t: Target, next: string, msg: str
 export async function startTask(ctx: LifecycleContext, ref?: TaskRef): Promise<LifecycleResult> {
   const t = await target(ctx, ref);
   if (!t) return NONE;
+  if (/^\s*- \[[xX]\]/.test(stripBom(t.doc.project.lines[t.ref.line]))) return noop(t.ref, 'Task is already completed');
   if (has(t.row[3], '🚧')) return noop(t.ref, 'Task is already in progress');
   return editLine(ctx, t, applyTaskProps(stripBom(bare(t.doc.project.lines[t.ref.line])), { status: '🚧' }), `Start: ${brief(t.row[3])}`);
 }
@@ -363,12 +365,6 @@ export async function completeTask(ctx: LifecycleContext, ref?: TaskRef, opts: C
   const msg = `Complete: ${brief(t.row[3])}`;
   if (/^\s*- \[[xX]\]/.test(stripBom(lines[i]))) return noop(t.ref, 'Task is already completed');
 
-  if (opts.remove) {
-    const end = blockEnd(lines, i);
-    lines.splice(i, end - i);
-    return { changed: await commit(ctx, doc, lines, `Remove: ${brief(t.row[3])}`), ref: t.ref, before: stripBom(bare(doc.project.lines[i])), message: 'Task removed' };
-  }
-
   const cr = crOf(lines[i]);
   const before = stripBom(bare(lines[i]));
   const stripped = applyTaskProps(before, { status: 'None' });
@@ -383,6 +379,12 @@ export async function completeTask(ctx: LifecycleContext, ref?: TaskRef, opts: C
     const first = i === 0 && lines[0].startsWith('﻿') ? '﻿' + out[0] : out[0];
     lines.splice(i, end - i, first, ...out.slice(1));
     return { changed: await commit(ctx, doc, lines, `Roll: ${brief(t.row[3])}`), ref: t.ref, before, after: bare(out[0]), rolled: true };
+  }
+
+  if (opts.remove) {
+    const rend = blockEnd(lines, i);
+    lines.splice(i, rend - i);
+    return { changed: await commit(ctx, doc, lines, `Remove: ${brief(t.row[3])}`), ref: t.ref, before, message: 'Task removed' };
   }
 
   const done = applyTaskProps(before, { checkbox: 'Complete', status: 'None' });
