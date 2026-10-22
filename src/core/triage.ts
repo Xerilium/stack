@@ -323,8 +323,8 @@ const logFile = (ref: TaskRef, n: number): string => `tasks/logs/${logName(ref)}
 /**
  * All files full: drop the oldest and shift the rest down. The last file gets a header plus a tombstone entry (bytes and date range dropped, actor
  * that rotated), so the loss is visible. The newest entries are always kept, so a flood can never block claim or record-result. Dropped entries
- * remain in storage history. Files are written oldest first, so a failed partial write (adapters without `writeMany`) only duplicates content and
- * loses nothing newer; the next append retries. A concurrent rotation just makes this a no-op retry.
+ * remain in storage history. Files are written oldest first, so a failed partial write (adapters without `writeMany`) only duplicates content; the next rotation sees the duplicate and
+ * finishes from there, so nothing newer is lost and nothing rotates twice. A concurrent rotation just makes this a no-op retry.
  * @req FR:ai-triage-assist/result.cap
  */
 async function rotateLogs(ctx: LifecycleContext, ref: TaskRef, caller: Caller): Promise<void> {
@@ -335,11 +335,13 @@ async function rotateLogs(ctx: LifecycleContext, ref: TaskRef, caller: Caller): 
   const stamps = [...dropped.matchAll(/^## (\d{4}-\d\d-\d\dT[0-9:.]+Z)$/gm)].map((m) => m[1]);
   const range = stamps.length > 0 ? ` (${stamps[0]} to ${stamps[stamps.length - 1]})` : '';
   const tombstone = [`## ${iso(ctx)}`, '', `- actor: ${caller.actor}`, `- log rotated: dropped ${dropped.length} bytes${range}; see storage history`, ''].join('\n');
+  // Two neighbours with equal content mean a earlier rotation stopped part way (no `writeMany`): finish it from there instead of shifting again.
+  const dup = files.findIndex((f, i) => i < MAX_LOG_FILES - 1 && f.cur.content === files[i + 1].cur.content);
   const writes = files.map((f, i) => ({
     path: f.path,
     content: i < MAX_LOG_FILES - 1 ? files[i + 1].cur.content : `# ${title} agent log\n\n${tombstone}`,
     expectedVersion: f.cur.version,
-  }));
+  })).filter((_, i) => dup < 0 || i > dup);
   try { await writeAll(ctx.storage, writes, `Log rotate: ${baseName(ref.path)}`); } catch (e) { if (!(e instanceof ConflictError)) throw e; }
 }
 
@@ -495,7 +497,8 @@ export async function authorizeMutation(ctx: LifecycleContext, ref: TaskRef, act
   if (!authorize(lvl, need)) throw new TriageDenied();
   if (kind === 'human') throw new TriageDenied('Needs a human');
   if (l.chain.some(held)) throw new TriageDenied('Task is on hold');
-  if (action !== 'set') open(l);
+  if (action === 'set' && l.chain.some((x) => x.checked)) throw new TriageDenied('Task is not open');
+  open(l);
   if (action === 'complete' && openHuman(l.row)) throw new TriageBlocked();
   if (action === 'set') {
     // Like applyTriage: fill a missing priority, effort, or impact, never replace or clear one.
@@ -512,19 +515,24 @@ export async function authorizeMutation(ctx: LifecycleContext, ref: TaskRef, act
 }
 
 /** Counts of every marker that gives a row meaning (status, priority, effort, impact, dates, recurrence, gate marks). */
-const syntaxCounts = (v: string): string => { const t = norm(v); return SYNTAX.map((m) => t.split(m).length - 1).join(); };
+/** Every marker that gives a row meaning, with the text that follows it (so a changed date or recurrence differs, not only a changed count). */
+const syntaxCounts = (v: string): string => {
+  const t = norm(v);
+  const tail = ['📅', '⏰', '🔄'].map(norm).flatMap((m) => t.split(m).slice(1).map((s) => `${m}${s.trim().split(/\s+/).slice(0, 3).join(' ')}`));
+  return SYNTAX.map((m) => t.split(m).length - 1).join() + '|' + tail.join('|');
+};
 
 /**
  * Checks an agent's text edit: needs `assist`, an open row that is not 🙋 or held, and the same markers as before (only free text may change).
  * Returns the row text as read, to pin the write. Fixed-text denials.
  * @req FR:ai-triage-assist/autonomy.mutations
  */
-export async function authorizeEdit(ctx: LifecycleContext, ref: TaskRef, text: string): Promise<string> {
+export async function authorizeEdit(ctx: LifecycleContext, ref: TaskRef, text: string): Promise<{ text: string; chain: string[] }> {
   const l = await locate(ctx, ref);
   if (!authorize(level(l), 'claim')) throw new TriageDenied();
   if (kindOf(l.row) === 'human') throw new TriageDenied('Needs a human');
   if (l.chain.some(held)) throw new TriageDenied('Task is on hold');
   if (l.chain.some((t) => t.checked)) throw new TriageDenied('Task is not open');
   if (!sameGateMarks(l.row.text, text) || syntaxCounts(l.row.text) !== syntaxCounts(text)) throw new TriageDenied('Owner only');
-  return l.row.text;
+  return { text: l.row.text, chain: l.chain.slice(0, -1).map((x) => x.text) };
 }

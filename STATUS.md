@@ -8,6 +8,9 @@
 
 ## Known gaps
 
+- Autonomy gate (ai-triage-assist): no per-actor quota on the result log, so one token can still fill it and push other actors' entries out (the oldest file is dropped, a tombstone records it); review actors in the log.
+- Autonomy gate: `/tasks/edit` compares marker counts and the first words after 📅 ⏰ 🔄, not a full parse; a token can still rewrite free text freely on rows at `assist`+, including text that other readers trust.
+- Autonomy gate: a resumed log rotation (storage without `writeMany`) writes a tombstone without the dropped date range.
 - Traceability: `scripts/trace.sh` reports 0 gaps (402 requirements, all with code and test `@req` tags). It is not yet a CI gate.
 - `catalyst check` is broken in 0.3.2, so `scripts/trace.sh` is the traceability check.
 - `src/cli/run.ts` shows 0% in jest coverage because e2e tests run it in a subprocess; it is outside the core threshold.

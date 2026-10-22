@@ -243,3 +243,76 @@ describe('review fixes: edit, set checkbox, remove, set props', () => {
     expect((await agent('/tasks/set', { ref: b(B.prio), impact: '⬇️' })).status).toBe(200);
   });
 });
+
+// @req FR:ai-triage-assist/result.cap @req FR:ai-triage-assist/autonomy.mutations
+describe('re-review fixes', () => {
+  it('L1: a partial rotation without writeMany resumes and drops nothing newer', async () => {
+    const mem = new MemoryStorage();
+    await mem.write('tasks/alpha.md', DOC);
+    let failOn: string | null = 'tasks/logs/alpha.4.md';
+    const storage = {
+      list: () => mem.list(),
+      read: (p: string) => mem.read(p),
+      write: (p: string, c: string, o?: { expectedVersion?: string | null; message?: string }) => {
+        if (failOn === p && o?.message?.startsWith('Log rotate')) { failOn = null; throw new Error('boom'); }
+        return mem.write(p, c, o);
+      },
+    };
+    const big = (n: number) => `# Alpha agent log\n\n## 2026-01-0${n}T00:00:00.000Z\n- note: old-${n}\n`.padEnd(300 * 1024, 'y');
+    await mem.write('tasks/logs/alpha.md', big(1));
+    for (let i = 2; i <= 5; i++) await mem.write(`tasks/logs/alpha.${i}.md`, big(i));
+    const tokens = createTokenService({ store: new MemoryTokenStore(), now: () => NOW });
+    const auth = createAuth({ owners: [], tokens });
+    const h = auth.wrap(createApiHandler({ storage, authorize: auth.authorize, now: () => NOW }));
+    const tok = (await tokens.create({ name: 't', scopes: ['tasks:write'] as never })).token;
+    const call = async () => (await h(new Request('https://x.test/api/tasks/result', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${tok}` }, body: JSON.stringify({ ref: r(L.assist), outcome: 'partial', summary: 'again' }) }))).status;
+    await call();
+    expect(await call()).toBe(200);
+    const all = (await Promise.all(['alpha', 'alpha.2', 'alpha.3', 'alpha.4', 'alpha.5'].map(async (n) => (await mem.read(`tasks/logs/${n}.md`)).content))).join('');
+    for (const n of [2, 3, 4, 5]) expect(all).toContain(`old-${n}`);
+    expect(all).not.toContain('old-1');
+  });
+
+  const DOC3 = `# Gamma
+
+## 🔄 Active
+
+- [ ] Done parent 🤖:full
+- [x] Closed 🤖:full
+- [ ] Holder 🤖:assist
+  - [ ] Dated 📅 2026-01-01
+  - [ ] Recur 🔄 daily
+- [ ] Twin A 🤖:assist
+  - [ ] Same
+- [ ] Twin B 🤖:assist
+  - [ ] Same
+`;
+  const g = (n: number) => `gamma:${n}`;
+  async function mk3() {
+    const m = await mk();
+    await m.storage.write('tasks/gamma.md', DOC3);
+    return m;
+  }
+
+  it('L4: set by a token needs an open row', async () => {
+    const { agent, storage } = await mk3();
+    expect((await agent('/tasks/set', { ref: g(5), priority: '🔺' })).status).toBe(403);
+    expect((await storage.read('tasks/gamma.md')).content).toBe(DOC3);
+    expect((await agent('/tasks/set', { ref: g(4), priority: '🔺' })).status).toBe(200);
+  });
+
+  it('L5: edit cannot change a date or recurrence value', async () => {
+    const { agent, storage } = await mk3();
+    expect((await agent('/tasks/edit', { ref: g(7), text: 'Dated 📅 2027-05-05' })).status).toBe(403);
+    expect((await agent('/tasks/edit', { ref: g(8), text: 'Recur 🔄 weekly' })).status).toBe(403);
+    expect((await storage.read('tasks/gamma.md')).content).toBe(DOC3);
+    expect((await agent('/tasks/edit', { ref: g(7), text: 'Dated renamed 📅 2026-01-01' })).status).toBe(200);
+  });
+
+  it('L6: edit fails when the row moved under another parent', async () => {
+    const { storage } = await mk3();
+    const { editTask } = await import('../../src/api/edit');
+    await expect(editTask(storage, { path: 'tasks/gamma.md', line: 13 }, 'Same x', 'Same', ['Twin A 🤖:assist'])).rejects.toThrow(/moved|parents|changed/i);
+    expect((await editTask(storage, { path: 'tasks/gamma.md', line: 13 }, 'Same x', 'Same', ['Twin B 🤖:assist'])).changed).toBe(true);
+  });
+});

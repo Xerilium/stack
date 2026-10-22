@@ -303,12 +303,14 @@ export const ROUTES: Route[] = [
       const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; expect?: string }>(await readBody(c.req), EDIT_BODY.schema, EDIT_BODY.required);
       noAutonomyMark('text', b.text);
       let expect = b.expect;
+      let chain: string[] | undefined;
       if (!isOwner(c.req)) {
         const cur = await authorizeEdit(c.life, b.ref, b.text);
-        if (b.expect !== undefined && b.expect !== cur) throw new ApiError('conflict', 'Conflict');
-        expect = cur;
+        if (b.expect !== undefined && b.expect !== cur.text) throw new ApiError('conflict', 'Conflict');
+        expect = cur.text;
+        chain = cur.chain;
       }
-      return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text, expect)));
+      return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text, expect, chain)));
     },
   },
   {
