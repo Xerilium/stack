@@ -3,6 +3,7 @@ import {
   applyTriage, authorize, claimTask, effectiveAutonomy, recordResult, redact, setAutonomy, TriageDenied,
 } from '../../src/core/triage';
 import { MemoryStorage, PathError, Storage } from '../../src/core/storage';
+import { addTask, LifecycleError } from '../../src/core/lifecycle';
 
 const NOW = new Date('2026-10-22T17:00:00Z');
 const DOC = `# Alpha
@@ -311,5 +312,136 @@ describe('storage path', () => {
     for (const p of ['tasks/logs/.x.md', 'tasks/logs/a/b.md', 'tasks/logs/../x.md', 'tasks/logs/x.txt', 'logs/x.md', 'tasks/logs/README.md']) {
       await expect(s.write(p, 'x')).rejects.toBeInstanceOf(PathError);
     }
+  });
+});
+
+// Findings from the security review of PR 33.
+describe('hardening', () => {
+  const HOLD = `# Alpha
+
+## 🔄 Active
+
+- [ ] Blocked ⛔️ 🤖:assist
+  - [ ] 🪄 Child of blocked
+- [ ] Parked 🅿️ 🤖:assist
+- [ ] Plan 🪄 deploy 🤖:assist
+- [x] Closed 🤖:full
+  - [ ] 🪄 Under closed
+- [ ] Mine 🤖:assist
+  - [ ] 🔺 🪄 Prefixed child
+`;
+  const H = { blocked: 4, blockedChild: 5, parked: 6, plan: 7, under: 9, mine: 10, prefixed: 11 };
+
+  it('claim never overrides blocked, parked, or closed rows', async () => {
+    const { ctx, text } = await setup(HOLD);
+    for (const l of [H.blocked, H.parked, H.under]) await expect(claimTask(ctx, ref(l), agent)).rejects.toThrow();
+    expect(await text()).toBe(HOLD);
+  });
+
+  it('triage and results also refuse rows under a closed row', async () => {
+    const { ctx, text } = await setup(HOLD);
+    await expect(applyTriage(ctx, ref(H.under), { human: 'x' }, owner)).rejects.toThrow(/not open/);
+    await expect(recordResult(ctx, ref(H.under), { outcome: 'done', summary: 'x' }, agent)).rejects.toThrow();
+    expect(await text()).toBe(HOLD);
+  });
+
+  it('never completes a held row', async () => {
+    const { ctx, text } = await setup(HOLD);
+    const r = await recordResult(ctx, ref(H.blockedChild), { outcome: 'done', summary: 'x', complete: true }, agent);
+    expect(r.completed).toBe(true); // the 🪄 child itself is not held
+    const b = await recordResult(ctx, ref(H.blocked), { outcome: 'done', summary: 'x', complete: true }, { actor: 'a', owner: false });
+    expect(b.completed).toBe(false);
+    expect(await text()).toContain('- [ ] Blocked ⛔️ 🤖:assist');
+  });
+
+  it('🪄 in the middle of a row does not make it a subtask', async () => {
+    const { ctx, text } = await setup(HOLD);
+    const r = await recordResult(ctx, ref(H.plan), { outcome: 'done', summary: 'x', complete: true }, agent);
+    expect(r).toMatchObject({ completed: false, deferred: true }); // assist cannot complete a task
+    expect(await text()).toContain('- [ ] Plan 🪄 deploy 🤖:assist');
+  });
+
+  it('a 🪄 child behind status or priority emoji still counts as a subtask', async () => {
+    const { ctx, text } = await setup(HOLD);
+    const r = await recordResult(ctx, ref(H.prefixed), { outcome: 'done', summary: 'x', complete: true }, agent);
+    expect(r.completed).toBe(true);
+    expect(await text()).toContain('- [x] 🔺 🪄 Prefixed child');
+  });
+
+  it('a concurrent edit above the row fails the write instead of landing on another row', async () => {
+    const { ctx, storage, text } = await setup();
+    const real = storage.write.bind(storage);
+    let inserted = false;
+    storage.write = async (p, content, o) => {
+      if (!inserted && p.startsWith('tasks/logs/')) {
+        inserted = true;
+        const cur = (await storage.read('tasks/alpha.md')).content;
+        await real('tasks/alpha.md', cur.replace('- [ ] Plain task\n', '- [ ] Plain task\n- [ ] Squeezed in\n'));
+      }
+      return real(p, content, o);
+    };
+    await expect(recordResult(ctx, ref(L.agentChild), { outcome: 'done', summary: 'x', complete: true }, agent)).rejects.toThrow();
+    expect(await text()).not.toContain('[x]'.concat(' 🪄 Agent child'));
+  });
+
+  it('a full log rolls to the next file and still records the hand-off', async () => {
+    const { ctx, storage } = await setup();
+    await storage.write('tasks/logs/alpha.md', '# x\n'.padEnd(300 * 1024, 'y'));
+    const r = await recordResult(ctx, ref(L.agentChild), { outcome: 'blocked', summary: 'stuck' }, agent);
+    expect(r.human).toBeDefined();
+    expect((await storage.read('tasks/logs/alpha-2.md')).content).toContain('stuck');
+  });
+
+  it('logs project files with unusual names', async () => {
+    const storage = new MemoryStorage();
+    await storage.write('tasks/my project.md', '# Mine\n\n## Active\n\n- [ ] 🪄 Do it 🤖:assist\n');
+    const c = { storage, config: getDefaults(), now: () => NOW };
+    const r = { path: 'tasks/my project.md', line: 4 };
+    await claimTask(c, r, agent);
+    expect((await storage.read('tasks/logs/my-project.md')).content).toContain('claimed');
+    expect((await storage.read('tasks/my project.md')).content).toContain('🚧');
+  });
+
+  it('no half-claim when the log cannot be written', async () => {
+    const { ctx, storage, text } = await setup();
+    storage.write = async () => { throw new Error('disk'); };
+    await expect(claimTask(ctx, ref(L.agentChild), agent)).rejects.toThrow('disk');
+    expect(await text()).toBe(DOC);
+  });
+
+  it('subtask text rejects every row syntax emoji, even without variation selectors', async () => {
+    const { ctx, text } = await setup();
+    for (const bad of ['x ☀️ y', 'x ☀ y', 'x 🅿 y', 'x ⏸ y', 'x 🏷️', 'x 🚨', 'x 🟢', 'x ⬆️', 'x 📅 Oct 23: y', 'x ⏰ Oct 5: y', '🔄 Weekly: x', 'x 🤖\u200b:full', 'a\u200b🙋b']) {
+      await expect(applyTriage(ctx, ref(L.triage), { agent: bad }, agent)).rejects.toThrow();
+    }
+    expect(await text()).toBe(DOC);
+  });
+
+  it('the generated hand-off text is also validated and syntax-free', async () => {
+    const { ctx, text } = await setup();
+    await recordResult(ctx, ref(L.agentChild), { outcome: 'needs-human', summary: 'needs ⛔️ 🤖:full 🪄 ☀️ review' }, agent);
+    const t = await text();
+    expect(t).toMatch(/ {4}- \[ \] 🙋 Review: needs :full review\n/);
+    expect(effectiveAutonomy(t, L.agentChild + 1)).toBe('assist');
+  });
+
+  it('addTask by an owner is untouched (the API is where agents are stopped)', async () => {
+    const { ctx, text } = await setup();
+    await addTask(ctx, { project: 'alpha', text: 'Owner row 🤖:full' });
+    expect(await text()).toContain('Owner row 🤖:full');
+    expect(LifecycleError).toBeDefined();
+  });
+});
+
+describe('redaction hardening', () => {
+  it.each([
+    ['password hunter2', 'hunter2'], ['the password is "correct horse"', 'horse'], ['SECRET_KEY=abc123', 'abc123'], ['DATABASE_PASSWORD=abc123', 'abc123'],
+    ['token="a b c"', 'b c'], ['ghp_aaaaaaaaaa', 'ghp_aaaaaaaaaa'], ['glpat-abcdefghij1234', 'abcdefghij1234'], ['npm_abcdefghijklmnopqrstuv', 'npm_abcdefghijklmnopqrstuv'],
+    ['pa\u200bssword=abc999', 'abc999'], ['postgres://user:p@ss@host/db', 'ss@host'], ['https://token@host/x', 'token@host'], ['eyJhbGciOi.e30.sig', 'eyJhbGciOi'],
+    ['ASIAABCDEFGHIJKLMNOP', 'ASIAABCDEFGHIJKLMNOP'],
+  ])('redacts %s', (input, leak) => {
+    const out = redact(`note: ${input} end`);
+    expect(out).not.toContain(leak);
+    expect(out).toContain('[redacted]');
   });
 });

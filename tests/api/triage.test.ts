@@ -69,8 +69,8 @@ describe('triage routes', () => {
   it('claim and result', async () => {
     const { call, mint, storage } = await mk();
     const t = await mint('write');
-    expect((await call(t, '/tasks/claim', { ref: 'alpha:7', actor: 'bot' })).json).toMatchObject({ changed: true, ref: 'alpha:7' });
-    const r = await call(t, '/tasks/result', { ref: 'alpha:7', outcome: 'done', summary: 'did it', complete: true, actor: 'bot' });
+    expect((await call(t, '/tasks/claim', { ref: 'alpha:7' })).json).toMatchObject({ changed: true, ref: 'alpha:7' });
+    const r = await call(t, '/tasks/result', { ref: 'alpha:7', outcome: 'done', summary: 'did it', complete: true });
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ logged: true, completed: true, deferred: false });
     expect((await storage.read('tasks/logs/alpha.md')).content).toContain('did it');
@@ -88,15 +88,38 @@ describe('triage routes', () => {
     expect(await code('/tasks/triage', { ref: 'alpha:5', agent: 'a\nb' })).toBe(422);
     expect(await code('/tasks/triage', { ref: 'alpha:5', priority: 'None' })).toBe(422);
     expect(await code('/tasks/triage', { ref: 'alpha:5', status: '🚧' })).toBe(422);
-    expect(await code('/tasks/claim', { ref: 'alpha:7', actor: 'a b' })).toBe(422);
+    expect(await code('/tasks/claim', { ref: 'alpha:7', actor: 'bot' })).toBe(422);
+    expect(await code('/tasks/result', { ref: 'alpha:7', outcome: 'done', summary: 'x', actor: 'bot' })).toBe(422);
     expect(await code('/tasks/result', { ref: 'alpha:7', outcome: 'merged', summary: 'x' })).toBe(422);
     expect(await code('/tasks/result', { ref: 'alpha:7', outcome: 'done' })).toBe(422);
     expect(await code('/tasks/result', { ref: 'alpha:7', outcome: 'done', summary: 'a\nb' })).toBe(422);
     expect(await code('/tasks/result', { ref: 'alpha:99', outcome: 'done', summary: 'x' })).toBe(404);
   });
 
+  // @req FR:ai-triage-assist/result.actor
+  it('stamps the actor from the authenticated token', async () => {
+    const { call, mint, storage } = await mk();
+    const t = await mint('write');
+    await call(t, '/tasks/result', { ref: 'alpha:7', outcome: 'done', summary: 'x' });
+    const log = (await storage.read('tasks/logs/alpha.md')).content;
+    expect(log).toMatch(/- actor: token:[0-9a-f]{16}\n/);
+    expect(log).toContain(`token:${t.slice(4, 20)}`);
+  });
+
+  // @req FR:ai-triage-assist/autonomy.set
+  it('agent-reachable writes cannot carry the autonomy marker', async () => {
+    const { call, mint, storage } = await mk();
+    const t = await mint('write');
+    for (const text of ['sneaky 🤖:full', 'x 🤖\u200b:full', '🤖:assist']) {
+      expect((await call(t, '/tasks', { project: 'alpha', text })).status).toBe(422);
+      expect((await call(t, '/capture', { text: `${text} #alpha` })).status).toBe(422);
+    }
+    expect((await call(t, '/tasks/complete', { ref: 'alpha:7', summary: 'ok 🤖:full' })).status).toBe(422);
+    expect((await storage.read('tasks/alpha.md')).content).toBe(DOC);
+  });
+
   it('is documented in openapi', () => {
     const y = readFileSync(join(__dirname, '../../docs/api/openapi.yaml'), 'utf8');
-    for (const p of ['/tasks/triage:', '/tasks/claim:', '/tasks/result:']) expect(y).toContain(`  ${p}`);
+    for (const p of ['/tasks/triage:', '/tasks/claim:', '/tasks/result:']) expect(y).toContain(p);
   });
 });

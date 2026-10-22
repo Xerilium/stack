@@ -15,8 +15,6 @@ export interface ToolDef {
   path: string;
   props: Record<string, Prop>;
   required?: string[];
-  /** The server adds `actor` (from the token) to the body; callers can never set it. */
-  actor?: boolean;
   /** Fixed query parameters added to every GET. */
   query?: Record<string, string>;
   /** Reply for a 2xx API body. */
@@ -79,15 +77,15 @@ export const TOOLS: ToolDef[] = [
       ref: REF, status: enumOf(ENUMS.status), priority: enumOf(ENUMS.priority), effort: enumOf(ENUMS.effort), impact: enumOf(ENUMS.impact),
       checkbox: enumOf(ENUMS.checkbox), suspend: str('Suspend-until text'), clearEmojis: { type: 'boolean' },
     }, reply: done('updated') },
-  { name: 'triage', route: 'tasks.triage', method: 'POST', path: '/tasks/triage', required: ['ref'], actor: true,
+  { name: 'triage', route: 'tasks.triage', method: 'POST', path: '/tasks/triage', required: ['ref'],
     description: 'Suggest priority/effort/impact and add a 🪄 or 🙋 subtask.',
     props: {
       ref: REF, agent: str('One-line 🪄 subtask an agent can do'), human: str('One-line 🙋 subtask needing a person'),
       priority: enumOf(some(ENUMS.priority)), effort: enumOf(some(ENUMS.effort)), impact: enumOf(some(ENUMS.impact)),
     }, reply: done('triaged') },
-  { name: 'claim', route: 'tasks.claim', method: 'POST', path: '/tasks/claim', required: ['ref'], actor: true,
+  { name: 'claim', route: 'tasks.claim', method: 'POST', path: '/tasks/claim', required: ['ref'],
     description: 'Claim a task you may work (autonomy assist or full).', props: { ref: REF }, reply: done('claimed') },
-  { name: 'record-result', route: 'tasks.result', method: 'POST', path: '/tasks/result', required: ['ref', 'outcome', 'summary'], actor: true,
+  { name: 'record-result', route: 'tasks.result', method: 'POST', path: '/tasks/result', required: ['ref', 'outcome', 'summary'],
     description: 'Log what you did; completes only within autonomy, else adds a 🙋.',
     props: {
       ref: REF, outcome: enumOf(['done', 'partial', 'blocked', 'needs-human']), summary: str('One line, no secrets'),

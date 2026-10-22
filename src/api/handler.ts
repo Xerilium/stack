@@ -11,6 +11,7 @@ import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import { applyTriage, claimTask, OUTCOMES, recordResult, type ResultInput, type Suggestion } from '../core/triage';
 import type { Storage } from '../core/storage';
+import { presentedToken } from './auth/authorize';
 import { generateSummaries } from '../core/summaries';
 import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
@@ -54,10 +55,18 @@ const PROPS: Record<string, Spec> = {
   suspend: { t: 'str', max: 40, pattern: /^(?:|[A-Za-z]{3} \d{1,2}(?: \d{2}:\d{2})?|\d{1,2}:\d{2})$/ }, clearEmojis: { t: 'bool' },
 };
 const REF: Spec = { t: 'ref' };
-const ACTOR: Spec = { t: 'str', max: 64, pattern: /^[A-Za-z0-9._:-]{1,64}$/ };
 const some = (v: readonly string[]): Spec => ({ t: 'enum', values: v.filter((x) => x !== 'None') });
 const LINE200: Spec = { t: 'str', max: 200, line: true };
-const caller = (b: { actor?: string }) => ({ actor: b.actor ?? 'api' });
+/** Who is acting, from the authenticated request: the API token id, the owner session, or a bare `api` caller. Never from the body. */
+const caller = (req: Request) => {
+  const tok = presentedToken(req);
+  const id = tok === null ? null : /^stk_([0-9a-f]{16})\./.exec(tok)?.[1];
+  return { actor: id ? `token:${id}` : req.headers.has('x-ms-client-principal') ? 'owner' : 'api' };
+};
+/** Only the owner sets autonomy, so no agent-reachable write may carry the marker. @req FR:ai-triage-assist/autonomy.set */
+const noAutonomyMark = (field: string, v: unknown): void => {
+  if (typeof v === 'string' && v.replace(/[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g, '').includes('🤖')) throw invalid([{ field, message: 'Cannot contain the 🤖 autonomy marker' }]);
+};
 
 const FIELDS_Q: Record<string, Spec> = { fields: { t: 'str' } };
 const STATES = ['open', 'done', 'all'] as const;
@@ -91,15 +100,15 @@ const ACTION_BODIES: Record<(typeof ACTIONS)[number], { schema: Record<string, S
 };
 const TRIAGE_BODY = {
   schema: {
-    ref: REF, agent: LINE200, human: LINE200, priority: some(ENUMS.priority), effort: some(ENUMS.effort), impact: some(ENUMS.impact), actor: ACTOR,
+    ref: REF, agent: LINE200, human: LINE200, priority: some(ENUMS.priority), effort: some(ENUMS.effort), impact: some(ENUMS.impact),
   } satisfies Record<string, Spec>,
   required: ['ref'],
 };
-const CLAIM_BODY = { schema: { ref: REF, actor: ACTOR } satisfies Record<string, Spec>, required: ['ref'] };
+const CLAIM_BODY = { schema: { ref: REF } satisfies Record<string, Spec>, required: ['ref'] };
 const RESULT_BODY = {
   schema: {
     ref: REF, outcome: { t: 'enum', values: OUTCOMES }, summary: { t: 'str', required: true, max: 500, line: true },
-    complete: { t: 'bool' }, human: LINE200, actor: ACTOR,
+    complete: { t: 'bool' }, human: LINE200,
   } satisfies Record<string, Spec>,
   required: ['ref', 'outcome', 'summary'],
 };
@@ -174,6 +183,7 @@ async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response>
   const body = await readBody(c.req);
   const b = validate<Record<string, unknown> & { ref?: ReturnType<typeof parseRef> }>(body, ACTION_BODIES[name].schema, ACTION_BODIES[name].required);
   const ref = b.ref ?? undefined;
+  noAutonomyMark('summary', b.summary);
   switch (name) {
     case 'start': return result(await startTask(c.life, ref));
     case 'skip': return result(await skipTask(c.life, ref));
@@ -242,6 +252,7 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       const b = validate<{ project: string; text: string; section?: string; parent?: ReturnType<typeof parseRef> }>(await readBody(c.req), ADD_BODY.schema, ADD_BODY.required);
+      noAutonomyMark('text', b.text);
       return result(await addTask(c.life, { project: b.project, text: b.text, section: b.section, parent: b.parent ?? undefined }), 201);
     },
   },
@@ -250,6 +261,7 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       const b = validate<{ text: string; project?: string; section?: string; dryRun?: boolean }>(await readBody(c.req), CAPTURE_BODY.schema, CAPTURE_BODY.required);
+      noAutonomyMark('text', b.text);
       try {
         const { result: r, spec } = await captureTask(c.life, b.text, { project: b.project, section: b.section, dryRun: b.dryRun });
         return json(b.dryRun ? 200 : 201, { changed: r.changed, ref: r.ref ? formatRef(r.ref) : undefined, after: r.after, spec });
@@ -272,9 +284,9 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/tasks/triage', name: 'tasks.triage', body: TRIAGE_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<Suggestion & { ref: NonNullable<ReturnType<typeof parseRef>>; actor?: string }>(await readBody(c.req), TRIAGE_BODY.schema, TRIAGE_BODY.required);
-      const { ref, actor, ...s } = b;
-      const r = await applyTriage(c.life, ref, s, caller({ actor }));
+      const b = validate<Suggestion & { ref: NonNullable<ReturnType<typeof parseRef>> }>(await readBody(c.req), TRIAGE_BODY.schema, TRIAGE_BODY.required);
+      const { ref, ...s } = b;
+      const r = await applyTriage(c.life, ref, s, caller(c.req));
       return json(200, { changed: r.changed, ref: formatRef(r.ref), applied: r.applied, added: r.added.map(formatRef) });
     },
   },
@@ -282,8 +294,8 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/tasks/claim', name: 'tasks.claim', body: CLAIM_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; actor?: string }>(await readBody(c.req), CLAIM_BODY.schema, CLAIM_BODY.required);
-      const r = await claimTask(c.life, b.ref, caller(b));
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>> }>(await readBody(c.req), CLAIM_BODY.schema, CLAIM_BODY.required);
+      const r = await claimTask(c.life, b.ref, caller(c.req));
       return json(200, { changed: r.changed, ref: formatRef(r.ref!) });
     },
   },
@@ -291,9 +303,9 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/tasks/result', name: 'tasks.result', body: RESULT_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<ResultInput & { ref: NonNullable<ReturnType<typeof parseRef>>; actor?: string }>(await readBody(c.req), RESULT_BODY.schema, RESULT_BODY.required);
-      const { ref, actor, ...r } = b;
-      const out = await recordResult(c.life, ref, r, caller({ actor }));
+      const b = validate<ResultInput & { ref: NonNullable<ReturnType<typeof parseRef>> }>(await readBody(c.req), RESULT_BODY.schema, RESULT_BODY.required);
+      const { ref, ...r } = b;
+      const out = await recordResult(c.life, ref, r, caller(c.req));
       return json(200, { logged: out.logged, completed: out.completed, deferred: out.deferred, ref: formatRef(out.ref), ...(out.human ? { human: formatRef(out.human) } : {}) });
     },
   },

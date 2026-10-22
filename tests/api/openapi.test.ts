@@ -251,6 +251,9 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('tasks.resume', 'POST', '/tasks/resume', { ref }, 200);
     await go('tasks.skip', 'POST', '/tasks/skip', { ref }, 200);
     await go('tasks.set', 'POST', '/tasks/set', { ref, priority: '🔺', effort: '🟢' }, 200);
+    await go('tasks.triage', 'POST', '/tasks/triage', { ref }, 403);
+    await go('tasks.claim', 'POST', '/tasks/claim', { ref }, 403);
+    await go('tasks.result', 'POST', '/tasks/result', { ref, outcome: 'done', summary: 'x' }, 403);
     await go('tasks.complete', 'POST', '/tasks/complete', { ref, summary: 'done' }, 200);
     await go('tasks.removeCompleted', 'POST', '/tasks/remove-completed', {}, 200);
     await go('projects.list', 'GET', '/projects?fields=name,title,open,done,aliases,metadata,sections', undefined, 200);

@@ -38,12 +38,11 @@ export function createMcpServer(opts: McpServerOptions): Server {
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const t = TOOLS.find((x) => x.name === req.params.name);
     if (!t || !allowed(t)) { emit({ kind: 'deny', tool: t?.name, status: 403 }); return fail(errorText('forbidden')); }
-    let args: Record<string, string | number | boolean>;
+    let args;
     try { args = checkArgs(t, req.params.arguments); } catch (e) {
       if (e instanceof ArgError) return fail(errorText('invalid', [{ field: e.field, message: e.message }]));
       throw e;
     }
-    if (t.actor) args = { ...args, actor: `mcp:${opts.tokenId ?? 'local'}` };
     try {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('Timeout')), opts.timeoutMs ?? 30000); });

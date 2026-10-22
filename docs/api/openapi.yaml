@@ -114,7 +114,7 @@ paths:
                 text:
                   type: string
                   maxLength: 2000
-                  description: Single line.
+                  description: One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy) Single line.
                 section:
                   type: string
                   maxLength: 200
@@ -437,11 +437,6 @@ paths:
                     - ⬆️
                     - ↔️
                     - ⬇️
-                actor:
-                  type: string
-                  maxLength: 64
-                  pattern: ^[A-Za-z0-9._:-]{1,64}$
-                  description: Who is acting; the MCP layer sets it from the token
       responses:
         "200":
           description: Applied
@@ -480,10 +475,6 @@ paths:
               properties:
                 ref:
                   $ref: "#/components/schemas/Ref"
-                actor:
-                  type: string
-                  maxLength: 64
-                  pattern: ^[A-Za-z0-9._:-]{1,64}$
       responses:
         "200":
           description: Claimed
@@ -534,10 +525,6 @@ paths:
                   type: string
                   maxLength: 200
                   description: Single line.
-                actor:
-                  type: string
-                  maxLength: 64
-                  pattern: ^[A-Za-z0-9._:-]{1,64}$
       responses:
         "200":
           description: Logged

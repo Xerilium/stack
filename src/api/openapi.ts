@@ -44,7 +44,7 @@ const DOCS: Record<string, RouteDoc> = {
   'tasks.get': { operationId: 'getTask', summary: 'Get one task', responses: ok('Task', ref('Task')) },
   'tasks.add': {
     operationId: 'addTask', summary: 'Add a task',
-    desc: { project: 'File base name, title, or alias', section: 'Default Active' },
+    desc: { project: 'File base name, title, or alias', section: 'Default Active', text: 'One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy)' },
     responses: mutation('201'),
   },
   capture: {
@@ -74,7 +74,7 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'triageTask', summary: 'Apply a triage suggestion (needs autonomy triage or higher; 403 otherwise)',
     desc: {
       agent: 'One-line 🪄 subtask an agent can do', human: 'One-line 🙋 subtask needing a person',
-      priority: 'Only fills a missing priority', actor: 'Who is acting; the MCP layer sets it from the token',
+      priority: 'Only fills a missing priority',
     },
     responses: ok('Applied', {
       type: 'object',

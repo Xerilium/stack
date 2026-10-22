@@ -18,6 +18,8 @@ title: AI Triage Assist Plan
 
 - Autonomy lives in the row as `🤖:<level>` (the model field `autonomy` maps to it), so it round-trips in plain markdown and cannot be changed through API/MCP
 - Log at `tasks/logs/<project>.md`: beside the tasks, outside the project list. `validatePath` accepts it; `MemoryStorage.list` filters to task files
+- Actor comes from the request token in the API handler, never the body
+- Agent-reachable text writes reject `🤖` in the API layer; core `addTask` stays unchanged for owners
 - Denials are `forbidden`; agents treat them as "skip and move on"
 - Agent suggestions never overwrite existing priority/effort/impact
 - Completion is the only gated state change; merge/deploy have no code path
