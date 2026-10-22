@@ -485,6 +485,33 @@ describe('GitStorage with remote', () => {
     await expect(sb.write('tasks/x.md', 'from-b')).rejects.toBeInstanceOf(ConflictError);
   });
 
+  // @req FR:storage-git/git.conflict
+  it('surfaces the ConflictError when the rollback restore itself fails', async () => {
+    const { a, b } = remoteSetup();
+    const sa = new GitStorage(a, { remote: 'origin', branch: 'main' });
+    const sb = new GitStorage(b, { remote: 'origin', branch: 'main' });
+    await sa.write('tasks/x.md', 'base'); await sb.sync();
+    sb.beforePush = async () => { sb.beforePush = undefined; await sa.write('tasks/x.md', 'from-a'); };
+    const priv = sb as unknown as { git: (...a: string[]) => Promise<string> };
+    const orig = priv.git.bind(sb);
+    priv.git = (...g: string[]) => (g[0] === 'restore' ? Promise.reject(new Error('boom')) : orig(...g));
+    await expect(sb.write('tasks/x.md', 'from-b')).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  // @req FR:storage-git/git.failure
+  it('surfaces the push StorageError when the rollback restore itself fails', async () => {
+    const { b } = remoteSetup();
+    const sb = new GitStorage(b, { remote: 'origin', branch: 'main' });
+    await sb.write('tasks/x.md', 'base');
+    writeFileSync(join(b, '.git', 'hooks', 'pre-push'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const priv = sb as unknown as { git: (...a: string[]) => Promise<string> };
+    const orig = priv.git.bind(sb);
+    priv.git = (...g: string[]) => (g[0] === 'restore' ? Promise.reject(new Error('boom')) : orig(...g));
+    const err = await sb.write('tasks/x.md', 'new').catch(e => e);
+    expect(err).toBeInstanceOf(StorageError);
+    expect(err.message).not.toBe('boom');
+  });
+
   // @req FR:storage-git/git.failure
   it('does not treat non-conflict rebase failures as conflicts', async () => {
     const { a, b } = remoteSetup();

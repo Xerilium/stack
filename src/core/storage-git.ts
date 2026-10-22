@@ -180,11 +180,11 @@ export class GitStorage extends FsStorage {
         const msg = (e as Error).message;
         if (!/\[rejected\]|non-fast-forward|fetch first/i.test(msg)) {
           // Auth, network, hook rejection: not a race. Roll back so a failed write leaves nothing behind.
-          await this.dropCommit(paths, ours);
+          await this.dropQuietly(paths, ours);
           throw e instanceof StorageError ? e : new StorageError(msg);
         }
         if (attempt >= MAX_PUSH_ATTEMPTS) {
-          await this.dropCommit(paths, ours);
+          await this.dropQuietly(paths, ours);
           throw new ConflictError(`Push rejected after ${attempt} attempts: ${msg}`);
         }
       }
@@ -199,10 +199,15 @@ export class GitStorage extends FsStorage {
       if (ok) ok = await this.rebase();
       if (ok) ours = (await this.git('rev-parse', 'HEAD')).trim();
       if (!ok) {
-        await this.dropCommit(paths, ours);
+        await this.dropQuietly(paths, ours);
         throw new ConflictError(`Conflict on ${paths.join(', ')}: remote changed it concurrently`);
       }
     }
+  }
+
+  /** Roll back for a push failure; a rollback error must not mask the original error thrown by the caller. */
+  private async dropQuietly(paths: string[], ours: string): Promise<void> {
+    try { await this.dropCommit(paths, ours); } catch { /* original error wins */ }
   }
 
   /**
