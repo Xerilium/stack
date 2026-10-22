@@ -25,3 +25,13 @@ describe('cli args', () => {
     expect(() => parseRef('tasks/a.md:x')).toThrow(UsageError);
   });
 });
+
+/** @req FR:cli/run.@function */
+describe('cli args: flag values', () => {
+  it('rejects a value flag followed by another flag', () => {
+    expect(() => parseArgs(['set', 'x', '--suspend', '--status', 'y'])).toThrow(UsageError);
+  });
+  it('allows --flag=--literal', () => {
+    expect(parseArgs(['add', '--section=--x']).flags.section).toBe('--x');
+  });
+});

@@ -50,7 +50,7 @@ Let a person or an agent run the whole stack from a terminal with short commands
 - **FR:cmd.suspend** (P1): `stack suspend [ref] [--days n | --hours n]` calls `suspendTask`
 - **FR:cmd.set** (P1): `stack set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis]` calls `setProperties`; an emoji flag takes an emoji or `none`
 - **FR:cmd.remove-completed** (P1): `stack remove-completed [--project name]` calls `removeCompleted` and prints the removed count
-- **FR:cmd.update** (P1): `stack update [--sweep]` regenerates README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writes only files whose text changed, and commits them. `--sweep` first runs the start-date and suspend sweeps. my-day.md is untouched when the generator returns none
+- **FR:cmd.update** (P1): `stack update [--sweep]` regenerates README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writes only files whose text changed, and makes one commit per changed file. `--sweep` first runs the start-date and suspend sweeps. my-day.md is untouched when the generator returns none
 
 ### FR:out: Output and exit codes
 

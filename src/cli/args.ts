@@ -32,6 +32,8 @@ export function parseArgs(argv: string[]): Parsed {
       out.flags[name] = a.slice(eq + 1);
     } else {
       if (i + 1 >= argv.length) throw new UsageError(`--${name} needs a value`);
+      const next = argv[i + 1];
+      if (next.startsWith("--") && next.length > 2) throw new UsageError(`--${name} needs a value (got ${next}); use --${name}=<value> for a literal`);
       out.flags[name] = argv[++i];
     }
   }

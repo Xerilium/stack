@@ -5,7 +5,7 @@
  * @req FR:cli/cmd.resume @req FR:cli/cmd.suspend @req FR:cli/cmd.set @req FR:cli/cmd.remove-completed @req FR:cli/arch.thin @req FR:cli/arch.storage
  */
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, realpathSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
@@ -51,7 +51,7 @@ const flag = (f: Record<string, string | true>, n: string): string | undefined =
 function num(v: string | undefined, name: string): number | undefined {
   if (v === undefined) return undefined;
   const n = Number(v);
-  if (v.trim() === '' || Number.isNaN(n)) throw new UsageError(`--${name} must be a number: ${v}`);
+  if (!/^-?\d+(\.\d+)?$/.test(v.trim()) || !Number.isFinite(n)) throw new UsageError(`--${name} must be a number: ${v}`);
   return n;
 }
 
@@ -89,14 +89,19 @@ const git = (dir: string, ...args: string[]): string =>
   execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
 
 function isWorkTree(dir: string): boolean {
-  try { return git(dir, 'rev-parse', '--is-inside-work-tree').trim() === 'true'; } catch { return false; }
+  try { return git(dir, "rev-parse", "--is-inside-work-tree").trim() === "true"; } catch { return false; }
+}
+
+/** True only when dir itself is the work tree top-level (not a subfolder of a parent repo). */
+function isTopLevel(dir: string): boolean {
+  try { return realpathSync(git(dir, "rev-parse", "--show-toplevel").trim()) === realpathSync(dir); } catch { return false; }
 }
 
 /** @req FR:cli/cmd.init */
 function init(dir: string): Outcome {
   mkdirSync(dir, { recursive: true });
   const made: string[] = [];
-  if (!isWorkTree(dir)) { git(dir, 'init', '-q', '-b', 'main'); made.push('repo'); }
+  if (!isTopLevel(dir)) { git(dir, 'init', '-q', '-b', 'main'); made.push('repo'); }
   const add = (rel: string, content: string) => {
     const p = join(dir, rel);
     if (existsSync(p)) return;

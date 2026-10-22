@@ -84,6 +84,24 @@ describe('run', () => {
 });
 
 describe('init', () => {
+  it("runs git init for a subfolder of a parent repo", () => {
+    const parent = tmp();
+    git(parent, "init", "-q", "-b", "main");
+    const sub = join(parent, "sub");
+    expect(stack(sub, "init").code).toBe(0);
+    expect(existsSync(join(sub, ".git"))).toBe(true);
+    expect(commits(sub)).toBe(1);
+    expect(git(parent, "rev-list", "--all", "--count")).toBe("0");
+  });
+
+  it("rejects non-finite and non-decimal numbers", () => {
+    const d = repo();
+    for (const bad of ["Infinity", "0x10", "1e3"]) {
+      const r = stack(d, "add-project", "Beta", "--priority", bad);
+      expect(r.code).toBe(2);
+    }
+  });
+
   it('creates the repo, files, and one commit; second run changes nothing', () => {
     const d = join(tmp(), 'new');
     const r = stack(d, 'init');
