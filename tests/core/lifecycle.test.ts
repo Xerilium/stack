@@ -294,6 +294,13 @@ describe('completeTask', () => {
   });
 
   // @req FR:task-lifecycle/complete.recurring
+  it('rolls Quarterly-EOM+1 to month end three months on (offsetMonths is parse-only)', async () => {
+    const s = await mem({ 'tasks/a.md': doc('- [ ] 📅 Oct 31, 2026: 🔄 Quarterly-EOM+1: Close books\n') });
+    await completeTask({ ...ctx(s), config: { ...getDefaults(), shiftWeekends: false } }, { path: 'tasks/a.md', line: 4 });
+    expect(await text(s, 'tasks/a.md')).toBe(doc('- [ ] 📅 Jan 31, 2027: 🔄 Quarterly-EOM+1: Close books\n'));
+  });
+
+  // @req FR:task-lifecycle/complete.recurring
   it('remove:true rolls a recurring row instead of deleting it', async () => {
     const s = await mem({ 'tasks/a.md': doc('- [ ] 📅 Oct 22, 2026: 🔄 Monthly: Pay bills\n  - [x] a\n- [ ] other\n') });
     const r = await completeTask(ctx(s), { path: 'tasks/a.md', line: 4 }, { remove: true });

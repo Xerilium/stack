@@ -58,7 +58,7 @@ export type Spec =
   | { t: 'strs'; max?: number }
   | { t: 'caps' };
 
-export const REF_RE = /^([^/\\:\0.][^/\\:\0]*):(\d{1,9})$/;
+export const REF_RE = /^(?![Rr][Ee][Aa][Dd][Mm][Ee]:)([^/\\:\0.][^/\\:\0]*):(\d{1,9})$/;
 const isReadme = (name: string) => name.toLowerCase() === 'readme';
 
 /** @req FR:api/input.ref */

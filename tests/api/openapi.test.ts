@@ -4,6 +4,7 @@ import { parseDocument } from 'yaml';
 import { createApiHandler, QUERY_DEFAULTS, ROUTES } from '../../src/api/handler';
 import { ERROR_CODES } from '../../src/api/errors';
 import { buildOpenApi, renderOpenApi } from '../../src/api/openapi';
+import { parseRef } from '../../src/api/validate';
 import { ENUMS, MAX_STR, type Spec } from '../../src/api/validate';
 import { MemoryStorage } from '../../src/core/storage';
 
@@ -16,7 +17,7 @@ const resolve = (s: any): any => {
   if (s && s.$ref) {
     const target = s.$ref.replace(/^#\//, '').split('/').reduce((o: any, k: string) => o?.[k], doc);
     if (!target) throw new Error(`unresolved ${s.$ref}`);
-    return { ...resolve(target), ...Object.fromEntries(Object.entries(s).filter(([k]) => k !== '$ref')) };
+    return resolve(target); // strict 3.0.3: siblings of $ref are ignored
   }
   return s;
 };
@@ -45,6 +46,7 @@ function conforms(schema: any, v: unknown, at = '$'): string[] {
   const s = resolve(schema);
   if (v === null) return s.nullable ? [] : [`${at}: null not allowed`];
   const bad = (m: string) => [`${at}: ${m}`];
+  if (s.allOf) return s.allOf.flatMap((x: any) => conforms(x, v, at));
   switch (s.type) {
     case 'string':
       if (typeof v !== 'string') return bad('expected string');
@@ -279,6 +281,35 @@ describe('response parity (real handler output vs documented schemas)', () => {
     expect((await call('GET', '/tasks?state=bogus')).status).toBe(422);
     expect((await call('POST', '/capture', { text: 'x'.repeat(2001) })).status).toBe(422);
     expect((await call('POST', '/tasks/start', { ref: 'a:1', extra: 1 })).status).toBe(422);
-    expect((await call('GET', '/next?extra=1')).status).toBe(422);
+  });
+
+  it('rejects unknown query params on every route', async () => {
+    for (const r of ROUTES) {
+      const path = r.doc.replace(/\{\w+\}/g, 'alpha:1');
+      const res = await call(r.method, `${path}?bogusParam=1`, r.body ? {} : undefined);
+      expect([r.name, res.status]).toEqual([r.name, 422]);
+    }
+  });
+
+  it('keeps the Ref pattern, README reservation and parseRef in step', () => {
+    const re = new RegExp(doc.components.schemas.Ref.pattern);
+    for (const v of ['alpha:12', 'README:1', 'readme:1', 'ReadMe:1', 'readme2:1', '.x:1', 'a/b:1', 'a:0x', 'a:1234567890']) {
+      expect([v, re.test(v)]).toEqual([v, parseRef(v) !== null]);
+    }
+  });
+
+  it('types /next task as a nullable allOf wrapper, not $ref siblings', () => {
+    const t = doc.paths['/next'].get.responses['200'].content['application/json'].schema.properties.task;
+    expect(t).toEqual({ allOf: [{ $ref: '#/components/schemas/NextTask' }], nullable: true });
+  });
+
+  it('types capture spec.recurrence and rejects wrong shapes', () => {
+    const rec = resolve(doc.components.schemas.CaptureResult).properties.spec.properties.recurrence;
+    expect(Object.keys(rec.properties).sort()).toEqual(['anchor', 'cadence', 'nominalDay', 'offsetDays', 'offsetMonths', 'weekdays']);
+    expect(conforms(rec, { cadence: 'weekly', weekdays: ['mon'] })).toEqual([]);
+    expect(conforms(rec, { cadence: 'quarterly', anchor: 'end-of-month', offsetMonths: 1 })).toEqual([]);
+    expect(conforms(rec, { cadence: 'hourly' })).not.toEqual([]);
+    expect(conforms(rec, { cadence: 'daily', bogus: 1 })).not.toEqual([]);
+    expect(conforms(rec, { weekdays: ['funday'] })).not.toEqual([]);
   });
 });

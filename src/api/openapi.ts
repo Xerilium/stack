@@ -6,6 +6,7 @@
 import { stringify } from 'yaml';
 import { ERROR_CODES, STATUS } from './errors';
 import { QUERY_DEFAULTS, ROUTES } from './handler';
+import { ANCHORS, CADENCES, WEEKDAYS } from '../core/model';
 import { MAX_STR, REF_RE, type Spec } from './validate';
 
 type J = Record<string, unknown>;
@@ -30,7 +31,7 @@ const ok = (description: string, schema: J, status = '200'): J => ({
 const DOCS: Record<string, RouteDoc> = {
   next: {
     operationId: 'next', summary: 'Top-ranked task',
-    responses: ok('`task` is null when nothing is active.', { type: 'object', properties: { task: { ...ref('NextTask'), nullable: true } } }),
+    responses: ok('`task` is null when nothing is active.', { type: 'object', properties: { task: { allOf: [ref('NextTask')], nullable: true } } }),
   },
   'tasks.list': {
     operationId: 'listTasks', summary: 'List tasks',
@@ -202,12 +203,21 @@ export function buildOpenApi(): J {
               properties: {
                 title: { type: 'string' }, due: { type: 'string', format: 'date' },
                 effort: { type: 'object', properties: { minutes: { type: 'integer' }, emoji: { type: 'string' } } },
-                project: { type: 'string' }, recurrence: { type: 'object' },
+                project: { type: 'string' }, recurrence: {
+                  type: 'object',
+                  description: 'offsetMonths is parsed and reported but not used by rolls: Quarterly-EOM+1 rolls to month end 3 months on.',
+                  properties: {
+                    cadence: { type: 'string', enum: [...CADENCES] },
+                    weekdays: { type: 'array', items: { type: 'string', enum: [...WEEKDAYS] } },
+                    anchor: { type: 'string', enum: [...ANCHORS] },
+                    offsetDays: { type: 'integer' }, offsetMonths: { type: 'integer' }, nominalDay: { type: 'string', format: 'date' },
+                  },
+                },
               },
             },
           },
         },
-        Ref: { type: 'string', pattern: REF_RE.source, example: 'alpha:12', description: 'README is reserved and never a valid project.' },
+        Ref: { type: 'string', pattern: REF_RE.source, example: 'alpha:12', description: '`<project>:<line>`. README (any case) is reserved and never a valid project.' },
         Error: {
           type: 'object', required: ['error'],
           properties: {

@@ -25,7 +25,8 @@ paths:
                 type: object
                 properties:
                   task:
-                    $ref: "#/components/schemas/NextTask"
+                    allOf:
+                      - $ref: "#/components/schemas/NextTask"
                     nullable: true
         default:
           $ref: "#/components/responses/Error"
@@ -589,11 +590,44 @@ components:
               type: string
             recurrence:
               type: object
+              description: "offsetMonths is parsed and reported but not used by rolls: Quarterly-EOM+1 rolls to month end 3 months on."
+              properties:
+                cadence:
+                  type: string
+                  enum:
+                    - daily
+                    - weekly
+                    - monthly
+                    - quarterly
+                    - yearly
+                weekdays:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - mon
+                      - tue
+                      - wed
+                      - thu
+                      - fri
+                      - sat
+                      - sun
+                anchor:
+                  type: string
+                  enum:
+                    - end-of-month
+                offsetDays:
+                  type: integer
+                offsetMonths:
+                  type: integer
+                nominalDay:
+                  type: string
+                  format: date
     Ref:
       type: string
-      pattern: ^([^/\\:\0.][^/\\:\0]*):(\d{1,9})$
+      pattern: ^(?![Rr][Ee][Aa][Dd][Mm][Ee]:)([^/\\:\0.][^/\\:\0]*):(\d{1,9})$
       example: alpha:12
-      description: README is reserved and never a valid project.
+      description: "`<project>:<line>`. README (any case) is reserved and never a valid project."
     Error:
       type: object
       required:
