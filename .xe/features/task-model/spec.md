@@ -22,7 +22,7 @@ Stack needs to represent projects, sections, tasks, subtasks, and recurrence in 
 - **FR:model.@function** (P1): Interface: `src/core/model.ts` exports `createTask`, `createSection`, `createProject`
 - **FR:model.defaults** (P2): `createTask` MUST default `status` to `todo`, `autonomy` to `none`, and `notes` and `subtasks` to empty lists
 - **FR:model.dates** (P1): Model MUST hold dates as ISO `YYYY-MM-DD` strings
-- **FR:model.output** (P2): Fresh, independent objects; no shared array references between calls
+- **FR:model.output** (P2): Fresh, independent objects; `createTask`, `createSection`, and `createProject` MUST copy caller-supplied arrays (`notes`, `subtasks`, `tasks`, `aliases`, `sections`) so no array is shared with the caller or between calls. Copies are shallow: nested task objects are not cloned.
 
 ### FR:validate: Validate model data
 
@@ -33,16 +33,19 @@ Stack needs to validate model data so that bad values are rejected before they r
 - **FR:validate.output** (P1): List of issues, each with a `path`, a `code`, and a `message`; empty when valid
 - **FR:validate.collect** (P1): Validator MUST report all issues, not only the first
 - **FR:validate.title** (P1): Validator MUST reject empty or whitespace-only task titles, project names, and section names
+- **FR:validate.required** (P1): Validator MUST reject empty or whitespace-only task ids, project ids, and project aliases
 - **FR:validate.enums** (P1): Validator MUST reject `status`, `autonomy`, and `cadence` values outside the allowed sets
 - **FR:validate.numbers** (P1): Validator MUST reject non-finite numbers and values outside the allowed ranges for priority, impact, effort, value, projectValue, and capacity
 - **FR:validate.dates** (P1): Validator MUST reject dates that are not real calendar dates in `YYYY-MM-DD` form
   - **FR:validate.dates.order** (P2): Validator MUST reject a `startDate` later than `dueDate`
 - **FR:validate.recurrence** (P1): Validator MUST reject a recurring task without a `dueDate`
   - **FR:validate.recurrence.weekdays** (P2): Validator MUST reject `weekdays` unless cadence is `weekly`
+  - **FR:validate.recurrence.weekdays.unique** (P2): Validator MUST reject a repeated weekday in `weekdays`
   - **FR:validate.recurrence.offset** (P2): Validator MUST reject a non-integer `offsetDays`
+  - **FR:validate.recurrence.lenient** (P3): Validator MUST accept an empty `weekdays` list, and `anchor` or `offsetDays` on any cadence; `nominalDay` is checked as a date only and is not tied to `dueDate` or cadence (semantics belong to the recurrence feature)
 - **FR:validate.subtasks** (P2): Validator MUST validate subtasks recursively and report paths such as `subtasks[0].title`
-- **FR:validate.unique** (P2): Validator MUST reject duplicate task ids within a project and duplicate section names within a project
-  - **FR:validate.unique.aliases** (P2): Validator MUST reject a project alias that repeats another alias or the project name (case-insensitive)
+- **FR:validate.unique** (P2): Validator MUST reject duplicate task ids and duplicate section names within a project. One rule for all uniqueness checks: values are compared trimmed and case-insensitive (`" T1 "` equals `t1`)
+  - **FR:validate.unique.aliases** (P2): Validator MUST reject a project alias that repeats another alias or the project name, using the same trimmed, case-insensitive comparison
 - **FR:validate.assert** (P2): `assertValid` MUST throw a `ModelValidationError` carrying the issues when any exist
 
 ## Data Model

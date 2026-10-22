@@ -42,6 +42,27 @@ describe('factories', () => {
     expect(createProject({ id: 'p', name: 'P' }).aliases).toEqual([]);
   });
 
+  // @req FR:task-model/model.output
+  it('copies caller-supplied arrays', () => {
+    const notes = ['n'];
+    const subtasks = [createTask({ id: 's', title: 's' })];
+    const t = createTask({ id: 't', title: 't', notes, subtasks });
+    expect(t.notes).not.toBe(notes);
+    expect(t.subtasks).not.toBe(subtasks);
+    notes.push('x');
+    subtasks.pop();
+    expect(t.notes).toEqual(['n']);
+    expect(t.subtasks).toHaveLength(1);
+
+    const tasks = [t];
+    expect(createSection('s', tasks).tasks).not.toBe(tasks);
+    const aliases = ['a'];
+    const sections = [createSection('s')];
+    const p = createProject({ id: 'p', name: 'P', aliases, sections });
+    expect(p.aliases).not.toBe(aliases);
+    expect(p.sections).not.toBe(sections);
+  });
+
   // @req FR:task-model/model.@function
   it('createProject and createSection build empty containers', () => {
     const p = createProject({ id: 'p', name: 'P' });
@@ -177,6 +198,35 @@ describe('validateTask', () => {
   // @req FR:task-model/validate.input
   it('rejects non-object input', () => {
     expect(codes(validateTask(null as any))).toEqual(['required']);
+    expect(codes(validateSection(null as any))).toEqual(['required']);
+    expect(codes(validateProject(null as any))).toEqual(['required']);
+    expect(codes(validateRecurrence(null as any))).toEqual(['required']);
+    expect(codes(validateRecurrence('x' as any))).toEqual(['required']);
+  });
+
+  // @req FR:task-model/validate.input
+  it('rejects non-array notes and subtasks', () => {
+    const t = { ...createTask({ id: 't', title: 't' }), notes: 'x', subtasks: {} } as any;
+    expect(paths(validateTask(t))).toEqual(['notes', 'subtasks']);
+  });
+
+  // @req FR:task-model/validate.collect
+  it('reports exact paths for every issue', () => {
+    const t = createTask({ id: '', title: '', priority: 9, dueDate: 'x' });
+    expect(paths(validateTask(t)).sort()).toEqual(['dueDate', 'id', 'priority', 'title']);
+  });
+
+  // @req FR:task-model/validate.recurrence
+  it('requires dueDate for recurrence and rejects null dueDate', () => {
+    const t = createTask({ id: 't', title: 't', recurrence: { cadence: 'daily' } });
+    expect(codes(validateTask(t))).toEqual(['recurrence-needs-due']);
+    expect(codes(validateTask({ ...t, dueDate: null } as any))).toContain('invalid-date');
+  });
+
+  // @req FR:task-model/validate.recurrence
+  it('rejects non-object recurrence on a task', () => {
+    const t = { ...createTask({ id: 't', title: 't', dueDate: '2026-01-01' }), recurrence: 'daily' } as any;
+    expect(paths(validateTask(t))).toEqual(['recurrence']);
   });
 });
 
@@ -196,6 +246,26 @@ describe('validateRecurrence', () => {
   // @req FR:task-model/validate.recurrence.weekdays
   it('rejects weekdays on non-weekly cadence', () => {
     expect(codes(validateRecurrence({ cadence: 'monthly', weekdays: ['mon'] }))).toEqual(['invalid-recurrence']);
+  });
+
+  // @req FR:task-model/validate.recurrence.weekdays
+  it('rejects non-array weekdays', () => {
+    const issues = validateRecurrence({ cadence: 'weekly', weekdays: 'mon' } as any);
+    expect(paths(issues)).toEqual(['weekdays']);
+  });
+
+  // @req FR:task-model/validate.recurrence.weekdays.unique
+  it('rejects repeated weekdays', () => {
+    const issues = validateRecurrence({ cadence: 'weekly', weekdays: ['mon', 'tue', 'mon'] });
+    expect(paths(issues)).toEqual(['weekdays[2]']);
+    expect(codes(issues)).toEqual(['duplicate']);
+  });
+
+  // @req FR:task-model/validate.recurrence.lenient
+  it('accepts empty weekdays, and anchor/offset on any cadence', () => {
+    expect(validateRecurrence({ cadence: 'weekly', weekdays: [] })).toEqual([]);
+    expect(validateRecurrence({ cadence: 'daily', anchor: 'end-of-month', offsetDays: -2 })).toEqual([]);
+    expect(validateRecurrence({ cadence: 'daily', nominalDay: '2026-02-28' })).toEqual([]);
   });
 
   // @req FR:task-model/validate.recurrence.offset
@@ -251,6 +321,42 @@ describe('validateSection / validateProject', () => {
     const issues = validateProject(p);
     expect(codes(issues)).toEqual(['duplicate', 'duplicate']);
     expect(paths(issues)).toEqual(['sections[1].tasks[0].id', 'sections[1].tasks[1].id']);
+  });
+
+  // @req FR:task-model/validate.unique
+  it('compares task ids trimmed and case-insensitive', () => {
+    const p = createProject({
+      id: 'p',
+      name: 'P',
+      sections: [createSection('A', [createTask({ id: 'T1', title: 'a' }), createTask({ id: ' t1 ', title: 'b' })])],
+    });
+    expect(paths(validateProject(p))).toEqual(['sections[0].tasks[1].id']);
+  });
+
+  // @req FR:task-model/validate.required
+  it('rejects blank project id and blank aliases', () => {
+    const p = createProject({ id: ' ', name: 'P', aliases: ['', '  ', 'ok'] });
+    expect(paths(validateProject(p))).toEqual(['id', 'aliases[0]', 'aliases[1]']);
+    expect(codes(validateProject(p))).toEqual(['required', 'required', 'required']);
+  });
+
+  // @req FR:task-model/validate.input
+  it('rejects non-array aliases and sections', () => {
+    const p = { id: 'p', name: 'P', aliases: 'x', sections: {} } as any;
+    expect(paths(validateProject(p))).toEqual(['aliases', 'sections']);
+    expect(paths(validateSection({ name: 'S', tasks: 1 } as any))).toEqual(['tasks']);
+  });
+
+  // @req FR:task-model/validate.unique
+  it('walks subtasks of invalid shapes without throwing', () => {
+    const p = {
+      id: 'p',
+      name: 'P',
+      aliases: [],
+      sections: [{ name: 'S', tasks: [null, { id: 'a', title: 'a', status: 'todo', autonomy: 'none', notes: [], subtasks: 'x' }, { id: 'a', title: 'b', subtasks: [null] }] }],
+    } as any;
+    expect(() => validateProject(p)).not.toThrow();
+    expect(validateProject(p).some((i) => i.code === 'duplicate' && i.path === 'sections[0].tasks[2].id')).toBe(true);
   });
 
   // @req FR:task-model/validate.unique

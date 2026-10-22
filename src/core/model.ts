@@ -119,22 +119,22 @@ export function createTask(init: Partial<Task> & Pick<Task, 'id' | 'title'>): Ta
     ...init,
     status: init.status ?? 'todo',
     autonomy: init.autonomy ?? 'none',
-    notes: init.notes ?? [],
-    subtasks: init.subtasks ?? [],
+    notes: [...(init.notes ?? [])],
+    subtasks: [...(init.subtasks ?? [])],
   };
 }
 
 /** @req FR:task-model/model.@function */
 export function createSection(name: string, tasks: Task[] = []): Section {
-  return { name, tasks };
+  return { name, tasks: [...tasks] };
 }
 
 /** @req FR:task-model/model.@function */
 export function createProject(init: Partial<Project> & Pick<Project, 'id' | 'name'>): Project {
   return {
     ...init,
-    aliases: init.aliases ?? [],
-    sections: init.sections ?? [],
+    aliases: [...(init.aliases ?? [])],
+    sections: [...(init.sections ?? [])],
   };
 }
 
@@ -150,6 +150,9 @@ export function isIsoDate(s: unknown): s is IsoDate {
   const dt = new Date(Date.UTC(y, m - 1, d));
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
+
+/** Uniqueness key: trimmed, case-insensitive. Used for task ids, section names, aliases. */
+const uniqueKey = (s: string) => s.trim().toLowerCase();
 
 const join = (base: string, key: string) => (base ? `${base}.${key}` : key);
 
@@ -188,6 +191,9 @@ function checkDate(v: unknown, path: string, out: ValidationIssue[]): void {
 }
 
 /**
+ * Leniency (intentional, see FR:validate.recurrence.lenient): an empty `weekdays` list,
+ * and `anchor`/`offsetDays` on any cadence, are accepted. `nominalDay` is checked as a
+ * date only and is not tied to `dueDate` or cadence.
  * @req FR:task-model/validate.recurrence
  * @req FR:task-model/validate.enums
  */
@@ -199,7 +205,14 @@ export function validateRecurrence(r: Recurrence, path = ''): ValidationIssue[] 
     if (!Array.isArray(r.weekdays)) {
       out.push(issue(join(path, 'weekdays'), 'invalid-enum', `must be a list of: ${WEEKDAYS.join(', ')}`));
     } else {
-      r.weekdays.forEach((w, i) => checkEnum(w, WEEKDAYS, `${join(path, 'weekdays')}[${i}]`, out));
+      const seenDays = new Set<unknown>();
+      r.weekdays.forEach((w, i) => {
+        const wp = `${join(path, 'weekdays')}[${i}]`;
+        checkEnum(w, WEEKDAYS, wp, out);
+        // @req FR:task-model/validate.recurrence.weekdays.unique
+        if (seenDays.has(w)) out.push(issue(wp, 'duplicate', `weekday "${String(w)}" is repeated`));
+        seenDays.add(w);
+      });
       // @req FR:task-model/validate.recurrence.weekdays
       if ((CADENCES as readonly string[]).includes(r.cadence) && r.cadence !== 'weekly') {
         out.push(issue(join(path, 'weekdays'), 'invalid-recurrence', 'weekdays apply only to weekly cadence'));
@@ -217,6 +230,7 @@ export function validateRecurrence(r: Recurrence, path = ''): ValidationIssue[] 
 
 /**
  * @req FR:task-model/validate.title
+ * @req FR:task-model/validate.required
  * @req FR:task-model/validate.enums
  * @req FR:task-model/validate.numbers
  * @req FR:task-model/validate.dates
@@ -258,7 +272,9 @@ export function validateTask(t: Task, path = ''): ValidationIssue[] {
   return out;
 }
 
-/** @req FR:task-model/validate.title */
+/**
+ * @req FR:task-model/validate.title
+ */
 export function validateSection(s: Section, path = ''): ValidationIssue[] {
   if (s === null || typeof s !== 'object') return [issue(path, 'required', 'section must be an object')];
   const out: ValidationIssue[] = [];
@@ -272,6 +288,7 @@ export function validateSection(s: Section, path = ''): ValidationIssue[] {
 }
 
 /**
+ * @req FR:task-model/validate.required
  * @req FR:task-model/validate.unique
  * @req FR:task-model/validate.unique.aliases
  */
@@ -283,15 +300,15 @@ export function validateProject(p: Project, path = ''): ValidationIssue[] {
   checkNumber(p.projectValue, join(path, 'projectValue'), out, { min: 0 });
   checkNumber(p.capacity, join(path, 'capacity'), out, { min: 0 });
 
-  const seenNames = new Set<string>(typeof p.name === 'string' ? [p.name.trim().toLowerCase()] : []);
+  const seenNames = new Set<string>(typeof p.name === 'string' ? [uniqueKey(p.name)] : []);
   if (!Array.isArray(p.aliases)) {
     out.push(issue(join(path, 'aliases'), 'required', 'aliases must be a list'));
   } else {
     p.aliases.forEach((a, i) => {
       const ap = `${join(path, 'aliases')}[${i}]`;
       checkText(a, ap, out, 'alias');
-      if (typeof a !== 'string') return;
-      const key = a.trim().toLowerCase();
+      if (typeof a !== 'string' || a.trim() === '') return;
+      const key = uniqueKey(a);
       if (seenNames.has(key)) out.push(issue(ap, 'duplicate', `alias "${a}" repeats another alias or the project name`));
       seenNames.add(key);
     });
@@ -310,8 +327,9 @@ export function validateProject(p: Project, path = ''): ValidationIssue[] {
       if (t === null || typeof t !== 'object') return;
       const tp = `${base}[${i}]`;
       if (typeof t.id === 'string' && t.id.trim() !== '') {
-        if (taskIds.has(t.id)) dupIssues.push(issue(`${tp}.id`, 'duplicate', `task id "${t.id}" is used more than once in the project`));
-        taskIds.add(t.id);
+        const key = uniqueKey(t.id);
+        if (taskIds.has(key)) dupIssues.push(issue(`${tp}.id`, 'duplicate', `task id "${t.id}" is used more than once in the project`));
+        taskIds.add(key);
       }
       walk(t.subtasks, `${tp}.subtasks`);
     });
@@ -321,7 +339,7 @@ export function validateProject(p: Project, path = ''): ValidationIssue[] {
     out.push(...validateSection(s, sp));
     if (s === null || typeof s !== 'object') return;
     if (typeof s.name === 'string' && s.name.trim() !== '') {
-      const key = s.name.trim().toLowerCase();
+      const key = uniqueKey(s.name);
       if (sectionNames.has(key)) dupIssues.push(issue(`${sp}.name`, 'duplicate', `section name "${s.name}" is used more than once in the project`));
       sectionNames.add(key);
     }
