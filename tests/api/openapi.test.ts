@@ -254,6 +254,11 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('tasks.triage', 'POST', '/tasks/triage', { ref }, 403);
     await go('tasks.claim', 'POST', '/tasks/claim', { ref }, 403);
     await go('tasks.result', 'POST', '/tasks/result', { ref, outcome: 'done', summary: 'x' }, 403);
+    const cur = ((await go('tasks.list', 'GET', '/tasks?state=all&fields=ref,text', undefined, 200)).body as any).items as { ref: string; text: string }[];
+    await go('tasks.edit', 'POST', '/tasks/edit', { ref: cur[0].ref, text: 'Edited', expect: cur[0].text }, 200);
+    await go('tasks.edit', 'POST', '/tasks/edit', { ref: cur[0].ref, text: 'Again', expect: 'stale' }, 409);
+    await go('tasks.move', 'POST', '/tasks/move', { ref: cur[1].ref, target: cur[0].ref, position: 'before', expect: cur[1].text, expectTarget: 'Edited' }, 200);
+    await go('tasks.move', 'POST', '/tasks/move', { ref: cur[0].ref, target: cur[0].ref, position: 'before' }, 422);
     await go('tasks.complete', 'POST', '/tasks/complete', { ref, summary: 'done' }, 200);
     await go('tasks.removeCompleted', 'POST', '/tasks/remove-completed', {}, 200);
     await go('projects.list', 'GET', '/projects?fields=name,title,open,done,aliases,metadata,sections', undefined, 200);

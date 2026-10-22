@@ -22,3 +22,8 @@ build/
 # Coverage
 coverage/
 .nyc_output/
+
+# web
+web/dist
+web/test-results
+web/playwright-report

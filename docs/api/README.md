@@ -23,6 +23,8 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/tasks/resume` | POST unpark a task |
 | `/tasks/suspend` | POST suspend for days or hours |
 | `/tasks/set` | POST change task properties |
+| `/tasks/edit` | POST replace the text of a task row |
+| `/tasks/move` | POST move a task block before or after another task |
 | `/tasks/remove-completed` | POST delete checked tasks |
 | `/projects` | GET list; POST create a project |
 | `/projects/{name}` | GET one project |

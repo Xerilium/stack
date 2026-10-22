@@ -115,6 +115,8 @@ describe('triage routes', () => {
       expect((await call(t, '/capture', { text: `${text} #alpha` })).status).toBe(422);
     }
     expect((await call(t, '/tasks/complete', { ref: 'alpha:7', summary: 'ok 🤖:full' })).status).toBe(422);
+    expect((await call(t, '/tasks/edit', { ref: 'alpha:4', text: 'Plain task 🤖:full' })).status).toBe(422);
+    expect((await call(t, '/tasks/edit', { ref: 'alpha:4', text: 'Plain\u200b 🤖:full' })).status).toBe(422);
     expect((await storage.read('tasks/alpha.md')).content).toBe(DOC);
   });
 
