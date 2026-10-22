@@ -28,16 +28,18 @@ Stack needs to turn a user's `stack.json` into a complete, validated configurati
   - **FR:load.validate.time** (P1): `parseConfig` MUST reject time values not in `HH:mm` format
   - **FR:load.validate.days** (P2): `parseConfig` MUST reject day names outside Sun-Sat
   - **FR:load.validate.timezone** (P2): `parseConfig` MUST reject timezones unknown to the runtime
-- **FR:load.output** (P1): StackConfig (@req FR:$stack-config)
+  - **FR:load.validate.range** (P2): `parseConfig` MUST reject time blocks whose startTime equals endTime
+- **FR:load.output** (P1): StackConfig (@req FR:config/$stack-config)
 
 ### FR:time-block: Resolve active time block
 
 Stack needs to know which time block a moment falls in so that tasks can be filtered by time of day.
 
 - **FR:time-block.@function** (P1): Interface: `getTimeBlock(config: StackConfig, at: Date): TimeBlock | undefined`
-- **FR:time-block.input** (P1): Config (@req FR:$stack-config), instant (Date)
+- **FR:time-block.input** (P1): Config (@req FR:config/$stack-config), instant (Date)
 - **FR:time-block.resolve** (P1): `getTimeBlock` MUST return the block whose day and time range contains the instant in the configured timezone
 - **FR:time-block.overnight** (P1): `getTimeBlock` MUST treat a range whose end is before its start as crossing midnight, attributing early-morning hours to the previous day's block
+- **FR:time-block.overlap** (P2): `getTimeBlock` MUST return the first matching block in configured order when blocks overlap
 - **FR:time-block.none** (P2): `getTimeBlock` MUST return undefined when no block contains the instant
 - **FR:time-block.output** (P1): TimeBlock or undefined
 

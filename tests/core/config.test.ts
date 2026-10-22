@@ -110,3 +110,29 @@ describe('edge cases', () => {
     expect(parseConfig().taskScoring.emojiWeights.priority['🔝']).toBe(1000);
   });
 });
+
+describe('range and overlap', () => {
+  const mk = (name: string, s: string, e: string) => ({ name, days: ['Wed'], startTime: s, endTime: e, emoji: 'x' });
+  // @req FR:config/time-block.overlap
+  it('returns the first matching block when blocks overlap', () => {
+    const c = parseConfig({ timezone: 'UTC', timeBlocks: [mk('A', '09:00', '12:00'), mk('B', '10:00', '11:00')] });
+    expect(getTimeBlock(c, new Date('2026-10-21T10:30:00Z'))?.name).toBe('A');
+  });
+
+  // @req FR:config/load.validate.range
+  it('rejects a block whose start equals its end', () => {
+    expect(() => parseConfig({ timeBlocks: [mk('A', '09:00', '09:00')] })).toThrow(/startTime equals endTime/);
+  });
+
+  // @req FR:config/load.validate
+  it('rejects wrong types in weights and time blocks', () => {
+    expect(() => parseConfig({ taskScoring: { emojiWeights: { priority: { a: 'x' } } } })).toThrow(/priority.a/);
+    expect(() => parseConfig({ timeBlocks: 'x' })).toThrow(/timeBlocks/);
+    expect(() => parseConfig({ timeBlocks: [{ ...mk('A', '09:00', '10:00'), label: 5 }] })).toThrow(/label/);
+  });
+
+  // @req FR:config/load.merge
+  it('merges effortHours', () => {
+    expect(parseConfig({ taskScoring: { effortHours: { '🟢': 0.75 } } }).taskScoring.effortHours['🟢']).toBe(0.75);
+  });
+});

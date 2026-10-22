@@ -80,6 +80,7 @@ function parseBlock(v: unknown, path: string): TimeBlock {
   if (!isObj(v)) throw new ConfigError(`${path}: expected object`);
   if (!Array.isArray(v.days)) throw new ConfigError(`${path}.days: expected array`);
   for (const d of v.days) if (!ALL.includes(d as string)) throw new ConfigError(`${path}.days: invalid day ${String(d)}`);
+  if (v.startTime === v.endTime) throw new ConfigError(`${path}: startTime equals endTime`);
   return {
     name: str(v.name, `${path}.name`),
     ...(v.label !== undefined ? { label: str(v.label, `${path}.label`) } : {}),
@@ -102,7 +103,7 @@ function validZone(tz: string): boolean {
 /**
  * @req FR:config/load.@function @req FR:config/load.input @req FR:config/load.output
  * @req FR:config/load.defaults @req FR:config/load.merge @req FR:config/load.validate
- * @req FR:config/load.timeblocks-replace @req FR:config/load.validate.time @req FR:config/load.validate.days @req FR:config/load.validate.timezone
+ * @req FR:config/load.timeblocks-replace @req FR:config/load.validate.time @req FR:config/load.validate.days @req FR:config/load.validate.timezone @req FR:config/load.validate.range
  */
 export function parseConfig(input?: unknown): StackConfig {
   const cfg: StackConfig = structuredClone(DEFAULTS_SOURCE);
@@ -141,7 +142,7 @@ const mins = (t: string): number => Number(t.slice(0, 2)) * 60 + Number(t.slice(
 
 /**
  * @req FR:config/time-block.@function @req FR:config/time-block.input @req FR:config/time-block.output
- * @req FR:config/time-block.resolve @req FR:config/time-block.overnight @req FR:config/time-block.none
+ * @req FR:config/time-block.resolve @req FR:config/time-block.overnight @req FR:config/time-block.none @req FR:config/time-block.overlap
  */
 export function getTimeBlock(config: StackConfig, at: Date): TimeBlock | undefined {
   const parts = new Intl.DateTimeFormat('en-US', {

@@ -15,7 +15,7 @@ last_updated: 2026-10-21
 
 **Open**: None
 
-**Next**: Open draft PR, run pr-loop.
+**Next**: Await owner review.
 
 **Pins**: `src/core/config.ts` — implementation
 
@@ -36,7 +36,7 @@ First Catalyst 0.3 validation slice of the Stack blueprint: config parsing, defa
 - [x] Spec (`.xe/features/config/spec.md`)
 - [x] Failing tests with `@req`
 - [x] Implementation
-- [ ] Review (pr-loop)
+- [x] Review (pr-loop, 2 rounds)
 
 ## Notes
 
