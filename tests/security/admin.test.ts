@@ -47,7 +47,7 @@ describe('token admin endpoints', () => {
     expect((await post({ name: 'x', scopes: ['read'], extra: 1 })).status).toBe(422);
     expect((await post('{bad', {})).status).toBe(400);
     const raw = await s.handler(new Request('https://stack.test/api/auth/tokens', {
-      method: 'POST', headers: { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'owner-1', userRoles: ['authenticated'] })).toString('base64'), 'content-type': 'text/plain' }, body: 'x',
+      method: 'POST', headers: { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'owner-1', userRoles: ['authenticated'] })).toString('base64'), 'sec-fetch-site': 'same-origin', 'content-type': 'text/plain' }, body: 'x',
     }));
     expect(raw.status).toBe(415);
     const big = await post({ name: 'x', scopes: ['read'], pad: 'a'.repeat(70000) });
