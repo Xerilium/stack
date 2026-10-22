@@ -60,7 +60,7 @@ describe('agent token mutations obey the autonomy gate', () => {
 
   it('complete is denied when autonomy is unset or too low', async () => {
     const { agent, text } = await mk();
-    for (const line of [L.plain, L.triage, L.assist, L.humanChild, L.humanOnly]) {
+    for (const line of [L.plain, L.triage, L.assist, L.humanChild, L.humanRow]) {
       expect((await agent('/tasks/complete', { ref: r(line) })).status).toBe(403);
     }
     expect(await text()).toBe(DOC);
