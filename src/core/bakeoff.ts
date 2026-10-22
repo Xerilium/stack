@@ -20,7 +20,7 @@ export const balancedEngine: ScoringEngine = {
   score(projects, config) {
     return legacyEngine.score(projects, config).map(s => {
       const { baseScore, effortHours } = s.breakdown;
-      const effective = Math.sqrt(effortHours);
+      const effective = Math.sqrt(Math.max(effortHours, 0.01)); // floor avoids div-by-zero
       const score = baseScore >= 0 ? baseScore / effective : baseScore * effective;
       return { ...s, score, breakdown: { ...s.breakdown, calculatedTotal: score } };
     });
