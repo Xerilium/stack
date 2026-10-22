@@ -138,6 +138,7 @@ describe('add', () => {
     expect(t.json.ref).toMatch(/^alpha:\d+$/);
     expect((await m.storage.read('tasks/alpha.md')).content).toContain('Do it');
   });
+  // @req FR:api/input.noforce
   it('409 on existing project; force is not accepted and never overwrites', async () => {
     const m = mk();
     await m.call('POST', '/api/projects', { name: 'Alpha' });

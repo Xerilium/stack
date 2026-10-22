@@ -105,7 +105,7 @@ describe.each(adapters)('%s contract', (_n, make) => {
       await expect(s.read(p)).rejects.toBeInstanceOf(PathError);
     });
 
-  // @req FR:storage-git/write.expected @req FR:storage-git/$write-opts
+  // @req FR:storage-git/write.expected @req FR:storage-git/$write-opts @req FR:storage-git/write.result
   it('enforces expectedVersion', async () => {
     const w1 = await s.write('tasks/x.md', 'one', { expectedVersion: null });
     await expect(s.write('tasks/x.md', 'dup', { expectedVersion: null })).rejects.toBeInstanceOf(ConflictError);
@@ -209,7 +209,7 @@ describe('GitStorage writeMany', () => {
 
 // @req FR:storage-git/git.isolation @req FR:storage-git/git.commit
 describe('GitStorage rollback', () => {
-  // @req FR:storage-git/git.failure
+  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
   it('rolls back a failed commit (pre-commit hook) and keeps unrelated staged files', async () => {
     const d = freshRepo();
     const s = new GitStorage(d);
@@ -226,7 +226,7 @@ describe('GitStorage rollback', () => {
     expect(git(d, 'status', '--porcelain')).toBe('A  other.txt\n');
   });
 
-  // @req FR:storage-git/git.failure
+  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
   it("keeps the user's own staged edit of the same path when the commit fails", async () => {
     const d = freshRepo();
     const s = new GitStorage(d);
@@ -238,7 +238,7 @@ describe('GitStorage rollback', () => {
     expect(git(d, 'status', '--porcelain')).toBe('M  tasks/x.md\n');
   });
 
-  // @req FR:storage-git/git.failure
+  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
   it('restores every path even if one restore throws, then rethrows the first error', async () => {
     const d = freshRepo();
     const s = new GitStorage(d);
@@ -429,7 +429,7 @@ describe('GitStorage with remote', () => {
     expect(readFileSync(join(b, 'tasks', 'x.md'), 'utf8')).toBe('from-a');
   });
 
-  // @req FR:storage-git/git.failure
+  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
   it('reports an autostash pop conflict instead of success', async () => {
     const { a, b } = remoteSetup();
     const sa = new GitStorage(a, { remote: 'origin', branch: 'main' });
@@ -458,7 +458,7 @@ describe('GitStorage with remote', () => {
     expect(git(b, 'stash', 'list')).toBe('');
   });
 
-  // @req FR:storage-git/git.failure
+  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
   it('throws StorageError (not ConflictError) for non-rejection push failures and drops the commit', async () => {
     const { bare, b } = remoteSetup();
     writeFileSync(join(bare, 'hooks', 'pre-receive'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
@@ -498,7 +498,7 @@ describe('GitStorage with remote', () => {
     await expect(sb.write('tasks/x.md', 'from-b')).rejects.toBeInstanceOf(ConflictError);
   });
 
-  // @req FR:storage-git/git.failure
+  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
   it('surfaces the push StorageError when the rollback restore itself fails', async () => {
     const { b } = remoteSetup();
     const sb = new GitStorage(b, { remote: 'origin', branch: 'main' });
@@ -512,7 +512,7 @@ describe('GitStorage with remote', () => {
     expect(err.message).not.toBe('boom');
   });
 
-  // @req FR:storage-git/git.failure
+  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
   it('does not treat non-conflict rebase failures as conflicts', async () => {
     const { a, b } = remoteSetup();
     const sa = new GitStorage(a, { remote: 'origin', branch: 'main' });

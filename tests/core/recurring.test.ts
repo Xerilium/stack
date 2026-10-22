@@ -47,7 +47,7 @@ describe('rollRecurring', () => {
     expect(rollRecurring('- [ ] 📅 mar 2, 2026: 🔄 weekly: X', ref)).toBe('- [ ] 📅 Mar 9, 2026: 🔄 weekly: X');
     expect(rollRecurring('- [ ] 📅 MAR 2, 2026: 🔄 WEEKLY: X', ref)).toBe('- [ ] 📅 Mar 9, 2026: 🔄 WEEKLY: X');
   });
-  // @req FR:recurring-rows/roll.step
+  // @req FR:recurring-rows/roll.step @req FR:recurring-rows/roll.yearless
   it('rolls Dec to Jan with and without year', () => {
     expect(rollRecurring('- [ ] 📅 Dec 10, 2026: 🔄 Monthly: X', ref)).toBe('- [ ] 📅 Jan 11, 2027: 🔄 Monthly: X <!--nominal:2027-01-10-->');
     expect(rollRecurring('- [ ] 📅 Dec 10: 🔄 Monthly: X', new Date(Date.UTC(2026, 5, 1)))).toBe('- [ ] 📅 Jan 11: 🔄 Monthly: X <!--nominal:2027-01-10-->');
