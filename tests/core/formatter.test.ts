@@ -84,6 +84,9 @@ describe('clean validation', () => {
     ['sections:\n  - heading: A\n    tasks:\n      - text: x\n', /sections\[0\]\.tasks\[0\]\.done/],
     ['sections:\n  - heading: A\n    tasks:\n      - text: x\n        done: false\n        notes: [1]\n', /notes/],
     ['metadata:\n  a: 1\n', /metadata\.a/],
+    ['titl: x\n', /titl: unknown key/],
+    ['sections:\n  - heading: A\n    task: []\n', /sections\[0\]\.task: unknown key/],
+    ['sections:\n  - heading: A\n    tasks:\n      - text: x\n        done: false\n        subtask: []\n', /tasks\[0\]\.subtask: unknown key/],
   ])('rejects %j', (src, re) => {
     expect(() => cleanFormatter.parse(src)).toThrow(FormatterError);
     expect(() => cleanFormatter.parse(src)).toThrow(re);

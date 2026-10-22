@@ -70,8 +70,14 @@ function strList(v: unknown, path: string): string[] {
   return v as string[];
 }
 
+const checkKeys = (o: Obj, allowed: string[], path: string): void => {
+  for (const k of Object.keys(o)) if (!allowed.includes(k)) fail(path ? `${path}.${k}` : k, 'unknown key');
+};
+
+// depth is the emoji-format indent in spaces (2 per nesting level), matching the canonical 2-space indent.
 function cleanTask(v: unknown, path: string, depth: number): Task {
   if (!isObj(v)) return fail(path, 'expected object');
+  checkKeys(v, ['text', 'done', 'notes', 'subtasks'], path);
   if (typeof v.text !== 'string') fail(`${path}.text`, 'expected string');
   if (typeof v.done !== 'boolean') fail(`${path}.done`, 'expected boolean');
   const subs = v.subtasks === undefined ? [] : v.subtasks;
@@ -104,6 +110,7 @@ function parseClean(src: string): Project {
   }
   if (doc === null || doc === undefined) doc = {};
   if (!isObj(doc)) return fail('root', 'expected mapping');
+  checkKeys(doc, ['title', 'metadata', 'sections'], '');
   if (doc.title !== undefined && typeof doc.title !== 'string') fail('title', 'expected string');
   const metadata: Record<string, string> = {};
   if (doc.metadata !== undefined) {
@@ -118,6 +125,7 @@ function parseClean(src: string): Project {
   const sections: Section[] = (rawSections as unknown[]).map((s, i) => {
     const path = `sections[${i}]`;
     if (!isObj(s)) return fail(path, 'expected object');
+    checkKeys(s, ['heading', 'tasks'], path);
     if (typeof s.heading !== 'string') fail(`${path}.heading`, 'expected string');
     const tasks = s.tasks === undefined ? [] : s.tasks;
     if (!Array.isArray(tasks)) fail(`${path}.tasks`, 'expected list');

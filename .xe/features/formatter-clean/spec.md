@@ -19,7 +19,7 @@ Let a repo store tasks as legacy emoji-markdown or as a clean YAML file, chosen 
 - In: `Formatter` interface (`src/core/formatter.ts`), emoji formatter (adapter over task-parser, behavior unchanged), clean YAML formatter, `format`/`alsoWrite` config keys, converters, round-trip fixtures.
 - Non-goals: migrating legacy data, rewiring lifecycle/summaries/CLI/API to read clean files, scoring or date semantics, a model-level (`task-model`) mapping.
 - Task text stays opaque in both formats (emoji, dates, `Mon D` stay in `text`).
-- Lossless means: convert emoji to clean and back yields identical bytes, and clean to emoji and back yields identical bytes, for canonical files (LF, no BOM, 2-space indent, notes before subtasks, standard blank lines). Non-canonical emoji bytes (BOM, CRLF, tabs, prose, unknown lines, `[X]`) are preserved only by the emoji formatter on its own parse/serialize; converting to clean keeps the structure and drops them.
+- Lossless means: convert emoji to clean and back yields identical bytes, and clean to emoji and back yields identical bytes, for canonical files (LF, no BOM, 2-space indent, notes before subtasks, standard blank lines; blank lines inside notes are non-canonical and do not survive emoji to clean and back). Non-canonical emoji bytes (BOM, CRLF, tabs, prose, unknown lines, `[X]`) are preserved only by the emoji formatter on its own parse/serialize; converting to clean keeps the structure and drops them.
 
 ## Scenarios
 
