@@ -202,7 +202,7 @@ const actionRoutes: Route[] = ACTIONS.map((a) => ({
   method: 'POST', doc: `/tasks/${a}`, name: `tasks.${a}`, body: ACTION_BODIES[a], run: (c) => action(c, a),
 }));
 
-/** @req FR:api/routes.next @req FR:api/routes.add @req FR:api/routes.actions @req FR:api/routes.remove @req FR:api/routes.tasks @req FR:api/routes.projects @req FR:api/routes.summaries */
+/** @req FR:ai-triage-assist/api.routes @req FR:api/routes.next @req FR:api/routes.add @req FR:api/routes.actions @req FR:api/routes.remove @req FR:api/routes.tasks @req FR:api/routes.projects @req FR:api/routes.summaries */
 export const ROUTES: Route[] = [
   {
     method: 'GET', doc: '/next', name: 'next', query: FIELDS_Q,

@@ -131,6 +131,7 @@ describe('applyTriage', () => {
     expect(await text()).toBe(DOC);
     expect(await storage.list()).toEqual(['tasks/alpha.md']);
   });
+  // @req FR:ai-triage-assist/autonomy.owner
   it('owner skips the gate', async () => {
     const { ctx, text } = await setup();
     await applyTriage(ctx, ref(L.plain), { human: 'Decide' }, owner);
@@ -368,6 +369,7 @@ describe('hardening', () => {
     expect(await text()).toContain('- [x] 🔺 🪄 Prefixed child');
   });
 
+  // @req FR:ai-triage-assist/triage.pin
   it('a concurrent edit above the row fails the write instead of landing on another row', async () => {
     const { ctx, storage, text } = await setup();
     const real = storage.write.bind(storage);
@@ -409,6 +411,7 @@ describe('hardening', () => {
     expect(await text()).toBe(DOC);
   });
 
+  // @req FR:ai-triage-assist/triage.syntax
   it('subtask text rejects every row syntax emoji, even without variation selectors', async () => {
     const { ctx, text } = await setup();
     for (const bad of ['x ☀️ y', 'x ☀ y', 'x 🅿 y', 'x ⏸ y', 'x 🏷️', 'x 🚨', 'x 🟢', 'x ⬆️', 'x 📅 Oct 23: y', 'x ⏰ Oct 5: y', '🔄 Weekly: x', 'x 🤖\u200b:full', 'a\u200b🙋b']) {

@@ -56,7 +56,7 @@ const SUMMARY_PATH = /^(README|stack|projects|my-day)\.md$/;
 /** Agent result logs live beside the tasks, in their own folder, and are never projects. */
 const LOG_PATH = /^tasks\/logs\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
 
-/** @req FR:storage-git/interface.paths */
+/** @req FR:storage-git/interface.paths @req FR:ai-triage-assist/result.path */
 export function validatePath(path: string): string {
   if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path)) || path.split('/').includes('..')) {
     throw new PathError(`Invalid task path: ${JSON.stringify(path)}`);

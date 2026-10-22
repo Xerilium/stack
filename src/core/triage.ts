@@ -153,7 +153,7 @@ function checkCaller(c: Caller): void {
   if (typeof c?.actor !== 'string' || !ACTOR.test(c.actor)) throw new LifecycleError('Invalid actor');
 }
 
-/** One line of 1-200 characters with no control characters and no row syntax. @req FR:ai-triage-assist/triage.subtasks */
+/** One line of 1-200 characters with no control characters and no row syntax. @req FR:ai-triage-assist/triage.subtasks @req FR:ai-triage-assist/triage.syntax */
 function subtaskText(v: unknown, label: string): string {
   if (typeof v !== 'string') throw new LifecycleError(`${label} must be a string`);
   const t = norm(v).trim();
@@ -238,7 +238,7 @@ async function ensureChild(ctx: LifecycleContext, parent: TaskRef, mark: string,
 const PROPS = { priority: PRIORITY, effort: EFFORT, impact: IMPACT } as const;
 const SUGGESTION_KEYS = new Set(['agent', 'human', 'priority', 'effort', 'impact']);
 
-/** The row as read, so a concurrent edit makes the write fail instead of landing on a different row. */
+/** The row as read, @req FR:ai-triage-assist/triage.pin @req FR:ai-triage-assist/autonomy.owner - so a concurrent edit makes the write fail instead of landing on a different row. */
 const pinned = (ref: TaskRef, l: Located): TaskRef => ({ path: ref.path, line: ref.line, text: l.row.text });
 
 /**
