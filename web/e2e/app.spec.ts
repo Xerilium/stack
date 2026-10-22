@@ -82,14 +82,14 @@ test.describe('next view', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Start' }).click();
     await expect(page.getByText('Started')).toBeVisible();
-    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'alpha:6' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'alpha:6' } });
     await page.getByRole('button', { name: 'Suspend 1 day' }).click();
-    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:6', days: 1 } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:6', days: 1 } });
     await expect(page.getByTestId('next-title')).toContainText('Write docs');
     await page.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('Undo')).toBeVisible();
     await page.getByRole('button', { name: 'Undo' }).click();
-    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/set', body: { ref: 'alpha:7', checkbox: 'Incomplete' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/set', body: { ref: 'alpha:7', checkbox: 'Incomplete' } });
     await expect(page.getByTestId('next-title')).toContainText('Write docs');
   });
 
@@ -214,7 +214,7 @@ test.describe('pickers and bulk edit', () => {
     await page.getByRole('dialog').getByRole('button', { name: /Critical/ }).click();
     await expect(page.getByText('2 updated, 1 failed. nope')).toBeVisible();
     await expect(page.getByRole('toolbar')).toContainText('1 selected');
-    expect(m.calls.filter((c) => c.path === '/tasks/set').map((c) => c.body.ref)).toEqual(['alpha:7', 'beta:4']);
+    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/set').map((c) => c.body.ref)).toEqual(['alpha:7', 'beta:4']);
     expect(n).toBe(3);
   });
 
@@ -225,7 +225,7 @@ test.describe('pickers and bulk edit', () => {
     await page.getByLabel('Select Plan the trip').check();
     await page.getByRole('toolbar').getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('2 done')).toBeVisible();
-    expect(m.calls.filter((c) => c.path === '/tasks/complete')).toHaveLength(2);
+    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/complete')).toHaveLength(2);
     await expect(page.getByRole('toolbar')).toHaveCount(0);
   });
 });
@@ -241,7 +241,7 @@ test.describe('stale line numbers', () => {
     await page.getByLabel('Edit task text').fill('Write the docs 🟢');
     await page.getByLabel('Edit task text').press('Enter');
     await expect(page.getByText('Changed elsewhere')).toBeVisible();
-    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:7', expect: 'Write docs 🟢' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:7', expect: 'Write docs 🟢' } });
     expect(m.tasks.map((t) => t.text)).toContain('Write docs 🟢');
     expect(m.tasks.find((t) => t.ref === 'alpha:7')!.text).toContain('Ship the');
     await expect(page.locator('.row[data-ref="alpha:6"]')).toContainText('Added by someone else');
@@ -261,7 +261,7 @@ test.describe('stale line numbers', () => {
     await page.mouse.move(to!.x + 60, to!.y + 6, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByText('Changed elsewhere')).toBeVisible();
-    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/move', body: { ref: 'alpha:9', expect: 'Review pull requests 🟠', expectTarget: '‼️ 📅 Oct 23: Ship the **web app** 🟡' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/move', body: { ref: 'alpha:9', expect: 'Review pull requests 🟠', expectTarget: '‼️ 📅 Oct 23: Ship the **web app** 🟡' } });
     expect(m.tasks.map((t) => t.ref + t.text)).toEqual(before);
   });
 
@@ -274,7 +274,7 @@ test.describe('stale line numbers', () => {
     m.insertAbove('alpha', 'Added by someone else');
     await page.getByRole('toolbar').getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('2 done')).toBeVisible();
-    expect(m.calls.filter((c) => c.path === '/tasks/complete').map((c) => c.body.ref)).toEqual(['alpha:8', 'alpha:10']);
+    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/complete').map((c) => c.body.ref)).toEqual(['alpha:8', 'alpha:10']);
     expect(m.tasks.filter((t) => t.done && t.project === 'alpha').map((t) => t.text)).toEqual(['Write docs 🟢', 'Review pull requests 🟠']);
   });
 
@@ -313,7 +313,7 @@ test.describe('editor', () => {
     await page.getByLabel('Edit task text').fill('Write the docs 🟢');
     await page.getByLabel('Edit task text').press('Enter');
     await expect(page.getByText('Saved')).toBeVisible();
-    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:7', text: 'Write the docs 🟢' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:7', text: 'Write the docs 🟢' } });
   });
 
   test('Enter or e on the cursor row opens the editor', async ({ page }, info) => {
@@ -400,12 +400,12 @@ test.describe('capture', () => {
     await box.press('Enter');
     await expect(page.getByText('Added: Call dentist')).toBeVisible();
     await expect(box).toHaveValue('');
-    expect(m.calls.at(-1)).toMatchObject({ path: '/capture', body: { text: 'call dentist tomorrow 30m #beta' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/capture', body: { text: 'call dentist tomorrow 30m #beta' } });
     await box.fill('water plants');
     await expect(page.getByTestId('capture-preview')).toContainText('#beta');
     await box.press('Enter');
     await expect(page.getByText('Added: Water plants')).toBeVisible();
-    expect(m.calls.at(-1)?.body.project).toBe('beta');
+    await expect.poll(() => m.calls.at(-1)?.body.project).toBe('beta');
   });
 
   test('parse errors stay inline and keep the text', async ({ page }) => {
@@ -444,7 +444,7 @@ test.describe('palette', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: 'Set properties' })).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: /High/ }).first().click();
-    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/set', body: { ref: 'alpha:6', priority: '‼️' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/set', body: { ref: 'alpha:6', priority: '‼️' } });
     await page.keyboard.press('Control+k');
     await page.getByLabel('Command', { exact: true }).fill('capac');
     await page.keyboard.press('ArrowDown');
