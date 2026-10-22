@@ -9,10 +9,11 @@
     "build:cli": "tsc -p tsconfig.cli.json",
     "bakeoff": "node dist/core/bakeoff.js",
     "clean": "rm -rf dist",
-    "lint": "eslint . && tsc --noEmit -p tsconfig.core.json",
+    "lint": "eslint . && tsc --noEmit -p tsconfig.core.json && tsc --noEmit -p tsconfig.cli.json",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "parity": "jest tests/parity/cli-parity.test.ts"
   },
   "keywords": [
     "task-management",
@@ -44,5 +45,8 @@
   "packageManager": "pnpm@11.0.8",
   "engines": {
     "node": ">=22"
+  },
+  "bin": {
+    "stack": "dist/cli/index.js"
   }
 }

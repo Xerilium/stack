@@ -129,3 +129,13 @@
 **Why**: Waiting on a person stalls the stack the product exists to keep moving.
 
 **Rejected**: Human approval gates before implementation.
+
+## CLI refs are 1-based and no-ops exit 0
+
+**Decision**: CLI task refs are `tasks/<file>.md:<line>` (1-based). No-ops exit 0; only "no task to act on" exits 4. Summary files are allowed storage paths beside `tasks/*.md`.
+
+**Date**: 2026-10-22
+
+**Why**: Matches editors and grep output; scripts should not fail on idempotent calls.
+
+**Rejected**: 0-based refs (error-prone); non-zero exit for no-ops.
