@@ -91,6 +91,27 @@ describe('expandQueryTasks', () => {
     const r = await expandQueryTasks(src, fake([pr(1)]), opts);
     expect(r.content).toBe(`﻿# P\r\n${TRIG}\r\n  - [ ] 🌐 PR 1 — https://github.com/o/r/pull/1\r\n- [ ] after\r\n`);
   });
+  // @req FR:query-tasks/trigger.pattern
+  it('does not count a BOM as indent', async () => {
+    const src = `\uFEFF- [ ] Sweep 🔎 @GitHub/o/r (x)\n  - [ ] 🌐 old — u\n`;
+    expect(findQueryTriggers(src)[0].indent).toBe(0);
+    const r = await expandQueryTasks(src, fake([pr(1)]), opts);
+    expect(r.content).toBe(`\uFEFF- [ ] Sweep 🔎 @GitHub/o/r (x)\n  - [ ] 🌐 PR 1 — https://github.com/o/r/pull/1\n`);
+  });
+  // @req FR:query-tasks/expand.url
+  it.each(['', ' ', 'https://x/a b', 'https://x/a\nb'])('rejects url %j as malformed', async (url) => {
+    const src = `${TRIG}\n  - [ ] 🌐 keep — u\n`;
+    const r = await expandQueryTasks(src, fake([{ title: 't', url, kind: 'Issue' }]), opts);
+    expect(r.content).toBe(src);
+    expect(r.failures).toHaveLength(1);
+  });
+  // @req FR:query-tasks/expand.timezone
+  it('throws up front on an invalid timeZone', async () => {
+    const c = fake([]);
+    await expect(expandQueryTasks(TRIG, c, { now, timeZone: 'Not/AZone' })).rejects.toThrow(RangeError);
+    await expect(refreshQueryTasks(new MemoryStorage(), c, { now, timeZone: 'Not/AZone' })).rejects.toThrow(RangeError);
+    expect(c.calls).toEqual([]);
+  });
   it('handles a trigger on the last line without a newline', async () => {
     const r = await expandQueryTasks(TRIG, fake([pr(1)]), opts);
     expect(r.content).toBe(`${TRIG}\n  - [ ] 🌐 PR 1 — https://github.com/o/r/pull/1`);
@@ -199,6 +220,26 @@ describe('refreshQueryTasks', () => {
     expect(r.files).toEqual(['tasks/b.md']);
     expect(r.failures).toEqual([expect.objectContaining({ path: 'tasks/a.md' })]);
     expect((await st.read('tasks/a.md')).content).toBe('changed under us\n');
+  });
+});
+
+// @req FR:query-tasks/refresh.conflict
+describe('refreshQueryTasks error isolation', () => {
+  it('records read and write errors and continues', async () => {
+    const st = new MemoryStorage();
+    await st.write('tasks/a.md', `${TRIG}\n`);
+    await st.write('tasks/b.md', `${TRIG}\n`);
+    await st.write('tasks/c.md', `${TRIG}\n`);
+    const read = st.read.bind(st);
+    jest.spyOn(st, 'read').mockImplementation(async (p) => { if (p === 'tasks/a.md') throw new Error('disk'); return read(p); });
+    const write = st.write.bind(st);
+    jest.spyOn(st, 'write').mockImplementation(async (p, c, o) => { if (p === 'tasks/b.md') throw new Error('EACCES'); return write(p, c, o); });
+    const r = await refreshQueryTasks(st, fake([pr(1)]), opts);
+    expect(r.files).toEqual(['tasks/c.md']);
+    expect(r.failures).toEqual([
+      expect.objectContaining({ path: 'tasks/a.md', message: 'disk' }),
+      expect.objectContaining({ path: 'tasks/b.md', message: 'EACCES' }),
+    ]);
   });
 });
 

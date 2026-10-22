@@ -45,7 +45,7 @@ function splitLines(content: string): { lines: string[]; eols: string[] } {
 export function findQueryTriggers(content: string): QueryTrigger[] {
   const out: QueryTrigger[] = [];
   splitLines(content).lines.forEach((text, line) => {
-    const box = CHECKBOX.exec(text);
+    const box = CHECKBOX.exec(text.replace(/^\uFEFF/, ''));
     const m = box && TRIGGER.exec(text);
     if (!box || !m) return;
     const suffix = m[3];
@@ -53,6 +53,11 @@ export function findQueryTriggers(content: string): QueryTrigger[] {
     out.push({ line, indent: box[1].length, source: m[1], identifier: m[2], type, params: m[4] });
   });
   return out;
+}
+
+/** @req FR:query-tasks/expand.timezone */
+function assertTimeZone(timeZone = 'UTC'): void {
+  new Intl.DateTimeFormat('en-US', { timeZone });
 }
 
 function stamp(now: Date, timeZone = 'UTC'): string {
@@ -68,13 +73,14 @@ function validate(items: unknown): QueryItem[] {
   if (!Array.isArray(items)) throw new Error('Query returned an unexpected response');
   return items.map((i) => {
     const o = i as Partial<QueryItem> | null;
-    if (!o || typeof o.title !== 'string' || typeof o.url !== 'string') throw new Error('Query returned a malformed item');
+    if (!o || typeof o.title !== 'string' || typeof o.url !== 'string' || o.url === '' || /\s/.test(o.url)) throw new Error('Query returned a malformed item');
     return { title: o.title, url: o.url, kind: typeof o.kind === 'string' ? o.kind : '' };
   });
 }
 
 /** @req FR:query-tasks/expand.@function */
 export async function expandQueryTasks(content: string, client: QueryClient, opts: ExpandOptions): Promise<ExpandResult> {
+  assertTimeZone(opts.timeZone);
   const triggers = findQueryTriggers(content);
   const result: ExpandResult = { content, processed: 0, skipped: 0, failures: [] };
   if (triggers.length === 0) return result;
@@ -118,6 +124,7 @@ export interface RefreshFailure extends Partial<QueryFailure> { path: string; me
 export interface RefreshResult { files: string[]; processed: number; skipped: number; failures: RefreshFailure[] }
 
 export async function refreshQueryTasks(storage: Storage, client: QueryClient, opts: ExpandOptions): Promise<RefreshResult> {
+  assertTimeZone(opts.timeZone);
   const out: RefreshResult = { files: [], processed: 0, skipped: 0, failures: [] };
   const failures = out.failures;
   for (const path of (await storage.list()).filter((p) => p.endsWith('.md')).sort()) {
@@ -132,8 +139,8 @@ export async function refreshQueryTasks(storage: Storage, client: QueryClient, o
         out.files.push(path);
       }
     } catch (e) {
-      if (!(e instanceof ConflictError)) throw e;
-      failures.push({ path, message: e.message || 'Conflict' });
+      const message = e instanceof Error ? e.message : String(e);
+      failures.push({ path, message: message || (e instanceof ConflictError ? 'Conflict' : 'Error') });
     }
   }
   return out;
@@ -143,8 +150,11 @@ export async function refreshQueryTasks(storage: Storage, client: QueryClient, o
 
 export type Exec = (file: string, args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>;
 
+const GH_TIMEOUT_MS = 60_000;
+
 const defaultExec: Exec = (file, args) => new Promise((resolve, reject) => {
-  execFile(file, args, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+  execFile(file, args, { maxBuffer: 16 * 1024 * 1024, timeout: GH_TIMEOUT_MS }, (err, stdout, stderr) => {
+    if (err && (err as { killed?: boolean }).killed) return reject(new Error(`gh timed out after ${GH_TIMEOUT_MS / 1000}s`));
     if (err && typeof (err as NodeJS.ErrnoException).code !== 'number') return reject(err);
     resolve({ code: err ? ((err as NodeJS.ErrnoException).code as unknown as number) : 0, stdout, stderr });
   });
