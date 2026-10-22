@@ -15,14 +15,15 @@ $ErrorActionPreference = 'Stop'
 $WarningPreference = 'SilentlyContinue'
 Set-Location $LegacyRoot
 $ps = Join-Path $LegacyRoot 'src/PowerShell'
-foreach ($f in Get-ChildItem (Join-Path $ps 'Private/*.ps1') -File) { . $f.FullName }
-foreach ($f in Get-ChildItem (Join-Path $ps 'Public/*.ps1') -File) { . $f.FullName }
+foreach ($f in Microsoft.PowerShell.management\Get-ChildItem (Join-Path $ps 'Private/*.ps1') -File) { . $f.FullName }
+foreach ($f in Microsoft.PowerShell.management\Get-ChildItem (Join-Path $ps 'Public/*.ps1') -File) { . $f.FullName }
 
 $emptyOut = Join-Path ([IO.Path]::GetTempPath()) ("golden-" + [guid]::NewGuid())
 New-Item -ItemType Directory $emptyOut | Out-Null
-# Deterministic discovery order (name ascending); legacy falls back to directory order.
-$projects = Get-StackProjects -TasksPath $TasksPath -OutputPath $emptyOut
-$files = Get-ChildItem $TasksPath -Filter '*.md' | Sort-Object Name
+# Deterministic order: legacy uses raw directory order. Sort by file name (ordinal). Legacy tie-break is
+# Sort-Object CalculatedPriority, Priority (projects.md order, 999 when absent; the empty output dir has none),
+# so with no projects.md ties resolve to this input order.
+$projects = @(Get-StackProjects -TasksPath $TasksPath -OutputPath $emptyOut | Sort-Object { [IO.Path]::GetFileName($_.FilePath) } -Culture ([cultureinfo]::InvariantCulture))
 
 $allTasks = @()
 foreach ($p in $projects) { $allTasks += ConvertFrom-StackMarkdown -MarkdownContent $p.Content -ProjectMetadata $p }
@@ -67,7 +68,7 @@ $filtered = foreach ($iso in $instants) {
 
 $out = [ordered]@{
   generatedFrom = 'legacy Get-StackProjects + ConvertFrom-StackMarkdown + Get-StackTaskScore + Filter-TasksByTimeBlock'
-  projects = @($projects | ForEach-Object { [ordered]@{ name = $_.Name; valueScore = [double]$_.ValueScore; calculatedPriority = [double]$_.CalculatedPriority; weight = [double]$_.Weight } })
+  projects = @($projects | Sort-Object Weight -Descending | ForEach-Object { [ordered]@{ name = $_.Name; valueScore = [double]$_.ValueScore; calculatedPriority = [double]$_.CalculatedPriority; weight = [double]$_.Weight } })
   ranking = @($sorted | ForEach-Object { $_.Id })
   tasks = @($sorted | ForEach-Object { Convert-Task $_ })
   filtered = @($filtered)

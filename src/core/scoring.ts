@@ -220,7 +220,10 @@ function outcomeEffort(t: ScoringTask, ctx: Ctx): number {
 
 /** @req FR:scoring-engine/filter.parked */
 export function isParked(task: ScoringTask, all: ScoringTask[]): boolean {
-  const byId = new Map(all.map(t => [t.id, t]));
+  return parkedIn(task, new Map(all.map(t => [t.id, t])));
+}
+
+function parkedIn(task: ScoringTask, byId: Map<string, ScoringTask>): boolean {
   const seen = new Set<string>();
   for (let cur: ScoringTask | undefined = task; cur && !seen.has(cur.id); cur = cur.parent ? byId.get(cur.parent) : undefined) {
     seen.add(cur.id);
@@ -259,7 +262,7 @@ function scoreAll(projects: ScoringProject[], config: StackConfig): ScoredTask[]
       if (!(effortHours > 0)) throw new ScoringError(`effort hours must be positive for task ${t.id}`);
       const score = baseScore / effortHours;
       out.push({
-        task: t, leaf, parked: isParked(t, all), score,
+        task: t, leaf, parked: parkedIn(t, ctx.byId), score,
         breakdown: { emojiContributions: contributions, projectBonus, placementBonus, baseScore, effortHours, calculatedTotal: score },
       });
     }
@@ -377,7 +380,10 @@ const CAPACITY_LINE = /^-\s+\*\*(.+?)\s+capacity:\*\*\s+(\d+(?:\.\d+)?)h\s*$/i;
  * @req FR:scoring-engine/load.tasks @req FR:scoring-engine/filter.capacity
  */
 export function toScoringProject(project: Project, fallbackName = ''): ScoringProject {
-  const name = project.title || fallbackName;
+  // Legacy: H1 on the first line only; otherwise the file base name with '-' as ' '.
+  const first = project.lines[0]?.replace(/^﻿/, '').replace(/\r$/, '').trim() ?? '';
+  const h1 = /^# (.+)$/.exec(first)?.[1].trim();
+  const name = h1 || fallbackName.replace(/-/g, ' ');
   const lines = project.lines.map(l => l.replace(/^﻿/, '').replace(/\r$/, ''));
   const content = lines.join('\n');
 

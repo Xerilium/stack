@@ -104,7 +104,7 @@ describe('legacy engine scoring', () => {
   });
 
   // @req FR:scoring-engine/score.aggregate.effort
-  it('ignores effort weights additively', () => {
+  it('does not add effort emoji weights', () => {
     expect(scoreOne('🔹 x').breakdown.emojiContributions).toEqual([]);
   });
 
@@ -211,6 +211,15 @@ describe('filtering', () => {
     const parked = legacyEngine.score([proj('P', [p, kid, blocked, task('🅿️ idea'), task('💤 Jan 5: nap'), task('fine')])], config);
     expect(parked.map(s => s.parked)).toEqual([true, true, true, true, true, false]);
     expect(isParked(kid, [p, kid])).toBe(true);
+  });
+
+  // @req FR:scoring-engine/filter.parked
+  it('inherits ⛔️ parking through an ancestor', () => {
+    const top = task('⛔️ blocked', null, 'P', 'P_t');
+    const mid = task('mid', 'P_t', 'P', 'P_m');
+    const leaf = task('leaf', 'P_m', 'P', 'P_l');
+    expect(legacyEngine.score([proj('P', [top, mid, leaf])], config).map(s => s.parked)).toEqual([true, true, true]);
+    expect(isParked(leaf, [top, mid, leaf])).toBe(true);
   });
 
   const at = (iso: string) => new Date(iso);
@@ -335,6 +344,20 @@ describe('toScoringProject', () => {
   it('names the project from the title or the fallback', () => {
     expect(toScoringProject(parseProject(src)).name).toBe('🧪 Name');
     expect(toScoringProject(parseProject('## 🔄 Active\n- [ ] a\n'), 'my file').name).toBe('my file');
+  });
+
+  // @req FR:scoring-engine/load.name
+  it('replaces hyphens in the fallback name and ignores an H1 that is not on line 1', () => {
+    expect(toScoringProject(parseProject('## 🔄 Active\n- [ ] a\n'), 'my-hyphen-file').name).toBe('my hyphen file');
+    expect(toScoringProject(parseProject('\n# Late\n## 🔄 Active\n- [ ] a\n'), 'some-file').name).toBe('some file');
+  });
+
+  // @req FR:scoring-engine/load.tasks @req FR:scoring-engine/load.name
+  it('handles CRLF and a BOM', () => {
+    const p = toScoringProject(parseProject('\uFEFF# Crlf\r\n\r\n- **Weekly capacity:** 5\r\n\r\n## 🔄 Active\r\n- [ ] a\r\n  - [ ] b\r\n'));
+    expect(p.name).toBe('Crlf');
+    expect(p.weeklyCapacity).toBe(5);
+    expect(p.tasks.map(x => x.text)).toEqual(['a', 'b']);
   });
 
   // @req FR:scoring-engine/load.metadata @req FR:scoring-engine/filter.capacity

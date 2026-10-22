@@ -84,7 +84,7 @@ The next task must be an unparked leaf allowed in the current time block.
 ### FR:load: Adapt parsed projects
 
 - **FR:load.@function** (P1): Interface: `toScoringProject(project: Project, fallbackName?: string): ScoringProject`
-- **FR:load.name** (P1): The name MUST be the project title, else `fallbackName`
+- **FR:load.name** (P1): The name MUST be the H1 on the first line, else `fallbackName` with `-` replaced by a space
 - **FR:load.metadata** (P1): `toScoringProject` MUST read `**Project value:**` emojis, `**Weekly capacity:**` (default 40), `**Project priority:**`, and capacity lines from the project content
 - **FR:load.tasks** (P1): Tasks MUST be the unchecked `- [ ] text` lines of the first `🔄 Active` section in document order, with ids `<name>_task_<n>`, level `floor(indent / 2)`, and parents from the legacy level walk
 
@@ -106,6 +106,9 @@ The next task must be an unparked leaf allowed in the current time block.
   - Checked tasks are skipped without re-parenting their unchecked children
   - Only the Active section is scored; the `effort` weight category is ignored
   - Equal scores have no defined order in legacy (PowerShell `Sort-Object` is unstable); the engine keeps input order, and goldens compare tie groups as sets
+  - Project weight ties break on `Priority` (projects.md order, 999 when absent); the engine keeps input order instead, since file I/O is out of scope
+  - Project name is the H1 on line 1 only, else the file base name with `-` replaced by a space
+  - `score.validate` throws on negative effort; legacy fails only on zero (deliberate deviation)
 
 ## Architecture Constraints
 

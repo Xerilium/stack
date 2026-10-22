@@ -56,8 +56,8 @@
     "📦 Delta_task_0",
     "Beta_task_6",
     "Beta_task_12",
-    "🧪 Gamma_task_5",
     "Epsilon_task_1",
+    "🧪 Gamma_task_5",
     "🚀 Alpha_task_7",
     "🧪 Gamma_task_14",
     "🚀 Alpha_task_3",
@@ -84,8 +84,8 @@
     "Beta_task_9",
     "Epsilon_task_0",
     "🧪 Gamma_task_4",
-    "🧪 Gamma_task_13",
     "📦 Delta_task_1",
+    "🧪 Gamma_task_13",
     "📦 Delta_task_2",
     "Beta_task_10",
     "🧪 Gamma_task_12",
@@ -588,32 +588,6 @@
       }
     },
     {
-      "id": "🧪 Gamma_task_5",
-      "project": "🧪 Gamma",
-      "text": "Root without outcome marker ‼️",
-      "level": 0.0,
-      "parent": null,
-      "leaf": false,
-      "position": null,
-      "totalLeaves": null,
-      "parked": false,
-      "score": 11.0,
-      "breakdown": {
-        "emojiContributions": [
-          {
-            "category": "Priority",
-            "emoji": "‼️",
-            "value": 10
-          }
-        ],
-        "projectBonus": 1.0,
-        "placementBonus": 0.0,
-        "baseScore": 11.0,
-        "effortHours": 1.0,
-        "calculatedTotal": 11.0
-      }
-    },
-    {
       "id": "Epsilon_task_1",
       "project": "Epsilon",
       "text": "🏠 Home chore 🟡",
@@ -633,6 +607,32 @@
           }
         ],
         "projectBonus": 3.0,
+        "placementBonus": 0.0,
+        "baseScore": 11.0,
+        "effortHours": 1.0,
+        "calculatedTotal": 11.0
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_5",
+      "project": "🧪 Gamma",
+      "text": "Root without outcome marker ‼️",
+      "level": 0.0,
+      "parent": null,
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": false,
+      "score": 11.0,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "‼️",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
         "placementBonus": 0.0,
         "baseScore": 11.0,
         "effortHours": 1.0,
@@ -1407,26 +1407,6 @@
       }
     },
     {
-      "id": "🧪 Gamma_task_13",
-      "project": "🧪 Gamma",
-      "text": "Tabbed child 🟢",
-      "level": 0.0,
-      "parent": null,
-      "leaf": true,
-      "position": 9,
-      "totalLeaves": 11,
-      "parked": false,
-      "score": 2.4,
-      "breakdown": {
-        "emojiContributions": [],
-        "projectBonus": 1.0,
-        "placementBonus": 0.2,
-        "baseScore": 1.2,
-        "effortHours": 0.5,
-        "calculatedTotal": 2.4
-      }
-    },
-    {
       "id": "📦 Delta_task_1",
       "project": "📦 Delta",
       "text": "Tie task one 🟡",
@@ -1443,6 +1423,26 @@
         "placementBonus": 0.4,
         "baseScore": 2.4,
         "effortHours": 1.0,
+        "calculatedTotal": 2.4
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_13",
+      "project": "🧪 Gamma",
+      "text": "Tabbed child 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 9,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 2.4,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 1.0,
+        "placementBonus": 0.2,
+        "baseScore": 1.2,
+        "effortHours": 0.5,
         "calculatedTotal": 2.4
       }
     },
@@ -1831,8 +1831,8 @@
         "🚀 Alpha_task_13",
         "Epsilon_task_0",
         "🧪 Gamma_task_4",
-        "🧪 Gamma_task_13",
         "📦 Delta_task_1",
+        "🧪 Gamma_task_13",
         "📦 Delta_task_2",
         "🧪 Gamma_task_12",
         "🧪 Gamma_task_6",
