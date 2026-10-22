@@ -5,15 +5,20 @@
  */
 import {
   addTask, applyTaskProps, completeTask, EFFORT, IMPACT, LifecycleError, PRIORITY, SPECIAL, STATUS, startTask,
-  type LifecycleContext, type LifecycleResult, type TaskRef,
+  type LifecycleContext, type LifecycleResult, type TaskProps, type TaskRef,
 } from './lifecycle';
 import { AUTONOMY_LEVELS, type Autonomy } from './model';
 import { parseProject, type Task } from './parser';
-import { ConflictError, NotFoundError } from './storage';
+import { ConflictError, NotFoundError, writeAll } from './storage';
 
 /** The autonomy gate said no. Agents treat this as "skip and move on". */
 export class TriageDenied extends LifecycleError {
   constructor(message = 'Autonomy level does not allow this') { super(message); }
+}
+
+/** The row is in a state that blocks the change (for example an open 🙋 subtask). Maps to 409. */
+export class TriageBlocked extends LifecycleError {
+  constructor(message = 'Task has an open item for a person') { super(message); }
 }
 
 export type TriageAction = 'triage' | 'record' | 'claim' | 'complete-subtask' | 'complete-task';
@@ -316,7 +321,24 @@ const logName = (ref: TaskRef): string => {
 const logFile = (ref: TaskRef, n: number): string => `tasks/logs/${logName(ref)}${n === 0 ? '' : `.${n + 1}`}.md`;
 
 /**
- * Append-only entry in `tasks/logs/<project>.md` (rolls to `.2.md`, `.3.md`, ... when a file is full, at most 5 files; a slug has no dots so a rollover never equals another project's log). Every field is one redacted line.
+ * All files full: drop the oldest and shift the rest down, leaving a header-only last file. The newest entries are always kept, so a flood
+ * can never block claim or record-result. Dropped entries remain in storage history. A concurrent rotation just makes this a no-op retry.
+ * @req FR:ai-triage-assist/result.cap
+ */
+async function rotateLogs(ctx: LifecycleContext, ref: TaskRef): Promise<void> {
+  const files = await Promise.all(Array.from({ length: MAX_LOG_FILES }, async (_, i) => ({ path: logFile(ref, i), cur: await ctx.storage.read(logFile(ref, i)) })));
+  if (!files.every((f) => f.cur.content.length > MAX_LOG)) return;
+  const title = md(redact(parseProject((await ctx.storage.read(ref.path)).content).title || baseName(ref.path)));
+  const writes = files.map((f, i) => ({
+    path: f.path,
+    content: i < MAX_LOG_FILES - 1 ? files[i + 1].cur.content : `# ${title} agent log\n\n`,
+    expectedVersion: f.cur.version,
+  }));
+  try { await writeAll(ctx.storage, writes, `Log rotate: ${baseName(ref.path)}`); } catch (e) { if (!(e instanceof ConflictError)) throw e; }
+}
+
+/**
+ * Append-only entry in `tasks/logs/<project>.md` (rolls to `.2.md`, `.3.md`, ... when a file is full, at most 5 files, then the oldest is dropped; a slug has no dots so a rollover never equals another project's log). Every field is one redacted line.
  * @req FR:ai-triage-assist/result.log
  */
 async function appendLog(ctx: LifecycleContext, ref: TaskRef, caller: Caller, lvl: Autonomy, fields: [string, string][]): Promise<void> {
@@ -334,7 +356,11 @@ async function appendLog(ctx: LifecycleContext, ref: TaskRef, caller: Caller, lv
     let cur: { content: string; version: string } | null = null;
     try { cur = await ctx.storage.read(path); } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
     if (cur && cur.content.length > MAX_LOG) {
-      if (++n >= MAX_LOG_FILES) throw new LifecycleError('Result log is full');
+      if (++n >= MAX_LOG_FILES) {
+        if (attempt >= 12) throw new LifecycleError('Result log is busy');
+        await rotateLogs(ctx, ref);
+        n = 0;
+      }
       continue;
     }
     const title = cur ? '' : md(redact(parseProject((await ctx.storage.read(ref.path)).content).title || baseName(ref.path)));
@@ -425,4 +451,43 @@ export async function recordResult(ctx: LifecycleContext, ref: TaskRef, r: Resul
     }
   }
   return { logged: true, completed, deferred: wants && !completed, ref: { path: ref.path, line: ref.line }, ...(human ? { human } : {}) };
+}
+
+// ------------------------------------------------------------------ other agent mutations
+
+const GATE_MARKS = ['🪄', '🙋', '🤖', '⛔', '⏸', '👀', '⏳', '💤', '🅿'];
+const gateCounts = (v: string): number[] => {
+  const t = norm(v);
+  return GATE_MARKS.map((m) => t.split(m).length - 1);
+};
+/** True when two row texts carry the same gate markers (agent, human, autonomy, hold). @req FR:ai-triage-assist/autonomy.structure */
+export const sameGateMarks = (a: string, b: string): boolean => gateCounts(a).join() === gateCounts(b).join();
+
+export type MutationAction = 'start' | 'complete' | 'set';
+
+/**
+ * Checks an agent's `start`, `complete`, or `set` against the row's autonomy and returns the row pinned for the write.
+ * Deny by default; messages are fixed text and never quote the row.
+ * @req FR:ai-triage-assist/autonomy.mutations
+ */
+export async function authorizeMutation(ctx: LifecycleContext, ref: TaskRef, action: MutationAction, props: TaskProps = {}): Promise<TaskRef> {
+  const l = await locate(ctx, ref);
+  const lvl = level(l);
+  const kind = kindOf(l.row);
+  const completeNeed: TriageAction = kind === 'agent' ? 'complete-subtask' : 'complete-task';
+  const need: TriageAction = action === 'start' ? 'claim'
+    : action === 'complete' ? completeNeed
+    : props.checkbox !== undefined ? completeNeed
+    : props.status !== undefined || props.suspend !== undefined ? 'claim' : 'triage';
+  if (action === 'set' && props.removeAllEmojis) throw new TriageDenied('Owner only');
+  if (!authorize(lvl, need)) throw new TriageDenied();
+  if (kind === 'human') throw new TriageDenied('Needs a human');
+  if (l.chain.some(held)) throw new TriageDenied('Task is on hold');
+  if (action !== 'set') open(l);
+  if (action === 'complete' && openHuman(l.row)) throw new TriageBlocked();
+  if (action === 'set') {
+    const line = bare(l.lines[ref.line]);
+    if (!sameGateMarks(line, applyTaskProps(line, props))) throw new TriageDenied('Owner only');
+  }
+  return pinned(ref, l);
 }

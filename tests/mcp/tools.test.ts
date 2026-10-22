@@ -1,4 +1,5 @@
 import { errorText, TOOLS } from '../../src/mcp/tools';
+import { setAutonomy } from '../../src/core/triage';
 import { setup } from './helpers';
 
 // @req FR:mcp-server/tools.list @req FR:mcp-server/tools.scope
@@ -50,8 +51,8 @@ describe('api reuse', () => {
 
 // @req FR:mcp-server/tools.next @req FR:mcp-server/tools.list-tool @req FR:mcp-server/tools.mutate @req FR:mcp-server/out.shape
 describe('workflow', () => {
-  it('add -> next -> list -> start -> set -> suspend -> resume -> skip -> complete', async () => {
-    const { mint, call, text } = await setup();
+  it('add -> next -> list -> start -> set -> complete; hold-mark moves are owner-only', async () => {
+    const { mint, call, text, storage } = await setup();
     const t = await mint('read', 'write');
     expect(await text(t, 'next')).toBe('none');
     expect(await text(t, 'add', { project: 'alpha', text: 'Write the docs 🟢' })).toMatch(/^added alpha:\d+$/);
@@ -66,12 +67,13 @@ describe('workflow', () => {
     expect(JSON.parse(await text(t, 'list', { q: 'second', limit: 1 })).items).toHaveLength(1);
     expect(JSON.parse(await text(t, 'list', { state: 'done' })).total).toBe(0);
     const ref = next.ref as string;
+    // Agents add rows without autonomy; only the owner grants it.
+    expect(await text(t, 'start', { ref })).toBe('error forbidden');
+    await setAutonomy({ storage }, { path: `tasks/${ref.split(':')[0]}.md`, line: Number(ref.split(':')[1]) }, 'full');
     expect(await text(t, 'start', { ref })).toBe(`started ${ref}`);
     expect(await text(t, 'set', { ref, priority: '🔺' })).toBe(`updated ${ref}`);
     expect(await text(t, 'set', { ref, priority: '🔺' })).toBe('no change');
-    expect(await text(t, 'suspend', { ref, days: 1 })).toBe(`suspended ${ref}`);
-    expect(await text(t, 'skip', { ref })).toBe(`skipped ${ref}`);
-    expect(await text(t, 'resume', { ref })).toBe(`resumed ${ref}`);
+    for (const a of ['suspend', 'skip', 'resume']) expect(await text(t, a, a === 'suspend' ? { ref, days: 1 } : { ref })).toBe('error forbidden');
     expect(await text(t, 'complete', { ref, summary: 'shipped' })).toBe(`completed ${ref}`);
     const r = await call(t, 'next');
     expect(r.content).toHaveLength(1);

@@ -2,12 +2,14 @@ import { createApiHandler, type ApiDeps } from '../../src/api/handler';
 import { MemoryStorage } from '../../src/core/storage';
 
 const allow = () => true;
+// Owner session: the autonomy gate applies to agents only.
+const OWNER = Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64');
 const NOW = new Date('2026-10-22T18:00:00Z');
 const mk = (over: Partial<ApiDeps> = {}) => {
   const storage = new MemoryStorage();
   const h = createApiHandler({ storage, authorize: allow, now: () => NOW, ...over });
   const call = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
-    const init: RequestInit = { method, headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...headers } };
+    const init: RequestInit = { method, headers: { 'x-ms-client-principal': OWNER, ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...headers } };
     if (body !== undefined) init.body = typeof body === 'string' ? body : JSON.stringify(body);
     const res = await h(new Request(`https://x.test${path}`, init));
     const text = await res.text();

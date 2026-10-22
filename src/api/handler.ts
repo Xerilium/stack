@@ -9,7 +9,7 @@ import {
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
-import { applyTriage, claimTask, OUTCOMES, recordResult, type ResultInput, type Suggestion } from '../core/triage';
+import { applyTriage, authorizeMutation, claimTask, OUTCOMES, recordResult, sameGateMarks, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { Storage } from '../core/storage';
 import { presentedToken } from './auth/authorize';
 import { generateSummaries } from '../core/summaries';
@@ -71,13 +71,6 @@ const noAutonomyMark = (field: string, v: unknown): void => {
 
 /** Owner session: principal header and no token. */
 const isOwner = (req: Request): boolean => caller(req).actor === 'owner';
-const GATE_MARKS = ['🪄', '🙋', '🤖', '⛔', '⏸', '👀', '⏳', '💤', '🅿'];
-const gateCounts = (v: string): number[] => {
-  const t = v.replace(/[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g, '');
-  return GATE_MARKS.map((m) => t.split(m).length - 1);
-};
-/** Only the owner session moves rows or changes gate markers. @req FR:ai-triage-assist/autonomy.structure */
-const sameGateMarks = (a: string, b: string): boolean => gateCounts(a).join() === gateCounts(b).join();
 
 const FIELDS_Q: Record<string, Spec> = { fields: { t: 'str' } };
 const STATES = ['open', 'done', 'all'] as const;
@@ -202,8 +195,16 @@ async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response>
   noQuery(c);
   const body = await readBody(c.req);
   const b = validate<Record<string, unknown> & { ref?: ReturnType<typeof parseRef> }>(body, ACTION_BODIES[name].schema, ACTION_BODIES[name].required);
-  const ref = b.ref ?? undefined;
+  let ref = b.ref ?? undefined;
   noAutonomyMark('summary', b.summary);
+  // Agents (anyone but the owner session) pass the autonomy gate first. @req FR:ai-triage-assist/autonomy.mutations
+  if (!isOwner(c.req)) {
+    if (name === 'skip' || name === 'resume' || name === 'suspend') throw new TriageDenied('Owner only');
+    if (!ref) throw invalid([{ field: 'ref', message: 'Required' }]);
+    const { ref: _r, clearEmojis, ...rest } = b;
+    void _r;
+    ref = await authorizeMutation(c.life, ref, name, name === 'set' ? { ...rest, ...(clearEmojis !== undefined ? { removeAllEmojis: clearEmojis as boolean } : {}) } as TaskProps : {});
+  }
   switch (name) {
     case 'start': return result(await startTask(c.life, ref));
     case 'skip': return result(await skipTask(c.life, ref));
@@ -317,6 +318,7 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/tasks/remove-completed', name: 'tasks.removeCompleted', body: REMOVE_BODY,
     async run(c) {
       noQuery(c);
+      if (!isOwner(c.req)) throw new TriageDenied('Owner only');
       const b = validate<{ project?: string }>(await readBody(c.req), REMOVE_BODY.schema);
       return json(200, await removeCompleted(c.life, { project: b.project }));
     },

@@ -68,8 +68,8 @@ describe('agent token mutations obey the autonomy gate', () => {
 
   it('complete: assist completes only a leading-🪄 subtask, full completes a task', async () => {
     const { agent, text } = await mk();
-    expect((await agent('/tasks/complete', { ref: r(L.agentChild), summary: 'done' })).status).toBe(200);
     expect((await agent('/tasks/complete', { ref: r(L.fullTwo) })).status).toBe(200);
+    expect((await agent('/tasks/complete', { ref: r(L.agentChild), summary: 'done' })).status).toBe(200);
     const t = await text();
     expect(t).toContain('- [x] 🪄 Agent child');
     expect(t).toContain('- [x] Full two');

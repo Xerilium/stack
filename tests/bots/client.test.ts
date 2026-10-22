@@ -4,7 +4,7 @@ import { MemoryStorage } from '../../src/core/storage';
 import { runCommand, parseCommand } from '../../src/bots/commands';
 
 const NOW = new Date('2026-10-22T18:00:00Z');
-const setup = async (headers: Record<string, string> = { 'x-bot': 'k' }) => {
+const setup = async (headers: Record<string, string> = { 'x-bot': 'k', 'x-ms-client-principal': 'owner' }) => {
   const storage = new MemoryStorage();
   const seen: string[] = [];
   const api = createApiHandler({
