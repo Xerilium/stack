@@ -13,8 +13,8 @@ All specifications describe the desired end state, not a chronological log of ch
 Every change starts with a spec. Before writing code:
 
 1. Ensure the relevant feature spec(s) in `.xe/features/{feature-id}/spec.md` are up to date
-2. Get design approval via plan mode before implementation begins
-3. Human review gates exist at spec finalization and PR review
+2. Proceed on your own judgment and record decisions in design-decisions.md
+3. Agents never block on a human; humans review asynchronously at the PR
 
 ## Test-Driven Development
 

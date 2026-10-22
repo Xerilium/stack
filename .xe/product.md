@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Stack is the rebuild of Michael's markdown task system ("stack 'em up, burn 'em down"). It keeps tasks in markdown, scores them across projects, and says what to do next, from the CLI, web, REST, MCP, and chat bots. AI works the stack alongside the owner. It is a single-owner tool in v1, not a team tracker. Long term, Stack becomes a feature on top of Xe Prime (not built yet).
+Stack is built with Catalyst. It is the rebuild of Michael's markdown task system ("stack 'em up, burn 'em down"). It keeps tasks in markdown, scores them across projects, and says what to do next, from the CLI, web, REST, MCP, and chat bots. AI works the stack alongside the owner. It is a single-owner tool in v1, not a team tracker. Long term, Stack becomes a feature on top of Xe Prime (not built yet).
 
 ## Product Strategy
 
@@ -56,6 +56,10 @@ AI Agent needs token-efficient tools to read the next task, add tasks, and compl
 ### FR:parity: Legacy parity
 
 Owner needs the same scoring, formats, and files as the legacy system so that migration loses nothing.
+
+## Customer Journey
+
+See [customer-journey.md](customer-journey.md) for the product-level workflows showing actor interactions and checkpoints.
 
 ## Team
 
