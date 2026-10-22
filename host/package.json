@@ -1,0 +1,22 @@
+{
+  "name": "@xerilium/stack-host",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Azure Functions host for Stack (SWA managed functions, Node 22, programming model v4).",
+  "main": "dist/host/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist"
+  },
+  "engines": { "node": ">=22 <23" },
+  "dependencies": {
+    "@azure/functions": "4.17.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

@@ -46,6 +46,28 @@ importers:
         specifier: 8.72.0
         version: 8.72.0(eslint@9.39.5)(typescript@5.9.3)
 
+  host:
+    dependencies:
+      '@azure/functions':
+        specifier: 4.17.0
+        version: 4.17.0
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.1
+        version: 1.32.1(zod@4.6.7)
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   web:
     dependencies:
       preact:
@@ -89,6 +111,14 @@ packages:
   '@asamuzakjp/dom-selector@10.0.4':
     resolution: {integrity: sha512-A6f1nKy99I6tyoK82U6kBHvQQZmdHmTmPzJYPY/0eaOW0r8/qPmEOwjGHs+hL/vCgOwQTupu4LT1XtXNUuDruA==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
+
+  '@azure/functions-extensions-base@0.3.0':
+    resolution: {integrity: sha512-Cux0hLu5ZXlC/Kb+yvJVhRLIdkfFwui2HeT5oGZL00r/GCUUkhGTzRfZUjRN4Bq729mPv3okPucz2z7SMQLStA==}
+    engines: {node: '>=18.0'}
+
+  '@azure/functions@4.17.0':
+    resolution: {integrity: sha512-BC+eWRqwL3LYvkfKO0UqVSig4IrEbgbaUvxGC6MhpUJRsZqVlEYHyE0EZcn7MtOc2py1ArJdXkqwuOzdvlbBSA==}
+    engines: {node: '>=20.0'}
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -2750,6 +2780,13 @@ snapshots:
       css-tree: 3.2.1
       is-potential-custom-element-name: 1.0.1
       lru-cache: 11.5.3
+
+  '@azure/functions-extensions-base@0.3.0': {}
+
+  '@azure/functions@4.17.0':
+    dependencies:
+      '@azure/functions-extensions-base': 0.3.0
+      cookie: 0.7.2
 
   '@babel/code-frame@7.29.7':
     dependencies:

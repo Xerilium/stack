@@ -524,3 +524,15 @@ describe('GitStorage with remote', () => {
     expect(err).not.toBeInstanceOf(ConflictError);
   });
 });
+
+describe('GitStorage env option', () => {
+  /** @req FR:storage-git/git.env */
+  it('uses the supplied env for git and leaves process.env alone', async () => {
+    const d = tmp(); initRepo(d);
+    const before = JSON.stringify(process.env);
+    const st = new GitStorage(d, { env: { PATH: process.env.PATH, HOME: process.env.HOME, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null', STACK_PROBE: '1' } });
+    await st.write('tasks/a.md', '# A\n');
+    expect(git(d, 'log', '--format=%s').trim()).toBe('Update tasks/a.md');
+    expect(JSON.stringify(process.env)).toBe(before);
+  });
+});

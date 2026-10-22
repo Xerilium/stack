@@ -1,0 +1,103 @@
+/**
+ * App settings -> typed host config. Errors name settings, never values.
+ * @req FR:azure-host/settings.parse @req FR:azure-host/settings.invalid @req FR:azure-host/settings.deny
+ * @req FR:azure-host/settings.url @req FR:azure-host/settings.identity @req FR:azure-host/tokens.override
+ */
+import { isAbsolute } from 'path';
+import { parseOwners, type Owner } from '../api/auth';
+import { getDefaults, parseConfig, type StackConfig } from '../core/config';
+
+export type Env = Record<string, string | undefined>;
+
+export class SettingsError extends Error {
+  constructor(readonly names: string[]) { super(`Invalid settings: ${names.join(', ')}`); }
+}
+
+export interface Channel { secret: string; allow: string[] }
+export interface HostSettings {
+  repoUrl: string;
+  branch: string;
+  /** Relative subfolder inside the repo ('' = repo root). */
+  path: string;
+  repoToken: string;
+  owners: Owner[];
+  /** Absolute file path override; undefined means the git-backed store in the data repo. */
+  tokenStore?: string;
+  pepper?: string;
+  config: StackConfig;
+  gitName: string;
+  gitEmail: string;
+  bots: {
+    slack?: { signingSecret: string; allow: string[] };
+    imessage?: Channel;
+    webhook?: Channel;
+    github?: Channel;
+  };
+}
+
+const list = (v: string | undefined) => (v ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');
+const val = (env: Env, k: string) => { const v = env[k]; return v === undefined || v.trim() === '' ? undefined : v.trim(); };
+
+/** Returns the normalized href git will see (WHATWG-parsed), or null. @req FR:azure-host/settings.url */
+function normUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' && u.hostname !== '' && u.username === '' && u.password === '' && u.search === '' && u.hash === '' ? u.href : null;
+  } catch { return null; }
+}
+/** Commit identity: no option-like start, control chars, or angle brackets. @req FR:azure-host/settings.identity */
+// eslint-disable-next-line no-control-regex
+const validIdent = (v: string) => v.length <= 200 && !v.startsWith('-') && !/[\x00-\x1f\x7f<>]/.test(v);
+/** Valid git ref name subset. @req FR:azure-host/settings.invalid */
+const validBranch = (b: string) => /^[A-Za-z0-9_][A-Za-z0-9._/-]*$/.test(b) && !b.includes('..') && !b.includes('//') && !b.endsWith('/') && !b.endsWith('.')
+  && b.split('/').every((s) => !s.startsWith('.') && !s.endsWith('.lock'));
+function validPath(p: string): boolean {
+  if (p === '') return true;
+  if (!/^[A-Za-z0-9._/-]+$/.test(p) || p.startsWith('/')) return false;
+  return p.split('/').every((s) => s !== '' && s !== '.' && s !== '..' && s.toLowerCase() !== '.git');
+}
+
+export function parseSettings(env: Env): HostSettings {
+  const bad: string[] = [];
+  const repoUrl = val(env, 'STACK_REPO_URL');
+  const href = repoUrl ? normUrl(repoUrl) : null;
+  if (!href) bad.push('STACK_REPO_URL');
+  const repoToken = val(env, 'STACK_REPO_TOKEN');
+  if (!repoToken || !/^[\x21-\x7e]+$/.test(repoToken)) bad.push('STACK_REPO_TOKEN');
+  const branch = val(env, 'STACK_REPO_BRANCH') ?? 'main';
+  if (!validBranch(branch)) bad.push('STACK_REPO_BRANCH');
+  const path = (val(env, 'STACK_REPO_PATH') ?? '').replace(/\/+$/, '');
+  if (!validPath(path)) bad.push('STACK_REPO_PATH');
+  const tokenStore = val(env, 'STACK_TOKEN_STORE');
+  if (tokenStore !== undefined && !isAbsolute(tokenStore)) bad.push('STACK_TOKEN_STORE');
+  // A file store may sit in a shared or predictable path: the pepper is what keeps a planted file from granting access.
+  if (tokenStore !== undefined && !val(env, 'STACK_TOKEN_PEPPER')) bad.push('STACK_TOKEN_PEPPER');
+  const gitName = val(env, 'STACK_GIT_NAME') ?? 'Stack';
+  const gitEmail = val(env, 'STACK_GIT_EMAIL') ?? 'stack@users.noreply.github.com';
+  if (!validIdent(gitName)) bad.push('STACK_GIT_NAME');
+  if (!validIdent(gitEmail) || /\s/.test(gitEmail)) bad.push('STACK_GIT_EMAIL');
+  let config = getDefaults();
+  const rawConfig = val(env, 'STACK_CONFIG');
+  if (rawConfig) {
+    try { config = parseConfig(JSON.parse(rawConfig)); } catch { bad.push('STACK_CONFIG'); }
+  }
+  if (bad.length) throw new SettingsError(bad);
+
+  const channel = (secret: string, allow: string): Channel | undefined => {
+    const s = val(env, secret);
+    return s ? { secret: s, allow: list(env[allow]) } : undefined;
+  };
+  const slackSecret = val(env, 'STACK_SLACK_SIGNING_SECRET');
+  return {
+    repoUrl: href!, branch, path, repoToken: repoToken!, tokenStore, config,
+    owners: parseOwners(env['STACK_OWNERS']),
+    pepper: val(env, 'STACK_TOKEN_PEPPER'),
+    gitName, gitEmail,
+    bots: {
+      slack: slackSecret ? { signingSecret: slackSecret, allow: list(env['STACK_SLACK_ALLOW']) } : undefined,
+      imessage: channel('STACK_IMESSAGE_SECRET', 'STACK_IMESSAGE_ALLOW'),
+      webhook: channel('STACK_WEBHOOK_SECRET', 'STACK_WEBHOOK_ALLOW'),
+      github: channel('STACK_GITHUB_WEBHOOK_SECRET', 'STACK_GITHUB_WEBHOOK_ALLOW'),
+    },
+  };
+}
