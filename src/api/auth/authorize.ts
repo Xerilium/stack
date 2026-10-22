@@ -29,7 +29,6 @@ export interface AuthOptions {
 }
 
 const DENY401: AuthDecision = { allow: false, status: 401 };
-/** 401 when nothing valid is presented, 403 when not allowed. @req FR:auth-security/session.output @req FR:auth-security/safe.hash @req FR:auth-security/safe.tasks (events carry route, status, token id only) */
 const DENY403: AuthDecision = { allow: false, status: 403 };
 
 /** Token from `Authorization: Bearer` or `X-Stack-Token`; `null` when none was presented. */
@@ -62,6 +61,7 @@ function sameOrigin(req: Request): boolean {
 
 export const scopeCovers = (scopes: string[], need: string) => scopes.includes(need) || scopes.includes(need.split(':')[1]);
 
+/** 401 when nothing valid is presented, 403 when not allowed; events carry route, status and token id only. @req FR:auth-security/session.output @req FR:auth-security/safe.hash @req FR:auth-security/safe.tasks */
 export function createAuth(opts: AuthOptions): { authorize: Authorize; wrap: (api: (req: Request) => Promise<Response>) => (req: Request) => Promise<Response> } {
   const emit = (kind: AuthEvent['kind'], route: string, status: number, tokenId?: string) => {
     try { opts.onEvent?.({ kind, route, status, ...(tokenId ? { tokenId } : {}) }); } catch { /* a broken logger never changes the decision */ }
