@@ -15,6 +15,8 @@ export interface McpServerOptions {
   /** Auth headers forwarded to the API (the caller's bearer token). Nothing else is forwarded. */
   headers?: Record<string, string>;
   tokenId?: string;
+  /** Max ms for one API call; default 30000. */
+  timeoutMs?: number;
   onEvent?: (e: McpEvent) => void;
   /** Receives the error's class name only. */
   onError?: (className: string) => void;
@@ -41,9 +43,13 @@ export function createMcpServer(opts: McpServerOptions): Server {
       if (e instanceof ArgError) return fail(errorText('invalid', [{ field: e.field, message: e.message }]));
       throw e;
     }
-    emit({ kind: 'allow', tool: t.name, status: 200 });
     try {
-      const r = await replyFrom(t, await opts.api(buildRequest(t, args, BASE, opts.headers ?? {})));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('Timeout')), opts.timeoutMs ?? 30000); });
+      let res: Response;
+      try { res = await Promise.race([opts.api(buildRequest(t, args, BASE, opts.headers ?? {})), timeout]); } finally { clearTimeout(timer); }
+      const r = await replyFrom(t, res);
+      emit({ kind: r.status === 401 || r.status === 403 ? 'deny' : 'allow', tool: t.name, status: r.status });
       return r.isError ? fail(r.text) : { content: [{ type: 'text' as const, text: r.text }] };
     } catch (e) {
       try { opts.onError?.(e instanceof Error ? e.constructor.name : 'Error'); } catch { /* ignore */ }

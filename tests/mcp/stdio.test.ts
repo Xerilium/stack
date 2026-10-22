@@ -17,6 +17,26 @@ describe('resolveScopes', () => {
 
 // @req FR:mcp-server/stdio.entry @req FR:mcp-server/stdio.quiet
 describe('runStdio', () => {
+  const toolNames = async (argv: string[], env: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), 'stack-mcp-'));
+    const stdin = new PassThrough(); const stdout = new PassThrough(); const stderr = new PassThrough();
+    const done = runStdio({ argv: ['--dir', dir, ...argv], env, stdin, stdout, stderr });
+    let out = '';
+    stdout.on('data', (d) => { out += d; });
+    const send = (o: unknown) => stdin.write(JSON.stringify(o) + '\n');
+    send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'c', version: '1' } } });
+    send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+    await new Promise((r) => setTimeout(r, 300));
+    const m = out.split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((x) => x.id === 2);
+    stdin.end(); await done;
+    return m.result.tools.map((t: any) => t.name);
+  };
+  it('STACK_MCP_SCOPES narrows; --scopes overrides env; default is read+write', async () => {
+    expect(await toolNames([], { STACK_MCP_SCOPES: 'read' })).toEqual(['next', 'list']);
+    expect(await toolNames(['--scopes', 'write'], { STACK_MCP_SCOPES: 'read' })).not.toContain('next');
+    expect(await toolNames([], {})).toContain('add');
+  });
   it('serves tools on stdio; stdout is protocol frames only', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'stack-mcp-'));
     mkdirSync(join(dir, 'tasks'));

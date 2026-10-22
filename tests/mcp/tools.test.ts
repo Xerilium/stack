@@ -1,5 +1,5 @@
+import { errorText, TOOLS } from '../../src/mcp/tools';
 import { setup } from './helpers';
-import { TOOLS } from '../../src/mcp';
 
 // @req FR:mcp-server/tools.list @req FR:mcp-server/tools.scope
 describe('tools/list', () => {
@@ -148,5 +148,27 @@ describe('output safety', () => {
     const unk = await text(t, 'set', { ref: 'alpha:1', status: '\u0007x'.repeat(300) });
     expect(unk.length).toBeLessThan(260);
     expect([...unk].some((c) => c.charCodeAt(0) < 32)).toBe(false);
+  });
+});
+
+// @req FR:mcp-server/out.errors
+describe('errorText', () => {
+  it('strips control chars (C0, C1, U+2028/9) and caps details at 200', () => {
+    const t = errorText('invalid', [{ field: 'a\u0085b', message: 'x\u2028y\u2029z\u0001' }]);
+    expect(t).toBe('error invalid a b: x y z ');
+    const long = errorText('invalid', [{ field: 'f', message: 'm'.repeat(500) }]);
+    expect(long).toBe('error invalid ' + ('f: ' + 'm'.repeat(500)).slice(0, 200));
+  });
+  it('unknown codes become internal', () => { expect(errorText('weird')).toBe('error internal'); });
+});
+
+describe('reply refs', () => {
+  it('echo only safe refs', () => {
+    const add = TOOLS.find((x) => x.name === 'add')!;
+    expect(add.reply({ ref: 'alpha-1.x:12' })).toBe('added alpha-1.x:12');
+    expect(add.reply({ ref: '`x`[a](b):1' })).toBe('added');
+  });
+  it('next picks four fields', () => {
+    expect(JSON.parse(TOOLS.find((x) => x.name === 'next')!.reply({ task: { ref: 'a:1', text: 't', project: 'a', score: 1, extra: 'no' } }))).toEqual({ ref: 'a:1', text: 't', project: 'a', score: 1 });
   });
 });

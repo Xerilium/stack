@@ -17,6 +17,6 @@ POST only, stateless JSON responses. Send `Authorization: Bearer stk_...` (or `X
 
 ## stdio
 
-`stack-mcp [--dir <path>] [--scopes read,write]` (env `STACK_DIR`, `STACK_MCP_SCOPES`). Runs against the local project; scopes default to `read,write`.
+`stack-mcp [--dir <path>] [--scopes read,write]` (env `STACK_DIR`, `STACK_MCP_SCOPES`). Runs against the local project; scopes default to `read,write`: any stdio client gets full read and write access to the project unless you narrow it with `--scopes` (which overrides `STACK_MCP_SCOPES`).
 
 Replies are short text: refs for mutations (`added alpha:12`), JSON for `next` and `list`.

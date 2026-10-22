@@ -45,7 +45,7 @@ Let AI agents operate the stack through MCP with small tool lists and small repl
 - **FR:http.body** (P1): Body is JSON only (`415` otherwise), capped at 64 KiB (`413`), a single JSON-RPC message (not a batch)
 - **FR:http.headers** (P1): Responses carry `Cache-Control: no-store`
 - **FR:http.errors** (P1): Failures outside JSON-RPC use the API's `{error:{code,message}}` shape with fixed text
-- **FR:http.events** (P2): `onEvent({kind, tool?, status, tokenId?})` receives allow/deny decisions only; never arguments or results
+- **FR:http.events** (P2): `onEvent({kind, tool?, status, tokenId?})` receives allow/deny decisions only; never arguments or results. A call is `allow` or `deny` by the API's real status (`deny` on 401/403) and is emitted after the API answers; scope denials emit `deny` 403 before any API call
 - **FR:http.azure** (P1): The handler plugs into `registerAzure(app, handler, 'mcp')` unchanged, with the function route set to `mcp`
 
 ### FR:stdio: stdio

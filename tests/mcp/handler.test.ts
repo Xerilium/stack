@@ -93,8 +93,22 @@ describe('events', () => {
     await call(w, 'add', { project: 'alpha', text: 'SECRET' });
     await rpc(null, 'tools/list');
     expect(JSON.stringify(events)).not.toContain('SECRET');
-    expect(events).toContainEqual(expect.objectContaining({ kind: 'allow', tool: 'add' }));
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'allow', tool: 'add', status: 201 }));
     expect(events).toContainEqual(expect.objectContaining({ kind: 'deny', status: 401 }));
+  });
+  it('emits deny with the real status when the API refuses', async () => {
+    const events: any[] = [];
+    const { mcp, mint } = await setup({ api: async () => new Response('{"error":{"code":"forbidden"}}', { status: 403 }), onEvent: (e) => events.push(e) });
+    const w = await mint('write');
+    await mcp(new Request('https://mcp.test/mcp', { method: 'POST', headers: { authorization: `Bearer ${w}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'add', arguments: { project: 'alpha', text: 'x' } } }) }));
+    expect(events).toEqual([expect.objectContaining({ kind: 'deny', tool: 'add', status: 403 })]);
+  });
+  it('emits deny with the real status when the API refuses', async () => {
+    const events: any[] = [];
+    const { mcp, mint } = await setup({ api: async () => new Response('{"error":{"code":"forbidden"}}', { status: 403 }), onEvent: (e) => events.push(e) });
+    const w = await mint('write');
+    await mcp(new Request('https://mcp.test/mcp', { method: 'POST', headers: { authorization: `Bearer ${w}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'add', arguments: { project: 'alpha', text: 'x' } } }) }));
+    expect(events).toEqual([expect.objectContaining({ kind: 'deny', tool: 'add', status: 403 })]);
   });
 });
 

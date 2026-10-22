@@ -26,7 +26,7 @@ const REF = str('project:line');
 const enumOf = (v: readonly string[]): Prop => ({ type: 'string', enum: [...v] });
 
 /** Only `project:line` refs from the API are ever echoed. */
-const REF_OUT = /^[^\s:]{1,200}:\d{1,9}$/;
+const REF_OUT = /^[A-Za-z0-9._-]{1,200}:\d{1,9}$/;
 const done = (verb: string) => (body: unknown): string => {
   const b = (typeof body === 'object' && body !== null ? body : {}) as { changed?: unknown; ref?: unknown };
   if (b.changed === false) return 'no change';
@@ -39,7 +39,10 @@ const obj = (body: unknown): Record<string, unknown> => (typeof body === 'object
 export const TOOLS: ToolDef[] = [
   { name: 'next', route: 'next', method: 'GET', path: '/next', props: {}, query: { fields: 'ref,text,project,score' },
     description: 'Top-scored open task.',
-    reply: (b) => { const t = obj(b).task; return t ? JSON.stringify(t) : 'none'; } },
+    reply: (b) => {
+      const t = obj(obj(b).task);
+      return Object.keys(t).length ? JSON.stringify({ ref: t.ref, text: t.text, project: t.project, score: t.score }) : 'none';
+    } },
   { name: 'list', route: 'tasks.list', method: 'GET', path: '/tasks', query: { fields: 'ref,text,project' },
     description: 'List tasks, newest page first by file order.',
     props: {
@@ -112,7 +115,7 @@ export function buildRequest(t: ToolDef, args: Record<string, string | number | 
 
 const CODES = new Set(['bad_request', 'unauthorized', 'forbidden', 'not_found', 'method_not_allowed', 'conflict', 'payload_too_large', 'unsupported_media_type', 'invalid', 'internal']);
 const isCtl = (c: number) => c < 0x20 || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029;
-const clean = (s: unknown) => [...String(s)].map((ch) => (isCtl(ch.codePointAt(0)!) ? " " : ch)).join("");
+export const clean = (s: unknown) => [...String(s)].map((ch) => (isCtl(ch.codePointAt(0)!) ? " " : ch)).join("");
 
 /** @req FR:mcp-server/out.errors */
 export function errorText(code: string, details?: { field: string; message: string }[]): string {
@@ -122,13 +125,13 @@ export function errorText(code: string, details?: { field: string; message: stri
 }
 
 /** Reduces an API response to the tool's text reply. @req FR:mcp-server/out.noecho @req FR:mcp-server/out.json */
-export async function replyFrom(t: ToolDef, res: Response): Promise<{ text: string; isError: boolean }> {
+export async function replyFrom(t: ToolDef, res: Response): Promise<{ text: string; isError: boolean; status: number }> {
   let body: unknown;
   try { body = await res.json(); } catch { body = undefined; }
   if (!res.ok) {
     const e = obj(obj(body).error);
     const details = Array.isArray(e.details) ? e.details.map((d) => ({ field: obj(d).field, message: obj(d).message })).filter((d) => typeof d.field === 'string' && typeof d.message === 'string') as { field: string; message: string }[] : undefined;
-    return { text: errorText(typeof e.code === 'string' ? e.code : 'internal', details), isError: true };
+    return { text: errorText(typeof e.code === 'string' ? e.code : 'internal', details), isError: true, status: res.status };
   }
-  return { text: t.reply(body), isError: false };
+  return { text: t.reply(body), isError: false, status: res.status };
 }
