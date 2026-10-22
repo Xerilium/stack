@@ -18,22 +18,41 @@ Recurring deadlines (bills, tax filings) need one row per obligation. Hand-editi
 - Completing a 🔄 row rolls its 📅 date forward and leaves it `[ ]`
 - Weekend due dates move to the next business day
 
-## Requirements
+## Scenarios
 
-**FR-1**: Row format is `- [ ] 📅 {Mon D}: 🔄 {Cadence}: {title} {emoji...}`; date may carry a year (`Mon D, YYYY`).
+### FR:format: Row format
 
-**FR-2**: Supported cadences: Daily, Weekly, Monthly, Quarterly, Yearly (case-insensitive).
+- **FR:format.row** (P1): Row format is `- [ ] 📅 {Mon D}: 🔄 {Cadence}: {title} {emoji...}`; date MAY carry a year (`Mon D, YYYY`); month is case-insensitive
+- **FR:format.cadence** (P1): Supported cadences: Daily, Weekly, Monthly, Quarterly, Yearly (case-insensitive; written case is preserved)
+- **FR:format.crlf** (P2): `rollRecurring` and `isRecurring` MUST accept CRLF blocks; line endings are preserved on output
 
-**FR-3**: Rolling advances the date by one cadence step from the row's current date, clamps to month end (Jan 31 + Monthly = Feb 28/29), then shifts Sat/Sun to Monday.
+### FR:detect: Detection
 
-**FR-4**: Rolled rows stay unchecked; all other text (title, effort, subtasks) is preserved. Subtasks reset to `[ ]`.
+- **FR:detect.@function** (P1): Interface: `isRecurring(line: string, today?: Date): boolean`
+- **FR:detect.non-recurring** (P1): Non-recurring rows MUST NOT roll (`rollRecurring` returns null; caller falls back to normal completion)
+- **FR:detect.valid** (P1): Invalid dates (Feb 31, day 0, unknown month, Feb 29 in a non-leap year) MUST yield null from `rollRecurring`, and `isRecurring` MUST agree
 
-**FR-5**: Non-recurring rows are never rolled (caller falls back to normal completion).
+### FR:roll: Rolling
+
+- **FR:roll.@function** (P1): Interface: `rollRecurring(block: string, today?: Date): string | null`; `today` supplies the year when the row has none
+- **FR:roll.step** (P1): Rolling advances the date by one cadence step from the row's current date
+- **FR:roll.clamp** (P1): Month-based steps clamp to month end (Jan 31 + Monthly = Feb 28/29). Known drift: the clamped day is carried forward (Jan 31 -> Feb 28 -> Mar 28)
+- **FR:roll.weekend** (P1): Sat/Sun results shift to Monday. Known drift: the shifted day is carried forward (15th -> Mon 17th rolls from 17th)
+
+### FR:preserve: Preservation
+
+- **FR:preserve.unchecked** (P1): Rolled rows are unchecked (`[ ]`) whether the input was `[ ]`, `[x]`, or `[X]`
+- **FR:preserve.text** (P1): All other text (title, effort, emoji) is preserved
+- **FR:preserve.subtasks** (P1): Checked subtask checkboxes at any indent reset to `[ ]`; non-checkbox continuation lines are untouched
 
 ## Open decisions
 
-- WA quarterly "last day of following month" rule: needs a cadence token (e.g. `Quarterly-EOM+1`). Deferred.
-- Weekend shift can drift a day-of-month (15th→Mon 17th rolls from 17th). Fix needs a stored nominal day.
+Out of this slice (follow-up slice; see rollout-blueprint):
+
+- Legacy row form `🔄 Weekly: 📅 Mondays:`
+- Weekday names as dates
+- WA quarterly "last day of following month" token (`Quarterly-EOM+1`)
+- Nominal-day anti-drift (stored nominal day to fix weekend shift and month-end clamp drift)
 
 ## Out of scope
 

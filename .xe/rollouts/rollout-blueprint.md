@@ -47,6 +47,8 @@ Implement the product per `.xe/features/blueprint.md`.
     - Dependencies: task-model
   - [ ] `/catalyst:create recurring-rows: cadence roll for 🔄 rows` (existing PR 6)
     - Dependencies: task-model
+  - [ ] `/catalyst:create recurring-rows-v2: legacy row form, weekday names, Quarterly-EOM+1, nominal-day anti-drift`
+    - Dependencies: recurring-rows
   - [x] `/catalyst:create config: legacy config, defaults, time blocks` (PR 10)
     - Dependencies: task-model
 
