@@ -50,12 +50,11 @@ export class GitStorage extends FsStorage {
   private get ref() { return `${this.remote}/${this.branch}`; }
 
   private async fetch(): Promise<boolean> {
-    try { await this.git('fetch', '-q', this.remote!, this.branch); } catch (e) {
+    // Explicit destination so the tracking ref exists regardless of refspec config.
+    try { await this.git('fetch', '-q', this.remote!, `+refs/heads/${this.branch}:refs/remotes/${this.ref}`); } catch (e) {
       if (/couldn't find remote ref/i.test((e as Error).message)) return false;
       throw e;
     }
-    // Make the remote-tracking ref explicit regardless of refspec config.
-    await this.git('update-ref', `refs/remotes/${this.ref}`, 'FETCH_HEAD');
     return true;
   }
 
@@ -73,23 +72,41 @@ export class GitStorage extends FsStorage {
 
   /**
    * Rebase local state onto the remote; false when it conflicted (rebase aborted).
-   * Other failures (lock files, hooks) and autostash pop conflicts throw StorageError.
+   * Tracked local changes (staged and unstaged) are stashed and re-applied with --index so the
+   * index is preserved. Other failures (lock files, hooks) and stash re-apply conflicts throw StorageError.
    */
   private async rebase(): Promise<boolean> {
+    if (((await this.tryGit('rev-list', '--count', `HEAD..${this.ref}`)) ?? '1').trim() === '0') return true;
+    const dirty = (await this.git('status', '--porcelain', '-uno')).trim() !== '';
+    let stash: string | null = null;
+    if (dirty) {
+      await this.git('stash', 'push', '-q', '-m', 'stack-storage-sync');
+      stash = (await this.git('rev-parse', '-q', '--verify', 'refs/stash')).trim();
+    }
     try {
-      await this.git('rebase', '--autostash', '-q', this.ref);
+      await this.git('rebase', '-q', this.ref);
     } catch (e) {
-      if (await this.rebaseInProgress() || await this.unmerged()) {
-        await this.tryGit('rebase', '--abort');
-        return false;
-      }
+      const conflict = await this.rebaseInProgress() || await this.unmerged();
+      if (conflict) await this.tryGit('rebase', '--abort');
+      if (stash) await this.applyStash(stash);
+      if (conflict) return false;
       throw e;
     }
-    // git exits 0 when the autostash pop conflicts; surface it instead of reporting success.
-    if (await this.unmerged()) {
-      throw new StorageError('Local uncommitted changes conflict with remote changes (autostash pop failed); resolve unmerged paths and `git stash list` entry manually');
-    }
+    if (stash) await this.applyStash(stash);
     return true;
+  }
+
+  /** Re-apply a sync stash with its index; keep the stash entry and throw if it conflicts. */
+  private async applyStash(sha: string): Promise<void> {
+    try {
+      await this.git('stash', 'apply', '-q', '--index', sha);
+    } catch {
+      await this.tryGit('reset', '-q', '--hard', 'HEAD'); // no conflict markers left behind
+      throw new StorageError(`Local uncommitted changes conflict with remote changes; they are kept in stash ${sha} (git stash apply --index ${sha})`);
+    }
+    const list = (await this.tryGit('stash', 'list', '--format=%H %gd')) ?? '';
+    const line = list.split('\n').find(l => l.startsWith(sha));
+    if (line) await this.tryGit('stash', 'drop', '-q', line.split(' ')[1]);
   }
 
   /** Reject writes when the checked-out branch is not the configured one. */
@@ -117,6 +134,8 @@ export class GitStorage extends FsStorage {
     if (opts.expectedVersion !== undefined && (prior === null ? null : versionOf(prior)) !== opts.expectedVersion) {
       return super.locked(path, content, opts); // throws ConflictError
     }
+    // Remember the path's index entry so a failed commit restores the user's own staged edit.
+    const entry = ((await this.tryGit('ls-files', '-s', '--', path)) ?? '').trim();
     let committed = false;
     try {
       await this.atomicWrite(path, content);
@@ -127,7 +146,9 @@ export class GitStorage extends FsStorage {
         committed = true;
       }
     } catch (e) {
-      await this.tryGit('reset', '-q', '--', path);
+      const m = /^(\d+) ([0-9a-f]+) \d\t/.exec(entry);
+      if (m) await this.tryGit('update-index', '--add', '--cacheinfo', `${m[1]},${m[2]},${path}`);
+      else await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', path);
       await this.restore(path, prior);
       throw e;
     }
@@ -141,9 +162,15 @@ export class GitStorage extends FsStorage {
     for (let attempt = 1; ; attempt++) {
       if (this.beforePush) await this.beforePush();
       try { await this.git('push', '-q', this.remote!, `HEAD:refs/heads/${this.branch}`); return; } catch (e) {
+        const msg = (e as Error).message;
+        if (!/\[rejected\]|non-fast-forward|fetch first/i.test(msg)) {
+          // Auth, network, hook rejection: not a race. Roll back so a failed write leaves nothing behind.
+          await this.dropCommit(path, ours);
+          throw e instanceof StorageError ? e : new StorageError(msg);
+        }
         if (attempt >= MAX_PUSH_ATTEMPTS) {
           await this.dropCommit(path, ours);
-          throw new ConflictError(`Push rejected after ${attempt} attempts: ${(e as Error).message}`);
+          throw new ConflictError(`Push rejected after ${attempt} attempts: ${msg}`);
         }
       }
       let ok = await this.fetch();
@@ -174,9 +201,7 @@ export class GitStorage extends FsStorage {
       await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', path);
       await this.restore(path, null);
     }
-    if (await this.tryGit('fetch', '-q', this.remote!, this.branch) !== null) {
-      await this.tryGit('update-ref', `refs/remotes/${this.ref}`, 'FETCH_HEAD');
-      await this.rebase();
-    }
+    // Best effort: a failure here must not mask the error that caused the rollback.
+    try { if (await this.fetch()) await this.rebase(); } catch { /* surfaced on the next sync */ }
   }
 }

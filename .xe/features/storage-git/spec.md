@@ -37,11 +37,11 @@ Surfaces need a backend-neutral contract so they work the same on git, disk, or 
 
 - **FR:git.commit** (P1): `GitStorage.write` MUST create one direct commit containing only the written path, with `opts.message` or a default message
 - **FR:git.noop** (P2): A write whose content equals the current content MUST NOT create a commit
-- **FR:git.isolation** (P1): Unrelated dirty or staged files in the work tree MUST NOT be committed or lost
+- **FR:git.isolation** (P1): Unrelated dirty or staged files in the work tree MUST NOT be committed or lost, and MUST keep their staged/unstaged state across remote sync (stash + `stash apply --index`, no `--autostash`)
 - **FR:git.remote** (P1): With a remote configured, `write` MUST sync (fetch + rebase) before checking the version, and push after committing
-- **FR:git.push-retry** (P1): When the push is rejected, `write` MUST fetch, rebase, and retry (max 3 attempts)
+- **FR:git.push-retry** (P1): When the push is rejected as non-fast-forward, `write` MUST fetch, rebase, and retry (max 3 attempts). Other push failures (auth, network, hook rejection) MUST NOT be retried: roll back the commit and throw `StorageError`
 - **FR:git.conflict** (P1): When rebase conflicts or the retried version check fails, `write` MUST abort the rebase, drop its own commit (tracked by SHA across rebases, via soft reset plus path-limited restore so unrelated staged files survive), leave the work tree clean, and throw `ConflictError`
-- **FR:git.failure** (P1): Non-conflict git failures (lock files, hooks) and autostash pop conflicts MUST throw `StorageError`, not `ConflictError`; a failed commit MUST roll back the path
+- **FR:git.failure** (P1): Non-conflict git failures (lock files, hooks, non-rejection push errors) and failed re-apply of locally stashed changes MUST throw `StorageError`, not `ConflictError`; a failed commit MUST roll back the path while keeping the user's own staged edit of it. A failed post-rollback resync MUST NOT mask the original error
 - **FR:git.branch** (P1): With a remote or explicit `branch`, `write` and `sync` MUST throw `StorageError` when the configured branch is not checked out
 - **FR:git.concurrency** (P2): Serialization is per adapter instance; multiple instances or processes on one repo are unsupported (may fail on `index.lock` with `StorageError`)
 - **FR:git.exec** (P1): Git MUST run via argument arrays (no shell)

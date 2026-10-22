@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync, cpSync } from 'fs';
 import { tmpdir } from 'os';
 import { StorageError } from '../../src/core/storage';
 import { join } from 'path';
@@ -8,7 +8,7 @@ import {
 } from '../../src/core/storage';
 import { GitStorage } from '../../src/core/storage-git';
 
-jest.setTimeout(60000);
+jest.setTimeout(20000);
 // Isolate spawned git (ours and the helper) from the developer's global/system config, hooks and signing.
 const savedEnv = { g: process.env.GIT_CONFIG_GLOBAL, s: process.env.GIT_CONFIG_SYSTEM };
 beforeAll(() => { process.env.GIT_CONFIG_GLOBAL = '/dev/null'; process.env.GIT_CONFIG_SYSTEM = '/dev/null'; });
@@ -28,27 +28,40 @@ const initRepo = (dir: string) => {
   git(dir, 'config', 'user.name', 'T'); git(dir, 'config', 'user.email', 't@t.t');
   git(dir, 'config', 'commit.gpgsign', 'false');
 };
+// Fixtures are built once with git, then copied per test (a copy costs no git spawns).
+let repoTpl: string;
+let remoteTpl: string;
+beforeAll(() => {
+  repoTpl = tmp(); initRepo(repoTpl);
+  remoteTpl = tmp();
+  const bare = join(remoteTpl, 'remote.git');
+  mkdirSync(bare); git(bare, 'init', '-q', '--bare', '-b', 'main');
+  const seed = join(remoteTpl, 'seed'); mkdirSync(seed); initRepo(seed);
+  writeFileSync(join(seed, 'README.md'), 'x'); git(seed, 'add', '.'); git(seed, 'commit', '-q', '-m', 'init');
+  git(seed, 'remote', 'add', 'origin', bare); git(seed, 'push', '-q', 'origin', 'main');
+  for (const n of ['a', 'b']) {
+    git(remoteTpl, 'clone', '-q', bare, n);
+    const d = join(remoteTpl, n);
+    git(d, 'config', 'user.name', 'T'); git(d, 'config', 'user.email', 't@t.t'); git(d, 'config', 'commit.gpgsign', 'false');
+  }
+});
+/** Fresh empty repo. */
+const freshRepo = () => { const d = tmp(); cpSync(repoTpl, d, { recursive: true }); return d; };
 /** Bare remote + two clones with an initial commit. */
 const remoteSetup = () => {
   const root = tmp();
-  const bare = join(root, 'remote.git');
-  mkdirSync(bare); git(bare, 'init', '-q', '--bare', '-b', 'main');
-  const seed = join(root, 'seed'); mkdirSync(seed); initRepo(seed);
-  writeFileSync(join(seed, 'README.md'), 'x'); git(seed, 'add', '.'); git(seed, 'commit', '-q', '-m', 'init');
-  git(seed, 'remote', 'add', 'origin', bare); git(seed, 'push', '-q', 'origin', 'main');
-  const clone = (n: string) => {
-    const d = join(root, n);
-    git(root, 'clone', '-q', bare, n);
-    git(d, 'config', 'user.name', 'T'); git(d, 'config', 'user.email', 't@t.t'); git(d, 'config', 'commit.gpgsign', 'false');
-    return d;
-  };
-  return { bare, a: clone('a'), b: clone('b') };
+  cpSync(remoteTpl, root, { recursive: true });
+  for (const n of ['a', 'b']) { // clones point at the template's bare repo; retarget to the copy
+    const cfg = join(root, n, '.git', 'config');
+    writeFileSync(cfg, readFileSync(cfg, 'utf8').split(remoteTpl).join(root));
+  }
+  return { bare: join(root, 'remote.git'), a: join(root, 'a'), b: join(root, 'b') };
 };
 
 const adapters: [string, () => Storage][] = [
   ['MemoryStorage', () => new MemoryStorage()],
   ['FsStorage', () => new FsStorage(tmp())],
-  ['GitStorage', () => { const d = tmp(); initRepo(d); return new GitStorage(d); }],
+  ['GitStorage', () => new GitStorage(freshRepo())],
 ];
 
 // @req FR:storage-git/interface.@type
@@ -118,7 +131,7 @@ describe.each(adapters)('%s contract', (_n, make) => {
 describe('GitStorage rollback', () => {
   // @req FR:storage-git/git.failure
   it('rolls back a failed commit (pre-commit hook) and keeps unrelated staged files', async () => {
-    const d = tmp(); initRepo(d);
+    const d = freshRepo();
     const s = new GitStorage(d);
     await s.write('tasks/x.md', 'old');
     writeFileSync(join(d, 'other.txt'), 'o'); git(d, 'add', 'other.txt');
@@ -131,6 +144,18 @@ describe('GitStorage rollback', () => {
     expect(existsSync(join(d, 'tasks', 'n.md'))).toBe(false);
     expect(git(d, 'rev-parse', 'HEAD')).toBe(head);
     expect(git(d, 'status', '--porcelain')).toBe('A  other.txt\n');
+  });
+
+  // @req FR:storage-git/git.failure
+  it("keeps the user's own staged edit of the same path when the commit fails", async () => {
+    const d = freshRepo();
+    const s = new GitStorage(d);
+    await s.write('tasks/x.md', 'old');
+    writeFileSync(join(d, 'tasks', 'x.md'), 'mine'); git(d, 'add', 'tasks/x.md');
+    writeFileSync(join(d, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    await expect(s.write('tasks/x.md', 'new')).rejects.toBeInstanceOf(StorageError);
+    expect(git(d, 'show', ':tasks/x.md')).toBe('mine');
+    expect(git(d, 'status', '--porcelain')).toBe('M  tasks/x.md\n');
   });
 
   // @req FR:storage-git/git.branch
@@ -169,7 +194,7 @@ describe('FsStorage atomicity', () => {
 describe('GitStorage local', () => {
   // @req FR:storage-git/git.commit
   it('makes one commit with only the written path and message', async () => {
-    const d = tmp(); initRepo(d); const s = new GitStorage(d);
+    const d = freshRepo(); const s = new GitStorage(d);
     await s.write('tasks/a.md', 'a', { message: 'Add a' });
     await s.write('tasks/b.md', 'b');
     const log = git(d, 'log', '--format=%s').trim().split('\n');
@@ -182,14 +207,14 @@ describe('GitStorage local', () => {
 
   // @req FR:storage-git/git.noop
   it('does not commit identical content', async () => {
-    const d = tmp(); initRepo(d); const s = new GitStorage(d);
+    const d = freshRepo(); const s = new GitStorage(d);
     await s.write('tasks/a.md', 'a'); await s.write('tasks/a.md', 'a');
     expect(git(d, 'rev-list', '--count', 'HEAD').trim()).toBe('1');
   });
 
   // @req FR:storage-git/git.isolation
   it('does not commit or lose unrelated dirty and staged files', async () => {
-    const d = tmp(); initRepo(d);
+    const d = freshRepo();
     writeFileSync(join(d, 'README.md'), 'r'); git(d, 'add', '.'); git(d, 'commit', '-q', '-m', 'init');
     writeFileSync(join(d, 'README.md'), 'dirty');
     writeFileSync(join(d, 'staged.txt'), 's'); git(d, 'add', 'staged.txt');
@@ -203,7 +228,7 @@ describe('GitStorage local', () => {
 
   // @req FR:storage-git/git.exec
   it('handles shell metacharacters in commit messages literally', async () => {
-    const d = tmp(); initRepo(d); const s = new GitStorage(d);
+    const d = freshRepo(); const s = new GitStorage(d);
     await s.write('tasks/a.md', 'a', { message: 'x"; touch pwned; "$(id)' });
     expect(existsSync(join(d, 'pwned'))).toBe(false);
     expect(git(d, 'log', '-1', '--format=%s').trim()).toBe('x"; touch pwned; "$(id)');
@@ -316,6 +341,51 @@ describe('GitStorage with remote', () => {
     writeFileSync(join(b, 'tasks', 'd.md'), 'dirty\n');
     await sa.write('tasks/d.md', 'remote\n');
     await expect(sb.write('tasks/o.md', 'o')).rejects.toBeInstanceOf(StorageError);
+    expect(readFileSync(join(b, 'tasks', 'd.md'), 'utf8')).toBe('remote\n'); // no conflict markers
+    expect(git(b, 'stash', 'list')).toContain('stack-storage-sync'); // user's change kept
+  });
+
+  // @req FR:storage-git/git.isolation
+  it('keeps staged and unstaged changes across a remote sync', async () => {
+    const { a, b } = remoteSetup();
+    const sa = new GitStorage(a, { remote: 'origin', branch: 'main' });
+    const sb = new GitStorage(b, { remote: 'origin', branch: 'main' });
+    await sb.sync();
+    writeFileSync(join(b, 'staged.txt'), 'st'); git(b, 'add', 'staged.txt');
+    writeFileSync(join(b, 'README.md'), 'dirty');
+    writeFileSync(join(b, 'both.txt'), '1'); git(b, 'add', 'both.txt'); writeFileSync(join(b, 'both.txt'), '2');
+    await sa.write('tasks/r.md', 'r');
+    await sb.sync();
+    expect(existsSync(join(b, 'tasks', 'r.md'))).toBe(true);
+    expect(git(b, 'status', '--porcelain').split('\n').sort().join('|')).toBe('| M README.md|A  staged.txt|AM both.txt');
+    expect(git(b, 'stash', 'list')).toBe('');
+  });
+
+  // @req FR:storage-git/git.failure
+  it('throws StorageError (not ConflictError) for non-rejection push failures and drops the commit', async () => {
+    const { bare, b } = remoteSetup();
+    writeFileSync(join(bare, 'hooks', 'pre-receive'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const sb = new GitStorage(b, { remote: 'origin', branch: 'main' });
+    let pushes = 0;
+    sb.beforePush = async () => { pushes++; };
+    const err = await sb.write('tasks/m.md', 'm').catch(e => e);
+    expect(err).toBeInstanceOf(StorageError);
+    expect(err).not.toBeInstanceOf(ConflictError);
+    expect(pushes).toBe(1); // no retries
+    expect(git(b, 'rev-parse', 'HEAD')).toBe(git(b, 'rev-parse', 'origin/main'));
+    expect(existsSync(join(b, 'tasks', 'm.md'))).toBe(false);
+    expect(git(b, 'status', '--porcelain')).toBe('');
+  });
+
+  // @req FR:storage-git/git.conflict
+  it('reports the ConflictError even when the post-drop resync cannot restore local changes', async () => {
+    const { a, b } = remoteSetup();
+    const sa = new GitStorage(a, { remote: 'origin', branch: 'main' });
+    const sb = new GitStorage(b, { remote: 'origin', branch: 'main' });
+    await sa.write('tasks/x.md', 'base'); await sa.write('tasks/d.md', 'base\n'); await sb.sync();
+    writeFileSync(join(b, 'tasks', 'd.md'), 'dirty\n');
+    sb.beforePush = async () => { sb.beforePush = undefined; await sa.write('tasks/x.md', 'from-a'); await sa.write('tasks/d.md', 'remote\n'); };
+    await expect(sb.write('tasks/x.md', 'from-b')).rejects.toBeInstanceOf(ConflictError);
   });
 
   // @req FR:storage-git/git.failure
