@@ -28,7 +28,7 @@ const WEEK = ALL.slice(1, 6);
 const block = (name: string, days: string[], startTime: string, endTime: string, emoji: string, label?: string): TimeBlock =>
   ({ name, ...(label ? { label } : {}), days, startTime, endTime, emoji });
 
-export const DEFAULTS: StackConfig = {
+const DEFAULTS_SOURCE: StackConfig = {
   timezone: 'America/Los_Angeles',
   startOfDay: '08:00',
   timeBlocks: [
@@ -52,6 +52,9 @@ export const DEFAULTS: StackConfig = {
     effortHours: { '🔹': 0.2, '🟢': 0.5, '🟡': 1, '🟠': 2, '🔴': 4, '⚫️': 8 },
   },
 };
+
+/** Fresh copy of the baked-in defaults. */
+export const getDefaults = (): StackConfig => structuredClone(DEFAULTS_SOURCE);
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -99,9 +102,10 @@ function validZone(tz: string): boolean {
 /**
  * @req FR:config/load.@function @req FR:config/load.input @req FR:config/load.output
  * @req FR:config/load.defaults @req FR:config/load.merge @req FR:config/load.validate
+ * @req FR:config/load.timeblocks-replace @req FR:config/load.validate.time @req FR:config/load.validate.days @req FR:config/load.validate.timezone
  */
 export function parseConfig(input?: unknown): StackConfig {
-  const cfg: StackConfig = structuredClone(DEFAULTS);
+  const cfg: StackConfig = structuredClone(DEFAULTS_SOURCE);
   if (input === undefined || input === null) return cfg;
   if (!isObj(input)) throw new ConfigError('config: expected object');
   if (input.timezone !== undefined) {
@@ -119,6 +123,7 @@ export function parseConfig(input?: unknown): StackConfig {
     if (ts.emojiWeights !== undefined) {
       if (!isObj(ts.emojiWeights)) throw new ConfigError('taskScoring.emojiWeights: expected object');
       for (const [cat, m] of Object.entries(ts.emojiWeights)) {
+        if (cat === '__proto__') continue;
         cfg.taskScoring.emojiWeights[cat] = {
           ...cfg.taskScoring.emojiWeights[cat],
           ...numMap(m, `taskScoring.emojiWeights.${cat}`),

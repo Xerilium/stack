@@ -1,5 +1,6 @@
 import { parseConfig, getTimeBlock, ConfigError } from '../../src/core/config';
 
+// @req FR:config/$stack-config @req FR:config/$time-block
 describe('parseConfig', () => {
   // @req FR:config/load.@function @req FR:config/load.input @req FR:config/load.output
   // @req FR:config/load.defaults
@@ -67,5 +68,45 @@ describe('getTimeBlock', () => {
   it('returns undefined when no block matches', () => {
     const only = parseConfig({ timezone: 'UTC', timeBlocks: [{ name: 'A', days: ['Mon'], startTime: '09:00', endTime: '10:00', emoji: 'x' }] });
     expect(getTimeBlock(only, new Date('2026-10-21T09:30:00Z'))).toBeUndefined();
+  });
+});
+
+describe('edge cases', () => {
+  const c = parseConfig({ timezone: 'UTC' });
+  // @req FR:config/time-block.resolve
+  it('treats the end of a range as exclusive', () => {
+    expect(getTimeBlock(c, new Date('2026-10-21T16:00:00Z'))?.name).toBe('Family evening');
+  });
+
+  // @req FR:config/time-block.overnight
+  it('wraps Sunday overnight into Monday morning', () => {
+    const only = parseConfig({ timezone: 'UTC', timeBlocks: [{ name: 'N', days: ['Sun'], startTime: '23:00', endTime: '02:00', emoji: 'x' }] });
+    expect(getTimeBlock(only, new Date('2026-10-26T01:00:00Z'))?.name).toBe('N'); // Monday 01:00
+  });
+
+  // @req FR:config/time-block.resolve
+  it('resolves in the configured non-UTC timezone', () => {
+    const la = parseConfig({ timezone: 'America/Los_Angeles' });
+    expect(getTimeBlock(la, new Date('2026-10-21T17:00:00Z'))?.name).toBe('Work'); // 10:00 PDT
+  });
+
+  // @req FR:config/load.validate
+  it('rejects invalid startOfDay and non-object input', () => {
+    expect(() => parseConfig({ startOfDay: '25:00' })).toThrow(/startOfDay/);
+    expect(() => parseConfig('nope')).toThrow(ConfigError);
+  });
+
+  // @req FR:config/load.merge
+  it('merges a new weight category and ignores __proto__', () => {
+    const x = parseConfig(JSON.parse('{"taskScoring":{"emojiWeights":{"custom":{"x":1},"__proto__":{"y":2}}}}'));
+    expect(x.taskScoring.emojiWeights.custom.x).toBe(1);
+    expect(({} as Record<string, unknown>).y).toBeUndefined();
+    expect((x.taskScoring.emojiWeights as Record<string, unknown>).y).toBeUndefined();
+  });
+
+  // @req FR:config/load.defaults
+  it('does not let callers corrupt defaults', () => {
+    parseConfig().taskScoring.emojiWeights.priority['🔝'] = 0;
+    expect(parseConfig().taskScoring.emojiWeights.priority['🔝']).toBe(1000);
   });
 });
