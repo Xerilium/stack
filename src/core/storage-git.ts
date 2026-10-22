@@ -80,8 +80,10 @@ export class GitStorage extends FsStorage {
     const dirty = (await this.git('status', '--porcelain', '-uno')).trim() !== '';
     let stash: string | null = null;
     if (dirty) {
+      const before = (await this.tryGit('rev-parse', '-q', '--verify', 'refs/stash'))?.trim() ?? null;
       await this.git('stash', 'push', '-q', '-m', 'stack-storage-sync');
-      stash = (await this.git('rev-parse', '-q', '--verify', 'refs/stash')).trim();
+      const after = (await this.tryGit('rev-parse', '-q', '--verify', 'refs/stash'))?.trim() ?? null;
+      stash = after !== before ? after : null; // never touch a pre-existing user stash
     }
     try {
       await this.git('rebase', '-q', this.ref);
@@ -102,7 +104,7 @@ export class GitStorage extends FsStorage {
       await this.git('stash', 'apply', '-q', '--index', sha);
     } catch {
       await this.tryGit('reset', '-q', '--hard', 'HEAD'); // no conflict markers left behind
-      throw new StorageError(`Local uncommitted changes conflict with remote changes; they are kept in stash ${sha} (git stash apply --index ${sha})`);
+      throw new StorageError(`Local uncommitted changes conflict with remote changes; the work tree was reset to HEAD; your changes are kept in stash ${sha} (recover with: git stash apply --index ${sha})`);
     }
     const list = (await this.tryGit('stash', 'list', '--format=%H %gd')) ?? '';
     const line = list.split('\n').find(l => l.startsWith(sha));
