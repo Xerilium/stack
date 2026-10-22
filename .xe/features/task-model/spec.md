@@ -42,7 +42,8 @@ Stack needs to validate model data so that bad values are rejected before they r
   - **FR:validate.recurrence.weekdays** (P2): Validator MUST reject `weekdays` unless cadence is `weekly`
   - **FR:validate.recurrence.weekdays.unique** (P2): Validator MUST reject a repeated weekday in `weekdays`
   - **FR:validate.recurrence.offset** (P2): Validator MUST reject a non-integer `offsetDays`
-  - **FR:validate.recurrence.lenient** (P3): Validator MUST accept an empty `weekdays` list, and `anchor` or `offsetDays` on any cadence; `nominalDay` is checked as a date only and is not tied to `dueDate` or cadence (semantics belong to the recurrence feature)
+  - **FR:validate.recurrence.offset-months** (P2): Validator MUST reject a non-integer `offsetMonths`
+  - **FR:validate.recurrence.lenient** (P3): Validator MUST accept an empty `weekdays` list, and `anchor`, `offsetDays` or `offsetMonths` on any cadence; `nominalDay` is checked as a date only and is not tied to `dueDate` or cadence (semantics belong to the recurrence feature)
 - **FR:validate.subtasks** (P2): Validator MUST validate subtasks recursively and report paths such as `subtasks[0].title`
 - **FR:validate.unique** (P2): Validator MUST reject duplicate task ids and duplicate section names within a project. One rule for all uniqueness checks: values are compared trimmed and case-insensitive (`" T1 "` equals `t1`)
   - **FR:validate.unique.aliases** (P2): Validator MUST reject a project alias that repeats another alias or the project name, using the same trimmed, case-insensitive comparison
@@ -78,7 +79,8 @@ Stack needs to validate model data so that bad values are rejected before they r
   - `cadence` (`Cadence`) — Allowed: daily, weekly, monthly, quarterly, yearly
   - `weekdays` (`Weekday`[]?) — Allowed: mon..sun; weekly only
   - `anchor` (string?) — Allowed: end-of-month
-  - `offsetDays` (number?) — Integer; shifts from the anchor (for example `Quarterly-EOM+1`)
+  - `offsetDays` (number?) — Integer days; shifts from the anchor
+  - `offsetMonths` (number?) — Integer months; shifts from the anchor (`Quarterly-EOM+1` is quarterly, end-of-month, `offsetMonths: 1`)
   - `nominalDay` (string?) — ISO date retained so rolls do not drift off weekends
 
 ## Architecture Constraints

@@ -39,6 +39,10 @@ interface Route {
   /** Path relative to basePath, with `{param}` placeholders; also the OpenAPI path key. */
   doc: string;
   name: string;
+  /** Accepted query parameters (all optional); drives validation and the OpenAPI document. */
+  query?: Record<string, Spec>;
+  /** JSON body schema; drives validation and the OpenAPI document. */
+  body?: { schema: Record<string, Spec>; required: string[] };
   run: (c: Ctx) => Promise<Response>;
 }
 
@@ -50,6 +54,53 @@ const PROPS: Record<string, Spec> = {
   suspend: { t: 'str', max: 40, pattern: /^(?:|[A-Za-z]{3} \d{1,2}(?: \d{2}:\d{2})?|\d{1,2}:\d{2})$/ }, clearEmojis: { t: 'bool' },
 };
 const REF: Spec = { t: 'ref' };
+
+const FIELDS_Q: Record<string, Spec> = { fields: { t: 'str' } };
+const STATES = ['open', 'done', 'all'] as const;
+/** Documented defaults for query parameters; shared with the OpenAPI document. */
+export const QUERY_DEFAULTS = { state: 'open', limit: 50, offset: 0 } as const;
+const LIST_Q: Record<string, Spec> = {
+  project: { t: 'str' }, section: { t: 'str' }, state: { t: 'enum', values: STATES }, q: { t: 'str' },
+  limit: { t: 'int', min: 1, max: 200 }, offset: { t: 'int', min: 0, max: 1_000_000 }, ...FIELDS_Q,
+};
+const ADD_BODY = {
+  schema: {
+    project: { t: 'str', required: true, max: 200, line: true }, text: { t: 'str', required: true, line: true },
+    section: { t: 'str', max: 200, line: true }, parent: REF,
+  } satisfies Record<string, Spec>,
+  required: ['project', 'text'],
+};
+const CAPTURE_BODY = {
+  schema: {
+    text: { t: 'str', required: true, line: true }, project: { t: 'str', max: 200, line: true },
+    section: { t: 'str', max: 200, line: true }, dryRun: { t: 'bool' },
+  } satisfies Record<string, Spec>,
+  required: ['text'],
+};
+const ACTION_BODIES: Record<(typeof ACTIONS)[number], { schema: Record<string, Spec>; required: string[] }> = {
+  start: { schema: { ref: REF }, required: [] },
+  skip: { schema: { ref: REF }, required: [] },
+  resume: { schema: { ref: REF }, required: [] },
+  complete: { schema: { ref: REF, summary: { t: 'str', max: 10000, line: true }, remove: { t: 'bool' } }, required: [] },
+  suspend: { schema: { ref: REF, days: { t: 'int', min: 1, max: 365 }, hours: { t: 'int', min: 1, max: 8760 } }, required: [] },
+  set: { schema: { ref: REF, ...PROPS }, required: ['ref'] },
+};
+const REMOVE_BODY = { schema: { project: { t: 'str', max: 200, line: true } } satisfies Record<string, Spec>, required: [] as string[] };
+const EXPECT = { t: 'str', max: 2000, line: true } as const;
+const EDIT_BODY = { schema: { ref: REF, text: { t: 'str', required: true, max: 2000, line: true }, expect: EXPECT } satisfies Record<string, Spec>, required: ['ref', 'text'] };
+const MOVE_BODY = {
+  schema: { ref: REF, target: REF, position: { t: 'enum', values: ['before', 'after'] }, expect: EXPECT, expectTarget: EXPECT } satisfies Record<string, Spec>,
+  required: ['ref', 'target', 'position'],
+};
+const PROJECT_BODY = {
+  schema: {
+    name: { t: 'str', required: true, max: 200, line: true }, description: { t: 'str', max: 2000, line: true },
+    repositoryUrl: { t: 'str', line: true, pattern: /^https?:\/\/[^\s()[\]<>]+$/ }, aliases: { t: 'strs' },
+    priority: { t: 'num', min: 0, max: 1_000_000 }, capacity: { t: 'caps' }, weeklyCapacity: { t: 'num', min: 0, max: 168 },
+    fileName: { t: 'str', max: 100, noReadme: true, pattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/ },
+  } satisfies Record<string, Spec>,
+  required: ['name'],
+};
 
 // ------------------------------------------------------------------ data views
 
@@ -112,13 +163,7 @@ const noQuery = (c: Ctx) => { readQuery(c.url, []); };
 async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response> {
   noQuery(c);
   const body = await readBody(c.req);
-  const schemas: Record<string, Record<string, Spec>> = {
-    start: { ref: REF }, skip: { ref: REF }, resume: { ref: REF },
-    complete: { ref: REF, summary: { t: 'str', max: 10000, line: true }, remove: { t: 'bool' } },
-    suspend: { ref: REF, days: { t: 'int', min: 1, max: 365 }, hours: { t: 'int', min: 1, max: 8760 } },
-    set: { ref: REF, ...PROPS },
-  };
-  const b = validate<Record<string, unknown> & { ref?: ReturnType<typeof parseRef> }>(body, schemas[name], name === 'set' ? ['ref'] : []);
+  const b = validate<Record<string, unknown> & { ref?: ReturnType<typeof parseRef> }>(body, ACTION_BODIES[name].schema, ACTION_BODIES[name].required);
   const ref = b.ref ?? undefined;
   switch (name) {
     case 'start': return result(await startTask(c.life, ref));
@@ -135,29 +180,29 @@ async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response>
 }
 
 const actionRoutes: Route[] = ACTIONS.map((a) => ({
-  method: 'POST', doc: `/tasks/${a}`, name: `tasks.${a}`, run: (c) => action(c, a),
+  method: 'POST', doc: `/tasks/${a}`, name: `tasks.${a}`, body: ACTION_BODIES[a], run: (c) => action(c, a),
 }));
 
 /** @req FR:api/routes.next @req FR:api/routes.add @req FR:api/routes.actions @req FR:api/routes.remove @req FR:api/routes.tasks @req FR:api/routes.projects @req FR:api/routes.summaries */
 export const ROUTES: Route[] = [
   {
-    method: 'GET', doc: '/next', name: 'next',
+    method: 'GET', doc: '/next', name: 'next', query: FIELDS_Q,
     async run(c) {
-      const q = readQuery(c.url, ['fields']);
+      const q = readQuery(c.url, Object.keys(FIELDS_Q));
       const fields = parseFields(q.get('fields'), ['ref', 'text', 'project', 'score']) ?? ['ref', 'text', 'project', 'score'];
       const n = await nextTask(c.life);
       return json(200, { task: n ? pick({ ref: formatRef(n.ref), text: n.text, project: n.project, score: n.score }, fields) : null });
     },
   },
   {
-    method: 'GET', doc: '/tasks', name: 'tasks.list',
+    method: 'GET', doc: '/tasks', name: 'tasks.list', query: LIST_Q,
     async run(c) {
-      const q = readQuery(c.url, ['project', 'section', 'state', 'q', 'limit', 'offset', 'fields']);
+      const q = readQuery(c.url, Object.keys(LIST_Q));
       const fields = parseFields(q.get('fields'), TASK_FIELDS) ?? TASK_DEFAULT;
-      const state = q.get('state') ?? 'open';
-      if (!['open', 'done', 'all'].includes(state)) throw invalid([{ field: 'state', message: 'Must be open, done, or all' }]);
-      const limit = intParam(q, 'limit', 50, 1, 200);
-      const offset = intParam(q, 'offset', 0, 0, 1_000_000);
+      const state = q.get('state') ?? QUERY_DEFAULTS.state;
+      if (!(STATES as readonly string[]).includes(state)) throw invalid([{ field: 'state', message: 'Must be open, done, or all' }]);
+      const limit = intParam(q, 'limit', QUERY_DEFAULTS.limit, 1, 200);
+      const offset = intParam(q, 'offset', QUERY_DEFAULTS.offset, 0, 1_000_000);
       const project = q.get('project')?.toLowerCase();
       const section = q.get('section') === null ? null : key(q.get('section')!);
       const text = q.get('q')?.toLowerCase();
@@ -170,9 +215,9 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    method: 'GET', doc: '/tasks/{ref}', name: 'tasks.get',
+    method: 'GET', doc: '/tasks/{ref}', name: 'tasks.get', query: FIELDS_Q,
     async run(c) {
-      const q = readQuery(c.url, ['fields']);
+      const q = readQuery(c.url, Object.keys(FIELDS_Q));
       const fields = parseFields(q.get('fields'), TASK_FIELDS) ?? TASK_DEFAULT;
       const ref = parseRef(c.params[0]);
       if (!ref) throw invalid([{ field: 'ref', message: 'Must be project:line' }]);
@@ -184,24 +229,18 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    method: 'POST', doc: '/tasks', name: 'tasks.add',
+    method: 'POST', doc: '/tasks', name: 'tasks.add', body: ADD_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ project: string; text: string; section?: string; parent?: ReturnType<typeof parseRef> }>(await readBody(c.req), {
-        project: { t: 'str', required: true, max: 200, line: true }, text: { t: 'str', required: true, line: true },
-        section: { t: 'str', max: 200, line: true }, parent: REF,
-      }, ['project', 'text']);
+      const b = validate<{ project: string; text: string; section?: string; parent?: ReturnType<typeof parseRef> }>(await readBody(c.req), ADD_BODY.schema, ADD_BODY.required);
       return result(await addTask(c.life, { project: b.project, text: b.text, section: b.section, parent: b.parent ?? undefined }), 201);
     },
   },
   {
-    method: 'POST', doc: '/capture', name: 'capture',
+    method: 'POST', doc: '/capture', name: 'capture', body: CAPTURE_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ text: string; project?: string; section?: string; dryRun?: boolean }>(await readBody(c.req), {
-        text: { t: 'str', required: true, line: true }, project: { t: 'str', max: 200, line: true },
-        section: { t: 'str', max: 200, line: true }, dryRun: { t: 'bool' },
-      }, ['text']);
+      const b = validate<{ text: string; project?: string; section?: string; dryRun?: boolean }>(await readBody(c.req), CAPTURE_BODY.schema, CAPTURE_BODY.required);
       try {
         const { result: r, spec } = await captureTask(c.life, b.text, { project: b.project, section: b.section, dryRun: b.dryRun });
         return json(b.dryRun ? 200 : 201, { changed: r.changed, ref: r.ref ? formatRef(r.ref) : undefined, after: r.after, spec });
@@ -213,45 +252,41 @@ export const ROUTES: Route[] = [
   },
   ...actionRoutes,
   {
-    method: 'POST', doc: '/tasks/edit', name: 'tasks.edit',
+    method: 'POST', doc: '/tasks/edit', name: 'tasks.edit', body: EDIT_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; expect?: string }>(await readBody(c.req), {
-        ref: REF, text: { t: 'str', required: true, max: 2000, line: true }, expect: { t: 'str', max: 2000, line: true },
-      }, ['ref', 'text']);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; expect?: string }>(await readBody(c.req), EDIT_BODY.schema, EDIT_BODY.required);
       return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text, b.expect)));
     },
   },
   {
-    method: 'POST', doc: '/tasks/move', name: 'tasks.move',
+    method: 'POST', doc: '/tasks/move', name: 'tasks.move', body: MOVE_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; target: NonNullable<ReturnType<typeof parseRef>>; position: 'before' | 'after'; expect?: string; expectTarget?: string }>(await readBody(c.req), {
-        ref: REF, target: REF, position: { t: 'enum', values: ['before', 'after'] }, expect: { t: 'str', max: 2000, line: true }, expectTarget: { t: 'str', max: 2000, line: true },
-      }, ['ref', 'target', 'position']);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; target: NonNullable<ReturnType<typeof parseRef>>; position: 'before' | 'after'; expect?: string; expectTarget?: string }>(await readBody(c.req), MOVE_BODY.schema, MOVE_BODY.required);
       return json(200, fmtEdit(await moveTask(c.deps.storage, b.ref, b.target, b.position, { ref: b.expect, target: b.expectTarget })));
     },
   },
   {
-    method: 'POST', doc: '/tasks/remove-completed', name: 'tasks.removeCompleted',
+    method: 'POST', doc: '/tasks/remove-completed', name: 'tasks.removeCompleted', body: REMOVE_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ project?: string }>(await readBody(c.req), { project: { t: 'str', max: 200, line: true } });
+      const b = validate<{ project?: string }>(await readBody(c.req), REMOVE_BODY.schema);
       return json(200, await removeCompleted(c.life, { project: b.project }));
     },
   },
   {
-    method: 'GET', doc: '/projects', name: 'projects.list',
+    method: 'GET', doc: '/projects', name: 'projects.list', query: FIELDS_Q,
     async run(c) {
-      const q = readQuery(c.url, ['fields']);
+      const q = readQuery(c.url, Object.keys(FIELDS_Q));
       const fields = parseFields(q.get('fields'), PROJECT_FIELDS) ?? PROJECT_DEFAULT;
       return json(200, { items: (await loadDocs(c.deps.storage)).map((d) => pick(projectView(d), fields)) });
     },
   },
   {
-    method: 'GET', doc: '/projects/{name}', name: 'projects.get',
+    method: 'GET', doc: '/projects/{name}', name: 'projects.get', query: FIELDS_Q,
     async run(c) {
-      const q = readQuery(c.url, ['fields']);
+      const q = readQuery(c.url, Object.keys(FIELDS_Q));
       const fields = parseFields(q.get('fields'), PROJECT_FIELDS) ?? PROJECT_DEFAULT;
       const name = c.params[0].toLowerCase();
       const doc = (await loadDocs(c.deps.storage)).find((d) => d.name.toLowerCase() === name);
@@ -260,23 +295,18 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    method: 'POST', doc: '/projects', name: 'projects.add',
+    method: 'POST', doc: '/projects', name: 'projects.add', body: PROJECT_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<Parameters<typeof addProject>[1]>(await readBody(c.req), {
-        name: { t: 'str', required: true, max: 200, line: true }, description: { t: 'str', max: 2000, line: true },
-        repositoryUrl: { t: 'str', line: true, pattern: /^https?:\/\/[^\s()[\]<>]+$/ }, aliases: { t: 'strs' },
-        priority: { t: 'num', min: 0, max: 1_000_000 }, capacity: { t: 'caps' }, weeklyCapacity: { t: 'num', min: 0, max: 168 },
-        fileName: { t: 'str', max: 100, noReadme: true, pattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/ },
-      }, ['name']);
+      const b = validate<Parameters<typeof addProject>[1]>(await readBody(c.req), PROJECT_BODY.schema, PROJECT_BODY.required);
       const { path } = await addProject(c.life, { ...b, force: false });
       return json(201, { path, project: baseName(path) });
     },
   },
   {
-    method: 'GET', doc: '/summaries', name: 'summaries.get',
+    method: 'GET', doc: '/summaries', name: 'summaries.get', query: FIELDS_Q,
     async run(c) {
-      const q = readQuery(c.url, ['fields']);
+      const q = readQuery(c.url, Object.keys(FIELDS_Q));
       const fields = parseFields(q.get('fields'), ['readme', 'stack', 'projects', 'myDay']) ?? ['readme', 'stack', 'projects', 'myDay'];
       const docs = await loadDocs(c.deps.storage);
       const s = generateSummaries({

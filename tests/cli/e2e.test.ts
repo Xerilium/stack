@@ -1,7 +1,7 @@
 /**
  * End-to-end: runs the real built CLI against temp git repos.
  * @req FR:cli/run.bin @req FR:cli/run.dir @req FR:cli/run.git @req FR:cli/run.nocommit @req FR:cli/run.remote @req FR:cli/run.now @req FR:cli/run.help
- * @req FR:cli/ref.format @req FR:cli/ref.default @req FR:cli/ref.invalid
+ * @req FR:cli/ref.format @req FR:cli/ref.default @req FR:cli/ref.invalid @req FR:cli/ref.expect
  * @req FR:cli/cmd.init @req FR:cli/cmd.add-project @req FR:cli/cmd.add @req FR:cli/cmd.next @req FR:cli/cmd.start @req FR:cli/cmd.complete
  * @req FR:cli/cmd.skip @req FR:cli/cmd.resume @req FR:cli/cmd.suspend @req FR:cli/cmd.set @req FR:cli/cmd.remove-completed @req FR:cli/cmd.update
  * @req FR:cli/out.text @req FR:cli/out.json @req FR:cli/out.quiet @req FR:cli/out.codes @req FR:cli/arch.thin @req FR:cli/arch.storage
@@ -16,7 +16,7 @@ const NOW = '2026-10-22T17:00:00Z';
 let build: string;
 const dirs: string[] = [];
 
-const ENV = {
+const ENV: NodeJS.ProcessEnv = {
   ...process.env,
   GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null',
   GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t',
@@ -183,6 +183,20 @@ describe('commands', () => {
     expect(file(d, 'tasks/alpha.md')).toContain('- [x] Two');
   });
 
+  // @req FR:task-lifecycle/complete.recurring @req FR:config/load.validate.shift-weekends
+  it('stack.json shiftWeekends controls recurring rolls', () => {
+    for (const [cfg, want] of [['{}', 'Nov 23, 2026'], ['{"shiftWeekends":false}', 'Nov 22, 2026']] as const) {
+      const d = repo('📅 Oct 22, 2026: 🔄 Monthly: Pay bills');
+      writeFileSync(join(d, '.xe/config/stack.json'), cfg);
+      const line = file(d, 'tasks/alpha.md').split('\n').findIndex(l => l.includes('Pay bills')) + 1;
+      expect(stack(d, 'complete', `tasks/alpha.md:${line}`, '--now', NOW).code).toBe(0);
+      expect(file(d, 'tasks/alpha.md')).toContain(`📅 ${want}: 🔄 Monthly`);
+    }
+    const bad = repo('x');
+    writeFileSync(join(bad, '.xe/config/stack.json'), '{"shiftWeekends":"no"}');
+    expect(stack(bad, 'next', '--now', NOW).err).toContain('shiftWeekends');
+  });
+
   it('complete --remove deletes the row; remove-completed prunes done rows', () => {
     const d = repo('ItemA', 'ItemB');
     const line = (t: string) => file(d, 'tasks/alpha.md').split('\n').findIndex(l => l.includes(t)) + 1;
@@ -281,6 +295,67 @@ describe('update', () => {
     stack(d, 'update', '--sweep', '--now', '2026-10-22T20:00:00Z');
     expect(file(d, 'tasks/alpha.md')).toContain('- [ ] Nap');
     expect(file(d, 'tasks/alpha.md')).not.toContain('💤');
+  });
+});
+
+describe('update lifecycle gaps', () => {
+  // @req FR:cli/cmd.update
+  it('makes ONE commit for all changed summary files', () => {
+    const d = repo('Plan', 'Ship');
+    const before = commits(d);
+    expect(stack(d, 'update', '--now', NOW).out).toMatch(/^updated README.md/);
+    expect(commits(d)).toBe(before + 1);
+    expect(git(d, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort()).toEqual(['README.md', 'my-day.md', 'projects.md', 'stack.md']);
+  });
+
+  // @req FR:cli/cmd.update
+  it('--sweep escalates due dates and commits task files once, then summaries once', () => {
+    const d = repo('Pay 📅 Oct 22: bill', 'Nap');
+    stack(d, 'update', '--now', NOW);
+    const before = commits(d);
+    stack(d, 'update', '--sweep', '--now', NOW);
+    expect(file(d, 'tasks/alpha.md')).toContain('‼️ Pay 📅 Oct 22: bill');
+    expect(commits(d)).toBe(before + 2);
+  });
+
+  // @req FR:cli/cmd.update
+  it('--queries refreshes query tasks (fake gh on PATH); off by default', () => {
+    const d = repo('Q 🔎 @GitHub/xerilium/stack (is:open)');
+    const bin = tmp();
+    writeFileSync(join(bin, 'gh'), '#!/bin/sh\necho \'{"data":{"search":{"nodes":[{"__typename":"Issue","title":"T1","url":"https://x/1"}]}}}\'\n', { mode: 0o755 });
+    const oldPath = ENV.PATH;
+    ENV.PATH = `${bin}:${oldPath}`;
+    try {
+      expect(stack(d, 'update', '--now', NOW, '--json').out).not.toContain('queries');
+      expect(file(d, 'tasks/alpha.md')).not.toContain('🌐');
+      const j = JSON.parse(stack(d, 'update', '--queries', '--now', NOW, '--json').out);
+      expect(j.queries.processed).toBe(1);
+      expect(j.queries.failures).toEqual([]);
+    } finally { ENV.PATH = oldPath; }
+    expect(file(d, 'tasks/alpha.md')).toContain('- [ ] 🌐 T1 — https://x/1');
+    expect(git(d, 'status', '--porcelain')).toBe('');
+  });
+
+  // @req FR:cli/cmd.update
+  it('--queries reports failures without failing the command', () => {
+    const d = repo('Q 🔎 @Nope/x/y (a)');
+    const j = JSON.parse(stack(d, 'update', '--queries', '--now', NOW, '--json').out);
+    expect(j.ok).toBe(true);
+    expect(j.queries.failures).toHaveLength(1);
+  });
+
+  // @req FR:cli/ref.expect
+  it('--expect guards stale refs (exit 3, nothing changed)', () => {
+    const d = repo('One', 'Two');
+    const line = file(d, 'tasks/alpha.md').split('\n').findIndex(l => l.includes('Two')) + 1;
+    const ref = `tasks/alpha.md:${line}`;
+    const before = commits(d);
+    const bad = stack(d, 'start', ref, '--expect', 'One', '--now', NOW);
+    expect(bad.code).toBe(3);
+    expect(bad.err).toMatch(/^error: /);
+    expect(commits(d)).toBe(before);
+    expect(stack(d, 'start', ref, '--expect', 'Two', '--now', NOW).code).toBe(0);
+    expect(file(d, 'tasks/alpha.md')).toContain('🚧 Two');
   });
 });
 

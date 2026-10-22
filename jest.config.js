@@ -7,4 +7,8 @@ module.exports = {
     'src/**/*.ts',
     '!src/**/*.d.ts',
   ],
+  // Acceptance: core must stay at or above 90% (branches 85%).
+  coverageThreshold: {
+    './src/core/': { statements: 90, lines: 90, functions: 90, branches: 85 },
+  },
 };

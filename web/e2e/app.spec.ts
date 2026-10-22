@@ -179,7 +179,7 @@ test.describe('pickers and bulk edit', () => {
       await shot(page, 'picker', info);
     }
     await dlg.getByRole('button', { name: /1 hour/ }).click();
-    expect(m.calls.at(-1)).toMatchObject({ path: '/tasks/set', body: { ref: 'alpha:9', effort: '🟡' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/set', body: { ref: 'alpha:9', effort: '🟡' } });
     await page.locator('.row[data-ref="beta:4"]').getByRole('button', { name: 'Set properties' }).click();
     await expect(page.getByRole('group', { name: 'Priority' })).toBeVisible();
     await expect(page.getByRole('group', { name: 'Impact' })).toBeVisible();

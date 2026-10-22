@@ -1,4 +1,4 @@
-import { parseConfig, getTimeBlock, ConfigError } from '../../src/core/config';
+import { getDefaults, parseConfig, getTimeBlock, ConfigError } from '../../src/core/config';
 
 // @req FR:config/$stack-config @req FR:config/$time-block
 describe('parseConfig', () => {
@@ -122,6 +122,22 @@ describe('range and overlap', () => {
   // @req FR:config/load.validate.range
   it('rejects a block whose start equals its end', () => {
     expect(() => parseConfig({ timeBlocks: [mk('A', '09:00', '09:00')] })).toThrow(/startTime equals endTime/);
+  });
+
+  // @req FR:config/load.validate.range
+  it('reports a malformed time as a format error even when start equals end', () => {
+    expect(() => parseConfig({ timeBlocks: [mk('A', '9am', '9am')] })).toThrow(/startTime: expected HH:mm/);
+    expect(() => parseConfig({ timeBlocks: [mk('A', '09:00', 'x')] })).toThrow(/endTime: expected HH:mm/);
+    expect(() => parseConfig({ timeBlocks: [{ ...mk('A', '09:00', '09:00'), startTime: undefined }] })).toThrow(/startTime/);
+  });
+
+  // @req FR:config/load.defaults @req FR:config/load.validate.shift-weekends
+  it('defaults shiftWeekends to true, accepts false, rejects non-boolean', () => {
+    expect(parseConfig().shiftWeekends).toBe(true);
+    expect(parseConfig({}).shiftWeekends).toBe(true);
+    expect(parseConfig({ shiftWeekends: false }).shiftWeekends).toBe(false);
+    expect(() => parseConfig({ shiftWeekends: 'no' })).toThrow(/shiftWeekends: expected boolean/);
+    expect(getDefaults().shiftWeekends).toBe(true);
   });
 
   // @req FR:config/load.validate

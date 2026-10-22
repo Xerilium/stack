@@ -32,7 +32,7 @@ const DENY401: AuthDecision = { allow: false, status: 401 };
 const DENY403: AuthDecision = { allow: false, status: 403 };
 
 /** Token from `Authorization: Bearer` or `X-Stack-Token`; `null` when none was presented. */
-function presentedToken(req: Request): string | null {
+export function presentedToken(req: Request): string | null {
   const auth = req.headers.get('authorization');
   if (auth !== null) {
     const m = /^bearer[ \t]+(.*)$/i.exec(auth.trim());
@@ -59,7 +59,7 @@ function sameOrigin(req: Request): boolean {
   }
 }
 
-const covers = (scopes: string[], need: string) => scopes.includes(need) || scopes.includes(need.split(':')[1]);
+export const scopeCovers = (scopes: string[], need: string) => scopes.includes(need) || scopes.includes(need.split(':')[1]);
 
 export function createAuth(opts: AuthOptions): { authorize: Authorize; wrap: (api: (req: Request) => Promise<Response>) => (req: Request) => Promise<Response> } {
   const emit = (kind: AuthEvent['kind'], route: string, status: number, tokenId?: string) => {
@@ -88,7 +88,7 @@ export function createAuth(opts: AuthOptions): { authorize: Authorize; wrap: (ap
       const v: Verified | null = await opts.tokens.verify(token);
       if (!v) return deny(DENY401, route.name);
       const need = routeScope(route.name);
-      if (!need || !covers(v.scopes, need)) return deny(DENY403, route.name, v.id);
+      if (!need || !scopeCovers(v.scopes, need)) return deny(DENY403, route.name, v.id);
       emit('allow', route.name, 200, v.id);
       return { allow: true };
     } catch {

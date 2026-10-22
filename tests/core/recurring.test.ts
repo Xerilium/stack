@@ -47,7 +47,7 @@ describe('rollRecurring', () => {
     expect(rollRecurring('- [ ] 📅 mar 2, 2026: 🔄 weekly: X', ref)).toBe('- [ ] 📅 Mar 9, 2026: 🔄 weekly: X');
     expect(rollRecurring('- [ ] 📅 MAR 2, 2026: 🔄 WEEKLY: X', ref)).toBe('- [ ] 📅 Mar 9, 2026: 🔄 WEEKLY: X');
   });
-  // @req FR:recurring-rows/roll.step
+  // @req FR:recurring-rows/roll.step @req FR:recurring-rows/roll.yearless
   it('rolls Dec to Jan with and without year', () => {
     expect(rollRecurring('- [ ] 📅 Dec 10, 2026: 🔄 Monthly: X', ref)).toBe('- [ ] 📅 Jan 11, 2027: 🔄 Monthly: X <!--nominal:2027-01-10-->');
     expect(rollRecurring('- [ ] 📅 Dec 10: 🔄 Monthly: X', new Date(Date.UTC(2026, 5, 1)))).toBe('- [ ] 📅 Jan 11: 🔄 Monthly: X <!--nominal:2027-01-10-->');
@@ -154,7 +154,16 @@ describe('Quarterly-EOM+1', () => {
   it('works in legacy form and parses to anchor', () => {
     expect(S('- [x] 🔄 Quarterly-EOM+1: 📅 Jan 31, 2026: T')).toBe('- [ ] 🔄 Quarterly-EOM+1: 📅 Apr 30, 2026: T');
     expect(parseRecurringRow('- [ ] 📅 Jan 31, 2026: 🔄 Quarterly-EOM+1: T', ref)?.recurrence)
-      .toEqual({ cadence: 'quarterly', anchor: 'end-of-month' });
+      .toEqual({ cadence: 'quarterly', anchor: 'end-of-month', offsetMonths: 1 });
+  });
+  // @req FR:recurring-rows/detect.parse
+  it('maps EOM+1 to offsetMonths, never offsetDays, in both forms', () => {
+    for (const l of ['- [ ] 📅 Jan 31, 2026: 🔄 Quarterly-EOM+1: T', '- [ ] 🔄 quarterly-eom+1: 📅 Jan 31, 2026: T']) {
+      const r = parseRecurringRow(l, ref)!.recurrence;
+      expect(r.offsetMonths).toBe(1);
+      expect(r.offsetDays).toBeUndefined();
+    }
+    expect(parseRecurringRow('- [ ] 📅 Jan 31, 2026: 🔄 Quarterly: T', ref)!.recurrence).toEqual({ cadence: 'quarterly' });
   });
 });
 
