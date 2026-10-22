@@ -1,0 +1,34 @@
+name: E2E
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Detect web app
+        id: web
+        run: echo "present=$([ -f web/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Skip notice
+        if: steps.web.outputs.present != 'true'
+        run: echo "web/package.json not found; skipping e2e."
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        if: steps.web.outputs.present == 'true'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.web.outputs.present == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.web.outputs.present == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm --filter ./web exec playwright install --with-deps chromium
+          pnpm --filter ./web run test:e2e
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure() && steps.web.outputs.present == 'true'
+        with:
+          name: playwright-report
+          path: web/playwright-report

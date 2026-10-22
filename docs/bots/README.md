@@ -41,3 +41,5 @@ const bots = createBotHandler({
   github: { secret: ghSecret, allow: ['octocat'] },
 });
 ```
+
+Deploy notes: bot secrets are app settings like the others; see the [runbook](../runbook.md).
