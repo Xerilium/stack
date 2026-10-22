@@ -28,7 +28,8 @@ export interface Storage {
 export const versionOf = (content: string): string =>
   createHash('sha256').update(Buffer.from(content, 'utf8')).digest('hex');
 
-const TASK_PATH = /^tasks\/[^/\\\0]+\.md$/;
+/** Dotfiles are rejected (list() hides them, so every adapter must agree). */
+const TASK_PATH = /^tasks\/[^/\\\0.][^/\\\0]*\.md$/;
 
 /** @req FR:storage-git/interface.paths */
 export function validatePath(path: string): string {
@@ -87,8 +88,8 @@ export class FsStorage implements Storage {
     try {
       const entries = await fs.readdir(join(this.root, TASKS_DIR), { withFileTypes: true });
       return entries.filter(e => e.isFile() && isTaskFile(e.name)).map(e => `${TASKS_DIR}/${e.name}`).sort();
-    } catch (e: any) {
-      if (e.code === 'ENOENT') return [];
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
       throw e;
     }
   }
@@ -119,8 +120,8 @@ export class FsStorage implements Storage {
   protected async readRaw(path: string): Promise<string | null> {
     try {
       return await fs.readFile(join(this.root, path), 'utf8');
-    } catch (e: any) {
-      if (e.code === 'ENOENT') return null;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw e;
     }
   }

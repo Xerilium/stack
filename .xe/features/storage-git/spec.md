@@ -22,8 +22,8 @@ Surfaces need a backend-neutral contract so they work the same on git, disk, or 
 - **FR:interface.@type** (P1): Interface: `Storage { list(): Promise<string[]>; read(path): Promise<StoredFile>; write(path, content, opts?): Promise<WriteResult> }`
 - **FR:interface.list** (P1): `list` MUST return sorted repo-relative paths of `tasks/*.md` files
 - **FR:interface.read** (P1): `read` MUST return the exact content and an opaque `version` token, and throw `NotFoundError` when the file is missing
-- **FR:interface.bytes** (P1): Content MUST round-trip byte-exact (BOM, CRLF, trailing whitespace, emoji) with no normalization
-- **FR:interface.paths** (P1): Adapters MUST reject paths that are absolute, contain `..`, backslashes, or NUL, or fall outside `tasks/*.md`, with `PathError`
+- **FR:interface.bytes** (P1): Content MUST round-trip byte-exact (BOM, CRLF, trailing whitespace, emoji) with no normalization. Content is UTF-8 text: invalid UTF-8 sequences or lone surrogates are not byte-exact (replaced on decode/encode)
+- **FR:interface.paths** (P1): Adapters MUST reject paths that are absolute, contain `..`, backslashes, or NUL, or fall outside `tasks/*.md` (dotfiles such as `tasks/.x.md` are outside, matching `list`), with `PathError`
 - **FR:interface.version** (P1): `version` MUST be derived from content only, identical across adapters
 
 ### FR:write: Atomic writes
@@ -40,7 +40,10 @@ Surfaces need a backend-neutral contract so they work the same on git, disk, or 
 - **FR:git.isolation** (P1): Unrelated dirty or staged files in the work tree MUST NOT be committed or lost
 - **FR:git.remote** (P1): With a remote configured, `write` MUST sync (fetch + rebase) before checking the version, and push after committing
 - **FR:git.push-retry** (P1): When the push is rejected, `write` MUST fetch, rebase, and retry (max 3 attempts)
-- **FR:git.conflict** (P1): When rebase conflicts or the retried version check fails, `write` MUST abort the rebase, drop its own commit, leave the work tree clean, and throw `ConflictError`
+- **FR:git.conflict** (P1): When rebase conflicts or the retried version check fails, `write` MUST abort the rebase, drop its own commit (tracked by SHA across rebases, via soft reset plus path-limited restore so unrelated staged files survive), leave the work tree clean, and throw `ConflictError`
+- **FR:git.failure** (P1): Non-conflict git failures (lock files, hooks) and autostash pop conflicts MUST throw `StorageError`, not `ConflictError`; a failed commit MUST roll back the path
+- **FR:git.branch** (P1): With a remote or explicit `branch`, `write` and `sync` MUST throw `StorageError` when the configured branch is not checked out
+- **FR:git.concurrency** (P2): Serialization is per adapter instance; multiple instances or processes on one repo are unsupported (may fail on `index.lock` with `StorageError`)
 - **FR:git.exec** (P1): Git MUST run via argument arrays (no shell)
 
 ### FR:fs: Filesystem and memory adapters

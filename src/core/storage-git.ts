@@ -1,4 +1,6 @@
 import { execFile } from 'child_process';
+import { existsSync } from 'fs';
+import { isAbsolute, join } from 'path';
 import { FsStorage, WriteOptions, WriteResult, ConflictError, StorageError, versionOf } from './storage';
 
 export interface GitStorageOptions {
@@ -19,11 +21,13 @@ export class GitStorage extends FsStorage {
   beforePush?: () => Promise<void>;
   private remote?: string;
   private branch: string;
+  private branchExplicit: boolean;
 
   constructor(root: string, opts: GitStorageOptions = {}) {
     super(root);
     this.remote = opts.remote;
     this.branch = opts.branch ?? 'main';
+    this.branchExplicit = opts.branch !== undefined;
   }
 
   /** @req FR:storage-git/git.exec */
@@ -55,28 +59,64 @@ export class GitStorage extends FsStorage {
     return true;
   }
 
-  /** Rebase local state onto the remote; false when it conflicted (rebase aborted). */
-  private async rebase(): Promise<boolean> {
-    try { await this.git('rebase', '--autostash', '-q', this.ref); return true; } catch {
-      await this.tryGit('rebase', '--abort');
-      return false;
+  private async unmerged(): Promise<boolean> {
+    return ((await this.tryGit('diff', '--name-only', '--diff-filter=U')) ?? '').trim() !== '';
+  }
+
+  private async rebaseInProgress(): Promise<boolean> {
+    for (const d of ['rebase-merge', 'rebase-apply']) {
+      const p = (await this.tryGit('rev-parse', '--git-path', d))?.trim();
+      if (p && existsSync(isAbsolute(p) ? p : join(this.root, p))) return true;
     }
+    return false;
+  }
+
+  /**
+   * Rebase local state onto the remote; false when it conflicted (rebase aborted).
+   * Other failures (lock files, hooks) and autostash pop conflicts throw StorageError.
+   */
+  private async rebase(): Promise<boolean> {
+    try {
+      await this.git('rebase', '--autostash', '-q', this.ref);
+    } catch (e) {
+      if (await this.rebaseInProgress() || await this.unmerged()) {
+        await this.tryGit('rebase', '--abort');
+        return false;
+      }
+      throw e;
+    }
+    // git exits 0 when the autostash pop conflicts; surface it instead of reporting success.
+    if (await this.unmerged()) {
+      throw new StorageError('Local uncommitted changes conflict with remote changes (autostash pop failed); resolve unmerged paths and `git stash list` entry manually');
+    }
+    return true;
+  }
+
+  /** Reject writes when the checked-out branch is not the configured one. */
+  private async checkBranch(): Promise<void> {
+    if (!this.remote && !this.branchExplicit) return;
+    const cur = (await this.tryGit('symbolic-ref', '--short', '-q', 'HEAD'))?.trim() ?? null;
+    if (cur !== this.branch) throw new StorageError(`Configured branch ${this.branch} is not the current branch (${cur ?? 'detached HEAD'})`);
   }
 
   /** Fetch and rebase onto the remote (no-op without a remote). */
   async sync(): Promise<void> {
     if (!this.remote) return;
+    await this.checkBranch();
     if (!(await this.fetch())) return;
-    if (!(await this.rebase())) throw new ConflictError('Local commits conflict with the remote; rebase aborted');
+    if (!(await this.rebase())) {
+      const n = ((await this.tryGit('rev-list', '--count', `${this.ref}..HEAD`)) ?? '?').trim();
+      throw new ConflictError(`${n} unpushed local commit(s) conflict with the remote; rebase aborted, resolve manually`);
+    }
   }
 
   protected async locked(path: string, content: string, opts: WriteOptions): Promise<WriteResult> {
+    await this.checkBranch();
     if (this.remote) await this.sync();
     const prior = await this.readRaw(path);
     if (opts.expectedVersion !== undefined && (prior === null ? null : versionOf(prior)) !== opts.expectedVersion) {
       return super.locked(path, content, opts); // throws ConflictError
     }
-    const headBefore = (await this.tryGit('rev-parse', '--verify', '-q', 'HEAD'))?.trim() ?? null;
     let committed = false;
     try {
       await this.atomicWrite(path, content);
@@ -91,16 +131,18 @@ export class GitStorage extends FsStorage {
       await this.restore(path, prior);
       throw e;
     }
-    if (committed && this.remote) await this.push(path, opts, headBefore);
+    if (committed && this.remote) await this.push(path, opts);
     return { version: versionOf(content) };
   }
 
-  private async push(path: string, opts: WriteOptions, headBefore: string | null): Promise<void> {
+  private async push(path: string, opts: WriteOptions): Promise<void> {
+    // Our commit is HEAD now; re-read after every rebase because the SHA changes.
+    let ours = (await this.git('rev-parse', 'HEAD')).trim();
     for (let attempt = 1; ; attempt++) {
       if (this.beforePush) await this.beforePush();
       try { await this.git('push', '-q', this.remote!, `HEAD:refs/heads/${this.branch}`); return; } catch (e) {
         if (attempt >= MAX_PUSH_ATTEMPTS) {
-          await this.dropCommit(path, headBefore);
+          await this.dropCommit(path, ours);
           throw new ConflictError(`Push rejected after ${attempt} attempts: ${(e as Error).message}`);
         }
       }
@@ -110,20 +152,26 @@ export class GitStorage extends FsStorage {
         if ((theirs === null ? null : versionOf(theirs)) !== opts.expectedVersion) ok = false;
       }
       if (ok) ok = await this.rebase();
+      if (ok) ours = (await this.git('rev-parse', 'HEAD')).trim();
       if (!ok) {
-        await this.dropCommit(path, headBefore);
+        await this.dropCommit(path, ours);
         throw new ConflictError(`Conflict on ${path}: remote changed it concurrently`);
       }
     }
   }
 
-  /** Remove our commit, restore the path to the remote state, keep unrelated work-tree changes. */
-  private async dropCommit(path: string, headBefore: string | null): Promise<void> {
-    if (headBefore) {
-      await this.tryGit('reset', '-q', '--mixed', headBefore);
-      await this.tryGit('checkout', '-q', 'HEAD', '--', path);
+  /**
+   * Remove our commit (the HEAD tip) without touching the index beyond `path`:
+   * soft reset keeps unrelated staged files, then `path` alone is restored to the parent state.
+   */
+  private async dropCommit(path: string, ours: string): Promise<void> {
+    const parent = (await this.tryGit('rev-parse', '--verify', '-q', `${ours}^`))?.trim() ?? null;
+    if (parent) await this.git('reset', '-q', '--soft', parent);
+    else await this.git('update-ref', '-d', 'HEAD');
+    if (parent && (await this.tryGit('cat-file', '-e', `HEAD:${path}`)) !== null) {
+      await this.git('restore', '-q', '--source=HEAD', '--staged', '--worktree', '--', path);
     } else {
-      await this.tryGit('update-ref', '-d', 'HEAD');
+      await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', path);
       await this.restore(path, null);
     }
     if (await this.tryGit('fetch', '-q', this.remote!, this.branch) !== null) {
