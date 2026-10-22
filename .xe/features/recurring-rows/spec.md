@@ -43,6 +43,7 @@ Recurring deadlines (bills, tax filings) need one row per obligation. Hand-editi
 - **FR:roll.clamp** (P1): Month-based steps clamp to month end (Jan 31 + Monthly = Feb 28/29). The intended day is retained so the clamp does not drift (Jan 31 -> Feb 28 -> Mar 31)
 - **FR:roll.weekend** (P1): `options.shiftWeekends` (default true; caller passes the config value) shifts Sat/Sun due dates to Monday. Daily rows have no nominal day: they advance from the shown date
 - **FR:roll.nominal** (P1): When the shown date differs from the nominal date (weekend shift or clamp), the row ends with a hidden marker `<!--nominal:YYYY-MM-DD-->`, or `<!--nominal:YYYY-MM-DD day:N-->` when a clamp hides intended day N. The marker is the roll base when present, and removed when no longer needed (Aug 15 Sat -> shown Aug 17 -> next Sep 15). It is ignored when `shiftWeekends` is false except for clamp state
+- **FR:roll.yearless** (P2): Year-less rows take the year from `today` (or the marker); a December row that rolls into January shows no year, so the marker carries the new year (Dec 10 -> `Jan 11 <!--nominal:2027-01-10-->`)
 
 ### FR:preserve: Preservation
 
