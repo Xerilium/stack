@@ -299,9 +299,9 @@ export function createApiHandler(deps: ApiDeps): (req: Request) => Promise<Respo
       if (url.pathname === base || url.pathname.startsWith(`${base}/`)) rel = url.pathname.slice(base.length);
       const segs = (rel ?? '').split('/').filter(Boolean);
       let params: string[] = [];
-      try { params = []; segs.forEach((s, i) => { segs[i] = decodeURIComponent(s); }); } catch {
-        throw new ApiError('bad_request', 'Malformed URL encoding');
-      }
+      // A bad escape is reported only after authorization, so it cannot be probed anonymously.
+      let badEncoding = false;
+      try { params = []; segs.forEach((s, i) => { segs[i] = decodeURIComponent(s); }); } catch { badEncoding = true; segs.length = 0; }
       const here = rel === null ? [] : ROUTES.map((r) => ({ r, p: matchPath(r.doc, segs) })).filter((x) => x.p);
       const hit = here.find((x) => x.r.method === method);
 
@@ -314,6 +314,7 @@ export function createApiHandler(deps: ApiDeps): (req: Request) => Promise<Respo
         } catch { denied = new ApiError('forbidden', 'Forbidden'); }
       }
       if (denied) return errorResponse(denied);
+      if (badEncoding) throw new ApiError('bad_request', 'Malformed URL encoding');
 
       if (!hit) {
         if (here.length) {
