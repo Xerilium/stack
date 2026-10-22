@@ -1,0 +1,100 @@
+---
+id: summaries
+title: Summaries
+author: flanakin
+description: "Generates the README, stack, projects, and my-day summaries byte-for-byte like the legacy generator."
+dependencies: [scoring-engine, config, task-parser]
+---
+
+<!-- markdownlint-disable single-title -->
+
+# Feature: Summaries
+
+## Purpose
+
+Show the ranked stack in four readable files so a person can see what to do now, what is next, and where each project stands. This slice reproduces the legacy PowerShell generator exactly (same bytes) so the rewrite can replace it without anyone noticing a difference.
+
+## Scope
+
+- In: README, stack, projects, and my-day generation from project file text, config, a clock instant, and the previous README/projects text; legacy outcome de-duplication and first-actionable selection; PowerShell-compatible number and date formatting; a parity harness that runs the legacy code on any tasks directory.
+- Non-goals: reading or writing files in `src/core` (callers pass text, receive text); date-driven task edits (`📅`/`💤`/`⏰` rewrites) and GitHub query expansion (task-lifecycle); `scheduling.md` (legacy only links to it); redesigning any layout (formatter-clean).
+- Legacy quirks are preserved on purpose and listed under Legacy Parity.
+
+## Scenarios
+
+### FR:generate: Generate all summaries
+
+- **FR:generate.@function** (P1): Interface: `generateSummaries(input: SummaryInput): SummaryFiles`
+- **FR:generate.input** (P1): `SummaryInput` (@req FR:summaries/$summary-input)
+- **FR:generate.output** (P1): `SummaryFiles` (@req FR:summaries/$summary-files)
+- **FR:generate.pure** (P1): `generateSummaries` MUST be a pure function of its input
+- **FR:generate.load** (P1): Projects MUST be loaded in file-name order, named from the H1 on line 1 (emoji split when the first word is 1-4 UTF-16 units with a non-ASCII character), and ordered by calculated priority then previous `projects.md` order (999 when absent) then file order
+- **FR:generate.parse** (P1): Tasks MUST be the unchecked `- [ ]` lines of the first `## 🔄 Active` section, each carrying its `>` quote lines and `- ` list lines
+- **FR:generate.rank** (P1): Tasks MUST be scored with the legacy engine and ordered by score descending
+
+### FR:stack: stack.md
+
+- **FR:stack.header** (P1): The file MUST open with project, root task, leaf task, hour, working-day, and missing-effort counts
+- **FR:stack.tasks** (P1): Every leaf task not itself parked MUST be listed with its full hierarchy, score, score breakdown, and a missing-effort note when it has no effort emoji
+- **FR:stack.breakdown** (P1): Breakdown lines MUST follow the legacy formula layout (`🧮 total = (parts) / ⏱️Nh`)
+
+### FR:readme: README.md
+
+- **FR:readme.banner** (P1): The banner MUST show the weekday and time in the configured zone, each active time block, urgent-task count, ready AI-task count, and waiting-checkpoint count
+- **FR:readme.top** (P1): The top task MUST be the first outcome-deduplicated, time-filtered leaf; the next three follow as Up next
+- **FR:readme.other** (P1): Other priorities MUST list the first actionable task of every project not shown above, sorted by score
+- **FR:readme.parking** (P1): The parking lot MUST list tasks carrying `🅿️` or `💤`, or a congratulation line when none
+- **FR:readme.footer** (P1): The footer MUST be preserved from the previous README (text after its last `---`)
+
+### FR:projects: projects.md
+
+- **FR:projects.kpi** (P1): The file MUST open with project count, over-capacity summary, task count, and per-status counts
+- **FR:projects.sections** (P1): Each project MUST list its top five root-grouped tasks with subtask counts and next action, and a capacity note when over or more than 4 hours under
+
+### FR:myday: my-day.md
+
+- **FR:myday.capacity** (P1): Tasks MUST be assigned greedily by score to today's non-Sleep time blocks within each project's capacity for that block, each task at most once
+- **FR:myday.top** (P1): The top task MUST be the best task of the active blocks and is removed from the block lists
+- **FR:myday.finished** (P1): A block group whose blocks have all ended MUST show only its best task
+
+### FR:format: PowerShell-compatible formatting
+
+- **FR:format.number** (P1): `formatNumber` MUST print doubles like PowerShell (15 significant digits, `E` notation outside 1e-5..1e15)
+- **FR:format.round** (P2): `roundHalfEven` MUST match .NET `Math.Round(value, digits)`
+- **FR:format.sort** (P1): `netSort` MUST reproduce the order of .NET `Array.Sort` (introsort) so ties order like PowerShell `Sort-Object`
+
+## Data Model
+
+- **FR:$summary-input** (P1): **`SummaryInput`** — `projects` (`{ fileName, content }[]`), `config`, `now` (Date), `previousReadme?`, `previousProjects?`.
+- **FR:$summary-files** (P1): **`SummaryFiles`** — `readme`, `stack`, `projects`, `myDay`: the exact file text to write (UTF-8 BOM on the first three, none on my-day, one trailing newline).
+
+## Legacy Parity
+
+- **FR:parity.fixture** (P1): Expected files generated by the legacy code (`tests/parity/generate-legacy.ps1`) over the trimmed fixtures in `tests/fixtures/summaries/` MUST match byte for byte
+- **FR:parity.env** (P1): `tests/core/summaries.parity.test.ts` MUST compare against any case directory named by `STACK_LEGACY_DIR` and skip when unset
+- **FR:parity.quirks** (P1): These legacy behaviors are preserved:
+  - Output files are UTF-8 with a BOM, except my-day.md which has none; all end in one newline
+  - Scores print with 15 significant digits
+  - First-actionable siblings are ordered by id as strings, so `_task_10` precedes `_task_2`
+  - `stack.md` and `projects.md` apply the parked test to a task and its own emojis only, because legacy passes only the leaf (or root) list as the hierarchy
+  - The "daytime tasks" part of Other priorities never fires (legacy reads `Emojis.TimeBlock`, which does not exist)
+  - my-day uses its own effort table whose `⚫` lacks the variation selector, so `⚫️` tasks cost 1 hour
+  - README, projects, and my-day are time dependent; the zone is the configured one and legacy's double conversion is not reproduced
+  - Equal-score order follows .NET introsort, as PowerShell `Sort-Object` is unstable
+  - A lone task is a hashtable in legacy, so `.Count` returns its 16 keys: stack.md shows 16 leaf node tasks when exactly one is active, projects.md shows "16 blocked" when exactly one subtask is blocked, and my-day.md prints 16 blank lines (1 when the block is finished) instead of a block's only task
+  - Breakdown totals are .NET `decimal` values (28 digits, trailing zeros removed) while task scores are doubles
+  - Breakdown lines print `⏱️` only when the effort divisor is not 1
+  - my-day.md's `⏰` start date follows `Get-Date -Month -Day`: the day rolls over (Feb 30 is Mar 2), a day outside 1-31 or an unknown month hides the task
+  - my-day.md is not written when there are no tasks (`myDay` is null)
+  - The legacy hashtables behind projects.md grouping and my-day.md blocks iterate in random order; the generator and the parity harness (which patches a scratch copy of the legacy code) both use insertion order
+  - Legacy code defaults differ from the legacy config file (`🔹` is 0.1 hours and `🎯` weighs 2 without a config); Stack's config defaults follow the file (0.2 and 10), so parity fixtures carry a full `taskScoring` section
+  - Date-driven task edits (`Update-TaskDates`, `Update-StackMetadata`) are disabled in the harness: they belong to task-lifecycle
+
+## Architecture Constraints
+
+- Pure functions; no file or network access.
+- Reuses `scoring.ts` (engine, filter, emoji extraction) and `config.ts`.
+
+## External Dependencies
+
+None

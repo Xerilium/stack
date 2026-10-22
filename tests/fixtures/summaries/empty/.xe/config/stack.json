@@ -1,0 +1,132 @@
+{
+  "timezone": "America/Los_Angeles",
+  "startOfDay": "08:00",
+  "timeBlocks": [
+    {
+      "name": "Work",
+      "days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+      "startTime": "08:00",
+      "endTime": "16:00",
+      "emoji": "☀️"
+    },
+    {
+      "name": "Family evening",
+      "label": "Family",
+      "days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+      "startTime": "16:00",
+      "endTime": "20:00",
+      "emoji": "🏠"
+    },
+    {
+      "name": "Family weekend",
+      "label": "Family",
+      "days": ["Sat", "Sun"],
+      "startTime": "08:00",
+      "endTime": "20:00",
+      "emoji": "🏠"
+    },
+    {
+      "name": "Shichael",
+      "days": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      "startTime": "20:00",
+      "endTime": "23:00",
+      "emoji": "💕"
+    },
+    {
+      "name": "Project",
+      "days": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      "startTime": "23:00",
+      "endTime": "02:00",
+      "emoji": "🌙"
+    },
+    {
+      "name": "Sleep",
+      "days": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      "startTime": "02:00",
+      "endTime": "08:00",
+      "emoji": "😴"
+    }
+  ],
+  "calendar": {
+    "syncEnabled": true,
+    "azureApp": {
+      "clientId": "",
+      "scopes": [
+        "https://graph.microsoft.com/Calendars.Read",
+        "https://graph.microsoft.com/Calendars.ReadWrite",
+        "https://graph.microsoft.com/offline_access",
+        "https://graph.microsoft.com/User.Read"
+      ]
+    },
+    "defaultSettings": {
+      "defaultIntervalMinutes": 30,
+      "maxDaysLookAhead": 365,
+      "cacheExpiryMinutes": 5,
+      "accountTypes": {
+        "personal": {
+          "tenantId": "common",
+          "authority": "https://login.microsoftonline.com/common"
+        },
+        "organizational": {
+          "tenantId": "organizations",
+          "authority": "https://login.microsoftonline.com/organizations"
+        }
+      }
+    }
+  },
+  "taskScoring": {
+    "emojiWeights": {
+      "priority": {
+        "🔝": 1000,
+        "🚨": 15,
+        "‼️": 10,
+        "🔺": 5,
+        "🔻": -2
+      },
+      "status": {
+        "🚧": 10,
+        "⏸️": 5,
+        "👀": 2,
+        "⏳": -2,
+        "⛔️": -5
+      },
+      "effort": {
+        "🔹": 10,
+        "🟢": 5,
+        "🟡": 0,
+        "🟠": -2,
+        "🔴": -5,
+        "⚫️": -10
+      },
+      "impact": {
+        "⬆️": 10,
+        "↔️": 5,
+        "⬇️": -2
+      },
+      "value": {
+        "💰": 25,
+        "⚠️": 20,
+        "😊": 15,
+        "⏱️": 8,
+        "🌱": 5,
+        "🏃": 8,
+        "🌟": 10
+      },
+      "timeBlocks": {
+        "default": 8
+      },
+      "special": {
+        "📅": 2,
+        "🎯": 10
+      }
+    },
+    "effortHours": {
+      "🔹": 0.2,
+      "🟢": 0.5,
+      "🟡": 1,
+      "🟠": 2,
+      "🔴": 4,
+      "⚫️": 8
+    }
+  }
+}
