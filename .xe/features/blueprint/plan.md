@@ -70,3 +70,7 @@ graph TD
 ## Constraints
 
 Dependency order. One slice per draft PR. Never merge. Do not modify `~/dev/todo`.
+
+## Toolchain (from repo audit)
+
+Standards follow Xerilium repos (prime): pnpm 11 (`packageManager`, `.npmrc` engine-strict + save-exact), Node >=22, Catalyst 0.3 from `.xe/config/catalyst-latest.tgz`, `.xe/config/catalyst.json` traceability, CI running `pnpm test`. Applied in the init-modernize PR; all slices build on it. Stale before: npm + package-lock, Catalyst ^0.1.3, no CI, no catalyst config, caret versions.
