@@ -1,0 +1,2005 @@
+{
+  "generatedFrom": "legacy Get-StackProjects + ConvertFrom-StackMarkdown + Get-StackTaskScore + Filter-TasksByTimeBlock",
+  "projects": [
+    {
+      "name": "Beta",
+      "valueScore": 0.0,
+      "calculatedPriority": 2.0,
+      "weight": 5.0
+    },
+    {
+      "name": "🚀 Alpha",
+      "valueScore": 58.0,
+      "calculatedPriority": 42.0,
+      "weight": 4.0
+    },
+    {
+      "name": "Epsilon",
+      "valueScore": 0.0,
+      "calculatedPriority": 60.0,
+      "weight": 3.0
+    },
+    {
+      "name": "📦 Delta",
+      "valueScore": 10.0,
+      "calculatedPriority": 90.0,
+      "weight": 2.0
+    },
+    {
+      "name": "🧪 Gamma",
+      "valueScore": 0.0,
+      "calculatedPriority": 90.0,
+      "weight": 1.0
+    },
+    {
+      "name": "🪫 Zeta",
+      "valueScore": 10.0,
+      "calculatedPriority": 90.0,
+      "weight": 0.0
+    }
+  ],
+  "ranking": [
+    "🚀 Alpha_task_8",
+    "📦 Delta_task_3",
+    "🚀 Alpha_task_12",
+    "Beta_task_14",
+    "🚀 Alpha_task_1",
+    "🚀 Alpha_task_0",
+    "Beta_task_0",
+    "Beta_task_15",
+    "Epsilon_task_2",
+    "🚀 Alpha_task_9",
+    "🧪 Gamma_task_0",
+    "Beta_task_1",
+    "Beta_task_2",
+    "🚀 Alpha_task_11",
+    "📦 Delta_task_0",
+    "Beta_task_6",
+    "Beta_task_12",
+    "Epsilon_task_1",
+    "🧪 Gamma_task_5",
+    "🚀 Alpha_task_7",
+    "🧪 Gamma_task_14",
+    "🚀 Alpha_task_3",
+    "Beta_task_11",
+    "Beta_task_3",
+    "Beta_task_16",
+    "Beta_task_18",
+    "🚀 Alpha_task_4",
+    "Beta_task_4",
+    "Beta_task_5",
+    "Beta_task_13",
+    "🚀 Alpha_task_2",
+    "🚀 Alpha_task_6",
+    "🚀 Alpha_task_5",
+    "Beta_task_17",
+    "Beta_task_7",
+    "🧪 Gamma_task_2",
+    "🧪 Gamma_task_3",
+    "🧪 Gamma_task_1",
+    "🧪 Gamma_task_11",
+    "📦 Delta_task_4",
+    "🚀 Alpha_task_13",
+    "Beta_task_8",
+    "Beta_task_9",
+    "Epsilon_task_0",
+    "🧪 Gamma_task_4",
+    "📦 Delta_task_1",
+    "🧪 Gamma_task_13",
+    "📦 Delta_task_2",
+    "Beta_task_10",
+    "🧪 Gamma_task_12",
+    "🧪 Gamma_task_6",
+    "🧪 Gamma_task_8",
+    "🧪 Gamma_task_9",
+    "🧪 Gamma_task_10",
+    "🧪 Gamma_task_7",
+    "🚀 Alpha_task_10"
+  ],
+  "tasks": [
+    {
+      "id": "🚀 Alpha_task_8",
+      "project": "🚀 Alpha",
+      "text": "🔝 Manual top of stack 🔹",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 6,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 5023.0,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "🔝",
+            "value": 1000
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.6,
+        "baseScore": 1004.6,
+        "effortHours": 0.2,
+        "calculatedTotal": 5023.0
+      }
+    },
+    {
+      "id": "📦 Delta_task_3",
+      "project": "📦 Delta",
+      "text": "💰💰💰 Triple income 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 3,
+      "totalLeaves": 5,
+      "parked": false,
+      "score": 154.4,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          },
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          },
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          }
+        ],
+        "projectBonus": 2.0,
+        "placementBonus": 0.2,
+        "baseScore": 77.2,
+        "effortHours": 0.5,
+        "calculatedTotal": 154.4
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_12",
+      "project": "🚀 Alpha",
+      "text": "👀 Needs a look 🟢 🌱 🏃 🌟 ⚠️",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 10,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 98.4,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Status",
+            "emoji": "👀",
+            "value": 2
+          },
+          {
+            "category": "Value",
+            "emoji": "⚠️",
+            "value": 20
+          },
+          {
+            "category": "Value",
+            "emoji": "🌱",
+            "value": 5
+          },
+          {
+            "category": "Value",
+            "emoji": "🏃",
+            "value": 8
+          },
+          {
+            "category": "Value",
+            "emoji": "🌟",
+            "value": 10
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.2,
+        "baseScore": 49.2,
+        "effortHours": 0.5,
+        "calculatedTotal": 98.4
+      }
+    },
+    {
+      "id": "Beta_task_14",
+      "project": "Beta",
+      "text": "🚨 ☀️ Critical daytime 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 13,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 56.8,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "🚨",
+            "value": 15
+          },
+          {
+            "category": "TimeBlocks",
+            "emoji": "☀️",
+            "value": 8
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 0.4,
+        "baseScore": 28.4,
+        "effortHours": 0.5,
+        "calculatedTotal": 56.8
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_1",
+      "project": "🚀 Alpha",
+      "text": "🎯 Launch campaign 📅 Nov 3: 💰",
+      "level": 0.0,
+      "parent": null,
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": false,
+      "score": 41.0,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          },
+          {
+            "category": "Special",
+            "emoji": "📅",
+            "value": 2
+          },
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.0,
+        "baseScore": 41.0,
+        "effortHours": 1.0,
+        "calculatedTotal": 41.0
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_0",
+      "project": "🚀 Alpha",
+      "text": "‼️ Ship the release 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 0,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 30.4,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "‼️",
+            "value": 10
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 1.2,
+        "baseScore": 15.2,
+        "effortHours": 0.5,
+        "calculatedTotal": 30.4
+      }
+    },
+    {
+      "id": "Beta_task_0",
+      "project": "Beta",
+      "text": "☀️ Daytime only task 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 0,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 29.4,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "☀️",
+            "value": 8
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 1.7,
+        "baseScore": 14.7,
+        "effortHours": 0.5,
+        "calculatedTotal": 29.4
+      }
+    },
+    {
+      "id": "Beta_task_15",
+      "project": "Beta",
+      "text": "🎯 Outcome with children ☀️",
+      "level": 0.0,
+      "parent": null,
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": false,
+      "score": 23.0,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "☀️",
+            "value": 8
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 0.0,
+        "baseScore": 23.0,
+        "effortHours": 1.0,
+        "calculatedTotal": 23.0
+      }
+    },
+    {
+      "id": "Epsilon_task_2",
+      "project": "Epsilon",
+      "text": "Orphaned open child 🟢",
+      "level": 1.0,
+      "parent": "Epsilon_task_1",
+      "leaf": true,
+      "position": 1,
+      "totalLeaves": 2,
+      "parked": false,
+      "score": 22.2,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "🏠",
+            "value": 8
+          }
+        ],
+        "projectBonus": 3.0,
+        "placementBonus": 0.1,
+        "baseScore": 11.1,
+        "effortHours": 0.5,
+        "calculatedTotal": 22.2
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_9",
+      "project": "🚀 Alpha",
+      "text": "🚨 Production is down 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 7,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 19.5,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "🚨",
+            "value": 15
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.5,
+        "baseScore": 19.5,
+        "effortHours": 1.0,
+        "calculatedTotal": 19.5
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_0",
+      "project": "🧪 Gamma",
+      "text": "🎯 Big outcome 🔺",
+      "level": 0.0,
+      "parent": null,
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": false,
+      "score": 16.0,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "🔺",
+            "value": 5
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.0,
+        "baseScore": 16.0,
+        "effortHours": 1.0,
+        "calculatedTotal": 16.0
+      }
+    },
+    {
+      "id": "Beta_task_1",
+      "project": "Beta",
+      "text": "🏠 Family errand 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 1,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 14.6,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "🏠",
+            "value": 8
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 1.6,
+        "baseScore": 14.6,
+        "effortHours": 1.0,
+        "calculatedTotal": 14.6
+      }
+    },
+    {
+      "id": "Beta_task_2",
+      "project": "Beta",
+      "text": "💕 Date night planning 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 2,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 14.5,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "💕",
+            "value": 8
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 1.5,
+        "baseScore": 14.5,
+        "effortHours": 1.0,
+        "calculatedTotal": 14.5
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_11",
+      "project": "🚀 Alpha",
+      "text": "⏸️ Paused work ↔️ 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 9,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 14.3,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Status",
+            "emoji": "⏸️",
+            "value": 5
+          },
+          {
+            "category": "Impact",
+            "emoji": "↔️",
+            "value": 5
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.3,
+        "baseScore": 14.3,
+        "effortHours": 1.0,
+        "calculatedTotal": 14.3
+      }
+    },
+    {
+      "id": "📦 Delta_task_0",
+      "project": "📦 Delta",
+      "text": "🎯 Leaf outcome 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 0,
+      "totalLeaves": 5,
+      "parked": false,
+      "score": 12.5,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 2.0,
+        "placementBonus": 0.5,
+        "baseScore": 12.5,
+        "effortHours": 1.0,
+        "calculatedTotal": 12.5
+      }
+    },
+    {
+      "id": "Beta_task_6",
+      "project": "Beta",
+      "text": "💤 Jan 5: Snoozed task 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 6,
+      "totalLeaves": 17,
+      "parked": true,
+      "score": 12.2,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 5.0,
+        "placementBonus": 1.1,
+        "baseScore": 6.1,
+        "effortHours": 0.5,
+        "calculatedTotal": 12.2
+      }
+    },
+    {
+      "id": "Beta_task_12",
+      "project": "Beta",
+      "text": "🔀 Parallel A 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 11,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 11.2,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 5.0,
+        "placementBonus": 0.6,
+        "baseScore": 5.6,
+        "effortHours": 0.5,
+        "calculatedTotal": 11.2
+      }
+    },
+    {
+      "id": "Epsilon_task_1",
+      "project": "Epsilon",
+      "text": "🏠 Home chore 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": false,
+      "score": 11.0,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "🏠",
+            "value": 8
+          }
+        ],
+        "projectBonus": 3.0,
+        "placementBonus": 0.0,
+        "baseScore": 11.0,
+        "effortHours": 1.0,
+        "calculatedTotal": 11.0
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_5",
+      "project": "🧪 Gamma",
+      "text": "Root without outcome marker ‼️",
+      "level": 0.0,
+      "parent": null,
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": false,
+      "score": 11.0,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "‼️",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.0,
+        "baseScore": 11.0,
+        "effortHours": 1.0,
+        "calculatedTotal": 11.0
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_7",
+      "project": "🚀 Alpha",
+      "text": "Render banners 🔴 😊😊",
+      "level": 2.0,
+      "parent": "🚀 Alpha_task_5",
+      "leaf": true,
+      "position": 5,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 9.311688311688313,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          },
+          {
+            "category": "Special",
+            "emoji": "📅",
+            "value": 2
+          },
+          {
+            "category": "Value",
+            "emoji": "😊",
+            "value": 15
+          },
+          {
+            "category": "Value",
+            "emoji": "😊",
+            "value": 15
+          },
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.7,
+        "baseScore": 71.7,
+        "effortHours": 7.7,
+        "calculatedTotal": 9.311688311688313
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_14",
+      "project": "🧪 Gamma",
+      "text": "😴 Sleepy task 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 10,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 9.1,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "😴",
+            "value": 8
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.1,
+        "baseScore": 9.1,
+        "effortHours": 1.0,
+        "calculatedTotal": 9.1
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_3",
+      "project": "🚀 Alpha",
+      "text": "🚧 Review copy 🟠 ⬆️",
+      "level": 1.0,
+      "parent": "🚀 Alpha_task_1",
+      "leaf": true,
+      "position": 2,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 8.051948051948052,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Status",
+            "emoji": "🚧",
+            "value": 10
+          },
+          {
+            "category": "Impact",
+            "emoji": "⬆️",
+            "value": 10
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          },
+          {
+            "category": "Special",
+            "emoji": "📅",
+            "value": 2
+          },
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 1.0,
+        "baseScore": 62.0,
+        "effortHours": 7.7,
+        "calculatedTotal": 8.051948051948052
+      }
+    },
+    {
+      "id": "Beta_task_11",
+      "project": "Beta",
+      "text": "⏳ Waiting on someone 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 10,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 7.4,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Status",
+            "emoji": "⏳",
+            "value": -2
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 0.7,
+        "baseScore": 3.7,
+        "effortHours": 0.5,
+        "calculatedTotal": 7.4
+      }
+    },
+    {
+      "id": "Beta_task_3",
+      "project": "Beta",
+      "text": "🌙 Late night tinkering 🟠",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 3,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 7.2,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "🌙",
+            "value": 8
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 1.4,
+        "baseScore": 14.4,
+        "effortHours": 2.0,
+        "calculatedTotal": 7.2
+      }
+    },
+    {
+      "id": "Beta_task_16",
+      "project": "Beta",
+      "text": "Step one 🟢",
+      "level": 1.0,
+      "parent": "Beta_task_15",
+      "leaf": true,
+      "position": 14,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 6.6571428571428575,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "☀️",
+            "value": 8
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 0.3,
+        "baseScore": 23.3,
+        "effortHours": 3.5,
+        "calculatedTotal": 6.6571428571428575
+      }
+    },
+    {
+      "id": "Beta_task_18",
+      "project": "Beta",
+      "text": "Step three 🟠",
+      "level": 1.0,
+      "parent": "Beta_task_15",
+      "leaf": true,
+      "position": 16,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 6.6000000000000005,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "☀️",
+            "value": 8
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 0.1,
+        "baseScore": 23.1,
+        "effortHours": 3.5,
+        "calculatedTotal": 6.6
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_4",
+      "project": "🚀 Alpha",
+      "text": "☀️ Publish the post 🟢",
+      "level": 1.0,
+      "parent": "🚀 Alpha_task_1",
+      "leaf": true,
+      "position": 3,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 6.48051948051948,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "TimeBlocks",
+            "emoji": "☀️",
+            "value": 8
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          },
+          {
+            "category": "Special",
+            "emoji": "📅",
+            "value": 2
+          },
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.9,
+        "baseScore": 49.9,
+        "effortHours": 7.7,
+        "calculatedTotal": 6.480519480519481
+      }
+    },
+    {
+      "id": "Beta_task_4",
+      "project": "Beta",
+      "text": "Anything goes 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 4,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 6.3,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 5.0,
+        "placementBonus": 1.3,
+        "baseScore": 6.3,
+        "effortHours": 1.0,
+        "calculatedTotal": 6.3
+      }
+    },
+    {
+      "id": "Beta_task_5",
+      "project": "Beta",
+      "text": "🅿️ Parked idea 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 5,
+      "totalLeaves": 17,
+      "parked": true,
+      "score": 6.2,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 5.0,
+        "placementBonus": 1.2,
+        "baseScore": 6.2,
+        "effortHours": 1.0,
+        "calculatedTotal": 6.2
+      }
+    },
+    {
+      "id": "Beta_task_13",
+      "project": "Beta",
+      "text": "🔀 Parallel B 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 12,
+      "totalLeaves": 17,
+      "parked": false,
+      "score": 5.5,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 5.0,
+        "placementBonus": 0.5,
+        "baseScore": 5.5,
+        "effortHours": 1.0,
+        "calculatedTotal": 5.5
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_2",
+      "project": "🚀 Alpha",
+      "text": "Draft copy 🟡",
+      "level": 1.0,
+      "parent": "🚀 Alpha_task_1",
+      "leaf": true,
+      "position": 1,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 5.467532467532467,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          },
+          {
+            "category": "Special",
+            "emoji": "📅",
+            "value": 2
+          },
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 1.1,
+        "baseScore": 42.1,
+        "effortHours": 7.7,
+        "calculatedTotal": 5.467532467532468
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_6",
+      "project": "🚀 Alpha",
+      "text": "Collect logos 🔹",
+      "level": 2.0,
+      "parent": "🚀 Alpha_task_5",
+      "leaf": true,
+      "position": 4,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 5.428571428571428,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          },
+          {
+            "category": "Special",
+            "emoji": "📅",
+            "value": 2
+          },
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.8,
+        "baseScore": 41.8,
+        "effortHours": 7.7,
+        "calculatedTotal": 5.428571428571429
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_5",
+      "project": "🚀 Alpha",
+      "text": "Prepare assets",
+      "level": 1.0,
+      "parent": "🚀 Alpha_task_1",
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": false,
+      "score": 5.324675324675325,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          },
+          {
+            "category": "Special",
+            "emoji": "📅",
+            "value": 2
+          },
+          {
+            "category": "Value",
+            "emoji": "💰",
+            "value": 25
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.0,
+        "baseScore": 41.0,
+        "effortHours": 7.7,
+        "calculatedTotal": 5.324675324675325
+      }
+    },
+    {
+      "id": "Beta_task_17",
+      "project": "Beta",
+      "text": "⛔️ Step two blocked 🟡",
+      "level": 1.0,
+      "parent": "Beta_task_15",
+      "leaf": true,
+      "position": 15,
+      "totalLeaves": 17,
+      "parked": true,
+      "score": 5.2,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Status",
+            "emoji": "⛔️",
+            "value": -5
+          },
+          {
+            "category": "TimeBlocks",
+            "emoji": "☀️",
+            "value": 8
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 0.2,
+        "baseScore": 18.2,
+        "effortHours": 3.5,
+        "calculatedTotal": 5.2
+      }
+    },
+    {
+      "id": "Beta_task_7",
+      "project": "Beta",
+      "text": "⏰ Starts later",
+      "level": 0.0,
+      "parent": null,
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": true,
+      "score": 5.0,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 5.0,
+        "placementBonus": 0.0,
+        "baseScore": 5.0,
+        "effortHours": 1.0,
+        "calculatedTotal": 5.0
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_2",
+      "project": "🧪 Gamma",
+      "text": "Inner step one 🟢",
+      "level": 2.0,
+      "parent": "🧪 Gamma_task_1",
+      "leaf": true,
+      "position": 0,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 4.927272727272728,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Impact",
+            "emoji": "⬆️",
+            "value": 10
+          },
+          {
+            "category": "Priority",
+            "emoji": "🔺",
+            "value": 5
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 1.1,
+        "baseScore": 27.1,
+        "effortHours": 5.5,
+        "calculatedTotal": 4.927272727272728
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_3",
+      "project": "🧪 Gamma",
+      "text": "Inner step two 🟡",
+      "level": 2.0,
+      "parent": "🧪 Gamma_task_1",
+      "leaf": true,
+      "position": 1,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 4.909090909090909,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Impact",
+            "emoji": "⬆️",
+            "value": 10
+          },
+          {
+            "category": "Priority",
+            "emoji": "🔺",
+            "value": 5
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 1.0,
+        "baseScore": 27.0,
+        "effortHours": 5.5,
+        "calculatedTotal": 4.909090909090909
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_1",
+      "project": "🧪 Gamma",
+      "text": "🎯 Inner outcome ⬆️",
+      "level": 1.0,
+      "parent": "🧪 Gamma_task_0",
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": false,
+      "score": 4.7272727272727275,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Impact",
+            "emoji": "⬆️",
+            "value": 10
+          },
+          {
+            "category": "Priority",
+            "emoji": "🔺",
+            "value": 5
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.0,
+        "baseScore": 26.0,
+        "effortHours": 5.5,
+        "calculatedTotal": 4.7272727272727275
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_11",
+      "project": "🧪 Gamma",
+      "text": "Lone leaf 🟠 ↔️ 📅 Dec 1:",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 7,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 4.2,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Impact",
+            "emoji": "↔️",
+            "value": 5
+          },
+          {
+            "category": "Special",
+            "emoji": "📅",
+            "value": 2
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.4,
+        "baseScore": 8.4,
+        "effortHours": 2.0,
+        "calculatedTotal": 4.2
+      }
+    },
+    {
+      "id": "📦 Delta_task_4",
+      "project": "📦 Delta",
+      "text": "Mixed effort 🟢🟡🔴",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 4,
+      "totalLeaves": 5,
+      "parked": false,
+      "score": 4.2,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 2.0,
+        "placementBonus": 0.1,
+        "baseScore": 2.1,
+        "effortHours": 0.5,
+        "calculatedTotal": 4.2
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_13",
+      "project": "🚀 Alpha",
+      "text": "Plain task with no emoji",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 11,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 4.1,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 4.0,
+        "placementBonus": 0.1,
+        "baseScore": 4.1,
+        "effortHours": 1.0,
+        "calculatedTotal": 4.1
+      }
+    },
+    {
+      "id": "Beta_task_8",
+      "project": "Beta",
+      "text": "Child of a start-dated task 🟢",
+      "level": 1.0,
+      "parent": "Beta_task_7",
+      "leaf": true,
+      "position": 7,
+      "totalLeaves": 17,
+      "parked": true,
+      "score": 4.0,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 5.0,
+        "placementBonus": 1.0,
+        "baseScore": 6.0,
+        "effortHours": 1.5,
+        "calculatedTotal": 4.0
+      }
+    },
+    {
+      "id": "Beta_task_9",
+      "project": "Beta",
+      "text": "Another child 🟡",
+      "level": 1.0,
+      "parent": "Beta_task_7",
+      "leaf": true,
+      "position": 8,
+      "totalLeaves": 17,
+      "parked": true,
+      "score": 3.9333333333333336,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 5.0,
+        "placementBonus": 0.9,
+        "baseScore": 5.9,
+        "effortHours": 1.5,
+        "calculatedTotal": 3.933333333333333
+      }
+    },
+    {
+      "id": "Epsilon_task_0",
+      "project": "Epsilon",
+      "text": "Only task 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 0,
+      "totalLeaves": 2,
+      "parked": false,
+      "score": 3.2,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 3.0,
+        "placementBonus": 0.2,
+        "baseScore": 3.2,
+        "effortHours": 1.0,
+        "calculatedTotal": 3.2
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_4",
+      "project": "🧪 Gamma",
+      "text": "Outer step 🔴",
+      "level": 1.0,
+      "parent": "🧪 Gamma_task_0",
+      "leaf": true,
+      "position": 2,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 3.0727272727272723,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "🔺",
+            "value": 5
+          },
+          {
+            "category": "Special",
+            "emoji": "🎯",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.9,
+        "baseScore": 16.9,
+        "effortHours": 5.5,
+        "calculatedTotal": 3.0727272727272728
+      }
+    },
+    {
+      "id": "📦 Delta_task_1",
+      "project": "📦 Delta",
+      "text": "Tie task one 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 1,
+      "totalLeaves": 5,
+      "parked": false,
+      "score": 2.4,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 2.0,
+        "placementBonus": 0.4,
+        "baseScore": 2.4,
+        "effortHours": 1.0,
+        "calculatedTotal": 2.4
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_13",
+      "project": "🧪 Gamma",
+      "text": "Tabbed child 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 9,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 2.4,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 1.0,
+        "placementBonus": 0.2,
+        "baseScore": 1.2,
+        "effortHours": 0.5,
+        "calculatedTotal": 2.4
+      }
+    },
+    {
+      "id": "📦 Delta_task_2",
+      "project": "📦 Delta",
+      "text": "Tie task two 🟡",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 2,
+      "totalLeaves": 5,
+      "parked": false,
+      "score": 2.3,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 2.0,
+        "placementBonus": 0.3,
+        "baseScore": 2.3,
+        "effortHours": 1.0,
+        "calculatedTotal": 2.3
+      }
+    },
+    {
+      "id": "Beta_task_10",
+      "project": "Beta",
+      "text": "⛔️ Blocked task 🟢",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 9,
+      "totalLeaves": 17,
+      "parked": true,
+      "score": 1.6,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Status",
+            "emoji": "⛔️",
+            "value": -5
+          }
+        ],
+        "projectBonus": 5.0,
+        "placementBonus": 0.8,
+        "baseScore": 0.8,
+        "effortHours": 0.5,
+        "calculatedTotal": 1.6
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_12",
+      "project": "🧪 Gamma",
+      "text": "Tabbed child parent",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 8,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 1.3,
+      "breakdown": {
+        "emojiContributions": [],
+        "projectBonus": 1.0,
+        "placementBonus": 0.3,
+        "baseScore": 1.3,
+        "effortHours": 1.0,
+        "calculatedTotal": 1.3
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_6",
+      "project": "🧪 Gamma",
+      "text": "Sub A 🟢",
+      "level": 1.0,
+      "parent": "🧪 Gamma_task_5",
+      "leaf": true,
+      "position": 3,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 1.2164948453608249,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "‼️",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.8,
+        "baseScore": 11.8,
+        "effortHours": 9.7,
+        "calculatedTotal": 1.2164948453608249
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_8",
+      "project": "🧪 Gamma",
+      "text": "Sub B1 🔹",
+      "level": 2.0,
+      "parent": "🧪 Gamma_task_7",
+      "leaf": true,
+      "position": 4,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 1.2061855670103092,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "‼️",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.7,
+        "baseScore": 11.7,
+        "effortHours": 9.7,
+        "calculatedTotal": 1.2061855670103094
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_9",
+      "project": "🧪 Gamma",
+      "text": "Sub B2 ⚫️",
+      "level": 2.0,
+      "parent": "🧪 Gamma_task_7",
+      "leaf": true,
+      "position": 5,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 1.1958762886597938,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "‼️",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.6,
+        "baseScore": 11.6,
+        "effortHours": 9.7,
+        "calculatedTotal": 1.1958762886597938
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_10",
+      "project": "🧪 Gamma",
+      "text": "Sub C",
+      "level": 1.0,
+      "parent": "🧪 Gamma_task_5",
+      "leaf": true,
+      "position": 6,
+      "totalLeaves": 11,
+      "parked": false,
+      "score": 1.1855670103092784,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "‼️",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.5,
+        "baseScore": 11.5,
+        "effortHours": 9.7,
+        "calculatedTotal": 1.1855670103092784
+      }
+    },
+    {
+      "id": "🧪 Gamma_task_7",
+      "project": "🧪 Gamma",
+      "text": "Sub B 🟢",
+      "level": 1.0,
+      "parent": "🧪 Gamma_task_5",
+      "leaf": false,
+      "position": null,
+      "totalLeaves": null,
+      "parked": false,
+      "score": 1.1340206185567012,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Priority",
+            "emoji": "‼️",
+            "value": 10
+          }
+        ],
+        "projectBonus": 1.0,
+        "placementBonus": 0.0,
+        "baseScore": 11.0,
+        "effortHours": 9.7,
+        "calculatedTotal": 1.134020618556701
+      }
+    },
+    {
+      "id": "🚀 Alpha_task_10",
+      "project": "🚀 Alpha",
+      "text": "🔻 Someday cleanup ⚫️ ⬇️",
+      "level": 0.0,
+      "parent": null,
+      "leaf": true,
+      "position": 8,
+      "totalLeaves": 12,
+      "parked": false,
+      "score": 0.05,
+      "breakdown": {
+        "emojiContributions": [
+          {
+            "category": "Impact",
+            "emoji": "⬇️",
+            "value": -2
+          },
+          {
+            "category": "Priority",
+            "emoji": "🔻",
+            "value": -2
+          }
+        ],
+        "projectBonus": 4.0,
+        "placementBonus": 0.4,
+        "baseScore": 0.4,
+        "effortHours": 8.0,
+        "calculatedTotal": 0.05
+      }
+    }
+  ],
+  "filtered": [
+    {
+      "at": "2026-10-21T17:00:00Z",
+      "activeBlocks": [
+        "Work"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Beta_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "Beta_task_12",
+        "🚀 Alpha_task_7",
+        "🚀 Alpha_task_3",
+        "Beta_task_11",
+        "Beta_task_16",
+        "Beta_task_18",
+        "🚀 Alpha_task_4",
+        "Beta_task_4",
+        "Beta_task_13",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "📦 Delta_task_1",
+        "📦 Delta_task_2",
+        "🚀 Alpha_task_10"
+      ]
+    },
+    {
+      "at": "2026-10-21T23:30:00Z",
+      "activeBlocks": [
+        "Family evening"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "🚀 Alpha_task_7",
+        "🚀 Alpha_task_3",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "📦 Delta_task_1",
+        "📦 Delta_task_2",
+        "🚀 Alpha_task_10"
+      ]
+    },
+    {
+      "at": "2026-10-22T03:30:00Z",
+      "activeBlocks": [
+        "Shichael"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "Beta_task_2",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "Beta_task_12",
+        "🚀 Alpha_task_7",
+        "🚀 Alpha_task_3",
+        "Beta_task_11",
+        "Beta_task_16",
+        "Beta_task_18",
+        "Beta_task_4",
+        "Beta_task_13",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "📦 Delta_task_1",
+        "📦 Delta_task_2",
+        "🚀 Alpha_task_10"
+      ]
+    },
+    {
+      "at": "2026-10-22T07:00:00Z",
+      "activeBlocks": [
+        "Project"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "🚀 Alpha_task_7",
+        "🚀 Alpha_task_3",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "📦 Delta_task_1",
+        "📦 Delta_task_2",
+        "🚀 Alpha_task_10"
+      ]
+    },
+    {
+      "at": "2026-10-22T11:00:00Z",
+      "activeBlocks": [
+        "Sleep"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "Beta_task_12",
+        "🚀 Alpha_task_7",
+        "🧪 Gamma_task_14",
+        "🚀 Alpha_task_3",
+        "Beta_task_11",
+        "Beta_task_16",
+        "Beta_task_18",
+        "Beta_task_4",
+        "Beta_task_13",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "🧪 Gamma_task_2",
+        "🧪 Gamma_task_3",
+        "🧪 Gamma_task_11",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "🧪 Gamma_task_4",
+        "📦 Delta_task_1",
+        "🧪 Gamma_task_13",
+        "📦 Delta_task_2",
+        "🧪 Gamma_task_12",
+        "🧪 Gamma_task_6",
+        "🧪 Gamma_task_8",
+        "🧪 Gamma_task_9",
+        "🧪 Gamma_task_10",
+        "🚀 Alpha_task_10"
+      ]
+    },
+    {
+      "at": "2026-10-24T17:00:00Z",
+      "activeBlocks": [
+        "Family weekend"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "🚀 Alpha_task_7",
+        "🚀 Alpha_task_3",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "📦 Delta_task_1",
+        "📦 Delta_task_2",
+        "🚀 Alpha_task_10"
+      ]
+    },
+    {
+      "at": "2026-10-25T04:30:00Z",
+      "activeBlocks": [
+        "Shichael"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "Beta_task_2",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "Beta_task_12",
+        "🚀 Alpha_task_7",
+        "🚀 Alpha_task_3",
+        "Beta_task_11",
+        "Beta_task_16",
+        "Beta_task_18",
+        "Beta_task_4",
+        "Beta_task_13",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "📦 Delta_task_1",
+        "📦 Delta_task_2",
+        "🚀 Alpha_task_10"
+      ]
+    },
+    {
+      "at": "2026-10-21T23:00:00Z",
+      "activeBlocks": [
+        "Work",
+        "Family evening"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Beta_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "Beta_task_12",
+        "🚀 Alpha_task_7",
+        "🚀 Alpha_task_3",
+        "Beta_task_11",
+        "Beta_task_16",
+        "Beta_task_18",
+        "🚀 Alpha_task_4",
+        "Beta_task_4",
+        "Beta_task_13",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "📦 Delta_task_1",
+        "📦 Delta_task_2",
+        "🚀 Alpha_task_10"
+      ]
+    },
+    {
+      "at": "2026-10-21T23:00:01Z",
+      "activeBlocks": [
+        "Family evening"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "🚀 Alpha_task_7",
+        "🚀 Alpha_task_3",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "📦 Delta_task_1",
+        "📦 Delta_task_2",
+        "🚀 Alpha_task_10"
+      ]
+    },
+    {
+      "at": "2026-11-04T16:30:00Z",
+      "activeBlocks": [
+        "Work"
+      ],
+      "ids": [
+        "🚀 Alpha_task_8",
+        "📦 Delta_task_3",
+        "🚀 Alpha_task_12",
+        "Beta_task_14",
+        "🚀 Alpha_task_0",
+        "Beta_task_0",
+        "Epsilon_task_2",
+        "🚀 Alpha_task_9",
+        "🚀 Alpha_task_11",
+        "📦 Delta_task_0",
+        "Beta_task_12",
+        "🚀 Alpha_task_7",
+        "🚀 Alpha_task_3",
+        "Beta_task_11",
+        "Beta_task_16",
+        "Beta_task_18",
+        "🚀 Alpha_task_4",
+        "Beta_task_4",
+        "Beta_task_13",
+        "🚀 Alpha_task_2",
+        "🚀 Alpha_task_6",
+        "📦 Delta_task_4",
+        "🚀 Alpha_task_13",
+        "Epsilon_task_0",
+        "📦 Delta_task_1",
+        "📦 Delta_task_2",
+        "🚀 Alpha_task_10"
+      ]
+    }
+  ]
+}
