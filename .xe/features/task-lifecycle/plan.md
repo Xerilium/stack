@@ -17,3 +17,7 @@
 - Legacy whitespace collapse on Set-Task edits is kept (parity); skip/resume do not collapse (parity).
 - Due-date escalation and query-task refresh stay out (follow-ups).
 - Multi-file ops write file by file; a conflict stops the run and earlier files stay written.
+
+## Verification
+
+Besides the committed synthetic goldens, a local run on a COPY of the live legacy tasks (never committed) matched: `nextTask` = README top task; start/complete/skip/suspend changed the same line identically to the legacy commands; `removeCompleted` output was byte-identical across all 12 files.
