@@ -4,7 +4,7 @@
   "description": "Stack 'em up. Burn 'em down. Simple, multi-project task management and prioritization.",
   "main": "dist/index.js",
   "scripts": {
-    "build": "pnpm run build:core && pnpm run build:cli && pnpm run build:api && pnpm run build:bots && pnpm run build:mcp && pnpm run build:host",
+    "build": "pnpm run build:core && pnpm run build:cli && pnpm run build:api && pnpm run build:bots && pnpm run build:mcp && pnpm run build:web && pnpm run build:host",
     "build:core": "tsc -p tsconfig.core.json",
     "build:cli": "tsc -p tsconfig.cli.json",
     "build:api": "tsc -p tsconfig.api.json",
@@ -14,11 +14,14 @@
     "openapi": "pnpm run build:api && node dist/api/openapi-write.js",
     "bakeoff": "node dist/core/bakeoff.js",
     "clean": "rm -rf dist",
-    "lint": "eslint . && tsc --noEmit -p tsconfig.core.json && tsc --noEmit -p tsconfig.cli.json && tsc --noEmit -p tsconfig.api.json && tsc --noEmit -p tsconfig.bots.json && tsc --noEmit -p tsconfig.mcp.json && tsc --noEmit -p host/tsconfig.json",
+    "lint": "eslint . && tsc --noEmit -p tsconfig.core.json && tsc --noEmit -p tsconfig.cli.json && tsc --noEmit -p tsconfig.api.json && tsc --noEmit -p tsconfig.bots.json && tsc --noEmit -p tsconfig.mcp.json && pnpm --filter stack-web typecheck && tsc --noEmit -p host/tsconfig.json",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "parity": "jest tests/parity/cli-parity.test.ts"
+    "parity": "jest tests/parity/cli-parity.test.ts",
+    "build:web": "pnpm --filter stack-web build",
+    "test:web": "pnpm --filter stack-web test",
+    "test:e2e": "pnpm --filter stack-web e2e"
   },
   "keywords": [
     "task-management",

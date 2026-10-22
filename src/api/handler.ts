@@ -11,6 +11,7 @@ import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import type { Storage } from '../core/storage';
 import { generateSummaries } from '../core/summaries';
+import { editTask, moveTask } from './edit';
 import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
 import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
@@ -85,6 +86,12 @@ const ACTION_BODIES: Record<(typeof ACTIONS)[number], { schema: Record<string, S
   set: { schema: { ref: REF, ...PROPS }, required: ['ref'] },
 };
 const REMOVE_BODY = { schema: { project: { t: 'str', max: 200, line: true } } satisfies Record<string, Spec>, required: [] as string[] };
+const EXPECT = { t: 'str', max: 2000, line: true } as const;
+const EDIT_BODY = { schema: { ref: REF, text: { t: 'str', required: true, max: 2000, line: true }, expect: EXPECT } satisfies Record<string, Spec>, required: ['ref', 'text'] };
+const MOVE_BODY = {
+  schema: { ref: REF, target: REF, position: { t: 'enum', values: ['before', 'after'] }, expect: EXPECT, expectTarget: EXPECT } satisfies Record<string, Spec>,
+  required: ['ref', 'target', 'position'],
+};
 const PROJECT_BODY = {
   schema: {
     name: { t: 'str', required: true, max: 200, line: true }, description: { t: 'str', max: 2000, line: true },
@@ -146,6 +153,9 @@ function projectView(doc: Doc) {
 
 const result = (r: LifecycleResult, status = 200) =>
   json(status, { changed: r.changed, ref: r.ref ? formatRef(r.ref) : undefined, before: r.before, after: r.after, message: r.message });
+
+const fmtEdit = (r: { changed: boolean; ref: Parameters<typeof formatRef>[0]; before?: string; after?: string; message: string }) =>
+  ({ changed: r.changed, ref: formatRef(r.ref), before: r.before, after: r.after, message: r.message });
 
 const noQuery = (c: Ctx) => { readQuery(c.url, []); };
 
@@ -243,6 +253,22 @@ export const ROUTES: Route[] = [
     },
   },
   ...actionRoutes,
+  {
+    method: 'POST', doc: '/tasks/edit', name: 'tasks.edit', body: EDIT_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; expect?: string }>(await readBody(c.req), EDIT_BODY.schema, EDIT_BODY.required);
+      return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text, b.expect)));
+    },
+  },
+  {
+    method: 'POST', doc: '/tasks/move', name: 'tasks.move', body: MOVE_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; target: NonNullable<ReturnType<typeof parseRef>>; position: 'before' | 'after'; expect?: string; expectTarget?: string }>(await readBody(c.req), MOVE_BODY.schema, MOVE_BODY.required);
+      return json(200, fmtEdit(await moveTask(c.deps.storage, b.ref, b.target, b.position, { ref: b.expect, target: b.expectTarget })));
+    },
+  },
   {
     method: 'POST', doc: '/tasks/remove-completed', name: 'tasks.removeCompleted', body: REMOVE_BODY,
     async run(c) {

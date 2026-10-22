@@ -70,6 +70,16 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears' },
     responses: mutation('200'),
   },
+  'tasks.edit': {
+    operationId: 'editTask', summary: 'Replace the text of a task row',
+    desc: { text: 'Row text after the checkbox, single line', expect: 'Expected current row text at ref; 409 conflict when the row differs (stale line number)' },
+    responses: mutation('200'),
+  },
+  'tasks.move': {
+    operationId: 'moveTask', summary: 'Move a task block before or after another task in the same project',
+    desc: { expect: 'Expected current row text at ref; 409 conflict on mismatch', expectTarget: 'Expected current row text at target; 409 conflict on mismatch' },
+    responses: mutation('200'),
+  },
   'tasks.removeCompleted': {
     operationId: 'removeCompleted', summary: 'Remove completed tasks',
     responses: ok('Removed count', { type: 'object', properties: { removed: { type: 'integer' }, files: { type: 'array', items: { type: 'string' } } } }),

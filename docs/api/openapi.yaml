@@ -360,6 +360,74 @@ paths:
           $ref: "#/components/responses/Mutation"
         default:
           $ref: "#/components/responses/Error"
+  /tasks/edit:
+    post:
+      summary: Replace the text of a task row
+      operationId: editTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+                - text
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                text:
+                  type: string
+                  maxLength: 2000
+                  description: Row text after the checkbox, single line Single line.
+                expect:
+                  type: string
+                  maxLength: 2000
+                  description: Expected current row text at ref; 409 conflict when the row differs (stale line number) Single line.
+      responses:
+        "200":
+          $ref: "#/components/responses/Mutation"
+        default:
+          $ref: "#/components/responses/Error"
+  /tasks/move:
+    post:
+      summary: Move a task block before or after another task in the same project
+      operationId: moveTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+                - target
+                - position
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                target:
+                  $ref: "#/components/schemas/Ref"
+                position:
+                  type: string
+                  enum:
+                    - before
+                    - after
+                expect:
+                  type: string
+                  maxLength: 2000
+                  description: Expected current row text at ref; 409 conflict on mismatch Single line.
+                expectTarget:
+                  type: string
+                  maxLength: 2000
+                  description: Expected current row text at target; 409 conflict on mismatch Single line.
+      responses:
+        "200":
+          $ref: "#/components/responses/Mutation"
+        default:
+          $ref: "#/components/responses/Error"
   /tasks/remove-completed:
     post:
       summary: Remove completed tasks
