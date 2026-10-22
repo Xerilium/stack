@@ -5,6 +5,7 @@
  * @req FR:quick-capture/parse.recurrence @req FR:quick-capture/parse.title @req FR:quick-capture/speech.fillers
  * @req FR:quick-capture/speech.numbers @req FR:quick-capture/speech.case @req FR:quick-capture/map.row @req FR:quick-capture/map.add
  */
+import { getDefaults } from './config';
 import { addTask, LifecycleError, type LifecycleContext, type LifecycleResult } from './lifecycle';
 import type { Cadence, IsoDate, Recurrence, Weekday } from './model';
 
@@ -19,7 +20,7 @@ export interface CaptureSpec {
   recurrence?: Recurrence;
 }
 
-export interface ParseOptions { now?: () => Date }
+export interface ParseOptions { now?: () => Date; /** IANA zone defining "today"; defaults to UTC. */ timeZone?: string }
 
 const DAY_MS = 86400000;
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -29,6 +30,7 @@ const WEEKDAY_IDS: Weekday[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 const CADENCE_LABEL: Record<Cadence, string> = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly' };
 
 const WD_FULL = DAYS.join('|');
+const WD_ABBR = 'mon|tues?|wed|thu(?:rs?)?|fri|sat|sun';
 const WD_ANY = `${WD_FULL}|mon|tues?|wed|thu(?:rs?)?|fri|sat|sun`;
 const MON_RE = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec';
 
@@ -44,6 +46,13 @@ const wordToNumber = (w: string): number => {
   if (a in TENS) return TENS[a] + (b ? ONES.indexOf(b) : 0);
   return ONES.indexOf(a);
 };
+
+/** Calendar date (y, 0-based month, d) of an instant in `tz`, as a UTC-midnight Date. */
+function localDay(at: Date, tz: string): Date {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(at);
+  const n = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+  return utc(n('year'), n('month') - 1, n('day'));
+}
 
 const utc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d));
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -86,7 +95,7 @@ const DUE_PRE = '(?:(?:by|due|on|until|before)\\s+)?';
  */
 export function parseCapture(input: string, opts: ParseOptions = {}): CaptureSpec {
   const now = (opts.now ?? (() => new Date()))();
-  const today = utc(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const today = localDay(now, opts.timeZone ?? 'UTC');
 
   // Normalize: transcript punctuation, fillers, spoken numbers.
   let s = input.replace(/[,;]+/g, ' ').replace(/[.!?]+\s*$/, '').replace(/\s+/g, ' ').trim();
@@ -97,7 +106,7 @@ export function parseCapture(input: string, opts: ParseOptions = {}): CaptureSpe
   const spec: CaptureSpec = { title: '' };
 
   // Recurrence
-  if (new RegExp(`\\bevery\\s+(?:${WD_ANY})\\s+and\\s+(?:${WD_ANY})\\b|\\b(?:every\\s+)?weekdays?\\b`, 'i').test(s)) {
+  if (new RegExp(`\\bevery\\s+(?:${WD_ANY})\\s+and\\s+(?:${WD_ANY})\\b|\\b(?:every\\s+weekday|weekdays)\\b`, 'i').test(s)) {
     throw new CaptureError('Multi-weekday recurrence is not supported');
   }
   let weekdayRecur: number | null = null;
@@ -163,6 +172,9 @@ export function parseCapture(input: string, opts: ParseOptions = {}): CaptureSpe
       ?? tryRe('\\bnext\\s+week\\b', () => nextMonday)
       ?? tryRe(`\\bnext\\s+(${WD_FULL})\\b`, (m) => addDays(nextMonday, (wdIndex(m[1]) + 6) % 7))
       ?? tryRe(`\\b(?:this\\s+)?(${WD_FULL})\\b`, (m) => addDays(today, ((wdIndex(m[1]) - today.getUTCDay() + 7) % 7) || 7))
+      // Abbreviations only after an explicit cue, so words like "sat"/"sun"/"mon" in titles survive.
+      ?? tryRe(`\\bnext\\s+(${WD_ABBR})\\b`, (m) => addDays(nextMonday, (wdIndex(m[1]) + 6) % 7))
+      ?? tryRe(`\\b(?:by|due|on|until|before|this)\\s+(${WD_ABBR})\\b`, (m) => addDays(today, ((wdIndex(m[1]) - today.getUTCDay() + 7) % 7) || 7))
       ?? tryRe('\\b(?:end of (?:the )?month|eom)\\b', () => utc(today.getUTCFullYear(), today.getUTCMonth() + 1, 0))
       ?? tryRe('\\b(\\d{4})-(\\d\\d)-(\\d\\d)\\b', (m) => validDate(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
       ?? tryRe(`\\b(${MON_RE})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?\\b`, (m) => md(month(m[1]), Number(m[2]), m[3]))
@@ -183,7 +195,7 @@ export function parseCapture(input: string, opts: ParseOptions = {}): CaptureSpe
 }
 
 /** Renders the task row text (no checkbox). */
-export function toTaskText(spec: CaptureSpec, now: Date): string {
+export function toTaskText(spec: CaptureSpec, now: Date, timeZone = 'UTC'): string {
   const parts: string[] = [];
   const r = spec.recurrence;
   if (r?.weekdays?.length === 1) {
@@ -191,7 +203,7 @@ export function toTaskText(spec: CaptureSpec, now: Date): string {
     parts.push(`📅 ${name.charAt(0).toUpperCase()}${name.slice(1)}:`);
   } else if (spec.due) {
     const [y, m, d] = spec.due.split('-').map(Number);
-    parts.push(`📅 ${MONTH_LABEL[m - 1]} ${d}${y !== now.getUTCFullYear() ? `, ${y}` : ''}:`);
+    parts.push(`📅 ${MONTH_LABEL[m - 1]} ${d}${y !== localDay(now, timeZone).getUTCFullYear() ? `, ${y}` : ''}:`);
   }
   if (r) parts.push(`🔄 ${CADENCE_LABEL[r.cadence]}:`);
   parts.push(spec.title);
@@ -206,10 +218,11 @@ export async function captureTask(
   ctx: LifecycleContext, text: string, opts: CaptureOptions = {},
 ): Promise<{ result: LifecycleResult; spec: CaptureSpec }> {
   const now = (ctx.now ?? (() => new Date()))();
-  const spec = parseCapture(text, { now: () => now });
+  const timeZone = (ctx.config ?? getDefaults()).timezone;
+  const spec = parseCapture(text, { now: () => now, timeZone });
   const project = spec.project ?? opts.project;
   if (!project) throw new LifecycleError('Project required: use #project or the project option');
-  const row = toTaskText(spec, now);
+  const row = toTaskText(spec, now, timeZone);
   if (opts.dryRun) return { result: { changed: false, after: `- [ ] ${row}` }, spec };
   return { result: await addTask(ctx, { project, text: row, section: opts.section }), spec };
 }

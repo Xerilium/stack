@@ -46,6 +46,15 @@ const TABLE: Row[] = [
   ['no phrase words in title', 'call about the 3rd floor', { title: 'Call about the 3rd floor' }],
   ['keeps number words that are not durations', 'order three pizzas', { title: 'Order three pizzas' }],
   ['trailing connector', 'send invoice by tomorrow', { title: 'Send invoice', due: '2026-10-23' }],
+  ['singular weekday in title', 'plan weekday lunches', { title: 'Plan weekday lunches' }],
+  ['weekday word alone', 'weekday', { title: 'Weekday' }],
+  ['abbr by', 'submit report by fri', { title: 'Submit report', due: '2026-10-23' }],
+  ['abbr on', 'dentist on tues', { title: 'Dentist', due: '2026-10-27' }],
+  ['abbr this', 'gym this sat', { title: 'Gym', due: '2026-10-24' }],
+  ['abbr next', 'review next mon', { title: 'Review', due: '2026-10-26' }],
+  ['abbr same day is next week', 'dentist due thurs', { title: 'Dentist', due: '2026-10-29' }],
+  ['abbr without cue stays in title', 'plan sat trip', { title: 'Plan sat trip' }],
+  ['sun without cue stays in title', 'fix sun roof', { title: 'Fix sun roof' }],
   // speech
   ['speech fillers', 'um, call the dentist uh tomorrow for thirty minutes.', { title: 'Call the dentist', due: '2026-10-23', minutes: 30, emoji: '🟢' }],
   ['speech remind', 'Hey, remind me to email Sam in two days', { title: 'Email Sam', due: '2026-10-24' }],
@@ -74,12 +83,44 @@ describe('parseCapture', () => {
     expect(parseCapture('x tomorrow', { now })).toEqual(parseCapture('x tomorrow', { now }));
   });
 
-  it.each([['tomorrow'], ['  '], ['um uh'], ['30m'], ['every monday and wednesday gym'], ['gym every weekday']])('rejects %j', (t) => {
+  it.each([['tomorrow'], ['  '], ['um uh'], ['30m'], ['every monday and wednesday gym'], ['gym every weekday'], ['weekdays gym'], ['gym every weekday morning']])('rejects %j', (t) => {
     expect(() => parseCapture(t, { now })).toThrow(CaptureError);
   });
 });
 
 // @req FR:quick-capture/map.row
+describe('time zone', () => {
+  const LATE = new Date('2026-10-23T03:30:00Z'); // Oct 22 23:30 in New York, Oct 23 in UTC
+  const ny = (t: string) => parseCapture(t, { now: () => LATE, timeZone: 'America/New_York' });
+  it('defaults to UTC', () => expect(parseCapture('x today', { now: () => LATE }).due).toBe('2026-10-23'));
+  it('uses the zone calendar day', () => {
+    expect(ny('x today').due).toBe('2026-10-22');
+    expect(ny('x tomorrow').due).toBe('2026-10-23');
+    expect(ny('x by friday').due).toBe('2026-10-23');
+    expect(ny('x daily').due).toBe('2026-10-22');
+  });
+  it('east of UTC rolls forward', () => {
+    const t = new Date('2026-10-22T20:00:00Z'); // Oct 23 05:00 in Tokyo
+    expect(parseCapture('x today', { now: () => t, timeZone: 'Asia/Tokyo' }).due).toBe('2026-10-23');
+  });
+  it('year label uses the zone', () => {
+    const t = new Date('2027-01-01T03:00:00Z'); // Dec 31 2026 in New York
+    const spec = parseCapture('x dec 31', { now: () => t, timeZone: 'America/New_York' });
+    expect(spec.due).toBe('2026-12-31');
+    expect(toTaskText(spec, t, 'America/New_York')).toBe('📅 Dec 31: X');
+  });
+  it('captureTask uses the config timezone', async () => {
+    const storage = new MemoryStorage();
+    const { addProject } = await import('../../src/core/lifecycle');
+    const { getDefaults } = await import('../../src/core/config');
+    const config = { ...getDefaults(), timezone: 'America/New_York' };
+    const ctx = { storage, now: () => LATE, config };
+    await addProject(ctx, { name: 'Alpha' });
+    const { spec } = await captureTask(ctx, 'x today', { project: 'alpha', dryRun: true });
+    expect(spec.due).toBe('2026-10-22');
+  });
+});
+
 describe('toTaskText', () => {
   const r = (t: string, n = NOW) => toTaskText(parseCapture(t, { now: () => n }), n);
   it.each([

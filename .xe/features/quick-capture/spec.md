@@ -24,10 +24,10 @@ Add a task with one phrase, typed or dictated. No LLM, no network: same input an
 ### FR:parse: Parser
 
 - **FR:parse.@function** (P1): `parseCapture(text, { now }) => CaptureSpec` where `CaptureSpec = { title, due?, effort?, project?, recurrence? }`. `now` is an injected clock (`() => Date`, default system); the parser is pure. Throws `CaptureError` when no title remains
-- **FR:parse.due** (P1): Recognizes `today`, `tonight`, `tomorrow`, `day after tomorrow`, `in N days|weeks`, `next week` (next Monday), `[this|next|on] <weekday>` (next occurrence after today; `today` stays today), `end of month`, `<Mon> <d>`, `<d> <Mon>`, ISO `yyyy-mm-dd`. A leading `by|due|on` is consumed. Result is an ISO date in the clock's local calendar day (UTC date of `now`)
+- **FR:parse.due** (P1): Recognizes `today`, `tonight`, `tomorrow`, `day after tomorrow`, `in N days|weeks`, `next week` (next Monday), `[this|next|on] <weekday>` (abbreviations `mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun` only after `by|due|on|until|before|this|next`; next occurrence after today; `today` stays today), `end of month`, `<Mon> <d>`, `<d> <Mon>`, ISO `yyyy-mm-dd`. A leading `by|due|on` is consumed. Result is an ISO date in the clock's local calendar day (the date of `now` in the configured timezone; the pure parser defaults to UTC, `captureTask` passes `config.timezone`)
 - **FR:parse.effort** (P1): Recognizes `30m`, `30 min`, `2h`, `1.5 hours`, `1h30m`, `half an hour`, `an hour`, `an hour and a half`, `N and a half hours`. Result `{ minutes, emoji }` with emoji 🔹 (<=12m), 🟢 (<=30m), 🟡 (<=60m), 🟠 (<=120m), 🔴 (<=240m), else ⚫️. A leading `for|takes|about` is consumed
 - **FR:parse.project** (P1): `#name`, `@name`, or `in|for project <name>` sets the project hint (not part of the title)
-- **FR:parse.recurrence** (P1): `daily|every day`, `weekly|every week`, `every <weekday>`, `monthly|every month`, `quarterly|every quarter`, `yearly|annually|every year` set `recurrence` (`weekdays` for a single weekday). A weekday recurrence's due is its next occurrence on or after today; others default to today unless a date is given. `every <weekday> and <weekday>` and `weekdays` are rejected with `CaptureError`
+- **FR:parse.recurrence** (P1): `daily|every day`, `weekly|every week`, `every <weekday>`, `monthly|every month`, `quarterly|every quarter`, `yearly|annually|every year` set `recurrence` (`weekdays` for a single weekday). A weekday recurrence's due is its next occurrence on or after today; others default to today unless a date is given. `every <weekday> and <weekday>`, `every weekday` and `weekdays` are rejected (singular `weekday` in a title is fine) with `CaptureError`
 - **FR:parse.title** (P1): The title is the remainder with whitespace collapsed, dangling connectors (`to`, `by`, `on`, `at`, `for`, `in`, `due`) trimmed, first letter capitalized. Words inside the title that are not phrases stay (`call about the 3rd floor` keeps its text)
 
 ### FR:speech: Speech tolerance
@@ -48,6 +48,11 @@ Add a task with one phrase, typed or dictated. No LLM, no network: same input an
 ### FR:cli: CLI
 
 - **FR:cli.cmd** (P1): `stack capture <text...> [--project name] [--section name] [--dry-run]` prints like `add`; `--json` includes `spec`; empty or unparseable text is a usage error (exit 2). Additive: no existing command changes
+
+## Known quirks
+
+- Month-day phrases match anywhere in the text, not just at the edges: `march 5 meeting` or `buy 2 may flowers` consume `march 5` / `2 may` as the due date. Rephrase (e.g. spell the title differently) or edit the row afterward
+- Weekday abbreviations are cue-gated (`by|due|on|until|before|this|next`), so `plan sat trip` keeps `sat` in the title, but `meet on sat` is a date
 
 ## Dependencies
 

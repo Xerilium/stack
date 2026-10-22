@@ -16,7 +16,7 @@ One pure module `src/core/quick-capture.ts` (parser, renderer, `captureTask`). A
 ## Decisions
 
 - Pipeline order: normalize (fillers, number words) -> recurrence -> effort -> project -> due -> title
-- Dates computed on UTC calendar of the injected clock, matching the existing core
+- "Today" is the injected clock's calendar day in the config timezone (`Intl`, same zone source as lifecycle); `parseCapture` takes optional `timeZone` (default UTC for purity), `captureTask` passes `ctx.config.timezone`
 - Multi-weekday recurrence rejected (row format holds one weekday)
 - Route added to `ROUTES` (OpenAPI test enforces docs); CLI command added to `COMMANDS`; no existing behavior touched
 - Tests first: table-driven phrase table in `tests/core/quick-capture.test.ts`, route tests in `tests/api/capture.test.ts`, CLI in `tests/cli/capture.test.ts`
