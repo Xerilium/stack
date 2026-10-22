@@ -36,7 +36,7 @@ const done = (verb: string) => (body: unknown): string => {
 
 const obj = (body: unknown): Record<string, unknown> => (typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {});
 
-/** @req FR:mcp-server/tools.list @req FR:mcp-server/tools.mutate @req FR:ai-triage-assist/mcp.tools @req FR:ai-triage-assist/mcp.actor */
+/** @req FR:mcp-server/tools.list @req FR:mcp-server/tools.mutate @req FR:mcp-server/tools.next @req FR:mcp-server/tools.list-tool @req FR:ai-triage-assist/mcp.tools @req FR:ai-triage-assist/mcp.actor */
 export const TOOLS: ToolDef[] = [
   { name: 'next', route: 'next', method: 'GET', path: '/next', props: {}, query: { fields: 'ref,text,project,score' },
     description: 'Top-scored open task.',

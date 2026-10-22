@@ -6,6 +6,7 @@ const SAMPLE: Record<string, string> = { '{ref}': 'alpha:3', '{name}': 'alpha' }
 const pathOf = (doc: string) => '/api' + doc.replace(/\{\w+\}/g, (m) => SAMPLE[m]);
 
 // @req FR:auth-security/docs.routes @req FR:auth-security/authorize.deny
+// @req FR:auth-security/authorize.@function
 describe('every route denies unauthenticated requests', () => {
   it.each(ROUTES.map((r) => [r.name, r.method, r.doc]))('%s', async (_n, method, doc) => {
     const { call, storage } = setup();

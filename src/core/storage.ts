@@ -74,6 +74,7 @@ export class MemoryStorage implements Storage {
 
   async list(): Promise<string[]> { return [...this.files.keys()].filter(p => TASK_PATH.test(p)).sort(); }
 
+  /** @req FR:storage-git/interface.read @req FR:storage-git/interface.bytes */
   async read(path: string): Promise<StoredFile> {
     validatePath(path);
     const content = this.files.get(path);
@@ -81,6 +82,7 @@ export class MemoryStorage implements Storage {
     return { path, content, version: versionOf(content) };
   }
 
+  /** @req FR:storage-git/write.result @req FR:storage-git/interface.bytes */
   async write(path: string, content: string, opts: WriteOptions = {}): Promise<WriteResult> {
     validatePath(path);
     const run = async () => {
@@ -109,6 +111,7 @@ export class MemoryStorage implements Storage {
   }
 }
 
+/** @req FR:storage-git/write.expected */
 export function checkExpected(path: string, current: string | null, opts: WriteOptions): void {
   if (opts.expectedVersion !== undefined && opts.expectedVersion !== current) {
     throw new ConflictError(`Conflict on ${path}: expected version ${opts.expectedVersion ?? '(absent)'}, found ${current ?? '(absent)'}`);
@@ -123,6 +126,7 @@ export class FsStorage implements Storage {
   private queue: Promise<unknown> = Promise.resolve();
   constructor(readonly root: string) {}
 
+  /** @req FR:storage-git/interface.list */
   async list(): Promise<string[]> {
     try {
       const entries = await fs.readdir(join(this.root, TASKS_DIR), { withFileTypes: true });

@@ -37,6 +37,7 @@ export class GitStorage extends FsStorage {
         cwd: this.root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' },
       }, (err, stdout, stderr) => {
+        /** @req FR:storage-git/git.failure */
         if (err) reject(new StorageError(`git ${args[0]} failed: ${(stderr || err.message).trim()}`));
         else resolve(stdout);
       });
@@ -111,7 +112,7 @@ export class GitStorage extends FsStorage {
     if (line) await this.tryGit('stash', 'drop', '-q', line.split(' ')[1]);
   }
 
-  /** Reject writes when the checked-out branch is not the configured one. */
+  /** Reject writes when the checked-out branch is not the configured one. @req FR:storage-git/git.branch */
   private async checkBranch(): Promise<void> {
     if (!this.remote && !this.branchExplicit) return;
     const cur = (await this.tryGit('symbolic-ref', '--short', '-q', 'HEAD'))?.trim() ?? null;

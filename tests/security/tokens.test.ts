@@ -14,6 +14,7 @@ const mk = (over: Record<string, unknown> = {}) => {
 const spec = { name: 'cli', scopes: ['read'] };
 
 // @req FR:auth-security/token.create
+// @req FR:auth-security/token.@function
 describe('token create', () => {
   it('returns a one-time token with 256-bit secret', async () => {
     const { svc } = mk();

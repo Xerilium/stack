@@ -109,6 +109,7 @@ function parseLine(line: string, today: Date): Parsed | null {
   const mon = MONTHS.findIndex(x => x.toLowerCase() === g.mon.toLowerCase());
   if (mon < 0) return null;
   const day = Number(g.day);
+  // @req FR:recurring-rows/roll.yearless (year-less rows take today/marker year)
   const year = p.hasYear ? Number(g.year) : markerDate ? markerDate.getUTCFullYear() : today.getUTCFullYear();
   const shown = mk(year, mon, day);
   if (shown.getUTCMonth() !== mon || shown.getUTCDate() !== day) return null;
