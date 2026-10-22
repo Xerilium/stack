@@ -21,7 +21,7 @@ const seed = async (call: ReturnType<typeof mk>['call']) => {
   await call('POST', '/api/tasks', { project: 'al', text: 'Second task 🔴' });
 };
 
-// @req FR:api/auth.deny
+// @req FR:api/handler.@function @req FR:api/handler.storage @req FR:api/auth.deny
 describe('authorize', () => {
   it('denies everything when no hook is supplied', async () => {
     const { call } = mk({ authorize: undefined });

@@ -29,6 +29,6 @@ last_updated: 2026-10-22
 
 - [x] Spec (`.xe/features/api/spec.md`)
 - [x] Plan
-- [ ] Failing tests with `@req`
-- [ ] Implementation
+- [x] Failing tests with `@req`
+- [x] Implementation
 - [ ] Review (pr-loop)
