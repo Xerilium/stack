@@ -44,8 +44,11 @@ function presentedToken(req: Request): string | null {
 
 /** @req FR:auth-security/session.csrf */
 function sameOrigin(req: Request): boolean {
-  if (req.headers.get('sec-fetch-site') === 'cross-site') return false;
+  const site = req.headers.get('sec-fetch-site');
   const origin = req.headers.get('origin');
+  // Browsers always send Origin on writes; a write with neither signal is not a browser, so it must use a token.
+  if (site === null && origin === null) return false;
+  if (site !== null && site !== 'same-origin' && site !== 'none') return false;
   if (origin === null) return true;
   try {
     const host = new URL(origin).host;

@@ -63,6 +63,19 @@ describe('owner session', () => {
     expect((await call('POST', '/api/tasks', { session: true, body, headers: { origin: 'https://stack.test' } })).status).not.toBe(403);
     expect((await call('GET', '/api/next', { session: true, headers: { origin: 'https://evil.test' } })).status).toBe(200);
   });
+  // @req FR:auth-security/session.csrf
+  it('checks Sec-Fetch-Site and requires a browser signal on session writes', async () => {
+    const { call } = setup();
+    const body = { project: 'a', text: 'x' };
+    const w = (headers: Record<string, string>) => call('POST', '/api/tasks', { session: true, body, headers });
+    for (const site of ['cross-site', 'same-site', 'bogus']) expect((await w({ 'sec-fetch-site': site })).status).toBe(403);
+    expect((await w({ 'sec-fetch-site': 'same-origin' })).status).not.toBe(403);
+    expect((await w({ 'sec-fetch-site': 'none' })).status).not.toBe(403);
+    expect((await w({ origin: 'https://stack.test', 'sec-fetch-site': 'same-origin' })).status).not.toBe(403);
+    // neither header: not a browser, must use a token
+    const bare = await call('POST', '/api/tasks', { body, headers: { 'x-ms-client-principal': (await import('./helpers')).principal() } });
+    expect(bare.status).toBe(403);
+  });
 });
 
 // @req FR:auth-security/authorize.bearer @req FR:auth-security/authorize.scope

@@ -35,7 +35,7 @@ Owner needs to sign in through Static Web Apps so that only the owner's browser 
 - **FR:session.allow** (P1): Allow-list MUST admit a principal only when `identityProvider:userId` equals an owner entry (provider case-insensitive, user id exact)
   - **FR:session.allow.empty** (P1): Allow-list MUST deny everyone when `STACK_OWNERS` is empty or unset
   - **FR:session.allow.details** (P1): Allow-list MUST NOT match on `userDetails` (a mutable display value)
-- **FR:session.csrf** (P1): Authorizer MUST deny a session write whose `Origin` header names a different host than the request
+- **FR:session.csrf** (P1): Authorizer MUST deny a session write whose `Origin` header names a different host than the request, whose `Sec-Fetch-Site` is not `same-origin`/`none`, or that carries neither header
 - **FR:session.output** (P1): Denial is `401` when no valid principal or token is present and `403` when the principal is not an owner
 
 ### FR:token: API tokens
@@ -53,11 +53,13 @@ Owner needs to create, list, and revoke API tokens so that scripts and agents ge
 - **FR:token.hash** (P1): Service MUST store only a SHA-256 hash of the secret (HMAC-SHA-256 when a pepper is set)
 - **FR:token.verify** (P1): Service MUST compare hashes in constant time and treat an unknown id like a wrong secret
   - **FR:token.verify.expiry** (P1): Service MUST reject an expired or revoked token
+  - **FR:token.verify.record** (P1): Service MUST treat a stored record with an invalid shape, unknown scopes, bad hash, or unparseable `expiresAt` as never verifying (an unparseable `expiresAt` counts as expired)
   - **FR:token.verify.format** (P1): Service MUST reject a malformed token without touching the store
 - **FR:token.list** (P1): Service MUST list `id`, `name`, `scopes`, `createdAt`, `expiresAt`, `revokedAt`, and `status`, never the hash
 - **FR:token.revoke** (P1): Service MUST mark a token revoked by id and treat a repeat revoke as a no-op; an unknown id MUST be reported as not found
 - **FR:token.file** (P1): Token file MUST be JSON `{ "version": 1, "tokens": [...] }` holding hashes and metadata only, written atomically with owner-only permissions and optimistic version checks
   - **FR:token.file.conflict** (P1): Service MUST retry a write that loses a version race, then fail without losing the other writer's change
+  - **FR:token.file.lock** (P1): File store MUST serialize the version check and the rename (in-process queue per path plus an exclusive lockfile with stale-lock recovery) so concurrent writers never lose an update
 
 ### FR:authorize: Authorize hook
 

@@ -19,7 +19,7 @@ export function setup(opts: { owners?: string; onEvent?: (e: unknown) => void; p
   const api = createApiHandler({ storage, authorize: auth.authorize, now: () => NOW, onError: (e) => logs.push(e) });
   const handler = auth.wrap(api);
   const call = async (method: string, path: string, o: { body?: unknown; headers?: Record<string, string>; session?: boolean } = {}) => {
-    const headers: Record<string, string> = { ...(o.session ? { 'x-ms-client-principal': principal() } : {}), ...(o.headers ?? {}) };
+    const headers: Record<string, string> = { ...(o.session ? { 'x-ms-client-principal': principal(), 'sec-fetch-site': 'same-origin' } : {}), ...(o.headers ?? {}) };
     if (o.body !== undefined) headers['content-type'] = 'application/json';
     const res = await handler(new Request(`https://stack.test${path}`, {
       method, headers, ...(o.body !== undefined ? { body: JSON.stringify(o.body) } : {}),

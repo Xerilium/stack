@@ -24,7 +24,10 @@ title: Auth and Security Plan
 - Token admin is owner-session only so a leaked token cannot mint tokens
 - Bearer also accepted as `X-Stack-Token` because SWA may rewrite `Authorization`
 - Route-to-scope map is fail-closed and tested against `ROUTES`
-- Origin check blocks cross-site session writes; API already requires JSON, so no simple-form CSRF
+- Session writes need `Sec-Fetch-Site` of `same-origin`/`none` (when sent) and a matching `Origin` (when sent); at least one of the two MUST be present. Browsers always send `Origin` on non-GET, so SWA same-origin use is unaffected; header-less clients (curl) must use a token. Decision recorded after review.
+- `X-Forwarded-Host` is still accepted as an alternate host for the `Origin` match (SWA fronts the Function, so `Host` can differ). A browser attacker cannot set it cross-site (custom header forces a failing preflight); a direct caller can, but has no owner cookie. Residual risk in threat model.
+- File store: per-path in-process queue + `<file>.lock` (O_EXCL, 10s stale takeover) around check+rename
+- Stored records are validated on load; invalid ones never verify; bad `expiresAt` = expired
 
 ## Tests
 

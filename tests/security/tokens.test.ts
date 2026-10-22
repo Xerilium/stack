@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, statSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createHash } from 'crypto';
@@ -108,6 +108,36 @@ describe('token verify', () => {
 });
 
 // @req FR:auth-security/token.list
+// @req FR:auth-security/token.verify.record
+describe('stored record validation', () => {
+  const tamper = async (edit: (r: any) => void) => {
+    const { svc, store } = mk();
+    const { token } = await svc.create(spec);
+    const f = (await store.read())!;
+    const j = JSON.parse(f.content);
+    edit(j.tokens[0]);
+    await store.write(JSON.stringify(j), f.version);
+    return { svc, token };
+  };
+  it('treats an unparseable expiresAt as expired', async () => {
+    const { svc, token } = await tamper((r) => { r.expiresAt = 'never'; });
+    expect(await svc.verify(token)).toBeNull();
+    expect((await svc.list())[0].status).toBe('expired');
+  });
+  it.each([
+    ['unknown scope', (r: any) => { r.scopes = ['root']; }],
+    ['non-array scopes', (r: any) => { r.scopes = 'read'; }],
+    ['empty scopes', (r: any) => { r.scopes = []; }],
+    ['bad hash', (r: any) => { r.hash = 'abc'; }],
+    ['missing expiresAt', (r: any) => { delete r.expiresAt; }],
+    ['non-string revokedAt', (r: any) => { r.revokedAt = 5; }],
+  ])('never verifies a record with %s', async (_n, edit) => {
+    const { svc, token } = await tamper(edit);
+    expect(await svc.verify(token)).toBeNull();
+    await expect(svc.list()).resolves.toBeDefined();
+  });
+});
+
 describe('token list and revoke', () => {
   it('lists metadata and status but no hash', async () => {
     const { svc, advance } = mk();
@@ -162,6 +192,37 @@ describe('token file', () => {
     });
     await svc.create({ name: 'mine', scopes: ['read'] });
     expect((await svc.list()).map((t) => t.name).sort()).toEqual(['mine', 'other']);
+  });
+  // @req FR:auth-security/token.file.lock
+  it('keeps every write when create, create and revoke run in parallel', async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'stk-')), 'tokens.json');
+    const svc = createTokenService({ store: new FileTokenStore(path), now: () => NOW });
+    const first = await svc.create({ name: 'first', scopes: ['read'] });
+    const id = first.token.split('.')[0].slice(4);
+    await Promise.all([
+      svc.create({ name: 'a', scopes: ['read'] }), svc.create({ name: 'b', scopes: ['read'] }), svc.revoke(id),
+      svc.create({ name: 'c', scopes: ['read'] }), svc.create({ name: 'd', scopes: ['read'] }),
+    ]);
+    const all = await svc.list();
+    expect(all.map((x) => x.name).sort()).toEqual(['a', 'b', 'c', 'd', 'first']);
+    expect(all.find((x) => x.name === 'first')!.status).toBe('revoked');
+    expect(existsSync(path + '.lock')).toBe(false);
+  });
+  it('serializes writers across store instances on one file', async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'stk-')), 'tokens.json');
+    const a = createTokenService({ store: new FileTokenStore(path), now: () => NOW });
+    const b = createTokenService({ store: new FileTokenStore(path), now: () => NOW });
+    await Promise.all([a.create({ name: 'a', scopes: ['read'] }), b.create({ name: 'b', scopes: ['read'] })]);
+    expect((await a.list()).length).toBe(2);
+  });
+  it('takes over a stale lockfile', async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'stk-')), 'tokens.json');
+    writeFileSync(path + '.lock', '');
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(path + '.lock', old, old);
+    const svc = createTokenService({ store: new FileTokenStore(path), now: () => NOW });
+    await svc.create(spec);
+    expect((await svc.list()).length).toBe(1);
   });
   it('gives up after repeated conflicts', async () => {
     const { svc, store } = mk();

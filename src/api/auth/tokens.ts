@@ -33,7 +33,43 @@ export class MemoryTokenStore implements TokenStore {
   }
 }
 
-/** Reference adapter: atomic rename, owner-only mode. @req FR:auth-security/token.file */
+const LOCK_STALE_MS = 10_000;
+const LOCK_WAIT_MS = 15_000;
+const queues = new Map<string, Promise<unknown>>();
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** In-process queue per path, then an O_EXCL lockfile (stale ones are taken over). @req FR:auth-security/token.file.lock */
+async function withLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const prev = queues.get(path) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(async () => {
+    const lock = `${path}.lock`;
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    for (;;) {
+      try {
+        const h = await fs.open(lock, 'wx', 0o600);
+        await h.close();
+        break;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+        try {
+          const st = await fs.stat(lock);
+          if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+            const again = await fs.stat(lock);
+            if (again.ino === st.ino && again.mtimeMs === st.mtimeMs) await fs.rm(lock, { force: true });
+            continue;
+          }
+        } catch { continue; /* lock vanished: try again */ }
+        if (Date.now() > deadline) throw new Error('Token file lock timeout');
+        await sleep(10 + Math.random() * 20);
+      }
+    }
+    try { return await fn(); } finally { await fs.rm(lock, { force: true }); }
+  });
+  queues.set(path, run);
+  try { return await run; } finally { if (queues.get(path) === run) queues.delete(path); }
+}
+
+/** Reference adapter: locked check-and-rename, owner-only mode. @req FR:auth-security/token.file */
 export class FileTokenStore implements TokenStore {
   constructor(private readonly path: string) {}
   async read() {
@@ -45,7 +81,10 @@ export class FileTokenStore implements TokenStore {
       throw e;
     }
   }
-  async write(content: string, expectedVersion: string | null) {
+  write(content: string, expectedVersion: string | null) {
+    return withLock(this.path, () => this.writeLocked(content, expectedVersion));
+  }
+  private async writeLocked(content: string, expectedVersion: string | null) {
     const cur = await this.read();
     if ((cur ? cur.version : null) !== expectedVersion) throw new StoreConflict();
     const tmp = join(dirname(this.path), `.${randomBytes(6).toString('hex')}.tmp`);
@@ -76,7 +115,7 @@ const ID = /^[0-9a-f]{16}$/;
 const HASH = /^[0-9a-f]{64}$/;
 const DAY = 86_400_000;
 const MAX_ACTIVE = 50;
-const RETRIES = 5;
+const RETRIES = 10;
 const NAME_BAD = new RegExp("[\\r\\n\\u0085\\u2028\\u2029\\0]");
 const DUMMY = '0'.repeat(64);
 
@@ -94,8 +133,21 @@ export function createTokenService(opts: { store: TokenStore; pepper?: string; n
     return { tokens: v.tokens as StoredToken[], version: f.version };
   }
   const dump = (tokens: StoredToken[]) => JSON.stringify({ version: 1, tokens }, null, 2) + '\n';
-  const status = (t: StoredToken): TokenView['status'] =>
-    t.revokedAt ? 'revoked' : Date.parse(t.expiresAt) <= now().getTime() ? 'expired' : 'active';
+  const isoOk = (s: unknown) => typeof s === 'string' && s.length <= 64;
+  /** Shape check of a stored record; anything else is ignored by list and never verifies. @req FR:auth-security/token.verify.record */
+  const valid = (t: unknown): t is StoredToken => {
+    if (typeof t !== 'object' || t === null) return false;
+    const r = t as Record<string, unknown>;
+    return typeof r.id === 'string' && ID.test(r.id) && typeof r.name === 'string' && typeof r.hash === 'string' && HASH.test(r.hash)
+      && Array.isArray(r.scopes) && r.scopes.length > 0 && r.scopes.every((s) => (SCOPES as readonly string[]).includes(s as string))
+      && isoOk(r.createdAt) && isoOk(r.expiresAt) && (r.revokedAt === null || isoOk(r.revokedAt));
+  };
+  const status = (t: StoredToken): TokenView['status'] => {
+    if (!valid(t)) return 'expired';
+    if (t.revokedAt) return 'revoked';
+    const exp = Date.parse(t.expiresAt);
+    return Number.isNaN(exp) || exp <= now().getTime() ? 'expired' : 'active';
+  };
   const view = (t: StoredToken): TokenView => ({
     id: t.id, name: t.name, scopes: [...t.scopes], createdAt: t.createdAt, expiresAt: t.expiresAt, revokedAt: t.revokedAt, status: status(t),
   });
@@ -143,16 +195,17 @@ export function createTokenService(opts: { store: TokenStore; pepper?: string; n
     if (!m) return null;
     let tokens: StoredToken[];
     try { tokens = (await load()).tokens; } catch (e) { if (e instanceof TokenFileError) return null; throw e; }
-    const rec = tokens.find((t) => t && t.id === m[1]);
+    const found = tokens.find((t) => t && (t as StoredToken).id === m[1]);
+    const rec = valid(found) ? found : undefined;
     // Unknown ids and malformed records still run one comparison, so timing does not reveal which ids exist.
-    const stored = rec && typeof rec.hash === 'string' && HASH.test(rec.hash) ? rec.hash : DUMMY;
+    const stored = rec ? rec.hash : DUMMY;
     const match = timingSafeEqual(Buffer.from(hashSecret(m[2]), 'hex'), Buffer.from(stored, 'hex'));
     if (!rec || !match || stored === DUMMY || status(rec) !== 'active') return null;
     return { id: rec.id, name: rec.name, scopes: [...rec.scopes] };
   }
 
   /** @req FR:auth-security/token.list */
-  async function list() { return (await load()).tokens.map(view); }
+  async function list() { return (await load()).tokens.filter(valid).map(view); }
 
   /** @req FR:auth-security/token.revoke */
   async function revoke(id: string) {

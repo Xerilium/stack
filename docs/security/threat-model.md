@@ -30,11 +30,14 @@ One owner, one private task repo, hosted on Azure Static Web Apps (SWA) free tie
 | 8 | Leaked token abuse | Scopes per route (fail-closed table), expiry (default 90 days, max 365), instant revoke, 50 active max | `authorize.test.ts` |
 | 9 | Leaked token mints more tokens | Token admin is owner-session only | `admin.test.ts` |
 | 10 | Secrets or tasks in logs or responses | Auth events carry only kind, route name, status, token id; error bodies are fixed text; list never returns hashes; secret appears once at create | `leaks.test.ts` |
-| 11 | Two writers corrupt the token file | Version-checked atomic writes with retry | `tokens.test.ts` |
+| 11 | Two writers corrupt the token file | Version-checked atomic writes under a per-path lock (in-process queue + lockfile, stale recovery) with retry | `tokens.test.ts` |
 | 12 | Corrupt token file grants access | Unreadable file means no token verifies (401); creating refuses to overwrite it | `tokens.test.ts` |
 | 13 | Other sign-in providers | SWA route rules return 404 for non-GitHub login (`docs/security/staticwebapp.config.json`) | `docs.test.ts` |
 
 ## Residual risk
+
+- SWA header spoofing: `x-ms-client-principal` and `X-Forwarded-Host` are trusted because SWA sets them. A caller that reaches the Function directly (self-hosting, misconfigured network) can forge both. Keep the Function unexposed or front it with a verifying proxy. Session-write CSRF checks use `Origin`/`Sec-Fetch-Site`, which add nothing against a direct forger (who already owns the identity).
+- Session writes without `Origin` and `Sec-Fetch-Site` are denied; scripts must use tokens.
 
 - Single owner: a compromised GitHub account is a full compromise. Turn on GitHub 2FA.
 - SWA can rewrite the `Authorization` header in some setups, so tokens are also accepted as `X-Stack-Token`.
