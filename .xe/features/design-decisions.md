@@ -139,3 +139,13 @@
 **Why**: Matches editors and grep output; scripts should not fail on idempotent calls.
 
 **Rejected**: 0-based refs (error-prone); non-zero exit for no-ops.
+
+## Build the web app with Preact and Vite under web/
+
+**Decision**: Static SPA in `web/` (Preact, Vite, vitest, Playwright), its own package and tsconfig. Data comes from `/api` after sign-in; nothing task-related is in the bundle. Two additive api routes (`tasks.edit`, `tasks.move`) fill the gaps for inline edit and reorder. Bulk edit is client-side, one call per row.
+
+**Date**: 2026-10-22
+
+**Why**: The UI has many stateful views; Preact adds about 4 KB and keeps the footprint small. A strict CSP (no inline script) ships with the SWA config.
+
+**Rejected**: Vanilla TS (more glue for the same views); a bulk api route (YAGNI, per-row results are clearer).
