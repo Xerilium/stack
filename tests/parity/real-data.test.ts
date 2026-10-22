@@ -62,7 +62,6 @@ d('real-data acceptance', () => {
     });
 
     it('ranking matches up to tie order', () => {
-      expect(tieGroups(byScore(scored).map(s => s.task.id)).length).toBe(tieGroups(golden.ranking).length);
       expect(tieGroups(byScore(scored).map(s => s.task.id)) ).toEqual(tieGroups(golden.ranking));
     });
 

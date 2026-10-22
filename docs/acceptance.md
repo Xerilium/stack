@@ -13,7 +13,7 @@ Reproduce: `STACK_LEGACY_DIR=<legacy repo> scripts/parity.sh` (needs pwsh; reads
 | 3 | `next` ordering matches legacy | Pass | Scores of every task, project weights, and ranking (up to legacy's unstable tie order) match the legacy golden; time-filtered candidates match at 10 instants (all time blocks, boundaries, DST change); `stack next` top score equals legacy at 10/10 instants |
 | 4 | Core test coverage >= 90% | Pass | src/core: statements 96.2, branches 88.7, functions 98.8, lines 98.1. Enforced by `coverageThreshold` for `./src/core/` in `jest.config.js` (90/85/90/90) |
 | 5 | Traceability spec -> test -> code | Partial | 382 requirements in 16 specs; 337 carry a code `@req` tag (88%), 367 a test tag (96%). 4 untagged-but-tested requirements fixed in this change. Remaining gaps are tag omissions, not missing behavior (see STATUS Known gaps). `catalyst check` is broken in 0.3.2, so `scripts/trace.sh` stands in |
-| 6 | `pnpm test`, `lint`, `build` green | Pass | 907 tests pass (11 gated parity tests skip without env); lint and all four builds clean |
+| 6 | `pnpm test`, `lint`, `build` green | Pass | 907 tests pass (11 gated parity tests skip without env); lint and `pnpm build` (all four targets) clean |
 | 7 | Legacy config read from `.xe/config/stack.json` with no migration | Pass | Real legacy config used unchanged in criteria 2 and 3 |
 | 8 | Lifecycle matches legacy goldens | Pass | `tests/core/lifecycle.golden.test.ts` green |
 | 9 | Legacy repo is never modified | Pass | Scripts copy `tasks/`, `src/`, config, README.md, projects.md to a temp dir; `update` run with `--no-commit` on the copy changed 0 files |

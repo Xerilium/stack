@@ -17,7 +17,8 @@ export TZ="${TZ:-America/Los_Angeles}"
 CLOCKS=(${STACK_PARITY_CLOCKS:-2026-10-22T09:00:00-07:00 2026-10-24T15:30:00-07:00 2026-10-26T06:15:00-07:00})
 
 SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/stack-parity.XXXXXX")"
-trap 'rm -rf "$SCRATCH"' EXIT
+KEEP=0
+trap '[ "$KEEP" -eq 1 ] || rm -rf "$SCRATCH"' EXIT
 CASE="$SCRATCH/case"; REPO="$SCRATCH/repo"
 mkdir -p "$CASE/prior" "$CASE/.xe" "$REPO/.xe"
 cp -R "$LEGACY/tasks" "$CASE/tasks"; cp -R "$LEGACY/tasks" "$REPO/tasks"
@@ -35,7 +36,11 @@ pwsh tests/parity/generate-legacy.ps1 -LegacyRoot "$REPO" -CaseDir "$CASE" >/dev
 
 fail=0
 echo "== (a)+(c) round trip and scoring golden"
-STACK_PARITY_CASE="$CASE" pnpm exec jest tests/parity/real-data --silent >/dev/null 2>&1 && echo "PASS" || { echo "FAIL"; fail=1; }
+if STACK_PARITY_CASE="$CASE" pnpm exec jest tests/parity/real-data --silent >/dev/null 2>&1; then echo "PASS"; else
+  echo "FAIL"; fail=1; KEEP=1
+  echo "  rerun: STACK_PARITY_CASE=$CASE pnpm exec jest tests/parity/real-data"
+  echo "  case dir kept (contains task data, do not share): $CASE"
+fi
 
 echo "== (b) update vs legacy, ${#CLOCKS[@]} clocks"
 i=0

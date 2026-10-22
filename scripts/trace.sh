@@ -2,7 +2,7 @@
 # Manual spec -> test -> code traceability (stand-in while `catalyst check` is broken in 0.3.2).
 # For every requirement `- **FR:<id>**` in .xe/features/<feature>/spec.md, finds `@req FR:<feature>/<id>`
 # in src/ (code) and tests/ (test). Prints per-feature counts and lists uncovered ids.
-# Usage: scripts/trace.sh [-v]    Exit 1 if any requirement lacks a test or code tag.
+# Usage: scripts/trace.sh [-v]    Exits 1 while any requirement lacks a test or code tag, so it is not yet a CI gate.
 cd "$(dirname "$0")/.."
 tags() { grep -rhoE "@req (N?FR):[A-Za-z0-9._@-]+/[A-Za-z0-9._@-]+" "$1" | sed 's/^@req //' | sort -u; }
 tags src > "${TMPDIR:-/tmp}/trace-code.$$"; tags tests > "${TMPDIR:-/tmp}/trace-test.$$"
