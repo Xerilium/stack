@@ -31,6 +31,6 @@ last_updated: 2026-10-22
 
 - [x] Spec
 - [x] Plan
-- [ ] Failing tests with `@req`
-- [ ] Implementation
+- [x] Failing tests with `@req`
+- [x] Implementation
 - [ ] Review
