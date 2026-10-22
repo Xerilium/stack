@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { StorageError } from '../../src/core/storage';
 import { join } from 'path';
 import {
-  Storage, MemoryStorage, FsStorage, NotFoundError, ConflictError, PathError, versionOf,
+  Storage, MemoryStorage, FsStorage, writeAll, NotFoundError, ConflictError, PathError, versionOf,
 } from '../../src/core/storage';
 import { GitStorage } from '../../src/core/storage-git';
 
@@ -127,6 +127,86 @@ describe.each(adapters)('%s contract', (_n, make) => {
   });
 });
 
+// @req FR:storage-git/write.many
+describe.each(adapters)('%s writeMany', (_n, make) => {
+  let s: Storage;
+  beforeEach(() => { s = make(); });
+
+  it('writes all files and returns versions', async () => {
+    await writeAll(s, [{ path: 'tasks/a.md', content: 'A' }, { path: 'README.md', content: 'R' }], 'both');
+    expect((await s.read('tasks/a.md')).content).toBe('A');
+    expect((await s.read('README.md')).content).toBe('R');
+  });
+
+  it('checks every expectedVersion first and writes nothing on a mismatch', async () => {
+    await s.write('tasks/a.md', 'A1');
+    await expect(writeAll(s, [
+      { path: 'tasks/b.md', content: 'B', expectedVersion: null },
+      { path: 'tasks/a.md', content: 'A2', expectedVersion: 'stale' },
+    ])).rejects.toBeInstanceOf(ConflictError);
+    expect((await s.read('tasks/a.md')).content).toBe('A1');
+    await expect(s.read('tasks/b.md')).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('rejects duplicate and bad paths without writing', async () => {
+    await expect(writeAll(s, [{ path: 'tasks/a.md', content: '1' }, { path: 'tasks/a.md', content: '2' }])).rejects.toBeInstanceOf(StorageError);
+    await expect(writeAll(s, [{ path: 'tasks/a.md', content: '1' }, { path: '../x.md', content: '2' }])).rejects.toBeInstanceOf(PathError);
+    await expect(s.read('tasks/a.md')).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe('writeAll fallback', () => {
+  it('writes one by one for adapters without writeMany', async () => {
+    const inner = new MemoryStorage();
+    const plain: Storage = { list: () => inner.list(), read: (p) => inner.read(p), write: (p, c, o) => inner.write(p, c, o) };
+    await writeAll(plain, [{ path: 'tasks/a.md', content: 'A' }, { path: 'tasks/b.md', content: 'B' }]);
+    expect(await inner.list()).toEqual(['tasks/a.md', 'tasks/b.md']);
+  });
+});
+
+describe('GitStorage writeMany', () => {
+  const count = (d: string) => Number(git(d, 'rev-list', '--count', 'HEAD').trim());
+  it('makes ONE commit for all changed paths and skips unchanged ones', async () => {
+    const d = freshRepo();
+    const s = new GitStorage(d);
+    await s.write('tasks/a.md', 'A');
+    const before = count(d);
+    await writeAll(s, [{ path: 'tasks/a.md', content: 'A' }, { path: 'tasks/b.md', content: 'B' }, { path: 'README.md', content: 'R' }], 'Update summaries');
+    expect(count(d)).toBe(before + 1);
+    expect(git(d, 'log', '-1', '--format=%s').trim()).toBe('Update summaries');
+    expect(git(d, 'show', '--name-only', '--format=', 'HEAD').trim().split('\n').sort()).toEqual(['README.md', 'tasks/b.md']);
+    await writeAll(s, [{ path: 'tasks/b.md', content: 'B' }]);
+    expect(count(d)).toBe(before + 1);
+    expect(git(d, 'status', '--porcelain').trim()).toBe('');
+  });
+
+  it('leaves unrelated staged files alone and rolls back on conflict', async () => {
+    const d = freshRepo();
+    const s = new GitStorage(d);
+    await s.write('tasks/a.md', 'A');
+    writeFileSync(join(d, 'tasks/other.md'), 'staged'); git(d, 'add', 'tasks/other.md');
+    await expect(writeAll(s, [{ path: 'tasks/new.md', content: 'N' }, { path: 'tasks/a.md', content: 'A2', expectedVersion: 'stale' }])).rejects.toBeInstanceOf(ConflictError);
+    expect(existsSync(join(d, 'tasks/new.md'))).toBe(false);
+    expect(git(d, 'diff', '--cached', '--name-only').trim()).toBe('tasks/other.md');
+    await writeAll(s, [{ path: 'tasks/new.md', content: 'N' }, { path: 'tasks/a.md', content: 'A2' }]);
+    expect(git(d, 'show', '--name-only', '--format=', 'HEAD').trim().split('\n').sort()).toEqual(['tasks/a.md', 'tasks/new.md']);
+    expect(git(d, 'diff', '--cached', '--name-only').trim()).toBe('tasks/other.md');
+  });
+
+  it('pushes once and rolls everything back when the remote moved', async () => {
+    const { a, b } = remoteSetup();
+    const sa = new GitStorage(a, { remote: 'origin' });
+    const sb = new GitStorage(b, { remote: 'origin' });
+    await sa.write('tasks/x.md', 'X0');
+    await writeAll(sb, [{ path: 'tasks/y.md', content: 'Y' }, { path: 'tasks/x.md', content: 'X1' }], 'both');
+    expect(git(a, 'fetch', '-q', 'origin') + git(a, 'log', '-1', '--format=%s', 'origin/main').trim()).toBe('both');
+    // a is stale: its expected version of x.md is X0 but remote has X1
+    await expect(writeAll(sa, [{ path: 'tasks/z.md', content: 'Z' }, { path: 'tasks/x.md', content: 'X2', expectedVersion: versionOf('X0') }])).rejects.toBeInstanceOf(ConflictError);
+    expect(git(a, 'status', '--porcelain').trim()).toBe('');
+    expect(existsSync(join(a, 'tasks/z.md'))).toBe(false);
+  });
+});
+
 // @req FR:storage-git/git.isolation @req FR:storage-git/git.commit
 describe('GitStorage rollback', () => {
   // @req FR:storage-git/git.failure
@@ -156,6 +236,23 @@ describe('GitStorage rollback', () => {
     await expect(s.write('tasks/x.md', 'new')).rejects.toBeInstanceOf(StorageError);
     expect(git(d, 'show', ':tasks/x.md')).toBe('mine');
     expect(git(d, 'status', '--porcelain')).toBe('M  tasks/x.md\n');
+  });
+
+  // @req FR:storage-git/git.failure
+  it('restores every path even if one restore throws, then rethrows the first error', async () => {
+    const d = freshRepo();
+    const s = new GitStorage(d);
+    await s.write('tasks/a.md', 'old-a');
+    await s.write('tasks/b.md', 'old-b');
+    writeFileSync(join(d, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const priv = s as unknown as { git: (...a: string[]) => Promise<string> };
+    const orig = priv.git.bind(s);
+    priv.git = (...a: string[]) => (a[0] === 'restore' && a.includes('tasks/a.md') ? Promise.reject(new Error('boom')) : orig(...a));
+    await expect(s.writeMany([
+      { path: 'tasks/a.md', content: 'new-a' }, { path: 'tasks/b.md', content: 'new-b' },
+    ])).rejects.toBeDefined();
+    priv.git = orig;
+    expect(readFileSync(join(d, 'tasks', 'b.md'), 'utf8')).toBe('old-b');
   });
 
   // @req FR:storage-git/git.branch
@@ -386,6 +483,33 @@ describe('GitStorage with remote', () => {
     writeFileSync(join(b, 'tasks', 'd.md'), 'dirty\n');
     sb.beforePush = async () => { sb.beforePush = undefined; await sa.write('tasks/x.md', 'from-a'); await sa.write('tasks/d.md', 'remote\n'); };
     await expect(sb.write('tasks/x.md', 'from-b')).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  // @req FR:storage-git/git.conflict
+  it('surfaces the ConflictError when the rollback restore itself fails', async () => {
+    const { a, b } = remoteSetup();
+    const sa = new GitStorage(a, { remote: 'origin', branch: 'main' });
+    const sb = new GitStorage(b, { remote: 'origin', branch: 'main' });
+    await sa.write('tasks/x.md', 'base'); await sb.sync();
+    sb.beforePush = async () => { sb.beforePush = undefined; await sa.write('tasks/x.md', 'from-a'); };
+    const priv = sb as unknown as { git: (...a: string[]) => Promise<string> };
+    const orig = priv.git.bind(sb);
+    priv.git = (...g: string[]) => (g[0] === 'restore' ? Promise.reject(new Error('boom')) : orig(...g));
+    await expect(sb.write('tasks/x.md', 'from-b')).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  // @req FR:storage-git/git.failure
+  it('surfaces the push StorageError when the rollback restore itself fails', async () => {
+    const { b } = remoteSetup();
+    const sb = new GitStorage(b, { remote: 'origin', branch: 'main' });
+    await sb.write('tasks/x.md', 'base');
+    writeFileSync(join(b, '.git', 'hooks', 'pre-push'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const priv = sb as unknown as { git: (...a: string[]) => Promise<string> };
+    const orig = priv.git.bind(sb);
+    priv.git = (...g: string[]) => (g[0] === 'restore' ? Promise.reject(new Error('boom')) : orig(...g));
+    const err = await sb.write('tasks/x.md', 'new').catch(e => e);
+    expect(err).toBeInstanceOf(StorageError);
+    expect(err.message).not.toBe('boom');
   });
 
   // @req FR:storage-git/git.failure

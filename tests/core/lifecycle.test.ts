@@ -5,7 +5,7 @@ import { getDefaults } from '../../src/core/config';
 import {
   addProject, addTask, applyTaskProps, completeTask, formatSuspendDate, kebabCase, LifecycleError, nextTask,
   parkTask, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, sweepStartDates,
-  sweepSuspended,
+  sweepSuspended, sweepDueDates,
 } from '../../src/core/lifecycle';
 import { ConflictError, FsStorage, MemoryStorage, Storage } from '../../src/core/storage';
 
@@ -44,7 +44,7 @@ describe('document handling', () => {
     const s = await mem({ 'tasks/alpha.md': ALPHA });
     const r = await startTask(ctx(s), { path: 'tasks/alpha.md', line: 9 });
     expect(r).toMatchObject({ changed: true, before: '- [ ] 🔺 Pay bills 🟡 ⬆️', after: '- [ ] 🔺 🚧 Pay bills 🟡 ⬆️' });
-    expect(r.ref).toEqual({ path: 'tasks/alpha.md', line: 9 });
+    expect(r.ref).toMatchObject({ path: 'tasks/alpha.md', line: 9 });
   });
 
   // @req FR:task-lifecycle/doc.target
@@ -147,7 +147,7 @@ describe('nextTask', () => {
     expect(n).not.toBeNull();
     expect(n!.text).toContain('Urgent thing');
     expect(n!.project).toBe('Beta');
-    expect(n!.ref).toEqual({ path: 'tasks/beta.md', line: 4 });
+    expect(n!.ref).toMatchObject({ path: 'tasks/beta.md', line: 4 });
     expect(n!.score).toBeGreaterThan(0);
     const lines = (await text(s, n!.ref.path)).split('\n');
     expect(lines[n!.ref.line]).toContain('Urgent thing');
@@ -184,7 +184,7 @@ describe('nextTask', () => {
   it('lets operations default to the next task', async () => {
     const s = await mem({ 'tasks/alpha.md': ALPHA, 'tasks/beta.md': BETA });
     const r = await startTask(ctx(s));
-    expect(r.ref).toEqual({ path: 'tasks/beta.md', line: 4 });
+    expect(r.ref).toMatchObject({ path: 'tasks/beta.md', line: 4 });
     expect(await text(s, 'tasks/beta.md')).toContain('- [ ] 🚧 Urgent thing 🚨');
   });
 });
@@ -345,7 +345,7 @@ describe('skipTask / resumeTask', () => {
       'tasks/b.md': doc('- [ ] 🅿️ second parked\n'),
     });
     const r = await resumeTask(ctx(s));
-    expect(r.ref).toEqual({ path: 'tasks/a.md', line: 5 });
+    expect(r.ref).toMatchObject({ path: 'tasks/a.md', line: 5 });
     expect(await text(s, 'tasks/a.md')).toBe(doc('- [ ] free\n- [ ] first parked\n'));
     expect(await text(s, 'tasks/b.md')).toBe(doc('- [ ] 🅿️ second parked\n'));
     const r2 = await resumeTask(ctx(s));
@@ -566,7 +566,7 @@ describe('addTask', () => {
   it('appends after the last task block in the Active section', async () => {
     const s = await mem({ 'tasks/p.md': P });
     const r = await addTask(ctx(s), { project: 'p', text: 'two 🟢' });
-    expect(r.ref).toEqual({ path: 'tasks/p.md', line: 7 });
+    expect(r.ref).toMatchObject({ path: 'tasks/p.md', line: 7 });
     expect(await text(s, 'tasks/p.md')).toBe(
       '# P\n\n## 🔄 Active\n\n- [ ] one\n  - [ ] sub\n    note\n- [ ] two 🟢\n\n## ⏭️ Up next\n\n- [ ] later\n');
   });
@@ -674,5 +674,200 @@ describe('sweeps', () => {
     const s = await mem({ 'tasks/a.md': '# A\r\n\r\n## 🔄 Active\r\n\r\n- [ ] ⏰ Oct 1: x\r\n- [ ] y\r\n' });
     await sweepStartDates(ctx(s));
     expect(await text(s, 'tasks/a.md')).toBe('# A\r\n\r\n## 🔄 Active\r\n\r\n- [ ] x\r\n- [ ] y\r\n');
+  });
+});
+
+const doc = (body: string) => `${BOM}# A\n\n## 🔄 Active\n\n${body}`;
+
+describe('year handling', () => {
+  // @req FR:task-lifecycle/sweep.year
+  it('keeps a January suspend written in late December', async () => {
+    const dec = new Date('2026-12-30T18:00:00Z');
+    const s = await mem({ 'tasks/a.md': doc('- [ ] 💤 Jan 4: later\n- [ ] 💤 Jan 4 09:00: later2\n') });
+    expect((await sweepSuspended(ctx(s, dec))).reactivated).toBe(0);
+    expect((await sweepSuspended(ctx(s, new Date('2027-01-04T18:00:00Z')))).reactivated).toBe(2);
+  });
+
+  // @req FR:task-lifecycle/sweep.year
+  it('treats a late-December date seen in early January as past', async () => {
+    const s = await mem({ 'tasks/a.md': doc('- [ ] 💤 Dec 30: old\n- [ ] 💤 Dec 30 09:00: old2\n') });
+    expect((await sweepSuspended(ctx(s, new Date('2027-01-02T18:00:00Z')))).reactivated).toBe(2);
+  });
+
+  // @req FR:task-lifecycle/sweep.year
+  it('suspendTask across New Year round-trips through the sweep', async () => {
+    const s = await mem({ 'tasks/a.md': doc('- [ ] nap\n') });
+    const dec = new Date('2026-12-30T18:00:00Z');
+    await suspendTask(ctx(s, dec), { path: 'tasks/a.md', line: 4 }, { days: 5 });
+    expect(await text(s, 'tasks/a.md')).toContain('💤 Jan 4: nap');
+    expect((await sweepSuspended(ctx(s, new Date('2026-12-31T18:00:00Z')))).reactivated).toBe(0);
+  });
+});
+
+describe('due-date escalation', () => {
+  const DUE = (text: string) => doc(text);
+  const run = async (body: string, now = NOW) => {
+    const s = await mem({ 'tasks/a.md': DUE(body) });
+    const r = await sweepDueDates(ctx(s, now));
+    return { r, out: await text(s, 'tasks/a.md'), s };
+  };
+
+  // @req FR:task-lifecycle/sweep.due
+  it.each([
+    ['Oct 25', '🔺'], ['Oct 23', '🔺'], ['Oct 22', '‼️'], ['Oct 20', '‼️'], ['Oct 19', '🚨'], ['Sep 1', '🚨'],
+  ])('📅 %s gets %s (today is Oct 22)', async (d, emoji) => {
+    const { r, out } = await run(`- [ ] 📅 ${d}: file taxes\n`);
+    expect(r.escalated).toBe(1);
+    expect(out).toBe(DUE(`- [ ] ${emoji} 📅 ${d}: file taxes\n`));
+  });
+
+  // @req FR:task-lifecycle/sweep.due
+  it('leaves rows more than 3 days out, checked rows, and rows without a marker alone', async () => {
+    const body = '- [ ] 📅 Oct 26: far\n- [x] 📅 Oct 20: done\n- [ ] plain\n';
+    const { r, out } = await run(body);
+    expect(r.escalated).toBe(0);
+    expect(out).toBe(DUE(body));
+  });
+
+  // @req FR:task-lifecycle/sweep.due
+  it('keeps stronger priorities, replaces weaker ones, and is idempotent', async () => {
+    const { out, s } = await run('- [ ] 🚨 📅 Oct 23: a\n- [ ] ‼️ 📅 Oct 24: b\n- [ ] 🔺 📅 Oct 21: c 🟢\n- [ ] 🔻 🚧 📅 Oct 10: d\n');
+    expect(out).toBe(DUE('- [ ] 🚨 📅 Oct 23: a\n- [ ] ‼️ 📅 Oct 24: b\n- [ ] ‼️ 📅 Oct 21: c 🟢\n- [ ] 🚨 🚧 📅 Oct 10: d\n'));
+    const again = await sweepDueDates(ctx(s));
+    expect(again.escalated).toBe(0);
+    expect(await text(s, 'tasks/a.md')).toBe(out);
+  });
+
+  // @req FR:task-lifecycle/sweep.due @req FR:task-lifecycle/sweep.year
+  it('resolves the year around New Year', async () => {
+    const jan = new Date('2027-01-01T18:00:00Z');
+    expect((await run('- [ ] 📅 Dec 30: x\n', jan)).out).toContain('‼️ 📅 Dec 30');
+    expect((await run('- [ ] 📅 Jan 2: y\n', new Date('2026-12-31T18:00:00Z'))).out).toContain('🔺 📅 Jan 2');
+  });
+
+  // @req FR:task-lifecycle/sweep.due-move
+  it('counts a row that only moves (emoji already right)', async () => {
+    const src = '# A\n\n## 🔄 Active\n\n- [ ] first\n\n## 📋 Backlog\n\n- [ ] 🚨 📅 Oct 1: late\n';
+    const s = await mem({ 'tasks/a.md': src });
+    const r = await sweepDueDates(ctx(s));
+    expect(r.escalated).toBe(1);
+    expect(await text(s, 'tasks/a.md')).toBe('# A\n\n## 🔄 Active\n\n- [ ] 🚨 📅 Oct 1: late\n- [ ] first\n\n## 📋 Backlog\n\n');
+  });
+
+  // @req FR:task-lifecycle/sweep.due @req FR:task-lifecycle/doc.crlf
+  it('keeps CRLF', async () => {
+    const s = await mem({ 'tasks/a.md': '# A\r\n\r\n## 🔄 Active\r\n\r\n- [ ] 📅 Oct 22: x\r\n' });
+    await sweepDueDates(ctx(s));
+    expect(await text(s, 'tasks/a.md')).toBe('# A\r\n\r\n## 🔄 Active\r\n\r\n- [ ] ‼️ 📅 Oct 22: x\r\n');
+  });
+
+  // @req FR:task-lifecycle/sweep.due-move
+  it('moves an urgent Up next / Backlog row, with its children, to the top of Active', async () => {
+    const src = `# A
+
+## 🔄 Active
+
+Current work.
+
+- [ ] first
+- [ ] second
+
+## ⏭️ Up next
+
+- [ ] 📅 Oct 22: urgent
+  - [ ] child
+  > note
+- [ ] stay
+
+## 📋 Backlog
+
+- [ ] 📅 Oct 25: soon
+- [ ] 📅 Oct 1: late
+`;
+    const s = await mem({ 'tasks/a.md': src });
+    await sweepDueDates(ctx(s));
+    expect(await text(s, 'tasks/a.md')).toBe(`# A
+
+## 🔄 Active
+
+Current work.
+
+- [ ] ‼️ 📅 Oct 22: urgent
+  - [ ] child
+  > note
+- [ ] 🚨 📅 Oct 1: late
+- [ ] first
+- [ ] second
+
+## ⏭️ Up next
+
+- [ ] stay
+
+## 📋 Backlog
+
+- [ ] 🔺 📅 Oct 25: soon
+`);
+  });
+
+  // @req FR:task-lifecycle/sweep.due-move
+  it('moves to the end of an Active section with no tasks, and escalates in place when Active is missing', async () => {
+    const a = await mem({ 'tasks/a.md': '# A\n\n## 🔄 Active\n\nText.\n\n## 📋 Backlog\n\n- [ ] 📅 Oct 22: x\n' });
+    await sweepDueDates(ctx(a));
+    expect(await text(a, 'tasks/a.md')).toBe('# A\n\n## 🔄 Active\n\nText.\n- [ ] ‼️ 📅 Oct 22: x\n\n## 📋 Backlog\n\n');
+    const b = await mem({ 'tasks/a.md': '# A\n\n## 📋 Backlog\n\n- [ ] 📅 Oct 22: x\n' });
+    await sweepDueDates(ctx(b));
+    expect(await text(b, 'tasks/a.md')).toBe('# A\n\n## 📋 Backlog\n\n- [ ] ‼️ 📅 Oct 22: x\n');
+  });
+
+  // @req FR:task-lifecycle/sweep.all
+  it('sweep runs all three and writes one multi-file batch', async () => {
+    const inner = await mem({
+      'tasks/a.md': doc('- [ ] ⏰ Oct 1: a\n- [ ] 💤 Oct 1: b\n- [ ] 📅 Oct 22: c\n'),
+      'tasks/b.md': doc('- [ ] 📅 Oct 22: d\n'),
+    });
+    const many = jest.fn(inner.writeMany.bind(inner));
+    const s: Storage = { list: () => inner.list(), read: (p) => inner.read(p), write: (p, c, o) => inner.write(p, c, o), writeMany: many };
+    const r = await sweep(ctx(s));
+    expect(r).toMatchObject({ activated: 1, reactivated: 1, escalated: 2, files: ['tasks/a.md', 'tasks/b.md'] });
+    expect(many).toHaveBeenCalledTimes(1);
+    expect(await text(inner, 'tasks/a.md')).toBe(doc('- [ ] a\n- [ ] b\n- [ ] ‼️ 📅 Oct 22: c\n'));
+  });
+});
+
+describe('TaskRef text guard', () => {
+  // @req FR:task-lifecycle/doc.guard
+  it('acts when the text matches (whitespace-collapsed) and fails safely when it does not', async () => {
+    const s = await mem({ 'tasks/alpha.md': ALPHA });
+    const ref = { path: 'tasks/alpha.md', line: 9, text: '🔺 Pay   bills 🟡 ⬆️' };
+    await expect(startTask(ctx(s), { ...ref, text: 'Something else' })).rejects.toBeInstanceOf(ConflictError);
+    await expect(completeTask(ctx(s), { ...ref, text: 'nope' })).rejects.toBeInstanceOf(ConflictError);
+    await expect(setProperties(ctx(s), { ...ref, text: 'nope' }, { status: '🚧' })).rejects.toBeInstanceOf(ConflictError);
+    expect(await text(s, 'tasks/alpha.md')).toBe(ALPHA);
+    expect((await startTask(ctx(s), ref)).changed).toBe(true);
+  });
+
+  // @req FR:task-lifecycle/doc.guard
+  it('guards after a line shift and covers every ref-taking operation', async () => {
+    const s = await mem({ 'tasks/alpha.md': ALPHA });
+    const shifted = ALPHA.replace('## 🔄 Active\n', '## 🔄 Active\n\n- [ ] new top\n');
+    const stale = { path: 'tasks/alpha.md', line: 9, text: '🔺 Pay bills 🟡 ⬆️' };
+    await s.write('tasks/alpha.md', shifted);
+    for (const op of [skipTask, suspendTask, resumeTask] as const) {
+      await expect(op(ctx(s), stale)).rejects.toBeInstanceOf(ConflictError);
+    }
+    await expect(addTask(ctx(s), { project: 'alpha', text: 'child', parent: stale })).rejects.toBeInstanceOf(ConflictError);
+    expect(await text(s, 'tasks/alpha.md')).toBe(shifted);
+  });
+
+  // @req FR:task-lifecycle/doc.guard
+  it('fills ref.text on next, add, and edit results', async () => {
+    const s = await mem({ 'tasks/alpha.md': ALPHA });
+    const n = await nextTask(ctx(s));
+    expect(n!.ref.text).toBeTruthy();
+    const added = await addTask(ctx(s), { project: 'alpha', text: 'Fresh' });
+    expect(added.ref!.text).toBe('Fresh');
+    const r = await startTask(ctx(s), added.ref);
+    expect(r.ref!.text).toBe('🚧 Fresh');
+    expect((await skipTask(ctx(s), r.ref)).changed).toBe(true);
   });
 });

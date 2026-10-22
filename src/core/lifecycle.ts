@@ -7,12 +7,15 @@ import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { rollRecurring } from './recurring';
 import { getEngine, rankTasks, ScoringTask, toScoringProject } from './scoring';
-import { ConflictError, NotFoundError, Storage } from './storage';
+import { ConflictError, NotFoundError, Storage, writeAll } from './storage';
 
 export class LifecycleError extends Error {}
 
-/** @req FR:task-lifecycle/doc.load */
-export interface TaskRef { path: string; line: number }
+/**
+ * `text` is the task text after the checkbox; when set, operations fail with `ConflictError` if the row changed.
+ * @req FR:task-lifecycle/doc.load @req FR:task-lifecycle/doc.guard
+ */
+export interface TaskRef { path: string; line: number; text?: string }
 
 export interface LifecycleContext {
   storage: Storage;
@@ -292,7 +295,7 @@ async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextT
   const loc = where.get(top.task)!;
   return {
     doc: loc.doc,
-    next: { ref: { path: loc.doc.path, line: loc.line }, text: top.task.text, project: top.task.project, score: top.score },
+    next: { ref: { path: loc.doc.path, line: loc.line, text: rowText(loc.doc, loc.line) }, text: top.task.text, project: top.task.project, score: top.score },
   };
 }
 
@@ -317,12 +320,19 @@ async function target(ctx: LifecycleContext, ref?: TaskRef): Promise<Target | nu
   return { doc, ref, row: rowAt(doc, ref) };
 }
 
+/** @req FR:task-lifecycle/doc.guard */
 function rowAt(doc: Doc, ref: TaskRef): RegExpExecArray {
   const raw = doc.project.lines[ref.line];
   const m = raw === undefined ? null : ROW.exec(stripBom(bare(raw)));
   if (!m) throw new LifecycleError(`Not a task line: ${ref.path}:${ref.line}`);
+  if (ref.text !== undefined && collapse(ref.text) !== collapse(m[3])) {
+    throw new ConflictError(`Task changed since the ref was read: ${ref.path}:${ref.line} no longer reads "${brief(ref.text)}"`);
+  }
   return m;
 }
+
+const rowText = (doc: Doc, line: number): string | undefined => ROW.exec(stripBom(bare(doc.project.lines[line] ?? '')))?.[3];
+const plain = (r: TaskRef): TaskRef => ({ path: r.path, line: r.line });
 
 const NONE: LifecycleResult = { changed: false, message: 'No active tasks available' };
 const noop = (ref: TaskRef, message: string): LifecycleResult => ({ changed: false, ref, message });
@@ -334,7 +344,7 @@ async function editLine(ctx: LifecycleContext, t: Target, next: string, msg: str
   const bom = t.ref.line === 0 && lines[0].startsWith('\uFEFF') ? '\uFEFF' : '';
   lines[t.ref.line] = bom + next + crOf(lines[t.ref.line]);
   const changed = await commit(ctx, t.doc, lines, msg);
-  return { changed, ref: t.ref, before: stripBom(before), after: next };
+  return { changed, ref: { ...plain(t.ref), text: ROW.exec(next)?.[3] }, before: stripBom(before), after: next };
 }
 
 // ------------------------------------------------------------------ start
@@ -378,20 +388,20 @@ export async function completeTask(ctx: LifecycleContext, ref?: TaskRef, opts: C
     const out = rolled.split('\n');
     const first = i === 0 && lines[0].startsWith('﻿') ? '﻿' + out[0] : out[0];
     lines.splice(i, end - i, first, ...out.slice(1));
-    return { changed: await commit(ctx, doc, lines, `Roll: ${brief(t.row[3])}`), ref: t.ref, before, after: bare(out[0]), rolled: true };
+    return { changed: await commit(ctx, doc, lines, `Roll: ${brief(t.row[3])}`), ref: plain(t.ref), before, after: bare(out[0]), rolled: true };
   }
 
   if (opts.remove) {
     const rend = blockEnd(lines, i);
     lines.splice(i, rend - i);
-    return { changed: await commit(ctx, doc, lines, `Remove: ${brief(t.row[3])}`), ref: t.ref, before, message: 'Task removed' };
+    return { changed: await commit(ctx, doc, lines, `Remove: ${brief(t.row[3])}`), ref: plain(t.ref), before, message: 'Task removed' };
   }
 
   const done = applyTaskProps(before, { checkbox: 'Complete', status: 'None' });
   lines[i] = (i === 0 && lines[0].startsWith('﻿') ? '﻿' : '') + done + cr;
   const summary = opts.summary?.trim();
   if (summary) addSummary(lines, i, summary, /^(\s*)/.exec(done)![1], cr);
-  return { changed: await commit(ctx, doc, lines, msg), ref: t.ref, before, after: done };
+  return { changed: await commit(ctx, doc, lines, msg), ref: { ...plain(t.ref), text: ROW.exec(done)?.[3] }, before, after: done };
 }
 
 /** Replace the `> Prompt:` note or insert a summary line. */
@@ -636,7 +646,7 @@ export async function addTask(ctx: LifecycleContext, input: NewTask): Promise<Li
   if (replace) lines[at] = row;
   else lines.splice(at, 0, row);
   await commit(ctx, doc, lines, `Add task: ${brief(text)}`);
-  return { changed: true, ref: { path: doc.path, line: at }, after: bare(row) };
+  return { changed: true, ref: { path: doc.path, line: at, text }, after: bare(row) };
 }
 
 // ------------------------------------------------------------------ sweeps
@@ -656,16 +666,109 @@ function addMonthsClamped(ms: number, n: number): number {
   return Date.UTC(y, mo, Math.min(t.getUTCDate(), last));
 }
 
-interface SweepOut { activated: number; reactivated: number; files: string[] }
+interface SweepOut { activated: number; reactivated: number; escalated: number; files: string[] }
 
-async function sweepDocs(ctx: LifecycleContext, starts: boolean, suspends: boolean): Promise<SweepOut> {
+/**
+ * Epoch-style ms of month/day/time in the year (last, this, or next) nearest to `refMs`; null if none is a real date.
+ * @req FR:task-lifecycle/sweep.year
+ */
+function nearestYear(w: Wall, refMs: number, mo: number, d: number, h = 0, mi = 0): number | null {
+  let best: number | null = null;
+  for (const y of [w.y - 1, w.y, w.y + 1]) {
+    if (!validDay(y, mo, d)) continue;
+    const t = Date.UTC(y, mo, d, h, mi);
+    if (best === null || Math.abs(t - refMs) < Math.abs(best - refMs)) best = t;
+  }
+  return best;
+}
+
+const DUE_MARK = /📅\s+([A-Za-z]{3})\s+(\d{1,2}):\s*/u;
+const PARKING_SECTIONS = /⏭️ Up next|📋 Backlog/;
+
+/**
+ * Legacy `Update-TaskDates` due-date step on one document's text.
+ * @req FR:task-lifecycle/sweep.due @req FR:task-lifecycle/sweep.due-move
+ */
+function escalateDue(content: string, w: Wall): { lines: string[]; count: number } {
+  const lines = content.split('\n');
+  const todayMs = Date.UTC(w.y, w.mo - 1, w.d);
+  const moves: { top: number; end: number }[] = [];
+  const changed = new Set<number>();
+  let count = 0;
+  let layout: { tops: Map<number, number>; heads: number[]; project: Project } | null = null;
+  const limit = contentEnd(lines);
+
+  for (let i = 0; i < limit; i++) {
+    const m = /^(\s*- \[ \] )(.+)$/.exec(stripBom(bare(lines[i])));
+    const mark = m && DUE_MARK.exec(m[2]);
+    if (!m || !mark) continue;
+    const mo = monthIndex(mark[1]);
+    const due = mo < 0 ? null : nearestYear(w, todayMs, mo, Number(mark[2]));
+    if (due === null) continue;
+    const days = Math.round((due - todayMs) / 86400000);
+    let emoji: string;
+    if (days < -2) emoji = '🚨';
+    else if (days <= 0) emoji = '‼️';
+    else if (days <= 3) emoji = '🔺';
+    else continue;
+    const text = m[2];
+    if (emoji === '🔺' && (has(text, '‼️') || has(text, '🚨'))) continue;
+    if (emoji === '‼️' && has(text, '🚨')) continue;
+
+    let body = text;
+    for (const e of ['🔺', '‼️', '🚨', '🔻']) body = without(body, e);
+    const next = `${m[1]}${collapse(`${emoji} ${body}`)}`;
+    const raw = lines[i];
+    const out = (i === 0 && raw.startsWith('\uFEFF') ? '\uFEFF' : '') + next + crOf(raw);
+    if (out !== raw) { lines[i] = out; count++; changed.add(i); }
+
+    if (days <= 0) {
+      layout ??= sectionLayout(content, lines);
+      const k = layout.tops.get(i);
+      if (k !== undefined && PARKING_SECTIONS.test(layout.project.sections[k].heading)) {
+        const end = trimBlanks(lines, i, blockEnd(lines, i, layout.heads[k + 1] ?? limit));
+        moves.push({ top: i, end });
+        if (!changed.has(i)) count++; // moves without a text change still count
+      }
+    }
+  }
+  if (!moves.length) return { lines, count };
+
+  const active = layout!.project.sections.findIndex((sec) => ACTIVE.test(sec.heading));
+  if (active < 0) return { lines, count };
+  const sec = layout!.project.sections[active];
+  const insertAt = sec.tasks.length ? sec.tasks[0].line : trimBlanks(lines, layout!.heads[active], layout!.heads[active + 1] ?? limit);
+  const moved = new Set<number>();
+  const block: string[] = [];
+  for (const mv of moves) { for (let j = mv.top; j < mv.end; j++) { moved.add(j); block.push(lines[j]); } }
+  const out: string[] = [];
+  for (let j = 0; j < lines.length; j++) {
+    if (j === insertAt) out.push(...block);
+    if (!moved.has(j)) out.push(lines[j]);
+  }
+  if (insertAt >= lines.length) out.push(...block);
+  return { lines: out, count };
+}
+
+/** Top-level task line -> section index, plus section heading lines (same order the parser builds sections). */
+function sectionLayout(content: string, lines: string[]) {
+  const project = parseProject(content);
+  const heads: number[] = [];
+  const limit = contentEnd(lines);
+  lines.forEach((l, i) => { if (i < limit && stripBom(bare(l)).startsWith('## ')) heads.push(i); });
+  const tops = new Map<number, number>();
+  project.sections.forEach((sec, k) => sec.tasks.forEach((t) => tops.set(t.line, k)));
+  return { tops, heads, project };
+}
+
+async function sweepDocs(ctx: LifecycleContext, starts: boolean, suspends: boolean, dues: boolean): Promise<SweepOut> {
   const conf = cfg(ctx);
   const w = wallClock(clock(ctx), conf.timezone);
   const nowMs = wallMs(w);
   const todayMs = Date.UTC(w.y, w.mo - 1, w.d);
   const sixMonths = addMonthsClamped(todayMs, 6);
   const sod = /^(\d{1,2}):(\d{2})$/.exec(conf.startOfDay ?? '');
-  const out: SweepOut = { activated: 0, reactivated: 0, files: [] };
+  const out: SweepOut = { activated: 0, reactivated: 0, escalated: 0, files: [] };
 
   const dueStart = (mon: string, day: string): boolean => {
     const mo = monthIndex(mon);
@@ -676,6 +779,7 @@ async function sweepDocs(ctx: LifecycleContext, starts: boolean, suspends: boole
     return start <= todayMs;
   };
 
+  /** @req FR:task-lifecycle/sweep.year */
   const dueSuspend = (dt?: string, date?: string, time?: string): boolean => {
     const hm = (s: string): [number, number] | null => {
       const m = /^(\d{2}):(\d{2})$/.exec(s);
@@ -685,22 +789,24 @@ async function sweepDocs(ctx: LifecycleContext, starts: boolean, suspends: boole
       const m = /^([A-Za-z]{3})\s+(\d{1,2})\s+(\S+)$/.exec(dt)!;
       const mo = monthIndex(m[1]);
       const t = hm(m[3]);
-      if (mo < 0 || !t || !validDay(w.y, mo, Number(m[2]))) return false;
-      return Date.UTC(w.y, mo, Number(m[2]), t[0], t[1]) <= nowMs;
+      if (mo < 0 || !t) return false;
+      const at = nearestYear(w, nowMs, mo, Number(m[2]), t[0], t[1]);
+      return at !== null && at <= nowMs;
     }
     if (date) {
       const m = /^([A-Za-z]{3})\s+(\d{1,2})$/.exec(date)!;
       const mo = monthIndex(m[1]);
-      if (mo < 0 || !validDay(w.y, mo, Number(m[2]))) return false;
-      return Date.UTC(w.y, mo, Number(m[2]), sod ? Number(sod[1]) : 0, sod ? Number(sod[2]) : 0) <= nowMs;
+      if (mo < 0) return false;
+      const at = nearestYear(w, nowMs, mo, Number(m[2]), sod ? Number(sod[1]) : 0, sod ? Number(sod[2]) : 0);
+      return at !== null && at <= nowMs;
     }
     const t = hm(time!);
     return !!t && Date.UTC(w.y, w.mo - 1, w.d, t[0], t[1]) <= nowMs;
   };
 
+  const writes: { path: string; content: string; expectedVersion: string }[] = [];
   for (const doc of await loadDocs(ctx.storage)) {
-    const lines = [...doc.project.lines];
-    let hits = 0;
+    let lines = [...doc.project.lines];
     for (let i = 0; i < lines.length; i++) {
       const cr = crOf(lines[i]);
       let line = bare(lines[i]);
@@ -728,26 +834,41 @@ async function sweepDocs(ctx: LifecycleContext, starts: boolean, suspends: boole
           out.reactivated++;
         }
       }
-      if (line + cr !== lines[i]) { lines[i] = line + cr; hits++; }
+      if (line + cr !== lines[i]) lines[i] = line + cr;
     }
-    if (hits > 0 && (await commit(ctx, doc, lines, 'Sweep start dates and suspended tasks'))) out.files.push(doc.path);
+    if (dues) {
+      const r = escalateDue(lines.join('\n'), w);
+      lines = r.lines;
+      out.escalated += r.count;
+    }
+    const content = lines.join('\n');
+    if (content !== doc.content) writes.push({ path: doc.path, content, expectedVersion: doc.version });
   }
+  const parts = [starts && 'start dates', suspends && 'suspended tasks', dues && 'due dates'].filter(Boolean);
+  if (writes.length) await writeAll(ctx.storage, writes, `Sweep ${parts.join(', ')}`);
+  out.files = writes.map((x) => x.path);
   return out;
 }
 
 /** @req FR:task-lifecycle/sweep.start */
 export async function sweepStartDates(ctx: LifecycleContext): Promise<{ activated: number; files: string[] }> {
-  const r = await sweepDocs(ctx, true, false);
+  const r = await sweepDocs(ctx, true, false, false);
   return { activated: r.activated, files: r.files };
 }
 
 /** @req FR:task-lifecycle/sweep.suspend */
 export async function sweepSuspended(ctx: LifecycleContext): Promise<{ reactivated: number; files: string[] }> {
-  const r = await sweepDocs(ctx, false, true);
+  const r = await sweepDocs(ctx, false, true, false);
   return { reactivated: r.reactivated, files: r.files };
+}
+
+/** @req FR:task-lifecycle/sweep.due */
+export async function sweepDueDates(ctx: LifecycleContext): Promise<{ escalated: number; files: string[] }> {
+  const r = await sweepDocs(ctx, false, false, true);
+  return { escalated: r.escalated, files: r.files };
 }
 
 /** @req FR:task-lifecycle/sweep.all */
 export async function sweep(ctx: LifecycleContext): Promise<SweepOut> {
-  return sweepDocs(ctx, true, true);
+  return sweepDocs(ctx, true, true, true);
 }

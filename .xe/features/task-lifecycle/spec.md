@@ -13,7 +13,7 @@ dependencies: [scoring-engine, recurring-rows, task-parser, storage-git, config]
 
 Give every surface (CLI, API, MCP) one tested set of operations that change task files the way the legacy PowerShell Stack does, so the rebuild can replace it. Edits touch only the edited lines; every other byte stays as it was.
 
-Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-StackCompletedTasks`, `Add-StackProject`, `Set-Task`, `Update-TaskStartDates`, `Update-TaskDates` (suspend part). `add-task` is new. Due-date (`📅`) escalation is out of scope (follow-up).
+Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-StackCompletedTasks`, `Add-StackProject`, `Set-Task`, `Update-TaskStartDates`, `Update-TaskDates`. `add-task` is new. `Update-TaskDates` due-date (`📅`) escalation is included.
 
 ## Scenarios
 
@@ -25,6 +25,7 @@ Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-St
 - **FR:doc.version** (P1): Writes MUST pass the version read as `expectedVersion`, so a concurrent change surfaces as `ConflictError` and nothing is overwritten
 - **FR:doc.noop** (P2): An operation that produces identical content MUST NOT write
 - **FR:doc.target** (P1): Operations that act on "the current task" take an optional `TaskRef`; when omitted they act on the result of `nextTask`. A ref that is not a task line MUST throw `LifecycleError`
+- **FR:doc.guard** (P1): `TaskRef` has an optional `text` (the task text after the checkbox). When present, an operation MUST throw `ConflictError` if the row at `line` no longer has that text (whitespace-collapsed compare), changing nothing. `nextTask`, `addTask`, and edit results fill `ref.text`
 - **FR:doc.result** (P1): Operations MUST return `{ changed, ref?, before?, after?, message? }`; when nothing applies (no tasks, already in state) they return `changed: false` with a message and MUST NOT throw
 
 ### FR:next: Next-task selection
@@ -98,4 +99,7 @@ Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-St
 
 - **FR:sweep.start** (P1): `sweepStartDates` MUST remove every `⏰ Mon D: ` marker whose date is today or earlier (a date more than six months ahead counts as last year) and report the count; unparseable dates are skipped
 - **FR:sweep.suspend** (P1): `sweepSuspended` MUST remove `💤 {when}: ` from unchecked rows whose time has passed. Date-only uses `config.startOfDay`; time-only means today; all in `config.timezone`
-- **FR:sweep.all** (P2): `sweep` runs both and writes each changed file once
+- **FR:sweep.year** (P1): Suspend (`💤`) and due (`📅`) dates without a year resolve to the occurrence nearest to now (previous, current, or next year), so `💤 Jan 4:` written on Dec 30 waits for next January and a Dec 30 date seen on Jan 2 counts as past
+- **FR:sweep.due** (P1): `sweepDueDates` escalates unchecked rows carrying `📅 Mon D:` (the label stays) by days until due: 1 to 3 days ahead gets `🔺` (kept if `‼️`/`🚨` is present); due today to 2 days overdue gets `‼️` (kept if `🚨`); 3+ days overdue gets `🚨`. Any other priority emoji (`🔺 ‼️ 🚨 🔻`) is replaced, the new one goes first, whitespace collapses. Rows with a lower escalation than they already hold, and rows more than 3 days out, are untouched
+- **FR:sweep.due-move** (P2): A top-level row escalated to `‼️` or `🚨` in the `⏭️ Up next` or `📋 Backlog` section moves, with its nested lines, to the top of the Active task list (before the first Active task row; at the end of Active when it has none). Legacy moved only the single line above the section text; this keeps the block together
+- **FR:sweep.all** (P2): `sweep` runs start, suspend, and due sweeps and writes all changed files in one multi-file write (one commit)

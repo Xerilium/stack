@@ -2,7 +2,7 @@
  * Command dispatch for the `stack` CLI.
  * @req FR:cli/run.git @req FR:cli/run.nocommit @req FR:cli/run.remote @req FR:cli/run.now @req FR:cli/ref.default
  * @req FR:cli/cmd.add-project @req FR:cli/cmd.add @req FR:cli/cmd.next @req FR:cli/cmd.start @req FR:cli/cmd.complete @req FR:cli/cmd.skip
- * @req FR:cli/cmd.resume @req FR:cli/cmd.suspend @req FR:cli/cmd.set @req FR:cli/cmd.remove-completed @req FR:cli/arch.thin @req FR:cli/arch.storage
+ * @req FR:cli/cmd.resume @req FR:cli/cmd.suspend @req FR:cli/cmd.set @req FR:cli/cmd.remove-completed @req FR:cli/cmd.update @req FR:cli/ref.expect @req FR:cli/arch.thin @req FR:cli/arch.storage
  */
 import { execFileSync } from 'child_process';
 import { existsSync, realpathSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -13,7 +13,8 @@ import {
   removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, TaskProps,
 } from '../core/lifecycle';
 import { captureTask, CaptureError } from '../core/quick-capture';
-import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageError } from '../core/storage';
+import { createGhClient, refreshQueryTasks } from '../core/query-tasks';
+import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageError, writeAll } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
@@ -30,15 +31,15 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   add: { flags: ['section', 'parent'], usage: 'add <project> <text...> [--section name] [--parent ref]', help: 'add a task' },
   capture: { flags: ['project', 'section', 'dry-run'], usage: 'capture <text...> [--project name] [--section name] [--dry-run]', help: 'add a task from a phrase (e.g. "call dentist tomorrow 30m #alpha")' },
   next: { flags: [], usage: 'next', help: 'print the top task' },
-  start: { flags: [], usage: 'start [ref]', help: 'mark in progress' },
-  complete: { flags: ['summary', 'remove'], usage: 'complete [ref] [--summary t] [--remove]', help: 'check off (rolls recurring rows)' },
-  skip: { flags: [], usage: 'skip [ref]', help: 'park a task (alias: park)' },
-  park: { flags: [], usage: 'park [ref]', help: 'same as skip' },
-  resume: { flags: [], usage: 'resume [ref]', help: 'unpark the first parked task' },
-  suspend: { flags: ['days', 'hours'], usage: 'suspend [ref] [--days n | --hours n]', help: 'hide until later' },
-  set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis]', help: 'set emojis and checkbox' },
+  start: { flags: ['expect'], usage: 'start [ref] [--expect t]', help: 'mark in progress' },
+  complete: { flags: ['summary', 'remove', 'expect'], usage: 'complete [ref] [--summary t] [--remove] [--expect t]', help: 'check off (rolls recurring rows)' },
+  skip: { flags: ['expect'], usage: 'skip [ref] [--expect t]', help: 'park a task (alias: park)' },
+  park: { flags: ['expect'], usage: 'park [ref] [--expect t]', help: 'same as skip' },
+  resume: { flags: ['expect'], usage: 'resume [ref] [--expect t]', help: 'unpark the first parked task' },
+  suspend: { flags: ['days', 'hours', 'expect'], usage: 'suspend [ref] [--days n | --hours n] [--expect t]', help: 'hide until later' },
+  set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
-  update: { flags: ['sweep'], usage: 'update [--sweep]', help: 'regenerate README, stack, projects, my-day' },
+  update: { flags: ['sweep', 'queries'], usage: 'update [--sweep] [--queries]', help: 'regenerate README, stack, projects, my-day' },
 };
 
 interface Outcome { json: Record<string, unknown>; text: string; code?: number }
@@ -158,27 +159,32 @@ function describe(cmd: string, r: LifecycleResult): Outcome {
 }
 
 /** @req FR:cli/cmd.update */
-async function update(ctx: LifecycleContext, storage: Storage, doSweep: boolean): Promise<Outcome> {
-  const swept = doSweep ? await sweep(ctx) : undefined;
+async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: boolean; queries: boolean }): Promise<Outcome> {
+  const now = ctx.now ? ctx.now() : new Date();
+  const config = ctx.config ?? getDefaults();
+  const queries = opts.queries ? await refreshQueryTasks(storage, createGhClient(), { now, timeZone: config.timezone }) : undefined;
+  const swept = opts.sweep ? await sweep(ctx) : undefined;
   const readOpt = async (p: string) => { try { return await storage.read(p); } catch (e) { if (e instanceof NotFoundError) return null; throw e; } };
   const projects = [];
   for (const p of await storage.list()) projects.push({ fileName: p.replace(/^tasks\//, ''), content: (await storage.read(p)).content });
   const strip = (s?: string | null) => s?.replace(/^﻿/, '');
   const files = generateSummaries({
-    projects, config: ctx.config ?? getDefaults(), now: ctx.now ? ctx.now() : new Date(),
+    projects, config, now,
     previousReadme: strip((await readOpt('README.md'))?.content), previousProjects: strip((await readOpt('projects.md'))?.content),
   });
-  const written: string[] = [];
+  const changed: { path: string; content: string; expectedVersion: string | null }[] = [];
   for (const [name, content] of [['README.md', files.readme], ['stack.md', files.stack], ['projects.md', files.projects], ['my-day.md', files.myDay]] as const) {
     if (content === null) continue;
     const cur = await readOpt(name);
     if (cur && cur.content === content) continue;
-    await storage.write(name, content, { expectedVersion: cur ? cur.version : null, message: `Update ${name}` });
-    written.push(name);
+    changed.push({ path: name, content, expectedVersion: cur ? cur.version : null });
   }
+  if (changed.length) await writeAll(storage, changed, 'Update summaries');
+  const written = changed.map(c => c.path);
+  const q = queries ? ` (queries: ${queries.processed} refreshed${queries.failures.length ? `, ${queries.failures.length} failed: ${queries.failures.map(x => x.message).join('; ')}` : ''})` : '';
   return {
-    json: { ok: true, changed: written.length > 0, files: written, ...(swept ? { swept } : {}) },
-    text: written.length ? `updated ${written.join(' ')}` : 'no change: summaries are current',
+    json: { ok: true, changed: written.length > 0, files: written, ...(swept ? { swept } : {}), ...(queries ? { queries } : {}) },
+    text: (written.length ? `updated ${written.join(' ')}` : 'no change: summaries are current') + q,
   };
 }
 
@@ -196,7 +202,7 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
   const at = nowFlag ? new Date(nowFlag) : undefined;
   if (at && Number.isNaN(at.getTime())) throw new UsageError(`--now must be an ISO date: ${nowFlag}`);
   const ctx: LifecycleContext = { storage, config: loadConfig(dir), now: () => at ?? new Date() };
-  const ref = () => (p.positionals[0] ? parseRef(p.positionals[0]) : undefined);
+  const ref = () => (p.positionals[0] ? { ...parseRef(p.positionals[0]), text: flag(f, 'expect') } : undefined);
   const extra = (n: number) => { if (p.positionals.length > n) throw new UsageError(`Unexpected argument: ${p.positionals[n]}`); };
 
   switch (cmd) {
@@ -255,14 +261,14 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
     }
     case 'set': {
       if (p.positionals.length !== 1) throw new UsageError('set needs exactly one <ref>');
-      return describe(cmd, await setProperties(ctx, parseRef(p.positionals[0]), props(f)));
+      return describe(cmd, await setProperties(ctx, { ...parseRef(p.positionals[0]), text: flag(f, 'expect') }, props(f)));
     }
     case 'remove-completed': {
       extra(0);
       const r = await removeCompleted(ctx, { project: flag(f, 'project') });
       return { json: { ok: true, changed: r.removed > 0, removed: r.removed, files: r.files }, text: `removed ${r.removed}` };
     }
-    case 'update': extra(0); return update(ctx, storage, f['sweep'] === true);
+    case 'update': extra(0); return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true });
     default: throw new UsageError(`Unknown command: ${cmd}`);
   }
 }
