@@ -32,4 +32,6 @@ Replies are short text: refs for mutations (`added alpha:12`), JSON for `next` a
 | assist | + `claim`, complete 🪄 subtasks |
 | full | + complete the task |
 
-Agents never merge or deploy and never complete beyond their level. When a person is needed, `record-result` (or `triage` with `human`) adds a 🙋 subtask and the agent moves on. A denied call returns `error forbidden`: skip the task. Results go to `tasks/logs/<project>.md` (append-only, secrets redacted, actor taken from the token; rolls to a new file when full). The `add`, `complete`, and capture text may not contain `🤖`: only the owner sets autonomy.
+The autonomy gate binds only `triage`, `claim`, and `record-result`. `start`, `complete`, `set`, and `skip` stay `tasks:write` and are not autonomy-gated: to bound a client, give it only those three tools or a narrower token.
+
+Agents never merge or deploy and never complete beyond their level. When a person is needed, `record-result` (or `triage` with `human`) adds a 🙋 subtask and the agent moves on. A denied call returns `error forbidden`: skip the task. Results go to `tasks/logs/<project>.md` (append-only, secrets redacted, actor taken from the token; rolls to `<name>.2.md` etc. when full, max 5 files). The `add`, `complete`, and capture text may not contain `🤖`: only the owner sets autonomy.

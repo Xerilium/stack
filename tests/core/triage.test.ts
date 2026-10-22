@@ -349,7 +349,7 @@ describe('hardening', () => {
   it('never completes a held row', async () => {
     const { ctx, text } = await setup(HOLD);
     const r = await recordResult(ctx, ref(H.blockedChild), { outcome: 'done', summary: 'x', complete: true }, agent);
-    expect(r.completed).toBe(true); // the 🪄 child itself is not held
+    expect(r.completed).toBe(false); // its parent is blocked
     const b = await recordResult(ctx, ref(H.blocked), { outcome: 'done', summary: 'x', complete: true }, { actor: 'a', owner: false });
     expect(b.completed).toBe(false);
     expect(await text()).toContain('- [ ] Blocked ⛔️ 🤖:assist');
@@ -391,7 +391,7 @@ describe('hardening', () => {
     await storage.write('tasks/logs/alpha.md', '# x\n'.padEnd(300 * 1024, 'y'));
     const r = await recordResult(ctx, ref(L.agentChild), { outcome: 'blocked', summary: 'stuck' }, agent);
     expect(r.human).toBeDefined();
-    expect((await storage.read('tasks/logs/alpha-2.md')).content).toContain('stuck');
+    expect((await storage.read('tasks/logs/alpha.2.md')).content).toContain('stuck');
   });
 
   it('logs project files with unusual names', async () => {
@@ -446,5 +446,68 @@ describe('redaction hardening', () => {
     const out = redact(`note: ${input} end`);
     expect(out).not.toContain(leak);
     expect(out).toContain('[redacted]');
+  });
+});
+
+// @req FR:ai-triage-assist/triage.open @req FR:ai-triage-assist/claim.start @req FR:ai-triage-assist/result.nosilent
+describe('ancestor holds', () => {
+  const D = `# A\n\n## 🔄 Active\n\n- [ ] Parent ⛔️ 🤖:full\n  - [ ] child\n- [ ] Pk 💤 Jan 1: x 🤖:full\n  - [ ] kid\n`;
+  it('denies claim and defers completion under a held parent', async () => {
+    const storage = new MemoryStorage();
+    await storage.write('tasks/a.md', D);
+    const ctx = { storage, config: getDefaults(), now: () => NOW };
+    const r = (line: number) => ({ path: 'tasks/a.md', line });
+    await expect(claimTask(ctx, r(5), agent)).rejects.toThrow(TriageDenied);
+    const res = await recordResult(ctx, r(7), { outcome: 'done', summary: 'x', complete: true }, agent);
+    expect(res.completed).toBe(false);
+    expect((await storage.read('tasks/a.md')).content).toContain('- [ ] kid');
+  });
+});
+
+// @req FR:ai-triage-assist/result.path
+describe('log rollover names', () => {
+  it('does not collide with another project\'s primary log', async () => {
+    const storage = new MemoryStorage();
+    for (const n of ['foo', 'foo-2']) await storage.write(`tasks/${n}.md`, `# ${n}\n\n## Active\n\n- [ ] 🪄 t 🤖:assist\n`);
+    await storage.write('tasks/logs/foo.md', '# x\n'.padEnd(300 * 1024, 'y'));
+    const ctx = { storage, config: getDefaults(), now: () => NOW };
+    await recordResult(ctx, { path: 'tasks/foo.md', line: 4 }, { outcome: 'partial', summary: 'a' }, agent);
+    await recordResult(ctx, { path: 'tasks/foo-2.md', line: 4 }, { outcome: 'partial', summary: 'b' }, agent);
+    expect((await storage.read('tasks/logs/foo.2.md')).content).not.toContain('foo-2.md');
+    expect((await storage.read('tasks/logs/foo-2.md')).content).toContain('# foo-2 agent log');
+  });
+});
+
+// @req FR:ai-triage-assist/triage.pin
+describe('ancestor pin', () => {
+  it('refuses identical rows under a different parent', async () => {
+    const D = `# A\n\n## Active\n\n- [ ] P1 🤖:triage\n  - [ ] Deploy\n- [ ] P2 🤖:full\n  - [ ] Deploy\n`;
+    const { ctx } = await setup(D);
+    const { startTask } = await import('../../src/core/lifecycle');
+    await expect(startTask(ctx, { path: 'tasks/alpha.md', line: 7, text: 'Deploy', chain: ['P1 🤖:triage'] })).rejects.toThrow(/different parents/);
+    await expect(startTask(ctx, { path: 'tasks/alpha.md', line: 7, text: 'Deploy', chain: ['P2 🤖:full'] })).resolves.toBeDefined();
+  });
+});
+
+// @req FR:ai-triage-assist/result.noleak
+describe('more redaction', () => {
+  it.each(['pwd=abc', 'api-key abc12345', 'AccountKey=abc', 'Cookie: sid=abc; x=1', 'token is abc', 'sig=ab%2Fcd', 'sk_live_abc123', 'ghs_abc', 'https://h/x?key=abc', 'pаssword=abc', 'x-api-key: abc', 'scheme://u:p/w@h'])('redacts %s', (i) => {
+    expect(redact(`n ${i} end`)).toContain('[redacted]');
+    expect(redact(`n ${i} end`)).not.toMatch(/abc|p\/w/);
+  });
+  it('escapes markup in logs', async () => {
+    const { ctx, log } = await setup();
+    await recordResult(ctx, ref(L.agentChild), { outcome: 'partial', summary: '<img src=//e/x> [a](http://e) `c` a|b' }, agent);
+    const t = await log();
+    expect(t).not.toMatch(/(?<!\\)(<img|\[a\]|`c`)/);
+    expect(t).toContain('\\<img');
+  });
+});
+
+// @req FR:ai-triage-assist/autonomy.scope
+describe('autonomy scope', () => {
+  it('start/complete/set/skip share tasks:write with the gated tools; the gate binds only triage, claim, result', async () => {
+    const { routeScope } = await import('../../src/api/auth/authorize');
+    for (const r of ['tasks.start', 'tasks.complete', 'tasks.set', 'tasks.skip', 'tasks.triage', 'tasks.claim', 'tasks.result']) expect([r, routeScope(r)]).toEqual([r, 'tasks:write']);
   });
 });

@@ -1,7 +1,7 @@
 /**
  * AI triage assist: autonomy gate, triage application, claim, and the in-repo result log.
  * Pure core: no model calls. The agent is external; this module only decides what it may change and records what it did.
- * @req FR:ai-triage-assist/autonomy.gate @req FR:ai-triage-assist/triage.subtasks @req FR:ai-triage-assist/result.log
+ * @req FR:ai-triage-assist/autonomy.scope @req FR:ai-triage-assist/autonomy.gate @req FR:ai-triage-assist/triage.subtasks @req FR:ai-triage-assist/result.log
  */
 import {
   addTask, applyTaskProps, completeTask, EFFORT, IMPACT, LifecycleError, PRIORITY, SPECIAL, STATUS, startTask,
@@ -38,7 +38,7 @@ const MAX_DEPTH = 4;
 const MAX_TEXT = 200;
 const MAX_SUMMARY = 500;
 const MAX_LOG = 256 * 1024;
-const MAX_LOG_FILES = 20;
+const MAX_LOG_FILES = 5;
 const ACTOR = /^[A-Za-z0-9._:-]{1,64}$/;
 // Characters that start a new line or are invisible controls.
 // eslint-disable-next-line no-control-regex
@@ -166,17 +166,22 @@ function subtaskText(v: unknown, label: string): string {
 // ------------------------------------------------------------------ redaction
 
 const R = '[redacted]';
-const KEY = '(?:pass(?:word|wd|phrase)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credentials?)';
+const KEY = '(?:pass(?:word|wd|phrase)?|pwd|sig|account[_-]?key|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credentials?)';
 const VALUE = '(?:"[^"]*"|\'[^\']*\'|\\S+)';
 const SECRETS: RegExp[] = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
   /\bauthorization\s*[:=]\s*(?:(?:bearer|basic|token)\s+)?\S+/gi,
   /\bbearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,
-  new RegExp(`(?<![A-Za-z0-9])[A-Za-z0-9_]*${KEY}[A-Za-z0-9_]*\\s*[:=]\\s*${VALUE}`, 'gi'),
+  new RegExp(`(?<![A-Za-z0-9])[A-Za-z0-9_-]*${KEY}[A-Za-z0-9_]*\\s*[:=]\\s*${VALUE}`, 'gi'),
   /\b(?:password|passwd|passphrase)\s+(?:is\s+)?(?:"[^"]*"|'[^']*'|\S+)/gi,
-  /\b[a-z][a-z0-9+.-]*:\/\/[^\s/]*@/gi,
+  /\b(?:set-)?cookie\s*[:=].*$/gim,
+  /\b(?:api[_-]?key|access[_-]?key|token|secret)\s+is\s+(?:"[^"]*"|'[^']*'|\S+)/gi,
+  /\b(?:api[_-]?key|access[_-]?key|token|secret)\s+(?=\S*\d)[A-Za-z0-9_+/=.~-]{6,}/gi,
+  /[?&](?:key|apikey|api_key|token|access_token|sig|signature)=[^\s&]*/gi,
+  /\bsk_(?:live|test)_[A-Za-z0-9]+/g,
+  /\b[a-z][a-z0-9+.-]*:\/\/\S*@/gi,
   /\bstk_[A-Za-z0-9_.-]{16,}/g,
-  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
+  /\bgh[a-z]_[A-Za-z0-9]{3,}/gi,
   /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
   /\bglpat-[A-Za-z0-9_-]{10,}/g,
   /\bnpm_[A-Za-z0-9]{20,}/g,
@@ -187,12 +192,24 @@ const SECRETS: RegExp[] = [
   /(?<![A-Za-z0-9_+/=-])[A-Za-z0-9_+/=-]{32,}(?![A-Za-z0-9_+/=-])/g,
 ];
 
+// Cyrillic and Greek letters that look like Latin ones are folded to Latin so they cannot hide a keyword.
+const CONFUSABLE: Record<string, string> = {
+  а: 'a', в: 'b', е: 'e', к: 'k', м: 'm', н: 'h', о: 'o', р: 'p', с: 'c', т: 't', у: 'y', х: 'x', і: 'i', ѕ: 's', ј: 'j', ԁ: 'd', ӏ: 'l',
+  А: 'A', В: 'B', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', С: 'C', Т: 'T', Х: 'X', У: 'Y', І: 'I', Ѕ: 'S', Ј: 'J',
+  α: 'a', β: 'b', γ: 'y', ε: 'e', ι: 'i', κ: 'k', ν: 'v', ο: 'o', ρ: 'p', τ: 't', υ: 'u', χ: 'x',
+  Α: 'A', Β: 'B', Ε: 'E', Ζ: 'Z', Η: 'H', Ι: 'I', Κ: 'K', Μ: 'M', Ν: 'N', Ο: 'O', Ρ: 'P', Τ: 'T', Υ: 'Y', Χ: 'X',
+};
+const fold = (v: string): string => v.replace(/[\u0370-\u03ff\u0400-\u04ff]/g, (c) => CONFUSABLE[c] ?? c);
+
+/** Escapes characters that render as HTML, links, images, code, or tables; keeps the `[redacted]` mark readable. */
+const md = (v: string): string => v.split(R).map((p) => p.replace(/[\\<>[\]`|]/g, '\\$&')).join(R);
+
 /**
  * Best effort: replaces anything that looks like a credential with `[redacted]`. Zero-width characters are removed first.
  * @req FR:ai-triage-assist/result.noleak
  */
 export function redact(s: string): string {
-  let out = s.replace(/[\u200B-\u200F\u2060\uFEFF\u00AD]/g, '');
+  let out = fold(s.replace(/[\u200B-\u200F\u2060\uFEFF\u00AD]/g, '').normalize('NFKC'));
   for (const re of SECRETS) out = out.replace(re, R);
   return out;
 }
@@ -224,12 +241,16 @@ export async function setAutonomy(ctx: LifecycleContext, ref: TaskRef, to: Auton
 async function ensureChild(ctx: LifecycleContext, parent: TaskRef, mark: string, text: string): Promise<{ ref: TaskRef; added: boolean }> {
   const l = await locate(ctx, parent);
   if (parent.text !== undefined && collapse(parent.text) !== collapse(l.row.text)) throw new ConflictError('Task changed since it was read');
+  if (parent.chain !== undefined) {
+    const up = l.chain.slice(0, -1);
+    if (up.length !== parent.chain.length || up.some((t, i) => collapse(t.text) !== collapse(parent.chain![i]))) throw new ConflictError('Task moved since it was read');
+  }
   const want = `${mark} ${text}`;
   const same = l.row.children.find((c) => c.text.trim() === want);
   if (same) return { ref: { path: parent.path, line: same.line }, added: false };
   if (l.chain.length >= MAX_DEPTH) throw new LifecycleError('Subtasks are nested too deeply');
   if (l.row.children.length >= MAX_CHILDREN) throw new LifecycleError(`A task can have at most ${MAX_CHILDREN} children`);
-  const r = await addTask(ctx, { project: l.name, text: want, section: l.section, parent: { path: parent.path, line: parent.line, text: parent.text } });
+  const r = await addTask(ctx, { project: l.name, text: want, section: l.section, parent: { path: parent.path, line: parent.line, text: parent.text, chain: parent.chain } });
   return { ref: { path: parent.path, line: r.ref!.line }, added: true };
 }
 
@@ -239,7 +260,7 @@ const PROPS = { priority: PRIORITY, effort: EFFORT, impact: IMPACT } as const;
 const SUGGESTION_KEYS = new Set(['agent', 'human', 'priority', 'effort', 'impact']);
 
 /** The row as read, @req FR:ai-triage-assist/triage.pin @req FR:ai-triage-assist/autonomy.owner - so a concurrent edit makes the write fail instead of landing on a different row. */
-const pinned = (ref: TaskRef, l: Located): TaskRef => ({ path: ref.path, line: ref.line, text: l.row.text });
+const pinned = (ref: TaskRef, l: Located): TaskRef => ({ path: ref.path, line: ref.line, text: l.row.text, chain: l.chain.slice(0, -1).map((t) => t.text) });
 
 /**
  * Applies a suggestion: fills missing priority/effort/impact and adds one 🪄 and/or one 🙋 subtask.
@@ -272,7 +293,9 @@ export async function applyTriage(ctx: LifecycleContext, ref: TaskRef, s: Sugges
   }
   let changed = applied.length > 0 && (await writeRow(ctx, ref, l, line, `Triage: ${l.name}`));
   const added: TaskRef[] = [];
-  const parent = applied.length > 0 ? { path: ref.path, line: ref.line } : pinned(ref, l);
+  const parent: TaskRef = applied.length > 0
+    ? { path: ref.path, line: ref.line, text: line.replace(/^\s*- \[[ xX]\]\s*/, ''), chain: pinned(ref, l).chain }
+    : pinned(ref, l);
   for (const [mark, text] of [[AGENT, agent], [HUMAN, human]] as const) {
     if (text === undefined) continue;
     const c = await ensureChild(ctx, parent, mark, text);
@@ -286,13 +309,13 @@ export async function applyTriage(ctx: LifecycleContext, ref: TaskRef, s: Sugges
 const iso = (ctx: LifecycleContext) => (ctx.now ?? (() => new Date()))().toISOString();
 /** A storage-safe log name for any project file name. */
 const logName = (ref: TaskRef): string => {
-  const slug = baseName(ref.path).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '');
+  const slug = baseName(ref.path).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '');
   return /^readme$/i.test(slug) || slug === '' ? 'project' : slug;
 };
-const logFile = (ref: TaskRef, n: number): string => `tasks/logs/${logName(ref)}${n === 0 ? '' : `-${n + 1}`}.md`;
+const logFile = (ref: TaskRef, n: number): string => `tasks/logs/${logName(ref)}${n === 0 ? '' : `.${n + 1}`}.md`;
 
 /**
- * Append-only entry in `tasks/logs/<project>.md` (rolls to `-2`, `-3`, ... when a file is full). Every field is one redacted line.
+ * Append-only entry in `tasks/logs/<project>.md` (rolls to `.2.md`, `.3.md`, ... when a file is full, at most 5 files; a slug has no dots so a rollover never equals another project's log). Every field is one redacted line.
  * @req FR:ai-triage-assist/result.log
  */
 async function appendLog(ctx: LifecycleContext, ref: TaskRef, caller: Caller, lvl: Autonomy, fields: [string, string][]): Promise<void> {
@@ -301,7 +324,7 @@ async function appendLog(ctx: LifecycleContext, ref: TaskRef, caller: Caller, lv
     `- actor: ${caller.actor}`,
     `- ref: ${ref.path}:${ref.line + 1}`,
     `- level: ${lvl}`,
-    ...fields.map(([k, v]) => `- ${k}: ${redact(v).split(CONTROL_RUN).join(' ')}`),
+    ...fields.map(([k, v]) => `- ${k}: ${md(redact(v).split(CONTROL_RUN).join(' '))}`),
     '',
   ].join('\n');
   for (let attempt = 0, n = 0; ; attempt++) {
@@ -312,7 +335,7 @@ async function appendLog(ctx: LifecycleContext, ref: TaskRef, caller: Caller, lv
       if (++n >= MAX_LOG_FILES) throw new LifecycleError('Result log is full');
       continue;
     }
-    const title = cur ? '' : redact(parseProject((await ctx.storage.read(ref.path)).content).title || baseName(ref.path));
+    const title = cur ? '' : md(redact(parseProject((await ctx.storage.read(ref.path)).content).title || baseName(ref.path)));
     const head = cur ? cur.content.replace(/\n*$/, '\n\n') : `# ${title} agent log\n\n`;
     try {
       await ctx.storage.write(path, head + entry, { expectedVersion: cur ? cur.version : null, message: `Log: ${baseName(ref.path)}` });
@@ -337,7 +360,7 @@ export async function claimTask(ctx: LifecycleContext, ref: TaskRef, caller: Cal
   const lvl = level(l);
   gate(caller, lvl, 'claim');
   if (kindOf(l.row) === 'human') throw new TriageDenied('Needs a human');
-  if (held(l.row)) throw new TriageDenied('Task is on hold');
+  if (l.chain.some(held)) throw new TriageDenied('Task is on hold');
   if (norm(l.row.text).includes('🚧')) return { changed: false, ref: { path: ref.path, line: ref.line } };
   await appendLog(ctx, ref, caller, lvl, [['action', 'claimed']]);
   try {
@@ -375,7 +398,7 @@ export async function recordResult(ctx: LifecycleContext, ref: TaskRef, r: Resul
   gate(caller, lvl, 'record');
 
   const wants = r.complete === true;
-  const can = wants && r.outcome === 'done' && !openHuman(l.row) && !held(l.row) && given === undefined &&
+  const can = wants && r.outcome === 'done' && !openHuman(l.row) && !l.chain.some(held) && given === undefined &&
     (caller.owner === true || authorize(lvl, kind === 'agent' ? 'complete-subtask' : 'complete-task'));
   const needsHuman = r.outcome === 'blocked' || r.outcome === 'needs-human';
   const humanText = needsHuman
