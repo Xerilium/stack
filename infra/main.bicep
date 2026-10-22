@@ -17,6 +17,9 @@ param owners string
 @secure()
 param tokenPepper string
 
+@description('https URL of the private task repo, no credentials (STACK_REPO_URL).')
+param repoUrl string
+
 @description('Credential the Function uses to read and write the private task repo (STACK_REPO_TOKEN).')
 @secure()
 param repoToken string
@@ -38,6 +41,7 @@ resource appSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
     STACK_OWNERS: owners
     STACK_TOKEN_PEPPER: tokenPepper
     STACK_REPO_TOKEN: repoToken
+    STACK_REPO_URL: repoUrl
   }
 }
 

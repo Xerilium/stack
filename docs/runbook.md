@@ -11,12 +11,12 @@ Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault,
 - Azure subscription and a resource group
 - `az` CLI and `bicep`
 - A private GitHub repo for task data (the Function reads and writes it)
-- The Functions host entry that wires storage, tokens, API, MCP, and bots from `src/` into `registerAzure` (not part of this repo yet; deploy needs it under `api/`)
+- The Functions host in `host/` ships with this repo ([Azure host](azure-host.md))
 
 ## Deploy
 
 1. Check the template offline: `bicep build infra/main.bicep` (lint only, no Azure calls).
-2. Preview: `az deployment group what-if -g <rg> -f infra/main.bicep -p infra/main.parameters.json -p owners=... tokenPepper=... repoToken=...`
+2. Preview: `az deployment group what-if -g <rg> -f infra/main.bicep -p infra/main.parameters.json -p owners=... tokenPepper=... repoToken=... repoUrl=https://github.com/<you>/<tasks>.git`
 3. Create: same command with `create` instead of `what-if`. Secrets come from the command line or your shell, never from a file in git.
 4. Get the deployment token: `az staticwebapp secrets list -n <name> --query properties.apiKey -o tsv`.
 5. Add it to GitHub: repo Settings, Secrets and variables, Actions, new secret `AZURE_STATIC_WEB_APPS_API_TOKEN`.
@@ -29,6 +29,15 @@ Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault,
 | `STACK_OWNERS` | Owner allow-list, comma-separated `provider:userId` (for example `github:12345`). Empty denies everyone |
 | `STACK_TOKEN_PEPPER` | Secret mixed into API token hashes. Changing it invalidates all tokens |
 | `STACK_REPO_TOKEN` | Credential for the private task repo |
+| `STACK_REPO_URL` | https URL of the private task repo (no credentials in it). More settings: [Azure host](azure-host.md) |
+| `STACK_TOKEN_STORE` | Optional file path for the token store (needs `STACK_TOKEN_PEPPER`). Default: the data repo (`.stack/tokens.json`) |
+| `STACK_REPO_BRANCH`, `STACK_REPO_PATH` | Branch (default `main`) and optional subfolder of the task repo |
+| `STACK_CONFIG` | Optional Stack config as JSON |
+| `STACK_GIT_NAME`, `STACK_GIT_EMAIL` | Commit identity |
+| `STACK_SLACK_SIGNING_SECRET`, `STACK_SLACK_ALLOW` | Slack bot secret and allowed user ids |
+| `STACK_WEBHOOK_SECRET`, `STACK_WEBHOOK_ALLOW` | Webhook bot secret and allowed senders |
+| `STACK_IMESSAGE_SECRET`, `STACK_IMESSAGE_ALLOW` | iMessage bridge secret and allowed senders |
+| `STACK_GITHUB_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_ALLOW` | GitHub comment bot secret and allowed logins |
 | `STACK_DIR` | Local project directory for `stack-mcp` (stdio only) |
 | `STACK_MCP_SCOPES` | Scopes for `stack-mcp` (stdio only), default `read,write` |
 
@@ -42,7 +51,7 @@ Create, list, and revoke as the owner (signed in) through `POST /api/auth/tokens
 
 Rotate: create a new token, update the client, revoke the old one. Rotate the pepper only if the token store leaks: set a new `STACK_TOKEN_PEPPER`, then recreate every token. Rotate `AZURE_STATIC_WEB_APPS_API_TOKEN` with `az staticwebapp secrets reset-api-key -n <name>` and update the GitHub secret.
 
-The token store holds only hashes but also scopes and expiry; keep it in a private location (see the [threat model](security/threat-model.md)).
+The token store holds only hashes (never secrets) plus scopes and expiry. By default it is committed to the private data repo as `.stack/tokens.json`, so tokens survive restarts; keep that repo private (see the [threat model](security/threat-model.md)). Revoking on one instance reaches others within about a minute.
 
 ## Backup and restore
 
