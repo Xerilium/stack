@@ -1,0 +1,6 @@
+title: Minimal
+sections:
+  - heading: Tasks
+    tasks:
+      - text: One
+        done: false

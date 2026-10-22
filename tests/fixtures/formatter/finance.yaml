@@ -1,0 +1,30 @@
+title: 💰 Finance
+metadata:
+  Project value: 💰💰💰 ⚠️⚠️
+  Aliases: finance
+sections:
+  - heading: 🔄 Active
+    tasks:
+      - text: "📅 Nov 1: Pay bills 💰 ⬆️"
+        done: false
+        notes:
+          - "> note line"
+          - second note
+        subtasks:
+          - text: "📅 Oct 17: 🔄 Monthly: Chase 🔹"
+            done: true
+            notes:
+              - "> child note"
+          - text: Child two
+            done: false
+            subtasks:
+              - text: Grandchild
+                done: false
+      - text: Done 🟢
+        done: true
+  - heading: 📋 Backlog
+    tasks:
+      - text: Later ⚫️
+        done: false
+  - heading: 🗄️ Empty
+    tasks: []
