@@ -57,6 +57,25 @@ describe('authorize', () => {
     expect((await call('GET', '/api/nope')).status).toBe(403);
     expect((await call('DELETE', '/api/tasks')).status).toBe(403);
   });
+  // @req FR:api/input.json
+  it('caps chunked bodies without content-length while streaming', async () => {
+    const { h } = mk();
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) { pulled++; c.enqueue(new Uint8Array(16 * 1024).fill(97)); if (pulled > 1000) c.close(); },
+    }, { highWaterMark: 0 });
+    const res = await h(new Request('https://x.test/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body, duplex: 'half' } as RequestInit));
+    expect(res.status).toBe(413);
+    expect(pulled).toBeLessThan(20);
+  });
+  it('does not read the body when denied', async () => {
+    const { h } = mk({ authorize: () => false });
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({ pull(c) { pulled++; c.enqueue(new Uint8Array(8)); } }, { highWaterMark: 0 });
+    const res = await h(new Request('https://x.test/api/projects', { method: 'POST', body, duplex: 'half' } as RequestInit));
+    expect(res.status).toBe(403);
+    expect(pulled).toBeLessThanOrEqual(2); // authorize's clone may prefetch a chunk; nothing is drained
+  });
   it('does not touch storage or parse the body when denied', async () => {
     const { storage, call } = mk({ authorize: () => false });
     const spy = jest.spyOn(storage, 'list');
@@ -119,13 +138,23 @@ describe('add', () => {
     expect(t.json.ref).toMatch(/^alpha:\d+$/);
     expect((await m.storage.read('tasks/alpha.md')).content).toContain('Do it');
   });
-  it('409 on existing project unless force', async () => {
+  it('409 on existing project; force is not accepted and never overwrites', async () => {
     const m = mk();
     await m.call('POST', '/api/projects', { name: 'Alpha' });
+    await m.call('POST', '/api/tasks', { project: 'alpha', text: 'keep me' });
     const r = await m.call('POST', '/api/projects', { name: 'Alpha' });
     expect(r.status).toBe(409);
     expect(r.json.error.code).toBe('conflict');
-    expect((await m.call('POST', '/api/projects', { name: 'Alpha', force: true })).status).toBe(201);
+    const f = await m.call('POST', '/api/projects', { name: 'Alpha', force: true });
+    expect(f.status).toBe(422);
+    expect(f.json.error.details).toEqual([{ field: 'force', message: 'Unknown field' }]);
+    expect((await m.storage.read('tasks/alpha.md')).content).toContain('keep me');
+  });
+  it('rejects README as a project file name', async () => {
+    const m = mk();
+    for (const fileName of ['README', 'readme', 'ReadMe']) {
+      expect([fileName, (await m.call('POST', '/api/projects', { name: 'X', fileName })).status]).toEqual([fileName, 422]);
+    }
   });
   it('404 for unknown project; 422 for multi-line text', async () => {
     const m = mk();
@@ -332,13 +361,66 @@ describe('input', () => {
   });
   // @req FR:api/input.types @req FR:api/errors.validation
   it('type and range checks list every problem', async () => {
-    const r = await mk().call('POST', '/api/projects', { name: 5, priority: 'x', aliases: 'a', capacity: { Work: 'x' }, force: 'yes' });
+    const r = await mk().call('POST', '/api/projects', { name: 5, priority: 'x', aliases: 'a', capacity: { Work: 'x' } });
     expect(r.status).toBe(422);
     const fields = r.json.error.details.map((d: { field: string }) => d.field).sort();
-    expect(fields).toEqual(['aliases', 'capacity', 'force', 'name', 'priority']);
+    expect(fields).toEqual(['aliases', 'capacity', 'name', 'priority']);
     expect((await mk().call('POST', '/api/projects', { name: 'x'.repeat(2001) })).status).toBe(422);
     expect((await mk().call('POST', '/api/projects', {})).json.error.details[0].field).toBe('name');
     expect((await mk().call('POST', '/api/tasks/suspend', { days: 1.5 })).status).toBe(422);
+  });
+  // @req FR:api/input.line
+  it('single-line fields reject every Unicode line break', async () => {
+    const m = mk();
+    await m.call('POST', '/api/projects', { name: 'Alpha' });
+    await m.call('POST', '/api/tasks', { project: 'alpha', text: 'T' });
+    const ref = (await m.call('GET', '/api/next')).json.task.ref;
+    for (const br of ['\n', '\r', '\u2028', '\u2029', '\u0085']) {
+      const bad = `x${br}## Injected`;
+      const calls = [
+        m.call('POST', '/api/tasks/complete', { ref, summary: bad }),
+        m.call('POST', '/api/tasks', { project: 'alpha', text: bad }),
+        m.call('POST', '/api/tasks', { project: 'alpha', text: 'ok', section: bad }),
+        m.call('POST', '/api/projects', { name: bad }),
+        m.call('POST', '/api/projects', { name: 'B', description: bad }),
+        m.call('POST', '/api/projects', { name: 'B', repositoryUrl: `https://a.test/${br}x` }),
+        m.call('POST', '/api/projects', { name: 'B', aliases: [bad] }),
+        m.call('POST', '/api/projects', { name: 'B', capacity: { [bad]: 1 } }),
+      ];
+      for (const r of await Promise.all(calls)) expect([JSON.stringify(br), r.status]).toEqual([JSON.stringify(br), 422]);
+    }
+    expect((await m.storage.read('tasks/alpha.md')).content).not.toContain('Injected');
+  });
+  // @req FR:api/input.enums
+  it('checks enum values at the API layer', async () => {
+    const m = mk();
+    await seed(m.call);
+    const ref = (await m.call('GET', '/api/next')).json.task.ref;
+    for (const body of [{ status: 'x' }, { priority: '🟢' }, { effort: 'big' }, { impact: 'high' }, { checkbox: 'Done' }, { suspend: 'tomorrow' }]) {
+      const r = await m.call('POST', '/api/tasks/set', { ref, ...body });
+      expect([JSON.stringify(body), r.status]).toEqual([JSON.stringify(body), 422]);
+      expect(r.json.error.details[0].field).toBe(Object.keys(body)[0]);
+    }
+    expect((await m.call('POST', '/api/tasks/set', { ref, status: '🚧', priority: 'None', checkbox: 'Incomplete' })).status).toBe(200);
+  });
+  // @req FR:api/input.ref
+  it('README refs are rejected', async () => {
+    const m = mk();
+    await m.storage.write('tasks/README.md', '# Index\n\n- [ ] hidden\n');
+    for (const ref of ['README:3', 'readme:3']) {
+      expect((await m.call('GET', `/api/tasks/${ref}`)).status).toBe(422);
+      expect((await m.call('POST', '/api/tasks/start', { ref })).status).toBe(422);
+    }
+  });
+  // @req FR:api/errors.map
+  it('does not echo core error text or file content', async () => {
+    const m = mk();
+    await m.storage.write('tasks/bad.md', '# Bad\n\n## 🔄 Active\n\n- [ ] SECRET-CONTENT broken\n');
+    const r = await m.call('POST', '/api/tasks/start', { ref: 'bad:5' });
+    expect(r.text).not.toContain('SECRET-CONTENT');
+    const n = await m.call('POST', '/api/tasks/start', { ref: 'ghost:1' });
+    expect(n.status).toBe(404);
+    expect(n.text).not.toContain('ghost');
   });
   // @req FR:api/input.ref
   it('rejects malformed refs', async () => {

@@ -20,12 +20,26 @@ describe('azure adapter', () => {
     }
     expect(text).not.toHaveBeenCalled();
   });
+  // @req FR:api/azure.body
+  it('reads the body lazily: never when the handler does not read it', async () => {
+    const text = jest.fn(async () => 'big');
+    const out = await toAzureHandler(async () => new Response('denied', { status: 401 }))({ method: 'POST', url: 'https://h/api/x', headers: new Headers(), text });
+    expect(out.status).toBe(401);
+    expect(text).not.toHaveBeenCalled();
+  });
+  it('streams the host body when provided instead of buffering', async () => {
+    const text = jest.fn(async () => 'nope');
+    const body = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode('stream')); c.close(); } });
+    const out = await toAzureHandler(echo)({ method: 'POST', url: 'https://h/api/x', headers: new Headers(), text, body });
+    expect(JSON.parse(out.body as string).b).toBe('stream');
+    expect(text).not.toHaveBeenCalled();
+  });
   it('registers a catch-all function', async () => {
     const app = { http: jest.fn() };
     registerAzure(app, echo);
     const [name, opts] = app.http.mock.calls[0];
     expect(name).toBe('api');
-    expect(opts.route).toBe('{*route}');
+    expect(opts.route).toBe('{*route}'); // Functions host prefixes routePrefix (default "api")
     expect(opts.authLevel).toBe('anonymous');
     expect(opts.methods).toEqual(expect.arrayContaining(['GET', 'POST']));
     const out = await opts.handler({ method: 'GET', url: 'https://h/api/x', headers: new Headers(), text: async () => '' });

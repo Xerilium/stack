@@ -12,7 +12,7 @@ import type { Storage } from '../core/storage';
 import { generateSummaries } from '../core/summaries';
 import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
-import { formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
+import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
 
 export interface RouteInfo { name: string; method: string; write: boolean }
 export type AuthDecision = boolean | { allow: boolean; status?: 401 | 403 };
@@ -42,8 +42,10 @@ interface Route {
 
 const ACTIONS = ['start', 'complete', 'skip', 'resume', 'suspend', 'set'] as const;
 const PROPS: Record<string, Spec> = {
-  status: { t: 'str', max: 20 }, priority: { t: 'str', max: 20 }, effort: { t: 'str', max: 20 }, impact: { t: 'str', max: 20 },
-  checkbox: { t: 'str', max: 20 }, suspend: { t: 'str', max: 40 }, clearEmojis: { t: 'bool' },
+  status: { t: 'enum', values: ENUMS.status }, priority: { t: 'enum', values: ENUMS.priority },
+  effort: { t: 'enum', values: ENUMS.effort }, impact: { t: 'enum', values: ENUMS.impact },
+  checkbox: { t: 'enum', values: ENUMS.checkbox },
+  suspend: { t: 'str', max: 40, pattern: /^(?:|[A-Za-z]{3} \d{1,2}(?: \d{2}:\d{2})?|\d{1,2}:\d{2})$/ }, clearEmojis: { t: 'bool' },
 };
 const REF: Spec = { t: 'ref' };
 
@@ -107,7 +109,7 @@ async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response>
   const body = await readBody(c.req);
   const schemas: Record<string, Record<string, Spec>> = {
     start: { ref: REF }, skip: { ref: REF }, resume: { ref: REF },
-    complete: { ref: REF, summary: { t: 'str', max: 10000 }, remove: { t: 'bool' } },
+    complete: { ref: REF, summary: { t: 'str', max: 10000, line: true }, remove: { t: 'bool' } },
     suspend: { ref: REF, days: { t: 'int', min: 1, max: 365 }, hours: { t: 'int', min: 1, max: 8760 } },
     set: { ref: REF, ...PROPS },
   };
@@ -221,11 +223,11 @@ export const ROUTES: Route[] = [
       noQuery(c);
       const b = validate<Parameters<typeof addProject>[1]>(await readBody(c.req), {
         name: { t: 'str', required: true, max: 200, line: true }, description: { t: 'str', max: 2000, line: true },
-        repositoryUrl: { t: 'str', pattern: /^https?:\/\/[^\s()[\]<>]+$/ }, aliases: { t: 'strs' },
+        repositoryUrl: { t: 'str', line: true, pattern: /^https?:\/\/[^\s()[\]<>]+$/ }, aliases: { t: 'strs' },
         priority: { t: 'num', min: 0, max: 1_000_000 }, capacity: { t: 'caps' }, weeklyCapacity: { t: 'num', min: 0, max: 168 },
-        fileName: { t: 'str', max: 100, pattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/ }, force: { t: 'bool' },
+        fileName: { t: 'str', max: 100, noReadme: true, pattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/ },
       }, ['name']);
-      const { path } = await addProject(c.life, b);
+      const { path } = await addProject(c.life, { ...b, force: false });
       return json(201, { path, project: baseName(path) });
     },
   },

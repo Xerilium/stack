@@ -158,10 +158,10 @@ paths:
               required: [ref]
               properties:
                 ref: { $ref: '#/components/schemas/Ref' }
-                status: { type: string, description: "One of 🚧 ⏸️ 👀 ⏳ ⛔️ or None" }
-                priority: { type: string, description: "One of 🚨 ‼️ 🔺 🔻 or None" }
-                effort: { type: string, description: "One of 🟢 🟡 🟠 🔴 ⚫️ or None" }
-                impact: { type: string, description: "One of ⬆️ ↔️ ⬇️ or None" }
+                status: { type: string, enum: ["🚧", "⏸️", "👀", "⏳", "⛔️", "None"] }
+                priority: { type: string, enum: ["🚨", "‼️", "🔺", "🔻", "None"] }
+                effort: { type: string, enum: ["🟢", "🟡", "🟠", "🔴", "⚫️", "None"] }
+                impact: { type: string, enum: ["⬆️", "↔️", "⬇️", "None"] }
                 checkbox: { type: string, enum: [Complete, Incomplete] }
                 suspend: { type: string, description: "`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears" }
                 clearEmojis: { type: boolean }
@@ -226,8 +226,151 @@ paths:
                 priority: { type: number }
                 capacity: { type: object, additionalProperties: { type: number } }
                 weeklyCapacity: { type: number }
-                fileName: { type: string }
-                force: { type: boolean, description: Overwrite an existing project file }
+                fileName: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: { type: string }
+                  project: { type: string }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{name}:
+    get:
+      summary: Get one project
+      operationId: getProject
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string }, description: File base name }
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: Project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        default: { $ref: '#/components/responses/Error' }
+  /summaries:
+    get:
+      summary: Generated summaries
+      operationId: getSummaries
+      parameters:
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: Summary documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  readme: { type: string }
+                  stack: { type: string }
+                  projects: { type: string }
+                  myDay: { type: string, nullable: true }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    host:
+      type: http
+      scheme: bearer
+      description: Supplied by the host through the authorize hook (auth-security slice).
+  parameters:
+    fields:
+      name: fields
+      in: query
+      description: Comma-separated fields to return. Unknown names are rejected.
+      schema: { type: string }
+  requestBodies:
+    OptionalRef:
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            properties:
+              ref: { $ref: '#/components/schemas/Ref' }
+  responses:
+    Mutation:
+      description: Result of a change
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              changed: { type: boolean }
+              ref: { $ref: '#/components/schemas/Ref' }
+              before: { type: string }
+              after: { type: string }
+              message: { type: string }
+    Error:
+      description: "Error. Codes: bad_request 400, unauthorized 401, forbidden 403, not_found 404, method_not_allowed 405, conflict 409, payload_too_large 413, unsupported_media_type 415, invalid 422, internal 500."
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Ref:
+      type: string
+      pattern: '^[^/\\:.][^/\\:]*:\d+$'
+      example: alpha:12
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [bad_request, unauthorized, forbidden, not_found, method_not_allowed, conflict, payload_too_large, unsupported_media_type, invalid, internal]
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+    NextTask:
+      type: object
+      properties:
+        ref: { $ref: '#/components/schemas/Ref' }
+        text: { type: string }
+        project: { type: string }
+        score: { type: number }
+    Task:
+      type: object
+      description: Default fields are ref, text, project, section, done. depth and notes only via fields.
+      properties:
+        ref: { $ref: '#/components/schemas/Ref' }
+        text: { type: string }
+        project: { type: string }
+        section: { type: string }
+        done: { type: boolean }
+        depth: { type: integer }
+        notes: { type: array, items: { type: string } }
+    Project:
+      type: object
+      description: Default fields are name, title, open, done.
+      properties:
+        name: { type: string }
+        title: { type: string }
+        open: { type: integer }
+        done: { type: integer }
+        aliases: { type: array, items: { type: string } }
+        metadata: { type: object, additionalProperties: { type: string } }
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              heading: { type: string }
+              open: { type: integer }
+              done: { type: integer }
+, description: README is reserved; an existing file returns 409 }
       responses:
         '201':
           description: Created

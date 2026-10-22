@@ -4,24 +4,53 @@ import { ApiError, invalid, type Issue } from './errors';
 export const MAX_BODY_BYTES = 64 * 1024;
 const MAX_STR = 2000;
 
+/** Reads at most MAX_BODY_BYTES from the stream; stops pulling as soon as the cap is passed. */
+async function readCapped(req: Request): Promise<string> {
+  if (!req.body) return '';
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      // Not awaited: the authorize clone is a tee branch, and cancel settles only when both branches cancel.
+      void reader.cancel().catch(() => undefined);
+      throw new ApiError('payload_too_large', 'Body too large');
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 /** @req FR:api/input.json */
 export async function readBody(req: Request): Promise<Record<string, unknown>> {
   const len = Number(req.headers.get('content-length'));
   if (Number.isFinite(len) && len > MAX_BODY_BYTES) throw new ApiError('payload_too_large', 'Body too large');
-  const text = await req.text();
+  const text = await readCapped(req);
   if (text === '') return {};
   if (!/^application\/json\s*(;|$)/i.test(req.headers.get('content-type') ?? '')) {
     throw new ApiError('unsupported_media_type', 'Content-Type must be application/json');
   }
-  if (Buffer.byteLength(text, 'utf8') > MAX_BODY_BYTES) throw new ApiError('payload_too_large', 'Body too large');
   let v: unknown;
   try { v = JSON.parse(text); } catch { throw new ApiError('bad_request', 'Body is not valid JSON'); }
   if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new ApiError('bad_request', 'Body must be a JSON object');
   return v as Record<string, unknown>;
 }
 
+/** Allowed values for enum fields; mirrored in docs/api/openapi.yaml. @req FR:api/input.enums */
+export const ENUMS = {
+  status: ['🚧', '⏸️', '👀', '⏳', '⛔️', 'None'],
+  priority: ['🚨', '‼️', '🔺', '🔻', 'None'],
+  effort: ['🟢', '🟡', '🟠', '🔴', '⚫️', 'None'],
+  impact: ['⬆️', '↔️', '⬇️', 'None'],
+  checkbox: ['Complete', 'Incomplete'],
+} as const;
+
 export type Spec =
-  | { t: 'str'; required?: boolean; max?: number; line?: boolean; pattern?: RegExp }
+  | { t: 'str'; required?: boolean; max?: number; line?: boolean; pattern?: RegExp; noReadme?: boolean }
+  | { t: 'enum'; values: readonly string[] }
   | { t: 'int'; min: number; max: number }
   | { t: 'num'; min: number; max: number }
   | { t: 'bool' }
@@ -30,19 +59,20 @@ export type Spec =
   | { t: 'caps' };
 
 const REF = /^([^/\\:\0.][^/\\:\0]*):(\d{1,9})$/;
+const isReadme = (name: string) => name.toLowerCase() === 'readme';
 
 /** @req FR:api/input.ref */
 export function parseRef(v: unknown): TaskRef | null {
   if (typeof v !== 'string') return null;
   const m = REF.exec(v);
-  return m ? { path: `tasks/${m[1]}.md`, line: Number(m[2]) } : null;
+  return m && !isReadme(m[1]) ? { path: `tasks/${m[1]}.md`, line: Number(m[2]) } : null;
 }
 
 /** @req FR:api/input.ref */
 export const formatRef = (r: TaskRef): string => `${r.path.replace(/^.*\//, '').replace(/\.md$/, '')}:${r.line}`;
 
-const oneLine = (s: string) => !/[\r\n]/.test(s);
-
+/** CR, LF, NEL, LS, PS: anything that can start a new markdown line. @req FR:api/input.line */
+const oneLine = (s: string) => !/[\r\n\u0085\u2028\u2029]/.test(s);
 function check(spec: Spec, v: unknown): string | null {
   switch (spec.t) {
     case 'str':
@@ -51,7 +81,10 @@ function check(spec: Spec, v: unknown): string | null {
       if (v.length > (spec.max ?? MAX_STR)) return `At most ${spec.max ?? MAX_STR} characters`;
       if (spec.line && !oneLine(v)) return 'Must be a single line';
       if (spec.pattern && !spec.pattern.test(v)) return 'Invalid format';
+      if (spec.noReadme && isReadme(v.replace(/\.md$/i, ''))) return 'Reserved name';
       return null;
+    case 'enum':
+      return typeof v === 'string' && spec.values.includes(v) ? null : 'Must be one of: ' + spec.values.join(' ');
     case 'int':
       return Number.isInteger(v) && (v as number) >= spec.min && (v as number) <= spec.max ? null : `Must be an integer from ${spec.min} to ${spec.max}`;
     case 'num':
@@ -66,7 +99,7 @@ function check(spec: Spec, v: unknown): string | null {
     case 'caps': {
       if (typeof v !== 'object' || v === null || Array.isArray(v)) return 'Must be an object of hours';
       const e = Object.entries(v);
-      return e.length <= 20 && e.every(([, h]) => typeof h === 'number' && Number.isFinite(h) && h >= 0 && h <= 168) ? null : 'Must map names to hours (0-168)';
+      return e.length <= 20 && e.every(([k, h]) => k.length <= 200 && oneLine(k) && typeof h === 'number' && Number.isFinite(h) && h >= 0 && h <= 168) ? null : 'Must map names to hours (0-168)';
     }
   }
 }

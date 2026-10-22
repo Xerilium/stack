@@ -38,15 +38,18 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 
 - **FR:errors.shape** (P1): Every non-2xx body is `{"error":{"code","message","details"?}}` with `application/json`
 - **FR:errors.codes** (P1): `bad_request` 400, `unauthorized` 401, `forbidden` 403, `not_found` 404, `method_not_allowed` 405 (with `Allow`), `conflict` 409, `payload_too_large` 413, `unsupported_media_type` 415, `invalid` 422, `internal` 500
-- **FR:errors.map** (P1): `NotFoundError` and a lifecycle "not found" are 404; `ConflictError` is 409; other `LifecycleError` and `PathError` are 422/400 (`invalid`/`bad_request`); anything else is 500 `internal` with a fixed message (no stack or internals)
+- **FR:errors.map** (P1): `NotFoundError` and a lifecycle "not found" are 404; `ConflictError` is 409; other `LifecycleError` and `PathError` are 422/400 (`invalid`/`bad_request`); client messages for core errors are fixed text and never echo file content or input; anything else is 500 `internal` with a fixed message (no stack or internals)
 - **FR:errors.validation** (P1): Validation failures are `422 invalid` with `details` listing `{ field, message }` for each problem
 
 ### FR:input: Input validation
 
-- **FR:input.json** (P1): A body MUST be `application/json` (415 otherwise), valid JSON object (400), at most 64 KiB (413). GET has no body
+- **FR:input.json** (P1): A body MUST be `application/json` (415 otherwise), valid JSON object (400), at most 64 KiB (413). GET has no body. The body is read only after authorization, as a stream with a hard 64 KiB cap (no unbounded buffering, with or without `content-length`)
 - **FR:input.strict** (P1): Unknown body fields and unknown query parameters are rejected (`invalid`), so typos never silently do nothing
 - **FR:input.types** (P1): Strings, integers, booleans, enums, and refs are type- and range-checked before the core is called; strings are limited to 2000 characters (summary 10000)
-- **FR:input.ref** (P1): A task ref is the string `project:line` (project is the file base name; line is a non-negative integer). Anything else is `invalid`
+- **FR:input.ref** (P1): A task ref is the string `project:line` (project is the file base name; line is a non-negative integer). Anything else is `invalid`; `README` (any case) is never a valid ref or project `fileName`
+- **FR:input.line** (P1): Single-line fields (including `complete.summary`) MUST reject CR, LF, U+0085, U+2028, and U+2029 so input cannot inject markdown lines
+- **FR:input.enums** (P1): `status`, `priority`, `effort`, `impact` (emoji or `None`), `checkbox` (`Complete`/`Incomplete`), and `suspend` format are checked at the API layer; OpenAPI declares the same enums
+- **FR:input.noforce** (P1): `POST /projects` never overwrites an existing project file (409); there is no `force` option
 
 ### FR:routes: Endpoints
 

@@ -27,10 +27,11 @@ export const invalid = (issues: Issue[]) => new ApiError('invalid', 'Validation 
 /** @req FR:api/errors.map */
 export function toApiError(e: unknown): ApiError {
   if (e instanceof ApiError) return e;
-  if (e instanceof NotFoundError) return new ApiError('not_found', e.message);
-  if (e instanceof ConflictError) return new ApiError('conflict', e.message);
+  if (e instanceof NotFoundError) return new ApiError('not_found', 'Not found');
+  if (e instanceof ConflictError) return new ApiError('conflict', 'Conflict');
   if (e instanceof PathError) return new ApiError('bad_request', 'Invalid path');
-  if (e instanceof LifecycleError) return new ApiError(/not found/i.test(e.message) ? 'not_found' : 'invalid', e.message);
+  // Core messages can quote file content or user input, so clients only get fixed text.
+  if (e instanceof LifecycleError) return /not found/i.test(e.message) ? new ApiError('not_found', 'Not found') : new ApiError('invalid', 'Request cannot be applied');
   return new ApiError('internal', 'Internal error');
 }
 
