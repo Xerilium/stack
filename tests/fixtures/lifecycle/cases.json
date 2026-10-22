@@ -1,0 +1,259 @@
+[
+  {
+    "name": "start-plain",
+    "file": "golden",
+    "op": "start",
+    "match": "Plain task",
+    "args": {}
+  },
+  {
+    "name": "start-priority",
+    "file": "golden",
+    "op": "start",
+    "match": "Priority task",
+    "args": {}
+  },
+  {
+    "name": "start-waiting",
+    "file": "golden",
+    "op": "start",
+    "match": "Waiting task",
+    "args": {}
+  },
+  {
+    "name": "start-suspended",
+    "file": "golden",
+    "op": "start",
+    "match": "Suspended task",
+    "args": {}
+  },
+  {
+    "name": "start-url-spaces",
+    "file": "golden",
+    "op": "start",
+    "match": "Task with url",
+    "args": {}
+  },
+  {
+    "name": "complete-plain",
+    "file": "golden",
+    "op": "complete",
+    "match": "Plain task",
+    "args": {}
+  },
+  {
+    "name": "complete-inprogress-summary",
+    "file": "golden",
+    "op": "complete",
+    "match": "In progress task",
+    "args": {
+      "summary": "Shipped it"
+    }
+  },
+  {
+    "name": "complete-nested-summary",
+    "file": "golden",
+    "op": "complete",
+    "match": "Nested child",
+    "args": {
+      "summary": "Child done"
+    }
+  },
+  {
+    "name": "complete-remove-block",
+    "file": "golden",
+    "op": "complete-remove",
+    "match": "In progress task",
+    "args": {}
+  },
+  {
+    "name": "complete-remove-nested",
+    "file": "golden",
+    "op": "complete-remove",
+    "match": "Nested child",
+    "args": {}
+  },
+  {
+    "name": "skip-plain",
+    "file": "golden",
+    "op": "skip",
+    "match": "Plain task",
+    "args": {}
+  },
+  {
+    "name": "skip-priority",
+    "file": "golden",
+    "op": "skip",
+    "match": "Priority task",
+    "args": {}
+  },
+  {
+    "name": "resume-parked",
+    "file": "golden",
+    "op": "resume",
+    "match": "Parked task",
+    "args": {}
+  },
+  {
+    "name": "resume-spaced",
+    "file": "golden",
+    "op": "resume",
+    "match": "Spaced park",
+    "args": {}
+  },
+  {
+    "name": "suspend-date",
+    "file": "golden",
+    "op": "suspend",
+    "match": "Plain task",
+    "args": {
+      "when": "Oct 23"
+    }
+  },
+  {
+    "name": "suspend-time",
+    "file": "golden",
+    "op": "suspend",
+    "match": "Plain task",
+    "args": {
+      "when": "13:00"
+    }
+  },
+  {
+    "name": "suspend-datetime",
+    "file": "golden",
+    "op": "suspend",
+    "match": "Priority task",
+    "args": {
+      "when": "Oct 23 13:00"
+    }
+  },
+  {
+    "name": "suspend-replace",
+    "file": "golden",
+    "op": "suspend",
+    "match": "Suspended task",
+    "args": {
+      "when": "Nov 2"
+    }
+  },
+  {
+    "name": "set-priority",
+    "file": "golden",
+    "op": "set",
+    "match": "Plain task",
+    "args": {
+      "priority": "🔺"
+    }
+  },
+  {
+    "name": "set-effort-with-impact",
+    "file": "golden",
+    "op": "set",
+    "match": "Priority task",
+    "args": {
+      "effort": "🔴"
+    }
+  },
+  {
+    "name": "set-impact",
+    "file": "golden",
+    "op": "set",
+    "match": "Plain task",
+    "args": {
+      "impact": "⬇️"
+    }
+  },
+  {
+    "name": "set-status",
+    "file": "golden",
+    "op": "set",
+    "match": "Priority task",
+    "args": {
+      "status": "👀"
+    }
+  },
+  {
+    "name": "set-clear",
+    "file": "golden",
+    "op": "set",
+    "match": "Waiting task",
+    "args": {
+      "status": "None",
+      "effort": "None"
+    }
+  },
+  {
+    "name": "set-uncheck",
+    "file": "golden",
+    "op": "set",
+    "match": "Completed task",
+    "args": {
+      "checkbox": "Incomplete"
+    }
+  },
+  {
+    "name": "set-remove-all",
+    "file": "golden",
+    "op": "set",
+    "match": "Waiting task",
+    "args": {
+      "removeAllEmojis": true
+    }
+  },
+  {
+    "name": "set-combo",
+    "file": "golden",
+    "op": "set",
+    "match": "Plain task",
+    "args": {
+      "priority": "🚨",
+      "status": "🚧",
+      "effort": "🟡",
+      "impact": "⬆️"
+    }
+  },
+  {
+    "name": "remove-completed",
+    "file": "golden",
+    "op": "remove-completed",
+    "match": null,
+    "args": {}
+  },
+  {
+    "name": "sweep",
+    "file": "sweep",
+    "op": "sweep",
+    "match": null,
+    "args": {}
+  },
+  {
+    "name": "add-project-full",
+    "file": "",
+    "op": "add-project",
+    "match": null,
+    "args": {
+      "name": "My Cool Project",
+      "description": "About it.",
+      "repositoryUrl": "https://github.com/acme/cool",
+      "aliases": [
+        "cool",
+        "mcp"
+      ],
+      "priority": 2,
+      "capacity": {
+        "Work": 10,
+        "Project": 4
+      }
+    }
+  },
+  {
+    "name": "add-project-minimal",
+    "file": "",
+    "op": "add-project",
+    "match": null,
+    "args": {
+      "name": "Minimal"
+    }
+  }
+]
