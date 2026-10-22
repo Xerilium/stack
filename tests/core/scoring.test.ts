@@ -5,7 +5,7 @@ import { parseProject } from '../../src/core/parser';
 import {
   ScoringError, ScoringProject, ScoringTask, ScoringEngine, ScoredTask,
   extractEmojis, legacyEngine, registerEngine, getEngine, listEngines, toScoringProject,
-  weighProjects, isParked, activeTimeBlocks, filterByTimeBlock, rankTasks, byScore,
+  weighProjects, isParked, activeTimeBlocks, rankTasks, byScore,
 } from '../../src/core/scoring';
 
 const config = parseConfig();
