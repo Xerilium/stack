@@ -33,6 +33,12 @@ function blockEnd(lines: string[], i: number): number {
   return j;
 }
 
+/** Current text after the checkbox of one row (same errors as editTask). */
+export async function rowText(storage: Storage, ref: TaskRef): Promise<string> {
+  const f = await storage.read(ref.path);
+  return rowAt(f.content.split('\n'), ref.line)[2];
+}
+
 /** Replace the text after the checkbox of one row. */
 export async function editTask(storage: Storage, ref: TaskRef, text: string, expect?: string): Promise<EditResult> {
   const f = await storage.read(ref.path);

@@ -511,3 +511,16 @@ describe('autonomy scope', () => {
     for (const r of ['tasks.start', 'tasks.complete', 'tasks.set', 'tasks.skip', 'tasks.triage', 'tasks.claim', 'tasks.result']) expect([r, routeScope(r)]).toEqual([r, 'tasks:write']);
   });
 });
+
+describe('log robustness and confusables', () => {
+  it('parallel recordResult calls all log', async () => {
+    const { ctx } = await setup() as any;
+    const rs = await Promise.all(Array.from({ length: 8 }, (_, i) => recordResult(ctx, ref(L.agentChild), { outcome: 'partial', summary: `par ${i}` }, agent)));
+    expect(rs).toHaveLength(8);
+    const log = (await ctx.storage.read('tasks/logs/alpha.md')).content;
+    for (let i = 0; i < 8; i++) expect(log).toContain(`par ${i}`);
+  });
+  it.each(['Passıword=zz', 'pаssword=zz', 'paſsword=zz'])('redacts %s', (s) => {
+    expect(redact(`n ${s} end`)).not.toContain('zz');
+  });
+});

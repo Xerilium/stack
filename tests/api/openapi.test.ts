@@ -209,9 +209,10 @@ describe('response parity (real handler output vs documented schemas)', () => {
   const NOW = new Date('2026-10-22T18:00:00Z');
   const storage = new MemoryStorage();
   const h = createApiHandler({ storage, authorize: () => true, now: () => NOW });
+  const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
-      method, ...(body !== undefined ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}),
+      method, headers: { ...(path.startsWith('/tasks/edit') || path.startsWith('/tasks/move') ? OWNER_HDR : {}), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }));
     const t = await res.text();
     return { status: res.status, body: t ? JSON.parse(t) : undefined };

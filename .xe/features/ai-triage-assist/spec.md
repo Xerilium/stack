@@ -26,6 +26,7 @@ Let an external agent (the MCP client) triage tasks and do the work it is allowe
 - **FR:autonomy.marker** (P1): A task's autonomy is the marker `🤖:triage`, `🤖:assist`, or `🤖:full` in its text. No marker means `none`. A subtask without its own marker inherits the nearest ancestor's. Unknown levels are ignored (`none`)
 - **FR:autonomy.set** (P1): Only the owner sets autonomy (`stack triage <ref> --autonomy <level>`); the API and MCP can never set, raise, or remove it. Every agent-reachable text write (`add`, `capture`, `edit`, `complete` summary, triage subtasks) rejects `🤖`. A marker in ordinary owner text counts, so owners keep it out of prose
 - **FR:autonomy.gate** (P1): `authorize(level, action)` is deny-by-default: unknown level or action is denied. `triage` and `record` need `triage` or higher; `claim` and `complete-subtask` need `assist` or higher; `complete-task` needs `full`. `merge` and `deploy` are denied at every level
+- **FR:autonomy.structure** (P1): Only the owner session moves rows or changes gate markers; tokens cannot move rows and token edits cannot add or remove gate markers (🪄 🙋 🤖 and hold marks), so autonomy by subtree cannot be gamed
 - **FR:autonomy.scope** (P2): The autonomy gate binds only `triage`, `claim`, and `record-result`. The existing `start`, `complete`, `set`, and `skip` tools stay `tasks:write` and are not autonomy-gated. To bound an agent, give it only the three tools or a narrower token
 - **FR:autonomy.owner** (P2): Owner callers (the CLI) skip the autonomy gate but not input checks
 

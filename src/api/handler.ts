@@ -13,7 +13,7 @@ import { applyTriage, claimTask, OUTCOMES, recordResult, type ResultInput, type 
 import type { Storage } from '../core/storage';
 import { presentedToken } from './auth/authorize';
 import { generateSummaries } from '../core/summaries';
-import { editTask, moveTask } from './edit';
+import { editTask, moveTask, rowText } from './edit';
 import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
 import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
@@ -68,6 +68,16 @@ const caller = (req: Request) => {
 const noAutonomyMark = (field: string, v: unknown): void => {
   if (typeof v === 'string' && v.replace(/[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g, '').includes('🤖')) throw invalid([{ field, message: 'Cannot contain the 🤖 autonomy marker' }]);
 };
+
+/** Owner session: principal header and no token. */
+const isOwner = (req: Request): boolean => caller(req).actor === 'owner';
+const GATE_MARKS = ['🪄', '🙋', '🤖', '⛔', '⏸', '👀', '⏳', '💤', '🅿'];
+const gateCounts = (v: string): number[] => {
+  const t = v.replace(/[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g, '');
+  return GATE_MARKS.map((m) => t.split(m).length - 1);
+};
+/** Only the owner session moves rows or changes gate markers. @req FR:ai-triage-assist/autonomy.structure */
+const sameGateMarks = (a: string, b: string): boolean => gateCounts(a).join() === gateCounts(b).join();
 
 const FIELDS_Q: Record<string, Spec> = { fields: { t: 'str' } };
 const STATES = ['open', 'done', 'all'] as const;
@@ -290,6 +300,7 @@ export const ROUTES: Route[] = [
       noQuery(c);
       const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; expect?: string }>(await readBody(c.req), EDIT_BODY.schema, EDIT_BODY.required);
       noAutonomyMark('text', b.text);
+      if (!isOwner(c.req) && !sameGateMarks(await rowText(c.deps.storage, b.ref), b.text)) throw new ApiError('forbidden', 'Forbidden');
       return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text, b.expect)));
     },
   },
@@ -298,6 +309,7 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; target: NonNullable<ReturnType<typeof parseRef>>; position: 'before' | 'after'; expect?: string; expectTarget?: string }>(await readBody(c.req), MOVE_BODY.schema, MOVE_BODY.required);
+      if (!isOwner(c.req)) throw new ApiError('forbidden', 'Forbidden');
       return json(200, fmtEdit(await moveTask(c.deps.storage, b.ref, b.target, b.position, { ref: b.expect, target: b.expectTarget })));
     },
   },

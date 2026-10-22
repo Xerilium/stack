@@ -199,7 +199,8 @@ const CONFUSABLE: Record<string, string> = {
   α: 'a', β: 'b', γ: 'y', ε: 'e', ι: 'i', κ: 'k', ν: 'v', ο: 'o', ρ: 'p', τ: 't', υ: 'u', χ: 'x',
   Α: 'A', Β: 'B', Ε: 'E', Ζ: 'Z', Η: 'H', Ι: 'I', Κ: 'K', Μ: 'M', Ν: 'N', Ο: 'O', Ρ: 'P', Τ: 'T', Υ: 'Y', Χ: 'X',
 };
-const fold = (v: string): string => v.replace(/[\u0370-\u03ff\u0400-\u04ff]/g, (c) => CONFUSABLE[c] ?? c);
+CONFUSABLE['ı'] = 'i'; CONFUSABLE['ſ'] = 's';
+const fold = (v: string): string => v.replace(/[\u0131\u017f\u0370-\u03ff\u0400-\u04ff]/g, (c) => CONFUSABLE[c] ?? c);
 
 /** Escapes characters that render as HTML, links, images, code, or tables; keeps the `[redacted]` mark readable. */
 const md = (v: string): string => v.split(R).map((p) => p.replace(/[\\<>[\]`|]/g, '\\$&')).join(R);
@@ -328,6 +329,7 @@ async function appendLog(ctx: LifecycleContext, ref: TaskRef, caller: Caller, lv
     '',
   ].join('\n');
   for (let attempt = 0, n = 0; ; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1 + Math.random() * 6));
     const path = logFile(ref, n);
     let cur: { content: string; version: string } | null = null;
     try { cur = await ctx.storage.read(path); } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
@@ -341,7 +343,7 @@ async function appendLog(ctx: LifecycleContext, ref: TaskRef, caller: Caller, lv
       await ctx.storage.write(path, head + entry, { expectedVersion: cur ? cur.version : null, message: `Log: ${baseName(ref.path)}` });
       return;
     } catch (e) {
-      if (!(e instanceof ConflictError) || attempt >= 3) throw e;
+      if (!(e instanceof ConflictError) || attempt >= 12) throw e;
     }
   }
 }

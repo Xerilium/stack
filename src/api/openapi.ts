@@ -94,12 +94,12 @@ const DOCS: Record<string, RouteDoc> = {
     }),
   },
   'tasks.edit': {
-    operationId: 'editTask', summary: 'Replace the text of a task row',
+    operationId: 'editTask', summary: 'Replace the text of a task row. Tokens may not add or remove gate markers (🪄 🙋 🤖 ⛔ ⏸ 👀 ⏳ 💤 🅿): 403',
     desc: { text: 'Row text after the checkbox, single line', expect: 'Expected current row text at ref; 409 conflict when the row differs (stale line number)' },
     responses: mutation('200'),
   },
   'tasks.move': {
-    operationId: 'moveTask', summary: 'Move a task block before or after another task in the same project',
+    operationId: 'moveTask', summary: 'Move a task block before or after another task in the same project. Owner session only: 403 for tokens',
     desc: { expect: 'Expected current row text at ref; 409 conflict on mismatch', expectTarget: 'Expected current row text at target; 409 conflict on mismatch' },
     responses: mutation('200'),
   },

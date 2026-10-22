@@ -362,7 +362,7 @@ paths:
           $ref: "#/components/responses/Error"
   /tasks/edit:
     post:
-      summary: Replace the text of a task row
+      summary: "Replace the text of a task row. Tokens may not add or remove gate markers (🪄 🙋 🤖 ⛔ ⏸ 👀 ⏳ 💤 🅿): 403"
       operationId: editTask
       requestBody:
         required: true
@@ -392,7 +392,7 @@ paths:
           $ref: "#/components/responses/Error"
   /tasks/move:
     post:
-      summary: Move a task block before or after another task in the same project
+      summary: "Move a task block before or after another task in the same project. Owner session only: 403 for tokens"
       operationId: moveTask
       requestBody:
         required: true

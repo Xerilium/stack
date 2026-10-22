@@ -20,7 +20,7 @@ const mk = async () => {
   await storage.write('tasks/beta.md', '# Beta\n\n## 🔄 Active\n\n- [ ] Other\n');
   const h = createApiHandler({ storage, authorize: () => true });
   const call = async (path: string, body: unknown) => {
-    const res = await h(new Request(`https://x.test/api${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
+    const res = await h(new Request(`https://x.test/api${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') }, body: JSON.stringify(body) }));
     return { status: res.status, json: await res.json() as any };
   };
   const rows = async () => (await storage.read('tasks/alpha.md')).content.split('\n').filter((l) => l.startsWith('- [') || l.startsWith('  ')).map((l) => l.trim());
@@ -40,7 +40,7 @@ describe('POST /tasks/edit', () => {
     const storage = new MemoryStorage();
     await storage.write('tasks/a.md', '# A\r\n\r\n## Active\r\n\r\n- [x] Old\r\n');
     const h = createApiHandler({ storage, authorize: () => true });
-    const res = await h(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'a:4', text: 'New' }) }));
+    const res = await h(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json', 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') }, body: JSON.stringify({ ref: 'a:4', text: 'New' }) }));
     expect(res.status).toBe(200);
     expect((await storage.read('tasks/a.md')).content).toBe('# A\r\n\r\n## Active\r\n\r\n- [x] New\r\n');
   });
@@ -119,17 +119,17 @@ describe('handler scope and CSRF mapping', () => {
   it('passes route info with write=true and honors a deny', async () => {
     const seen: unknown[] = [];
     const h = await mkh((_r: Request, route: unknown) => { seen.push(route); return true; });
-    await h(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json' }, body }));
-    await h(new Request('https://x.test/api/tasks/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'a:4', target: 'a:4', position: 'after' }) }));
+    await h(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json', 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') }, body }));
+    await h(new Request('https://x.test/api/tasks/move', { method: 'POST', headers: { 'content-type': 'application/json', 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') }, body: JSON.stringify({ ref: 'a:4', target: 'a:4', position: 'after' }) }));
     expect(seen).toEqual([{ name: 'tasks.edit', method: 'POST', write: true }, { name: 'tasks.move', method: 'POST', write: true }]);
     const deny = await mkh(() => false);
-    expect((await deny(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json' }, body }))).status).toBe(403);
-    expect((await deny(new Request('https://x.test/api/tasks/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body }))).status).toBe(403);
+    expect((await deny(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json', 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') }, body }))).status).toBe(403);
+    expect((await deny(new Request('https://x.test/api/tasks/move', { method: 'POST', headers: { 'content-type': 'application/json', 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') }, body }))).status).toBe(403);
   });
   it('rejects GET, query strings, and non-JSON bodies', async () => {
     const h = await mkh(() => true);
     expect((await h(new Request('https://x.test/api/tasks/edit'))).status).toBeGreaterThanOrEqual(400);
-    expect((await h(new Request('https://x.test/api/tasks/edit?x=1', { method: 'POST', headers: { 'content-type': 'application/json' }, body }))).status).toBe(422);
+    expect((await h(new Request('https://x.test/api/tasks/edit?x=1', { method: 'POST', headers: { 'content-type': 'application/json', 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') }, body }))).status).toBe(422);
     expect((await h(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'text/plain' }, body }))).status).toBeGreaterThanOrEqual(400);
   });
 });
@@ -141,7 +141,7 @@ describe('conflicts and docs', () => {
     const real = storage.write.bind(storage);
     storage.write = async (p, c, o) => { await real(p, c + '\n- [ ] sneak\n'); return real(p, c, o); };
     const h = createApiHandler({ storage, authorize: () => true });
-    const res = await h(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'a:4', text: 'Two' }) }));
+    const res = await h(new Request('https://x.test/api/tasks/edit', { method: 'POST', headers: { 'content-type': 'application/json', 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') }, body: JSON.stringify({ ref: 'a:4', text: 'Two' }) }));
     expect(res.status).toBe(409);
   });
 });
