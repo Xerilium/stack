@@ -23,7 +23,7 @@ Surfaces need a backend-neutral contract so they work the same on git, disk, or 
 - **FR:interface.list** (P1): `list` MUST return sorted repo-relative paths of `tasks/*.md` files
 - **FR:interface.read** (P1): `read` MUST return the exact content and an opaque `version` token, and throw `NotFoundError` when the file is missing
 - **FR:interface.bytes** (P1): Content MUST round-trip byte-exact (BOM, CRLF, trailing whitespace, emoji) with no normalization. Content is UTF-8 text: invalid UTF-8 sequences or lone surrogates are not byte-exact (replaced on decode/encode)
-- **FR:interface.paths** (P1): Adapters MUST reject paths that are absolute, contain `..`, backslashes, or NUL, or fall outside `tasks/*.md` (dotfiles such as `tasks/.x.md` are outside, matching `list`), with `PathError`
+- **FR:interface.paths** (P1): Adapters MUST reject paths that are absolute, contain `..`, backslashes, or NUL, or fall outside `tasks/*.md` and the summary files `README.md`, `stack.md`, `projects.md`, `my-day.md` (dotfiles such as `tasks/.x.md` are outside, matching `list`), with `PathError`
 - **FR:interface.version** (P1): `version` MUST be derived from content only, identical across adapters
 
 ### FR:write: Atomic writes

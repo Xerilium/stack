@@ -1,2 +1,4 @@
-// CLI entry point (placeholder until the cli slice lands)
-export {};
+#!/usr/bin/env node
+import { run } from './run';
+
+run(process.argv.slice(2)).then((code) => { process.exitCode = code; });
