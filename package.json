@@ -7,6 +7,7 @@
     "build": "pnpm run build:core && pnpm run build:cli",
     "build:core": "tsc -p tsconfig.core.json",
     "build:cli": "tsc -p tsconfig.cli.json",
+    "bakeoff": "node dist/core/bakeoff.js",
     "clean": "rm -rf dist",
     "lint": "eslint . && tsc --noEmit -p tsconfig.core.json",
     "test": "jest",
