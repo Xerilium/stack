@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { existsSync } from 'fs';
 import { isAbsolute, join } from 'path';
-import { FsStorage, WriteOptions, WriteResult, ConflictError, StorageError, versionOf } from './storage';
+import { FsStorage, FileWrite, WriteOptions, WriteResult, ConflictError, StorageError, checkExpected, versionOf } from './storage';
 
 export interface GitStorageOptions {
   /** Remote name; when set, writes sync before and push after. */
@@ -14,7 +14,7 @@ const MAX_PUSH_ATTEMPTS = 3;
 /**
  * Work-tree adapter: every write is a direct commit (no PRs).
  * @req FR:storage-git/git.commit @req FR:storage-git/git.noop @req FR:storage-git/git.isolation
- * @req FR:storage-git/git.remote @req FR:storage-git/git.push-retry @req FR:storage-git/git.conflict
+ * @req FR:storage-git/git.remote @req FR:storage-git/git.push-retry @req FR:storage-git/git.conflict @req FR:storage-git/write.many
  */
 export class GitStorage extends FsStorage {
   /** Test seam: awaited just before each push attempt. */
@@ -130,35 +130,48 @@ export class GitStorage extends FsStorage {
   }
 
   protected async locked(path: string, content: string, opts: WriteOptions): Promise<WriteResult> {
-    await this.checkBranch();
-    if (this.remote) await this.sync();
-    const prior = await this.readRaw(path);
-    if (opts.expectedVersion !== undefined && (prior === null ? null : versionOf(prior)) !== opts.expectedVersion) {
-      return super.locked(path, content, opts); // throws ConflictError
-    }
-    // Remember the path's index entry so a failed commit restores the user's own staged edit.
-    const entry = ((await this.tryGit('ls-files', '-s', '--', path)) ?? '').trim();
-    let committed = false;
-    try {
-      await this.atomicWrite(path, content);
-      await this.git('add', '--', path);
-      const staged = await this.tryGit('diff', '--cached', '--quiet', '--', path);
-      if (staged === null) {
-        await this.git('commit', '-q', '-m', opts.message ?? `Update ${path}`, '--only', '--', path);
-        committed = true;
-      }
-    } catch (e) {
-      const m = /^(\d+) ([0-9a-f]+) \d\t/.exec(entry);
-      if (m) await this.tryGit('update-index', '--add', '--cacheinfo', `${m[1]},${m[2]},${path}`);
-      else await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', path);
-      await this.restore(path, prior);
-      throw e;
-    }
-    if (committed && this.remote) await this.push(path, opts);
+    await this.lockedMany([{ path, content, expectedVersion: opts.expectedVersion }], opts.message);
     return { version: versionOf(content) };
   }
 
-  private async push(path: string, opts: WriteOptions): Promise<void> {
+  /** One commit (and one push) for all changed paths. @req FR:storage-git/write.many */
+  protected async lockedMany(writes: FileWrite[], message?: string): Promise<void> {
+    await this.checkBranch();
+    if (this.remote) await this.sync();
+    const paths = writes.map(w => w.path);
+    const priors: (string | null)[] = [];
+    for (const w of writes) {
+      const prior = await this.readRaw(w.path);
+      checkExpected(w.path, prior === null ? null : versionOf(prior), { expectedVersion: w.expectedVersion });
+      priors.push(prior);
+    }
+    // Remember each path's index entry so a failed commit restores the user's own staged edit.
+    const entries: string[] = [];
+    for (const p of paths) entries.push(((await this.tryGit('ls-files', '-s', '--', p)) ?? '').trim());
+    let committed = false;
+    try {
+      for (const w of writes) await this.atomicWrite(w.path, w.content);
+      await this.git('add', '--', ...paths);
+      const staged = await this.tryGit('diff', '--cached', '--quiet', '--', ...paths);
+      if (staged === null) {
+        const msg = message ?? (paths.length === 1 ? `Update ${paths[0]}` : `Update ${paths.length} files`);
+        await this.git('commit', '-q', '-m', msg, '--only', '--', ...paths);
+        committed = true;
+      }
+    } catch (e) {
+      for (let i = 0; i < paths.length; i++) {
+        const m = /^(\d+) ([0-9a-f]+) \d\t/.exec(entries[i]);
+        if (m) await this.tryGit('update-index', '--add', '--cacheinfo', `${m[1]},${m[2]},${paths[i]}`);
+        else await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', paths[i]);
+        await this.restore(paths[i], priors[i]);
+      }
+      throw e;
+    }
+    if (committed && this.remote) await this.push(writes);
+  }
+
+  private async push(writes: FileWrite[]): Promise<void> {
+    const paths = writes.map(w => w.path);
     // Our commit is HEAD now; re-read after every rebase because the SHA changes.
     let ours = (await this.git('rev-parse', 'HEAD')).trim();
     for (let attempt = 1; ; attempt++) {
@@ -167,24 +180,27 @@ export class GitStorage extends FsStorage {
         const msg = (e as Error).message;
         if (!/\[rejected\]|non-fast-forward|fetch first/i.test(msg)) {
           // Auth, network, hook rejection: not a race. Roll back so a failed write leaves nothing behind.
-          await this.dropCommit(path, ours);
+          await this.dropCommit(paths, ours);
           throw e instanceof StorageError ? e : new StorageError(msg);
         }
         if (attempt >= MAX_PUSH_ATTEMPTS) {
-          await this.dropCommit(path, ours);
+          await this.dropCommit(paths, ours);
           throw new ConflictError(`Push rejected after ${attempt} attempts: ${msg}`);
         }
       }
       let ok = await this.fetch();
-      if (ok && opts.expectedVersion !== undefined) {
-        const theirs = await this.tryGit('show', `${this.ref}:${path}`);
-        if ((theirs === null ? null : versionOf(theirs)) !== opts.expectedVersion) ok = false;
+      if (ok) {
+        for (const w of writes) {
+          if (w.expectedVersion === undefined) continue;
+          const theirs = await this.tryGit('show', `${this.ref}:${w.path}`);
+          if ((theirs === null ? null : versionOf(theirs)) !== w.expectedVersion) ok = false;
+        }
       }
       if (ok) ok = await this.rebase();
       if (ok) ours = (await this.git('rev-parse', 'HEAD')).trim();
       if (!ok) {
-        await this.dropCommit(path, ours);
-        throw new ConflictError(`Conflict on ${path}: remote changed it concurrently`);
+        await this.dropCommit(paths, ours);
+        throw new ConflictError(`Conflict on ${paths.join(', ')}: remote changed it concurrently`);
       }
     }
   }
@@ -193,15 +209,17 @@ export class GitStorage extends FsStorage {
    * Remove our commit (the HEAD tip) without touching the index beyond `path`:
    * soft reset keeps unrelated staged files, then `path` alone is restored to the parent state.
    */
-  private async dropCommit(path: string, ours: string): Promise<void> {
+  private async dropCommit(paths: string[], ours: string): Promise<void> {
     const parent = (await this.tryGit('rev-parse', '--verify', '-q', `${ours}^`))?.trim() ?? null;
     if (parent) await this.git('reset', '-q', '--soft', parent);
     else await this.git('update-ref', '-d', 'HEAD');
-    if (parent && (await this.tryGit('cat-file', '-e', `HEAD:${path}`)) !== null) {
-      await this.git('restore', '-q', '--source=HEAD', '--staged', '--worktree', '--', path);
-    } else {
-      await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', path);
-      await this.restore(path, null);
+    for (const path of paths) {
+      if (parent && (await this.tryGit('cat-file', '-e', `HEAD:${path}`)) !== null) {
+        await this.git('restore', '-q', '--source=HEAD', '--staged', '--worktree', '--', path);
+      } else {
+        await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', path);
+        await this.restore(path, null);
+      }
     }
     // Best effort: a failure here must not mask the error that caused the rollback.
     try { if (await this.fetch()) await this.rebase(); } catch { /* surfaced on the next sync */ }

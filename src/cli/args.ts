@@ -9,7 +9,7 @@ export interface Parsed {
 }
 
 /** Flags that never take a value. */
-export const BOOLEAN_FLAGS = new Set(['json', 'force', 'remove', 'sweep', 'no-commit', 'remove-emojis', 'help', 'version']);
+export const BOOLEAN_FLAGS = new Set(['json', 'force', 'remove', 'sweep', 'queries', 'no-commit', 'remove-emojis', 'help', 'version']);
 
 /**
  * Splits argv into the command, positionals, and flags. `--name value` and `--name=value` both work;

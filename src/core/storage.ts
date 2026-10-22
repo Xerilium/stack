@@ -17,11 +17,33 @@ export interface WriteOptions {
   message?: string;
 }
 
+/** One file in a multi-file write. @req FR:storage-git/write.many */
+export interface FileWrite { path: string; content: string; expectedVersion?: string | null }
+
 /** @req FR:storage-git/interface.@type */
 export interface Storage {
   list(): Promise<string[]>;
   read(path: string): Promise<StoredFile>;
   write(path: string, content: string, opts?: WriteOptions): Promise<WriteResult>;
+  /** Write several files as one operation (one commit in git). @req FR:storage-git/write.many */
+  writeMany?(writes: FileWrite[], opts?: { message?: string }): Promise<void>;
+}
+
+/** Multi-file write; adapters without `writeMany` fall back to one write per file. @req FR:storage-git/write.many */
+export async function writeAll(storage: Storage, writes: FileWrite[], message?: string): Promise<void> {
+  if (storage.writeMany) return storage.writeMany(writes, { message });
+  assertDistinct(writes);
+  for (const w of writes) await storage.write(w.path, w.content, { expectedVersion: w.expectedVersion, message });
+}
+
+/** @req FR:storage-git/write.many */
+export function assertDistinct(writes: FileWrite[]): void {
+  const seen = new Set<string>();
+  for (const w of writes) {
+    validatePath(w.path);
+    if (seen.has(w.path)) throw new StorageError(`Duplicate path in multi-file write: ${w.path}`);
+    seen.add(w.path);
+  }
 }
 
 /** @req FR:storage-git/interface.version */
@@ -69,6 +91,20 @@ export class MemoryStorage implements Storage {
     this.queue = p.catch(() => undefined);
     return p;
   }
+
+  async writeMany(writes: FileWrite[]): Promise<void> {
+    assertDistinct(writes);
+    const run = async () => {
+      for (const w of writes) {
+        const cur = this.files.get(w.path);
+        checkExpected(w.path, cur === undefined ? null : versionOf(cur), { expectedVersion: w.expectedVersion });
+      }
+      for (const w of writes) this.files.set(w.path, w.content);
+    };
+    const p = this.queue.then(run, run);
+    this.queue = p.catch(() => undefined);
+    return p;
+  }
 }
 
 export function checkExpected(path: string, current: string | null, opts: WriteOptions): void {
@@ -108,6 +144,32 @@ export class FsStorage implements Storage {
     const p = this.queue.then(run, run);
     this.queue = p.catch(() => undefined);
     return p;
+  }
+
+  async writeMany(writes: FileWrite[], opts: { message?: string } = {}): Promise<void> {
+    assertDistinct(writes);
+    const run = () => this.lockedMany(writes, opts.message);
+    const p = this.queue.then(run, run);
+    this.queue = p.catch(() => undefined);
+    return p;
+  }
+
+  /** Runs inside the serial queue: check every version, write all, restore all on failure. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected async lockedMany(writes: FileWrite[], _message?: string): Promise<void> {
+    const priors: (string | null)[] = [];
+    for (const w of writes) {
+      const cur = await this.readRaw(w.path);
+      checkExpected(w.path, cur === null ? null : versionOf(cur), { expectedVersion: w.expectedVersion });
+      priors.push(cur);
+    }
+    const done: number[] = [];
+    try {
+      for (let i = 0; i < writes.length; i++) { await this.atomicWrite(writes[i].path, writes[i].content); done.push(i); }
+    } catch (e) {
+      for (const i of done) await this.restore(writes[i].path, priors[i]).catch(() => undefined);
+      throw e;
+    }
   }
 
   /** Runs inside the serial queue. */
