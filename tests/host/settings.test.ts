@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { parseSettings, SettingsError } from '../../src/host';
 import { ENV } from './helpers';
 
@@ -56,5 +58,43 @@ describe('azure-host settings', () => {
       return;
     }
     throw new Error('should throw');
+  });
+});
+
+describe('azure-host settings hardening', () => {
+  /** @req FR:azure-host/settings.url */
+  it('normalizes the repo URL so git sees the validated host', () => {
+    expect(parseSettings({ ...ENV, STACK_REPO_URL: 'https://github.com\\@evil.com/x' }).repoUrl).toBe('https://github.com/@evil.com/x');
+    expect(parseSettings({ ...ENV, STACK_REPO_URL: 'https://GitHub.com:443/a/b' }).repoUrl).toBe('https://github.com/a/b');
+  });
+
+  /** @req FR:azure-host/settings.identity */
+  it.each([
+    ['dash name', { STACK_GIT_NAME: '-c' }, 'STACK_GIT_NAME'],
+    ['newline name', { STACK_GIT_NAME: 'a\nb' }, 'STACK_GIT_NAME'],
+    ['angle name', { STACK_GIT_NAME: 'a<b>' }, 'STACK_GIT_NAME'],
+    ['dash email', { STACK_GIT_EMAIL: '--x@y' }, 'STACK_GIT_EMAIL'],
+    ['space email', { STACK_GIT_EMAIL: 'a b@y' }, 'STACK_GIT_EMAIL'],
+    ['double slash branch', { STACK_REPO_BRANCH: 'a//b' }, 'STACK_REPO_BRANCH'],
+    ['dot segment branch', { STACK_REPO_BRANCH: 'a/.b' }, 'STACK_REPO_BRANCH'],
+    ['trailing dot branch', { STACK_REPO_BRANCH: 'a.' }, 'STACK_REPO_BRANCH'],
+    ['lock segment branch', { STACK_REPO_BRANCH: 'a.lock/b' }, 'STACK_REPO_BRANCH'],
+  ])('rejects %s', (_n, over, name) => {
+    expect(bad(over as Record<string, string>)).toThrow(name);
+  });
+
+  /** @req FR:azure-host/tokens.override */
+  it('token file override requires a pepper', () => {
+    expect(bad({ STACK_TOKEN_STORE: '/data/t.json', STACK_TOKEN_PEPPER: undefined })).toThrow('STACK_TOKEN_PEPPER');
+    expect(parseSettings({ ...ENV, STACK_TOKEN_STORE: '/data/t.json' }).tokenStore).toBe('/data/t.json');
+    expect(parseSettings({ ...ENV, STACK_TOKEN_PEPPER: undefined }).pepper).toBeUndefined();
+  });
+});
+
+describe('azure-host deployment docs', () => {
+  /** @req FR:azure-host/auth.swa */
+  it('documents SWA-only reachability as a hard requirement', () => {
+    const doc = readFileSync(join(__dirname, '../../docs/azure-host.md'), 'utf8');
+    expect(doc).toMatch(/hard requirement[\s\S]*x-ms-client-principal[\s\S]*only through the SWA/);
   });
 });

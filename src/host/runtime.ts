@@ -1,7 +1,7 @@
 /**
  * Host wiring: settings -> storage, tokens, auth, API, MCP, bots, and the /api router.
  * @req FR:azure-host/routes.map @req FR:azure-host/routes.errors @req FR:azure-host/health.shape
- * @req FR:azure-host/git.lazy @req FR:azure-host/auth.api @req FR:azure-host/auth.mcp @req FR:azure-host/auth.bots @req FR:azure-host/auth.logs
+ * @req FR:azure-host/git.lazy @req FR:azure-host/auth.api @req FR:azure-host/auth.mcp @req FR:azure-host/auth.bots @req FR:azure-host/auth.logs @req FR:azure-host/routes.paths
  */
 import { apiClient, createBotHandler } from '../bots';
 import { createApiHandler, createAuth, createTokenService, FileTokenStore, type Authorize, type TokenStore } from '../api';
@@ -17,6 +17,10 @@ export interface HostDeps {
   tokenStore?: TokenStore;
   /** Receives event fields and error class names only. */
   log?: (line: string) => void;
+  /** Clock for the open-failure cooldown. */
+  now?: () => number;
+  /** After a failed open, later calls fail fast for this long. Default 30000. */
+  cooldownMs?: number;
 }
 
 const BOT_ROUTES = new Set(['next', 'tasks.add', 'tasks.start', 'tasks.complete', 'tasks.skip']);
@@ -29,11 +33,13 @@ const reply = (status: number, body: unknown, extra: Record<string, string> = {}
 const fail = (status: number, code: string, message: string, extra: Record<string, string> = {}) => reply(status, { error: { code, message } }, extra);
 const notFound = () => fail(404, 'not_found', 'Not found');
 
-/** Opens storage on first use only; concurrent callers share one open; a failure is not cached. @req FR:azure-host/git.lazy @req FR:azure-host/git.clone */
-function lazyStorage(open: () => Promise<Storage>): HostStorage {
+/** Opens storage on first use only; concurrent callers share one open; a failure is not cached. @req FR:azure-host/git.lazy @req FR:azure-host/git.clone @req FR:azure-host/git.timeout */
+function lazyStorage(open: () => Promise<Storage>, now: () => number, cooldownMs: number): HostStorage {
   let p: Promise<Storage> | null = null;
+  let failed: { at: number; err: unknown } | null = null;
   const get = () => {
-    if (!p) { p = open(); p.catch(() => { p = null; }); }
+    if (failed && now() - failed.at < cooldownMs) return Promise.reject(failed.err);
+    if (!p) { p = open(); p.then(() => { failed = null; }, (err) => { p = null; failed = { at: now(), err }; }); }
     return p;
   };
   return {
@@ -50,6 +56,15 @@ function lazyStorage(open: () => Promise<Storage>): HostStorage {
 const className = (e: unknown) => (e instanceof Error ? e.constructor.name : 'Error');
 const pathOf = (req: Request) => new URL(req.url).pathname.replace(/\/+$/, '');
 const inApi = (req: Request) => { const p = pathOf(req); return p === '/api' || p.startsWith('/api/'); };
+
+/** Providers may append a slash to webhook URLs: dispatch on the canonical path. @req FR:azure-host/routes.paths */
+async function stripSlash(req: Request, path: string): Promise<Request> {
+  const u = new URL(req.url);
+  if (u.pathname === path) return req;
+  u.pathname = path;
+  const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+  return new Request(u, { method: req.method, headers: req.headers, body: hasBody ? await req.arrayBuffer() : undefined });
+}
 
 /** @req FR:azure-host/health.shape */
 function health(req: Request, degraded: boolean): Response | null {
@@ -70,7 +85,7 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
 
   const settings = s;
   const onName = (n: string) => log(`error: ${n}`);
-  const storage = lazyStorage(() => (deps.openStorage ?? ((x) => openGitStorage(x)))(settings));
+  const storage = lazyStorage(() => (deps.openStorage ?? ((x) => openGitStorage(x)))(settings), deps.now ?? Date.now, deps.cooldownMs ?? 30_000);
   const tokens = createTokenService({ store: deps.tokenStore ?? (settings.tokenStore ? new FileTokenStore(settings.tokenStore) : new GitTokenStore(async () => storage, { onError: onName })), pepper: settings.pepper });
   const event = (e: object) => log(JSON.stringify(e));
   const onError = (e: unknown) => log(`error: ${className(e)}`);
@@ -89,7 +104,7 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
       if (h) return h;
       const path = pathOf(req);
       if (path === '/api/mcp') return await mcp(req);
-      if (path.startsWith('/api/bots/')) return await bots(req);
+      if (path.startsWith('/api/bots/')) return await bots(await stripSlash(req, path));
       if (inApi(req)) return await api(req);
       return notFound();
     } catch (e) {

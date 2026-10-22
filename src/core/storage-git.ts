@@ -7,6 +7,8 @@ export interface GitStorageOptions {
   /** Remote name; when set, writes sync before and push after. */
   remote?: string;
   branch?: string;
+  /** Base environment for spawned git (default process.env). Never mutated. */
+  env?: NodeJS.ProcessEnv;
 }
 
 const MAX_PUSH_ATTEMPTS = 3;
@@ -22,20 +24,22 @@ export class GitStorage extends FsStorage {
   private remote?: string;
   private branch: string;
   private branchExplicit: boolean;
+  private env?: NodeJS.ProcessEnv;
 
   constructor(root: string, opts: GitStorageOptions = {}) {
     super(root);
+    this.env = opts.env;
     this.remote = opts.remote;
     this.branch = opts.branch ?? 'main';
     this.branchExplicit = opts.branch !== undefined;
   }
 
-  /** @req FR:storage-git/git.exec */
+  /** @req FR:storage-git/git.exec @req FR:storage-git/git.env */
   private git(...args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
       execFile('git', args, {
         cwd: this.root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' },
+        env: { ...(this.env ?? process.env), GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' },
       }, (err, stdout, stderr) => {
         /** @req FR:storage-git/git.failure */
         if (err) reject(new StorageError(`git ${args[0]} failed: ${(stderr || err.message).trim()}`));

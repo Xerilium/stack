@@ -152,11 +152,61 @@ describe('azure-host routing', () => {
   /** @req FR:azure-host/git.clone */
   it('failed storage open is retried, shared while pending', async () => {
     let n = 0;
-    const h = await setup(ENV, { openStorage: async () => { n++; if (n === 1) throw new Error('x'); return (await setup()).storage; } });
+    const h = await setup(ENV, { cooldownMs: 0, openStorage: async () => { n++; if (n === 1) throw new Error('x'); return (await setup()).storage; } });
     expect((await h.owner('/api/next')).status).toBe(500);
     expect((await h.owner('/api/next')).status).toBe(200);
     const results = await Promise.all([h.owner('/api/next'), h.owner('/api/next')]);
     expect(results.map((r) => r.status)).toEqual([200, 200]);
     expect(n).toBe(2);
+  });
+});
+
+describe('azure-host path confusion and failure handling', () => {
+  /** @req FR:azure-host/routes.paths @req FR:azure-host/git.lazy */
+  it.each([
+    '/api//health', '//api/next', '/API/next', '/api/%2e%2e/next', '/api/%61uth/tokens', '/api/next;x', '/api%2Fnext', '/api/bots', '/api/MCP',
+  ])('odd path %s never authenticates or opens storage', async (p) => {
+    const h = await setup();
+    for (const method of ['GET', 'POST']) {
+      const r = await h.req(p, { method });
+      expect([200, 204]).not.toContain(r.status);
+    }
+    expect(h.opens()).toBe(0);
+  });
+
+  /** @req FR:azure-host/routes.paths @req FR:azure-host/auth.bots */
+  it('bot webhook works with a trailing slash', async () => {
+    const h = await setup();
+    const r = await h.host(signedWebhook('/api/bots/webhook/', 'whsec', { sender: 'ci-bot', text: 'add Beta x' }));
+    expect(r.status).toBe(200);
+  });
+
+  /** @req FR:azure-host/routes.paths @req FR:azure-host/settings.invalid */
+  it('bot routes answer 503 in degraded mode, with or without trailing slash', async () => {
+    const h = await setup({ ...ENV, STACK_REPO_BRANCH: 'a//b' });
+    for (const p of ['/api/bots/webhook', '/api/bots/webhook/', '/api/bots/slack', '/api/bots']) {
+      expect((await h.req(p, { method: 'POST', body: '{}' })).status).toBe(503);
+    }
+    expect(h.opens()).toBe(0);
+  });
+
+  /** @req FR:azure-host/git.timeout */
+  it('a failed open is not retried during the cooldown, then retried', async () => {
+    let opens = 0;
+    let now = 1000;
+    const { MemoryStorage } = await import('../../src/core/storage');
+    const good = new MemoryStorage();
+    const h = await setup(ENV, {
+      now: () => now, cooldownMs: 30_000,
+      openStorage: async () => { opens++; if (opens === 1) throw new Error('clone failed'); return good; },
+    });
+    const tok = await h.mint('read');
+    const get = () => h.req('/api/next', { headers: { authorization: `Bearer ${tok}` } });
+    expect((await get()).status).toBe(500);
+    expect((await get()).status).toBe(500);
+    expect(opens).toBe(1);
+    now += 31_000;
+    expect((await get()).status).not.toBe(500);
+    expect(opens).toBe(2);
   });
 });

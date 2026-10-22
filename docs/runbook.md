@@ -30,7 +30,7 @@ Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault,
 | `STACK_TOKEN_PEPPER` | Secret mixed into API token hashes. Changing it invalidates all tokens |
 | `STACK_REPO_TOKEN` | Credential for the private task repo |
 | `STACK_REPO_URL` | https URL of the private task repo (no credentials in it). More settings: [Azure host](azure-host.md) |
-| `STACK_TOKEN_STORE` | Optional file path for the token store. Default: the data repo (`.stack/tokens.json`) |
+| `STACK_TOKEN_STORE` | Optional file path for the token store (needs `STACK_TOKEN_PEPPER`). Default: the data repo (`.stack/tokens.json`) |
 | `STACK_REPO_BRANCH`, `STACK_REPO_PATH` | Branch (default `main`) and optional subfolder of the task repo |
 | `STACK_CONFIG` | Optional Stack config as JSON |
 | `STACK_GIT_NAME`, `STACK_GIT_EMAIL` | Commit identity |

@@ -45,11 +45,13 @@ Surfaces need a backend-neutral contract so they work the same on git, disk, or 
 - **FR:git.failure** (P1): Non-conflict git failures (lock files, hooks, non-rejection push errors) and failed re-apply of locally stashed changes MUST throw `StorageError`, not `ConflictError`; a failed commit MUST roll back the path while keeping the user's own staged edit of it. A failed post-rollback resync MUST NOT mask the original error
 - **FR:git.branch** (P1): With a remote or explicit `branch`, `write` and `sync` MUST throw `StorageError` when the configured branch is not checked out
 - **FR:git.concurrency** (P2): Serialization is per adapter instance; multiple instances or processes on one repo are unsupported (may fail on `index.lock` with `StorageError`)
+- **FR:git.env** (P1): `GitStorage` MUST take an optional base environment for spawned git (default `process.env`) and never mutate the process environment
 - **FR:git.exec** (P1): Git MUST run via argument arrays (no shell)
 
 ### FR:fs: Filesystem and memory adapters
 
 - **FR:fs.fs** (P1): `FsStorage` MUST implement the interface on a directory with write-to-temp then rename
+- **FR:fs.contain** (P1): `FsStorage` MUST refuse any symlink on a storage path (read, write, list) with `StorageError`, so a tracked link cannot read or write outside the work tree
 - **FR:fs.memory** (P1): `MemoryStorage` MUST implement the interface in memory for tests
 
 ## Data Model
