@@ -83,10 +83,12 @@ The autonomy gate binds every token call that changes a task. The owner session 
 | Tool | Token may |
 | --- | --- |
 | `start` | `assist`+, `ref` required, not a 🙋 or held row |
-| `complete` | `assist` for a 🪄 subtask, `full` otherwise; none when unset (denied); `409` if the task has an open 🙋 subtask |
-| `set` | `triage` for priority, effort, impact; `assist` for status; the complete level for `checkbox`; never changes gate marks or `clearEmojis` |
+| `complete` (no `remove`) | `assist` for a 🪄 subtask, `full` otherwise; none when unset (denied); `409` if the task has an open 🙋 subtask |
+| `set` | `triage` for priority, effort, impact (fills a missing value, never replaces or clears one); `assist` for status; never `checkbox`, gate marks, or `clearEmojis` |
+| `complete` with `remove` | owner session only |
+| `/tasks/edit` | `assist`+, open row, not 🙋 or held; all markers must stay the same; text may not contain `🤖` (so only rows that inherit autonomy are editable) |
 | `skip`, `suspend`, `resume` | owner session only (they move hold marks) |
 
 Denied calls return `error forbidden` (or `error conflict`) with fixed text: skip the task. `remove-completed` is API owner-session only. Chat-bot service tokens are agents too: bot `start`/`done` need an autonomy level and a ref.
 
-Agents never merge or deploy and never complete beyond their level. When a person is needed, `record-result` (or `triage` with `human`) adds a 🙋 subtask and the agent moves on. A denied call returns `error forbidden`: skip the task. Results go to `tasks/logs/<project>.md` (append-only, secrets redacted, actor taken from the token; rolls to `<name>.2.md` etc. when full, max 5 files; when all 5 are full the oldest is dropped, so a token cannot fill the log and block `claim` or `record-result`; storage history keeps dropped entries). The `add`, `complete`, and capture text may not contain `🤖`: only the owner sets autonomy. Tokens cannot move rows (`/tasks/move` is owner-session only) and cannot add or remove gate markers (🪄 🙋 🤖 and hold marks) via `/tasks/edit`.
+Agents never merge or deploy and never complete beyond their level. When a person is needed, `record-result` (or `triage` with `human`) adds a 🙋 subtask and the agent moves on. A denied call returns `error forbidden`: skip the task. Results go to `tasks/logs/<project>.md` (append-only, secrets redacted, actor taken from the token; rolls to `<name>.2.md` etc. when full, max 5 files; when all 5 are full the oldest is dropped, so a token cannot fill the log and block `claim` or `record-result`; a tombstone entry in the newest file records the actor and what was dropped; storage history keeps dropped entries; partial rotations only duplicate, never lose newer entries; there is no per-actor quota, so review actors in the log). The `add`, `complete`, and capture text may not contain `🤖`: only the owner sets autonomy. Tokens cannot move rows (`/tasks/move` is owner-session only) and cannot add or remove gate markers (🪄 🙋 🤖 and hold marks) via `/tasks/edit`.

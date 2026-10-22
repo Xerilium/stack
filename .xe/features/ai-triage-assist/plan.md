@@ -24,6 +24,6 @@ title: AI Triage Assist Plan
 - Agent suggestions never overwrite existing priority/effort/impact
 - Merge/deploy have no code path
 - Change: the API calls `authorizeMutation` (core) for every token mutation, and pins the row for the write; owner session skips it. Hold-mark moves (`skip`, `suspend`, `resume`) stay owner-only, matching `/tasks/edit`
-- Change: a full log shifts down one file (oldest dropped) instead of failing, so a `tasks:write` token cannot block claim or record-result. Git history keeps the dropped entries
+- Change: a full log shifts down one file (oldest dropped) instead of failing, so a `tasks:write` token cannot block claim or record-result. A tombstone entry notes the drop. Git history keeps the dropped entries
 - Change tests first: `tests/api/autonomy-gate.test.ts`
 - Tests first: `tests/core/triage.test.ts`, `tests/api/triage.test.ts`, `tests/mcp/triage.test.ts`, `tests/cli/triage.test.ts`

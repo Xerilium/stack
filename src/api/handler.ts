@@ -9,11 +9,11 @@ import {
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
-import { applyTriage, authorizeMutation, claimTask, OUTCOMES, recordResult, sameGateMarks, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
+import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { Storage } from '../core/storage';
 import { presentedToken } from './auth/authorize';
 import { generateSummaries } from '../core/summaries';
-import { editTask, moveTask, rowText } from './edit';
+import { editTask, moveTask } from './edit';
 import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
 import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
@@ -201,6 +201,7 @@ async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response>
   if (!isOwner(c.req)) {
     if (name === 'skip' || name === 'resume' || name === 'suspend') throw new TriageDenied('Owner only');
     if (!ref) throw invalid([{ field: 'ref', message: 'Required' }]);
+    if (name === 'complete' && b.remove) throw new TriageDenied('Owner only');
     const { ref: _r, clearEmojis, ...rest } = b;
     void _r;
     ref = await authorizeMutation(c.life, ref, name, name === 'set' ? { ...rest, ...(clearEmojis !== undefined ? { removeAllEmojis: clearEmojis as boolean } : {}) } as TaskProps : {});
@@ -301,8 +302,13 @@ export const ROUTES: Route[] = [
       noQuery(c);
       const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; expect?: string }>(await readBody(c.req), EDIT_BODY.schema, EDIT_BODY.required);
       noAutonomyMark('text', b.text);
-      if (!isOwner(c.req) && !sameGateMarks(await rowText(c.deps.storage, b.ref), b.text)) throw new ApiError('forbidden', 'Forbidden');
-      return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text, b.expect)));
+      let expect = b.expect;
+      if (!isOwner(c.req)) {
+        const cur = await authorizeEdit(c.life, b.ref, b.text);
+        if (b.expect !== undefined && b.expect !== cur) throw new ApiError('conflict', 'Conflict');
+        expect = cur;
+      }
+      return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text, expect)));
     },
   },
   {

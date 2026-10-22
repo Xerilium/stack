@@ -110,10 +110,10 @@ describe('agent token mutations obey the autonomy gate', () => {
     expect(await text()).toBe(DOC);
     expect((await agent('/tasks/set', { ref: r(L.triage), priority: '🔺' })).status).toBe(200);
     expect((await agent('/tasks/set', { ref: r(L.assist), status: '🚧' })).status).toBe(200);
-    expect((await agent('/tasks/set', { ref: r(L.fullTwo), checkbox: 'Complete' })).status).toBe(200);
+    expect((await agent('/tasks/set', { ref: r(L.fullTwo), checkbox: 'Complete' })).status).toBe(403);
     const t = await text();
     expect(t).toContain('🔺 Triage task');
-    expect(t).toContain('- [x] Full two');
+    expect(t).toContain('- [ ] Full two');
   });
 
   it('remove-completed is owner-only', async () => {
@@ -154,7 +154,7 @@ describe('owner session is unaffected', () => {
 describe('the result log cannot be filled to block agents', () => {
   it('claim and record-result keep working after 5 full log files', async () => {
     const { agent, storage, mint } = await mk();
-    const big = (n: number) => `# Alpha agent log\n\n## old-${n}\n`.padEnd(300 * 1024, 'y');
+    const big = (n: number) => `# Alpha agent log\n\n## 2026-01-0${n}T00:00:00.000Z\n- note: old-${n}\n`.padEnd(300 * 1024, 'y');
     await storage.write('tasks/logs/alpha.md', big(1));
     for (let i = 2; i <= 5; i++) await storage.write(`tasks/logs/alpha.${i}.md`, big(i));
     const t = await mint('tasks:write');
@@ -166,5 +166,80 @@ describe('the result log cannot be filled to block agents', () => {
     expect(all.join('')).toContain('claimed');
     expect(all.join('')).not.toContain('old-1');
     expect(all.join('')).toContain('old-5');
+    // A visible trace of what was dropped, with the actor that rotated.
+    expect(all.join('')).toMatch(/log rotated: dropped \d+ bytes/);
+    expect(all.join('')).toMatch(/actor: token:/);
+  });
+});
+
+// @req FR:ai-triage-assist/autonomy.mutations
+describe('review fixes: edit, set checkbox, remove, set props', () => {
+  const DOC2 = `# Beta
+
+## 🔄 Active
+
+- [ ] Plain 🤖:assist
+- [ ] Assist 🤖:assist
+- [ ] Recurring 🔄 daily 🤖:full
+- [ ] Prio 🔺 🤖:triage
+- [ ] Parent 🤖:full
+  - [ ] 🪄 Child
+  - [ ] Child b
+- [ ] Unset
+- [ ] Held ⛔️ 🤖:full
+- [x] Done 🤖:full
+- [ ] Human 🙋 🤖:full
+- [ ] Kids 🤖:assist
+  - [ ] Kid plain
+  - [ ] Kid rec 🔄 daily
+`;
+  const B = { plain: 4, assist: 5, rec: 6, prio: 7, parent: 8, unset: 11, held: 12, done: 13, human: 14, kid: 16, kidRec: 17 };
+  async function mk2() {
+    const m = await mk();
+    await m.storage.write('tasks/beta.md', DOC2);
+    return { ...m, t: async () => (await m.storage.read('tasks/beta.md')).content };
+  }
+  const b = (n: number) => `beta:${n}`;
+
+  it('edit: token needs assist, an open, non-human, non-held row, and cannot change markers', async () => {
+    const { agent, t } = await mk2();
+    for (const line of [B.unset, B.prio, B.held, B.done, B.human]) {
+      const rr = await agent('/tasks/edit', { ref: b(line), text: 'x' });
+      expect([line, rr.status]).toEqual([line, 403]);
+      expect(rr.text).not.toMatch(/Held|Human|Prio/);
+    }
+    expect((await agent('/tasks/edit', { ref: b(B.kid), text: 'Kid plain 🔺' })).status).toBe(403);
+    expect((await agent('/tasks/edit', { ref: b(B.kidRec), text: 'Kid rec daily' })).status).toBe(403);
+    expect((await agent('/tasks/edit', { ref: b(B.kid), text: 'Kid plain 📅 2026-01-01' })).status).toBe(403);
+    expect(await t()).toBe(DOC2);
+    expect((await agent('/tasks/edit', { ref: b(B.kid), text: 'Kid renamed' })).status).toBe(200);
+    expect(await t()).toContain('Kid renamed');
+  });
+
+  it('set checkbox is owner-only for tokens', async () => {
+    const { agent, owner, t } = await mk2();
+    for (const [line, cb] of [[B.parent, 'Complete'], [B.rec, 'Complete'], [B.done, 'Incomplete'], [B.plain, 'Complete']] as const) {
+      const res = await agent('/tasks/set', { ref: b(line), checkbox: cb });
+      expect(res.status).toBe(403);
+    }
+    expect(await t()).toBe(DOC2);
+    expect((await owner('/tasks/set', { ref: b(B.plain), checkbox: 'Complete' })).status).toBe(200);
+  });
+
+  it('complete remove is owner-only; complete still works', async () => {
+    const { agent, owner, t } = await mk2();
+    expect((await agent('/tasks/complete', { ref: b(B.parent), remove: true })).status).toBe(403);
+    expect(await t()).toBe(DOC2);
+    expect((await agent('/tasks/complete', { ref: b(B.parent) })).status).toBe(200);
+    expect((await owner('/tasks/complete', { ref: b(B.plain), remove: true })).status).toBe(200);
+  });
+
+  it('set priority/effort/impact never overwrites or clears an existing value', async () => {
+    const { agent, t } = await mk2();
+    expect((await agent('/tasks/set', { ref: b(B.prio), priority: '🚨' })).status).toBe(403);
+    expect((await agent('/tasks/set', { ref: b(B.prio), priority: 'None' })).status).toBe(403);
+    expect((await agent('/tasks/set', { ref: b(B.prio), effort: 'None' })).status).toBe(403);
+    expect(await t()).toBe(DOC2);
+    expect((await agent('/tasks/set', { ref: b(B.prio), impact: '⬇️' })).status).toBe(200);
   });
 });

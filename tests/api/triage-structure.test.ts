@@ -3,6 +3,8 @@ import { setup } from '../security/helpers';
 
 const DOC = `# Alpha
 
+## 🔄 Active
+
 - [ ] Auto parent 🤖:full
   - [ ] kid a
 - [ ] Other parent
@@ -11,7 +13,8 @@ const DOC = `# Alpha
 - [ ] Hold ⛔️ a
 - [ ] Park 💤 b
 - [ ] Pin 🅿️ c
-- [ ] Plain typo teh
+- [ ] Edit parent 🤖:assist
+  - [ ] Plain typo teh
 `;
 
 async function boot() {
@@ -43,12 +46,12 @@ describe('owner-only structure', () => {
     expect(r.status).toBe(403);
   });
 
-  it('token edit keeping markers works', async () => {
+  it('token edit keeping markers works on an assist row, never on a human row', async () => {
     const { s, h } = await token();
     const r = await s.call('POST', '/api/tasks/edit', { headers: h, body: { ref: ref('teh'), text: 'Plain typo the' } });
     expect(r.status).toBe(200);
     const r2 = await s.call('POST', '/api/tasks/edit', { headers: h, body: { ref: ref('Decide prod'), text: '🙋 Decide prod deployment' } });
-    expect(r2.status).toBe(200);
+    expect(r2.status).toBe(403);
   });
 
   it('owner session can move and edit', async () => {

@@ -23,7 +23,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/tasks/resume` | POST unpark a task (owner session only) |
 | `/tasks/suspend` | POST suspend for days or hours (owner session only) |
 | `/tasks/set` | POST change task properties |
-| `/tasks/edit` | POST replace the text of a task row (tokens cannot add or remove gate markers: 🪄 🙋 🤖 and hold marks) |
+| `/tasks/edit` | POST replace the text of a task row (tokens need autonomy `assist`+ on an open, non-🙋, non-held row and cannot change any marker) |
 | `/tasks/move` | POST move a task block before or after another task (owner session only; tokens get 403) |
 | `/tasks/remove-completed` | POST delete checked tasks |
 | `/projects` | GET list; POST create a project |
