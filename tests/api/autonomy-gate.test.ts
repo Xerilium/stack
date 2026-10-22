@@ -312,7 +312,7 @@ describe('re-review fixes', () => {
   it('L6: edit fails when the row moved under another parent', async () => {
     const { storage } = await mk3();
     const { editTask } = await import('../../src/api/edit');
-    await expect(editTask(storage, { path: 'tasks/gamma.md', line: 13 }, 'Same x', 'Same', ['Twin A 🤖:assist'])).rejects.toThrow(/moved|parents|changed/i);
-    expect((await editTask(storage, { path: 'tasks/gamma.md', line: 13 }, 'Same x', 'Same', ['Twin B 🤖:assist'])).changed).toBe(true);
+    await expect(editTask(storage, { path: 'tasks/gamma.md', line: 12 }, 'Same x', 'Same', ['Twin A 🤖:assist'])).rejects.toThrow(/moved|parents|changed/i);
+    expect((await editTask(storage, { path: 'tasks/gamma.md', line: 12 }, 'Same x', 'Same', ['Twin B 🤖:assist'])).changed).toBe(true);
   });
 });
