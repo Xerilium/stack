@@ -18,8 +18,8 @@ importers:
         specifier: 22.20.5
         version: 22.20.5
       '@xerilium/catalyst':
-        specifier: file:.xe/config/catalyst-latest.tgz
-        version: file:.xe/config/catalyst-latest.tgz
+        specifier: 0.3.2
+        version: 0.3.2
       eslint:
         specifier: 9.39.5
         version: 9.39.5
@@ -672,9 +672,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@xerilium/catalyst@file:.xe/config/catalyst-latest.tgz':
-    resolution: {integrity: sha512-m3uPSju8yb42AN5aw5uiSPW8NRnSB4hv0anMbNjR6D37lWJANH/ID3LymIBja+1fJzSYxm+Gh3SkpO/jDz5Ylg==, tarball: file:.xe/config/catalyst-latest.tgz}
-    version: 0.3.0-dev
+  '@xerilium/catalyst@0.3.2':
+    resolution: {integrity: sha512-b0AM6SeeYnDJaIsBssKIBdvB0UILmpd9SfT8mKex3km22xEPPYg+Vgrtmw2xuy2eiv6ZSneVemOP5tpoGkrACg==}
     hasBin: true
 
   acorn-jsx@5.3.2:
@@ -2639,7 +2638,7 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.12.2':
     optional: true
 
-  '@xerilium/catalyst@file:.xe/config/catalyst-latest.tgz':
+  '@xerilium/catalyst@0.3.2':
     dependencies:
       '@anthropic-ai/sdk': 0.71.2
       '@google/generative-ai': 0.24.1
