@@ -34,7 +34,7 @@ describe('POST /tasks/edit', () => {
     const r = await call('/tasks/edit', { ref: 'alpha:7', text: 'Child renamed 🟡' });
     expect(r.status).toBe(200);
     expect(r.json.changed).toBe(true);
-    expect((await rows())[2]).toBe('- [ ] Child renamed 🟡');
+    expect((await rows())[1]).toBe('- [ ] Child renamed 🟡');
   });
   it('keeps CRLF endings and done state', async () => {
     const storage = new MemoryStorage();
