@@ -1,0 +1,573 @@
+# @req FR:api/docs.openapi
+openapi: 3.0.3
+info:
+  title: Stack API
+  version: 0.0.1
+  description: >
+    REST over the Stack core. JSON only, compact responses. Use `fields` to cut tokens.
+    Tasks are addressed by `ref` = `project:line`. Authentication is supplied by the host
+    (the handler denies every request when no authorize hook is configured).
+servers:
+  - url: /api
+security:
+  - host: []
+paths:
+  /next:
+    get:
+      summary: Top-ranked task
+      operationId: next
+      parameters:
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: "`task` is null when nothing is active."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: '#/components/schemas/NextTask', nullable: true }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks:
+    get:
+      summary: List tasks
+      operationId: listTasks
+      parameters:
+        - { name: project, in: query, schema: { type: string } }
+        - { name: section, in: query, schema: { type: string }, description: Section heading text, emoji ignored }
+        - { name: state, in: query, schema: { type: string, enum: [open, done, all], default: open } }
+        - { name: q, in: query, schema: { type: string }, description: Case-insensitive text match }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: Page of tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Task' } }
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      summary: Add a task
+      operationId: addTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [project, text]
+              properties:
+                project: { type: string, description: File base name, title, or alias }
+                text: { type: string, maxLength: 2000 }
+                section: { type: string, description: Default Active }
+                parent: { $ref: '#/components/schemas/Ref' }
+      responses:
+        '201': { $ref: '#/components/responses/Mutation' }
+        default: { $ref: '#/components/responses/Error' }
+  /capture:
+    post:
+      summary: Add a task from a natural-language or speech phrase
+      operationId: captureTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 2000, description: 'Phrase such as "call dentist tomorrow 30m #alpha"' }
+                project: { type: string, description: Used when the text has no #project or @project hint }
+                section: { type: string, description: Default Active }
+                dryRun: { type: boolean, description: Parse and render without writing (200) }
+      responses:
+        '200':
+          description: Dry run result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaptureResult' }
+        '201':
+          description: Task added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaptureResult' }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks/{ref}:
+    get:
+      summary: Get one task
+      operationId: getTask
+      parameters:
+        - { name: ref, in: path, required: true, schema: { $ref: '#/components/schemas/Ref' } }
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: Task
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks/start:
+    post:
+      summary: Start a task (ref omitted means the next task)
+      operationId: startTask
+      requestBody: { $ref: '#/components/requestBodies/OptionalRef' }
+      responses:
+        '200': { $ref: '#/components/responses/Mutation' }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks/complete:
+    post:
+      summary: Complete a task
+      operationId: completeTask
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ref: { $ref: '#/components/schemas/Ref' }
+                summary: { type: string, maxLength: 10000 }
+                remove: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/Mutation' }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks/skip:
+    post:
+      summary: Skip (park) a task
+      operationId: skipTask
+      requestBody: { $ref: '#/components/requestBodies/OptionalRef' }
+      responses:
+        '200': { $ref: '#/components/responses/Mutation' }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks/resume:
+    post:
+      summary: Resume a parked task
+      operationId: resumeTask
+      requestBody: { $ref: '#/components/requestBodies/OptionalRef' }
+      responses:
+        '200': { $ref: '#/components/responses/Mutation' }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks/suspend:
+    post:
+      summary: Suspend a task for days or hours
+      operationId: suspendTask
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ref: { $ref: '#/components/schemas/Ref' }
+                days: { type: integer, minimum: 1, maximum: 365 }
+                hours: { type: integer, minimum: 1, maximum: 8760 }
+      responses:
+        '200': { $ref: '#/components/responses/Mutation' }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks/set:
+    post:
+      summary: Set task properties
+      operationId: setTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ref]
+              properties:
+                ref: { $ref: '#/components/schemas/Ref' }
+                status: { type: string, enum: ["🚧", "⏸️", "👀", "⏳", "⛔️", "None"] }
+                priority: { type: string, enum: ["🚨", "‼️", "🔺", "🔻", "None"] }
+                effort: { type: string, enum: ["🟢", "🟡", "🟠", "🔴", "⚫️", "None"] }
+                impact: { type: string, enum: ["⬆️", "↔️", "⬇️", "None"] }
+                checkbox: { type: string, enum: [Complete, Incomplete] }
+                suspend: { type: string, description: "`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears" }
+                clearEmojis: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/Mutation' }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks/remove-completed:
+    post:
+      summary: Remove completed tasks
+      operationId: removeCompleted
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                project: { type: string }
+      responses:
+        '200':
+          description: Removed count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  removed: { type: integer }
+                  files: { type: array, items: { type: string } }
+        default: { $ref: '#/components/responses/Error' }
+  /projects:
+    get:
+      summary: List projects
+      operationId: listProjects
+      parameters:
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: Projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Project' } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      summary: Add a project
+      operationId: addProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                repositoryUrl: { type: string, format: uri }
+                aliases: { type: array, items: { type: string } }
+                priority: { type: number }
+                capacity: { type: object, additionalProperties: { type: number } }
+                weeklyCapacity: { type: number }
+                fileName: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: { type: string }
+                  project: { type: string }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{name}:
+    get:
+      summary: Get one project
+      operationId: getProject
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string }, description: File base name }
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: Project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        default: { $ref: '#/components/responses/Error' }
+  /summaries:
+    get:
+      summary: Generated summaries
+      operationId: getSummaries
+      parameters:
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: Summary documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  readme: { type: string }
+                  stack: { type: string }
+                  projects: { type: string }
+                  myDay: { type: string, nullable: true }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    host:
+      type: http
+      scheme: bearer
+      description: Supplied by the host through the authorize hook (auth-security slice).
+  parameters:
+    fields:
+      name: fields
+      in: query
+      description: Comma-separated fields to return. Unknown names are rejected.
+      schema: { type: string }
+  requestBodies:
+    OptionalRef:
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            properties:
+              ref: { $ref: '#/components/schemas/Ref' }
+  responses:
+    Mutation:
+      description: Result of a change
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              changed: { type: boolean }
+              ref: { $ref: '#/components/schemas/Ref' }
+              before: { type: string }
+              after: { type: string }
+              message: { type: string }
+    Error:
+      description: "Error. Codes: bad_request 400, unauthorized 401, forbidden 403, not_found 404, method_not_allowed 405, conflict 409, payload_too_large 413, unsupported_media_type 415, invalid 422, internal 500."
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    CaptureResult:
+      type: object
+      properties:
+        changed: { type: boolean }
+        ref: { $ref: '#/components/schemas/Ref' }
+        after: { type: string }
+        spec:
+          type: object
+          properties:
+            title: { type: string }
+            due: { type: string, format: date }
+            effort: { type: object, properties: { minutes: { type: integer }, emoji: { type: string } } }
+            project: { type: string }
+            recurrence: { type: object }
+    Ref:
+      type: string
+      pattern: '^[^/\\:.][^/\\:]*:\d+$'
+      example: alpha:12
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [bad_request, unauthorized, forbidden, not_found, method_not_allowed, conflict, payload_too_large, unsupported_media_type, invalid, internal]
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+    NextTask:
+      type: object
+      properties:
+        ref: { $ref: '#/components/schemas/Ref' }
+        text: { type: string }
+        project: { type: string }
+        score: { type: number }
+    Task:
+      type: object
+      description: Default fields are ref, text, project, section, done. depth and notes only via fields.
+      properties:
+        ref: { $ref: '#/components/schemas/Ref' }
+        text: { type: string }
+        project: { type: string }
+        section: { type: string }
+        done: { type: boolean }
+        depth: { type: integer }
+        notes: { type: array, items: { type: string } }
+    Project:
+      type: object
+      description: Default fields are name, title, open, done.
+      properties:
+        name: { type: string }
+        title: { type: string }
+        open: { type: integer }
+        done: { type: integer }
+        aliases: { type: array, items: { type: string } }
+        metadata: { type: object, additionalProperties: { type: string } }
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              heading: { type: string }
+              open: { type: integer }
+              done: { type: integer }
+, description: README is reserved; an existing file returns 409 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: { type: string }
+                  project: { type: string }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{name}:
+    get:
+      summary: Get one project
+      operationId: getProject
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string }, description: File base name }
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: Project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        default: { $ref: '#/components/responses/Error' }
+  /summaries:
+    get:
+      summary: Generated summaries
+      operationId: getSummaries
+      parameters:
+        - $ref: '#/components/parameters/fields'
+      responses:
+        '200':
+          description: Summary documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  readme: { type: string }
+                  stack: { type: string }
+                  projects: { type: string }
+                  myDay: { type: string, nullable: true }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    host:
+      type: http
+      scheme: bearer
+      description: Supplied by the host through the authorize hook (auth-security slice).
+  parameters:
+    fields:
+      name: fields
+      in: query
+      description: Comma-separated fields to return. Unknown names are rejected.
+      schema: { type: string }
+  requestBodies:
+    OptionalRef:
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            properties:
+              ref: { $ref: '#/components/schemas/Ref' }
+  responses:
+    Mutation:
+      description: Result of a change
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              changed: { type: boolean }
+              ref: { $ref: '#/components/schemas/Ref' }
+              before: { type: string }
+              after: { type: string }
+              message: { type: string }
+    Error:
+      description: "Error. Codes: bad_request 400, unauthorized 401, forbidden 403, not_found 404, method_not_allowed 405, conflict 409, payload_too_large 413, unsupported_media_type 415, invalid 422, internal 500."
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    CaptureResult:
+      type: object
+      properties:
+        changed: { type: boolean }
+        ref: { $ref: '#/components/schemas/Ref' }
+        after: { type: string }
+        spec:
+          type: object
+          properties:
+            title: { type: string }
+            due: { type: string, format: date }
+            effort: { type: object, properties: { minutes: { type: integer }, emoji: { type: string } } }
+            project: { type: string }
+            recurrence: { type: object }
+    Ref:
+      type: string
+      pattern: '^[^/\\:.][^/\\:]*:\d+$'
+      example: alpha:12
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [bad_request, unauthorized, forbidden, not_found, method_not_allowed, conflict, payload_too_large, unsupported_media_type, invalid, internal]
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+    NextTask:
+      type: object
+      properties:
+        ref: { $ref: '#/components/schemas/Ref' }
+        text: { type: string }
+        project: { type: string }
+        score: { type: number }
+    Task:
+      type: object
+      description: Default fields are ref, text, project, section, done. depth and notes only via fields.
+      properties:
+        ref: { $ref: '#/components/schemas/Ref' }
+        text: { type: string }
+        project: { type: string }
+        section: { type: string }
+        done: { type: boolean }
+        depth: { type: integer }
+        notes: { type: array, items: { type: string } }
+    Project:
+      type: object
+      description: Default fields are name, title, open, done.
+      properties:
+        name: { type: string }
+        title: { type: string }
+        open: { type: integer }
+        done: { type: integer }
+        aliases: { type: array, items: { type: string } }
+        metadata: { type: object, additionalProperties: { type: string } }
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              heading: { type: string }
+              open: { type: integer }
+              done: { type: integer }

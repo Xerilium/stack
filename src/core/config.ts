@@ -15,12 +15,19 @@ export interface TaskScoring {
   effortHours: Record<string, number>;
 }
 
+export const FORMAT_IDS = ['emoji', 'clean'] as const;
+export type FormatId = (typeof FORMAT_IDS)[number];
+
 /** @req FR:config/$stack-config */
 export interface StackConfig {
   timezone: string;
   startOfDay: string;
   timeBlocks: TimeBlock[];
   taskScoring: TaskScoring;
+  /** Primary task file format. @req FR:formatter-clean/select.config */
+  format: FormatId;
+  /** Extra formats written alongside the primary. @req FR:formatter-clean/select.also */
+  alsoWrite: FormatId[];
 }
 
 const ALL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -29,6 +36,8 @@ const block = (name: string, days: string[], startTime: string, endTime: string,
   ({ name, ...(label ? { label } : {}), days, startTime, endTime, emoji });
 
 const DEFAULTS_SOURCE: StackConfig = {
+  format: 'emoji',
+  alsoWrite: [],
   timezone: 'America/Los_Angeles',
   startOfDay: '08:00',
   timeBlocks: [
@@ -69,6 +78,10 @@ function time(v: unknown, path: string): string {
   const s = str(v, path);
   if (!TIME.test(s)) throw new ConfigError(`${path}: expected HH:mm`);
   return s;
+}
+function formatId(v: unknown, path: string): FormatId {
+  if (!FORMAT_IDS.includes(v as FormatId)) throw new ConfigError(`${path}: expected one of ${FORMAT_IDS.join(', ')}`);
+  return v as FormatId;
 }
 function numMap(v: unknown, path: string): Record<string, number> {
   if (!isObj(v)) throw new ConfigError(`${path}: expected object`);
@@ -118,6 +131,14 @@ export function parseConfig(input?: unknown): StackConfig {
     if (!Array.isArray(input.timeBlocks)) throw new ConfigError('timeBlocks: expected array');
     cfg.timeBlocks = input.timeBlocks.map((b, i) => parseBlock(b, `timeBlocks[${i}]`));
   }
+  if (input.format !== undefined) cfg.format = formatId(input.format, 'format');
+  if (input.alsoWrite !== undefined) {
+    if (!Array.isArray(input.alsoWrite)) throw new ConfigError('alsoWrite: expected array');
+    const extra = input.alsoWrite.map((f, i) => formatId(f, `alsoWrite[${i}]`));
+    if (extra.includes(cfg.format)) throw new ConfigError('alsoWrite: must not include the primary format');
+    if (new Set(extra).size !== extra.length) throw new ConfigError('alsoWrite: duplicate format');
+    cfg.alsoWrite = extra;
+  } else if (cfg.alsoWrite.includes(cfg.format)) cfg.alsoWrite = [];
   if (input.taskScoring !== undefined) {
     if (!isObj(input.taskScoring)) throw new ConfigError('taskScoring: expected object');
     const ts = input.taskScoring;

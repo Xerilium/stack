@@ -12,8 +12,9 @@ import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
   removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, TaskProps,
 } from '../core/lifecycle';
-import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageError, writeAll } from '../core/storage';
+import { captureTask, CaptureError } from '../core/quick-capture';
 import { createGhClient, refreshQueryTasks } from '../core/query-tasks';
+import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageError, writeAll } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
@@ -28,6 +29,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   init: { flags: [], usage: 'init', help: 'create repo, tasks/, and config' },
   'add-project': { flags: ['description', 'repo', 'alias', 'priority', 'capacity', 'weekly-capacity', 'file', 'force'], usage: 'add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force]', help: 'create a project file' },
   add: { flags: ['section', 'parent'], usage: 'add <project> <text...> [--section name] [--parent ref]', help: 'add a task' },
+  capture: { flags: ['project', 'section', 'dry-run'], usage: 'capture <text...> [--project name] [--section name] [--dry-run]', help: 'add a task from a phrase (e.g. "call dentist tomorrow 30m #alpha")' },
   next: { flags: [], usage: 'next', help: 'print the top task' },
   start: { flags: ['expect'], usage: 'start [ref] [--expect t]', help: 'mark in progress' },
   complete: { flags: ['summary', 'remove', 'expect'], usage: 'complete [ref] [--summary t] [--remove] [--expect t]', help: 'check off (rolls recurring rows)' },
@@ -226,6 +228,18 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
       return describe('add', await addTask(ctx, {
         project: p.positionals[0], text: p.positionals.slice(1).join(' '), section: flag(f, 'section'), parent: parent ? parseRef(parent) : undefined,
       }));
+    }
+    case 'capture': {
+      const text = p.positionals.join(' ').trim();
+      if (!text) throw new UsageError('capture needs <text...>');
+      try {
+        const { result, spec } = await captureTask(ctx, text, { project: flag(f, 'project'), section: flag(f, 'section'), dryRun: f['dry-run'] === true });
+        const o = describe('add', result);
+        return result.changed ? { ...o, json: { ...o.json, spec } } : { json: { ok: true, changed: false, after: result.after, spec }, text: `would add ${taskText(result.after)}` };
+      } catch (e) {
+        if (e instanceof CaptureError) throw new UsageError(e.message);
+        throw e;
+      }
     }
     case 'next': {
       extra(0);

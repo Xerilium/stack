@@ -279,7 +279,7 @@ describe('completeTask', () => {
     const r = await completeTask(ctx(s), { path: 'tasks/a.md', line: 4 });
     expect(r).toMatchObject({ changed: true, rolled: true });
     expect(await text(s, 'tasks/a.md')).toBe(
-      doc('- [ ] 📅 Nov 23, 2026: 🔄 Monthly: Pay bills 🟡\n  - [ ] Mortgage\n  - [ ] Card\n- [ ] other\n'));
+      doc('- [ ] 📅 Nov 23, 2026: 🔄 Monthly: Pay bills 🟡 <!--nominal:2026-11-22-->\n  - [ ] Mortgage\n  - [ ] Card\n- [ ] other\n'));
   });
 
   // @req FR:task-lifecycle/complete.recurring
@@ -287,7 +287,7 @@ describe('completeTask', () => {
     const s = await mem({ 'tasks/a.md': doc('- [ ] 📅 Oct 22, 2026: 🔄 Monthly: Pay bills\n  - [x] a\n- [ ] other\n') });
     const r = await completeTask(ctx(s), { path: 'tasks/a.md', line: 4 }, { remove: true });
     expect(r).toMatchObject({ changed: true, rolled: true });
-    expect(await text(s, 'tasks/a.md')).toBe(doc('- [ ] 📅 Nov 23, 2026: 🔄 Monthly: Pay bills\n  - [ ] a\n- [ ] other\n'));
+    expect(await text(s, 'tasks/a.md')).toBe(doc('- [ ] 📅 Nov 23, 2026: 🔄 Monthly: Pay bills <!--nominal:2026-11-22-->\n  - [ ] a\n- [ ] other\n'));
   });
 
   // @req FR:task-lifecycle/complete.recurring
