@@ -44,7 +44,7 @@ const DOCS: Record<string, RouteDoc> = {
   'tasks.get': { operationId: 'getTask', summary: 'Get one task', responses: ok('Task', ref('Task')) },
   'tasks.add': {
     operationId: 'addTask', summary: 'Add a task',
-    desc: { project: 'File base name, title, or alias', section: 'Default Active' },
+    desc: { project: 'File base name, title, or alias', section: 'Default Active', text: 'One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy)' },
     responses: mutation('201'),
   },
   capture: {
@@ -70,13 +70,36 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears' },
     responses: mutation('200'),
   },
+  'tasks.triage': {
+    operationId: 'triageTask', summary: 'Apply a triage suggestion (needs autonomy triage or higher; 403 otherwise)',
+    desc: {
+      agent: 'One-line 🪄 subtask an agent can do', human: 'One-line 🙋 subtask needing a person',
+      priority: 'Only fills a missing priority',
+    },
+    responses: ok('Applied', {
+      type: 'object',
+      properties: { changed: { type: 'boolean' }, ref: { type: 'string' }, applied: { type: 'array', items: { type: 'string' } }, added: { type: 'array', items: { type: 'string' } } },
+    }),
+  },
+  'tasks.claim': {
+    operationId: 'claimTask', summary: 'Claim a task (needs autonomy assist or higher; never a 🙋 row)',
+    responses: ok('Claimed', { type: 'object', properties: { changed: { type: 'boolean' }, ref: { type: 'string' } } }),
+  },
+  'tasks.result': {
+    operationId: 'recordResult', summary: 'Log an agent result in tasks/logs; completes only within autonomy, else defers to a 🙋 subtask',
+    desc: { summary: 'One line; secrets are redacted', complete: 'Request completion; honored only within the task autonomy' },
+    responses: ok('Logged', {
+      type: 'object',
+      properties: { logged: { type: 'boolean' }, completed: { type: 'boolean' }, deferred: { type: 'boolean' }, ref: { type: 'string' }, human: { type: 'string' } },
+    }),
+  },
   'tasks.edit': {
-    operationId: 'editTask', summary: 'Replace the text of a task row',
+    operationId: 'editTask', summary: 'Replace the text of a task row. Tokens may not add or remove gate markers (🪄 🙋 🤖 ⛔ ⏸ 👀 ⏳ 💤 🅿): 403',
     desc: { text: 'Row text after the checkbox, single line', expect: 'Expected current row text at ref; 409 conflict when the row differs (stale line number)' },
     responses: mutation('200'),
   },
   'tasks.move': {
-    operationId: 'moveTask', summary: 'Move a task block before or after another task in the same project',
+    operationId: 'moveTask', summary: 'Move a task block before or after another task in the same project. Owner session only: 403 for tokens',
     desc: { expect: 'Expected current row text at ref; 409 conflict on mismatch', expectTarget: 'Expected current row text at target; 409 conflict on mismatch' },
     responses: mutation('200'),
   },

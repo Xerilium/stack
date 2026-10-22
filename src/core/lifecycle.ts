@@ -15,7 +15,8 @@ export class LifecycleError extends Error {}
  * `text` is the task text after the checkbox; when set, operations fail with `ConflictError` if the row changed.
  * @req FR:task-lifecycle/doc.load @req FR:task-lifecycle/doc.guard
  */
-export interface TaskRef { path: string; line: number; text?: string }
+/** `text` pins the row; `chain` (optional) pins its ancestors' texts, nearest last, so identical rows under other parents cannot be hit. */
+export interface TaskRef { path: string; line: number; text?: string; chain?: string[] }
 
 export interface LifecycleContext {
   storage: Storage;
@@ -41,11 +42,11 @@ export interface NextTask { ref: TaskRef; text: string; project: string; score: 
 
 // ------------------------------------------------------------------ constants
 
-const STATUS = ['🚧', '⏸️', '👀', '⏳', '⛔️'] as const;
-const PRIORITY = ['🚨', '‼️', '🔺', '🔻'] as const;
-const EFFORT = ['🟢', '🟡', '🟠', '🔴', '⚫️'] as const;
-const IMPACT = ['⬆️', '↔️', '⬇️'] as const;
-const SPECIAL = ['💤', '☀️', '🅿️', '🏷️'];
+export const STATUS = ['🚧', '⏸️', '👀', '⏳', '⛔️'] as const;
+export const PRIORITY = ['🚨', '‼️', '🔺', '🔻'] as const;
+export const EFFORT = ['🟢', '🟡', '🟠', '🔴', '⚫️'] as const;
+export const IMPACT = ['⬆️', '↔️', '⬇️'] as const;
+export const SPECIAL = ['💤', '☀️', '🅿️', '🏷️'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const SUSPEND_MARK = /💤\s+(?:[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}|[A-Za-z]{3}\s+\d{1,2}|\d{1,2}:\d{2}):\s*/gi;
@@ -320,6 +321,17 @@ async function target(ctx: LifecycleContext, ref?: TaskRef): Promise<Target | nu
   return { doc, ref, row: rowAt(doc, ref) };
 }
 
+/** Texts of the rows above `line` that contain it (by indent), outermost first. */
+function ancestorTexts(lines: string[], line: number): string[] {
+  const out: string[] = [];
+  let indent = /^(\s*)/.exec(stripBom(bare(lines[line] ?? '')))![1].length;
+  for (let i = line - 1; i >= 0 && indent > 0; i--) {
+    const m = ROW.exec(stripBom(bare(lines[i])));
+    if (m && m[1].length - 2 < indent) { out.unshift(m[3]); indent = m[1].length - 2; }
+  }
+  return out;
+}
+
 /** @req FR:task-lifecycle/doc.guard */
 function rowAt(doc: Doc, ref: TaskRef): RegExpExecArray {
   const raw = doc.project.lines[ref.line];
@@ -327,6 +339,12 @@ function rowAt(doc: Doc, ref: TaskRef): RegExpExecArray {
   if (!m) throw new LifecycleError(`Not a task line: ${ref.path}:${ref.line}`);
   if (ref.text !== undefined && collapse(ref.text) !== collapse(m[3])) {
     throw new ConflictError(`Task changed since the ref was read: ${ref.path}:${ref.line} no longer reads "${brief(ref.text)}"`);
+  }
+  if (ref.chain !== undefined) {
+    const now = ancestorTexts(doc.project.lines, ref.line);
+    if (now.length !== ref.chain.length || now.some((t, i) => collapse(t) !== collapse(ref.chain![i]))) {
+      throw new ConflictError(`Task moved since the ref was read: ${ref.path}:${ref.line} has different parents`);
+    }
   }
   return m;
 }

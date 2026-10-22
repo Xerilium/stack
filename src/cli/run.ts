@@ -1,7 +1,7 @@
 /**
  * Command dispatch for the `stack` CLI.
  * @req FR:cli/run.git @req FR:cli/run.nocommit @req FR:cli/run.remote @req FR:cli/run.now @req FR:cli/ref.default
- * @req FR:cli/cmd.add-project @req FR:cli/cmd.add @req FR:cli/cmd.next @req FR:cli/cmd.start @req FR:cli/cmd.complete @req FR:cli/cmd.skip
+ * @req FR:ai-triage-assist/cli.triage @req FR:cli/cmd.add-project @req FR:cli/cmd.add @req FR:cli/cmd.next @req FR:cli/cmd.start @req FR:cli/cmd.complete @req FR:cli/cmd.skip
  * @req FR:cli/cmd.resume @req FR:cli/cmd.suspend @req FR:cli/cmd.set @req FR:cli/cmd.remove-completed @req FR:cli/cmd.update @req FR:cli/ref.expect @req FR:cli/arch.thin @req FR:cli/arch.storage
  */
 import { execFileSync } from 'child_process';
@@ -13,6 +13,8 @@ import {
   removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, TaskProps,
 } from '../core/lifecycle';
 import { captureTask, CaptureError } from '../core/quick-capture';
+import { AUTONOMY_LEVELS, type Autonomy } from '../core/model';
+import { applyTriage, effectiveAutonomy, setAutonomy } from '../core/triage';
 import { createGhClient, refreshQueryTasks } from '../core/query-tasks';
 import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageError, writeAll } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
@@ -38,6 +40,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   resume: { flags: ['expect'], usage: 'resume [ref] [--expect t]', help: 'unpark the first parked task' },
   suspend: { flags: ['days', 'hours', 'expect'], usage: 'suspend [ref] [--days n | --hours n] [--expect t]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
+  triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
   update: { flags: ['sweep', 'queries'], usage: 'update [--sweep] [--queries]', help: 'regenerate README, stack, projects, my-day' },
 };
@@ -263,6 +266,19 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
     case 'set': {
       if (p.positionals.length !== 1) throw new UsageError('set needs exactly one <ref>');
       return describe(cmd, await setProperties(ctx, { ...parseRef(p.positionals[0]), text: flag(f, 'expect') }, props(f)));
+    }
+    case 'triage': {
+      if (p.positionals.length !== 1) throw new UsageError('triage needs exactly one <ref>');
+      const r0 = parseRef(p.positionals[0]);
+      const level = flag(f, 'autonomy');
+      if (level !== undefined && !(AUTONOMY_LEVELS as readonly string[]).includes(level)) throw new UsageError(`--autonomy must be one of: ${AUTONOMY_LEVELS.join(' ')}`);
+      const s = { agent: flag(f, 'agent'), human: flag(f, 'human'), priority: flag(f, 'priority'), effort: flag(f, 'effort'), impact: flag(f, 'impact') };
+      const edits = Object.fromEntries(Object.entries(s).filter(([, v]) => v !== undefined));
+      let changed = false;
+      if (level !== undefined) changed = (await setAutonomy(ctx, r0, level as Autonomy)).changed;
+      if (Object.keys(edits).length) changed = (await applyTriage(ctx, r0, edits, { actor: 'cli', owner: true })).changed || changed;
+      const now = effectiveAutonomy((await storage.read(r0.path)).content, r0.line);
+      return { json: { ok: true, changed, ref: { path: r0.path, line: r0.line + 1 }, autonomy: now }, text: `${formatRef(r0)} autonomy ${now}${changed ? ' (updated)' : ''}` };
     }
     case 'remove-completed': {
       extra(0);

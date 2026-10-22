@@ -24,6 +24,7 @@ export interface ToolDef {
 const str = (description: string, extra: Prop = {}): Prop => ({ type: 'string', description, ...extra });
 const REF = str('project:line');
 const enumOf = (v: readonly string[]): Prop => ({ type: 'string', enum: [...v] });
+const some = (v: readonly string[]): string[] => v.filter((x) => x !== 'None');
 
 /** Only `project:line` refs from the API are ever echoed. */
 const REF_OUT = /^[A-Za-z0-9._-]{1,200}:\d{1,9}$/;
@@ -35,7 +36,7 @@ const done = (verb: string) => (body: unknown): string => {
 
 const obj = (body: unknown): Record<string, unknown> => (typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {});
 
-/** @req FR:mcp-server/tools.list @req FR:mcp-server/tools.mutate @req FR:mcp-server/tools.next @req FR:mcp-server/tools.list-tool */
+/** @req FR:mcp-server/tools.list @req FR:mcp-server/tools.mutate @req FR:mcp-server/tools.next @req FR:mcp-server/tools.list-tool @req FR:ai-triage-assist/mcp.tools @req FR:ai-triage-assist/mcp.actor */
 export const TOOLS: ToolDef[] = [
   { name: 'next', route: 'next', method: 'GET', path: '/next', props: {}, query: { fields: 'ref,text,project,score' },
     description: 'Top-scored open task.',
@@ -76,6 +77,26 @@ export const TOOLS: ToolDef[] = [
       ref: REF, status: enumOf(ENUMS.status), priority: enumOf(ENUMS.priority), effort: enumOf(ENUMS.effort), impact: enumOf(ENUMS.impact),
       checkbox: enumOf(ENUMS.checkbox), suspend: str('Suspend-until text'), clearEmojis: { type: 'boolean' },
     }, reply: done('updated') },
+  { name: 'triage', route: 'tasks.triage', method: 'POST', path: '/tasks/triage', required: ['ref'],
+    description: 'Suggest priority/effort/impact and add a 🪄 or 🙋 subtask.',
+    props: {
+      ref: REF, agent: str('One-line 🪄 subtask an agent can do'), human: str('One-line 🙋 subtask needing a person'),
+      priority: enumOf(some(ENUMS.priority)), effort: enumOf(some(ENUMS.effort)), impact: enumOf(some(ENUMS.impact)),
+    }, reply: done('triaged') },
+  { name: 'claim', route: 'tasks.claim', method: 'POST', path: '/tasks/claim', required: ['ref'],
+    description: 'Claim a task you may work (autonomy assist or full).', props: { ref: REF }, reply: done('claimed') },
+  { name: 'record-result', route: 'tasks.result', method: 'POST', path: '/tasks/result', required: ['ref', 'outcome', 'summary'],
+    description: 'Log what you did; completes only within autonomy, else adds a 🙋.',
+    props: {
+      ref: REF, outcome: enumOf(['done', 'partial', 'blocked', 'needs-human']), summary: str('One line, no secrets'),
+      complete: { type: 'boolean' }, human: str('One-line 🙋 subtask if a person is needed'),
+    },
+    reply: (b) => {
+      const o = obj(b);
+      if (typeof o.ref !== 'string' || !REF_OUT.test(o.ref)) return 'logged';
+      if (o.completed === true) return `logged ${o.ref} completed`;
+      return o.deferred === true && typeof o.human === 'string' && REF_OUT.test(o.human) ? `logged ${o.ref} deferred ${o.human}` : `logged ${o.ref}`;
+    } },
 ];
 
 export const inputSchema = (t: ToolDef) => ({
