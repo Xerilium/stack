@@ -19,13 +19,18 @@ Tools: `next`, `list`, `add`, `complete`, `start`, `skip`, `resume`, `suspend`, 
 ## HTTP (Azure Functions)
 
 ```ts
-import { createApiHandler, createAuth, registerAzure } from './api';
-import { createMcpHandler } from './mcp';
+import { createApiHandler, createAuth, registerAzure } from "./api";
+import { createMcpHandler } from "./mcp";
 
 const auth = createAuth({ owners, tokens });
 const api = auth.wrap(createApiHandler({ storage, authorize: auth.authorize }));
-registerAzure(app, createMcpHandler({ api, tokens }), 'mcp'); // route: /mcp
+const mcp = createMcpHandler({ api, tokens, basePath: "/api/mcp" });
+// registerAzure registers one catch-all route (`{*route}`); the 3rd arg is only the function name.
+// Register once and dispatch, or a second catch-all collides with the API's.
+registerAzure(app, (req) => new URL(req.url).pathname.replace(/\/+$/, "") === "/api/mcp" ? mcp(req) : api(req));
 ```
+
+Under Static Web Apps the request path keeps the `/api` prefix, so the endpoint is `/api/mcp` and `basePath` must be `"/api/mcp"` (the default is `/mcp`). The API handler defaults to `/api`.
 
 POST only, stateless JSON responses. Send `Authorization: Bearer stk_...` (or `X-Stack-Token`). Browser sessions are not accepted.
 

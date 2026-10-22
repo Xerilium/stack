@@ -1,11 +1,13 @@
 name: Deploy
 # Deploys the web app and managed Functions to Azure Static Web Apps on push to main.
 # The owner must add the repo secret AZURE_STATIC_WEB_APPS_API_TOKEN first (docs/runbook.md).
-# Without it the job builds nothing and exits green.
+# Without it, or without web/package.json, the job builds nothing and exits green.
 on:
   push:
     branches: [main]
   workflow_dispatch:
+permissions:
+  contents: read
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -15,16 +17,16 @@ jobs:
     env:
       SWA_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: gate
-        run: echo "has_token=${{ env.SWA_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -n "$SWA_TOKEN" ] && [ -f web/package.json ]; then echo "has_token=true" >> "$GITHUB_OUTPUT"; else echo "has_token=false" >> "$GITHUB_OUTPUT"; fi
       - name: Skip notice
         if: steps.gate.outputs.has_token != 'true'
-        run: echo "AZURE_STATIC_WEB_APPS_API_TOKEN is not set; skipping deploy."
-      - uses: actions/checkout@v4
+        run: echo "Skipping deploy - AZURE_STATIC_WEB_APPS_API_TOKEN is not set or web/package.json is missing."
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         if: steps.gate.outputs.has_token == 'true'
-      - uses: pnpm/action-setup@v4
-        if: steps.gate.outputs.has_token == 'true'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.gate.outputs.has_token == 'true'
         with:
           node-version: 22
@@ -43,8 +45,8 @@ jobs:
           cp package.json pnpm-lock.yaml api/
           [ -f api/host.json ] || echo '{"version":"2.0"}' > api/host.json
           (cd api && pnpm install --prod --frozen-lockfile --ignore-workspace)
-          [ -f web/dist/staticwebapp.config.json ] || cp staticwebapp.config.json web/dist/ 2>/dev/null || true
-      - uses: Azure/static-web-apps-deploy@v1
+          [ -f web/dist/staticwebapp.config.json ] || cp staticwebapp.config.json web/dist/
+      - uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
         if: steps.gate.outputs.has_token == 'true'
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}

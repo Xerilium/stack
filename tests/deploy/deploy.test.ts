@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
+import { routeScope } from '../../src/api/auth';
 import { TOOLS } from '../../src/mcp/tools';
 
 const root = resolve(__dirname, '../..');
@@ -24,7 +25,9 @@ describe('bicep', () => {
     expect(bicep).toMatch(/Microsoft\.Web\/staticSites@/);
     expect(bicep).toMatch(/name:\s*'Free'/);
     expect(bicep).not.toMatch(/KeyVault/i);
-    expect((bicep.match(/^resource /gm) ?? []).length).toBe(2); // site + appsettings
+    const resources = [...bicep.matchAll(/^resource \w+ '([^']+)'/gm)].map((m) => m[1].split('@')[0]);
+    expect(resources).toHaveLength(2); // site + appsettings
+    expect(resources.every((r) => r.startsWith('Microsoft.Web/staticSites'))).toBe(true);
   });
   it('marks secrets @secure()', () => {
     for (const p of ['owners', 'tokenPepper', 'repoToken']) {
@@ -75,7 +78,17 @@ describe('workflows', () => {
     expect(d.on.push.branches).toEqual(['main']);
     expect(text).toContain('Azure/static-web-apps-deploy');
     expect(text).toContain('secrets.AZURE_STATIC_WEB_APPS_API_TOKEN');
-    expect(text).toMatch(/if:.*AZURE_STATIC_WEB_APPS_API_TOKEN|has_token/);
+    const steps = d.jobs.deploy.steps as Array<{ id?: string; run?: string; if?: string; uses?: string }>;
+    expect(steps.find((s) => s.id === "gate")?.run).toMatch(/SWA_TOKEN.*web\/package\.json/);
+    const deploy = steps.find((s) => s.uses?.startsWith("Azure/static-web-apps-deploy"));
+    expect(deploy?.if).toBe("steps.gate.outputs.has_token == 'true'");
+    expect(text).not.toContain("|| true");
+  });
+  it("least-privilege permissions and SHA-pinned actions", () => {
+    for (const [f, d] of docs) {
+      expect(d.permissions).toEqual({ contents: "read" });
+      for (const m of read(`.github/workflows/${f}`).matchAll(/uses:\s*(\S+)/g)) expect(m[1]).toMatch(/@[0-9a-f]{40}$/);
+    }
   });
   it('e2e runs Playwright on pull requests and guards on web/', () => {
     const text = read('.github/workflows/e2e.yml');
@@ -112,9 +125,15 @@ describe('docs', () => {
   // @req FR:deploy-docs/docs.mcp
   it('documents every MCP tool with its scope', () => {
     const doc = read('docs/mcp.md');
-    for (const t of TOOLS) expect(doc).toContain(`\`${t.name}\``);
-    expect(doc).toContain('tasks:read');
-    expect(doc).toContain('tasks:write');
+    for (const t of TOOLS) {
+      const need = routeScope(t.route);
+      expect(need).not.toBeNull();
+      const row = doc.split("\n").find((l) => l.startsWith(`| \`${t.name}\` |`));
+      expect(row).toBeDefined();
+      expect(row).toContain(`\`${t.method} ${t.path}\``);
+      expect(row).toContain(`\`${need}\``);
+    }
+    expect(doc).toContain('basePath: "/api/mcp"');
     expect(doc).toMatch(/"mcpServers"/);
   });
 
