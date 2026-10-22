@@ -11,6 +11,7 @@ import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import type { Storage } from '../core/storage';
 import { generateSummaries } from '../core/summaries';
+import { editTask, moveTask } from './edit';
 import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
 import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
@@ -101,6 +102,9 @@ function projectView(doc: Doc) {
 
 const result = (r: LifecycleResult, status = 200) =>
   json(status, { changed: r.changed, ref: r.ref ? formatRef(r.ref) : undefined, before: r.before, after: r.after, message: r.message });
+
+const fmtEdit = (r: { changed: boolean; ref: Parameters<typeof formatRef>[0]; before?: string; after?: string; message: string }) =>
+  ({ changed: r.changed, ref: formatRef(r.ref), before: r.before, after: r.after, message: r.message });
 
 const noQuery = (c: Ctx) => { readQuery(c.url, []); };
 
@@ -208,6 +212,26 @@ export const ROUTES: Route[] = [
     },
   },
   ...actionRoutes,
+  {
+    method: 'POST', doc: '/tasks/edit', name: 'tasks.edit',
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string }>(await readBody(c.req), {
+        ref: REF, text: { t: 'str', required: true, max: 2000, line: true },
+      }, ['ref', 'text']);
+      return json(200, fmtEdit(await editTask(c.deps.storage, b.ref, b.text)));
+    },
+  },
+  {
+    method: 'POST', doc: '/tasks/move', name: 'tasks.move',
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; target: NonNullable<ReturnType<typeof parseRef>>; position: 'before' | 'after' }>(await readBody(c.req), {
+        ref: REF, target: REF, position: { t: 'enum', values: ['before', 'after'] },
+      }, ['ref', 'target', 'position']);
+      return json(200, fmtEdit(await moveTask(c.deps.storage, b.ref, b.target, b.position)));
+    },
+  },
   {
     method: 'POST', doc: '/tasks/remove-completed', name: 'tasks.removeCompleted',
     async run(c) {

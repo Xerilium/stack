@@ -197,6 +197,43 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Mutation' }
         default: { $ref: '#/components/responses/Error' }
+  /tasks/edit:
+    post:
+      summary: Replace the text of a task row
+      operationId: editTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ref, text]
+              properties:
+                ref: { $ref: '#/components/schemas/Ref' }
+                text: { type: string, maxLength: 2000, description: Row text after the checkbox, single line }
+      responses:
+        '200': { $ref: '#/components/responses/Mutation' }
+        default: { $ref: '#/components/responses/Error' }
+  /tasks/move:
+    post:
+      summary: Move a task block before or after another task in the same project
+      operationId: moveTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ref, target, position]
+              properties:
+                ref: { $ref: '#/components/schemas/Ref' }
+                target: { $ref: '#/components/schemas/Ref' }
+                position: { type: string, enum: [before, after] }
+      responses:
+        '200': { $ref: '#/components/responses/Mutation' }
+        default: { $ref: '#/components/responses/Error' }
   /tasks/remove-completed:
     post:
       summary: Remove completed tasks
