@@ -1,6 +1,6 @@
 # MCP server
 
-Tools: `next`, `list`, `add`, `complete`, `start`, `skip`, `resume`, `suspend`, `set`. Each maps to one API route and needs that route's scope; tools outside the token's scopes are hidden and denied.
+Tools: `next`, `list`, `add`, `complete`, `start`, `skip`, `resume`, `suspend`, `set`, `triage`, `claim`, `record-result`. Each maps to one API route and needs that route's scope; tools outside the token's scopes are hidden and denied.
 
 | Tool | Route | Scope |
 | --- | --- | --- |
@@ -13,6 +13,9 @@ Tools: `next`, `list`, `add`, `complete`, `start`, `skip`, `resume`, `suspend`, 
 | `resume` | `POST /tasks/resume` | `tasks:write` |
 | `suspend` | `POST /tasks/suspend` | `tasks:write` |
 | `set` | `POST /tasks/set` | `tasks:write` |
+| `triage` | `POST /tasks/triage` | `tasks:write` |
+| `claim` | `POST /tasks/claim` | `tasks:write` |
+| `record-result` | `POST /tasks/result` | `tasks:write` |
 
 `read` and `write` also cover these. Mint a token as the owner (see [runbook](runbook.md)); give agents only the scopes they need.
 
@@ -63,3 +66,18 @@ claude mcp add --transport http stack https://<your-app>.azurestaticapps.net/api
 ```
 
 If the host strips `Authorization`, use `--header "X-Stack-Token: stk_..."`.
+
+## Triage and autonomy
+
+`triage`, `claim`, `record-result` need `tasks:write`. Each task has an autonomy level, a `🤖:triage|assist|full` marker in its row (inherited by subtasks; none when absent). Only the owner sets it (`stack triage <ref> --autonomy assist`); no tool can.
+
+| Level | Agent may |
+| --- | --- |
+| none | read only |
+| triage | `triage`, `record-result` (log) |
+| assist | + `claim`, complete 🪄 subtasks |
+| full | + complete the task |
+
+The autonomy gate binds only `triage`, `claim`, and `record-result`. `start`, `complete`, `set`, and `skip` stay `tasks:write` and are not autonomy-gated: to bound a client, give it only those three tools or a narrower token.
+
+Agents never merge or deploy and never complete beyond their level. When a person is needed, `record-result` (or `triage` with `human`) adds a 🙋 subtask and the agent moves on. A denied call returns `error forbidden`: skip the task. Results go to `tasks/logs/<project>.md` (append-only, secrets redacted, actor taken from the token; rolls to `<name>.2.md` etc. when full, max 5 files). The `add`, `complete`, and capture text may not contain `🤖`: only the owner sets autonomy. Tokens cannot move rows (`/tasks/move` is owner-session only) and cannot add or remove gate markers (🪄 🙋 🤖 and hold marks) via `/tasks/edit`.

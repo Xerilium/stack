@@ -26,7 +26,7 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           pnpm --filter ./web exec playwright install --with-deps chromium
-          pnpm --filter ./web run test:e2e
+          pnpm --filter ./web run e2e
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure() && steps.web.outputs.present == 'true'
         with:

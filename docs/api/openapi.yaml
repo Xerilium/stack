@@ -114,7 +114,7 @@ paths:
                 text:
                   type: string
                   maxLength: 2000
-                  description: Single line.
+                  description: One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy) Single line.
                 section:
                   type: string
                   maxLength: 200
@@ -362,7 +362,7 @@ paths:
           $ref: "#/components/responses/Error"
   /tasks/edit:
     post:
-      summary: Replace the text of a task row
+      summary: "Replace the text of a task row. Tokens may not add or remove gate markers (🪄 🙋 🤖 ⛔ ⏸ 👀 ⏳ 💤 🅿): 403"
       operationId: editTask
       requestBody:
         required: true
@@ -392,7 +392,7 @@ paths:
           $ref: "#/components/responses/Error"
   /tasks/move:
     post:
-      summary: Move a task block before or after another task in the same project
+      summary: "Move a task block before or after another task in the same project. Owner session only: 403 for tokens"
       operationId: moveTask
       requestBody:
         required: true
@@ -457,6 +457,160 @@ paths:
                     type: array
                     items:
                       type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /tasks/triage:
+    post:
+      summary: Apply a triage suggestion (needs autonomy triage or higher; 403 otherwise)
+      operationId: triageTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                agent:
+                  type: string
+                  maxLength: 200
+                  description: One-line 🪄 subtask an agent can do Single line.
+                human:
+                  type: string
+                  maxLength: 200
+                  description: One-line 🙋 subtask needing a person Single line.
+                priority:
+                  type: string
+                  enum:
+                    - 🚨
+                    - ‼️
+                    - 🔺
+                    - 🔻
+                  description: Only fills a missing priority
+                effort:
+                  type: string
+                  enum:
+                    - 🟢
+                    - 🟡
+                    - 🟠
+                    - 🔴
+                    - ⚫️
+                impact:
+                  type: string
+                  enum:
+                    - ⬆️
+                    - ↔️
+                    - ⬇️
+      responses:
+        "200":
+          description: Applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+                  ref:
+                    type: string
+                  applied:
+                    type: array
+                    items:
+                      type: string
+                  added:
+                    type: array
+                    items:
+                      type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /tasks/claim:
+    post:
+      summary: Claim a task (needs autonomy assist or higher; never a 🙋 row)
+      operationId: claimTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+      responses:
+        "200":
+          description: Claimed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+                  ref:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /tasks/result:
+    post:
+      summary: Log an agent result in tasks/logs; completes only within autonomy, else defers to a 🙋 subtask
+      operationId: recordResult
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+                - outcome
+                - summary
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                outcome:
+                  type: string
+                  enum:
+                    - done
+                    - partial
+                    - blocked
+                    - needs-human
+                summary:
+                  type: string
+                  maxLength: 500
+                  description: One line; secrets are redacted Single line.
+                complete:
+                  type: boolean
+                  description: Request completion; honored only within the task autonomy
+                human:
+                  type: string
+                  maxLength: 200
+                  description: Single line.
+      responses:
+        "200":
+          description: Logged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logged:
+                    type: boolean
+                  completed:
+                    type: boolean
+                  deferred:
+                    type: boolean
+                  ref:
+                    type: string
+                  human:
+                    type: string
         default:
           $ref: "#/components/responses/Error"
   /projects:

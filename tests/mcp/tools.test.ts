@@ -8,15 +8,15 @@ describe('tools/list', () => {
     const names = async (t: string) => (await rpc(t, 'tools/list')).json.result.tools.map((x: any) => x.name);
     expect(await names(await mint('tasks:read'))).toEqual(['next', 'list']);
     expect(await names(await mint('read'))).toEqual(['next', 'list']);
-    expect(await names(await mint('write'))).toEqual(['add', 'complete', 'start', 'skip', 'resume', 'suspend', 'set']);
+    expect(await names(await mint('write'))).toEqual(['add', 'complete', 'start', 'skip', 'resume', 'suspend', 'set', 'triage', 'claim', 'record-result']);
     expect(await names(await mint('projects:read', 'summaries:read'))).toEqual([]);
     const all = (await rpc(await mint('read', 'write'), 'tools/list')).json.result.tools;
-    expect(all).toHaveLength(9);
+    expect(all).toHaveLength(12);
     for (const t of all) {
       expect(t.description.length).toBeLessThan(100);
       expect(t.inputSchema.additionalProperties).toBe(false);
     }
-    expect(TOOLS.map((t) => t.name)).toHaveLength(9);
+    expect(TOOLS.map((t) => t.name)).toHaveLength(12);
   });
   it('denies calling a tool outside scope and changes nothing', async () => {
     const { call, mint, storage, text } = await setup();

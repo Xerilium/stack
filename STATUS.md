@@ -11,3 +11,4 @@
 - Traceability: `scripts/trace.sh` reports 0 gaps (402 requirements, all with code and test `@req` tags). It is not yet a CI gate.
 - `catalyst check` is broken in 0.3.2, so `scripts/trace.sh` is the traceability check.
 - `src/cli/run.ts` shows 0% in jest coverage because e2e tests run it in a subprocess; it is outside the core threshold.
+- 2026-10-22: ai-triage-assist in review; autonomy gate (deny by default), triage/claim/record-result via core, API, MCP, CLI.

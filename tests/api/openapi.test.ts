@@ -209,9 +209,10 @@ describe('response parity (real handler output vs documented schemas)', () => {
   const NOW = new Date('2026-10-22T18:00:00Z');
   const storage = new MemoryStorage();
   const h = createApiHandler({ storage, authorize: () => true, now: () => NOW });
+  const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
-      method, ...(body !== undefined ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}),
+      method, headers: { ...(path.startsWith('/tasks/edit') || path.startsWith('/tasks/move') ? OWNER_HDR : {}), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }));
     const t = await res.text();
     return { status: res.status, body: t ? JSON.parse(t) : undefined };
@@ -251,6 +252,9 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('tasks.resume', 'POST', '/tasks/resume', { ref }, 200);
     await go('tasks.skip', 'POST', '/tasks/skip', { ref }, 200);
     await go('tasks.set', 'POST', '/tasks/set', { ref, priority: '🔺', effort: '🟢' }, 200);
+    await go('tasks.triage', 'POST', '/tasks/triage', { ref }, 403);
+    await go('tasks.claim', 'POST', '/tasks/claim', { ref }, 403);
+    await go('tasks.result', 'POST', '/tasks/result', { ref, outcome: 'done', summary: 'x' }, 403);
     const cur = ((await go('tasks.list', 'GET', '/tasks?state=all&fields=ref,text', undefined, 200)).body as any).items as { ref: string; text: string }[];
     await go('tasks.edit', 'POST', '/tasks/edit', { ref: cur[0].ref, text: 'Edited', expect: cur[0].text }, 200);
     await go('tasks.edit', 'POST', '/tasks/edit', { ref: cur[0].ref, text: 'Again', expect: 'stale' }, 409);
