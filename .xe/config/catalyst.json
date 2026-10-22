@@ -1,0 +1,10 @@
+{
+  "traceability": {
+    "default": { "code": "warning", "test": "warning" },
+    "paths": {
+      "code": ["src/"],
+      "test": ["tests/", "**/*.test.*", "**/*.spec.*"],
+      "exclude": ["**/node_modules/**", "**/dist/**", "**/coverage/**", "**/.git/**"]
+    }
+  }
+}
