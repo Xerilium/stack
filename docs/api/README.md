@@ -17,6 +17,9 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/tasks/start` | POST start a task |
 | `/tasks/complete` | POST complete a task |
 | `/tasks/skip` | POST park a task |
+| `/tasks/triage` | POST apply a triage suggestion (autonomy-gated) |
+| `/tasks/claim` | POST claim a task for an agent (autonomy-gated) |
+| `/tasks/result` | POST log an agent result (autonomy-gated) |
 | `/tasks/resume` | POST unpark a task |
 | `/tasks/suspend` | POST suspend for days or hours |
 | `/tasks/set` | POST change task properties |

@@ -12,6 +12,7 @@ Global flags: `--dir <path>` (project dir), `--json`, `--no-commit`, `--remote <
 - `start`: mark in progress. `start [ref] [--expect t]`
 - `complete`: check off (rolls recurring rows). `complete [ref] [--summary t] [--remove] [--expect t]`
 - `skip`: park a task (alias: park). `skip [ref] [--expect t]`
+- `triage`: show/set autonomy, add 🪄/🙋 subtasks. `triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]`
 - `park`: same as skip. `park [ref] [--expect t]`
 - `resume`: unpark the first parked task. `resume [ref] [--expect t]`
 - `suspend`: hide until later. `suspend [ref] [--days n | --hours n] [--expect t]`
