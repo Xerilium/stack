@@ -54,6 +54,48 @@ function a() {
   return createTask({ id: 'x', title: 'x' });
 }
 
+describe('entities', () => {
+  // @req FR:task-model/$task
+  it('task carries every field', () => {
+    const t = createTask({
+      id: 't', title: 't', priority: 2, impact: 3, effort: 15, value: 4,
+      startDate: '2026-01-01', dueDate: '2026-01-02', recurrence: { cadence: 'daily' },
+      autonomy: 'assist', notes: ['n'], subtasks: [createTask({ id: 's', title: 's' })],
+    });
+    expect(validateTask(t)).toEqual([]);
+    expect(Object.keys(t).sort()).toEqual(['autonomy', 'dueDate', 'effort', 'id', 'impact', 'notes', 'priority', 'recurrence', 'startDate', 'status', 'subtasks', 'title', 'value']);
+  });
+
+  // @req FR:task-model/$section
+  it('section has name and tasks', () => {
+    expect(createSection('S')).toEqual({ name: 'S', tasks: [] });
+  });
+
+  // @req FR:task-model/$project
+  it('project has defaults', () => {
+    expect(createProject({ id: 'p', name: 'P' })).toEqual({ id: 'p', name: 'P', aliases: [], sections: [] });
+  });
+
+  // @req FR:task-model/$recurrence
+  it('recurrence accepts every cadence', () => {
+    for (const cadence of ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'] as const) {
+      expect(validateRecurrence({ cadence })).toEqual([]);
+    }
+  });
+
+  // @req FR:task-model/model.dates
+  it('dates stay ISO strings', () => {
+    expect(typeof createTask({ id: 't', title: 't', dueDate: '2026-05-06' }).dueDate).toBe('string');
+  });
+
+  // @req FR:task-model/validate.@function
+  it('exports the validation surface', () => {
+    for (const fn of [validateTask, validateSection, validateProject, validateRecurrence, isIsoDate, assertValid]) {
+      expect(typeof fn).toBe('function');
+    }
+  });
+});
+
 describe('isIsoDate', () => {
   // @req FR:task-model/validate.dates
   it('accepts real dates', () => {
