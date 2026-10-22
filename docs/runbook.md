@@ -1,3 +1,4 @@
+<!-- @req FR:deploy-docs/docs.runbook @req FR:deploy-docs/docs.env -->
 # Runbook
 
 Owner-only. Agents build the files here; they never deploy, create Azure resources, or hold secrets.

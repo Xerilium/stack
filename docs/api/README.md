@@ -1,3 +1,4 @@
+<!-- @req FR:deploy-docs/docs.api -->
 # REST API
 
 JSON only. Machine-readable spec: [openapi.yaml](openapi.yaml) (regenerate with `pnpm openapi`; a test fails if it drifts). Tasks are addressed by `ref` = `project:line`. Use `fields` to trim responses.

@@ -1,3 +1,4 @@
+// @req FR:deploy-docs/infra.swa @req FR:deploy-docs/infra.settings @req FR:deploy-docs/infra.params @req FR:deploy-docs/infra.lint (checked by tests/deploy/deploy.test.ts; infra/main.parameters.json is the parameter file)
 // Stack hosting: Azure Static Web Apps (Free) with managed Functions.
 // Build-only: nothing here is deployed by agents. See docs/runbook.md.
 targetScope = 'resourceGroup'
