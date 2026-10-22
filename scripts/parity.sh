@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Acceptance parity of Stack against a legacy checkout. READ ONLY on the legacy folder.
+# @req FR:cli/parity.script (`pnpm run parity` runs tests/parity/cli-parity.test.ts; this script is the full legacy comparison)
 #
 #   STACK_LEGACY_DIR=~/dev/todo scripts/parity.sh
 #

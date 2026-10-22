@@ -27,6 +27,7 @@ const BASE = 'https://mcp.invalid/api';
 export function createMcpServer(opts: McpServerOptions): Server {
   const allowed = (t: ToolDef) => { const need = routeScope(t.route); return need !== null && scopeCovers(opts.scopes, need); };
   const emit = (e: McpEvent) => { try { opts.onEvent?.({ ...e, ...(opts.tokenId ? { tokenId: opts.tokenId } : {}) }); } catch { /* a broken logger never changes the decision */ } };
+  /** One text content block per reply. @req FR:mcp-server/out.shape */
   const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
 
   const server = new Server({ name: 'stack', version: '0.0.1' }, { capabilities: { tools: {} } });

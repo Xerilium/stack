@@ -154,6 +154,7 @@ describe('webhook and imessage', () => {
 // @req FR:chat-bots/github.event
 describe('github', () => {
   const ev = (o: object = {}) => JSON.stringify({ action: 'created', comment: { body: '/stack next' }, sender: { login: 'octo' }, ...o });
+  // @req FR:chat-bots/github.deliver
   it('runs /stack comments from allowed logins', async () => {
     const { h, calls } = mk();
     const b = ev();

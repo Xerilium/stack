@@ -61,6 +61,7 @@ function sameOrigin(req: Request): boolean {
 
 export const scopeCovers = (scopes: string[], need: string) => scopes.includes(need) || scopes.includes(need.split(':')[1]);
 
+/** 401 when nothing valid is presented, 403 when not allowed; events carry route, status and token id only. @req FR:auth-security/session.output @req FR:auth-security/safe.hash @req FR:auth-security/safe.tasks */
 export function createAuth(opts: AuthOptions): { authorize: Authorize; wrap: (api: (req: Request) => Promise<Response>) => (req: Request) => Promise<Response> } {
   const emit = (kind: AuthEvent['kind'], route: string, status: number, tokenId?: string) => {
     try { opts.onEvent?.({ kind, route, status, ...(tokenId ? { tokenId } : {}) }); } catch { /* a broken logger never changes the decision */ }
@@ -101,6 +102,7 @@ export function createAuth(opts: AuthOptions): { authorize: Authorize; wrap: (ap
   const base = (opts.basePath ?? '/api').replace(/\/+$/, '');
   const ADMIN = { name: 'auth.tokens', method: '', write: false };
 
+  /** Token admin endpoints. @req FR:auth-security/admin.@http @req FR:auth-security/admin.create @req FR:auth-security/admin.session @req FR:auth-security/admin.shape @req FR:auth-security/safe.secret */
   async function admin(req: Request, segs: string[]): Promise<Response> {
     const method = req.method.toUpperCase();
     const route: RouteInfo = { ...ADMIN, name: `auth.tokens.${segs.length === 2 ? (method === 'GET' ? 'list' : 'create') : 'revoke'}`, method, write: method !== 'GET' && method !== 'HEAD' };
@@ -137,6 +139,7 @@ export function createAuth(opts: AuthOptions): { authorize: Authorize; wrap: (ap
     }
   }
 
+  /** Everything outside `/auth/tokens` goes to the api handler unchanged. @req FR:auth-security/admin.rest */
   const wrap = (api: (req: Request) => Promise<Response>) => async (req: Request): Promise<Response> => {
     let segs: string[] = [];
     try {

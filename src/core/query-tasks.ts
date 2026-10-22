@@ -78,7 +78,12 @@ function validate(items: unknown): QueryItem[] {
   });
 }
 
-/** @req FR:query-tasks/expand.@function */
+/**
+ * @req FR:query-tasks/expand.@function @req FR:query-tasks/expand.block @req FR:query-tasks/expand.kind @req FR:query-tasks/expand.none
+ * @req FR:query-tasks/expand.query @req FR:query-tasks/expand.order @req FR:query-tasks/expand.gate @req FR:query-tasks/expand.eol
+ * @req FR:query-tasks/expand.url @req FR:query-tasks/expand.title @req FR:query-tasks/fail.untouched @req FR:query-tasks/fail.independent
+ * @req FR:query-tasks/fail.nodata-loss (every failure is caught per trigger and leaves its block and all other bytes as read)
+ */
 export async function expandQueryTasks(content: string, client: QueryClient, opts: ExpandOptions): Promise<ExpandResult> {
   assertTimeZone(opts.timeZone);
   const triggers = findQueryTriggers(content);
@@ -123,6 +128,7 @@ export async function expandQueryTasks(content: string, client: QueryClient, opt
 export interface RefreshFailure extends Partial<QueryFailure> { path: string; message: string }
 export interface RefreshResult { files: string[]; processed: number; skipped: number; failures: RefreshFailure[] }
 
+/** @req FR:query-tasks/refresh.write @req FR:query-tasks/refresh.conflict (write with the read version; errors recorded per file) */
 export async function refreshQueryTasks(storage: Storage, client: QueryClient, opts: ExpandOptions): Promise<RefreshResult> {
   assertTimeZone(opts.timeZone);
   const out: RefreshResult = { files: [], processed: 0, skipped: 0, failures: [] };

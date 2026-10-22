@@ -12,6 +12,7 @@ describe('parseCommand', () => {
     expect(parseCommand('add alpha')).toEqual({ kind: 'help' });
     expect(parseCommand('add')).toEqual({ kind: 'help' });
   });
+  // @req FR:chat-bots/cmd.ref
   it('complete / done with optional ref and summary', () => {
     expect(parseCommand('complete')).toEqual({ kind: 'complete' });
     expect(parseCommand('done alpha:3')).toEqual({ kind: 'complete', ref: 'alpha:3' });

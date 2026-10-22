@@ -21,6 +21,7 @@ export interface McpHttpDeps {
 
 const className = (e: unknown) => (e instanceof Error ? e.constructor.name : 'Error');
 
+/** Plugs into `registerAzure(app, handler, "mcp")` as is. @req FR:mcp-server/http.azure @req FR:mcp-server/http.events (events go to deps.onEvent) */
 export function createMcpHandler(deps: McpHttpDeps): (req: Request) => Promise<Response> {
   const base = (deps.basePath ?? '/mcp').replace(/\/+$/, '');
   const emit = (e: McpEvent) => { try { deps.onEvent?.(e); } catch { /* ignore */ } };
