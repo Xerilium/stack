@@ -23,7 +23,7 @@ const mk = async () => {
     const res = await h(new Request(`https://x.test/api${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
     return { status: res.status, json: await res.json() as any };
   };
-  const rows = async () => (await storage.read('tasks/alpha.md')).content.split('\n').filter((l) => l.startsWith('- ') || l.startsWith('  ')).map((l) => l.trim());
+  const rows = async () => (await storage.read('tasks/alpha.md')).content.split('\n').filter((l) => l.startsWith('- [') || l.startsWith('  ')).map((l) => l.trim());
   return { storage, call, rows };
 };
 
