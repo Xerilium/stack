@@ -12,7 +12,8 @@ describe('azure-host settings', () => {
     expect(s.owners).toEqual([{ provider: 'github', userId: '42' }]);
     expect(s.bots.webhook).toEqual({ secret: 'whsec', allow: ['ci-bot'] });
     expect(s.bots.slack?.signingSecret).toBe('slacksec');
-    expect(s.tokenStore).toMatch(/stack-tokens\.json$/);
+    expect(s.tokenStore).toBeUndefined();
+    expect(parseSettings({ ...ENV, STACK_TOKEN_STORE: "/data/t.json" }).tokenStore).toBe("/data/t.json");
     expect(parseSettings({ ...ENV, STACK_REPO_BRANCH: 'data', STACK_REPO_PATH: 'tasks/a' })).toMatchObject({ branch: 'data', path: 'tasks/a' });
     expect(parseSettings({ ...ENV, STACK_CONFIG: '{}' }).config).toBeDefined();
   });
@@ -37,6 +38,7 @@ describe('azure-host settings', () => {
     ['option-like branch', { STACK_REPO_BRANCH: '--upload-pack=x' }, 'STACK_REPO_BRANCH'],
     ['branch with space', { STACK_REPO_BRANCH: 'a b' }, 'STACK_REPO_BRANCH'],
     ['absolute path', { STACK_REPO_PATH: '/etc' }, 'STACK_REPO_PATH'],
+    ['relative token store', { STACK_TOKEN_STORE: 'rel/t.json' }, 'STACK_TOKEN_STORE'],
     ['dotdot path', { STACK_REPO_PATH: 'a/../../b' }, 'STACK_REPO_PATH'],
     ['dot-git path', { STACK_REPO_PATH: '.git/hooks' }, 'STACK_REPO_PATH'],
     ['bad config', { STACK_CONFIG: '{nope' }, 'STACK_CONFIG'],

@@ -54,6 +54,20 @@ export const versionOf = (content: string): string =>
 const TASK_PATH = /^tasks\/[^/\\\0.][^/\\\0]*\.md$/;
 const SUMMARY_PATH = /^(README|stack|projects|my-day)\.md$/;
 
+/** Non-task state files (for example the API token store); never listed as tasks. */
+export const AUX_PATH = /^\.stack\/[a-z][a-z-]*\.json$/;
+export function validateAuxPath(path: string): string {
+  if (typeof path !== 'string' || !AUX_PATH.test(path)) throw new PathError(`Invalid state path: ${JSON.stringify(path)}`);
+  return path;
+}
+
+/** Versioned raw files outside `tasks/`; same serial queue, atomicity, and (in git) commit semantics as task writes. */
+export interface AuxFiles {
+  readAux(path: string): Promise<{ content: string; version: string } | null>;
+  /** `expectedVersion` null means the file must not exist yet. */
+  writeAux(path: string, content: string, opts: { expectedVersion: string | null }): Promise<WriteResult>;
+}
+
 /** @req FR:storage-git/interface.paths */
 export function validatePath(path: string): string {
   if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path)) || path.split('/').includes('..')) {
@@ -83,6 +97,25 @@ export class MemoryStorage implements Storage {
   /** @req FR:storage-git/write.result @req FR:storage-git/interface.bytes */
   async write(path: string, content: string, opts: WriteOptions = {}): Promise<WriteResult> {
     validatePath(path);
+    const run = async () => {
+      const cur = this.files.get(path);
+      checkExpected(path, cur === undefined ? null : versionOf(cur), opts);
+      this.files.set(path, content);
+      return { version: versionOf(content) };
+    };
+    const p = this.queue.then(run, run);
+    this.queue = p.catch(() => undefined);
+    return p;
+  }
+
+  async readAux(path: string) {
+    validateAuxPath(path);
+    const content = this.files.get(path);
+    return content === undefined ? null : { content, version: versionOf(content) };
+  }
+
+  async writeAux(path: string, content: string, opts: { expectedVersion: string | null }): Promise<WriteResult> {
+    validateAuxPath(path);
     const run = async () => {
       const cur = this.files.get(path);
       checkExpected(path, cur === undefined ? null : versionOf(cur), opts);
@@ -144,6 +177,20 @@ export class FsStorage implements Storage {
 
   async write(path: string, content: string, opts: WriteOptions = {}): Promise<WriteResult> {
     validatePath(path);
+    const run = () => this.locked(path, content, opts);
+    const p = this.queue.then(run, run);
+    this.queue = p.catch(() => undefined);
+    return p;
+  }
+
+  async readAux(path: string) {
+    validateAuxPath(path);
+    const content = await this.readRaw(path);
+    return content === null ? null : { content, version: versionOf(content) };
+  }
+
+  async writeAux(path: string, content: string, opts: { expectedVersion: string | null }): Promise<WriteResult> {
+    validateAuxPath(path);
     const run = () => this.locked(path, content, opts);
     const p = this.queue.then(run, run);
     this.queue = p.catch(() => undefined);

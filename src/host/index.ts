@@ -3,3 +3,4 @@ export { parseSettings, SettingsError, type HostSettings, type Env } from './set
 export { openGitStorage, gitEnv, applyGitEnv, type GitRunner, type GitDeps } from './git-repo';
 export { createHost, botGate, type HostDeps } from './runtime';
 export { registerHost } from './register';
+export { GitTokenStore, TOKEN_PATH, type HostStorage } from './token-store';

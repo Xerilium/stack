@@ -17,10 +17,12 @@ All logic lives in `src/host/` with injected seams (git runner, storage opener, 
 
 ## Decisions
 
+- Core change: `FsStorage`/`MemoryStorage` gain `readAux`/`writeAux` for `.stack/*.json` state files, reusing the serial queue and git commit path
+
 - One catch-all function (not one per area): avoids route-precedence surprises; `registerAzure` reused unchanged
 - Lazy storage proxy so auth runs before any clone
 - Bots get an in-process API handler with a route allow-list instead of a service token (nothing to store or leak)
 - Repo config via `STACK_CONFIG` setting (the API takes config at construction, before the clone exists)
-- Token store is a file path (reference adapter); managed SWA only guarantees temp storage, documented
+- Token store defaults to the data repo through a storage state-file API (`readAux`/`writeAux`); file path is an override
 - `host/` is a pnpm workspace package; deploys use prebuilt `host/dist` plus `npm install --omit=dev`
 - Tests: `tests/host/*.test.ts` with `MemoryStorage`, `MemoryTokenStore`, fake git runner

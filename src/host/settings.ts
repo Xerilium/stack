@@ -2,8 +2,7 @@
  * App settings -> typed host config. Errors name settings, never values.
  * @req FR:azure-host/settings.parse @req FR:azure-host/settings.invalid @req FR:azure-host/settings.deny
  */
-import { tmpdir } from 'os';
-import { join, isAbsolute } from 'path';
+import { isAbsolute } from 'path';
 import { parseOwners, type Owner } from '../api/auth';
 import { getDefaults, parseConfig, type StackConfig } from '../core/config';
 
@@ -21,7 +20,8 @@ export interface HostSettings {
   path: string;
   repoToken: string;
   owners: Owner[];
-  tokenStore: string;
+  /** Absolute file path override; undefined means the git-backed store in the data repo. */
+  tokenStore?: string;
   pepper?: string;
   config: StackConfig;
   gitName: string;
@@ -60,8 +60,8 @@ export function parseSettings(env: Env): HostSettings {
   if (!validBranch(branch)) bad.push('STACK_REPO_BRANCH');
   const path = (val(env, 'STACK_REPO_PATH') ?? '').replace(/\/+$/, '');
   if (!validPath(path)) bad.push('STACK_REPO_PATH');
-  const tokenStore = val(env, 'STACK_TOKEN_STORE') ?? join(tmpdir(), 'stack-tokens.json');
-  if (!isAbsolute(tokenStore)) bad.push('STACK_TOKEN_STORE');
+  const tokenStore = val(env, 'STACK_TOKEN_STORE');
+  if (tokenStore !== undefined && !isAbsolute(tokenStore)) bad.push('STACK_TOKEN_STORE');
   let config = getDefaults();
   const rawConfig = val(env, 'STACK_CONFIG');
   if (rawConfig) {

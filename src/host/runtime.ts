@@ -8,6 +8,7 @@ import { createApiHandler, createAuth, createTokenService, FileTokenStore, type 
 import { createMcpHandler } from '../mcp';
 import { writeAll, type FileWrite, type Storage } from '../core/storage';
 import { openGitStorage } from './git-repo';
+import { GitTokenStore, needAux, type HostStorage } from './token-store';
 import { parseSettings, SettingsError, type Env, type HostSettings } from './settings';
 
 export interface HostDeps {
@@ -29,7 +30,7 @@ const fail = (status: number, code: string, message: string, extra: Record<strin
 const notFound = () => fail(404, 'not_found', 'Not found');
 
 /** Opens storage on first use only; concurrent callers share one open; a failure is not cached. @req FR:azure-host/git.lazy @req FR:azure-host/git.clone */
-function lazyStorage(open: () => Promise<Storage>): Storage {
+function lazyStorage(open: () => Promise<Storage>): HostStorage {
   let p: Promise<Storage> | null = null;
   const get = () => {
     if (!p) { p = open(); p.catch(() => { p = null; }); }
@@ -40,6 +41,9 @@ function lazyStorage(open: () => Promise<Storage>): Storage {
     read: async (path) => (await get()).read(path),
     write: async (path, content, opts) => (await get()).write(path, content, opts),
     writeMany: async (writes: FileWrite[], opts) => writeAll(await get(), writes, opts?.message),
+    readAux: async (path) => needAux(await get()).readAux(path),
+    writeAux: async (path, content, opts) => needAux(await get()).writeAux(path, content, opts),
+    sync: async () => { const s = (await get()) as { sync?: () => Promise<void> }; if (s.sync) await s.sync(); },
   };
 }
 
@@ -65,11 +69,11 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
   }
 
   const settings = s;
+  const onName = (n: string) => log(`error: ${n}`);
   const storage = lazyStorage(() => (deps.openStorage ?? ((x) => openGitStorage(x)))(settings));
-  const tokens = createTokenService({ store: deps.tokenStore ?? new FileTokenStore(settings.tokenStore), pepper: settings.pepper });
+  const tokens = createTokenService({ store: deps.tokenStore ?? (settings.tokenStore ? new FileTokenStore(settings.tokenStore) : new GitTokenStore(async () => storage, { onError: onName })), pepper: settings.pepper });
   const event = (e: object) => log(JSON.stringify(e));
   const onError = (e: unknown) => log(`error: ${className(e)}`);
-  const onName = (n: string) => log(`error: ${n}`);
   const auth = createAuth({ owners: settings.owners, tokens, onEvent: event });
   const api = auth.wrap(createApiHandler({ storage, config: settings.config, authorize: auth.authorize, onError }));
   const mcp = createMcpHandler({ api, tokens, basePath: '/api/mcp', onEvent: event, onError: onName });

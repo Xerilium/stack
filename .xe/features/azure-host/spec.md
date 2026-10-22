@@ -33,23 +33,27 @@ Run Stack on Azure Static Web Apps managed Functions: one deployable `host/` tha
 
 ### FR:settings: Settings
 
-- **FR:settings.parse** (P1): Config comes only from app settings: `STACK_REPO_URL` (https, no embedded credentials), `STACK_REPO_BRANCH` (default `main`), `STACK_REPO_PATH` (optional relative subfolder), `STACK_REPO_TOKEN` (GitHub credential), `STACK_OWNERS` (owner allow-list), `STACK_TOKEN_STORE` (token file path), `STACK_TOKEN_PEPPER`, `STACK_CONFIG` (optional JSON stack config), and the bot settings `STACK_SLACK_SIGNING_SECRET`, `STACK_IMESSAGE_SECRET`, `STACK_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_SECRET` with matching `*_ALLOW` comma lists
+- **FR:settings.parse** (P1): Config comes only from app settings: `STACK_REPO_URL` (https, no embedded credentials), `STACK_REPO_BRANCH` (default `main`), `STACK_REPO_PATH` (optional relative subfolder), `STACK_REPO_TOKEN` (GitHub credential), `STACK_OWNERS` (owner allow-list), `STACK_TOKEN_STORE` (optional token file path override), `STACK_TOKEN_PEPPER`, `STACK_CONFIG` (optional JSON stack config), and the bot settings `STACK_SLACK_SIGNING_SECRET`, `STACK_IMESSAGE_SECRET`, `STACK_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_SECRET` with matching `*_ALLOW` comma lists
 - **FR:settings.invalid** (P1): Invalid or missing required settings (repo URL, token, branch, path, config) make every route except health answer `503 {error:{code:'unavailable'}}` with fixed text; errors name the setting, never its value
 - **FR:settings.deny** (P1): No owners means no session access; a bot channel without a secret is off; an empty allow-list denies every sender. A bad `STACK_REPO_URL` (http, credentials, other host schemes) is rejected
 
 ### FR:git: Git storage
 
 - **FR:git.clone** (P1): On first use per instance the repo is cloned (single branch) into a fresh private directory under the OS temp dir and wrapped by the `GitStorage` adapter with remote `origin` and the configured branch, so writes are direct commits pushed to that branch. Concurrent first requests share one clone; a failed clone is not cached
-- **FR:git.lazy** (P1): The clone happens only after authorization: requests that fail auth never trigger it
+- **FR:git.lazy** (P1): The clone happens only after a request carries a credential the host must check (owner principal header or token) or reaches a route that needs tasks; health and requests with no credential never trigger it. It is opened once per instance
 - **FR:git.auth** (P1): The token is passed to git only through the environment as an `http.<origin>/.extraHeader` config scoped to the repo's origin; never in the URL, command line, remote config, logs, or responses. Git is limited to https transport, never prompts, and ignores system config
 - **FR:git.identity** (P2): Commits use `Stack <stack@users.noreply.github.com>` unless `STACK_GIT_NAME`/`STACK_GIT_EMAIL` are set
 
 ### FR:auth: Auth wiring
 
-- **FR:auth.api** (P1): The API handler uses `createAuth` `authorize` (owner session via `STACK_OWNERS` or scoped token) from the token service over `FileTokenStore(STACK_TOKEN_STORE)` with `STACK_TOKEN_PEPPER`. The token store path defaults to a temp file (ephemeral; set a persistent path)
+- **FR:auth.api** (P1): The API handler uses `createAuth` `authorize` (owner session via `STACK_OWNERS` or scoped token) from the token service over the token store below with `STACK_TOKEN_PEPPER`
 - **FR:auth.mcp** (P1): MCP forwards the caller's token to the same authorizing API handler; owner sessions never reach MCP
 - **FR:auth.bots** (P1): Bots call a second, in-process API handler whose gate allows only `next`, `tasks.add`, `tasks.start`, `tasks.complete`, `tasks.skip`; it is never routable from outside, and no service token exists
 - **FR:auth.logs** (P1): Logging receives only auth/MCP event fields (kind, route, status, token id) and error class names; never tokens, secrets, headers, bodies, or task data
+
+### FR:tokens: Token persistence
+
+- **FR:tokens.git** (P1): By default the token store is `.stack/tokens.json` in the data repo, written through the storage adapter (state-file API: fixed `.stack/<name>.json` paths, same queue, direct commit and push, version-checked; a conflict maps to the token store conflict so the service retries). Only hashes, scopes, and expiry are stored, never secrets. Reads sync from the remote at most every 60 seconds so a revocation made on another instance applies within about a minute; a failed sync serves the local copy. `STACK_TOKEN_STORE` (absolute path) switches to the file store. State files are never listed as tasks
 
 ### FR:pkg: Package
 
