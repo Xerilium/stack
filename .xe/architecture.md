@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document defines the technical architecture for the Stack project: technology choices, structure, and integration patterns. Feature-specific requirements are documented in individual feature specifications in the `.xe/features` folder.
+Defines the technical architecture for Stack: technology choices, structure, and integration patterns. Feature-specific requirements are documented in individual feature specifications in the `.xe/features` folder. Product-level design choices are in [`.xe/features/design-decisions.md`](features/design-decisions.md).
 
 For engineering principles and standards, see [`.xe/engineering.md`](engineering.md).
 
@@ -10,40 +10,47 @@ For the development process, see [`.xe/process/development.md`](process/developm
 
 ## Technology Stack
 
-| Aspect              | Details                                                                                     |
-| ------------------- | ------------------------------------------------------------------------------------------- |
-| Runtime Environment | Node.js (TypeScript compiled to CommonJS) for CLI, web, and shared core logic              |
-| Data Storage        | Markdown files in Git repositories (tasks/ folder), summary files at repo root             |
-| Automation Tools    | GitHub Actions for auto-generating summary files, CI/CD, and AI integration                |
-| AI Integration      | Claude API and GitHub Copilot for server-side execution (web/mobile and GitHub Actions)    |
-| Testing Framework   | Jest with ts-jest for unit and integration testing                                          |
-| Deployment Method   | npm registry for CLI (@xerilium/stack), GitHub Pages for web, TBD for mobile               |
-| Security Measures   | GitHub OAuth for authentication, Git commit signing, input validation                      |
-| Monitoring/Logging  | Console logging for CLI, GitHub Actions logs for automation                                |
+### Runtime Technologies
+
+| Aspect          | Details                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| Runtime Env     | Node.js 22+, TypeScript                                                                           |
+| App Platform    | Azure Static Web Apps free tier with managed Functions; secrets in app settings                   |
+| Data & Storage  | Markdown in a private GitHub repo behind a storage interface (git adapter, direct commits)        |
+| Auth            | SWA built-in auth allow-listed to the owner; hashed, scoped, revocable API tokens                 |
+| AI/ML           | MCP server for agents; per-task autonomy level                                                    |
+| Observability   | Logs with no task data                                                                            |
+
+### Development Technologies
+
+| Aspect            | Details                                                    |
+| ----------------- | ---------------------------------------------------------- |
+| Languages         | TypeScript                                                 |
+| Dev Env           | pnpm                                                       |
+| AI Coding         | Claude Code with Catalyst                                  |
+| Test Framework    | Jest with ts-jest; browser e2e for the web app             |
+| DevOps Automation | GitHub Actions; Bicep (build-only IaC)                     |
+| Distribution      | npm package (`@xerilium/stack`); SWA for web               |
 
 ## Repository Structure
 
-All platforms (CLI, web, mobile) share a single package with common core logic to maximize reuse and simplify dependency management.
+One package with shared core logic for every surface.
 
 ```text
 stack/
-├── .xe/                # Catalyst context and specifications
-├── dist/               # Consolidated build outputs with subfolders per app/library
+├── .xe/        # Catalyst context, features, rollouts
 ├── src/
-│   ├── cli/            # CLI application code
-│   ├── core/           # Core Stack library
-│   ├── mobile/         # Mobile application (future)
-│   ├── shared/         # Code shared across apps (if any)
-│   └── web/            # Web application (future)
-├── tasks/              # Example task files (markdown per project)
-├── tests/              # Tests with subfolders per app/library
-├── jest.config.js      # Root test configuration
-├── package.json        # Single package.json
-└── tsconfig.json       # Root TypeScript config
+│   ├── core/   # Task model, parser, scoring, lifecycle, summaries, config
+│   ├── storage/ # Storage interface and git adapter
+│   ├── cli/    # CLI
+│   ├── api/    # REST, auth, MCP
+│   └── web/    # Web app
+├── tests/      # Tests mirroring src
+└── tasks/      # Example task files
 ```
 
 ## Technical Architecture Patterns
 
-### Dependency Abstraction
+### Dependency Abstraction Pattern
 
-Isolate external dependencies (Git CLI, GitHub API, AI APIs) behind abstraction layers for testability, swappability, and consistent error handling.
+Applies to storage (git today, database later), formatters (emoji-markdown, clean), and the scoring engine (legacy formula default): each sits behind an interface so it can be swapped and tested alone.

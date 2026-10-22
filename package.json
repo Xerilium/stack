@@ -4,7 +4,7 @@
   "description": "Stack 'em up. Burn 'em down. Simple, multi-project task management and prioritization.",
   "main": "dist/index.js",
   "scripts": {
-    "build": "pnpm build:core && pnpm build:cli",
+    "build": "pnpm run build:core && pnpm run build:cli",
     "build:core": "tsc -p tsconfig.core.json",
     "build:cli": "tsc -p tsconfig.cli.json",
     "clean": "rm -rf dist",
