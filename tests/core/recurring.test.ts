@@ -154,7 +154,16 @@ describe('Quarterly-EOM+1', () => {
   it('works in legacy form and parses to anchor', () => {
     expect(S('- [x] 🔄 Quarterly-EOM+1: 📅 Jan 31, 2026: T')).toBe('- [ ] 🔄 Quarterly-EOM+1: 📅 Apr 30, 2026: T');
     expect(parseRecurringRow('- [ ] 📅 Jan 31, 2026: 🔄 Quarterly-EOM+1: T', ref)?.recurrence)
-      .toEqual({ cadence: 'quarterly', anchor: 'end-of-month' });
+      .toEqual({ cadence: 'quarterly', anchor: 'end-of-month', offsetMonths: 1 });
+  });
+  // @req FR:recurring-rows/detect.parse
+  it('maps EOM+1 to offsetMonths, never offsetDays, in both forms', () => {
+    for (const l of ['- [ ] 📅 Jan 31, 2026: 🔄 Quarterly-EOM+1: T', '- [ ] 🔄 quarterly-eom+1: 📅 Jan 31, 2026: T']) {
+      const r = parseRecurringRow(l, ref)!.recurrence;
+      expect(r.offsetMonths).toBe(1);
+      expect(r.offsetDays).toBeUndefined();
+    }
+    expect(parseRecurringRow('- [ ] 📅 Jan 31, 2026: 🔄 Quarterly: T', ref)!.recurrence).toEqual({ cadence: 'quarterly' });
   });
 });
 

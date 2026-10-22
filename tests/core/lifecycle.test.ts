@@ -283,6 +283,17 @@ describe('completeTask', () => {
   });
 
   // @req FR:task-lifecycle/complete.recurring
+  it('honors config.shiftWeekends when rolling', async () => {
+    const row = '- [ ] 📅 Oct 22, 2026: 🔄 Monthly: Pay bills\n';
+    const off = await mem({ 'tasks/a.md': doc(row) });
+    await completeTask({ ...ctx(off), config: { ...getDefaults(), shiftWeekends: false } }, { path: 'tasks/a.md', line: 4 });
+    expect(await text(off, 'tasks/a.md')).toBe(doc('- [ ] 📅 Nov 22, 2026: 🔄 Monthly: Pay bills\n'));
+    const on = await mem({ 'tasks/a.md': doc(row) });
+    await completeTask(ctx(on), { path: 'tasks/a.md', line: 4 });
+    expect(await text(on, 'tasks/a.md')).toContain('Nov 23, 2026');
+  });
+
+  // @req FR:task-lifecycle/complete.recurring
   it('remove:true rolls a recurring row instead of deleting it', async () => {
     const s = await mem({ 'tasks/a.md': doc('- [ ] 📅 Oct 22, 2026: 🔄 Monthly: Pay bills\n  - [x] a\n- [ ] other\n') });
     const r = await completeTask(ctx(s), { path: 'tasks/a.md', line: 4 }, { remove: true });

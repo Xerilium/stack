@@ -74,4 +74,6 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 
 ### FR:docs: OpenAPI
 
-- **FR:docs.openapi** (P1): `docs/api/openapi.yaml` is OpenAPI 3.0.3, documents every route, the error model, and `fields`; a test MUST check that every route the handler serves is in the document and vice versa
+- **FR:docs.openapi** (P1): `docs/api/openapi.yaml` is OpenAPI 3.0.3, documents every route, the error model, and `fields`; the document MUST be generated from the route table (`pnpm openapi`) and a test MUST fail when the committed file differs from the generated one
+  - **FR:docs.openapi.parity** (P1): Tests MUST check, per route, schema-level parity between the handler and the document: path and query params (names, types, bounds, enum, defaults), request body (properties, required, enums, bounds, `additionalProperties: false`), response schemas against real handler output, and the global `security` requirement (every route denies without a grant)
+  - **FR:docs.openapi.valid** (P1): The document MUST be structurally valid OpenAPI 3.0.3 (single `components`, every `$ref` resolves, operationIds unique)

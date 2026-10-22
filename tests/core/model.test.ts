@@ -268,6 +268,12 @@ describe('validateRecurrence', () => {
     expect(validateRecurrence({ cadence: 'daily', nominalDay: '2026-02-28' })).toEqual([]);
   });
 
+  // @req FR:task-model/validate.recurrence.offset-months
+  it('accepts integer offsetMonths and rejects fractions', () => {
+    expect(validateRecurrence({ cadence: 'quarterly', anchor: 'end-of-month', offsetMonths: 1 })).toEqual([]);
+    expect(paths(validateRecurrence({ cadence: 'quarterly', offsetMonths: 0.5 }))).toEqual(['offsetMonths']);
+  });
+
   // @req FR:task-model/validate.recurrence.offset
   it('rejects non-integer offset and bad nominalDay', () => {
     const issues = validateRecurrence({ cadence: 'monthly', offsetDays: 1.5, nominalDay: '2026-02-31' });
