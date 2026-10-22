@@ -46,7 +46,7 @@ Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-St
 - **FR:complete.already** (P1): An already-checked task MUST be left unchanged
 - **FR:complete.summary** (P2): With `summary`, a `> Prompt:` note line under the task is replaced by `{indent}> ✅ **COMPLETED**: {summary}`; with no prompt line, `{task indent}  > ✅ **COMPLETED**: {summary}` is inserted right after the task line. The prompt search stops at the next task or heading line
 - **FR:complete.remove** (P2): With `remove: true`, the task line and all following blank or deeper-indented lines are deleted instead (a `🔄` row that rolls is rolled, not deleted; see FR:complete.recurring)
-- **FR:complete.recurring** (P1): A `🔄` recurring row MUST roll in place using `rollRecurring` (block = the row plus its nested lines): the row stays unchecked with its next due date, `result.rolled` is `true`, and the row is never deleted, including with `remove: true` (the roll takes precedence). If `rollRecurring` returns `null` the row completes normally
+- **FR:complete.recurring** (P1): A `🔄` recurring row MUST roll in place using `rollRecurring` with `config.shiftWeekends` (block = the row plus its nested lines): the row stays unchecked with its next due date, `result.rolled` is `true`, and the row is never deleted, including with `remove: true` (the roll takes precedence). If `rollRecurring` returns `null` the row completes normally
 
 ### FR:skip: Skip / park
 

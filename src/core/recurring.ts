@@ -96,7 +96,7 @@ function parseLine(line: string, today: Date): Parsed | null {
     form, pre: g.pre, mid: g.mid, cadText: g.cad, rest, hasYear: g.year !== undefined, weekday: false, cad,
     recurrence: { cadence: (cad.startsWith('quarterly') ? 'quarterly' : cad) as Cadence },
   };
-  if (cad.endsWith('eom+1')) p.recurrence.anchor = 'end-of-month';
+  if (cad.endsWith('eom+1')) { p.recurrence.anchor = 'end-of-month'; p.recurrence.offsetMonths = 1; }
   if (mm) p.marker = { lead: mm[1], trail: mm[6] };
   if (g.day === undefined) { // weekday name
     const w = weekdayIndex(g.mon);

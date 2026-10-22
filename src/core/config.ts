@@ -21,6 +21,8 @@ export type FormatId = (typeof FORMAT_IDS)[number];
 /** @req FR:config/$stack-config */
 export interface StackConfig {
   timezone: string;
+  /** Shift weekend recurring due dates to Monday. @req FR:config/$stack-config */
+  shiftWeekends: boolean;
   startOfDay: string;
   timeBlocks: TimeBlock[];
   taskScoring: TaskScoring;
@@ -38,6 +40,7 @@ const block = (name: string, days: string[], startTime: string, endTime: string,
 const DEFAULTS_SOURCE: StackConfig = {
   format: 'emoji',
   alsoWrite: [],
+  shiftWeekends: true,
   timezone: 'America/Los_Angeles',
   startOfDay: '08:00',
   timeBlocks: [
@@ -93,13 +96,16 @@ function parseBlock(v: unknown, path: string): TimeBlock {
   if (!isObj(v)) throw new ConfigError(`${path}: expected object`);
   if (!Array.isArray(v.days)) throw new ConfigError(`${path}.days: expected array`);
   for (const d of v.days) if (!ALL.includes(d as string)) throw new ConfigError(`${path}.days: invalid day ${String(d)}`);
-  if (v.startTime === v.endTime) throw new ConfigError(`${path}: startTime equals endTime`);
+  const name = str(v.name, `${path}.name`);
+  const startTime = time(v.startTime, `${path}.startTime`);
+  const endTime = time(v.endTime, `${path}.endTime`);
+  if (startTime === endTime) throw new ConfigError(`${path}: startTime equals endTime`);
   return {
-    name: str(v.name, `${path}.name`),
+    name,
     ...(v.label !== undefined ? { label: str(v.label, `${path}.label`) } : {}),
     days: v.days as string[],
-    startTime: time(v.startTime, `${path}.startTime`),
-    endTime: time(v.endTime, `${path}.endTime`),
+    startTime,
+    endTime,
     emoji: str(v.emoji, `${path}.emoji`),
   };
 }
@@ -125,6 +131,10 @@ export function parseConfig(input?: unknown): StackConfig {
   if (input.timezone !== undefined) {
     cfg.timezone = str(input.timezone, 'timezone');
     if (!validZone(cfg.timezone)) throw new ConfigError(`timezone: unknown zone ${cfg.timezone}`);
+  }
+  if (input.shiftWeekends !== undefined) {
+    if (typeof input.shiftWeekends !== 'boolean') throw new ConfigError('shiftWeekends: expected boolean');
+    cfg.shiftWeekends = input.shiftWeekends;
   }
   if (input.startOfDay !== undefined) cfg.startOfDay = time(input.startOfDay, 'startOfDay');
   if (input.timeBlocks !== undefined) {

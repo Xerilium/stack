@@ -2,7 +2,7 @@ import type { TaskRef } from '../core/lifecycle';
 import { ApiError, invalid, type Issue } from './errors';
 
 export const MAX_BODY_BYTES = 64 * 1024;
-const MAX_STR = 2000;
+export const MAX_STR = 2000;
 
 /** Reads at most MAX_BODY_BYTES from the stream; stops pulling as soon as the cap is passed. */
 async function readCapped(req: Request): Promise<string> {
@@ -58,13 +58,13 @@ export type Spec =
   | { t: 'strs'; max?: number }
   | { t: 'caps' };
 
-const REF = /^([^/\\:\0.][^/\\:\0]*):(\d{1,9})$/;
+export const REF_RE = /^(?![Rr][Ee][Aa][Dd][Mm][Ee]:)([^/\\:\0.][^/\\:\0]*):(\d{1,9})$/;
 const isReadme = (name: string) => name.toLowerCase() === 'readme';
 
 /** @req FR:api/input.ref */
 export function parseRef(v: unknown): TaskRef | null {
   if (typeof v !== 'string') return null;
-  const m = REF.exec(v);
+  const m = REF_RE.exec(v);
   return m && !isReadme(m[1]) ? { path: `tasks/${m[1]}.md`, line: Number(m[2]) } : null;
 }
 

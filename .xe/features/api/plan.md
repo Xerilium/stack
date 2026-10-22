@@ -21,4 +21,5 @@ title: API Plan
 - Core errors map by class; messages from `LifecycleError` are user-safe, everything else is a fixed 500
 - Summaries are generated on read from storage (the storage interface only holds `tasks/*.md`)
 - Build: `tsconfig.api.json` added to `pnpm build`
+- OpenAPI: `src/api/openapi.ts` builds the document from `ROUTES` (each route carries its query and body specs) plus authored response docs; `pnpm openapi` writes `docs/api/openapi.yaml`; the test compares the committed file to the generated one and checks parity against the specs and real responses
 - Tests: `tests/api/*.test.ts` with `MemoryStorage` and direct `Request` objects; no network

@@ -28,7 +28,8 @@ Stack needs to turn a user's `stack.json` into a complete, validated configurati
   - **FR:load.validate.time** (P1): `parseConfig` MUST reject time values not in `HH:mm` format
   - **FR:load.validate.days** (P2): `parseConfig` MUST reject day names outside Sun-Sat
   - **FR:load.validate.timezone** (P2): `parseConfig` MUST reject timezones unknown to the runtime
-  - **FR:load.validate.range** (P2): `parseConfig` MUST reject time blocks whose startTime equals endTime
+  - **FR:load.validate.range** (P2): `parseConfig` MUST reject time blocks whose startTime equals endTime, after each time is validated as `HH:mm` (a malformed time is reported as a format error, not as equality)
+  - **FR:load.validate.shift-weekends** (P2): `parseConfig` MUST reject a non-boolean `shiftWeekends`
 - **FR:load.output** (P1): StackConfig (@req FR:config/$stack-config)
 
 ### FR:time-block: Resolve active time block
@@ -48,6 +49,7 @@ Stack needs to know which time block a moment falls in so that tasks can be filt
 - **FR:$stack-config** (P1): **`StackConfig`** — Complete configuration.
   - `timezone` (string) — IANA id. Default: America/Los_Angeles.
   - `startOfDay` (string) — `HH:mm`. Default: 08:00.
+  - `shiftWeekends` (boolean) — Default: true. Recurring rows with weekend due dates shift to Monday (@req FR:recurring-rows/roll.weekend)
   - `timeBlocks` (TimeBlock[]) — Default: legacy Work, Family evening, Family weekend, Shichael, Project, Sleep.
   - `taskScoring` (object) — `emojiWeights` (category → emoji → number) and `effortHours` (emoji → number); defaults from legacy.
 - **FR:$time-block** (P1): **`TimeBlock`**

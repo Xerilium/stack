@@ -10,6 +10,7 @@
     "build:api": "tsc -p tsconfig.api.json",
     "build:bots": "tsc -p tsconfig.bots.json",
     "build:mcp": "tsc -p tsconfig.mcp.json",
+    "openapi": "pnpm run build:api && node dist/api/openapi-write.js",
     "bakeoff": "node dist/core/bakeoff.js",
     "clean": "rm -rf dist",
     "lint": "eslint . && tsc --noEmit -p tsconfig.core.json && tsc --noEmit -p tsconfig.cli.json && tsc --noEmit -p tsconfig.api.json && tsc --noEmit -p tsconfig.bots.json && tsc --noEmit -p tsconfig.mcp.json",

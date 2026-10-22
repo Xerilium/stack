@@ -18,7 +18,7 @@ One tokenizing parser over the first line locates the checkbox, date, cadence, a
 ## Decisions
 
 - Marker `<!--nominal:YYYY-MM-DD[ day:N]-->` at end of first line: hidden in markdown, one place for both weekend and clamp state
-- `Quarterly-EOM+1`: offsetDays not mapped to the model (months vs days)
+- `Quarterly-EOM+1`: mapped to `anchor: end-of-month` + new model field `offsetMonths: 1` (not `offsetDays`: unit differs)
 - Weekday-name rows keep their text; no date to advance
-- Config flag not added here; caller passes it in (config feature owns the schema)
+- `shiftWeekends` lives in config; task-lifecycle passes `config.shiftWeekends` to `rollRecurring`
 - Tests: `tests/core/recurring.test.ts`

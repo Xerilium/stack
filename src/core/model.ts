@@ -35,6 +35,8 @@ export interface Recurrence {
   anchor?: Anchor;
   /** Integer days from the anchor, e.g. `Quarterly-EOM+1`. */
   offsetDays?: number;
+  /** Integer months from the anchor; `Quarterly-EOM+1` is quarterly, end-of-month, 1. */
+  offsetMonths?: number;
   /** Date retained so rolls do not drift off weekends. */
   nominalDay?: IsoDate;
 }
@@ -223,6 +225,10 @@ export function validateRecurrence(r: Recurrence, path = ''): ValidationIssue[] 
   // @req FR:task-model/validate.recurrence.offset
   if (r.offsetDays !== undefined && !Number.isInteger(r.offsetDays)) {
     out.push(issue(join(path, 'offsetDays'), 'out-of-range', 'must be an integer'));
+  }
+  // @req FR:task-model/validate.recurrence.offset-months
+  if (r.offsetMonths !== undefined && !Number.isInteger(r.offsetMonths)) {
+    out.push(issue(join(path, 'offsetMonths'), 'out-of-range', 'must be an integer'));
   }
   checkDate(r.nominalDay, join(path, 'nominalDay'), out);
   return out;

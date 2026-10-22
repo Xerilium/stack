@@ -383,7 +383,7 @@ export async function completeTask(ctx: LifecycleContext, ref?: TaskRef, opts: C
   const end = trimBlanks(lines, i, blockEnd(lines, i));
   const block = [stripped + cr, ...lines.slice(i + 1, end)].join('\n');
   const today = wallClock(clock(ctx), cfg(ctx).timezone);
-  const rolled = rollRecurring(block, new Date(Date.UTC(today.y, today.mo - 1, today.d)));
+  const rolled = rollRecurring(block, new Date(Date.UTC(today.y, today.mo - 1, today.d)), { shiftWeekends: cfg(ctx).shiftWeekends });
   if (rolled !== null) {
     const out = rolled.split('\n');
     const first = i === 0 && lines[0].startsWith('﻿') ? '﻿' + out[0] : out[0];

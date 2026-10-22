@@ -183,6 +183,20 @@ describe('commands', () => {
     expect(file(d, 'tasks/alpha.md')).toContain('- [x] Two');
   });
 
+  // @req FR:task-lifecycle/complete.recurring @req FR:config/load.validate.shift-weekends
+  it('stack.json shiftWeekends controls recurring rolls', () => {
+    for (const [cfg, want] of [['{}', 'Nov 23, 2026'], ['{"shiftWeekends":false}', 'Nov 22, 2026']] as const) {
+      const d = repo('📅 Oct 22, 2026: 🔄 Monthly: Pay bills');
+      writeFileSync(join(d, '.xe/config/stack.json'), cfg);
+      const line = file(d, 'tasks/alpha.md').split('\n').findIndex(l => l.includes('Pay bills')) + 1;
+      expect(stack(d, 'complete', `tasks/alpha.md:${line}`, '--now', NOW).code).toBe(0);
+      expect(file(d, 'tasks/alpha.md')).toContain(`📅 ${want}: 🔄 Monthly`);
+    }
+    const bad = repo('x');
+    writeFileSync(join(bad, '.xe/config/stack.json'), '{"shiftWeekends":"no"}');
+    expect(stack(bad, 'next', '--now', NOW).err).toContain('shiftWeekends');
+  });
+
   it('complete --remove deletes the row; remove-completed prunes done rows', () => {
     const d = repo('ItemA', 'ItemB');
     const line = (t: string) => file(d, 'tasks/alpha.md').split('\n').findIndex(l => l.includes(t)) + 1;
