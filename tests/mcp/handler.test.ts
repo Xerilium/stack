@@ -72,6 +72,7 @@ describe('http transport', () => {
     const n = await rpc(t, 'notifications/initialized', undefined, null);
     expect(n.status).toBe(202);
   });
+  // @req FR:mcp-server/http.errors
   it('reports unexpected failures with fixed text and class name only', async () => {
     const errs: unknown[] = [];
     const { mcp, mint } = await setup({ onError: (e) => errs.push(e), api: async () => { throw new TypeError('secret task text'); } });

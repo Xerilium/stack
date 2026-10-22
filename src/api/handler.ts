@@ -174,6 +174,7 @@ const actionRoutes: Route[] = ACTIONS.map((a) => ({
 }));
 
 /** @req FR:api/routes.next @req FR:api/routes.add @req FR:api/routes.actions @req FR:api/routes.remove @req FR:api/routes.tasks @req FR:api/routes.projects @req FR:api/routes.summaries */
+/** @req FR:auth-security/docs.routes (the table the security tests iterate) */
 export const ROUTES: Route[] = [
   {
     method: 'GET', doc: '/next', name: 'next', query: FIELDS_Q,
@@ -227,6 +228,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    // @req FR:quick-capture/api.route
     method: 'POST', doc: '/capture', name: 'capture', body: CAPTURE_BODY,
     async run(c) {
       noQuery(c);
@@ -273,6 +275,7 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       const b = validate<Parameters<typeof addProject>[1]>(await readBody(c.req), PROJECT_BODY.schema, PROJECT_BODY.required);
+      // @req FR:api/input.noforce (never overwrites; force is not exposed)
       const { path } = await addProject(c.life, { ...b, force: false });
       return json(201, { path, project: baseName(path) });
     },

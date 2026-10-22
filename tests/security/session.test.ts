@@ -4,6 +4,7 @@ import { principal } from './helpers';
 const b64 = (o: unknown) => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64');
 
 // @req FR:auth-security/session.parse
+// @req FR:auth-security/session.@function @req FR:auth-security/session.input
 describe('parseClientPrincipal', () => {
   it('parses a valid principal', () => {
     expect(parseClientPrincipal(principal())).toEqual({ provider: 'github', userId: 'owner-1', userDetails: 'octocat', roles: ['anonymous', 'authenticated'] });

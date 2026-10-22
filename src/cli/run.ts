@@ -229,6 +229,7 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
         project: p.positionals[0], text: p.positionals.slice(1).join(' '), section: flag(f, 'section'), parent: parent ? parseRef(parent) : undefined,
       }));
     }
+    // @req FR:quick-capture/cli.cmd
     case 'capture': {
       const text = p.positionals.join(' ').trim();
       if (!text) throw new UsageError('capture needs <text...>');

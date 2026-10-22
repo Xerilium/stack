@@ -55,7 +55,7 @@ const TABLE: Row[] = [
   ['abbr same day is next week', 'dentist due thurs', { title: 'Dentist', due: '2026-10-29' }],
   ['abbr without cue stays in title', 'plan sat trip', { title: 'Plan sat trip' }],
   ['sun without cue stays in title', 'fix sun roof', { title: 'Fix sun roof' }],
-  // speech
+  // speech: @req FR:quick-capture/speech.fillers @req FR:quick-capture/speech.numbers @req FR:quick-capture/speech.case
   ['speech fillers', 'um, call the dentist uh tomorrow for thirty minutes.', { title: 'Call the dentist', due: '2026-10-23', minutes: 30, emoji: '🟢' }],
   ['speech remind', 'Hey, remind me to email Sam in two days', { title: 'Email Sam', due: '2026-10-24' }],
   ['speech add task', 'okay so add a task to buy stamps tomorrow', { title: 'Buy stamps', due: '2026-10-23' }],

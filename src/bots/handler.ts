@@ -1,6 +1,7 @@
 /**
  * Channel adapters: Slack, iMessage bridge, generic webhook, GitHub. Pure (Request) -> Response.
  * Order per request: route -> capped raw body -> signature -> parse -> allow-list -> command.
+ * @req FR:chat-bots/sig.order @req FR:chat-bots/allow.order
  * @req FR:chat-bots/router.@function
  */
 import { parseCommand, runCommand, type Client } from './commands';
@@ -35,6 +36,7 @@ class BotError extends Error {
   constructor(readonly code: keyof typeof STATUS) { super(code); }
 }
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+/** Fixed error body. @req FR:chat-bots/router.errors */
 const fail = (code: string, extra: Record<string, string> = {}) => new Response(
   JSON.stringify({ error: { code, message: MESSAGE[code] } }),
   { status: STATUS[code], headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...extra } });
@@ -137,6 +139,7 @@ export function createBotHandler(deps: BotDeps): (req: Request) => Promise<Respo
       }
     } catch (e) {
       if (e instanceof BotError) return fail(e.code);
+      /** class name only, never message or request data. @req FR:chat-bots/router.nolog */
       deps.onError?.(e instanceof Error ? e.constructor.name : 'unknown');
       return fail('internal');
     }

@@ -1,4 +1,5 @@
 # Threat Model: Stack
+<!-- @req FR:auth-security/docs.threat @req FR:auth-security/docs.swa (SWA route rules: docs/security/staticwebapp.config.json) -->
 
 One owner, one private task repo, hosted on Azure Static Web Apps (SWA) free tier. Feature spec: `.xe/features/auth-security/spec.md`.
 

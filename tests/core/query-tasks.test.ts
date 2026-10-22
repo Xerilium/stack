@@ -17,6 +17,7 @@ const fake = (items: QueryItem[] | Error | unknown): QueryClient & { calls: Quer
 const pr = (n: number, title = `PR ${n}`): QueryItem => ({ title, url: `https://github.com/o/r/pull/${n}`, kind: 'PullRequest' });
 const TRIG = '- [ ] Sweep 🔎 @GitHub/o/r (is:pr state:open) 🟡';
 
+// @req FR:query-tasks/trigger.@function
 // @req FR:query-tasks/trigger.pattern
 describe('findQueryTriggers', () => {
   it('parses source, identifier, type, params, indent and line', () => {
@@ -31,6 +32,7 @@ describe('findQueryTriggers', () => {
   });
 });
 
+// @req FR:query-tasks/expand.@function
 describe('expandQueryTasks', () => {
   // @req FR:query-tasks/expand.block
   it('replaces the managed block and keeps the rest', async () => {
@@ -177,6 +179,7 @@ describe('failure isolation', () => {
   });
 });
 
+// @req FR:query-tasks/refresh.@function
 describe('refreshQueryTasks', () => {
   // @req FR:query-tasks/refresh.write
   it('writes only changed markdown files with the read version', async () => {
@@ -243,6 +246,7 @@ describe('refreshQueryTasks error isolation', () => {
   });
 });
 
+// @req FR:query-tasks/github.@function @req FR:query-tasks/github.inject @req FR:query-tasks/github.parse (exec is injected; no network or gh)
 // @req FR:query-tasks/github.graphql
 describe('createGhClient', () => {
   const ok = (nodes: unknown[]) => JSON.stringify({ data: { search: { nodes } } });

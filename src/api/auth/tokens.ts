@@ -122,6 +122,7 @@ const DUMMY = '0'.repeat(64);
 export function createTokenService(opts: { store: TokenStore; pepper?: string; now?: () => Date }): TokenService {
   const { store } = opts;
   const now = () => (opts.now ?? (() => new Date()))();
+  /** @req FR:auth-security/token.hash */
   const hashSecret = (secret: string) => (opts.pepper ? createHmac('sha256', opts.pepper).update(secret).digest('hex') : sha(secret));
 
   async function load(): Promise<{ tokens: StoredToken[]; version: string | null }> {
