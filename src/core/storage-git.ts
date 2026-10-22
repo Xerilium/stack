@@ -213,15 +213,23 @@ export class GitStorage extends FsStorage {
     const parent = (await this.tryGit('rev-parse', '--verify', '-q', `${ours}^`))?.trim() ?? null;
     if (parent) await this.git('reset', '-q', '--soft', parent);
     else await this.git('update-ref', '-d', 'HEAD');
+    // Try every path; a failure on one must not leave the others at the failed commit's content.
+    let first: unknown;
+    let failed = false;
     for (const path of paths) {
-      if (parent && (await this.tryGit('cat-file', '-e', `HEAD:${path}`)) !== null) {
-        await this.git('restore', '-q', '--source=HEAD', '--staged', '--worktree', '--', path);
-      } else {
-        await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', path);
-        await this.restore(path, null);
+      try {
+        if (parent && (await this.tryGit('cat-file', '-e', `HEAD:${path}`)) !== null) {
+          await this.git('restore', '-q', '--source=HEAD', '--staged', '--worktree', '--', path);
+        } else {
+          await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', path);
+          await this.restore(path, null);
+        }
+      } catch (e) {
+        if (!failed) { failed = true; first = e; }
       }
     }
     // Best effort: a failure here must not mask the error that caused the rollback.
     try { if (await this.fetch()) await this.rebase(); } catch { /* surfaced on the next sync */ }
+    if (failed) throw first;
   }
 }

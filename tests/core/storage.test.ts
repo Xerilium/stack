@@ -238,6 +238,23 @@ describe('GitStorage rollback', () => {
     expect(git(d, 'status', '--porcelain')).toBe('M  tasks/x.md\n');
   });
 
+  // @req FR:storage-git/git.failure
+  it('restores every path even if one restore throws, then rethrows the first error', async () => {
+    const d = freshRepo();
+    const s = new GitStorage(d);
+    await s.write('tasks/a.md', 'old-a');
+    await s.write('tasks/b.md', 'old-b');
+    writeFileSync(join(d, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const priv = s as unknown as { git: (...a: string[]) => Promise<string> };
+    const orig = priv.git.bind(s);
+    priv.git = (...a: string[]) => (a[0] === 'restore' && a.includes('tasks/a.md') ? Promise.reject(new Error('boom')) : orig(...a));
+    await expect(s.writeMany([
+      { path: 'tasks/a.md', content: 'new-a' }, { path: 'tasks/b.md', content: 'new-b' },
+    ])).rejects.toBeDefined();
+    priv.git = orig;
+    expect(readFileSync(join(d, 'tasks', 'b.md'), 'utf8')).toBe('old-b');
+  });
+
   // @req FR:storage-git/git.branch
   it('rejects when the configured branch is not checked out', async () => {
     const { a } = remoteSetup();

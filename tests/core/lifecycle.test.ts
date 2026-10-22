@@ -745,6 +745,15 @@ describe('due-date escalation', () => {
     expect((await run('- [ ] 📅 Jan 2: y\n', new Date('2026-12-31T18:00:00Z'))).out).toContain('🔺 📅 Jan 2');
   });
 
+  // @req FR:task-lifecycle/sweep.due-move
+  it('counts a row that only moves (emoji already right)', async () => {
+    const src = '# A\n\n## 🔄 Active\n\n- [ ] first\n\n## 📋 Backlog\n\n- [ ] 🚨 📅 Oct 1: late\n';
+    const s = await mem({ 'tasks/a.md': src });
+    const r = await sweepDueDates(ctx(s));
+    expect(r.escalated).toBe(1);
+    expect(await text(s, 'tasks/a.md')).toBe('# A\n\n## 🔄 Active\n\n- [ ] 🚨 📅 Oct 1: late\n- [ ] first\n\n## 📋 Backlog\n\n');
+  });
+
   // @req FR:task-lifecycle/sweep.due @req FR:task-lifecycle/doc.crlf
   it('keeps CRLF', async () => {
     const s = await mem({ 'tasks/a.md': '# A\r\n\r\n## 🔄 Active\r\n\r\n- [ ] 📅 Oct 22: x\r\n' });

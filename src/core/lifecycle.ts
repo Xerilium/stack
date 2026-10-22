@@ -693,6 +693,7 @@ function escalateDue(content: string, w: Wall): { lines: string[]; count: number
   const lines = content.split('\n');
   const todayMs = Date.UTC(w.y, w.mo - 1, w.d);
   const moves: { top: number; end: number }[] = [];
+  const changed = new Set<number>();
   let count = 0;
   let layout: { tops: Map<number, number>; heads: number[]; project: Project } | null = null;
   const limit = contentEnd(lines);
@@ -719,7 +720,7 @@ function escalateDue(content: string, w: Wall): { lines: string[]; count: number
     const next = `${m[1]}${collapse(`${emoji} ${body}`)}`;
     const raw = lines[i];
     const out = (i === 0 && raw.startsWith('\uFEFF') ? '\uFEFF' : '') + next + crOf(raw);
-    if (out !== raw) { lines[i] = out; count++; }
+    if (out !== raw) { lines[i] = out; count++; changed.add(i); }
 
     if (days <= 0) {
       layout ??= sectionLayout(content, lines);
@@ -727,6 +728,7 @@ function escalateDue(content: string, w: Wall): { lines: string[]; count: number
       if (k !== undefined && PARKING_SECTIONS.test(layout.project.sections[k].heading)) {
         const end = trimBlanks(lines, i, blockEnd(lines, i, layout.heads[k + 1] ?? limit));
         moves.push({ top: i, end });
+        if (!changed.has(i)) count++; // moves without a text change still count
       }
     }
   }
