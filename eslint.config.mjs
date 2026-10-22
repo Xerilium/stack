@@ -2,7 +2,7 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'coverage/**', '.xe/**', 'jest.config.js'] },
+  { ignores: ['dist/**', 'node_modules/**', 'coverage/**', '.xe/**', 'jest.config.js', 'web/dist/**', 'web/test-results/**', 'web/playwright-report/**'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -12,7 +12,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['tests/**/*.ts'],
+    files: ['tests/**/*.ts', 'web/e2e/**/*.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
   }
 );

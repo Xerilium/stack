@@ -42,3 +42,36 @@ describe('client source', () => {
     for (const f of files(join(ROOT, 'web/public'))) expect(readFileSync(f, 'utf8')).not.toMatch(/- \[[ x]\]/);
   });
 });
+
+// @req FR:web-app/arch.deps
+describe('dependencies', () => {
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'web/package.json'), 'utf8'));
+  it('has preact as the only runtime dependency and exact versions', () => {
+    expect(Object.keys(pkg.dependencies)).toEqual(['preact']);
+    for (const v of [...Object.values(pkg.dependencies), ...Object.values(pkg.devDependencies)]) expect(v).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(Object.keys(pkg.devDependencies).sort()).toEqual(['@playwright/test', '@types/node', 'jsdom', 'typescript', 'vite', 'vitest']);
+  });
+});
+
+// @req FR:web-app/arch.tsconfig
+describe('tsconfig', () => {
+  it('is separate from the root configs and never imports src/', () => {
+    const ts = JSON.parse(readFileSync(join(ROOT, 'web/tsconfig.json'), 'utf8'));
+    expect(ts.extends).toBeUndefined();
+    expect(ts.include).not.toContain('../src');
+    const files = readdirSync(join(ROOT, 'web/src')).map((f) => readFileSync(join(ROOT, 'web/src', f), 'utf8')).join('\n');
+    expect(files).not.toMatch(/from '\.\.\/(\.\.\/)?src|from '\.\.\//);
+  });
+});
+
+// @req FR:web-app/arch.ci
+describe('ci', () => {
+  it('runs web unit tests, lint, build, and e2e in its own job', () => {
+    const y = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+    expect(y).toMatch(/pnpm --filter stack-web test/);
+    expect(y).toMatch(/pnpm lint/);
+    expect(y).toMatch(/pnpm build/);
+    expect(y).toMatch(/e2e:/);
+    expect(y).toMatch(/playwright install --with-deps chromium/);
+  });
+});

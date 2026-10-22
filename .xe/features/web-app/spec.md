@@ -58,7 +58,7 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 ### FR:edit: Inline markdown editor
 
 - **FR:edit.open** (P1): `Enter`, `e`, or double click/tap on a row title turns it into a text editor holding the full row text. `Enter` saves through `tasks.edit`, `Shift+Enter` is not a newline (rows are one line), `Esc` cancels. Saving unchanged text makes no call
-- **FR:edit.preview** (P1): A live preview under the editor renders the markdown subset `**bold**`, `*italic*`, `` `code` ``, and `[text](https://…)` links. Output is built from escaped text; only `http` and `https` links are allowed, and links open with `rel="noopener noreferrer"`
+- **FR:edit.preview** (P1): A live preview under the editor renders the markdown subset `**bold**`, `*italic*`, `` `code` ``, and `[text](https://…)` links. Output is built as elements (never `innerHTML`), so text is always escaped; only `http` and `https` links are allowed, and links open with `rel="noopener noreferrer"`
 - **FR:edit.notes** (P2): Row notes (extra lines under a task) show in a muted block under the title, rendered by the same markdown subset
 
 ### FR:reorder: Reorder
@@ -69,7 +69,7 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 
 ### FR:bulk: Bulk edit
 
-- **FR:bulk.bar** (P1): With one or more selected rows a bar shows the count and pickers for priority, status, effort, impact, plus Done and Skip. An action runs one api call per selected row, in order, and reports `n done, m failed`. Selection survives a partial failure for the failed rows only
+- **FR:bulk.bar** (P1): With one or more selected rows a bar shows the count, `Set…` (all four pickers; per-group buttons on desktop), Done, Skip, and Clear. An action runs one api call per selected row, in order, and reports `n done, m failed`. Selection survives a partial failure for the failed rows only
 
 ### FR:capacity: Capacity view
 
@@ -77,7 +77,7 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 
 ### FR:capture: Quick capture
 
-- **FR:capture.box** (P1): A capture box sits at the top of every view (`c` focuses it; a floating button on mobile). `Enter` posts to `/capture`. While typing (debounced 250 ms) a `dryRun` call previews the parsed title, due date, effort, and project. A `422` shows the message inline and keeps the text. Success clears the box, shows the new row text in a toast, and refreshes
+- **FR:capture.box** (P1): A capture box sits at the top of every view, full width on mobile (`c` focuses it). `Enter` posts to `/capture`. While typing (debounced 250 ms) a `dryRun` call previews the parsed title, due date, effort, and project. A `422` shows the message inline and keeps the text. Success clears the box, shows the new row text in a toast, and refreshes
 - **FR:capture.project** (P2): The last project used is sent as the default `project`, so a phrase with no `#project` still lands somewhere
 
 ### FR:palette: Command palette
