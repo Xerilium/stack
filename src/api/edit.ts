@@ -39,11 +39,27 @@ export async function rowText(storage: Storage, ref: TaskRef): Promise<string> {
   return rowAt(f.content.split('\n'), ref.line)[2];
 }
 
-/** Replace the text after the checkbox of one row. */
-export async function editTask(storage: Storage, ref: TaskRef, text: string, expect?: string): Promise<EditResult> {
+/** Texts of a row's ancestors, nearest last. */
+function ancestors(lines: string[], line: number): string[] {
+  const out: string[] = [];
+  let indent = /^(\s*)/.exec(unbom(bare(lines[line] ?? '')))![1].length;
+  for (let i = line - 1; i >= 0 && indent > 0; i--) {
+    const m = ROW.exec(unbom(bare(lines[i])));
+    const lead = m ? /^\s*/.exec(m[1])![0].length : 0;
+    if (m && lead < indent) { out.unshift(m[2]); indent = lead; }
+  }
+  return out;
+}
+
+/** Replace the text after the checkbox of one row. `chain` pins the ancestors' texts (nearest last), so a concurrent move makes the write fail. */
+export async function editTask(storage: Storage, ref: TaskRef, text: string, expect?: string, chain?: string[]): Promise<EditResult> {
   const f = await storage.read(ref.path);
   const lines = f.content.split('\n');
   const m = rowAt(lines, ref.line, expect);
+  if (chain !== undefined) {
+    const now = ancestors(lines, ref.line);
+    if (now.length !== chain.length || now.some((t, i) => t.trim() !== chain[i].trim())) throw new ConflictError('Row moved since it was read');
+  }
   const cr = lines[ref.line].endsWith('\r') ? '\r' : '';
   const bom = lines[ref.line].startsWith('﻿') ? '﻿' : '';
   const before = m[2];

@@ -22,5 +22,8 @@ title: AI Triage Assist Plan
 - Agent-reachable text writes reject `🤖` in the API layer; core `addTask` stays unchanged for owners
 - Denials are `forbidden`; agents treat them as "skip and move on"
 - Agent suggestions never overwrite existing priority/effort/impact
-- Completion is the only gated state change; merge/deploy have no code path
+- Merge/deploy have no code path
+- Change: the API calls `authorizeMutation` (core) for every token mutation, and pins the row for the write; owner session skips it. Hold-mark moves (`skip`, `suspend`, `resume`) stay owner-only, matching `/tasks/edit`
+- Change: a full log shifts down one file (oldest dropped) instead of failing, so a `tasks:write` token cannot block claim or record-result. A tombstone entry notes the drop. Git history keeps the dropped entries
+- Change tests first: `tests/api/autonomy-gate.test.ts`
 - Tests first: `tests/core/triage.test.ts`, `tests/api/triage.test.ts`, `tests/mcp/triage.test.ts`, `tests/cli/triage.test.ts`

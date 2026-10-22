@@ -122,7 +122,8 @@ describe('token auth', () => {
         const [area, kind] = need.split(':');
         const ok = scopes.includes(need) || scopes.includes(kind);
         const res = await s.call(r.method, pathOf(r.doc), { headers: bearer(t), ...(r.method === 'POST' ? { body: {} } : {}) });
-        if (ok) expect([401, 403]).not.toContain(res.status);
+        if (ok && ['tasks.removeCompleted', 'tasks.skip', 'tasks.resume', 'tasks.suspend'].includes(r.name)) expect(res.status).toBe(403); // owner-only
+        else if (ok) expect([401, 403]).not.toContain(res.status);
         else expect({ label, route: r.name, area, status: res.status }).toEqual({ label, route: r.name, area, status: 403 });
       }
     }
