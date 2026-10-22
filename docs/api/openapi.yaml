@@ -72,6 +72,35 @@ paths:
       responses:
         '201': { $ref: '#/components/responses/Mutation' }
         default: { $ref: '#/components/responses/Error' }
+  /capture:
+    post:
+      summary: Add a task from a natural-language or speech phrase
+      operationId: captureTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 2000, description: 'Phrase such as "call dentist tomorrow 30m #alpha"' }
+                project: { type: string, description: Used when the text has no #project or @project hint }
+                section: { type: string, description: Default Active }
+                dryRun: { type: boolean, description: Parse and render without writing (200) }
+      responses:
+        '200':
+          description: Dry run result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaptureResult' }
+        '201':
+          description: Task added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaptureResult' }
+        default: { $ref: '#/components/responses/Error' }
   /tasks/{ref}:
     get:
       summary: Get one task
@@ -311,6 +340,20 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    CaptureResult:
+      type: object
+      properties:
+        changed: { type: boolean }
+        ref: { $ref: '#/components/schemas/Ref' }
+        after: { type: string }
+        spec:
+          type: object
+          properties:
+            title: { type: string }
+            due: { type: string, format: date }
+            effort: { type: object, properties: { minutes: { type: integer }, emoji: { type: string } } }
+            project: { type: string }
+            recurrence: { type: object }
     Ref:
       type: string
       pattern: '^[^/\\:.][^/\\:]*:\d+$'
@@ -455,6 +498,20 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    CaptureResult:
+      type: object
+      properties:
+        changed: { type: boolean }
+        ref: { $ref: '#/components/schemas/Ref' }
+        after: { type: string }
+        spec:
+          type: object
+          properties:
+            title: { type: string }
+            due: { type: string, format: date }
+            effort: { type: object, properties: { minutes: { type: integer }, emoji: { type: string } } }
+            project: { type: string }
+            recurrence: { type: object }
     Ref:
       type: string
       pattern: '^[^/\\:.][^/\\:]*:\d+$'

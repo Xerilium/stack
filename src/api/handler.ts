@@ -8,6 +8,7 @@ import {
   type LifecycleContext, type LifecycleResult, type TaskProps,
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
+import { captureTask, CaptureError } from '../core/quick-capture';
 import type { Storage } from '../core/storage';
 import { generateSummaries } from '../core/summaries';
 import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
@@ -187,6 +188,23 @@ export const ROUTES: Route[] = [
         section: { t: 'str', max: 200, line: true }, parent: REF,
       }, ['project', 'text']);
       return result(await addTask(c.life, { project: b.project, text: b.text, section: b.section, parent: b.parent ?? undefined }), 201);
+    },
+  },
+  {
+    method: 'POST', doc: '/capture', name: 'capture',
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ text: string; project?: string; section?: string; dryRun?: boolean }>(await readBody(c.req), {
+        text: { t: 'str', required: true, line: true }, project: { t: 'str', max: 200, line: true },
+        section: { t: 'str', max: 200, line: true }, dryRun: { t: 'bool' },
+      }, ['text']);
+      try {
+        const { result: r, spec } = await captureTask(c.life, b.text, { project: b.project, section: b.section, dryRun: b.dryRun });
+        return json(b.dryRun ? 200 : 201, { changed: r.changed, ref: r.ref ? formatRef(r.ref) : undefined, after: r.after, spec });
+      } catch (e) {
+        if (e instanceof CaptureError) throw invalid([{ field: 'text', message: e.message }]);
+        throw e;
+      }
     },
   },
   ...actionRoutes,
