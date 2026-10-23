@@ -43,11 +43,11 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 
 Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
-- **FR:now.focus** (P1): Home is **Now**. A focus block shows the top task from `GET /next` (title, project, chips, due) with Start (`s`), Done (`d`), Defer (`z`), Skip (`k`) and key hints. Nothing active shows an empty state that points at capture (`c`)
+- **FR:now.focus** (P1): Home is **Now**. A focus block shows the top task from `GET /next` (title, project, chips, due) with Start (`s`), Done (`d`), Defer (`z`), Skip (`Shift+S`) and key hints. Nothing active shows an empty state that points at capture (`c`)
 - **FR:now.active** (P1): Below the focus block, every open top-level task in an Active section is listed one line each, grouped by project, with subtask progress (`2/5`). The cursor (`j`/`k`) starts on the focus task and moves through the same rows; the same row keys work as in the list
 - **FR:now.undo** (P1): Done shows an undo toast for 8 seconds (`set` checkbox Incomplete). Writes update the screen at once and reload after
 - **FR:now.defer** (P1): `z` opens a defer menu: 2 hours, tomorrow, next week (number keys 1-3) calling `suspend` with `hours` or `days`
-- **FR:now.focusmode** (P1): `Enter` on any row opens focus mode: one task large with its subtasks as a checklist and its notes rendered; `s`, `d`, `z`, `e` work; `Esc` returns
+- **FR:now.focusmode** (P1): `Enter` on any row opens focus mode: one task large with its subtasks as a checklist and its notes rendered; `s`, `d`, `z` work; `Esc` returns
 
 ### FR:projects: Projects overview
 

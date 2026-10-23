@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import { parseInline, type Node } from './markdown';
 import { EFFORT, IMPACT, PRIORITY, STATUS, type Choice } from './row';
 
@@ -37,7 +37,7 @@ export function Chip({ group, value, onPick }: { group: GroupName; value: string
 /** Dialog with focus restore. @req FR:web-app/ux.a11y */
 export function Dialog({ title, onClose, children, sheet = true }: { title: string; onClose: () => void; children: ComponentChildren; sheet?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     const first = ref.current?.querySelector<HTMLElement>('input, button');
     first?.focus();
@@ -102,9 +102,9 @@ export function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: num
 }
 
 export const SHORTCUTS: [string, string][] = [
-  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g n / g l / g c', 'Go to next / list / capacity'],
-  ['j k or arrows', 'Move cursor'], ['Enter or e', 'Edit row'], ['x', 'Select row'], ['Esc', 'Clear selection'],
-  ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['k (next view) / z', 'Skip / suspend'],
+  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g n / g p / g a', 'Go to now / projects / all tasks'],
+  ['j k or arrows', 'Move cursor'], ['Enter', 'Focus mode'], ['e', 'Edit row'], ['x', 'Select row'], ['Esc', 'Clear selection'],
+  ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['z', 'Defer'], ['Shift+S', 'Skip'],
   ['Shift+J / Shift+K', 'Move row down / up'], ['?', 'This sheet'],
 ];
 export function Help({ onClose }: { onClose: () => void }) {

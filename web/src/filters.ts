@@ -5,7 +5,8 @@ import type { Task, View } from './types';
 export interface Filters { q: string; project: string; state: 'open' | 'done' | 'all'; status: string; priority: string; effort: string }
 
 export const NO_FILTERS: Filters = { q: '', project: '', state: 'open', status: '', priority: '', effort: '' };
-const VIEWS: View[] = ['next', 'list', 'capacity'];
+const VIEWS: View[] = ['now', 'projects', 'list'];
+const ALIAS: Record<string, View> = { next: 'now', capacity: 'projects', all: 'list' };
 const STATES = ['open', 'done', 'all'];
 const KEYS = ['q', 'project', 'state', 'status', 'priority', 'effort'] as const;
 
@@ -32,9 +33,10 @@ export function buildHash(view: View, f: Filters): string {
 
 export function parseHash(hash: string): { view: View; filters: Filters } {
   const m = /^#\/([a-z]+)(?:\?(.*))?$/.exec(hash);
-  const view = (VIEWS as string[]).includes(m?.[1] ?? '') ? (m![1] as View) : 'next';
+  const name = m?.[1] ?? '';
+  const view: View = ALIAS[name] ?? ((VIEWS as string[]).includes(name) ? (name as View) : 'now');
   const filters: Filters = { ...NO_FILTERS };
-  if (view !== 'next' || m?.[1] === 'next') {
+  if (view === 'list') {
     const p = new URLSearchParams(m?.[2] ?? '');
     for (const k of KEYS) {
       const v = p.get(k);

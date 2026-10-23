@@ -36,9 +36,9 @@ describe('hash state', () => {
     expect(parseHash(h)).toEqual({ view: 'list', filters: f });
   });
   it('omits defaults and tolerates junk', () => {
-    expect(buildHash('next', F())).toBe('#/next');
-    expect(parseHash('')).toEqual({ view: 'next', filters: F() });
-    expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'next', filters: F() });
+    expect(buildHash('now', F())).toBe('#/now');
+    expect(parseHash('')).toEqual({ view: 'now', filters: F() });
+    expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'now', filters: F() });
     expect(parseHash('#/list?state=done').filters.state).toBe('done');
   });
 });
