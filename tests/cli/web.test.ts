@@ -4,7 +4,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, symlinkSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { prepareDemo, prepareLive, resolveRepo, startWeb } from '../../src/cli/web';
+import { redact, prepareDemo, prepareLive, resolveRepo, startWeb } from '../../src/cli/web';
 
 const ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 Object.assign(process.env, ENV);
@@ -45,6 +45,12 @@ describe('prepareDemo', () => {
     const dest = join(tmp(), 'demo'); mkdirSync(join(dest, 'tasks'), { recursive: true });
     expect(() => prepareDemo(dest, dest, true)).toThrow(/overlap/);
   });
+  it('re-copies when the source repo changes', () => {
+    const a = source(); const b = source(); writeFileSync(join(b, 'tasks/alpha.md'), '# B\n');
+    const dest = join(tmp(), 'demo'); prepareDemo(a, dest); prepareDemo(b, dest);
+    expect(readFileSync(join(dest, 'tasks/alpha.md'), 'utf8')).toBe('# B\n');
+  });
+  it('redacts url credentials', () => { expect(redact('https://u:tok@github.com/x/y.git')).toBe('https://github.com/x/y.git'); });
   it('fails clearly when the source is missing', () => {
     expect(() => prepareDemo(join(tmp(), 'nope'), join(tmp(), 'd'))).toThrow(/not found/);
   });
@@ -99,6 +105,11 @@ describe('prepareLive', () => {
     expect(g(repo, 'log', '--oneline', 'main')).not.toContain('Complete');
     expect(g(repo, 'branch', '--show-current')).toBe('main');
     expect(readFileSync(join(repo, 'tasks/alpha.md'), 'utf8')).toContain('- [ ] Write the plan');
+  });
+  it('refuses main and option-like branches', () => {
+    const repo = content();
+    expect(() => prepareLive(repo, 'main', join(tmp(), 'w'))).toThrow(/never commits/);
+    expect(() => prepareLive(repo, '--detach', join(tmp(), 'w'))).toThrow(/Bad branch/);
   });
   it('rejects a non-repo', () => {
     expect(() => prepareLive(tmp(), 'stack-web', join(tmp(), 'w'))).toThrow(/git repo/);

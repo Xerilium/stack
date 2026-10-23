@@ -2,6 +2,7 @@
  * `stack web`: serves the web app and the api on localhost over a task repo (loopback only, no sign-in).
  * @req FR:cli/web.serve @req FR:cli/web.demo
  */
+import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type Server } from 'http';
@@ -16,7 +17,8 @@ const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio
 export function prepareDemo(repo: string, dest: string, reset = false): void {
   const source = join(repo, 'tasks');
   if (!existsSync(source)) throw new Error(`${source} not found (expected a content repo with a tasks/ folder)`);
-  if (existsSync(join(dest, '.git')) && !reset) return;
+  const marker = join(dest, '.stack-source');
+  if (existsSync(join(dest, '.git')) && !reset && existsSync(marker) && readFileSync(marker, 'utf8') === resolve(repo)) return;
   const inside = (a: string, b: string) => { const r = relative(realpathSync(a), existsSync(b) ? realpathSync(b) : resolve(b)); return r === '' || (!r.startsWith('..') && !r.includes(':')); };
   if (inside(source, dest) || (existsSync(dest) && inside(dest, source))) throw new Error(`Demo source and copy overlap: ${source} / ${dest}`);
   rmSync(dest, { recursive: true, force: true });
@@ -25,7 +27,9 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
   cpSync(source, join(dest, 'tasks'), { recursive: true, dereference: true, filter: (p) => !p.split(sep).includes('.git') });
   mkdirSync(join(dest, '.xe/config'), { recursive: true });
   writeFileSync(join(dest, '.xe/config/stack.json'), existsSync(cfg) ? readFileSync(cfg) : '{}\n');
+  writeFileSync(marker, resolve(repo));
   git(dest, 'init', '-q', '-b', 'main');
+  writeFileSync(join(dest, '.git/info/exclude'), '.stack-source\n', { flag: 'a' });
   git(dest, '-c', 'user.name=Stack', '-c', 'user.email=stack@localhost', 'add', '-A');
   git(dest, '-c', 'user.name=Stack', '-c', 'user.email=stack@localhost', 'commit', '-q', '-m', 'Stack demo copy');
 }
@@ -37,13 +41,19 @@ export interface WebOpts { dir: string; port: number; webDir: string; label?: st
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
 export function resolveRepo(spec: string, cacheDir: string): string {
   if (!/^(https?:\/\/|ssh:\/\/|file:\/\/|git@)/.test(spec)) return resolve(spec);
-  const dest = join(cacheDir, spec.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, ''));
-  if (!existsSync(join(dest, '.git'))) { mkdirSync(cacheDir, { recursive: true }); git(cacheDir, 'clone', '-q', spec, dest); }
+  const dest = join(cacheDir, createHash('sha1').update(spec).digest('hex').slice(0, 12));
+  if (!existsSync(join(dest, '.git'))) { mkdirSync(cacheDir, { recursive: true }); git(cacheDir, 'clone', '-q', '--', spec, dest); }
   return dest;
 }
 
+/** Repo spec for display: credentials in a url are dropped. */
+export const redact = (spec: string): string => spec.replace(/\/\/[^/@]*@/, '//');
+
 /** LIVE: a git worktree of the real repo on a dedicated branch, so its checkout and main are never touched. */
 export function prepareLive(repo: string, branch: string, wtDir: string): { dir: string; branch: string } {
+  if (/^(main|master|HEAD)$/.test(branch)) throw new Error(`LIVE never commits to ${branch}; pick a dedicated branch`);
+  if (branch.startsWith('-')) throw new Error(`Bad branch name: ${branch}`);
+  try { git(repo, 'check-ref-format', '--branch', branch); } catch { throw new Error(`Bad branch name: ${branch}`); }
   try { git(repo, 'rev-parse', '--git-dir'); } catch { throw new Error(`${repo} is not a git repo`); }
   if (!existsSync(join(wtDir, '.git'))) {
     mkdirSync(dirname(wtDir), { recursive: true });

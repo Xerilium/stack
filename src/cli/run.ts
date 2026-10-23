@@ -21,8 +21,9 @@ import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { findStackDir, userConfig } from './discover';
-import { prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
+import { redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
 import { homedir } from 'os';
+import { createHash } from 'crypto';
 
 export interface IO { out(s: string): void; err(s: string): void }
 
@@ -305,15 +306,15 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
   let target: string; let info: RepoInfo; let label: string;
   if (live) {
     const branch = flag(f, 'branch') ?? cfg.branch ?? 'stack-web';
-    const wt = join(home, '.config/stack/live', `${basename(repo)}-${branch.replace(/[^A-Za-z0-9._-]+/g, '-')}`);
+    const wt = join(home, '.config/stack/live', `${basename(repo)}-${createHash('sha1').update(`${repo}\0${branch}`).digest('hex').slice(0, 8)}`);
     target = prepareLive(repo, branch, wt).dir;
-    info = { mode: 'live', repo, branch };
+    info = { mode: 'live', repo: redact(repo), branch };
     label = `LIVE - edits are committed to branch ${branch} of ${repo}`;
     io.out(`LIVE MODE: edits commit to branch ${branch} of ${repo} (worktree ${target}); main is untouched until you merge.\n`);
   } else {
     target = join(home, '.config/stack/demo');
     prepareDemo(repo, target, f['reset'] === true);
-    info = { mode: 'demo', repo, branch: 'main' };
+    info = { mode: 'demo', repo: redact(repo), branch: 'main' };
     label = `DEMO COPY of ${repo} - edits stay in the copy`;
     io.out(`DEMO MODE: serving a COPY of ${repo}\nEdits stay in ${target}; the real repo is never touched. Reset: stack web --reset. Real data: stack web --live\n`);
   }
