@@ -13,7 +13,8 @@ import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, Toasts, type GroupName, type
 import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { CaptureSpec, NextTask, Project, SetProps, Task, View } from './types';
-import { CapacityView, ListView, NextView } from './views';
+import { activeTasks, DEFER, progress, startsOpen, topTask, visibleRows } from './now';
+import { FocusMode, ListView, NowView, ProjectsView, type RowProps } from './views';
 
 const api = createClient();
 type Phase = 'loading' | 'ready' | 'denied' | 'error';
@@ -29,6 +30,11 @@ export function App() {
   const [me, setMe] = useState('');
   const [local, setLocal] = useState(false);
   const [info, setInfo] = useState<{ mode: string; repo: string; branch: string } | null>(null);
+  const [focusRef, setFocusRef] = useState<string | null>(null);
+  const [deferRefs, setDeferRefs] = useState<string[] | null>(null);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const [{ view, filters }, setNav] = useState(() => parseHash(location.hash));
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -51,9 +57,20 @@ export function App() {
   const chord = useRef<number>(0);
 
   // ---- derived
-  const rows = useMemo(() => applyFilters(tasks, filters), [tasks, filters]);
+  const filtered = useMemo(() => applyFilters(tasks, filters), [tasks, filters]);
+  const sectionKey = (t: Task) => `${t.project}/${t.section}`;
+  const collapsed = useMemo(() => {
+    const out = new Set<string>();
+    for (const t of tasks) { const k = sectionKey(t); if (startsOpen(t.section) === flipped.has(k)) out.add(k); }
+    return out;
+  }, [tasks, flipped]);
+  const searching = filters.q.trim() !== '' || filters.state !== 'open';
+  const listRows = useMemo(() => visibleRows(filtered, tasks, expanded, collapsed, searching), [filtered, tasks, expanded, collapsed, searching]);
+  const nowRows = useMemo(() => activeTasks(tasks).filter((t) => t.ref !== next?.ref), [tasks, next]);
+  const rows = view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...nowRows] : listRows;
+  const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
-  const capRows = useMemo(() => capacityRows(projects, tasks), [projects, tasks]);
+  const capRows = useMemo(() => capacityRows(projects, tasks).map((r) => ({ ...r, top: topTask(tasks, r.project) })), [projects, tasks]);
 
   // ---- feedback
   const toast = useCallback((text: string, kind: Toast['kind'] = 'ok', undo?: () => void) => {
@@ -91,15 +108,17 @@ export function App() {
 
   // keep the cursor on a real row
   useEffect(() => {
-    if (view !== 'list') return;
+    if (view === 'projects') return;
     if (cursor && rows.some((r) => r.ref === cursor)) return;
     setCursor(rows[0]?.ref ?? null);
   }, [rows, view, cursor]);
+  useEffect(() => { if (focusRef && !tasks.some((t) => t.ref === focusRef)) setFocusRef(null); }, [tasks, focusRef]);
   useEffect(() => { setSelected((s) => { const live = new Set(tasks.map((t) => t.ref)); const n = new Set([...s].filter((r) => live.has(r))); return n.size === s.size ? s : n; }); }, [tasks]);
 
   // ---- navigation (hash)
   const go = useCallback((v: View, f: Filters = filters) => {
     setNav({ view: v, filters: f });
+    window.scrollTo(0, 0);
     const h = buildHash(v, f);
     if (location.hash !== h) history.replaceState(null, '', h);
   }, [filters]);
@@ -172,14 +191,18 @@ export function App() {
     await finishSweep(await sweep(refs, (ref) => api.action(kind, ref)), refs.length, 'done');
   };
 
-  const nextAct = async (a: 'start' | 'done' | 'skip' | 'suspend', days?: number) => {
-    if (!next) return;
-    const ref = next.ref;
+  const refNow = (): string | undefined => focusRef ?? cursor ?? next?.ref;
+  const doAct = async (a: 'start' | 'done' | 'skip', ref = refNow()) => {
+    if (!ref) return;
     if (a === 'done') {
       if (await run(() => api.action('complete', ref), () => '')) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
-    } else if (a === 'suspend') await run(() => api.action('suspend', ref, { days: days ?? 1 }));
-    else await run(() => api.action(a, ref));
+    } else await run(() => api.action(a, ref));
   };
+  const applyDefer = async (refs: string[], d: (typeof DEFER)[number]) => {
+    setDeferRefs(null);
+    await run(() => api.action('suspend', refs[0], d.hours ? { hours: d.hours } : { days: d.days }), () => `Deferred: ${d.label.toLowerCase()}`);
+  };
+  const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
 
   const toggleDone = async (t: Task) => {
     if (t.done) { await run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Reopened'); return; }
@@ -227,6 +250,7 @@ export function App() {
 
   // ---- capture
   const defaultProject = () => lastProject.current ?? (next ? next.project : projects[0]?.name);
+  useEffect(() => { if (!captureOpen) { setCaptureText(''); setPreview(null); } }, [captureOpen]);
   useEffect(() => {
     const text = captureText.trim();
     if (!text) { setPreview(null); return; }
@@ -240,12 +264,12 @@ export function App() {
 
   const submitCapture = async () => {
     const text = captureText.trim();
-    if (!text) return;
+    if (!text || busy) return;
     setBusy(true);
     try {
       const r = await api.capture(text, { project: defaultProject() });
       if (r.ref) lastProject.current = projectOf(r.ref);
-      setCaptureText(''); setPreview(null);
+      setCaptureText(''); setPreview(null); setCaptureOpen(false);
       toast(`Added: ${r.after ?? r.spec.title}`);
       await refresh();
     } catch (e) {
@@ -254,39 +278,47 @@ export function App() {
   };
 
   // ---- commands
-  const cursorTask = tasks.find((t) => t.ref === cursor);
-  const targets = () => (selected.size ? [...selected] : cursor && view === 'list' ? [cursor] : next && view === 'next' ? [next.ref] : []);
+  const targets = () => (selected.size ? [...selected] : (cursor ? [cursor] : []));
   const openPicker = (groups: GroupName[]) => { const refs = targets(); if (refs.length) setPicker({ refs, groups }); };
+  const openCapture = () => setCaptureOpen(true);
   const commands: Command[] = [
-    { id: 'go-next', label: 'Go to next task', hint: 'g n', run: () => go('next', filters) },
-    { id: 'go-list', label: 'Go to list', hint: 'g l', run: () => go('list') },
-    { id: 'go-cap', label: 'Go to capacity', hint: 'g c', run: () => go('capacity') },
-    { id: 'capture', label: 'Capture a task', hint: 'c', run: () => setTimeout(() => captureRef.current?.focus(), 0) },
+    { id: 'go-now', label: 'Go to Now', hint: 'g n', run: () => go('now', filters) },
+    { id: 'go-projects', label: 'Go to Projects', hint: 'g p', run: () => go('projects') },
+    { id: 'go-list', label: 'Go to all tasks', hint: 'g a', run: () => go('list') },
+    { id: 'capture', label: 'Capture a task', hint: 'c', run: openCapture },
     { id: 'search', label: 'Search tasks', hint: '/', run: () => { go('list'); setTimeout(() => searchRef.current?.focus(), 0); } },
     ...(['open', 'done', 'all'] as const).map((s) => ({ id: `show-${s}`, label: `Show ${s} tasks`, run: () => go('list', { ...filters, state: s }) })),
     { id: 'clear', label: 'Clear filters', run: () => go('list', { q: '', project: '', state: 'open', status: '', priority: '', effort: '' }) },
     ...projects.map((p) => ({ id: `proj-${p.name}`, label: `Filter project: ${p.title || p.name}`, run: () => go('list', { ...filters, project: p.name }) })),
     ...GROUP_NAMES.map((g) => ({ id: `set-${g}`, label: `Set ${GROUPS[g].label.toLowerCase()} on ${selected.size ? 'selection' : 'row'}`, hint: GROUPS[g].key, run: () => openPicker([g]) })),
-    { id: 'done', label: 'Mark done', hint: 'd', run: () => (selected.size ? void bulk('complete') : view === 'next' ? void nextAct('done') : cursorTask && void toggleDone(cursorTask)) },
-    { id: 'skip', label: 'Skip', run: () => (selected.size ? void bulk('skip') : view === 'next' ? void nextAct('skip') : cursor && void run(() => api.action('skip', cursor))) },
-    { id: 'start', label: 'Start', hint: 's', run: () => (view === 'next' ? void nextAct('start') : cursor && void run(() => api.action('start', cursor))) },
+    { id: 'done', label: 'Mark done', hint: 'd', run: () => (selected.size ? void bulk('complete') : void doAct('done')) },
+    { id: 'skip', label: 'Skip', hint: 'Shift+S', run: () => (selected.size ? void bulk('skip') : void doAct('skip')) },
+    { id: 'start', label: 'Start', hint: 's', run: () => void doAct('start') },
+    { id: 'defer', label: 'Defer', hint: 'z', run: openDefer },
+    { id: 'focus', label: 'Focus mode', hint: 'Enter', run: () => { const r = refNow(); if (r) setFocusRef(r); } },
     { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
     { id: 'help', label: 'Show keyboard shortcuts', hint: '?', run: () => setHelp(true) },
     { id: 'signout', label: 'Sign out', run: () => location.assign('/.auth/logout') },
   ];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help });
-  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help };
+  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen });
+  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
-  const act = useRef({ nextAct, toggleDone, openPicker, applyPick, go, bulk }); act.current = { nextAct, toggleDone, openPicker, applyPick, go, bulk };
+  const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const L = latest.current, A = act.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); return; }
-      if (e.key === 'Escape' && (L.palette || L.help || L.picker)) { e.preventDefault(); setPalette(false); setHelp(false); setPicker(null); return; }
-      if (L.palette || L.help) return;
+      if (e.key === 'Escape' && (L.palette || L.help || L.picker || L.deferRefs || L.captureOpen)) { e.preventDefault(); setPalette(false); setHelp(false); setPicker(null); setDeferRefs(null); setCaptureOpen(false); return; }
+      if (e.key === 'Escape' && L.focusRef && !isTyping(e.target)) { e.preventDefault(); setFocusRef(null); return; }
+      if (L.palette || L.help || L.captureOpen) return;
+      if (L.deferRefs) {
+        const d = DEFER.find((x) => x.key === e.key);
+        if (d) { e.preventDefault(); void A.applyDefer(L.deferRefs, d); }
+        return;
+      }
       if (L.picker) {
         const g = L.picker.groups;
         if (g.length === 1 && /^[0-9]$/.test(e.key)) {
@@ -303,32 +335,36 @@ export function App() {
       const now = Date.now();
       if (chord.current && now - chord.current < 1000) {
         chord.current = 0;
-        const v = { n: 'next', l: 'list', c: 'capacity' }[k] as View | undefined;
-        if (v) { e.preventDefault(); A.go(v); return; }
+        const v = { n: 'now', p: 'projects', a: 'list' }[k] as View | undefined;
+        if (v) { e.preventDefault(); setFocusRef(null); A.go(v); return; }
       }
       if (k === 'g') { chord.current = now; return; }
       if (k === ':') { e.preventDefault(); setPalette(true); return; }
       if (k === '?') { e.preventDefault(); setHelp(true); return; }
-      if (k === 'c') { e.preventDefault(); captureRef.current?.focus(); return; }
-      if (k === '/') { e.preventDefault(); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
-      if (L.view === 'next') {
-        if (k === 's') void A.nextAct('start'); else if (k === 'd') void A.nextAct('done'); else if (k === 'k') void A.nextAct('skip');
-        else if (k === 'z') void A.nextAct('suspend', 1);
-        else if (k === 'p' || k === 't' || k === 'f' || k === 'i') A.openPicker([GROUP_NAMES.find((g) => GROUPS[g].key === k)!]);
+      if (k === 'c') { e.preventDefault(); setCaptureOpen(true); return; }
+      if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
+      if (L.focusRef) {
+        if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
       }
-      if (L.view !== 'list') return;
+      if (L.view === 'projects') return;
       const i = L.rows.findIndex((r) => r.ref === L.cursor);
       const step = (d: number) => { const n = L.rows[Math.max(0, Math.min(L.rows.length - 1, i + d))]; if (n) setCursor(n.ref); };
-      if (k === 'J' && L.cursor) { e.preventDefault(); void doMoveLatest.current(L.cursor, keyboardMove(L.positions, L.cursor, 'down')); }
-      else if (k === 'K' && L.cursor) { e.preventDefault(); void doMoveLatest.current(L.cursor, keyboardMove(L.positions, L.cursor, 'up')); }
+      const inList = L.view === 'list';
+      if (k === 'J' && L.cursor && inList) { e.preventDefault(); void doMoveLatest.current(L.cursor, keyboardMove(L.positions, L.cursor, 'down')); }
+      else if (k === 'K' && L.cursor && inList) { e.preventDefault(); void doMoveLatest.current(L.cursor, keyboardMove(L.positions, L.cursor, 'up')); }
       else if (k === 'j' || k === 'ArrowDown') { e.preventDefault(); step(1); }
       else if (k === 'k' || k === 'ArrowUp') { e.preventDefault(); step(-1); }
-      else if ((k === 'Enter' || k === 'e') && L.cursor) { e.preventDefault(); setEditing(L.cursor); }
+      else if (k === 'Enter' && L.cursor) { e.preventDefault(); setFocusRef(L.cursor); }
+      else if (k === 'e' && L.cursor) { e.preventDefault(); setEditing(L.cursor); }
+      else if (k === 'ArrowRight' && L.cursor) { setExpanded((s) => new Set(s).add(L.cursor!)); }
+      else if (k === 'ArrowLeft' && L.cursor) { setExpanded((s) => { const n = new Set(s); n.delete(L.cursor!); return n; }); }
       else if (k === 'x' && L.cursor) setSelected((s) => { const n = new Set(s); if (n.has(L.cursor!)) n.delete(L.cursor!); else n.add(L.cursor!); return n; });
       else if (k === 'Escape') { setSelected(new Set()); setCursor(null); }
       else if (k === 'd') { const t = L.rows.find((r) => r.ref === L.cursor); if (L.selected.size) void A.bulk('complete'); else if (t) void A.toggleDone(t); }
-      else if (k === 's' && L.cursor) void run(() => api.action('start', L.cursor!));
+      else if (k === 's' && L.cursor) void A.doAct('start');
+      else if (k === 'S') void A.doAct('skip');
+      else if (k === 'z') A.openDefer();
       else if (k === 'p' || k === 't' || k === 'f' || k === 'i') A.openPicker([GROUP_NAMES.find((g) => GROUPS[g].key === k)!]);
     };
     window.addEventListener('keydown', onKey);
@@ -345,43 +381,40 @@ export function App() {
   if (phase === 'error') {
     return <main class="gate"><h1>Cannot load tasks</h1><p>{loadError}</p><button type="button" class="btn primary" onClick={() => void refresh()}>Retry</button></main>;
   }
-  const tabs: [View, string][] = [['next', 'Next'], ['list', 'List'], ['capacity', 'Capacity']];
+  const tabs: [View, string, string][] = [['now', 'Now', 'g n'], ['projects', 'Projects', 'g p'], ['list', 'All tasks', 'g a']];
+  const toggleSet = (set: 'expanded' | 'flipped') => (k: string) => (set === 'expanded' ? setExpanded : setFlipped)((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const rowProps: RowProps = {
+    titles: new Map(projects.map((x) => [x.name, x.title || x.name])), all: tasks, cursor, selected, editing, busy, expanded, handles: view === 'list', drag, prog,
+    onSelect: (ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; }), onCursor: setCursor, onEdit: setEditing, onSave: (r, t) => void save(r, t), onToggle: (t) => void toggleDone(t),
+    onPick: (refs, g) => setPicker({ refs: selected.size && selected.has(refs[0]) ? [...selected] : refs, groups: Array.isArray(g) ? g : [g] }),
+    onMove: (ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir)), onDragStart, onExpand: toggleSet('expanded'), onOpen: (r) => setFocusRef(r),
+  };
+  const focusTask = focusRef ? tasks.find((t) => t.ref === focusRef) : undefined;
+  const nav = (cls: string) => tabs.map(([v, label, hint]) => (
+    <button type="button" key={v} class={`${cls}${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}>{label}<kbd>{hint}</kbd></button>
+  ));
   return (
     <div class="shell">
       <nav class="rail" aria-label="Views">
         <div class="brand">Stack</div>
-        {tabs.map(([v, label]) => (
-          <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}>{label}</button>
-        ))}
+        <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
+        {nav('tab')}
         <div class="spacer" />
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">Commands <kbd>⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
-        <div class="who">{me && <span>{me}</span>} {!local && <a href="/.auth/logout">Sign out</a>}</div>
+        <div class="who">{!local && me && <span>{me} · <a href="/.auth/logout">Sign out</a></span>}</div>
       </nav>
       <main class="main">
-        {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · branch {info.branch} · {info.mode === 'live' ? 'edits are committed to this branch' : 'edits stay in the copy'}</> : me}</div>}
-        <div class="capture">
-          <input ref={captureRef} type="text" aria-label="Quick capture" placeholder="Capture: call dentist tomorrow 30m #alpha" value={captureText} maxLength={2000} disabled={busy && !captureText}
-            onInput={(e) => setCaptureText((e.target as HTMLInputElement).value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submitCapture(); } if (e.key === 'Escape') (e.target as HTMLInputElement).blur(); }} />
-          <button type="button" class="btn primary" disabled={busy || !captureText.trim()} onClick={() => void submitCapture()}>Add</button>
-          {preview && (
-            <p class={`preview-line${preview.error ? ' err' : ''}`} role="status" data-testid="capture-preview">
-              {preview.error ?? [preview.spec!.title, preview.spec!.due && `due ${preview.spec!.due}`, preview.spec!.effort && `${preview.spec!.effort.emoji} ${preview.spec!.effort.minutes}m`, preview.spec!.project && `#${preview.spec!.project}`].filter(Boolean).join(' · ')}
-            </p>
-          )}
-        </div>
+        {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
         {phase === 'loading' && <p class="loading">Loading…</p>}
-        {phase === 'ready' && view === 'next' && <NextView task={next} busy={busy} onAct={(a, d) => void nextAct(a, d)} onPick={(refs, g) => setPicker({ refs, groups: Array.isArray(g) ? g : [g] })} />}
+        {phase === 'ready' && view === 'now' && <NowView task={next} rows={nowRows} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
         {phase === 'ready' && view === 'list' && (
-          <ListView rows={rows} projects={projects} filters={filters} cursor={cursor} selected={selected} editing={editing} busy={busy} drag={drag} searchRef={searchRef}
-            onFilters={setFilters} onCursor={setCursor} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })}
-            onEdit={setEditing} onSave={(r, t) => void save(r, t)} onToggle={(t) => void toggleDone(t)} onPick={(refs, g) => setPicker({ refs: selected.size && selected.has(refs[0]) ? [...selected] : refs, groups: Array.isArray(g) ? g : [g] })}
-            onMove={(ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir))} onDragStart={onDragStart} />
+          <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
+            onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />
         )}
-        {phase === 'ready' && view === 'capacity' && <CapacityView rows={capRows} />}
+        {phase === 'ready' && view === 'projects' && <ProjectsView rows={capRows} onOpen={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })} />}
       </main>
-      {selected.size > 0 && view === 'list' && (
+      {selected.size > 0 && view !== 'projects' && (
         <div class="bulk" role="toolbar" aria-label="Bulk edit">
           <strong>{selected.size} selected</strong>
           <button type="button" class="btn" disabled={busy} onClick={() => setPicker({ refs: [...selected], groups: GROUP_NAMES })}>Set…</button>
@@ -392,10 +425,27 @@ export function App() {
         </div>
       )}
       <nav class="tabbar" aria-label="Views (mobile)">
-        {tabs.map(([v, label]) => <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}>{label}</button>)}
+        {nav('tab')}
+        <button type="button" class="tab" onClick={openCapture} aria-label="New task">＋</button>
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">More</button>
       </nav>
+      {focusTask && <FocusMode task={focusTask} all={tasks} busy={busy} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onBack={() => setFocusRef(null)} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
+      {deferRefs && (
+        <Dialog title="Defer until" onClose={() => setDeferRefs(null)}>
+          <div class="picker-opts">{DEFER.map((d) => <button type="button" class="opt" key={d.key} onClick={() => void applyDefer(deferRefs, d)}><kbd>{d.key}</kbd> {d.label}</button>)}</div>
+        </Dialog>
+      )}
+      {captureOpen && (
+        <Dialog title="New task" onClose={() => setCaptureOpen(false)} sheet={false}>
+          <input ref={captureRef} type="text" aria-label="Quick capture" placeholder="Call dentist tomorrow 30m #alpha" value={captureText} maxLength={2000} disabled={busy && !captureText}
+            onInput={(e) => setCaptureText((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submitCapture(); } }} />
+          <p class={`preview-line${preview?.error ? ' err' : ''}`} role="status" data-testid="capture-preview">
+            {preview ? (preview.error ?? [preview.spec!.title, preview.spec!.due && `due ${preview.spec!.due}`, preview.spec!.effort && `${preview.spec!.effort.emoji} ${preview.spec!.effort.minutes}m`, preview.spec!.project && `#${preview.spec!.project}`].filter(Boolean).join(' · ')) : <>Natural language: due, effort, <code>#project</code>. <kbd>Enter</kbd> adds.</>}
+          </p>
+        </Dialog>
+      )}
       {palette && <PaletteDialog commands={commands} onClose={() => setPalette(false)} />}
       {help && <Help onClose={() => setHelp(false)} />}
       <Toasts toasts={toasts} dismiss={dismiss} />

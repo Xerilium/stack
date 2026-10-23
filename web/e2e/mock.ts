@@ -75,7 +75,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[] } = {}): Pr
     switch (path) {
       case '/tasks/start': strip(t!, 'status'); t!.text = `🚧 ${t!.text}`; return json(route, 200, { changed: true, ref: t!.ref, message: 'Started' });
       case '/tasks/skip': strip(t!, 'status'); t!.text = `⏸️ ${t!.text}`; m.tasks.push(m.tasks.splice(m.tasks.indexOf(t!), 1)[0]); return json(route, 200, { changed: true, ref: t!.ref, message: 'Skipped' });
-      case '/tasks/suspend': t!.text = `💤 Oct 23: ${t!.text}`; m.tasks.splice(m.tasks.indexOf(t!), 1); return json(route, 200, { changed: true, ref: t!.ref, message: `Suspended ${body.days} day(s)` });
+      case '/tasks/suspend': t!.text = `💤 Oct 23: ${t!.text}`; m.tasks.splice(m.tasks.indexOf(t!), 1); return json(route, 200, { changed: true, ref: t!.ref, message: `Suspended ${body.hours ? `${body.hours} hour(s)` : `${body.days} day(s)`}` });
       case '/tasks/complete': t!.done = true; return json(route, 200, { changed: true, ref: t!.ref, message: 'Completed' });
       case '/tasks/set': {
         if (body.checkbox) t!.done = body.checkbox === 'Complete';

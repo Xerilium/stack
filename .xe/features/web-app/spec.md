@@ -39,16 +39,25 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 - **FR:row.parse** (P1): `parseRow(text)` extracts status, priority, effort, impact, due date text, recurrence, suspend marker, and a clean title (emoji markers and date prefixes removed). The emoji set matches the api `set` enums; unknown text stays in the title
 - **FR:row.effort** (P2): Effort emoji map to minutes (🔹 12, 🟢 30, 🟡 60, 🟠 120, 🔴 240, ⚫️ 480) for the capacity view
 
-### FR:next: Next-task view
+### FR:now: Now view (home)
 
-- **FR:next.show** (P1): The home view shows the top task from `GET /next` as a large card: title, project, chips. With nothing active it shows an empty state that points at capture
-- **FR:next.actions** (P1): Start (`s`), Done (`d`), Skip (`k`), and Suspend (`z`, 1 day or 1 week) call the matching api action, then reload the card. A done task offers an undo toast for 8 seconds (`set` checkbox Incomplete)
+Design: `docs/design/web-ux.md`. Journeys J1-J5.
+
+- **FR:now.focus** (P1): Home is **Now**. A focus block shows the top task from `GET /next` (title, project, chips, due) with Start (`s`), Done (`d`), Defer (`z`), Skip (`Shift+S`) and key hints. Nothing active shows an empty state that points at capture (`c`)
+- **FR:now.active** (P1): Below the focus block, every open top-level task in an Active section is listed one line each, grouped by project, with subtask progress (`2/5`). The cursor (`j`/`k`) starts on the focus task and moves through the same rows; the same row keys work as in the list
+- **FR:now.undo** (P1): Done shows an undo toast for 8 seconds (`set` checkbox Incomplete). Writes update the screen at once and reload after
+- **FR:now.defer** (P1): `z` opens a defer menu: 2 hours, tomorrow, next week (number keys 1-3) calling `suspend` with `hours` or `days`
+- **FR:now.focusmode** (P1): `Enter` on any row opens focus mode: one task large with its subtasks as a checklist and its notes rendered; `s`, `d`, `z` work; `Esc` returns
+
+### FR:projects: Projects overview
+
+- **FR:projects.glance** (P1): One row per project shows the title, its top open task (first open top-level task in Active, else in Up next, else first open), open count, and a load bar against weekly capacity (over capacity uses the warning color; no capacity shows load only). `Enter` or click opens that project's list
 
 ### FR:list: Full list
 
-- **FR:list.view** (P1): The list shows tasks grouped by project then section with indentation by depth, chips per row, and a count. Done rows are muted
+- **FR:list.view** (P1): The list shows tasks as single-line rows (about 32px) grouped by project then section. Section headers collapse; Active and Up next start open, others closed. Subtasks and notes are hidden until the row is expanded (`→` / `←`, or the `▸ n/m` control). Done rows are muted
 - **FR:list.filters** (P1): Filters: text (`/`), project, state (open, done, all), status, priority, effort. Filters combine with AND, appear as removable chips, and are kept in the URL hash so a reload or share keeps the view
-- **FR:list.nav** (P1): `j`/`k` or arrow keys move the cursor, `Enter` opens the row editor, `x` toggles selection, `Esc` clears cursor and selection. The cursor row stays in view
+- **FR:list.nav** (P1): `j`/`k` or arrow keys move the cursor, `Enter` opens focus mode, `e` or double click edits, `x` toggles selection, `Esc` clears cursor and selection. The cursor row stays in view
 
 ### FR:pick: Pickers and chips
 
@@ -57,7 +66,7 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 
 ### FR:edit: Inline markdown editor
 
-- **FR:edit.open** (P1): `Enter`, `e`, or double click/tap on a row title turns it into a text editor holding the full row text. `Enter` saves through `tasks.edit`, `Shift+Enter` is not a newline (rows are one line), `Esc` cancels. Saving unchanged text makes no call
+- **FR:edit.open** (P1): `e`, or double click/tap on a row title turns it into a text editor holding the full row text. `Enter` saves through `tasks.edit`, `Shift+Enter` is not a newline (rows are one line), `Esc` cancels. Saving unchanged text makes no call
 - **FR:edit.preview** (P1): A live preview under the editor renders the markdown subset `**bold**`, `*italic*`, `` `code` ``, and `[text](https://…)` links. Output is built as elements (never `innerHTML`), so text is always escaped; only `http` and `https` links are allowed, and links open with `rel="noopener noreferrer"`
 - **FR:edit.notes** (P2): Row notes (extra lines under a task) show in a muted block under the title, rendered by the same markdown subset
 
@@ -71,13 +80,9 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 
 - **FR:bulk.bar** (P1): With one or more selected rows a bar shows the count, `Set…` (all four pickers; per-group buttons on desktop), Done, Skip, and Clear. An action runs one api call per selected row, in order, and reports `n done, m failed`. Selection survives a partial failure for the failed rows only
 
-### FR:capacity: Capacity view
-
-- **FR:capacity.view** (P1): Per project: open task count, summed effort hours from open rows, and the weekly capacity from project metadata (`<Block> capacity: Nh`, summed over blocks). A bar shows load against capacity; over capacity turns the bar to the warning color. Projects without capacity show the load only
-
 ### FR:capture: Quick capture
 
-- **FR:capture.box** (P1): A capture box sits at the top of every view, full width on mobile (`c` focuses it). `Enter` posts to `/capture`. While typing (debounced 250 ms) a `dryRun` call previews the parsed title, due date, effort, and project. A `422` shows the message inline and keeps the text. Success clears the box, shows the new row text in a toast, and refreshes
+- **FR:capture.box** (P1): `c` (or the Add button) opens a capture overlay with one input. `Enter` posts to `/capture` and closes it; `Esc` closes. While typing (debounced 250 ms) a `dryRun` call previews the parsed title, due date, effort, and project. A `422` shows the message inline and keeps the text. Success shows the new row text in a toast and refreshes
 - **FR:capture.project** (P2): The last project used is sent as the default `project`, so a phrase with no `#project` still lands somewhere
 
 ### FR:palette: Command palette
@@ -87,11 +92,12 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 
 ### FR:keys: Keyboard
 
-- **FR:keys.global** (P1): `g n`, `g l`, `g c` go to next, list, capacity; `?` shows the shortcut sheet. Single-key shortcuts are ignored while typing in an input, textarea, or select, and with Ctrl/Cmd/Alt held (except the palette)
+- **FR:keys.global** (P1): `g n` (now), `g p` (projects), `g a` (all tasks); `?` shows the shortcut sheet. Single-key shortcuts are ignored while typing in an input, textarea, or select, and with Ctrl/Cmd/Alt held (except the palette)
 
 ### FR:ux: Responsive and feedback
 
-- **FR:ux.responsive** (P1): Desktop (>= 800px) uses a left rail; below that a bottom tab bar, full-width rows, and no horizontal scroll at 375px. All controls are >= 44px high on touch widths
+- **FR:ux.responsive** (P1): Desktop (>= 800px) uses a slim left rail; below that a bottom tab bar, full-width rows, and no horizontal scroll at 375px. All controls are >= 44px high on touch widths
+- **FR:ux.motion** (P2): Transitions are 120-200 ms and are disabled under `prefers-reduced-motion`
 - **FR:ux.feedback** (P1): Every write shows a toast with the api message; failures show the error text. A `409` reloads data and asks the user to retry. Buttons disable while a call runs
 - **FR:ux.a11y** (P2): Rows and controls are real buttons or inputs with labels, the palette and pickers are dialogs with focus returned on close, color is never the only signal, and the page works in light and dark
 

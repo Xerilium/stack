@@ -52,22 +52,41 @@ test.describe('shell and security', () => {
     await mockApi(page);
     await page.goto('/#/list');
     await expect(rows(page).first()).toBeVisible();
-    await page.goto('/#/capacity');
+    await page.goto('/#/projects');
     await expect(page.getByTestId('cap-alpha')).toBeVisible();
+    await page.goto('/#/now');
+    await expect(page.getByTestId('next-title')).toBeVisible();
     expect(errs).toEqual([]);
   });
 });
 
-test.describe('next view', () => {
-  // @req FR:web-app/next.show @req FR:web-app/ux.responsive
-  test('shows the top task with chips and no horizontal scroll', async ({ page }, info) => {
+const KEYBOARD = 'keyboard';
+const selectRow = async (page: Page, ref: string) => { await page.locator(`.row[data-ref="${ref}"] .title`).click(); await page.keyboard.press('x'); };
+
+test.describe('now view', () => {
+  // @req FR:web-app/now.focus @req FR:web-app/ux.responsive
+  test('shows the focus task with chips, Active rows below, and no horizontal scroll', async ({ page }, info) => {
     await mockApi(page);
     await page.goto('/');
+    await expect(page).toHaveURL(/\/$|#\/now/);
     await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
-    await expect(page.getByRole('button', { name: /Priority: High/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Effort: 1 hour/ })).toBeVisible();
+    const focus = page.locator('.focus-block');
+    await expect(focus.getByRole('button', { name: /Priority: High/ })).toBeVisible();
+    await expect(focus.getByRole('button', { name: /Effort: 1 hour/ })).toBeVisible();
+    // @req FR:web-app/now.active
+    await expect(rows(page)).toHaveText(['Review pull requests', 'Plan the trip']);
+    await expect(page.locator('.row[data-ref="alpha:6"]')).toHaveCount(0);
+    await expect(page.locator('.row[data-ref="alpha:7"]')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await shot(page, 'next', info);
+    await shot(page, 'now', info);
+  });
+
+  test('old hashes still work', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/#/next');
+    await expect(page.getByTestId('next-title')).toBeVisible();
+    await page.goto('/#/capacity');
+    await expect(page.getByTestId('cap-alpha')).toBeVisible();
   });
 
   test('empty state when nothing is active', async ({ page }) => {
@@ -76,59 +95,223 @@ test.describe('next view', () => {
     await expect(page.getByRole('heading', { name: 'Nothing active' })).toBeVisible();
   });
 
-  // @req FR:web-app/next.actions
-  test('start, skip, suspend, done with undo', async ({ page }) => {
+  // @req FR:web-app/now.focus @req FR:web-app/now.undo
+  test('start, skip, done with undo', async ({ page }) => {
     const m = await mockApi(page);
     await page.goto('/');
-    await page.getByRole('button', { name: 'Start' }).click();
+    const focus = page.locator('.focus-block');
+    await focus.getByRole('button', { name: 'Start' }).click();
     await expect(page.getByText('Started')).toBeVisible();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'alpha:6' } });
-    await page.getByRole('button', { name: 'Suspend 1 day' }).click();
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:6', days: 1 } });
+    await focus.getByRole('button', { name: 'Skip' }).click();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/skip', body: { ref: 'alpha:6' } });
     await expect(page.getByTestId('next-title')).toContainText('Write docs');
-    await page.getByRole('button', { name: 'Done' }).click();
+    await focus.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('Undo')).toBeVisible();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/complete', body: { ref: 'alpha:7' } });
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/set', body: { ref: 'alpha:7', checkbox: 'Incomplete' } });
     await expect(page.getByTestId('next-title')).toContainText('Write docs');
   });
 
-  test('desktop keys s d k z', async ({ page }, info) => {
-    test.skip(info.project.name === 'mobile', 'keyboard');
+  // @req FR:web-app/now.defer
+  test('Defer button opens the menu: 2 hours, tomorrow, next week', async ({ page }) => {
+    const m = await mockApi(page);
+    await page.goto('/');
+    const choose = async (name: RegExp) => {
+      await page.locator('.focus-block').getByRole('button', { name: 'Defer' }).click();
+      const dlg = page.getByRole('dialog', { name: 'Defer until' });
+      await expect(dlg).toBeVisible();
+      await dlg.getByRole('button', { name }).click();
+      await expect(dlg).toHaveCount(0);
+    };
+    await choose(/2 hours/);
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:6', hours: 2 } });
+    await expect(page.getByTestId('next-title')).toContainText('Write docs');
+    await choose(/Tomorrow/);
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:7', days: 1 } });
+    await expect(page.getByTestId('next-title')).toContainText('Review pull requests');
+    await choose(/Next week/);
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:9', days: 7 } });
+  });
+
+  test('z then number keys defer; Esc closes the menu', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
     await page.goto('/');
     await expect(page.getByTestId('next-title')).toBeVisible();
+    await page.keyboard.press('z');
+    await expect(page.getByRole('dialog', { name: 'Defer until' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(m.calls.filter((c) => c.path === '/tasks/suspend')).toHaveLength(0);
+    await page.keyboard.press('z');
+    await page.keyboard.press('2');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:6', days: 1 } });
+    await expect(page.getByTestId('next-title')).toContainText('Write docs');
+    await page.keyboard.press('z');
+    await page.keyboard.press('1');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:7', hours: 2 } });
+    await page.keyboard.press('z');
+    await page.keyboard.press('3');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { days: 7 } });
+  });
+
+  test('keys: cursor starts on the focus task, j/k move, d/s act, Shift+S skips', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
+    const m = await mockApi(page);
+    await page.goto('/');
+    await expect(page.locator('.focus-block.cursor')).toHaveAttribute('data-ref', 'alpha:6');
+    await page.keyboard.press('j');
+    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:9');
+    await page.keyboard.press('j');
+    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'beta:4');
     await page.keyboard.press('k');
-    await expect.poll(() => m.calls.at(-1)?.path).toBe('/tasks/skip');
+    await page.keyboard.press('s');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'alpha:9' } });
+    await page.keyboard.press('Shift+S');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/skip', body: { ref: 'alpha:9' } });
+  });
+
+  // @req FR:web-app/now.undo
+  test('a failed complete shows an error, not Done with Undo', async ({ page }) => {
+    const m = await mockApi(page);
+    await page.goto('/');
+    m.fail.set('/tasks/complete', { status: 500, code: 'internal', message: 'Boom' });
+    await page.locator('.focus-block').getByRole('button', { name: 'Done' }).click();
+    await expect(page.getByText('Boom')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+  });
+});
+
+test.describe('focus mode', () => {
+  // @req FR:web-app/now.focusmode
+  test('opens from the Focus button, shows notes and a subtask checklist, and closes', async ({ page }, info) => {
+    const m = await mockApi(page);
+    await page.goto('/');
+    await page.locator('.focus-block').getByRole('button', { name: 'Focus' }).click();
+    const dlg = page.getByRole('dialog', { name: 'Focus' });
+    await expect(dlg).toBeVisible();
+    await expect(dlg.locator('h1')).toContainText('Ship the web app');
+    await expect(dlg.locator('.notes a')).toHaveAttribute('href', 'https://example.test/spec');
+    const list = dlg.getByRole('list', { name: 'Subtasks' });
+    await expect(list).toContainText('Write docs');
+    await shot(page, 'focus', info);
+    await list.getByRole('button', { name: 'Mark done' }).click();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/complete', body: { ref: 'alpha:7' } });
+    await expect(list.locator('li.done')).toHaveCount(1);
+    if (info.project.name === 'mobile') await dlg.getByRole('button', { name: 'Back' }).click();
+    else await page.keyboard.press('Escape');
+    await expect(dlg).toHaveCount(0);
+  });
+
+  test('Enter on a list row opens it; s, d, z work; Esc returns', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
+    const m = await mockApi(page);
+    await page.goto('/#/list');
+    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:6');
+    await page.keyboard.press('j');
+    await page.keyboard.press('Enter');
+    const dlg = page.getByRole('dialog', { name: 'Focus' });
+    await expect(dlg.locator('h1')).toContainText('Review pull requests');
+    await page.keyboard.press('s');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'alpha:9' } });
+    await page.keyboard.press('z');
+    await expect(page.getByRole('dialog', { name: 'Defer until' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Defer until' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.keyboard.press('Enter');
+    await expect(dlg).toBeVisible();
+    await page.keyboard.press('d');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/complete', body: { ref: 'alpha:9' } });
   });
 });
 
 test.describe('list', () => {
-  // @req FR:web-app/list.view @req FR:web-app/edit.notes
-  test('groups by project and section, shows chips and notes, mutes done', async ({ page }, info) => {
+  // @req FR:web-app/list.view
+  test('groups by project and section, collapses Backlog and subtasks by default, mutes done', async ({ page }, info) => {
     await mockApi(page);
+    await page.goto('/#/list');
+    await expect(rows(page)).toHaveText(['Ship the web app', 'Review pull requests', 'Plan the trip']);
+    await expect(page.locator('.row.done')).toHaveCount(0);
     await page.goto('/#/list?state=all');
-    await expect(page.locator('.group')).toHaveCount(3);
+    await expect(page.locator('.group')).toHaveCount(2);
     await expect(page.locator('.row.done')).toHaveCount(1);
-    await expect(page.locator('.notes a')).toHaveAttribute('href', 'https://example.test/spec');
+    await expect(rows(page)).toHaveCount(6);
     await expect(page.locator('.title b')).toHaveText('web app');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await shot(page, 'list', info);
+  });
+
+  // @req FR:web-app/list.view
+  test('sections collapse and expand', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/#/list');
+    const backlog = page.getByRole('button', { name: /Backlog/ });
+    await expect(backlog).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('.row[data-ref="alpha:13"]')).toHaveCount(0);
+    await backlog.click();
+    await expect(page.locator('.row[data-ref="alpha:13"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Backlog/ })).toHaveAttribute('aria-expanded', 'true');
+    const active = page.getByRole('button', { name: /Active/ }).first();
+    await expect(active).toHaveAttribute('aria-expanded', 'true');
+    await active.click();
+    await expect(page.locator('.row[data-ref="alpha:6"]')).toHaveCount(0);
+    await expect(page.locator('.row[data-ref="alpha:9"]')).toHaveCount(0);
+    await expect(page.locator('.row[data-ref="beta:4"]')).toBeVisible();
+    await expect(page.locator('.row[data-ref="alpha:13"]')).toBeVisible();
+  });
+
+  // @req FR:web-app/list.view
+  test('searching or a state filter expands every section', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/#/list');
+    await expect(page.locator('.row[data-ref="alpha:13"]')).toHaveCount(0);
+    await page.getByLabel('Search tasks').fill('tidy');
+    await expect(rows(page)).toHaveText(['Tidy the backlog']);
+    await page.getByLabel('Search tasks').fill('');
+    await expect(page.locator('.row[data-ref="alpha:13"]')).toHaveCount(0);
+    await page.getByLabel('State').selectOption('all');
+    await expect(page.locator('.row[data-ref="alpha:13"]')).toBeVisible();
+  });
+
+  // @req FR:web-app/list.view @req FR:web-app/edit.notes
+  test('details expand with the arrow button, ArrowRight, and show subtasks and notes', async ({ page }, info) => {
+    await mockApi(page);
+    await page.goto('/#/list');
+    const row = page.locator('.row[data-ref="alpha:6"]');
+    await expect(row.locator('.notes')).toHaveCount(0);
+    await expect(page.locator('.row[data-ref="alpha:7"]')).toHaveCount(0);
+    await row.getByRole('button', { name: 'Expand details' }).click();
+    await expect(row.locator('.notes a')).toHaveAttribute('href', 'https://example.test/spec');
+    await expect(page.locator('.row[data-ref="alpha:7"]')).toBeVisible();
+    await row.getByRole('button', { name: 'Collapse details' }).click();
+    await expect(row.locator('.notes')).toHaveCount(0);
+    await expect(page.locator('.row[data-ref="alpha:7"]')).toHaveCount(0);
+    if (info.project.name === 'mobile') return;
+    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:6');
+    await page.keyboard.press('ArrowRight');
+    await expect(row.locator('.notes a')).toBeVisible();
+    await page.keyboard.press('ArrowLeft');
+    await expect(row.locator('.notes')).toHaveCount(0);
   });
 
   // @req FR:web-app/list.filters
   test('filters combine, show as chips, and survive reload', async ({ page }) => {
     await mockApi(page);
     await page.goto('/#/list');
-    await expect(rows(page)).toHaveCount(5);
+    await expect(rows(page)).toHaveCount(3);
     await page.getByLabel('Project', { exact: true }).selectOption('alpha');
+    await expect(rows(page)).toHaveCount(2);
     await page.getByLabel('Priority', { exact: true }).selectOption('‼️');
     await expect(rows(page)).toHaveCount(1);
     await expect(page.getByRole('button', { name: /Remove filter Project: alpha/ })).toBeVisible();
     await page.reload();
     await expect(rows(page)).toHaveCount(1);
     await page.getByRole('button', { name: /Remove filter Priority/ }).click();
-    await expect(rows(page)).toHaveCount(4);
+    await expect(rows(page)).toHaveCount(2);
     await page.getByLabel('Search tasks').fill('docs');
     await expect(rows(page)).toHaveCount(1);
     await page.getByLabel('State').selectOption('done');
@@ -136,19 +319,25 @@ test.describe('list', () => {
   });
 
   // @req FR:web-app/list.nav @req FR:web-app/keys.global
-  test('keyboard navigation, selection, search focus', async ({ page }, info) => {
-    test.skip(info.project.name === 'mobile', 'keyboard');
+  test('keyboard: g chords, cursor, selection with x, search focus, help', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
     await page.goto('/');
-    await page.keyboard.press('g'); await page.keyboard.press('l');
+    await page.keyboard.press('g'); await page.keyboard.press('a');
     await expect(page).toHaveURL(/#\/list/);
     await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:6');
     await page.keyboard.press('j'); await page.keyboard.press('ArrowDown');
-    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:9');
+    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'beta:4');
     await page.keyboard.press('k');
-    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:7');
+    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:9');
+    await expect(page.locator('.row.selected')).toHaveCount(0);
     await page.keyboard.press('x');
+    await expect(page.locator('.row[data-ref="alpha:9"]')).toHaveClass(/selected/);
+    await expect(page.locator('.row.selected')).toHaveCount(1);
     await expect(page.getByRole('toolbar', { name: 'Bulk edit' })).toContainText('1 selected');
+    await page.keyboard.press('x');
+    await expect(page.getByRole('toolbar')).toHaveCount(0);
+    await page.keyboard.press('x');
     await page.keyboard.press('Escape');
     await expect(page.getByRole('toolbar')).toHaveCount(0);
     await page.keyboard.press('/');
@@ -156,12 +345,23 @@ test.describe('list', () => {
     await page.keyboard.type('jjj');
     await expect(page.locator('.row.cursor')).toHaveCount(0);
     await page.keyboard.press('Escape');
-    await page.keyboard.press('g'); await page.keyboard.press('c');
-    await expect(page).toHaveURL(/#\/capacity/);
+    await page.keyboard.press('g'); await page.keyboard.press('p');
+    await expect(page).toHaveURL(/#\/projects/);
+    await page.keyboard.press('g'); await page.keyboard.press('n');
+    await expect(page).toHaveURL(/#\/now/);
+    await page.keyboard.press('g'); await page.keyboard.press('p');
+    await expect(page.getByTestId('cap-alpha')).toBeVisible();
     await page.keyboard.press('?');
     await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  test('the per-row select checkbox shows on touch widths only', async ({ page }, info) => {
+    await mockApi(page);
+    await page.goto('/#/list');
+    await expect(page.locator('.row').first()).toBeVisible();
+    expect(await page.getByLabel(/^Select /).first().isVisible()).toBe(info.project.name === 'mobile');
   });
 });
 
@@ -188,7 +388,7 @@ test.describe('pickers and bulk edit', () => {
   });
 
   test('number keys choose in a single-group picker', async ({ page }, info) => {
-    test.skip(info.project.name === 'mobile', 'keyboard');
+    test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
     await page.goto('/#/list');
     await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:6');
@@ -199,12 +399,13 @@ test.describe('pickers and bulk edit', () => {
   });
 
   // @req FR:web-app/bulk.bar
-  test('bulk sets a property and reports partial failure', async ({ page }) => {
+  test('bulk sets a property and reports partial failure', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
     await page.goto('/#/list');
-    await page.getByLabel('Select Write docs').check();
-    await page.getByLabel('Select Review pull requests').check();
-    await page.getByLabel('Select Plan the trip').check();
+    await selectRow(page, 'alpha:6');
+    await selectRow(page, 'alpha:9');
+    await selectRow(page, 'beta:4');
     const bar = page.getByRole('toolbar', { name: 'Bulk edit' });
     await expect(bar).toContainText('3 selected');
     await bar.getByRole('button', { name: 'Set…' }).click();
@@ -214,15 +415,16 @@ test.describe('pickers and bulk edit', () => {
     await page.getByRole('dialog').getByRole('button', { name: /Critical/ }).click();
     await expect(page.getByText('2 updated, 1 failed. nope')).toBeVisible();
     await expect(page.getByRole('toolbar')).toContainText('1 selected');
-    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/set').map((c) => c.body.ref)).toEqual(['alpha:7', 'beta:4']);
+    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/set').map((c) => c.body.ref)).toEqual(['alpha:6', 'beta:4']);
     expect(n).toBe(3);
   });
 
-  test('bulk done', async ({ page }) => {
+  test('bulk done', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
     await page.goto('/#/list');
-    await page.getByLabel('Select Write docs').check();
-    await page.getByLabel('Select Plan the trip').check();
+    await selectRow(page, 'alpha:9');
+    await selectRow(page, 'beta:4');
     await page.getByRole('toolbar').getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('2 done')).toBeVisible();
     await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/complete')).toHaveLength(2);
@@ -237,18 +439,19 @@ test.describe('stale line numbers', () => {
     await page.goto('/#/list');
     await expect(rows(page).first()).toContainText('Ship the');
     m.insertAbove('alpha', 'Added by someone else');
-    await page.locator('.row[data-ref="alpha:7"] .title').dblclick();
-    await page.getByLabel('Edit task text').fill('Write the docs 🟢');
+    await page.locator('.row[data-ref="alpha:6"] .title').dblclick();
+    await page.getByLabel('Edit task text').fill('Ship it 🟡');
     await page.getByLabel('Edit task text').press('Enter');
     await expect(page.getByText('Changed elsewhere')).toBeVisible();
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:7', expect: 'Write docs 🟢' } });
-    expect(m.tasks.map((t) => t.text)).toContain('Write docs 🟢');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:6', expect: '‼️ 📅 Oct 23: Ship the **web app** 🟡' } });
+    expect(m.tasks.map((t) => t.text)).not.toContain('Ship it 🟡');
     expect(m.tasks.find((t) => t.ref === 'alpha:7')!.text).toContain('Ship the');
     await expect(page.locator('.row[data-ref="alpha:6"]')).toContainText('Added by someone else');
   });
 
   // @req FR:web-app/api.move
-  test('move with a stale ref gets 409 and changes nothing', async ({ page }) => {
+  test('move with a stale ref gets 409 and changes nothing', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'no drag handles on touch');
     const m = await mockApi(page);
     await page.goto('/#/list');
     await expect(rows(page).first()).toContainText('Ship the');
@@ -266,26 +469,17 @@ test.describe('stale line numbers', () => {
   });
 
   // @req FR:web-app/bulk.bar
-  test('bulk done re-resolves shifted refs by text', async ({ page }) => {
+  test('bulk done re-resolves shifted refs by text', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
     await page.goto('/#/list');
-    await page.getByLabel('Select Write docs').check();
-    await page.getByLabel('Select Review pull requests').check();
+    await selectRow(page, 'alpha:6');
+    await selectRow(page, 'alpha:9');
     m.insertAbove('alpha', 'Added by someone else');
     await page.getByRole('toolbar').getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('2 done')).toBeVisible();
-    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/complete').map((c) => c.body.ref)).toEqual(['alpha:8', 'alpha:10']);
-    expect(m.tasks.filter((t) => t.done && t.project === 'alpha').map((t) => t.text)).toEqual(['Write docs 🟢', 'Review pull requests 🟠']);
-  });
-
-  // @req FR:web-app/next.act
-  test('a failed complete shows an error, not Done with Undo', async ({ page }) => {
-    const m = await mockApi(page);
-    await page.goto('/');
-    m.fail.set('/tasks/complete', { status: 500, code: 'internal', message: 'Boom' });
-    await page.getByRole('button', { name: 'Done' }).click();
-    await expect(page.getByText('Boom')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/complete').map((c) => c.body.ref)).toEqual(['alpha:7', 'alpha:10']);
+    expect(m.tasks.filter((t) => t.done && t.project === 'alpha').map((t) => t.text)).toEqual(['‼️ 📅 Oct 23: Ship the **web app** 🟡', 'Review pull requests 🟠']);
   });
 });
 
@@ -294,11 +488,11 @@ test.describe('editor', () => {
   test('double click edits, previews markdown, Enter saves, Esc cancels', async ({ page }) => {
     const m = await mockApi(page);
     await page.goto('/#/list');
-    await page.locator('.row[data-ref="alpha:7"] .title').dblclick();
+    await page.locator('.row[data-ref="alpha:9"] .title').dblclick();
     const box = page.getByLabel('Edit task text');
     await expect(box).toBeFocused();
-    await expect(box).toHaveValue('Write docs 🟢');
-    await box.fill('Write **the** docs <b>x</b> [a](javascript:alert(1)) [ok](https://ok.test) 🟢');
+    await expect(box).toHaveValue('Review pull requests 🟠');
+    await box.fill('Review **the** docs <b>x</b> [a](javascript:alert(1)) [ok](https://ok.test) 🟠');
     const prev = page.locator('.preview');
     await expect(prev.locator('b')).toHaveText('the');
     await expect(prev.locator('a')).toHaveCount(1);
@@ -306,32 +500,35 @@ test.describe('editor', () => {
     await box.press('Escape');
     await expect(box).toHaveCount(0);
     expect(m.calls.filter((c) => c.path === '/tasks/edit')).toHaveLength(0);
-    await page.locator('.row[data-ref="alpha:7"] .title').dblclick();
+    await page.locator('.row[data-ref="alpha:9"] .title').dblclick();
     await page.getByLabel('Edit task text').press('Enter');
     expect(m.calls.filter((c) => c.path === '/tasks/edit')).toHaveLength(0);
-    await page.locator('.row[data-ref="alpha:7"] .title').dblclick();
-    await page.getByLabel('Edit task text').fill('Write the docs 🟢');
+    await page.locator('.row[data-ref="alpha:9"] .title').dblclick();
+    await page.getByLabel('Edit task text').fill('Review the PRs 🟠');
     await page.getByLabel('Edit task text').press('Enter');
     await expect(page.getByText('Saved')).toBeVisible();
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:7', text: 'Write the docs 🟢' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:9', text: 'Review the PRs 🟠' } });
   });
 
-  test('Enter or e on the cursor row opens the editor', async ({ page }, info) => {
-    test.skip(info.project.name === 'mobile', 'keyboard');
+  test('e on the cursor row opens the editor; Enter opens focus mode instead', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
     await page.goto('/#/list');
     await expect(page.locator('.row.cursor')).toBeVisible();
     await page.keyboard.press('e');
     await expect(page.getByLabel('Edit task text')).toBeFocused();
     await page.keyboard.press('Escape');
+    await expect(page.getByLabel('Edit task text')).toHaveCount(0);
     await page.keyboard.press('Enter');
-    await expect(page.getByLabel('Edit task text')).toBeFocused();
+    await expect(page.getByRole('dialog', { name: 'Focus' })).toBeVisible();
+    await expect(page.getByLabel('Edit task text')).toHaveCount(0);
   });
 });
 
 test.describe('reorder', () => {
   // @req FR:web-app/reorder.drag
-  test('dragging a handle onto the bottom half of another row moves it', async ({ page }) => {
+  test('dragging a handle onto the top half of another row moves it', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'no drag handles on touch');
     const m = await mockApi(page);
     await page.goto('/#/list');
     const from = await page.locator('.row[data-ref="alpha:9"] .handle').boundingBox();
@@ -345,93 +542,125 @@ test.describe('reorder', () => {
     await expect(rows(page).first()).toContainText('Review pull requests');
   });
 
-  test('dropping on another project does nothing', async ({ page }) => {
+  test('dropping on another project does nothing', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'no drag handles on touch');
     const m = await mockApi(page);
     await page.goto('/#/list');
     const from = await page.locator('.row[data-ref="alpha:9"] .handle').boundingBox();
     const to = await page.locator('.row[data-ref="beta:4"]').boundingBox();
     await page.mouse.move(from!.x + 5, from!.y + 5);
     await page.mouse.down();
-    await page.mouse.move(to!.x + 60, to!.y + 30, { steps: 8 });
+    await page.mouse.move(to!.x + 60, to!.y + 10, { steps: 8 });
     await page.mouse.up();
     expect(m.calls.filter((c) => c.path === '/tasks/move')).toHaveLength(0);
   });
 
   // @req FR:web-app/reorder.keys
   test('Shift+J / Shift+K and handle arrows move rows', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'no drag handles on touch');
     const m = await mockApi(page);
     await page.goto('/#/list');
     await page.locator('.row[data-ref="alpha:9"] .handle').focus();
     await page.keyboard.press('ArrowUp');
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/move', body: { ref: 'alpha:9', target: 'alpha:7', position: 'before' } });
-    if (info.project.name === 'mobile') return;
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/move', body: { ref: 'alpha:9', position: 'before' } });
     await page.locator('body').click({ position: { x: 700, y: 5 } });
     await page.keyboard.press('Shift+J');
     await expect.poll(() => m.calls.at(-1)?.path).toBe('/tasks/move');
   });
 });
 
-test.describe('capacity', () => {
-  // @req FR:web-app/capacity.view
-  test('shows load against capacity and flags overload', async ({ page }, info) => {
+test.describe('projects', () => {
+  // @req FR:web-app/projects.glance
+  test('one row per project with top task, count, and load; over capacity warns without a red bar', async ({ page }, info) => {
     await mockApi(page);
-    await page.goto('/#/capacity');
+    await page.goto('/#/projects');
     const a = page.getByTestId('cap-alpha');
-    await expect(a).toContainText('4 open');
-    await expect(a).toContainText('7.5h of effort');
-    await expect(a).toContainText('2h capacity');
+    await expect(a).toContainText('Alpha');
+    await expect(a.locator('.proj-top')).toContainText('Ship the web app');
+    await expect(a.locator('.proj-count')).toHaveText('4');
+    await expect(a.locator('.proj-hrs')).toHaveText('7.5h / 2h');
     await expect(a).toHaveClass(/over/);
+    expect(await a.locator('.proj-hrs').evaluate((el) => getComputedStyle(el, '::before').content)).toContain('▲');
     const b = page.getByTestId('cap-beta');
-    await expect(b).toContainText('no capacity set');
+    await expect(b.locator('.proj-top')).toContainText('Plan the trip');
+    await expect(b.locator('.proj-hrs')).toHaveText('0.5h');
     await expect(b).not.toHaveClass(/over/);
-    await shot(page, 'capacity', info);
+    await expect(b).toHaveClass(/nocap/);
+    await shot(page, 'projects', info);
+  });
+
+  // @req FR:web-app/projects.glance
+  test('clicking a project opens its list', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/#/projects');
+    await page.getByTestId('cap-beta').getByRole('button').click();
+    await expect(page).toHaveURL(/#\/list\?project=beta/);
+    await expect(rows(page)).toHaveText(['Plan the trip']);
   });
 });
 
 test.describe('capture', () => {
   // @req FR:web-app/capture.box @req FR:web-app/capture.project
-  test('previews while typing, adds on Enter, remembers the project', async ({ page }, info) => {
+  test('New task opens the overlay; previews while typing, adds on Enter and closes, remembers the project', async ({ page }, info) => {
     const m = await mockApi(page);
     await page.goto('/#/list');
-    const box = page.getByLabel('Quick capture');
+    await expect(page.getByLabel('Quick capture')).toHaveCount(0);
+    const open = () => page.getByRole('button', { name: /New task/ }).first().click();
+    await open();
+    const dlg = page.getByRole('dialog', { name: 'New task' });
+    const box = dlg.getByLabel('Quick capture');
+    await expect(box).toBeFocused();
     await box.fill('call dentist tomorrow 30m #beta');
     await expect(page.getByTestId('capture-preview')).toContainText('Call dentist · due 2026-10-23 · 🟢 30m · #beta');
     await shot(page, 'capture', info);
     await box.press('Enter');
     await expect(page.getByText('Added: Call dentist')).toBeVisible();
-    await expect(box).toHaveValue('');
+    await expect(dlg).toHaveCount(0);
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/capture', body: { text: 'call dentist tomorrow 30m #beta' } });
-    await box.fill('water plants');
+    await open();
+    const box2 = page.getByLabel('Quick capture');
+    await expect(box2).toHaveValue('');
+    await box2.fill('water plants');
     await expect(page.getByTestId('capture-preview')).toContainText('#beta');
-    await box.press('Enter');
+    await box2.press('Enter');
     await expect(page.getByText('Added: Water plants')).toBeVisible();
     await expect.poll(() => m.calls.at(-1)?.body.project).toBe('beta');
   });
 
-  test('parse errors stay inline and keep the text', async ({ page }) => {
+  test('parse errors stay inline and keep the text and the overlay', async ({ page }) => {
     await mockApi(page);
     await page.goto('/');
+    await page.getByRole('button', { name: /New task/ }).first().click();
     const box = page.getByLabel('Quick capture');
     await box.fill('x');
     await expect(page.getByTestId('capture-preview')).toContainText('No title left after parsing');
     await box.press('Enter');
     await expect(box).toHaveValue('x');
+    await expect(page.getByRole('dialog', { name: 'New task' })).toBeVisible();
   });
 
-  test('c focuses capture', async ({ page }, info) => {
-    test.skip(info.project.name === 'mobile', 'keyboard');
-    await mockApi(page);
+  test('c opens capture, Enter adds, Esc closes', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
+    const m = await mockApi(page);
     await page.goto('/');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await page.keyboard.press('c');
     await expect(page.getByLabel('Quick capture')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.keyboard.press('c');
+    await page.keyboard.type('buy milk #beta');
+    await page.keyboard.press('Enter');
+    await expect(page.getByText('Added: Buy milk')).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(m.calls.filter((c) => c.path === '/capture' && !c.body.dryRun)).toHaveLength(1);
   });
 });
 
 test.describe('palette', () => {
   // @req FR:web-app/palette.open
   test('opens with Ctrl+K, filters, runs a command, and returns focus', async ({ page }, info) => {
-    test.skip(info.project.name === 'mobile', 'keyboard');
+    test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
     await page.goto('/#/list');
     await expect(page.locator('.row.cursor')).toBeVisible();
@@ -446,18 +675,18 @@ test.describe('palette', () => {
     await page.getByRole('dialog').getByRole('button', { name: /High/ }).first().click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/set', body: { ref: 'alpha:6', priority: '‼️' } });
     await page.keyboard.press('Control+k');
-    await page.getByLabel('Command', { exact: true }).fill('capac');
+    await page.getByLabel('Command', { exact: true }).fill('go to proj');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowUp');
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/#\/capacity/);
+    await expect(page).toHaveURL(/#\/projects/);
     await page.keyboard.press('Control+k');
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
   test('colon opens it and bad queries say so', async ({ page }, info) => {
-    test.skip(info.project.name === 'mobile', 'keyboard');
+    test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
     await page.goto('/');
     await expect(page.getByTestId('next-title')).toBeVisible();
@@ -481,7 +710,7 @@ test.describe('feedback and mobile', () => {
     const m = await mockApi(page);
     await page.goto('/#/list');
     m.fail.set('/tasks/edit', { status: 409, code: 'conflict', message: 'Version conflict' });
-    await page.locator('.row[data-ref="alpha:7"] .title').dblclick();
+    await page.locator('.row[data-ref="alpha:9"] .title').dblclick();
     await page.getByLabel('Edit task text').fill('Changed');
     await page.getByLabel('Edit task text').press('Enter');
     await expect(page.getByText('Changed elsewhere. Reloaded; try again.')).toBeVisible();
@@ -497,21 +726,22 @@ test.describe('feedback and mobile', () => {
     await page.goto('/');
     if (info.project.name === 'mobile') {
       await expect(page.locator('.rail')).toBeHidden();
-      const tab = page.locator('.tabbar .tab').first();
-      await expect(tab).toBeVisible();
-      expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      for (const sel of ['.btn.primary', '.capture input']) expect((await page.locator(sel).first().boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      await page.getByRole('button', { name: 'List' }).last().click();
+      for (const tab of await page.locator('.tabbar .tab').all()) expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect((await page.locator('.btn.primary').first().boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await page.locator('.tabbar').getByRole('button', { name: /All tasks/ }).click();
       await expect(page).toHaveURL(/#\/list/);
+      await page.locator('.tabbar').getByRole('button', { name: /Projects/ }).click();
+      await expect(page).toHaveURL(/#\/projects/);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= 375)).toBe(true);
     } else {
       await expect(page.locator('.rail')).toBeVisible();
       await expect(page.locator('.tabbar')).toBeHidden();
+      for (const name of ['Now', 'Projects', 'All tasks']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible();
     }
   });
 
   // @req FR:web-app/ux.a11y
-  test('controls are labelled and dialogs return focus', async ({ page }) => {
+  test('controls are labelled and dialogs return focus', async ({ page }, info) => {
     await mockApi(page);
     await page.goto('/#/list');
     const chip = page.locator('.row[data-ref="alpha:9"]').getByRole('button', { name: /Effort: 2 hours/ });
@@ -523,7 +753,8 @@ test.describe('feedback and mobile', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(chip).toBeFocused();
-    for (const name of ['Search tasks', 'Quick capture', 'Project', 'State']) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
+    for (const name of ['Search tasks', 'Project', 'State']) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
+    if (info.project.name !== 'mobile')
     await expect(page.getByRole('button', { name: /Drag Ship the/ })).toBeVisible();
   });
 

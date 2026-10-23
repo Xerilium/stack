@@ -5,7 +5,7 @@ export interface NextTask { ref: string; text: string; project: string; score: n
 export interface Mutation { changed: boolean; ref?: string; before?: string; after?: string; message?: string }
 export interface CaptureSpec { title: string; due?: string; effort?: { minutes: number; emoji: string }; project?: string; recurrence?: unknown }
 export interface CaptureResult extends Mutation { spec: CaptureSpec }
-export type View = 'next' | 'list' | 'capacity';
+export type View = 'now' | 'projects' | 'list';
 export type Position = 'before' | 'after';
 export type ActionName = 'start' | 'complete' | 'skip' | 'resume' | 'suspend';
 export interface SetProps { status?: string; priority?: string; effort?: string; impact?: string; checkbox?: 'Complete' | 'Incomplete' }
