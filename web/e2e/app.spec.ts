@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mockApi, seed } from './mock';
+import { dateTag, mockApi, seed } from './mock';
 
 const rows = (page: Page) => page.locator('.row .title');
 const shot = (page: Page, name: string, info: { project: { name: string } }) => page.screenshot({ path: `e2e/screenshots/${name}-${info.project.name}.png`, fullPage: false });
@@ -67,7 +67,7 @@ test.describe('now view', () => {
   // @req FR:web-app/now.focus @req FR:web-app/ux.responsive
   test('shows the focus task with chips, Active rows below, and no horizontal scroll', async ({ page }, info) => {
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     await expect(page).toHaveURL(/\/$|#\/now/);
     await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
     const focus = page.locator('.focus-block');
@@ -91,14 +91,14 @@ test.describe('now view', () => {
 
   test('empty state when nothing is active', async ({ page }) => {
     await mockApi(page, { tasks: [] });
-    await page.goto('/');
+    await page.goto('/#/now');
     await expect(page.getByRole('heading', { name: 'Nothing active' })).toBeVisible();
   });
 
   // @req FR:web-app/now.focus @req FR:web-app/now.undo
   test('start, skip, done with undo', async ({ page }) => {
     const m = await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     const focus = page.locator('.focus-block');
     await focus.getByRole('button', { name: 'Start' }).click();
     await expect(page.getByText('Started')).toBeVisible();
@@ -117,7 +117,7 @@ test.describe('now view', () => {
   // @req FR:web-app/now.defer
   test('Defer button opens the menu: 2 hours, tomorrow, next week', async ({ page }) => {
     const m = await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     const choose = async (name: RegExp) => {
       await page.locator('.focus-block').getByRole('button', { name: /Not now/ }).click();
       const dlg = page.getByRole('dialog', { name: 'Defer until' });
@@ -138,7 +138,7 @@ test.describe('now view', () => {
   test('z then number keys defer; Esc closes the menu', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await page.keyboard.press('z');
     await expect(page.getByRole('dialog', { name: 'Defer until' })).toBeVisible();
@@ -160,7 +160,7 @@ test.describe('now view', () => {
   test('keys: cursor starts on the focus task, j/k move, d/s act, Shift+S skips', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     await expect(page.locator('.focus-block.cursor')).toHaveAttribute('data-ref', 'alpha:6');
     await page.keyboard.press('j');
     await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:9');
@@ -176,7 +176,7 @@ test.describe('now view', () => {
   // @req FR:web-app/now.undo
   test('a failed complete shows an error, not Done with Undo', async ({ page }) => {
     const m = await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     m.fail.set('/tasks/complete', { status: 500, code: 'internal', message: 'Boom' });
     await page.locator('.focus-block').getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('Boom')).toBeVisible();
@@ -188,7 +188,7 @@ test.describe('focus mode', () => {
   // @req FR:web-app/now.focusmode
   test('opens from the Focus button, shows notes and a subtask checklist, and closes', async ({ page }, info) => {
     const m = await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     await page.getByTestId('next-title').dblclick();
     const dlg = page.getByRole('dialog', { name: 'Focus' });
     await expect(dlg).toBeVisible();
@@ -322,7 +322,7 @@ test.describe('list', () => {
   test('keyboard: g chords, cursor, selection with x, search focus, help', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     await page.keyboard.press('g'); await page.keyboard.press('a');
     await expect(page).toHaveURL(/#\/list/);
     await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:6');
@@ -445,7 +445,7 @@ test.describe('stale line numbers', () => {
     await page.getByLabel('Edit task text').fill('Ship it 🟡');
     await page.getByLabel('Edit task text').press('Enter');
     await expect(page.getByText('Changed elsewhere')).toBeVisible();
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:6', expect: '‼️ 📅 Oct 23: Ship the **web app** 🟡' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: 'alpha:6', expect: `‼️ 📅 ${dateTag()}: Ship the **web app** 🟡` } });
     expect(m.tasks.map((t) => t.text)).not.toContain('Ship it 🟡');
     expect(m.tasks.find((t) => t.ref === 'alpha:7')!.text).toContain('Ship the');
     await expect(page.locator('.row[data-ref="alpha:6"]')).toContainText('Added by someone else');
@@ -466,7 +466,7 @@ test.describe('stale line numbers', () => {
     await page.mouse.move(to!.x + 60, to!.y + 6, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByText('Changed elsewhere')).toBeVisible();
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/move', body: { ref: 'alpha:9', expect: 'Review pull requests 🟠', expectTarget: '‼️ 📅 Oct 23: Ship the **web app** 🟡' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/move', body: { ref: 'alpha:9', expect: 'Review pull requests 🟠', expectTarget: `‼️ 📅 ${dateTag()}: Ship the **web app** 🟡` } });
     expect(m.tasks.map((t) => t.ref + t.text)).toEqual(before);
   });
 
@@ -481,7 +481,7 @@ test.describe('stale line numbers', () => {
     await page.getByRole('toolbar').getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('2 done')).toBeVisible();
     await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/complete').map((c) => c.body.ref)).toEqual(['alpha:7', 'alpha:10']);
-    expect(m.tasks.filter((t) => t.done && t.project === 'alpha').map((t) => t.text)).toEqual(['‼️ 📅 Oct 23: Ship the **web app** 🟡', 'Review pull requests 🟠']);
+    expect(m.tasks.filter((t) => t.done && t.project === 'alpha').map((t) => t.text)).toEqual([`‼️ 📅 ${dateTag()}: Ship the **web app** 🟡`, 'Review pull requests 🟠']);
   });
 });
 
@@ -631,7 +631,7 @@ test.describe('capture', () => {
 
   test('parse errors stay inline and keep the text and the overlay', async ({ page }) => {
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     await page.getByRole('button', { name: /New task/ }).first().click();
     const box = page.getByLabel('Quick capture');
     await box.fill('x');
@@ -644,7 +644,7 @@ test.describe('capture', () => {
   test('c opens capture, Enter adds, Esc closes', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await page.keyboard.press('c');
     await expect(page.getByLabel('Quick capture')).toBeFocused();
@@ -690,7 +690,7 @@ test.describe('palette', () => {
   test('colon opens it and bad queries say so', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await page.keyboard.press(':');
     await page.getByLabel('Command', { exact: true }).fill('zzzz');
@@ -700,7 +700,7 @@ test.describe('palette', () => {
   test('mobile: More opens the palette', async ({ page }, info) => {
     test.skip(info.project.name !== 'mobile', 'mobile only');
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     await page.getByRole('button', { name: 'Open command palette' }).click();
     await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   });
@@ -725,7 +725,7 @@ test.describe('feedback and mobile', () => {
   // @req FR:web-app/ux.responsive
   test('layout switches between rail and tab bar', async ({ page }, info) => {
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/now');
     if (info.project.name === 'mobile') {
       await expect(page.locator('.rail')).toBeHidden();
       for (const tab of await page.locator('.tabbar .tab').all()) expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -738,7 +738,7 @@ test.describe('feedback and mobile', () => {
     } else {
       await expect(page.locator('.rail')).toBeVisible();
       await expect(page.locator('.tabbar')).toBeHidden();
-      for (const name of ['Now', 'Projects', 'All tasks']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible();
+      for (const name of ['Today', 'Focus', 'Projects', 'All tasks']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible();
     }
   });
 
@@ -783,7 +783,7 @@ test.describe('now view sections', () => {
       mk(6, 'Read https://www.example.test/page/x now'),
     ];
     await mockApi(page, { tasks });
-    await page.goto('/');
+    await page.goto('/#/now');
     await expect(page.getByTestId('next-title')).toContainText('Hero task');
     const body = page.locator('section[aria-label="Now"]');
     await expect(body).not.toContainText('Far future task');
@@ -800,12 +800,127 @@ test.describe('now view sections', () => {
   test('Show all active expands and collapses the Then list', async ({ page }) => {
     const tasks = [mk(1, '🔺 Hero task'), ...Array.from({ length: 8 }, (_, i) => mk(i + 2, `Filler ${i + 1}`))];
     await mockApi(page, { tasks });
-    await page.goto('/');
+    await page.goto('/#/now');
     const rowsEl = page.locator('section[aria-label="Now"] .row');
     await expect(rowsEl).toHaveCount(5);
     await page.getByRole('button', { name: /Show all active \(\d+ more\)/ }).click();
     await expect(rowsEl).toHaveCount(8);
     await page.getByRole('button', { name: 'Show less' }).click();
     await expect(rowsEl).toHaveCount(5);
+  });
+});
+
+test.describe('today view', () => {
+  const mk = (n: number, text: string, extra: Partial<import('./mock').MockTask> = {}) => ({ ref: `gamma:${n}`, text, project: 'gamma', section: '🔄 Active', done: false, depth: 0, notes: [] as string[], ...extra });
+  const tenAm = () => { const d = new Date(); d.setHours(10, 0, 0, 0); return d; };
+  const setup = async (page: Page, tasks: ReturnType<typeof mk>[]) => {
+    await page.clock.install({ time: tenAm() });
+    const m = await mockApi(page, { tasks });
+    await page.goto('/');
+    await page.clock.resume();
+    return m;
+  };
+  const day = () => [
+    mk(1, '🔺 Plain priority 🟡'),
+    mk(3, 'Third thing 🟢'),
+    mk(2, `📅 ${dateTag(1)}: Due soon 🟢`),
+    mk(10, '🙋 Pick a vendor', { notes: ['> **Recommendation:** Use Acme for now'] }),
+    mk(11, '🙋 Pick a color'),
+    mk(20, '🤖 Build the engine 🚧'),
+    mk(22, '🤖 Research options'),
+    mk(23, '🙋 Approve budget', { depth: 1 }),
+    mk(21, '🪄 Draft the report'),
+  ];
+
+  // @req FR:web-app/today.plan
+  test('default route is Today: header, lead block actions, blocks in order, done circle completes', async ({ page }, info) => {
+    const m = await setup(page, day());
+    await expect(page.getByRole('region', { name: 'Today' }).getByRole('heading', { level: 1 })).toContainText('planned');
+    await expect(page.locator('.t-sub')).toContainText('left');
+    const blocks = page.locator('[data-testid="plan"] .block');
+    await expect(blocks.first().locator('.what-title')).toContainText('Plain priority'); // the server's next task leads
+    await expect(blocks.nth(1).locator('.what-title')).toContainText('Due soon'); // then due-soon before file order
+    await expect(blocks.nth(2).locator('.what-title')).toContainText('Third thing');
+    const lead = page.locator('.block.lead');
+    await expect(lead).toHaveCount(1);
+    for (const n of ['Start', 'Done', 'Not now']) await expect(lead.getByRole('button', { name: new RegExp(n) })).toBeVisible();
+    await blocks.nth(2).getByRole('button', { name: 'Mark done' }).click();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/complete', body: { ref: 'gamma:3' } });
+    await lead.getByRole('button', { name: /Start/ }).click();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'gamma:1' } });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await shot(page, 'today', info);
+  });
+
+  test('Not now on the lead block opens the defer menu', async ({ page }) => {
+    await setup(page, day());
+    await page.locator('.block.lead').getByRole('button', { name: /Not now/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Defer until' })).toBeVisible();
+  });
+
+  test('tasks that do not fit are collected under a note', async ({ page }) => {
+    await setup(page, Array.from({ length: 6 }, (_, i) => mk(i + 1, `Big ${i + 1} 🔴`)));
+    const more = page.getByRole('button', { name: /won't fit today/ });
+    await expect(more).toBeVisible();
+    await expect(page.locator('[data-testid="plan"] .block').first()).toBeVisible();
+    await more.click();
+    await expect(page.locator('.overflow .row').first()).toBeVisible();
+  });
+
+  // @req FR:web-app/today.needs
+  test('Needs you: recommendation, Go with it posts a reply under the row, Reply sends text', async ({ page }) => {
+    const m = await setup(page, day());
+    const card = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a vendor' });
+    await expect(card.locator('.rec')).toContainText('Use Acme for now');
+    await card.getByRole('button', { name: 'Go with it' }).click();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks', body: { project: 'gamma', parent: 'gamma:10' } });
+    expect(m.calls.at(-1)!.body.text).toMatch(/^💬 Go with the recommendation/);
+    const plain = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' });
+    await expect(plain.getByRole('button', { name: 'Go with it' })).toHaveCount(0);
+    await plain.getByRole('button', { name: 'Reply' }).click();
+    await plain.getByLabel('Reply').fill('Blue');
+    await plain.getByRole('button', { name: 'Send' }).click();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks', body: { project: 'gamma', text: '💬 Blue', parent: 'gamma:11' } });
+  });
+
+  // @req FR:web-app/today.agents
+  test('agent list shows Working / Waiting on you / Queued and Reply works', async ({ page }) => {
+    const m = await setup(page, day());
+    const agents = page.getByTestId('agents');
+    await expect(agents.locator('.agent.working')).toContainText('Working');
+    await expect(agents.locator('.agent.waiting')).toContainText('Waiting on you');
+    await expect(agents.locator('.agent.queued')).toContainText('Queued');
+    const q = agents.locator('.agent.queued');
+    await q.getByRole('button', { name: 'Reply' }).click();
+    await q.getByLabel('Reply').fill('Keep it short');
+    await q.getByRole('button', { name: 'Send' }).click();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks', body: { project: 'gamma', text: '💬 Keep it short', parent: 'gamma:21' } });
+  });
+
+  // @req FR:web-app/today.projects
+  test('project tiles open that project in the list', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/');
+    await page.getByTestId('tops').getByRole('button', { name: /Beta/ }).click();
+    await expect(page).toHaveURL(/#\/list.*project=beta/);
+    await expect(rows(page)).toHaveText(['Plan the trip']);
+  });
+
+  test('g t / g n / g p / g a move between views', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
+    await mockApi(page);
+    await page.goto('/#/list');
+    const chord = async (k: string, re: RegExp) => { await page.keyboard.press('g'); await page.keyboard.press(k); await expect(page).toHaveURL(re); };
+    await chord('t', /#\/today/);
+    await chord('n', /#\/now/);
+    await chord('p', /#\/projects/);
+    await chord('a', /#\/list/);
+  });
+
+  test('mobile: no horizontal scroll at 375px', async ({ page }, info) => {
+    test.skip(info.project.name !== 'mobile', 'mobile only');
+    await setup(page, day());
+    await expect(page.locator('.block.lead')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= 375)).toBe(true);
   });
 });
