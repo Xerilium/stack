@@ -332,7 +332,7 @@ test.describe('list', () => {
     await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:9');
     await expect(page.locator('.row.selected')).toHaveCount(0);
     await page.keyboard.press('x');
-    await expect(page.locator('.row[data-ref="alpha:9"]')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.row[data-ref="alpha:9"]')).toHaveClass(/selected/);
     await expect(page.locator('.row.selected')).toHaveCount(1);
     await expect(page.getByRole('toolbar', { name: 'Bulk edit' })).toContainText('1 selected');
     await page.keyboard.press('x');
@@ -357,10 +357,10 @@ test.describe('list', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
-  test('there is no per-row selection checkbox', async ({ page }) => {
+  test('the per-row select checkbox shows on touch widths only', async ({ page }, info) => {
     await mockApi(page);
     await page.goto('/#/list');
-    await expect(page.getByLabel(/^Select /)).toHaveCount(0);
+    expect(await page.getByLabel(/^Select /).first().isVisible()).toBe(info.project.name === 'mobile');
   });
 });
 
