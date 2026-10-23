@@ -5,7 +5,7 @@
 
 Global flags: `--dir <path>` (optional; default: found by walking up from the current folder, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`), `--json`, `--no-commit`, `--remote <name>`, `--branch <name>`, `--now <ISO>`, `--help`, `--version`.
 
-- `web`: serve the web app on localhost (default port 4173). Inside a repo it serves that repo; otherwise it serves a scratch copy of a tasks folder in `~/.config/stack/demo` with a banner (source via `--from`, `$STACK_DEMO_FROM`, or `demoFrom` in the user config; `--reset` re-copies). `web [--port n] [--demo] [--from tasksDir] [--reset]`
+- `web`: serve the web app on localhost (default port 4173) over a content repo (`--repo path-or-git-url`, else discovery). DEMO by default (scratch copy in `~/.config/stack/demo`, `--reset` re-copies); `--live` edits the real repo on branch `stack-web` (`--branch`) via a worktree. `web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]`
 - `init`: create repo, tasks/, and config. `init`
 - `add-project`: create a project file. `add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force]`
 - `add`: add a task. `add <project> <text...> [--section name] [--parent ref]`

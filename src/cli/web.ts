@@ -2,33 +2,68 @@
  * `stack web`: serves the web app and the api on localhost over a task repo (loopback only, no sign-in).
  * @req FR:cli/web.serve @req FR:cli/web.demo
  */
+import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type Server } from 'http';
-import { extname, join, normalize, relative, resolve, sep } from 'path';
+import { dirname, extname, join, normalize, relative, resolve, sep } from 'path';
 import { createApiHandler } from '../api/handler';
 import { getDefaults, parseConfig } from '../core/config';
 import { GitStorage } from '../core/storage-git';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
-/** Copies `source` (a tasks folder) into `dest/tasks` as a fresh git repo. Keeps earlier edits unless `reset`. */
-export function prepareDemo(source: string, dest: string, reset = false): void {
-  if (!existsSync(source)) throw new Error(`Demo source not found: ${source}`);
-  if (existsSync(join(dest, '.git')) && !reset) return;
+/** Copies the content repo's `tasks/` into `dest` as a fresh git repo (no history, no remote). Keeps earlier edits unless `reset`. */
+export function prepareDemo(repo: string, dest: string, reset = false): void {
+  const source = join(repo, 'tasks');
+  if (!existsSync(source)) throw new Error(`${source} not found (expected a content repo with a tasks/ folder)`);
+  const marker = join(dest, '.stack-source');
+  if (existsSync(join(dest, '.git')) && !reset && existsSync(marker) && readFileSync(marker, 'utf8') === resolve(repo)) return;
   const inside = (a: string, b: string) => { const r = relative(realpathSync(a), existsSync(b) ? realpathSync(b) : resolve(b)); return r === '' || (!r.startsWith('..') && !r.includes(':')); };
   if (inside(source, dest) || (existsSync(dest) && inside(dest, source))) throw new Error(`Demo source and copy overlap: ${source} / ${dest}`);
   rmSync(dest, { recursive: true, force: true });
   mkdirSync(dest, { recursive: true });
+  const cfg = join(repo, '.xe/config/stack.json');
   cpSync(source, join(dest, 'tasks'), { recursive: true, dereference: true, filter: (p) => !p.split(sep).includes('.git') });
   mkdirSync(join(dest, '.xe/config'), { recursive: true });
-  writeFileSync(join(dest, '.xe/config/stack.json'), '{}\n');
+  writeFileSync(join(dest, '.xe/config/stack.json'), existsSync(cfg) ? readFileSync(cfg) : '{}\n');
+  writeFileSync(marker, resolve(repo));
   git(dest, 'init', '-q', '-b', 'main');
+  writeFileSync(join(dest, '.git/info/exclude'), '.stack-source\n', { flag: 'a' });
   git(dest, '-c', 'user.name=Stack', '-c', 'user.email=stack@localhost', 'add', '-A');
   git(dest, '-c', 'user.name=Stack', '-c', 'user.email=stack@localhost', 'commit', '-q', '-m', 'Stack demo copy');
 }
 
-export interface WebOpts { dir: string; port: number; webDir: string; label?: string }
+/** What the UI header shows at all times. */
+export interface RepoInfo { mode: 'demo' | 'live'; repo: string; branch: string }
+export interface WebOpts { dir: string; port: number; webDir: string; label?: string; info?: RepoInfo }
+
+/** A git url is cloned once into `cacheDir`; a path is used as is. */
+export function resolveRepo(spec: string, cacheDir: string): string {
+  if (!/^(https?:\/\/|ssh:\/\/|file:\/\/|git@)/.test(spec)) return resolve(spec);
+  const dest = join(cacheDir, createHash('sha1').update(spec).digest('hex').slice(0, 12));
+  if (!existsSync(join(dest, '.git'))) { mkdirSync(cacheDir, { recursive: true }); git(cacheDir, 'clone', '-q', '--', spec, dest); }
+  return dest;
+}
+
+/** Repo spec for display: credentials in a url are dropped. */
+export const redact = (spec: string): string => spec.replace(/\/\/[^/@]*@/, '//');
+
+/** LIVE: a git worktree of the real repo on a dedicated branch, so its checkout and main are never touched. */
+export function prepareLive(repo: string, branch: string, wtDir: string): { dir: string; branch: string } {
+  if (/^(main|master|HEAD)$/.test(branch)) throw new Error(`LIVE never commits to ${branch}; pick a dedicated branch`);
+  if (branch.startsWith('-')) throw new Error(`Bad branch name: ${branch}`);
+  try { git(repo, 'check-ref-format', '--branch', branch); } catch { throw new Error(`Bad branch name: ${branch}`); }
+  try { git(repo, 'rev-parse', '--git-dir'); } catch { throw new Error(`${repo} is not a git repo`); }
+  if (!existsSync(join(wtDir, '.git'))) {
+    mkdirSync(dirname(wtDir), { recursive: true });
+    let exists = true;
+    try { git(repo, 'rev-parse', '--verify', '-q', `refs/heads/${branch}`); } catch { exists = false; }
+    if (exists) git(repo, 'worktree', 'add', wtDir, branch); else git(repo, 'worktree', 'add', '-b', branch, wtDir);
+  }
+  if (!existsSync(join(wtDir, 'tasks'))) throw new Error(`${wtDir}/tasks not found on branch ${branch}`);
+  return { dir: wtDir, branch };
+}
 export interface WebServer { url: string; close(): Promise<void> }
 
 const TYPES: Record<string, string> = {
@@ -75,7 +110,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         const unsafe = req.method !== 'GET' && req.method !== 'HEAD';
         if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
         const path = (req.url ?? '/').split('?')[0];
-        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] } }), 'application/json');
+        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null }), 'application/json');
         if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
         if (path === '/api' || path.startsWith('/api/')) {
           const r = await api(await toRequest(req, `http://localhost:${port}`));

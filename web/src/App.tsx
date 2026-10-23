@@ -28,6 +28,7 @@ export function App() {
   const [loadError, setLoadError] = useState('');
   const [me, setMe] = useState('');
   const [local, setLocal] = useState(false);
+  const [info, setInfo] = useState<{ mode: string; repo: string; branch: string } | null>(null);
   const [{ view, filters }, setNav] = useState(() => parseHash(location.hash));
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -79,7 +80,8 @@ export function App() {
     void (async () => {
       try {
         const r = await fetch('/.auth/me', { credentials: 'same-origin' });
-        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string; identityProvider?: string } | null };
+        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string; identityProvider?: string } | null; local?: { mode: string; repo: string; branch: string } | null };
+        setInfo(j.local ?? null);
         setMe(j.clientPrincipal?.userDetails ?? '');
         setLocal(j.clientPrincipal?.identityProvider === 'local');
       } catch { /* the api decides access */ }
@@ -357,7 +359,7 @@ export function App() {
         <div class="who">{me && <span>{me}</span>} {!local && <a href="/.auth/logout">Sign out</a>}</div>
       </nav>
       <main class="main">
-        {local && <div class="banner" role="note">Local mode: {me}</div>}
+        {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · branch {info.branch} · {info.mode === 'live' ? 'edits are committed to this branch' : 'edits stay in the copy'}</> : me}</div>}
         <div class="capture">
           <input ref={captureRef} type="text" aria-label="Quick capture" placeholder="Capture: call dentist tomorrow 30m #alpha" value={captureText} maxLength={2000} disabled={busy && !captureText}
             onInput={(e) => setCaptureText((e.target as HTMLInputElement).value)}

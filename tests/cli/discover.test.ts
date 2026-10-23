@@ -30,6 +30,12 @@ describe('findStackDir', () => {
     const root = tmp(); mkdirSync(join(root, 'tasks')); writeFileSync(join(root, 'tasks/x.md'), '# x');
     expect(findStackDir({ cwd: root, env: { STACK_DIR: join(root, 'nope') }, home: tmp() })).toBeNull();
   });
+  it('prefers STACK_REPO over STACK_DIR and reads repo from user config', () => {
+    const a = tmp(); const b = tmp(); const home = tmp(); mkdirSync(join(home, '.config/stack'), { recursive: true });
+    expect(findStackDir({ cwd: tmp(), env: { STACK_REPO: a, STACK_DIR: b }, home })).toBe(a);
+    writeFileSync(join(home, '.config/stack/config.json'), JSON.stringify({ repo: b }));
+    expect(findStackDir({ cwd: tmp(), env: {}, home })).toBe(b);
+  });
   it('returns null when nothing is found', () => {
     expect(findStackDir({ cwd: tmp(), env: {}, home: tmp() })).toBeNull();
   });
