@@ -360,6 +360,7 @@ test.describe('list', () => {
   test('the per-row select checkbox shows on touch widths only', async ({ page }, info) => {
     await mockApi(page);
     await page.goto('/#/list');
+    await expect(page.locator('.row').first()).toBeVisible();
     expect(await page.getByLabel(/^Select /).first().isVisible()).toBe(info.project.name === 'mobile');
   });
 });
