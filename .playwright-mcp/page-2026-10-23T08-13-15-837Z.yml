@@ -1,0 +1,38 @@
+- generic [ref=e3]:
+  - navigation "Views" [ref=e4]:
+    - generic [ref=e5]: Stack
+    - button "Next" [ref=e6] [cursor=pointer]
+    - button "List" [ref=e7] [cursor=pointer]
+    - button "Capacity" [ref=e8] [cursor=pointer]
+    - button "Open command palette" [ref=e10] [cursor=pointer]:
+      - text: Commands
+      - generic [ref=e11]: ⌘K
+    - button "Shortcuts ?" [ref=e12] [cursor=pointer]:
+      - text: Shortcuts
+      - generic [ref=e13]: "?"
+    - generic [ref=e14]: DEMO COPY of /Users/flanakin/dev/todo - edits stay in the copy
+  - main [ref=e16]:
+    - note [ref=e17]:
+      - strong [ref=e18]: DEMO COPY
+      - text: · /Users/flanakin/dev/todo · branch main · edits stay in the copy
+    - generic [ref=e19]:
+      - textbox "Quick capture" [ref=e20]:
+        - /placeholder: "Capture: call dentist tomorrow 30m #alpha"
+      - button "Add" [disabled] [ref=e21]
+    - region "Next task" [ref=e22]:
+      - paragraph [ref=e23]: Next up · 🎧 Flantastic 4
+      - heading "File taxes - F4 WA excise tax ⚠⚠⚠ 💰 @ https://dor.wa.gov/file-pay-taxes" [level=1] [ref=e24]
+      - generic [ref=e25]:
+        - 'button "Effort: 🔹. Change" [ref=e26] [cursor=pointer]':
+          - generic [aria-hidden] [ref=e27]: 🔹
+          - generic [ref=e28]: 🔹
+        - button "Set properties" [ref=e29] [cursor=pointer]: ＋
+        - generic [ref=e30]: Due Feb 1, 2027
+        - generic [ref=e31]: Repeats Quarterly
+      - generic [ref=e32]:
+        - button "Start" [ref=e33] [cursor=pointer]
+        - button "Done" [ref=e34] [cursor=pointer]
+        - button "Skip" [ref=e35] [cursor=pointer]
+        - button "Suspend 1 day" [ref=e36] [cursor=pointer]
+        - button "Suspend 1 week" [ref=e37] [cursor=pointer]
+  - status
