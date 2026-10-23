@@ -103,7 +103,7 @@ test.describe('now view', () => {
     await focus.getByRole('button', { name: 'Start' }).click();
     await expect(page.getByText('Started')).toBeVisible();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'alpha:6' } });
-    await focus.getByRole('button', { name: 'Skip' }).click();
+    await page.keyboard.press('Shift+S');
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/skip', body: { ref: 'alpha:6' } });
     await expect(page.getByTestId('next-title')).toContainText('Write docs');
     await focus.getByRole('button', { name: 'Done' }).click();
@@ -119,7 +119,7 @@ test.describe('now view', () => {
     const m = await mockApi(page);
     await page.goto('/');
     const choose = async (name: RegExp) => {
-      await page.locator('.focus-block').getByRole('button', { name: 'Defer' }).click();
+      await page.locator('.focus-block').getByRole('button', { name: /Not now/ }).click();
       const dlg = page.getByRole('dialog', { name: 'Defer until' });
       await expect(dlg).toBeVisible();
       await dlg.getByRole('button', { name }).click();
@@ -189,7 +189,7 @@ test.describe('focus mode', () => {
   test('opens from the Focus button, shows notes and a subtask checklist, and closes', async ({ page }, info) => {
     const m = await mockApi(page);
     await page.goto('/');
-    await page.locator('.focus-block').getByRole('button', { name: 'Focus' }).click();
+    await page.getByTestId('next-title').dblclick();
     const dlg = page.getByRole('dialog', { name: 'Focus' });
     await expect(dlg).toBeVisible();
     await expect(dlg.locator('h1')).toContainText('Ship the web app');
@@ -357,11 +357,13 @@ test.describe('list', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
-  test('the per-row select checkbox shows on touch widths only', async ({ page }, info) => {
+  test('the per-row select checkbox is hidden; shift-click selects', async ({ page }) => {
     await mockApi(page);
     await page.goto('/#/list');
     await expect(page.locator('.row').first()).toBeVisible();
-    expect(await page.getByLabel(/^Select /).first().isVisible()).toBe(info.project.name === 'mobile');
+    expect(await page.getByLabel(/^Select /).first().isVisible()).toBe(false);
+    await page.locator('.row[data-ref="alpha:9"]').getByRole('button', { name: 'Mark done' }).click({ modifiers: ['Shift'] });
+    await expect(page.locator('.row[data-ref="alpha:9"]')).toHaveClass(/selected|sel/);
   });
 });
 
@@ -764,5 +766,46 @@ test.describe('feedback and mobile', () => {
     await page.goto('/#/list');
     await expect(rows(page).first()).toBeVisible();
     await shot(page, 'list-dark', info);
+  });
+});
+
+test.describe('now view sections', () => {
+  const mk = (n: number, text: string, extra: Partial<import('./mock').MockTask> = {}) => ({ ref: `gamma:${n}`, text, project: 'gamma', section: '🔄 Active', done: false, depth: 0, notes: [] as string[], ...extra });
+  const dateIn = (days: number) => { const d = new Date(Date.now() + days * 864e5); return `${d.toLocaleString('en-US', { month: 'short' })} ${d.getDate()}, ${d.getFullYear()}`; };
+
+  test('far-future and parked tasks never appear on Now; links and AI become tags', async ({ page }) => {
+    const tasks = [
+      mk(1, '🔺 Hero task 🟡'),
+      mk(2, `📅 ${dateIn(100)}: Far future task`),
+      mk(3, `⏰ ${dateIn(3)}: Later task`),
+      mk(4, '🅿️ Parked task'),
+      mk(5, '🤖 Robot chore'),
+      mk(6, 'Read https://www.example.test/page/x now'),
+    ];
+    await mockApi(page, { tasks });
+    await page.goto('/');
+    await expect(page.getByTestId('next-title')).toContainText('Hero task');
+    const body = page.locator('section[aria-label="Now"]');
+    await expect(body).not.toContainText('Far future task');
+    await expect(body).not.toContainText('Later task');
+    await expect(body).not.toContainText('Parked task');
+    const ai = page.locator('.row', { hasText: 'Robot chore' });
+    await expect(ai.locator('.tag', { hasText: 'AI' })).toBeVisible();
+    const link = page.locator('.row', { hasText: 'Read' }).locator('a.tag.link');
+    await expect(link).toHaveText('example.test ↗');
+    await expect(link).toHaveAttribute('href', 'https://www.example.test/page/x');
+    await expect(page.locator('.row', { hasText: 'Read' }).locator('.title')).not.toContainText('https://');
+  });
+
+  test('Show all active expands and collapses the Then list', async ({ page }) => {
+    const tasks = [mk(1, '🔺 Hero task'), ...Array.from({ length: 8 }, (_, i) => mk(i + 2, `Filler ${i + 1}`))];
+    await mockApi(page, { tasks });
+    await page.goto('/');
+    const rowsEl = page.locator('section[aria-label="Now"] .row');
+    await expect(rowsEl).toHaveCount(5);
+    await page.getByRole('button', { name: /Show all active \(\d+ more\)/ }).click();
+    await expect(rowsEl).toHaveCount(8);
+    await page.getByRole('button', { name: 'Show less' }).click();
+    await expect(rowsEl).toHaveCount(5);
   });
 });

@@ -242,3 +242,9 @@ a.tag.link:hover { background: var(--accent-soft); }
 .sel { display: none !important; }
 @media (max-width: 799px) { .proj-tag { display: none; } .title { flex-wrap: wrap; } }
 .row .chips .slot, .row .chips .chip-priority, .row .chips .chip-effort { width: 42px; min-width: 42px; justify-content: center; }
+@media (max-width: 799px) {
+  .edit-btn { display: none !important; }
+  .row .line { row-gap: 0; padding: 4px 4px 2px; }
+  .row .chips { margin-top: 0; padding: 0 0 4px 32px; }
+  .row .chips .chip-priority, .row .chips .chip-effort { width: auto; min-width: 34px; }
+}
