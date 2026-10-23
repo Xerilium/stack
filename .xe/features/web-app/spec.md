@@ -43,11 +43,16 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 
 Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
-- **FR:now.focus** (P1): Home is **Now**. A focus block shows the top task from `GET /next` (title, project, chips, due) with Start (`s`), Done (`d`), Defer (`z`), Skip (`Shift+S`) and key hints. Nothing active shows an empty state that points at capture (`c`)
-- **FR:now.active** (P1): Below the focus block, every open top-level task in an Active section is listed one line each, grouped by project, with subtask progress (`2/5`). The cursor (`j`/`k`) starts on the focus task and moves through the same rows; the same row keys work as in the list
+- **FR:now.focus** (P1): Home is **Now**. A focus block shows the single next task from `GET /next` (title, project, chips, due, links) with three actions only: Start (`s`), Done (`d`), Not now (`z`). Skip is `Shift+S` and Focus mode is `Enter` (no buttons). Nothing active shows an empty state that points at capture (`c`)
+- **FR:now.active** (P1): Below the focus block: **In progress** (tasks marked 🚧) and **Then** (the next 5 by due-soon, in progress, priority, then file order), each row one line with its project. Parked (💤, ⏰ later, 🅿️, ⛔), done, and tasks due more than 14 days out are never listed. `Show all active (n more)` reveals the rest. The cursor (`j`/`k`) starts on the focus task and moves through the shown rows
 - **FR:now.undo** (P1): Done shows an undo toast for 8 seconds (`set` checkbox Incomplete). Writes update the screen at once and reload after
 - **FR:now.defer** (P1): `z` opens a defer menu: 2 hours, tomorrow, next week (number keys 1-3) calling `suspend` with `hours` or `days`
 - **FR:now.focusmode** (P1): `Enter` on any row opens focus mode: one task large with its subtasks as a checklist and its notes rendered; `s`, `d`, `z` work; `Esc` returns
+
+### FR:row2: Row cleanup
+
+- **FR:row.clean** (P1): `parseRow` lifts links (`https://…`, with a leading `@`) out of the title into `links` (label = host), 🎯 into `outcome`, 🤖/🪄 and 🙋 into `who`, and drops project-value marks (💰 ⚠️ 😊 ⏱️ 🌱 🏃 🌟) and 🔎 from the title. A `⏰` start date may carry a year. Markdown links stay in the title
+- **FR:row.chips** (P1): Priority, status, effort, and impact render as short text chips (`Crit`, `High`, `Doing`, `1h`), not color emoji; colors only for urgency and state. Rows show priority and effort in fixed-width slots, status before the title, links and `AI`/`You` tags beside it. The row has one control: a circle that marks done (Shift/Cmd/Ctrl-click or long-press on touch selects)
 
 ### FR:projects: Projects overview
 

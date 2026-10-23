@@ -13,8 +13,8 @@ import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, Toasts, type GroupName, type
 import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { CaptureSpec, NextTask, Project, SetProps, Task, View } from './types';
-import { activeTasks, DEFER, progress, startsOpen, topTask, visibleRows } from './now';
-import { FocusMode, ListView, NowView, ProjectsView, type RowProps } from './views';
+import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
+import { FocusMode, ListView, NowView, ProjectsView, type NowSection, type RowProps } from './views';
 
 const api = createClient();
 type Phase = 'loading' | 'ready' | 'denied' | 'error';
@@ -30,6 +30,7 @@ export function App() {
   const [me, setMe] = useState('');
   const [local, setLocal] = useState(false);
   const [info, setInfo] = useState<{ mode: string; repo: string; branch: string } | null>(null);
+  const [allOpen, setAllOpen] = useState(false);
   const [focusRef, setFocusRef] = useState<string | null>(null);
   const [deferRefs, setDeferRefs] = useState<string[] | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
@@ -66,8 +67,16 @@ export function App() {
   }, [tasks, flipped]);
   const searching = filters.q.trim() !== '' || filters.state !== 'open';
   const listRows = useMemo(() => visibleRows(filtered, tasks, expanded, collapsed, searching), [filtered, tasks, expanded, collapsed, searching]);
-  const nowRows = useMemo(() => activeTasks(tasks).filter((t) => t.ref !== next?.ref), [tasks, next]);
-  const rows = view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...nowRows] : listRows;
+  const { sections, hidden } = useMemo(() => {
+    const ranked = rankNow(activeTasks(tasks).filter((t) => t.ref !== next?.ref && actionable(t)));
+    const doing = ranked.filter((t) => /🚧/u.test(t.text));
+    const rest = ranked.filter((t) => !doing.includes(t));
+    const then = rest.slice(0, 5), more = rest.slice(5);
+    const secs: NowSection[] = [{ id: 'doing', title: 'In progress', rows: doing }, { id: 'then', title: 'Then', rows: then }];
+    if (allOpen) secs.push({ id: 'all', title: 'All active', rows: more });
+    return { sections: secs, hidden: more.length };
+  }, [tasks, next, allOpen]);
+  const rows = view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const capRows = useMemo(() => capacityRows(projects, tasks).map((r) => ({ ...r, top: topTask(tasks, r.project) })), [projects, tasks]);
@@ -384,7 +393,7 @@ export function App() {
   const tabs: [View, string, string][] = [['now', 'Now', 'g n'], ['projects', 'Projects', 'g p'], ['list', 'All tasks', 'g a']];
   const toggleSet = (set: 'expanded' | 'flipped') => (k: string) => (set === 'expanded' ? setExpanded : setFlipped)((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const rowProps: RowProps = {
-    titles: new Map(projects.map((x) => [x.name, x.title || x.name])), all: tasks, cursor, selected, editing, busy, expanded, handles: view === 'list', drag, prog,
+    showProject: view === 'now', titles: new Map(projects.map((x) => [x.name, x.title || x.name])), all: tasks, cursor, selected, editing, busy, expanded, handles: view === 'list', drag, prog,
     onSelect: (ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; }), onCursor: setCursor, onEdit: setEditing, onSave: (r, t) => void save(r, t), onToggle: (t) => void toggleDone(t),
     onPick: (refs, g) => setPicker({ refs: selected.size && selected.has(refs[0]) ? [...selected] : refs, groups: Array.isArray(g) ? g : [g] }),
     onMove: (ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir)), onDragStart, onExpand: toggleSet('expanded'), onOpen: (r) => setFocusRef(r),
@@ -407,7 +416,7 @@ export function App() {
       <main class="main">
         {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
         {phase === 'loading' && <p class="loading">Loading…</p>}
-        {phase === 'ready' && view === 'now' && <NowView task={next} rows={nowRows} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
+        {phase === 'ready' && view === 'now' && <NowView task={next} sections={sections} hidden={hidden} allOpen={allOpen} onToggleAll={() => setAllOpen((o) => !o)} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />

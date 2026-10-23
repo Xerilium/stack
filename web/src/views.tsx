@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { CapacityRow } from './capacity';
 import type { Filters } from './filters';
 import { children } from './now';
-import { Chip, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
+import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
 import type { NextTask, Task } from './types';
 
@@ -16,19 +16,21 @@ const dueClass = (due: string) => { const d = new Date(`${due.split('-')[0].trim
 
 /** Shared row props for the Now and list views. */
 export interface RowProps {
-  titles: Map<string, string>; all: Task[]; cursor: string | null; selected: Set<string>; editing: string | null; busy: boolean; expanded: Set<string>; handles: boolean;
+  titles: Map<string, string>; showProject: boolean; all: Task[]; cursor: string | null; selected: Set<string>; editing: string | null; busy: boolean; expanded: Set<string>; handles: boolean;
   drag: { ref: string; over: string | null; half: 'top' | 'bottom' } | null;
   prog: Map<string, { done: number; total: number }>;
   onSelect: (ref: string) => void; onCursor: (ref: string) => void; onEdit: (ref: string | null) => void; onSave: (ref: string, text: string) => void; onToggle: (t: Task) => void;
   onPick: Pick; onMove: (ref: string, dir: 'up' | 'down') => void; onDragStart: (ref: string, e: PointerEvent) => void; onExpand: (ref: string) => void; onOpen: (ref: string) => void;
 }
 
+export interface NowSection { id: string; title: string; rows: Task[] }
+
 /** @req FR:web-app/now.focus @req FR:web-app/now.active */
-export function NowView({ task, rows, p, busy, onAct }: {
-  task: NextTask | null; rows: Task[]; p: RowProps; busy: boolean; onAct: (a: 'start' | 'done' | 'skip' | 'defer') => void;
+export function NowView({ task, sections, hidden, allOpen, p, busy, onAct, onToggleAll }: {
+  task: NextTask | null; sections: NowSection[]; hidden: number; allOpen: boolean; p: RowProps; busy: boolean;
+  onAct: (a: 'start' | 'done' | 'defer') => void; onToggleAll: () => void;
 }) {
   const hero = task ? parseRow(task.text) : null;
-  let last = '';
   return (
     <section aria-label="Now">
       {!task && (
@@ -40,26 +42,39 @@ export function NowView({ task, rows, p, busy, onAct }: {
           <h1 data-testid="next-title" onDblClick={() => p.onOpen(task.ref)}><Md text={hero.title || task.text} /></h1>
           <div class="chips">
             {chipsOf(task.text).map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([task.ref], g)} />)}
+            <Tags r={hero} />
             {hero.due && <span class={`meta${dueClass(hero.due)}`}>{hero.due}</span>}
             {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
           </div>
           <div class="actions">
             <button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start')}>Start <kbd>s</kbd></button>
             <button type="button" class="btn" disabled={busy} onClick={() => onAct('done')}>Done <kbd>d</kbd></button>
-            <button type="button" class="btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>z</kbd></button>
-            <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('skip')}>Skip <kbd>⇧S</kbd></button>
-            <button type="button" class="btn quiet" onClick={() => p.onOpen(task.ref)}>Focus <kbd>↵</kbd></button>
+            <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('defer')}>Not now <kbd>z</kbd></button>
           </div>
         </div>
       )}
-      {rows.length > 0 && <h2 class="h2">Active</h2>}
-      <ul class="rows" data-testid="rows">
-        {rows.map((t) => {
-          const head = t.project !== last; last = t.project;
-          return <>{head && <li class="group" key={`h-${t.project}`} role="presentation"><span>{p.titles.get(t.project) ?? t.project}</span></li>}<TaskRow key={t.ref} t={t} p={p} /></>;
-        })}
-      </ul>
+      {sections.map((s) => s.rows.length > 0 && (
+        <div key={s.id}>
+          <h2 class="h2">{s.title}</h2>
+          <ul class="rows" data-testid={s.id === 'then' ? 'rows' : undefined}>
+            {s.rows.map((t) => <TaskRow key={t.ref} t={t} p={p} />)}
+          </ul>
+        </div>
+      ))}
+      {(hidden > 0 || allOpen) && <button type="button" class="btn quiet more-all" onClick={onToggleAll}>{allOpen ? 'Show less' : `Show all active (${hidden} more)`}</button>}
     </section>
+  );
+}
+
+/** Who/outcome/links lifted out of the title. */
+function Tags({ r }: { r: ReturnType<typeof parseRow> }) {
+  return (
+    <>
+      {r.outcome && <span class="tag" title="Outcome">◎</span>}
+      {r.who === 'agent' && <span class="tag ai" title="An agent can do this">AI</span>}
+      {r.who === 'human' && <span class="tag you" title="Needs you">You</span>}
+      {r.links.map((l) => <a key={l.href} class="tag link" href={l.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{l.label} ↗</a>)}
+    </>
   );
 }
 
@@ -134,22 +149,23 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
   const cls = ['row', t.done ? 'done' : '', isCursor ? 'cursor' : '', p.selected.has(t.ref) ? 'selected' : '',
     d?.over === t.ref ? `drop-${d.half}` : '', d?.ref === t.ref ? 'dragging' : ''].filter(Boolean).join(' ');
   return (
-    <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} onClick={() => p.onCursor(t.ref)}>
+    <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} onClick={() => p.onCursor(t.ref)}
+      onPointerDown={(e) => { if (e.pointerType !== 'touch') return; const h = setTimeout(() => p.onSelect(t.ref), 450); const off = () => { clearTimeout(h); window.removeEventListener('pointerup', off); window.removeEventListener('pointermove', off); }; window.addEventListener('pointerup', off); window.addEventListener('pointermove', off); }}>
       <div class="line">
         {p.handles && <button type="button" class="handle" aria-label={`Drag ${r.title || 'task'} to reorder`} title="Drag to reorder (Shift+J/K)"
           onPointerDown={(e) => p.onDragStart(t.ref, e as unknown as PointerEvent)}
           onKeyDown={(e) => { if (e.key === 'ArrowUp') { e.preventDefault(); p.onMove(t.ref, 'up'); } if (e.key === 'ArrowDown') { e.preventDefault(); p.onMove(t.ref, 'down'); } }}>⠿</button>}
-        <input type="checkbox" class="sel" aria-label={`Select ${r.title || 'task'}`} checked={p.selected.has(t.ref)} onClick={(e) => e.stopPropagation()} onChange={() => p.onSelect(t.ref)} />
-        <button type="button" class="tick" aria-label={t.done ? 'Mark not done' : 'Mark done'} disabled={p.busy} onClick={(e) => { e.stopPropagation(); p.onToggle(t); }}><span class="box">{t.done ? '✓' : ''}</span></button>
+        <button type="button" class="tick" aria-label={t.done ? 'Mark not done' : 'Mark done'} disabled={p.busy} onClick={(e) => { e.stopPropagation(); if (e.shiftKey || e.metaKey || e.ctrlKey) p.onSelect(t.ref); else p.onToggle(t); }}><span class="box">{t.done ? '✓' : ''}</span></button>
         {editing ? (
           <Editor text={t.text} onSave={(v) => p.onSave(t.ref, v)} onCancel={() => p.onEdit(null)} />
         ) : (
           <>
-            <div class="title" onDblClick={() => p.onEdit(t.ref)}><Md text={r.title || t.text} /></div>
+            <div class="title" onDblClick={() => p.onEdit(t.ref)}>{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><Md text={r.title || t.text} /></div>
             <button type="button" class="edit-btn" aria-label={`Edit ${r.title || 'task'}`} onClick={(e) => { e.stopPropagation(); p.onEdit(t.ref); }}>✎</button>
             <div class="chips">
-              {GROUP_NAMES.map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
+              {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
               <button type="button" class="chip ghost" aria-label="Set properties" onClick={(e) => { e.stopPropagation(); p.onPick([t.ref], GROUP_NAMES); }}>＋</button>
+              {p.showProject && <span class="proj-tag">{p.titles.get(t.project) ?? t.project}</span>}
               <span class={`meta due${r.due ? dueClass(r.due) : ''}`}>{r.suspend ? `💤 ${r.suspend}` : r.due ?? ''}{r.recurrence ? ' ↻' : ''}</span>
               {(pr && pr.total > 0) || t.notes.length > 0 ? (
                 <button type="button" class="more" aria-expanded={open} aria-label={open ? 'Collapse details' : 'Expand details'} onClick={(e) => { e.stopPropagation(); p.onExpand(t.ref); }}>
@@ -211,7 +227,8 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
         <p class="eyebrow">{task.project} · {task.section}</p>
         <h1><Md text={r.title || task.text} /></h1>
         <div class="chips">
-          {chipsOf(task.text).map((c) => <span key={c.group} class="chip"><span aria-hidden="true">{c.value}</span><span class="chip-name">{GROUPS[c.group].set.find((x) => x.e.replace(/\uFE0F/g, '') === c.value.replace(/\uFE0F/g, ''))?.name}</span></span>)}
+          {chipsOf(task.text).map((c) => <span key={c.group} class={`chip ${glyphOf(c.group, c.value).tone}`}>{GROUPS[c.group].set.find((x) => x.e.replace(/\uFE0F/g, '') === c.value.replace(/\uFE0F/g, ''))?.name}</span>)}
+          <Tags r={r} />
           {r.due && <span class={`meta${dueClass(r.due)}`}>{r.due}</span>}
         </div>
         {task.notes.length > 0 && <div class="notes big">{task.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
