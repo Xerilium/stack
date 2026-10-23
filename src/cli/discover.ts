@@ -9,7 +9,8 @@ export interface DiscoverOpts { cwd: string; env: NodeJS.ProcessEnv; home: strin
 
 const isStackDir = (d: string): boolean => {
   if (existsSync(join(d, '.xe/config/stack.json'))) return true;
-  try { return readdirSync(join(d, 'tasks')).some((f) => f.endsWith('.md')); } catch { return false; }
+  // A bare tasks/ folder only counts inside a git repo, so ~ or an unrelated project is never picked up.
+  try { return existsSync(join(d, '.git')) && readdirSync(join(d, 'tasks')).some((f) => f.endsWith('.md')); } catch { return false; }
 };
 
 export function userConfig(home: string): { dir?: string; demoFrom?: string } {
@@ -21,7 +22,6 @@ export function findStackDir({ cwd, env, home }: DiscoverOpts): string | null {
     if (isStackDir(d)) return d;
     if (dirname(d) === d) break;
   }
-  if (env.STACK_DIR) return resolve(env.STACK_DIR);
-  const c = userConfig(home).dir;
-  return c ? resolve(c) : null;
+  const c = env.STACK_DIR || userConfig(home).dir;
+  return c && existsSync(resolve(c)) ? resolve(c) : null;
 }

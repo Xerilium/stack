@@ -14,7 +14,7 @@ describe('findStackDir', () => {
     expect(findStackDir({ cwd: sub, env: {}, home: tmp() })).toBe(root);
   });
   it('accepts a tasks/ folder with markdown', () => {
-    const root = tmp(); mkdirSync(join(root, 'tasks'));
+    const root = tmp(); mkdirSync(join(root, 'tasks')); mkdirSync(join(root, '.git'));
     writeFileSync(join(root, 'tasks/x.md'), '# x');
     expect(findStackDir({ cwd: root, env: {}, home: tmp() })).toBe(root);
   });
@@ -25,6 +25,10 @@ describe('findStackDir', () => {
     const cfgDir = tmp();
     writeFileSync(join(home, '.config/stack/config.json'), JSON.stringify({ dir: cfgDir }));
     expect(findStackDir({ cwd, env: {}, home })).toBe(cfgDir);
+  });
+  it('ignores a tasks/ folder outside a git repo and a missing STACK_DIR', () => {
+    const root = tmp(); mkdirSync(join(root, 'tasks')); writeFileSync(join(root, 'tasks/x.md'), '# x');
+    expect(findStackDir({ cwd: root, env: { STACK_DIR: join(root, 'nope') }, home: tmp() })).toBeNull();
   });
   it('returns null when nothing is found', () => {
     expect(findStackDir({ cwd: tmp(), env: {}, home: tmp() })).toBeNull();
