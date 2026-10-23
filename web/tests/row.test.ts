@@ -35,3 +35,25 @@ describe('effortMinutes', () => {
     expect(effortMinutes(undefined)).toBe(0);
   });
 });
+
+// @req FR:web-app/row.clean
+describe('parseRow cleanup', () => {
+  it('lifts links, outcome, and who out of the title and drops value marks', () => {
+    const r = parseRow('📅 Feb 1, 2027: 🔄 Quarterly: File taxes ⚠️⚠️⚠️ 💰 @ https://dor.wa.gov/file-pay-taxes 🔹');
+    expect(r.title).toBe('File taxes');
+    expect(r.links).toEqual([{ href: 'https://dor.wa.gov/file-pay-taxes', label: 'dor.wa.gov' }]);
+    expect(parseRow('🎯 **Korr** 💰 😊😊😊 🟡')).toMatchObject({ outcome: true, title: '**Korr**' });
+    expect(parseRow('🤖 Decide launch').who).toBe('agent');
+    expect(parseRow('🙋 Answer these').who).toBe('human');
+    expect(parseRow('⏰ Jan 7, 2027: 📅 Feb 1, 2027: Prepare').start).toBe('Jan 7, 2027');
+  });
+  it('keeps markdown links', () => {
+    expect(parseRow('See [spec](https://example.test/spec)').links).toEqual([]);
+  });
+});
+
+describe('saved queries', () => {
+  it('drops a trailing GitHub query from the title', () => {
+    expect(parseRow('Open PRs @GitHub/x/y (is:open is:pr label:"a b")').title).toBe('Open PRs @GitHub/x/y');
+  });
+});

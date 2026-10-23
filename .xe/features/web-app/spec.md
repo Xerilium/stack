@@ -39,15 +39,29 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 - **FR:row.parse** (P1): `parseRow(text)` extracts status, priority, effort, impact, due date text, recurrence, suspend marker, and a clean title (emoji markers and date prefixes removed). The emoji set matches the api `set` enums; unknown text stays in the title
 - **FR:row.effort** (P2): Effort emoji map to minutes (🔹 12, 🟢 30, 🟡 60, 🟠 120, 🔴 240, ⚫️ 480) for the capacity view
 
-### FR:now: Now view (home)
+### FR:today: Today (home)
+
+Home plans the day; it is not a list. Design: `docs/design/web-ux.md`.
+
+- **FR:today.plan** (P1): The header shows the date, minutes planned, time left in the work day (default 9:00-18:00 local), and counts of decisions and agent work. **Your day** lays your own tasks (open leaf rows in Active that are actionable, not 🤖/🪄/🙋) on a timeline from now (rounded up to 15 min): the `/next` task first, then by due-soon, in progress, priority. Each block uses its effort (30 min when unset, capped at 2 h and marked `+`). Tasks that do not fit go to a quiet note (a list when 12 or fewer). The first block has Start (`s`), Done (`d`), Not now (`z`); every block has a done circle
+- **FR:today.needs** (P1): **Needs you** lists open 🙋 rows in active work as cards: project, parent task, title, and the agent's recommendation (a note line with "recommend" on the row, its parent, or a sibling). `Go with it` adds a child row `💬 Go with the recommendation: …`; `Reply` adds `💬 <text>` under the row (so the owning agent picks it up); `Details` opens focus mode. Four show first, the rest behind `n more`
+- **FR:today.agents** (P1): **Your AI team** lists open 🤖/🪄 rows in active work with state: Working (🚧), Waiting on you (a 🙋 sibling is open), or Queued. Each has Reply
+- **FR:today.projects** (P2): **Projects** shows one tile per project with its top open task and open count; a tile opens that project's list. `g t` goes to Today; the old Now view is **Focus** (`g n`)
+
+### FR:now: Focus view (single next action)
 
 Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
-- **FR:now.focus** (P1): Home is **Now**. A focus block shows the top task from `GET /next` (title, project, chips, due) with Start (`s`), Done (`d`), Defer (`z`), Skip (`Shift+S`) and key hints. Nothing active shows an empty state that points at capture (`c`)
-- **FR:now.active** (P1): Below the focus block, every open top-level task in an Active section is listed one line each, grouped by project, with subtask progress (`2/5`). The cursor (`j`/`k`) starts on the focus task and moves through the same rows; the same row keys work as in the list
+- **FR:now.focus** (P1): Home is **Now**. A focus block shows the single next task from `GET /next` (title, project, chips, due, links) with three actions only: Start (`s`), Done (`d`), Not now (`z`). Skip is `Shift+S` and Focus mode is `Enter` (no buttons). Nothing active shows an empty state that points at capture (`c`)
+- **FR:now.active** (P1): Below the focus block: **In progress** (tasks marked 🚧) and **Then** (the next 5 by due-soon, in progress, priority, then file order), each row one line with its project. Parked (💤, ⏰ later, 🅿️, ⛔), done, and tasks due more than 14 days out are never listed. `Show all active (n more)` reveals the rest. The cursor (`j`/`k`) starts on the focus task and moves through the shown rows
 - **FR:now.undo** (P1): Done shows an undo toast for 8 seconds (`set` checkbox Incomplete). Writes update the screen at once and reload after
 - **FR:now.defer** (P1): `z` opens a defer menu: 2 hours, tomorrow, next week (number keys 1-3) calling `suspend` with `hours` or `days`
 - **FR:now.focusmode** (P1): `Enter` on any row opens focus mode: one task large with its subtasks as a checklist and its notes rendered; `s`, `d`, `z` work; `Esc` returns
+
+### FR:row2: Row cleanup
+
+- **FR:row.clean** (P1): `parseRow` lifts links (`https://…`, with a leading `@`) out of the title into `links` (label = host), 🎯 into `outcome`, 🤖/🪄 and 🙋 into `who`, and drops project-value marks (💰 ⚠️ 😊 ⏱️ 🌱 🏃 🌟) and 🔎 from the title. A `⏰` start date may carry a year. Markdown links stay in the title
+- **FR:row.chips** (P1): Priority, status, effort, and impact render as short text chips (`Crit`, `High`, `Doing`, `1h`), not color emoji; colors only for urgency and state. Rows show priority and effort in fixed-width slots, status before the title, links and `AI`/`You` tags beside it. The row has one control: a circle that marks done (Shift/Cmd/Ctrl-click or long-press on touch selects)
 
 ### FR:projects: Projects overview
 
@@ -82,6 +96,7 @@ Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
 ### FR:capture: Quick capture
 
+- **FR:api.add** (P1): The client wraps `POST /tasks` (`project`, `text`, optional `parent` ref) for replies
 - **FR:capture.box** (P1): `c` (or the Add button) opens a capture overlay with one input. `Enter` posts to `/capture` and closes it; `Esc` closes. While typing (debounced 250 ms) a `dryRun` call previews the parsed title, due date, effort, and project. A `422` shows the message inline and keeps the text. Success shows the new row text in a toast and refreshes
 - **FR:capture.project** (P2): The last project used is sent as the default `project`, so a phrase with no `#project` still lands somewhere
 

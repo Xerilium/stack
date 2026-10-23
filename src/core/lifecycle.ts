@@ -23,7 +23,7 @@ export interface LifecycleContext {
   config?: StackConfig;
   /** Clock; defaults to the system time. */
   now?: () => Date;
-  /** Scoring engine id; defaults to `legacy`. */
+  /** Scoring engine id; defaults to `stack` (legacy score plus due-date lens). */
   engine?: string;
 }
 
@@ -291,7 +291,7 @@ async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextT
     const rows = scoringRows(docs[i]);
     p.tasks.forEach((t, k) => where.set(t, { doc: docs[i], line: rows[k] }));
   });
-  const top = rankTasks(getEngine(ctx.engine), projects, cfg(ctx), at ?? clock(ctx))[0];
+  const top = rankTasks(getEngine(ctx.engine ?? 'stack'), projects, cfg(ctx), at ?? clock(ctx))[0];
   if (!top) return null;
   const loc = where.get(top.task)!;
   return {

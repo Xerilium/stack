@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { CapacityRow } from './capacity';
 import type { Filters } from './filters';
-import { children } from './now';
-import { Chip, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
+import { children, dueDays } from './now';
+import { clock, span, type AgentItem, type Block, type Decision, type Plan } from './plan';
+import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
 import type { NextTask, Task } from './types';
 
@@ -16,19 +17,21 @@ const dueClass = (due: string) => { const d = new Date(`${due.split('-')[0].trim
 
 /** Shared row props for the Now and list views. */
 export interface RowProps {
-  titles: Map<string, string>; all: Task[]; cursor: string | null; selected: Set<string>; editing: string | null; busy: boolean; expanded: Set<string>; handles: boolean;
+  titles: Map<string, string>; showProject: boolean; all: Task[]; cursor: string | null; selected: Set<string>; editing: string | null; busy: boolean; expanded: Set<string>; handles: boolean;
   drag: { ref: string; over: string | null; half: 'top' | 'bottom' } | null;
   prog: Map<string, { done: number; total: number }>;
   onSelect: (ref: string) => void; onCursor: (ref: string) => void; onEdit: (ref: string | null) => void; onSave: (ref: string, text: string) => void; onToggle: (t: Task) => void;
   onPick: Pick; onMove: (ref: string, dir: 'up' | 'down') => void; onDragStart: (ref: string, e: PointerEvent) => void; onExpand: (ref: string) => void; onOpen: (ref: string) => void;
 }
 
+export interface NowSection { id: string; title: string; rows: Task[] }
+
 /** @req FR:web-app/now.focus @req FR:web-app/now.active */
-export function NowView({ task, rows, p, busy, onAct }: {
-  task: NextTask | null; rows: Task[]; p: RowProps; busy: boolean; onAct: (a: 'start' | 'done' | 'skip' | 'defer') => void;
+export function NowView({ task, sections, hidden, allOpen, p, busy, onAct, onToggleAll }: {
+  task: NextTask | null; sections: NowSection[]; hidden: number; allOpen: boolean; p: RowProps; busy: boolean;
+  onAct: (a: 'start' | 'done' | 'defer') => void; onToggleAll: () => void;
 }) {
   const hero = task ? parseRow(task.text) : null;
-  let last = '';
   return (
     <section aria-label="Now">
       {!task && (
@@ -40,26 +43,39 @@ export function NowView({ task, rows, p, busy, onAct }: {
           <h1 data-testid="next-title" onDblClick={() => p.onOpen(task.ref)}><Md text={hero.title || task.text} /></h1>
           <div class="chips">
             {chipsOf(task.text).map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([task.ref], g)} />)}
+            <Tags r={hero} />
             {hero.due && <span class={`meta${dueClass(hero.due)}`}>{hero.due}</span>}
             {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
           </div>
           <div class="actions">
             <button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start')}>Start <kbd>s</kbd></button>
             <button type="button" class="btn" disabled={busy} onClick={() => onAct('done')}>Done <kbd>d</kbd></button>
-            <button type="button" class="btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>z</kbd></button>
-            <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('skip')}>Skip <kbd>⇧S</kbd></button>
-            <button type="button" class="btn quiet" onClick={() => p.onOpen(task.ref)}>Focus <kbd>↵</kbd></button>
+            <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('defer')}>Not now <kbd>z</kbd></button>
           </div>
         </div>
       )}
-      {rows.length > 0 && <h2 class="h2">Active</h2>}
-      <ul class="rows" data-testid="rows">
-        {rows.map((t) => {
-          const head = t.project !== last; last = t.project;
-          return <>{head && <li class="group" key={`h-${t.project}`} role="presentation"><span>{p.titles.get(t.project) ?? t.project}</span></li>}<TaskRow key={t.ref} t={t} p={p} /></>;
-        })}
-      </ul>
+      {sections.map((s) => s.rows.length > 0 && (
+        <div key={s.id}>
+          <h2 class="h2">{s.title}</h2>
+          <ul class="rows" data-testid={s.id === 'then' ? 'rows' : undefined}>
+            {s.rows.map((t) => <TaskRow key={t.ref} t={t} p={p} />)}
+          </ul>
+        </div>
+      ))}
+      {(hidden > 0 || allOpen) && <button type="button" class="btn quiet more-all" onClick={onToggleAll}>{allOpen ? 'Show less' : `Show all active (${hidden} more)`}</button>}
     </section>
+  );
+}
+
+/** Who/outcome/links lifted out of the title. */
+function Tags({ r }: { r: ReturnType<typeof parseRow> }) {
+  return (
+    <>
+      {r.outcome && <span class="tag" title="Outcome">◎</span>}
+      {r.who === 'agent' && <span class="tag ai" title="An agent can do this">AI</span>}
+      {r.who === 'human' && <span class="tag you" title="Needs you">You</span>}
+      {r.links.map((l) => <a key={l.href} class="tag link" href={l.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{l.label} ↗</a>)}
+    </>
   );
 }
 
@@ -134,22 +150,23 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
   const cls = ['row', t.done ? 'done' : '', isCursor ? 'cursor' : '', p.selected.has(t.ref) ? 'selected' : '',
     d?.over === t.ref ? `drop-${d.half}` : '', d?.ref === t.ref ? 'dragging' : ''].filter(Boolean).join(' ');
   return (
-    <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} onClick={() => p.onCursor(t.ref)}>
+    <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} onClick={() => p.onCursor(t.ref)}
+      onPointerDown={(e) => { if (e.pointerType !== 'touch') return; const h = setTimeout(() => p.onSelect(t.ref), 450); const off = () => { clearTimeout(h); window.removeEventListener('pointerup', off); window.removeEventListener('pointermove', off); }; window.addEventListener('pointerup', off); window.addEventListener('pointermove', off); }}>
       <div class="line">
         {p.handles && <button type="button" class="handle" aria-label={`Drag ${r.title || 'task'} to reorder`} title="Drag to reorder (Shift+J/K)"
           onPointerDown={(e) => p.onDragStart(t.ref, e as unknown as PointerEvent)}
           onKeyDown={(e) => { if (e.key === 'ArrowUp') { e.preventDefault(); p.onMove(t.ref, 'up'); } if (e.key === 'ArrowDown') { e.preventDefault(); p.onMove(t.ref, 'down'); } }}>⠿</button>}
-        <input type="checkbox" class="sel" aria-label={`Select ${r.title || 'task'}`} checked={p.selected.has(t.ref)} onClick={(e) => e.stopPropagation()} onChange={() => p.onSelect(t.ref)} />
-        <button type="button" class="tick" aria-label={t.done ? 'Mark not done' : 'Mark done'} disabled={p.busy} onClick={(e) => { e.stopPropagation(); p.onToggle(t); }}><span class="box">{t.done ? '✓' : ''}</span></button>
+        <button type="button" class="tick" aria-label={t.done ? 'Mark not done' : 'Mark done'} disabled={p.busy} onClick={(e) => { e.stopPropagation(); if (e.shiftKey || e.metaKey || e.ctrlKey) p.onSelect(t.ref); else p.onToggle(t); }}><span class="box">{t.done ? '✓' : ''}</span></button>
         {editing ? (
           <Editor text={t.text} onSave={(v) => p.onSave(t.ref, v)} onCancel={() => p.onEdit(null)} />
         ) : (
           <>
-            <div class="title" onDblClick={() => p.onEdit(t.ref)}><Md text={r.title || t.text} /></div>
+            <div class="title" onDblClick={() => p.onEdit(t.ref)}>{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><Md text={r.title || t.text} /></div>
             <button type="button" class="edit-btn" aria-label={`Edit ${r.title || 'task'}`} onClick={(e) => { e.stopPropagation(); p.onEdit(t.ref); }}>✎</button>
             <div class="chips">
-              {GROUP_NAMES.map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
+              {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
               <button type="button" class="chip ghost" aria-label="Set properties" onClick={(e) => { e.stopPropagation(); p.onPick([t.ref], GROUP_NAMES); }}>＋</button>
+              {p.showProject && <span class="proj-tag">{p.titles.get(t.project) ?? t.project}</span>}
               <span class={`meta due${r.due ? dueClass(r.due) : ''}`}>{r.suspend ? `💤 ${r.suspend}` : r.due ?? ''}{r.recurrence ? ' ↻' : ''}</span>
               {(pr && pr.total > 0) || t.notes.length > 0 ? (
                 <button type="button" class="more" aria-expanded={open} aria-label={open ? 'Collapse details' : 'Expand details'} onClick={(e) => { e.stopPropagation(); p.onExpand(t.ref); }}>
@@ -211,7 +228,8 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
         <p class="eyebrow">{task.project} · {task.section}</p>
         <h1><Md text={r.title || task.text} /></h1>
         <div class="chips">
-          {chipsOf(task.text).map((c) => <span key={c.group} class="chip"><span aria-hidden="true">{c.value}</span><span class="chip-name">{GROUPS[c.group].set.find((x) => x.e.replace(/\uFE0F/g, '') === c.value.replace(/\uFE0F/g, ''))?.name}</span></span>)}
+          {chipsOf(task.text).map((c) => <span key={c.group} class={`chip ${glyphOf(c.group, c.value).tone}`}>{GROUPS[c.group].set.find((x) => x.e.replace(/\uFE0F/g, '') === c.value.replace(/\uFE0F/g, ''))?.name}</span>)}
+          <Tags r={r} />
           {r.due && <span class={`meta${dueClass(r.due)}`}>{r.due}</span>}
         </div>
         {task.notes.length > 0 && <div class="notes big">{task.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
@@ -258,3 +276,173 @@ export function ProjectsView({ rows, onOpen }: { rows: (CapacityRow & { top?: Ta
   );
 }
 const fmt = (n: number) => String(Math.round(n * 10) / 10);
+
+const STATE_LABEL = { working: 'Working', waiting: 'Waiting on you', queued: 'Queued' } as const;
+
+function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) => void; onClose: () => void; to: string; placeholder: string }) {
+  const [text, setText] = useState('');
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+  return (
+    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (text.trim()) onSend(text.trim()); }}>
+      <p class="reply-to">Replying to <b>{to}</b></p>
+      <input ref={ref} type="text" aria-label="Reply" placeholder={placeholder} value={text} maxLength={500} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }} />
+      <button type="submit" class="btn primary" disabled={!text.trim()}>Send <kbd>↵</kbd></button>
+    </form>
+  );
+}
+
+export interface TodayProps {
+  now: Date; plan: Plan; day: { start: number; end: number }; decisions: Decision[]; agents: AgentItem[]; p: RowProps; busy: boolean;
+  tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
+  onAct: (a: 'start' | 'done' | 'defer', ref: string) => void; onReply: (task: Task, text: string, label: string) => void; onAccept: (d: Decision) => void;
+}
+
+/** The day plan first, then what needs you, then what your agents are doing. @req FR:web-app/today.plan @req FR:web-app/today.needs @req FR:web-app/today.agents @req FR:web-app/today.projects */
+export function TodayView(t: TodayProps) {
+  const [replying, setReplying] = useState<string | null>(null);
+  const [rest, setRest] = useState(false);
+  const [moreNeeds, setMoreNeeds] = useState(false);
+  const [queuedOpen, setQueuedOpen] = useState(false);
+  const nowMin = t.now.getHours() * 60 + t.now.getMinutes();
+  const total = t.day.end - t.day.start;
+  const pct = (m: number) => Math.max(0, Math.min(100, ((m - t.day.start) / total) * 100));
+  const working = t.agents.filter((a) => a.state === 'working').length;
+  const needs = moreNeeds ? t.decisions : t.decisions.slice(0, 3);
+  const date = t.now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const jump = (id: string) => document.getElementById(id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  const live = t.agents.filter((a) => a.state !== 'queued');
+  const queued = t.agents.filter((a) => a.state === 'queued');
+  const shownQueued = queuedOpen ? queued : queued.slice(0, 3);
+  const agentRow = (a: AgentItem) => {
+    const r = parseRow(a.task.text);
+    const owner = t.p.titles.get(a.task.project) ?? a.task.project;
+    return (
+      <li key={a.task.ref} class={`agent ${a.state}`}>
+        <span class="pulse" aria-hidden="true" />
+        <div class="agent-body">
+          <p class="agent-title"><Md text={r.title || a.task.text} /></p>
+          <p class="agent-meta">{STATE_LABEL[a.state]} · {owner}</p>
+        </div>
+        <button type="button" class="btn quiet reveal" onClick={() => setReplying(replying === a.task.ref ? null : a.task.ref)}>Reply</button>
+        {replying === a.task.ref && <Reply to={`the ${owner} agent`} placeholder="Message the agent" onClose={() => setReplying(null)} onSend={(text) => { setReplying(null); t.onReply(a.task, text, 'Sent to the agent'); }} />}
+      </li>
+    );
+  };
+  return (
+    <section class="today" aria-label="Today">
+      <header class="t-head">
+        <p class="t-date">{date}</p>
+        <h1>{t.plan.blocks.length === 0 ? (t.plan.left > 0 ? 'Nothing planned' : 'Day is done') : `${span(t.plan.busy)} planned`}</h1>
+        <p class="t-sub">
+          <span>{span(t.plan.left)} left</span>
+          {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
+          {t.agents.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{working > 0 ? `${working} agent${working === 1 ? '' : 's'} working` : `${t.agents.length} agent task${t.agents.length === 1 ? '' : 's'} queued`}</button>}
+        </p>
+        <div class="day-bar" role="img" aria-label={`${span(t.plan.busy)} planned of ${span(t.plan.left)} left`}>
+          {t.plan.blocks.map((b) => <i key={b.task.ref} title={`${clock(b.start)} ${parseRow(b.task.text).title}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}
+          <b style={{ left: `${pct(Math.max(nowMin, t.day.start))}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>
+        </div>
+        <p class="day-ends"><span>{clock(t.day.start)}</span><span>{clock(t.day.end)}</span></p>
+      </header>
+
+      <div class="t-cols">
+        <div class="t-plan">
+          <h2 class="h2">Your day</h2>
+          {t.plan.blocks.length === 0 && <p class="empty-note">Nothing left that fits today. Add something with <kbd>c</kbd>.</p>}
+          <ol class="plan" data-testid="plan">
+            {t.plan.blocks.map((b, i) => <PlanBlock key={b.task.ref} b={b} lead={i === 0} p={t.p} busy={t.busy} onAct={t.onAct} />)}
+          </ol>
+          {t.plan.overflow.length > 12 && <p class="overflow quiet">{t.plan.overflow.length} more tasks don't fit today. They stay in Focus and All tasks.</p>}
+          {t.plan.overflow.length > 0 && t.plan.overflow.length <= 12 && (
+            <div class="overflow">
+              <button type="button" class="link-btn" aria-expanded={rest} onClick={() => setRest((r) => !r)}>{rest ? '▾' : '▸'} {t.plan.overflow.length} won't fit today</button>
+              {rest && <ul class="rows">{t.plan.overflow.slice(0, 12).map((o) => <TaskRow key={o.ref} t={o} p={t.p} />)}</ul>}
+            </div>
+          )}
+        </div>
+
+        <div class="t-side">
+          {t.decisions.length > 0 && <h2 class="h2" id="needs-you">Needs you</h2>}
+          <ul class="cards" data-testid="needs">
+            {needs.map((d) => {
+              const r = parseRow(d.task.text);
+              const key = d.task.ref;
+              const owner = t.p.titles.get(d.task.project) ?? d.task.project;
+              return (
+                <li class="card need" key={key}>
+                  <p class="card-eyebrow">{owner}{d.context ? ` · ${parseRow(d.context.text).title}` : ''}</p>
+                  <p class="card-title"><Md text={r.title || d.task.text} /></p>
+                  {d.recommendation && !/:$/.test(d.recommendation) && <p class="rec"><span>Recommended</span><Md text={d.recommendation} /></p>}
+                  <div class="card-actions">
+                    {d.recommendation && !/:$/.test(d.recommendation) && <button type="button" class="btn primary" disabled={t.busy} onClick={() => t.onAccept(d)}>Go with it</button>}
+                    <button type="button" class="btn" onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
+                    <button type="button" class="btn quiet" onClick={() => t.p.onOpen(d.task.ref)}>Details</button>
+                  </div>
+                  {replying === key && <Reply to={`the ${owner} agent`} placeholder="Tell the agent what you decided" onClose={() => setReplying(null)} onSend={(text) => { setReplying(null); t.onReply(d.task, text, 'Reply sent'); }} />}
+                </li>
+              );
+            })}
+          </ul>
+          {t.decisions.length > 3 && <button type="button" class="link-btn" onClick={() => setMoreNeeds((m) => !m)}>{moreNeeds ? 'Show fewer' : `${t.decisions.length - 3} more`}</button>}
+
+          {t.agents.length > 0 && <h2 class="h2" id="ai-team">Your AI team</h2>}
+          <ul class="agents" data-testid="agents">
+            {live.map(agentRow)}
+            {shownQueued.map(agentRow)}
+          </ul>
+          {queued.length > 3 && <button type="button" class="link-btn" onClick={() => setQueuedOpen((o) => !o)}>{queuedOpen ? 'Show fewer' : `${queued.length - 3} more queued`}</button>}
+
+          <h2 class="h2">Projects</h2>
+          <ul class="tiles" data-testid="tops">
+            {t.tops.filter((x) => x.task).map((x) => (
+              <li key={x.project}>
+                <button type="button" class="tile" onClick={() => t.onProject(x.project)}>
+                  <span class="tile-name">{x.title}</span>
+                  <span class="tile-top"><Md text={parseRow(x.task!.text).title || x.task!.text} /></span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PlanBlock({ b, lead, p, busy, onAct }: { b: Block; lead: boolean; p: RowProps; busy: boolean; onAct: TodayProps['onAct'] }) {
+  const r = parseRow(b.task.text);
+  const isCursor = p.cursor === b.task.ref;
+  return (
+    <li class={`block${lead ? ' lead' : ''}${isCursor ? ' cursor' : ''}`} data-ref={b.task.ref} style={{ '--min': b.end - b.start }} onClick={() => p.onCursor(b.task.ref)}>
+      <time class="when">{clock(b.start)}<small>{span(b.end - b.start)}{b.partial ? '+' : ''}</small></time>
+      <div class="what">
+        <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', b.task.ref); }}><span class="box" /></button>
+        <div class="what-body">
+          <p class="what-title" onDblClick={() => p.onOpen(b.task.ref)}><Md text={r.title || b.task.text} /></p>
+          <p class="what-meta">
+            <span>{p.titles.get(b.task.project) ?? b.task.project}</span>
+            <DueNote due={r.due} />
+            {chipsOf(b.task.text).filter((c) => c.group === 'status' || (lead && c.group === 'priority')).map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([b.task.ref], g)} />)}
+            <Tags r={r} />
+          </p>
+          {lead && (
+            <div class="lead-actions">
+              <button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start', b.task.ref)}>Start <kbd>s</kbd></button>
+              <button type="button" class="btn" disabled={busy} onClick={() => onAct('done', b.task.ref)}>Done <kbd>d</kbd></button>
+              <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('defer', b.task.ref)}>Not now <kbd>z</kbd></button>
+            </div>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/** Due date only when it matters: within two days or late; stale dates stay quiet. */
+function DueNote({ due }: { due?: string }) {
+  const d = dueDays(due);
+  if (!due || d === null || d > 2) return null;
+  if (d < -30) return <span class="due stale" title={`Due ${due}`}>stale</span>;
+  return <span class={`due${d < 0 ? ' late' : ''}`}>{d < 0 ? `${-d}d late` : d === 0 ? 'due today' : `due in ${d}d`}</span>;
+}

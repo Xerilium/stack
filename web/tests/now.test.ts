@@ -25,3 +25,26 @@ describe('now helpers', () => {
     expect(visibleRows(all, all, new Set(), new Set(['b/⏭️ Up next'])).map((x) => x.ref)).not.toContain('b:1');
   });
 });
+
+import { actionable, dueDays, rankNow } from '../src/now';
+// @req FR:web-app/now.active
+describe('now ranking', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string): Task => ({ ref: text, text, project: 'a', section: '🔄 Active', done: false, depth: 0, notes: [] });
+  it('reads due days', () => {
+    expect(dueDays('Oct 23', day)).toBe(0);
+    expect(dueDays('Feb 1, 2027', day)).toBe(101);
+    expect(dueDays('Mondays', day)).toBeNull();
+  });
+  it('drops parked, started-later, and far-future tasks', () => {
+    expect(actionable(row('📅 Feb 1, 2027: Taxes'), day)).toBe(false);
+    expect(actionable(row('⏰ Jan 7, 2027: Prep'), day)).toBe(false);
+    expect(actionable(row('💤 Oct 24: Wait'), day)).toBe(false);
+    expect(actionable(row('⛔️ Blocked'), day)).toBe(false);
+    expect(actionable(row('📅 Oct 30: Soon'), day)).toBe(true);
+  });
+  it('ranks due-soon, then in progress, then priority', () => {
+    const r = rankNow([row('plain'), row('🔺 raised'), row('🚧 doing'), row('📅 Oct 30: week'), row('📅 Oct 22: late')], day).map((t) => t.text);
+    expect(r).toEqual(['📅 Oct 22: late', '📅 Oct 30: week', '🚧 doing', '🔺 raised', 'plain']);
+  });
+});

@@ -13,8 +13,9 @@ import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, Toasts, type GroupName, type
 import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { CaptureSpec, NextTask, Project, SetProps, Task, View } from './types';
-import { activeTasks, DEFER, progress, startsOpen, topTask, visibleRows } from './now';
-import { FocusMode, ListView, NowView, ProjectsView, type RowProps } from './views';
+import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
+import { agentWork, buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
+import { FocusMode, ListView, NowView, ProjectsView, TodayView, type NowSection, type RowProps } from './views';
 
 const api = createClient();
 type Phase = 'loading' | 'ready' | 'denied' | 'error';
@@ -30,6 +31,7 @@ export function App() {
   const [me, setMe] = useState('');
   const [local, setLocal] = useState(false);
   const [info, setInfo] = useState<{ mode: string; repo: string; branch: string } | null>(null);
+  const [allOpen, setAllOpen] = useState(false);
   const [focusRef, setFocusRef] = useState<string | null>(null);
   const [deferRefs, setDeferRefs] = useState<string[] | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
@@ -66,8 +68,22 @@ export function App() {
   }, [tasks, flipped]);
   const searching = filters.q.trim() !== '' || filters.state !== 'open';
   const listRows = useMemo(() => visibleRows(filtered, tasks, expanded, collapsed, searching), [filtered, tasks, expanded, collapsed, searching]);
-  const nowRows = useMemo(() => activeTasks(tasks).filter((t) => t.ref !== next?.ref), [tasks, next]);
-  const rows = view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...nowRows] : listRows;
+  const { sections, hidden } = useMemo(() => {
+    const ranked = rankNow(activeTasks(tasks).filter((t) => t.ref !== next?.ref && actionable(t)));
+    const doing = ranked.filter((t) => /🚧/u.test(t.text));
+    const rest = ranked.filter((t) => !doing.includes(t));
+    const then = rest.slice(0, 5), more = rest.slice(5);
+    const secs: NowSection[] = [{ id: 'doing', title: 'In progress', rows: doing }, { id: 'then', title: 'Then', rows: then }];
+    if (allOpen) secs.push({ id: 'all', title: 'All active', rows: more });
+    return { sections: secs, hidden: more.length };
+  }, [tasks, next, allOpen]);
+  const clockNow = useMemo(() => new Date(), [tasks]);
+  const day = DEFAULT_DAY;
+  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day), [tasks, next, clockNow, day]);
+  const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
+  const agents = useMemo(() => agentWork(tasks, clockNow), [tasks, clockNow]);
+  const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
+  const rows = view === 'today' ? plan.blocks.map((b) => b.task) : view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const capRows = useMemo(() => capacityRows(projects, tasks).map((r) => ({ ...r, top: topTask(tasks, r.project) })), [projects, tasks]);
@@ -202,6 +218,10 @@ export function App() {
     setDeferRefs(null);
     await run(() => api.action('suspend', refs[0], d.hours ? { hours: d.hours } : { days: d.days }), () => `Deferred: ${d.label.toLowerCase()}`);
   };
+  const sendReply = async (task: Task, text: string, ok: string) => {
+    await run(() => api.add(task.project, `💬 ${text}`, task.ref), () => ok);
+  };
+  const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'Sent to the agent');
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
 
   const toggleDone = async (t: Task) => {
@@ -282,7 +302,8 @@ export function App() {
   const openPicker = (groups: GroupName[]) => { const refs = targets(); if (refs.length) setPicker({ refs, groups }); };
   const openCapture = () => setCaptureOpen(true);
   const commands: Command[] = [
-    { id: 'go-now', label: 'Go to Now', hint: 'g n', run: () => go('now', filters) },
+    { id: 'go-today', label: 'Go to Today', hint: 'g t', run: () => go('today') },
+    { id: 'go-now', label: 'Go to Focus', hint: 'g n', run: () => go('now', filters) },
     { id: 'go-projects', label: 'Go to Projects', hint: 'g p', run: () => go('projects') },
     { id: 'go-list', label: 'Go to all tasks', hint: 'g a', run: () => go('list') },
     { id: 'capture', label: 'Capture a task', hint: 'c', run: openCapture },
@@ -335,7 +356,7 @@ export function App() {
       const now = Date.now();
       if (chord.current && now - chord.current < 1000) {
         chord.current = 0;
-        const v = { n: 'now', p: 'projects', a: 'list' }[k] as View | undefined;
+        const v = { t: 'today', n: 'now', p: 'projects', a: 'list' }[k] as View | undefined;
         if (v) { e.preventDefault(); setFocusRef(null); A.go(v); return; }
       }
       if (k === 'g') { chord.current = now; return; }
@@ -381,10 +402,10 @@ export function App() {
   if (phase === 'error') {
     return <main class="gate"><h1>Cannot load tasks</h1><p>{loadError}</p><button type="button" class="btn primary" onClick={() => void refresh()}>Retry</button></main>;
   }
-  const tabs: [View, string, string][] = [['now', 'Now', 'g n'], ['projects', 'Projects', 'g p'], ['list', 'All tasks', 'g a']];
+  const tabs: [View, string, string][] = [['today', 'Today', 'g t'], ['now', 'Focus', 'g n'], ['projects', 'Projects', 'g p'], ['list', 'All tasks', 'g a']];
   const toggleSet = (set: 'expanded' | 'flipped') => (k: string) => (set === 'expanded' ? setExpanded : setFlipped)((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const rowProps: RowProps = {
-    titles: new Map(projects.map((x) => [x.name, x.title || x.name])), all: tasks, cursor, selected, editing, busy, expanded, handles: view === 'list', drag, prog,
+    showProject: view === 'now' || view === 'today', titles: new Map(projects.map((x) => [x.name, x.title || x.name])), all: tasks, cursor, selected, editing, busy, expanded, handles: view === 'list', drag, prog,
     onSelect: (ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; }), onCursor: setCursor, onEdit: setEditing, onSave: (r, t) => void save(r, t), onToggle: (t) => void toggleDone(t),
     onPick: (refs, g) => setPicker({ refs: selected.size && selected.has(refs[0]) ? [...selected] : refs, groups: Array.isArray(g) ? g : [g] }),
     onMove: (ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir)), onDragStart, onExpand: toggleSet('expanded'), onOpen: (r) => setFocusRef(r),
@@ -407,7 +428,11 @@ export function App() {
       <main class="main">
         {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
         {phase === 'loading' && <p class="loading">Loading…</p>}
-        {phase === 'ready' && view === 'now' && <NowView task={next} rows={nowRows} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
+        {phase === 'ready' && view === 'today' && (
+          <TodayView now={clockNow} plan={plan} day={day} decisions={decisions} agents={agents} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
+            onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => void sendReply(t, text, ok)} onAccept={(d) => void accept(d)} />
+        )}
+        {phase === 'ready' && view === 'now' && <NowView task={next} sections={sections} hidden={hidden} allOpen={allOpen} onToggleAll={() => setAllOpen((o) => !o)} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />

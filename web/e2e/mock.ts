@@ -4,10 +4,12 @@ export interface MockTask { ref: string; text: string; project: string; section:
 export interface Mock { tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
+/** Short date for row text, relative to today (the plan depends on the clock). */
+export const dateTag = (days = 0) => { const d = new Date(Date.now() + days * 864e5); return `${d.toLocaleString('en-US', { month: 'short' })} ${d.getDate()}`; };
 const vs = (s: string) => s.replace(/️/g, '');
 
 export const seed = (): MockTask[] => [
-  { ref: 'alpha:6', text: '‼️ 📅 Oct 23: Ship the **web app** 🟡', project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: ['see [spec](https://example.test/spec)'] },
+  { ref: 'alpha:6', text: `‼️ 📅 ${dateTag()}: Ship the **web app** 🟡`, project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: ['see [spec](https://example.test/spec)'] },
   { ref: 'alpha:7', text: 'Write docs 🟢', project: 'alpha', section: '🔄 Active', done: false, depth: 1, notes: [] },
   { ref: 'alpha:9', text: 'Review pull requests 🟠', project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: [] },
   { ref: 'alpha:13', text: '🔻 Tidy the backlog 🔴', project: 'alpha', section: '📋 Backlog', done: false, depth: 0, notes: [] },
@@ -50,6 +52,10 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[] } = {}): Pr
     if (path === '/next') {
       const t = open[0];
       return json(route, 200, { task: t ? { ref: t.ref, text: t.text, project: t.project, score: 1 } : null });
+    }
+    if (path === '/tasks' && req.method() === 'POST') {
+      const ref = `${body.project}:${60 + m.tasks.length}`;
+      return json(route, 201, { changed: true, ref, message: 'Added' });
     }
     if (path === '/tasks') {
       const off = Number(url.searchParams.get('offset') ?? 0), lim = Number(url.searchParams.get('limit') ?? 50);
