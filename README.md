@@ -8,13 +8,19 @@ Stack keeps your tasks as markdown files in a git repo, scores them, and tells y
 
 ```sh
 pnpm install && pnpm build && pnpm link --global   # installs `stack`
-stack web --from ~/path/to/your/tasks               # serves a COPY of your tasks
+stack web --repo ~/path/to/your-content-repo        # DEMO: serves a scratch COPY
 # open http://localhost:4173
 ```
 
-`stack web` inside a task repo (or with `$STACK_DIR` or `dir` in `~/.config/stack/config.json`) serves that repo live. With none found it serves a scratch copy in `~/.config/stack/demo`; your files are never touched (`--reset` re-copies). If `stack` is not found, run `pnpm setup` and reopen the shell. Needs Node 22 and pnpm.
+## Two repos
 
-CLI commands find the repo the same way (walk up from the current folder, `$STACK_DIR`, user config); `--dir` overrides.
+1. Stack (this repo) is code only. It never holds tasks.
+2. Your content repo is a separate git repo with `tasks/*.md`. Point Stack at it: `--repo <path-or-git-url>`, `$STACK_REPO`, or `repo` in `~/.config/stack/config.json`.
+3. DEMO (default): works on a scratch copy in `~/.config/stack/demo`; nothing touches your repo. `--reset` re-copies.
+4. LIVE (`--live`): reads and writes your real repo, committing to branch `stack-web` (`--branch` to change) in a git worktree; your checkout and `main` stay untouched until you merge.
+5. The page header always shows mode, repo path, and branch.
+
+If `stack` is not found, run `pnpm setup` and reopen the shell. Needs Node 22 and pnpm. CLI commands find the repo by walking up from the current folder, then `$STACK_REPO`/`$STACK_DIR`, then user config; `--dir` overrides.
 
 ## Commands
 

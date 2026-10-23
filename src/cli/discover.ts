@@ -13,7 +13,7 @@ const isStackDir = (d: string): boolean => {
   try { return existsSync(join(d, '.git')) && readdirSync(join(d, 'tasks')).some((f) => f.endsWith('.md')); } catch { return false; }
 };
 
-export function userConfig(home: string): { dir?: string; demoFrom?: string } {
+export function userConfig(home: string): { repo?: string; dir?: string; mode?: string; branch?: string } {
   try { return JSON.parse(readFileSync(join(home, '.config/stack/config.json'), 'utf8')); } catch { return {}; }
 }
 
@@ -22,6 +22,6 @@ export function findStackDir({ cwd, env, home }: DiscoverOpts): string | null {
     if (isStackDir(d)) return d;
     if (dirname(d) === d) break;
   }
-  const c = env.STACK_DIR || userConfig(home).dir;
+  const c = env.STACK_REPO || env.STACK_DIR || userConfig(home).repo || userConfig(home).dir;
   return c && existsSync(resolve(c)) ? resolve(c) : null;
 }

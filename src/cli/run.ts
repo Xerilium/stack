@@ -6,7 +6,7 @@
  */
 import { execFileSync } from 'child_process';
 import { existsSync, realpathSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, join, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
@@ -21,7 +21,7 @@ import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { findStackDir, userConfig } from './discover';
-import { prepareDemo, startWeb } from './web';
+import { prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
 import { homedir } from 'os';
 
 export interface IO { out(s: string): void; err(s: string): void }
@@ -45,7 +45,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
-  web: { flags: ['port', 'demo', 'from', 'reset'], usage: 'web [--port n] [--demo] [--from tasksDir] [--reset]', help: 'serve the web app on localhost (demo copy if no repo found)' },
+  web: { flags: ['port', 'repo', 'live', 'branch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live commits to a branch)' },
   update: { flags: ['sweep', 'queries'], usage: 'update [--sweep] [--queries]', help: 'regenerate README, stack, projects, my-day' },
 };
 
@@ -294,23 +294,32 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
   }
 }
 
-/** @req FR:cli/web.serve @req FR:cli/web.demo */
-async function web(f: Record<string, string | true>, io: IO, dir: string | null, home: string): Promise<number> {
+/** @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live */
+async function web(f: Record<string, string | true>, io: IO, found: string | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
-  const demo = f['demo'] === true || dir === null;
-  let target = dir as string;
-  let label = 'local';
-  if (demo) {
-    const from = flag(f, 'from') ?? process.env.STACK_DEMO_FROM ?? userConfig(home).demoFrom;
+  const cfg = userConfig(home);
+  const spec = flag(f, 'repo') ?? found;
+  if (!spec) throw new UsageError('No content repo. Use: stack web --repo <path-or-git-url> (or set STACK_REPO, or "repo" in ~/.config/stack/config.json)');
+  const repo = resolveRepo(spec, join(home, '.config/stack/clones'));
+  const live = f['live'] === true || cfg.mode === 'live';
+  let target: string; let info: RepoInfo; let label: string;
+  if (live) {
+    const branch = flag(f, 'branch') ?? cfg.branch ?? 'stack-web';
+    const wt = join(home, '.config/stack/live', `${basename(repo)}-${branch.replace(/[^A-Za-z0-9._-]+/g, '-')}`);
+    target = prepareLive(repo, branch, wt).dir;
+    info = { mode: 'live', repo, branch };
+    label = `LIVE - edits are committed to branch ${branch} of ${repo}`;
+    io.out(`LIVE MODE: edits commit to branch ${branch} of ${repo} (worktree ${target}); main is untouched until you merge.\n`);
+  } else {
     target = join(home, '.config/stack/demo');
-    if (!from && !existsSync(join(target, '.git'))) throw new UsageError('No task repo found. Run inside one, set STACK_DIR, or use: stack web --from <tasks folder> (copies it; your files are never changed)');
-    if (from) prepareDemo(resolve(from), target, f['reset'] === true);
-    label = 'DEMO COPY - edits stay in the copy';
-    io.out(`DEMO MODE: serving a COPY of ${from ?? 'your earlier copy'}\nEdits stay in ${target}; the original is never touched. Reset: stack web --reset\n`);
+    prepareDemo(repo, target, f['reset'] === true);
+    info = { mode: 'demo', repo, branch: 'main' };
+    label = `DEMO COPY of ${repo} - edits stay in the copy`;
+    io.out(`DEMO MODE: serving a COPY of ${repo}\nEdits stay in ${target}; the real repo is never touched. Reset: stack web --reset. Real data: stack web --live\n`);
   }
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
-  const s = await startWeb({ dir: target, port, webDir, label });
+  const s = await startWeb({ dir: target, port, webDir, label, info });
   io.out(`Stack web: ${s.url}  (data: ${target}; Ctrl+C to stop)\n`);
   await new Promise<void>((ok) => { process.once('SIGINT', ok); process.once('SIGTERM', ok); });
   await s.close();
@@ -341,7 +350,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     const explicit = flag(p.flags, 'dir');
     const found = explicit ? null : findStackDir({ cwd: process.cwd(), env: process.env, home });
     const dir = resolve(explicit ?? found ?? process.cwd());
-    if (p.command === 'web') return await web(p.flags, io, explicit ? dir : found, home);
+    if (p.command === 'web') return await web(p.flags, io, explicit ?? found, home);
     const r = await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
