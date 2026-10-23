@@ -209,3 +209,9 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
   .row .chips { flex: 1 1 100%; padding-left: 32px; flex-wrap: wrap; margin-top: -4px; }
   .row .chips .meta.due { margin-left: auto; }
 }
+.sel, .edit-btn { display: none; }
+.focus-mode:focus { outline: none; }
+@media (max-width: 799px) {
+  .sel { display: block; width: 22px; height: 22px; flex: none; accent-color: var(--accent); }
+  .edit-btn { display: block; background: none; border: 0; color: var(--muted); width: 36px; height: 36px; flex: none; }
+}

@@ -202,7 +202,7 @@ export function App() {
     setDeferRefs(null);
     await run(() => api.action('suspend', refs[0], d.hours ? { hours: d.hours } : { days: d.days }), () => `Deferred: ${d.label.toLowerCase()}`);
   };
-  const openDefer = () => { const r = refNow(); if (r) setDeferRefs([r]); };
+  const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
 
   const toggleDone = async (t: Task) => {
     if (t.done) { await run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Reopened'); return; }
@@ -264,7 +264,7 @@ export function App() {
 
   const submitCapture = async () => {
     const text = captureText.trim();
-    if (!text) return;
+    if (!text || busy) return;
     setBusy(true);
     try {
       const r = await api.capture(text, { project: defaultProject() });
@@ -344,7 +344,7 @@ export function App() {
       if (k === 'c') { e.preventDefault(); setCaptureOpen(true); return; }
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       if (L.focusRef) {
-        if (k === 's') void A.doAct('start'); else if (k === 'd') void A.doAct('done'); else if (k === 'z') A.openDefer();
+        if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
       }
       if (L.view === 'projects') return;
@@ -385,7 +385,7 @@ export function App() {
   const toggleSet = (set: 'expanded' | 'flipped') => (k: string) => (set === 'expanded' ? setExpanded : setFlipped)((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const rowProps: RowProps = {
     titles: new Map(projects.map((x) => [x.name, x.title || x.name])), all: tasks, cursor, selected, editing, busy, expanded, handles: view === 'list', drag, prog,
-    onCursor: setCursor, onEdit: setEditing, onSave: (r, t) => void save(r, t), onToggle: (t) => void toggleDone(t),
+    onSelect: (ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; }), onCursor: setCursor, onEdit: setEditing, onSave: (r, t) => void save(r, t), onToggle: (t) => void toggleDone(t),
     onPick: (refs, g) => setPicker({ refs: selected.size && selected.has(refs[0]) ? [...selected] : refs, groups: Array.isArray(g) ? g : [g] }),
     onMove: (ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir)), onDragStart, onExpand: toggleSet('expanded'), onOpen: (r) => setFocusRef(r),
   };
@@ -407,7 +407,7 @@ export function App() {
       <main class="main">
         {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
         {phase === 'loading' && <p class="loading">Loading…</p>}
-        {phase === 'ready' && view === 'now' && <NowView task={next} rows={nowRows} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a, next?.ref))} />}
+        {phase === 'ready' && view === 'now' && <NowView task={next} rows={nowRows} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />
@@ -429,7 +429,7 @@ export function App() {
         <button type="button" class="tab" onClick={openCapture} aria-label="New task">＋</button>
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">More</button>
       </nav>
-      {focusTask && <FocusMode task={focusTask} all={tasks} busy={busy} onToggle={(t) => void toggleDone(t)} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onBack={() => setFocusRef(null)} />}
+      {focusTask && <FocusMode task={focusTask} all={tasks} busy={busy} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onBack={() => setFocusRef(null)} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
       {deferRefs && (
         <Dialog title="Defer until" onClose={() => setDeferRefs(null)}>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { CapacityRow } from './capacity';
 import type { Filters } from './filters';
 import { children } from './now';
@@ -19,7 +19,7 @@ export interface RowProps {
   titles: Map<string, string>; all: Task[]; cursor: string | null; selected: Set<string>; editing: string | null; busy: boolean; expanded: Set<string>; handles: boolean;
   drag: { ref: string; over: string | null; half: 'top' | 'bottom' } | null;
   prog: Map<string, { done: number; total: number }>;
-  onCursor: (ref: string) => void; onEdit: (ref: string | null) => void; onSave: (ref: string, text: string) => void; onToggle: (t: Task) => void;
+  onSelect: (ref: string) => void; onCursor: (ref: string) => void; onEdit: (ref: string | null) => void; onSave: (ref: string, text: string) => void; onToggle: (t: Task) => void;
   onPick: Pick; onMove: (ref: string, dir: 'up' | 'down') => void; onDragStart: (ref: string, e: PointerEvent) => void; onExpand: (ref: string) => void; onOpen: (ref: string) => void;
 }
 
@@ -65,7 +65,7 @@ export function NowView({ task, rows, p, busy, onAct }: {
 
 export interface ListProps extends RowProps {
   rows: Task[]; filters: Filters; projects: { name: string; title: string }[]; collapsed: Set<string>; total: number;
-  onFilters: (f: Partial<Filters>) => void; onSelect: (ref: string) => void; onSection: (key: string) => void; searchRef: { current: HTMLInputElement | null };
+  onFilters: (f: Partial<Filters>) => void; onSection: (key: string) => void; searchRef: { current: HTMLInputElement | null };
 }
 
 /** @req FR:web-app/list.view @req FR:web-app/list.filters */
@@ -134,17 +134,19 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
   const cls = ['row', t.done ? 'done' : '', isCursor ? 'cursor' : '', p.selected.has(t.ref) ? 'selected' : '',
     d?.over === t.ref ? `drop-${d.half}` : '', d?.ref === t.ref ? 'dragging' : ''].filter(Boolean).join(' ');
   return (
-    <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} aria-selected={p.selected.has(t.ref)} onClick={() => p.onCursor(t.ref)}>
+    <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} onClick={() => p.onCursor(t.ref)}>
       <div class="line">
         {p.handles && <button type="button" class="handle" aria-label={`Drag ${r.title || 'task'} to reorder`} title="Drag to reorder (Shift+J/K)"
           onPointerDown={(e) => p.onDragStart(t.ref, e as unknown as PointerEvent)}
           onKeyDown={(e) => { if (e.key === 'ArrowUp') { e.preventDefault(); p.onMove(t.ref, 'up'); } if (e.key === 'ArrowDown') { e.preventDefault(); p.onMove(t.ref, 'down'); } }}>⠿</button>}
+        <input type="checkbox" class="sel" aria-label={`Select ${r.title || 'task'}`} checked={p.selected.has(t.ref)} onClick={(e) => e.stopPropagation()} onChange={() => p.onSelect(t.ref)} />
         <button type="button" class="tick" aria-label={t.done ? 'Mark not done' : 'Mark done'} disabled={p.busy} onClick={(e) => { e.stopPropagation(); p.onToggle(t); }}><span class="box">{t.done ? '✓' : ''}</span></button>
         {editing ? (
           <Editor text={t.text} onSave={(v) => p.onSave(t.ref, v)} onCancel={() => p.onEdit(null)} />
         ) : (
           <>
             <div class="title" onDblClick={() => p.onEdit(t.ref)}><Md text={r.title || t.text} /></div>
+            <button type="button" class="edit-btn" aria-label={`Edit ${r.title || 'task'}`} onClick={(e) => { e.stopPropagation(); p.onEdit(t.ref); }}>✎</button>
             <div class="chips">
               {GROUP_NAMES.map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
               <button type="button" class="chip ghost" aria-label="Set properties" onClick={(e) => { e.stopPropagation(); p.onPick([t.ref], GROUP_NAMES); }}>＋</button>
@@ -189,13 +191,27 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
 }) {
   const r = parseRow(task.text);
   const subs = children(all, task.ref);
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    box.current?.focus();
+    return () => prev?.focus?.();
+  }, []);
   return (
-    <div class="focus-mode" role="dialog" aria-modal="true" aria-label="Focus">
+    <div ref={box} tabIndex={-1} class="focus-mode" role="dialog" aria-modal="true" aria-label="Focus"
+      onKeyDown={(e) => {
+        if (e.key !== 'Tab') return;
+        const els = [...box.current!.querySelectorAll<HTMLElement>('button')].filter((x) => !(x as HTMLButtonElement).disabled);
+        if (!els.length) return;
+        const i = els.indexOf(document.activeElement as HTMLElement);
+        e.preventDefault();
+        els[e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length].focus();
+      }}>
       <div class="focus-inner">
         <p class="eyebrow">{task.project} · {task.section}</p>
         <h1><Md text={r.title || task.text} /></h1>
         <div class="chips">
-          {chipsOf(task.text).map((c) => <Chip key={c.group} {...c} onPick={() => undefined} />)}
+          {chipsOf(task.text).map((c) => <span key={c.group} class="chip"><span aria-hidden="true">{c.value}</span><span class="chip-name">{GROUPS[c.group].set.find((x) => x.e.replace(/\uFE0F/g, '') === c.value.replace(/\uFE0F/g, ''))?.name}</span></span>)}
           {r.due && <span class={`meta${dueClass(r.due)}`}>{r.due}</span>}
         </div>
         {task.notes.length > 0 && <div class="notes big">{task.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
