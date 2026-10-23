@@ -6,6 +6,6 @@
     "module": "commonjs",
     "declaration": true
   },
-  "include": ["src/cli/**/*", "src/core/**/*"],
+  "include": ["src/cli/**/*", "src/core/**/*", "src/api/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

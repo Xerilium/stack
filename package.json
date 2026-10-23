@@ -21,7 +21,8 @@
     "parity": "jest tests/parity/cli-parity.test.ts",
     "build:web": "pnpm --filter stack-web build",
     "test:web": "pnpm --filter stack-web test",
-    "test:e2e": "pnpm --filter stack-web e2e"
+    "test:e2e": "pnpm --filter stack-web e2e",
+    "web": "node dist/cli/index.js web"
   },
   "keywords": [
     "task-management",

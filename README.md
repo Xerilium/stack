@@ -7,20 +7,18 @@ Stack keeps your tasks as markdown files in a git repo, scores them, and tells y
 ## Quick start
 
 ```sh
-pnpm install
-pnpm build
-mkdir my-tasks && cd my-tasks
-node ../dist/cli/index.js init
-node ../dist/cli/index.js add-project Alpha
-node ../dist/cli/index.js add Alpha "Write the plan"
-node ../dist/cli/index.js next
+pnpm install && pnpm build && pnpm link --global   # installs `stack`
+stack web --from ~/path/to/your/tasks               # serves a COPY of your tasks
+# open http://localhost:4173
 ```
 
-Requires Node 22 and pnpm. After `pnpm link --global` the CLI is `stack` and the MCP server is `stack-mcp`.
+`stack web` inside a task repo (or with `$STACK_DIR` or `dir` in `~/.config/stack/config.json`) serves that repo live. With none found it serves a scratch copy in `~/.config/stack/demo`; your files are never touched (`--reset` re-copies). If `stack` is not found, run `pnpm setup` and reopen the shell. Needs Node 22 and pnpm.
+
+CLI commands find the repo the same way (walk up from the current folder, `$STACK_DIR`, user config); `--dir` overrides.
 
 ## Commands
 
-`init`, `add-project`, `add`, `capture`, `next`, `start`, `complete`, `skip`, `resume`, `suspend`, `set`, `remove-completed`, `update`. Global flags: `--dir`, `--json`, `--no-commit`, `--remote`, `--branch`, `--now`. Details: [docs/cli.md](docs/cli.md).
+`web`, `init`, `add-project`, `add`, `capture`, `next`, `start`, `complete`, `skip`, `resume`, `suspend`, `set`, `remove-completed`, `update`. Global flags: `--dir`, `--json`, `--no-commit`, `--remote`, `--branch`, `--now`. Details: [docs/cli.md](docs/cli.md).
 
 Repo scripts: `pnpm test`, `pnpm lint`, `pnpm build`, `pnpm openapi` (regenerates [the OpenAPI file](docs/api/openapi.yaml)), `pnpm bakeoff`.
 

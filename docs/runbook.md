@@ -39,7 +39,8 @@ Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault,
 | `STACK_WEBHOOK_SECRET`, `STACK_WEBHOOK_ALLOW` | Webhook bot secret and allowed senders |
 | `STACK_IMESSAGE_SECRET`, `STACK_IMESSAGE_ALLOW` | iMessage bridge secret and allowed senders |
 | `STACK_GITHUB_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_ALLOW` | GitHub comment bot secret and allowed logins |
-| `STACK_DIR` | Local project directory for `stack-mcp` (stdio only) |
+| `STACK_DIR` | Local project directory for the CLI, `stack web`, and `stack-mcp` (used when no repo is found by walking up from the current folder) |
+| `STACK_DEMO_FROM` | Tasks folder `stack web` copies when no repo is found (see [CLI](cli.md)) |
 | `STACK_MCP_SCOPES` | Scopes for `stack-mcp` (stdio only), default `read,write` |
 
 ## Owner allow-list

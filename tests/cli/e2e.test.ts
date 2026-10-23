@@ -1,6 +1,6 @@
 /**
  * End-to-end: runs the real built CLI against temp git repos.
- * @req FR:cli/run.bin @req FR:cli/run.dir @req FR:cli/run.git @req FR:cli/run.nocommit @req FR:cli/run.remote @req FR:cli/run.now @req FR:cli/run.help
+ * @req FR:cli/run.bin @req FR:cli/run.dir @req FR:cli/run.discover @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/run.git @req FR:cli/run.nocommit @req FR:cli/run.remote @req FR:cli/run.now @req FR:cli/run.help
  * @req FR:cli/ref.format @req FR:cli/ref.default @req FR:cli/ref.invalid @req FR:cli/ref.expect
  * @req FR:cli/cmd.init @req FR:cli/cmd.add-project @req FR:cli/cmd.add @req FR:cli/cmd.next @req FR:cli/cmd.start @req FR:cli/cmd.complete
  * @req FR:cli/cmd.skip @req FR:cli/cmd.resume @req FR:cli/cmd.suspend @req FR:cli/cmd.set @req FR:cli/cmd.remove-completed @req FR:cli/cmd.update
@@ -391,5 +391,15 @@ describe('no-commit and remote', () => {
     expect(r.code).toBe(3);
     expect(r.err).toMatch(/^error: /);
     expect(file(a, 'tasks/alpha.md')).not.toContain('[x]');
+  });
+});
+
+describe('discovery', () => {
+  it('finds the repo from a subfolder without --dir', () => {
+    const d = repo('one');
+    mkdirSync(join(d, 'sub'));
+    const r = spawnSync('node', [join(build, 'cli/index.js'), 'add', 'alpha', 'two'], { cwd: join(d, 'sub'), env: { ...ENV, STACK_DIR: '' }, encoding: 'utf8' });
+    expect(r.status).toBe(0);
+    expect(file(d, 'tasks/alpha.md')).toContain('two');
   });
 });

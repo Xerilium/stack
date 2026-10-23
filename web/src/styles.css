@@ -135,3 +135,5 @@ a { color: var(--accent); }
   .picker-opts .opt { flex: 1 1 40%; }
 }
 .cap.nocap .fill { background: var(--muted); opacity: .45; }
+
+.banner { background: #4a3b12; color: #ffe9a8; border: 1px solid #8a6d1f; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: .9rem; }

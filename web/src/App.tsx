@@ -27,6 +27,7 @@ export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [loadError, setLoadError] = useState('');
   const [me, setMe] = useState('');
+  const [local, setLocal] = useState(false);
   const [{ view, filters }, setNav] = useState(() => parseHash(location.hash));
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -78,8 +79,9 @@ export function App() {
     void (async () => {
       try {
         const r = await fetch('/.auth/me', { credentials: 'same-origin' });
-        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string } | null };
+        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string; identityProvider?: string } | null };
         setMe(j.clientPrincipal?.userDetails ?? '');
+        setLocal(j.clientPrincipal?.identityProvider === 'local');
       } catch { /* the api decides access */ }
       await refresh();
     })();
@@ -352,9 +354,10 @@ export function App() {
         <div class="spacer" />
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">Commands <kbd>⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
-        <div class="who">{me && <span>{me}</span>} <a href="/.auth/logout">Sign out</a></div>
+        <div class="who">{me && <span>{me}</span>} {!local && <a href="/.auth/logout">Sign out</a>}</div>
       </nav>
       <main class="main">
+        {local && <div class="banner" role="note">Local mode: {me}</div>}
         <div class="capture">
           <input ref={captureRef} type="text" aria-label="Quick capture" placeholder="Capture: call dentist tomorrow 30m #alpha" value={captureText} maxLength={2000} disabled={busy && !captureText}
             onInput={(e) => setCaptureText((e.target as HTMLInputElement).value)}
