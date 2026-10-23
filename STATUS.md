@@ -4,7 +4,7 @@ Final status, 2026-10-22. Phases 1-4 of the blueprint are built and merged to `m
 
 ## What is built
 
-All 20 blueprint features for Phases 1-4 have a spec, tests, and code, and their PRs are merged. Plans are missing for `config`, `scoring-engine`, and `task-parser` (spec, tests, code exist). `azure-host` was added beyond the blueprint (the Functions host that serves the API, MCP, and bots).
+All 20 blueprint features for Phases 1-4 have a spec, tests, and code, and their PRs are merged. `azure-host` was added beyond the blueprint (the Functions host that serves the API, MCP, and bots).
 
 PR base: https://github.com/Xerilium/stack/pull/
 
@@ -51,8 +51,7 @@ Checks on `main`: `pnpm test` 1201 pass (11 gated parity tests skip without the 
 - Autonomy gate L7: `appendLog` can throw "Result log is busy" after 12 conflicts, so a flooding agent can make other agents' record-result fail; `rotateLogs` throws if the project file was deleted.
 - `src/cli/run.ts` shows 0% in jest coverage because e2e tests run it in a subprocess; it is outside the core threshold.
 - Default time blocks in `src/core/config.ts` keep the legacy names (kept for parity). One is a personal nickname; rename it in config if the repo is shared widely.
-- Missing plan.md for `config`, `scoring-engine`, `task-parser`.
-- Not verified live: nothing is deployed; no Azure resources exist.
+- Not verified live: nothing is deployed; no Azure resources exist. Local use: `stack web` (see README).
 
 ### Hosting prerequisites (owner)
 

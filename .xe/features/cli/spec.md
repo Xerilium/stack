@@ -24,7 +24,10 @@ Let a person or an agent run the whole stack from a terminal with short commands
 
 - **FR:run.bin** (P1): `package.json` MUST declare `bin: { stack: "dist/cli/index.js" }`; the built file starts with a node shebang
 - **FR:run.@function** (P1): Interface: `run(argv: string[], io?: { out(s): void; err(s): void }): Promise<number>` returns the exit code and never calls `process.exit`
-- **FR:run.dir** (P1): `--dir <path>` sets the repo root (default: the current directory). Task files are `<dir>/tasks/*.md`; config is `<dir>/.xe/config/stack.json` (defaults when missing)
+- **FR:run.dir** (P1): `--dir <path>` sets the repo root (optional override). Without it the repo is found by walking up from the current directory to a folder with `.xe/config/stack.json` or `tasks/*.md`, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`, else the current directory. Task files are `<dir>/tasks/*.md`; config is `<dir>/.xe/config/stack.json` (defaults when missing)
+- **FR:run.discover** (P1): Repo discovery as described in `run.dir`: walk up from cwd, then `$STACK_DIR`, then user config `dir`
+- **FR:web.serve** (P1): `stack web [--port n]` serves the web app and `/api` on `127.0.0.1` (default 4173) over the discovered repo. Local sign-in stub (`/.auth/me`), no Azure; only loopback Host names are served; the single local user is the owner
+- **FR:web.demo** (P1): With no repo found (or `--demo`), `stack web` copies a tasks folder (`--from`, `$STACK_DEMO_FROM`, or user config `demoFrom`) into `~/.config/stack/demo` and serves that copy with a visible banner. The source is never modified; `--reset` re-copies
 - **FR:run.git** (P1): Every write MUST be a direct commit through `GitStorage`. A `--dir` that is not a git work tree MUST fail with exit 1 and a hint to run `stack init`
 - **FR:run.nocommit** (P2): `--no-commit` writes files without git (for copies of a task folder)
 - **FR:run.remote** (P2): `--remote <name>` (and optional `--branch <name>`) makes writes sync before and push after
