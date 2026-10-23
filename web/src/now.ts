@@ -102,7 +102,7 @@ export function rankNow(tasks: Task[], now = new Date()): Task[] {
   const key = (t: Task) => {
     const r = parseRow(t.text);
     const d = dueDays(r.due, now);
-    const due = d === null ? 0 : d <= 0 ? 3 : d <= 3 ? 2 : d <= 7 ? 1 : 0;
+    const due = d === null ? 0 : d < -30 ? 1 : d <= 0 ? 3 : d <= 3 ? 2 : d <= 7 ? 1 : 0;
     return [due, r.status && vsx(r.status) === '🚧' ? 1 : 0, r.priority ? PRIO_BY.get(vsx(r.priority)) ?? 0 : 0];
   };
   return tasks.map((t, i) => ({ t, i, k: key(t) }))

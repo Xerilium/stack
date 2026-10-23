@@ -51,3 +51,9 @@ describe('parseRow cleanup', () => {
     expect(parseRow('See [spec](https://example.test/spec)').links).toEqual([]);
   });
 });
+
+describe('saved queries', () => {
+  it('drops a trailing GitHub query from the title', () => {
+    expect(parseRow('Open PRs @GitHub/x/y (is:open is:pr label:"a b")').title).toBe('Open PRs @GitHub/x/y');
+  });
+});

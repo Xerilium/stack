@@ -80,7 +80,7 @@ The next task must be an unparked leaf allowed in the current time block.
 - **FR:engine.interface** (P1): A `ScoringEngine` MUST expose `id`, `score`, and `filter`
 - **FR:engine.registry** (P1): `registerEngine`, `getEngine(id?)`, and `listEngines()` MUST manage engines; `getEngine()` MUST default to `legacy`
 - **FR:engine.unknown** (P2): `getEngine` MUST throw `ScoringError` for an unregistered id
-- **FR:engine.stack** (P1): A `stack` engine MUST be registered and is the default for `next`: legacy score, plus a due-date lens in `filter` — a `📅` date beyond 14 days out (calendar days in the config timezone) is not a candidate; overdue or due today adds 3000 to the score, within 3 days 2000, within 7 days 1000. Dates without a year use the nearest year (up to ~60 days past counts as overdue). `legacy` stays registered unchanged for parity
+- **FR:engine.stack** (P1): A `stack` engine MUST be registered and is the default for `next`: legacy score, plus a due-date lens in `filter` — a `📅` date beyond 14 days out (calendar days in the config timezone) is not a candidate; overdue or due today adds 3000 to the score, within 3 days 2000, within 7 days 1000; overdue by more than 30 days counts as stale and gets 1000 (it no longer jumps the queue). Dates without a year use the nearest year (up to ~60 days past counts as overdue). `legacy` stays registered unchanged for parity
 
 ### FR:load: Adapt parsed projects
 

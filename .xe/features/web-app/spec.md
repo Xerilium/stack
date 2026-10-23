@@ -39,7 +39,16 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 - **FR:row.parse** (P1): `parseRow(text)` extracts status, priority, effort, impact, due date text, recurrence, suspend marker, and a clean title (emoji markers and date prefixes removed). The emoji set matches the api `set` enums; unknown text stays in the title
 - **FR:row.effort** (P2): Effort emoji map to minutes (🔹 12, 🟢 30, 🟡 60, 🟠 120, 🔴 240, ⚫️ 480) for the capacity view
 
-### FR:now: Now view (home)
+### FR:today: Today (home)
+
+Home plans the day; it is not a list. Design: `docs/design/web-ux.md`.
+
+- **FR:today.plan** (P1): The header shows the date, minutes planned, time left in the work day (default 9:00-18:00 local), and counts of decisions and agent work. **Your day** lays your own tasks (open leaf rows in Active that are actionable, not 🤖/🪄/🙋) on a timeline from now (rounded up to 15 min): the `/next` task first, then by due-soon, in progress, priority. Each block uses its effort (30 min when unset, capped at 2 h and marked `+`). Tasks that do not fit go to a quiet note (a list when 12 or fewer). The first block has Start (`s`), Done (`d`), Not now (`z`); every block has a done circle
+- **FR:today.needs** (P1): **Needs you** lists open 🙋 rows in active work as cards: project, parent task, title, and the agent's recommendation (a note line with "recommend" on the row, its parent, or a sibling). `Go with it` adds a child row `💬 Go with the recommendation: …`; `Reply` adds `💬 <text>` under the row (so the owning agent picks it up); `Details` opens focus mode. Four show first, the rest behind `n more`
+- **FR:today.agents** (P1): **Your AI team** lists open 🤖/🪄 rows in active work with state: Working (🚧), Waiting on you (a 🙋 sibling is open), or Queued. Each has Reply
+- **FR:today.projects** (P2): **Projects** shows one tile per project with its top open task and open count; a tile opens that project's list. `g t` goes to Today; the old Now view is **Focus** (`g n`)
+
+### FR:now: Focus view (single next action)
 
 Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
@@ -87,6 +96,7 @@ Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
 ### FR:capture: Quick capture
 
+- **FR:api.add** (P1): The client wraps `POST /tasks` (`project`, `text`, optional `parent` ref) for replies
 - **FR:capture.box** (P1): `c` (or the Add button) opens a capture overlay with one input. `Enter` posts to `/capture` and closes it; `Esc` closes. While typing (debounced 250 ms) a `dryRun` call previews the parsed title, due date, effort, and project. A `422` shows the message inline and keeps the text. Success shows the new row text in a toast and refreshes
 - **FR:capture.project** (P2): The last project used is sent as the default `project`, so a phrase with no `#project` still lands somewhere
 

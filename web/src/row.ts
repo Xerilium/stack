@@ -57,6 +57,7 @@ export function parseRow(text: string): Row {
   }
   if (/🎯/u.test(s)) { row.outcome = true; s = s.replace(/🎯/gu, ' '); }
   if (/[🤖🪄]/u.test(s)) { row.who = 'agent'; s = s.replace(/[🤖🪄]/gu, ' '); } else if (/🙋/u.test(s)) { row.who = 'human'; s = s.replace(/🙋/gu, ' '); }
+  s = s.replace(/\((?:is|label|author|state|milestone|-?reviewed-by):[^)]*\)/g, ' '); // saved GitHub queries
   s = s.replace(/[💰⚠😊⏱🌱🏃🌟]/gu, ' '); // project-value marks feed ranking; they are noise in a row
   s = s.replace(/(?:@\s*)?(?:<)?(https?:\/\/[^\s)>\]]+)>?/g, (_m, href: string) => {
     if (/\]\($/.test(s.slice(0, s.indexOf(href)))) return _m; // keep markdown links

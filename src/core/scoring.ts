@@ -364,8 +364,9 @@ export function daysUntilDue(text: string, config: StackConfig, at: Date): numbe
   return best;
 }
 
-/** Due-soon tier: 3 overdue/today, 2 within 3 days, 1 within a week, 0 undated or later. */
-const dueTier = (days: number | null): number => (days === null ? 0 : days <= 0 ? 3 : days <= 3 ? 2 : days <= 7 ? 1 : 0);
+/** Due-soon tier: 3 overdue/today, 2 within 3 days, 1 within a week or overdue more than 30 days (stale: no longer jumps the queue), 0 undated or later. */
+const STALE_DAYS = 30;
+const dueTier = (days: number | null): number => (days === null ? 0 : days < -STALE_DAYS ? 1 : days <= 0 ? 3 : days <= 3 ? 2 : days <= 7 ? 1 : 0);
 
 /**
  * Legacy score plus a due-date lens: overdue and due-soon tasks lead (tiers dominate the score), and a task due

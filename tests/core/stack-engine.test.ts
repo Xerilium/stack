@@ -28,6 +28,10 @@ describe('stack engine', () => {
       .toEqual(['📅 Oct 22: Overdue 🟢', '📅 Oct 25: Due soon 🟢', '📅 Oct 30: Due next week 🟢', 'Plain task 🟢']);
   });
 
+  it('does not let long-stale overdue tasks jump the queue', () => {
+    expect(top('📅 Jun 1: Stale 🟢', '📅 Oct 22: Fresh overdue 🟢')[0]).toBe('📅 Oct 22: Fresh overdue 🟢');
+  });
+
   it('keeps legacy ranking by default for the legacy id', () => {
     const r = rankTasks(getEngine('legacy'), [project('📅 Feb 1, 2027: far ⚠️⚠️⚠️ 💰', 'Plain task')], config, at);
     expect(r[0].task.text).toContain('far');
