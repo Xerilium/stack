@@ -69,7 +69,7 @@ export function App() {
   const searching = filters.q.trim() !== '' || filters.state !== 'open';
   const listRows = useMemo(() => visibleRows(filtered, tasks, expanded, collapsed, searching), [filtered, tasks, expanded, collapsed, searching]);
   const { sections, hidden } = useMemo(() => {
-    const ranked = rankNow(activeTasks(tasks).filter((t) => t.ref !== next?.ref && actionable(t)));
+    const ranked = rankNow(activeTasks(tasks).filter((t) => t.ref !== next?.ref && actionable(t)), new Date(), tasks);
     const doing = ranked.filter((t) => /🚧/u.test(t.text));
     const rest = ranked.filter((t) => !doing.includes(t));
     const then = rest.slice(0, 5), more = rest.slice(5);

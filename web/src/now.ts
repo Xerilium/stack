@@ -97,14 +97,72 @@ export function actionable(t: Task, now = new Date()): boolean {
   return d === null || d <= HORIZON_DAYS;
 }
 
-/** Order for the Now lists: due-soon first, then in progress, then priority, then file order (stable). */
-export function rankNow(tasks: Task[], now = new Date()): Task[] {
-  const key = (t: Task) => {
-    const r = parseRow(t.text);
-    const d = dueDays(r.due, now);
-    const due = d === null ? 0 : d < -30 ? 1 : d <= 0 ? 3 : d <= 3 ? 2 : d <= 7 ? 1 : 0;
-    return [due, r.status && vsx(r.status) === '🚧' ? 1 : 0, r.priority ? PRIO_BY.get(vsx(r.priority)) ?? 0 : 0];
+const REASON = /^(after|pending|blocked on|blocked by|until|waiting on|waiting for)\s+(.*)$/i;
+const keyOf = (text: string): string => parseRow(text.replace(/--.*$/, ' ')).title.toLowerCase().replace(/[`*_]/g, '').replace(/\s+/g, ' ').replace(/[.:;,]+$/, '').trim();
+
+/** Names a row says it waits on (the reason after `--`); mirrors blockedOn in the core scorer. @req FR:web-app/now.blockers */
+export function blockedOn(text: string): string[] {
+  const i = text.indexOf('--');
+  const m = i < 0 ? null : REASON.exec(text.slice(i + 2).trim());
+  return m ? m[2].split(';')[0].split(/\s*(?:,|&|\band\b)\s*/i).map((x) => keyOf(x)).filter(Boolean) : [];
+}
+
+/** Blocked row ref -> refs it waits on: same project first (exact title, then whole word), other projects only on an exact title. */
+export function blockerEdges(all: Task[]): Map<string, string[]> {
+  const keyed = all.filter((t) => !t.done).map((t) => ({ t, key: keyOf(t.text) }));
+  const word = (name: string) => new RegExp(`(^|\\W)${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\W|$)`);
+  const out = new Map<string, string[]>();
+  for (const { t } of keyed) {
+    const found = new Set<string>();
+    for (const name of blockedOn(t.text)) {
+      const mine = keyed.filter((x) => x.t.project === t.project && x.t.ref !== t.ref);
+      const exact = mine.filter((x) => x.key === name);
+      const part = exact.length === 0 && name.length >= 3 ? mine.filter((x) => word(name).test(x.key)) : [];
+      const hit = exact.length ? exact : part;
+      if (hit.length === 1) { found.add(hit[0].t.ref); continue; }
+      if (hit.length > 1) continue;
+      const far = keyed.filter((x) => x.t.project !== t.project && x.key === name);
+      if (far.length === 1) found.add(far[0].t.ref);
+    }
+    if (found.size) out.set(t.ref, [...found]);
+  }
+  return out;
+}
+
+type Key = [number, number, number];
+const cmp = (a: Key, b: Key) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
+const parked = (t: Task, now: Date): boolean => { const r = parseRow(t.text); return !!r.suspend || !!(r.start && (dueDays(r.start, now) ?? 0) > 0) || /🅿️?/u.test(t.text) || (dueDays(r.due, now) ?? 0) > HORIZON_DAYS; };
+const rowKey = (t: Task, now: Date): Key => {
+  const r = parseRow(t.text);
+  const d = dueDays(r.due, now);
+  return [d === null ? 0 : d < -30 ? 1 : d <= 0 ? 3 : d <= 3 ? 2 : d <= 7 ? 1 : 0, r.status && vsx(r.status) === '🚧' ? 1 : 0, r.priority ? PRIO_BY.get(vsx(r.priority)) ?? 0 : 0];
+};
+
+/**
+ * Order for the Now lists: due-soon first, then in progress, then priority, then file order (stable). A row that blocks
+ * others takes the best key among the rows it blocks (transitive, never a sum). @req FR:web-app/now.blockers
+ */
+export function rankNow(tasks: Task[], now = new Date(), all: Task[] = tasks): Task[] {
+  const edges = blockerEdges(all);
+  const blocks = new Map<string, string[]>();
+  for (const [blocked, bs] of edges) for (const b of bs) blocks.set(b, [...(blocks.get(b) ?? []), blocked]);
+  const byRef = new Map(all.map((t) => [t.ref, t]));
+  const effective = (t: Task): Key => {
+    let best = rowKey(t, now);
+    const seen = new Set<string>([t.ref]);
+    const queue = [...(blocks.get(t.ref) ?? [])];
+    while (queue.length) {
+      const ref = queue.pop()!;
+      const x = byRef.get(ref);
+      if (!x || seen.has(ref) || x.done) continue;
+      seen.add(ref);
+      if (parked(x, now)) continue;
+      const k = rowKey(x, now);
+      if (cmp(k, best) < 0) best = k;
+      queue.push(...(blocks.get(ref) ?? []));
+    }
+    return best;
   };
-  return tasks.map((t, i) => ({ t, i, k: key(t) }))
-    .sort((a, b) => b.k[0] - a.k[0] || b.k[1] - a.k[1] || b.k[2] - a.k[2] || a.i - b.i).map((x) => x.t);
+  return tasks.map((t, i) => ({ t, i, k: effective(t) }))
+    .sort((a, b) => cmp(a.k, b.k) || a.i - b.i).map((x) => x.t);
 }

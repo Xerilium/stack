@@ -29,7 +29,7 @@ const whoOf = (t: Task) => parseRow(t.text).who;
 /** Tasks for the plan: yours (not an agent's, not a decision), active, actionable, leaf, ranked. */
 export function planCandidates(tasks: Task[], now: Date, first?: string): Task[] {
   const mine = openLeaves(tasks).filter((t) => isActive(t) && actionable(t, now) && !whoOf(t));
-  const ranked = rankNow(mine, now);
+  const ranked = rankNow(mine, now, tasks);
   const head = first ? ranked.filter((t) => t.ref === first) : [];
   return [...head, ...ranked.filter((t) => t.ref !== first)];
 }

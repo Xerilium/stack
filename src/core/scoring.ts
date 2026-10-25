@@ -44,6 +44,8 @@ export interface ScoreBreakdown {
   baseScore: number;
   effortHours: number;
   calculatedTotal: number;
+  /** Set by the stack engine when a blocker took a blocked task's score: that task's id. */
+  inheritedFrom?: string;
 }
 
 /** @req FR:scoring-engine/$scored-task */
@@ -62,6 +64,8 @@ export interface ScoringEngine {
   readonly id: string;
   score(projects: ScoringProject[], config: StackConfig): ScoredTask[];
   filter(tasks: ScoredTask[], projects: ScoringProject[], config: StackConfig, at: Date): ScoredTask[];
+  /** Optional: replaces candidate selection and filtering in `rankTasks` (sees every scored task, parked ones too). */
+  rank?(scored: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date): ScoredTask[];
 }
 
 // ---------------------------------------------------------------- emojis
@@ -368,21 +372,137 @@ export function daysUntilDue(text: string, config: StackConfig, at: Date): numbe
 const STALE_DAYS = 30;
 const dueTier = (days: number | null): number => (days === null ? 0 : days < -STALE_DAYS ? 1 : days <= 0 ? 3 : days <= 3 ? 2 : days <= 7 ? 1 : 0);
 
+// ---- blockers
+
+const REASON = /^(after|pending|blocked on|blocked by|until|waiting on|waiting for)\s+(.*)$/i;
+
+/** Row title without markers, dates, reason, or emoji: what another row's reason can name. */
+function titleKey(text: string): string {
+  return text.replace(/--.*$/, ' ')
+    .replace(/(?:📅|⏰|💤)\s*[^:]*:/gu, ' ').replace(/🔄\s*[^:]*:/gu, ' ')
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ').replace(/[`*_]/g, '')
+    .replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.:;,]+$/, '').trim();
+}
+
+/** Names a row says it is waiting on: the reason after `--` when it reads like a dependency. @req FR:scoring-engine/blockers.parse */
+export function blockedOn(text: string): string[] {
+  const i = text.indexOf('--');
+  if (i < 0) return [];
+  const m = REASON.exec(text.slice(i + 2).trim());
+  if (!m) return [];
+  return m[2].split(';')[0].split(/\s*(?:,|&|\band\b)\s*/i).map(titleKey).filter(n => n !== '');
+}
+
+const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Blocked task id -> ids of the tasks it waits on. @req FR:scoring-engine/blockers.resolve */
+export function resolveBlockers(projects: ScoringProject[]): Map<string, string[]> {
+  const all = projects.flatMap(p => p.tasks.map(t => ({ t, key: titleKey(t.text) })));
+  const edges = new Map<string, string[]>();
+  const pick = (pool: typeof all, name: string, containment: boolean): string | undefined => {
+    const exact = pool.filter(x => x.key === name);
+    if (exact.length) return exact.length === 1 ? exact[0].t.id : undefined;
+    if (!containment || name.length < 3) return undefined;
+    const re = new RegExp(`(^|\\W)${escapeRe(name)}(\\W|$)`);
+    const hit = pool.filter(x => re.test(x.key));
+    return hit.length === 1 ? hit[0].t.id : undefined;
+  };
+  for (const p of projects) {
+    for (const t of p.tasks) {
+      const found = new Set<string>();
+      for (const name of blockedOn(t.text)) {
+        const mine = all.filter(x => x.t.project === t.project && x.t.id !== t.id);
+        let id = pick(mine, name, true);
+        const sameHasAny = mine.some(x => x.key === name || (name.length >= 3 && new RegExp(`(^|\\W)${escapeRe(name)}(\\W|$)`).test(x.key)));
+        if (!id && !sameHasAny) id = pick(all.filter(x => x.t.project !== t.project), name, false);
+        if (id) found.add(id);
+      }
+      if (found.size) edges.set(t.id, [...found]);
+    }
+  }
+  return edges;
+}
+
+// ---- stack engine
+
 /**
- * Legacy score plus a due-date lens: overdue and due-soon tasks lead (tiers dominate the score), and a task due
- * beyond the horizon is not a NOW candidate. Status, priority, and project value still order tasks within a tier.
- * @req FR:scoring-engine/engine.stack
+ * Legacy score plus a due-date lens and blocker inheritance. Due lens: overdue and due-soon tasks lead (tiers dominate
+ * the score) and a task due beyond the horizon is not a NOW candidate. Blockers: a task that blocks others scores at
+ * least as high as the most urgent task it blocks, transitively, never summed.
+ * @req FR:scoring-engine/engine.stack @req FR:scoring-engine/blockers.inherit @req FR:scoring-engine/blockers.eligible @req FR:scoring-engine/blockers.cycle @req FR:scoring-engine/blockers.unchanged
  */
+function lens(s: ScoredTask, config: StackConfig, at: Date | undefined): { drop: boolean; adj: number } {
+  const days = at ? daysUntilDue(s.task.text, config, at) : null;
+  return { drop: days !== null && days > NOW_HORIZON_DAYS, adj: s.score + dueTier(days) * 1000 };
+}
+
+function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date): ScoredTask[] {
+  const byId = new Map(all.map(s => [s.task.id, s]));
+  const adj = new Map<string, number>();
+  const eligible = new Map<string, boolean>();
+  for (const s of all) {
+    const l = lens(s, config, at);
+    adj.set(s.task.id, l.adj);
+    // Could be worked on once unblocked: not parked for any reason but ⛔️, and not due beyond the horizon.
+    let parked = false;
+    const seen = new Set<string>();
+    for (let cur: ScoringTask | undefined = s.task; cur && !seen.has(cur.id); cur = cur.parent ? byId.get(cur.parent)?.task : undefined) {
+      seen.add(cur.id);
+      if (baseEmojis(cur.text).Special.some(e => e === '🅿️' || e === '💤' || e === '⏰')) { parked = true; break; }
+    }
+    eligible.set(s.task.id, !parked && !l.drop);
+  }
+  const blockedBy = resolveBlockers(projects);
+  const blocks = new Map<string, string[]>(); // blocker -> tasks it blocks
+  for (const [blocked, blockers] of blockedBy) for (const b of blockers) blocks.set(b, [...(blocks.get(b) ?? []), blocked]);
+  const lend = (id: string): number => {
+    const s = byId.get(id)!;
+    const pen = s.breakdown.emojiContributions.filter(c => c.category === 'Status' && c.emoji === '⛔️').reduce((a, c) => a + c.value, 0);
+    return adj.get(id)! - pen / s.breakdown.effortHours;
+  };
+  /** Best score among tasks reachable through "blocks" edges, passing only through eligible tasks. */
+  const inherited = (id: string): { value: number; from?: string } => {
+    let best = -Infinity, from: string | undefined;
+    const seen = new Set<string>([id]);
+    const queue = [...(blocks.get(id) ?? [])];
+    while (queue.length) {
+      const next = queue.pop()!;
+      if (seen.has(next) || !byId.has(next)) continue;
+      seen.add(next);
+      if (!eligible.get(next)) continue;
+      const v = lend(next);
+      if (v > best) { best = v; from = next; }
+      queue.push(...(blocks.get(next) ?? []));
+    }
+    return { value: best, from };
+  };
+
+  const candidates = all.filter(s => s.leaf && !s.parked);
+  const kept = at ? filterByTimeBlock(candidates, projects, config, at) : candidates;
+  const out: ScoredTask[] = [];
+  for (const s of kept) {
+    const l = lens(s, config, at);
+    if (l.drop) continue;
+    let score = l.adj;
+    let from: string | undefined;
+    const chain = [s.task.id];
+    for (let cur = s.task.parent ? byId.get(s.task.parent) : undefined; cur && !chain.includes(cur.task.id); cur = cur.task.parent ? byId.get(cur.task.parent) : undefined) chain.push(cur.task.id);
+    for (const id of chain) { const inh = inherited(id); if (inh.value > score) { score = inh.value; from = inh.from; } }
+    out.push(from === undefined ? { ...s, score } : { ...s, score, breakdown: { ...s.breakdown, inheritedFrom: from } });
+  }
+  return byScore(out);
+}
+
 export const stackEngine: ScoringEngine = {
   id: 'stack',
   score: scoreAll,
   filter(tasks, projects, config, at) {
     return filterByTimeBlock(tasks, projects, config, at).flatMap(s => {
-      const days = daysUntilDue(s.task.text, config, at);
-      if (days !== null && days > NOW_HORIZON_DAYS) return [];
-      return [{ ...s, score: s.score + dueTier(days) * 1000 }];
+      const l = lens(s, config, at);
+      return l.drop ? [] : [{ ...s, score: l.adj }];
     });
   },
+  rank: stackRank,
 };
 
 const engines = new Map<string, ScoringEngine>([[legacyEngine.id, legacyEngine], [stackEngine.id, stackEngine]]);
@@ -412,7 +532,9 @@ export function byScore<T extends { score: number }>(tasks: T[]): T[] {
 
 /** @req FR:scoring-engine/rank.@function @req FR:scoring-engine/rank.order */
 export function rankTasks(engine: ScoringEngine, projects: ScoringProject[], config: StackConfig, at?: Date): ScoredTask[] {
-  const candidates = engine.score(projects, config).filter(s => s.leaf && !s.parked);
+  const all = engine.score(projects, config);
+  if (engine.rank) return engine.rank(all, projects, config, at);
+  const candidates = all.filter(s => s.leaf && !s.parked);
   return byScore(at ? engine.filter(candidates, projects, config, at) : candidates);
 }
 

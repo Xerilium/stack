@@ -70,6 +70,17 @@ The next task must be an unparked leaf allowed in the current time block.
   - **FR:filter.time.unknown-project** (P2): Tasks of unknown projects are kept
 - **FR:filter.capacity** (P1): Capacity lines `- **<Block> capacity:** <n>h` MUST be read from project content, ignoring blocks not in the config
 
+### FR:blockers: Blocker inheritance
+
+A task that blocks others is at least as urgent as the most urgent task it blocks. Real rows name blockers in the reason after `--` (`⛔️ Phase 2 -- Pending phase 1`, `-- After set-engineering-tasks`, `-- Blocked on X`). The legacy scorer has only a −5 status penalty on the blocked row and no dependency model; this rule is new in the `stack` engine and `legacy` is unchanged.
+
+- **FR:blockers.parse** (P1): `blockedOn(text)` MUST read the reason after the first `--` when it starts with `after`, `pending`, `blocked on`, `blocked by`, `until`, `waiting on`, or `waiting for` (case-insensitive), split it on `,`, `&`, and ` and `, and return the cleaned names (markers, dates, trailing punctuation dropped). A row without `--`, or whose reason starts with another word, MUST return none
+- **FR:blockers.resolve** (P1): `resolveBlockers(projects)` MUST map each blocked task to the tasks its names point at: same project first, then another project only on an exact title match; exact title match (case-insensitive, markers stripped) before whole-word containment; an ambiguous or unmatched name MUST add no edge; a task never blocks itself
+- **FR:blockers.inherit** (P1): In `stack` ranking, a blocker's score MUST be the maximum of its own score and the scores of the tasks it blocks, transitively (A blocks B blocks C: A takes C's). It MUST NEVER be a sum. A blocked task's score for this purpose MUST NOT carry its own ⛔️ penalty, and its due-date tier counts. Leaf rows under a blocker inherit through their ancestors
+- **FR:blockers.eligible** (P1): A blocked task only lends its score when it could be worked on once unblocked: not parked (🅿️, 💤, a later ⏰) and not due beyond the horizon. Done tasks never lend
+- **FR:blockers.cycle** (P1): Cycles and self references MUST NOT loop or throw; each task still gets the max over the acyclic part it can reach
+- **FR:blockers.unchanged** (P1): A task that blocks nothing keeps its score, and the `legacy` engine ignores blockers
+
 ### FR:rank: Rank candidates
 
 - **FR:rank.@function** (P1): Interface: `rankTasks(engine: ScoringEngine, projects: ScoringProject[], config: StackConfig, at?: Date): ScoredTask[]`

@@ -48,3 +48,29 @@ describe('now ranking', () => {
     expect(r).toEqual(['📅 Oct 22: late', '📅 Oct 30: week', '🚧 doing', '🔺 raised', 'plain']);
   });
 });
+
+import { blockedOn, blockerEdges } from '../src/now';
+// @req FR:web-app/now.blockers
+describe('blocker inheritance in the Now lists', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, project = 'a'): Task => ({ ref: `${project}:${text}`, text, project, section: '🔄 Active', done: false, depth: 0, notes: [] });
+  it('reads reasons and resolves them', () => {
+    expect(blockedOn('⛔️ Phase 2 🟡 -- Pending phase 1')).toEqual(['phase 1']);
+    expect(blockedOn('⛔️ X -- After A, B and C')).toEqual(['a', 'b', 'c']);
+    expect(blockedOn('⛔️ X -- need licences')).toEqual([]);
+    const rows = [row('Phase 1 🟡'), row('⛔️ Phase 2 🟡 -- Pending phase 1')];
+    expect(blockerEdges(rows).get(rows[1].ref)).toEqual([rows[0].ref]);
+  });
+  it('ranks a blocker with the most urgent task it blocks (transitive, max)', () => {
+    const rows = [row('gate'), row('🔺 plain'), row('⛔️ B -- After gate'), row('🚨 ⛔️ C -- After B')];
+    const r = rankNow([rows[0], rows[1]], day, rows).map((t) => t.text);
+    expect(r).toEqual(['gate', '🔺 plain']);
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['gate', '🔺 plain']);
+  });
+  it('lends nothing from parked or far-future rows, and survives cycles', () => {
+    const rows = [row('gate'), row('🔺 plain'), row('🚨 ⛔️ 🅿️ X -- After gate')];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+    const cyc = [row('⛔️ A -- After B'), row('⛔️ B -- After A')];
+    expect(() => rankNow(cyc, day, cyc)).not.toThrow();
+  });
+});
