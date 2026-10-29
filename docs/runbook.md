@@ -32,7 +32,7 @@ Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault,
 | `STACK_REPO_TOKEN` | Credential for the private task repo |
 | `STACK_REPO_URL` | https URL of the private task repo (no credentials in it). More settings: [Azure host](azure-host.md) |
 | `STACK_CALENDAR_FIXTURE` | `stack web` only: JSON file of calendar events for Today (demo and screenshots). No live calendar until owner sign-in exists |
-| `STACK_GRAPH_CACHE` | `stack graph` and `stack web` only: path of the Graph token file. Default `~/.config/stack/graph-token.json` (mode 0600; never inside a task repo) |
+| `STACK_GRAPH_CACHE` | `stack graph`, `stack email` and `stack web` only: path of the Graph token file. Default `~/.config/stack/graph-token.json` (mode 0600; never inside a task repo) |
 | `STACK_TOKEN_STORE` | Optional file path for the token store (needs `STACK_TOKEN_PEPPER`). Default: the data repo (`.stack/tokens.json`) |
 | `STACK_REPO_BRANCH`, `STACK_REPO_PATH` | Branch (default `main`) and optional subfolder of the task repo |
 | `STACK_CONFIG` | Optional Stack config as JSON |
@@ -44,6 +44,7 @@ Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault,
 | `STACK_REPO`, `STACK_DIR` | Local content repo for the CLI, `stack web`, and `stack-mcp` (when none is found by walking up from the current folder). Content never lives in the Stack repo; see the README "Two repos" |
 | `STACK_MCP_SCOPES` | Scopes for `stack-mcp` (stdio only), default `read,write` |
 | `STACK_DATA_DIR` | Owner-only local data (email voice profile and mail state), default `~/Library/Application Support/stack`. Never inside a repo: it holds learned writing samples |
+| `STACK_CLAUDE_BIN` | `stack email` only: the Claude Code binary used for model calls (`claude -p`, no tools), default `claude`. Model calls use your Claude login |
 
 ## Owner allow-list
 
@@ -74,3 +75,15 @@ Tasks are markdown in git, so the git history is the backup. Clone the task repo
 2. `stack graph login --client-id <app id> --with calendar` and follow the printed code. The token stays in `~/.config/stack/graph-token.json`, never in a repo.
 3. If login says `unsafe_scope`, remove the named permissions from the app registration **and** revoke the consent already granted (Entra ID > Enterprise applications > the app > Permissions, or myapps.microsoft.com); removing a permission alone does not revoke consent.
 4. `stack web` now shows your meetings (it logs `calendar: Graph`). `stack graph status` checks it; `stack graph logout` removes it.
+
+## Email assistant (drafts only, one time)
+
+Runs where Claude Code runs; the Stack host has no timers. Model calls use your Claude login (`claude -p`, no tools).
+
+1. Sign in with mail: `stack graph login --client-id <app id> --with calendar,mail,drafts` (`Mail.ReadWrite` makes drafts and approved moves possible; it cannot send).
+2. Learn your voice: `stack email voice` (add `--extra file.json` with writing from elsewhere when Sent Items is thin). The profile and style guide stay in `$STACK_DATA_DIR/email/<account>/`, mode 0600, never in a repo.
+3. Try one pass without writing anything: `stack email run --dry-run`. Then `stack email run` writes asks to your content repo (and pushes when `--remote` is set).
+4. Schedule it every 15 minutes: `stack email schedule --dir <content repo> --remote origin > ~/Library/LaunchAgents/com.xerilium.stack-email.plist`, then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.xerilium.stack-email.plist`. The plist uses absolute paths (launchd has no PATH) and logs to `$STACK_DATA_DIR/email/<account>/run.log`. `stack email status` shows the last pass.
+   - Pushing asks needs a **private** content repo: asks carry sender names, subjects, short summaries and draft text (never message bodies).
+   - Optional `rules.json` beside the state adds VIP, sensitive and receipt rules (same keys as the triage rules).
+5. Nothing moves, unsubscribes, or sends on its own: archive, spam and unsubscribe asks act only after you answer them in Stack.
