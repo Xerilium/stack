@@ -10,6 +10,8 @@ export interface AskItem {
   priority: 'crit' | 'high' | 'normal' | 'low'; effort?: string; blocks: number; created: string; updated: string;
   answer?: AnswerKind; text?: string; answered?: string; snoozedUntil?: string; detail?: string;
   score: number; rank?: number; overdue: boolean; agentReply?: string;
+  /** `task`: an open 🙋 row from a task file (`ref`), answered through the agent inbox. @req FR:web-shell/state.needs */
+  source?: 'task'; ref?: string;
 }
 export interface AskList { items: AskItem[]; total: number; latest?: string }
 export interface Send { answer: AnswerKind; text?: string; until?: string }
@@ -40,9 +42,14 @@ export function ifSilent(a: Pick<AskItem, 'reversible' | 'default'>): { text: st
 export interface Action { id: string; label: string; key: string; primary?: boolean; send?: Send; open?: boolean; reply?: boolean }
 
 /** Buttons for an ask by kind. `Enter` is always the primary action. */
-export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link'>): Action[] {
+export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'>): Action[] {
   const open: Action[] = a.link ? [{ id: 'open', label: 'Open', key: 'o', open: true }] : [];
   const rec = a.recommend?.trim().toLowerCase();
+  // A 🙋 row: go with the agent's recommendation, or answer it; Details opens the row. @req FR:web-shell/state.needs
+  if (a.source === 'task') {
+    const details: Action = { id: 'open', label: 'Details', key: 'o', open: true };
+    return a.kind === 'approve' ? [{ id: 'go', label: 'Go with it', key: 'Enter', primary: true, send: { answer: 'go' } }, details] : [details];
+  }
   switch (a.kind) {
     case 'approve': {
       const reject = !!rec && /^(reject|no|decline|deny|hold)\b/.test(rec);

@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { actionsFor, deadline, freshness, ifSilent, splitTop, type Action, type AskItem } from './asks';
+import { blockedHelp } from './notify';
 import type { Asks } from './useAsks';
 import './asks.css';
 
@@ -19,13 +20,16 @@ const Icon = {
   check: <svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2.2" /><path d="M15.5 24.5l5.8 5.8 11.2-12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>,
 };
 
-function LiveBadge({ a }: { a: Asks }) {
-  const text = a.status === 'live' ? 'Live' : a.status === 'poll' ? 'Refreshing every 15 s' : 'Offline';
+/** Quiet while live; says what is wrong and what to do otherwise. @req FR:web-shell/state.live */
+function LiveBadge({ a, unreachable }: { a: Asks; unreachable: boolean }) {
+  if (a.status === 'connecting' && !unreachable) return null;
+  const state = unreachable ? 'down' : a.status;
+  const text = state === 'live' ? 'Live' : state === 'poll' ? 'Checks every 15 s' : state === 'down' ? "Can't reach Stack" : 'Reconnecting…';
   return (
-    <div class={`live ${a.status}`} role="status" data-testid="live-status">
+    <div class={`live ${state}`} role="status" data-testid="live-status">
       <span class="dot" aria-hidden="true" />
-      <span>{text}</span>
-      {a.status === 'offline' && <button type="button" class="link" onClick={() => void a.reload()}>Retry</button>}
+      <span class={state === 'live' ? 'sr-only' : undefined}>{text}</span>
+      {(state === 'offline' || (state === 'down' && a.phase === 'ready')) && <button type="button" class="link" onClick={() => void a.retry()}>Retry</button>}
     </div>
   );
 }
@@ -66,7 +70,8 @@ function Btn({ a, act, run, panel }: { a: Action; act: AskItem; run: (x: Action)
   const cls = `btn${a.primary ? ' primary' : ''}`;
   const key = a.key === 'Enter' ? '⏎' : a.key;
   const tag = a.primary && act.kind === 'decide' && act.recommend ? <span class="rec-tag">recommended</span> : null;
-  if (a.open) return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer" aria-keyshortcuts="o">{a.label} {Icon.out}<kbd aria-hidden="true">{a.key}</kbd></a>;
+  if (a.open && act.source !== 'task') return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer" aria-keyshortcuts="o">{a.label} {Icon.out}<kbd aria-hidden="true">{a.key}</kbd></a>;
+  if (a.open) return <button type="button" class="btn quiet" onClick={() => run(a)} aria-keyshortcuts="o">{a.label}<kbd aria-hidden="true">{a.key}</kbd></button>;
   return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd aria-hidden="true">{key}</kbd>}</button>;
 }
 
@@ -123,6 +128,7 @@ function Card({ a, n, total, asks, run }: { a: AskItem; n: number; total: number
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); (e.target as HTMLElement).blur(); asks.setPanel('none'); } }} />
               <button type="submit" class="btn primary send" disabled={!text.trim()}>Send<kbd aria-hidden="true">⏎</kbd></button>
               {isAnswer && <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>}
+              {isAnswer && a.source === 'task' && <button type="button" class="btn quiet" onClick={() => run({ id: 'open', label: 'Details', key: 'o', open: true })} aria-keyshortcuts="o">Details<kbd aria-hidden="true">o</kbd></button>}
             </form>
             <p class="hint">End with ? to ask a question; anything else is an instruction</p>
           </>
@@ -142,6 +148,7 @@ export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; 
 
 export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify?: NotifyCtl; offline?: boolean }) {
   const { items, cursor } = asks;
+  const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
   const { shown, more } = splitTop(items, TOP, asks.showAll);
@@ -160,7 +167,7 @@ export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify
   const run = (x: Action) => {
     const a = asks.itemsRef.current.find((i) => i.key === asks.cursorRef.current) ?? asks.current;
     if (!a) return;
-    if (x.open) { if (a.link) window.open(a.link, '_blank', 'noopener,noreferrer'); return; }
+    if (x.open) { if (a.source === 'task' && a.ref) asks.openTask(a.ref); else if (a.link) window.open(a.link, '_blank', 'noopener,noreferrer'); return; }
     if (x.reply) { asks.setPanel('reply'); return; }
     if (x.send) void asks.answer(a, x.send, x.send.answer === 'option' ? `Sent to ${a.from}: ${x.send.text}` : `${ANSWER_WORD[x.send.answer] ?? 'Sent'} · ${a.from} has it`);
   };
@@ -209,10 +216,10 @@ export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify
     <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Asks">
       <header class="asks-head">
         <h1 class="h1">Needs you{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
-        <LiveBadge a={asks} />
+        <LiveBadge a={asks} unreachable={unreachable} />
         {notify?.supported && (
-          <button type="button" class={`notify-btn${notify.on ? ' on' : ''}`} aria-pressed={notify.on} disabled={notify.blocked && !notify.on} aria-label={notify.blocked && !notify.on ? 'Blocked in browser settings' : notify.on ? 'Notifications on' : 'Notify me'} title={notify.blocked ? 'Blocked in browser settings' : notify.on ? 'Notifications are on: tap to turn off' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z" fill={notify.on ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>
+          <button type="button" class={`notify-btn${notify.on ? ' on' : ''}${notify.blocked && !notify.on ? ' blocked' : ''}`} aria-pressed={notify.on} aria-label={notify.blocked && !notify.on ? 'Notifications blocked' : notify.on ? 'Notifications on' : 'Notify me'} title={notify.blocked && !notify.on ? blockedHelp() : notify.on ? 'Notifications are on: tap to turn off' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z" fill={notify.on ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />{notify.blocked && !notify.on && <path d="M4 4l16 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />}</svg>
             <span class="notify-label">{notify.blocked && !notify.on ? 'Blocked' : notify.on ? 'On' : 'Notify me'}</span>
           </button>
         )}
@@ -221,13 +228,13 @@ export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify
       {!offline && asks.phase === 'loading' && <Skeleton />}
       {offline && asks.phase !== 'ready' && <div class="asks-error offline" role="status"><p>Offline. Asks load when you're back online.</p></div>}
       {!offline && asks.phase === 'error' && (
-        <div class="asks-error" role="alert"><p>Cannot load asks: {asks.error}</p><button type="button" class="btn primary" onClick={() => void asks.reload()}>Retry</button></div>
+        <div class="asks-error" role="alert"><p>Cannot load asks: {asks.error}</p><button type="button" class="btn primary" onClick={() => void asks.retry()}>Retry</button></div>
       )}
       {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && (
         <div class="asks-empty" data-testid="asks-empty">
           <div class="tick-art">{Icon.check}</div>
           <p class="big">Nothing needs you.</p>
-          <p class="sub">{asks.latest ? `Last agent update ${freshness(asks.latest, asks.now)}` : 'No agent has written an ask yet'}</p>
+          <p class="sub">No open asks, decisions, or replies · {asks.latest ? `last agent update ${freshness(asks.latest, asks.now)}` : 'no agent has written an ask yet'}</p>
         </div>
       )}
       {(items.length > 0 || ghosts.length > 0) && (
