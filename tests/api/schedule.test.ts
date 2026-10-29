@@ -78,6 +78,15 @@ describe('POST /schedule/day', () => {
     await post(h, { date: '2026-10-28', reset: true, every: true });
     expect(JSON.parse((await s.readAux('.stack/schedule.json'))!.content)).toEqual({});
   });
+  it('Every from a date with its own change replaces that change; no change, no write', async () => {
+    const { s, h } = fresh();
+    await post(h, { date: '2026-10-28', bed: '01:00' });
+    await post(h, { date: '2026-10-28', bed: '03:00', every: true });
+    expect(JSON.parse((await s.readAux('.stack/schedule.json'))!.content)).toEqual({ weekdays: { Wed: { bed: '03:00' } } });
+    const v = (await s.readAux('.stack/schedule.json'))!.version;
+    await post(h, { date: '2026-10-28', bed: '03:00', every: true });
+    expect((await s.readAux('.stack/schedule.json'))!.version).toBe(v);
+  });
   it('a stale write is 409', async () => {
     const { s, h } = fresh();
     await post(h, { date: '2026-10-28', bed: '01:00' });

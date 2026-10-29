@@ -86,7 +86,7 @@ test.describe('My day v2', () => {
     await page.getByTestId('day-times').click();
     await page.getByTestId('day-times-edit').getByLabel('Bed').fill('01:00');
     await page.getByTestId('day-times-edit').getByRole('button', { name: /^Every/ }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/schedule/day')?.body).toEqual({ date: ymd(at(0)), bed: '01:00', every: true });
+    await expect.poll(() => m.calls.find((c) => c.path === '/schedule/day')?.body).toEqual({ date: ymd(at(0)), wake: '08:00', bed: '01:00', every: true });
     await page.getByTestId('day-times').click();
     await page.getByTestId('day-times-edit').getByRole('button', { name: 'Reset' }).click();
     await expect.poll(() => m.calls.filter((c) => c.path === '/schedule/day').slice(-2).map((c) => c.body)).toEqual([{ date: ymd(at(0)), reset: true, every: true }, { date: ymd(at(0)), reset: true, every: false }]);
@@ -97,6 +97,9 @@ test.describe('My day v2', () => {
     await open(page, at(23, 30));
     await page.getByTestId('tomorrow').click();
     await expect(page.getByTestId('available').getByRole('button', { name: 'More time' })).toBeDisabled();
+    const before = await page.getByTestId('available').textContent();
+    await page.keyboard.press(']');
+    await expect(page.getByTestId('available')).toHaveText(before!); // ] does nothing to tomorrow (or to today)
   });
 
   // @req FR:home/day.override

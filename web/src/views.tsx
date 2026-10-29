@@ -335,14 +335,14 @@ function DayTimes({ day, weekday, onSave }: { day: Day; weekday: string; onSave?
   // Enter: only this day; Shift+Enter: every same weekday; Esc: cancel.
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); }
-    else if (e.key === 'Enter') { e.preventDefault(); void save({ ...changed(), ...(e.shiftKey ? { every: true } : {}) }); }
+    else if (e.key === 'Enter') { e.preventDefault(); void save(e.shiftKey ? { wake, bed, every: true } : changed()); }
   };
   return (
     <span class="day-times-edit" role="group" aria-label="Wake and bed" data-testid="day-times-edit" onKeyDown={onKey}>
       <label>Up <input type="time" value={wake} ref={(el) => { if (el && !el.dataset.seen) { el.dataset.seen = '1'; el.focus(); } }} onInput={(e) => setWake((e.target as HTMLInputElement).value)} /></label>
       <label>Bed <input type="time" value={bed} onInput={(e) => setBed((e.target as HTMLInputElement).value)} /></label>
       <button type="button" class="link-btn strong" onClick={() => void save(changed())}>Only {weekday} <kbd>⏎</kbd></button>
-      <button type="button" class="link-btn" onClick={() => void save({ ...changed(), every: true })}>Every {weekday} <kbd>⇧⏎</kbd></button>
+      <button type="button" class="link-btn" onClick={() => void save({ wake, bed, every: true })}>Every {weekday} <kbd>⇧⏎</kbd></button>
       <button type="button" class="link-btn" onClick={() => void save({ reset: true })}>Reset</button>
       <button type="button" class="link-btn" onClick={() => setOpen(false)}>Cancel <kbd>Esc</kbd></button>
     </span>
@@ -472,7 +472,7 @@ export function TodayView(t: TodayProps) {
             <details class="nofit" data-testid="nofit">
               <summary class="nofit-head">
                 <h3>{t.plan.overflow.length} don't fit{t.plan.atRisk.length > 0 && <span class="warn"> · {t.plan.atRisk.length} due soon</span>}</h3>
-                <button type="button" class="btn quiet" title="More time (])" onClick={(e) => { e.preventDefault(); t.onBudget?.(t.budget.minutes + 30); }}>+30m <kbd>]</kbd></button>
+                {t.onBudget && <button type="button" class="btn quiet" title="More time (])" onClick={(e) => { e.preventDefault(); t.onBudget?.(t.budget.minutes + 30); }}>+30m <kbd>]</kbd></button>}
               </summary>
               <ul>
                 {shownOver.map((o) => {

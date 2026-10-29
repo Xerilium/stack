@@ -542,7 +542,7 @@ export function App() {
       { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ] : []),
     ...(view === 'home' ? HAVE.map((m, i) => ({ id: `have-${m}`, label: `I have ${span(m)}`, hint: `h ${i + 1}`, run: () => setHave(m) })) : []),
-    ...(view === 'today' ? [
+    ...(view === 'today' && !tmr ? [
       { id: 'more-time', label: 'More time today (+30m)', hint: ']', run: () => setBudget(budget.minutes + STEP) },
       { id: 'less-time', label: 'Less time today (-30m)', hint: '[', run: () => setBudget(budget.minutes - STEP) },
       { id: 'reset-time', label: 'Reset available time', run: () => setBudget(null) },
@@ -564,8 +564,8 @@ export function App() {
   const allCommands = [...commands, ...goTo, ...projectCmds];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft });
-  latest.current = { positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft };
+  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr });
+  latest.current = { positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
   const teamRef = useRef(team); teamRef.current = team;
   const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave };
@@ -622,7 +622,7 @@ export function App() {
       if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'A') { e.preventDefault(); void A.delegate(); return; }
       // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
       if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
-      if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; }
+      if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); if (!L.tomorrowOn) A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; } // tomorrow's Available is read-only
       // On Home, [ ] change the time you have now. @req FR:home/home.have
       if (L.view === 'home' && (k === '[' || k === ']')) { e.preventDefault(); A.setHave(Math.max(0, L.minutesLeft + (k === ']' ? STEP : -STEP))); return; }
       const i = L.rows.findIndex((r) => r.ref === L.cursor);

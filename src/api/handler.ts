@@ -671,8 +671,11 @@ export const ROUTES: Route[] = [
       if (b.reset) delete map[key];
       else map[key] = { ...map[key], ...(b.wake ? { wake: b.wake } : {}), ...(b.bed ? { bed: b.bed } : {}) };
       const next: ScheduleOverrides = { ...value, [bucket]: map };
+      // Every <weekday> from a date's view applies to that date too: its own change gives way.
+      if (b.every && !b.reset && next.dates?.[b.date]) { const d = { ...next.dates }; delete d[b.date]; next.dates = d; }
       for (const k of ['dates', 'weekdays'] as const) if (next[k] && Object.keys(next[k]!).length === 0) delete next[k];
-      await aux.writeAux(SCHEDULE_PATH, `${JSON.stringify(next, null, 2)}\n`, { expectedVersion: version });
+      // No change, no write (on GitHub storage a write is a commit).
+      if (JSON.stringify(next) !== JSON.stringify(value)) await aux.writeAux(SCHEDULE_PATH, `${JSON.stringify(next, null, 2)}\n`, { expectedVersion: version });
       const config = c.deps.config ?? getDefaults();
       return json(200, { timezone: config.timezone, ...dayScheduleOn(config, b.date, next) });
     },

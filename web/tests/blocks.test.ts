@@ -50,4 +50,9 @@ describe('work goes in its block', () => {
     expect(p.blocks.map((b) => b.task.project)).toEqual(['misc']);
     expect(p.overflow.map((x) => x.project)).toEqual(['allyte']);
   });
+  it('a scheduled day with no blocks at all still keeps bound projects out', () => {
+    const empty = withProjects({ ...base, blocks: [] }, projects);
+    const p = buildPlan([t('Allyte deck 🟢', 'allyte'), t('Misc 🟢', 'misc')], L(28, 10), empty, 600);
+    expect(p.blocks.map((x) => x.task.project)).toEqual(['misc']);
+  });
 });
