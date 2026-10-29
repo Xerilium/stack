@@ -5,8 +5,7 @@
  */
 import { Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { groupByProject, loadGroup, loadPins, orderWithPins, saveGroup, togglePin } from './pins';
-import { store } from './day';
+import { groupByProject, orderWithPins } from './pins';
 import { barWidths, costStrip, dayLabel, fmtTokens, fmtUsd, groupTurns, localDay, rowOf, splitSessions, type Line, type SessionItem } from './sessions';
 import type { Sessions } from './useSessions';
 import './sessions.css';
@@ -119,16 +118,16 @@ export function Drawer({ s, item, cursorItem, onClose }: { s: Sessions; item: Se
   );
 }
 
-export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | null }) {
+export type Pins = ReturnType<typeof import('./pins').usePins>;
+export function SessionsView({ s, enabled, pinsCtl }: { s: Sessions; enabled: boolean | null; pinsCtl: Pins }) {
   const { cursor } = s;
   // pins first, then attention order; optionally grouped by project. @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups
-  const [pins, setPins] = useState(() => loadPins(store()));
-  const [byProject, setByProject] = useState(() => loadGroup(store()));
-  const items = orderWithPins(s.items, pins);
-  const pin = (id: string) => setPins(togglePin(store(), id));
-  const toggleGroup = () => setByProject((on) => { saveGroup(store(), !on); return !on; });
-  const { shown, more } = splitSessions(items, TOP, s.showAll);
+  const { pins, pin, byProject, toggleGroup } = pinsCtl;
+  const ordered = orderWithPins(s.items, pins);
+  const { shown, more } = splitSessions(ordered, TOP, s.showAll);
   const groups = byProject ? groupByProject(shown, pins) : (pins.some((p) => shown.some((x) => x.id === p)) ? [{ title: 'Pinned', items: shown.filter((x) => pins.includes(x.id)) }, { title: '', items: shown.filter((x) => !pins.includes(x.id)) }] : [{ title: '', items: shown }]);
+  // the keys walk the rows in the order they are painted
+  const items = groups.flatMap((g) => g.items);
   const item = items.find((i) => i.id === s.open) ?? null;
   const today = localDay(s.now);
   const strip = s.cost ? costStrip(s.cost, today) : null;
@@ -149,7 +148,7 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
 
   // Keys act on this render's state, not the state of the render whose effect last registered the listener: the cursor row (or the drawer) paints before that effect re-runs, and a key in that gap must see what is on screen.
   const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return; // a finished chord (g p, g s) is not a view key
       const k = e.key;
       if (k === 'Escape' && (s.open || s.composing)) { e.preventDefault(); close(); return; }
       if (isTyping(e.target)) return;
@@ -202,7 +201,7 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
         <ol class="sess-list" aria-label="Agents, pinned then attention first">
           {groups.map((g) => (
             <Fragment key={g.title || '_'}>
-              {g.title && <li class="sess-group" role="presentation">{g.title}</li>}
+              {g.title && <li class="sess-group" aria-label={`${g.title} group`}>{g.title}</li>}
               {g.items.map((x) => <Row key={x.id} s={x} now={s.now} cursor={x.id === cursor} pinned={pins.includes(x.id)} onOpen={() => void s.openDrawer(x.id)} onCursor={() => s.setCursor(x.id)} onPin={() => pin(x.id)} />)}
             </Fragment>
           ))}

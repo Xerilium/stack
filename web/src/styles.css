@@ -736,4 +736,4 @@ body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: non
 .sess-group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin: 14px 0 2px; padding: 0 6px; }
 .sess-group:first-child { margin-top: 0; }
 .btn.quiet.on { color: var(--accent); background: var(--accent-soft); }
-@media (max-width: 719px) { .sess-li .pin { opacity: 1; } }
+@media (max-width: 719px) { .sess-li .pin { opacity: 1; width: 44px; height: 44px; right: 2px; } .sess-li .sess-row { padding-right: 50px; } }

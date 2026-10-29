@@ -190,6 +190,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const draft = useRef<{ key: string; text: string } | null>(null);
   const edit = useCallback(async (a: AskItem) => {
     draft.current = { key: a.key, text: a.text ?? '' };
+    undoRef.current = null; // the toast's Undo would retract a second time
     try { await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); setPanel('reply'); }
     catch (e) { draft.current = null; toastRef.current(e instanceof Error ? e.message : 'Edit failed', 'err'); }
   }, [api, load]);

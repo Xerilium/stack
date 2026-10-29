@@ -37,3 +37,13 @@ export const loadGroup = (s: Store | undefined): boolean => { try { return s?.ge
 export function saveGroup(s: Store | undefined, on: boolean): void {
   try { if (on) s?.setItem(GROUP_KEY, 'project'); else s?.removeItem(GROUP_KEY); } catch { /* storage is a convenience */ }
 }
+
+import { useCallback, useState } from 'preact/hooks';
+/** Pins and the by-project choice as state, shared by the Agents view and the palette. */
+export function usePins(s: Store | undefined) {
+  const [pins, setPins] = useState(() => loadPins(s));
+  const [byProject, setByProject] = useState(() => loadGroup(s));
+  const pin = useCallback((id: string) => setPins(togglePin(s, id)), [s]);
+  const toggleGroup = useCallback(() => setByProject((on) => { saveGroup(s, !on); return !on; }), [s]);
+  return { pins, pin, byProject, toggleGroup };
+}
