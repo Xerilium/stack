@@ -85,7 +85,7 @@ test.describe('Agent thread', () => {
     await page.goto('/#/home');
     const hero = page.locator('.focus-block');
     await expect(hero).toBeVisible();
-    await hero.locator('h1').click();
+    await hero.locator('.h1-toggle').click();
     await expect(hero.locator('.thread')).toBeVisible();
     await expect(hero.locator('.thread input[type="text"]')).toBeVisible();
   });
