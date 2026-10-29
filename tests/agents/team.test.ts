@@ -82,7 +82,7 @@ describe('reviewTask', () => {
   const answer = { verdict: 'partial', plan: 'Upload the cover, then wait for the DistroKid login', estimate: '1h', needs: [{ what: 'Share the DistroKid login', kind: 'go-do', why: 'no credentials' }, { what: 'Confirm the release date', kind: 'answer' }] };
   it('runs read-only with the schema, records the verdict, and turns needs into asks; a re-review resolves the old ones', async () => {
     const { ctx, runs, prompts, storage } = await mk({ structured: answer });
-    const r = await reviewTask(runs, ctx, 'flantastic-4:7', undefined, 'owner');
+    const r = await reviewTask(runs, ctx, 'flantastic-4:7');
     expect(r).toMatchObject({ runId: 'run-1', agent: 'cid-manager' });
     expect(prompts[0].options).toMatchObject({ allowedTools: READ_ONLY_TOOLS, disallowedTools: WRITE_TOOLS, schema: expect.objectContaining({ type: 'object' }), title: '🎧 Cid Manager · review · Release the single 🟡 · flantastic-4:7' });
     expect(prompts[0].text).toContain('Do not start the work');
@@ -99,21 +99,21 @@ describe('reviewTask', () => {
     expect(list[0]).toMatchObject({ ref: 'flantastic-4:7', verdict: 'partial' });
     expect(await listReviews(ctx, 'nope')).toEqual([]);
 
-    await reviewTask(runs, ctx, 'flantastic-4:7', 'cid-manager', 'owner');
+    await reviewTask(runs, ctx, 'flantastic-4:7', 'cid-manager');
     await until(async () => (await listAsks(ctx, { state: 'done' })).items.length === 2);
     await until(async () => (await listAsks(ctx, { state: 'open' })).items.length === 2);
     expect((await listAsks(ctx, { state: 'done' })).items[0]).toMatchObject({ outcome: 'resolved', note: 'reviewed again' });
   });
   it('reads the verdict from JSON in the text when there is no structured answer; records nothing without one', async () => {
     const a = await mk({ text: `Here you go:\n${JSON.stringify({ ...answer, needs: [] })}` });
-    await reviewTask(a.runs, a.ctx, 'flantastic-4:7', undefined, 'owner');
+    await reviewTask(a.runs, a.ctx, 'flantastic-4:7');
     await until(async () => (await reviewOf(a.ctx, { path: 'tasks/flantastic-4.md', line: 7 })) !== null);
     const b = await mk({ text: 'nope' });
-    await reviewTask(b.runs, b.ctx, 'flantastic-4:7', undefined, 'owner');
+    await reviewTask(b.runs, b.ctx, 'flantastic-4:7');
     await wait(60);
     expect(await reviewOf(b.ctx, { path: 'tasks/flantastic-4.md', line: 7 })).toBeNull();
     const c = await mk({ stopReason: 'error', error: 'boom', structured: answer });
-    await reviewTask(c.runs, c.ctx, 'flantastic-4:7', undefined, 'owner');
+    await reviewTask(c.runs, c.ctx, 'flantastic-4:7');
     await wait(60);
     expect(await reviewOf(c.ctx, { path: 'tasks/flantastic-4.md', line: 7 })).toBeNull();
   });

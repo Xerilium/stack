@@ -604,7 +604,7 @@ export const ROUTES: Route[] = [
       const agents = agentsOf(c);
       ownerOnly(c, 'Only the owner can ask for a review');
       const b = validate<{ ref: ReturnType<typeof parseRef>; agent?: string }>(await readBody(c.req), REVIEW_BODY.schema, REVIEW_BODY.required);
-      return json(202, await reviewTask(agents, c.life, formatRef(b.ref!), b.agent, caller(c.req).actor));
+      return json(202, await reviewTask(agents, c.life, formatRef(b.ref!), b.agent));
     },
   },
   {

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { actionsFor, deadline, freshness, ifSilent, splitTop, type Action, type AskItem } from './asks';
 import { blockedHelp } from './notify';
 import type { Asks } from './useAsks';
+import type { ComponentChildren } from 'preact';
 import './asks.css';
 
 const TOP = 5;
@@ -75,7 +76,7 @@ function Btn({ a, act, run, panel }: { a: Action; act: AskItem; run: (x: Action)
   return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd aria-hidden="true">{key}</kbd>}</button>;
 }
 
-function Card({ a, n, total, asks, run }: { a: AskItem; n: number; total: number; asks: Asks; run: (x: Action) => void }) {
+function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: number; asks: Asks; run: (x: Action) => void; talk?: TalkSlot }) {
   const actions = actionsFor(a);
   const silent = ifSilent(a);
   const primary = actions.find((x) => x.primary);
@@ -93,6 +94,7 @@ function Card({ a, n, total, asks, run }: { a: AskItem; n: number; total: number
           <span class="of" aria-hidden="true">{n} of {total}</span>
           {a.project && <span class="proj">{a.project}</span>}
           <span class="from">{a.from}</span>
+          {talk?.chip(a)}
           {asks.fresh.has(a.key) && <span class="new">New</span>}
           <span class="grow" />
           <DeadlineChip by={a.by} now={asks.now} long />
@@ -100,6 +102,7 @@ function Card({ a, n, total, asks, run }: { a: AskItem; n: number; total: number
         <h2 class="ask-title">{a.ask}</h2>
         {a.why && <p class="ask-why">{a.why}</p>}
         {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
+        {talk?.render(a)}
         <dl class="ask-facts">
           {showRec && <div><dt>Recommend</dt><dd>{a.recommend}</dd></div>}
           <div class={silent.waits ? 'waits' : ''}><dt class="sr-only">Default</dt><dd class="silent">{Icon.hourglass}<span>{silent.text}</span></dd></div>
@@ -145,8 +148,10 @@ function Skeleton() {
 }
 
 export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; toggle: () => void }
+/** AI on the ask card: the agent chip in the eyebrow, the composer under the ask, `a` to open it. @req FR:agent-team/web.anything */
+export interface TalkSlot { chip: (a: AskItem) => ComponentChildren; render: (a: AskItem) => ComponentChildren; open: (a: AskItem) => void; isOpen: () => boolean; close: () => void }
 
-export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify?: NotifyCtl; offline?: boolean }) {
+export function AsksView({ asks, notify, offline = false, talk }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; talk?: TalkSlot }) {
   const { items, cursor } = asks;
   const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
   const [openSent, setOpenSent] = useState(false);
@@ -175,6 +180,7 @@ export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'Escape' && talk?.isOpen()) { e.preventDefault(); talk.close(); return; }
       if (e.key === 'Escape' && asks.panelRef.current !== 'none') { e.preventDefault(); asks.setPanel('none'); return; }
       if (isTyping(e.target)) return;
       const k = e.key;
@@ -193,6 +199,7 @@ export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify
         if (c) { e.preventDefault(); void asks.defer(a, c.at, c.label); }
         return;
       }
+      if (k === 'a' && talk) { e.preventDefault(); talk.open(a); return; }
       if (k === 'z') { e.preventDefault(); asks.setPanel('defer'); return; }
       if (k === 'r') { e.preventDefault(); asks.setPanel('reply'); return; }
       if (k === 'e' && a.detail) { e.preventDefault(); asks.setDetail(!asks.detail); return; }
@@ -239,12 +246,12 @@ export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify
       )}
       {(items.length > 0 || ghosts.length > 0) && (
         <ol class="asks" aria-label="Asks, highest score first">
-          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.total} asks={asks} run={run} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} />))}
+          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.total} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} />))}
           {ghosts.map((g) => <Row key={`gone-${g.key}`} a={g} n={g.rank ?? 0} now={asks.now} fresh={false} leaving onPick={() => undefined} />)}
         </ol>
       )}
       {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more <kbd aria-hidden="true">m</kbd></button>}
-      {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · u undo</p>}
+      {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · a agent · u undo</p>}
       {(asks.sent.length > 0 || asks.snoozed.length > 0) && (
         <footer class="asks-foot">
           {asks.sent.length > 0 && (

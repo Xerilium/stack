@@ -82,7 +82,7 @@ export async function startAgentRun(runs: AgentRuns, ctx: LifecycleContext, i: A
 }
 
 /** Starts a read-only review; the verdict and its needs land when the run ends. @req FR:agent-team/review.run */
-export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug: string | undefined, _actor: string): Promise<{ runId: string; sessionId: string | null; agent: string }> {
+export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string): Promise<{ runId: string; sessionId: string | null; agent: string }> {
   const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug });
   if (!ref || !c) throw new LifecycleError('Bad ref');
   const title = oneLine(`${agent.name} · review · ${c.title} · ${refText}`, 120);
