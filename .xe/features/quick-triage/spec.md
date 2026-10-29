@@ -37,6 +37,6 @@ Mirror the triage Michael did by hand in chat (Oct 29): the agent asks "what is 
 ### FR:web: The stepper
 
 - **FR:web.stepper** (P1): In Needs you a flow shows as one card: eyebrow `Quick triage · n of m · <from>`, a progress bar, the question, `why` under it, the suggested default as the primary (`Enter`), options `1-4` (each with what it will do, from `applies`, in small text), a one-line box for `answer`. After an answer the next question of the flow takes its place (no cursor jump); the toast says what changed (`Set priority: Critical · Pay bills`)
-- **FR:web.undo** (P1): `u` or the toast's Undo (8 s) retracts the answer and reverses a reversible action (`set` to the previous value, `complete` to incomplete, `suspend`/`start` to resume). After `skip`, `due`, `note` the toast says `Applied` without Undo
-- **FR:web.done** (P1): After the last question: `Triage done · n updated`, one line per change (row title, what changed, `Enter` opens the row), then the list returns to normal
+- **FR:web.undo** (P1): The toast says what changed (`Priority: Critical · Pay bills first?`). When nothing was applied, Undo (8 s, `u`) takes the answer back as for any ask; when an action was applied the toast offers no Undo (the row shows the change and can be edited there)
+- **FR:web.done** (P1): After the last question of a flow the toast reads `Triage done · n answered` and the list returns to normal
 - **FR:web.mobile** (P1): On a phone the options stack in the thumb zone (44 px each, default first); the question stays readable without scrolling at 390 px

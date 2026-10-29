@@ -18,7 +18,7 @@ const NAMES: Record<string, Record<string, string>> = { priority: PRIORITY, stat
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** What an action did, in words: `Priority: Critical · Pay bills`. */
-export function changeText(action: string, title: string): string {
+export function changeText(action: string, title = ''): string {
   const t = action.trim();
   const [verb, ...rest] = t.split(/\s+/);
   const arg = rest.join(' ');
@@ -38,7 +38,7 @@ export function changeText(action: string, title: string): string {
   else if (verb === 'resume') what = 'Resumed';
   else if (verb === 'note') what = 'Note added';
   else what = cap(verb);
-  return `${what} · ${title}`;
+  return title ? `${what} · ${title}` : what;
 }
 
 /** Stack can take these back; skip, due and note stay. @req FR:quick-triage/web.undo */
