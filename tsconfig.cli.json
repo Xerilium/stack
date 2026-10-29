@@ -6,6 +6,15 @@
     "module": "commonjs",
     "declaration": true
   },
-  "include": ["src/cli/**/*", "src/core/**/*", "src/api/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": [
+    "src/cli/**/*",
+    "src/core/**/*",
+    "src/api/**/*",
+    "src/agents/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts"
+  ]
 }

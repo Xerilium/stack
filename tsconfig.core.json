@@ -5,6 +5,14 @@
     "rootDir": "./src",
     "declaration": true
   },
-  "include": ["src/core/**/*", "src/email/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": [
+    "src/core/**/*",
+    "src/email/**/*",
+    "src/agents/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts"
+  ]
 }

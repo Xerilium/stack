@@ -39,6 +39,8 @@ describe('hash state', () => {
     expect(buildHash('home', F())).toBe('#/home');
     expect(parseHash('')).toEqual({ view: 'home', filters: F() });
     expect(parseHash('#/today')).toEqual({ view: 'today', filters: F() });
+    expect(parseHash('#/sessions')).toEqual({ view: 'sessions', filters: F() });
+    expect(parseHash('#/agents').view).toBe('sessions');
     expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'home', filters: F() });
     expect(parseHash('#/list?state=done').filters.state).toBe('done');
   });
