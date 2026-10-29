@@ -64,7 +64,7 @@ export function sessionState(s: { lastActive: number | string; running: boolean;
   if (s.needsYou) return 'needs-you';
   if (s.running) return 'running';
   const age = now.getTime() - (typeof s.lastActive === 'number' ? s.lastActive : Date.parse(s.lastActive));
-  if (s.active || age < activeMs) return 'active';
+  if (s.active ?? age < activeMs) return 'active';
   return age < DAY ? 'idle' : 'stale';
 }
 

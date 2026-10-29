@@ -65,6 +65,8 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
   const sdk = () => (sdkP ??= dynamicImport('@anthropic-ai/claude-agent-sdk'));
   /** Sessions this process wrote and when: their transcript is fresh because of us, not another client. */
   const ownWrites = new Map<string, number>();
+  /** How long after a run ends its transcript may still be written by the CLI (summary, cost record) and stay "ours". */
+  const OWN_WRITE_MS = 30_000;
   const runs = new Map<string, { sessionId: string | null; ac: AbortController }>();
   let seq = 0;
 
@@ -72,13 +74,15 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
 
   /** The list comes from the store index (fast, cached); the SDK is never asked to parse every transcript. */
   async function listSessions(q: { limit?: number; sinceMs?: number } = {}): Promise<Session[]> {
-    const own = (s: Session) => { const t = ownWrites.get(s.id); return t !== undefined && Date.parse(s.lastActive) <= t + 5000; };
+    const own = (s: Session) => { const t = ownWrites.get(s.id); return t !== undefined && Date.parse(s.lastActive) <= t + OWN_WRITE_MS; };
     return store.list({ limit: q.limit ?? (q.sinceMs !== undefined ? 5000 : 200), sinceMs: q.sinceMs }).map((s) => (s.active && own(s) ? { ...s, active: false } : s));
   }
 
   async function getMessages(id: string, q: { limit?: number } = {}): Promise<Turn[]> {
     // The SDK pages from the start; the drawer wants the end, so read everything and keep the last turns.
     const rows = await (await sdk()).getSessionMessages(id);
+    // The SDK resolves `[]` for an id it does not know; an empty transcript the store knows is still a session.
+    if (rows.length === 0 && !store.entries().some((e) => e.id === id)) throw new Error(`Session not found: ${id}`);
     const out: Turn[] = [];
     for (const r of rows) {
       const m = r.message as { role?: string; content?: unknown } | undefined;

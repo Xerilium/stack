@@ -64,6 +64,7 @@ describe('helpers', () => {
     expect(sessionState({ lastActive: ms(1), running: true, needsYou: false }, NOW)).toBe('running');
     expect(sessionState({ lastActive: ms(1), running: true, needsYou: true }, NOW)).toBe('needs-you');
     expect(sessionState({ lastActive: ms(3), running: false, needsYou: false }, NOW)).toBe('idle');
+    expect(sessionState({ lastActive: ms(1), running: false, needsYou: false, active: false }, NOW)).toBe('idle');
     expect(sessionState({ lastActive: ms(60 * 25), running: false, needsYou: false }, NOW)).toBe('stale');
   });
   it('toolKind maps Claude tools to ACP kinds', () => {
@@ -93,6 +94,11 @@ describe('createSdkDriver', () => {
     expect(m.map((x) => [x.role, x.text])).toEqual([
       ['user', 'Fix the parser'], ['assistant', 'Looking.'], ['assistant', '⚙ Bash: git status --short'], ['assistant', 'Done. (redacted) leaked.'],
     ]);
+  });
+  it('getMessages: an id the SDK and the store do not know is not found; an empty transcript the store knows is a session', async () => {
+    const d = createSdkDriver({ sdk: fakeSdk({ getSessionMessages: async () => [] }), configDir: home, now: () => NOW });
+    await expect(d.getMessages('a1b2c3d4-0000-0000-0000-00000000ffff')).rejects.toThrow(/not found/i);
+    expect(await d.getMessages('a1b2c3d4-0000-0000-0000-000000000002')).toEqual([]);
   });
   it('prompt streams ACP-shaped updates and routes the permission request through onPermission', async () => {
     const sdk = fakeSdk();
