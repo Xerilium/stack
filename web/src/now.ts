@@ -98,11 +98,11 @@ export function actionable(t: Task, now = new Date()): boolean {
 }
 
 const REASON = /^(after|pending|blocked on|blocked by|until|waiting on|waiting for)\s+(.*)$/i;
-const NOT_A_NAME = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d|\d{1,2}(?::\d\d)?\s*(?:am|pm)?$)/i;
+const NOT_A_NAME = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d|(?:\d{1,2}(?::\d\d)?\s*(?:am|pm)?|(?:next |this )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|today|tonight|tomorrow|lunch|noon|eod|eow|end of (?:day|week|month)|(?:next|this) (?:week|month)|weekend)$)/i;
 /** Title key; same steps as titleKey in the core scorer so both resolve the same names. */
 const keyOf = (text: string): string => text.replace(/--.*$/, ' ')
-  .replace(/(?:📅|⏰|💤)\s*[^:]*:/gu, ' ').replace(/🔄\s*[^:]*:/gu, ' ')
-  .replace(/[\p{Extended_Pictographic}️‍]/gu, ' ').replace(/[`*_]/g, '')
+  .replace(/(?:\u{1F4C5}|\u23F0|\u{1F4A4})\s*[^:]*:/gu, ' ').replace(/\u{1F504}\s*[^:]*:/gu, ' ')
+  .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ').replace(/[`*_]/g, '')
   .replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.:;,]+$/, '').replace(/^the\s+/, '').trim();
 
 /** Names a row says it waits on (the reason after `--`, up to a `;`); mirrors blockedOn in the core scorer. @req FR:web-app/now.blockers */
@@ -148,7 +148,8 @@ function parents(all: Task[]): Map<string, string> {
 
 type Key = [number, number, number];
 const cmp = (a: Key, b: Key) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
-const parkedRow = (t: Task, now: Date): boolean => { const r = parseRow(t.text); return !!r.suspend || !!(r.start && (dueDays(r.start, now) ?? 0) > 0) || /🅿️?/u.test(t.text) || (dueDays(r.due, now) ?? 0) > HORIZON_DAYS; };
+/** Held for a reason other than ⛔️ (any 🅿️, 💤, or ⏰ on the row); same test as the core scorer. */
+const held = (t: Task): boolean => /\u{1F17F}|\u{1F4A4}|\u23F0/u.test(t.text);
 const rowKey = (t: Task, now: Date): Key => {
   const r = parseRow(t.text);
   const d = dueDays(r.due, now);
@@ -173,7 +174,8 @@ export function rankNow(tasks: Task[], now = new Date(), all: Task[] = tasks): T
     for (let p = parentOf.get(ref); p && !out.includes(p); p = parentOf.get(p)) out.push(p);
     return out;
   };
-  const parked = (t: Task): boolean => [t.ref, ...ancestors(t.ref)].some((r) => { const x = byRef.get(r); return !!x && parkedRow(x, now); });
+  /** Could not lend: held on the row or an ancestor, or due beyond the horizon (core: eligible). */
+  const parked = (t: Task): boolean => (dueDays(parseRow(t.text).due, now) ?? 0) > HORIZON_DAYS || [t.ref, ...ancestors(t.ref)].some((r) => { const x = byRef.get(r); return !!x && held(x); });
   const lent = (ref: string): Key | undefined => {
     let best: Key | undefined;
     const seen = new Set<string>([ref]);

@@ -375,13 +375,13 @@ const dueTier = (days: number | null): number => (days === null ? 0 : days < -ST
 // ---- blockers
 
 const REASON = /^(after|pending|blocked on|blocked by|until|waiting on|waiting for)\s+(.*)$/i;
-/** A date or time ("Until Oct 30", "after 5pm") is not a task name. */
-const NOT_A_NAME = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d|\d{1,2}(?::\d\d)?\s*(?:am|pm)?$)/i;
+/** A date, day, or time ("Until Oct 30", "after lunch", "until Monday") is not a task name. */
+const NOT_A_NAME = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d|(?:\d{1,2}(?::\d\d)?\s*(?:am|pm)?|(?:next |this )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|today|tonight|tomorrow|lunch|noon|eod|eow|end of (?:day|week|month)|(?:next|this) (?:week|month)|weekend)$)/i;
 
 /** Row title without markers, dates, reason, emoji, or a leading "the": what another row's reason can name. */
 function titleKey(text: string): string {
   return text.replace(/--.*$/, ' ')
-    .replace(/(?:📅|⏰|💤)\s*[^:]*:/gu, ' ').replace(/🔄\s*[^:]*:/gu, ' ')
+    .replace(/(?:\u{1F4C5}|\u23F0|\u{1F4A4})\s*[^:]*:/gu, ' ').replace(/\u{1F504}\s*[^:]*:/gu, ' ')
     .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ').replace(/[`*_]/g, '')
     .replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.:;,]+$/, '').replace(/^the\s+/, '').trim();
 }

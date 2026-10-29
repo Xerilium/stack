@@ -102,3 +102,20 @@ describe('blocker inheritance: subtasks, sections, plan', () => {
     expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
   });
 });
+
+describe('blocker eligibility matches core', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, depth = 0): Task => ({ ref: `a:${text}`, text, project: 'a', section: '🔄 Active', done: false, depth, notes: [] });
+  it('any ⏰ or 💤 lends nothing, and a far-future blocked row holds its subtasks back too (as core)', () => {
+    for (const lender of ['🚨 ⛔️ ⏰ Oct 1: X -- After gate', '🚨 ⛔️ 💤 X -- After gate']) {
+      const rows = [row('gate'), row('🔺 plain'), row(lender)];
+      expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+    }
+    const rows = [row('gate'), row('🔺 plain'), row('⛔️ 📅 Mar 1, 2027: X -- After gate'), row('🚨 sub', 1)];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+  });
+  it('time words are not names', () => {
+    const rows = [row('Monday standup'), row('🔺 plain'), row('🚨 ⛔️ X -- Until Monday')];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'Monday standup']);
+  });
+});

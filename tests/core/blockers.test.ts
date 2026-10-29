@@ -162,3 +162,11 @@ describe('cycles: through the loop', () => {
     expect(r[0].breakdown.inheritedFrom).toBe(p.tasks[3].id);
   });
 });
+
+describe('blockedOn: time words are not names', () => {
+  it('drops days and relative times', () => {
+    for (const r of ['Until Monday', 'After lunch', 'Until tomorrow', 'Until next week', 'Until the weekend', 'After EOD'])
+      expect(blockedOn(`⛔️ X -- ${r}`)).toEqual([]);
+    expect(blockedOn('⛔️ X -- After lunch menu')).toEqual(['lunch menu']);
+  });
+});
