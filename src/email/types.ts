@@ -2,6 +2,10 @@
  * Email triage contracts. Types only: everything that touches the network is injected, so a run is testable offline.
  * @req FR:email-triage/ask.reply @req FR:email-triage/ask.decide @req FR:email-triage/ask.quiet
  */
+import type { Violation } from './voice/score';
+
+/** Voice check of a draft; `profile` is false when no learned voice was loaded. @req FR:email-voice/score.ask */
+export interface DraftVoice { score: number; pass: boolean; violations: Violation[]; profile: boolean }
 
 export interface Address { name?: string; address: string }
 
@@ -14,6 +18,8 @@ export interface Message {
   /** ISO date-time. */
   receivedAt: string;
   bodyPreview: string;
+  /** Plain-text body, when fetched for drafting. Untrusted data. */
+  body?: string;
   /** Outlook web link to the message. */
   webLink?: string;
   /** Internet headers, when fetched. Names are matched case-insensitively. */
@@ -51,7 +57,7 @@ export interface TriageResult {
   recommend?: string;
   vip?: boolean;
   /** The draft in the mailbox with its Outlook web link; `reused` when it was already there from an earlier pass and nothing new was created. */
-  draft?: { text: string; webLink: string; reused?: boolean };
+  draft?: { text: string; webLink: string; reused?: boolean; voice?: DraftVoice };
 }
 
 export interface MailProvider {
@@ -66,5 +72,6 @@ export interface Classifier {
 }
 
 export interface Drafter {
-  draft(message: Message): Promise<string>;
+  /** `feedback` lists voice-check violations of the previous attempt. @req FR:email-voice/score.redraft */
+  draft(message: Message, opts?: { feedback?: string[] }): Promise<string>;
 }

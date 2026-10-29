@@ -6,7 +6,8 @@ import type { LifecycleContext } from '../core/lifecycle';
 import { markDraft } from './draft';
 import { prefilter, type RulesConfig } from './rules';
 import { existingDraft, newSummary, recordResult, resolveAsk, tally, type RunSummary } from './to-ask';
-import { TRIAGE_CLASSES, type Classifier, type Drafter, type MailProvider, type Message, type TriageResult } from './types';
+import { TRIAGE_CLASSES, type Classifier, type Drafter, type DraftVoice, type MailProvider, type Message, type TriageResult } from './types';
+import { DEFAULT_PROFILE, redraftFeedback, scoreDraft, type VoiceProfile } from './voice';
 
 export interface RunDeps {
   ctx: LifecycleContext;
@@ -18,6 +19,23 @@ export interface RunDeps {
   /** Project the asks belong to (the mailbox). */
   project?: string;
   cursor?: string;
+  /** The owner's learned voice; without it drafts are checked against the cliche list only. */
+  voice?: VoiceProfile;
+}
+
+/** Drafts, checks the voice, and redrafts once with the violations when the first draft fails; the better score wins, a tie keeps the redraft. @req FR:email-voice/score.redraft */
+async function voicedDraft(drafter: Drafter, m: Message, profile: VoiceProfile | undefined, summary: RunSummary): Promise<{ text: string; voice: DraftVoice }> {
+  const p = profile ?? DEFAULT_PROFILE;
+  let text = await drafter.draft(m);
+  let s = scoreDraft(text, p);
+  if (!s.pass) {
+    summary.redrafts++;
+    // A failed redraft keeps the first draft; the voice line tells the owner it needs edits.
+    const again = await drafter.draft(m, { feedback: redraftFeedback(s.violations) }).catch(() => null);
+    const s2 = again === null ? null : scoreDraft(again, p);
+    if (again !== null && s2 && s2.score >= s.score) { text = again; s = s2; }
+  }
+  return { text, voice: { ...s, profile: !!profile } };
 }
 
 const clamp = (n: unknown, lo: number, hi: number) => (typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo);
@@ -44,8 +62,9 @@ async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<Tria
     const prior = await existingDraft(d.ctx, m);
     if (prior) r.draft = { text: prior.text, webLink: prior.webLink, reused: true };
     else {
-      const text = markDraft(await d.drafter.draft(m));
-      r.draft = { text, webLink: (await d.provider.createDraft(m.id, text)).webLink };
+      const { text, voice } = await voicedDraft(d.drafter, m, d.voice, summary);
+      const marked = markDraft(text);
+      r.draft = { text: marked, webLink: (await d.provider.createDraft(m.id, marked)).webLink, voice };
     }
   }
   tally(summary, r, 'model');
