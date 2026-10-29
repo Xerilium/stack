@@ -46,6 +46,26 @@ describe('stack graph', () => {
     expect(after.out).toContain('not signed in');
     expect((await stack('graph', 'logout', '--cache', cache)).code).toBe(0);
   });
+  it('login --json prints only JSON on stdout (the sign-in message goes to stderr)', async () => {
+    const cache = join(mkdtempSync(join(tmpdir(), 'graph-cli-')), 'graph-token.json');
+    replies([
+      { device_code: 'dc', user_code: 'ABCD', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 0, message: 'enter ABCD' },
+      { access_token: 'secret-at', refresh_token: 'secret-rt', expires_in: 3600, scope: 'Calendars.Read offline_access' },
+    ]);
+    const r = await stack('graph', 'login', '--client-id', CLIENT, '--cache', cache, '--json');
+    expect(JSON.parse(r.out)).toMatchObject({ signedIn: true });
+    expect(r.err).toContain('enter ABCD');
+  });
+  it('login refuses a grant with an unsafe scope and saves nothing', async () => {
+    const cache = join(mkdtempSync(join(tmpdir(), 'graph-cli-')), 'graph-token.json');
+    replies([
+      { device_code: 'dc', user_code: 'ABCD', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 0, message: 'enter ABCD' },
+      { access_token: 'secret-at', refresh_token: 'secret-rt', expires_in: 3600, scope: 'Calendars.Read Mail.Send offline_access' },
+    ]);
+    const r = await stack('graph', 'login', '--client-id', CLIENT, '--cache', cache);
+    expect(r.code).not.toBe(0);
+    expect(existsSync(cache)).toBe(false);
+  });
   it('login needs a client id and refuses unknown features', async () => {
     const cache = join(mkdtempSync(join(tmpdir(), 'graph-cli-')), 'graph-token.json');
     expect((await stack('graph', 'login', '--cache', cache)).code).toBe(2);

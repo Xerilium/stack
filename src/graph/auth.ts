@@ -4,6 +4,7 @@
  * @req FR:graph-signin/scope.sets @req FR:graph-signin/scope.never @req FR:graph-signin/flow.start @req FR:graph-signin/flow.poll @req FR:graph-signin/flow.host
  * @req FR:graph-signin/cache.file @req FR:graph-signin/cache.provider
  */
+import { randomBytes } from 'crypto';
 import { existsSync, promises as fs, statSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join, resolve } from 'path';
@@ -22,10 +23,12 @@ export function scopesFor(features: Feature[]): string[] {
   return [...out.sort(), 'offline_access'];
 }
 
-const UNSAFE = /^(?:Mail\.Send|Calendars\.ReadWrite)|\.default$|All|Shared/;
-/** Throws for any scope that could send mail, write a calendar, or reach beyond the owner's own mailbox. @req FR:graph-signin/scope.never */
+/** The only scopes Stack accepts (case-insensitive, Graph resource only): the feature scopes plus sign-in basics. Anything else, including send, settings, and other resources, is refused. */
+const ALLOWED = new Set(['calendars.read', 'mail.read', 'mail.readwrite', 'offline_access', 'openid', 'profile', 'email', 'user.read']);
+const bare = (s: string) => s.toLowerCase().replace(/^https:\/\/graph\.microsoft\.com\//, '');
+/** Throws for any scope outside the allowlist, so nothing can send mail, write a calendar, or change mailbox settings. @req FR:graph-signin/scope.never */
 export function assertSafeScopes(scopes: string[]): void {
-  for (const s of scopes) if (typeof s !== 'string' || UNSAFE.test(s.replace(/^https:\/\/graph\.microsoft\.com\//, ''))) throw new Error(`Refusing Graph scope: ${String(s)}`);
+  for (const s of scopes) if (typeof s !== 'string' || !ALLOWED.has(bare(s))) throw new GraphSignInError('unsafe_scope');
 }
 
 /** Sign-in failed; `code` is the OAuth error code only (no response body, no token). */
@@ -77,12 +80,13 @@ export async function startDeviceCode(o: SignInOptions & { scopes: string[] }): 
 }
 
 export interface Granted { accessToken: string; refreshToken: string; expiresAt: number; scopes: string[] }
-const STOP = new Set(['access_denied', 'expired_token', 'authorization_declined', 'bad_verification_code']);
 
+/** Checks what was actually granted: Microsoft grants every scope already consented for the app, so an unsafe one must be refused here, before anything is saved. */
 function granted(b: Record<string, unknown>, now: number): Granted {
   if (typeof b.access_token !== 'string') throw new GraphSignInError('server_error');
   if (typeof b.refresh_token !== 'string') throw new GraphSignInError('no_refresh_token');
   const scopes = typeof b.scope === 'string' ? b.scope.split(/\s+/).filter(Boolean) : [];
+  assertSafeScopes(scopes);
   return { accessToken: b.access_token, refreshToken: b.refresh_token, expiresAt: now + (Number(b.expires_in) || 3600) * 1000, scopes };
 }
 
@@ -101,7 +105,8 @@ export async function pollDeviceCode(o: SignInOptions & { code: DeviceCode; slee
     const code = errorCode(r.body);
     if (code === 'authorization_pending') continue;
     if (code === 'slow_down') { interval += 5; continue; }
-    throw new GraphSignInError(STOP.has(code) ? code : code);
+    // access_denied, authorization_declined, expired_token, bad_verification_code, and anything unexpected end the flow.
+    throw new GraphSignInError(code);
   }
 }
 
@@ -135,10 +140,15 @@ export class FileTokenCache {
   }
   async write(t: CachedToken): Promise<void> {
     await fs.mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-    const tmp = `${this.path}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(t), { mode: 0o600 });
-    await fs.chmod(tmp, 0o600);
-    await fs.rename(tmp, this.path);
+    const tmp = `${this.path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+    try {
+      await fs.writeFile(tmp, JSON.stringify(t), { mode: 0o600, flag: 'wx' });
+      await fs.chmod(tmp, 0o600);
+      await fs.rename(tmp, this.path);
+    } catch (e) {
+      await fs.rm(tmp, { force: true });
+      throw e;
+    }
   }
   async clear(): Promise<void> { await fs.rm(this.path, { force: true }); }
 }
@@ -146,13 +156,13 @@ export class FileTokenCache {
 const SKEW = 5 * 60_000;
 
 /** A token function for `graphTransport`: cached while fresh, refreshed (once, shared) when not. @req FR:graph-signin/cache.provider */
-export function graphToken(cache: FileTokenCache, o: { fetch?: typeof fetch; now?: () => number } = {}): () => Promise<string> {
+export function graphToken(cache: FileTokenCache, o: { fetch?: typeof fetch; now?: () => number } = {}): (opts?: { force?: boolean }) => Promise<string> {
   const now = o.now ?? (() => Date.now());
   let inflight: Promise<string> | null = null;
-  const refresh = async (): Promise<string> => {
+  const refresh = async (force: boolean): Promise<string> => {
     const t = await cache.read();
     if (!t) throw new GraphSignInRequired();
-    if (t.accessToken && (t.expiresAt ?? 0) - now() > SKEW) return t.accessToken;
+    if (!force && t.accessToken && (t.expiresAt ?? 0) - now() > SKEW) return t.accessToken;
     assertSafeScopes(t.scopes);
     const r = await post({ tenant: t.tenant, clientId: t.clientId, fetch: o.fetch }, 'token', {
       grant_type: 'refresh_token', client_id: t.clientId, refresh_token: t.refreshToken, scope: t.scopes.join(' '),
@@ -162,8 +172,9 @@ export function graphToken(cache: FileTokenCache, o: { fetch?: typeof fetch; now
     await cache.write({ ...t, accessToken: g.accessToken, refreshToken: g.refreshToken, expiresAt: g.expiresAt });
     return g.accessToken;
   };
-  return () => {
-    if (!inflight) inflight = refresh().finally(() => { inflight = null; });
+  // `force` is for a 401 from Graph: the cached token was revoked before it expired.
+  return (opts) => {
+    if (!inflight) inflight = refresh(!!opts?.force).finally(() => { inflight = null; });
     return inflight;
   };
 }

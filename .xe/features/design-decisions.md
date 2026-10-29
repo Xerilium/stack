@@ -202,7 +202,7 @@
 
 ## Graph sign-in is a device code flow with a local token file
 
-**Decision**: The owner signs in once with `stack graph login` (device code, public client, no secret). Scopes are read-only per feature (`Calendars.Read`, `Mail.Read`, `Mail.ReadWrite` for drafts) plus `offline_access`; send and write scopes are refused in code. The refresh token lives in `~/.config/stack/graph-token.json` (0600), never in a task repo.
+**Decision**: The owner signs in once with `stack graph login` (device code, public client, no secret). Scopes come from an allowlist per feature (`Calendars.Read`, `Mail.Read`, and `Mail.ReadWrite` for drafts, which is not read-only; the email guard limits writes to reply drafts) plus sign-in basics; every other scope, requested or granted, is refused in code. The refresh token lives in `~/.config/stack/graph-token.json` (0600), never in a task repo.
 
 **Date**: 2026-10-29
 

@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { assertSafeScopes, FileTokenCache, graphToken, GraphSignInError, GraphSignInRequired, pollDeviceCode, scopesFor, startDeviceCode, type CachedToken } from '../../src/graph/auth';
@@ -29,8 +29,8 @@ describe('scopes', () => {
 // @req FR:graph-signin/scope.never
 describe('never send or write', () => {
   it('refuses send, write, shared, and .default scopes', () => {
-    for (const s of ['Mail.Send', 'Mail.Send.Shared', 'Calendars.ReadWrite', 'Calendars.ReadWrite.Shared', 'https://graph.microsoft.com/.default', 'Mail.Read.All', 'Mail.Read.Shared']) expect(() => assertSafeScopes(['offline_access', s])).toThrow();
-    expect(() => assertSafeScopes(['Calendars.Read', 'Mail.Read', 'Mail.ReadWrite', 'offline_access'])).not.toThrow();
+    for (const s of ['Mail.Send', 'mail.send', 'Mail.Send.Shared', 'Calendars.ReadWrite', 'Calendars.ReadWrite.Shared', 'https://graph.microsoft.com/.default', 'Mail.Read.All', 'Mail.Read.Shared', 'MailboxSettings.ReadWrite', 'https://outlook.office.com/Mail.Send', 'https://outlook.office.com/Mail.Read', 'Files.ReadWrite']) expect(() => assertSafeScopes(['offline_access', s])).toThrow();
+    expect(() => assertSafeScopes(['Calendars.Read', 'Mail.Read', 'Mail.ReadWrite', 'offline_access', 'openid', 'profile', 'email', 'User.Read', 'https://graph.microsoft.com/Calendars.Read', 'calendars.read'])).not.toThrow();
   });
 });
 
@@ -77,6 +77,10 @@ describe('device code poll', () => {
     let t = 0;
     const slow = fakeLogin(Array.from({ length: 500 }, () => ({ error: 'authorization_pending' })));
     await expect(pollDeviceCode({ tenant: TENANT, clientId: CLIENT, code: { ...dc, expiresIn: 30 }, fetch: slow.fetch, sleep: async (s) => { t += s * 1000; }, now: () => t })).rejects.toMatchObject({ code: 'expired_token' });
+  });
+  it('a grant that includes an unsafe scope is refused, so no such token is ever saved', async () => {
+    const f = fakeLogin([{ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: 'Calendars.Read Mail.Send offline_access' }]);
+    await expect(pollDeviceCode({ tenant: TENANT, clientId: CLIENT, code: dc, fetch: f.fetch, sleep: async () => undefined, now: () => 0 })).rejects.toMatchObject({ code: 'unsafe_scope' });
   });
   it('a grant without a refresh token is an error', async () => {
     const f = fakeLogin([{ access_token: 'at', expires_in: 3600, scope: 'Calendars.Read' }]);
@@ -142,6 +146,36 @@ describe('access token provider', () => {
     const cache = new FileTokenCache(join(d, 'graph-token.json'));
     await cache.write(token({ expiresAt: 0 }));
     await expect(graphToken(cache, { fetch: fakeLogin([{ error: 'invalid_grant' }]).fetch, now: () => 1 })()).rejects.toBeInstanceOf(GraphSignInRequired);
+  });
+  it('interaction_required needs a new sign-in; other errors keep their code; a refresh without a new refresh token keeps the old one', async () => {
+    const d = tmp();
+    const cache = new FileTokenCache(join(d, 'graph-token.json'));
+    await cache.write(token({ expiresAt: 0 }));
+    await expect(graphToken(cache, { fetch: fakeLogin([{ error: 'interaction_required' }]).fetch, now: () => 1 })()).rejects.toBeInstanceOf(GraphSignInRequired);
+    await expect(graphToken(cache, { fetch: fakeLogin([{ error: 'temporarily_unavailable' }]).fetch, now: () => 1 })()).rejects.toMatchObject({ code: 'temporarily_unavailable' });
+    expect(await graphToken(cache, { fetch: fakeLogin([{ access_token: 'at9', expires_in: 3600, scope: 'Calendars.Read offline_access' }]).fetch, now: () => 1 })()).toBe('at9');
+    expect(await cache.read()).toMatchObject({ refreshToken: 'rt1', accessToken: 'at9' });
+  });
+  it('a refresh that grants an unsafe scope is refused and nothing is saved', async () => {
+    const d = tmp();
+    const cache = new FileTokenCache(join(d, 'graph-token.json'));
+    await cache.write(token({ expiresAt: 0 }));
+    await expect(graphToken(cache, { fetch: fakeLogin([{ access_token: 'bad', refresh_token: 'rt2', expires_in: 3600, scope: 'Calendars.Read Mail.Send' }]).fetch, now: () => 1 })()).rejects.toMatchObject({ code: 'unsafe_scope' });
+    expect(await cache.read()).toMatchObject({ refreshToken: 'rt1', accessToken: 'at1' });
+  });
+  it('force refreshes even when the cached token looks fresh (a 401 from Graph)', async () => {
+    const d = tmp();
+    const cache = new FileTokenCache(join(d, 'graph-token.json'));
+    await cache.write(token({ expiresAt: 10_000_000 }));
+    const f = fakeLogin([{ access_token: 'at3', refresh_token: 'rt3', expires_in: 3600, scope: 'Calendars.Read offline_access' }]);
+    const get = graphToken(cache, { fetch: f.fetch, now: () => 1 });
+    expect(await get()).toBe('at1');
+    expect(await get({ force: true })).toBe('at3');
+  });
+  it('writes leave no temp file behind', async () => {
+    const d = tmp();
+    await new FileTokenCache(join(d, 'graph-token.json')).write(token());
+    expect(readdirSync(d)).toEqual(['graph-token.json']);
   });
   it('refuses to refresh a cache holding unsafe scopes', async () => {
     const d = tmp();
