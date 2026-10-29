@@ -94,9 +94,8 @@ describe('home round 3', () => {
   it('"only have 5 min": up to 3 ranked active tasks of 15 minutes or less that are not already on screen', () => {
     const h = homeOf({ tasks, projects, next: { ref: 'alpha:1', text: tasks[1].text, project: 'alpha', score: 9 }, now: at, minutesLeft: 240 });
     const shown = new Set([h.one?.task.ref, ...h.next.map((n) => n.task.ref)]);
-    expect(h.five.length).toBeGreaterThan(0);
-    expect(h.five.length).toBeLessThanOrEqual(3);
-    for (const f of h.five) { expect(f.minutes).toBeLessThanOrEqual(15); expect(shown.has(f.task.ref)).toBe(false); expect(f.task.ref).not.toBe('beta:3'); }
+    expect(h.five.map((f) => f.task.ref)).toEqual(['beta:2']); // alpha:2/3 are Up next already; beta:3 is backlog
+    for (const f of h.five) { expect(f.minutes).toBeLessThanOrEqual(15); expect(shown.has(f.task.ref)).toBe(false); }
   });
 });
 
