@@ -164,3 +164,18 @@ describe('round 2 regressions', () => {
     expect(redactExample('Call Jordan at +44 20 7946 0958 today.')).toBe('Call Jordan at [phone] today.');
   });
 });
+
+// Round 3 @req FR:email-voice/learn.clean
+describe('round 3 regressions', () => {
+  it('drops signatures with sentence-case titles and pronouns', () => {
+    expect(ownText('Yes.\n\nThanks,\nSam\n\nSam Owner\nHead of product\nAcme')).toBe('Yes.\n\nThanks,\nSam');
+    expect(ownText('Yes.\n\nSam\nPrincipal engineer')).toBe('Yes.\n\nSam');
+    expect(ownText('Yes.\n\nBest,\nSam\n\nSam Owner (she/her)\nCEO, Acme')).toBe('Yes.\n\nBest,\nSam');
+  });
+  it('keeps reply openers literal', () => {
+    expect(greetingOf('Hi, thanks. That works.').form).not.toContain('{name}');
+    expect(greetingOf('Hey, sure! Done.').form).not.toContain('{name}');
+    expect(greetingOf('Hi again,\n\nYes.').form).toBe('Hi again,');
+    expect(greetingOf('Hi alex,\n\nYes.').form).toBe('Hi {name},');
+  });
+});
