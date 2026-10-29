@@ -208,6 +208,7 @@ async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): 
   switch (sub) {
     case 'put': {
       if (!key) throw new UsageError('asks put needs a key');
+      if (s('from') === undefined) throw new UsageError('asks put needs --from <agent>');
       const n = (name: string) => { const v = s(name); if (v === undefined) return undefined; if (!/^\d{1,2}$/.test(v)) throw new UsageError(`--${name} must be a whole number: ${v}`); return Number(v); };
       const yn = s('reversible');
       if (yn !== undefined && yn !== 'yes' && yn !== 'no') throw new UsageError('--reversible must be yes or no');

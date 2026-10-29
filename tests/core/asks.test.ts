@@ -190,6 +190,9 @@ describe('answer', () => {
     await answerAsk(ctx, 'b', { answer: 'defer', until: at(30) });
     const b = (await listAsks(ctx, { state: 'all' })).items.find((x) => x.key === 'b')!;
     expect(b.snoozed).toBe(at(3));
+    await putAsk(ctx, 'c', { ...base, reversible: true, default: 'Merges at 8', by: at(-3) }, 'cos');
+    await answerAsk(ctx, 'c', { answer: 'defer', until: at(30) });
+    expect((await listAsks(ctx, { state: 'all' })).items.find((x) => x.key === 'c')!.snoozed).toBe(at(30));
     await expect(answerAsk(ctx, 'a', { answer: 'defer' })).rejects.toThrow(LifecycleError);
     await expect(answerAsk(ctx, 'a', { answer: 'defer', until: at(-5) })).rejects.toThrow(LifecycleError);
   });

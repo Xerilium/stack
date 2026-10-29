@@ -29,7 +29,7 @@ test.describe('Asks', () => {
     await open(page);
     await expect(card(page)).toHaveCount(1);
     await expect(card(page).locator('.ask-title')).toHaveText('Approve merging PR 879 into dev');
-    await expect(card(page).locator('.dl')).toContainText('Today');
+    await expect(card(page).locator('.dl')).toContainText(/Today|Tomorrow/); // +3 h crosses midnight late in the day
     await expect(card(page).locator('.dl')).toContainText('in 3 h');
     await expect(card(page).locator('.btn.primary')).toHaveText(/Approve/);
     await expect(card(page)).not.toContainText('Recommend');
@@ -178,7 +178,7 @@ test.describe('Asks', () => {
   test('empty state', async ({ page }) => {
     await open(page, []);
     await expect(page.getByTestId('asks-empty')).toContainText('Nothing needs you.');
-    await expect(page.getByTestId('asks-empty')).toContainText('Last agent update never');
+    await expect(page.getByTestId('asks-empty')).toContainText('No agent has written an ask yet');
     await expect(page).toHaveTitle('Stack');
   });
 

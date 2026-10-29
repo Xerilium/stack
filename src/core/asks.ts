@@ -255,7 +255,8 @@ export async function answerAsk(ctx: LifecycleContext, key: string, input: Answe
       if (!isoOk(input.until)) throw new LifecycleError('until must be an ISO date-time');
       let until = Date.parse(input.until);
       if (until <= nowD.getTime()) throw new LifecycleError('until must be in the future');
-      if (a.reversible && a.default && a.by) until = Math.min(until, Date.parse(a.by));
+      // Clamp to the deadline only while it is ahead; a past deadline must not turn the snooze into a no-op.
+      if (a.reversible && a.default && a.by && Date.parse(a.by) > nowD.getTime()) until = Math.min(until, Date.parse(a.by));
       a.snoozed = new Date(until).toISOString();
       a.updated = now;
       return { next: a, message: `Ask deferred: ${key}`, result: { changed: true } };

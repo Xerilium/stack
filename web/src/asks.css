@@ -115,6 +115,7 @@ a.btn.primary { color: #fff; }
   .ask-actions .btn.primary { flex: 1 1 100%; order: -1; }
   .ask-actions .grow { display: none; }
   .ask-actions .btn.quiet { flex: 1 1 40%; }
+  .ask-card[data-kind="approve"] .ask-actions .btn:not(.primary):not(.quiet) { flex: 1 1 100%; }
   .ask-card[data-kind="decide"] .ask-actions .btn:not(.quiet) { flex: 1 1 100%; }
   .ask-defer { gap: 8px; }
   .ask-defer .lbl { flex: 1 1 100%; margin: 0; }

@@ -11,7 +11,7 @@ Michael runs three companies through Chief of Staff (CoS) agents. Chat messages 
 1. **Agents work; the page shows decisions.** No feed, no status, no play-by-play. Everything else is hidden until asked (details, `Show n more`, `Sent`, `Snoozed`).
 2. **Files are the bus.** Agents write ask files; the owner's answer is written back into the same file. No chat transcript is read. State survives any session or agent (charter: "keep state in files so any CoS can resume").
 3. **One ask, one recommendation, one default.** Every ask is a decision with a stated default-if-silent. The default is applied by the agent, never by Stack, and shown only for reversible asks (charter: silence never decides irreversible, costly, or external actions).
-4. **Agents never answer for the owner.** `answer` is owner-session only; an agent token gets `403`.
+4. **Agents never answer for the owner.** `answer` is owner-session only: an API token or any hosted non-owner caller gets `403`. In `stack web` a loopback request without a token is the owner's own page, so a local agent must present its token when it calls the api (and must never edit `answer`/`state` in an ask file by hand). The guard is a contract for agents, not a sandbox.
 5. **Quiet by design.** No toast, sound, or badge for incoming asks. A new ask fades in with a dot for 6 seconds. The tab title carries the count for a glance.
 
 ## Data model

@@ -9,6 +9,8 @@ export const ALL_KINDS: ChangeKind[] = ['asks', 'tasks', 'state'];
 export interface Change { rev: number; kinds: ChangeKind[] }
 export interface Watcher {
   rev(): number;
+  /** False when the folder could not be watched; the page then polls. */
+  active(): boolean;
   on(fn: (c: Change) => void): () => void;
   close(): void;
 }
@@ -34,6 +36,7 @@ export function watchRepo(dir: string, o: { debounceMs?: number } = {}): Watcher
   let timer: NodeJS.Timeout | null = null;
   const subs = new Set<(c: Change) => void>();
   let w: FSWatcher | null = null;
+  let active = false;
   const flush = () => {
     timer = null;
     if (pending.size === 0) return;
@@ -50,11 +53,13 @@ export function watchRepo(dir: string, o: { debounceMs?: number } = {}): Watcher
       if (timer) clearTimeout(timer);
       timer = setTimeout(flush, wait);
     });
-    w.on('error', () => undefined);
-  } catch { /* no watcher on this platform or folder: the page polls */ }
+    w.on('error', (e) => { active = false; console.error(`stack web: file watcher stopped (${(e as Error).message}); the page polls instead`); });
+    active = true;
+  } catch (e) { console.error(`stack web: cannot watch ${dir} (${(e as Error).message}); the page polls instead`); }
   return {
     rev: () => rev,
+    active: () => active,
     on(fn) { subs.add(fn); return () => { subs.delete(fn); }; },
-    close() { if (timer) clearTimeout(timer); timer = null; w?.close(); w = null; subs.clear(); },
+    close() { if (timer) clearTimeout(timer); timer = null; w?.close(); w = null; active = false; subs.clear(); },
   };
 }

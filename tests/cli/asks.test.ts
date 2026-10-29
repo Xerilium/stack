@@ -40,10 +40,11 @@ describe('stack asks', () => {
     const d = dir();
     expect((await stack(d, 'asks')).code).toBe(2);
     expect((await stack(d, 'asks', 'nope')).code).toBe(2);
-    expect((await stack(d, 'asks', 'put', 'k', '--kind', 'approve')).code).toBe(2);
-    expect((await stack(d, 'asks', 'put', 'Bad Key', '--ask', 'x', '--kind', 'approve')).code).toBe(2);
-    expect((await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--blocks', 'many')).code).toBe(2);
+    expect((await stack(d, 'asks', 'put', 'k', '--kind', 'approve', '--from', 'cos')).code).toBe(2);
+    expect((await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve')).code).toBe(2); // --from is required
+    expect((await stack(d, 'asks', 'put', 'Bad Key', '--ask', 'x', '--kind', 'approve', '--from', 'cos')).code).toBe(2);
+    expect((await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--from', 'cos', '--blocks', 'many')).code).toBe(2);
     expect((await stack(d, 'asks', 'handle', 'missing', '--outcome', 'handled')).code).toBe(2);
-    expect((await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--bogus', '1')).code).toBe(2);
+    expect((await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--from', 'cos', '--bogus', '1')).code).toBe(2);
   });
 });

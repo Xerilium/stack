@@ -30,10 +30,17 @@ function LiveBadge({ a }: { a: Asks }) {
   );
 }
 
+/** Row text for a deadline: the time, plus how late when it has passed, so an overdue row never reads like one due later today. */
+function rowDeadline(d: ReturnType<typeof deadline>): string | undefined {
+  if (!d) return undefined;
+  return d.tone === 'late' ? `${d.label} · ${d.rel}` : d.label;
+}
+
 function DeadlineChip({ by, now, long }: { by?: string; now: Date; long?: boolean }) {
   const d = deadline(by, now);
   if (!d) return null;
-  return <span class={`dl ${d.tone}`} title={d.rel}>{long && Icon.clock}<span>{d.label}</span>{long && <span class="rel">· {d.rel}</span>}</span>;
+  const late = d.tone === 'late';
+  return <span class={`dl ${d.tone}`} title={d.rel}>{long && Icon.clock}<span>{d.label}</span>{(long || late) && <span class="rel">· {d.rel}</span>}</span>;
 }
 
 /** What the owner would do with this ask, so the list can be triaged without opening each row. */
@@ -46,7 +53,7 @@ function Row({ a, n, now, fresh, leaving, onPick }: { a: AskItem; n: number; now
   const verb = verbOf(a);
   return (
     <li class={`ask-li${fresh ? ' fresh' : ''}${leaving ? ' leaving' : ''}`} data-key={a.key}>
-      <button type="button" class="ask-row" onClick={onPick} aria-label={[`${n}. ${a.ask}`, verb, deadline(a.by, now)?.label, a.project].filter(Boolean).join(', ')}>
+      <button type="button" class="ask-row" onClick={onPick} aria-label={[`${n}. ${a.ask}`, verb, rowDeadline(deadline(a.by, now)), a.project].filter(Boolean).join(', ')}>
         <span class="row-title">{a.ask}</span>
         {fresh && <span class="new" aria-label="New">New</span>}
         <span class="row-meta"><span class="verb">{verb ?? ''}</span>{a.by ? <DeadlineChip by={a.by} now={now} /> : <span class="dl empty" aria-hidden="true" />}<span class="proj">{a.project ?? ''}</span></span>
@@ -211,7 +218,7 @@ export function AsksView({ asks }: { asks: Asks }) {
         <div class="asks-empty" data-testid="asks-empty">
           <div class="tick-art">{Icon.check}</div>
           <p class="big">Nothing needs you.</p>
-          <p class="sub">Last agent update {freshness(asks.latest, asks.now)}</p>
+          <p class="sub">{asks.latest ? `Last agent update ${freshness(asks.latest, asks.now)}` : 'No agent has written an ask yet'}</p>
         </div>
       )}
       {(items.length > 0 || ghosts.length > 0) && (
