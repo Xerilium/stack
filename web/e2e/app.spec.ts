@@ -906,9 +906,14 @@ test.describe('today view', () => {
     await plain.getByLabel('Reply').fill('Blue');
     await plain.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByText('Changed elsewhere')).toBeVisible();
-    await expect(page.getByLabel('Reply')).toHaveValue('Blue'); // the typed reply survives the conflict
     expect(m.calls.find((c) => c.path === '/tasks')).toMatchObject({ body: { text: '💬 Blue', parent: 'gamma:11' } });
-    expect(m.tasks.map((t) => t.text)).not.toContain('💬 Blue');
+    // the draft stays on the same decision (now on a new line) and resending targets it
+    await expect(plain.getByLabel('Reply')).toHaveValue('Blue');
+    await expect(page.getByLabel('Reply')).toHaveCount(1);
+    const ask = m.tasks.find((t) => t.text.includes('Pick a color'))!;
+    await plain.getByRole('button', { name: 'Send' }).click();
+    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks').at(-1)?.body).toMatchObject({ text: '💬 Blue', parent: ask.ref, expect: ask.text });
+    expect(ask.ref).not.toBe('gamma:11');
   });
 
   // @req FR:web-app/today.agents

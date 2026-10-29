@@ -70,6 +70,6 @@ export function parseRow(text: string): Row {
     try { row.links.push({ href, label: new URL(href).hostname.replace(/^www\./, '') }); return ` ${tail}`; } catch { return m; }
   });
   s = s.replace(/\uE000(\d+)\uE000/g, (_m, i: string) => md[Number(i)]);
-  row.title = s.replace(/🔎/gu, ' ').replace(/\s+/g, ' ').replace(/\s+([,.;:)])/g, '$1').replace(/\(\s+/g, '(').trim();
+  row.title = s.replace(/🔎/gu, ' ').replace(/\s+/g, ' ').replace(/\s+([,.;:)])/g, '$1').replace(/\(\s+/g, '(').replace(/(^|\s)\(\)/g, '$1').replace(/\s+/g, ' ').trim();
   return row;
 }

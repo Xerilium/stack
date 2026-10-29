@@ -138,11 +138,11 @@ export function ListView(p: ListProps) {
   );
 }
 
-/** Touch hold (450 ms) fires `fn`; lifting, a scroll, or moving more than 10 px cancels it. */
+/** Touch hold (450 ms) fires `fn`; lifting, a scroll, a cancel, or moving more than 10 px cancels it. */
 function longPress(e: PointerEvent, fn: () => void) {
   const x = e.clientX, y = e.clientY;
   const h = setTimeout(() => { off(); fn(); }, 450);
-  const ends = ['pointerup', 'pointercancel', 'contextmenu', 'scroll'] as const;
+  const ends = ['pointerup', 'pointercancel', 'scroll'] as const; // not contextmenu: Android fires it at ~400 ms, before the hold completes
   const move = (m: PointerEvent) => { if (Math.hypot(m.clientX - x, m.clientY - y) > 10) off(); };
   function off() { clearTimeout(h); for (const n of ends) window.removeEventListener(n, off, true); window.removeEventListener('pointermove', move, true); }
   for (const n of ends) window.addEventListener(n, off, true);
@@ -290,15 +290,19 @@ const fmt = (n: number) => String(Math.round(n * 10) / 10);
 
 const STATE_LABEL = { working: 'Working', waiting: 'Waiting on you', queued: 'Queued' } as const;
 
-function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) => void; onClose: () => void; to: string; placeholder: string }) {
+/** Cards and the open reply box follow the task, not its line number, which shifts when the file changes. */
+const taskKey = (x: Task) => `${x.project}\u241F${x.text}`;
+
+function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) => Promise<unknown>; onClose: () => void; to: string; placeholder: string }) {
   const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   return (
-    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (text.trim()) onSend(text.trim()); }}>
+    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (!text.trim() || sending) return; setSending(true); void onSend(text.trim()).finally(() => setSending(false)); }}>
       <p class="reply-to">Replying to <b>{to}</b></p>
       <input ref={ref} type="text" aria-label="Reply" placeholder={placeholder} value={text} maxLength={500} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }} />
-      <button type="submit" class="btn primary" disabled={!text.trim()}>Send <kbd>↵</kbd></button>
+      <button type="submit" class="btn primary" disabled={!text.trim() || sending}>Send <kbd>↵</kbd></button>
     </form>
   );
 }
@@ -330,14 +334,14 @@ export function TodayView(t: TodayProps) {
     const r = parseRow(a.task.text);
     const owner = t.p.titles.get(a.task.project) ?? a.task.project;
     return (
-      <li key={a.task.ref} class={`agent ${a.state}`}>
+      <li key={taskKey(a.task)} class={`agent ${a.state}`}>
         <span class="pulse" aria-hidden="true" />
         <div class="agent-body">
           <p class="agent-title"><Md text={r.title || a.task.text} /></p>
           <p class="agent-meta">{STATE_LABEL[a.state]} · {owner}</p>
         </div>
-        <button type="button" class="btn quiet reveal" onClick={() => setReplying(replying === a.task.ref ? null : a.task.ref)}>Reply</button>
-        {replying === a.task.ref && <Reply to={`the ${owner} agent`} placeholder="Message the agent" onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(a.task, text, 'Sent to the agent')) setReplying(null); }} />}
+        <button type="button" class="btn quiet reveal" onClick={() => setReplying(replying === taskKey(a.task) ? null : taskKey(a.task))}>Reply</button>
+        {replying === taskKey(a.task) && <Reply to={`the ${owner} agent`} placeholder="Message the agent" onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(a.task, text, 'Sent to the agent')) setReplying(null); }} />}
       </li>
     );
   };
@@ -379,7 +383,7 @@ export function TodayView(t: TodayProps) {
           <ul class="cards" data-testid="needs">
             {needs.map((d) => {
               const r = parseRow(d.task.text);
-              const key = d.task.ref;
+              const key = taskKey(d.task);
               const owner = t.p.titles.get(d.task.project) ?? d.task.project;
               return (
                 <li class="card need" key={key}>
