@@ -19,6 +19,6 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `resume`: unpark the first parked task. `resume [ref] [--expect t]`
 - `suspend`: hide until later. `suspend [ref] [--days n | --hours n] [--expect t]`
 - `set`: set emojis and checkbox. `set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]`
-- `asks`: ask queue for the owner; agents `put` and `handle` asks, read answers with `list`. See [docs/asks.md](asks.md). `asks put <key> --ask t --kind k --from agent [...] | list [--state s] | handle <key> --outcome o [--note --reply]`
+- `asks`: ask queue for the owner; agents `put` and `handle` asks, read answers with `list`. See [docs/asks.md](asks.md). `asks put <key> --ask t --kind k --from agent [...] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]`
 - `remove-completed`: delete checked rows. `remove-completed [--project name]`
 - `update`: regenerate README, stack, projects, my-day. `update [--sweep] [--queries]`

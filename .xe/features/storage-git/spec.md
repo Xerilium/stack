@@ -32,6 +32,7 @@ Surfaces need a backend-neutral contract so they work the same on git, disk, or 
 - **FR:write.expected** (P1): When `opts.expectedVersion` is given (`null` meaning the file must not exist), `write` MUST throw `ConflictError` if the current version differs
 - **FR:write.result** (P1): `write` MUST return the new `version`
 - **FR:write.many** (P1): Optional `writeMany(writes, opts?)` writes several files atomically as one operation: all `expectedVersion`s are checked first (any mismatch throws `ConflictError` and nothing is written), a failure rolls every file back, and `GitStorage` makes ONE commit for all changed paths (pushing once). Duplicate paths are rejected. `writeAll(storage, writes, message)` falls back to sequential `write` for adapters without it
+- **FR:write.delete** (P2): In `writeMany`, a `FileWrite` with `content: null` deletes that path in the same atomic operation (version checked first, rolled back with the rest, part of the one commit in `GitStorage`). `writeAll` rejects a delete for adapters without `writeMany`
 - **FR:write.serial** (P2): Writes through one adapter instance MUST be serialized
 
 ### FR:git: Git adapter

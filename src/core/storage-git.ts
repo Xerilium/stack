@@ -42,7 +42,8 @@ export class GitStorage extends FsStorage {
         env: { ...(this.env ?? process.env), GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' },
       }, (err, stdout, stderr) => {
         /** @req FR:storage-git/git.failure */
-        if (err) reject(new StorageError(`git ${args[0]} failed: ${(stderr || err.message).trim()}`));
+        // git says 'nothing to commit' on stdout, so include it: a failure must name its reason.
+        if (err) reject(new StorageError(`git ${args[0]} failed: ${(stderr || stdout || err.message).trim()}`));
         else resolve(stdout);
       });
     });
@@ -158,14 +159,22 @@ export class GitStorage extends FsStorage {
     // Remember each path's index entry so a failed commit restores the user's own staged edit.
     const entries: string[] = [];
     for (const p of paths) entries.push(((await this.tryGit('ls-files', '-s', '--', p)) ?? '').trim());
+    // `commit --only` names paths by what HEAD knows: a delete of a path HEAD never had (untracked, or staged but never committed) is left out of it.
+    const inHead: boolean[] = [];
+    for (const p of paths) inHead.push((await this.tryGit('cat-file', '-e', `HEAD:${p}`)) !== null);
     let committed = false;
     try {
-      for (const w of writes) await this.atomicWrite(w.path, w.content);
-      await this.git('add', '--', ...paths);
-      const staged = await this.tryGit('diff', '--cached', '--quiet', '--', ...paths);
+      for (const w of writes) await this.put(w.path, w.content);
+      // A deleted path may be untracked (written with --no-commit), which `git add` rejects; `git rm --cached` stages either case.
+      const adds = writes.filter(w => w.content !== null).map(w => w.path);
+      const dels = writes.filter(w => w.content === null).map(w => w.path);
+      if (adds.length) await this.git('add', '--', ...adds);
+      if (dels.length) await this.git('rm', '-q', '--cached', '--ignore-unmatch', '--', ...dels);
+      const only = paths.filter((p, i) => writes[i].content !== null || inHead[i]);
+      const staged = only.length ? await this.tryGit('diff', '--cached', '--quiet', '--', ...only) : '';
       if (staged === null) {
         const msg = message ?? (paths.length === 1 ? `Update ${paths[0]}` : `Update ${paths.length} files`);
-        await this.git('commit', '-q', '-m', msg, '--only', '--', ...paths);
+        await this.git('commit', '-q', '-m', msg, '--only', '--', ...only);
         committed = true;
       }
     } catch (e) {

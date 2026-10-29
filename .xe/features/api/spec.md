@@ -31,7 +31,7 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 
 - **FR:auth.deny** (P1): With no `authorize` supplied every request MUST be denied with `401 unauthorized`
 - **FR:auth.hook** (P1): `authorize(req, route)` runs before routing outcomes, body parsing, or any storage access. `route = { name, method, write }` (`name` is `unknown` when no route matches). It receives a clone, so the body stays unread. It returns `true`/`false` or `{ allow, status? }`
-- **FR:auth.decision** (P1): `true` or `{ allow: true }` allows; `false` is `403 forbidden`; `{ allow: false, status: 401 | 403 }` uses that status. Anything else, or a throw or rejection, MUST deny with `403 forbidden` (a throw MUST NOT leak its message)
+- **FR:auth.decision** (P1): `true` or `{ allow: true }` allows (an allow may carry `token: { id, name }` for a token caller; the identity never comes from the body, and routes use the name as the default attribution where the body may name the agent, as `from` on an ask); `false` is `403 forbidden`; `{ allow: false, status: 401 | 403 }` uses that status. Anything else, or a throw or rejection, MUST deny with `403 forbidden` (a throw MUST NOT leak its message)
 - **FR:auth.noleak** (P1): An unmatched route or wrong method is denied before it is reported, so a caller learns nothing about routes
 
 ### FR:errors: Error model

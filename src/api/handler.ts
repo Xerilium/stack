@@ -25,7 +25,8 @@ import { parseFields, pick } from './fields';
 import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
 
 export interface RouteInfo { name: string; method: string; write: boolean }
-export type AuthDecision = boolean | { allow: boolean; status?: 401 | 403 };
+/** An allowed token call names the token so writes can be attributed to it. */
+export type AuthDecision = boolean | { allow: boolean; status?: 401 | 403; token?: { id: string; name: string } };
 /** @req FR:api/auth.hook */
 export type Authorize = (req: Request, route: RouteInfo) => AuthDecision | Promise<AuthDecision>;
 
@@ -45,7 +46,7 @@ export interface ApiDeps {
   onError?: (e: unknown) => void;
 }
 
-type Ctx = { deps: ApiDeps; life: LifecycleContext; req: Request; url: URL; params: string[] };
+type Ctx = { deps: ApiDeps; life: LifecycleContext; req: Request; url: URL; params: string[]; /** Set when the request was allowed by an API token. */ token?: { id: string; name: string } };
 interface Route {
   method: 'GET' | 'POST';
   /** Path relative to basePath, with `{param}` placeholders; also the OpenAPI path key. */
@@ -454,8 +455,9 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       const b = validate<AskPut>(await readBody(c.req), ASK_PUT_BODY.schema, ASK_PUT_BODY.required);
+      // A token names its agent (the token's name); the owner session writes as `owner`.
       const actor = caller(c.req).actor;
-      return json(200, await putAsk(c.life, c.params[0], b, actor.startsWith('token:') ? 'agent' : actor));
+      return json(200, await putAsk(c.life, c.params[0], b, actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor));
     },
   },
   {
@@ -639,10 +641,13 @@ export function createApiHandler(deps: ApiDeps): (req: Request) => Promise<Respo
 
       // Auth first: callers learn nothing about routes.
       let denied: ApiError | null;
+      let token: Ctx['token'];
       if (!deps.authorize) denied = new ApiError('unauthorized', 'Authentication required');
       else {
         try {
-          denied = decide(await deps.authorize(req.clone(), { name: hit?.r.name ?? 'unknown', method, write: hit ? hit.r.method !== 'GET' : method !== 'GET' && method !== 'HEAD' }));
+          const d = await deps.authorize(req.clone(), { name: hit?.r.name ?? 'unknown', method, write: hit ? hit.r.method !== 'GET' : method !== 'GET' && method !== 'HEAD' });
+          denied = decide(d);
+          if (!denied && typeof d === 'object' && d.token) token = d.token;
         } catch { denied = new ApiError('forbidden', 'Forbidden'); }
       }
       if (denied) return errorResponse(denied);
@@ -655,7 +660,7 @@ export function createApiHandler(deps: ApiDeps): (req: Request) => Promise<Respo
         throw new ApiError('not_found', 'Not found');
       }
       params = hit.p!;
-      return await hit.r.run({ deps, life, req, url, params });
+      return await hit.r.run({ deps, life, req, url, params, ...(token ? { token } : {}) });
     } catch (e) {
       const err = toApiError(e);
       if (err.code === 'internal') deps.onError?.(e);

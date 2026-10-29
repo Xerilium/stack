@@ -138,7 +138,9 @@ function Skeleton() {
   return <ol class="asks" aria-busy="true" aria-label="Loading asks"><li class="sk big" /><li class="sk" /><li class="sk" /></ol>;
 }
 
-export function AsksView({ asks }: { asks: Asks }) {
+export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; toggle: () => void }
+
+export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify?: NotifyCtl; offline?: boolean }) {
   const { items, cursor } = asks;
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
@@ -204,14 +206,21 @@ export function AsksView({ asks }: { asks: Asks }) {
   const ghosts = asks.leaving.filter((g) => !leavingKeys.has(g.key));
 
   return (
-    <section class="asks-view" aria-label="Asks">
+    <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Asks">
       <header class="asks-head">
         <h1 class="h1">Needs you{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
         <LiveBadge a={asks} />
+        {notify?.supported && (
+          <button type="button" class={`notify-btn${notify.on ? ' on' : ''}`} aria-pressed={notify.on} disabled={notify.blocked && !notify.on} aria-label={notify.blocked && !notify.on ? 'Blocked in browser settings' : notify.on ? 'Notifications on' : 'Notify me'} title={notify.blocked ? 'Blocked in browser settings' : notify.on ? 'Notifications are on: tap to turn off' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z" fill={notify.on ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>
+            <span class="notify-label">{notify.blocked && !notify.on ? 'Blocked' : notify.on ? 'On' : 'Notify me'}</span>
+          </button>
+        )}
       </header>
       <p class="sr-only" role="status" aria-live="polite">{announce}</p>
-      {asks.phase === 'loading' && <Skeleton />}
-      {asks.phase === 'error' && (
+      {!offline && asks.phase === 'loading' && <Skeleton />}
+      {offline && asks.phase !== 'ready' && <div class="asks-error offline" role="status"><p>Offline. Asks load when you're back online.</p></div>}
+      {!offline && asks.phase === 'error' && (
         <div class="asks-error" role="alert"><p>Cannot load asks: {asks.error}</p><button type="button" class="btn primary" onClick={() => void asks.reload()}>Retry</button></div>
       )}
       {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && (

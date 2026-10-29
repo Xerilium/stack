@@ -1,4 +1,4 @@
-/** @req FR:ask-queue/cli.put @req FR:ask-queue/cli.list @req FR:ask-queue/cli.handle */
+/** @req FR:ask-queue/cli.put @req FR:ask-queue/cli.list @req FR:ask-queue/cli.handle @req FR:ask-queue/cli.archive */
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -46,5 +46,19 @@ describe('stack asks', () => {
     expect((await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--from', 'cos', '--blocks', 'many')).code).toBe(2);
     expect((await stack(d, 'asks', 'handle', 'missing', '--outcome', 'handled')).code).toBe(2);
     expect((await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--from', 'cos', '--bogus', '1')).code).toBe(2);
+  });
+
+  it('archive moves old done asks out of the queue folder', async () => {
+    const d = dir();
+    await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--from', 'cos');
+    await stack(d, 'asks', 'handle', 'k', '--outcome', 'handled');
+    expect((await stack(d, 'asks', 'archive')).out.trim()).toBe('no change: nothing to archive');
+    const r = await stack(d, 'asks', 'archive', '--days', '0');
+    expect(r.code).toBe(0);
+    expect(r.out.trim()).toBe('archived k');
+    expect(readFileSync(join(d, 'tasks/asks/archive/k.md'), 'utf8')).toContain('- state: done');
+    expect((await stack(d, 'asks', 'list', '--state', 'all', '--json')).out).toContain('"total":0');
+    expect((await stack(d, 'asks', 'archive', '--days', 'x')).code).toBe(2);
+    expect((await stack(d, 'asks', 'archive', 'extra')).code).toBe(2);
   });
 });

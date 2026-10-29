@@ -3,7 +3,7 @@
  * @req FR:email-triage/ask.reply @req FR:email-triage/ask.decide @req FR:email-triage/ask.quiet @req FR:email-triage/ask.resolve
  */
 import { createHash } from 'crypto';
-import { handleAsk, oneLine, putAsk, type AskPriority, type AskPut } from '../core/asks';
+import { handleAsk, oneLine, putAsk, readAsk, type AskPriority, type AskPut } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
 import { ConflictError, NotFoundError } from '../core/storage';
 import { redact } from '../core/triage';
@@ -45,7 +45,7 @@ export function toAsk(r: TriageResult, opts: { project?: string } = {}): AskPut 
       return {
         ...base, kind: 'review', ask: line('Review draft reply to', m), recommend: r.confidence >= SEND_AS_DRAFTED ? 'Send as drafted' : 'Edit then send',
         link: https(r.draft.webLink), default: 'Draft stays in Drafts (nothing is sent)', reversible: true, priority: priority(r),
-        detail: redact(r.draft.text).slice(0, DETAIL_CHARS), ...(why ? { why } : {}),
+        ...(r.draft.reused ? {} : { detail: redact(r.draft.text).slice(0, DETAIL_CHARS) }), ...(why ? { why } : {}),
       };
     case 'needs_decision': {
       const options = [...new Set((r.options ?? []).map((o) => clip(oneLine(String(o)).replace(/\|/g, '/'), 80)).filter(Boolean))].slice(0, 4);
@@ -60,6 +60,14 @@ export function toAsk(r: TriageResult, opts: { project?: string } = {}): AskPut 
     default:
       return null;
   }
+}
+
+/** The draft already recorded for this conversation's open ask (its link and the detail kept from the draft), or null. @req FR:email-triage/ask.once */
+export async function existingDraft(ctx: LifecycleContext, m: Message): Promise<{ webLink: string; text: string } | null> {
+  const cur = await readAsk(ctx, mailKey(m.conversationId));
+  const a = cur?.ask;
+  if (!a || a.state === 'done' || a.kind !== 'review' || !a.link) return null;
+  return { webLink: a.link, text: a.detail };
 }
 
 /** Writes the ask for a result; the same conversation twice updates one ask. A handled ask is left alone. @req FR:email-triage/ask.quiet */
@@ -89,5 +97,5 @@ export function tally(s: RunSummary, r: TriageResult, source: 'rule' | 'model'):
   if (source === 'rule') s.rules++; else s.model++;
   s.counts[r.class]++;
   if (toAsk(r)) s.asks++;
-  if (r.draft) s.drafts++;
+  if (r.draft && !r.draft.reused) s.drafts++;
 }
