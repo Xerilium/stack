@@ -859,6 +859,31 @@ paths:
                 reopen:
                   type: boolean
                   description: Open a done ask again
+                flow:
+                  type: string
+                  maxLength: 80
+                  pattern: ^[a-z0-9][a-z0-9._-]{0,79}$
+                  description: "Quick triage: the flow this question belongs to (slug) Single line."
+                seq:
+                  type: integer
+                  minimum: 1
+                  maximum: 99
+                  description: Its place in the flow (1-99)
+                ref:
+                  type: string
+                  maxLength: 200
+                  description: The task row it is about (project:line); must exist Single line.
+                apply:
+                  type: string
+                  maxLength: 500
+                  description: "Action Stack runs on go: set prop=value…, due Mon d, suspend 7d, skip, complete, start, resume, note text Single line."
+                applies:
+                  type: array
+                  maxItems: 4
+                  items:
+                    type: string
+                    maxLength: 200
+                  description: One action per option (- for none)
       responses:
         "200":
           description: Written
@@ -1948,6 +1973,22 @@ components:
           format: date-time
         agentReply:
           type: string
+        flow:
+          type: string
+        seq:
+          type: integer
+        ref:
+          type: string
+        apply:
+          type: string
+        applies:
+          type: array
+          items:
+            type: string
+        flowTotal:
+          type: integer
+        flowDone:
+          type: integer
     TeamAgent:
       type: object
       properties:

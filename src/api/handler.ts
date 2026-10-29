@@ -172,6 +172,8 @@ const ASK_PUT_BODY = {
     by: { t: 'str', max: 40, line: true, pattern: /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2})?)?$/ }, reversible: { t: 'bool' },
     link: { t: 'str', max: 2000, line: true, pattern: /^https:\/\/[^\s]+$/ }, priority: { t: 'enum', values: ASK_PRIORITIES },
     effort: { t: 'str', max: 4, line: true, pattern: /^\d{1,3}[mh]$/ }, blocks: { t: 'int', min: 0, max: 99 }, detail: { t: 'str', max: 20_000 }, reopen: { t: 'bool' },
+    // quick triage. @req FR:quick-triage/api.put
+    flow: { t: 'str', max: 80, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,79}$/ }, seq: { t: 'int', min: 1, max: 99 }, ref: { t: 'str', max: 200, line: true }, apply: { t: 'str', max: 500, line: true }, applies: { t: 'strs', max: 4, commas: false },
   } satisfies Record<string, Spec>,
   required: [] as string[],
 };

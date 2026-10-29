@@ -12,6 +12,8 @@ export interface AskItem {
   score: number; rank?: number; overdue: boolean; agentReply?: string;
   /** `task`: an open 🙋 row from a task file (`ref`), answered through the agent inbox. @req FR:web-shell/state.needs */
   source?: 'task'; ref?: string;
+  /** Quick triage: the flow and its progress; what Stack applies on the answer. @req FR:quick-triage/web.stepper */
+  flow?: string; seq?: number; flowTotal?: number; flowDone?: number; apply?: string; applies?: string[];
 }
 export interface AskList { items: AskItem[]; total: number; latest?: string }
 export interface Send { answer: AnswerKind; text?: string; until?: string }
