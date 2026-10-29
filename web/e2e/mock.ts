@@ -3,7 +3,7 @@ import type { Page, Route } from '@playwright/test';
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
 export interface MockAgent { ref: string; project: string; title: string; text: string; state: string; prs: { url: string; repo: string; number: number; state?: string; checks?: string; title?: string; updatedAt?: string }[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }
 export interface MockInbox { id: string; at: string; project: string; ref: string; task: string; kind: string; to: string; text: string; state: string; row?: string }
-export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string }
+export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string; flow?: string; seq?: number; flowTotal?: number; flowDone?: number; ref?: string; apply?: string; applies?: string[] }
 export interface MockSession { id: string; title: string; project: string; cwd: string; branch?: string; lastActive: string; state: string; cost: { usd: number; tokens: number }; prs: string[] }
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
 export interface MockTeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: string; prompt: string; defined: boolean; projects: string[] }
@@ -123,7 +123,8 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     }
     if (path === '/asks') {
       const st = url.searchParams.get('state') ?? 'open';
-      const items = m.asks.filter((a) => (st === 'snoozed' ? a.state === 'open' && !!a.snoozedUntil : st === 'open' ? a.state === 'open' && !a.snoozedUntil : a.state === st)).sort((a, b) => b.score - a.score).map((a, i) => (st === 'open' ? { ...a, rank: i + 1 } : a));
+      const items = m.asks.filter((a) => (st === 'snoozed' ? a.state === 'open' && !!a.snoozedUntil : st === 'open' ? a.state === 'open' && !a.snoozedUntil : a.state === st)).sort((a, b) => b.score - a.score).map((a, i) => (st === 'open' ? { ...a, rank: i + 1 } : a))
+        .map((a) => (a.flow ? { ...a, flowDone: m.asks.filter((x) => x.flow === a.flow && x.state !== 'open').length } : a)); // progress like the server
       return json(route, 200, { items, total: items.length, latest: m.asks.map((a) => a.updated).sort().pop(), snoozed: m.asks.filter((a) => a.state === 'open' && a.snoozedUntil).length });
     }
     const ans = /^\/asks\/([^/]+)\/answer$/.exec(path);

@@ -181,6 +181,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     const t = text.trim();
     if (!t) return;
     const kind = replyKind(t);
+    // a question about a row writes the answer under that row: nothing to take back from a toast. @req FR:quick-triage/flow.text
+    if (a.kind === 'answer' && a.ref && !a.source) return answer(a, { answer: kind, text: t }, 'Written under the task', false);
     return answer(a, { answer: kind, text: t }, kind === 'ask' ? `Question sent to ${a.from}` : `Sent to ${a.from}`);
   }, [answer]);
 

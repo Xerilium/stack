@@ -114,6 +114,9 @@ export const inboxTitle = (text: string): string => field(taskTitle(text)).slice
 const taskKey = (title: string): string =>
   (title.replace(/🤖:\S*/gu, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/(?:📅|⏰|💤|🔄)\s*[^:\n]*:/gu, ' ').toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
 
+/** The same title key for other modules that follow a row through edits (quick triage). */
+export const rowKey = taskKey;
+
 /**
  * Where each entry's row is now (entry id → `path:line`, 1-based like `ref`). Lines move, so rows are found by title words in the
  * same file, with both sides run through the same redaction and escaping. A cut title matches by prefix; the row nearest the stored line breaks ties.

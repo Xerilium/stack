@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { actionsFor, deadline, freshness, ifSilent, splitTop, type Action, type AskItem } from './asks';
 import { blockedHelp } from './notify';
+import { changeText, flowOf } from './triage';
 import type { Asks } from './useAsks';
 import type { ComponentChildren } from 'preact';
 import './asks.css';
@@ -78,6 +79,10 @@ function Btn({ a, act, run, panel }: { a: Action; act: AskItem; run: (x: Action)
   const cls = `btn${a.primary ? ' primary' : ''}`;
   const key = a.key === 'Enter' ? '⏎' : a.key;
   const tag = a.primary && act.kind === 'decide' && act.recommend ? <span class="rec-tag">recommended</span> : null;
+  // what the answer will do to the row, from the ask's apply / applies. @req FR:quick-triage/web.stepper
+  const will = a.send?.answer === 'go' && act.apply ? act.apply : a.send?.answer === 'option' && act.applies && act.options ? act.applies[act.options.indexOf(a.send.text ?? '')] : undefined;
+  const willText = will && will !== '-' ? changeText(will) : undefined;
+  if (willText && !a.open) return <button type="button" class={`${cls} will`} onClick={() => run(a)} aria-keyshortcuts={a.key}><span>{a.label}{tag}<kbd aria-hidden="true">{key}</kbd></span><small>{willText}</small></button>;
   if (a.open && act.source !== 'task') return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer" aria-keyshortcuts="o">{a.label} {Icon.out}<kbd aria-hidden="true">{a.key}</kbd></a>;
   if (a.open) return <button type="button" class="btn quiet" onClick={() => run(a)} aria-keyshortcuts="o">{a.label}<kbd aria-hidden="true">{a.key}</kbd></button>;
   return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd aria-hidden="true">{key}</kbd>}</button>;
@@ -93,12 +98,13 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
   useEffect(() => { if (asks.panel !== 'reply') setText(''); else setText((t) => t || asks.takeDraft(a.key)); }, [asks.panel, a.key]); // Edit reopens with the previous text
   const choices = asks.deferChoices();
   const isAnswer = a.kind === 'answer';
+  const flow = flowOf(a);
   const replying = (asks.panel === 'reply' || isAnswer) && asks.panel !== 'defer';
   return (
     <li class={`ask-li${asks.fresh.has(a.key) ? ' fresh' : ''}`} data-key={a.key}>
       <article class="ask-card" data-kind={a.kind} data-panel={asks.panel} aria-label={`Ask ${n} of ${total}`}>
         <div class="ask-eyebrow">
-          <span class="of" aria-hidden="true">{n} of {total}</span>
+          {flow ? <span class="of flow" data-testid="flow-step">Quick triage · {flow.step} of {flow.total}</span> : <span class="of" aria-hidden="true">{n} of {total}</span>}
           {a.project && <span class="proj">{a.project}</span>}
           {!talk?.chip(a) && <span class="from">{a.from}</span>}
           {talk?.chip(a)}
@@ -106,8 +112,10 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
           <span class="grow" />
           <DeadlineChip by={a.by} now={asks.now} long />
         </div>
+        {flow && <div class="flow-bar" role="progressbar" aria-label="Triage progress" aria-valuemin={0} aria-valuemax={flow.total} aria-valuenow={flow.done}><span style={{ width: `${(flow.done / Math.max(1, flow.total)) * 100}%` }} /></div>}
         <h2 class="ask-title">{a.ask}</h2>
         {a.why && <p class="ask-why">{a.why}</p>}
+        {a.refText && <p class="ask-row-target" title="The task this answer changes">on <span>{a.refText}</span></p>}
         {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
         {talk?.render(a)}
         <dl class="ask-facts">
@@ -181,7 +189,14 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
     if (!a) return;
     if (x.open) { if (a.source === 'task' && a.ref) asks.openTask(a.ref); else if (a.link) window.open(a.link, '_blank', 'noopener,noreferrer'); return; }
     if (x.reply) { asks.setPanel('reply'); return; }
-    if (x.send) void asks.answer(a, x.send, x.send.answer === 'option' ? `Sent to ${a.from}: ${x.send.text}` : `${ANSWER_WORD[x.send.answer] ?? 'Sent'} · ${a.from} has it`);
+    if (x.send) {
+      // quick triage: say what changed, and when the flow is finished say so. @req FR:quick-triage/web.undo @req FR:quick-triage/web.done
+      const will = x.send.answer === 'go' && a.apply ? a.apply : x.send.answer === 'option' && a.applies && a.options ? a.applies[a.options.indexOf(x.send.text ?? '')] : undefined;
+      const f = flowOf(a);
+      const last = f ? asks.itemsRef.current.filter((x) => x.flow === f.flow).length <= 1 && !asks.snoozed.some((x) => x.flow === f.flow) : false; // the flow's last open question, none deferred
+      const text = will && will !== '-' ? changeText(will, a.ask) : x.send.answer === 'option' ? `Sent to ${a.from}: ${x.send.text}` : `${ANSWER_WORD[x.send.answer] ?? 'Sent'} · ${a.from} has it`;
+      void asks.answer(a, x.send, last ? `Triage done · ${f!.total} answered` : text, !(will && will !== '-'));
+    }
   };
 
   useEffect(() => {

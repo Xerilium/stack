@@ -61,3 +61,20 @@ Run it at the start of each run (one commit, nothing is lost). The archive is ne
 ## For a CoS agent file
 
 > Bring Michael decisions only through `stack asks put` (see `docs/asks.md`). After each state update, upsert the asks for every open decision and `resolve` the ones no longer needed. Read `stack asks list --state answered` at the start of every run and act on the answers, then `stack asks archive`. Do not message him in chat.
+
+## Quick triage: a few questions, answered in one sitting
+
+When you want several decisions from the owner, put them as one **flow**: the same `--flow <slug>` on each ask with `--seq 1, 2, 3…`. The page shows them together, in order, as `Quick triage · 2 of 5`, and moves to the next one after each answer.
+
+Say what the answer should do to the task, so Stack applies it at once and you do not have to come back:
+
+```bash
+stack asks put tri-1 --flow triage-oct29 --seq 1 --kind answer  --ask "What is top of mind?" --ref finance:4 --from finance-cos
+stack asks put tri-2 --flow triage-oct29 --seq 2 --kind decide  --ask "Pay bills first?" --ref finance:4 --options "Yes, critical|Later" --applies "set priority=🚨|suspend 7d" --recommend "Yes, critical" --from finance-cos
+stack asks put tri-3 --flow triage-oct29 --seq 3 --kind approve --ask "Archive the old board?" --ref finance:7 --apply complete --from finance-cos
+```
+
+- `--ref project:line` is the row as the api names it (`GET /tasks` refs; the line is 0-based, so the row on line 5 of the file is `:4`). It must exist when you put the ask; Stack remembers the row's text, finds the row again if a note above it moved it, and refuses the action (`409`, ask reopened) if the text changed.
+- `--apply` runs on `go`; `--applies` is one action per option (`-` for none). Actions: `set priority=🚨 effort=🟡`, `due Nov 3`, `suspend 7d` / `suspend 2h`, `skip`, `complete`, `start`, `resume`, `note <text>`.
+- A `kind answer` question with a `--ref` writes the owner's text under that row as `> 🙋 <date>: <text>`.
+- The thread records `applied: <action> → <row after>` once the action landed, or `failed: <action> (<reason>)` and the ask is open again. Act on `applied:`; an `answered` ask without it is still in flight or has failed, so do not `handle` it yet. Read it with `stack asks list --state answered --json`.
