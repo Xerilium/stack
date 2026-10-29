@@ -8,6 +8,13 @@ export class ApiFailure extends Error {
 
 const TASK_FIELDS = 'ref,text,project,section,done,depth,notes';
 
+/** Where the page expected Stack: the api origin, else this page's host. @req FR:web-shell/state.unreachable */
+export function unreachable(base = '/api'): string {
+  let host = '';
+  try { host = new URL(base, typeof location === 'undefined' ? 'http://localhost' : location.href).host; } catch { /* keep the fallback */ }
+  return `Can't reach Stack${host ? ` at ${host}` : ''}. Is stack web still running?`;
+}
+
 /** `onRead` hears each read: the time the service worker saved it when it came from the offline cache, else null. @req FR:pwa/offline.banner */
 export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base = '/api', onRead?: (savedAt: string | null) => void) {
   async function call<T>(path: string, body?: unknown): Promise<T> {
@@ -16,7 +23,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
       ? { credentials: 'same-origin' }
       : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' };
     let res: Response;
-    try { res = await fetchFn(`${base}${path}`, init); } catch { throw new ApiFailure(0, 'network', 'Network error'); }
+    try { res = await fetchFn(`${base}${path}`, init); } catch { throw new ApiFailure(0, 'network', unreachable(base)); }
     const text = await res.text();
     let data: unknown;
     try { data = text ? JSON.parse(text) : undefined; } catch { data = undefined; }

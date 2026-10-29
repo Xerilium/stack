@@ -39,9 +39,9 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 - **FR:row.parse** (P1): `parseRow(text)` extracts status, priority, effort, impact, due date text, recurrence, suspend marker, and a clean title (emoji markers and date prefixes removed). The emoji set matches the api `set` enums; unknown text stays in the title
 - **FR:row.effort** (P2): Effort emoji map to minutes (🔹 12, 🟢 30, 🟡 60, 🟠 120, 🔴 240, ⚫️ 480) for the capacity view
 
-### FR:today: Today (home)
+### FR:today: Today (My day)
 
-Home plans the day; it is not a list. Design: `docs/design/web-ux.md`.
+My day plans the day; it is not a list. Home is the top of the stack (web-shell `FR:nav.views`). Design: `docs/design/web-ux.md`.
 
 - **FR:today.plan** (P1): **Your day** lays your own tasks (open leaf rows in Active that are actionable, not 🤖/🪄/🙋) on a timeline from the plan start (now rounded up to 15 min, never before the work day start of 9:00): the `/next` task first, then by due-soon, in progress, priority. Each block uses its effort (30 min when unset, marked `~` as an estimate; capped at 2 h and marked `+`). The first block has Start (`s`), Done (`d`), Not now (`z`); every block has a done circle
 - **FR:today.capacity** (P1): The header has an **Available** control: the minutes you have for your own tasks today. Default is the time left in the work day (9:00-18:00 local). `−`/`+` buttons and the `[`/`]` keys change it by 30 min (0 to 16 h); Reset returns to the default. The value is kept for the current local date only (browser storage, so it resets tomorrow; when storage is unavailable the default is used). The plan never books more than this budget

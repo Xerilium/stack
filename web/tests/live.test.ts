@@ -73,3 +73,26 @@ describe('connectLive', () => {
     expect(changes).toEqual([['poll']]);
   });
 });
+
+// @req FR:web-shell/state.live
+describe('retry', () => {
+  it('reopens the stream after a drop and goes live again', () => {
+    const { status, changes, stop, es } = setup();
+    es().open();
+    es().fail(false);
+    const old = es();
+    stop.retry();
+    expect(old.closed).toBe(true);
+    expect(FakeES.all).toHaveLength(2);
+    es().open();
+    expect(status).toEqual(['live', 'offline', 'live']);
+    expect(changes).toEqual([['asks', 'tasks', 'state']]);
+  });
+  it('retry while polling just asks for a refresh', () => {
+    const { changes, stop, es } = setup();
+    es().fail(true);
+    stop.retry();
+    expect(changes).toEqual([['poll']]);
+    expect(FakeES.all).toHaveLength(1);
+  });
+});
