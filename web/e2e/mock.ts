@@ -56,6 +56,8 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       return json(route, 200, { task: t ? { ref: t.ref, text: t.text, project: t.project, score: 1 } : null });
     }
     if (path === '/tasks' && req.method() === 'POST') {
+      const parent = body.parent ? find(body.parent) : undefined;
+      if (parent && body.expect !== undefined && body.expect !== parent.text) return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
       const ref = `${body.project}:${60 + m.tasks.length}`;
       return json(route, 201, { changed: true, ref, message: 'Added' });
     }

@@ -139,6 +139,17 @@ export function ListView(p: ListProps) {
   );
 }
 
+/** Touch hold (450 ms) fires `fn`; lifting, a scroll, a cancel, or moving more than 10 px cancels it. */
+function longPress(e: PointerEvent, fn: () => void) {
+  const x = e.clientX, y = e.clientY;
+  const h = setTimeout(() => { off(); fn(); }, 450);
+  const ends = ['pointerup', 'pointercancel', 'scroll'] as const; // not contextmenu: Android fires it at ~400 ms, before the hold completes
+  const move = (m: PointerEvent) => { if (Math.hypot(m.clientX - x, m.clientY - y) > 10) off(); };
+  function off() { clearTimeout(h); for (const n of ends) window.removeEventListener(n, off, true); window.removeEventListener('pointermove', move, true); }
+  for (const n of ends) window.addEventListener(n, off, true);
+  window.addEventListener('pointermove', move, true);
+}
+
 function TaskRow({ t, p }: { t: Task; p: RowProps }) {
   const r = parseRow(t.text);
   const isCursor = p.cursor === t.ref;
@@ -152,7 +163,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
     d?.over === t.ref ? `drop-${d.half}` : '', d?.ref === t.ref ? 'dragging' : ''].filter(Boolean).join(' ');
   return (
     <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} onClick={() => p.onCursor(t.ref)}
-      onPointerDown={(e) => { if (e.pointerType !== 'touch') return; const h = setTimeout(() => p.onSelect(t.ref), 450); const off = () => { clearTimeout(h); window.removeEventListener('pointerup', off); window.removeEventListener('pointermove', off); }; window.addEventListener('pointerup', off); window.addEventListener('pointermove', off); }}>
+      onPointerDown={(e) => { if (e.pointerType === 'touch') longPress(e, () => p.onSelect(t.ref)); }}>
       <div class="line">
         {p.handles && <button type="button" class="handle" aria-label={`Drag ${r.title || 'task'} to reorder`} title="Drag to reorder (Shift+J/K)"
           onPointerDown={(e) => p.onDragStart(t.ref, e as unknown as PointerEvent)}
@@ -162,7 +173,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
           <Editor text={t.text} onSave={(v) => p.onSave(t.ref, v)} onCancel={() => p.onEdit(null)} />
         ) : (
           <>
-            <div class="title" onDblClick={() => p.onEdit(t.ref)}>{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><Md text={r.title || t.text} /></div>
+            <div class="title" onDblClick={() => p.onEdit(t.ref)}>{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text"><Md text={r.title || t.text} /></span></div>
             <button type="button" class="edit-btn" aria-label={`Edit ${r.title || 'task'}`} onClick={(e) => { e.stopPropagation(); p.onEdit(t.ref); }}>✎</button>
             <div class="chips">
               {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
@@ -278,16 +289,20 @@ export function ProjectsView({ rows, onOpen }: { rows: (CapacityRow & { top?: Ta
 }
 const fmt = (n: number) => String(Math.round(n * 10) / 10);
 
-function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) => void; onClose: () => void; to: string; placeholder: string }) {
+/** Cards and the open reply box follow the task, not its line number, which shifts when the file changes. */
+const rowKey = (x: { project: string; text: string }) => `${x.project}\u241F${x.text}`;
+
+function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) => Promise<unknown>; onClose: () => void; to: string; placeholder: string }) {
   const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   return (
-    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (text.trim()) onSend(text.trim()); }}>
+    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (!text.trim() || sending) return; setSending(true); void onSend(text.trim()).finally(() => setSending(false)); }}>
       <p class="reply-to">To <b>{to}</b> · lands in its inbox</p>
       <div class="reply-row">
         <input ref={ref} type="text" aria-label="Reply" placeholder={placeholder} value={text} maxLength={1000} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }} />
-        <button type="submit" class="btn primary" disabled={!text.trim()}>Send <kbd>↵</kbd></button>
+        <button type="submit" class="btn primary" disabled={!text.trim() || sending}>Send <kbd>↵</kbd></button>
       </div>
     </form>
   );
@@ -313,7 +328,7 @@ export interface TodayProps {
   now: Date; plan: Plan; day: { start: number; end: number }; budget: { minutes: number; isDefault: boolean }; onBudget: (m: number | null) => void;
   decisions: Decision[]; agents: Agent[] | null; agentsError: string; onRetryAgents: () => void; inbox: InboxItem[]; p: RowProps; busy: boolean;
   tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
-  onAct: (a: 'start' | 'done' | 'defer', ref: string) => void; onReply: (task: RefText, text: string, label: string) => void; onAccept: (d: Decision) => void;
+  onAct: (a: 'start' | 'done' | 'defer', ref: string) => void; onReply: (task: RefText, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
 }
 
 /**
@@ -329,6 +344,7 @@ export function TodayView(t: TodayProps) {
   const end = Math.max(t.day.end, start + t.budget.minutes);
   const total = Math.max(1, end - t.day.start);
   const pct = (m: number) => Math.max(0, Math.min(100, ((m - t.day.start) / total) * 100));
+  const markAt = pct(Math.max(nowMin, t.day.start)); // the time label hugs the bar ends so it never clips
   const date = t.now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   const jump = (id: string) => document.getElementById(id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   const repliesOf = (x: RowKey) => repliesFor(t.inbox, x);
@@ -342,14 +358,14 @@ export function TodayView(t: TodayProps) {
   const over = t.plan.overflow.length > 0;
   const shownOver = t.plan.atRisk.length > 0 ? t.plan.atRisk.slice(0, 12) : t.plan.overflow.slice(0, 5);
   const replyBox = (key: string, task: RefText, owner: string, placeholder: string, ok: string) => replying === key && (
-    <Reply to={`the ${owner} agent`} placeholder={placeholder} onClose={() => setReplying(null)} onSend={(text) => { setReplying(null); t.onReply(task, text, ok); }} />
+    <Reply to={`the ${owner} agent`} placeholder={placeholder} onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(task, text, ok)) setReplying(null); }} />
   );
   const agentRow = (a: Agent) => {
     const r = parseRow(a.text);
     const owner = t.p.titles.get(a.project) ?? a.project;
     const line = lastLine(a, t.now);
     return (
-      <li key={a.ref} class={`agent ${a.state}`}>
+      <li key={rowKey(a)} class={`agent ${a.state}`}>
         <span class="pulse" aria-hidden="true" />
         <div class="agent-body">
           <p class="agent-title"><Md text={agentTitle(r.title || a.title)} /></p>
@@ -365,8 +381,8 @@ export function TodayView(t: TodayProps) {
           </p>
           <Sent items={repliesOf(a)} now={t.now} />
         </div>
-        <button type="button" class="btn quiet reveal" aria-expanded={replying === a.ref} onClick={() => setReplying(replying === a.ref ? null : a.ref)}>Reply</button>
-        {replyBox(a.ref, a, owner, 'Message the agent', 'Sent to the agent')}
+        <button type="button" class="btn quiet reveal" aria-expanded={replying === rowKey(a)} onClick={() => setReplying(replying === rowKey(a) ? null : rowKey(a))}>Reply</button>
+        {replyBox(rowKey(a), a, owner, 'Message the agent', 'Sent to the agent')}
       </li>
     );
   };
@@ -395,7 +411,7 @@ export function TodayView(t: TodayProps) {
         <div class="day-bar" role="img" aria-label={`${span(t.plan.busy)} planned of ${span(t.budget.minutes)} available`}>
           <s style={{ left: `${pct(start)}%`, width: `${pct(start + t.budget.minutes) - pct(start)}%` }} />
           {t.plan.blocks.map((b) => <i key={b.task.ref} title={`${clock(b.start)} ${parseRow(b.task.text).title}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}
-          <b style={{ left: `${pct(Math.max(nowMin, t.day.start))}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>
+          <b class={markAt < 8 ? 'edge-l' : markAt > 92 ? 'edge-r' : undefined} style={{ left: `${markAt}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>
         </div>
         <p class="day-ends"><span>{clock(t.day.start)}</span><span>{clock(end)}</span></p>
       </header>
@@ -435,7 +451,7 @@ export function TodayView(t: TodayProps) {
           <ul class="cards" data-testid="needs">
             {needs.map((d) => {
               const r = parseRow(d.task.text);
-              const key = d.task.ref;
+              const key = rowKey(d.task);
               const owner = t.p.titles.get(d.task.project) ?? d.task.project;
               const sent = repliesOf(d.task);
               const rec = d.recommendation && !/:$/.test(d.recommendation) ? d.recommendation : undefined;

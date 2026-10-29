@@ -16,11 +16,20 @@ describe('stack engine', () => {
     expect(daysUntilDue('📅 Oct 21: x', config, at)).toBe(-2);
     expect(daysUntilDue('📅 Feb 1, 2027: 🔄 Quarterly: x', config, at)).toBe(101);
     expect(daysUntilDue('📅 Jan 3: x', config, at)).toBe(72);
+    expect(daysUntilDue('📅 Sep 1: x', config, at)).toBe(-52);
+    expect(daysUntilDue('📅 Mar 1: x', config, at)).toBe(129);
+    expect(daysUntilDue('📅 Jun 1: x', config, at)).toBe(221);
+    expect(daysUntilDue('📅 Dec 20: x', config, new Date('2027-01-05T17:00:00Z'))).toBe(-16);
     expect(daysUntilDue('no date', config, at)).toBeNull();
   });
 
   it('never ranks a task due beyond the horizon', () => {
     expect(top('📅 Feb 1, 2027: 🔄 Quarterly: File taxes ⚠️⚠️⚠️ 💰', 'Plain task')).toEqual(['Plain task']);
+    expect(top('📅 Mar 1: Year-less, months out ⚠️⚠️⚠️ 💰', 'Plain task')).toEqual(['Plain task']);
+  });
+
+  it('never ranks reply rows', () => {
+    expect(top('💬 Go with the recommendation ⚠️⚠️⚠️', 'Plain task')).toEqual(['Plain task']);
   });
 
   it('puts overdue and due-soon ahead of undated work', () => {
@@ -29,7 +38,7 @@ describe('stack engine', () => {
   });
 
   it('does not let long-stale overdue tasks jump the queue', () => {
-    expect(top('📅 Jun 1: Stale 🟢', '📅 Oct 22: Fresh overdue 🟢')[0]).toBe('📅 Oct 22: Fresh overdue 🟢');
+    expect(top('📅 Sep 1: Stale 🟢', '📅 Jun 1, 2026: Older 🟢', '📅 Oct 22: Fresh overdue 🟢')[0]).toBe('📅 Oct 22: Fresh overdue 🟢');
   });
 
   it('keeps legacy ranking by default for the legacy id', () => {

@@ -363,7 +363,20 @@ test.describe('list', () => {
     await expect(page.locator('.row').first()).toBeVisible();
     expect(await page.getByLabel(/^Select /).first().isVisible()).toBe(false);
     await page.locator('.row[data-ref="alpha:9"]').getByRole('button', { name: 'Mark done' }).click({ modifiers: ['Shift'] });
-    await expect(page.locator('.row[data-ref="alpha:9"]')).toHaveClass(/selected|sel/);
+    await expect(page.locator('.row[data-ref="alpha:9"]')).toHaveClass(/\bselected\b/);
+  });
+
+  // @req FR:web-app/pick.touch
+  test('a touch that turns into a scroll (pointercancel) never selects the row', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/#/list');
+    const r = page.locator('.row[data-ref="alpha:9"]');
+    await r.dispatchEvent('pointerdown', { pointerType: 'touch', bubbles: true });
+    await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerType: 'touch' })));
+    await page.waitForTimeout(600);
+    await expect(r).not.toHaveClass(/\bselected\b/);
+    await r.dispatchEvent('pointerdown', { pointerType: 'touch', bubbles: true });
+    await expect(r).toHaveClass(/\bselected\b/); // a held press still selects
   });
 });
 
@@ -922,6 +935,26 @@ test.describe('today view', () => {
     await plain.getByRole('button', { name: 'Send' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'gamma:11', text: 'Blue', kind: 'reply' } });
     await expect(page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' }).locator('.sent')).toContainText('Blue');
+  });
+
+  // @req FR:web-app/today.reply
+  test('a reply to a row that moved gets 409 instead of attaching to the wrong row', async ({ page }) => {
+    const m = await setup(page, day());
+    const plain = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' });
+    await expect(plain).toBeVisible();
+    m.insertAbove('gamma', 'Added by someone else');
+    await plain.getByRole('button', { name: 'Reply' }).click();
+    await plain.getByLabel('Reply').fill('Blue');
+    await plain.getByRole('button', { name: 'Send' }).click();
+    await expect(page.getByText('Changed elsewhere')).toBeVisible();
+    expect(m.calls.find((c) => c.path === '/inbox')).toMatchObject({ body: { text: 'Blue', ref: 'gamma:11' } });
+    // the draft stays on the same decision (now on a new line) and resending targets it
+    await expect(plain.getByLabel('Reply')).toHaveValue('Blue');
+    await expect(page.getByLabel('Reply')).toHaveCount(1);
+    const ask = m.tasks.find((t) => t.text.includes('Pick a color'))!;
+    await plain.getByRole('button', { name: 'Send' }).click();
+    await expect.poll(() => m.calls.filter((c) => c.path === '/inbox').at(-1)?.body).toMatchObject({ text: 'Blue', ref: ask.ref, expect: ask.text });
+    expect(ask.ref).not.toBe('gamma:11');
   });
 
   // @req FR:web-app/today.agents
