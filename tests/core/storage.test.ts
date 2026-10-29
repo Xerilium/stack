@@ -209,6 +209,13 @@ describe('GitStorage writeMany', () => {
     expect(git(d, 'show', '--name-status', '--format=', 'HEAD').trim()).toBe('A\ttasks/asks/archive/k.md');
     expect(existsSync(join(d, 'tasks/asks/k.md'))).toBe(false);
     expect(git(d, 'status', '--porcelain').trim()).toBe('');
+    // staged by hand but never committed: deleted the same way
+    writeFileSync(join(d, 'tasks/asks/s.md'), 'S'); git(d, 'add', '--', 'tasks/asks/s.md');
+    await writeAll(s, [{ path: 'tasks/asks/archive/s.md', content: 'S', expectedVersion: null }, { path: 'tasks/asks/s.md', content: null }], 'Archive ask: s');
+    expect(count(d)).toBe(before + 4);
+    expect(git(d, 'show', '--name-status', '--format=', 'HEAD').trim()).toBe('A\ttasks/asks/archive/s.md');
+    expect(existsSync(join(d, 'tasks/asks/s.md'))).toBe(false);
+    expect(git(d, 'status', '--porcelain').trim()).toBe('');
   });
 
   it('leaves unrelated staged files alone and rolls back on conflict', async () => {

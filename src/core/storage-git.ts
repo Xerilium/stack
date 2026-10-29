@@ -159,6 +159,9 @@ export class GitStorage extends FsStorage {
     // Remember each path's index entry so a failed commit restores the user's own staged edit.
     const entries: string[] = [];
     for (const p of paths) entries.push(((await this.tryGit('ls-files', '-s', '--', p)) ?? '').trim());
+    // `commit --only` names paths by what HEAD knows: a delete of a path HEAD never had (untracked, or staged but never committed) is left out of it.
+    const inHead: boolean[] = [];
+    for (const p of paths) inHead.push((await this.tryGit('cat-file', '-e', `HEAD:${p}`)) !== null);
     let committed = false;
     try {
       for (const w of writes) await this.put(w.path, w.content);
@@ -167,8 +170,7 @@ export class GitStorage extends FsStorage {
       const dels = writes.filter(w => w.content === null).map(w => w.path);
       if (adds.length) await this.git('add', '--', ...adds);
       if (dels.length) await this.git('rm', '-q', '--cached', '--ignore-unmatch', '--', ...dels);
-      // `--only` rejects a pathspec that matches nothing: leave out deletes of paths git never tracked.
-      const only = paths.filter((p, i) => writes[i].content !== null || entries[i] !== '');
+      const only = paths.filter((p, i) => writes[i].content !== null || inHead[i]);
       const staged = only.length ? await this.tryGit('diff', '--cached', '--quiet', '--', ...only) : '';
       if (staged === null) {
         const msg = message ?? (paths.length === 1 ? `Update ${paths[0]}` : `Update ${paths.length} files`);
