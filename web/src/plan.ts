@@ -1,7 +1,7 @@
 import { actionable, children, dueDays, isActive, isMessage, rankNow } from './now';
 import { effortMinutes, parseRow } from './row';
 import type { Task } from './types';
-import { emailMinutes, type Busy } from './meetings';
+import { busyWithin, emailMinutes, type Busy } from './meetings';
 
 /** Day plan and decisions. Pure; the views only draw it. @req FR:web-app/today.plan @req FR:web-app/today.fit @req FR:web-app/today.needs */
 export interface Day { start: number; end: number } // minutes after midnight
@@ -65,6 +65,8 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
   const cap = Math.max(0, budget ?? left);
   const meetings = (opts.busy ?? []).filter((m) => m.end > start);
   const taken: [number, number][] = meetings.map((m) => [m.start, m.end]);
+  // The plan stays inside the work day unless the budget itself asks for more time than the day has left after meetings.
+  const windowEnd = Math.min(24 * 60, Math.max(day.end, start + cap + busyWithin(meetings, start, day.end)));
   /** First free slot at or after the plan start that holds `m` minutes (first fit, so a short task fills the gap before a meeting). */
   const slot = (m: number): number | null => {
     let t = start;
@@ -72,7 +74,7 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
       if (t + m <= a) break;
       if (b > t) t = b;
     }
-    return t + m <= 24 * 60 ? t : null;
+    return t + m <= windowEnd ? t : null;
   };
   let booked = 0;
   let email: Plan['email'];

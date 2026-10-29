@@ -375,8 +375,8 @@ export function App() {
   ];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes });
-  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes };
+  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime });
+  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
   const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget };
 
@@ -422,6 +422,8 @@ export function App() {
         return;
       }
       if (L.view === 'projects') return;
+      // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
+      if (L.view === 'today' && k === 'J') { const m = new Date(); const at = m.getHours() * 60 + m.getMinutes(); const hit = L.busyTime.find((b) => b.start - 10 <= at && at < b.end)?.events.find((e) => e.online && e.webLink); if (hit?.webLink) { e.preventDefault(); window.open(hit.webLink, '_blank', 'noopener,noreferrer'); } return; }
       if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; }
       const i = L.rows.findIndex((r) => r.ref === L.cursor);
       const step = (d: number) => { const n = L.rows[Math.max(0, Math.min(L.rows.length - 1, i + d))]; if (n) setCursor(n.ref); };

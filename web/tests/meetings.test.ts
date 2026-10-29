@@ -50,3 +50,30 @@ describe('plan around meetings', () => {
     expect(budgetOf(at(10), DEFAULT_DAY, 120, busy)).toEqual({ minutes: 120, isDefault: false });
   });
 });
+
+describe('work day end', () => {
+  it('with the default budget nothing is placed past the work day; a smaller later task fills the gap instead', () => {
+    const busy = busyIntervals([ev('m', 16, 0, 17, 30)], day);
+    const budget = budgetOf(at(15), DEFAULT_DAY, null, busy).minutes; // 3h left - 1h30 meeting = 90m
+    const p = buildPlan([t('A 🟡'), t('Big 🟠'), t('C 🟢')], at(15), DEFAULT_DAY, budget, { busy });
+    expect(p.blocks.map((b) => [b.task.text, b.start, b.end])).toEqual([['A 🟡', 900, 960], ['C 🟢', 1050, 1080]]);
+    expect(p.overflow.map((x) => x.text)).toEqual(['Big 🟠']);
+    expect(Math.max(...p.blocks.map((b) => b.end))).toBeLessThanOrEqual(18 * 60);
+  });
+  it('a budget above the work day runs the clock on past meetings, but only as far as the budget reaches', () => {
+    const busy = busyIntervals([ev('m', 17, 0, 17, 30)], day);
+    const p = buildPlan([t('A 🟠'), t('B 🟠'), t('C 🟡')], at(16), DEFAULT_DAY, 240, { busy }); // available until 20:30
+    expect(p.blocks.map((b) => [b.task.text, b.start, b.end])).toEqual([['C 🟡', 960, 1020], ['A 🟠', 1050, 1170]]);
+    expect(p.overflow.map((x) => x.text)).toEqual(['B 🟠']);
+  });
+});
+
+describe('gaps too small to use', () => {
+  it('never spill past the work day with the default budget', () => {
+    const busy = busyIntervals([ev('m', 10, 10, 10, 30)], day); // leaves a 10 min gap no task fits
+    const budget = budgetOf(at(10), DEFAULT_DAY, null, busy).minutes;
+    const p = buildPlan(['🟠', '🟠', '🟠', '🟡', '🔹', '🔹', '🔹'].map((e) => t(`T ${e}`)), at(10), DEFAULT_DAY, budget, { busy });
+    expect(Math.max(...p.blocks.map((b) => b.end))).toBeLessThanOrEqual(18 * 60);
+    expect(p.overflow).toHaveLength(1);
+  });
+});

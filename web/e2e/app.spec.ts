@@ -1030,6 +1030,7 @@ test.describe('today view', () => {
     await expect(meeting).toContainText('10:30a');
     await expect(meeting.getByRole('link', { name: 'Join' })).toHaveAttribute('href', 'https://teams.example.test/join/1');
     await expect(page.locator('.t-sub')).toContainText('1h in meetings');
+    await expect(page.locator('.next-meeting')).toContainText('Allyte sync in 30m');
     await expect(page.getByTestId('available')).toContainText('7h');
     await expect(page.locator('.allday')).toContainText('Offsite');
     await expect(page.locator('.day-bar u')).toHaveCount(1);
@@ -1037,6 +1038,21 @@ test.describe('today view', () => {
     await expect(blocks.nth(0).locator('.when')).toContainText('10:00a');
     await expect(blocks.nth(1).locator('.when')).toContainText('11:30a'); // the 1h lead task would cross the meeting, so a 30m task fills the gap first
     await shot(page, 'today-meetings', info);
+  });
+
+  test('J joins a meeting that starts within 10 minutes', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
+    const at = (h: number, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return d; };
+    await page.clock.install({ time: at(10, 25) });
+    const m = await mockApi(page, { tasks: day() });
+    m.events = [{ id: 'e1', subject: 'Allyte sync', start: at(10, 30).toISOString(), end: at(11, 30).toISOString(), allDay: false, showAs: 'busy', cancelled: false, online: true, webLink: 'https://teams.example.test/join/1' }];
+    await page.context().route('https://teams.example.test/**', (r) => r.fulfill({ status: 200, body: 'joined' }));
+    await page.goto('/#/today');
+    await page.clock.resume();
+    await expect(page.locator('[data-testid="plan"] .meeting')).toBeVisible();
+    const popup = page.waitForEvent('popup');
+    await page.keyboard.press('Shift+J');
+    expect((await popup).url()).toBe('https://teams.example.test/join/1');
   });
 
   test('a calendar error is a quiet note; no calendar changes nothing', async ({ page }) => {

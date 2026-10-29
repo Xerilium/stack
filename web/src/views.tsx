@@ -357,6 +357,8 @@ export function TodayView(t: TodayProps) {
   const start = Math.max(t.day.start, Math.ceil(nowMin / 15) * 15);
   const lastEnd = Math.max(0, ...t.plan.blocks.map((b) => b.end), t.plan.email?.end ?? 0, ...t.plan.meetings.filter((m) => m.start < t.day.end + 120).map((m) => m.end));
   const end = Math.min(24 * 60, Math.max(t.day.end, start + t.budget.minutes, lastEnd));
+  const nextMeeting = t.plan.meetings.find((m) => m.end > nowMin);
+  const joinOf = (m: Busy) => m.events.find((e) => e.online && e.webLink)?.webLink;
   const meetingMin = t.plan.meetings.reduce((m, x) => m + Math.max(0, Math.min(x.end, t.day.end) - Math.max(x.start, start)), 0);
   type Row = { at: number; kind: 'block'; b: Block; lead: boolean } | { at: number; kind: 'meeting'; m: Busy } | { at: number; kind: 'email'; e: NonNullable<Plan['email']> };
   const timeline: Row[] = [
@@ -415,7 +417,7 @@ export function TodayView(t: TodayProps) {
       <header class="t-head">
         <div class="t-top">
           <div>
-            <p class="t-date">{date}</p>
+            <p class="t-date">{date}{t.allDay.length > 0 && <span class="allday"> · {t.allDay.map((e) => e.subject).join(' · ')}</span>}</p>
             <h1>{t.plan.blocks.length === 0 ? (t.budget.minutes > 0 ? 'Nothing planned' : 'No time planned') : <>{span(t.plan.busy)} <span class="of">of {span(t.budget.minutes)}</span></>}</h1>
           </div>
           <div class="avail" role="group" aria-label="Available today" data-testid="available">
@@ -429,11 +431,12 @@ export function TodayView(t: TodayProps) {
         <p class="t-sub">
           {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
           {meetingMin > 0 && <span>{span(meetingMin)} in meetings</span>}
+          {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join <kbd>J</kbd></a></>}</span>}
           {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
           {heads.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{heads.join(' · ')}</button>}
         </p>
-        <div class="day-bar" role="img" aria-label={`${span(t.plan.busy)} planned of ${span(t.budget.minutes)} available`}>
+        <div class="day-bar" role="img" aria-label={`${span(t.plan.busy)} planned of ${span(t.budget.minutes)} available${meetingMin ? ` · ${span(meetingMin)} in meetings` : ''}${t.plan.email ? ` · email at ${clock(t.plan.email.start)}` : ''}`}>
           <s style={{ left: `${pct(start)}%`, width: `${pct(start + t.budget.minutes) - pct(start)}%` }} />
           {t.plan.meetings.filter((m) => m.start < end).map((m) => <u key={`m${m.start}`} title={`${clock(m.start)} ${m.titles.join(', ')}`} style={{ left: `${pct(m.start)}%`, width: `${pct(m.end) - pct(m.start)}%` }} />)}
           {t.plan.email && <i class="mail" title={`${clock(t.plan.email.start)} Email`} style={{ left: `${pct(t.plan.email.start)}%`, width: `${pct(t.plan.email.end) - pct(t.plan.email.start)}%` }} />}
@@ -446,14 +449,13 @@ export function TodayView(t: TodayProps) {
       <div class="t-cols">
         <div class="t-plan">
           <h2 class="h2">Your day</h2>
-          {t.allDay.length > 0 && <p class="allday">All day: {t.allDay.map((e) => e.subject).join(' · ')}</p>}
           {t.calError && <p class="cal-note">{t.calError}; meetings are not counted.</p>}
           {t.plan.blocks.length === 0 && <p class="empty-note">{t.budget.minutes === 0 ? 'No time set for today. Add some with + or ].' : <>Nothing left that fits. Add something with <kbd>c</kbd>.</>}</p>}
           <ol class="plan" data-testid="plan">
             {timeline.map((r) => r.kind === 'block'
               ? <PlanBlock key={r.b.task.ref} b={r.b} lead={r.lead} p={t.p} busy={t.busy} onAct={t.onAct} />
               : r.kind === 'meeting' ? <MeetingRow key={`m${r.m.start}`} m={r.m} />
-                : <li key="email" class="email-block"><time class="when">{clock(r.e.start)}<small>{span(r.e.end - r.e.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {r.e.count} ask{r.e.count === 1 ? '' : 's'}</button><p class="what-meta">Review drafts and decisions from your inbox</p></div></li>)}
+                : <li key="email" class="email-block"><time class="when">{clock(r.e.start)}<small>{span(r.e.end - r.e.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {r.e.count} ask{r.e.count === 1 ? '' : 's'}</button><kbd>g k</kbd></div></li>)}
           </ol>
           {over && (
             <div class="nofit" data-testid="nofit">
@@ -536,15 +538,19 @@ export function TodayView(t: TodayProps) {
   );
 }
 
-/** A meeting: fixed time, not a task. @req FR:web-app/today.meetings */
+/** Meetings: fixed time, not tasks; overlapping ones stack, each with its own Join. @req FR:web-app/today.meetings */
 function MeetingRow({ m }: { m: Busy }) {
-  const join = m.events.find((e) => e.online && e.webLink)?.webLink;
   return (
     <li class="meeting">
-      <time class="when">{clock(m.start)}<small>{span(m.end - m.start)}</small></time>
+      <time class="when">{clock(m.start)}<small>{clock(m.end)}</small></time>
       <div class="what">
-        <p class="what-title">{m.titles.join(' · ')}</p>
-        <p class="what-meta"><span>Meeting{m.events.some((e) => e.showAs === 'tentative') ? ' · tentative' : ''}</span>{join && <a class="join" href={join} target="_blank" rel="noopener noreferrer">Join</a>}</p>
+        {m.events.map((e) => (
+          <p key={e.id} class="m-line">
+            <span class="m-title">{e.subject}</span>
+            {e.showAs === 'tentative' && <span class="m-tent">Tentative</span>}
+            {e.online && e.webLink && <a class="join" href={e.webLink} target="_blank" rel="noopener noreferrer">Join</a>}
+          </p>
+        ))}
       </div>
     </li>
   );
