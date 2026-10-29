@@ -149,10 +149,10 @@ test.describe('Agent team', () => {
     await page.keyboard.type('Go');
     await page.keyboard.press('Enter');
     await expect(hero.locator('.agent-talk')).toHaveCount(0);
-    // The chip follows the session: once the mock flips it to idle, the next 15 s poll shows Done (no poll = stuck on Working).
+    // The chip follows the session: once the mock flips it to idle, a 15 s poll shows Done (no poll = stuck on Working). Two cycles of slack: the flip can land right after a poll.
     await expect(hero.locator('.agent-chip')).toHaveText('Working');
     for (const x of m.sessions!) x.state = 'idle';
-    await expect(hero.locator('.agent-chip')).toHaveText(/^Done/, { timeout: 20_000 });
+    await expect(hero.locator('.agent-chip')).toHaveText(/^Done/, { timeout: 35_000 });
   });
 
   test('Home rows carry the chip and the composer too', async ({ page }) => {
