@@ -37,8 +37,9 @@ describe('hash state', () => {
   });
   it('omits defaults and tolerates junk', () => {
     expect(buildHash('now', F())).toBe('#/now');
-    expect(parseHash('')).toEqual({ view: 'today', filters: F() });
-    expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'today', filters: F() });
+    expect(parseHash('')).toEqual({ view: 'asks', filters: F() });
+    expect(parseHash('#/today')).toEqual({ view: 'today', filters: F() });
+    expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'asks', filters: F() });
     expect(parseHash('#/list?state=done').filters.state).toBe('done');
   });
 });

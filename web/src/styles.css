@@ -169,7 +169,7 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
   .shell { display: block; }
   .rail { display: none; }
   .main { padding: 16px 16px 150px; }
-  .tabbar { display: grid; grid-template-columns: 1fr 1fr 1fr 56px 64px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  .tabbar { display: grid; grid-template-columns: repeat(4, 1fr) 48px 56px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
   .tabbar .tab { justify-content: center; min-height: 56px; border-radius: 0; }
   .tabbar kbd { display: none; }
   .focus-block { padding: 16px; }
