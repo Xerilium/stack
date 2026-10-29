@@ -72,8 +72,8 @@ test.describe('now view', () => {
     await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
     const focus = page.locator('.focus-block');
     await expect(focus.getByRole('button', { name: /Priority: High/ })).toBeVisible();
-    await expect(focus.getByRole('button', { name: /Effort: 1 hour/ })).toBeVisible();
-    // @req FR:web-app/now.active
+    await expect(focus.getByTestId('expected')).toHaveText('1h'); // effort reads as expected time on Home
+    // @req FR:web-app/now.active @req FR:web-app/home.next
     await expect(rows(page)).toHaveText(['Review pull requests', 'Plan the trip']);
     await expect(page.locator('.row[data-ref="alpha:6"]')).toHaveCount(0);
     await expect(page.locator('.row[data-ref="alpha:7"]')).toHaveCount(0);
@@ -814,16 +814,13 @@ test.describe('now view sections', () => {
     await expect(page.locator('.row', { hasText: 'Read' }).locator('.title')).not.toContainText('https://');
   });
 
-  test('Show all active expands and collapses the Then list', async ({ page }) => {
+  // @req FR:web-app/home.next @req FR:web-app/home.quiet
+  test('Home shows two up next and no expander; the rest is one chord away', async ({ page }) => {
     const tasks = [mk(1, '🔺 Hero task'), ...Array.from({ length: 8 }, (_, i) => mk(i + 2, `Filler ${i + 1}`))];
     await mockApi(page, { tasks });
     await page.goto('/#/now');
-    const rowsEl = page.locator('section[aria-label="Now"] .row');
-    await expect(rowsEl).toHaveCount(5);
-    await page.getByRole('button', { name: /Show all active \(\d+ more\)/ }).click();
-    await expect(rowsEl).toHaveCount(8);
-    await page.getByRole('button', { name: 'Show less' }).click();
-    await expect(rowsEl).toHaveCount(5);
+    await expect(page.locator('section[aria-label="Now"] .row')).toHaveCount(2);
+    await expect(page.getByRole('button', { name: /Show all active/ })).toHaveCount(0);
   });
 });
 
