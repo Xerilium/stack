@@ -17,7 +17,7 @@ export interface RulesConfig {
   receiptSubjectPatterns: string[];
 }
 
-export type SettledClass = 'skip' | 'calendar' | 'sensitive' | 'newsletter' | 'receipt';
+export type SettledClass = 'skip' | 'calendar' | 'sensitive' | 'spam' | 'newsletter' | 'receipt';
 /** `class: null` means a VIP the rules left for the model; `vip` floors its urgency. */
 export interface PrefilterResult { class: SettledClass | null; rule: string; vip?: true }
 
@@ -47,7 +47,13 @@ function bulk(m: Message): boolean {
   return h.has('list-unsubscribe') || h.has('list-id') || /^(bulk|list)\b/.test(h.get('precedence') ?? '') || /^auto-/.test(h.get('auto-submitted') ?? '');
 }
 
-/** First match wins: skip, calendar, sensitive, (VIP passes to the model), newsletter, receipt; otherwise null. */
+/** Failing sender authentication: DMARC fail, or both SPF and DKIM fail. @req FR:email-inbox-zero/batch.spam */
+function authFails(m: Message): boolean {
+  const v = Object.entries(m.headers ?? {}).filter(([k]) => k.toLowerCase() === 'authentication-results').map(([, x]) => String(x).toLowerCase()).join(';');
+  return /\bdmarc=fail\b/.test(v) || (/\bspf=fail\b/.test(v) && /\bdkim=fail\b/.test(v));
+}
+
+/** First match wins: skip, calendar, sensitive, (VIP passes to the model), spam, newsletter, receipt; otherwise null. */
 export function prefilter(m: Message, config: RulesConfig): PrefilterResult | null {
   const vip = inList(m.from.address, config.vip) ? (true as const) : undefined;
   const hit = (cls: SettledClass, rule: string): PrefilterResult => ({ class: cls, rule, ...(vip ? { vip } : {}) });
@@ -55,6 +61,7 @@ export function prefilter(m: Message, config: RulesConfig): PrefilterResult | nu
   if (/eventMessage/i.test(m.odataType ?? '')) return hit('calendar', 'calendar');
   if (inList(m.from.address, config.sensitive) || anyMatch(config.sensitivePatterns, m.from.address)) return hit('sensitive', 'sensitive-sender');
   if (vip) return { class: null, rule: 'vip', vip };
+  if (authFails(m)) return hit('spam', 'auth-fail');
   if (bulk(m)) return hit('newsletter', 'bulk-headers');
   if ((anyMatch(config.receiptSenderPatterns, m.from.address) || anyMatch(config.receiptSubjectPatterns, m.subject)) && !m.bodyPreview.includes('?')) return hit('receipt', 'receipt');
   return null;

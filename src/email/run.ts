@@ -8,6 +8,7 @@ import { prefilter, type RulesConfig } from './rules';
 import { existingDraft, newSummary, recordResult, resolveAsk, tally, type RunSummary } from './to-ask';
 import { TRIAGE_CLASSES, type Classifier, type Drafter, type DraftVoice, type MailProvider, type Message, type TriageResult } from './types';
 import { DEFAULT_PROFILE, redraftFeedback, scoreDraft, type VoiceProfile } from './voice';
+import { applyApproved, observe, writeHygieneAsks, type Http, type Judge, type MailActions, type MailState } from './hygiene';
 
 export interface RunDeps {
   ctx: LifecycleContext;
@@ -21,6 +22,8 @@ export interface RunDeps {
   cursor?: string;
   /** The owner's learned voice; without it drafts are checked against the cliche list only. */
   voice?: VoiceProfile;
+  /** Inbox zero: batch asks, subscriptions, and acting on answered asks. Without `actions` nothing moves. @req FR:email-inbox-zero/batch.act */
+  hygiene?: { state: MailState; actions?: MailActions; judge?: Judge; http?: Http; archiveAfterHours?: number };
 }
 
 /** Drafts, checks the voice, and redrafts once with the violations when the first draft fails; the better score wins, a tie keeps the redraft. @req FR:email-voice/score.redraft */
@@ -55,7 +58,7 @@ async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<Tria
   const r: TriageResult = {
     message: m, class: trusted ? c.class : 'needs_decision', confidence: clamp(c.confidence, 0, 1), urgency: Math.max(clamp(c.urgency, 0, 3), vip ? 1 : 0),
     reason: c.injectionSuspected ? 'Possible prompt injection; not drafted' : c.reason, ...(trusted && c.options ? { options: c.options } : {}), ...(trusted && c.recommend ? { recommend: c.recommend } : {}),
-    ...(vip ? { vip } : {}),
+    ...(vip ? { vip } : {}), ...(trusted && typeof c.summary === 'string' && c.summary.trim() ? { summary: c.summary } : {}),
   };
   if (r.class === 'needs_reply' && d.drafter) {
     // One draft per conversation: a run that died after drafting, or a thread seen again, reuses the draft already in the mailbox. @req FR:email-triage/ask.once
@@ -75,8 +78,25 @@ async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<Tria
 export async function runTriage(d: RunDeps): Promise<{ cursor: string; summary: RunSummary }> {
   const { messages, cursor } = await d.provider.delta(d.cursor);
   const newest = new Map<string, Message>();
-  for (const m of [...messages].sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt))) newest.set(m.conversationId, m);
+  const byConv = new Map<string, Message[]>();
+  for (const m of [...messages].sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt))) { newest.set(m.conversationId, m); byConv.set(m.conversationId, [...(byConv.get(m.conversationId) ?? []), m]); }
   const summary = newSummary();
-  for (const m of newest.values()) await recordResult(d.ctx, await triage(d, m, summary), { project: d.project });
+  const now = (d.ctx.now ?? (() => new Date()))();
+  const h = d.hygiene;
+  const s = h ? await h.state.get() : undefined;
+  for (const m of newest.values()) {
+    const r = await triage(d, m, summary);
+    await recordResult(d.ctx, r, { project: d.project });
+    // Older messages of a settled thread go with it, so the archive batch clears the whole thread.
+    if (s) for (const o of byConv.get(m.conversationId) ?? [m]) observe(s, o === m ? r : { ...r, message: o }, { now });
+  }
+  if (h && s) {
+    await h.state.put(s);
+    if (h.actions) await applyApproved(d.ctx, { state: h.state, actions: h.actions, http: h.http, now });
+    const cur = await h.state.get();
+    const pending = await writeHygieneAsks(d.ctx, cur, { now, judge: h.judge, archiveAfterHours: h.archiveAfterHours, project: d.project });
+    await h.state.put(cur);
+    summary.archivePending = pending.archive; summary.spamPending = pending.spam;
+  }
   return { cursor, summary };
 }
