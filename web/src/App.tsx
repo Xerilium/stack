@@ -14,7 +14,7 @@ import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { DEFER, progress, startsOpen, topTask, visibleRows } from './now';
-import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
+import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, span, type Decision } from './plan';
 import { calendarRange, dayFrame, needsRefresh, type DaySched } from './schedule';
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
@@ -44,12 +44,15 @@ async function signOut() {
   location.assign('/.auth/logout');
 }
 type Phase = 'loading' | 'ready' | 'denied' | 'error';
-interface Command { id: string; label: string; hint?: string; run: () => void }
+type Group = 'Actions' | 'Go to' | 'Projects';
+interface Command { id: string; label: string; hint?: string; group?: Group; run: () => void }
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
 /** An expired session may be followed by another account: drop the cached copy first. */
 const toLogin = () => { void clearCaches().then(() => location.assign(`/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(location.pathname + location.search + location.hash)}`)); };
 const projectOf = (ref: string) => ref.slice(0, ref.lastIndexOf(':'));
+/** `2026-10-23` as `Fri Oct 23`. */
+const niceDate = (iso: string) => { const d = new Date(`${iso}T00:00`); return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); };
 
 export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -424,13 +427,6 @@ export function App() {
   const openCapture = () => setCaptureOpen(true);
   const hasRows = view === 'home' || view === 'today' || view === 'list';
   const commands: Command[] = [
-    { id: 'go-home', label: 'Go to Home', hint: HINT.home, run: () => go('home') },
-    { id: 'go-today', label: 'Go to My day', hint: HINT.today, run: () => go('today') },
-    { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, run: () => go('asks') },
-    { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, run: () => go('projects') },
-    { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, run: () => go('list') },
-    // @req FR:web-shell/palette.jump
-    ...projects.map((p) => ({ id: `proj-${p.name}`, label: `Project: ${p.title || p.name}`, run: () => go('list', { ...NO_FILTERS, project: p.name }) })),
     ...(view === 'asks' && asks.current ? [
       ...actionsFor(asks.current).filter((x) => x.send || x.open).map((x) => ({ id: `ask-${x.id}`, label: `Ask: ${x.label}`, hint: x.key === 'Enter' ? '⏎' : x.key, run: () => { const a = asks.current!; if (x.open) { if (a.link) window.open(a.link, '_blank', 'noopener,noreferrer'); } else if (x.send) void asks.answer(a, x.send, `Sent to ${a.from}`); } })),
       { id: 'ask-defer', label: 'Ask: Defer', hint: 'z', run: () => asks.setPanel('defer') },
@@ -465,11 +461,21 @@ export function App() {
     { id: 'help', label: 'Show keyboard shortcuts', hint: '?', run: () => setHelp(true) },
     ...(notify.supported ? [{ id: 'notify', label: notify.on ? 'Turn off notifications' : 'Notify me about new asks', run: notify.toggle }] : []),
     { id: 'signout', label: 'Sign out', run: () => void signOut() },
+  ].map((c) => ({ group: 'Actions' as Group, ...c }));
+  // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump
+  const goTo: Command[] = [
+    { id: 'go-home', label: 'Go to Home', hint: HINT.home, group: 'Go to', run: () => go('home') },
+    { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
+    { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
+    { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
+    { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, group: 'Go to', run: () => go('list') },
   ];
+  const projectCmds: Command[] = projects.map((p) => ({ id: `proj-${p.name}`, label: p.title || p.name, group: 'Projects' as Group, run: () => go('list', { ...NO_FILTERS, project: p.name }) }));
+  const allCommands = [...commands, ...goTo, ...projectCmds];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events });
-  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events };
+  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events });
+  latest.current = { positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
   const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget };
 
@@ -573,19 +579,22 @@ export function App() {
         <div class="spacer" />
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">Commands <kbd>⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
-        <div class="who">{!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}</div>
+        <div class="who">
+          {local && <span class={`repo-pill ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner" title={info ? `${info.repo} · ${info.branch} · ${info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}` : undefined}>{info ? <><strong>{info.mode === 'live' ? 'Live' : 'Demo copy'}</strong> · {info.branch}</> : me}</span>}
+          {!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}
+        </div>
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
-        {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <p class="loading">Loading…</p>}
+        {local && <div class={`banner mobile-only ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-pill" title={info ? `${info.repo} · ${info.branch}` : undefined}>{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong></> : me}</div>}
+        {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'home' && <HomeView h={home} minutesLeft={budget.minutes} p={rowProps} busy={busy} onAct={(a, ref) => (a === 'defer' ? openDefer(ref ?? next?.ref) : void doAct(a, ref ?? next?.ref))} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setBudget(budget.minutes + STEP)} />}
+        {phase === 'ready' && view === 'home' && <HomeView h={home} now={clockNow} minutesLeft={budget.minutes} p={rowProps} busy={busy} onAct={(a, ref) => (a === 'defer' ? openDefer(ref ?? next?.ref) : void doAct(a, ref ?? next?.ref))} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setBudget(budget.minutes + STEP)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />
@@ -623,12 +632,12 @@ export function App() {
             onInput={(e) => setCaptureText((e.target as HTMLInputElement).value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submitCapture(); } }} />
           <p class={`preview-line${preview?.error ? ' err' : ''}`} role="status" data-testid="capture-preview">
-            {preview ? (preview.error ?? [preview.spec!.title, preview.spec!.due && `due ${preview.spec!.due}`, preview.spec!.effort && `${preview.spec!.effort.emoji} ${preview.spec!.effort.minutes}m`, preview.spec!.project && `#${preview.spec!.project}`].filter(Boolean).join(' · ')) : <>Natural language: due, effort, <code>#project</code>. <kbd>Enter</kbd> adds.</>}
+            {preview ? (preview.error ?? [preview.spec!.title, preview.spec!.due && niceDate(preview.spec!.due), preview.spec!.effort && span(preview.spec!.effort.minutes), preview.spec!.project && (titles.get(preview.spec!.project) ?? `#${preview.spec!.project}`)].filter(Boolean).join(' · ')) : <>Natural language: due, effort, <code>#project</code>. <kbd>Enter</kbd> adds.</>}
             {preview?.retry && <button type="button" class="link" disabled={busy} onClick={() => (preview.retry === 'submit' ? void submitCapture() : setPreviewTry((n) => n + 1))}>Retry</button>}
           </p>
         </Dialog>
       )}
-      {palette && <PaletteDialog commands={commands} onClose={() => setPalette(false)} />}
+      {palette && <PaletteDialog commands={allCommands} onClose={() => setPalette(false)} />}
       {help && <Help onClose={() => setHelp(false)} />}
       <Toasts toasts={toasts} dismiss={dismiss} />
     </div>
@@ -652,9 +661,12 @@ function PaletteDialog({ commands, onClose }: { commands: Command[]; onClose: ()
         }} />
       <ul id="palette-list" class="cmds" role="listbox">
         {shown.map((c, n) => (
-          <li key={c.id} role="option" aria-selected={n === i} class={n === i ? 'on' : ''} onMouseEnter={() => setI(n)} onClick={() => choose(c)}>
-            <span>{c.label}</span>{c.hint && <kbd>{c.hint}</kbd>}
-          </li>
+          <>
+            {q === '' && c.group && c.group !== shown[n - 1]?.group && <li key={`g-${c.group}`} class="cmd-group" role="presentation">{c.group}</li>}
+            <li key={c.id} role="option" aria-selected={n === i} class={n === i ? 'on' : ''} onMouseEnter={() => setI(n)} onClick={() => choose(c)}>
+              <span>{c.label}</span>{c.hint && <kbd>{c.hint}</kbd>}
+            </li>
+          </>
         ))}
         {shown.length === 0 && <li class="none">No matching command</li>}
       </ul>

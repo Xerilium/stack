@@ -593,7 +593,7 @@ test.describe('projects', () => {
     await expect(a).toContainText('Alpha');
     await expect(a.locator('.proj-top')).toContainText('Ship the web app');
     await expect(a.locator('.proj-count')).toHaveText('4');
-    await expect(a.locator('.proj-hrs')).toHaveText('7.5h / 2h');
+    await expect(a.locator('.proj-hrs')).toHaveText('3.5h / 2h'); // active work only; the backlog is not load
     await expect(a).toHaveClass(/over/);
     expect(await a.locator('.proj-hrs').evaluate((el) => getComputedStyle(el, '::before').content)).toContain('▲');
     const b = page.getByTestId('cap-beta');
@@ -626,7 +626,7 @@ test.describe('capture', () => {
     const box = dlg.getByLabel('Quick capture');
     await expect(box).toBeFocused();
     await box.fill('call dentist tomorrow 30m #beta');
-    await expect(page.getByTestId('capture-preview')).toContainText('Call dentist · due 2026-10-23 · 🟢 30m · #beta');
+    await expect(page.getByTestId('capture-preview')).toContainText('Call dentist · Fri, Oct 23 · 30m · Beta');
     await shot(page, 'capture', info);
     await box.press('Enter');
     await expect(page.getByText('Added: Call dentist')).toBeVisible();
@@ -636,7 +636,7 @@ test.describe('capture', () => {
     const box2 = page.getByLabel('Quick capture');
     await expect(box2).toHaveValue('');
     await box2.fill('water plants');
-    await expect(page.getByTestId('capture-preview')).toContainText('#beta');
+    await expect(page.getByTestId('capture-preview')).toContainText('Beta');
     await box2.press('Enter');
     await expect(page.getByText('Added: Water plants')).toBeVisible();
     await expect.poll(() => m.calls.at(-1)?.body.project).toBe('beta');

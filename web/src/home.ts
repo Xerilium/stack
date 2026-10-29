@@ -14,11 +14,11 @@ export interface Countdown { text: string; tone: 'late' | 'soon' | 'calm' }
 export function countdown(due: string | undefined, now: Date): Countdown | null {
   const d = dueDays(due, now);
   if (d === null) return null;
-  if (d < 0) return { text: `${-d} d late`, tone: 'late' };
+  if (d < 0) return { text: `${-d}d late`, tone: 'late' };
   if (d === 0) return { text: 'today', tone: 'soon' };
   if (d === 1) return { text: 'tomorrow', tone: 'soon' };
   if (d < 7) return { text: new Date(now.getFullYear(), now.getMonth(), now.getDate() + d).toLocaleDateString('en-US', { weekday: 'short' }), tone: 'calm' };
-  return { text: `in ${d} d`, tone: 'calm' };
+  return { text: `in ${d}d`, tone: 'calm' };
 }
 
 export interface HomeItem { task: Task; minutes: number; assumed: boolean; due: Countdown | null }

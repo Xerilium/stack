@@ -46,6 +46,9 @@ export interface ListProps extends RowProps {
 }
 
 /** @req FR:web-app/list.view @req FR:web-app/list.filters */
+/** Section names without their emoji: the eyebrow is text, the file keeps its marker. */
+const plainSection = (name: string) => name.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').trim();
+
 export function ListView(p: ListProps) {
   const f = p.filters;
   const chips: [string, string, () => void][] = [];
@@ -89,11 +92,11 @@ export function ListView(p: ListProps) {
           const phead = t.project !== lastProject; lastProject = t.project;
           return <>
             {phead && <li class="group" key={`p-${t.project}`} role="presentation"><span>{p.titles.get(t.project) ?? t.project}</span></li>}
-            {head && <li class="section" key={`h-${key}`} role="presentation"><button type="button" aria-expanded="true" onClick={() => p.onSection(key)}>▾ {t.section}</button></li>}
+            {head && <li class="section" key={`h-${key}`} role="presentation"><button type="button" aria-expanded="true" onClick={() => p.onSection(key)}>▾ {plainSection(t.section)}</button></li>}
             <TaskRow key={t.ref} t={t} p={p} />
           </>;
         })}
-        {[...p.collapsed].filter((k) => p.all.some((t) => `${t.project}/${t.section}` === k)).map((k) => <li class="section" key={`c-${k}`} role="presentation"><button type="button" aria-expanded="false" onClick={() => p.onSection(k)}>▸ {k.replace('/', ' · ')}</button></li>)}
+        {[...p.collapsed].filter((k) => p.all.some((t) => `${t.project}/${t.section}` === k)).map((k) => <li class="section" key={`c-${k}`} role="presentation"><button type="button" aria-expanded="false" onClick={() => p.onSection(k)}>▸ {plainSection(k.replace('/', ' · '))}</button></li>)}
       </ul>
     </section>
   );
@@ -560,7 +563,7 @@ function DueNote({ due }: { due?: string }) {
 export function WeekView({ w }: { w: Week }) {
   const top = Math.max(60, ...w.days.map((d) => Math.max(d.available, d.planned)));
   const h = (m: number) => `${Math.round((m / top) * 100)}%`;
-  const hrs = (m: number) => (m === 0 ? '0' : m % 60 === 0 ? `${m / 60}h` : `${(m / 60).toFixed(1).replace(/\.0$/, '')}h`);
+  const hrs = (m: number) => (m === 0 ? '0' : m < 60 ? `${m}m` : m % 60 === 0 ? `${m / 60}h` : `${(m / 60).toFixed(1).replace(/\.0$/, '')}h`);
   return (
     <section class="week" aria-label="This week" data-testid="week">
       <div class="week-head">
@@ -579,7 +582,7 @@ export function WeekView({ w }: { w: Week }) {
                 {d.over > 0 && d.available > 0 && <span class="wd-over" style={{ bottom: h(d.available), height: h(d.over) }} />}
                 {d.available === 0 && d.planned > 0 && <span class="wd-unset" style={{ height: h(d.planned) }} />}
               </div>
-              <p class="wd-label">{hrs(d.planned)}<small>{d.available === 0 ? (d.planned > 0 ? ' · no time set' : ' · off') : ` / ${hrs(d.available)}`}</small></p>
+              <p class="wd-label">{d.available === 0 && d.planned === 0 ? <small>off</small> : <>{hrs(d.planned)}<small>{d.available === 0 ? ' · no time set' : ` / ${hrs(d.available)}`}</small></>}</p>
               <p class="wd-name">{name}<small>{d.date.getDate()}</small></p>
             </li>
           );
@@ -604,11 +607,14 @@ function When({ i, onEffort }: { i: { minutes: number; assumed: boolean; due: Co
 }
 
 /** Home: the one thing now, whether it fits, the next two, the top of every project. @req FR:web-app/home.one @req FR:web-app/home.fit @req FR:web-app/home.next @req FR:web-app/home.projects @req FR:web-app/home.quiet */
-export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime }: {
-  h: Home; minutesLeft: number; p: RowProps; busy: boolean; onAct: (a: 'start' | 'done' | 'defer', ref?: string) => void; onProject: (name: string) => void; onMoreTime: () => void;
+export function HomeView({ h, now, minutesLeft, p, busy, onAct, onProject, onMoreTime }: {
+  h: Home; now: Date; minutesLeft: number; p: RowProps; busy: boolean; onAct: (a: 'start' | 'done' | 'defer', ref?: string) => void; onProject: (name: string) => void; onMoreTime: () => void;
 }) {
-  const one = h.one;
+  // One focal point: when the next task does not fit the time left, the task that fits is NOW and the other one waits under it.
+  const demoted = !h.fits && h.instead ? h.one : null;
+  const one = demoted ? h.instead : h.one;
   const hero = one ? parseRow(one.task.text) : null;
+  const ends = (i: HomeItem) => clock(now.getHours() * 60 + now.getMinutes() + i.minutes);
   const row = (i: HomeItem) => {
     const r = parseRow(i.task.text);
     return (
@@ -626,31 +632,35 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
     <section class="home" aria-label="Home">
       {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd>c</kbd></p></div>}
       {one && hero && (
-        <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${h.fits ? '' : ' unfit'}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
+        <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
           <p class="eyebrow">Now · {p.titles.get(one.task.project) ?? one.task.project}</p>
           <h1 data-testid="next-title" onDblClick={() => p.onOpen(one.task.ref)}><Md text={hero.title || one.task.text} /></h1>
           <div class="chips">
             <When i={one} onEffort={() => p.onPick([one.task.ref], 'effort')} />
+            <span class="ends" data-testid="ends">ends ~{ends(one)}</span>
             {chipsOf(one.task.text).filter((c) => c.group !== 'effort').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([one.task.ref], g)} />)}
             <Tags r={hero} />
             {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
           </div>
-          {!h.fits && (
+          {!h.fits && !demoted && (
             <p class="nofit-line" data-testid="nofit">{minutesLeft > 0 ? `No time for this today: needs ${span(one.minutes)}, ${span(minutesLeft)} left` : "Day's over: no time left today"}</p>
           )}
           <div class="actions">
-            <button type="button" class={`btn${h.fits ? ' primary' : ''}`} disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>
+            <button type="button" class={`btn${h.fits || demoted ? ' primary' : ''}`} disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>
             <button type="button" class="btn" disabled={busy} onClick={() => onAct('done', one.task.ref)}>Done <kbd>d</kbd></button>
             <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('defer', one.task.ref)}>Not now <kbd>z</kbd></button>
-            {!h.fits && <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
+            {!h.fits && !demoted && <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
           </div>
         </div>
       )}
-      {h.instead && (
-        <div class="instead" data-testid="instead">
-          <h2 class="h2">Instead, this fits</h2>
-          <ul class="rows">{row(h.instead)}</ul>
-          <div class="actions small"><button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start', h.instead!.task.ref)}>Start this</button></div>
+      {demoted && (
+        <div class={`unfit${p.cursor === demoted.task.ref ? ' cursor' : ''}`} data-testid="unfit" data-ref={demoted.task.ref} onClick={() => p.onCursor(demoted.task.ref)}>
+          <span class="unfit-title"><Md text={parseRow(demoted.task.text).title || demoted.task.text} /></span>
+          <When i={demoted} />
+          <span class="unfit-why">doesn't fit today: needs {span(demoted.minutes)}, {span(minutesLeft)} left</span>
+          <span class="grow" />
+          <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>
+          <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('start', demoted.task.ref)}>Start anyway</button>
         </div>
       )}
       {h.next.length > 0 && (
@@ -659,15 +669,15 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
           <ul class="rows" data-testid="up-next">{h.next.map((i) => row(i))}</ul>
         </div>
       )}
-      {h.projects.length > 0 && (
+      {h.projects.some((x) => !x.shown) && (
         <div>
           <h2 class="h2">Projects</h2>
           <ul class="home-projects" data-testid="home-projects">
-            {h.projects.map((x) => (
-              <li key={x.project} class={x.shown ? 'shown' : ''}>
+            {h.projects.filter((x) => !x.shown).map((x) => (
+              <li key={x.project}>
                 <button type="button" class="proj-link" onClick={() => onProject(x.project)}>{x.title}</button>
-                {x.shown ? <span class="proj-top quiet">above</span> : <span class="proj-top" onDblClick={() => p.onOpen(x.top.task.ref)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>}
-                {!x.shown && <When i={x.top} />}
+                <span class="proj-top" onDblClick={() => p.onOpen(x.top.task.ref)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
+                <When i={x.top} />
               </li>
             ))}
           </ul>

@@ -85,7 +85,7 @@ test.describe('layout and nav', () => {
     await expect(page.locator('#palette-list [role=option]').first()).toHaveText(/Mark done/);
     await box.fill('');
     await box.fill('alpha');
-    await expect(page.locator('#palette-list [role=option]').first()).toHaveText(/Project: Alpha/);
+    await expect(page.locator('#palette-list [role=option]').first()).toHaveText(/^Alpha$/);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/#\/list\?project=alpha/);
     await expect(page.locator('.row')).toHaveCount(2); // alpha's open top-level rows

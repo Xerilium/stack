@@ -1,3 +1,4 @@
+import { isActive } from './now';
 import { effortMinutes, parseRow } from './row';
 import type { Project, Task } from './types';
 
@@ -22,7 +23,8 @@ export function capacityHours(meta: Record<string, string>): number | null {
 export function capacityRows(projects: Project[], tasks: Task[]): CapacityRow[] {
   return projects.map((p) => {
     const open = tasks.filter((t) => t.project === p.name && !t.done);
-    const hours = open.reduce((s, t) => s + effortMinutes(parseRow(t.text).effort), 0) / 60;
+    // load is the active work, not the backlog
+    const hours = open.filter(isActive).reduce((s, t) => s + effortMinutes(parseRow(t.text).effort), 0) / 60;
     const capacity = capacityHours(p.metadata ?? {});
     const ratio = capacity ? hours / capacity : null;
     return { project: p.name, title: p.title, open: open.length, hours, capacity, ratio, over: ratio !== null && ratio > 1 };

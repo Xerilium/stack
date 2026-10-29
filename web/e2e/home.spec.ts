@@ -21,10 +21,12 @@ test.describe('Home', () => {
     await expect(page.getByTestId('up-next').locator('.row')).toHaveCount(2);
     await expect(page.getByTestId('up-next').locator('.row .title')).toHaveText(['Review pull requests', 'Plan the trip']);
     await expect(page.getByTestId('up-next').locator('.row').first().getByTestId('expected')).toHaveText('2h');
+    // projects whose top task is already on screen (alpha, beta) are not repeated
     const projects = page.getByTestId('home-projects').locator('li');
-    await expect(projects).toHaveCount(3);
-    await expect(projects.nth(2)).toContainText('Chase the invoice');
-    await expect(projects.nth(2).getByTestId('countdown')).toHaveText('2 d late');
+    await expect(projects).toHaveCount(1);
+    await expect(projects.first()).toContainText('Chase the invoice');
+    await expect(projects.first().getByTestId('countdown')).toHaveText('2d late');
+    await expect(one.getByTestId('ends')).toHaveText(/^ends ~\d{1,2}:\d\d[ap]$/);
     await expect(page.getByText(/Show all active/)).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `e2e/screenshots/home-${info.project.name}.png` });
@@ -35,21 +37,23 @@ test.describe('Home', () => {
     await mockApi(page, { tasks: home() });
     await page.clock.install({ time: new Date(2026, 9, 29, 17, 30) }); // 30 min of the work day left
     await page.goto('/');
+    // one focal point: the task that fits is NOW; the one that does not is one muted line under it
     const one = page.getByRole('group', { name: 'Next task' });
-    await expect(one.getByTestId('nofit')).toHaveText('No time for this today: needs 1h, 30m left');
-    const instead = page.getByTestId('instead');
-    await expect(instead).toContainText('Plan the trip');
-    await expect(instead.getByTestId('expected')).toHaveText('30m');
-    if (info.project.name === 'mobile') await one.getByRole('button', { name: /More time/ }).tap(); else await page.keyboard.press(']'); // +30 m: now it fits
-    await expect(one.getByTestId('nofit')).toHaveCount(0);
-    await expect(page.getByTestId('instead')).toHaveCount(0);
+    await expect(one.getByTestId('next-title')).toContainText('Plan the trip');
+    await expect(one.getByTestId('expected')).toHaveText('30m');
+    const unfit = page.getByTestId('unfit');
+    await expect(unfit).toContainText('Ship the web app');
+    await expect(unfit).toContainText("doesn't fit today: needs 1h, 30m left");
+    if (info.project.name === 'mobile') await unfit.getByRole('button', { name: /More time/ }).tap(); else await page.keyboard.press(']'); // +30 m: now it fits
+    await expect(one.getByTestId('next-title')).toContainText('Ship the web app');
+    await expect(page.getByTestId('unfit')).toHaveCount(0);
   });
 
   // @req FR:web-app/home.projects
   test('project name opens that project in Full stack', async ({ page }) => {
     await mockApi(page, { tasks: home() });
     await page.goto('/');
-    await page.getByTestId('home-projects').getByRole('button', { name: 'Beta' }).click();
-    await expect(page).toHaveURL(/#\/list\?project=beta/);
+    await page.getByTestId('home-projects').getByRole('button', { name: 'Gamma' }).click();
+    await expect(page).toHaveURL(/#\/list\?project=gamma/);
   });
 });
