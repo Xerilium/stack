@@ -186,7 +186,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return; // a finished chord is not a view key
       if (e.key === 'Escape' && talk?.isOpen()) { e.preventDefault(); talk.close(); return; }
       if (e.key === 'Escape' && asks.panelRef.current !== 'none') { e.preventDefault(); asks.setPanel('none'); return; }
       if (isTyping(e.target)) return;

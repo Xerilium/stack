@@ -620,7 +620,9 @@ export function App() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTyping(e.target)) return;
       const k = e.key;
-      if ((k === 'Enter' || k === ' ') && e.target instanceof HTMLElement && ['BUTTON', 'A'].includes(e.target.tagName)) return;
+      // the element under focus keeps Enter/Space (buttons, links, row titles); the agent composer keeps every key
+      if (e.target instanceof HTMLElement && e.target.closest('.agent-talk')) return;
+      if ((k === 'Enter' || k === ' ') && e.target instanceof HTMLElement && e.target.matches('button, a, [role="button"]')) return;
       const now = Date.now();
       if (chord.current && now - chord.current < 1000) {
         chord.current = 0;

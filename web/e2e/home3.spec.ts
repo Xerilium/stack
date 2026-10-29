@@ -92,6 +92,9 @@ test.describe('Home round 3', () => {
     await expect(title).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press(' ');
     await expect(title).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press(' ');
+    await expect(title).toHaveAttribute('aria-expanded', 'false'); // one toggle per press
+    await page.keyboard.press(' ');
     await row.locator('.row-detail .body').click();
     await expect(row.locator('.row-detail')).toBeVisible();
     await title.focus();
