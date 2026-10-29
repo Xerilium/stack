@@ -72,7 +72,7 @@ describe('device code poll', () => {
       const e = await pollDeviceCode({ tenant: TENANT, clientId: CLIENT, code: dc, fetch: f.fetch, sleep: async () => undefined, now: () => 0 }).catch((x: unknown) => x as GraphSignInError);
       expect(e).toBeInstanceOf(GraphSignInError);
       expect(e).toMatchObject({ code });
-      expect(String(e.message)).not.toContain('secret detail');
+      expect(String((e as GraphSignInError).message)).not.toContain("secret detail");
     }
     let t = 0;
     const slow = fakeLogin(Array.from({ length: 500 }, () => ({ error: 'authorization_pending' })));

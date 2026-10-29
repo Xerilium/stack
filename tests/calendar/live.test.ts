@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'fs';
+import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { calendarSource } from '../../src/cli/web';
@@ -18,7 +18,7 @@ describe('stack web calendar source', () => {
     expect(g.source).toBe('graph');
     expect(g.provider).toBeDefined();
     const fx = join(d, 'events.json');
-    require('fs').writeFileSync(fx, '[]');
+    writeFileSync(fx, '[]');
     expect((await calendarSource({ cachePath, fixture: fx })).source).toBe('fixture');
   });
 });

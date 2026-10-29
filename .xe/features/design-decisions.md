@@ -199,3 +199,13 @@
 **Why**: A plan that ignores meetings books hours that do not exist. First fit uses the gap before a meeting for a short task instead of wasting it; capping at the work day keeps unusable gaps from pushing work into the evening.
 
 **Rejected**: IMAP (app passwords and a client library for a Microsoft 365 mailbox Graph already covers); splitting a task across a meeting (context switching); a server-side plan (the budget and clock are per viewer).
+
+## Graph sign-in is a device code flow with a local token file
+
+**Decision**: The owner signs in once with `stack graph login` (device code, public client, no secret). Scopes are read-only per feature (`Calendars.Read`, `Mail.Read`, `Mail.ReadWrite` for drafts) plus `offline_access`; send and write scopes are refused in code. The refresh token lives in `~/.config/stack/graph-token.json` (0600), never in a task repo.
+
+**Date**: 2026-10-29
+
+**Why**: A terminal flow needs no redirect URI or secret, works on any machine, and keeps the token off GitHub and Azure. Refusing unsafe scopes in code means a bad app registration still cannot send mail.
+
+**Rejected**: Auth code with a localhost redirect (more moving parts, same result); storing the token in the task repo or Azure (it would leave the owner's machine); a confidential client (a secret to manage for one user).

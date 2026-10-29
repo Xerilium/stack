@@ -6,6 +6,7 @@
 Global flags: `--dir <path>` (optional; default: found by walking up from the current folder, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`), `--json`, `--no-commit`, `--remote <name>`, `--branch <name>`, `--now <ISO>`, `--help`, `--version`.
 
 - `web`: serve the web app on localhost (default port 4173) over a content repo (`--repo path-or-git-url`, else discovery). DEMO by default (scratch copy in `~/.config/stack/demo`, `--reset` re-copies); `--live` edits the real repo on branch `stack-web` (`--branch`) via a worktree. `web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]`
+- `graph`: one-time Microsoft Graph sign-in (device code) so `stack web` shows the live calendar. Read scopes only (`--with calendar,mail,drafts`); `Mail.Send` is refused. The token stays in `~/.config/stack/graph-token.json` (`--cache`, mode 0600). `graph login --client-id <id> [--tenant t] [--with calendar,mail,drafts] [--cache path] | status | logout`
 - `init`: create repo, tasks/, and config. `init`
 - `add-project`: create a project file. `add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force]`
 - `add`: add a task. `add <project> <text...> [--section name] [--parent ref]`
