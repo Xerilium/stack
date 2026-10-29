@@ -104,8 +104,8 @@ test.describe('Sessions', () => {
     await expect(costs.locator('.cost-days li')).toHaveCount(2);
     await expect(costs.locator('.cost-days li').nth(1)).toContainText('$4.10 · 1.2M · 6 sessions');
     await expect(costs.locator('.cost-days li').nth(0).locator('.bar span')).toHaveAttribute('style', /width: 78%/);
-    await expect(costs.locator('.cost-projects')).toHaveText('allyte $14 · stack $9.80');
-    await expect(costs.locator('.cost-models')).toContainText('claude-sonnet-5-5 $24');
+    await expect(costs.locator('.cost-chips.projects li')).toHaveText(['allyte $14', 'stack $9.80']);
+    await expect(costs.locator('.cost-chips.models li')).toHaveText(['sonnet-5-5 $24']);
   });
 
   test('New (n): folder and first prompt start a session and open its drawer', async ({ page }, info) => {

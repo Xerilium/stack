@@ -28,6 +28,18 @@ function Row({ s, now, cursor, onOpen, onCursor }: { s: SessionItem; now: Date; 
   );
 }
 
+/** A text turn; long ones (a session's opening brief) clamp to six lines with Show more. */
+function Bubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
+  const [more, setMore] = useState(false);
+  const long = text.length > 480;
+  return (
+    <div class={`turn ${role}`}>
+      <p class={`tl ${role}${long && !more ? ' clamp' : ''}`}>{text}</p>
+      {long && <button type="button" class="more-link" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}
+    </div>
+  );
+}
+
 function TranscriptLine({ l }: { l: Line }) {
   if (l.kind === 'text') return <p class={`tl ${l.role}`}>{l.text}</p>;
   return <p class={`tl tool ${l.status}`} title={l.output}><span class="mark" aria-hidden="true">⚙</span><span class="tool-title">{l.title}</span><span class="status">{MARK[l.status]}</span></p>;
@@ -73,8 +85,9 @@ function Drawer({ s, item, cursorItem, onClose }: { s: Sessions; item: SessionIt
           </label>
         )}
         {s.turnsError && <p class="drawer-note err">{s.turnsError}</p>}
+        {s.turnsLoading && s.turns.length === 0 && <div class="turns" aria-busy="true"><p class="sk" /><p class="sk short" /><p class="sk" /></div>}
         <div class="turns">
-          {groupTurns(s.turns).map((t, i) => (t.kind === 'tools' ? <p key={i} class="tl tools" title={t.titles.join('\n')}><span class="mark" aria-hidden="true">⚙</span>{t.count} tool {t.count === 1 ? 'call' : 'calls'}<span class="tools-list"> · {t.summary}</span></p> : <p key={i} class={`tl ${t.role}`}>{t.text}</p>))}
+          {groupTurns(s.turns).map((t, i) => (t.kind === 'tools' ? <p key={i} class="tl tools" title={t.titles.join('\n')}><span class="mark" aria-hidden="true">⚙</span><span class="count">{t.count} tool {t.count === 1 ? 'call' : 'calls'}</span><span class="tools-list"> · {t.summary}</span></p> : <Bubble key={i} role={t.role} text={t.text} />))}
         </div>
         <div class="stream" aria-live="off">
           {s.transcript.lines.map((l, i) => <TranscriptLine key={i} l={l} />)}
@@ -114,7 +127,8 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
   /** From the list, `s` asks for a second press within 2 s before stopping. */
   const stopFromList = (id: string) => {
     const it = items.find((x) => x.id === id);
-    if (!it || it.state !== 'running') return;
+    if (!it) return;
+    if (it.state !== 'running') { s.note('Only sessions Stack is running can be stopped here'); return; }
     if (Date.now() - stopArm.current < 2000) { stopArm.current = 0; void s.stop(id); return; }
     stopArm.current = Date.now();
     s.note(`Press s again to stop ${it.title}`);

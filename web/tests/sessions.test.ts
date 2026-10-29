@@ -8,7 +8,7 @@ const s = (o: Partial<SessionItem> = {}): SessionItem => ({ id: 'a1b2c3d4-0000-0
 describe('formatting', () => {
   it('money and tokens read at a glance', () => {
     expect([fmtUsd(0), fmtUsd(0.004), fmtUsd(0.5607), fmtUsd(4.1), fmtUsd(31.25), fmtUsd(1234.5)]).toEqual(['$0', '<$0.01', '$0.56', '$4.10', '$31', '$1,235']);
-    expect([fmtTokens(0), fmtTokens(950), fmtTokens(1200), fmtTokens(410_000), fmtTokens(1_670_596), fmtTokens(12_300_000)]).toEqual(['0', '950', '1.2k', '410k', '1.7M', '12M']);
+    expect([fmtTokens(0), fmtTokens(950), fmtTokens(1200), fmtTokens(410_000), fmtTokens(1_670_596), fmtTokens(12_300_000), fmtTokens(6_777_000_000)]).toEqual(['0', '950', '1.2k', '410k', '1.7M', '12M', '6.8B']);
   });
   it('rowOf: state label, project · branch, last active, cost', () => {
     expect(rowOf(s(), now)).toEqual({ label: 'Idle', where: 'stack · main', when: '12 min ago', cost: '$0.56' });
@@ -80,12 +80,12 @@ describe('applyUpdate builds the transcript from the stream', () => {
 describe('groupTurns folds tool runs', () => {
   it('keeps text, folds consecutive tool lines into a count with a per-tool summary', () => {
     const at = '2026-10-29T10:00:00Z';
-    const g = groupTurns([{ at, role: 'user', text: 'Go' }, { at, role: 'assistant', text: '⚙ Bash: ls' }, { at, role: 'assistant', text: '⚙ Bash: cat x' }, { at, role: 'assistant', text: '⚙ Edit: x.ts' }, { at, role: 'assistant', text: 'Done.' }, { at, role: 'assistant', text: '⚙ Read: y' }]);
+    const g = groupTurns([{ at, role: 'user', text: 'Go' }, { at, role: 'assistant', text: '⚙ Bash: ls' }, { at, role: 'assistant', text: '⚙ Bash: cat x' }, { at, role: 'assistant', text: '⚙ Edit: x.ts' }, { at, role: 'assistant', text: 'Done.' }, { at, role: 'assistant', text: '⚙ mcp__Claude_Browser__navigate: x' }]);
     expect(g).toEqual([
       { kind: 'text', role: 'user', text: 'Go' },
       { kind: 'tools', count: 3, titles: ['⚙ Bash: ls', '⚙ Bash: cat x', '⚙ Edit: x.ts'], summary: 'Bash ×2, Edit' },
       { kind: 'text', role: 'assistant', text: 'Done.' },
-      { kind: 'tools', count: 1, titles: ['⚙ Read: y'], summary: 'Read' },
+      { kind: 'tools', count: 1, titles: ['⚙ mcp__Claude_Browser__navigate: x'], summary: 'navigate' },
     ]);
   });
 });

@@ -12,7 +12,7 @@ function fakeSdk(over: Partial<SdkLike> = {}): SdkLike & { calls: unknown[] } {
   return {
     calls,
     getSessionMessages: async () => [
-      { type: 'user', uuid: 'u1', session_id: 's', parent_tool_use_id: null, parent_agent_id: null, message: { role: 'user', content: 'Fix the parser' } },
+      { type: 'user', uuid: 'u1', session_id: 's', parent_tool_use_id: null, parent_agent_id: null, message: { role: 'user', content: '<system-reminder>noise</system-reminder>Fix the parser' } },
       { type: 'assistant', uuid: 'a1', session_id: 's', parent_tool_use_id: null, parent_agent_id: null, message: { role: 'assistant', content: [{ type: 'text', text: 'Looking.' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'git status --short' } }] } },
       { type: 'user', uuid: 'u2', session_id: 's', parent_tool_use_id: null, parent_agent_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'M src/x.ts' }] } },
       { type: 'assistant', uuid: 'a2', session_id: 's', parent_tool_use_id: null, parent_agent_id: null, message: { role: 'assistant', content: [{ type: 'text', text: 'Done. Token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab leaked.' }] } },

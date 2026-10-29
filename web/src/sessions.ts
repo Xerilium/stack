@@ -31,8 +31,9 @@ export function fmtUsd(n: number): string {
 export function fmtTokens(n: number): string {
   if (n < 1000) return String(Math.round(n));
   if (n < 1e6) { const k = n / 1000; return `${k < 10 ? k.toFixed(1) : Math.round(k)}k`; }
-  const m = n / 1e6;
-  return `${m < 10 ? m.toFixed(1) : Math.round(m)}M`;
+  if (n < 1e9) { const m = n / 1e6; return `${m < 10 ? m.toFixed(1) : Math.round(m)}M`; }
+  const b = n / 1e9;
+  return `${b < 10 ? b.toFixed(1) : Math.round(b)}B`;
 }
 
 export function ago(iso: string, now: Date): string {
@@ -125,7 +126,7 @@ export function groupTurns(turns: Turn[]): HistoryLine[] {
   for (const l of out) {
     if (l.kind !== 'tools') continue;
     const by = new Map<string, number>();
-    for (const title of l.titles) { const name = /^⚙ ([^:]+):/.exec(title)?.[1] ?? 'tool'; by.set(name, (by.get(name) ?? 0) + 1); }
+    for (const title of l.titles) { const name = (/^⚙ ([^:]+):/.exec(title)?.[1] ?? 'tool').split('__').pop() ?? 'tool'; by.set(name, (by.get(name) ?? 0) + 1); }
     l.summary = [...by].sort((a, b) => b[1] - a[1]).map(([n, c]) => (c > 1 ? `${n} ×${c}` : n)).join(', ');
   }
   return out;

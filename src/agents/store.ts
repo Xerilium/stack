@@ -82,7 +82,7 @@ export function readIdentity(path: string, size: number): Identity {
   const top = head.slice(0, 4000);
   const sidechain = /"isSidechain":true/.test(top) && !/"isSidechain":false/.test(top);
   const customTitle = last(both, /"type":"custom-title","customTitle":"((?:[^"\\]|\\.)*)"/) ?? last(both, /"customTitle":"((?:[^"\\]|\\.)*)"/);
-  const title = cut(oneLine(unjson(customTitle ?? '') || firstPrompt(head) || path.replace(/^.*\//, '').slice(0, 8)), TITLE);
+  const title = cut(oneLine((unjson(customTitle ?? '') || firstPrompt(head) || path.replace(/^.*\//, '').slice(0, 8)).replace(/^#+\s*/, '')), TITLE);
   const prs: string[] = [];
   for (const m of both.matchAll(/"type":"pr-link"[^\n]*?"prUrl":"(https:\/\/github\.com\/[^"]+)"/g)) if (!prs.includes(m[1]) && prs.length < 5) prs.push(m[1]);
   return { title, cwd, branch, sidechain, prs };

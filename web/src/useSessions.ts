@@ -23,6 +23,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   const [open, setOpen] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [turnsError, setTurnsError] = useState('');
+  const [turnsLoading, setTurnsLoading] = useState(false);
   const [transcript, setTranscript] = useState<Transcript>(emptyTranscript());
   const [streaming, setStreaming] = useState(false);
   const [sendError, setSendError] = useState('');
@@ -84,7 +85,8 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
     setOpen(id); setCursor(id); setSendError(''); setTranscript(emptyTranscript()); setTurns([]); setTurnsError('');
     const it = itemsRef.current.find((x) => x.id === id);
     if (it && (it.state === 'running' || it.state === 'needs-you')) listen(id);
-    try { setTurns(await api.sessionMessages(id)); } catch (e) { setTurnsError(e instanceof Error ? e.message : 'Cannot load the history'); }
+    setTurnsLoading(true);
+    try { setTurns(await api.sessionMessages(id)); } catch (e) { setTurnsError(e instanceof Error ? e.message : 'Cannot load the history'); } finally { setTurnsLoading(false); }
   }, [api, listen]);
 
   const closeDrawer = useCallback(() => { closeStream(); setOpen(null); setComposing(false); }, [closeStream]);
@@ -125,7 +127,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   useEffect(() => () => closeStream(), [closeStream]);
 
   return {
-    items, total, cost, phase, error, cursor, setCursor, open, openDrawer, closeDrawer, turns, turnsError, transcript, streaming, sendError, send, start, stop,
+    items, total, cost, phase, error, cursor, setCursor, open, openDrawer, closeDrawer, turns, turnsError, turnsLoading, transcript, streaming, sendError, send, start, stop,
     showCosts, setShowCosts, showAll, setShowAll, composing, setComposing, now, reload: load, note: (text: string) => toastRef.current(text),
   };
 }

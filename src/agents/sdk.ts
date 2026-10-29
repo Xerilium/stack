@@ -81,10 +81,11 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
       if (!m) continue;
       const at = typeof r.timestamp === 'string' ? r.timestamp : '';
       const role = r.type === 'assistant' ? 'assistant' : 'user';
-      if (typeof m.content === 'string') { if (m.content.trim()) out.push({ at, role, text: clean(m.content, MAX_TEXT) }); continue; }
+      const own = (t: string) => clean(t.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').replace(/<ide_opened_file>[\s\S]*?<\/ide_opened_file>/g, ''), MAX_TEXT);
+      if (typeof m.content === 'string') { const t = own(m.content); if (t) out.push({ at, role, text: t }); continue; }
       if (!Array.isArray(m.content)) continue;
       for (const b of m.content as Record<string, unknown>[]) {
-        if (b.type === 'text' && typeof b.text === 'string' && b.text.trim()) out.push({ at, role, text: clean(b.text, MAX_TEXT) });
+        if (b.type === 'text' && typeof b.text === 'string') { const t = own(b.text); if (t) out.push({ at, role, text: t }); }
         else if (b.type === 'tool_use' && typeof b.name === 'string') out.push({ at, role: 'assistant', text: `⚙ ${b.name}: ${inputSummary(b.name, b.input)}` });
       }
     }

@@ -462,7 +462,7 @@ export function App() {
       if (k === 'g') { chord.current = now; return; }
       if (k === ':') { e.preventDefault(); setPalette(true); return; }
       if (k === '?') { e.preventDefault(); setHelp(true); return; }
-      if (k === 'c') { e.preventDefault(); setCaptureOpen(true); return; }
+      if (k === 'c' && L.view !== 'sessions') { e.preventDefault(); setCaptureOpen(true); return; } // Sessions uses c for costs
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       if (L.view === 'asks' || L.view === 'sessions') return; // these views own their keys
       if (L.focusRef) {
