@@ -114,7 +114,8 @@ a.btn.primary { color: #fff; }
   .ask-actions .btn { min-height: var(--tap); flex: 1 1 40%; justify-content: center; }
   .ask-actions .btn.primary { flex: 1 1 100%; order: -1; }
   .ask-actions .grow { display: none; }
-  .ask-actions .btn.quiet { flex: 1 1 28%; }
+  .ask-actions .btn.quiet { flex: 1 1 40%; }
+  .ask-card[data-kind="decide"] .ask-actions .btn:not(.quiet) { flex: 1 1 100%; }
   .ask-defer { gap: 8px; }
   .ask-defer .lbl { flex: 1 1 100%; margin: 0; }
   .ask-defer .btn { min-height: var(--tap); flex: 1 1 40%; justify-content: center; }
@@ -131,11 +132,9 @@ a.btn.primary { color: #fff; }
   .ask-row .proj { width: auto; max-width: 40%; text-align: left; }
   .ask-row .verb { min-width: 0; text-align: left; }
   .ask-row .verb:empty, .ask-row .proj:empty, .ask-row .dl.empty { display: none; }
-  .ask-row .verb::after { content: " ·"; font-weight: 400; color: var(--muted); }
-  .ask-row .verb:empty::after { content: none; }
   .foot-list, .keys-hint { padding-left: 17px; padding-right: 17px; margin-left: 0; margin-right: 0; }
   .more-btn, .foot-btn { padding-left: 17px; }
-  .foot-list li { flex-wrap: wrap; row-gap: 0; }
+  .foot-list li { flex-wrap: wrap; row-gap: 2px; min-height: 0; padding: 8px 0; }
   .foot-list .f-t { flex: 1 1 100%; white-space: normal; }
   .foot-list .f-what { flex: 1 1 auto; }
   .foot-list .link { min-height: var(--tap); display: inline-flex; align-items: center; }
