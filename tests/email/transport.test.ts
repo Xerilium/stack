@@ -26,7 +26,7 @@ describe('Graph transport', () => {
   });
   it('a non-2xx throws status and Graph code only', async () => {
     const f = fake(403, { error: { code: 'ErrorAccessDenied', message: 'secret detail about mailbox' } });
-    const e = await graphTransport({ token: 'sekret', fetch: f.fetch })({ method: 'GET', url: 'https://graph.microsoft.com/v1.0/me' }).catch((x: unknown) => x as GraphHttpError);
+    const e = (await graphTransport({ token: 'sekret', fetch: f.fetch })({ method: 'GET', url: 'https://graph.microsoft.com/v1.0/me' }).catch((x: unknown) => x)) as GraphHttpError;
     expect(e).toBeInstanceOf(GraphHttpError);
     expect(e).toMatchObject({ status: 403, code: 'ErrorAccessDenied' });
     expect(String(e.message)).not.toMatch(/secret detail|sekret/);
