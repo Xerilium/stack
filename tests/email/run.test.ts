@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { asksPath, parseAsk } from '../../src/core/asks';
+import { asksPath, handleAsk, parseAsk } from '../../src/core/asks';
 import { DEFAULT_RULES } from '../../src/email/rules';
 import { runTriage } from '../../src/email/run';
 import type { Classification, Classifier, Drafter, MailProvider, Message } from '../../src/email/types';
@@ -105,3 +105,32 @@ describe('runTriage owner replies', () => {
     expect(parseAsk('k', (await storage.read(asksPath(keyOf('conv-1')))).content)).toMatchObject({ state: 'done', outcome: 'resolved' });
   });
 });
+
+// @req FR:email-triage/ask.once
+describe('runTriage drafts once per conversation', () => {
+  it('reuses the draft already recorded on the open ask instead of creating another', async () => {
+    const { storage, ctx } = mkCtx();
+    const first = setup([msg()], () => needsReply);
+    const r1 = await runTriage({ ctx, provider: first.provider, classifier: first.classifier, drafter: first.drafter, rules });
+    expect(r1.summary.drafts).toBe(1);
+    const again = setup([msg({ id: 'm9', bodyPreview: 'Bump: still waiting' })], () => needsReply);
+    const r2 = await runTriage({ ctx, provider: again.provider, classifier: again.classifier, drafter: again.drafter, rules });
+    expect(again.created).toEqual([]);
+    expect(again.drafter.draft).not.toHaveBeenCalled();
+    expect(r2.summary).toMatchObject({ drafts: 0, asks: 1 });
+    const a = parseAsk('k', (await storage.read(asksPath(keyOf('conv-1')))).content);
+    expect(a).toMatchObject({ state: 'open', kind: 'review', link: 'https://outlook.example.test/mail/drafts/AAMk-msg-1' });
+    expect(a.detail).toMatch(/Thanks, Friday works\./);
+  });
+
+  it('drafts again once the earlier ask is done', async () => {
+    const { ctx } = mkCtx();
+    const first = setup([msg()], () => needsReply);
+    await runTriage({ ctx, provider: first.provider, classifier: first.classifier, drafter: first.drafter, rules });
+    await handleAsk(ctx, keyOf('conv-1'), { outcome: 'handled' }, 'cos');
+    const again = setup([msg({ id: 'm9' })], () => needsReply);
+    await runTriage({ ctx, provider: again.provider, classifier: again.classifier, drafter: again.drafter, rules });
+    expect(again.created.map((c) => c.id)).toEqual(['m9']);
+  });
+});
+

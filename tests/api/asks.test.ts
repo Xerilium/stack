@@ -52,10 +52,10 @@ describe('asks routes', () => {
     expect(list.json.items[0]).toMatchObject({ key: 'pr-879-approve', rank: 1, score: expect.any(Number), overdue: false, kind: 'approve', from: 'allyte-cos', ask: 'Approve merging PR 879 into dev', link: 'https://github.com/o/r/pull/879' });
   });
 
-  it('from defaults to the caller', async () => {
+  it('from defaults to the token name, so each agent is named on the page', async () => {
     const { call, mint } = await mk();
     await call(await mint('tasks:write'), 'POST', '/asks/a', BODY);
-    expect((await call('owner', 'GET', '/asks')).json.items[0].from).toBe('agent');
+    expect((await call('owner', 'GET', '/asks')).json.items[0].from).toBe('cos');
   });
 
   it('only the owner answers; tokens get 403 and the ask is untouched', async () => {

@@ -5,7 +5,7 @@
 import type { LifecycleContext } from '../core/lifecycle';
 import { markDraft } from './draft';
 import { prefilter, type RulesConfig } from './rules';
-import { newSummary, recordResult, resolveAsk, tally, type RunSummary } from './to-ask';
+import { existingDraft, newSummary, recordResult, resolveAsk, tally, type RunSummary } from './to-ask';
 import { TRIAGE_CLASSES, type Classifier, type Drafter, type MailProvider, type Message, type TriageResult } from './types';
 
 export interface RunDeps {
@@ -40,8 +40,13 @@ async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<Tria
     ...(vip ? { vip } : {}),
   };
   if (r.class === 'needs_reply' && d.drafter) {
-    const text = markDraft(await d.drafter.draft(m));
-    r.draft = { text, webLink: (await d.provider.createDraft(m.id, text)).webLink };
+    // One draft per conversation: a run that died after drafting, or a thread seen again, reuses the draft already in the mailbox. @req FR:email-triage/ask.once
+    const prior = await existingDraft(d.ctx, m);
+    if (prior) r.draft = { text: prior.text, webLink: prior.webLink, reused: true };
+    else {
+      const text = markDraft(await d.drafter.draft(m));
+      r.draft = { text, webLink: (await d.provider.createDraft(m.id, text)).webLink };
+    }
   }
   tally(summary, r, 'model');
   return r;

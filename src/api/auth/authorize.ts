@@ -94,7 +94,7 @@ export function createAuth(opts: AuthOptions): { authorize: Authorize; wrap: (ap
       const need = routeScope(route.name);
       if (!need || !scopeCovers(v.scopes, need)) return deny(DENY403, route.name, v.id);
       emit('allow', route.name, 200, v.id);
-      return { allow: true };
+      return { allow: true, token: { id: v.id, name: v.name } };
     } catch {
       return deny(DENY403, route.name);
     }
