@@ -264,4 +264,59 @@ describe('stack email', () => {
     expect(r).toMatchObject({ code: 4, text: 'a pass is already running' });
     release();
   });
+  // @req FR:email-runner/cli.voice
+  it('voice learns from Sent items (+ --extra), skips sensitive recipients as examples, and saves profile and guide 0600; never prints mail', async () => {
+    const { ctx } = mkCtx();
+    const dataDir = tmp();
+    const body = (t: string) => ({ contentType: 'text', content: `Hi Alex,\n\n${t}\n\nThanks,\nSam` });
+    const page = { value: [1, 2, 3, 4, 5].map((i) => ({ id: `s${i}`, subject: `Re: ${i}`, body: body(`Friday works for item ${i}.`), sentDateTime: NOW.toISOString(), toRecipients: [{ emailAddress: { name: 'Alex', address: i === 5 ? 'dana@counsel.example.test' : 'alex@partner.example.test' } }] })) };
+    const extra = join(tmp(), 'extra.json');
+    writeFileSync(extra, JSON.stringify([{ body: 'Closing this for now. We can reopen it later.' }]));
+    mkdirSync(join(dataDir, 'email', 'sam@example.test'), { recursive: true });
+    writeFileSync(rulesPath('sam@example.test', dataDir), JSON.stringify({ sensitive: ['counsel.example.test'] }));
+    const r = await emailCmd(ctx, 'voice', { extra }, { cache: await cacheWith(['Mail.Read']), dataDir, transport: fakeGraph({ sentitems: page }).transport });
+    expect(r.json).toMatchObject({ ok: true, samples: 6, sent: 5, extra: 1 });
+    expect(r.text).not.toMatch(/Friday works/);
+    const profile = JSON.parse(readFileSync(String(r.json.profile), 'utf8'));
+    expect(JSON.stringify(profile.examples)).not.toMatch(/item 5/);
+    expect(statSync(join(dataDir, 'email', 'sam@example.test', 'style-guide.md')).mode & 0o777).toBe(0o600);
+  });
+  it('rejects a malformed --extra and an --account that is not the signed-in mailbox', async () => {
+    const { ctx } = mkCtx();
+    const bad = join(tmp(), 'bad.json');
+    writeFileSync(bad, JSON.stringify({ body: 'x' }));
+    await expect(emailCmd(ctx, 'voice', { extra: bad }, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport: fakeGraph({ sentitems: { value: [] } }).transport })).rejects.toThrow(/JSON array/);
+    await expect(emailCmd(ctx, 'status', { account: 'other@example.test' }, { cache: await cacheWith(['Mail.Read']), dataDir: tmp() })).rejects.toThrow(/not the signed-in mailbox/);
+  });
+  // @req FR:email-runner/cli.run
+  it('run --dry-run writes no asks to the repo and no state; reports the pass', async () => {
+    const { storage, ctx } = mkCtx();
+    const dataDir = tmp();
+    const g = fakeGraph({ '/messages/delta': { value: [], '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t` } });
+    const r = await emailCmd(ctx, 'run', { 'dry-run': true }, { cache: await cacheWith(['Mail.ReadWrite']), dataDir, transport: g.transport, llm: fakeLlm(() => ({})).llm });
+    expect(r.json).toMatchObject({ ok: true, dryRun: true, mode: 'drafts', messages: 0 });
+    expect(await storage.listAsks!()).toEqual([]);
+    expect(existsSync(statePath('sam@example.test', dataDir))).toBe(false);
+    expect(g.seen[0].url).toContain('receivedDateTime+ge+');
+  });
+  it('run stops with exit 4 when one delta exceeds --max', async () => {
+    const { ctx } = mkCtx();
+    const g = fakeGraph({ '/messages/delta': { value: [1, 2, 3].map((i) => ({ id: `m${i}`, conversationId: `c${i}`, subject: 's', from: { emailAddress: { address: 'a@example.test' } }, receivedDateTime: NOW.toISOString(), bodyPreview: '' })), '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t` } });
+    const r = await emailCmd(ctx, 'run', { max: '2' }, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport: g.transport, llm: fakeLlm(() => ({})).llm });
+    expect(r).toMatchObject({ code: 4, json: { found: 3, max: 2 } });
+  });
+  // @req FR:email-runner/cli.schedule
+  it('schedule prints a launchd plist with absolute paths, a 15 minute interval and logs; it installs nothing', async () => {
+    const { ctx } = mkCtx();
+    const dataDir = tmp();
+    process.env.STACK_CLAUDE_BIN = '/opt/claude/bin/claude';
+    try {
+      const r = await emailCmd(ctx, 'schedule', { remote: 'origin' }, { cache: await cacheWith(['Mail.Read']), dataDir, repo: '/repo/todo' });
+      expect(r.text).toContain('<string>email</string><string>run</string><string>--dir</string><string>/repo/todo</string><string>--remote</string><string>origin</string>');
+      expect(r.text).toContain(`<string>${process.execPath}</string>`);
+      expect(r.text).toContain('<string>/opt/claude/bin:/usr/bin:/bin</string>');
+      expect(r.text).toContain('<integer>900</integer>');
+      expect(r.text).toContain(join(dataDir, 'email', 'sam@example.test', 'run.log'));
+    } finally { delete process.env.STACK_CLAUDE_BIN; }
+  });
 });
