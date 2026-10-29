@@ -147,4 +147,10 @@ describe('daySchedule', () => {
     const early = daySchedule(michael, new Date('2026-10-29T06:12:00Z'), { dates: { '2026-10-28': { bed: '23:00' } } });
     expect(early).toMatchObject({ date: '2026-10-29', asleep: true });
   });
+
+  // @req FR:schedule/profile.override @req FR:schedule/profile.dst
+  it('an override on the spring-forward night keeps local clock times', () => {
+    const d = daySchedule(michael, new Date('2026-03-08T07:30:00Z'), { dates: { '2026-03-07': { bed: '02:30' } } }); // Sat Mar 7 23:30 PST
+    expect(d).toMatchObject({ date: '2026-03-07', bed: '2026-03-08T10:30:00.000Z' }); // 02:30 does not exist: 03:30 PDT
+  });
 });

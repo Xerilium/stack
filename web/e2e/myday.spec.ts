@@ -81,6 +81,25 @@ test.describe('My day v2', () => {
   });
 
   // @req FR:home/day.override
+  test('Every saves for the weekday; Reset clears the day and the weekday', async ({ page }) => {
+    const m = await open(page, at(10));
+    await page.getByTestId('day-times').click();
+    await page.getByTestId('day-times-edit').getByLabel('Bed').fill('01:00');
+    await page.getByTestId('day-times-edit').getByRole('button', { name: /^Every/ }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/schedule/day')?.body).toEqual({ date: ymd(at(0)), bed: '01:00', every: true });
+    await page.getByTestId('day-times').click();
+    await page.getByTestId('day-times-edit').getByRole('button', { name: 'Reset' }).click();
+    await expect.poll(() => m.calls.filter((c) => c.path === '/schedule/day').slice(-2).map((c) => c.body)).toEqual([{ date: ymd(at(0)), reset: true, every: true }, { date: ymd(at(0)), reset: true, every: false }]);
+  });
+
+  // @req FR:home/day.tomorrow
+  test('tomorrow\'s Available is read-only', async ({ page }) => {
+    await open(page, at(23, 30));
+    await page.getByTestId('tomorrow').click();
+    await expect(page.getByTestId('available').getByRole('button', { name: 'More time' })).toBeDisabled();
+  });
+
+  // @req FR:home/day.override
   test('Enter saves only this day; Esc cancels', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keyboard');
     const m = await open(page, at(10));
@@ -93,7 +112,7 @@ test.describe('My day v2', () => {
     await expect.poll(() => m.calls.find((c) => c.path === '/schedule/day')?.body).toMatchObject({ bed: '01:00' });
   });
 
-  test('screens: today and tomorrow with meetings, light and dark', async ({ page }, info) => {
+  test('screens: today and tomorrow with meetings (on the plan, no now line tomorrow), light and dark', async ({ page }, info) => {
     const ev = (h: number, plus: number, subject: string) => ({ id: subject, subject, start: at(h, 0, plus).toISOString(), end: at(h + 1, 0, plus).toISOString(), allDay: false, showAs: 'busy', cancelled: false, online: true, joinUrl: 'https://teams.example.test/j' });
     await open(page, at(23, 30), { events: [ev(23, 0, 'APAC sync'), ev(9, 1, 'Allyte standup')] });
     for (const scheme of ['light', 'dark'] as const) {

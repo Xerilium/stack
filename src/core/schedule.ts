@@ -78,7 +78,7 @@ function merge(spans: Span[]): { start: number; end: number }[] {
 }
 
 /** The waking day that contains `at`, or the next one when `at` is in sleep time. */
-export function daySchedule(config: StackConfig, when: Date, overrides: ScheduleOverrides = {}): DaySchedule {
+export function daySchedule(config: StackConfig, when: Date, overrides: ScheduleOverrides = {}, on?: string): DaySchedule {
   const tz = config.timezone;
   const now = when.getTime();
   const today = localDate(now, tz);
@@ -103,7 +103,8 @@ export function daySchedule(config: StackConfig, when: Date, overrides: Schedule
   };
   let date = today, asleep = false;
   let win = windowOf(addDays(today, -1));
-  if (!(win.wake <= now && now < win.bed)) {
+  if (on) { date = Date.parse(`${on}T00:00:00Z`); win = windowOf(date); }
+  else if (!(win.wake <= now && now < win.bed)) {
     win = windowOf(today);
     if (now < win.wake) asleep = true;
     else if (now >= win.bed) { asleep = true; date = addDays(today, 1); win = windowOf(date); }
@@ -117,4 +118,28 @@ export function daySchedule(config: StackConfig, when: Date, overrides: Schedule
       start: new Date(Math.max(s.start, win.wake)).toISOString(), end: new Date(Math.min(s.end, win.bed)).toISOString(),
     }));
   return { date: iso(date), wake: new Date(win.wake).toISOString(), bed: new Date(win.bed).toISOString(), asleep, blocks };
+}
+
+/** The waking day that starts on a local date (`YYYY-MM-DD`), whatever the instant. @req FR:schedule/api.override */
+export const dayScheduleOn = (config: StackConfig, date: string, overrides: ScheduleOverrides = {}): DaySchedule =>
+  daySchedule(config, new Date(`${date}T12:00:00Z`), overrides, date);
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DATE = /^\d{4}-\d\d-\d\d$/;
+/** Saved overrides with every bad entry dropped (a hand edit never breaks the schedule). @req FR:schedule/profile.override */
+export function cleanOverrides(v: unknown): ScheduleOverrides {
+  const times = (t: unknown): DayTimes | null => {
+    if (!t || typeof t !== 'object') return null;
+    const o = t as Record<string, unknown>;
+    const out: DayTimes = { ...(typeof o.wake === 'string' && HHMM.test(o.wake) ? { wake: o.wake } : {}), ...(typeof o.bed === 'string' && HHMM.test(o.bed) ? { bed: o.bed } : {}) };
+    return out.wake || out.bed ? out : null;
+  };
+  const pick = (m: unknown, ok: (k: string) => boolean) => {
+    const out: Record<string, DayTimes> = {};
+    if (m && typeof m === 'object') for (const [k, t] of Object.entries(m)) { const c = times(t); if (ok(k) && c) out[k] = c; }
+    return out;
+  };
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+  const dates = pick(o.dates, (k) => DATE.test(k)), weekdays = pick(o.weekdays, (k) => DAYS.includes(k));
+  return { ...(Object.keys(dates).length ? { dates } : {}), ...(Object.keys(weekdays).length ? { weekdays } : {}) };
 }

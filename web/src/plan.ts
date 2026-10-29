@@ -8,7 +8,7 @@ import { wallMinutes } from './wall';
 /** A block of the schedule, in day minutes. @req FR:home/day.personal */
 export interface DayBlock { name: string; label?: string; emoji: string; kind: 'focus' | 'personal'; start: number; end: number; /** Projects with capacity in this block. @req FR:home/day.blocks */ projects?: string[] }
 /** Minutes after local midnight of `origin` (today when unset); a schedule day can run past 24:00. @req FR:home/day.frame */
-export interface Day { start: number; end: number; origin?: Date; blocks?: DayBlock[]; asleep?: boolean }
+export interface Day { start: number; end: number; origin?: Date; blocks?: DayBlock[]; asleep?: boolean; /** Projects that belong to some block (any day): never planned outside their blocks. @req FR:home/day.blocks */ bound?: string[] }
 export const DEFAULT_DAY: Day = { start: 9 * 60, end: 18 * 60 };
 export interface Block { task: Task; start: number; end: number; partial: boolean; assumed: boolean }
 /** `left`: work day left; `budget`: minutes you have; `free`: budget not booked; `short`: minutes the left-out tasks need; `assumed`: blocks using the default estimate. */
@@ -79,6 +79,8 @@ export const openTo = (day: Day, t: Who): DayBlock[] => homeBlocks(day, t).filte
  */
 export function closedTo(day: Day, t?: Who): [number, number][] {
   const home = t ? homeBlocks(day, t) : [];
+  // A project bound to blocks that are not on this day gets no time today.
+  if (t && !home.length && day.bound?.includes(t.project) && !(day.blocks ?? []).some((b) => tagged(b, t.text))) return [[-1440, 4 * 1440]];
   if (!home.length) return (day.blocks ?? []).filter((b) => b.kind === 'personal').map((b) => [b.start, b.end]);
   const out: [number, number][] = [];
   let cur = -1440;

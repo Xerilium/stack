@@ -39,5 +39,7 @@ export function needsRefresh(s: DaySched | null, now: Date): boolean {
 export function withProjects(day: Day, projects: { name: string; metadata?: Record<string, string> }[]): Day {
   if (!day.blocks?.length) return day;
   const has = (p: { metadata?: Record<string, string> }, block: string) => Object.entries(p.metadata ?? {}).some(([k, v]) => k.trim().toLowerCase() === `${block.toLowerCase()} capacity` && parseFloat(v) > 0);
-  return { ...day, blocks: day.blocks.map((b) => ({ ...b, projects: projects.filter((p) => has(p, b.name)).map((p) => p.name) })) };
+  // Bound: capacity in any named block (not the weekly total), whether or not that block is on this day.
+  const bound = projects.filter((p) => Object.entries(p.metadata ?? {}).some(([k, v]) => /^(?!weekly\b).+ capacity$/i.test(k.trim()) && parseFloat(v) > 0)).map((p) => p.name);
+  return { ...day, bound, blocks: day.blocks.map((b) => ({ ...b, projects: projects.filter((p) => has(p, b.name)).map((p) => p.name) })) };
 }

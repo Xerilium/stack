@@ -3,7 +3,7 @@
  * @req FR:api/handler.@function
  */
 import { getDefaults, type StackConfig } from '../core/config';
-import { daySchedule, type ScheduleOverrides } from '../core/schedule';
+import { cleanOverrides, daySchedule, dayScheduleOn, type ScheduleOverrides } from '../core/schedule';
 import {
   addProject, addTask, completeTask, nextTask, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
   type LifecycleContext, type LifecycleResult, type TaskProps,
@@ -157,11 +157,11 @@ const SCHEDULE_PATH = '.stack/schedule.json';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const auxOf = (s: unknown): AuxFiles | null => (s && typeof (s as AuxFiles).readAux === 'function' && typeof (s as AuxFiles).writeAux === 'function' ? s as AuxFiles : null);
 /** Saved wake/bed overrides, or none when the storage keeps no state files. @req FR:schedule/api.override */
-async function overridesOf(storage: unknown): Promise<{ value: ScheduleOverrides; version: string | null }> {
+async function overridesOf(storage: unknown): Promise<{ value: ScheduleOverrides; version: string | null; broken?: boolean }> {
   const aux = auxOf(storage);
   const f = aux ? await aux.readAux(SCHEDULE_PATH) : null;
   if (!f) return { value: {}, version: null };
-  try { return { value: JSON.parse(f.content) as ScheduleOverrides, version: f.version }; } catch { return { value: {}, version: f.version }; }
+  try { return { value: cleanOverrides(JSON.parse(f.content)), version: f.version }; } catch { return { value: {}, version: f.version, broken: true }; }
 }
 const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES } };
 const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true } } satisfies Record<string, Spec>, required: ['id'] };
@@ -653,15 +653,17 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/schedule/day', name: 'schedule.day', body: SCHEDULE_DAY_BODY,
     async run(c) {
       noQuery(c);
+      if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can change the schedule');
       const b = validate<{ date: string; wake?: string; bed?: string; every?: boolean; reset?: boolean }>(await readBody(c.req), SCHEDULE_DAY_BODY.schema, SCHEDULE_DAY_BODY.required);
       const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(b.date);
       if (!m || !isInstant(`${b.date}T12:00:00Z`)) throw invalid([{ field: 'date', message: 'date must be YYYY-MM-DD' }]);
       for (const k of ['wake', 'bed'] as const) if (b[k] !== undefined && !HHMM.test(b[k]!)) throw invalid([{ field: k, message: `${k} must be HH:mm` }]);
       if (!b.reset && !b.wake && !b.bed) throw invalid([{ field: 'wake', message: 'wake or bed is required (or reset)' }]);
-      if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can change the schedule');
       const aux = auxOf(c.deps.storage);
       if (!aux) throw new ApiError('bad_request', 'This storage cannot keep schedule changes');
-      const { value, version } = await overridesOf(c.deps.storage);
+      const { value, version, broken } = await overridesOf(c.deps.storage);
+      // A hand-edited file that is not JSON is never overwritten: fix or delete it first.
+      if (broken) throw new ApiError('conflict', '.stack/schedule.json is not valid JSON; fix or delete it');
       const dow = WEEKDAYS[new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay()];
       const bucket = b.every ? 'weekdays' : 'dates';
       const key = b.every ? dow : b.date;
@@ -672,7 +674,7 @@ export const ROUTES: Route[] = [
       for (const k of ['dates', 'weekdays'] as const) if (next[k] && Object.keys(next[k]!).length === 0) delete next[k];
       await aux.writeAux(SCHEDULE_PATH, `${JSON.stringify(next, null, 2)}\n`, { expectedVersion: version });
       const config = c.deps.config ?? getDefaults();
-      return json(200, { timezone: config.timezone, ...daySchedule(config, new Date(`${b.date}T12:00:00Z`), next) });
+      return json(200, { timezone: config.timezone, ...dayScheduleOn(config, b.date, next) });
     },
   },
   {

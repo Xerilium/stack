@@ -168,7 +168,10 @@ export function App() {
     const shown = ahead?.sched ?? sched;
     if (!shown) return false;
     try {
-      const s = await api.scheduleDay({ date: shown.date, ...c });
+      if (!c.reset && !c.wake && !c.bed) return true; // nothing changed
+      // Reset clears this date and its weekday, so the day is back to the time blocks.
+      if (c.reset) await api.scheduleDay({ date: shown.date, reset: true, every: true });
+      const s = await api.scheduleDay({ date: shown.date, ...c, ...(c.reset ? { every: false } : {}) });
       if (ahead) setAhead({ ...ahead, sched: s }); else setSched(s);
       const wd = new Date(`${shown.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' });
       const span2 = `${clock(wallMinutes(new Date(s.wake), new Date(`${shown.date}T00:00:00`)))}–${clock(wallMinutes(new Date(s.bed), new Date(`${shown.date}T00:00:00`)))}`;
@@ -709,7 +712,7 @@ export function App() {
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
         {phase === 'ready' && view === 'today' && (
-          <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={setBudget}
+          <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}

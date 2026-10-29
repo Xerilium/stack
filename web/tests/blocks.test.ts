@@ -44,4 +44,10 @@ describe('work goes in its block', () => {
     const p = buildPlan([t('🌙 Late idea 🟢', 'misc')], L(28, 10), day, 600);
     expect(clock(p.blocks[0].start)).toBe('11:00p');
   });
+  it('a project bound to Work gets no time on a day without a Work block', () => {
+    const weekend = withProjects({ ...base, blocks: base.blocks!.filter((b) => b.name !== 'Work') }, projects);
+    const p = buildPlan([t('Allyte deck 🟢', 'allyte'), t('Misc 🟢', 'misc')], L(28, 10), weekend, 600);
+    expect(p.blocks.map((b) => b.task.project)).toEqual(['misc']);
+    expect(p.overflow.map((x) => x.project)).toEqual(['allyte']);
+  });
 });
