@@ -9,11 +9,15 @@ import { CLICHE_RULES } from './cliches';
 import { bodyOf, greetingOf, isAutoReply, ownText, signoffOf, words } from './clean';
 
 /** A sent message as read from the mailbox. `body` is plain text, quoted history included. */
-export interface SentMessage { id: string; subject: string; sentAt: string; body: string; to: Address[]; conversationId?: string }
+/**
+ * A sent message as read from the mailbox. `body` is plain text, quoted history included.
+ * `kind: 'other'` marks the owner's writing from elsewhere (e.g. issue comments): it shapes habits and length, never greetings or sign-offs. @req FR:email-voice/learn.sources
+ */
+export interface SentMessage { id: string; subject: string; sentAt: string; body: string; to: Address[]; conversationId?: string; kind?: 'email' | 'other' }
 
 export interface FormShare { text: string; share: number }
 export type LengthBucket = 'short' | 'medium' | 'long';
-export interface VoiceExample { subject: string; text: string; bucket: LengthBucket; audience: 'internal' | 'external' }
+export interface VoiceExample { subject: string; text: string; bucket: LengthBucket; audience: 'internal' | 'external'; source: 'email' | 'other' }
 
 export interface VoiceProfile {
   version: 1;
@@ -38,6 +42,8 @@ export const DEFAULT_PROFILE: VoiceProfile = {
 };
 
 export const MIN_SAMPLES = 5;
+/** Email messages needed before greetings and sign-offs come from email alone. */
+export const MIN_EMAIL_FORMS = 3;
 const MAX_EXAMPLES = 8;
 /** A rule is waived when the owner uses it in at least this share of mail. @req FR:email-voice/cliche.own */
 export const WAIVE_SHARE = 0.1;
@@ -72,7 +78,7 @@ function matches(address: string, list: string[]): boolean {
 export function redactExample(t: string): string {
   return redact(t)
     .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email]')
-    .replace(/\+?\d[\d ().-]{7,}\d/g, '[phone]')
+    .replace(/(?:\+\d{1,3}[ .-]?)?\(?\b\d{3}\)?[ .-]\d{3}[ .-]\d{4}\b/g, '[phone]')
     .replace(/\d{6,}/g, '[number]');
 }
 
@@ -80,10 +86,12 @@ export function redactExample(t: string): string {
 export function learnVoice(sent: SentMessage[], opts: { account: string; owner: string[]; rules?: Pick<RulesConfig, 'sensitive' | 'sensitivePatterns'>; now?: Date }): VoiceProfile {
   const usable = sent
     .filter((s) => !isAutoReply(s.subject) && !isAutoReply(s.body))
-    .map((s) => ({ s, text: ownText(s.body) }))
+    .map((s) => ({ s, text: ownText(s.body), email: s.kind !== 'other' }))
     .filter((x) => words(bodyOf(x.text)) > 0);
   if (usable.length < MIN_SAMPLES) throw new Error(`Voice needs at least ${MIN_SAMPLES} sent messages with the owner's own text (got ${usable.length})`);
 
+  const emails = usable.filter((x) => x.email);
+  const formSrc = emails.length >= MIN_EMAIL_FORMS ? emails : usable;
   const bodies = usable.map((x) => bodyOf(x.text));
   const wc = bodies.map(words);
   const totalWords = wc.reduce((a, b) => a + b, 0) || 1;
@@ -96,11 +104,13 @@ export function learnVoice(sent: SentMessage[], opts: { account: string; owner: 
   const sensitive = (s: SentMessage) => s.to.some((t) => matches(t.address, opts.rules?.sensitive ?? []) || (opts.rules?.sensitivePatterns ?? []).some((p) => new RegExp(p, 'i').test(t.address)));
   const pool = usable
     .map((x, i) => ({ ...x, n: wc[i] }))
-    .filter((x) => !sensitive(x.s))
-    .sort((a, b) => Date.parse(b.s.sentAt) - Date.parse(a.s.sentAt))
+    // Writing from elsewhere is a weaker model of email: no long pieces, no lists. @req FR:email-voice/learn.sources
+    .filter((x) => !sensitive(x.s) && (x.email || (bucketOf(x.n) !== 'long' && !BULLET.test(x.text))))
+    .sort((a, b) => Number(b.email) - Number(a.email) || Date.parse(b.s.sentAt) - Date.parse(a.s.sentAt))
     .map((x) => ({
       subject: redactExample(x.s.subject).slice(0, 120), text: redactExample(x.text).slice(0, 1200), bucket: bucketOf(x.n),
       audience: (x.s.to.length && x.s.to.every((t) => ownerDomains.has(domainOf(t.address))) ? 'internal' : 'external') as VoiceExample['audience'],
+      source: (x.email ? 'email' : 'other') as VoiceExample['source'],
     }));
   // Round-robin over (length, audience) buckets, newest first in each, for spread.
   const groups = new Map<string, VoiceExample[]>();
@@ -110,8 +120,8 @@ export function learnVoice(sent: SentMessage[], opts: { account: string; owner: 
 
   return {
     version: 1, account: opts.account, learnedAt: (opts.now ?? new Date()).toISOString(), sampleCount: usable.length,
-    greetings: shares(usable.map((x) => greetingOf(x.text).form)),
-    signoffs: shares(usable.map((x) => signoffOf(x.text).form)),
+    greetings: shares(formSrc.map((x) => greetingOf(x.text).form)),
+    signoffs: shares(formSrc.map((x) => signoffOf(x.text).form)),
     words: { p25: pct(sorted, 0.25), median: pct(sorted, 0.5), p75: pct(sorted, 0.75) },
     sentenceWords: pct(sentences, 0.5),
     rates: {

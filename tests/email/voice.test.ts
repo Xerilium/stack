@@ -1,5 +1,5 @@
 import { DEFAULT_RULES } from '../../src/email/rules';
-import { CLICHE_RULES, DEFAULT_PROFILE, draftPrompt, learnVoice, ownText, redraftFeedback, renderStyleGuide, scoreDraft, type VoiceProfile } from '../../src/email/voice';
+import { bodyOf, CLICHE_RULES, DEFAULT_PROFILE, draftPrompt, greetingOf, learnVoice, ownText, redactExample, signoffOf, redraftFeedback, renderStyleGuide, scoreDraft, type VoiceProfile } from '../../src/email/voice';
 import { DRAFT_MARKER } from '../../src/email/draft';
 import { msg } from './fixtures';
 import { OWNER, SENT, sent } from './voice-fixtures';
@@ -172,5 +172,59 @@ describe('draftPrompt', () => {
     expect(f.join('\n')).not.toMatch(/Rest of a long prior draft/);
     const { user } = draftPrompt(DEFAULT_PROFILE, msg(), { feedback: f });
     expect(user).toMatch(/Fix these in your next draft/);
+  });
+});
+
+// @req FR:email-voice/learn.clean
+describe('real-world shapes', () => {
+  it('reads an inline greeting ("Hi, Becky. Happy to chat.") and keeps the first sentence as body', () => {
+    const t = 'Hi, Becky. Happy to chat. Including Roland as well.\n\nMichael Flanakin\nAllyte · Expertise when you need it\nexample.test';
+    expect(ownText(t)).toBe('Hi, Becky. Happy to chat. Including Roland as well.\n\nMichael Flanakin');
+    expect(greetingOf(ownText(t)).form).toBe('Hi, {name}.');
+    expect(bodyOf(ownText(t))).toBe('Happy to chat. Including Roland as well.');
+    expect(signoffOf(ownText(t)).form).toBe('{me}');
+  });
+  it('reads "Name / mobile" as the sign-off and drops "Sent from my iPhone"', () => {
+    expect(signoffOf(ownText('Thanks, Ayush. Please close it.\n\nMichael Flanakin / mobile')).form).toBe('{me}');
+    expect(ownText('Yes.\n\nSent from my iPhone')).toBe('Yes.');
+  });
+  it.each([
+    ['Hey, there! Thanks for the note.', 'Hey, there!'],
+    ['Hi all,\n\nQuick update.', 'Hi all,'],
+    ['Hey!\n\nYes.', 'Hey!'],
+    ['Alex,\n\nNo.', '{name},'],
+    ['Alex, can you take this?', ''],
+    ['Hi Becky Happy to chat about it today', ''],
+  ])('greeting of %p is %p', (t, form) => expect(greetingOf(t).form).toBe(form));
+});
+
+// @req FR:email-voice/learn.sources
+describe('non-email sources', () => {
+  it('shape habits and length but never greetings, sign-offs or the first examples', () => {
+    const other = Array.from({ length: 6 }, (_, i) => sent(`Closing this for now. If anyone feels it's important, up-vote it and we'll bring it back. Item ${i}.`, { kind: 'other', to: [], subject: `Issue ${i}` }));
+    const p = learnVoice([...SENT, ...other], OWNER);
+    expect(p.sampleCount).toBe(14);
+    expect(p.greetings.map((g) => g.text)).toEqual(expect.arrayContaining(['Hi {name},']));
+    expect(p.greetings.find((g) => g.text === '')!.share).toBeLessThan(0.2);
+    expect(p.examples[0].source).toBe('email');
+    expect(p.examples.filter((e) => e.source === 'other').length).toBeLessThan(p.examples.length);
+  });
+  it('fall back to all sources for forms when fewer than 3 emails exist', () => {
+    const other = Array.from({ length: 5 }, (_, i) => sent(`Done. Item ${i}.`, { kind: 'other', to: [] }));
+    expect(learnVoice([SENT[1], SENT[3], ...other], OWNER).greetings[0].text).toBe('');
+  });
+});
+
+describe('example hygiene', () => {
+  it('redacts phone numbers but not times or sizes @req FR:email-voice/learn.examples', () => {
+    expect(redactExample('Call +1 425 555 0100 or (425) 555-0199. Took 00:01:12.345 seconds, 1,177,547 bytes.')).toBe('Call [phone] or [phone]. Took 00:01:12.345 seconds, 1,177,547 bytes.');
+  });
+  it('drops the "/ mobile" suffix from the kept sign-off @req FR:email-voice/learn.clean', () => {
+    expect(ownText('Thanks, Ayush.\n\nMichael Flanakin / mobile')).toBe('Thanks, Ayush.\n\nMichael Flanakin');
+  });
+  it('never uses long or list-shaped writing from other sources as examples @req FR:email-voice/learn.sources', () => {
+    const long = sent(`Okay, adding on:\n1. One thing\n2. Another thing\n\n${'More words here. '.repeat(30)}`, { kind: 'other', to: [], subject: 'Issue' });
+    const p = learnVoice([...SENT, long], OWNER);
+    expect(p.examples.some((e) => e.source === 'other')).toBe(false);
   });
 });
