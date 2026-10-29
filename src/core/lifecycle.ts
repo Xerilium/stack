@@ -6,7 +6,7 @@
 import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { rollRecurring } from './recurring';
-import { getEngine, rankTasks, ScoringTask, toScoringProject } from './scoring';
+import { DEFAULT_ENGINE, getEngine, rankTasks, ScoringTask, toScoringProject } from './scoring';
 import { ConflictError, NotFoundError, Storage, writeAll } from './storage';
 
 export class LifecycleError extends Error {}
@@ -291,7 +291,7 @@ async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextT
     const rows = scoringRows(docs[i]);
     p.tasks.forEach((t, k) => where.set(t, { doc: docs[i], line: rows[k] }));
   });
-  const top = rankTasks(getEngine(ctx.engine ?? 'stack'), projects, cfg(ctx), at ?? clock(ctx))[0];
+  const top = rankTasks(getEngine(ctx.engine ?? DEFAULT_ENGINE), projects, cfg(ctx), at ?? clock(ctx))[0];
   if (!top) return null;
   const loc = where.get(top.task)!;
   return {

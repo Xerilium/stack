@@ -121,6 +121,10 @@ paths:
                   description: Default Active Single line.
                 parent:
                   $ref: "#/components/schemas/Ref"
+                expect:
+                  type: string
+                  maxLength: 2000
+                  description: Expected current parent row text; 409 conflict when the parent row differs (stale line number) Single line.
       responses:
         "201":
           $ref: "#/components/responses/Mutation"

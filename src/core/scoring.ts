@@ -348,24 +348,30 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 const DUE = /📅\s*([A-Za-z]{3})[a-z]*\s+(\d{1,2})(?:,\s*(\d{4}))?\s*(?:-\s*\d{1,2}\s*)?:/u;
 /** Planning horizon: tasks due further out than this never rank NOW. */
 export const NOW_HORIZON_DAYS = 14;
+/** A year-less date up to this many days past is overdue; older means its next occurrence. */
+export const OVERDUE_WINDOW_DAYS = 60;
+/** Default engine for `next`. */
+export const DEFAULT_ENGINE = 'stack';
+/** Reply rows (`💬 …`) are messages to an agent, not work: never a NOW candidate. */
+export const isMessage = (text: string): boolean => /^\s*💬/u.test(text);
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
 
-/** Days from `at` (calendar days in the config timezone) to the 📅 date in `text`; null when none. Without a year, the nearest year wins. */
+/** Days from `at` (calendar days in the config timezone) to the 📅 date in `text`; null when none. Without a year, the next occurrence
+ *  wins, counting up to `OVERDUE_WINDOW_DAYS` past as overdue. */
 export function daysUntilDue(text: string, config: StackConfig, at: Date): number | null {
   const m = DUE.exec(text);
   if (!m) return null;
   const mo = MONTHS.indexOf(m[1].toLowerCase());
   if (mo < 0) return null;
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(at);
+  let f = dayFormatters.get(config.timezone);
+  if (!f) dayFormatters.set(config.timezone, (f = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, year: 'numeric', month: 'numeric', day: 'numeric' })));
+  const parts = f.formatToParts(at);
   const n = (t: string) => Number(parts.find(p => p.type === t)?.value);
   const today = Date.UTC(n('year'), n('month') - 1, n('day'));
   const day = Number(m[2]);
   if (m[3]) return Math.round((Date.UTC(Number(m[3]), mo, day) - today) / 86400000);
-  let best = Infinity;
-  for (const y of [n('year') - 1, n('year'), n('year') + 1]) {
-    const d = Math.round((Date.UTC(y, mo, day) - today) / 86400000);
-    if (Math.abs(d + 60) < Math.abs(best + 60)) best = d; // dates up to ~60 days past count as overdue, not next year
-  }
-  return best;
+  const near = [n('year') - 1, n('year'), n('year') + 1].map((y) => Math.round((Date.UTC(y, mo, day) - today) / 86400000));
+  return near.find((d) => d >= -OVERDUE_WINDOW_DAYS)!;
 }
 
 /** Due-soon tier: 3 overdue/today, 2 within 3 days, 1 within a week or overdue more than 30 days (stale: no longer jumps the queue), 0 undated or later. */
@@ -375,23 +381,30 @@ const dueTier = (days: number | null): number => (days === null ? 0 : days < -ST
 // ---- blockers
 
 const REASON = /^(after|pending|blocked on|blocked by|until|waiting on|waiting for)\s+(.*)$/i;
+/** A date, day, time, or bare number ("Until Oct 30", "after lunch", "until Monday") is not a task name. */
+const NOT_A_NAME = /^(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d|(?:\d+|\d{1,2}:\d\d|\d{1,2}(?::\d\d)?\s*(?:am|pm)|(?:next |this )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|today|tonight|tomorrow|lunch|noon|eod|eow|end of (?:day|week|month)|(?:next|this) (?:week|month)|weekend)$)/i;
 
-/** Row title without markers, dates, reason, or emoji: what another row's reason can name. */
+/** Row title without markers, dates, reason, emoji, or a leading "the": what another row's reason can name. */
 function titleKey(text: string): string {
   return text.replace(/--.*$/, ' ')
-    .replace(/(?:📅|⏰|💤)\s*[^:]*:/gu, ' ').replace(/🔄\s*[^:]*:/gu, ' ')
+    .replace(/(?:\u{1F4C5}|\u23F0|\u{1F4A4})\s*[^:]*:/gu, ' ').replace(/\u{1F504}\s*[^:]*:/gu, ' ')
     .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ').replace(/[`*_]/g, '')
-    .replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.:;,]+$/, '').trim();
+    .replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.:;,]+$/, '').replace(/^the\s+/, '').trim();
 }
 
-/** Names a row says it is waiting on: the reason after `--` when it reads like a dependency. @req FR:scoring-engine/blockers.parse */
+/** Names a row says it is waiting on: the reason after `--` (up to a `;`) when it reads like a dependency. @req FR:scoring-engine/blockers.parse */
 export function blockedOn(text: string): string[] {
-  const i = text.indexOf('--');
-  if (i < 0) return [];
-  const m = REASON.exec(text.slice(i + 2).trim());
-  if (!m) return [];
-  return m[2].split(';')[0].split(/\s*(?:,|&|\band\b)\s*/i).map(titleKey).filter(n => n !== '');
+  const r = reasonOf(text);
+  return r === undefined ? [] : r.split(/\s*(?:,|&|\band\b)\s*/i).map(titleKey).filter(isName);
 }
+
+/** The reason after the first `--`, up to a `;`, without its lead word; undefined when it is not a dependency. */
+function reasonOf(text: string): string | undefined {
+  const i = text.indexOf('--');
+  const m = i < 0 ? null : REASON.exec(text.slice(i + 2).trim());
+  return m ? m[2].split(';')[0] : undefined;
+}
+const isName = (n: string) => n !== '' && !NOT_A_NAME.test(n);
 
 const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -399,23 +412,22 @@ const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function resolveBlockers(projects: ScoringProject[]): Map<string, string[]> {
   const all = projects.flatMap(p => p.tasks.map(t => ({ t, key: titleKey(t.text) })));
   const edges = new Map<string, string[]>();
-  const pick = (pool: typeof all, name: string, containment: boolean): string | undefined => {
-    const exact = pool.filter(x => x.key === name);
-    if (exact.length) return exact.length === 1 ? exact[0].t.id : undefined;
-    if (!containment || name.length < 3) return undefined;
-    const re = new RegExp(`(^|\\W)${escapeRe(name)}(\\W|$)`);
-    const hit = pool.filter(x => re.test(x.key));
-    return hit.length === 1 ? hit[0].t.id : undefined;
-  };
   for (const p of projects) {
     for (const t of p.tasks) {
       const found = new Set<string>();
-      for (const name of blockedOn(t.text)) {
+      // The whole reason as one exact title first (`After Q&A review`, `Pending research and design`), else its parts.
+      const whole = titleKey(reasonOf(t.text) ?? '');
+      const sameWhole = all.filter(x => x.t.project === t.project && x.t.id !== t.id && x.key === whole);
+      const wholeHit = isName(whole) && (sameWhole.length ? sameWhole : all.filter(x => x.t.project !== t.project && x.key === whole)).length === 1;
+      for (const name of wholeHit ? [whole] : blockedOn(t.text)) {
+        // Same project: exact title, else a title that starts with the name (whole words). Any same-project hit, even an
+        // ambiguous one, stops the search; otherwise another project on an exact title only.
         const mine = all.filter(x => x.t.project === t.project && x.t.id !== t.id);
-        let id = pick(mine, name, true);
-        const sameHasAny = mine.some(x => x.key === name || (name.length >= 3 && new RegExp(`(^|\\W)${escapeRe(name)}(\\W|$)`).test(x.key)));
-        if (!id && !sameHasAny) id = pick(all.filter(x => x.t.project !== t.project), name, false);
-        if (id) found.add(id);
+        const exact = mine.filter(x => x.key === name);
+        const lead = new RegExp(`^${escapeRe(name)}(\\W|$)`);
+        const hit = exact.length ? exact : name.length >= 3 ? mine.filter(x => lead.test(x.key)) : [];
+        const only = hit.length ? hit : all.filter(x => x.t.project !== t.project && x.key === name);
+        if (only.length === 1) found.add(only[0].t.id);
       }
       if (found.size) edges.set(t.id, [...found]);
     }
@@ -450,17 +462,22 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
       seen.add(cur.id);
       if (baseEmojis(cur.text).Special.some(e => e === '🅿️' || e === '💤' || e === '⏰')) { parked = true; break; }
     }
-    eligible.set(s.task.id, !parked && !l.drop);
+    eligible.set(s.task.id, !parked && !l.drop && !isMessage(s.task.text));
   }
   const blockedBy = resolveBlockers(projects);
   const blocks = new Map<string, string[]>(); // blocker -> tasks it blocks
   for (const [blocked, blockers] of blockedBy) for (const b of blockers) blocks.set(b, [...(blocks.get(b) ?? []), blocked]);
+  const children = new Map<string, string[]>();
+  for (const s of all) if (s.task.parent) children.set(s.task.parent, [...(children.get(s.task.parent) ?? []), s.task.id]);
   const lend = (id: string): number => {
     const s = byId.get(id)!;
     const pen = s.breakdown.emojiContributions.filter(c => c.category === 'Status' && c.emoji === '⛔️').reduce((a, c) => a + c.value, 0);
     return adj.get(id)! - pen / s.breakdown.effortHours;
   };
-  /** Best score among tasks reachable through "blocks" edges, passing only through eligible tasks. */
+  /**
+   * Best score among tasks reachable through "blocks" edges, passing only through eligible tasks. A blocked row holds
+   * up its subtasks too, so they lend (and pass on what they block) like the row itself.
+   */
   const inherited = (id: string): { value: number; from?: string } => {
     let best = -Infinity, from: string | undefined;
     const seen = new Set<string>([id]);
@@ -472,7 +489,7 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
       if (!eligible.get(next)) continue;
       const v = lend(next);
       if (v > best) { best = v; from = next; }
-      queue.push(...(blocks.get(next) ?? []));
+      queue.push(...(blocks.get(next) ?? []), ...(children.get(next) ?? []));
     }
     return { value: best, from };
   };
@@ -481,6 +498,7 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
   const kept = at ? filterByTimeBlock(candidates, projects, config, at) : candidates;
   const out: ScoredTask[] = [];
   for (const s of kept) {
+    if (isMessage(s.task.text)) continue;
     const l = lens(s, config, at);
     if (l.drop) continue;
     let score = l.adj;
@@ -498,6 +516,7 @@ export const stackEngine: ScoringEngine = {
   score: scoreAll,
   filter(tasks, projects, config, at) {
     return filterByTimeBlock(tasks, projects, config, at).flatMap(s => {
+      if (isMessage(s.task.text)) return [];
       const l = lens(s, config, at);
       return l.drop ? [] : [{ ...s, score: l.adj }];
     });

@@ -1,4 +1,4 @@
-import { actionable, dueDays, isActive, rankNow } from './now';
+import { actionable, children, dueDays, isActive, isMessage, rankNow } from './now';
 import { effortMinutes, parseRow } from './row';
 import type { Task } from './types';
 
@@ -111,10 +111,14 @@ export function recommendationOf(tasks: Task[], t: Task): string | undefined {
   return undefined;
 }
 
-/** Open 🙋 rows in active work: what only you can do or decide. */
+const doing = (t: Task) => parseRow(t.text).status?.replace(/️/g, '') === '🚧';
+/** A 🙋 row with an open 💬 reply under it is answered: the agent has its decision. */
+const answered = (tasks: Task[], t: Task) => children(tasks, t.ref).some((c) => !c.done && isMessage(c));
+
+/** Open 🙋 rows in active work (an Active section, or under a row in progress): what only you can do or decide. */
 export function decisions(tasks: Task[], now: Date): Decision[] {
-  const rows = tasks.filter((t) => !t.done && whoOf(t) === 'human' && actionable(t, now) && (isActive(t) || ancestorsOf(tasks, t).length > 0));
+  const rows = tasks.filter((t) => !t.done && whoOf(t) === 'human' && actionable(t, now) && !answered(tasks, t) && (isActive(t) || ancestorsOf(tasks, t).some(doing)));
   const withParent = rows.map((t) => ({ task: t, context: ancestorsOf(tasks, t)[0], recommendation: recommendationOf(tasks, t) }));
-  const ranked = rankNow(rows, now);
+  const ranked = rankNow(rows, now, tasks);
   return ranked.map((r) => withParent.find((x) => x.task.ref === r.ref)!);
 }

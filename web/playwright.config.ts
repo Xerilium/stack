@@ -3,9 +3,9 @@ import { existsSync } from 'node:fs';
 
 // Local escape hatch: reuse an already-installed Chromium instead of downloading one.
 const local = process.env.STACK_E2E_CHROMIUM;
-// Local escape hatch: another preview may already hold 4173.
-const port = Number(process.env.STACK_E2E_PORT ?? 4173);
 const launchOptions = local && existsSync(local) ? { executablePath: local } : {};
+// Another checkout's preview may hold 4173; STACK_E2E_PORT picks a free one.
+const port = Number(process.env.STACK_E2E_PORT ?? 4173);
 
 export default defineConfig({
   testDir: 'e2e',
