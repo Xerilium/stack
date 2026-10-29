@@ -84,7 +84,9 @@ export function App() {
   }, [tasks, next, allOpen]);
   const clockNow = useMemo(() => new Date(), [tasks]);
   const day = DEFAULT_DAY;
-  const budget = budgetOf(clockNow, day, saved);
+  // Re-read when the day turns: a tab left open overnight must not keep yesterday's budget.
+  const savedToday = useMemo(() => (saved === null ? null : loadBudget(store(), clockNow)), [saved, clockNow]);
+  const budget = budgetOf(clockNow, day, savedToday);
   const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes), [tasks, next, clockNow, day, budget.minutes]);
   /** @req FR:web-app/today.capacity */
   const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); saveBudget(store(), new Date(), v); setSaved(v); }, []);

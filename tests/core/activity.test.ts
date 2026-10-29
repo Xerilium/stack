@@ -56,6 +56,12 @@ describe('agent rows', () => {
     expect(by['Fix the build'].state).toBe('waiting'); // sibling 🙋 is open
     expect(by['Write tests — https://github.com/o/r/pull/8'].prs.map((p) => p.url)).toEqual([pr(8), pr(2, 'o/other')]);
   });
+  it('an unrelated top-level 🙋 row does not make a top-level agent row wait', async () => {
+    const { ctx } = await mk('# Alpha\n\n## 🔄 Active\n\n- [ ] 🙋 Pick a venue\n- [ ] 🤖 Draft the agenda\n');
+    const [item] = await agentActivity(ctx);
+    expect(item).toMatchObject({ title: 'Draft the agenda', state: 'queued' });
+    expect(item.waitingOn).toBeUndefined();
+  });
   it('without a waiting sibling: working, queued', async () => {
     const { ctx } = await mk(DOC.replace('  - [ ] 🙋 Approve the notes\n', ''));
     const by = Object.fromEntries((await agentActivity(ctx)).map((i) => [i.title.split(' ')[0] + ' ' + i.title.split(' ')[1], i.state]));
@@ -112,5 +118,14 @@ describe('log and replies', () => {
     expect(write).toMatchObject({ state: 'waiting', last: { at: '2026-10-28T09:00:00.000Z', action: 'result', outcome: 'blocked', summary: 'Needs a secret' } });
     const queued = items.find((i) => i.ref === 'alpha:9')!;
     expect(queued).toMatchObject({ state: 'working', replies: 1, last: { action: 'claimed' } });
+  });
+  it('follows the reply when rows move or gain marks, and not the line', async () => {
+    const doc = DOC.replace('  - [ ] 🙋 Approve the notes\n', '');
+    const { ctx, storage } = await mk(doc);
+    await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 9 }, 'Do the easy one first', 'reply');
+    await storage.write('tasks/alpha.md', doc.replace('  - [ ] 🤖 Queued thing\n', '  - [ ] 🤖 New first\n  - [ ] 🚧 🤖 Queued thing 🟢 https://github.com/o/r/pull/4\n'));
+    const items = await agentActivity(ctx);
+    expect(items.find((i) => i.title.startsWith('Queued thing'))!.replies).toBe(1);
+    expect(items.find((i) => i.title === 'New first')!.replies).toBe(0);
   });
 });

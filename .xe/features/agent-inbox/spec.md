@@ -66,8 +66,8 @@ Handled entries change `state: open` to `state: handled` and gain `- handled: <i
 - **FR:activity.prs** (P1): GitHub pull request links (`https://github.com/<owner>/<repo>/pull/<n>`) on the row or in its notes become `prs: [{url, repo, number}]`, deduplicated, at most 5 per row
 - **FR:activity.status** (P1): When a status provider is configured, each pull request gains `state` (`open`, `draft`, `merged`, `closed`), `checks` (`passing`, `failing`, `pending`, `none`), `title`, and `updatedAt`. A provider failure leaves the pull request without status; the route still answers
 - **FR:activity.log** (P1): `last` is the newest result log entry (`tasks/logs/<slug>*.md`) whose `ref` is the row: `{at, action, outcome?, summary?}`
-- **FR:activity.waiting** (P1): `waitingOn` is the first open 🙋 row that is a child or sibling of the agent row
-- **FR:activity.replies** (P1): `replies` counts open inbox entries for the row (same `ref`, or same `task` title in the same project)
+- **FR:activity.waiting** (P1): `waitingOn` is the first open 🙋 row that is a child of the agent row, or a sibling under the same parent (top-level rows only look at children)
+- **FR:activity.replies** (P1): `replies` counts open inbox entries for the row: same project and same title words, ignoring marks, dates, and links (lines move, so `ref` alone is not used)
 - **FR:activity.state** (P1): `state` is the first that holds: `merged` (every linked PR merged), `failing` (an open PR with failing checks), `waiting` (`waitingOn` set, or the last log outcome is `blocked` or `needs-human`), `review` (an open, non-draft PR with passing or no checks), `ci` (an open PR with pending checks), `working` (🚧, a draft PR, or a log entry in the last 24 hours), else `queued`. `since` is the newest of the PR `updatedAt` and the log `at`
 - **FR:activity.order** (P2): Items sort by state (`failing`, `waiting`, `review`, `merged`, `ci`, `working`, `queued`), then newest `since`, then file order
 

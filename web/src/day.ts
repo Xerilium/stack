@@ -11,8 +11,8 @@ export const store = (): Store | undefined => { try { return window.localStorage
 
 const dateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** Whole steps between 0 and 16 h. */
-export const clampBudget = (m: number) => Math.max(0, Math.min(MAX, Math.floor(m / STEP) * STEP));
+/** Whole minutes between 0 and 16 h. Steps add or remove STEP from the current value, so an odd default still moves by 30. */
+export const clampBudget = (m: number) => Math.max(0, Math.min(MAX, Math.round(m)));
 
 /** Your budget, or the time left in the work day when you have not set one. */
 export function budgetOf(now: Date, day: Day, saved: number | null): { minutes: number; isDefault: boolean } {

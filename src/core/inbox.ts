@@ -101,8 +101,15 @@ function find(tasks: Task[], line: number): Task | null {
   }
   return null;
 }
-const bareRow = (l: string) => l.replace(/\r$/, '').replace(/^\s*- \[[ xX]\]\s*/, '');
+const bareRow = (l: string) => l.replace(/\r$/, '').replace(/^\s*- \[[ xX]\] ?/, '');
 const toOf = (text: string): InboxTo => (text.includes('🙋') ? 'human' : /🤖|🪄/.test(text) ? 'agent' : 'none');
+/**
+ * What identifies a row for its inbox entries: the title's words, without marks, dates, or links, so status, effort, due, and PR links can change.
+ * Kept in step with `web/src/agents.ts`. @req FR:agent-inbox/activity.replies
+ */
+export const taskKey = (text: string): string =>
+  (text.normalize('NFKC').replace(/\\([\\<>[\]`|])/g, '$1').replace(/🤖:\S*/gu, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/(?:📅|⏰|💤|🔄)\s*[^:\n]*:/gu, ' ')
+    .toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
 /** The row title without gate marks. */
 export const taskTitle = (text: string): string => text.replace(/🤖:\S*/g, '').replace(/[🤖🪄🙋]/gu, '').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim();
 

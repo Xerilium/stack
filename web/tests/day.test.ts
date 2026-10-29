@@ -17,7 +17,8 @@ describe('available time', () => {
     expect(STEP).toBe(30);
     expect(clampBudget(-30)).toBe(0);
     expect(clampBudget(17 * 60)).toBe(16 * 60);
-    expect(clampBudget(95)).toBe(90);
+    expect(clampBudget(95)).toBe(95);
+    expect(clampBudget(285 + STEP)).toBe(315); // odd default steps by 30
   });
   it('keeps the value for today only, and survives broken storage', () => {
     const s = mem();

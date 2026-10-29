@@ -1,4 +1,5 @@
 import { formatEntry, handleEntry, INBOX_HEADER, listInbox, parseInbox, sendToInbox, type InboxEntry } from '../../src/core/inbox';
+import { parseProject } from '../../src/core/parser';
 import { ConflictError, MemoryStorage, PathError, validatePath } from '../../src/core/storage';
 import { LifecycleError } from '../../src/core/lifecycle';
 
@@ -82,6 +83,12 @@ describe('send', () => {
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, '', 'reply')).rejects.toThrow(LifecycleError);
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'a\nb', 'reply')).rejects.toThrow(LifecycleError);
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x'.repeat(1001), 'reply')).rejects.toThrow(LifecycleError);
+  });
+  it('compares expect with the row text as the parser reads it (one space after the checkbox)', async () => {
+    const doc = '# Alpha\n\n## Active\n\n- [ ]  🤖 Two spaces\n';
+    const { ctx } = await mk(doc);
+    const row = parseProject(doc).sections.flatMap((x) => x.tasks)[0];
+    await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply', row.text)).resolves.toMatchObject({ path: 'tasks/inbox/alpha.md' });
   });
   it('redacts secrets and escapes markdown', async () => {
     const { storage, ctx } = await mk();

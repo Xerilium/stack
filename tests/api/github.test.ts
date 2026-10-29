@@ -44,6 +44,18 @@ describe('GitHub PR status provider', () => {
     expect(f.seen.every((s) => s.url.startsWith('https://api.github.com/') && s.auth === 'Bearer ghs_secret')).toBe(true);
     expect(f.peak()).toBeLessThanOrEqual(6);
   });
+  it('gives every call a timeout signal, so a stalled GitHub becomes a missing status', async () => {
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const stall = (async (_i: string | URL | Request, init?: RequestInit) => {
+      signals.push(init?.signal);
+      return new Promise<Response>((_r, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))));
+    }) as typeof globalThis.fetch;
+    const prs = createGitHubPrs({ token: 't', fetch: stall });
+    const pending = prs([ref(1)]);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    (signals[0] as unknown as { dispatchEvent(e: Event): boolean }).dispatchEvent(new Event('abort'));
+    expect((await pending).size).toBe(0);
+  });
   it('caches results for ttlMs', async () => {
     const f = fake({ '/repos/o/r/pulls/1': pull(1), '/repos/o/r/commits/sha1/check-runs?per_page=100': runs() });
     let t = 0;

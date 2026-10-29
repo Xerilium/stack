@@ -1,4 +1,3 @@
-import { parseRow } from './row';
 import type { Agent, AgentState, InboxItem, Task } from './types';
 
 /** AI team helpers: labels, recency, and which inbox replies belong to an item. @req FR:web-app/today.agents @req FR:web-app/today.reply */
@@ -26,8 +25,16 @@ export function lastLine(a: Agent, now = new Date()): string {
 export const attention = (items: Agent[]): string[] =>
   COUNT.map(([s, label]) => [items.filter((a) => a.state === s).length, label] as const).filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}`);
 
-/** Open inbox entries for a row: same ref, or the same title in the same project (lines move). */
-export function repliesFor(items: InboxItem[], t: Pick<Task, 'ref' | 'project' | 'text'>): InboxItem[] {
-  const title = parseRow(t.text).title;
-  return items.filter((e) => e.state === 'open' && e.project === t.project && (e.ref === t.ref || (title !== '' && e.task === title)));
+/** Inbox text as the owner typed it: the server stores it markdown-escaped. */
+export const unescapeMd = (v: string): string => v.replace(/\\([\\<>[\]`|])/g, '$1');
+
+/** The title's words, without marks, dates, or links. Kept in step with `taskKey` in `src/core/inbox.ts`. */
+export const taskKey = (text: string): string =>
+  (unescapeMd(text.normalize('NFKC')).replace(/🤖:\S*/gu, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/(?:📅|⏰|💤|🔄)\s*[^:\n]*:/gu, ' ')
+    .toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
+
+/** Open inbox entries for a row: the same title in the same project. Lines move, so the ref alone would land on the wrong row. */
+export function repliesFor(items: InboxItem[], t: Pick<Task, 'project' | 'text'>): InboxItem[] {
+  const key = taskKey(t.text);
+  return key === '' ? [] : items.filter((e) => e.state === 'open' && e.project === t.project && taskKey(e.task) === key);
 }
