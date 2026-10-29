@@ -32,6 +32,8 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
   const proj = [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
+    // any other project the seeded tasks mention
+    ...[...new Set(m.tasks.map((t) => t.project))].filter((n) => n !== 'alpha' && n !== 'beta').map((n) => ({ name: n, title: n[0].toUpperCase() + n.slice(1), metadata: {} })),
   ];
   const find = (ref: string) => m.tasks.find((t) => t.ref === ref);
   const strip = (t: MockTask, group: string) => { for (const e of EMOJI[group]) t.text = t.text.split(e).join('').split(vs(e)).join(''); t.text = t.text.replace(/\s+/g, ' ').trim(); };

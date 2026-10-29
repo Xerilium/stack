@@ -53,12 +53,22 @@ My day plans the day; it is not a list. Home is the top of the stack (web-shell 
 - **FR:today.agents** (P1): **Your AI team** shows `GET /agents` (`FR:agent-inbox/activity.*`): per item a state label (CI failing, Needs you, Ready for review, Merged, CI running, Working, Queued) with a color dot, the title, project, linked pull requests as `repo#n` links with a check mark or cross, and the last activity (`claimed 2h ago`, `PR updated 3h ago`). The header counts what needs attention (`2 need you · 1 CI failing`). Queued items are collapsed behind `n queued`. Titles drop a leading glyph and `[AI]` tag. When the route fails the panel shows the error with Retry and the rest of Today still works
 - **FR:today.projects** (P2): **Projects** shows one tile per project with its top open task and open count; a tile opens that project's list. `g t` goes to Today; the old Now view is **Focus** (`g n`)
 
+### FR:home: Home (top of the stack)
+
+Home is the starting screen (web-shell `FR:nav.views`): the one thing to do now, whether it fits, what is next, and the top of every project. Source: Michael's first-use feedback, Oct 28 2026.
+
+- **FR:home.one** (P1): The focus block shows the single next task from `GET /next` with its **expected time** (effort, `~30m` when unset) and, when dated, a **countdown** (`today`, `tomorrow`, `Sat`, `in 10 d`, `2 d late`). Actions stay Start (`s`), Done (`d`), Not now (`z`)
+- **FR:home.fit** (P1): When the next task needs more than the time left today (web-app `FR:today.capacity`: the budget, else the rest of the work day), the block says so in one line (`No time for this today: needs 2h, 45m left`) and offers **Instead** the highest-ranked actionable task that fits, with its own Start. With no time left at all it says `Day's over` and offers nothing
+- **FR:home.next** (P1): **Up next** lists the next 2 ranked tasks (web-app `FR:now.active` ranking), one line each with project, expected time and countdown. In-progress (🚧) tasks come first
+- **FR:home.projects** (P1): **Projects** lists every project with open work: its top task (highest rank among Active rows, else the first Up next, else the first open row), expected time, countdown; the project name opens its Full stack list. Projects whose top task is the focus task or in Up next are listed without repeating it
+- **FR:home.quiet** (P1): Nothing else: no `Show all active`, no counts, no agent activity. Full stack is one chord away (`g a`)
+
 ### FR:now: Focus view (single next action)
 
 Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
-- **FR:now.focus** (P1): Home is **Now**. A focus block shows the single next task from `GET /next` (title, project, chips, due, links) with three actions only: Start (`s`), Done (`d`), Not now (`z`). Skip is `Shift+S` and Focus mode is `Enter` (no buttons). Nothing active shows an empty state that points at capture (`c`)
-- **FR:now.active** (P1): Below the focus block: **In progress** (tasks marked 🚧) and **Then** (the next 5 by due-soon, in progress, priority, then file order), each row one line with its project. Parked (💤, ⏰ later, 🅿️, ⛔), done, and tasks due more than 14 days out are never listed. `Show all active (n more)` reveals the rest. The cursor (`j`/`k`) starts on the focus task and moves through the shown rows
+- **FR:now.focus** (P1): The focus block on Home (`FR:home.one`) shows the single next task from `GET /next` (title, project, chips, links) with three actions only: Start (`s`), Done (`d`), Not now (`z`). Skip is `Shift+S` and Focus mode is `Enter` (no buttons). Nothing active shows an empty state that points at capture (`c`)
+- **FR:now.active** (P1): Ranking under the focus block (`FR:home.next` takes the first 2): 🚧 first, then by due-soon, in progress, priority, then file order. Parked (💤, ⏰ later, 🅿️, ⛔), done, and tasks due more than 14 days out are never listed. The cursor (`j`/`k`) starts on the focus task and moves through the shown rows, each once
 - **FR:now.blockers** (P1): The lists under the focus task, the day plan, and Needs you rank a row with the best key among the rows it blocks (reason after `--`: after, pending, blocked on, blocked by, until, waiting on/for), transitively and never summed, resolving names and subtasks like the `stack` engine (open Active rows only); parked, done, or far-future blocked rows, or rows under a parked parent, lend nothing
 - **FR:now.undo** (P1): Done shows an undo toast for 8 seconds (`set` checkbox Incomplete). Writes update the screen at once and reload after
 - **FR:now.defer** (P1): `z` opens a defer menu: 2 hours, tomorrow, next week (number keys 1-3) calling `suspend` with `hours` or `days`

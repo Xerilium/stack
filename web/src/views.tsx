@@ -5,10 +5,11 @@ import { children, dueDays } from './now';
 import type { Week } from './week';
 import { clock, estimate, nowMinutes, span, type Block, type Day, type Decision, type Plan } from './plan';
 import { joinable, type Busy, type CalEvent } from './meetings';
+import type { Countdown, Home, HomeItem } from './home';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
-import type { Agent, InboxItem, NextTask, Task } from './types';
+import type { Agent, InboxItem, Task } from './types';
 
 export const chipsOf = (text: string) => {
   const r = parseRow(text);
@@ -25,49 +26,6 @@ export interface RowProps {
   prog: Map<string, { done: number; total: number }>;
   onSelect: (ref: string) => void; onCursor: (ref: string) => void; onEdit: (ref: string | null) => void; onSave: (ref: string, text: string) => void; onToggle: (t: Task) => void;
   onPick: Pick; onMove: (ref: string, dir: 'up' | 'down') => void; onDragStart: (ref: string, e: PointerEvent) => void; onExpand: (ref: string) => void; onOpen: (ref: string) => void;
-}
-
-export interface NowSection { id: string; title: string; rows: Task[] }
-
-/** @req FR:web-app/now.focus @req FR:web-app/now.active */
-export function NowView({ task, sections, hidden, allOpen, p, busy, onAct, onToggleAll }: {
-  task: NextTask | null; sections: NowSection[]; hidden: number; allOpen: boolean; p: RowProps; busy: boolean;
-  onAct: (a: 'start' | 'done' | 'defer') => void; onToggleAll: () => void;
-}) {
-  const hero = task ? parseRow(task.text) : null;
-  return (
-    <section aria-label="Now">
-      {!task && (
-        <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd>c</kbd></p></div>
-      )}
-      {task && hero && (
-        <div class={`focus-block${p.cursor === task.ref ? ' cursor' : ''}`} data-ref={task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(task.ref)}>
-          <p class="eyebrow">Next · {p.titles.get(task.project) ?? task.project}</p>
-          <h1 data-testid="next-title" onDblClick={() => p.onOpen(task.ref)}><Md text={hero.title || task.text} /></h1>
-          <div class="chips">
-            {chipsOf(task.text).map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([task.ref], g)} />)}
-            <Tags r={hero} />
-            {hero.due && <span class={`meta${dueClass(hero.due)}`}>{hero.due}</span>}
-            {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
-          </div>
-          <div class="actions">
-            <button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start')}>Start <kbd>s</kbd></button>
-            <button type="button" class="btn" disabled={busy} onClick={() => onAct('done')}>Done <kbd>d</kbd></button>
-            <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('defer')}>Not now <kbd>z</kbd></button>
-          </div>
-        </div>
-      )}
-      {sections.map((s) => s.rows.length > 0 && (
-        <div key={s.id}>
-          <h2 class="h2">{s.title}</h2>
-          <ul class="rows" data-testid={s.id === 'then' ? 'rows' : undefined}>
-            {s.rows.map((t) => <TaskRow key={t.ref} t={t} p={p} />)}
-          </ul>
-        </div>
-      ))}
-      {(hidden > 0 || allOpen) && <button type="button" class="btn quiet more-all" onClick={onToggleAll}>{allOpen ? 'Show less' : `Show all active (${hidden} more)`}</button>}
-    </section>
-  );
 }
 
 /** Who/outcome/links lifted out of the title. */
@@ -627,6 +585,94 @@ export function WeekView({ w }: { w: Week }) {
           );
         })}
       </ol>
+    </section>
+  );
+}
+
+/** Expected time and due countdown, the same on every Home row. */
+function When({ i, onEffort }: { i: { minutes: number; assumed: boolean; due: Countdown | null }; onEffort?: () => void }) {
+  const text = `${i.assumed ? '~' : ''}${span(i.minutes)}`;
+  const title = i.assumed ? 'No effort set; 30 min assumed' : 'Expected time';
+  return (
+    <span class="when-meta">
+      {onEffort
+        ? <button type="button" class="expected" data-testid="expected" title={`${title}. Change`} aria-label={`Expected time ${text}. Change`} onClick={(e) => { e.stopPropagation(); onEffort(); }}>{text}</button>
+        : <span class="expected" data-testid="expected" title={title}>{text}</span>}
+      {i.due && <span class={`countdown ${i.due.tone}`} data-testid="countdown">{i.due.text}</span>}
+    </span>
+  );
+}
+
+/** Home: the one thing now, whether it fits, the next two, the top of every project. @req FR:web-app/home.one @req FR:web-app/home.fit @req FR:web-app/home.next @req FR:web-app/home.projects @req FR:web-app/home.quiet */
+export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime }: {
+  h: Home; minutesLeft: number; p: RowProps; busy: boolean; onAct: (a: 'start' | 'done' | 'defer', ref?: string) => void; onProject: (name: string) => void; onMoreTime: () => void;
+}) {
+  const one = h.one;
+  const hero = one ? parseRow(one.task.text) : null;
+  const row = (i: HomeItem) => {
+    const r = parseRow(i.task.text);
+    return (
+    <li key={i.task.ref} class={`row home-row${p.cursor === i.task.ref ? ' cursor' : ''}`} data-ref={i.task.ref} onClick={() => p.onCursor(i.task.ref)}>
+      <div class="line">
+        <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', i.task.ref); }}><span class="box" /></button>
+        <span class="title" onDblClick={() => p.onOpen(i.task.ref)}><Md text={r.title || i.task.text} /><Tags r={r} /></span>
+        <span class="proj-tag">{p.titles.get(i.task.project) ?? i.task.project}</span>
+        <When i={i} />
+      </div>
+    </li>
+    );
+  };
+  return (
+    <section class="home" aria-label="Home">
+      {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd>c</kbd></p></div>}
+      {one && hero && (
+        <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${h.fits ? '' : ' unfit'}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
+          <p class="eyebrow">Now · {p.titles.get(one.task.project) ?? one.task.project}</p>
+          <h1 data-testid="next-title" onDblClick={() => p.onOpen(one.task.ref)}><Md text={hero.title || one.task.text} /></h1>
+          <div class="chips">
+            <When i={one} onEffort={() => p.onPick([one.task.ref], 'effort')} />
+            {chipsOf(one.task.text).filter((c) => c.group !== 'effort').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([one.task.ref], g)} />)}
+            <Tags r={hero} />
+            {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
+          </div>
+          {!h.fits && (
+            <p class="nofit-line" data-testid="nofit">{minutesLeft > 0 ? `No time for this today: needs ${span(one.minutes)}, ${span(minutesLeft)} left` : "Day's over: no time left today"}</p>
+          )}
+          <div class="actions">
+            <button type="button" class={`btn${h.fits ? ' primary' : ''}`} disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>
+            <button type="button" class="btn" disabled={busy} onClick={() => onAct('done', one.task.ref)}>Done <kbd>d</kbd></button>
+            <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('defer', one.task.ref)}>Not now <kbd>z</kbd></button>
+            {!h.fits && <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
+          </div>
+        </div>
+      )}
+      {h.instead && (
+        <div class="instead" data-testid="instead">
+          <h2 class="h2">Instead, this fits</h2>
+          <ul class="rows">{row(h.instead)}</ul>
+          <div class="actions small"><button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start', h.instead!.task.ref)}>Start this</button></div>
+        </div>
+      )}
+      {h.next.length > 0 && (
+        <div>
+          <h2 class="h2">Up next</h2>
+          <ul class="rows" data-testid="up-next">{h.next.map((i) => row(i))}</ul>
+        </div>
+      )}
+      {h.projects.length > 0 && (
+        <div>
+          <h2 class="h2">Projects</h2>
+          <ul class="home-projects" data-testid="home-projects">
+            {h.projects.map((x) => (
+              <li key={x.project} class={x.shown ? 'shown' : ''}>
+                <button type="button" class="proj-link" onClick={() => onProject(x.project)}>{x.title}</button>
+                {x.shown ? <span class="proj-top quiet">above</span> : <span class="proj-top" onDblClick={() => p.onOpen(x.top.task.ref)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>}
+                {!x.shown && <When i={x.top} />}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }
