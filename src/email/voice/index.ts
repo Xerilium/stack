@@ -4,3 +4,4 @@ export * from './cliches';
 export * from './learn';
 export * from './score';
 export * from './guide';
+export * from './store';

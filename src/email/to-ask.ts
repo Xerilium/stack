@@ -35,7 +35,7 @@ function voiced(d: NonNullable<TriageResult['draft']>): string {
   const v = d.voice;
   if (!v) return d.text;
   const head = v.profile ? `Voice: ${v.score}/100` : 'Voice: no profile yet';
-  const fix = v.violations.slice(0, 3).map((x) => `"${x.match}"`).join(', ');
+  const fix = [...new Set(v.violations.map((x) => `"${x.match}"`))].slice(0, 3).join(', ');
   return `${head}${fix ? ` · fix: ${fix}` : ''}\n\n${d.text.replace(DRAFT_MARKER, '').trim()}`;
 }
 
@@ -53,7 +53,8 @@ export function toAsk(r: TriageResult, opts: { project?: string } = {}): AskPut 
     case 'needs_reply':
       if (!r.draft) return { ...base, kind: 'go-do', ask: line('Reply to', m), link: https(m.webLink), reversible: true, priority: priority(r), ...(why ? { why } : {}) };
       return {
-        ...base, kind: 'review', ask: line('Review draft reply to', m), recommend: r.confidence >= SEND_AS_DRAFTED && r.draft.voice?.pass !== false ? 'Send as drafted' : 'Edit then send',
+        ...base, kind: 'review', ask: line('Review draft reply to', m), // A reused draft keeps the recommendation from when it was scored. @req FR:email-voice/score.ask
+        ...(r.draft.reused ? {} : { recommend: r.confidence >= SEND_AS_DRAFTED && r.draft.voice?.pass !== false ? 'Send as drafted' : 'Edit then send' }),
         link: https(r.draft.webLink), default: 'Draft stays in Drafts (nothing is sent)', reversible: true, priority: priority(r),
         ...(r.draft.reused ? {} : { detail: redact(voiced(r.draft)).slice(0, DETAIL_CHARS) }), ...(why ? { why } : {}),
       };

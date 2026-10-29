@@ -6,7 +6,7 @@ import { redact } from '../../core/triage';
 import type { RulesConfig } from '../rules';
 import type { Address } from '../types';
 import { CLICHE_RULES } from './cliches';
-import { bodyOf, greetingOf, isAutoReply, ownText, signoffOf, words } from './clean';
+import { bodyOf, greetingOf, isAutoReply, ownText, signoffOf, templateGreeting, words } from './clean';
 
 /** A sent message as read from the mailbox. `body` is plain text, quoted history included. */
 /**
@@ -49,8 +49,9 @@ const MAX_EXAMPLES = 8;
 export const WAIVE_SHARE = 0.1;
 
 export const BULLET = /^\s*([-*•]|\d+[.)])\s+/m;
-export const EMOJI = /\p{Extended_Pictographic}/u;
-export const EM_DASH = /—|\s–\s|\s--\s/g;
+export const EMOJI = /\p{Emoji_Presentation}/u;
+/** Em dashes, and spaced en dashes or double hyphens used as one; a number range ("3 – 5") is not a dash. */
+export const EM_DASH = /—|(?<!\d)\s–\s(?!\d)|\s--\s/g;
 const CONTRACTION = /\b\p{L}+['’](s|re|ve|ll|d|t|m)\b/giu;
 const count = (t: string, re: RegExp) => (t.match(new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`)) ?? []).length;
 const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
@@ -74,10 +75,10 @@ function matches(address: string, list: string[]): boolean {
   return list.some((raw) => { const e = raw.trim().toLowerCase().replace(/^@/, ''); return e.includes('@') ? a === e : d === e || d.endsWith(`.${e}`); });
 }
 
-/** Contact data out of examples: they travel to a model with every draft. @req FR:email-voice/learn.examples */
+/** Contact data out of examples: they travel to a model with every draft. Input is capped first and the patterns are bounded. @req FR:email-voice/learn.examples */
 export function redactExample(t: string): string {
-  return redact(t)
-    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email]')
+  return redact(t.slice(0, 4000))
+    .replace(/[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}/g, '[email]')
     .replace(/(?:\+\d{1,3}[ .-]?)?\(?\b\d{3}\)?[ .-]\d{3}[ .-]\d{4}\b/g, '[phone]')
     .replace(/\d{6,}/g, '[number]');
 }
@@ -85,7 +86,7 @@ export function redactExample(t: string): string {
 /** Builds the owner's voice profile from their sent mail. @req FR:email-voice/learn.profile */
 export function learnVoice(sent: SentMessage[], opts: { account: string; owner: string[]; rules?: Pick<RulesConfig, 'sensitive' | 'sensitivePatterns'>; now?: Date }): VoiceProfile {
   const usable = sent
-    .filter((s) => !isAutoReply(s.subject) && !isAutoReply(s.body))
+    .filter((s) => !isAutoReply(s.subject, s.body))
     .map((s) => ({ s, text: ownText(s.body), email: s.kind !== 'other' }))
     .filter((x) => words(bodyOf(x.text)) > 0);
   if (usable.length < MIN_SAMPLES) throw new Error(`Voice needs at least ${MIN_SAMPLES} sent messages with the owner's own text (got ${usable.length})`);
@@ -108,7 +109,7 @@ export function learnVoice(sent: SentMessage[], opts: { account: string; owner: 
     .filter((x) => !sensitive(x.s) && (x.email || (bucketOf(x.n) !== 'long' && !BULLET.test(x.text))))
     .sort((a, b) => Number(b.email) - Number(a.email) || Date.parse(b.s.sentAt) - Date.parse(a.s.sentAt))
     .map((x) => ({
-      subject: redactExample(x.s.subject).slice(0, 120), text: redactExample(x.text).slice(0, 1200), bucket: bucketOf(x.n),
+      subject: redactExample(x.s.subject.slice(0, 120)), text: redactExample(templateGreeting(x.text).slice(0, 1200)), bucket: bucketOf(x.n),
       audience: (x.s.to.length && x.s.to.every((t) => ownerDomains.has(domainOf(t.address))) ? 'internal' : 'external') as VoiceExample['audience'],
       source: (x.email ? 'email' : 'other') as VoiceExample['source'],
     }));

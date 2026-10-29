@@ -29,6 +29,8 @@ export function scoreDraft(draft: string, p: VoiceProfile): VoiceScore {
 
   for (const r of CLICHE_RULES) {
     if (p.waived.includes(r.id)) continue;
+    // The owner's own sign-off is never a cliche, however rare.
+    if (r.id === 'formal-signoff' && p.signoffs.some((f) => new RegExp(r.pattern, 'i').test(f.text))) continue;
     const m = new RegExp(r.pattern, 'i').exec(text);
     if (m) add(r.id, r.severity, m[0].trim(), r.why);
   }
@@ -45,11 +47,12 @@ export function scoreDraft(draft: string, p: VoiceProfile): VoiceScore {
   const g = greetingOf(text).form;
   if (!knows(p.greetings, g)) add('greeting', 'soft', g || '(no greeting)', 'owner does not open this way');
   const s = signoffOf(text).form;
-  if (!knows(p.signoffs, s)) add('signoff', 'soft', s || '(no sign-off)', 'owner does not close this way');
+  // A formal sign-off already flagged is not flagged twice.
+  if (!knows(p.signoffs, s) && !v.some((x) => x.id === 'formal-signoff')) add('signoff', 'soft', s || '(no sign-off)', 'owner does not close this way');
   if (p.rates.bulletShare < 0.1 && BULLET.test(body)) add('bullets', 'soft', 'bullet list', 'owner rarely uses bullets');
-  const nb = /\bnot (?:just |only |merely )?[^,.;!?\n]{1,40}, but\b/i.exec(body);
+  const nb = /\bnot (?:just |only |merely )?(?:a|an|the|about|because)\b[^,.;!?\n]{1,40}, but\b/i.exec(body);
   if (nb) add('not-but', 'soft', nb[0], '"not X, but Y" is an AI tell');
-  const tri = /\b[a-z]+, [a-z]+, (?:and |or )?[a-z]+\b/.exec(body);
+  const tri = /\b(?:a|an|the) [a-z]+, [a-z]+,? (?:and )?[a-z]+ [a-z]+\b/.exec(body);
   if (tri) add('triple', 'soft', tri[0], 'three-adjective runs read as generated');
   if (p.rates.emojiShare === 0 && EMOJI.test(body)) add('emoji', 'soft', 'emoji', 'owner does not use emoji');
 

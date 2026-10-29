@@ -30,14 +30,15 @@ async function voicedDraft(drafter: Drafter, m: Message, profile: VoiceProfile |
   let s = scoreDraft(text, p);
   if (!s.pass) {
     summary.redrafts++;
-    const again = await drafter.draft(m, { feedback: redraftFeedback(s.violations) });
-    const s2 = scoreDraft(again, p);
-    if (s2.score >= s.score) { text = again; s = s2; }
+    // A failed redraft keeps the first draft; the voice line tells the owner it needs edits.
+    const again = await drafter.draft(m, { feedback: redraftFeedback(s.violations) }).catch(() => null);
+    const s2 = again === null ? null : scoreDraft(again, p);
+    if (again !== null && s2 && s2.score >= s.score) { text = again; s = s2; }
   }
   return { text, voice: { ...s, profile: !!profile } };
 }
 
-const clamp =(n: unknown, lo: number, hi: number) => (typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo);
+const clamp = (n: unknown, lo: number, hi: number) => (typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo);
 
 async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<TriageResult> {
   const pre = prefilter(m, d.rules);
