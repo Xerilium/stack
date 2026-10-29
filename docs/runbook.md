@@ -7,6 +7,8 @@ Owner-only. Agents build the files here; they never deploy, create Azure resourc
 
 Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault, no paid resources. Secrets live in app settings. Check the current Free plan limits (bandwidth, storage, Functions) before heavy use.
 
+Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are the manual equivalent.
+
 ## Prerequisites
 
 - Azure subscription and a resource group
@@ -49,7 +51,7 @@ Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault,
 
 ## Owner allow-list
 
-Sign-in is GitHub through SWA built-in auth. Find your numeric GitHub user id (`gh api user -q .id`), then set `STACK_OWNERS=github:<id>`. Update with `az staticwebapp appsettings set -n <name> --setting-names STACK_OWNERS=github:<id>`. Only people on the list get owner access; everyone else is denied.
+Sign-in is GitHub through SWA built-in auth. SWA's `userId` is generated per app, not your GitHub id ([user information](https://learn.microsoft.com/azure/static-web-apps/user-information)): sign in once, and the "Not on the allow-list" page shows your `github:<id>` and the command `scripts/setup-azure.sh --owner github:<id>`. Or set `STACK_OWNERS=github:<id>` yourself. Update with `az staticwebapp appsettings set -n <name> --setting-names STACK_OWNERS=github:<id>`. Only people on the list get owner access; everyone else is denied.
 
 ## Tokens
 

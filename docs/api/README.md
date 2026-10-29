@@ -33,6 +33,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/sessions/{id}/prompt` | POST resume a session with a prompt (owner only; stream on `/sessions/{id}/events`) |
 | `/sessions/{id}/cancel` | POST stop the run in flight (owner only) |
 | `/agents` | GET what agents are doing (agent rows, result logs, inbox, PR state and checks) |
+| `/sync` | GET the repo revision (`rev`, head commit sha; `null` when the storage has none). Poll it and reload only when it changes |
 | `/calendar` | GET calendar events for a range, read-only (owner session only) |
 | `/schedule` | GET the waking day (wake, bed, time blocks) that contains an instant (owner session only) |
 | `/tasks/resume` | POST unpark a task (owner session only) |
