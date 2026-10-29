@@ -348,6 +348,8 @@ export function TodayView(t: TodayProps) {
   const queued = agents.filter((a) => a.state === 'queued');
   const shownQueued = queuedOpen ? queued : [];
   const heads = attention(agents).filter((x) => !/queued$/.test(x)).slice(0, 2);
+  const [sideOpen, setSideOpen] = useState(false);
+  const sideHas = t.decisions.length > 0 || agents.length > 0 || !!t.agentsError || t.tops.some((x) => x.task);
   const over = t.plan.overflow.length > 0;
   const shownOver = t.plan.atRisk.length > 0 ? t.plan.atRisk.slice(0, 12) : t.plan.overflow.slice(0, 5);
   const replyBox = (key: string, task: RefText, owner: string, placeholder: string, ok: string) => replying === key && (
@@ -454,9 +456,10 @@ export function TodayView(t: TodayProps) {
         </div>
 
         {/* @req FR:home/myday.quiet: out of the way, one line until Asks carries them */}
-        {(t.decisions.length > 0 || agents.length > 0 || t.agentsError || t.tops.some((x) => x.task)) && (
-        <details class="t-side quiet-side" data-testid="quiet-side">
-          <summary>{[t.decisions.length && `${t.decisions.length} to decide`, ...heads, t.agentsError && 'Agents unavailable'].filter(Boolean).join(' · ') || (agents.length ? `${agents.length} agent${agents.length === 1 ? '' : 's'}` : 'Projects and agents')}</summary>
+        {/* always mounted, so its open state survives reloads */ (
+        <section class="t-side quiet-side" data-testid="quiet-side" hidden={!sideHas}>
+          <button type="button" class="quiet-toggle" aria-expanded={sideOpen} onClick={() => setSideOpen((o) => !o)}>{sideOpen ? '▾ ' : '▸ '}{[t.decisions.length && `${t.decisions.length} to decide`, ...heads, t.agentsError && 'Agents unavailable'].filter(Boolean).join(' · ') || (agents.length ? `${agents.length} agent${agents.length === 1 ? '' : 's'}` : 'Projects and agents')}</button>
+          {sideOpen && <>
           {t.decisions.length > 0 && <h2 class="h2" id="needs-you">Needs you</h2>}
           <ul class="cards" data-testid="needs">
             {needs.map((d) => {
@@ -510,7 +513,8 @@ export function TodayView(t: TodayProps) {
               </li>
             ))}
           </ul>
-        </details>
+</>}
+        </section>
         )}
       </div>
     </section>

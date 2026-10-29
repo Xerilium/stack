@@ -70,7 +70,7 @@ details.nofit h3::before { content: '▸ '; color: var(--muted); }
 details.nofit[open] h3::before { content: '▾ '; }
 details.nofit h3 .warn { color: var(--warn); text-transform: none; letter-spacing: 0; font-weight: 600; }
 .quiet-side { margin: 28px 0 0 70px; max-width: 690px; }
-.quiet-side > summary { cursor: pointer; color: var(--ink2); font-size: 13px; padding: 6px 0; }
+.quiet-toggle { background: none; border: 0; padding: 6px 0; cursor: pointer; color: var(--ink2); font-size: 13px; }
 @media (max-width: 800px), (hover: none) {
   .row-acts { opacity: 1; }
   /* Touch: one tap stays (Michael's rule); title on line 1, meta and actions share line 2. */

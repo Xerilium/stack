@@ -938,7 +938,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.needs @req FR:web-app/today.reply
   test('Needs you: Go with it and Reply go to the agent inbox; the card shows it was sent', async ({ page }) => {
     const m = await setup(page, day());
-    await page.getByTestId('quiet-side').locator('summary').click(); // @req FR:home/myday.quiet
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const card = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a vendor' });
     await expect(card.locator('.rec')).toContainText('Use Acme for now');
     await card.getByRole('button', { name: 'Go with it' }).click();
@@ -959,7 +959,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.reply
   test('a reply to a row that moved gets 409 instead of attaching to the wrong row', async ({ page }) => {
     const m = await setup(page, day());
-    await page.getByTestId('quiet-side').locator('summary').click(); // @req FR:home/myday.quiet
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const plain = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' });
     await expect(plain).toBeVisible();
     m.insertAbove('gamma', 'Added by someone else');
@@ -980,7 +980,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.needs
   test('identical 🙋 rows get their own cards and reply boxes', async ({ page }) => {
     const m = await setup(page, [mk(1, 'Plain 🟢'), mk(5, '🙋 Approve'), mk(6, '🙋 Approve')]);
-    await page.getByTestId('quiet-side').locator('summary').click(); // @req FR:home/myday.quiet
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const cards = page.locator('[data-testid="needs"] .card');
     await expect(cards).toHaveCount(2);
     await cards.nth(1).getByRole('button', { name: 'Reply' }).click();
@@ -999,8 +999,8 @@ test.describe('today view', () => {
       { ref: 'gamma:20', project: 'gamma', title: 'Build the engine', text: '🤖 Build the engine 🚧', state: 'working', prs: [], last: { at: iso(2), action: 'claimed' }, replies: 0, since: iso(2) },
     ];
     const m = await (async () => { await page.clock.install({ time: tenAm() }); const mm = await mockApi(page, { tasks: day(), agents }); await page.goto('/#/today'); await page.clock.resume(); return mm; })();
-    await expect(page.getByTestId('quiet-side').locator('summary')).toContainText('1 CI failing');
-    await page.getByTestId('quiet-side').locator('summary').click(); // @req FR:home/myday.quiet
+    await expect(page.getByTestId('quiet-side').locator('.quiet-toggle')).toContainText('1 CI failing');
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const panel = page.getByTestId('agents');
     await expect(panel.locator('.agent').first()).toContainText('CI failing');
     await expect(panel.getByRole('link', { name: /^r#7/ })).toHaveAttribute('href', 'https://github.com/o/r/pull/7');
@@ -1024,8 +1024,8 @@ test.describe('today view', () => {
     await page.goto('/#/today');
     await page.clock.resume();
     await expect(page.locator('[data-testid="plan"] .block').first()).toBeVisible();
-    await expect(page.getByTestId('quiet-side').locator('summary')).toContainText('Agents unavailable');
-    await page.getByTestId('quiet-side').locator('summary').click(); // @req FR:home/myday.quiet
+    await expect(page.getByTestId('quiet-side').locator('.quiet-toggle')).toContainText('Agents unavailable');
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const retry = page.getByTestId('agents-error').getByRole('button', { name: 'Retry' });
     await expect(retry).toBeVisible();
     m.agentsFail = false;
