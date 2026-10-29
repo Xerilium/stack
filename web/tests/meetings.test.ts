@@ -89,5 +89,7 @@ describe('wall clock and join', () => {
     expect(joinable([a, b, c], at(10, 30))).toBe('https://j/b');
     expect(joinable([a, b, c], at(11, 0))).toBe('https://j/c');
     expect(joinable([a, c], at(10, 30))).toBeUndefined();
+    const allDayTeams = ev('z', 0, 0, 23, 59, { allDay: true, joinUrl: 'https://j/z' }), freeTeams = ev('f', 10, 0, 11, 0, { showAs: 'free', joinUrl: 'https://j/f' });
+    expect(joinable([allDayTeams, freeTeams, b], at(10, 30))).toBe('https://j/b');
   });
 });

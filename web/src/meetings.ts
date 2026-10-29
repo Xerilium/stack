@@ -42,8 +42,8 @@ export const emailMinutes = (asks: number): number => (asks <= 0 ? 0 : Math.max(
 /** All-day events worth a line above the plan. */
 export const allDay = (events: CalEvent[]): CalEvent[] => events.filter((e) => e.allDay && !e.cancelled);
 
-/** The join link of the first meeting on now or starting within `lead` minutes (each event checked on its own). */
+/** The join link of the first meeting (busy, tentative, or out of office; not all-day or free) on now or starting within `lead` minutes, each event checked on its own. */
 export function joinable(events: CalEvent[], now: Date, lead = 10): string | undefined {
   const t = now.getTime();
-  return events.find((e) => e.joinUrl && !e.cancelled && Date.parse(e.start) - lead * 6e4 <= t && t < Date.parse(e.end))?.joinUrl;
+  return events.find((e) => e.joinUrl && !e.cancelled && !e.allDay && BLOCKING.has(e.showAs) && Date.parse(e.start) - lead * 6e4 <= t && t < Date.parse(e.end))?.joinUrl;
 }
