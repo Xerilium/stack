@@ -971,6 +971,245 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Error"
+  /sessions:
+    get:
+      summary: Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents
+      operationId: listSessions
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Session"
+                  total:
+                    type: integer
+                  indexing:
+                    type: integer
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: "Start a new agent session in a folder and send it a prompt. Owner session only: 403 for tokens"
+      operationId: newSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - cwd
+                - text
+              properties:
+                cwd:
+                  type: string
+                  maxLength: 1000
+                  description: Absolute path to an existing folder Single line.
+                text:
+                  type: string
+                  maxLength: 4000
+                  description: The prompt
+      responses:
+        "202":
+          description: Run started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                  sessionId:
+                    type: string
+                    nullable: true
+        default:
+          $ref: "#/components/responses/Error"
+  /sessions/cost:
+    get:
+      summary: Agent spend by day, project, and model; a session counts on the date of its last activity in the owner's configured timezone (else UTC)
+      operationId: sessionCost
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+      responses:
+        "200":
+          description: Cost report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attribution:
+                    type: string
+                    enum:
+                      - lastActive
+                  indexing:
+                    type: integer
+                  days:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                        usd:
+                          type: number
+                        tokens:
+                          type: integer
+                        sessions:
+                          type: integer
+                  projects:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        project:
+                          type: string
+                        usd:
+                          type: number
+                        tokens:
+                          type: integer
+                        sessions:
+                          type: integer
+                  models:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        model:
+                          type: string
+                        usd:
+                          type: number
+                        tokens:
+                          type: integer
+                  total:
+                    type: object
+                    properties:
+                      usd:
+                        type: number
+                      tokens:
+                        type: integer
+                      sessions:
+                        type: integer
+        default:
+          $ref: "#/components/responses/Error"
+  /sessions/{id}/messages:
+    get:
+      summary: "The last turns of a session: user and assistant text, tool calls as one line each"
+      operationId: sessionMessages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Turns
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        at:
+                          type: string
+                        role:
+                          type: string
+                          enum:
+                            - user
+                            - assistant
+                        text:
+                          type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /sessions/{id}/prompt:
+    post:
+      summary: "Resume a session with a prompt; updates stream on /sessions/{id}/events. Owner session only: 403 for tokens; 409 when the session is active elsewhere or already running"
+      operationId: promptSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  maxLength: 4000
+      responses:
+        "202":
+          description: Run started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                  sessionId:
+                    type: string
+                    nullable: true
+        default:
+          $ref: "#/components/responses/Error"
+  /sessions/{id}/cancel:
+    post:
+      summary: Stop the run in flight for a session. Owner session only
+      operationId: cancelSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
   /calendar:
     get:
       summary: "Calendar events overlapping a range (at most 7 days), read-only. Owner session only: 403 for tokens"
@@ -1471,6 +1710,44 @@ components:
           format: date-time
         agentReply:
           type: string
+    Session:
+      type: object
+      description: One Claude session on this machine (from the local session store), with its state and cost.
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        project:
+          type: string
+        cwd:
+          type: string
+        branch:
+          type: string
+        lastActive:
+          type: string
+          format: date-time
+        state:
+          type: string
+          enum:
+            - needs-you
+            - running
+            - active
+            - idle
+            - stale
+        cost:
+          type: object
+          properties:
+            usd:
+              type: number
+            tokens:
+              type: integer
+            approx:
+              type: boolean
+        prs:
+          type: array
+          items:
+            type: string
     AgentItem:
       type: object
       properties:

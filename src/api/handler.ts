@@ -16,6 +16,9 @@ import type { CalendarProvider } from '../calendar';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
+import type { AgentRuns } from '../agents/runs';
+import { existsSync, statSync } from 'fs';
+import { isAbsolute } from 'path';
 import { generateSummaries } from '../core/summaries';
 import { editTask, moveTask } from './edit';
 import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
@@ -38,6 +41,8 @@ export interface ApiDeps {
   basePath?: string;
   /** Pull request state and checks for `GET /agents`; absent means links without status. @req FR:agent-inbox/activity.status */
   prs?: PrStatusProvider;
+  /** Live agent sessions on this machine; absent on hosts that cannot run agents (every sessions.* route is then 404). @req FR:agent-sessions/driver.interface */
+  agents?: AgentRuns;
   /** Today's meetings for the day plan; absent means no calendar. @req FR:day-inputs/api.calendar */
   calendar?: CalendarProvider;
   /** Called with unexpected errors (they are never sent to the caller). */
@@ -151,6 +156,11 @@ const ASK_HANDLE_BODY = {
   schema: { outcome: { t: 'enum', values: ASK_OUTCOMES }, note: { t: 'str', max: 500, line: true }, reply: { t: 'str', max: 1000, line: true } } satisfies Record<string, Spec>,
   required: ['outcome'],
 };
+const UUID: Spec = { t: 'str', required: true, max: 36, line: true, pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i };
+const SESSIONS_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 200 } };
+const COST_Q: Record<string, Spec> = { days: { t: 'int', min: 1, max: 90 } };
+const PROMPT_BODY = { schema: { text: { t: 'str', required: true, max: 4000 } } satisfies Record<string, Spec>, required: ['text'] };
+const NEW_SESSION_BODY = { schema: { cwd: { t: 'str', required: true, max: 1000, line: true }, text: { t: 'str', required: true, max: 4000 } } satisfies Record<string, Spec>, required: ['cwd', 'text'] };
 const ASK_Q: Record<string, Spec> = { state: { t: 'enum', values: LIST_STATES }, limit: { t: 'int', min: 1, max: 200 } };
 /** Inbox refs are stored 1-based with the file path; the api speaks `name:line` (0-based). */
 const apiRef = (fileRef: string) => { const m = /^(tasks\/.+\.md):(\d+)$/.exec(fileRef); return m ? formatRef({ path: m[1], line: Number(m[2]) - 1 }) : fileRef; };
@@ -226,6 +236,10 @@ const fmtEdit = (r: { changed: boolean; ref: Parameters<typeof formatRef>[0]; be
   ({ changed: r.changed, ref: formatRef(r.ref), before: r.before, after: r.after, message: r.message });
 
 const noQuery = (c: Ctx) => { readQuery(c.url, []); };
+/** The agent runs for this host, or 404 (the route does not exist where no agent can run). @req FR:agent-sessions/driver.interface */
+const agentsOf = (c: Ctx): AgentRuns => { if (!c.deps.agents) throw new ApiError('not_found', 'Not found'); return c.deps.agents; };
+const sessionId = (c: Ctx): string => { const id = c.params[0]; const bad = validate<{ id: string }>({ id }, { id: UUID }, ['id']); return bad.id; };
+const ownerOnly = (c: Ctx, why: string) => { if (!isOwner(c.req)) throw new ApiError('forbidden', why); };
 
 /** `ref` is optional for actions that fall back to the core's own target choice. */
 async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response> {
@@ -468,6 +482,72 @@ export const ROUTES: Route[] = [
       noQuery(c);
       const b = validate<HandleInput>(await readBody(c.req), ASK_HANDLE_BODY.schema, ASK_HANDLE_BODY.required);
       return json(200, await handleAsk(c.life, c.params[0], b, caller(c.req).actor));
+    },
+  },
+  // ---- agent sessions (404 without a driver) @req FR:agent-sessions/driver.interface
+  {
+    // @req FR:agent-sessions/sessions.list
+    method: 'GET', doc: '/sessions', name: 'sessions.list', query: SESSIONS_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(SESSIONS_Q));
+      const agents = agentsOf(c);
+      return json(200, await agents.sessions({ limit: intParam(q, 'limit', 50, 1, 200) }));
+    },
+  },
+  {
+    // @req FR:agent-sessions/sessions.cost
+    method: 'GET', doc: '/sessions/cost', name: 'sessions.cost', query: COST_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(COST_Q));
+      const agents = agentsOf(c);
+      return json(200, await agents.cost(intParam(q, 'days', 7, 1, 90)));
+    },
+  },
+  {
+    // @req FR:agent-sessions/sessions.messages
+    method: 'GET', doc: '/sessions/{id}/messages', name: 'sessions.messages', query: SESSIONS_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(SESSIONS_Q));
+      const id = sessionId(c);
+      const agents = agentsOf(c);
+      return json(200, { items: await agents.messages(id, { limit: intParam(q, 'limit', 30, 1, 200) }) });
+    },
+  },
+  {
+    // @req FR:agent-sessions/run.prompt
+    method: 'POST', doc: '/sessions', name: 'sessions.new', body: NEW_SESSION_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ cwd: string; text: string }>(await readBody(c.req), NEW_SESSION_BODY.schema, NEW_SESSION_BODY.required);
+      const agents = agentsOf(c);
+      ownerOnly(c, 'Only the owner can message an agent');
+      if (!isAbsolute(b.cwd) || !existsSync(b.cwd) || !statSync(b.cwd).isDirectory()) throw invalid([{ field: 'cwd', message: 'Must be an absolute path to an existing folder' }]);
+      if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
+      return json(202, await agents.prompt({ cwd: b.cwd, text: b.text }));
+    },
+  },
+  {
+    // @req FR:agent-sessions/run.prompt
+    method: 'POST', doc: '/sessions/{id}/prompt', name: 'sessions.prompt', body: PROMPT_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ text: string }>(await readBody(c.req), PROMPT_BODY.schema, PROMPT_BODY.required);
+      const id = sessionId(c);
+      const agents = agentsOf(c);
+      ownerOnly(c, 'Only the owner can message an agent');
+      if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
+      return json(202, await agents.prompt({ sessionId: id, text: b.text }));
+    },
+  },
+  {
+    // @req FR:agent-sessions/run.cancel
+    method: 'POST', doc: '/sessions/{id}/cancel', name: 'sessions.cancel',
+    async run(c) {
+      noQuery(c);
+      const id = sessionId(c);
+      const agents = agentsOf(c);
+      ownerOnly(c, 'Only the owner can stop an agent');
+      return json(200, await agents.cancel(id));
     },
   },
   {

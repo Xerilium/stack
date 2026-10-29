@@ -289,6 +289,13 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('asks.answer', 'POST', '/asks/pr-1/answer', { answer: 'go' }, 409);
     await go('asks.handle', 'POST', '/asks/pr-1/handle', { outcome: 'handled', note: 'merged' }, 200);
     await go('asks.handle', 'POST', '/asks/zzz/handle', { outcome: 'handled' }, 404);
+    // @req FR:agent-sessions/driver.interface (no driver here: every sessions route is 404 and the error shape still conforms)
+    await go('sessions.list', 'GET', '/sessions', undefined, 404);
+    await go('sessions.cost', 'GET', '/sessions/cost', undefined, 404);
+    await go('sessions.messages', 'GET', '/sessions/a1b2c3d4-0000-0000-0000-000000000001/messages', undefined, 404);
+    await go('sessions.new', 'POST', '/sessions', { cwd: '/', text: 'x' }, 404);
+    await go('sessions.prompt', 'POST', '/sessions/a1b2c3d4-0000-0000-0000-000000000001/prompt', { text: 'x' }, 404);
+    await go('sessions.cancel', 'POST', '/sessions/a1b2c3d4-0000-0000-0000-000000000001/cancel', {}, 404);
     expect([...seen].sort()).toEqual(ROUTES.map((r) => r.name).sort());
   });
 

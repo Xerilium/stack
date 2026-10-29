@@ -30,7 +30,8 @@ test.beforeAll(async () => {
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo, env });
   execFileSync('git', ['add', '-A'], { cwd: repo, env });
   execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: repo, env });
-  cli = (...a) => execFileSync('node', [join(out, 'cli/index.js'), ...a, '--dir', repo], { env, encoding: 'utf8' });
+  // The agent CLI writes without committing here so its git commits never race the server's (one git index, two writers).
+  cli = (...a) => execFileSync('node', [join(out, 'cli/index.js'), ...a, '--dir', repo, '--no-commit'], { env, encoding: 'utf8' });
   const { startWeb } = await import(pathToFileURL(join(out, 'cli/web.js')).href);
   server = await startWeb({ dir: repo, port: 0, webDir: join(ROOT, 'web/dist'), watch: { debounceMs: 60 } });
 });

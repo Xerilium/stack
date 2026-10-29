@@ -15,6 +15,7 @@ import { graphTransport } from '../graph/transport';
 import { getDefaults, parseConfig } from '../core/config';
 import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo } from './watch';
+import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
@@ -41,7 +42,11 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
 
 /** What the UI header shows at all times. */
 export interface RepoInfo { mode: 'demo' | 'live'; repo: string; branch: string }
-export interface WebOpts { dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number } }
+export interface WebOpts {
+  dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number };
+  /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
+  agents?: AgentRuns | false;
+}
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
 export function resolveRepo(spec: string, cacheDir: string): string {
@@ -116,7 +121,10 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // @req FR:agent-inbox/github.wire
   const ghToken = process.env.GITHUB_TOKEN?.trim();
   const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, log: (l) => console.log(l) }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
-  const api = createApiHandler({ storage: new GitStorage(o.dir), config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined, calendar: cal.provider });
+  const storage = new GitStorage(o.dir);
+  // @req FR:agent-sessions/driver.sdk (the SDK and its binary load on the first sessions request, not here)
+  const agents: AgentRuns | undefined = o.agents === false ? undefined : o.agents ?? createRunManager({ driver: createSdkDriver(), ctx: { storage, config } });
+  const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined, calendar: cal.provider, agents });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs });
@@ -140,7 +148,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         const unsafe = req.method !== 'GET' && req.method !== 'HEAD';
         if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
         const path = (req.url ?? '/').split('?')[0];
-        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active() }), 'application/json');
+        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents }), 'application/json');
         if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
         // @req FR:ask-queue/live.sse
         if (path === '/events' && req.method === 'GET') {
@@ -153,6 +161,29 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           frame('hello', { rev: watcher.rev() });
           if (Number.isInteger(last) && last >= 0 && last < watcher.rev()) frame('change', { rev: watcher.rev(), kinds: ALL_KINDS }, watcher.rev());
           const off = watcher.on((c) => frame('change', c, c.rev));
+          const hb = setInterval(() => res.write(': ping\n\n'), beat);
+          req.on('close', () => { clearInterval(hb); off(); });
+          return;
+        }
+        // @req FR:agent-sessions/run.events
+        const runEvents = /^\/sessions\/([A-Za-z0-9-]{1,64})\/events$/.exec(path);
+        if (runEvents && req.method === 'GET') {
+          if (!agents) return send(404, 'not found', 'text/plain');
+          // One subscription: replayed updates are held until the headers are out, then every update is written as it comes.
+          // Updates are numbered so a reconnecting EventSource (Last-Event-ID) skips what it already has.
+          const after = Number(req.headers['last-event-id']);
+          let n = 0;
+          const write = (u: unknown) => { n++; if (Number.isInteger(after) && n <= after) return; res.write(`id: ${n}\nevent: update\ndata: ${JSON.stringify(u)}\n\n`); };
+          const held: unknown[] = [];
+          let sink: (u: unknown) => void = (u) => { held.push(u); };
+          let closed = false;
+          const off = agents.subscribe(runEvents[1], (u) => sink(u), () => { closed = true; if (res.headersSent) res.end(); });
+          if (!off) return send(204, '', 'text/plain');
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no', ...extra });
+          res.write('retry: 3000\n\n');
+          for (const u of held) write(u);
+          sink = write;
+          if (closed) return void res.end();
           const hb = setInterval(() => res.write(': ping\n\n'), beat);
           req.on('close', () => { clearInterval(hb); off(); });
           return;
