@@ -24,7 +24,9 @@ export const seed = (): MockTask[] => [
 const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 /** In-memory fake of the Stack api plus SWA's `/.auth/me`. */
-export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[] } = {}): Promise<Mock> {
+/** `context: true` routes at the browser context, so requests a service worker makes are mocked too. */
+export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean } = {}): Promise<Mock> {
+  const router = opts.context ? page.context() : page;
   const m: Mock = { events: null, calendarFail: false, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
   const proj = [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
@@ -41,8 +43,8 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     m.tasks.splice(m.tasks.indexOf(mine[0]), 0, { ref: `${project}:${first}`, text, project, section: mine[0].section, done: false, depth: 0, notes: [] });
   };
 
-  await page.route('**/.auth/me', (r) => json(r, 200, { clientPrincipal: m.anonymous ? null : { userDetails: 'octocat', userRoles: ['authenticated'] } }));
-  await page.route('**/api/**', async (route) => {
+  await router.route('**/.auth/me', (r) => json(r, 200, { clientPrincipal: m.anonymous ? null : { userDetails: 'octocat', userRoles: ['authenticated'] } }));
+  await router.route('**/api/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());
     const path = url.pathname.replace(/^\/api/, '');

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { CapacityRow } from './capacity';
 import type { Filters } from './filters';
 import { children, dueDays } from './now';
+import type { Week } from './week';
 import { clock, estimate, span, type Block, type Decision, type Plan } from './plan';
 import { joinable, type Busy, type CalEvent } from './meetings';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
@@ -266,13 +267,14 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
 }
 
 /** @req FR:web-app/projects.glance */
-export function ProjectsView({ rows, onOpen }: { rows: (CapacityRow & { top?: Task })[]; onOpen: (p: string) => void }) {
+export function ProjectsView({ rows, week, onOpen }: { rows: (CapacityRow & { top?: Task })[]; week?: Week; onOpen: (p: string) => void }) {
   return (
     <section aria-label="Projects">
+      {week && <WeekView w={week} />}
       <h1 class="h1">Projects</h1>
       <ul class="proj-list">
         {rows.map((r) => (
-          <li key={r.project} class={`proj${r.over ? ' over' : ''}${r.capacity === null ? ' nocap' : ''}`} data-testid={`cap-${r.project}`}>
+          <li key={r.project} class={`prow${r.over ? ' over' : ''}${r.capacity === null ? ' nocap' : ''}`} data-testid={`cap-${r.project}`}>
             <button type="button" class="proj-btn" onClick={() => onOpen(r.project)}>
               <span class="proj-name">{r.title || r.project}</span>
               <span class="proj-top">{r.top ? <Md text={parseRow(r.top.text).title || r.top.text} /> : <i>Nothing open</i>}</span>
@@ -431,7 +433,7 @@ export function TodayView(t: TodayProps) {
         <p class="t-sub">
           {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
           {meetingMin > 0 && <span>{span(meetingMin)} in meetings</span>}
-          {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join{nextMeeting.start - nowMin <= 10 && <kbd>J</kbd>}</a></>}</span>}
+          {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join{joinable(nextMeeting.events, t.now) && <kbd>J</kbd>}</a></>}</span>}
           {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
           {heads.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{heads.join(' · ')}</button>}
@@ -591,4 +593,37 @@ function DueNote({ due }: { due?: string }) {
   if (!due || d === null || d > 2) return null;
   if (d < -30) return <span class="due stale" title={`Due ${due}`}>stale</span>;
   return <span class={`due${d < 0 ? ' late' : ''}`}>{d < 0 ? `${-d}d late` : d === 0 ? 'due today' : `due in ${d}d`}</span>;
+}
+
+/** This week: available time vs planned work per day. @req FR:web-app/week.days @req FR:web-app/week.summary @req FR:web-app/week.bars */
+export function WeekView({ w }: { w: Week }) {
+  const top = Math.max(60, ...w.days.map((d) => Math.max(d.available, d.planned)));
+  const h = (m: number) => `${Math.round((m / top) * 100)}%`;
+  const hrs = (m: number) => (m === 0 ? '0' : m % 60 === 0 ? `${m / 60}h` : `${(m / 60).toFixed(1).replace(/\.0$/, '')}h`);
+  return (
+    <section class="week" aria-label="This week" data-testid="week">
+      <div class="week-head">
+        <h1 class="h1">This week</h1>
+        <p class="week-sum"><span>{hrs(w.available)} available</span><span>{hrs(w.planned)} planned</span>{w.leftover > 0 && <span class="warn">{hrs(w.leftover)} won't fit</span>}</p>
+      </div>
+      <ol class="week-days">
+        {w.days.map((d) => {
+          const name = d.today ? 'Today' : d.date.toLocaleDateString(undefined, { weekday: 'short' });
+          const fill = Math.min(d.planned, d.available);
+          return (
+            <li key={d.date.toISOString()} class={`wd${d.today ? ' today' : ''}${d.over && d.available > 0 ? ' over' : ''}${d.available === 0 ? ' off' : ''}`}>
+              <div class="wd-bar" role="img" aria-label={`${name}: ${hrs(d.planned)} planned of ${hrs(d.available)} available${d.over ? `, ${hrs(d.over)} over` : ''}`}>
+                <span class="wd-track" style={{ height: h(d.available) }} />
+                <span class="wd-fill" style={{ height: h(fill) }} />
+                {d.over > 0 && d.available > 0 && <span class="wd-over" style={{ bottom: h(d.available), height: h(d.over) }} />}
+                {d.available === 0 && d.planned > 0 && <span class="wd-unset" style={{ height: h(d.planned) }} />}
+              </div>
+              <p class="wd-label">{hrs(d.planned)}<small>{d.available === 0 ? (d.planned > 0 ? ' · no time set' : ' · off') : ` / ${hrs(d.available)}`}</small></p>
+              <p class="wd-name">{name}<small>{d.date.getDate()}</small></p>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
 }

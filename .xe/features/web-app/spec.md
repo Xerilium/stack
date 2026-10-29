@@ -26,7 +26,7 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 - **FR:host.static** (P1): `web/` builds with Vite to `web/dist` (static files only). The bundle holds no task data and no secrets; the build env is never inlined. Data is fetched from `/api` after the page loads, which SWA serves only to authenticated users
 - **FR:host.swa** (P1): `web/public/staticwebapp.config.json` ships in `dist` and has the same `routes` and `responseOverrides` as `docs/security/staticwebapp.config.json` (GitHub only login, `/*` requires `authenticated`, 401 redirects to GitHub login). It adds `globalHeaders` with a CSP of `default-src 'self'` (no inline script, no third-party origin, `frame-ancestors 'none'`) plus `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`
 - **FR:host.auth** (P1): The app reads `/.auth/me` to show who is signed in and offers sign out at `/.auth/logout`. A 401 from `/api` sends the browser to `/.auth/login/github` with `post_login_redirect_uri` set to the current path; a 403 shows a "not on the allow-list" screen with sign out and no task data
-- **FR:host.nosecrets** (P1): The client sends only the session cookie and `Content-Type: application/json`. It never stores tokens; browser storage holds only the per-day available time (`stack.available`). It renders text from the api as text (never as HTML)
+- **FR:host.nosecrets** (P1): The client sends only the session cookie and `Content-Type: application/json`. It never stores tokens; browser storage holds only the per-day available time (`stack.available`) and the notification opt-in (`stack.notify`, `FR:pwa/notify.optin`). The service worker cache holds read-only api responses (`FR:pwa/offline.sw`). It renders text from the api as text (never as HTML)
 
 ### FR:api: Api client
 
@@ -68,6 +68,13 @@ Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
 - **FR:row.clean** (P1): `parseRow` lifts links (`https://…`, with a leading `@`) out of the title into `links` (label = host), 🎯 into `outcome`, 🤖/🪄 and 🙋 into `who`, and drops project-value marks (💰 ⚠️ 😊 ⏱️ 🌱 🏃 🌟) and 🔎 from the title. A `⏰` start date may carry a year. Markdown links stay in the title
 - **FR:row.chips** (P1): Priority, status, effort, and impact render as short text chips (`Crit`, `High`, `Doing`, `1h`), not color emoji; colors only for urgency and state. Rows show priority and effort in fixed-width slots, status before the title, links and `AI`/`You` tags beside it. The row has one control: a circle that marks done (Shift/Cmd/Ctrl-click or long-press on touch selects)
+
+### FR:week: Week capacity
+
+- **FR:week.days** (P1): The Projects view opens with **This week**: one column per day from today through Sunday (at least 5 days; when today is Saturday or Sunday the next week through Friday is added). Each day shows available time (the work day, 9:00-18:00, for Monday to Friday; 0 on Saturday and Sunday; today uses the time left, or the budget set on Today) and planned time
+- **FR:week.plan** (P1): Planned time per day comes from `planWeek`: tasks with a due date in the week land on their due day (overdue land on today); the rest of your actionable ranked work (the Today plan rules) fills the remaining available time day by day in rank order, a task at most 2 h per day. Planned time above available is shown as over (warning color) on that day
+- **FR:week.summary** (P1): A header line says `<available> available · <planned> planned` for the week, and `<n> h won't fit` when ranked work is left over
+- **FR:week.bars** (P1): Each day is a vertical bar: available is the track, planned fills it, over spills above in the warning color, and today is marked. Bars have a text label (`3h / 9h`) and an accessible name, so color is never the only signal; on phones the days are a horizontal row that fits 375 px without scrolling
 
 ### FR:projects: Projects overview
 

@@ -20,14 +20,28 @@ import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } f
 import { AsksView } from './AsksView';
 import { actionsFor } from './asks';
 import { useAsks } from './useAsks';
+import { loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
+import { planWeek } from './week';
 import { FocusMode, ListView, NowView, ProjectsView, TodayView, type NowSection, type RowProps } from './views';
 
-const api = createClient();
+const reads = new Set<(savedAt: string | null) => void>();
+const api = createClient(undefined, undefined, (s) => reads.forEach((f) => f(s)));
+
+/** Deletes every Stack cache (page and service worker) before the session ends or changes hands. @req FR:pwa/offline.private */
+async function clearCaches() {
+  try { navigator.serviceWorker?.controller?.postMessage({ type: 'clear' }); } catch { /* no worker */ }
+  try { if ('caches' in window) await Promise.all((await caches.keys()).filter((k) => k.startsWith('stack-')).map((k) => caches.delete(k))); } catch { /* best effort */ }
+}
+async function signOut() {
+  await clearCaches();
+  location.assign('/.auth/logout');
+}
 type Phase = 'loading' | 'ready' | 'denied' | 'error';
 interface Command { id: string; label: string; hint?: string; run: () => void }
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
-const toLogin = () => location.assign(`/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
+/** An expired session may be followed by another account: drop the cached copy first. */
+const toLogin = () => { void clearCaches().then(() => location.assign(`/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(location.pathname + location.search + location.hash)}`)); };
 const projectOf = (ref: string) => ref.slice(0, ref.lastIndexOf(':'));
 
 export function App() {
@@ -60,7 +74,12 @@ export function App() {
   const [picker, setPicker] = useState<{ refs: string[]; groups: GroupName[] } | null>(null);
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  /** @req FR:pwa/offline.banner */
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine !== false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const offline = !online || savedAt !== null;
+  const busy = working || offline;
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [drag, setDrag] = useState<{ ref: string; over: string | null; half: 'top' | 'bottom' } | null>(null);
   const [captureText, setCaptureText] = useState('');
@@ -110,6 +129,7 @@ export function App() {
   const rows = view === 'asks' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
+  const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, day), [tasks, clockNow, budget.minutes, day]);
   const capRows = useMemo(() => capacityRows(projects, tasks).map((r) => ({ ...r, top: topTask(tasks, r.project) })), [projects, tasks]);
 
   // ---- feedback
@@ -147,7 +167,32 @@ export function App() {
 
   /** @req FR:ask-queue/web.live (task files changing elsewhere refresh the rest of the app too) */
   const [stream, setStream] = useState<boolean | null>(null);
-  const asks = useAsks(api, toast, () => void refresh(), stream);
+  /** @req FR:pwa/notify.optin @req FR:pwa/notify.new */
+  const [notifyOn, setNotifyOn] = useState(() => loadNotify(store()));
+  const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : 'denied'));
+  const notifyRef = useRef(false); notifyRef.current = notifyOn && perm === 'granted';
+  const asks = useAsks(api, toast, () => void refresh(), stream, (items) => {
+    if (!notifyRef.current || !document.hidden) return;
+    const note = noteFor(items, new Date());
+    if (note) void raise(note);
+  });
+  const toggleNotify = async () => {
+    if (!notifySupported()) return;
+    if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
+    const p = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+    setPerm(p);
+    if (p === 'granted') { saveNotify(store(), true); setNotifyOn(true); toast('Notifications on'); }
+  };
+  const notify = { supported: notifySupported(), on: notifyOn && perm === 'granted', blocked: perm === 'denied', toggle: () => void toggleNotify() };
+  const refreshRef = useRef(refresh); refreshRef.current = refresh;
+  useEffect(() => {
+    const read = (s: string | null) => setSavedAt(s);
+    reads.add(read);
+    const up = () => { setOnline(true); setSavedAt(null); void refreshRef.current(); };
+    const down = () => setOnline(false);
+    window.addEventListener('online', up); window.addEventListener('offline', down);
+    return () => { reads.delete(read); window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+  }, []);
   /** Open asks the email module wrote reserve the Email block. @req FR:web-app/today.mail */
   useEffect(() => { setEmailAsks(asks.items.filter((a) => a.state === 'open' && a.from === 'email-triage').length); }, [asks.items]);
 
@@ -372,7 +417,8 @@ export function App() {
     { id: 'less-time', label: 'Less time today (-30m)', hint: '[', run: () => setBudget(budget.minutes - STEP) },
     { id: 'reset-time', label: 'Reset available time', run: () => setBudget(null) },
     { id: 'help', label: 'Show keyboard shortcuts', hint: '?', run: () => setHelp(true) },
-    { id: 'signout', label: 'Sign out', run: () => location.assign('/.auth/logout') },
+    ...(notify.supported ? [{ id: 'notify', label: notify.on ? 'Turn off notifications' : 'Notify me about new asks', run: notify.toggle }] : []),
+    { id: 'signout', label: 'Sign out', run: () => void signOut() },
   ];
 
   // ---- keyboard (reads latest state through a ref)
@@ -453,7 +499,7 @@ export function App() {
   if (phase === 'denied') {
     return (
       <main class="gate"><h1>Not on the allow-list</h1><p>You are signed in{me ? ` as ${me}` : ''}, but this Stack belongs to someone else.</p>
-        <a class="btn" href="/.auth/logout">Sign out</a></main>
+        <a class="btn" href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></main>
     );
   }
   if (phase === 'error') {
@@ -480,12 +526,13 @@ export function App() {
         <div class="spacer" />
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">Commands <kbd>⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
-        <div class="who">{!local && me && <span>{me} · <a href="/.auth/logout">Sign out</a></span>}</div>
+        <div class="who">{!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}</div>
       </nav>
-      <main class="main">
+      <main class="main" title={offline ? 'Offline' : undefined}>
+        {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
         {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
-        {phase === 'loading' && <p class="loading">Loading…</p>}
-        {view === 'asks' && <AsksView asks={asks} />}
+        {phase === 'loading' && view !== 'asks' && <p class="loading">Loading…</p>}
+        {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
@@ -495,7 +542,7 @@ export function App() {
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />
         )}
-        {phase === 'ready' && view === 'projects' && <ProjectsView rows={capRows} onOpen={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })} />}
+        {phase === 'ready' && view === 'projects' && <ProjectsView week={week} rows={capRows} onOpen={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })} />}
       </main>
       {selected.size > 0 && view !== 'projects' && (
         <div class="bulk" role="toolbar" aria-label="Bulk edit">
@@ -508,9 +555,10 @@ export function App() {
         </div>
       )}
       <nav class="tabbar" aria-label="Views (mobile)">
-        {nav('tab', ['list'])}
-        <button type="button" class="tab" onClick={openCapture} aria-label="New task">＋</button>
-        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">More</button>
+        {tabs.filter(([v]) => v !== 'list').map(([v, label]) => (
+          <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><TabIcon v={v} /><span>{label}</span></button>
+        )).flatMap((b, i) => (i === 2 ? [<button type="button" key="add" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true">+</span></button>, b] : [b]))}
+        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette"><TabIcon v="more" /><span>More</span></button>
       </nav>
       {focusTask && <FocusMode task={focusTask} all={tasks} busy={busy} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onBack={() => setFocusRef(null)} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
@@ -561,4 +609,17 @@ function PaletteDialog({ commands, onClose }: { commands: Command[]; onClose: ()
       </ul>
     </Dialog>
   );
+}
+
+/** Line icons for the phone tab bar. @req FR:pwa/install.standalone */
+function TabIcon({ v }: { v: View | 'more' }) {
+  const d: Record<string, string> = {
+    asks: 'M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z',
+    today: 'M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 5h16M8 3v4m8-4v4',
+    now: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
+    projects: 'M4 6h16M4 12h16M4 18h10',
+    list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+    more: 'M5 12h.01M12 12h.01M19 12h.01',
+  };
+  return <svg class="tab-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={d[v]} fill="none" stroke="currentColor" stroke-width={v === 'more' ? 3 : 1.7} stroke-linecap="round" stroke-linejoin="round" /></svg>;
 }

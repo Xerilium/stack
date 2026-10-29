@@ -9,8 +9,10 @@ export class ApiFailure extends Error {
 
 const TASK_FIELDS = 'ref,text,project,section,done,depth,notes';
 
-export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base = '/api') {
+/** `onRead` hears each read: the time the service worker saved it when it came from the offline cache, else null. @req FR:pwa/offline.banner */
+export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base = '/api', onRead?: (savedAt: string | null) => void) {
   async function call<T>(path: string, body?: unknown): Promise<T> {
+    if (body !== undefined && typeof navigator !== 'undefined' && navigator.onLine === false) throw new ApiFailure(0, 'offline', 'Offline: changes need a connection');
     const init: RequestInit = body === undefined
       ? { credentials: 'same-origin' }
       : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' };
@@ -23,6 +25,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
       const e = (data as { error?: { code?: string; message?: string } } | undefined)?.error;
       throw new ApiFailure(res.status, e?.code ?? `http_${res.status}`, e?.message ?? `Request failed (${res.status})`);
     }
+    if (body === undefined) onRead?.(res.headers?.get?.('x-stack-cache') === 'offline' ? res.headers.get('x-stack-saved-at') ?? '' : null);
     return data as T;
   }
   return {
