@@ -76,3 +76,20 @@ describe('capacity-aware plan', () => {
     expect(estimate(t('x ⚫️'))).toEqual({ minutes: 120, assumed: false, partial: true });
   });
 });
+
+/** @req FR:web-app/today.fit */
+describe('at risk', () => {
+  it('flags left-out tasks due today, recently late, or in progress; orders them first', () => {
+    const fits = t('Fits 🟠');
+    const later = t('Someday 🟢');
+    const today = t('📅 Oct 23: Due today 🟢');
+    const late = t('📅 Oct 20: Late 🟢');
+    const stale = t('📅 Aug 1: Stale 🟢');
+    const doing = t('🚧 Doing 🟢');
+    const p = buildPlan([fits, later, today, late, stale, doing], at(10), DEFAULT_DAY, 120);
+    expect(p.blocks.map((b) => b.task.text)).toEqual(['Fits 🟠']);
+    expect(p.atRisk.map((x) => x.text)).toEqual(['📅 Oct 23: Due today 🟢', '📅 Oct 20: Late 🟢', '🚧 Doing 🟢']);
+    expect(p.riskShort).toBe(90);
+    expect(p.overflow.map((x) => x.text)).toEqual(['📅 Oct 23: Due today 🟢', '📅 Oct 20: Late 🟢', '🚧 Doing 🟢', 'Someday 🟢', '📅 Aug 1: Stale 🟢']);
+  });
+});

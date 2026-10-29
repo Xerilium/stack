@@ -447,3 +447,7 @@ a.tag.link:hover { background: var(--accent-soft); }
   .nofit-proj { display: none; }
   .reveal { min-height: 44px; }
 }
+.t-head .day-bar { margin-top: 30px; }
+.nofit li.risk .nofit-title { color: var(--ink); font-weight: 550; }
+.nofit-proj .due { margin-right: 8px; font-size: 11.5px; }
+.nofit-proj .due.late { color: var(--warn); }

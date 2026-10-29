@@ -384,7 +384,8 @@ export function TodayView(t: TodayProps) {
           </div>
         </div>
         <p class="t-sub">
-          {over ? <span class="warn">{t.plan.overflow.length} don't fit · {span(t.plan.short)} more needed</span> : <span>{span(t.plan.free)} free</span>}
+          {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at risk · {span(t.plan.riskShort)} more needed</span> : <span>{span(t.plan.free)} free</span>}
+          {t.plan.overflow.length > t.plan.atRisk.length && <span class="quiet">{t.plan.overflow.length - t.plan.atRisk.length} later</span>}
           {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
           {heads.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{heads.join(' · ')}</button>}
@@ -407,17 +408,17 @@ export function TodayView(t: TodayProps) {
           {over && (
             <div class="nofit" data-testid="nofit">
               <div class="nofit-head">
-                <h3>Doesn't fit <span>{span(t.plan.short)}</span></h3>
+                <h3>Doesn't fit <span>{t.plan.atRisk.length > 0 ? `${t.plan.atRisk.length} at risk · ` : ''}{t.plan.overflow.length} tasks · {span(t.plan.short)}</span></h3>
                 <button type="button" class="btn quiet" onClick={() => t.onBudget(t.budget.minutes + 30)}>+30m</button>
               </div>
               <ul>
                 {t.plan.overflow.slice(0, 12).map((o) => {
                   const e = estimate(o);
                   return (
-                    <li key={o.ref} onDblClick={() => t.p.onOpen(o.ref)}>
+                    <li key={o.ref} class={t.plan.atRisk.includes(o) ? 'risk' : undefined} onDblClick={() => t.p.onOpen(o.ref)}>
                       <span class="nofit-est">{e.assumed ? '~' : ''}{span(e.minutes)}{e.partial ? '+' : ''}</span>
                       <span class="nofit-title"><Md text={parseRow(o.text).title || o.text} /></span>
-                      <span class="nofit-proj">{t.p.titles.get(o.project) ?? o.project}</span>
+                      <span class="nofit-proj"><DueNote due={parseRow(o.text).due} />{t.p.titles.get(o.project) ?? o.project}</span>
                     </li>
                   );
                 })}

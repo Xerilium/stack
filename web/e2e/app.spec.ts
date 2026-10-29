@@ -861,7 +861,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.fit
   test('tasks that do not fit are listed with estimates and +30m grows the budget', async ({ page }) => {
     await setup(page, Array.from({ length: 6 }, (_, i) => mk(i + 1, `Big ${i + 1} 🔴`)));
-    await expect(page.locator('.t-sub')).toContainText("don't fit");
+    await expect(page.locator('.t-sub')).toContainText('2 later');
     const nofit = page.getByTestId('nofit');
     await expect(nofit.locator('li').first()).toContainText('2h');
     const before = await page.locator('[data-testid="plan"] .block').count();

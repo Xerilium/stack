@@ -1,4 +1,4 @@
-import { actionable, isActive, rankNow } from './now';
+import { actionable, dueDays, isActive, rankNow } from './now';
 import { effortMinutes, parseRow } from './row';
 import type { Task } from './types';
 
@@ -7,7 +7,8 @@ export interface Day { start: number; end: number } // minutes after midnight
 export const DEFAULT_DAY: Day = { start: 9 * 60, end: 18 * 60 };
 export interface Block { task: Task; start: number; end: number; partial: boolean; assumed: boolean }
 /** `left`: work day left; `budget`: minutes you have; `free`: budget not booked; `short`: minutes the left-out tasks need; `assumed`: blocks using the default estimate. */
-export interface Plan { blocks: Block[]; overflow: Task[]; left: number; busy: number; budget: number; free: number; short: number; assumed: number }
+/** `atRisk`: left-out tasks due today, late by 30 days or less, or in progress (listed first in `overflow`); `riskShort`: minutes they need. */
+export interface Plan { blocks: Block[]; overflow: Task[]; atRisk: Task[]; left: number; busy: number; budget: number; free: number; short: number; riskShort: number; assumed: number }
 
 const MAX_BLOCK = 120;
 const DEFAULT_MIN = 30;
@@ -43,6 +44,13 @@ export function estimate(t: Task): { minutes: number; assumed: boolean; partial:
   return { minutes: Math.min(est || DEFAULT_MIN, MAX_BLOCK), assumed: !est, partial: est > MAX_BLOCK };
 }
 
+/** Due today, late by 30 days or less (older is stale), or in progress. */
+export function atRiskTask(t: Task, now: Date): boolean {
+  const r = parseRow(t.text);
+  const d = dueDays(r.due, now);
+  return (d !== null && d <= 0 && d >= -30) || (!!r.status && r.status.replace(/\uFE0F/g, '') === '🚧');
+}
+
 /** First bookable minute: now rounded up to 15, never before the work day starts. */
 export const planStart = (now: Date, day: Day = DEFAULT_DAY) => Math.max(day.start, round15(now.getHours() * 60 + now.getMinutes()));
 
@@ -65,7 +73,10 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
     cur += e.minutes;
   }
   const busy = cur - start;
-  return { blocks, overflow, left, busy, budget: cap, free: cap - busy, short, assumed: blocks.filter((b) => b.assumed).length };
+  const atRisk = overflow.filter((t) => atRiskTask(t, now));
+  const rest = overflow.filter((t) => !atRisk.includes(t));
+  const riskShort = atRisk.reduce((m, t) => m + estimate(t).minutes, 0);
+  return { blocks, overflow: [...atRisk, ...rest], atRisk, left, busy, budget: cap, free: cap - busy, short, riskShort, assumed: blocks.filter((b) => b.assumed).length };
 }
 
 export const clock = (m: number) => { const h = Math.floor(m / 60) % 24; return `${h % 12 || 12}:${String(m % 60).padStart(2, '0')}${h < 12 ? 'a' : 'p'}`; };
