@@ -1012,6 +1012,60 @@ test.describe('today view', () => {
     await expect(page.getByTestId('agents').locator('.agent').first()).toBeVisible();
   });
 
+  // @req FR:web-app/today.meetings
+  test('meetings block time: fixed rows, hatched on the bar, less available, tasks start after', async ({ page }, info) => {
+    const at = (h: number, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+    await page.clock.install({ time: tenAm() });
+    const m = await mockApi(page, { tasks: day() });
+    m.events = [
+      { id: 'e1', subject: 'Allyte sync', start: at(10, 30), end: at(11, 30), allDay: false, showAs: 'busy', cancelled: false, online: true, webLink: 'https://teams.example.test/join/1' },
+      { id: 'e2', subject: 'Lunch', start: at(12), end: at(13), allDay: false, showAs: 'free', cancelled: false, online: false },
+      { id: 'e3', subject: 'Offsite', start: at(0), end: at(23, 59), allDay: true, showAs: 'busy', cancelled: false, online: false },
+    ];
+    await page.goto('/#/today');
+    await page.clock.resume();
+    const meeting = page.locator('[data-testid="plan"] .meeting');
+    await expect(meeting).toHaveCount(1);
+    await expect(meeting).toContainText('Allyte sync');
+    await expect(meeting).toContainText('10:30a');
+    await expect(meeting.getByRole('link', { name: 'Join' })).toHaveAttribute('href', 'https://teams.example.test/join/1');
+    await expect(page.locator('.t-sub')).toContainText('1h in meetings');
+    await expect(page.getByTestId('available')).toContainText('7h');
+    await expect(page.locator('.allday')).toContainText('Offsite');
+    await expect(page.locator('.day-bar u')).toHaveCount(1);
+    const blocks = page.locator('[data-testid="plan"] .block');
+    await expect(blocks.nth(0).locator('.when')).toContainText('10:00a');
+    await expect(blocks.nth(1).locator('.when')).toContainText('11:30a'); // the 1h lead task would cross the meeting, so a 30m task fills the gap first
+    await shot(page, 'today-meetings', info);
+  });
+
+  test('a calendar error is a quiet note; no calendar changes nothing', async ({ page }) => {
+    await page.clock.install({ time: tenAm() });
+    const m = await mockApi(page, { tasks: day() });
+    m.calendarFail = true;
+    await page.goto('/#/today');
+    await page.clock.resume();
+    await expect(page.locator('.cal-note')).toContainText('Calendar unavailable');
+    await expect(page.getByTestId('available')).toContainText('8h');
+  });
+
+  // @req FR:web-app/today.mail
+  test('email asks reserve one Email block first; it opens the Asks view', async ({ page }) => {
+    await page.clock.install({ time: tenAm() });
+    const m = await mockApi(page, { tasks: day() });
+    const ask = (key: string, from: string) => ({ key, state: 'open', ask: `Review draft reply to Ann: ${key}`, kind: 'review', from, reversible: true, priority: 'normal', blocks: 0, created: new Date().toISOString(), updated: new Date().toISOString(), score: 1, overdue: false });
+    m.asks = [ask('mail-1', 'email-triage'), ask('mail-2', 'email-triage'), ask('mail-3', 'email-triage'), ask('mail-4', 'email-triage'), ask('pr-1', 'allyte-cos')];
+    await page.goto('/#/today');
+    await page.clock.resume();
+    const email = page.locator('[data-testid="plan"] .email-block');
+    await expect(email).toContainText('Email · 4 asks');
+    await expect(email.locator('.when')).toContainText('10:00a');
+    await expect(email.locator('.when')).toContainText('20m');
+    await expect(page.locator('[data-testid="plan"] .block').first().locator('.when')).toContainText('10:20a');
+    await email.getByRole('button', { name: /Email · 4 asks/ }).click();
+    await expect(page).toHaveURL(/#\/asks/);
+  });
+
   // @req FR:web-app/today.projects
   test('project tiles open that project in the list', async ({ page }) => {
     await mockApi(page);
