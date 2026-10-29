@@ -258,7 +258,7 @@ export function App() {
   // ---- navigation (hash)
   const go = useCallback((v: View, f: Filters = filters) => {
     setNav({ view: v, filters: f });
-    window.scrollTo(0, 0);
+    document.querySelector('.main')?.scrollTo(0, 0); // the content region scrolls, never the document
     const h = buildHash(v, f);
     if (location.hash !== h) history.replaceState(null, '', h);
   }, [filters]);
