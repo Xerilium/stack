@@ -37,12 +37,15 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask |
   const ordered = [...ranked.filter(doing), ...ranked.filter((t) => !doing(t))];
   const fits = !one || one.minutes <= o.minutesLeft;
   const instead = !fits && o.minutesLeft > 0 ? (ordered.map((t) => item(t, now)).find((i) => i.minutes <= o.minutesLeft) ?? null) : null;
-  const next = ordered.slice(0, 2).map((t) => item(t, now));
+  // Instead never repeats under Up next
+  const next = ordered.filter((t) => t.ref !== instead?.task.ref).slice(0, 2).map((t) => item(t, now));
   const shownRefs = new Set([oneTask?.ref, instead?.task.ref, ...next.map((n) => n.task.ref)].filter((r): r is string => !!r));
+  // one ranking pass over every active row, then the first per project
+  const rankedAll = rankNow(tasks.filter((t) => !t.done && t.depth === 0 && isActive(t) && actionable(t, now)), now, tasks);
   const projects: HomeProject[] = [];
   for (const p of o.projects) {
     const mine = tasks.filter((t) => t.project === p.name && !t.done && t.depth === 0);
-    const top = rankNow(mine.filter((t) => isActive(t) && actionable(t, now)), now, tasks)[0] ?? mine.find(isUpNext) ?? mine[0];
+    const top = rankedAll.find((t) => t.project === p.name) ?? mine.find(isUpNext) ?? mine[0];
     if (top) projects.push({ project: p.name, title: p.title || p.name, top: item(top, now), shown: shownRefs.has(top.ref) });
   }
   return { one, fits, instead, next, projects };

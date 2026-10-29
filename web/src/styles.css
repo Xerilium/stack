@@ -605,7 +605,6 @@ html, body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transpare
 .countdown.late { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 6px; padding: 1px 6px; }
 .countdown.calm { color: var(--muted); font-weight: 500; }
 .focus-block.unfit { border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
-.focus-block.unfit .btn.primary { background: var(--panel); color: var(--ink); border-color: var(--line); font-weight: 500; }
 .nofit-line { margin: 14px 0 0; color: var(--warn); font-weight: 600; font-size: 13.5px; }
 .instead { margin: 18px 0 6px; padding: 12px 14px 12px; border-radius: 12px; background: var(--accent-soft); }
 .instead .h2 { margin: 0 0 4px; color: var(--accent); }

@@ -57,7 +57,7 @@ My day plans the day; it is not a list. Home is the top of the stack (web-shell 
 
 Home is the starting screen (web-shell `FR:nav.views`): the one thing to do now, whether it fits, what is next, and the top of every project. Source: Michael's first-use feedback, Oct 28 2026.
 
-- **FR:home.one** (P1): The focus block shows the single next task from `GET /next` with its **expected time** (effort, `~30m` when unset) and, when dated, a **countdown** (`today`, `tomorrow`, `in 3 d`, `2 d late`, `Sat`). Actions stay Start (`s`), Done (`d`), Not now (`z`)
+- **FR:home.one** (P1): The focus block shows the single next task from `GET /next` with its **expected time** (effort, `~30m` when unset) and, when dated, a **countdown** (`today`, `tomorrow`, `Sat`, `in 10 d`, `2 d late`). Actions stay Start (`s`), Done (`d`), Not now (`z`)
 - **FR:home.fit** (P1): When the next task needs more than the time left today (web-app `FR:today.capacity`: the budget, else the rest of the work day), the block says so in one line (`No time for this today: needs 2h, 45m left`) and offers **Instead** the highest-ranked actionable task that fits, with its own Start. With no time left at all it says `Day's over` and offers nothing
 - **FR:home.next** (P1): **Up next** lists the next 2 ranked tasks (web-app `FR:now.active` ranking), one line each with project, expected time and countdown. In-progress (🚧) tasks come first
 - **FR:home.projects** (P1): **Projects** lists every project with open work: its top task (highest rank among Active rows, else the first Up next, else the first open row), expected time, countdown; the project name opens its Full stack list. Projects whose top task is the focus task or in Up next are listed without repeating it

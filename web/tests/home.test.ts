@@ -44,6 +44,7 @@ describe('homeOf', () => {
     expect(h.fits).toBe(false);
     expect(h.instead?.task.ref).toBe('alpha:3');
     expect(h.instead?.minutes).toBe(12);
+    expect(h.next.map((n) => n.task.ref)).toEqual(['alpha:2', 'beta:1']); // instead never repeats under up next
     expect(h.projects.find((p) => p.project === 'alpha')?.shown).toBe(true);
     expect(homeOf({ tasks, projects, next, now: at, minutesLeft: 0 }).instead).toBeNull();
     // a 3 h task never "fits" a 2 h budget (no cap)
@@ -59,6 +60,12 @@ describe('homeOf', () => {
       ['gamma', 'gamma:1', false],
     ]);
     expect(h.projects[1].top.minutes).toBe(60);
+  });
+  it('no effort set: 30 min assumed and marked', () => {
+    const t = T('alpha:5', 'Call the plumber');
+    const h = homeOf({ tasks: [t], projects: [P('alpha')], next: { ref: 'alpha:5', text: t.text, project: 'alpha', score: 1 }, now: at, minutesLeft: 60 });
+    expect(h.one).toMatchObject({ minutes: 30, assumed: true });
+    expect(h.projects[0].top.assumed).toBe(true);
   });
   it('no next task: nothing to do, no suggestion', () => {
     const h = homeOf({ tasks: [], projects: [], next: null, now: at, minutesLeft: 180 });

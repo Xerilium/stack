@@ -602,16 +602,19 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
 }) {
   const one = h.one;
   const hero = one ? parseRow(one.task.text) : null;
-  const row = (i: HomeItem, extra?: string) => (
+  const row = (i: HomeItem, extra?: string) => {
+    const r = parseRow(i.task.text);
+    return (
     <li key={i.task.ref} class={`row home-row${p.cursor === i.task.ref ? ' cursor' : ''}${extra ? ` ${extra}` : ''}`} data-ref={i.task.ref} onClick={() => p.onCursor(i.task.ref)}>
       <div class="line">
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', i.task.ref); }}><span class="box" /></button>
-        <span class="title" onDblClick={() => p.onOpen(i.task.ref)}><Md text={parseRow(i.task.text).title || i.task.text} /><Tags r={parseRow(i.task.text)} /></span>
+        <span class="title" onDblClick={() => p.onOpen(i.task.ref)}><Md text={r.title || i.task.text} /><Tags r={r} /></span>
         <span class="proj-tag">{p.titles.get(i.task.project) ?? i.task.project}</span>
         <When i={i} />
       </div>
     </li>
-  );
+    );
+  };
   return (
     <section class="home" aria-label="Home">
       {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd>c</kbd></p></div>}
