@@ -12,10 +12,11 @@ import { TRIAGE_CLASSES, type Message, type TriageClass, type TriageResult } fro
 
 const ACTOR = 'email-triage';
 const DETAIL_CHARS = 600;
+const SUMMARY_CHARS = 400;
 /** At or above this model confidence the draft is recommended as is. */
 export const SEND_AS_DRAFTED = 0.8;
 /** Classes that create no ask. @req FR:email-triage/ask.quiet */
-export const QUIET_CLASSES: readonly TriageClass[] = ['newsletter', 'receipt', 'calendar', 'skip', 'fyi'];
+export const QUIET_CLASSES: readonly TriageClass[] = ['newsletter', 'receipt', 'calendar', 'skip', 'fyi', 'spam'];
 
 /** `mail-` plus 12 hex of the conversation id's sha1: one ask per thread. @req FR:email-triage/ask.reply */
 export const mailKey = (conversationId: string): string => `mail-${createHash('sha1').update(conversationId).digest('hex').slice(0, 12)}`;
@@ -51,21 +52,24 @@ export function toAsk(r: TriageResult, opts: { project?: string } = {}): AskPut 
   const m = r.message;
   const base = { from: ACTOR, ...(opts.project ? { project: opts.project } : {}) };
   const why = r.reason ? clip(oneLine(r.reason), 500) : undefined;
+  // A short model summary, never the message body. @req FR:email-inbox-zero/sum.ask
+  const thread = r.summary ? `Thread: ${clip(oneLine(redact(r.summary)), SUMMARY_CHARS)}` : undefined;
+  const detail = (rest?: string) => { const d = [thread, rest].filter(Boolean).join('\n\n'); return d ? { detail: d } : {}; };
   switch (r.class) {
     case 'needs_reply':
-      if (!r.draft) return { ...base, kind: 'go-do', ask: line('Reply to', m), link: https(m.webLink), reversible: true, priority: priority(r), ...(why ? { why } : {}) };
+      if (!r.draft) return { ...base, kind: 'go-do', ask: line('Reply to', m), link: https(m.webLink), reversible: true, priority: priority(r), ...(why ? { why } : {}), ...detail() };
       return {
         ...base, kind: 'review', ask: line('Review draft reply to', m), // A reused draft keeps the recommendation from when it was scored. @req FR:email-voice/score.ask
         ...(r.draft.reused ? {} : { recommend: r.confidence >= SEND_AS_DRAFTED && r.draft.voice?.pass !== false ? 'Send as drafted' : 'Edit then send' }),
         link: https(r.draft.webLink), default: 'Draft stays in Drafts (nothing is sent)', reversible: true, priority: priority(r),
-        ...(r.draft.reused ? {} : { detail: redact(voiced(r.draft)).slice(0, DETAIL_CHARS) }), ...(why ? { why } : {}),
+        ...(r.draft.reused ? {} : detail(redact(voiced(r.draft)).slice(0, DETAIL_CHARS))), ...(why ? { why } : {}),
       };
     case 'needs_decision': {
       const options = [...new Set((r.options ?? []).map((o) => clip(oneLine(String(o)).replace(/\|/g, '/'), 80)).filter(Boolean))].slice(0, 4);
       const rec = r.recommend ? clip(oneLine(r.recommend), 500) : undefined;
       return {
         ...base, kind: options.length >= 2 ? 'decide' : 'answer', ask: line('Decide on', m), priority: priority(r), reversible: true,
-        ...(options.length >= 2 ? { options } : {}), ...(rec ? { recommend: rec } : {}), ...(why ? { why } : {}), link: https(m.webLink),
+        ...(options.length >= 2 ? { options } : {}), ...(rec ? { recommend: rec } : {}), ...(why ? { why } : {}), link: https(m.webLink), ...detail(),
       };
     }
     case 'sensitive':
@@ -99,10 +103,12 @@ export async function resolveAsk(ctx: LifecycleContext, m: Message): Promise<boo
 
 export interface RunSummary {
   messages: number; rules: number; model: number; drafts: number; redrafts: number; asks: number; resolved: number;
+  /** Messages waiting in the archive and spam batch asks. @req FR:email-inbox-zero/batch.act */
+  archivePending: number; spamPending: number;
   counts: Record<TriageClass, number>;
 }
 
-export const newSummary = (): RunSummary => ({ messages: 0, rules: 0, model: 0, drafts: 0, redrafts: 0, asks: 0, resolved: 0, counts: Object.fromEntries(TRIAGE_CLASSES.map((c) => [c, 0])) as Record<TriageClass, number> });
+export const newSummary = (): RunSummary => ({ messages: 0, rules: 0, model: 0, drafts: 0, redrafts: 0, asks: 0, resolved: 0, archivePending: 0, spamPending: 0, counts: Object.fromEntries(TRIAGE_CLASSES.map((c) => [c, 0])) as Record<TriageClass, number> });
 
 /** Counts one result in the run summary. @req FR:email-triage/ask.quiet */
 export function tally(s: RunSummary, r: TriageResult, source: 'rule' | 'model'): void {

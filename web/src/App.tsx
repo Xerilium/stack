@@ -15,8 +15,9 @@ import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
+import { calendarRange, dayFrame, needsRefresh, type DaySched } from './schedule';
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
-import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } from './day';
+import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
 import { actionsFor, type AskItem, type Send } from './asks';
 import { useAsks } from './useAsks';
@@ -95,7 +96,9 @@ export function App() {
   const [agentItems, setAgentItems] = useState<Agent[] | null>(null);
   const [agentsError, setAgentsError] = useState('');
   const [inbox, setInbox] = useState<InboxItem[]>([]);
-  const [saved, setSaved] = useState<{ date: string; minutes: number } | null>(() => { const now = new Date(); const m = loadBudget(store(), now); return m === null ? null : { date: dateKey(now), minutes: m }; });
+  const [saved, setSaved] = useState<{ date: string; minutes: number } | null>(() => loadSaved(store()));
+  /** @req FR:home/day.frame */
+  const [sched, setSched] = useState<DaySched | null>(null);
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [calError, setCalError] = useState('');
   const [emailAsks, setEmailAsks] = useState(0);
@@ -125,20 +128,21 @@ export function App() {
     return { sections: secs, hidden: more.length };
   }, [tasks, next, allOpen]);
   const clockNow = useMemo(() => new Date(), [tasks, tick, saved]); // also refresh when the budget changes, so a value set after midnight counts for the new day
-  const day = DEFAULT_DAY;
-  // Kept with its date: a tab left open overnight must not keep yesterday's budget, and it works without storage.
-  const busyTime = useMemo(() => busyIntervals(events, clockNow), [events, clockNow]);
-  const budget = budgetOf(clockNow, day, saved && saved.date === dateKey(clockNow) ? saved.minutes : null, busyTime);
+  const day = useMemo(() => dayFrame(sched), [sched]);
+  // Kept with its day (the waking day, which can run past midnight): a tab left open overnight must not keep yesterday's budget.
+  const dayKey = sched?.date ?? dateKey(clockNow);
+  const busyTime = useMemo(() => busyIntervals(events, day.origin ?? clockNow, day.origin ? 2 : 1), [events, clockNow, day]);
+  const budget = budgetOf(clockNow, day, saved && saved.date === dayKey ? saved.minutes : null, busyTime);
   const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, clockNow, day, budget.minutes, busyTime, emailAsks]);
   /** @req FR:web-app/today.capacity */
-  const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v); setSaved(v === null ? null : { date: dateKey(now), minutes: v }); }, []);
+  const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v, dayKey); setSaved(v === null ? null : { date: dayKey, minutes: v }); }, [dayKey]);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
   const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
   const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
   const titles = useMemo(() => new Map(projects.map((x) => [x.name, x.title || x.name])), [projects]);
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
-  const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, day), [tasks, clockNow, budget.minutes, day]);
+  const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY), [tasks, clockNow, budget.minutes]);
   const capRows = useMemo(() => capacityRows(projects, tasks).map((r) => ({ ...r, top: topTask(tasks, r.project) })), [projects, tasks]);
 
   // ---- feedback
@@ -153,9 +157,11 @@ export function App() {
   /** Agent activity and the inbox load on their own: a failure there never blocks the day plan. @req FR:web-app/today.agents */
   const loadSide = useCallback(async () => {
     const d = new Date();
-    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(from.toISOString(), to.toISOString())]);
+    // The waking day first: it sets the calendar range. @req FR:home/day.calendar
+    const s = await api.schedule(d.toISOString()).catch(() => null);
+    setSched(s);
+    const range = calendarRange(s, d);
+    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to)]);
     /** @req FR:web-app/today.meetings */
     if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); } else setCalError('Calendar unavailable');
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
@@ -213,6 +219,8 @@ export function App() {
     window.addEventListener('online', up); window.addEventListener('offline', down);
     return () => { reads.delete(read); window.removeEventListener('online', up); window.removeEventListener('offline', down); };
   }, []);
+  /** A tab left open past bed moves to the next day. @req FR:home/day.refresh */
+  useEffect(() => { if (needsRefresh(sched, new Date())) void loadSide(); }, [clockNow, sched, loadSide]); // a fresh clock: a new answer is never judged by a stale minute
   /** Open asks the email module wrote reserve the Email block. @req FR:web-app/today.mail */
   useEffect(() => { setEmailAsks(asks.items.filter((a) => a.state === 'open' && a.from === 'email-triage').length); }, [asks.items]);
 

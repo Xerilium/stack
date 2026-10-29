@@ -28,4 +28,17 @@ describe('stack web calendar source', () => {
     expect(logs).toEqual(['calendar: Graph', 'calendar: fixture']);
     expect(logs.join(' ')).not.toMatch(/\bat\b|\brt\b/);
   });
+
+  // @req FR:schedule/ics.wire
+  it('Graph wins over ICS; a Mail-only sign-in or a broken token file falls through to ICS', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'cal-src-'));
+    const cachePath = join(d, 'graph-token.json');
+    const ics = 'https://a.test/secret.ics';
+    await new FileTokenCache(cachePath).write({ ...tok, scopes: ['Calendars.Read', 'offline_access'] });
+    expect((await calendarSource({ cachePath, ics })).source).toBe('graph');
+    await new FileTokenCache(cachePath).write({ ...tok, scopes: ['Mail.Read', 'offline_access'] });
+    expect((await calendarSource({ cachePath, ics })).source).toBe('ics');
+    writeFileSync(cachePath, '{not json');
+    expect((await calendarSource({ cachePath, ics })).source).toBe('ics');
+  });
 });

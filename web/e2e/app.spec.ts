@@ -1057,6 +1057,43 @@ test.describe('today view', () => {
     expect((await popup).url()).toBe('https://teams.example.test/join/1');
   });
 
+  // @req FR:home/day.frame @req FR:home/day.available @req FR:home/day.personal @req FR:home/day.calendar
+  test('at 11:12p the day runs to bed at 2a, personal time stays out of the plan', async ({ page }, info) => {
+    const at = (h: number, m = 0, plus = 0) => { const d = new Date(); d.setDate(d.getDate() + plus); d.setHours(h, m, 0, 0); return d; };
+    await page.clock.install({ time: at(23, 12) });
+    const m = await mockApi(page, { tasks: day() });
+    const date = (() => { const d = at(0); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+    m.schedule = {
+      timezone: 'UTC', date, wake: at(8).toISOString(), bed: at(2, 0, 1).toISOString(), asleep: false,
+      blocks: [
+        { name: 'Work', emoji: '☀️', kind: 'focus', start: at(8).toISOString(), end: at(16).toISOString() },
+        { name: 'Family evening', label: 'Family', emoji: '🏠', kind: 'personal', start: at(16).toISOString(), end: at(20).toISOString() },
+        { name: 'Project', emoji: '🌙', kind: 'focus', start: at(23).toISOString(), end: at(2, 0, 1).toISOString() },
+      ],
+    };
+    m.events = [{ id: 'late', subject: 'APAC call', start: at(0, 30, 1).toISOString(), end: at(1, 0, 1).toISOString(), allDay: false, showAs: 'busy', cancelled: false, online: false }];
+    await page.goto('/#/today');
+    await page.clock.resume();
+    await expect(page.getByTestId('available')).toContainText('2h 15m'); // 11:15p-2:00a minus the 30m call
+    await expect(page.locator('.day-ends')).toContainText('2:00a');
+    await expect(page.locator('[data-testid="plan"] .meeting')).toContainText('APAC call');
+    await expect(page.locator('[data-testid="plan"] .block').first().locator('.when')).toContainText('11:15p');
+    await shot(page, 'today-schedule-late', info);
+  });
+
+  // @req FR:home/day.asleep
+  test('after bed the plan is the next waking day, from wake', async ({ page }) => {
+    const at = (h: number, m = 0, plus = 0) => { const d = new Date(); d.setDate(d.getDate() + plus); d.setHours(h, m, 0, 0); return d; };
+    await page.clock.install({ time: at(3) });
+    const m = await mockApi(page, { tasks: day() });
+    const d0 = at(0);
+    m.schedule = { timezone: 'UTC', date: `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`, wake: at(8).toISOString(), bed: at(2, 0, 1).toISOString(), asleep: true, blocks: [] };
+    await page.goto('/#/today');
+    await page.clock.resume();
+    await expect(page.locator('.t-date')).toContainText('Today from 8:00a');
+    await expect(page.locator('[data-testid="plan"] .block').first().locator('.when')).toContainText('8:00a');
+  });
+
   test('a calendar error is a quiet note; no calendar changes nothing', async ({ page }) => {
     await page.clock.install({ time: tenAm() });
     const m = await mockApi(page, { tasks: day() });
