@@ -76,6 +76,19 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
     } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to start', 'err'); return false; }
   }, [api, enabled, sessions, noteStarted]);
 
+  /** Assign: the row is claimed for the agent and its session starts with the assign prompt; the chip follows it. @req FR:agent-thread/thread.assign */
+  const assign = useCallback(async (ref: string, agent?: string, keepOpen = false): Promise<boolean> => {
+    if (enabled !== true) { toastRef.current('Runs in stack web on your machine', 'err'); return false; }
+    try {
+      const r = await api.assign(ref, agent);
+      if (r.sessionId) noteStarted(ref, r.sessionId);
+      toastRef.current(`Assigned to ${r.agent}`);
+      if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
+      void sessions.reload();
+      return true;
+    } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to assign', 'err'); return false; }
+  }, [api, enabled, sessions, noteStarted]);
+
   /** @req FR:agent-team/web.review */
   const review = useCallback(async (ref: string, agent?: string) => {
     if (enabled !== true) { toastRef.current('Runs in stack web on your machine', 'err'); return; }
@@ -108,6 +121,6 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   }, [recent.size]);
   const active = useMemo(() => reviewing.size > 0 || recent.size > 0, [reviewing, recent]);
 
-  return { team, reviews, talk, setTalk, toggleTalk, agentsOf, chipOf, sessionOf, start, noteStarted, review, reviewing, openSession, enabled, active };
+  return { team, reviews, talk, setTalk, toggleTalk, agentsOf, chipOf, sessionOf, start, noteStarted, assign, review, reviewing, openSession, enabled, active };
 }
 export type Team = ReturnType<typeof useTeam>;

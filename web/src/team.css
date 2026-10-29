@@ -54,7 +54,8 @@
 }
 @media (prefers-reduced-motion: reduce) { .agent-chip.accent .dot { animation: none; } }
 
-/* The thread inside an expanded task. */
+/* The thread inside an expanded task (and focus mode). */
+.focus-mode .thread { margin-top: 24px; }
 .thread { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
 .th-head { margin: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2); }
 .th-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }

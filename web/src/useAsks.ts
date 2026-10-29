@@ -95,6 +95,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       probe: () => api.sync(),
       onSynced: setSyncedAt,
       onChange: (kinds) => {
+        setLiveTick((n) => n + 1);
         if (kinds.some((k) => k === 'asks' || k === 'state' || k === 'poll')) void load();
         if (kinds.some((k) => k === 'tasks' || k === 'poll')) tasksCb.current();
       },
@@ -106,6 +107,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   /** Retry reopens a dropped stream and loads again. @req FR:web-shell/state.live */
   const retry = useCallback(async () => { live.current?.retry(); await load(); tasksCb.current(); }, [load]);
 
+  /** Bumps on every live change (any kind), for parts that re-read something of their own. @req FR:agent-thread/web.live */
+  const [liveTick, setLiveTick] = useState(0);
   // task asks join the list; the ones just answered stay out until the inbox knows
   const [holdTick, bump] = useState(0);
   const ranked = useMemo(() => mergeNeeds(items, (extras.tasks ?? []).filter((t) => !held(t.key))), [items, extras.tasks, holdTick]); // holdTick stands for the hold map
@@ -192,6 +195,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   }, [api, load]);
 
   return {
+    liveTick,
     items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, retry, answer, reply, defer, retract, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),

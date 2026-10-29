@@ -38,9 +38,9 @@ export function ThreadView({ t, th, team, now }: { t: Task; th: ThreadCtl; team:
       {th.phase === 'error' && <p class="th-note err">Cannot load the thread. <button type="button" class="link" onClick={() => void th.reload()}>Retry</button></p>}
       {items.length > 0 && <p class="th-head" id={`th-head-${t.ref}`}>Agent thread</p>}
       {items.length > 0 && (
-        <ol class="th-items" role="log" aria-live="polite" aria-labelledby={`th-head-${t.ref}`}>
-          {items.map((i, n) => (
-            <li key={n} class={`th-item ${i.kind}`}>
+        <ol class="th-items" role="log" aria-labelledby={`th-head-${t.ref}`}>
+          {items.map((i) => (
+            <li key={i.kind === 'ask' ? i.ask.key : 'id' in i ? i.id : `${i.kind}-${i.at}`} class={`th-item ${i.kind}`} aria-live={i.kind === 'agent' ? 'polite' : undefined}>
               <p class="th-meta">{whoLine(i, now, name)}</p>
               {i.kind === 'owner' && <p class="th-text you">{i.text}</p>}
               {i.kind === 'agent' && <p class="th-text">{i.text}</p>}

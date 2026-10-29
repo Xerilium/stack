@@ -6,6 +6,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { actionsFor, deadline, freshness, ifSilent, splitTop, type Action, type AskItem } from './asks';
 import { blockedHelp } from './notify';
+import { Md } from './parts';
+import { parseRow } from './row';
 import type { Asks } from './useAsks';
 import type { ComponentChildren } from 'preact';
 import './asks.css';
@@ -107,6 +109,8 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
           <DeadlineChip by={a.by} now={asks.now} long />
         </div>
         <h2 class="ask-title">{a.ask}</h2>
+        {/* The task the ask belongs to: opens it (focus mode carries the thread). @req FR:agent-thread/ask.cli */}
+        {a.row && a.source !== 'task' && <a class="ask-task" href={`#/list?project=${encodeURIComponent(a.row.slice(0, a.row.lastIndexOf(':')))}`} onClick={(e) => { e.preventDefault(); asks.openTask(a.row!); }} title="Open the task">↗ {a.task ? <Md text={parseRow(a.task).title || a.task} /> : a.row}</a>}
         {a.why && <p class="ask-why">{a.why}</p>}
         {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
         {talk?.render(a)}

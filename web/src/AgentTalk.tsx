@@ -51,7 +51,7 @@ export function AgentTalk({ team, talk, agents, float = false, mode = 'row', bus
   return (
     <div ref={root} class={`agent-talk${float ? ' float' : ''}${thread ? ' in-thread' : ''}`} role="group" aria-label={`Talk to ${chosen?.name ?? 'an agent'} about ${talk.about}`}
       onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); if (thread) box.current?.blur(); else close(); } if (thread && e.key === 'A' && !text) { e.preventDefault(); void assign(); } }}>
+      onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); if (thread) box.current?.blur(); else close(); } const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement; if (thread && e.key === 'A' && !typing) { e.preventDefault(); void assign(); } }}>
       <div class="talk-row">
         <label class="talk-to">To
           <select value={agent} aria-label="Agent" disabled={none} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; setAgent(v); setKeep(agents.find((a) => a.slug === v)?.mode === 'long-running'); }}>

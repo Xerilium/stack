@@ -17,14 +17,14 @@ The owner's biggest gap: talking to an agent about one task. He wants to ask a q
 ## Scope
 
 - In: a `ref` on asks so an ask belongs to a task; agent replies as inbox entries the agent writes (`from: agent`); the task thread read (`GET /tasks/{ref}/thread`); Ask and Assign on the composer (Assign claims the row and starts the agent); session resume per task (a follow-up goes to the task's live session when one exists, else starts one); the thread inside the expanded task on every view that expands rows; the thread on the Focus/hero block.
-- Out: an unread count on the collapsed row's chip (next), threads for projects or asks (the `agent-team` composer stays there), editing or deleting thread entries, threads across tasks, notifications beyond the existing ask notification.
+- Out: an unread count on the collapsed row's chip (next), Reassign / Release on a claimed row (next: the composer's agent picker plus Assign re-claims for now), run entries in the thread (the session state and the drawer show them), threads for projects or asks (the `agent-team` composer stays there), editing or deleting thread entries, threads across tasks, notifications beyond the existing ask notification.
 
 ## Scenarios
 
 ### FR:ask: Asks belong to tasks
 
 - **FR:ask.ref** (P1): An ask may carry `ref` (`<project>:<line>`, 0-based like the api, stored as `tasks/<project>.md:<line+1>` in the file like inbox refs). `putAsk` validates it against an existing row (404 when missing); `listAsks` returns it as the api ref; `currentRows` follows a moved row like inbox entries. Review needs (`FR:agent-team/review.needs`) and permission asks raised by a task session (`FR:agent-team/talk.start`: the session title carries the ref) set it
-- **FR:ask.cli** (P1): `stack asks put --ref <project>:<line>` and `POST /asks/{key}` `{ref}` set it; the ask card shows the task title as a link that expands the task
+- **FR:ask.cli** (P1): `stack asks put --ref tasks/<file>.md:<line>` (1-based, like every CLI ref) and `POST /asks/{key}` `{ref}` (api form) set it; the ask card shows the task title as a link that opens the task (focus mode, which carries the thread)
 
 ### FR:reply: Agent replies
 
@@ -33,9 +33,9 @@ The owner's biggest gap: talking to an agent about one task. He wants to ask a q
 
 ### FR:thread: The thread
 
-- **FR:thread.read** (P1): `GET /tasks/{ref}/thread` (route `tasks.thread`, scope `tasks:read`) returns `{items, session?, review?}`: `items` in time order, each `{at, kind, ...}` with `kind` one of `owner` (an inbox entry from the owner: `text`, `state`), `agent` (an inbox entry from the agent: `agent`, `text`), `ask` (an open or answered ask with this `ref`: the listed ask fields), `review` (`verdict`, `plan`, `estimate`, `agent`), `subtask` (a child row the agent added: `ref`, `text`, `done`; an agent-added row is one claimed with 🪄 or created by a session, tracked by the result log `action: add`), `run` (a session run for this task from the sessions log: `at`, `stopReason`, `usd`); `session` is the task's newest session (`FR:agent-team` title suffix) with its state; `review` is the newest verdict. Unknown ref is 404
+- **FR:thread.read** (P1): `GET /tasks/{ref}/thread` (route `tasks.thread`, scope `tasks:read`) returns `{items, session?, review?}`: `items` in time order, each `{at, kind, ...}` with `kind` one of `owner` (an inbox entry from the owner: `text`, `state`), `agent` (an inbox entry from the agent: `agent`, `text`), `ask` (an open or answered ask with this `ref`: the listed ask fields), `review` (`verdict`, `plan`, `estimate`, `agent`), `subtask` (a child row an agent owns: `ref`, `text`, `done`; a child whose text carries 🤖 or 🪄, which is how the assign prompt tells the agent to add its subtasks); `session` is the task's newest session (`FR:agent-team` title suffix) with its state; `review` is the newest verdict. Unknown ref is 404
 - **FR:thread.ask** (P1): Ask sends the text to the task's live session when one exists and is idle (`POST /sessions/{id}/prompt`), else starts one (`POST /sessions {ref, text}`); the owner's text is also written to the inbox (`FR:agent-inbox/api.send`, `kind: reply`) so the thread shows it at once and an agent that is not running still finds it
-- **FR:thread.assign** (P1): Assign claims the row for the agent (`FR:ai-triage-assist` claim: the row gains 🤖 and the agent name) and starts the session with the Do-it prompt plus "flesh out the subtasks under this row first, then raise every question as an ask with --ref". A row already claimed shows Reassign (pick another agent) and Release
+- **FR:thread.assign** (P1): Assign claims the row for the agent (`FR:ai-triage-assist/claim.start`: 🚧 on the row, the claim logged for `agent:<slug>`; a 🙋 row is refused) and starts the session with the assign prompt: flesh out the subtasks under this row first (each marked 🤖 so the thread shows them), then raise every question as an ask with `--ref`, reply on the task, start. Assign on a row already claimed re-claims it for the chosen agent
 
 ### FR:web: Thread in the expanded task
 

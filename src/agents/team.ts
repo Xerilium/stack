@@ -29,7 +29,7 @@ export const REVIEW_SCHEMA: Record<string, unknown> = {
 };
 const REVIEW_PROMPT = 'Review the task in your context: could you, as the agent in scope, do it yourself? Read what you need in the repository (read-only). Answer with the JSON schema: verdict "can" (all of it), "partial" (some of it, the rest needs the owner), or "cannot"; plan (one line); estimate; needs: every exact thing you need from the owner first (a fact to answer, a go-do only they can do, an approval), each one line; risks. Do not start the work.';
 export const QUICK_PROMPTS = {
-  assign: 'This task is yours now. First flesh out the subtasks under this row (`stack add <project> "<text>" --parent <ref>`), then raise every question for the owner as an ask with `--ref`, reply on the task with `stack inbox reply`, and start the work. Never wait in chat.',
+  assign: 'This task is yours now. First flesh out the subtasks under this row (`stack add <project> "🤖 <text>" --parent <ref>`; the 🤖 marks them as yours), then raise every question for the owner as an ask with `--ref`, reply on the task with `stack inbox reply`, and start the work. Never wait in chat.',
   do: 'Do this task. Bring me anything you need as an ask (`stack asks put`, see docs/asks.md); never wait in chat.',
   plan: 'Plan this task in steps with a rough estimate each; do not start it.',
 } as const;

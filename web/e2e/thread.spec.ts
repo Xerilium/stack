@@ -17,7 +17,7 @@ async function open(page: Page, o: { runner?: boolean } = {}): Promise<Mock> {
     { id: 'in-1', at: iso(30), project: 'alpha', ref: 'alpha:9', task: 'Review pull requests', kind: 'reply', to: 'none', text: 'Can you take this one?', state: 'open', row: 'alpha:9' },
     { id: 'in-2', at: iso(25), project: 'alpha', ref: 'alpha:9', task: 'Review pull requests', kind: 'reply', to: 'human', text: 'Yes. One question first.', state: 'handled', row: 'alpha:9', from: 'agent', agent: 'alpha-lead' },
   );
-  m.asks.push({ key: 'q1', state: 'open', ask: 'Merge the docs PRs without a second review?', kind: 'approve', from: 'alpha-lead', project: 'alpha', recommend: 'Approve', reversible: true, priority: 'normal', blocks: 1, created: iso(20), updated: iso(20), score: 40, overdue: false, ref: 'alpha:9', row: 'alpha:9' });
+  m.asks.push({ key: 'q1', state: 'open', ask: 'Merge the docs PRs without a second review?', kind: 'approve', from: 'alpha-lead', project: 'alpha', recommend: 'Approve', reversible: true, priority: 'normal', blocks: 1, created: iso(20), updated: iso(20), score: 40, overdue: false, ref: 'alpha:9', row: 'alpha:9', task: 'Review pull requests 🟠' });
   m.reviews = [{ ref: 'alpha:9', at: iso(22), verdict: 'partial', plan: 'Merge the docs PRs, hold the schema one', estimate: '1h', agent: 'alpha-lead', needs: ['q1'] }];
   await page.route('**/sessions/*/events', (r) => r.fulfill({ status: 200, contentType: 'text/event-stream', body: frames([{ type: 'done', stopReason: 'end_turn', cost: { usd: 0.1, tokens: 10 }, turns: 1, durationMs: 5 }]) }));
   await page.goto('/#/list');
@@ -63,12 +63,14 @@ test.describe('Agent thread', () => {
     // The session goes idle: the next question is a follow-up to it, not a new session.
     for (const x of m.sessions!) x.state = 'idle';
     await expect(r.locator('.thread .th-note.live')).toHaveCount(0, { timeout: 35_000 }); // the next sessions poll re-reads the thread
+    await page.keyboard.press('Escape'); // leaves the box: a is a shortcut again
     await page.keyboard.press('a');
     await expect(box).toBeFocused();
     await page.keyboard.type('And the deploy?');
     await page.keyboard.press('Enter');
-    await expect.poll(() => m.calls.filter((c) => c.path.endsWith('/prompt')).length, { timeout: 15_000 }).toBe(1);
+    await expect.poll(() => m.calls.find((c) => c.path.endsWith('/prompt'))?.body, { timeout: 15_000 }).toEqual({ text: 'And the deploy?' });
     expect(m.calls.filter((c) => c.path === '/sessions')).toHaveLength(1);
+    expect(m.calls.find((c) => c.path.endsWith('/assign'))).toBeUndefined(); // a capital A typed in the box is text, not the shortcut
     await page.keyboard.press('Escape'); // leaves the box
     await page.keyboard.press('Escape'); // closes the row
     await expect(r.locator('.thread')).toHaveCount(0);
@@ -88,6 +90,19 @@ test.describe('Agent thread', () => {
     await hero.locator('.h1-toggle').click();
     await expect(hero.locator('.thread')).toBeVisible();
     await expect(hero.locator('.thread input[type="text"]')).toBeVisible();
+  });
+
+  test('the ask card links to its task; the link opens the task in focus mode with the thread', async ({ page }) => {
+    await open(page);
+    await page.goto('/#/asks');
+    const link = page.locator('.ask-card .ask-task');
+    await expect(link).toHaveText('↗ Review pull requests');
+    await link.click();
+    const focus = page.locator('.focus-mode');
+    await expect(focus).toBeVisible();
+    await expect(focus).toContainText('Review pull requests');
+    await expect(focus.locator('.thread .th-item')).toHaveCount(4);
+    await expect(focus.locator('.thread input[type="text"]')).toBeVisible();
   });
 
   test('without a runner the thread still reads and Ask saves on the task; Assign is off', async ({ page }) => {

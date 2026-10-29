@@ -14,7 +14,7 @@ type ToastFn = (text: string, kind?: Toast['kind'], undo?: () => void) => void;
 const POLL_MS = 10_000;
 
 /** `ref`: the open task (null closes); `tick`: bump it when tasks, asks, or sessions changed so the thread re-reads. */
-export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Sessions, ref: string | null, tick: number) {
+export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Sessions, ref: string | null, tick: string) {
   const [thread, setThread] = useState<Thread>(emptyThread());
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [busy, setBusy] = useState(false);
@@ -52,38 +52,32 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
     if (!ref || busy) return false;
     setBusy(true);
     try {
-      await api.send(ref, text, 'reply');
+      try { await api.send(ref, text, 'reply'); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to send', 'err'); return false; }
+      // From here the message is on the task: the box clears even if the session step fails (a retry would write it twice).
       setThread((t) => ({ ...t, items: [...t.items, { at: new Date().toISOString(), kind: 'owner', id: `local-${Date.now()}`, text, state: 'open' }] }));
       if (team.enabled !== true) { toastRef.current('Saved on the task; it runs in stack web on your machine'); return true; }
-      if (canFollowUp(thread) && thread.session) {
-        await api.promptSession(thread.session.id, text);
-        if (keepOpen) void sessions.openDrawer(thread.session.id);
-      } else {
-        const r = await api.newSession(undefined, text, { agent, ref });
-        if (r.sessionId) team.noteStarted(ref, r.sessionId);
-        if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
-      }
+      try {
+        if (canFollowUp(thread) && thread.session) {
+          await api.promptSession(thread.session.id, text);
+          if (keepOpen) void sessions.openDrawer(thread.session.id);
+        } else {
+          const r = await api.newSession(undefined, text, { agent, ref });
+          if (r.sessionId) team.noteStarted(ref, r.sessionId);
+          if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
+        }
+      } catch (e) { toastRef.current(`Saved on the task, but the agent did not start: ${e instanceof Error ? e.message : 'failed'}`, 'err'); }
       void sessions.reload();
       void load(ref, true);
       return true;
-    } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to send', 'err'); return false; } finally { setBusy(false); }
+    } finally { setBusy(false); }
   }, [api, ref, busy, thread, team, sessions, load]);
 
   /** @req FR:agent-thread/thread.assign */
   const assign = useCallback(async (agent?: string, keepOpen = false): Promise<boolean> => {
     if (!ref || busy) return false;
-    if (team.enabled !== true) { toastRef.current('Runs in stack web on your machine', 'err'); return false; }
     setBusy(true);
-    try {
-      const r = await api.assign(ref, agent);
-      if (r.sessionId) team.noteStarted(ref, r.sessionId);
-      toastRef.current(`Assigned to ${r.agent}`);
-      if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
-      void sessions.reload();
-      void load(ref, true);
-      return true;
-    } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to assign', 'err'); return false; } finally { setBusy(false); }
-  }, [api, ref, busy, team, sessions, load]);
+    try { const ok = await team.assign(ref, agent, keepOpen); if (ok) void load(ref, true); return ok; } finally { setBusy(false); }
+  }, [ref, busy, team, load]);
 
   /** Answer one of the task's asks from the thread. */
   const answer = useCallback(async (key: string, send: Send, label: string) => {
