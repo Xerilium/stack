@@ -24,7 +24,9 @@ test.beforeAll(async () => {
   repo = mkdtempSync(join(tmpdir(), 'stack-live-repo-'));
   mkdirSync(join(repo, 'tasks'));
   writeFileSync(join(repo, 'tasks/alpha.md'), '# Alpha\n\n## 🔄 Active\n\n- [ ] Write the plan 🟢\n');
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+  // The in-process server commits answers through GitStorage with process.env, so CI runners (no git identity) need these too.
+  Object.assign(process.env, { GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  const env = { ...process.env };
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo, env });
   execFileSync('git', ['add', '-A'], { cwd: repo, env });
   execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: repo, env });
