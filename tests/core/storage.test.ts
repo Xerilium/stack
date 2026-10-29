@@ -196,6 +196,12 @@ describe('GitStorage writeMany', () => {
     expect(count(d)).toBe(before + 2);
     expect(git(d, 'show', '--name-status', '--format=', 'HEAD').trim().split('\n').sort()).toEqual(['A\ttasks/c.md', 'D\ttasks/b.md']);
     expect(git(d, 'status', '--porcelain').trim()).toBe('');
+    // deleting a file git never tracked (written with --no-commit) works too
+    writeFileSync(join(d, 'tasks/untracked.md'), 'U');
+    await writeAll(s, [{ path: 'tasks/untracked.md', content: null }], 'Drop untracked');
+    expect(existsSync(join(d, 'tasks/untracked.md'))).toBe(false);
+    expect(count(d)).toBe(before + 2);
+    expect(git(d, 'status', '--porcelain').trim()).toBe('');
   });
 
   it('leaves unrelated staged files alone and rolls back on conflict', async () => {

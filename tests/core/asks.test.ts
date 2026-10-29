@@ -303,6 +303,22 @@ describe('archiveAsks', () => {
     await expect(archiveAsks(later, { days: -1 })).rejects.toThrow(LifecycleError);
     expect(() => validatePath('tasks/asks/archive/Bad.md')).toThrow(PathError);
   });
+  it('never overwrites an earlier archive of a reused key', async () => {
+    const { storage, ctx } = mk();
+    await putAsk(ctx, 'mail-1', base, 'cos');
+    await handleAsk(ctx, 'mail-1', { outcome: 'resolved' }, 'cos');
+    await archiveAsks(ctx, { days: 0 });
+    const first = (await storage.read(archivePath('mail-1'))).content;
+    await putAsk(ctx, 'mail-1', { ...base, ask: 'The thread came back' }, 'cos');
+    await handleAsk(ctx, 'mail-1', { outcome: 'handled' }, 'cos');
+    expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: ['mail-1'] });
+    expect((await storage.read(archivePath('mail-1'))).content).toBe(first);
+    expect((await storage.read(archivePath('mail-1.20261028'))).content).toContain('The thread came back');
+    await putAsk(ctx, 'mail-1', base, 'cos');
+    await handleAsk(ctx, 'mail-1', { outcome: 'handled' }, 'cos');
+    expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: [] });
+    expect((await listAsks(ctx, { state: 'done' })).items.map((a) => a.key)).toEqual(['mail-1']);
+  });
 });
 
 describe('listAsks cache', () => {

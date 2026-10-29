@@ -162,7 +162,11 @@ export class GitStorage extends FsStorage {
     let committed = false;
     try {
       for (const w of writes) await this.put(w.path, w.content);
-      await this.git('add', '--', ...paths);
+      // A deleted path may be untracked (written with --no-commit), which `git add` rejects; `git rm --cached` stages either case.
+      const adds = writes.filter(w => w.content !== null).map(w => w.path);
+      const dels = writes.filter(w => w.content === null).map(w => w.path);
+      if (adds.length) await this.git('add', '--', ...adds);
+      if (dels.length) await this.git('rm', '-q', '--cached', '--ignore-unmatch', '--', ...dels);
       const staged = await this.tryGit('diff', '--cached', '--quiet', '--', ...paths);
       if (staged === null) {
         const msg = message ?? (paths.length === 1 ? `Update ${paths[0]}` : `Update ${paths.length} files`);

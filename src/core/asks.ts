@@ -319,6 +319,10 @@ async function readAll(ctx: LifecycleContext): Promise<Ask[]> {
   return all;
 }
 
+async function exists(ctx: LifecycleContext, path: string): Promise<boolean> {
+  try { await ctx.storage.read(path); return true; } catch (e) { if (e instanceof NotFoundError) return false; throw e; }
+}
+
 /** The archive folder for a key. @req FR:ask-queue/ask.archive */
 export const archivePath = (key: string): string => `tasks/asks/archive/${key}.md`;
 
@@ -336,7 +340,11 @@ export async function archiveAsks(ctx: LifecycleContext, o: { days?: number } = 
   for (const a of await readAll(ctx)) {
     if (a.state !== 'done' || Date.parse(a.updated) > cutoff) continue;
     const f = await ctx.storage.read(asksPath(a.key));
-    writes.push({ path: archivePath(a.key), content: f.content }, { path: asksPath(a.key), content: null, expectedVersion: f.version });
+    // A key reused after an earlier archive (email threads come back) gets a dated name; nothing already archived is overwritten.
+    let dest = archivePath(a.key);
+    if (await exists(ctx, dest)) dest = archivePath(`${a.key}.${a.updated.slice(0, 10).replace(/-/g, '')}`);
+    if (await exists(ctx, dest)) continue;
+    writes.push({ path: dest, content: f.content, expectedVersion: null }, { path: asksPath(a.key), content: null, expectedVersion: f.version });
     archived.push(a.key);
   }
   if (writes.length) await writeAll(ctx.storage, writes, archived.length === 1 ? `Archive ask: ${archived[0]}` : `Archive ${archived.length} asks`);
