@@ -25,7 +25,7 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 ### FR:scope: Scopes
 
 - **FR:scope.sets** (P1): `scopesFor(features)` maps `calendar` to `Calendars.Read`, `mail` to `Mail.Read`, and `drafts` to `Mail.ReadWrite`, always adds `offline_access`, and removes duplicates. Unknown features throw
-- **FR:scope.never** (P1): `assertSafeScopes(scopes)` is an allowlist, case-insensitive, Graph resource only: `Calendars.Read`, `Mail.Read`, `Mail.ReadWrite`, `offline_access`, `openid`, `profile`, `email`, `User.Read`. Anything else (send, `MailboxSettings.*`, `.default`, `*.All`, `*.Shared`, other resources) throws `unsafe_scope`. It checks the requested scopes before every login request and the granted scopes in every token response (Microsoft grants all scopes already consented for the app), so a token with an unsafe scope is never saved
+- **FR:scope.never** (P1): `assertSafeScopes(scopes)` is an allowlist, case-insensitive, Graph resource only: `Calendars.Read`, `Mail.Read`, `Mail.ReadWrite`, `offline_access`, `openid`, `profile`, `email`, `User.Read`. Anything else (send, `MailboxSettings.*`, `.default`, `*.All`, `*.Shared`, other resources) throws `unsafe_scope`, naming the refused scopes and the fix (remove them from the app registration). It checks the requested scopes before every login request and the granted scopes in every token response (Microsoft grants all scopes already consented for the app), so a token with an unsafe scope is never saved
 
 ### FR:flow: Device code flow
 
@@ -36,7 +36,7 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 ### FR:cache: Token cache
 
 - **FR:cache.file** (P1): `FileTokenCache(path)` keeps `{version: 1, tenant, clientId, scopes, refreshToken, accessToken?, expiresAt?, account?}` as JSON. The default path is `~/.config/stack/graph-token.json`. The file is written with mode `0600` (atomically: temp file then rename), and reading a file that is readable by group or others is refused until it is fixed. A path inside a Stack task repo (a directory that has `tasks/`) is refused, so a token can never be committed
-- **FR:cache.provider** (P1): `graphToken(cache, {fetch, now})` returns a token function for `graphTransport`: it returns the cached access token while it has more than 5 minutes left, else redeems the refresh token (`grant_type=refresh_token`, same scopes, scopes checked by `FR:scope.never`), saves the new access token and the rotated refresh token (keeping the old one when none comes back), and returns it. Concurrent calls share one refresh. `force` refreshes even a fresh-looking token; `graphTransport` asks for it once after a 401. `invalid_grant`, `interaction_required`, or a missing cache throws `GraphSignInRequired`; other errors keep their OAuth code. Writes use a unique temp file (`wx`) that is removed on failure
+- **FR:cache.provider** (P1): `graphToken(cache, {fetch, now})` returns a token function for `graphTransport`: it returns the cached access token while it has more than 5 minutes left, else redeems the refresh token (`grant_type=refresh_token`, same scopes, scopes checked by `FR:scope.never`), saves the new access token and the rotated refresh token (keeping the old one when none comes back), and returns it. Concurrent calls share one refresh. `force` refreshes even a fresh-looking token (after any normal call in flight, so it never returns the revoked token); `graphTransport` asks for it once after a 401. `invalid_grant`, `interaction_required`, or a missing cache throws `GraphSignInRequired`; other errors keep their OAuth code. Writes use a unique temp file (`wx`) that is removed on failure
 
 ### FR:cli: CLI
 
@@ -46,7 +46,7 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 
 ### FR:web: Live calendar
 
-- **FR:web.calendar** (P1): `stack web` uses the Graph calendar adapter with `graphToken` when the cache exists and its scopes include `Calendars.Read`, unless `STACK_CALENDAR_FIXTURE` is set (fixture wins). It logs one line naming the source (`calendar: Graph` or `calendar: fixture`), never a token. A sign-in failure surfaces through `GET /calendar` as `Calendar unavailable`
+- **FR:web.calendar** (P1): `stack web` uses the Graph calendar adapter with `graphToken` when the cache exists and its scopes include `Calendars.Read` (any case, with or without the Graph prefix), unless `STACK_CALENDAR_FIXTURE` is set (fixture wins). It logs one line naming the source (`calendar: Graph` or `calendar: fixture`), never a token. A sign-in failure surfaces through `GET /calendar` as `Calendar unavailable`
 
 ## Dependencies
 

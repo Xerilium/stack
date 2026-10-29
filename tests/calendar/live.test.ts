@@ -17,8 +17,15 @@ describe('stack web calendar source', () => {
     const g = await calendarSource({ cachePath });
     expect(g.source).toBe('graph');
     expect(g.provider).toBeDefined();
+    await new FileTokenCache(cachePath).write({ ...tok, scopes: ['https://graph.microsoft.com/calendars.read', 'offline_access'] });
+    expect((await calendarSource({ cachePath })).source).toBe('graph');
+    const logs: string[] = [];
+    await calendarSource({ cachePath, log: (l) => logs.push(l) });
     const fx = join(d, 'events.json');
     writeFileSync(fx, '[]');
-    expect((await calendarSource({ cachePath, fixture: fx })).source).toBe('fixture');
+    expect((await calendarSource({ cachePath, fixture: fx, log: (l) => logs.push(l) })).source).toBe('fixture');
+    await calendarSource({ cachePath: join(d, 'none.json'), log: (l) => logs.push(l) });
+    expect(logs).toEqual(['calendar: Graph', 'calendar: fixture']);
+    expect(logs.join(' ')).not.toMatch(/\bat\b|\brt\b/);
   });
 });

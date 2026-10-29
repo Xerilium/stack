@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { assertSafeScopes, FileTokenCache, graphToken, GraphSignInError, GraphSignInRequired, pollDeviceCode, scopesFor, startDeviceCode, type CachedToken } from '../../src/graph/auth';
+import { assertSafeScopes, FileTokenCache, hasScope, graphToken, GraphSignInError, GraphSignInRequired, pollDeviceCode, scopesFor, startDeviceCode, type CachedToken } from '../../src/graph/auth';
 
 const TENANT = 'organizations';
 const CLIENT = '11111111-2222-3333-4444-555555555555';
@@ -78,9 +78,12 @@ describe('device code poll', () => {
     const slow = fakeLogin(Array.from({ length: 500 }, () => ({ error: 'authorization_pending' })));
     await expect(pollDeviceCode({ tenant: TENANT, clientId: CLIENT, code: { ...dc, expiresIn: 30 }, fetch: slow.fetch, sleep: async (s) => { t += s * 1000; }, now: () => t })).rejects.toMatchObject({ code: 'expired_token' });
   });
-  it('a grant that includes an unsafe scope is refused, so no such token is ever saved', async () => {
+  it('a grant that includes an unsafe scope is refused, so no such token is ever saved; the error names the scope and the fix', async () => {
     const f = fakeLogin([{ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: 'Calendars.Read Mail.Send offline_access' }]);
-    await expect(pollDeviceCode({ tenant: TENANT, clientId: CLIENT, code: dc, fetch: f.fetch, sleep: async () => undefined, now: () => 0 })).rejects.toMatchObject({ code: 'unsafe_scope' });
+    const e = await pollDeviceCode({ tenant: TENANT, clientId: CLIENT, code: dc, fetch: f.fetch, sleep: async () => undefined, now: () => 0 }).catch((x: unknown) => x as GraphSignInError);
+    expect(e).toMatchObject({ code: 'unsafe_scope' });
+    expect(String((e as GraphSignInError).message)).toMatch(/Mail\.Send.*Entra/);
+    expect(String((e as GraphSignInError).message)).not.toMatch(/\bat\b|\brt\b/);
   });
   it('a grant without a refresh token is an error', async () => {
     const f = fakeLogin([{ access_token: 'at', expires_in: 3600, scope: 'Calendars.Read' }]);
@@ -171,6 +174,18 @@ describe('access token provider', () => {
     const get = graphToken(cache, { fetch: f.fetch, now: () => 1 });
     expect(await get()).toBe('at1');
     expect(await get({ force: true })).toBe('at3');
+  });
+  it('a forced refresh that starts while a normal call is in flight still gets a new token', async () => {
+    const d = tmp();
+    const cache = new FileTokenCache(join(d, 'graph-token.json'));
+    await cache.write(token({ expiresAt: 10_000_000 }));
+    const f = fakeLogin([{ access_token: 'at4', refresh_token: 'rt4', expires_in: 3600, scope: 'Calendars.Read offline_access' }]);
+    const get = graphToken(cache, { fetch: f.fetch, now: () => 1 });
+    expect(await Promise.all([get(), get({ force: true })])).toEqual(['at1', 'at4']);
+  });
+  it('hasScope matches case-insensitively, with or without the Graph prefix', () => {
+    expect(hasScope(['https://graph.microsoft.com/calendars.read'], 'Calendars.Read')).toBe(true);
+    expect(hasScope(['Mail.Read'], 'Calendars.Read')).toBe(false);
   });
   it('writes leave no temp file behind', async () => {
     const d = tmp();

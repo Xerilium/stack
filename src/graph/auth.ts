@@ -28,12 +28,17 @@ const ALLOWED = new Set(['calendars.read', 'mail.read', 'mail.readwrite', 'offli
 const bare = (s: string) => s.toLowerCase().replace(/^https:\/\/graph\.microsoft\.com\//, '');
 /** Throws for any scope outside the allowlist, so nothing can send mail, write a calendar, or change mailbox settings. @req FR:graph-signin/scope.never */
 export function assertSafeScopes(scopes: string[]): void {
-  for (const s of scopes) if (typeof s !== 'string' || !ALLOWED.has(bare(s))) throw new GraphSignInError('unsafe_scope');
+  const bad = scopes.filter((s) => typeof s !== 'string' || !ALLOWED.has(bare(s))).map(String);
+  // Scope names are not secret; naming them tells the owner exactly what to remove.
+  if (bad.length) throw new GraphSignInError('unsafe_scope', `${bad.join(', ')}. Remove these API permissions from the app registration in Entra ID, then run stack graph login again`);
 }
+
+/** True when `scopes` holds `name`, ignoring case and the Graph resource prefix. */
+export const hasScope = (scopes: string[], name: string): boolean => scopes.some((s) => bare(s) === name.toLowerCase());
 
 /** Sign-in failed; `code` is the OAuth error code only (no response body, no token). */
 export class GraphSignInError extends Error {
-  constructor(readonly code: string) { super(`Graph sign-in failed: ${code}`); this.name = 'GraphSignInError'; }
+  constructor(readonly code: string, detail?: string) { super(`Graph sign-in failed: ${code}${detail ? ` (${detail})` : ''}`); this.name = 'GraphSignInError'; }
 }
 /** No usable sign-in: run `stack graph login`. */
 export class GraphSignInRequired extends Error {
@@ -173,8 +178,15 @@ export function graphToken(cache: FileTokenCache, o: { fetch?: typeof fetch; now
     return g.accessToken;
   };
   // `force` is for a 401 from Graph: the cached token was revoked before it expired.
+  let forcing: Promise<string> | null = null;
   return (opts) => {
-    if (!inflight) inflight = refresh(!!opts?.force).finally(() => { inflight = null; });
+    if (opts?.force) {
+      // Wait for any normal call in flight (it may hand back the revoked token), then refresh for real.
+      if (!forcing) forcing = (inflight ?? Promise.resolve('')).catch(() => '').then(() => refresh(true)).finally(() => { forcing = null; });
+      return forcing;
+    }
+    if (forcing) return forcing;
+    if (!inflight) inflight = refresh(false).finally(() => { inflight = null; });
     return inflight;
   };
 }
