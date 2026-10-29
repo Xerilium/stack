@@ -290,8 +290,20 @@ const fmt = (n: number) => String(Math.round(n * 10) / 10);
 
 const STATE_LABEL = { working: 'Working', waiting: 'Waiting on you', queued: 'Queued' } as const;
 
-/** Cards and the open reply box follow the task, not its line number, which shifts when the file changes. */
-const taskKey = (x: Task) => `${x.project}\u241F${x.text}`;
+/** Cards and the open reply box follow the task, not its line number, which shifts when the file changes:
+ *  project + text, plus which same-text row it is in file order (so identical rows never share a key). */
+function taskKeys(rows: Task[]): Map<string, string> {
+  const line = (x: Task) => Number(x.ref.slice(x.ref.lastIndexOf(':') + 1));
+  const seen = new Map<string, number>();
+  const out = new Map<string, string>();
+  for (const x of [...rows].sort((a, b) => line(a) - line(b))) {
+    const base = `${x.project}\u241F${x.text}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    out.set(x.ref, `${base}\u241F${n}`);
+  }
+  return out;
+}
 
 function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) => Promise<unknown>; onClose: () => void; to: string; placeholder: string }) {
   const [text, setText] = useState('');
@@ -299,7 +311,7 @@ function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) =>
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   return (
-    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (!text.trim() || sending) return; setSending(true); void onSend(text.trim()).finally(() => setSending(false)); }}>
+    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (!text.trim() || sending) return; setSending(true); void onSend(text.trim()).catch(() => undefined).finally(() => setSending(false)); }}>
       <p class="reply-to">Replying to <b>{to}</b></p>
       <input ref={ref} type="text" aria-label="Reply" placeholder={placeholder} value={text} maxLength={500} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }} />
       <button type="submit" class="btn primary" disabled={!text.trim() || sending}>Send <kbd>↵</kbd></button>
@@ -330,18 +342,20 @@ export function TodayView(t: TodayProps) {
   const live = t.agents.filter((a) => a.state !== 'queued');
   const queued = t.agents.filter((a) => a.state === 'queued');
   const shownQueued = queuedOpen ? queued : queued.slice(0, 3);
+  const keys = taskKeys([...t.decisions.map((d) => d.task), ...t.agents.map((a) => a.task)]);
   const agentRow = (a: AgentItem) => {
     const r = parseRow(a.task.text);
     const owner = t.p.titles.get(a.task.project) ?? a.task.project;
+    const key = keys.get(a.task.ref) ?? a.task.ref;
     return (
-      <li key={taskKey(a.task)} class={`agent ${a.state}`}>
+      <li key={key} class={`agent ${a.state}`}>
         <span class="pulse" aria-hidden="true" />
         <div class="agent-body">
           <p class="agent-title"><Md text={r.title || a.task.text} /></p>
           <p class="agent-meta">{STATE_LABEL[a.state]} · {owner}</p>
         </div>
-        <button type="button" class="btn quiet reveal" onClick={() => setReplying(replying === taskKey(a.task) ? null : taskKey(a.task))}>Reply</button>
-        {replying === taskKey(a.task) && <Reply to={`the ${owner} agent`} placeholder="Message the agent" onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(a.task, text, 'Sent to the agent')) setReplying(null); }} />}
+        <button type="button" class="btn quiet reveal" onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
+        {replying === key && <Reply to={`the ${owner} agent`} placeholder="Message the agent" onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(a.task, text, 'Sent to the agent')) setReplying(null); }} />}
       </li>
     );
   };
@@ -383,7 +397,7 @@ export function TodayView(t: TodayProps) {
           <ul class="cards" data-testid="needs">
             {needs.map((d) => {
               const r = parseRow(d.task.text);
-              const key = taskKey(d.task);
+              const key = keys.get(d.task.ref) ?? d.task.ref;
               const owner = t.p.titles.get(d.task.project) ?? d.task.project;
               return (
                 <li class="card need" key={key}>
