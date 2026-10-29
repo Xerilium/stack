@@ -285,3 +285,63 @@ describe('serial writes', () => {
     expect(gh.file('tasks/a.md')).toBe('a');
   });
 });
+
+// @req FR:live-deploy/gh.fresh @req FR:live-deploy/gh.race
+describe('review round 1: snapshot ordering', () => {
+  it('a read in flight while a write lands never replaces the newer snapshot', async () => {
+    const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A1' });
+    let release!: () => void;
+    let gateRef = false;
+    let reader: Promise<unknown> | null = null;
+    const h: { s?: GitHubStorage; advance?: (ms: number) => void } = {};
+    const { s, clock } = make(gh, {
+      fetch: async (u, i = {}) => {
+        const method = i.method ?? 'GET';
+        if (method === 'POST' && String(u).endsWith('/git/blobs') && !reader) {
+          // Mid-write: a reader whose window expired starts a check and sees the old head.
+          h.advance!(10_000); gateRef = true; reader = h.s!.read('tasks/a.md');
+        }
+        // The reader sends no ETag, so it gets a full 200 for the old head (the non-304 path).
+        const strip = gateRef && method === 'GET' && String(u).includes('/git/ref/');
+        const r = await gh.fetch(u, strip ? { ...i, headers: { ...(i.headers as Record<string, string>), 'if-none-match': '' } } : i);
+        if (gateRef && method === 'GET' && String(u).includes('/git/ref/')) { gateRef = false; await new Promise<void>((ok) => { release = ok; }); }
+        return r;
+      },
+    });
+    h.s = s; h.advance = clock.advance;
+    await s.read('tasks/a.md');
+    await s.write('tasks/a.md', 'A2');
+    release();
+    await reader;
+    expect((await s.read('tasks/a.md')).content).toBe('A2');
+    expect(await s.rev()).toBe(gh.refs.get('main'));
+  });
+  it('a failed tree read after a good ref read is reported by rev()', async () => {
+    const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A' });
+    let failTree = false;
+    const { s, clock } = make(gh, { fetch: (u, i = {}) => failTree && String(u).includes('/git/trees/') ? Promise.resolve(new Response('{}', { status: 502 })) : gh.fetch(u, i) });
+    await s.read('tasks/a.md');
+    gh.push({ 'tasks/b.md': 'B' });
+    failTree = true;
+    clock.advance(10_000);
+    expect((await s.read('tasks/a.md')).content).toBe('A');
+    await expect(s.rev()).rejects.toThrow(/502/);
+    failTree = false;
+    clock.advance(10_000);
+    expect(await s.list()).toEqual(['tasks/a.md', 'tasks/b.md']);
+  });
+  it('a ref update that times out after GitHub applied it counts as written', async () => {
+    const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A' });
+    let drop = true;
+    const { s } = make(gh, { fetch: async (u, i = {}) => { const r = await gh.fetch(u, i); if (i.method === 'PATCH' && drop) { drop = false; throw new Error('socket hang up'); } return r; } });
+    await s.write('tasks/a.md', 'A2');
+    expect(gh.file('tasks/a.md')).toBe('A2');
+    expect(gh.commitCount()).toBe(2);
+  });
+  it('a ref update with no answer that did not land is an error, not a silent success', async () => {
+    const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A' });
+    const { s } = make(gh, { fetch: async (u, i = {}) => { if (i.method === 'PATCH') throw new Error('socket hang up'); return gh.fetch(u, i); } });
+    await expect(s.write('tasks/a.md', 'A2')).rejects.toBeInstanceOf(StorageError);
+    expect(gh.file('tasks/a.md')).toBe('A');
+  });
+});

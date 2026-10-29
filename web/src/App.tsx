@@ -48,6 +48,8 @@ export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [loadError, setLoadError] = useState('');
   const [me, setMe] = useState('');
+  /** `provider:userId` as STACK_OWNERS wants it (SWA's per-app id). */
+  const [ownerId, setOwnerId] = useState('');
   const [local, setLocal] = useState(false);
   // The day plan is "from now": re-plan every minute and when the tab comes back.
   const [tick, setTick] = useState(0);
@@ -200,10 +202,11 @@ export function App() {
     void (async () => {
       try {
         const r = await fetch('/.auth/me', { credentials: 'same-origin' });
-        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string; identityProvider?: string } | null; local?: { mode: string; repo: string; branch: string } | null; events?: boolean };
+        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string; identityProvider?: string; userId?: string } | null; local?: { mode: string; repo: string; branch: string } | null; events?: boolean };
         setInfo(j.local ?? null);
         setStream(j.events === true);
         setMe(j.clientPrincipal?.userDetails ?? '');
+        setOwnerId(j.clientPrincipal?.identityProvider && j.clientPrincipal.userId ? `${j.clientPrincipal.identityProvider}:${j.clientPrincipal.userId}` : '');
         setLocal(j.clientPrincipal?.identityProvider === 'local');
       } catch { setStream(false); /* the api decides access */ }
       await refresh();
@@ -499,6 +502,8 @@ export function App() {
   if (phase === 'denied') {
     return (
       <main class="gate"><h1>Not on the allow-list</h1><p>You are signed in{me ? ` as ${me}` : ''}, but this Stack belongs to someone else.</p>
+        {/* SWA's user id is per app, so the owner learns it here on first sign-in. @req FR:live-deploy/setup.owner */}
+        {ownerId && <p>If this is your Stack, add yourself as the owner, then reload: <code data-testid="owner-cmd">scripts/setup-azure.sh --owner {ownerId}</code></p>}
         <a class="btn" href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></main>
     );
   }

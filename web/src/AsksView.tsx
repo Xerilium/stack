@@ -224,7 +224,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn }: { asks: As
       {!offline && asks.phase === 'loading' && <Skeleton />}
       {offline && asks.phase !== 'ready' && <div class="asks-error offline" role="status"><p>Offline. Asks load when you're back online.</p></div>}
       {!offline && asks.phase === 'error' && (
-        <div class="asks-error" role="alert"><p>Cannot load asks: {asks.error}</p><button type="button" class="btn primary" onClick={asks.retryNow}>Retry</button></div>
+        <div class="asks-error" role="alert"><p>Cannot load asks: {asks.error}</p><button type="button" class="btn primary" onClick={() => void asks.reload()}>Retry</button></div>
       )}
       {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && (
         <div class="asks-empty" data-testid="asks-empty">

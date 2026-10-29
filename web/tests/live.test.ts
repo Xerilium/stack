@@ -158,3 +158,19 @@ describe('connectLive with a change probe', () => {
     expect(changes).toEqual([['asks', 'tasks', 'state']]);
   });
 });
+
+/** @req FR:live-deploy/web.action */
+describe('review round 1: hung probe', () => {
+  it('a probe with no answer times out to offline, and the next tick probes again', async () => {
+    const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+    let calls = 0; let hang = true;
+    const status: string[] = [];
+    connectLive({ make: null, probe: () => { calls++; return hang ? new Promise<string>(() => undefined) : Promise.resolve('a'); }, onChange: () => undefined, onStatus: (s) => status.push(s), pollMs: 15_000, probeMs: 10_000, visible: () => true, wake: () => () => undefined });
+    vi.advanceTimersByTime(10_000); await flush();
+    expect(status).toEqual(['offline']);
+    hang = false;
+    vi.advanceTimersByTime(5_000); await flush();
+    expect(calls).toBe(2);
+    expect(status).toEqual(['offline', 'poll']);
+  });
+});

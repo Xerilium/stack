@@ -91,8 +91,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     return () => { stop(); liveRef.current = null; clearInterval(tick); };
   }, [api, load, stream]);
 
-  /** Check now: reconnect or probe, and reload. @req FR:live-deploy/web.action */
-  const retryNow = useCallback(() => { liveRef.current?.retry(); void load(); }, [load]);
+  /** Check now: reconnect or probe; recovery reloads by itself (a failed probe or a reconnect reloads everything). @req FR:live-deploy/web.action */
+  const retryNow = useCallback(() => { if (liveRef.current) liveRef.current.retry(); else void load(); }, [load]);
 
   useEffect(() => { document.title = pageTitle(total); }, [total]);
 

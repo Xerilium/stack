@@ -57,6 +57,8 @@ export class GitHubStorage implements Storage, AuxFiles {
   private loading: Promise<Snap> | null = null;
   /** Set while the last ref check failed. */
   private failed: unknown = null;
+  /** Bumped by every landed write, so an older in-flight read never replaces the write's snapshot. */
+  private writes = 0;
   private readonly blobs = new Map<string, string>();
   private queue: Promise<unknown> = Promise.resolve();
   private readonly prefix: string;
@@ -87,9 +89,10 @@ export class GitHubStorage implements Storage, AuxFiles {
         signal: AbortSignal.timeout(this.o.timeoutMs ?? 15_000),
       });
     } catch { throw new GitHubError(op, 0); }
-    if (res.status === 304) return { status: 304, data: null, etag: res.headers.get('etag') };
-    if (res.status === 422 && op === 'ref update') return { status: 422, data: null, etag: null };
-    if (res.status < 200 || res.status >= 300) throw new GitHubError(op, res.status);
+    const drop = () => { void res.body?.cancel().catch(() => undefined); };
+    if (res.status === 304) { drop(); return { status: 304, data: null, etag: res.headers.get('etag') }; }
+    if (res.status === 422 && op === 'ref update') { drop(); return { status: 422, data: null, etag: null }; }
+    if (res.status < 200 || res.status >= 300) { drop(); throw new GitHubError(op, res.status); }
     let data: unknown;
     try { data = await res.json(); } catch { throw new GitHubError(op, res.status); }
     return { status: res.status, data, etag: res.headers.get('etag') };
@@ -99,32 +102,43 @@ export class GitHubStorage implements Storage, AuxFiles {
 
   private ref = () => `heads/${this.o.branch.split('/').map(encodeURIComponent).join('/')}`;
 
-  /** Loads the head snapshot; `force` skips the freshness window. Concurrent callers share one load. */
+  /**
+   * Loads the head snapshot; `force` skips the freshness window. Concurrent callers share one load,
+   * except that a forced check never reuses a load that started before it (it may predate a push).
+   */
   private fresh(force = false): Promise<Snap> {
     if (this.snap && !force && this.now() - this.checkedAt < (this.o.freshMs ?? 5000)) return Promise.resolve(this.snap);
-    if (this.loading) return this.loading;
+    if (this.loading) return force ? this.loading.catch(() => undefined).then(() => this.fresh(true)) : this.loading;
     const p = this.load().finally(() => { this.loading = null; });
     this.loading = p;
     return p;
   }
 
   private async load(): Promise<Snap> {
-    let r;
+    const seq = this.writes;
+    let next: Snap | null;
+    let etag: string | undefined;
     try {
-      r = await this.call('ref read', `ref/${this.ref()}`, { etag: this.snap ? this.etag : undefined });
+      const r = await this.call('ref read', `ref/${this.ref()}`, { etag: this.snap ? this.etag : undefined });
+      if (r.status === 304 && this.snap) next = this.snap;
+      else {
+        const sha = String((r.data as { object?: { sha?: string } }).object?.sha ?? '');
+        if (!/^[0-9a-f]{40}$/.test(sha)) throw new GitHubError('ref read', r.status);
+        next = this.snap?.commit === sha ? this.snap : await this.snapshot(sha);
+      }
+      etag = r.etag ?? undefined;
     } catch (e) {
-      // A failed check keeps serving what we have to reads (rev() reports it); the next read retries.
+      // A failed check (ref, commit, or tree read) keeps serving what we have to reads; rev() reports it; the next read retries.
       if (this.snap) { this.checkedAt = this.now(); this.failed = e; return this.snap; }
       throw e;
     }
+    // A write that landed while this read was in flight is newer than what we read: keep it.
+    if (seq !== this.writes && this.snap) return this.snap;
+    this.snap = next;
+    this.etag = etag;
     this.checkedAt = this.now();
     this.failed = null;
-    if (r.status === 304 && this.snap) return this.snap;
-    const sha = String((r.data as { object?: { sha?: string } }).object?.sha ?? '');
-    if (!/^[0-9a-f]{40}$/.test(sha)) throw new GitHubError('ref read', r.status);
-    if (this.snap?.commit !== sha) this.snap = await this.snapshot(sha);
-    this.etag = r.etag ?? undefined;
-    return this.snap;
+    return next;
   }
 
   private async snapshot(commit: string): Promise<Snap> {
@@ -247,13 +261,23 @@ export class GitHubStorage implements Storage, AuxFiles {
       const body: Record<string, unknown> = { message: msg, tree: t, parents: [head.commit] };
       if (this.o.author) body.author = this.o.author;
       const c = String(((await this.call('commit write', 'commits', { method: 'POST', body })).data as { sha: string }).sha);
-      const r = await this.call('ref update', `refs/${this.ref()}`, { method: 'PATCH', body: { sha: c, force: false } });
-      if (r.status !== 422) {
+      let landed: boolean;
+      try {
+        landed = (await this.call('ref update', `refs/${this.ref()}`, { method: 'PATCH', body: { sha: c, force: false } })).status !== 422;
+      } catch (e) {
+        // No answer (timeout, dropped connection): GitHub may still have applied it. Our commit at the head means it landed.
+        if (!(e instanceof GitHubError) || e.status !== 0) throw e;
+        if ((await this.fresh(true).catch(() => null))?.commit !== c) throw e;
+        landed = true;
+      }
+      if (landed) {
         const files = new Map(head.files);
         for (const x of tree) { if (x.sha === null) files.delete(x.path); else files.set(x.path, { mode: x.mode, sha: x.sha, type: 'blob' }); }
+        this.writes++;
         this.snap = { commit: c, tree: t, files };
         this.etag = undefined;
         this.checkedAt = this.now();
+        this.failed = null;
         return;
       }
       if (attempt >= MAX_ATTEMPTS) throw new ConflictError(`Conflict on ${writes.map((w) => w.path).join(', ')}: branch kept moving (${attempt} attempts)`);

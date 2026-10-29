@@ -43,7 +43,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     m.tasks.splice(m.tasks.indexOf(mine[0]), 0, { ref: `${project}:${first}`, text, project, section: mine[0].section, done: false, depth: 0, notes: [] });
   };
 
-  await router.route('**/.auth/me', (r) => json(r, 200, { clientPrincipal: m.anonymous ? null : { userDetails: 'octocat', userRoles: ['authenticated'] } }));
+  await router.route('**/.auth/me', (r) => json(r, 200, { clientPrincipal: m.anonymous ? null : { identityProvider: 'github', userId: 'd2f0c0ffee', userDetails: 'octocat', userRoles: ['authenticated'] } }));
   await router.route('**/api/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());

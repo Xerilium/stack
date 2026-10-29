@@ -23,6 +23,8 @@ export interface LiveOpts {
   /** Hears each successful probe. */
   onSynced?: (at: Date) => void;
   pollMs?: number;
+  /** A probe with no answer after this long counts as a failure, so one hung request never stops polling. Default 10000. */
+  probeMs?: number;
   visible?: () => boolean;
   /** Subscribes to "check now" moments (page shown, back online); default uses document and window. */
   wake?: (fn: () => void) => () => void;
@@ -48,13 +50,17 @@ export function connectLive(o: LiveOpts): Live {
   let polling = false;
   let rev: string | null | undefined;
   let inFlight = false;
+  let failed = false;
+  let seen = false;
   let unwake: () => void = () => undefined;
 
   const check = () => {
     if (stopped || inFlight || !visible()) return;
     if (!o.probe) { o.onChange(['poll']); return; }
     inFlight = true;
-    o.probe().then((r) => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const hung = new Promise<never>((_ok, bad) => { timeout = setTimeout(() => bad(Object.assign(new Error('Timed out'), { status: 0 })), o.probeMs ?? 10_000); });
+    Promise.race([o.probe(), hung]).finally(() => clearTimeout(timeout)).then((r) => {
       inFlight = false;
       if (stopped) return;
       o.onStatus('poll');
@@ -71,9 +77,6 @@ export function connectLive(o: LiveOpts): Live {
       o.onStatus((e as { status?: number } | null)?.status === 401 ? 'signin' : 'offline');
     });
   };
-  let failed = false;
-  let seen = false;
-
   const poll = () => {
     if (timer || stopped) return;
     polling = true;
