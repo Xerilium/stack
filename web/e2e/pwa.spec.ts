@@ -128,7 +128,7 @@ test.describe('week', () => {
     await expect(week.locator('.week-sum')).toContainText('planned');
     expect(await week.locator('.wd').count()).toBeGreaterThanOrEqual(5);
     await expect(week.locator('.wd.today')).toHaveCount(1);
-    await expect(week.locator('.wd').first()).toHaveAttribute('aria-label', /^Today: .+ planned of .+ available/);
+    await expect(week.locator('.wd-bar').first()).toHaveAttribute('aria-label', /^Today: .+ planned of .+ available/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 });
