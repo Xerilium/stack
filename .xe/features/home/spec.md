@@ -35,13 +35,13 @@ Home itself (the one thing, fit, up next, projects, countdowns) is `FR:web-app/h
 
 - **FR:home.window** (P1): The time left for Home's fit check is the window: minutes from now until the next of a busy meeting, the start of a personal block, or bed (`end of day` without a schedule). A line above the task says `{span} until {Allyte sync | Family | bed}`. Inside a meeting, sleep, or past bed the window is 0 and the line says so (`In Allyte sync until 4:30p`, `Past bed · back at 8:00a`: the next wake). Inside a personal block the window is the rest of the block, up to the next meeting, for rows tagged with its emoji only (`Family until 8:00p: only 🏠 tasks now`). The no-fit line reads `No time for this now: needs 2h, 45m until Allyte sync`
 - **FR:home.have** (P1): "I have" picks 15m, 30m, 1h, 2h (`h` then `1`-`4`; `0` or Reset clears). A pick replaces the window from now until it runs out, then the window returns; it overrides personal time and bed. `]`/`[` and More time add or remove 30 min from what you have. Memory only
-- **FR:home.delegate** (P1): Delegate (`Shift+A`, on Home and on every My day row; `a` talks to the task's agent) adds 🪄 to the front of the row (`POST /tasks/edit` with `expect`), so an agent takes it and it leaves your plan; the toast offers Undo. Not now (`n`) defers 2 hours in one tap; `z` keeps the full defer menu
+- **FR:home.delegate** (P1): Delegate (`Shift+A`, on Home and on every My day row; `a` talks to the task's agent) adds 🪄 to the front of the row (`POST /tasks/edit` with `expect`), so an agent takes it and it leaves your plan; the toast offers Undo. Defer 2h (`n`) defers 2 hours in one tap; `z` keeps the full defer menu
 
 ### FR:myday: My day (the schedule)
 
 - **FR:myday.timeline** (P1): My day (`g t`) is the waking day as a timeline: schedule blocks as band headers (`{label} · {start}–{end}`; personal bands muted), meetings, planned tasks, the email block, free gaps of 15 minutes or more (`{span} free`), and a now line. Time before the current band folds into one `Earlier` row
 - **FR:myday.overflow** (P1): What does not fit is one collapsed line at the end (`{n} don't fit`, plus `· {k} due soon` in the warning color when any are at risk); expanded it lists at-risk tasks first (12 at most) then `{n} later`
-- **FR:myday.actions** (P1): Every task row has one-tap Done, Start, Not now, and Delegate (icon buttons with labels; 44 px targets on touch). Keys work on the cursor row: `s`, `d`, `n`, `z`, `a`
+- **FR:myday.actions** (P1): Every task row has one-tap Done, Start, Defer 2h, and Delegate (icon buttons with labels; 44 px targets on touch). Keys work on the cursor row: `s`, `d`, `n`, `z`, `a`
 - **FR:myday.quiet** (P2): Needs-you cards and AI team leave the top of the view: they sit below the timeline behind one summary line (`2 to decide · 1 CI failing`) until the Asks view carries them
 
 ## Dependencies

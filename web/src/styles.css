@@ -714,7 +714,7 @@ body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: non
 /* Done: the check draws itself, the row fades */
 .done-anim .box, .done-anim .tick .box { border-color: var(--ok); background: var(--ok); color: #fff; }
 .done-anim .box::after { content: ''; display: block; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px, -1px); animation: check .16s var(--ease) both; }
-.row.done-anim, .focus-block.done-anim { animation: fade-out .5s .25s var(--ease) both; }
+.row.done-anim, .focus-block.done-anim { animation: fade-out .3s .12s var(--ease) both; }
 @keyframes check { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0); } }
 @keyframes fade-out { to { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .done-anim .box::after, .row.done-anim, .focus-block.done-anim, .row-detail { animation: none !important; } }

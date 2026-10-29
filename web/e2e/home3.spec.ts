@@ -73,8 +73,30 @@ test.describe('Home round 3', () => {
     await expect(page.getByTestId('home-projects').locator('li.cursor')).toHaveCount(1);
     await page.keyboard.press(' ');
     await expect(page.getByTestId('home-projects').locator('.row-detail')).toBeVisible();
+    // the cursor never runs past the fold: the last reachable row is the third project
+    for (let i = 0; i < 6; i++) await page.keyboard.press('j');
+    await expect(page.getByTestId('home-projects').locator('li.cursor')).toHaveCount(1);
+    await expect(page.getByTestId('home-projects').locator('li:visible').nth(2)).toHaveClass(/cursor/);
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: 'Focus' })).toBeVisible();
+  });
+
+  // @req FR:web-app/home2.expand
+  test('clicks inside the detail keep it open; a focused title toggles with Space and opens with Enter', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
+    await mockApi(page, { tasks: tasks() });
+    await page.goto('/');
+    const row = page.locator('.row[data-ref="alpha:30"]');
+    const title = row.locator('.title');
+    await title.focus();
+    await expect(title).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press(' ');
+    await expect(title).toHaveAttribute('aria-expanded', 'true');
+    await row.locator('.row-detail .body').click();
+    await expect(row.locator('.row-detail')).toBeVisible();
+    await title.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog', { name: 'Focus' })).toContainText('Reply to Dana');
   });
 
   // @req FR:web-app/home2.done
