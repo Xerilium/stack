@@ -28,6 +28,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/asks/{key}/answer` | POST the owner's answer (owner session only) |
 | `/asks/{key}/handle` | POST close an ask after acting, or reopen it with a reply |
 | `/agents` | GET what agents are doing (agent rows, result logs, inbox, PR state and checks) |
+| `/calendar` | GET calendar events for a range, read-only (owner session only) |
 | `/tasks/resume` | POST unpark a task (owner session only) |
 | `/tasks/suspend` | POST suspend for days or hours (owner session only) |
 | `/tasks/set` | POST change task properties |

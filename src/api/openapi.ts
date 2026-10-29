@@ -121,6 +121,27 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'handleInboxEntry', summary: 'Mark an inbox entry handled after acting on it',
     responses: ok('Handled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
   },
+  'calendar.list': {
+    operationId: 'listCalendar', summary: 'Calendar events overlapping a range (at most 7 days), read-only. Owner session only: 403 for tokens',
+    desc: { from: 'ISO date-time, inclusive', to: 'ISO date-time, exclusive' },
+    responses: ok('Events', {
+      type: 'object',
+      properties: {
+        configured: { type: 'boolean' }, error: { type: 'string' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' }, subject: { type: 'string' }, start: { type: 'string', format: 'date-time' }, end: { type: 'string', format: 'date-time' },
+              allDay: { type: 'boolean' }, showAs: { type: 'string', enum: ['free', 'tentative', 'busy', 'oof', 'workingElsewhere', 'unknown'] },
+              cancelled: { type: 'boolean' }, online: { type: 'boolean' }, organizer: { type: 'string' }, webLink: { type: 'string' },
+            },
+          },
+        },
+      },
+    }),
+  },
   'agents.list': {
     operationId: 'listAgents', summary: 'What agents are doing, from agent rows, result logs, inbox replies, and pull request status',
     responses: ok('Agent work', { type: 'object', properties: { items: { type: 'array', items: ref('AgentItem') } } }),
