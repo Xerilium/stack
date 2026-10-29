@@ -1,6 +1,6 @@
 /** @req FR:web-app/today.plan @req FR:web-app/today.needs @req FR:web-app/today.agents */
 import { describe, expect, it } from 'vitest';
-import { agentWork, buildPlan, clock, decisions, openLeaves, planCandidates, recommendationOf, span } from '../src/plan';
+import { agentWork, buildPlan, clock, decisions, DEFAULT_DAY, estimate, openLeaves, planCandidates, recommendationOf, span } from '../src/plan';
 import type { Task } from '../src/types';
 
 let n = 0;
@@ -53,5 +53,32 @@ describe('recommendation text', () => {
   it('takes the next line when the label stands alone', () => {
     const ask = t('🙋 Review analysis and decide', 1, ['> **Recommendation for Walkman:**', '> - Use Catalyst']);
     expect(recommendationOf([ask], ask)).toBe('- Use Catalyst');
+  });
+});
+
+/** @req FR:web-app/today.capacity @req FR:web-app/today.fit */
+describe('capacity-aware plan', () => {
+  it('books no more than the budget and lets smaller tasks fill the gap', () => {
+    const a = t('A 🟡'), b = t('B 🟠'), c = t('C 🟢'), d = t('D 🔹');
+    const p = buildPlan([a, b, c, d], at(13), DEFAULT_DAY, 100);
+    expect(p.blocks.map((x) => x.task.text)).toEqual(['A 🟡', 'C 🟢']);
+    expect(p.overflow.map((x) => x.text)).toEqual(['B 🟠', 'D 🔹']);
+    expect(p).toMatchObject({ budget: 100, busy: 90, free: 10, short: 132 });
+    expect(p.blocks.map((x) => [clock(x.start), clock(x.end)])).toEqual([['1:00p', '2:00p'], ['2:00p', '2:30p']]);
+  });
+  it('defaults the budget to what is left of the work day and marks estimates', () => {
+    const p = buildPlan([t('No effort'), t('E 🟢')], at(17), DEFAULT_DAY);
+    expect(p.budget).toBe(60);
+    expect(p.blocks.map((x) => x.assumed)).toEqual([true, false]);
+    expect(p.assumed).toBe(1);
+  });
+  it('a budget past the work day runs the clock on; zero books nothing', () => {
+    const p = buildPlan([t('A 🟠'), t('B 🟠')], at(17), DEFAULT_DAY, 240);
+    expect(p.blocks.map((x) => clock(x.end))).toEqual(['7:00p', '9:00p']);
+    expect(buildPlan([t('A 🟢')], at(10), DEFAULT_DAY, 0)).toMatchObject({ blocks: [], busy: 0, free: 0, short: 30 });
+  });
+  it('estimate is the effort, or 30 min assumed; capped at 2h', () => {
+    expect(estimate(t('x'))).toEqual({ minutes: 30, assumed: true, partial: false });
+    expect(estimate(t('x ⚫️'))).toEqual({ minutes: 120, assumed: false, partial: true });
   });
 });
