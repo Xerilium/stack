@@ -179,12 +179,14 @@ export function App() {
   /** @req FR:ask-queue/web.live (task files changing elsewhere refresh the rest of the app too) */
   const [stream, setStream] = useState<boolean | null>(null);
   const [agentsOn, setAgentsOn] = useState<boolean | null>(null);
-  let teamActive = false;
+  // Sessions also poll while a row has a live session or a composer open; the flag is state, so the hook sees it on the next render (a plain variable read here would always be false).
+  const [teamActive, setTeamActive] = useState(false);
   /** @req FR:agent-sessions/web.view */
   const sessions = useSessions(api, toast, agentsOn, view === 'sessions' || teamActive);
   /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
   const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name));
-  teamActive = team.active || team.talk !== null;
+  const wantActive = team.active || team.talk !== null;
+  useEffect(() => { setTeamActive(wantActive); }, [wantActive]);
   /** @req FR:pwa/notify.optin @req FR:pwa/notify.new */
   const [notifyOn, setNotifyOn] = useState(() => loadNotify(store()));
   const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : 'denied'));

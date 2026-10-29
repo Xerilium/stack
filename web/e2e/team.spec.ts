@@ -138,6 +138,24 @@ test.describe('Agent team', () => {
     expect(m.calls.find((c) => c.path === '/sessions')!.body).toEqual({ text: 'What changed since the last review?', agent: 'alpha-lead', project: 'alpha' });
   });
 
+  test('the Home hero takes a and renders the composer inline; a row-started session keeps the list polling until it ends', async ({ page }) => {
+    const m = await open(page);
+    await page.goto('/#/home');
+    const hero = page.locator('.focus-block');
+    await expect(hero).toBeVisible();
+    await expect(hero.locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
+    await hero.click();
+    await page.keyboard.press('a');
+    await expect(hero.locator('.agent-talk')).toBeVisible();
+    await page.keyboard.type('Go');
+    await page.keyboard.press('Enter');
+    await expect(hero.locator('.agent-talk')).toHaveCount(0);
+    // The chip follows the session: once the mock flips it to idle, the next 15 s poll shows Done (no poll = stuck on Working).
+    await expect(hero.locator('.agent-chip')).toHaveText('Working');
+    for (const x of m.sessions!) x.state = 'idle';
+    await expect(hero.locator('.agent-chip')).toHaveText(/^Done/, { timeout: 20_000 });
+  });
+
   test('Home rows carry the chip and the composer too', async ({ page }) => {
     const m = await open(page);
     await page.goto('/#/home');

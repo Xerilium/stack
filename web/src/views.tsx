@@ -645,6 +645,7 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
             {chipsOf(one.task.text).filter((c) => c.group !== 'effort').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([one.task.ref], g)} />)}
             <Tags r={hero} />
             {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
+            {p.agent?.chip(one.task)}
           </div>
           {!h.fits && (
             <p class="nofit-line" data-testid="nofit">{minutesLeft > 0 ? `No time for this today: needs ${span(one.minutes)}, ${span(minutesLeft)} left` : "Day's over: no time left today"}</p>
@@ -655,6 +656,7 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
             <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('defer', one.task.ref)}>Not now <kbd>z</kbd></button>
             {!h.fits && <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
           </div>
+          {p.agent?.talk(one.task)}
         </div>
       )}
       {h.instead && (
