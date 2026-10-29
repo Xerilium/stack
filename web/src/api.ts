@@ -69,6 +69,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     promptSession: (id: string, text: string) => call<{ runId: string; sessionId: string | null }>(`/sessions/${encodeURIComponent(id)}/prompt`, { text }),
     newSession: (cwd: string, text: string) => call<{ runId: string; sessionId: string | null }>('/sessions', { cwd, text }),
     cancelSession: (id: string) => call<{ changed: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, {}),
+    /** Repo revision for change-driven polling (null: the host has none). @req FR:live-deploy/web.poll */
+    sync: async () => (await call<{ rev: string | null }>('/sync')).rev,
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
   };
 }
