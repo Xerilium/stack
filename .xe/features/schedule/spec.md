@@ -17,7 +17,7 @@ A plan that ends the day at 6 pm is wrong for someone who goes to bed at 2 am. S
 ## Scope
 
 - In: `kind` on time blocks; `daySchedule` (pure, `src/core/schedule.ts`); `GET /schedule`; an ICS calendar provider (`src/calendar/ics.ts`) for published calendar links; wiring in `stack web` and the Azure host.
-- Out: writing to calendars, OAuth or device-code sign-in (the Graph adapter in `day-inputs` covers that later), per-date overrides (vacation days), learning the schedule from activity.
+- Out: writing to calendars, sign-in (Graph device code is `graph-signin`), per-date overrides (vacation days), learning the schedule from activity.
 
 ## Decisions
 
@@ -41,7 +41,7 @@ A plan that ends the day at 6 pm is wrong for someone who goes to bed at 2 am. S
 - **FR:ics.status** (P1): `showAs` comes from `X-MICROSOFT-CDO-BUSYSTATUS` (`FREE`, `TENTATIVE`, `BUSY`, `OOF`, `WORKINGELSEWHERE`), else `TRANSP:TRANSPARENT` is `free`, `STATUS:TENTATIVE` is `tentative`, anything else `busy`. `STATUS:CANCELLED` (or a summary starting `Canceled:`/`Cancelled:`) sets `cancelled`. `subject` is `SUMMARY`, or `Busy` when the feed hides it. `id` is `UID` plus the occurrence start
 - **FR:ics.join** (P2): `joinUrl` is the first `https` link to Teams (`teams.microsoft.com`, `teams.live.com`), Zoom (`*.zoom.us`), Google Meet (`meet.google.com`), or Webex (`*.webex.com`) found in `X-MICROSOFT-SKYPETEAMSMEETINGURL`, `X-GOOGLE-CONFERENCE`, `URL`, `LOCATION`, then `DESCRIPTION`; `online` is true when there is one. Other links are ignored
 - **FR:ics.provider** (P1): `createIcsCalendar({urls, fetch?, ttlMs?, now?})` is a `CalendarProvider` over one or more feed URLs (`https:`; `webcal:` is read as `https:`; anything else is refused at creation). It sends no credentials or cookies, times out after 10 s, refuses bodies over 5 MB and redirects to non-https URLs or to loopback, private, or link-local hosts, and caches each feed's text for `ttlMs` (default 5 min). A failed fetch is also remembered for `ttlMs` (no new attempt until then), and a feed that fails after a success keeps serving its last good copy. Events from all feeds are merged and sorted. A feed that fails is skipped; when every feed fails the call throws. Errors never include the URL (it is a secret)
-- **FR:ics.wire** (P1): `stack web` and the Azure host read `STACK_CALENDAR_ICS` (feed URLs separated by whitespace or commas) and use `createIcsCalendar`; `STACK_CALENDAR_FIXTURE` wins when both are set. The URLs are never logged or returned by the api
+- **FR:ics.wire** (P1): `stack web` and the Azure host read `STACK_CALENDAR_ICS` (feed URLs separated by whitespace or commas) and use `createIcsCalendar`; The calendar source order is `STACK_CALENDAR_FIXTURE`, then a Graph sign-in with `Calendars.Read` (`FR:graph-signin/web.calendar`), then these feeds. The URLs are never logged or returned by the api
 
 ### FR:api: Route
 
