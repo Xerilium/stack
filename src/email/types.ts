@@ -24,7 +24,7 @@ export interface Message {
   isRead?: boolean;
   /** Outlook web link to the message. */
   webLink?: string;
-  /** Internet headers, when fetched. Names are matched case-insensitively. */
+  /** Internet headers, when fetched. Names are matched case-insensitively. `Authentication-Results` holds only the receiving server's (first) one: providers drop later copies, which a sender can write. */
   headers?: Record<string, string>;
   /** Graph `@odata.type`; `eventMessage*` marks calendar items. */
   odataType?: string;

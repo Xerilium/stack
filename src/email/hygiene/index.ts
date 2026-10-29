@@ -37,6 +37,8 @@ export interface SubRow {
   key: string; name: string; first: string; last: string; issues: number; read: number;
   ids: { id: string; read: boolean }[]; subjects: string[];
   method: SubMethod; url?: string; mailto?: string;
+  /** The DKIM signing domain the row is bound to; only it may change the unsubscribe target. */
+  domain?: string;
   decision?: 'keep' | 'archive' | 'unsubscribe' | 'unsubscribed'; value?: string; decidedAt?: string; revisit?: string;
   /** Counts when the owner decided, so a revisit shows reads since then. */
   since?: { issues: number; read: number };
@@ -74,15 +76,24 @@ function listOf(m: Message): string {
   const inner = id && /<([^>]{1,200})>/.exec(id)?.[1];
   return (inner || id || m.from.address).trim().toLowerCase();
 }
+/** The value of the first header with this name (any case); later copies are ignored. */
+const firstHeader = (h: Record<string, string> | undefined, name: string) => Object.entries(h ?? {}).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1] ?? '';
+const under = (host: string, domain: string) => { const h = host.toLowerCase().replace(/\.+$/, ''); return h === domain || h.endsWith(`.${domain}`); };
+
 /**
  * RFC 8058 needs a DKIM signature over the unsubscribe headers. The signal here: the receiving server's `Authentication-Results`
- * (the provider keeps only the first, which the sender cannot write) shows `dkim=pass` for the From domain or a parent of it.
+ * (the first one; the provider drops the rest, see `Message.headers`) shows `dkim=pass` for the From domain or a parent of it.
+ * Returns that signing domain, or undefined.
  */
-export function dkimAligned(h: Record<string, string> | undefined, from: string): boolean {
+export function dkimAlignedDomain(h: Record<string, string> | undefined, from: string): string | undefined {
   const fromDomain = from.slice(from.lastIndexOf('@') + 1).toLowerCase();
-  return [...header(h, 'Authentication-Results').matchAll(/\bdkim=pass\b[^;]*?\bheader\.d=([a-z0-9.-]{1,253})/gi)]
-    .some((x) => { const d = x[1].toLowerCase().replace(/\.+$/, ''); return d.includes('.') && (fromDomain === d || fromDomain.endsWith(`.${d}`)); });
+  for (const x of firstHeader(h, 'Authentication-Results').matchAll(/\bdkim=pass\b[^;]*?\bheader\.d=([a-z0-9.-]{1,253})/gi)) {
+    const d = x[1].toLowerCase().replace(/\.+$/, '');
+    if (d.includes('.') && under(fromDomain, d)) return d;
+  }
+  return undefined;
 }
+export const dkimAligned = (h: Record<string, string> | undefined, from: string): boolean => dkimAlignedDomain(h, from) !== undefined;
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 const PRIVATE_SUFFIX = /\.(local|localhost|localdomain|internal|intranet|lan|home|corp|home\.arpa)$/;
@@ -101,7 +112,9 @@ export function unsubscribeTarget(headers: Record<string, string>, from = ''): {
   const parts = [...header(headers, 'List-Unsubscribe').matchAll(/<([^>]{1,2000})>/g)].map((x) => x[1].trim());
   const url = parts.map(safeHttps).find(Boolean);
   const mailto = parts.find((p) => /^mailto:/i.test(p))?.slice(7).split('?')[0];
-  if (url && /List-Unsubscribe=One-Click/i.test(header(headers, 'List-Unsubscribe-Post')) && dkimAligned(headers, from)) return { method: 'one-click', url };
+  // One-click only to a URL under the signing domain; anything else is a link the owner opens.
+  const signer = dkimAlignedDomain(headers, from);
+  if (url && signer && under(new URL(url).hostname, signer) && /List-Unsubscribe=One-Click/i.test(header(headers, 'List-Unsubscribe-Post'))) return { method: 'one-click', url };
   if (url) return { method: 'link', url };
   if (mailto && /^[^@\s]{1,64}@[^@\s]{1,255}$/.test(mailto)) return { method: 'mailto', mailto };
   return { method: 'none' };
@@ -124,8 +137,12 @@ export function observe(s: HygieneState, r: TriageResult, o: { now: Date }): voi
       if (m.isRead) row.read++;
       row.ids = [...row.ids, { id: m.id, read: !!m.isRead }].slice(-KEEP_IDS);
       row.subjects = [...row.subjects, clean(m.subject, 100)].slice(-KEEP_SUBJECTS);
-      // Only an issue with aligned DKIM may set or change where an unsubscribe goes; anyone can claim a List-Id.
-      if (m.headers && dkimAligned(m.headers, m.from.address)) Object.assign(row, { url: undefined, mailto: undefined }, unsubscribeTarget(m.headers, m.from.address));
+      // Anyone can claim a List-Id: the row binds to the first aligned signing domain, and only that domain may set or change the target.
+      const signer = dkimAlignedDomain(m.headers, m.from.address);
+      if (m.headers && signer && (!row.domain || row.domain === signer)) {
+        row.domain ??= signer;
+        Object.assign(row, { url: undefined, mailto: undefined }, unsubscribeTarget(m.headers, m.from.address));
+      }
     }
   }
   if (r.vip || s.declined.includes(m.id)) return;

@@ -404,3 +404,20 @@ describe('round 2 regressions', () => {
     expect(s.batches[0].ids).toHaveLength(200);
   });
 });
+
+// Round 3 @req FR:email-inbox-zero/sub.ledger
+describe('round 3: subscription rows bind to their signer', () => {
+  const sub = subKey('weekly.example.test');
+  it('ignores an aligned signature from another domain on the same List-Id, and a second Authentication-Results', () => {
+    const s = { version: 1 as const, archive: [], spam: [], batches: [], declined: [], subs: {} } as HygieneState;
+    observe(s, settled(news(), 'newsletter'), { now: NOW });
+    expect(s.subs[sub]).toMatchObject({ domain: 'weekly.example.test', url: 'https://weekly.example.test/u/abc', method: 'one-click' });
+    observe(s, settled(news({ id: 'e1', from: { address: 'x@evil.example.net' }, headers: { 'Authentication-Results': 'dkim=pass header.d=evil.example.net', 'List-Id': '<weekly.example.test>', 'List-Unsubscribe': '<https://evil.example.net/u>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } }), 'newsletter'), { now: NOW });
+    observe(s, settled(news({ id: 'e2', headers: { 'Authentication-Results': 'mx; dkim=none; dmarc=none', 'authentication-results': 'x; dkim=pass header.d=weekly.example.test', 'List-Id': '<weekly.example.test>', 'List-Unsubscribe': '<https://weekly.example.test/evil>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } }), 'newsletter'), { now: NOW });
+    expect(s.subs[sub]).toMatchObject({ url: 'https://weekly.example.test/u/abc', method: 'one-click' });
+  });
+  it('one-click only to a URL under the signing domain; an ESP link is a link', () => {
+    const h = { 'Authentication-Results': 'dkim=pass header.d=weekly.example.test', 'List-Unsubscribe': '<https://esp.example.net/u>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' };
+    expect(unsubscribeTarget(h, 'news@weekly.example.test')).toEqual({ method: 'link', url: 'https://esp.example.net/u' });
+  });
+});
