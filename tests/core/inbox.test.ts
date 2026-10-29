@@ -101,6 +101,14 @@ describe('send', () => {
     const rows = await currentRows(ctx, all);
     expect(all.map((e) => rows.get(e.id))).toEqual(['tasks/alpha.md:10', 'tasks/alpha.md:9', 'tasks/alpha.md:8', 'tasks/alpha.md:7']);
   });
+  it('skips entries with a missing or bad ref instead of failing the rest', async () => {
+    const { storage, ctx } = await mk();
+    const sent = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x', 'reply');
+    const good = (await storage.read('tasks/inbox/alpha.md')).content;
+    await storage.write('tasks/inbox/alpha.md', good + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-aaaa', ref: 'alpha:6' })) + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-bbbb', ref: '' })) + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-cccc', ref: 'tasks/../x.md:1' })));
+    const rows = await currentRows(ctx, await listInbox(ctx));
+    expect([...rows.keys()]).toEqual([sent.id]);
+  });
   it('redacts secrets and escapes markdown', async () => {
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'use token ghp_abcdefghijklmnop and ![x](https://evil.test/a.png)', 'reply');

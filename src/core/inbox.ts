@@ -117,18 +117,19 @@ const taskKey = (title: string): string =>
 /**
  * Where each entry's row is now (entry id → `path:line`, 1-based like `ref`). Lines move, so rows are found by title words in the
  * same file, with both sides run through the same redaction and escaping. A cut title matches by prefix; the row nearest the stored line breaks ties.
- * Entries whose row is gone are left out.
+ * Entries whose row is gone, or whose `ref` is missing or not a task file (hand-edited), are left out; one bad entry never fails the rest.
  * @req FR:agent-inbox/inbox.rows
  */
 export async function currentRows(ctx: LifecycleContext, entries: Pick<InboxEntry, 'id' | 'ref' | 'task'>[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const byPath = new Map<string, typeof entries>();
   for (const e of entries) {
-    const path = e.ref.replace(/:\d+$/, '');
-    byPath.set(path, [...(byPath.get(path) ?? []), e]);
+    const m = /^(tasks\/[^:]+\.md):\d+$/.exec(e.ref ?? '');
+    if (m) byPath.set(m[1], [...(byPath.get(m[1]) ?? []), e]);
   }
   for (const [path, list] of byPath) {
-    const f = await readOrNull(ctx, path);
+    let f: { content: string } | null;
+    try { f = await readOrNull(ctx, path); } catch { continue; } // e.g. a hand-edited ref outside the task files
     if (!f) continue;
     const rows: { line: number; key: string }[] = [];
     const walk = (ts: Task[]) => { for (const t of ts) { rows.push({ line: t.line + 1, key: taskKey(field(taskTitle(t.text))) }); walk(t.children); } };

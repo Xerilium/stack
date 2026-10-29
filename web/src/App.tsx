@@ -82,7 +82,7 @@ export function App() {
     if (allOpen) secs.push({ id: 'all', title: 'All active', rows: more });
     return { sections: secs, hidden: more.length };
   }, [tasks, next, allOpen]);
-  const clockNow = useMemo(() => new Date(), [tasks]);
+  const clockNow = useMemo(() => new Date(), [tasks, saved]); // also refresh when the budget changes, so a value set after midnight counts for the new day
   const day = DEFAULT_DAY;
   // Kept with its date: a tab left open overnight must not keep yesterday's budget, and it works without storage.
   const budget = budgetOf(clockNow, day, saved && saved.date === dateKey(clockNow) ? saved.minutes : null);
