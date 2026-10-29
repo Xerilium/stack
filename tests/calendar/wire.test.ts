@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { calendarFixture, icsCalendar } from '../../src/cli/web';
+import { calendarFixture, calendarSource, icsCalendar } from '../../src/cli/web';
 import { ENV, setup } from '../host/helpers';
 
 // @req FR:day-inputs/api.wire
@@ -33,6 +33,27 @@ describe('STACK_CALENDAR_ICS', () => {
     } finally { spy.mockRestore(); }
     expect(() => icsCalendar('https://a.test/ok.ics http://b.test/secret.ics')).toThrow(/^Calendar feed 2 /);
     expect(() => icsCalendar('http://b.test/secret.ics')).not.toThrow(/secret/);
+  });
+
+  it('stack web: fixture, then Graph sign-in, then the feeds; none without any', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'cal-'));
+    const f = join(d, 'events.json');
+    const noGraph = join(d, 'no-token.json');
+    writeFileSync(f, JSON.stringify([{ id: 'a', subject: 'Fixture sync', start: '2026-10-28T15:00:00Z', end: '2026-10-28T15:30:00Z', allDay: false, showAs: 'busy', cancelled: false, online: false }]));
+    const spy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(ICS));
+    const R = ['2026-10-28T00:00:00Z', '2026-10-29T00:00:00Z'] as const;
+    try {
+      const fx = await calendarSource({ fixture: f, ics: 'https://a.test/secret.ics', cachePath: noGraph });
+      expect(fx.source).toBe('fixture');
+      expect((await fx.provider!.events(...R)).map((e) => e.subject)).toEqual(['Fixture sync']);
+      expect(spy).not.toHaveBeenCalled();
+      const lines: string[] = [];
+      const ics = await calendarSource({ ics: 'https://a.test/secret.ics', cachePath: noGraph, log: (l) => lines.push(l) });
+      expect(ics.source).toBe('ics');
+      expect((await ics.provider!.events(...R)).map((e) => e.subject)).toEqual(['Feed sync']);
+      expect(lines.join('\n')).not.toContain('secret');
+    } finally { spy.mockRestore(); }
+    expect((await calendarSource({ cachePath: noGraph })).source).toBe('none');
   });
 
   it('host: serves the feeds to the owner; never returns or logs the URL', async () => {

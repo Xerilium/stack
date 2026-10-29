@@ -1079,6 +1079,19 @@ test.describe('today view', () => {
     await shot(page, 'today-schedule-late', info);
   });
 
+  // @req FR:home/day.asleep
+  test('after bed the plan is the next waking day, from wake', async ({ page }) => {
+    const at = (h: number, m = 0, plus = 0) => { const d = new Date(); d.setDate(d.getDate() + plus); d.setHours(h, m, 0, 0); return d; };
+    await page.clock.install({ time: at(3) });
+    const m = await mockApi(page, { tasks: day() });
+    const d0 = at(0);
+    m.schedule = { timezone: 'UTC', date: `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`, wake: at(8).toISOString(), bed: at(2, 0, 1).toISOString(), asleep: true, blocks: [] };
+    await page.goto('/#/today');
+    await page.clock.resume();
+    await expect(page.locator('.t-date')).toContainText('Today from 8:00a');
+    await expect(page.locator('[data-testid="plan"] .block').first().locator('.when')).toContainText('8:00a');
+  });
+
   test('a calendar error is a quiet note; no calendar changes nothing', async ({ page }) => {
     await page.clock.install({ time: tenAm() });
     const m = await mockApi(page, { tasks: day() });

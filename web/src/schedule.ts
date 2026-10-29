@@ -1,4 +1,5 @@
 import { DEFAULT_DAY, type Day, type DayBlock } from './plan';
+import { wallMinutes } from './wall';
 
 /** `GET /schedule`: the waking day, instants in UTC. @req FR:home/day.frame */
 export interface DaySched {
@@ -7,12 +8,7 @@ export interface DaySched {
 }
 
 const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-/** Wall-clock minutes of `at` after local midnight `origin`; past 24:00 on later dates (DST days keep their clock times). */
-export function wallMinutes(at: Date, origin: Date): number {
-  const days = Math.round((midnight(at).getTime() - midnight(origin).getTime()) / 864e5);
-  return days * 1440 + at.getHours() * 60 + at.getMinutes();
-}
+export { wallMinutes };
 
 const originOf = (s: DaySched) => { const [y, m, d] = s.date.split('-').map(Number); return new Date(y, m - 1, d); };
 
@@ -32,9 +28,9 @@ export function calendarRange(s: DaySched | null, now: Date): { from: string; to
   return { from: d.toISOString(), to: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).toISOString() };
 }
 
-/** True once `now` has left the day (past bed, or before wake on a day you are awake). @req FR:home/day.refresh */
+/** True once the answer is out of date: past bed, before wake on a day you are awake, or past wake on a day you were asleep. @req FR:home/day.refresh */
 export function needsRefresh(s: DaySched | null, now: Date): boolean {
   if (!s) return false;
   const t = now.getTime();
-  return t >= Date.parse(s.bed) || (!s.asleep && t < Date.parse(s.wake));
+  return t >= Date.parse(s.bed) || (s.asleep ? t >= Date.parse(s.wake) : t < Date.parse(s.wake));
 }

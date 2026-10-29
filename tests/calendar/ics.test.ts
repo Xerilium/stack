@@ -202,6 +202,27 @@ describe('createIcsCalendar', () => {
     expect(err?.message).not.toContain('.test');
   });
 
+  it('remembers a failure for ttlMs and keeps serving the last good copy', async () => {
+    let t = 0, up = true;
+    const f = fake({ 'https://a.test/x.ics': () => (up ? ok(feed('x', '10')) : new Response('down', { status: 503 })), 'https://b.test/y.ics': () => new Response('down', { status: 503 }) });
+    const c = createIcsCalendar({ urls: ['https://a.test/x.ics', 'https://b.test/y.ics'], fetch: f.fetch, now: () => t, ttlMs: 1000 });
+    expect((await c.events(FROM, TO)).map((e) => e.subject)).toEqual(['x']);
+    t = 500;
+    await c.events(FROM, TO);
+    expect(f.calls.map((x) => x.url)).toEqual(['https://a.test/x.ics', 'https://b.test/y.ics']); // the failed feed is not tried again yet
+    up = false; t = 1000;
+    expect((await c.events(FROM, TO)).map((e) => e.subject)).toEqual(['x']); // stale copy
+    expect(f.calls).toHaveLength(4);
+  });
+
+  it('never follows a redirect to a loopback, private, or link-local host', async () => {
+    for (const where of ['https://127.0.0.1/x.ics', 'https://localhost/x.ics', 'https://10.1.2.3/x.ics', 'https://169.254.169.254/x.ics', 'https://[::1]/x.ics', 'https://intranet/x.ics', 'https://box.local/x.ics']) {
+      const f = fake({ 'https://a.test/x.ics': () => new Response(null, { status: 302, headers: { location: where } }) });
+      await expect(createIcsCalendar({ urls: ['https://a.test/x.ics'], fetch: f.fetch }).events(FROM, TO)).rejects.toThrow('redirect');
+      expect(f.calls).toHaveLength(1);
+    }
+  });
+
   it('refuses bodies over 5 MB, declared or streamed', async () => {
     const mb = new Uint8Array(1024 * 1024).fill(65);
     const stream = () => new ReadableStream<Uint8Array>({ start(ctl) { for (let i = 0; i < 6; i++) ctl.enqueue(mb); ctl.close(); } });

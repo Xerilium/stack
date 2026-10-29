@@ -1278,7 +1278,7 @@ paths:
           $ref: "#/components/responses/Error"
   /schedule:
     get:
-      summary: The waking day (wake, bed, time blocks) that contains an instant, from the time blocks in stack.json
+      summary: "The waking day (wake, bed, time blocks) that contains an instant, from the time blocks in stack.json. Owner session only: 403 for tokens"
       operationId: getSchedule
       parameters:
         - name: at

@@ -106,4 +106,25 @@ describe('daySchedule', () => {
     const sun = daySchedule(michael, new Date('2026-11-01T20:00:00Z')); // Sun 12:00 PST
     expect(sun).toMatchObject({ date: '2026-11-01', wake: '2026-11-01T16:00:00.000Z', bed: '2026-11-02T10:00:00.000Z' });
   });
+
+  // @req FR:schedule/profile.wake
+  it('a day with no sleep for over a day after wake ends 16 hours after wake', () => {
+    const c = parseConfig({ timezone: 'UTC', timeBlocks: [b('Sleep', ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], '23:00', '07:00', '😴')] });
+    const fri = daySchedule(c, new Date('2026-10-30T12:00:00Z')); // Fri
+    expect(fri).toMatchObject({ date: '2026-10-30', wake: '2026-10-30T07:00:00.000Z', bed: '2026-10-30T23:00:00.000Z' });
+  });
+
+  // @req FR:schedule/profile.wake
+  it('a nap neither ends nor starts the day; it comes back as personal time', () => {
+    const c = parseConfig({ timezone: 'UTC', timeBlocks: [b('Sleep', ALL, '23:00', '07:00', '😴'), b('Nap', ALL, '13:00', '13:30', '😴')] });
+    const d = daySchedule(c, new Date('2026-10-28T10:00:00Z'));
+    expect(d).toMatchObject({ date: '2026-10-28', wake: '2026-10-28T07:00:00.000Z', bed: '2026-10-28T23:00:00.000Z', asleep: false });
+    expect(d.blocks).toEqual([{ name: 'Nap', emoji: '😴', kind: 'personal', start: '2026-10-28T13:00:00.000Z', end: '2026-10-28T13:30:00.000Z' }]);
+  });
+
+  // @req FR:schedule/profile.dst
+  it('on the spring-forward night a 02:00 bed is 03:00 PDT, not an hour early', () => {
+    const sat = daySchedule(michael, new Date('2026-03-08T07:30:00Z')); // Sat Mar 7 23:30 PST
+    expect(sat).toMatchObject({ date: '2026-03-07', bed: '2026-03-08T10:00:00.000Z' }); // 03:00 PDT
+  });
 });

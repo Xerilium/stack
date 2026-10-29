@@ -137,7 +137,14 @@ const INBOX_BODY = {
   required: ['ref', 'text'],
 };
 const CAL_Q: Record<string, Spec> = { from: { t: 'str', max: 40 }, to: { t: 'str', max: 40 } };
-const ISO_INSTANT = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/;
+const ISO_INSTANT = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)(?::(\d\d)(?:\.\d{1,3})?)?(?:Z|[+-](\d\d):(\d\d))$/;
+/** An ISO date-time with an offset that names a real moment (no month 13, Feb 30, or 25:00). */
+const isInstant = (v: string | null): v is string => {
+  const m = typeof v === 'string' ? ISO_INSTANT.exec(v) : null;
+  if (!m) return false;
+  const [y, mo, d, h, mi, s = '0', oh = '0', om = '0'] = m.slice(1);
+  return +mo >= 1 && +mo <= 12 && +d >= 1 && +d <= new Date(Date.UTC(+y, +mo, 0)).getUTCDate() && +h < 24 && +mi < 60 && +s < 60 && +oh < 24 && +om < 60;
+};
 const SCHEDULE_Q: Record<string, Spec> = { at: { t: 'str', max: 40 } };
 const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES } };
 const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true } } satisfies Record<string, Spec>, required: ['id'] };
@@ -559,8 +566,7 @@ export const ROUTES: Route[] = [
     async run(c) {
       const q = readQuery(c.url, Object.keys(CAL_Q));
       const from = Date.parse(q.get('from') ?? ''), to = Date.parse(q.get('to') ?? '');
-      const iso = (v: string | null) => typeof v === 'string' && ISO_INSTANT.test(v);
-      if (!iso(q.get('from')) || !iso(q.get('to')) || !(from < to) || to - from > 7 * 864e5) throw invalid([{ field: 'from', message: 'from and to must be ISO date-times, from before to, at most 7 days apart' }]);
+      if (!isInstant(q.get('from')) || !isInstant(q.get('to')) || !(from < to) || to - from > 7 * 864e5) throw invalid([{ field: 'from', message: 'from and to must be ISO date-times, from before to, at most 7 days apart' }]);
       // Calendars hold personal data: the owner only.
       if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can read the calendar');
       if (!c.deps.calendar) return json(200, { configured: false, items: [] });
@@ -578,7 +584,9 @@ export const ROUTES: Route[] = [
     async run(c) {
       const q = readQuery(c.url, Object.keys(SCHEDULE_Q));
       const raw = q.get('at');
-      if (raw !== null && !ISO_INSTANT.test(raw)) throw invalid([{ field: 'at', message: 'at must be an ISO date-time' }]);
+      if (raw !== null && !isInstant(raw)) throw invalid([{ field: 'at', message: 'at must be an ISO date-time' }]);
+      // Sleep times and personal blocks are personal data: the owner only.
+      if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can read the schedule');
       const config = c.deps.config ?? getDefaults();
       const at = raw === null ? (c.deps.now ?? (() => new Date()))() : new Date(raw);
       return json(200, { timezone: config.timezone, ...daySchedule(config, at) });

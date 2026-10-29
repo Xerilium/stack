@@ -2,6 +2,7 @@
  * Meetings and the email block for the day plan. Pure; times are minutes after local midnight.
  * @req FR:web-app/today.meetings @req FR:web-app/today.mail
  */
+import { wallMinutes } from './wall';
 export interface CalEvent {
   id: string; subject: string; start: string; end: string; allDay: boolean;
   showAs: 'free' | 'tentative' | 'busy' | 'oof' | 'workingElsewhere' | 'unknown'; cancelled: boolean; online: boolean; organizer?: string; webLink?: string; joinUrl?: string;
@@ -17,8 +18,7 @@ export function busyIntervals(events: CalEvent[], day: Date, days = 1): Busy[] {
   const from = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
   const to = new Date(day.getFullYear(), day.getMonth(), day.getDate() + days).getTime();
   // Wall-clock minutes (what the plan uses), so a DST day does not shift meetings by an hour; later dates count past 24:00.
-  const wall = (ms: number) => { const d = new Date(ms); return Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - from) / 864e5) * DAY_MIN + d.getHours() * 60 + d.getMinutes(); };
-  const clockMin = (ms: number) => (ms <= from ? 0 : ms >= to ? days * DAY_MIN - 1 : wall(ms));
+  const clockMin = (ms: number) => (ms <= from ? 0 : ms >= to ? days * DAY_MIN - 1 : wallMinutes(new Date(ms), day));
   const raw = events
     .filter((e) => BLOCKING.has(e.showAs) && !e.cancelled && !e.allDay)
     .map((e) => ({ e, start: clockMin(Date.parse(e.start)), end: clockMin(Date.parse(e.end)) }))

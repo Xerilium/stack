@@ -218,6 +218,15 @@ async function readCapped(res: Response): Promise<string> {
   return new TextDecoder('utf-8').decode(all);
 }
 
+/** Loopback, private, and link-local names and literals: a redirect never goes there. */
+function privateHost(host: string): boolean {
+  const h = host.replace(/^\[|\]$/g, '').toLowerCase();
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') || !h.includes('.') && !h.includes(':')) return true;
+  const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(h);
+  if (v4) { const [a, b] = [+v4[1], +v4[2]]; return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127); }
+  return h.includes(':') && (h === '::1' || h === '::' || /^f[cd]/.test(h) || /^fe[89ab]/.test(h) || h.startsWith('::ffff:'));
+}
+
 /** One GET: no credentials, 10 s for the whole exchange, https redirects only, 5 MB at most. */
 async function download(fetchFn: typeof globalThis.fetch, url: string): Promise<string> {
   const ctl = new AbortController();
@@ -230,7 +239,7 @@ async function download(fetchFn: typeof globalThis.fetch, url: string): Promise<
         await res.body?.cancel();
         const loc = res.headers.get('location');
         const next = loc ? new URL(loc, at) : null;
-        if (!next || next.protocol !== 'https:' || next.username || next.password || hop >= MAX_REDIRECTS) throw new IcsError('refused redirect');
+        if (!next || next.protocol !== 'https:' || next.username || next.password || privateHost(next.hostname) || hop >= MAX_REDIRECTS) throw new IcsError('refused redirect');
         at = next.href;
         continue;
       }
@@ -258,13 +267,21 @@ export function createIcsCalendar(o: IcsOptions): CalendarProvider {
   const fetchFn = o.fetch ?? globalThis.fetch;
   const ttl = o.ttlMs ?? 300_000;
   const now = o.now ?? Date.now;
-  const cache = new Map<string, { at: number; text: string }>();
+  // A failed fetch is remembered for the same ttl (no 10 s wait on every call) and the last good copy keeps serving.
+  const cache = new Map<string, { at: number; text?: string; error?: IcsError }>();
   const read = async (url: string) => {
     const hit = cache.get(url);
-    if (hit && now() - hit.at < ttl) return hit.text;
-    const text = await download(fetchFn, url);
-    cache.set(url, { at: now(), text });
-    return text;
+    if (hit && now() - hit.at < ttl) { if (hit.text !== undefined) return hit.text; throw hit.error!; }
+    try {
+      const text = await download(fetchFn, url);
+      cache.set(url, { at: now(), text });
+      return text;
+    } catch (e) {
+      const error = e instanceof IcsError ? e : new IcsError('error');
+      cache.set(url, { at: now(), ...(hit?.text !== undefined ? { text: hit.text } : { error }) });
+      if (hit?.text !== undefined) return hit.text;
+      throw error;
+    }
   };
   return {
     async events(from, to) {

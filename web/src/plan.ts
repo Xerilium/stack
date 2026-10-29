@@ -2,6 +2,7 @@ import { actionable, children, dueDays, isActive, isMessage, rankNow } from './n
 import { effortMinutes, parseRow } from './row';
 import type { Task } from './types';
 import { busyWithin, emailMinutes, mergeSpans, type Busy } from './meetings';
+import { wallMinutes } from './wall';
 
 /** Day plan and decisions. Pure; the views only draw it. @req FR:web-app/today.plan @req FR:web-app/today.fit @req FR:web-app/today.needs */
 /** A block of the schedule, in day minutes. @req FR:home/day.personal */
@@ -59,12 +60,7 @@ export function atRiskTask(t: Task, now: Date): boolean {
 export const planStart = (now: Date, day: Day = DEFAULT_DAY) => Math.max(day.start, round15(nowMinutes(now, day)));
 
 /** `now` in the day's minutes. */
-export function nowMinutes(now: Date, day: Day = DEFAULT_DAY): number {
-  if (!day.origin) return now.getHours() * 60 + now.getMinutes();
-  const o = day.origin;
-  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(o.getFullYear(), o.getMonth(), o.getDate()).getTime()) / 864e5);
-  return days * 1440 + now.getHours() * 60 + now.getMinutes();
-}
+export const nowMinutes = (now: Date, day: Day = DEFAULT_DAY): number => wallMinutes(now, day.origin ?? now);
 
 const VS = /\uFE0F/g;
 /** Personal blocks a task may not use: all of them, except those whose emoji the row carries. @req FR:home/day.personal */

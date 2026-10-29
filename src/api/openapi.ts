@@ -143,7 +143,7 @@ const DOCS: Record<string, RouteDoc> = {
     }),
   },
   'schedule.get': {
-    operationId: 'getSchedule', summary: 'The waking day (wake, bed, time blocks) that contains an instant, from the time blocks in stack.json',
+    operationId: 'getSchedule', summary: 'The waking day (wake, bed, time blocks) that contains an instant, from the time blocks in stack.json. Owner session only: 403 for tokens',
     desc: { at: 'ISO date-time; default now' },
     responses: ok('Day', {
       type: 'object',

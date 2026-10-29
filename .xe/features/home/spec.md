@@ -22,8 +22,8 @@ The owner's first real use: at 11:12 PM the plan said the day ended at 11:15 PM;
 - **FR:day.personal** (P1): Personal blocks are not task time: a task is planned inside a personal block only when its row carries that block's emoji (`🏠 Mow the lawn` can go in Family time). Sleep is never planned. Personal blocks show on the day bar like meetings, in their own muted style
 - **FR:day.available** (P1): The default Available is the focus time left: from the plan start to bed, minus personal blocks and busy meetings (overlaps counted once). `−`/`+` and `[`/`]` still adjust it for today
 - **FR:day.calendar** (P1): Today asks `GET /calendar` for the waking day (`wake` to `bed`), so meetings after midnight are on the plan, and meetings outside the day are not
-- **FR:day.asleep** (P2): When the schedule says the owner is asleep, the plan shows the next waking day from wake, and the header says `Tomorrow from 8:00a`
-- **FR:day.refresh** (P2): The schedule is fetched again when the current time passes bed, so a tab left open overnight moves to the new day
+- **FR:day.asleep** (P2): When the schedule says the owner is asleep, the plan shows the next waking day from wake, and the header says `Tomorrow from 8:00a` (`Today from 8:00a` after midnight, when that day is today's date)
+- **FR:day.refresh** (P2): The schedule is fetched again when the current time passes bed, or passes wake after an asleep answer, so a tab left open overnight moves to the new day
 
 ## Dependencies
 

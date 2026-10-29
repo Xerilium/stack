@@ -91,5 +91,8 @@ describe('refresh', () => {
     expect(needsRefresh(wed, L(28, 23))).toBe(false);
     expect(needsRefresh(wed, L(29, 2, 1))).toBe(true);
     expect(needsRefresh(null, L(28, 23))).toBe(false);
+    const asleep: DaySched = { ...wed, date: '2026-10-29', wake: iso(29, 8), bed: iso(30, 2), asleep: true };
+    expect(needsRefresh(asleep, L(29, 7, 59))).toBe(false);
+    expect(needsRefresh(asleep, L(29, 8))).toBe(true);
   });
 });
