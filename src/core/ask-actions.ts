@@ -4,6 +4,7 @@
  */
 import { completeTask, EFFORT, IMPACT, LifecycleError, PRIORITY, resumeTask, setProperties, skipTask, startTask, STATUS, suspendTask, type LifecycleContext, type LifecycleResult, type TaskProps, type TaskRef } from './lifecycle';
 import { ConflictError, NotFoundError } from './storage';
+import { rowKey } from './inbox';
 
 export type Action =
   | { kind: 'set'; props: TaskProps }
@@ -79,8 +80,10 @@ export async function readRow(ctx: LifecycleContext, ref: TaskRef): Promise<{ li
   const lines = f.content.split('\n');
   let line = ref.line;
   let row = rowAt(lines, line);
-  if (ref.text !== undefined && (!row || row[3].trim() !== ref.text.trim())) {
-    const hits = lines.map((_, k) => k).filter((k) => rowAt(lines, k)?.[3].trim() === ref.text!.trim());
+  // same words = same row: marks, dates and links may have changed since the ask was written (an earlier answer may have set them)
+  if (ref.text !== undefined && (!row || rowKey(row[3]) !== rowKey(ref.text))) {
+    const want = rowKey(ref.text);
+    const hits = lines.map((_, k) => k).filter((k) => { const r = rowAt(lines, k); return !!r && rowKey(r[3]) === want; });
     if (hits.length !== 1) throw new ConflictError(`Row changed since the ask was written: ${ref.path}:${ref.line}`);
     line = hits[0]; row = rowAt(lines, line);
   }
@@ -94,7 +97,7 @@ const cr = (l: string) => (l.endsWith('\r') ? '\r' : '');
 export async function applyAction(ctx: LifecycleContext, at: TaskRef, a: Action): Promise<LifecycleResult> {
   try {
     const found = await readRow(ctx, at);
-    const ref: TaskRef = { path: at.path, line: found.line, text: at.text };
+    const ref: TaskRef = { path: at.path, line: found.line, text: found.row[3] }; // the row as it is now; the lifecycle guards against a change in between
     switch (a.kind) {
       case 'set': return await setProperties(ctx, ref, a.props);
       case 'suspend': return await suspendTask(ctx, ref, { days: a.days, hours: a.hours });

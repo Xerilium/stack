@@ -94,7 +94,14 @@ describe('apply on answer', () => {
     const file = (await storage.read('tasks/finance.md')).content;
     await storage.write('tasks/finance.md', file.replace('Reply to the insurer', 'Reply to the insurer today'));
     await expect(answerAsk(ctx, 'n3', { answer: 'go' })).rejects.toThrow(ConflictError);
-    expect((await askOf(storage, 'n3')).state).toBe('open');
+    const n3 = await askOf(storage, 'n3');
+    expect(n3.state).toBe('open');
+    expect(n3.thread.at(-1)).toMatch(/failed: skip \(/);
+    // a second ask on a row whose marks changed since it was put still finds it (same words)
+    await putAsk(ctx, 'n4', { ...base, ask: 'Also 1 hour?', kind: 'approve', ref: 'finance:6', apply: 'set effort=🟡' }, 'cos');
+    await answerAsk(ctx, 'n2', { answer: 'retract' }); await answerAsk(ctx, 'n2', { answer: 'go' }); // priority set again → no change, still fine
+    await answerAsk(ctx, 'n4', { answer: 'go' });
+    expect(await row(storage, 7)).toBe('- [ ] 🚨 Renew the car registration 🟡');
   });
   it('an answer to a question with a ref lands under the row as a note', async () => {
     const { storage, ctx } = mk(); await seed(storage);

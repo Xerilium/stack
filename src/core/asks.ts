@@ -287,18 +287,21 @@ export async function answerAsk(ctx: LifecycleContext, key: string, input: Answe
   }
   const result = await recordAnswer(ctx, key, input, text, now, nowD);
   if (action && before) {
-    try {
-      const r = await applyAction(ctx, { ...parseTaskRef(before.ask.ref!), text: before.ask.refText }, action);
-      const applied = `${describeAction(action)} → ${r.after ?? r.before ?? ''}`.trim();
-      await mutate<void>(ctx, key, (cur) => (cur ? { next: { ...cur.ask, thread: [...cur.ask.thread, `- ${now} applied: ${applied}`] }, message: `Ask applied: ${key}`, result: undefined } : { skip: undefined }));
-    } catch (e) {
+    let r;
+    try { r = await applyAction(ctx, { ...parseTaskRef(before.ask.ref!), text: before.ask.refText }, action); }
+    catch (e) {
+      // whatever state the agent left it in, the ask is open again with the reason; the owner's reply line goes too, so a retry writes once
+      const why = e instanceof Error ? e.message : 'failed';
       await mutate<void>(ctx, key, (cur) => {
-        if (!cur || cur.ask.state !== 'answered') return { skip: undefined };
-        const a = { ...cur.ask }; a.state = 'open'; delete a.answer; delete a.text; delete a.answered; a.updated = now;
+        if (!cur) return { skip: undefined };
+        const a = { ...cur.ask }; a.state = 'open'; delete a.answer; delete a.text; delete a.answered; delete a.outcome; delete a.handled; a.updated = now;
+        a.thread = [...a.thread.filter((l) => l !== `- ${now} you: ${text}`), `- ${now} failed: ${describeAction(action!)} (${why})`];
         return { next: a, message: `Ask reopened (action failed): ${key}`, result: undefined };
       });
       throw e;
     }
+    const applied = r.changed ? `${describeAction(action)} → ${r.after ?? r.before ?? ''}`.trim() : `${describeAction(action)} (${r.message ?? 'no change'})`;
+    await mutate<void>(ctx, key, (cur) => (cur ? { next: { ...cur.ask, thread: [...cur.ask.thread, `- ${now} applied: ${applied}`] }, message: `Ask applied: ${key}`, result: undefined } : { skip: undefined }));
   }
   return result;
 }

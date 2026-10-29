@@ -77,4 +77,4 @@ stack asks put tri-3 --flow triage-oct29 --seq 3 --kind approve --ask "Archive t
 - `--ref project:line` is the row as the api names it (`GET /tasks` refs; the line is 0-based, so the row on line 5 of the file is `:4`). It must exist when you put the ask; Stack remembers the row's text, finds the row again if a note above it moved it, and refuses the action (`409`, ask reopened) if the text changed.
 - `--apply` runs on `go`; `--applies` is one action per option (`-` for none). Actions: `set priority=🚨 effort=🟡`, `due Nov 3`, `suspend 7d` / `suspend 2h`, `skip`, `complete`, `start`, `resume`, `note <text>`.
 - A `kind answer` question with a `--ref` writes the owner's text under that row as `> 🙋 <date>: <text>`.
-- The thread records `applied: <action> → <row after>`; read it with `stack asks list --state answered --json`.
+- The thread records `applied: <action> → <row after>` once the action landed, or `failed: <action> (<reason>)` and the ask is open again. Act on `applied:`; an `answered` ask without it is still in flight or has failed, so do not `handle` it yet. Read it with `stack asks list --state answered --json`.
