@@ -180,7 +180,7 @@ export function App() {
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
-    if (Notification.permission === 'denied') { toast(blockedHelp(), 'err'); return; }
+    if (Notification.permission === 'denied') { setPerm('denied'); toast(blockedHelp(), 'err'); return; }
     const p = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
     setPerm(p);
     if (p === 'granted') { saveNotify(store(), true); setNotifyOn(true); toast('Notifications on'); }
@@ -320,6 +320,8 @@ export function App() {
     else if (s.answer === 'defer' && s.until) ok = await run(() => api.action('suspend', t.ref, { hours: Math.max(1, Math.round((new Date(s.until!).getTime() - Date.now()) / 3600_000)) }), () => '');
     else ok = await sendReply(t, s.text ?? '', 'reply', '');
     if (!ok) throw Object.assign(new Error('Not sent'), { shown: true }); // `run` already toasted the reason
+    // The row leaves Needs you only once the inbox shows the reply: wait for it, so it never pops back.
+    try { setInbox(await api.inbox()); } catch { /* the next refresh catches up */ }
   };
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
 

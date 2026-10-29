@@ -147,7 +147,7 @@ export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; 
 
 export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify?: NotifyCtl; offline?: boolean }) {
   const { items, cursor } = asks;
-  const unreachable = asks.phase === 'error' || asks.error !== '';
+  const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
   const { shown, more } = splitTop(items, TOP, asks.showAll);

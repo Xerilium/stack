@@ -42,7 +42,6 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
 .main > * { max-width: var(--measure); }
 .tab-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .badge { font-size: 11px; font-weight: 650; line-height: 1; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 3px 6px; min-width: 18px; text-align: center; }
-.tab.on .badge { background: var(--accent); }
 
 .banner { background: var(--accent-soft); color: var(--accent); border-radius: 6px; padding: 4px 10px; margin-bottom: 18px; font-size: 11.5px; }
 .banner.live { background: #fde8e6; color: #b42318; }
@@ -334,7 +333,7 @@ a.tag.link:hover { background: var(--accent-soft); }
 
 /* Today round 2 (designer critique) */
 .main:has(.today) { --measure: 1120px; }
-.today { max-width: none; }
+.today { max-width: var(--measure); }
 .t-head h1 { font-size: 30px; letter-spacing: -.03em; margin: 4px 0 8px; }
 .t-sub .jump { background: none; border: 0; padding: 0; color: var(--ink2); font: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
 .t-sub .jump:hover { color: var(--accent); text-decoration-color: var(--accent); }
@@ -487,7 +486,6 @@ a.tag.link:hover { background: var(--accent-soft); }
 .notify-btn { margin-left: auto; background: none; border: 1px solid var(--line); border-radius: 99px; padding: 4px 12px; font-size: 12.5px; color: var(--ink2); min-height: 30px; }
 .notify-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .notify-btn.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
-.notify-btn:disabled { opacity: .7; cursor: default; }
 /* @req FR:web-shell/layout.standalone */
 @media (display-mode: standalone) {
   .main { padding-top: max(20px, env(safe-area-inset-top)); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }

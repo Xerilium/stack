@@ -33,6 +33,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const [latest, setLatest] = useState<string | undefined>();
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState('');
   const [status, setStatus] = useState<LiveStatus | 'connecting'>('connecting');
   const live = useRef<LiveHandle | null>(null);
   const [cursor, setCursorState] = useState<string | null>(null);
@@ -70,13 +71,14 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       prevKeys.current = next.map((i) => i.key);
       serverRef.current = next;
       setItems(next); setTotal(o.total - (o.items.length - next.length)); setSent(a.items); setSnoozed(s.items); setLatest(o.latest ?? a.latest); setNow(new Date());
-      setPhase('ready'); setError('');
+      setPhase('ready'); setError(''); setErrorCode('');
       if (gone.length) { setLeaving((l) => [...l, ...gone]); setTimeout(() => setLeaving((l) => l.filter((x) => !gone.includes(x))), LEAVE_MS); }
       if (added.length) onNewRef.current?.(next.filter((i) => added.includes(i.key)));
       if (added.length) { setFresh((f) => new Set([...f, ...added])); setTimeout(() => setFresh((f) => { const n = new Set(f); added.forEach((k) => n.delete(k)); return n; }), FRESH_MS); }
     } catch (e) {
       if (mine !== seq.current) return;
       setError(e instanceof Error ? e.message : 'Failed to load');
+      setErrorCode(e instanceof ApiFailure ? e.code : '');
       setPhase((p) => (p === 'ready' ? p : 'error'));
     }
   }, [api]);
@@ -186,7 +188,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   }, [api, load]);
 
   return {
-    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, status, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
+    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, errorCode, status, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, retry, answer, reply, defer, retract, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),
   };
