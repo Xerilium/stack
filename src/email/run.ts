@@ -78,8 +78,7 @@ async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<Tria
 export async function runTriage(d: RunDeps): Promise<{ cursor: string; summary: RunSummary }> {
   const { messages, cursor } = await d.provider.delta(d.cursor);
   const newest = new Map<string, Message>();
-  const byConv = new Map<string, Message[]>();
-  for (const m of [...messages].sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt))) { newest.set(m.conversationId, m); byConv.set(m.conversationId, [...(byConv.get(m.conversationId) ?? []), m]); }
+  for (const m of [...messages].sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt))) newest.set(m.conversationId, m);
   const summary = newSummary();
   const now = (d.ctx.now ?? (() => new Date()))();
   const h = d.hygiene;
@@ -87,12 +86,15 @@ export async function runTriage(d: RunDeps): Promise<{ cursor: string; summary: 
   for (const m of newest.values()) {
     const r = await triage(d, m, summary);
     await recordResult(d.ctx, r, { project: d.project });
-    // Older messages of a settled thread go with it, so the archive batch clears the whole thread.
-    if (s) for (const o of byConv.get(m.conversationId) ?? [m]) observe(s, o === m ? r : { ...r, message: o }, { now });
+    // Only the message that was triaged: a class never spreads to the rest of its thread.
+    if (s) observe(s, r, { now });
   }
   if (h && s) {
     await h.state.put(s);
-    if (h.actions) await applyApproved(d.ctx, { state: h.state, actions: h.actions, http: h.http, now });
+  }
+  // Without a way to act (observe mode) no batch or subscription ask is written: a go must be able to do something.
+  if (h && s && h.actions) {
+    await applyApproved(d.ctx, { state: h.state, actions: h.actions, http: h.http, now });
     const cur = await h.state.get();
     const pending = await writeHygieneAsks(d.ctx, cur, { now, judge: h.judge, archiveAfterHours: h.archiveAfterHours, project: d.project });
     await h.state.put(cur);

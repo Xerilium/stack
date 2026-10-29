@@ -48,7 +48,7 @@ export const MOVE_TARGETS = ['archive', 'junkemail'] as const;
 const hasOnly = (body: unknown, key: string) => !!body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 1 && key in body;
 
 /** `createGraphGuard()` allows reads, reply drafts and category tags; `mode` narrows it. @req FR:email-triage/safe.allowlist */
-export function createGraphGuard(opts: { mode?: WriteMode; approvedMoves?: ReadonlySet<string> } = {}): GraphGuard {
+export function createGraphGuard(opts: { mode?: WriteMode; approvedMoves?: ReadonlyMap<string, (typeof MOVE_TARGETS)[number]> } = {}): GraphGuard {
   const mode = opts.mode ?? 'drafts';
   const deny = (req: GraphRequest, why: string): never => { throw new GraphDenied(String(req.method), String(req.url), why); };
 
@@ -68,7 +68,7 @@ export function createGraphGuard(opts: { mode?: WriteMode; approvedMoves?: Reado
     const path = `/${segs.join('/')}`;
     // The one exception to the denied verbs: moving a message the owner approved in an answered ask, to Archive or Junk only. @req FR:email-inbox-zero/gate.guard
     const mv = MOVE.exec(path);
-    if (method === 'POST' && mv && mode === 'drafts' && opts.approvedMoves?.has(mv[1]) && hasOnly(req.body, 'destinationId') && (MOVE_TARGETS as readonly string[]).includes((req.body as { destinationId: unknown }).destinationId as string) && ![...u.searchParams.keys()].length) return;
+    if (method === 'POST' && mv && mode === 'drafts' && hasOnly(req.body, 'destinationId') && opts.approvedMoves?.get(mv[1]) === (req.body as { destinationId: unknown }).destinationId && ![...u.searchParams.keys()].length) return;
     if (segs.some((s) => DENY.some((d) => s.toLowerCase() === d || (s.toLowerCase() === `create${d}` && d !== 'reply')))) return deny(req, 'denied verb');
     for (const k of u.searchParams.keys()) if (!QUERY.has(k)) return deny(req, `query ${k}`);
 
