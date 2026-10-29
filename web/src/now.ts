@@ -68,9 +68,12 @@ export const DEFER: DeferChoice[] = [
 ];
 
 // ---- Now ranking (client side, for the lists under the focus task)
+// Mirrors the server's stack engine (src/core/scoring.ts) over HTTP-shaped rows; tests/parity/now-parity.test.ts keeps them in step.
 import { parseRow } from './row';
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+/** A year-less date up to this many days past is overdue; older means its next occurrence. */
+export const OVERDUE_WINDOW_DAYS = 60;
 /** Calendar days from `now` to a `Oct 23` / `Feb 1, 2027` date; null when it is not a plain date. */
 export function dueDays(due: string | undefined, now = new Date()): number | null {
   const m = due && /^([A-Za-z]{3})[a-z]*\s+(\d{1,2})(?:,\s*(\d{4}))?/.exec(due);
@@ -80,16 +83,21 @@ export function dueDays(due: string | undefined, now = new Date()): number | nul
   const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   const at = (y: number) => Math.round((Date.UTC(y, mo, Number(m[2])) - today) / 864e5);
   if (m[3]) return at(Number(m[3]));
-  return [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(at).reduce((b, d) => (Math.abs(d + 60) < Math.abs(b + 60) ? d : b));
+  return [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(at).find((d) => d >= -OVERDUE_WINDOW_DAYS)!;
 }
 export const HORIZON_DAYS = 14;
+const STALE_DAYS = 30;
+/** Due-soon tier: 3 overdue/today, 2 within 3 days, 1 within a week or stale (overdue more than 30 days), 0 undated or later. */
+export const dueTier = (d: number | null): number => (d === null ? 0 : d < -STALE_DAYS ? 1 : d <= 0 ? 3 : d <= 3 ? 2 : d <= 7 ? 1 : 0);
+/** Reply rows (`💬 …`) are messages to an agent, not work. */
+export const isMessage = (t: Task): boolean => /^\s*💬/u.test(t.text);
 const PRIO: Record<string, number> = { '🚨': 3, '‼️': 2, '🔺': 1, '🔻': -1 };
 const vsx = (s: string) => s.replace(/️/g, '');
 const PRIO_BY = new Map(Object.entries(PRIO).map(([k, v]) => [vsx(k), v]));
 
-/** A task you could act on now: not parked, blocked, started later, or due beyond the horizon. */
+/** A task you could act on now: not a reply, parked, blocked, started later, or due beyond the horizon. */
 export function actionable(t: Task, now = new Date()): boolean {
-  if (t.done) return false;
+  if (t.done || isMessage(t)) return false;
   const r = parseRow(t.text);
   if (r.suspend || (r.start && (dueDays(r.start, now) ?? 0) > 0)) return false;
   if (/🅿️?/u.test(t.text) || (r.status && vsx(r.status) === '⛔')) return false;
@@ -101,9 +109,7 @@ export function actionable(t: Task, now = new Date()): boolean {
 export function rankNow(tasks: Task[], now = new Date()): Task[] {
   const key = (t: Task) => {
     const r = parseRow(t.text);
-    const d = dueDays(r.due, now);
-    const due = d === null ? 0 : d < -30 ? 1 : d <= 0 ? 3 : d <= 3 ? 2 : d <= 7 ? 1 : 0;
-    return [due, r.status && vsx(r.status) === '🚧' ? 1 : 0, r.priority ? PRIO_BY.get(vsx(r.priority)) ?? 0 : 0];
+    return [dueTier(dueDays(r.due, now)), r.status && vsx(r.status) === '🚧' ? 1 : 0, r.priority ? PRIO_BY.get(vsx(r.priority)) ?? 0 : 0];
   };
   return tasks.map((t, i) => ({ t, i, k: key(t) }))
     .sort((a, b) => b.k[0] - a.k[0] || b.k[1] - a.k[1] || b.k[2] - a.k[2] || a.i - b.i).map((x) => x.t);

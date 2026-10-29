@@ -44,7 +44,7 @@ const DOCS: Record<string, RouteDoc> = {
   'tasks.get': { operationId: 'getTask', summary: 'Get one task', responses: ok('Task', ref('Task')) },
   'tasks.add': {
     operationId: 'addTask', summary: 'Add a task',
-    desc: { project: 'File base name, title, or alias', section: 'Default Active', text: 'One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy)' },
+    desc: { project: 'File base name, title, or alias', section: 'Default Active', text: 'One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy)', expect: 'Expected current parent row text; 409 conflict when the parent row differs (stale line number)' },
     responses: mutation('201'),
   },
   capture: {

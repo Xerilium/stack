@@ -35,12 +35,17 @@ describe('now ranking', () => {
     expect(dueDays('Oct 23', day)).toBe(0);
     expect(dueDays('Feb 1, 2027', day)).toBe(101);
     expect(dueDays('Mondays', day)).toBeNull();
+    expect(dueDays('Sep 1', day)).toBe(-52); // recent past: overdue
+    expect(dueDays('Mar 1', day)).toBe(129); // months ago: next occurrence, not stale-overdue
+    expect(dueDays('Dec 20', new Date(2027, 0, 5))).toBe(-16); // across the new year
   });
   it('drops parked, started-later, and far-future tasks', () => {
     expect(actionable(row('📅 Feb 1, 2027: Taxes'), day)).toBe(false);
     expect(actionable(row('⏰ Jan 7, 2027: Prep'), day)).toBe(false);
     expect(actionable(row('💤 Oct 24: Wait'), day)).toBe(false);
     expect(actionable(row('⛔️ Blocked'), day)).toBe(false);
+    expect(actionable(row('📅 Mar 1: Year-less, months out'), day)).toBe(false);
+    expect(actionable(row('💬 Go with the recommendation'), day)).toBe(false);
     expect(actionable(row('📅 Oct 30: Soon'), day)).toBe(true);
   });
   it('ranks due-soon, then in progress, then priority', () => {

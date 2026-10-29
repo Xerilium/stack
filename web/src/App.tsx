@@ -30,6 +30,14 @@ export function App() {
   const [loadError, setLoadError] = useState('');
   const [me, setMe] = useState('');
   const [local, setLocal] = useState(false);
+  // The day plan is "from now": re-plan every minute and when the tab comes back.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => { if (document.visibilityState !== 'hidden') setTick((n) => n + 1); };
+    const h = setInterval(bump, 60_000);
+    document.addEventListener('visibilitychange', bump);
+    return () => { clearInterval(h); document.removeEventListener('visibilitychange', bump); };
+  }, []);
   const [info, setInfo] = useState<{ mode: string; repo: string; branch: string } | null>(null);
   const [allOpen, setAllOpen] = useState(false);
   const [focusRef, setFocusRef] = useState<string | null>(null);
@@ -77,7 +85,7 @@ export function App() {
     if (allOpen) secs.push({ id: 'all', title: 'All active', rows: more });
     return { sections: secs, hidden: more.length };
   }, [tasks, next, allOpen]);
-  const clockNow = useMemo(() => new Date(), [tasks]);
+  const clockNow = useMemo(() => new Date(), [tasks, tick]);
   const day = DEFAULT_DAY;
   const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day), [tasks, next, clockNow, day]);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
@@ -219,7 +227,7 @@ export function App() {
     await run(() => api.action('suspend', refs[0], d.hours ? { hours: d.hours } : { days: d.days }), () => `Deferred: ${d.label.toLowerCase()}`);
   };
   const sendReply = async (task: Task, text: string, ok: string) => {
-    await run(() => api.add(task.project, `💬 ${text}`, task.ref), () => ok);
+    await run(() => api.add(task.project, `💬 ${text}`, task.ref, task.text), () => ok);
   };
   const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'Sent to the agent');
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };

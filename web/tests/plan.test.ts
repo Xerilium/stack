@@ -28,6 +28,10 @@ describe('day plan', () => {
     const c = planCandidates(rows, at(10), rows[2].ref).map((x) => x.text);
     expect(c).toEqual(['plain 🟢', '📅 Oct 23: due today 🟢']);
   });
+  it('never plans reply rows', () => {
+    const ask = t('🙋 Pick a color');
+    expect(planCandidates([ask, t('💬 Blue', 1)], at(10)).map((x) => x.text)).toEqual([]);
+  });
 });
 
 describe('decisions and agents', () => {
@@ -40,6 +44,15 @@ describe('decisions and agents', () => {
     const d = decisions(rows, at(10));
     expect(d).toHaveLength(1);
     expect(d[0]).toMatchObject({ task: { text: '🙋 Make final decision' }, context: { text: 'Decide whether to re-engage' }, recommendation: 'Let it drop.' });
+  });
+  it('ignores 🙋 rows in Backlog unless under a row in progress', () => {
+    const back = '📋 Backlog';
+    const rows = [t('Later', 0, [], 'a', false, back), t('🙋 Ask', 1, [], 'a', false, back), t('🚧 🪄 Doing', 0, [], 'a', false, back), t('🙋 Now ask', 1, [], 'a', false, back)];
+    expect(decisions(rows, at(10)).map((x) => x.task.text)).toEqual(['🙋 Now ask']);
+  });
+  it('waiting means a 🙋 in the agent\'s own subtree or a sibling, not an unrelated row', () => {
+    const rows = [t('🪄 Job A'), t('Other'), t('🙋 Unrelated', 1), t('🪄 Job B'), t('🙋 Mine', 1)];
+    expect(agentWork(rows, at(10)).map((x) => [x.task.text, x.state])).toEqual([['🪄 Job B', 'waiting'], ['🪄 Job A', 'queued']]);
   });
   it('shows agent rows as working, waiting on you, or queued', () => {
     const rows = [t('🚧 🤖 Fix build'), t('Parent'), t('🪄 Draft options', 1), t('🙋 Pick one', 1), t('🪄 Other job')];

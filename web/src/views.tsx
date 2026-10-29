@@ -151,7 +151,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
     d?.over === t.ref ? `drop-${d.half}` : '', d?.ref === t.ref ? 'dragging' : ''].filter(Boolean).join(' ');
   return (
     <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} onClick={() => p.onCursor(t.ref)}
-      onPointerDown={(e) => { if (e.pointerType !== 'touch') return; const h = setTimeout(() => p.onSelect(t.ref), 450); const off = () => { clearTimeout(h); window.removeEventListener('pointerup', off); window.removeEventListener('pointermove', off); }; window.addEventListener('pointerup', off); window.addEventListener('pointermove', off); }}>
+      onPointerDown={(e) => { if (e.pointerType !== 'touch') return; const h = setTimeout(() => p.onSelect(t.ref), 450); const ends = ['pointerup', 'pointermove', 'pointercancel', 'contextmenu', 'scroll'] as const; const off = () => { clearTimeout(h); for (const n of ends) window.removeEventListener(n, off, true); }; for (const n of ends) window.addEventListener(n, off, true); }}>
       <div class="line">
         {p.handles && <button type="button" class="handle" aria-label={`Drag ${r.title || 'task'} to reorder`} title="Drag to reorder (Shift+J/K)"
           onPointerDown={(e) => p.onDragStart(t.ref, e as unknown as PointerEvent)}
