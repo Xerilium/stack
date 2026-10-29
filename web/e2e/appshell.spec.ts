@@ -39,8 +39,6 @@ test.describe('fixed app shell', () => {
   test('focus mode and the capture dialog scroll inside themselves', async ({ page }) => {
     await mockApi(page, { tasks: many() });
     await page.goto('/#/list');
-    await page.locator('.row').first().locator('.title').dblclick();
-    await page.keyboard.press('Escape');
     await page.locator('.row').first().click();
     await page.keyboard.press('Enter');
     await expect(page.locator('.focus-mode')).toBeVisible();

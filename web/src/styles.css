@@ -662,7 +662,8 @@ button.expected:hover { background: var(--line); }
 body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: none; }
 .shell { height: 100dvh; min-height: 0; }
 .rail { position: static; height: 100dvh; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.main { height: 100dvh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-top: var(--sticky-h); }
+.main { height: 100dvh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.main:has(.rows > .group) { scroll-padding-top: var(--sticky-h); }
 .focus-mode { height: 100dvh; overscroll-behavior: contain; }
 .dialog, .drawer-body, .ask-detail, .cmds { overscroll-behavior: contain; }
 /* the section you are reading stays in view while its rows scroll */
@@ -681,6 +682,7 @@ body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: non
 /* the project name sticks too, so a section header always says which project it belongs to */
 .group { position: sticky; top: var(--inset-top); z-index: 4; background: var(--bg); margin: 0; padding: 16px 0 0; height: 40px; box-sizing: border-box; }
 .group:first-child { padding-top: 0; height: 24px; }
+.group > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .section { top: calc(var(--inset-top) + 40px); }
 .rows > .group:first-child + .section { top: calc(var(--inset-top) + 24px); }
 /* the offline banner is one line at the top of the content; it does not float over the stuck headers */
