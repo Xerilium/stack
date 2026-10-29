@@ -41,6 +41,7 @@ The triage, voice and inbox-zero modules are pure and injected. This feature wir
 ### FR:graph: Mailbox access
 
 - **FR:graph.details** (P1): For each message the rules or models will see, the runner reads `internetMessageHeaders`, `uniqueBody` and `isRead` with one guarded `GET /me/messages/{id}`. The body becomes plain text (tags dropped, entities decoded, line breaks kept), clipped to 4000 characters
+- **FR:graph.replies** (P1): Each pass first reads a Sent Items delta (its own cursor in the state; the first pass looks back the same 14 days). For every conversation the owner replied to, the open ask is handled as `resolved` (`FR:email-triage/ask.resolve`), and inbox messages in that conversation no newer than the reply are marked owner-answered, so they are skipped, not drafted
 - **FR:graph.read** (P1): Delta selects `isRead` too, so later passes see reads for the subscription ledger
 - **FR:graph.sent** (P1): Sent items are read with guarded `GET /me/mailFolders/sentitems/messages` pages (`$select` subject, body, recipients, sent time; `$top` 50; at most 4 pages)
 - **FR:graph.move** (P1): `MailActions.move` posts `{destinationId}` to `/me/messages/{id}/move` through a guard built for this pass with `approvedMoves` = the ids listed on the batch asks (`FR:email-inbox-zero/gate.guard`). Only in `drafts` mode

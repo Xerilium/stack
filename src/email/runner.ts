@@ -13,7 +13,7 @@ import { createClaudeJson, type ClaudeJson } from './llm';
 import { createClassifier, createDrafter, createJudge, newUsage } from './models';
 import { DEFAULT_RULES, type RulesConfig } from './rules';
 import { runTriage } from './run';
-import type { RunSummary } from './to-ask';
+import { resolveAsk, type RunSummary } from './to-ask';
 import type { Classifier, MailProvider, Message } from './types';
 import { loadVoice, voicePath } from './voice';
 
@@ -23,7 +23,7 @@ export const DEFAULT_MAX = 200;
 export const DEFAULT_SINCE_DAYS = 14;
 
 export type PassSummary = RunSummary & { modelCalls: number; costUsd: number; modelErrors: number };
-export interface RunnerState { version: 1; cursor?: string; hygiene: HygieneState; lastRun?: string; lastSummary?: PassSummary }
+export interface RunnerState { version: 1; cursor?: string; sentCursor?: string; hygiene: HygieneState; lastRun?: string; lastSummary?: PassSummary }
 
 const dir = (account: string, base?: string) => dirname(voicePath(account, base));
 export const statePath = (account: string, base?: string) => join(dir(account, base), 'state.json');
@@ -156,15 +156,23 @@ export async function runPass(o: PassOptions): Promise<PassSummary> {
     put: async (n) => { hygiene = n; if (!o.dryRun) writeState(sPath, { ...st, hygiene }); },
   };
   const moves = await approvedMoves(o.ctx, hygiene);
-  const since = st.cursor ? undefined : new Date(now.getTime() - (o.sinceDays ?? DEFAULT_SINCE_DAYS) * 86400_000).toISOString();
-  const provider = withDetails(createGraphMail({ transport: o.transport, ...(since ? { since } : {}) }), (id) => messageDetails({ transport: o.transport }, id), o.max ?? DEFAULT_MAX);
+  const lookback = new Date(now.getTime() - (o.sinceDays ?? DEFAULT_SINCE_DAYS) * 86400_000).toISOString();
+  // The owner answers from Outlook, so replies land in Sent Items: read them first, close their asks, and mark those threads answered. @req FR:email-runner/graph.replies
+  const sent = await createGraphMail({ transport: o.transport, folder: 'sentitems', ...(st.sentCursor ? {} : { since: lookback }) }).delta(st.sentCursor);
+  const answered = new Map<string, string>();
+  for (const m of sent.messages) if (!answered.has(m.conversationId) || answered.get(m.conversationId)! < m.receivedAt) answered.set(m.conversationId, m.receivedAt);
+  let resolved = 0;
+  if (!o.dryRun) for (const conv of answered.keys()) if (await resolveAsk(o.ctx, { conversationId: conv } as Message)) resolved++;
+  const inbox = createGraphMail({ transport: o.transport, ...(st.cursor ? {} : { since: lookback }) });
+  const marked: MailProvider = { ...inbox, async delta(c) { const r = await inbox.delta(c); return { ...r, messages: r.messages.map((m) => (answered.has(m.conversationId) && answered.get(m.conversationId)! >= m.receivedAt ? { ...m, threadLastFrom: o.account } : m)) }; } };
+  const provider = withDetails(marked, (id) => messageDetails({ transport: o.transport }, id), o.max ?? DEFAULT_MAX);
   const { cursor, summary } = await runTriage({
     ctx: o.ctx, provider, rules: o.rules ?? rulesFor(o.account, o.dataDir), project: o.project, cursor: st.cursor, voice,
     classifier: tolerant(createClassifier(llm, usage), () => { modelErrors++; }),
     ...(live ? { drafter: createDrafter(llm, voice, usage) } : {}),
     hygiene: { state, judge: createJudge(llm, usage), ...(live ? { actions: createGraphActions({ transport: o.transport, approvedMoves: moves }), ...(o.http ? { http: o.http } : {}) } : {}) },
   });
-  const lastSummary: PassSummary = { ...summary, modelCalls: usage.calls, costUsd: Math.round(usage.costUsd * 10000) / 10000, modelErrors };
-  if (!o.dryRun) writeState(sPath, { version: 1, cursor, hygiene, lastRun: now.toISOString(), lastSummary });
+  const lastSummary: PassSummary = { ...summary, resolved: summary.resolved + resolved, modelCalls: usage.calls, costUsd: Math.round(usage.costUsd * 10000) / 10000, modelErrors };
+  if (!o.dryRun) writeState(sPath, { version: 1, cursor, sentCursor: sent.cursor, hygiene, lastRun: now.toISOString(), lastSummary });
   return lastSummary;
 }

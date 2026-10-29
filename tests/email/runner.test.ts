@@ -4,7 +4,8 @@ import { join } from 'path';
 import { answerAsk, asksPath, parseAsk } from '../../src/core/asks';
 import { createGraphActions, createGraphMail, htmlToText, messageDetails, sentItems } from '../../src/email/graph-mail';
 import { GRAPH_BASE, GraphDenied, type GraphRequest } from '../../src/email/guard';
-import { createSafeHttp, isPrivateAddress } from '../../src/email/http';
+import { createServer, request as httpRequest } from 'http';
+import { createSafeHttp, isPrivateAddress, pinnedLookup } from '../../src/email/http';
 import { claudeArgs, createClaudeJson, MODELS, type ClaudeJson, type JsonCall } from '../../src/email/llm';
 import { createClassifier, createDrafter, createJudge, emailBlock, newUsage } from '../../src/email/models';
 import { lockPath, readState, rulesFor, rulesPath, runPass, statePath, takeLock, tolerant, withDetails } from '../../src/email/runner';
@@ -76,7 +77,9 @@ function fakeGraph(routes: Record<string, unknown>) {
   const seen: GraphRequest[] = [];
   const transport = async (req: GraphRequest) => {
     seen.push(req);
-    const key = Object.keys(routes).find((k) => req.url.includes(k));
+    // Longest match wins; a Sent Items delta with no route of its own is empty.
+    const key = Object.keys(routes).sort((x, y) => y.length - x.length).find((k) => req.url.includes(k));
+    if (req.url.includes('/sentitems/messages/delta') && !key?.includes('sentitems')) return { value: [], '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/sentitems/messages/delta?$deltatoken=s` };
     if (!key) throw new Error(`no route for ${req.method} ${req.url}`);
     return routes[key];
   };
@@ -119,7 +122,7 @@ describe('Graph mailbox access', () => {
 
 // @req FR:email-runner/http.safe
 describe('one-click HTTP', () => {
-  it.each(['10.1.2.3', '127.0.0.1', '169.254.1.1', '172.20.0.1', '192.168.1.1', '100.64.0.1', '0.0.0.0', '::1', '0:0:0:0:0:0:0:1', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1', '::ffff:7f00:1', '0:0:0:0:0:ffff:127.0.0.1', '64:ff9b::a00:1', 'not-an-ip'])('%s is private', (a) => expect(isPrivateAddress(a)).toBe(true));
+  it.each(['10.1.2.3', '127.0.0.1', '169.254.1.1', '172.20.0.1', '192.168.1.1', '100.64.0.1', '0.0.0.0', '::1', '0:0:0:0:0:0:0:1', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1', '::ffff:7f00:1', '0:0:0:0:0:ffff:127.0.0.1', '64:ff9b::a00:1', '::127.0.0.1', '::a00:1', '2002:7f00:1::', '2001::1', 'fec0::1', 'not-an-ip'])('%s is private', (a) => expect(isPrivateAddress(a)).toBe(true));
   it.each(['8.8.8.8', '2606:4700::1111'])('%s is public', (a) => expect(isPrivateAddress(a)).toBe(false));
   it('connects to the checked address only, port 443 only; refuses private hosts and IP literals; a redirect fails', async () => {
     const sent: { url: string; address: string }[] = [];
@@ -318,5 +321,46 @@ describe('stack email', () => {
       expect(r.text).toContain('<integer>900</integer>');
       expect(r.text).toContain(join(dataDir, 'email', 'sam@example.test', 'run.log'));
     } finally { delete process.env.STACK_CLAUDE_BIN; }
+  });
+});
+
+// @req FR:email-runner/graph.replies
+describe('owner replies from Outlook', () => {
+  it('closes the open ask and skips the thread when the owner replied (Sent Items delta)', async () => {
+    const dataDir = tmp();
+    const { storage, ctx } = mkCtx();
+    const c0 = { ...ctx, now: () => NOW };
+    const inboxQ = { id: 'q', conversationId: 'c-q', subject: 'Quarterly plan', from: { emailAddress: { name: 'Alex', address: 'alex@example.test' } }, receivedDateTime: '2026-10-26T10:00:00Z', bodyPreview: 'Can you review?' };
+    const link = (f: string, t: string) => `${GRAPH_BASE}/me/mailfolders/${f}/messages/delta?$deltatoken=${t}`;
+    const llm = fakeLlm((c) => ((c.schema as { required: string[] }).required[0] === 'reply' ? { reply: 'Hi Alex,\n\nYes.\n\nThanks,\nSam' } : { class: 'needs_reply', urgency: 1, confidence: 0.9, reason: 'q', injectionSuspected: false })).llm;
+    await runPass({ ctx: c0, account: 'sam@example.test', transport: fakeGraph({ 'inbox/messages/delta': { value: [inboxQ], '@odata.deltaLink': link('inbox', 'i1') }, '/me/messages/q?': { internetMessageHeaders: [], uniqueBody: { contentType: 'text', content: 'Can you review?' } }, '/createReply': { id: 'D', webLink: 'https://outlook.example.test/d' } }).transport, mode: 'drafts', llm, dataDir });
+    const key = (await storage.listAsks!()).map((p) => p.replace(/^.*\//, '').replace(/\.md$/, '')).find((k) => k.startsWith('mail-') && !k.startsWith('mail-archive'))!;
+    expect(parseAsk(key, (await storage.read(asksPath(key))).content).state).toBe('open');
+    const reply = { ...inboxQ, id: 'r1', from: { emailAddress: { address: 'sam@example.test' } }, receivedDateTime: '2026-10-27T10:00:00Z' };
+    const s = await runPass({ ctx: c0, account: 'sam@example.test', transport: fakeGraph({ 'sentitems/messages/delta': { value: [reply], '@odata.deltaLink': link('sentitems', 's2') }, 'inbox/messages/delta': { value: [], '@odata.deltaLink': link('inbox', 'i2') } }).transport, mode: 'drafts', llm, dataDir });
+    expect(s.resolved).toBe(1);
+    expect(parseAsk(key, (await storage.read(asksPath(key))).content)).toMatchObject({ state: 'done', outcome: 'resolved' });
+    expect(readState(statePath('sam@example.test', dataDir)).sentCursor).toContain('deltatoken=s2');
+  });
+});
+
+// @req FR:email-runner/http.safe
+describe('pinned lookup', () => {
+  it('answers both callback shapes Node uses, and a real request connects through it', async () => {
+    const a = { address: '127.0.0.1', family: 4 };
+    const seen: unknown[] = [];
+    pinnedLookup(a)('x', { all: true }, (_e, v) => seen.push(v));
+    pinnedLookup(a)('x', {}, (_e, v, fam) => seen.push([v, fam]));
+    expect(seen).toEqual([[a], ['127.0.0.1', 4]]);
+    const server = createServer((_q, r) => { r.statusCode = 200; r.end(); });
+    await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+    const port = (server.address() as { port: number }).port;
+    const status = await new Promise<number>((ok) => {
+      const req = httpRequest(`http://unsubscribe.example.test:${port}/u`, { method: 'POST', lookup: pinnedLookup(a) as never }, (res) => { res.resume(); ok(res.statusCode ?? 0); });
+      req.on('error', () => ok(0));
+      req.end('x');
+    });
+    server.close();
+    expect(status).toBe(200);
   });
 });

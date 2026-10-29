@@ -14,7 +14,8 @@ export const HTTP_TIMEOUT_MS = 10_000;
 const blocked4 = new BlockList();
 const blocked6 = new BlockList();
 for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 3]] as const) blocked4.addSubnet(net, bits, 'ipv4');
-for (const [net, bits] of [['::', 128], ['::1', 128], ['::ffff:0:0', 96], ['64:ff9b::', 96], ['100::', 64], ['2001:db8::', 32], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as const) blocked6.addSubnet(net, bits, 'ipv6');
+// ::/96 (IPv4-compatible, incl. :: and ::1), mapped, NAT64, discard, Teredo, documentation, 6to4, unique-local, link-local, site-local, multicast.
+for (const [net, bits] of [['::', 96], ['::ffff:0:0', 96], ['64:ff9b::', 96], ['100::', 64], ['2001::', 32], ['2001:db8::', 32], ['2002::', 16], ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8]] as const) blocked6.addSubnet(net, bits, 'ipv6');
 
 /** Private, loopback, link-local, CGNAT, multicast, unique-local, mapped, NAT64 and documentation ranges, in any written form. */
 export function isPrivateAddress(a: string): boolean {
@@ -35,10 +36,16 @@ const resolveAll: Resolve = (host) => lookup(host, { all: true, verbatim: true }
 /** POSTs to `url`, connecting only to `address`. Never follows redirects. */
 export type Send = (url: URL, address: { address: string; family: number }, body: string, headers: Record<string, string>, timeoutMs: number) => Promise<number>;
 
+type LookupCb = (e: null, a: string | { address: string; family: number }[], f?: number) => void;
+/** A `lookup` that only ever answers with the checked address, in both callback shapes Node uses (`all: true` with family auto-selection). */
+export const pinnedLookup = (address: { address: string; family: number }) => (_h: string, o: { all?: boolean } | number | undefined, cb: LookupCb): void => {
+  if (typeof o === 'object' && o?.all) cb(null, [address]); else cb(null, address.address, address.family);
+};
+
 const send: Send = (url, address, body, headers, timeoutMs) => new Promise((resolve) => {
   const req = request(url, {
     method: 'POST', headers: { ...headers, 'Content-Length': Buffer.byteLength(body) }, timeout: timeoutMs,
-    lookup: (_h, _o, cb) => (cb as (e: null, a: string, f: number) => void)(null, address.address, address.family),
+    lookup: pinnedLookup(address) as unknown as NonNullable<Parameters<typeof request>[1]>['lookup'],
   }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
   req.on('timeout', () => req.destroy());
   req.on('error', () => resolve(0));
