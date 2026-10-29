@@ -1,6 +1,6 @@
-/** @req FR:web-app/today.plan @req FR:web-app/today.needs @req FR:web-app/today.agents */
+/** @req FR:web-app/today.plan @req FR:web-app/today.needs */
 import { describe, expect, it } from 'vitest';
-import { agentWork, buildPlan, clock, decisions, DEFAULT_DAY, estimate, openLeaves, planCandidates, recommendationOf, span } from '../src/plan';
+import { buildPlan, clock, decisions, DEFAULT_DAY, estimate, openLeaves, planCandidates, recommendationOf, span } from '../src/plan';
 import type { Task } from '../src/types';
 
 let n = 0;
@@ -40,12 +40,6 @@ describe('decisions and agents', () => {
     const d = decisions(rows, at(10));
     expect(d).toHaveLength(1);
     expect(d[0]).toMatchObject({ task: { text: '🙋 Make final decision' }, context: { text: 'Decide whether to re-engage' }, recommendation: 'Let it drop.' });
-  });
-  it('shows agent rows as working, waiting on you, or queued', () => {
-    const rows = [t('🚧 🤖 Fix build'), t('Parent'), t('🪄 Draft options', 1), t('🙋 Pick one', 1), t('🪄 Other job')];
-    expect(agentWork(rows, at(10)).map((x) => [x.task.text, x.state])).toEqual([
-      ['🚧 🤖 Fix build', 'working'], ['🪄 Draft options', 'waiting'], ['🪄 Other job', 'queued'],
-    ]);
   });
 });
 

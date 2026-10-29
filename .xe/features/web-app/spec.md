@@ -26,7 +26,7 @@ Answer "what do I do next" in one glance and make every task edit a keystroke or
 - **FR:host.static** (P1): `web/` builds with Vite to `web/dist` (static files only). The bundle holds no task data and no secrets; the build env is never inlined. Data is fetched from `/api` after the page loads, which SWA serves only to authenticated users
 - **FR:host.swa** (P1): `web/public/staticwebapp.config.json` ships in `dist` and has the same `routes` and `responseOverrides` as `docs/security/staticwebapp.config.json` (GitHub only login, `/*` requires `authenticated`, 401 redirects to GitHub login). It adds `globalHeaders` with a CSP of `default-src 'self'` (no inline script, no third-party origin, `frame-ancestors 'none'`) plus `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`
 - **FR:host.auth** (P1): The app reads `/.auth/me` to show who is signed in and offers sign out at `/.auth/logout`. A 401 from `/api` sends the browser to `/.auth/login/github` with `post_login_redirect_uri` set to the current path; a 403 shows a "not on the allow-list" screen with sign out and no task data
-- **FR:host.nosecrets** (P1): The client sends only the session cookie and `Content-Type: application/json`. It never stores tokens, and renders text from the api as text (never as HTML)
+- **FR:host.nosecrets** (P1): The client sends only the session cookie and `Content-Type: application/json`. It never stores tokens; browser storage holds only the per-day available time (`stack.available`). It renders text from the api as text (never as HTML)
 
 ### FR:api: Api client
 

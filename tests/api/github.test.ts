@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { createGitHubPrs } from '../../src/api/github';
 
 type Reply = { status?: number; body: unknown };
@@ -57,5 +59,16 @@ describe('GitHub PR status provider', () => {
     const prs = createGitHubPrs({ token: 't', fetch: f.fetch });
     expect((await prs([{ url: 'x', repo: '../evil', number: 1 }])).size).toBe(0);
     expect(f.seen).toHaveLength(0);
+  });
+});
+
+// @req FR:agent-inbox/github.wire
+describe('wiring', () => {
+  const read = (p: string) => readFileSync(join(__dirname, '../..', p), 'utf8');
+  it.each(['src/host/runtime.ts', 'src/cli/web.ts'])('%s passes the provider only when GITHUB_TOKEN is set, never logs it', (p) => {
+    const src = read(p);
+    expect(src).toMatch(/GITHUB_TOKEN\?\.trim\(\)/);
+    expect(src).toMatch(/ghToken \? createGitHubPrs\(\{ token: ghToken \}\) : undefined/);
+    expect(src).not.toMatch(/log\([^)]*ghToken|console\.\w+\([^)]*ghToken/);
   });
 });

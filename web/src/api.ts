@@ -1,4 +1,4 @@
-import type { ActionName, CaptureResult, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
+import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
 
 /** @req FR:web-app/api.client */
 export class ApiFailure extends Error {
@@ -40,6 +40,9 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     move: (ref: string, target: string, position: Position, expect?: { ref?: string; target?: string }) =>
       call<Mutation>('/tasks/move', { ref, target, position, ...(expect?.ref !== undefined ? { expect: expect.ref } : {}), ...(expect?.target !== undefined ? { expectTarget: expect.target } : {}) }),
     add: (project: string, text: string, parent?: string) => call<Mutation>('/tasks', { project, text, ...(parent ? { parent } : {}) }),
+    agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
+    inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
+    send: (ref: string, text: string, kind: 'reply' | 'decision', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
   };
 }

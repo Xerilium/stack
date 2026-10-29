@@ -32,11 +32,17 @@ describe('staticwebapp.config.json', () => {
 // @req FR:web-app/host.static @req FR:web-app/host.nosecrets
 describe('client source', () => {
   const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)]));
-  const src = files(join(ROOT, 'web/src')).map((f) => readFileSync(f, 'utf8')).join('\n');
+  const all = files(join(ROOT, 'web/src'));
+  // day.ts is the one module that may touch browser storage, for the per-day available time only.
+  const src = all.filter((f) => !f.endsWith('day.ts')).map((f) => readFileSync(f, 'utf8')).join('\n');
+  const day = readFileSync(join(ROOT, 'web/src/day.ts'), 'utf8');
   it('has no secrets, env inlining, tokens, or innerHTML', () => {
     expect(src).not.toMatch(/import\.meta\.env/);
     expect(src).not.toMatch(/dangerouslySetInnerHTML|innerHTML/);
     expect(src).not.toMatch(/localStorage|sessionStorage|x-stack-token|authorization/i);
+    expect(day).not.toMatch(/sessionStorage|x-stack-token|authorization|token/i);
+    expect(day.match(/setItem\(/g)).toHaveLength(1);
+    expect(day).toContain('const KEY = \'stack.available\';');
   });
   it('ships no task data in public files', () => {
     expect(existsSync(join(ROOT, 'web/public'))).toBe(true);

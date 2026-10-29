@@ -1,7 +1,9 @@
 import type { Page, Route } from '@playwright/test';
 
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
-export interface Mock { tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
+export interface MockAgent { ref: string; project: string; title: string; text: string; state: string; prs: { url: string; repo: string; number: number; state?: string; checks?: string; title?: string; updatedAt?: string }[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }
+export interface MockInbox { id: string; at: string; project: string; ref: string; task: string; kind: string; to: string; text: string; state: string }
+export interface Mock { agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
 /** Short date for row text, relative to today (the plan depends on the clock). */
@@ -20,8 +22,8 @@ export const seed = (): MockTask[] => [
 const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 /** In-memory fake of the Stack api plus SWA's `/.auth/me`. */
-export async function mockApi(page: Page, opts: { tasks?: MockTask[] } = {}): Promise<Mock> {
-  const m: Mock = { tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
+export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[] } = {}): Promise<Mock> {
+  const m: Mock = { agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
   const proj = [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
@@ -61,6 +63,21 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[] } = {}): Pr
       const off = Number(url.searchParams.get('offset') ?? 0), lim = Number(url.searchParams.get('limit') ?? 50);
       return json(route, 200, { items: m.tasks.slice(off, off + lim), total: m.tasks.length, offset: off, limit: lim });
     }
+    if (path === '/agents') {
+      if (m.agentsFail) return json(route, 500, { error: { code: 'internal', message: 'Internal error' } });
+      // Default: agent rows from the tasks (🚧 working, else queued), like the server without PR status.
+      const items = m.agents ?? open.filter((t) => /🤖|🪄/u.test(t.text) && !/🙋/u.test(t.text)).map((t) => ({ ref: t.ref, project: t.project, title: t.text.replace(/[🤖🪄🚧]/gu, '').trim(), text: t.text, state: /🚧/u.test(t.text) ? 'working' : 'queued', prs: [], replies: 0 }));
+      return json(route, 200, { items });
+    }
+    if (path === '/inbox' && req.method() === 'POST') {
+      const t = find(body.ref);
+      if (!t) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+      if (body.expect !== undefined && body.expect !== t.text) return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
+      const id = `in-20261028T100000Z-${String(m.inbox.length).padStart(4, '0')}`;
+      m.inbox.push({ id, at: new Date().toISOString(), project: t.project, ref: t.ref, task: t.text.replace(/[🤖🪄🙋]/gu, '').trim(), kind: body.kind ?? 'reply', to: /🙋/u.test(t.text) ? 'human' : /🤖|🪄/u.test(t.text) ? 'agent' : 'none', text: body.text, state: 'open' });
+      return json(route, 201, { id, path: `tasks/inbox/${t.project}.md` });
+    }
+    if (path === '/inbox') return json(route, 200, { items: m.inbox.filter((e) => e.state === 'open') });
     if (path === '/projects') return json(route, 200, { items: proj.map((p) => ({ ...p, open: 0, done: 0 })) });
     if (path === '/capture') {
       const text: string = body.text;
