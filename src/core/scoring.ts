@@ -338,7 +338,61 @@ export const legacyEngine: ScoringEngine = {
   filter: filterByTimeBlock,
 };
 
-const engines = new Map<string, ScoringEngine>([[legacyEngine.id, legacyEngine]]);
+// ---------------------------------------------------------------- stack engine (default for NOW)
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const DUE = /📅\s*([A-Za-z]{3})[a-z]*\s+(\d{1,2})(?:,\s*(\d{4}))?\s*(?:-\s*\d{1,2}\s*)?:/u;
+/** Planning horizon: tasks due further out than this never rank NOW. */
+export const NOW_HORIZON_DAYS = 14;
+/** A year-less date up to this many days past is overdue; older means its next occurrence. */
+export const OVERDUE_WINDOW_DAYS = 60;
+/** Default engine for `next`. */
+export const DEFAULT_ENGINE = 'stack';
+/** Reply rows (`💬 …`) are messages to an agent, not work: never a NOW candidate. */
+export const isMessage = (text: string): boolean => /^\s*💬/u.test(text);
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** Days from `at` (calendar days in the config timezone) to the 📅 date in `text`; null when none. Without a year, the next occurrence
+ *  wins, counting up to `OVERDUE_WINDOW_DAYS` past as overdue. */
+export function daysUntilDue(text: string, config: StackConfig, at: Date): number | null {
+  const m = DUE.exec(text);
+  if (!m) return null;
+  const mo = MONTHS.indexOf(m[1].toLowerCase());
+  if (mo < 0) return null;
+  let f = dayFormatters.get(config.timezone);
+  if (!f) dayFormatters.set(config.timezone, (f = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, year: 'numeric', month: 'numeric', day: 'numeric' })));
+  const parts = f.formatToParts(at);
+  const n = (t: string) => Number(parts.find(p => p.type === t)?.value);
+  const today = Date.UTC(n('year'), n('month') - 1, n('day'));
+  const day = Number(m[2]);
+  if (m[3]) return Math.round((Date.UTC(Number(m[3]), mo, day) - today) / 86400000);
+  const near = [n('year') - 1, n('year'), n('year') + 1].map((y) => Math.round((Date.UTC(y, mo, day) - today) / 86400000));
+  return near.find((d) => d >= -OVERDUE_WINDOW_DAYS)!;
+}
+
+/** Due-soon tier: 3 overdue/today, 2 within 3 days, 1 within a week or overdue more than 30 days (stale: no longer jumps the queue), 0 undated or later. */
+const STALE_DAYS = 30;
+const dueTier = (days: number | null): number => (days === null ? 0 : days < -STALE_DAYS ? 1 : days <= 0 ? 3 : days <= 3 ? 2 : days <= 7 ? 1 : 0);
+
+/**
+ * Legacy score plus a due-date lens: overdue and due-soon tasks lead (tiers dominate the score), and a task due
+ * beyond the horizon is not a NOW candidate. Status, priority, and project value still order tasks within a tier.
+ * @req FR:scoring-engine/engine.stack
+ */
+export const stackEngine: ScoringEngine = {
+  id: 'stack',
+  score: scoreAll,
+  filter(tasks, projects, config, at) {
+    return filterByTimeBlock(tasks, projects, config, at).flatMap(s => {
+      if (isMessage(s.task.text)) return [];
+      const days = daysUntilDue(s.task.text, config, at);
+      if (days !== null && days > NOW_HORIZON_DAYS) return [];
+      return [{ ...s, score: s.score + dueTier(days) * 1000 }];
+    });
+  },
+};
+
+const engines = new Map<string, ScoringEngine>([[legacyEngine.id, legacyEngine], [stackEngine.id, stackEngine]]);
 
 /** @req FR:scoring-engine/engine.registry */
 export function registerEngine(engine: ScoringEngine): void {

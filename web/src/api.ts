@@ -39,6 +39,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     edit: (ref: string, text: string, expect?: string) => call<Mutation>('/tasks/edit', { ref, text, ...(expect !== undefined ? { expect } : {}) }),
     move: (ref: string, target: string, position: Position, expect?: { ref?: string; target?: string }) =>
       call<Mutation>('/tasks/move', { ref, target, position, ...(expect?.ref !== undefined ? { expect: expect.ref } : {}), ...(expect?.target !== undefined ? { expectTarget: expect.target } : {}) }),
+    add: (project: string, text: string, parent?: string, expect?: string) =>
+      call<Mutation>('/tasks', { project, text, ...(parent ? { parent } : {}), ...(parent && expect !== undefined ? { expect } : {}) }),
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
   };
 }

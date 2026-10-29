@@ -25,11 +25,25 @@ export function Md({ text }: { text: string }) {
   return <>{parseInline(text).map(renderNode)}</>;
 }
 
+const vsel = (s: string) => s.replace(/\uFE0F/g, '');
+/** Plain-text glyph and tone for a marker value; the emoji stays in the file. */
+const GLYPH: Record<GroupName, Record<string, [string, string]>> = {
+  priority: { '🚨': ['Crit', 'hot'], '‼': ['High', 'warm'], '🔺': ['↑', ''], '🔻': ['↓', 'dim'], '🔝': ['Top', 'hot'] },
+  status: { '🚧': ['Doing', 'accent'], '⏸': ['Paused', 'dim'], '👀': ['Review', ''], '⏳': ['Waiting', 'dim'], '⛔': ['Blocked', 'warm'] },
+  effort: { '🔹': ['12m', ''], '🟢': ['30m', ''], '🟡': ['1h', ''], '🟠': ['2h', ''], '🔴': ['4h', ''], '⚫': ['8h', ''] },
+  impact: { '⬆': ['↑', ''], '↔': ['→', 'dim'], '⬇': ['↓', 'dim'] },
+};
+export const glyphOf = (group: GroupName, value: string): { text: string; tone: string } => {
+  const g = GLYPH[group][vsel(value)];
+  return { text: g?.[0] ?? value, tone: g?.[1] ?? '' };
+};
+
 export function Chip({ group, value, onPick }: { group: GroupName; value: string; onPick: (g: GroupName) => void }) {
-  const name = GROUPS[group].set.find((c) => c.e.replace(/️/g, '') === value.replace(/️/g, ''))?.name ?? value;
+  const name = GROUPS[group].set.find((c) => vsel(c.e) === vsel(value))?.name ?? value;
+  const g = glyphOf(group, value);
   return (
-    <button type="button" class={`chip chip-${group}`} aria-label={`${GROUPS[group].label}: ${name}. Change`} title={`${GROUPS[group].label}: ${name}`} onClick={(e) => { e.stopPropagation(); onPick(group); }}>
-      <span aria-hidden="true">{value}</span><span class="chip-name">{name}</span>
+    <button type="button" class={`chip chip-${group} ${g.tone}`} aria-label={`${GROUPS[group].label}: ${name}. Change`} title={`${GROUPS[group].label}: ${name}`} onClick={(e) => { e.stopPropagation(); onPick(group); }}>
+      <span aria-hidden="true">{g.text}</span><span class="chip-name">{name}</span>
     </button>
   );
 }
@@ -102,7 +116,7 @@ export function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: num
 }
 
 export const SHORTCUTS: [string, string][] = [
-  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g n / g p / g a', 'Go to now / projects / all tasks'],
+  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g t / g n / g p / g a', 'Go to today / focus / projects / all tasks'],
   ['j k or arrows', 'Move cursor'], ['Enter', 'Focus mode'], ['e', 'Edit row'], ['x', 'Select row'], ['Esc', 'Clear selection'],
   ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['z', 'Defer'], ['Shift+S', 'Skip'],
   ['Shift+J / Shift+K', 'Move row down / up'], ['?', 'This sheet'],
