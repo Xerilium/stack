@@ -82,7 +82,7 @@ describe('device code poll', () => {
     const f = fakeLogin([{ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: 'Calendars.Read Mail.Send offline_access' }]);
     const e = await pollDeviceCode({ tenant: TENANT, clientId: CLIENT, code: dc, fetch: f.fetch, sleep: async () => undefined, now: () => 0 }).catch((x: unknown) => x as GraphSignInError);
     expect(e).toMatchObject({ code: 'unsafe_scope' });
-    expect(String((e as GraphSignInError).message)).toMatch(/Mail\.Send.*Entra/);
+    expect(String((e as GraphSignInError).message)).toMatch(/Mail\.Send.*Entra.*revoke the consent/);
     expect(String((e as GraphSignInError).message)).not.toMatch(/\bat\b|\brt\b/);
   });
   it('a grant without a refresh token is an error', async () => {

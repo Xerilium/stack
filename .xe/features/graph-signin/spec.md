@@ -25,7 +25,7 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 ### FR:scope: Scopes
 
 - **FR:scope.sets** (P1): `scopesFor(features)` maps `calendar` to `Calendars.Read`, `mail` to `Mail.Read`, and `drafts` to `Mail.ReadWrite`, always adds `offline_access`, and removes duplicates. Unknown features throw
-- **FR:scope.never** (P1): `assertSafeScopes(scopes)` is an allowlist, case-insensitive, Graph resource only: `Calendars.Read`, `Mail.Read`, `Mail.ReadWrite`, `offline_access`, `openid`, `profile`, `email`, `User.Read`. Anything else (send, `MailboxSettings.*`, `.default`, `*.All`, `*.Shared`, other resources) throws `unsafe_scope`, naming the refused scopes and the fix (remove them from the app registration). It checks the requested scopes before every login request and the granted scopes in every token response (Microsoft grants all scopes already consented for the app), so a token with an unsafe scope is never saved
+- **FR:scope.never** (P1): `assertSafeScopes(scopes)` is an allowlist, case-insensitive, Graph resource only: `Calendars.Read`, `Mail.Read`, `Mail.ReadWrite`, `offline_access`, `openid`, `profile`, `email`, `User.Read`. Anything else (send, `MailboxSettings.*`, `.default`, `*.All`, `*.Shared`, other resources) throws `unsafe_scope`, naming the refused scopes and the fix (remove them from the app registration and revoke the consent already granted, since removing a permission does not revoke consent). It checks the requested scopes before every login request and the granted scopes in every token response (Microsoft grants all scopes already consented for the app), so a token with an unsafe scope is never saved
 
 ### FR:flow: Device code flow
 

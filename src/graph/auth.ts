@@ -30,7 +30,7 @@ const bare = (s: string) => s.toLowerCase().replace(/^https:\/\/graph\.microsoft
 export function assertSafeScopes(scopes: string[]): void {
   const bad = scopes.filter((s) => typeof s !== 'string' || !ALLOWED.has(bare(s))).map(String);
   // Scope names are not secret; naming them tells the owner exactly what to remove.
-  if (bad.length) throw new GraphSignInError('unsafe_scope', `${bad.join(', ')}. Remove these API permissions from the app registration in Entra ID, then run stack graph login again`);
+  if (bad.length) throw new GraphSignInError('unsafe_scope', `${bad.join(', ')}. Remove these API permissions from the app registration in Entra ID and revoke the consent already granted (Entra ID > Enterprise applications > the app > Permissions, or myapps.microsoft.com), then run stack graph login again`);
 }
 
 /** True when `scopes` holds `name`, ignoring case and the Graph resource prefix. */

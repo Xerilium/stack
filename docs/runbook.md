@@ -71,4 +71,5 @@ Tasks are markdown in git, so the git history is the backup. Clone the task repo
 
 1. Register an app in Entra ID: single tenant or "Accounts in any organizational directory", no redirect URI, **Allow public client flows: Yes**. Delegated permissions: `Calendars.Read` (and `Mail.Read` or `Mail.ReadWrite` when the email module runs). Never add `Mail.Send`; Stack refuses it.
 2. `stack graph login --client-id <app id> --with calendar` and follow the printed code. The token stays in `~/.config/stack/graph-token.json`, never in a repo.
-3. `stack web` now shows your meetings (it logs `calendar: Graph`). `stack graph status` checks it; `stack graph logout` removes it.
+3. If login says `unsafe_scope`, remove the named permissions from the app registration **and** revoke the consent already granted (Entra ID > Enterprise applications > the app > Permissions, or myapps.microsoft.com); removing a permission alone does not revoke consent.
+4. `stack web` now shows your meetings (it logs `calendar: Graph`). `stack graph status` checks it; `stack graph logout` removes it.
