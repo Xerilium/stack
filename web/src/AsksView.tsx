@@ -22,11 +22,13 @@ const Icon = {
 /** Sync state with a working action in every state that is not good. @req FR:live-deploy/web.state @req FR:live-deploy/web.action */
 function LiveBadge({ a, onSignIn }: { a: Asks; onSignIn?: () => void }) {
   const at = a.syncedAt ? a.syncedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-  const text = { connecting: 'Connecting…', live: 'Live', poll: at ? `Synced ${at}` : 'Synced', offline: 'Offline · retrying', signin: 'Sign-in expired' }[a.status];
+  const label = { connecting: 'Connecting…', live: 'Live', poll: 'Synced', offline: 'Offline · retrying', signin: 'Sign-in expired' }[a.status];
+  // Only the state is announced; the clock beside it changes every minute and is not.
   return (
-    <div class={`live ${a.status}`} role="status" aria-live="polite" data-testid="live-status" title={a.status === 'poll' ? 'Checks for changes every 15 s' : undefined}>
+    <div class={`live ${a.status}`} data-testid="live-status" title={a.status === 'poll' ? 'Checks for changes every 15 s' : undefined}>
+      <span class="sr-only" role="status">{label}</span>
       <span class="dot" aria-hidden="true" />
-      <span>{text}</span>
+      <span aria-hidden="true">{a.status === 'poll' && at ? `${label} ${at}` : label}</span>
       {a.status === 'offline' && <button type="button" class="link" onClick={a.retryNow}>Retry now</button>}
       {a.status === 'signin' && <button type="button" class="link" onClick={onSignIn ?? (() => location.assign('/.auth/login/github'))}>Sign in</button>}
     </div>

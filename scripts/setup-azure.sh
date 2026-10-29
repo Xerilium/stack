@@ -44,8 +44,12 @@ trap 'rm -rf "$TMP"' EXIT
 
 say "Subscription: $(az account show --query name -o tsv)"
 # Only "not there" means a new site. Any other failure stops the script (set -e) instead of creating a second site or re-applying the template.
+# Plain assignments, not `if` conditions: set -e is off inside a condition.
 EXISTS=0
-if [ "$(az group exists -n "$GROUP")" = true ] && [ -n "$(az staticwebapp list -g "$GROUP" --query "[?name=='$NAME'].name" -o tsv)" ]; then EXISTS=1; fi
+GROUP_EXISTS=$(az group exists -n "$GROUP")
+FOUND=""
+if [ "$GROUP_EXISTS" = true ]; then FOUND=$(az staticwebapp list -g "$GROUP" --query "[?name=='$NAME'].name" -o tsv); fi
+[ -n "$FOUND" ] && EXISTS=1
 
 # --owner on an existing site: only update the allow-list (takes effect at once, no redeploy).
 if [ -n "$OWNER" ] && [ "$EXISTS" = 1 ]; then
@@ -65,8 +69,10 @@ if [ "$ONLY_OWNER" = 0 ]; then
     [[ "$TOKEN" =~ ^[A-Za-z0-9_]+$ ]] || { echo "That does not look like a GitHub token (letters, digits, _)." >&2; exit 1; }
     say "Checking the token can read $REPO contents"
     # Passed to these gh calls through their environment; never printed or saved.
-    BRANCH=$(GH_TOKEN="$TOKEN" gh api "repos/$REPO" -q .default_branch 2>/dev/null) || { echo "That token cannot see $REPO. Check its repository access." >&2; exit 1; }
-    GH_TOKEN="$TOKEN" gh api "repos/$REPO/git/ref/heads/$BRANCH" -q .object.sha >/dev/null 2>&1 || { echo "That token cannot read $REPO contents. Give it Contents: Read and write." >&2; exit 1; }
+    # The host reads STACK_REPO_BRANCH, which defaults to main and is not set here.
+    BRANCH=main
+    GH_TOKEN="$TOKEN" gh api "repos/$REPO" -q .full_name >/dev/null 2>&1 || { echo "That token cannot see $REPO. Check its repository access." >&2; exit 1; }
+    GH_TOKEN="$TOKEN" gh api "repos/$REPO/git/ref/heads/$BRANCH" -q .object.sha >/dev/null 2>&1 || { echo "That token cannot read $REPO contents on $BRANCH. Give it Contents: Read and write (and check the branch exists)." >&2; exit 1; }
   elif [ "$EXISTS" = 0 ]; then
     echo "No token given. See docs/setup-live.md step 1." >&2; exit 1
   fi

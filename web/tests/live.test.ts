@@ -161,7 +161,7 @@ describe('connectLive with a change probe', () => {
 });
 
 /** @req FR:live-deploy/web.action */
-describe('review round 1: hung probe', () => {
+describe('hung probe', () => {
   it('a probe with no answer times out to offline, and the next tick probes again', async () => {
     const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
     let calls = 0; let hang = true;

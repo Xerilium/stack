@@ -287,7 +287,7 @@ describe('serial writes', () => {
 });
 
 // @req FR:live-deploy/gh.fresh @req FR:live-deploy/gh.race
-describe('review round 1: snapshot ordering', () => {
+describe('snapshot ordering under concurrent reads and writes', () => {
   it('a read in flight while a write lands never replaces the newer snapshot', async () => {
     const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A1' });
     let release!: () => void;
@@ -346,7 +346,7 @@ describe('review round 1: snapshot ordering', () => {
   });
 });
 
-describe('review round 1: bounded blob cache', () => {
+describe('blob cache bound', () => {
   it('keeps at most 2000 blobs, dropping the oldest', async () => {
     const files: Record<string, string> = {};
     for (let i = 0; i < 2005; i++) files[`tasks/asks/k${i}.md`] = `ask ${i}`;
@@ -361,7 +361,7 @@ describe('review round 1: bounded blob cache', () => {
   });
 });
 
-describe('review round 2', () => {
+describe('check failures during a write', () => {
   it('a check that fails while a write lands does not mark the fresh snapshot failed', async () => {
     const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A' });
     let release!: () => void;

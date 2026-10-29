@@ -30,7 +30,9 @@ describe('setup-azure.sh', () => {
   });
   it('only "not there" counts as a new site; any other az failure stops the script', () => {
     expect(script).not.toMatch(/2>\/dev\/null && EXISTS=1/);
-    expect(script).toMatch(/az group exists -n "\$GROUP"/);
+    expect(script).toMatch(/^GROUP_EXISTS=\$\(az group exists -n "\$GROUP"\)$/m);
+    expect(script).toMatch(/then FOUND=\$\(az staticwebapp list -g "\$GROUP"/);
+    expect(script).not.toMatch(/if \[ "\$\(az /);
     expect(script).toMatch(/az staticwebapp list -g "\$GROUP" --query/);
     expect(script).toMatch(/Subscription: /);
   });
