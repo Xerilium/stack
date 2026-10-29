@@ -30,7 +30,7 @@ test.describe('layout and nav', () => {
       expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     } else {
-      await expect(page.locator('.rail .tab:not(.add)').filter({ hasNotText: /Commands|Shortcuts/ })).toHaveText(['Homeg h', 'My dayg d', 'Needs you2g k', 'Sessionsg s', 'Projectsg p', 'Full stackg a']);
+      await expect(page.locator('.rail .tab:not(.add)').filter({ hasNotText: /Commands|Shortcuts/ })).toHaveText(['Homeg h', 'My dayg d', 'Needs you2g k', 'Agentsg s', 'Projectsg p', 'Full stackg a']);
       await expect(page.locator('.tabbar')).toBeHidden();
       const main = (await page.locator('.main').boundingBox())!;
       const rail = (await page.locator('.rail').boundingBox())!;
