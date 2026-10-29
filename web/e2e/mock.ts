@@ -108,6 +108,12 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       m.sessions.unshift({ id, title, project: 'stack', cwd: body.cwd ?? '/x/stack', lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] });
       return json(route, 202, { runId: 'run-new', sessionId: id, ...(ag ? { agent: ag.slug, title } : {}) });
     }
+    if (path === '/schedule/day') { // echo the schedule with the new bed (tests check the call)
+      const s = m.schedule as { date: string; bed: string } | null;
+      if (!s) return json(route, 400, { error: { code: 'bad_request', message: 'No schedule' } });
+      if (body.bed && !body.every) { const [h, mi] = String(body.bed).split(':').map(Number); const d = new Date(`${s.date}T00:00:00`); d.setDate(d.getDate() + (h < 8 ? 1 : 0)); d.setHours(h, mi, 0, 0); m.schedule = { ...s, bed: d.toISOString() }; }
+      return json(route, 200, m.schedule);
+    }
     if (path === '/schedule') return json(route, 200, m.schedule); // null: no schedule, the 9-6 fallback
     if (path === '/calendar') {
       if (m.calendarFail) return json(route, 200, { configured: true, items: [], error: 'Calendar unavailable' });

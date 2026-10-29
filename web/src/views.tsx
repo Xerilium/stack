@@ -307,13 +307,46 @@ const agentTitle = (s: string) => s.replace(/^(?:[^\p{L}\p{N}`*[]+\s*)+/u, '').r
 const CHECK = { passing: '✓', failing: '✕', pending: '…', none: '' } as const;
 
 export interface TodayProps {
-  now: Date; plan: Plan; day: Day; budget: { minutes: number; isDefault: boolean }; onBudget: (m: number | null) => void;
+  now: Date; plan: Plan; day: Day; budget: { minutes: number; isDefault: boolean }; /** Unset: read-only (tomorrow). */ onBudget?: (m: number | null) => void;
   decisions: Decision[]; agents: Agent[] | null; agentsError: string; onRetryAgents: () => void; inbox: InboxItem[]; p: RowProps; busy: boolean;
   tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
   allDay: CalEvent[]; calError: string; onEmail: () => void;
   onAct: (a: 'start' | 'done' | 'defer' | 'notnow' | 'delegate', ref: string) => void; onReply: (task: RefText, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
   /** The project's agent on each tile. @req FR:agent-team/web.anything */
   tileAgent?: { chip: (project: string, title: string) => ComponentChildren; talk: (project: string, title: string) => ComponentChildren };
+  /** Change wake/bed for this day or its weekday. @req FR:home/day.override */ onTimes?: (c: DayChange) => Promise<boolean>;
+  /** False when no calendar is connected. @req FR:home/day.nocal */ calendar?: boolean;
+  /** Tomorrow's plan: offered late in the day, on when shown. @req FR:home/day.tomorrow */ tomorrow?: { offer: boolean; on: boolean; toggle: () => void };
+}
+export interface DayChange { wake?: string; bed?: string; every?: boolean; reset?: boolean }
+
+const hhmm = (m: number) => { const x = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
+/** The day's wake and bed, editable inline: for this day, every same weekday, or reset. @req FR:home/day.override */
+function DayTimes({ day, weekday, onSave }: { day: Day; weekday: string; onSave?: (c: DayChange) => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const [wake, setWake] = useState(hhmm(day.start));
+  const [bed, setBed] = useState(hhmm(day.end));
+  const label = `${clock(day.start)}–${clock(day.end)}`;
+  if (!onSave) return <span class="day-times">{label}</span>;
+  const save = async (c: DayChange) => { if (await onSave(c)) setOpen(false); };
+  if (!open) return <button type="button" class="day-times link-btn" title="Change wake and bed" data-testid="day-times" onClick={() => { setWake(hhmm(day.start)); setBed(hhmm(day.end)); setOpen(true); }}>{label}</button>;
+  // Only the time you changed is saved, so editing bed never pins wake.
+  const changed = (): DayChange => ({ ...(wake !== hhmm(day.start) ? { wake } : {}), ...(bed !== hhmm(day.end) ? { bed } : {}) });
+  // Enter: only this day; Shift+Enter: every same weekday; Esc: cancel.
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); }
+    else if (e.key === 'Enter') { e.preventDefault(); void save(e.shiftKey ? { wake, bed, every: true } : changed()); }
+  };
+  return (
+    <span class="day-times-edit" role="group" aria-label="Wake and bed" data-testid="day-times-edit" onKeyDown={onKey}>
+      <label>Up <input type="time" value={wake} ref={(el) => { if (el && !el.dataset.seen) { el.dataset.seen = '1'; el.focus(); } }} onInput={(e) => setWake((e.target as HTMLInputElement).value)} /></label>
+      <label>Bed <input type="time" value={bed} onInput={(e) => setBed((e.target as HTMLInputElement).value)} /></label>
+      <button type="button" class="link-btn strong" onClick={() => void save(changed())}>Only {weekday} <kbd>⏎</kbd></button>
+      <button type="button" class="link-btn" onClick={() => void save({ wake, bed, every: true })}>Every {weekday} <kbd>⇧⏎</kbd></button>
+      <button type="button" class="link-btn" onClick={() => void save({ reset: true })}>Reset</button>
+      <button type="button" class="link-btn" onClick={() => setOpen(false)}>Cancel <kbd>Esc</kbd></button>
+    </span>
+  );
 }
 
 /**
@@ -338,7 +371,7 @@ export function TodayView(t: TodayProps) {
   const pct = (m: number) => Math.max(0, Math.min(100, ((m - t.day.start) / total) * 100));
   const markAt = pct(Math.max(nowMin, t.day.start)); // the time label hugs the bar ends so it never clips
   const sameDate = !!t.day.origin && t.day.origin.toDateString() === t.now.toDateString();
-  const date = t.day.asleep ? `${sameDate ? 'Today' : 'Tomorrow'} from ${clock(t.day.start)}` : (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }); // @req FR:home/day.asleep
+  const date = t.tomorrow?.on ? (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) : t.day.asleep ? `${sameDate ? 'Today' : 'Tomorrow'} from ${clock(t.day.start)}` : (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }); // @req FR:home/day.asleep
   const jump = (id: string) => document.getElementById(id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   const repliesOf = (x: RowKey) => repliesFor(t.inbox, x);
   const sorted = [...t.decisions].sort((a, b) => Number(repliesOf(a.task).length > 0) - Number(repliesOf(b.task).length > 0));
@@ -388,20 +421,23 @@ export function TodayView(t: TodayProps) {
       <header class="t-head">
         <div class="t-top">
           <div>
-            <p class="t-date">{date}{t.allDay.length > 0 && <span class="allday"> · {t.allDay.map((e) => e.subject).join(' · ')}</span>}</p>
+            <p class="t-date">{t.tomorrow?.on ? 'Tomorrow · ' : ''}{date} · <DayTimes day={t.day} weekday={(t.day.origin ?? t.now).toLocaleDateString('en-US', { weekday: 'short' })} onSave={t.onTimes} />{t.allDay.length > 0 && <span class="allday"> · {t.allDay.map((e) => e.subject).join(' · ')}</span>}
+              {t.tomorrow && (t.tomorrow.on || t.tomorrow.offer) && <> · <button type="button" class="link-btn day-switch" data-testid="tomorrow" onClick={t.tomorrow.toggle}>{t.tomorrow.on ? 'Back to today' : 'Plan tomorrow'}</button></>}
+            </p>
             <h1>{t.plan.blocks.length === 0 ? (t.budget.minutes > 0 ? 'Nothing planned' : 'No time planned') : <>{span(t.plan.busy)} planned <span class="of nowrap">of {span(t.budget.minutes)}</span></>}</h1>
           </div>
           <div class="avail" role="group" aria-label="Available today" data-testid="available">
             <span class="avail-label">Available</span>
-            <button type="button" class="step" aria-label="Less time" title="Less time ([)" disabled={t.budget.minutes <= 0} onClick={() => t.onBudget(t.budget.minutes - 30)}>−</button>
+            <button type="button" class="step" aria-label="Less time" title="Less time ([)" disabled={!t.onBudget || t.budget.minutes <= 0} onClick={() => t.onBudget?.(t.budget.minutes - 30)}>−</button>
             <output aria-live="polite">{span(t.budget.minutes)}</output>
-            <button type="button" class="step" aria-label="More time" title="More time (])" disabled={t.budget.minutes >= 960} onClick={() => t.onBudget(t.budget.minutes + 30)}>+</button>
-            {!t.budget.isDefault && <button type="button" class="link-btn" onClick={() => t.onBudget(null)}>Reset</button>}
+            <button type="button" class="step" aria-label="More time" title="More time (])" disabled={!t.onBudget || t.budget.minutes >= 960} onClick={() => t.onBudget?.(t.budget.minutes + 30)}>+</button>
+            {!t.budget.isDefault && t.onBudget && <button type="button" class="link-btn" onClick={() => t.onBudget?.(null)}>Reset</button>}
           </div>
         </div>
         <p class="t-sub">
           {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
           {meetingMin > 0 && <span>{span(meetingMin)} in meetings</span>}
+          {t.calendar === false && <span class="quiet" data-testid="nocal">No calendar · <a class="quiet-link" href="https://github.com/Xerilium/stack/blob/main/docs/runbook.md" target="_blank" rel="noopener noreferrer">Connect</a></span>}
           {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join{joinable(nextMeeting.events, t.now) && <kbd>J</kbd>}</a></>}</span>}
           {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
@@ -413,7 +449,7 @@ export function TodayView(t: TodayProps) {
           {t.plan.meetings.filter((m) => m.start < end).map((m) => <u key={`m${m.start}`} title={`${clock(m.start)} ${m.titles.join(', ')}`} style={{ left: `${pct(m.start)}%`, width: `${pct(m.end) - pct(m.start)}%` }} />)}
           {t.plan.email && <i class="mail" title={`${clock(t.plan.email.start)} Email`} style={{ left: `${pct(t.plan.email.start)}%`, width: `${pct(t.plan.email.end) - pct(t.plan.email.start)}%` }} />}
           {t.plan.blocks.map((b) => <i key={b.task.ref} title={`${clock(b.start)} ${parseRow(b.task.text).title}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}
-          <b class={markAt < 8 ? 'edge-l' : markAt > 92 ? 'edge-r' : undefined} style={{ left: `${markAt}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>
+          {!t.day.asleep && <b class={markAt < 8 ? 'edge-l' : markAt > 92 ? 'edge-r' : undefined} style={{ left: `${markAt}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>}
         </div>
         <p class="day-ends"><span>{clock(t.day.start)}</span><span>{clock(end)}</span></p>
       </header>
@@ -427,7 +463,7 @@ export function TodayView(t: TodayProps) {
             {timeline.map((r) => r.kind === 'block'
               ? <PlanBlock key={r.b.task.ref} b={r.b} p={t.p} busy={t.busy} onAct={t.onAct} />
               : r.kind === 'meeting' ? <MeetingRow key={`m${r.m.start}`} m={r.m} />
-                : r.kind === 'band' ? <li key={`band${r.at}`} class={`band${r.personal ? ' personal' : ''}`} data-testid="band"><span>{r.emoji} {r.name}</span><span class="band-time">{clock(r.from)}–{clock(r.to)}</span></li>
+                : r.kind === 'band' ? <li key={`band${r.at}`} class={`band${r.personal ? ' personal' : ''}`} data-testid="band"><span><i class="band-glyph" aria-hidden="true">{r.emoji}</i>{r.name}</span><span class="band-time">{clock(r.from)}–{clock(r.to)}</span></li>
                   : r.kind === 'gap' ? <li key={`gap${r.at}`} class="gap"><time class="when">{clock(r.at)}</time><span>{span(r.min)} free</span></li>
                     : r.kind === 'now' ? <li key="now" class="now-line" aria-label={`Now ${clock(r.at)}`}><time>{clock(r.at)}</time></li>
                       : <li key="email" class="email-block"><time class="when">{clock(r.e.start)}<small>{span(r.e.end - r.e.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {r.e.count} ask{r.e.count === 1 ? '' : 's'}</button><kbd>g k</kbd></div></li>)}
@@ -436,7 +472,7 @@ export function TodayView(t: TodayProps) {
             <details class="nofit" data-testid="nofit">
               <summary class="nofit-head">
                 <h3>{t.plan.overflow.length} don't fit{t.plan.atRisk.length > 0 && <span class="warn"> · {t.plan.atRisk.length} due soon</span>}</h3>
-                <button type="button" class="btn quiet" title="More time (])" onClick={(e) => { e.preventDefault(); t.onBudget(t.budget.minutes + 30); }}>+30m <kbd>]</kbd></button>
+                {t.onBudget && <button type="button" class="btn quiet" title="More time (])" onClick={(e) => { e.preventDefault(); t.onBudget?.(t.budget.minutes + 30); }}>+30m <kbd>]</kbd></button>}
               </summary>
               <ul>
                 {shownOver.map((o) => {
@@ -677,7 +713,7 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
             {p.agent?.chip(one.task)}
           </div>
           {!h.fits && !demoted && (
-            <p class="nofit-line" data-testid="nofit">{win.allow && !win.have && !one.task.text.replace(/\uFE0F/g, '').includes(win.allow.emoji.replace(/\uFE0F/g, '')) ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : win.allow && !win.have ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${win.until && win.until.at < win.inside!.until ? win.until.label : `${win.inside!.label} ends`}` : win.inside && !win.have ? `${win.inside.label} now: back at ${clock(win.inside.until)}` : minutesLeft > 0 ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${until}` : 'No time left today'}</p>
+            <p class="nofit-line" data-testid="nofit">{win.allow && !win.have && !one.task.text.replace(/\uFE0F/g, '').includes(win.allow.emoji.replace(/\uFE0F/g, '')) && !win.allow.projects?.includes(one.task.project) ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : win.allow && !win.have ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${win.until && win.until.at < win.inside!.until ? win.until.label : `${win.inside!.label} ends`}` : win.inside && !win.have ? `${win.inside.label} now: back at ${clock(win.inside.until)}` : minutesLeft > 0 ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${until}` : 'No time left today'}</p>
           )}
           <div class="actions">
             <button type="button" class={`btn${h.fits || demoted ? ' primary' : ''}`} disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>
