@@ -80,6 +80,11 @@ export function App() {
   const [deferRefs, setDeferRefs] = useState<string[] | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  /** One row open in place at a time. @req FR:web-app/home2.expand */
+  const [open, setOpen] = useState<string | null>(null);
+  const toggleOpen = useCallback((ref: string) => setOpen((o) => (o === ref ? null : ref)), []);
+  /** Rows whose Done is in flight or just landed: they draw the check and fade. @req FR:web-app/home2.done */
+  const [justDone, setJustDone] = useState<Set<string>>(new Set());
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const [{ view, filters }, setNav] = useState(() => parseHash(location.hash));
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -193,7 +198,7 @@ export function App() {
   const minutesLeft = win.allow && !win.have ? win.allow.minutes : win.inside && !win.have ? 0 : win.minutes;
   const allow = win.allow && !win.have ? win.allow : undefined;
   const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, next, clockNow, minutesLeft, allow]);
-  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task), home.five.map((n) => n.task), home.projects.filter((x) => !x.shown).map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY), [tasks, clockNow, budget.minutes]);
@@ -390,6 +395,7 @@ export function App() {
   const doAct = async (a: 'start' | 'done' | 'skip', ref = refNow()) => {
     if (!ref) return;
     if (a === 'done') {
+      markDone(ref);
       if (await run(() => api.action('complete', ref), () => '')) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
     } else await run(() => api.action(a, ref));
   };
@@ -414,11 +420,11 @@ export function App() {
     try { setInbox(await api.inbox()); } catch { /* the next refresh catches up */ }
   };
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
-  /** Not now: back in 2 hours, one key. Delegate: 🪄 on the row, so an agent takes it (undo restores). @req FR:home/home.delegate */
+  /** Defer 2h: back in 2 hours, one key. Delegate: 🪄 on the row, so an agent takes it (undo restores). @req FR:home/home.delegate */
   const notNow = async (ref = refNow()) => {
     if (!ref) return;
     const back = new Date(Date.now() + 2 * 3600_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    await run(() => api.action('suspend', ref, { hours: 2 }), () => `Not now: back at ${back}`);
+    await run(() => api.action('suspend', ref, { hours: 2 }), () => `Deferred 2h: back at ${back}`);
   };
   const delegate = async (ref = refNow()) => {
     const t = ref ? tasks.find((x) => x.ref === ref) : undefined;
@@ -430,8 +436,10 @@ export function App() {
   type RowAct = 'start' | 'done' | 'defer' | 'notnow' | 'delegate';
   const rowAct = (a: RowAct, ref?: string) => (a === 'defer' ? openDefer(ref) : a === 'notnow' ? void notNow(ref) : a === 'delegate' ? void delegate(ref) : void doAct(a, ref));
 
+  const markDone = (ref: string) => { setJustDone((s) => new Set(s).add(ref)); setTimeout(() => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; }), 900); };
   const toggleDone = async (t: Task) => {
     if (t.done) { await run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Reopened'); return; }
+    markDone(t.ref);
     if (await run(() => api.action('complete', t.ref), () => '')) toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
   };
 
@@ -533,7 +541,7 @@ export function App() {
       { id: 'skip', label: 'Skip', hint: 'Shift+S', run: () => (selected.size ? void bulk('skip') : void doAct('skip')) },
       { id: 'start', label: 'Start', hint: 's', run: () => void doAct('start') },
       { id: 'defer', label: 'Defer', hint: 'z', run: openDefer },
-      { id: 'notnow', label: 'Not now (2 hours)', hint: 'n', run: () => void notNow() },
+      { id: 'notnow', label: 'Defer 2 hours', hint: 'n', run: () => void notNow() },
       { id: 'delegate', label: 'Delegate to an agent (🪄)', hint: 'Shift+A', run: () => void delegate() },
       { id: 'focus', label: 'Focus mode', hint: 'Enter', run: () => { const r = refNow(); if (r) setFocusRef(r); } },
       { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
@@ -564,8 +572,8 @@ export function App() {
   const allCommands = [...commands, ...goTo, ...projectCmds];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr });
-  latest.current = { positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr };
+  const latest = useRef({ positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr });
+  latest.current = { positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
   const teamRef = useRef(team); teamRef.current = team;
   const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave };
@@ -633,11 +641,12 @@ export function App() {
       else if (k === 'j' || k === 'ArrowDown') { e.preventDefault(); step(1); }
       else if (k === 'k' || k === 'ArrowUp') { e.preventDefault(); step(-1); }
       else if (k === 'Enter' && L.cursor) { e.preventDefault(); setFocusRef(L.cursor); }
+      else if (k === ' ' && L.cursor) { e.preventDefault(); toggleOpen(L.cursor); }
       else if (k === 'e' && L.cursor) { e.preventDefault(); setEditing(L.cursor); }
       else if (k === 'ArrowRight' && L.cursor) { setExpanded((s) => new Set(s).add(L.cursor!)); }
       else if (k === 'ArrowLeft' && L.cursor) { setExpanded((s) => { const n = new Set(s); n.delete(L.cursor!); return n; }); }
       else if (k === 'x' && L.cursor) setSelected((s) => { const n = new Set(s); if (n.has(L.cursor!)) n.delete(L.cursor!); else n.add(L.cursor!); return n; });
-      else if (k === 'Escape') { setSelected(new Set()); setCursor(null); }
+      else if (k === 'Escape') { if (L.open) setOpen(null); else { setSelected(new Set()); setCursor(null); } }
       else if (k === 'd') { const t = L.rows.find((r) => r.ref === L.cursor); if (L.selected.size) void A.bulk('complete'); else if (t) void A.toggleDone(t); }
       else if (k === 's' && L.cursor) void A.doAct('start');
       else if (k === 'S') void A.doAct('skip');
@@ -669,6 +678,7 @@ export function App() {
     onSelect: (ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; }), onCursor: setCursor, onEdit: setEditing, onSave: (r, t) => void save(r, t), onToggle: (t) => void toggleDone(t),
     onPick: (refs, g) => setPicker({ refs: selected.size && selected.has(refs[0]) ? [...selected] : refs, groups: Array.isArray(g) ? g : [g] }),
     onMove: (ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir)), onDragStart, onExpand: toggleSet('expanded'), onOpen: (r) => setFocusRef(r),
+    open, onToggleOpen: toggleOpen, justDone, onAct: (a, ref) => (a === 'defer' ? openDefer(ref) : void doAct(a, ref)),
     agent: {
       chip: (t) => { const v = team.chipOf(t); return <AgentChip view={v} onClick={() => { if (v.tone === 'accent' || v.tone === 'warn' || v.text.startsWith('Done')) team.openSession(t.ref); else team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); }} onNeeds={() => go('asks')} />; },
       talk: (t) => (team.talk?.ref === t.ref ? <AgentTalk key={t.ref} team={team} talk={team.talk} agents={team.agentsOf(t)} /> : null),
@@ -694,20 +704,19 @@ export function App() {
   return (
     <div class="shell">
       <nav class="rail" aria-label="Views">
-        <div class="brand">Stack</div>
+        <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
         <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
         {nav()}
         <div class="spacer" />
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">Commands <kbd>⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
         <div class="who">
-          {local && <span class={`repo-pill ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner" title={info ? `${info.repo} · ${info.branch} · ${info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}` : undefined}>{info ? <><strong>{info.mode === 'live' ? 'Live' : 'Demo copy'}</strong> · {info.branch}</> : me}</span>}
           {!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}
         </div>
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        {local && <div class={`banner mobile-only ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-pill" title={info ? `${info.repo} · ${info.branch}` : undefined}>{info ? <strong>{info.mode === 'live' ? 'Live' : 'Demo copy'}</strong> : me}</div>}
+        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
         {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
@@ -800,6 +809,11 @@ function PaletteDialog({ commands, onClose }: { commands: Command[]; onClose: ()
       </ul>
     </Dialog>
   );
+}
+
+/** The Stack mark: three bars, the same as the app icon. @req FR:web-app/home2.demo */
+function Mark() {
+  return <svg class="mark" viewBox="0 0 512 512" width="18" height="18" aria-hidden="true"><rect width="512" height="512" rx="113" fill="currentColor" opacity=".12" /><g fill="currentColor"><rect x="122" y="120" width="230" height="64" rx="22" opacity=".55" /><rect x="93" y="224" width="287" height="64" rx="22" opacity=".8" /><rect x="122" y="328" width="230" height="64" rx="22" /></g></svg>;
 }
 
 /** Line icons for the phone tab bar. @req FR:pwa/install.standalone */

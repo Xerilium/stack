@@ -30,6 +30,41 @@ export interface RowProps {
   onPick: Pick; onMove: (ref: string, dir: 'up' | 'down') => void; onDragStart: (ref: string, e: PointerEvent) => void; onExpand: (ref: string) => void; onOpen: (ref: string) => void;
   /** AI on every row: the agent chip after the chips and the inline composer under the row. @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
   agent?: { chip: (t: Task) => ComponentChildren; talk: (t: Task) => ComponentChildren };
+  /** The row expanded in place (one at a time) and how to toggle it. @req FR:web-app/home2.expand */
+  open: string | null; onToggleOpen: (ref: string) => void;
+  /** Extra region at the end of the expanded row (the agent thread lives here). */
+  detail?: (t: Task) => ComponentChildren;
+  /** Rows whose Done just happened: they draw the check and fade. @req FR:web-app/home2.done */
+  justDone: Set<string>;
+  onAct: (a: 'start' | 'done' | 'defer', ref: string) => void;
+}
+
+/** A row opened in place: title, body, subtasks, actions, then whatever the host adds (the agent thread). @req FR:web-app/home2.expand @req FR:web-app/home2.body */
+export function RowDetail({ t, all, busy, onAct, onToggle, onOpen, extra }: {
+  t: Task; all: Task[]; busy: boolean; onAct: (a: 'start' | 'done' | 'defer', ref: string) => void; onToggle: (t: Task) => void; onOpen: (ref: string) => void; extra?: (t: Task) => ComponentChildren;
+}) {
+  const subs = children(all, t.ref).filter((s) => !/^\s*💬/u.test(s.text));
+  return (
+    <div class="row-detail" data-testid="row-detail">
+      {t.notes.length > 0 && <div class="body">{t.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
+      {subs.length > 0 && (
+        <ul class="checklist" aria-label="Subtasks">
+          {subs.map((s) => <li key={s.ref} class={s.done ? 'done' : ''} style={{ '--depth': s.depth - t.depth - 1 }}>
+            <button type="button" class="tick" aria-label={s.done ? 'Mark not done' : 'Mark done'} disabled={busy} onClick={(e) => { e.stopPropagation(); onToggle(s); }}><span class="box">{s.done ? '✓' : ''}</span></button>
+            <span><Md text={parseRow(s.text).title || s.text} /></span>
+          </li>)}
+        </ul>
+      )}
+      <div class="actions small">
+        <button type="button" class="btn primary" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('start', t.ref); }}>Start <kbd>s</kbd></button>
+        <button type="button" class="btn" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', t.ref); }}>Done <kbd>d</kbd></button>
+        <button type="button" class="btn quiet" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('defer', t.ref); }}>Defer <kbd>z</kbd></button>
+        <span class="grow" />
+        <button type="button" class="btn quiet" aria-label="Open" title="Open full screen (Enter)" onClick={(e) => { e.stopPropagation(); onOpen(t.ref); }}>⤢ <kbd>⏎</kbd></button>
+      </div>
+      {extra && <div class="row-extra">{extra(t)}</div>}
+    </div>
+  );
 }
 
 /** Who/outcome/links lifted out of the title. */
@@ -126,7 +161,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
   const d = p.drag;
   const pr = p.prog.get(t.ref);
   const open = p.expanded.has(t.ref);
-  const cls = ['row', t.done ? 'done' : '', isCursor ? 'cursor' : '', p.selected.has(t.ref) ? 'selected' : '',
+  const cls = ['row', t.done ? 'done' : '', isCursor ? 'cursor' : '', p.selected.has(t.ref) ? 'selected' : '', p.open === t.ref ? 'open' : '', p.justDone.has(t.ref) ? 'done-anim' : '',
     d?.over === t.ref ? `drop-${d.half}` : '', d?.ref === t.ref ? 'dragging' : ''].filter(Boolean).join(' ');
   return (
     <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} onClick={() => p.onCursor(t.ref)}
@@ -140,7 +175,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
           <Editor text={t.text} onSave={(v) => p.onSave(t.ref, v)} onCancel={() => p.onEdit(null)} />
         ) : (
           <>
-            <div class="title" onDblClick={() => p.onEdit(t.ref)}>{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text"><Md text={r.title || t.text} /></span></div>
+            <div class="title" onClick={(e) => { e.stopPropagation(); p.onCursor(t.ref); p.onToggleOpen(t.ref); }}>{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text"><Md text={r.title || t.text} /></span></div>
             <button type="button" class="edit-btn" aria-label={`Edit ${r.title || 'task'}`} onClick={(e) => { e.stopPropagation(); p.onEdit(t.ref); }}>✎</button>
             <div class="chips">
               {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
@@ -157,8 +192,9 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
           </>
         )}
       </div>
-      {open && !editing && t.notes.length > 0 && <div class="notes">{t.notes.map((n, i) => <div key={i}><Md text={n.trim()} /></div>)}</div>}
-      {p.agent?.talk(t)}
+      {open && !editing && p.open !== t.ref && t.notes.length > 0 && <div class="notes">{t.notes.map((n, i) => <div key={i}><Md text={n.trim()} /></div>)}</div>}
+      {p.open === t.ref && !editing && <RowDetail t={t} all={p.all} busy={p.busy} onAct={p.onAct} onToggle={p.onToggle} onOpen={p.onOpen} extra={(x) => <>{p.detail?.(x)}{p.agent?.talk(x)}</>} />}
+      {p.open !== t.ref && p.agent?.talk(t)}
     </li>
   );
 }
@@ -205,6 +241,7 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
         e.preventDefault();
         els[e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length].focus();
       }}>
+      <button type="button" class="close" aria-label="Close" title="Close (Esc)" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></button>
       <div class="focus-inner">
         <p class="eyebrow">{task.project} · {task.section}</p>
         <h1><Md text={r.title || task.text} /></h1>
@@ -226,7 +263,6 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
           <button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start')}>Start <kbd>s</kbd></button>
           <button type="button" class="btn" disabled={busy} onClick={() => onToggle(task)}>Done <kbd>d</kbd></button>
           <button type="button" class="btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>z</kbd></button>
-          <button type="button" class="btn quiet" onClick={onBack}>Back <kbd>Esc</kbd></button>
         </div>
       </div>
     </div>
@@ -594,7 +630,7 @@ function PlanBlock({ b, p, busy, onAct }: { b: Block; p: RowProps; busy: boolean
         </div>
         <span class="row-acts">
             <button type="button" class="ic" title="Start (s)" aria-label="Start" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('start', b.task.ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor" /></svg></button>
-            <button type="button" class="ic" title="Not now (n)" aria-label="Not now" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('notnow', b.task.ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v4.5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></button>
+            <button type="button" class="ic" title="Defer 2 hours (n)" aria-label="Defer 2h" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('notnow', b.task.ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v4.5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></button>
             <button type="button" class="ic" title="Delegate to an agent (Shift+A)" aria-label="Delegate" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('delegate', b.task.ref); }}>🪄</button>
         </span>
       </div>
@@ -669,26 +705,31 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
       : win.inside?.kind === 'personal' ? <><strong>{win.inside.label}</strong> until {clock(win.inside.until)}</>
         : win.inside ? <><strong>{win.inside.label}</strong> · back at {clock(win.inside.until)}</>
           : <><strong>{span(win.minutes)}</strong> until {until}</>;
+  const [all, setAll] = useState(false);
   // One focal point: when the next task does not fit the time left, the task that fits is NOW and the other one waits under it.
   const demoted = !h.fits && h.instead ? h.one : null;
   const one = demoted ? h.instead : h.one;
   const hero = one ? parseRow(one.task.text) : null;
   const ends = (i: HomeItem) => clock(now.getHours() * 60 + now.getMinutes() + i.minutes);
+  const detail = (t: Task) => p.open === t.ref && <RowDetail t={t} all={p.all} busy={busy} onAct={p.onAct} onToggle={p.onToggle} onOpen={p.onOpen} extra={(x) => <>{p.detail?.(x)}{p.agent?.talk(x)}</>} />;
   const row = (i: HomeItem) => {
     const r = parseRow(i.task.text);
     return (
-    <li key={i.task.ref} class={`row home-row${p.cursor === i.task.ref ? ' cursor' : ''}`} data-ref={i.task.ref} onClick={() => p.onCursor(i.task.ref)}>
+    <li key={i.task.ref} class={`row home-row${p.cursor === i.task.ref ? ' cursor' : ''}${p.open === i.task.ref ? ' open' : ''}${p.justDone.has(i.task.ref) ? ' done-anim' : ''}`} data-ref={i.task.ref} onClick={() => { p.onCursor(i.task.ref); p.onToggleOpen(i.task.ref); }}>
       <div class="line">
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', i.task.ref); }}><span class="box" /></button>
-        <span class="title" onDblClick={() => p.onOpen(i.task.ref)}><Md text={r.title || i.task.text} /><Tags r={r} /></span>
+        <span class="title"><Md text={r.title || i.task.text} /><Tags r={r} /></span>
         <span class="proj-tag">{p.titles.get(i.task.project) ?? i.task.project}</span>
         {p.agent?.chip(i.task)}
         <When i={i} />
       </div>
-      {p.agent?.talk(i.task)}
+      {detail(i.task)}
+      {p.open !== i.task.ref && p.agent?.talk(i.task)}
     </li>
     );
   };
+  const projects = h.projects.filter((x) => !x.shown);
+  const shownProjects = all ? projects : projects.slice(0, 3);
   return (
     <section class="home" aria-label="Home">
       <div class="home-window">
@@ -701,9 +742,9 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
       </div>
       {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd>c</kbd></p></div>}
       {one && hero && (
-        <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
+        <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${p.justDone.has(one.task.ref) ? ' done-anim' : ''}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
           <p class="eyebrow">Now · {p.titles.get(one.task.project) ?? one.task.project}</p>
-          <h1 data-testid="next-title" onDblClick={() => p.onOpen(one.task.ref)}><Md text={hero.title || one.task.text} /></h1>
+          <h1 data-testid="next-title" onClick={() => p.onToggleOpen(one.task.ref)}><Md text={hero.title || one.task.text} /></h1>
           <div class="chips">
             <When i={one} onEffort={() => p.onPick([one.task.ref], 'effort')} />
             {(h.fits || demoted) && <span class="ends" data-testid="ends">ends ~{ends(one)}</span>}
@@ -715,14 +756,17 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
           {!h.fits && !demoted && (
             <p class="nofit-line" data-testid="nofit">{win.allow && !win.have && !one.task.text.replace(/\uFE0F/g, '').includes(win.allow.emoji.replace(/\uFE0F/g, '')) && !win.allow.projects?.includes(one.task.project) ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : win.allow && !win.have ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${win.until && win.until.at < win.inside!.until ? win.until.label : `${win.inside!.label} ends`}` : win.inside && !win.have ? `${win.inside.label} now: back at ${clock(win.inside.until)}` : minutesLeft > 0 ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${until}` : 'No time left today'}</p>
           )}
-          <div class="actions">
-            <button type="button" class={`btn${h.fits || demoted ? ' primary' : ''}`} disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>
-            <button type="button" class="btn" disabled={busy} onClick={() => onAct('done', one.task.ref)}>Done <kbd>d</kbd></button>
-            <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('notnow', one.task.ref)}>Not now <kbd>n</kbd></button>
-            <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('delegate', one.task.ref)}>🪄 Delegate <kbd>A</kbd></button>
-            {!h.fits && !demoted && <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
-          </div>
-          {p.agent?.talk(one.task)}
+          {p.open === one.task.ref ? <RowDetail t={one.task} all={p.all} busy={busy} onAct={p.onAct} onToggle={p.onToggle} onOpen={p.onOpen} extra={(x) => <>{p.detail?.(x)}{p.agent?.talk(x)}</>} /> : (
+            <div class="actions">
+              <button type="button" class={`btn${h.fits || demoted ? ' primary' : ''}`} disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>
+              <button type="button" class="btn" disabled={busy} onClick={() => onAct('done', one.task.ref)}>Done <kbd>d</kbd></button>
+              <button type="button" class="btn quiet" disabled={busy} title="Back in 2 hours" onClick={() => onAct('notnow', one.task.ref)}>Defer 2h <kbd>n</kbd></button>
+              <button type="button" class="btn quiet" disabled={busy} title="Pick when" onClick={() => onAct('defer', one.task.ref)}>Defer… <kbd>z</kbd></button>
+              <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('delegate', one.task.ref)}>🪄 Delegate <kbd>A</kbd></button>
+              {!h.fits && !demoted && <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
+            </div>
+          )}
+          {p.open !== one.task.ref && p.agent?.talk(one.task)}
         </div>
       )}
       {demoted && (
@@ -741,18 +785,26 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
           <ul class="rows" data-testid="up-next">{h.next.map((i) => row(i))}</ul>
         </div>
       )}
-      {h.projects.some((x) => !x.shown) && (
+      {h.five.length > 0 && (
         <div>
+          <h2 class="h2">Only have 5 min?</h2>
+          <ul class="rows" data-testid="five">{h.five.map((i) => row(i))}</ul>
+        </div>
+      )}
+      {projects.length > 0 && (
+        <div class={`home-projects-wrap${!all && projects.length > 3 ? ' folded' : ''}`}>
           <h2 class="h2">Projects</h2>
           <ul class="home-projects" data-testid="home-projects">
-            {h.projects.filter((x) => !x.shown).map((x) => (
-              <li key={x.project}>
-                <button type="button" class="proj-link" onClick={() => onProject(x.project)}>{x.title}</button>
-                <span class="proj-top" onDblClick={() => p.onOpen(x.top.task.ref)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
+            {shownProjects.map((x) => (
+              <li key={x.project} class={`${p.cursor === x.top.task.ref ? 'cursor' : ''}${p.open === x.top.task.ref ? ' open' : ''}`} data-ref={x.top.task.ref} onClick={() => { p.onCursor(x.top.task.ref); p.onToggleOpen(x.top.task.ref); }}>
+                <button type="button" class="proj-link" onClick={(e) => { e.stopPropagation(); onProject(x.project); }}>{x.title}</button>
+                <span class="proj-top"><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
                 <When i={x.top} />
+                {detail(x.top.task)}
               </li>
             ))}
           </ul>
+          {!all && projects.length > 3 && <div class="fold"><button type="button" class="btn quiet" onClick={() => setAll(true)}>Show all ({projects.length})</button></div>}
         </div>
       )}
     </section>
