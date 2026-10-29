@@ -53,7 +53,7 @@ Stack needs to know which time block a moment falls in so that tasks can be filt
   - `timeBlocks` (TimeBlock[]) — Default: legacy Work, Family evening, Family weekend, Shichael, Project, Sleep.
   - `taskScoring` (object) — `emojiWeights` (category → emoji → number) and `effortHours` (emoji → number); defaults from legacy.
 - **FR:$time-block** (P1): **`TimeBlock`**
-  - `name` (string), `label` (string?), `days` (string[]), `startTime` (string), `endTime` (string), `emoji` (string)
+  - `name` (string), `label` (string?), `days` (string[]), `startTime` (string), `endTime` (string), `emoji` (string), `kind` (`focus` | `personal` | `sleep`, optional; see `FR:schedule/profile.kind`)
 
 ## Architecture Constraints
 

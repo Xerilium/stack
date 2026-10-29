@@ -6,7 +6,7 @@ export interface MockInbox { id: string; at: string; project: string; ref: strin
 export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string }
 export interface MockSession { id: string; title: string; project: string; cwd: string; branch?: string; lastActive: string; state: string; cost: { usd: number; tokens: number }; prs: string[] }
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
-export interface Mock { events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
+export interface Mock { schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
 /** Short date for row text, relative to today (the plan depends on the clock). */
@@ -28,10 +28,12 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 /** `context: true` routes at the browser context, so requests a service worker makes are mocked too. */
 export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean } = {}): Promise<Mock> {
   const router = opts.context ? page.context() : page;
-  const m: Mock = { events: null, calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
+  const m: Mock = { schedule: null, events: null, calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
   const proj = [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
+    // any other project the seeded tasks mention
+    ...[...new Set(m.tasks.map((t) => t.project))].filter((n) => n !== 'alpha' && n !== 'beta').map((n) => ({ name: n, title: n[0].toUpperCase() + n.slice(1), metadata: {} })),
   ];
   const find = (ref: string) => m.tasks.find((t) => t.ref === ref);
   const strip = (t: MockTask, group: string) => { for (const e of EMOJI[group]) t.text = t.text.split(e).join('').split(vs(e)).join(''); t.text = t.text.replace(/\s+/g, ' ').trim(); };
@@ -84,6 +86,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       s.state = 'idle'; return json(route, 200, { changed: true });
     }
     if (path === '/sessions' && req.method() === 'POST') { const id = 'a1b2c3d4-0000-0000-0000-00000000new1'; m.sessions?.unshift({ id, title: body.text, project: 'stack', cwd: body.cwd, lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] }); return json(route, 202, { runId: 'run-new', sessionId: id }); }
+    if (path === '/schedule') return json(route, 200, m.schedule); // null: no schedule, the 9-6 fallback
     if (path === '/calendar') {
       if (m.calendarFail) return json(route, 200, { configured: true, items: [], error: 'Calendar unavailable' });
       if (!m.events) return json(route, 200, { configured: false, items: [] });
