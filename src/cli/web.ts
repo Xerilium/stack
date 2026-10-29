@@ -9,6 +9,7 @@ import { createServer, type IncomingMessage, type Server } from 'http';
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'path';
 import { createApiHandler } from '../api/handler';
 import { createGitHubPrs } from '../api/github';
+import { fixtureCalendar, type CalendarEvent } from '../calendar';
 import { getDefaults, parseConfig } from '../core/config';
 import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo } from './watch';
@@ -88,12 +89,20 @@ async function toRequest(req: IncomingMessage, origin: string): Promise<Request>
   return new Request(origin + (req.url ?? '/'), { method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
 }
 
+/** Demo calendar from a JSON file of events; there is no live calendar until owner sign-in exists. @req FR:day-inputs/api.wire */
+export function calendarFixture(path = process.env.STACK_CALENDAR_FIXTURE): ReturnType<typeof fixtureCalendar> | undefined {
+  if (!path) return undefined;
+  const list = JSON.parse(readFileSync(path, 'utf8')) as CalendarEvent[];
+  if (!Array.isArray(list)) throw new Error('STACK_CALENDAR_FIXTURE must be a JSON array of events');
+  return fixtureCalendar(list);
+}
+
 export async function startWeb(o: WebOpts): Promise<WebServer> {
   const cfgPath = join(o.dir, '.xe/config/stack.json');
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
   // @req FR:agent-inbox/github.wire
   const ghToken = process.env.GITHUB_TOKEN?.trim();
-  const api = createApiHandler({ storage: new GitStorage(o.dir), config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined });
+  const api = createApiHandler({ storage: new GitStorage(o.dir), config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined, calendar: calendarFixture() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs });

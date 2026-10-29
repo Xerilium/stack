@@ -1,4 +1,5 @@
 import { planStart, type Day } from './plan';
+import { busyWithin, type Busy } from './meetings';
 
 /** Available time today: a per-day budget kept in browser storage. @req FR:web-app/today.capacity */
 export const STEP = 30;
@@ -15,8 +16,10 @@ export const dateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 
 export const clampBudget = (m: number) => Math.max(0, Math.min(MAX, Math.round(m)));
 
 /** Your budget, or the time left in the work day when you have not set one. */
-export function budgetOf(now: Date, day: Day, saved: number | null): { minutes: number; isDefault: boolean } {
-  return saved === null ? { minutes: Math.max(0, day.end - planStart(now, day)), isDefault: true } : { minutes: saved, isDefault: false };
+/** Your budget, or the work day left minus the meetings inside it. @req FR:web-app/today.meetings */
+export function budgetOf(now: Date, day: Day, saved: number | null, busy: Busy[] = []): { minutes: number; isDefault: boolean } {
+  const start = planStart(now, day);
+  return saved === null ? { minutes: Math.max(0, day.end - start - busyWithin(busy, start, day.end)), isDefault: true } : { minutes: saved, isDefault: false };
 }
 
 /** The budget saved for today, or null (none, another day, or storage unavailable). */
