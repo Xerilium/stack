@@ -1,4 +1,3 @@
-import { parseRow } from './row';
 import type { Agent, AgentState, InboxItem, Task } from './types';
 
 /** AI team helpers: labels, recency, and which inbox replies belong to an item. @req FR:web-app/today.agents @req FR:web-app/today.reply */
@@ -26,8 +25,8 @@ export function lastLine(a: Agent, now = new Date()): string {
 export const attention = (items: Agent[]): string[] =>
   COUNT.map(([s, label]) => [items.filter((a) => a.state === s).length, label] as const).filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}`);
 
-/** Open inbox entries for a row: same ref, or the same title in the same project (lines move). */
-export function repliesFor(items: InboxItem[], t: Pick<Task, 'ref' | 'project' | 'text'>): InboxItem[] {
-  const title = parseRow(t.text).title;
-  return items.filter((e) => e.state === 'open' && e.project === t.project && (e.ref === t.ref || (title !== '' && e.task === title)));
-}
+/** Inbox text as the owner typed it: the server stores it markdown-escaped. */
+export const unescapeMd = (v: string): string => v.replace(/\\([\\<>[\]`|])/g, '$1');
+
+/** Open inbox entries for a row. The server says where each entry's row is now; the stored ref alone would land on the wrong row after a move. */
+export const repliesFor = (items: InboxItem[], t: Pick<Task, 'ref'>): InboxItem[] => items.filter((e) => e.state === 'open' && e.row === t.ref);

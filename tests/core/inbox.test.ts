@@ -1,4 +1,5 @@
-import { formatEntry, handleEntry, INBOX_HEADER, listInbox, parseInbox, sendToInbox, type InboxEntry } from '../../src/core/inbox';
+import { currentRows, formatEntry, handleEntry, INBOX_HEADER, listInbox, parseInbox, sendToInbox, type InboxEntry } from '../../src/core/inbox';
+import { parseProject } from '../../src/core/parser';
 import { ConflictError, MemoryStorage, PathError, validatePath } from '../../src/core/storage';
 import { LifecycleError } from '../../src/core/lifecycle';
 
@@ -82,6 +83,31 @@ describe('send', () => {
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, '', 'reply')).rejects.toThrow(LifecycleError);
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'a\nb', 'reply')).rejects.toThrow(LifecycleError);
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x'.repeat(1001), 'reply')).rejects.toThrow(LifecycleError);
+  });
+  it('compares expect with the row text as the parser reads it (one space after the checkbox)', async () => {
+    const doc = '# Alpha\n\n## Active\n\n- [ ]  🤖 Two spaces\n';
+    const { ctx } = await mk(doc);
+    const row = parseProject(doc).sections.flatMap((x) => x.tasks)[0];
+    await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply', row.text)).resolves.toMatchObject({ path: 'tasks/inbox/alpha.md' });
+  });
+  it('follows rows by title through moves, new marks, redaction, and long titles; the stored line breaks ties', async () => {
+    const secret = 'ghp_' + 'a'.repeat(36);
+    const long = 'Ship the ' + 'very '.repeat(80) + 'long thing';
+    const doc = (rows: string[]) => '# Alpha\n\n## Active\n\n' + rows.map((r) => `- [ ] ${r}\n`).join('');
+    const { storage, ctx } = await mk(doc(['🤖 Rotate key ' + secret, '🙋 Pick a vendor [A|B]', '🤖 ' + long, '🤖 Same', '🤖 Same']));
+    for (const line of [4, 5, 6, 8]) await sendToInbox(ctx, { path: 'tasks/alpha.md', line }, 'x', 'reply');
+    await storage.write('tasks/alpha.md', doc(['🤖 New first', '🤖 Same', '🤖 Same', '🚧 🤖 ' + long + ' 🟢', '🙋 🔺 Pick a vendor [A|B] 📅 Nov 2: https://github.com/o/r/pull/4', '🤖 Rotate key ' + secret]));
+    const all = await listInbox(ctx);
+    const rows = await currentRows(ctx, all);
+    expect(all.map((e) => rows.get(e.id))).toEqual(['tasks/alpha.md:10', 'tasks/alpha.md:9', 'tasks/alpha.md:8', 'tasks/alpha.md:7']);
+  });
+  it('skips entries with a missing or bad ref instead of failing the rest', async () => {
+    const { storage, ctx } = await mk();
+    const sent = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x', 'reply');
+    const good = (await storage.read('tasks/inbox/alpha.md')).content;
+    await storage.write('tasks/inbox/alpha.md', good + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-aaaa', ref: 'alpha:6' })) + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-bbbb', ref: '' })) + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-cccc', ref: 'tasks/../x.md:1' })));
+    const rows = await currentRows(ctx, await listInbox(ctx));
+    expect([...rows.keys()]).toEqual([sent.id]);
   });
   it('redacts secrets and escapes markdown', async () => {
     const { storage, ctx } = await mk();

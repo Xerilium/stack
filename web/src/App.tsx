@@ -15,7 +15,7 @@ import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
-import { budgetOf, clampBudget, loadBudget, saveBudget, STEP, store } from './day';
+import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
 import { actionsFor } from './asks';
 import { useAsks } from './useAsks';
@@ -59,7 +59,7 @@ export function App() {
   const [agentItems, setAgentItems] = useState<Agent[] | null>(null);
   const [agentsError, setAgentsError] = useState('');
   const [inbox, setInbox] = useState<InboxItem[]>([]);
-  const [saved, setSaved] = useState<number | null>(() => loadBudget(store(), new Date()));
+  const [saved, setSaved] = useState<{ date: string; minutes: number } | null>(() => { const now = new Date(); const m = loadBudget(store(), now); return m === null ? null : { date: dateKey(now), minutes: m }; });
   const lastProject = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const captureRef = useRef<HTMLInputElement | null>(null);
@@ -85,12 +85,13 @@ export function App() {
     if (allOpen) secs.push({ id: 'all', title: 'All active', rows: more });
     return { sections: secs, hidden: more.length };
   }, [tasks, next, allOpen]);
-  const clockNow = useMemo(() => new Date(), [tasks]);
+  const clockNow = useMemo(() => new Date(), [tasks, saved]); // also refresh when the budget changes, so a value set after midnight counts for the new day
   const day = DEFAULT_DAY;
-  const budget = budgetOf(clockNow, day, saved);
+  // Kept with its date: a tab left open overnight must not keep yesterday's budget, and it works without storage.
+  const budget = budgetOf(clockNow, day, saved && saved.date === dateKey(clockNow) ? saved.minutes : null);
   const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes), [tasks, next, clockNow, day, budget.minutes]);
   /** @req FR:web-app/today.capacity */
-  const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); saveBudget(store(), new Date(), v); setSaved(v); }, []);
+  const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v); setSaved(v === null ? null : { date: dateKey(now), minutes: v }); }, []);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
   const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
   const rows = view === 'asks' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;

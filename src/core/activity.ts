@@ -3,10 +3,10 @@
  * @req FR:agent-inbox/activity.rows @req FR:agent-inbox/activity.state @req FR:agent-inbox/activity.order
  */
 import { EFFORT, IMPACT, PRIORITY, SPECIAL, STATUS, type LifecycleContext } from './lifecycle';
-import { listInbox, taskTitle, type ListedEntry } from './inbox';
+import { currentRows, listInbox, taskTitle, type ListedEntry } from './inbox';
 import { parseProject, type Task } from './parser';
 import { NotFoundError } from './storage';
-import { logName, md, redact } from './triage';
+import { logName } from './triage';
 
 export interface PrRef { url: string; repo: string; number: number }
 export interface PrStatus { state: 'open' | 'draft' | 'merged' | 'closed'; checks: 'passing' | 'failing' | 'pending' | 'none'; title: string; updatedAt: string }
@@ -98,6 +98,7 @@ function stateOf(i: Omit<AgentItem, 'state'>, doing: boolean, now: number): Agen
 export async function agentActivity(ctx: ActivityContext): Promise<AgentItem[]> {
   const now = (ctx.now ?? (() => new Date()))().getTime();
   const inbox: ListedEntry[] = await listInbox(ctx).catch(() => []);
+  const rowOf = await currentRows(ctx, inbox).catch(() => new Map<string, string>());
   const rows: { item: Omit<AgentItem, 'state'>; doing: boolean; order: number }[] = [];
   for (const path of await ctx.storage.list()) {
     const name = baseName(path);
@@ -110,11 +111,10 @@ export async function agentActivity(ctx: ActivityContext): Promise<AgentItem[]> 
       if (t.checked || chain.some((c) => c.checked) || !isAgent(t.text) || isHuman(t.text) || PARKED.some((e) => has(t.text, e))) continue;
       const doing = has(t.text, '🚧');
       if (!isActive(section) && !doing) continue;
-      const human = [...t.children, ...siblings.filter((x) => x !== t)].find((x) => !x.checked && isHuman(x.text));
+      const human = [...t.children, ...(chain.length > 0 ? siblings.filter((x) => x !== t) : [])].find((x) => !x.checked && isHuman(x.text));
       const fileRef = `${path}:${t.line + 1}`;
       const title = titleOf(t.text);
-      const safeTitle = md(redact(taskTitle(t.text)));
-      const replies = inbox.filter((e) => e.state === 'open' && e.project === name && (e.ref === fileRef || e.task === safeTitle)).length;
+      const replies = inbox.filter((e) => e.state === 'open' && rowOf.get(e.id) === fileRef).length;
       const last = logs.get(fileRef);
       rows.push({
         item: {

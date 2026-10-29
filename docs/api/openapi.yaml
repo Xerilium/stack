@@ -1294,6 +1294,9 @@ components:
           type: string
         note:
           type: string
+        row:
+          $ref: "#/components/schemas/Ref"
+          description: Where the row is now, found by title (lines move); absent when the row is gone
     Ask:
       type: object
       description: One ask for the owner (tasks/asks/<key>.md) with its computed score and rank.

@@ -3,7 +3,7 @@ import type { CapacityRow } from './capacity';
 import type { Filters } from './filters';
 import { children, dueDays } from './now';
 import { clock, estimate, span, type Block, type Decision, type Plan } from './plan';
-import { ago, AGENT_LABEL, attention, lastLine, repliesFor } from './agents';
+import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
 import type { Agent, InboxItem, NextTask, Task } from './types';
@@ -298,7 +298,7 @@ function Sent({ items, now }: { items: InboxItem[]; now: Date }) {
   if (items.length === 0) return null;
   return (
     <ul class="sent" aria-label="Sent to the agent">
-      {items.slice(-2).map((e) => <li key={e.id}><span class="sent-who">You · {ago(e.at, now)}</span> <span class="sent-text">{e.text}</span></li>)}
+      {items.slice(-2).map((e) => <li key={e.id}><span class="sent-who">You · {ago(e.at, now)}</span> <span class="sent-text">{unescapeMd(e.text)}</span></li>)}
     </ul>
   );
 }

@@ -9,6 +9,7 @@ export interface GitHubPrsOptions { token: string; fetch?: typeof fetch; ttlMs?:
 const API = 'https://api.github.com';
 const REPO = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
 const MAX_IN_FLIGHT = 6;
+const TIMEOUT_MS = 5000;
 const BAD = new Set(['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure', 'stale']);
 
 /** Aggregates check runs: any failure wins, then anything still running, then none, else passing. */
@@ -26,7 +27,7 @@ export function createGitHubPrs(o: GitHubPrsOptions): PrStatusProvider {
   const cache = new Map<string, { at: number; v: PrStatus | null }>();
   const headers = { authorization: `Bearer ${o.token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'stack' };
   const call = async (path: string): Promise<unknown> => {
-    const res = await get(`${API}${path}`, { headers });
+    const res = await get(`${API}${path}`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) throw new Error(`GitHub ${res.status}`);
     return res.json();
   };

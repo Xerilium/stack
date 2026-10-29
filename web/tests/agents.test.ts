@@ -1,6 +1,6 @@
 /** @req FR:web-app/today.agents @req FR:web-app/today.reply */
 import { describe, expect, it } from 'vitest';
-import { ago, AGENT_LABEL, attention, lastLine, repliesFor } from '../src/agents';
+import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from '../src/agents';
 import type { Agent, InboxItem } from '../src/types';
 
 const now = new Date('2026-10-28T18:00:00Z');
@@ -26,12 +26,13 @@ describe('AI team helpers', () => {
     expect(attention([a({ state: 'waiting' }), a({ state: 'waiting' }), a({ state: 'failing' }), a({ state: 'working' }), a({ state: 'review' })])).toEqual(['2 need you', '1 CI failing', '1 ready for review', '1 working']);
     expect(attention([a({ state: 'queued' })])).toEqual(['1 queued']);
   });
-  it('matches open replies by ref or by task title in the project', () => {
-    const items: InboxItem[] = [
-      { id: '1', at: 'x', project: 'alpha', ref: 'alpha:5', task: 'T', kind: 'reply', to: 'agent', text: 'one', state: 'open' },
-      { id: '2', at: 'y', project: 'alpha', ref: 'alpha:9', task: 'T', kind: 'reply', to: 'agent', text: 'moved', state: 'open' },
-      { id: '3', at: 'z', project: 'beta', ref: 'beta:5', task: 'T', kind: 'reply', to: 'agent', text: 'other', state: 'open' },
-    ];
-    expect(repliesFor(items, { ref: 'alpha:5', project: 'alpha', text: '🪄 T' }).map((i) => i.text)).toEqual(['one', 'moved']);
+  it('matches open replies by where the server says the row is now', () => {
+    const e = (id: string, ref: string, row?: string, state: InboxItem['state'] = 'open'): InboxItem => ({ id, at: id, project: 'alpha', ref, task: 'T', kind: 'reply', to: 'agent', text: id, state, ...(row ? { row } : {}) });
+    const items = [e('moved', 'alpha:5', 'alpha:9'), e('here', 'alpha:9', 'alpha:9'), e('gone', 'alpha:9'), e('done', 'alpha:9', 'alpha:9', 'handled')];
+    expect(repliesFor(items, { ref: 'alpha:9' }).map((i) => i.id)).toEqual(['moved', 'here']);
+    expect(repliesFor(items, { ref: 'alpha:5' })).toEqual([]); // a different row now on the stored line
+  });
+  it('shows inbox text as typed', () => {
+    expect(unescapeMd('Use A\\|B, see \\[draft\\] and \\\\n')).toBe('Use A|B, see [draft] and \\n');
   });
 });
