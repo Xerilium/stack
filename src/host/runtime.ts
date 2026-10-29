@@ -9,7 +9,8 @@ import { createMcpHandler } from '../mcp';
 import { createIcsCalendar, IcsError, icsUrls } from '../calendar/ics';
 import type { CalendarProvider } from '../calendar';
 import { writeAll, type FileWrite, type Storage } from '../core/storage';
-import { openGitStorage } from './git-repo';
+import { openGitStorage, type GitDeps } from './git-repo';
+import { GitHubStorage, parseGitHubRepo } from './github-storage';
 import { GitTokenStore, needAux, type HostStorage } from './token-store';
 import { parseSettings, SettingsError, type Env, type HostSettings } from './settings';
 
@@ -23,6 +24,23 @@ export interface HostDeps {
   now?: () => number;
   /** After a failed open, later calls fail fast for this long. Default 30000. */
   cooldownMs?: number;
+  /** fetch for the GitHub API adapter (tests). */
+  fetch?: typeof fetch;
+  /** GitHub adapter: minimum ms between ref checks. Default 5000. */
+  freshMs?: number;
+}
+
+/**
+ * github.com repos use the REST adapter (no git binary, no clone); any other host is cloned with git.
+ * @req FR:live-deploy/gh.select
+ */
+export async function openRepoStorage(s: HostSettings, deps: GitDeps & { fetch?: typeof fetch; freshMs?: number } = {}): Promise<Storage> {
+  const gh = parseGitHubRepo(s.repoUrl);
+  if (!gh) return openGitStorage(s, deps);
+  const storage = new GitHubStorage({ ...gh, branch: s.branch, token: s.repoToken, path: s.path, fetch: deps.fetch, freshMs: deps.freshMs, author: { name: s.gitName, email: s.gitEmail } });
+  // Fail on open (bad token, missing repo) so the cooldown applies instead of failing every read.
+  await storage.sync();
+  return storage;
 }
 
 const BOT_ROUTES = new Set(['next', 'tasks.add', 'tasks.start', 'tasks.complete', 'tasks.skip']);
@@ -52,6 +70,7 @@ function lazyStorage(open: () => Promise<Storage>, now: () => number, cooldownMs
     readAux: async (path) => needAux(await get()).readAux(path),
     writeAux: async (path, content, opts) => needAux(await get()).writeAux(path, content, opts),
     sync: async () => { const s = (await get()) as { sync?: () => Promise<void> }; if (s.sync) await s.sync(); },
+    rev: async () => { const s = (await get()) as { rev?: () => Promise<string> }; return s.rev ? s.rev() : null; },
   };
 }
 
@@ -87,7 +106,7 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
 
   const settings = s;
   const onName = (n: string) => log(`error: ${n}`);
-  const storage = lazyStorage(() => (deps.openStorage ?? ((x) => openGitStorage(x)))(settings), deps.now ?? Date.now, deps.cooldownMs ?? 30_000);
+  const storage = lazyStorage(() => (deps.openStorage ?? ((x) => openRepoStorage(x, { fetch: deps.fetch, freshMs: deps.freshMs })))(settings), deps.now ?? Date.now, deps.cooldownMs ?? 30_000);
   const tokens = createTokenService({ store: deps.tokenStore ?? (settings.tokenStore ? new FileTokenStore(settings.tokenStore) : new GitTokenStore(async () => storage, { onError: onName })), pepper: settings.pepper });
   const event = (e: object) => log(JSON.stringify(e));
   const onError = (e: unknown) => log(`error: ${className(e)}`);

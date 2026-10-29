@@ -164,6 +164,10 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'listAgents', summary: 'What agents are doing, from agent rows, result logs, inbox replies, and pull request status',
     responses: ok('Agent work', { type: 'object', properties: { items: { type: 'array', items: ref('AgentItem') } } }),
   },
+  sync: {
+    operationId: 'sync', summary: 'Change probe: the head revision of the task repo (null when the storage has none). Poll it and reload only when it changes',
+    responses: ok('Revision', { type: 'object', properties: { rev: { type: 'string', nullable: true } } }),
+  },
   'asks.list': {
     operationId: 'listAsks', summary: 'Asks for the owner, ranked by score (open by default). State answered lists asks waiting for the agent to act',
     responses: ok('Asks', { type: 'object', properties: { items: { type: 'array', items: ref('Ask') }, total: { type: 'integer' }, latest: { type: 'string', format: 'date-time' }, snoozed: { type: 'integer' } } }),

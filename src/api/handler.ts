@@ -642,6 +642,15 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    // @req FR:live-deploy/sync.route @req FR:live-deploy/sync.cheap
+    method: 'GET', doc: '/sync', name: 'sync',
+    async run(c) {
+      readQuery(c.url, []);
+      const s = c.deps.storage as { rev?: () => Promise<string | null> };
+      return json(200, { rev: typeof s.rev === 'function' ? await s.rev() : null });
+    },
+  },
+  {
     method: 'GET', doc: '/projects', name: 'projects.list', query: FIELDS_Q,
     async run(c) {
       const q = readQuery(c.url, Object.keys(FIELDS_Q));

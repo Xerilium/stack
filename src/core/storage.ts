@@ -58,7 +58,7 @@ export const versionOf = (content: string): string =>
   createHash('sha256').update(Buffer.from(content, 'utf8')).digest('hex');
 
 /** Dotfiles are rejected (list() hides them, so every adapter must agree). */
-const TASK_PATH = /^tasks\/[^/\\\0.][^/\\\0]*\.md$/;
+export const TASK_PATH = /^tasks\/[^/\\\0.][^/\\\0]*\.md$/;
 const SUMMARY_PATH = /^(README|stack|projects|my-day)\.md$/;
 /** Agent result logs live beside the tasks, in their own folder, and are never projects. */
 const LOG_PATH = /^tasks\/logs\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
@@ -66,7 +66,7 @@ const LOG_PATH = /^tasks\/logs\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Z
 const INBOX_PATH = /^tasks\/inbox\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
 
 /** Agent asks for the owner: one file per ask, never projects. @req FR:ask-queue/ask.path */
-const ASK_PATH = /^tasks\/asks\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
+export const ASK_PATH = /^tasks\/asks\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
 /** Archived (done) asks: same names, one folder down, never listed as open asks. @req FR:ask-queue/ask.archive */
 const ARCHIVE_PATH = /^tasks\/asks\/archive\/[a-z0-9][a-z0-9._-]{0,79}\.md$/;
 /** Agent definitions (one per agent, scoped to project folders), never projects. @req FR:agent-team/agent.path */

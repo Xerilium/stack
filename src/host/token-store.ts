@@ -7,7 +7,7 @@ import { ConflictError, StorageError, type AuxFiles, type Storage } from '../cor
 import { StoreConflict, type TokenStore } from '../api';
 
 /** Storage as the host uses it: tasks, state files, and an optional remote sync. */
-export type HostStorage = Storage & AuxFiles & { sync?(): Promise<void> };
+export type HostStorage = Storage & AuxFiles & { sync?(): Promise<void>; /** Head revision, or null when the storage has none. */ rev?(): Promise<string | null> };
 
 export const TOKEN_PATH = '.stack/tokens.json';
 

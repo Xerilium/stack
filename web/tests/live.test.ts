@@ -107,3 +107,105 @@ describe('retry', () => {
     expect(changes).toEqual([['poll']]);
   });
 });
+
+/** @req FR:live-deploy/web.poll @req FR:live-deploy/web.state @req FR:live-deploy/web.action */
+describe('connectLive with a change probe', () => {
+  const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+  const mkProbe = () => {
+    const p = { rev: 'a' as string | null, fail: null as null | { status: number }, calls: 0 };
+    const probe = async () => { p.calls++; if (p.fail) throw Object.assign(new Error('x'), p.fail); return p.rev; };
+    return { p, probe };
+  };
+  const run = (probe: () => Promise<string | null>, visible = () => true) => {
+    const changes: string[][] = []; const status: string[] = []; const synced: Date[] = [];
+    const live = connectLive({ make: null, probe, onChange: (k) => changes.push(k), onStatus: (s) => status.push(s), onSynced: (d) => synced.push(d), pollMs: 1000, visible });
+    return { changes, status, synced, live };
+  };
+
+  it('probes at once, reloads once on the first revision (closing the gap after the initial load), then only on change', async () => {
+    const { p, probe } = mkProbe();
+    const { changes, status, synced } = run(probe);
+    await flush();
+    expect(p.calls).toBe(1);
+    expect(status).toEqual(['poll']);
+    expect(synced).toHaveLength(1);
+    expect(changes).toEqual([['asks', 'tasks', 'state']]);
+    vi.advanceTimersByTime(3000); await flush();
+    expect(changes).toHaveLength(1);
+    p.rev = 'b';
+    vi.advanceTimersByTime(1000); await flush();
+    expect(changes).toEqual([['asks', 'tasks', 'state'], ['asks', 'tasks', 'state']]);
+  });
+  it('a null revision reloads on every probe after the first', async () => {
+    const { p, probe } = mkProbe(); p.rev = null;
+    const { changes } = run(probe);
+    await flush();
+    vi.advanceTimersByTime(1000); await flush();
+    vi.advanceTimersByTime(1000); await flush();
+    expect(changes).toEqual([['poll'], ['poll']]);
+  });
+  it('a network failure is offline and keeps retrying without a click', async () => {
+    const { p, probe } = mkProbe(); p.fail = { status: 0 };
+    const { status, changes } = run(probe);
+    await flush();
+    expect(status).toEqual(['offline']);
+    p.fail = null; p.rev = 'b';
+    vi.advanceTimersByTime(1000); await flush();
+    expect(status).toEqual(['offline', 'poll']);
+    expect(changes).toEqual([['asks', 'tasks', 'state']]);
+  });
+  it('401 is signin', async () => {
+    const { p, probe } = mkProbe(); p.fail = { status: 401 };
+    const { status } = run(probe);
+    await flush();
+    expect(status).toEqual(['signin']);
+  });
+  it('retry probes now; it does not wait for the interval', async () => {
+    const { p, probe } = mkProbe(); p.fail = { status: 0 };
+    const { status, live } = run(probe);
+    await flush();
+    p.fail = null;
+    live.retry(); await flush();
+    expect(status).toEqual(['offline', 'poll']);
+    expect(p.calls).toBe(2);
+  });
+  it('probes at once when the page becomes visible or the browser comes online', async () => {
+    let vis = false; let wake = () => undefined as void;
+    const { p, probe } = mkProbe();
+    connectLive({ make: null, probe, onChange: () => undefined, onStatus: () => undefined, pollMs: 60_000, visible: () => vis, wake: (fn) => { wake = fn; return () => undefined; } });
+    await flush();
+    expect(p.calls).toBe(0);
+    vis = true;
+    wake(); await flush();
+    expect(p.calls).toBe(1);
+    wake(); await flush();
+    expect(p.calls).toBe(2);
+  });
+  it('retry on a dropped stream reconnects and reloads', () => {
+    const changes: string[][] = [];
+    const live = connectLive({ make: (u) => new FakeES(u), onChange: (k) => changes.push(k), onStatus: () => undefined, pollMs: 1000, visible: () => true });
+    FakeES.all[0].open();
+    FakeES.all[0].fail(false);
+    live.retry();
+    expect(FakeES.all).toHaveLength(2);
+    expect(FakeES.all[0].closed).toBe(true);
+    FakeES.all[1].open();
+    expect(changes).toEqual([['asks', 'tasks', 'state']]);
+  });
+});
+
+/** @req FR:live-deploy/web.action */
+describe('hung probe', () => {
+  it('a probe with no answer times out to offline, and the next tick probes again', async () => {
+    const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+    let calls = 0; let hang = true;
+    const status: string[] = [];
+    connectLive({ make: null, probe: () => { calls++; return hang ? new Promise<string>(() => undefined) : Promise.resolve('a'); }, onChange: () => undefined, onStatus: (s) => status.push(s), pollMs: 15_000, probeMs: 10_000, visible: () => true, wake: () => () => undefined });
+    vi.advanceTimersByTime(10_000); await flush();
+    expect(status).toEqual(['offline']);
+    hang = false;
+    vi.advanceTimersByTime(5_000); await flush();
+    expect(calls).toBe(2);
+    expect(status).toEqual(['offline', 'poll']);
+  });
+});

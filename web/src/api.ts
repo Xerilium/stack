@@ -74,6 +74,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     reviews: async (project: string) => (await call<{ items: ReviewItem[] }>(`/reviews?project=${encodeURIComponent(project)}`)).items,
     review: (ref: string, agent?: string) => call<{ runId: string; sessionId: string | null; agent: string }>('/tasks/review', { ref, ...(agent ? { agent } : {}) }),
     cancelSession: (id: string) => call<{ changed: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, {}),
+    /** Repo revision for change-driven polling (null: the host has none). @req FR:live-deploy/web.poll */
+    sync: async () => (await call<{ rev: string | null }>('/sync')).rev,
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
   };
 }

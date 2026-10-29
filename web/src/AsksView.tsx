@@ -21,16 +21,23 @@ const Icon = {
   check: <svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2.2" /><path d="M15.5 24.5l5.8 5.8 11.2-12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>,
 };
 
-/** Quiet while live; says what is wrong and what to do otherwise. @req FR:web-shell/state.live */
-function LiveBadge({ a, unreachable }: { a: Asks; unreachable: boolean }) {
+/**
+ * Quiet while live; says what is wrong and what to do otherwise. Only the state is announced, never the clock beside it.
+ * @req FR:web-shell/state.live @req FR:live-deploy/web.state @req FR:live-deploy/web.action
+ */
+function LiveBadge({ a, unreachable, onSignIn }: { a: Asks; unreachable: boolean; onSignIn?: () => void }) {
   if (a.status === 'connecting' && !unreachable) return null;
   const state = unreachable ? 'down' : a.status;
-  const text = state === 'live' ? 'Live' : state === 'poll' ? 'Checks every 15 s' : state === 'down' ? "Can't reach Stack" : 'Reconnecting…';
+  const label = { live: 'Live', poll: 'Synced', down: "Can't reach Stack", offline: 'Offline · retrying', signin: 'Sign-in expired', connecting: 'Connecting…' }[state];
+  const at = state === 'poll' && a.syncedAt ? ` ${a.syncedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
   return (
-    <div class={`live ${state}`} role="status" data-testid="live-status">
+    <div class={`live ${state}`} data-testid="live-status" title={state === 'poll' ? 'Checks for changes every 15 s' : undefined}>
+      <span class="sr-only" role="status">{label}</span>
       <span class="dot" aria-hidden="true" />
-      <span class={state === 'live' ? 'sr-only' : undefined}>{text}</span>
-      {(state === 'offline' || (state === 'down' && a.phase === 'ready')) && <button type="button" class="link" onClick={() => void a.retry()}>Retry</button>}
+      <span class={state === 'live' ? 'sr-only' : undefined} aria-hidden="true">{label}{at}</span>
+      {state === 'offline' && <button type="button" class="link" onClick={() => void a.retry()}>Retry now</button>}
+      {state === 'down' && a.phase === 'ready' && <button type="button" class="link" onClick={() => void a.retry()}>Retry</button>}
+      {state === 'signin' && <button type="button" class="link" onClick={onSignIn ?? (() => location.assign('/.auth/login/github'))}>Sign in</button>}
     </div>
   );
 }
@@ -151,7 +158,7 @@ export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; 
 /** AI on the ask card: the agent chip in the eyebrow, the composer under the ask, `a` to open it. @req FR:agent-team/web.anything */
 export interface TalkSlot { chip: (a: AskItem) => ComponentChildren; render: (a: AskItem) => ComponentChildren; open: (a: AskItem) => void; isOpen: () => boolean; close: () => void }
 
-export function AsksView({ asks, notify, offline = false, talk }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; talk?: TalkSlot }) {
+export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void; talk?: TalkSlot }) {
   const { items, cursor } = asks;
   const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
   const [openSent, setOpenSent] = useState(false);
@@ -223,7 +230,7 @@ export function AsksView({ asks, notify, offline = false, talk }: { asks: Asks; 
     <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Asks">
       <header class="asks-head">
         <h1 class="h1">Needs you{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
-        <LiveBadge a={asks} unreachable={unreachable} />
+        <LiveBadge a={asks} unreachable={unreachable} onSignIn={onSignIn} />
         {notify?.supported && (
           <button type="button" class={`notify-btn${notify.on ? ' on' : ''}${notify.blocked && !notify.on ? ' blocked' : ''}`} aria-pressed={notify.on} aria-label={notify.blocked && !notify.on ? 'Notifications blocked' : notify.on ? 'Notifications on' : 'Notify me'} title={notify.blocked && !notify.on ? blockedHelp() : notify.on ? 'Notifications are on: tap to turn off' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z" fill={notify.on ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />{notify.blocked && !notify.on && <path d="M4 4l16 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />}</svg>
