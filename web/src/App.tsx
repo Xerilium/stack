@@ -90,6 +90,7 @@ export function App() {
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const [{ view, filters }, setNav] = useState(() => parseHash(location.hash));
   const [tasks, setTasks] = useState<Task[]>([]);
+  useEffect(() => { setAllProjects(false); }, [tasks]); // Show all lasts until the next load
   const [projects, setProjects] = useState<Project[]>([]);
   const [next, setNext] = useState<NextTask | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);

@@ -40,10 +40,13 @@ export interface RowProps {
 }
 
 /** Click or Enter/Space on a title toggles the row in place; links inside the title keep working. @req FR:web-app/home2.expand */
-function toggleOn<E extends HTMLElement>(ref: string, p: { onCursor: (ref: string) => void; onToggleOpen: (ref: string) => void; open: string | null }): JSX.HTMLAttributes<E> { return {
+function toggleOn<E extends HTMLElement>(ref: string, p: { onCursor: (ref: string) => void; onToggleOpen: (ref: string) => void; onOpen: (ref: string) => void; open: string | null }): JSX.HTMLAttributes<E> { return {
   role: 'button', tabIndex: 0, 'aria-expanded': p.open === ref,
   onClick: (e) => { if ((e.target as HTMLElement).closest('a')) return; e.stopPropagation(); p.onCursor(ref); p.onToggleOpen(ref); },
-  onKeyDown: (e) => { if (e.key === ' ') { e.preventDefault(); e.stopPropagation(); p.onCursor(ref); p.onToggleOpen(ref); } }, // Enter bubbles: it opens full screen
+  onKeyDown: (e) => {
+    if (e.key === ' ') { e.preventDefault(); e.stopPropagation(); p.onCursor(ref); p.onToggleOpen(ref); }
+    else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); p.onCursor(ref); p.onOpen(ref); } // the focused row, not the cursor row
+  },
 }; }
 
 /** A row opened in place: title, body, subtasks, actions, then whatever the host adds (the agent thread). @req FR:web-app/home2.expand @req FR:web-app/home2.body */
@@ -751,7 +754,7 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
       {one && hero && (
         <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${p.justDone.has(one.task.ref) ? ' done-anim' : ''}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
           <p class="eyebrow">Now · {p.titles.get(one.task.project) ?? one.task.project}</p>
-          <h1 data-testid="next-title" {...toggleOn<HTMLHeadingElement>(one.task.ref, p)}><Md text={hero.title || one.task.text} /></h1>
+          <h1 data-testid="next-title"><span class="h1-toggle" {...toggleOn<HTMLSpanElement>(one.task.ref, p)}><Md text={hero.title || one.task.text} /></span></h1>
           <div class="chips">
             <When i={one} onEffort={() => p.onPick([one.task.ref], 'effort')} />
             {(h.fits || demoted) && <span class="ends" data-testid="ends">ends ~{ends(one)}</span>}
@@ -805,7 +808,7 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
             {shownProjects.map((x) => (
               <li key={x.project} class={`${p.cursor === x.top.task.ref ? 'cursor' : ''}${p.open === x.top.task.ref ? ' open' : ''}`} data-ref={x.top.task.ref} onClick={() => { p.onCursor(x.top.task.ref); p.onToggleOpen(x.top.task.ref); }}>
                 <button type="button" class="proj-link" onClick={(e) => { e.stopPropagation(); onProject(x.project); }}>{x.title}</button>
-                <span class="proj-top"><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
+                <span class="proj-top" {...toggleOn<HTMLSpanElement>(x.top.task.ref, p)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
                 <When i={x.top} />
                 {detail(x.top.task)}
               </li>

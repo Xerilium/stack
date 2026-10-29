@@ -70,7 +70,7 @@ Home is the starting screen (web-shell `FR:nav.views`): the one thing to do now,
 - **FR:home2.fold** (P1): Projects shows 3 rows, the rest fade under a gradient with `Show all (n)`; `Show all` reveals them until the next load. Phones the same
 - **FR:home2.expand** (P1): One click on a row (anywhere but a control) expands it in place: the body (`FR:home2.body`), notes, subtasks as a checklist, and the actions Start / Done / Defer. A second click, `Esc`, or expanding another row collapses it. `Enter` or the expand icon (⤢) opens the full-screen detail; double-click does nothing special
 - **FR:home2.body** (P1): A task's text is a **title** (the first line) and a **body** (its note lines under the row, rendered as paragraphs); every view shows the title and the expanded row or detail shows the body
-- **FR:home2.defer** (P1): The action is called **Defer** everywhere (buttons, palette, toasts, help); `Defer 2h`, `Snooze`, `Park` are gone from the UI
+- **FR:home2.defer** (P1): The action is called **Defer** everywhere (buttons, palette, toasts, help): `Defer 2h` (`n`, one tap) and `Defer…` (`z`, the menu); `Not now`, `Snooze`, `Park` are gone from the UI
 - **FR:home2.done** (P1): Done shows a green check that draws itself (160 ms) and the row fades out; with `prefers-reduced-motion` the state changes without animation
 - **FR:home2.cursor** (P1): `j`/`k`/arrows move one cursor through NOW, the waiting task, Up next, Only have 5 min, and Projects (the project rows are rows: `Space` expands the top task in place, `Enter` opens it, `s` starts it); the view scrolls to keep the cursor visible
 - **FR:home2.close** (P1): The full-screen detail closes with an × at the top right and `Esc`; there is no Back button
