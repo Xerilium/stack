@@ -274,6 +274,15 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('inbox.list', 'GET', '/inbox?state=all', undefined, 200);
     await go('inbox.handle', 'POST', '/inbox/handled', { id: (sent.body as any).id, note: 'ok' }, 200);
     await go('inbox.handle', 'POST', '/inbox/handled', { id: 'in-20260101T000000Z-0000' }, 404);
+    // @req FR:ask-queue/api.list @req FR:ask-queue/api.put @req FR:ask-queue/api.answer @req FR:ask-queue/api.handle
+    await go('asks.put', 'POST', '/asks/pr-1', { ask: 'Approve PR 1', kind: 'approve', from: 'cos', recommend: 'Approve', by: '2030-01-01T00:00:00Z', link: 'https://github.com/o/r/pull/1', reversible: true }, 200);
+    await go('asks.put', 'POST', '/asks/Bad Key', { ask: 'x', kind: 'approve' }, 422);
+    await go('asks.list', 'GET', '/asks', undefined, 200);
+    await go('asks.list', 'GET', '/asks?state=nope', undefined, 422);
+    await go('asks.answer', 'POST', '/asks/pr-1/answer', { answer: 'go' }, 200);
+    await go('asks.answer', 'POST', '/asks/pr-1/answer', { answer: 'go' }, 409);
+    await go('asks.handle', 'POST', '/asks/pr-1/handle', { outcome: 'handled', note: 'merged' }, 200);
+    await go('asks.handle', 'POST', '/asks/zzz/handle', { outcome: 'handled' }, 404);
     expect([...seen].sort()).toEqual(ROUTES.map((r) => r.name).sort());
   });
 

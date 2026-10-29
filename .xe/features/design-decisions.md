@@ -179,3 +179,13 @@
 **Why**: With ~900 open tasks, "268 don't fit" is true and useless. The question is whether anything that matters today misses.
 
 **Rejected**: Showing every left-out task as a warning; a server-side setting (one more write path for a per-day convenience).
+
+## Asks are files; the page is the only interface
+
+**Decision**: Agents bring the owner decisions as one file per ask (`tasks/asks/<key>.md`). Stack ranks them with a deterministic score, pushes changes to the page over server-sent events, and writes the owner's answer back into the same file. The owner answers there instead of in chat. Stack never parses CoS state files and never applies a default itself.
+
+**Date**: 2026-10-28
+
+**Why**: Chat overwhelms the owner; files are durable, agent-agnostic, and reviewable, and any CoS can resume from them. Parsing prose state files would guess; applying defaults needs the owning agent's knowledge.
+
+**Rejected**: A status feed (the overload to remove); WebSocket (SSE is simpler and one-way); agent-set scores (inconsistent); parsing `.stack/*-state.md`.

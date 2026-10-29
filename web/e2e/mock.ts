@@ -3,7 +3,8 @@ import type { Page, Route } from '@playwright/test';
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
 export interface MockAgent { ref: string; project: string; title: string; text: string; state: string; prs: { url: string; repo: string; number: number; state?: string; checks?: string; title?: string; updatedAt?: string }[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }
 export interface MockInbox { id: string; at: string; project: string; ref: string; task: string; kind: string; to: string; text: string; state: string; row?: string }
-export interface Mock { agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
+export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string }
+export interface Mock { asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
 /** Short date for row text, relative to today (the plan depends on the clock). */
@@ -23,7 +24,7 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 
 /** In-memory fake of the Stack api plus SWA's `/.auth/me`. */
 export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[] } = {}): Promise<Mock> {
-  const m: Mock = { agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
+  const m: Mock = { asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
   const proj = [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
@@ -64,6 +65,20 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     if (path === '/tasks') {
       const off = Number(url.searchParams.get('offset') ?? 0), lim = Number(url.searchParams.get('limit') ?? 50);
       return json(route, 200, { items: m.tasks.slice(off, off + lim), total: m.tasks.length, offset: off, limit: lim });
+    }
+    if (path === '/asks') {
+      const st = url.searchParams.get('state') ?? 'open';
+      const items = m.asks.filter((a) => (st === 'snoozed' ? a.state === 'open' && !!a.snoozedUntil : st === 'open' ? a.state === 'open' && !a.snoozedUntil : a.state === st)).sort((a, b) => b.score - a.score).map((a, i) => (st === 'open' ? { ...a, rank: i + 1 } : a));
+      return json(route, 200, { items, total: items.length, latest: m.asks.map((a) => a.updated).sort().pop(), snoozed: m.asks.filter((a) => a.state === 'open' && a.snoozedUntil).length });
+    }
+    const ans = /^\/asks\/([^/]+)\/answer$/.exec(path);
+    if (ans && req.method() === 'POST') {
+      const a = m.asks.find((x) => x.key === ans[1]);
+      if (!a) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+      if (body.answer === 'retract') { a.state = 'open'; delete a.answer; delete a.text; return json(route, 200, { changed: true }); }
+      if (a.state !== 'open') return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
+      if (body.answer === 'defer') a.snoozedUntil = body.until; else { a.state = 'answered'; a.answer = body.answer; a.text = body.text; }
+      return json(route, 200, { changed: true });
     }
     if (path === '/agents') {
       if (m.agentsFail) return json(route, 500, { error: { code: 'internal', message: 'Internal error' } });

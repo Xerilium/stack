@@ -12,6 +12,7 @@ import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
   removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, TaskProps,
 } from '../core/lifecycle';
+import { ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import { AUTONOMY_LEVELS, type Autonomy } from '../core/model';
 import { applyTriage, effectiveAutonomy, setAutonomy } from '../core/triage';
@@ -47,6 +48,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live commits to a branch)' },
+  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen] | list [--state s] | handle <key> --outcome o [--note --reply]', help: 'ask queue for the owner: agents put and handle asks' },
   update: { flags: ['sweep', 'queries'], usage: 'update [--sweep] [--queries]', help: 'regenerate README, stack, projects, my-day' },
 };
 
@@ -196,6 +198,56 @@ async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: bo
   };
 }
 
+/** @req FR:ask-queue/cli.put @req FR:ask-queue/cli.list @req FR:ask-queue/cli.handle */
+async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): Promise<Outcome> {
+  const f = p.flags;
+  const [sub, key, ...rest] = p.positionals;
+  if (rest.length) throw new UsageError(`Unexpected argument: ${rest[0]}`);
+  const actor = flag(f, 'from') ?? 'cli';
+  const s = (n: string) => flag(f, n);
+  switch (sub) {
+    case 'put': {
+      if (!key) throw new UsageError('asks put needs a key');
+      if (s('from') === undefined) throw new UsageError('asks put needs --from <agent>');
+      const n = (name: string) => { const v = s(name); if (v === undefined) return undefined; if (!/^\d{1,2}$/.test(v)) throw new UsageError(`--${name} must be a whole number: ${v}`); return Number(v); };
+      const yn = s('reversible');
+      if (yn !== undefined && yn !== 'yes' && yn !== 'no') throw new UsageError('--reversible must be yes or no');
+      const kind = s('kind');
+      if (kind !== undefined && !(ASK_KINDS as readonly string[]).includes(kind)) throw new UsageError(`--kind must be one of ${ASK_KINDS.join(', ')}`);
+      const pr = s('priority');
+      if (pr !== undefined && !(ASK_PRIORITIES as readonly string[]).includes(pr)) throw new UsageError(`--priority must be one of ${ASK_PRIORITIES.join(', ')}`);
+      const detailFile = s('detail-file');
+      const input: AskPut = {
+        ask: s('ask'), kind: kind as AskPut['kind'], from: s('from'), project: s('project'), why: s('why'), recommend: s('recommend'), default: s('default'), by: s('by'),
+        link: s('link'), priority: pr as AskPut['priority'], effort: s('effort'), blocks: n('blocks'),
+        ...(s('options') !== undefined ? { options: s('options')!.split('|').map((o) => o.trim()) } : {}),
+        ...(yn !== undefined ? { reversible: yn === 'yes' } : {}),
+        ...(detailFile ? { detail: readFileSync(detailFile, 'utf8') } : {}),
+        ...(f['reopen'] ? { reopen: true } : {}),
+      };
+      for (const k of Object.keys(input) as (keyof AskPut)[]) if (input[k] === undefined) delete input[k];
+      const r = await putAsk(ctx, key, input, actor);
+      return { json: { ok: true, ...r }, text: r.key };
+    }
+    case 'list': {
+      if (key) throw new UsageError(`Unexpected argument: ${key}`);
+      const state = s('state') ?? 'open';
+      if (!(LIST_STATES as readonly string[]).includes(state)) throw new UsageError(`--state must be one of ${LIST_STATES.join(', ')}`);
+      const limit = num(s('limit'), 'limit');
+      const r = await listAsks(ctx, { state: state as (typeof LIST_STATES)[number], limit });
+      return { json: { ok: true, ...r }, text: r.items.map((a) => `${a.key}  ${a.score}  ${a.ask}`).join('\n') };
+    }
+    case 'handle': {
+      if (!key) throw new UsageError('asks handle needs a key');
+      const outcome = s('outcome');
+      if (!outcome) throw new UsageError('asks handle needs --outcome');
+      const r = await handleAsk(ctx, key, { outcome: outcome as HandleInput['outcome'], note: s('note'), reply: s('reply') }, actor);
+      return { json: { ok: true, ...r }, text: r.changed ? `${outcome} ${key}` : `no change: ${key}` };
+    }
+    default: throw new UsageError('Usage: stack asks put|list|handle (see stack --help)');
+  }
+}
+
 async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: string): Promise<Outcome> {
   const f = p.flags;
   if (cmd === 'init') return init(dir);
@@ -290,6 +342,7 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
       const r = await removeCompleted(ctx, { project: flag(f, 'project') });
       return { json: { ok: true, changed: r.removed > 0, removed: r.removed, files: r.files }, text: `removed ${r.removed}` };
     }
+    case 'asks': return asksCmd(ctx, p);
     case 'update': extra(0); return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true });
     default: throw new UsageError(`Unknown command: ${cmd}`);
   }

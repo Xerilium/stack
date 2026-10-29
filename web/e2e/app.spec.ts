@@ -743,7 +743,11 @@ test.describe('feedback and mobile', () => {
       await expect(page.locator('.rail')).toBeHidden();
       for (const tab of await page.locator('.tabbar .tab').all()) expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       expect((await page.locator('.btn.primary').first().boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      await page.locator('.tabbar').getByRole('button', { name: /All tasks/ }).click();
+      // All tasks lives behind More on a phone: the bar keeps the four daily views
+      await expect(page.locator('.tabbar').getByRole('button', { name: /All tasks/ })).toHaveCount(0);
+      await page.locator('.tabbar').getByRole('button', { name: 'Open command palette' }).click();
+      await page.getByRole('combobox', { name: 'Command' }).fill('all tasks');
+      await page.keyboard.press('Enter');
       await expect(page).toHaveURL(/#\/list/);
       await page.locator('.tabbar').getByRole('button', { name: /Projects/ }).click();
       await expect(page).toHaveURL(/#\/projects/);
@@ -829,7 +833,7 @@ test.describe('today view', () => {
   const setup = async (page: Page, tasks: ReturnType<typeof mk>[]) => {
     await page.clock.install({ time: tenAm() });
     const m = await mockApi(page, { tasks });
-    await page.goto('/');
+    await page.goto('/#/today');
     await page.clock.resume();
     return m;
   };
@@ -846,7 +850,7 @@ test.describe('today view', () => {
   ];
 
   // @req FR:web-app/today.plan
-  test('default route is Today: header, lead block actions, blocks in order, done circle completes', async ({ page }, info) => {
+  test('Today route: header, lead block actions, blocks in order, done circle completes', async ({ page }, info) => {
     const m = await setup(page, day());
     await expect(page.getByRole('region', { name: 'Today' }).getByRole('heading', { level: 1 })).toContainText('of 8h');
     await expect(page.locator('.t-sub')).toContainText('free');
@@ -977,7 +981,7 @@ test.describe('today view', () => {
       { ref: 'gamma:22', project: 'gamma', title: 'Research options', text: '🤖 Research options', state: 'waiting', prs: [], waitingOn: 'gamma:23', last: { at: iso(3), action: 'result', outcome: 'needs-human', summary: 'Pick a budget' }, replies: 0, since: iso(3) },
       { ref: 'gamma:20', project: 'gamma', title: 'Build the engine', text: '🤖 Build the engine 🚧', state: 'working', prs: [], last: { at: iso(2), action: 'claimed' }, replies: 0, since: iso(2) },
     ];
-    const m = await (async () => { await page.clock.install({ time: tenAm() }); const mm = await mockApi(page, { tasks: day(), agents }); await page.goto('/'); await page.clock.resume(); return mm; })();
+    const m = await (async () => { await page.clock.install({ time: tenAm() }); const mm = await mockApi(page, { tasks: day(), agents }); await page.goto('/#/today'); await page.clock.resume(); return mm; })();
     const panel = page.getByTestId('agents');
     await expect(panel.locator('.agent').first()).toContainText('CI failing');
     await expect(panel.getByRole('link', { name: /^r#7/ })).toHaveAttribute('href', 'https://github.com/o/r/pull/7');
@@ -998,7 +1002,7 @@ test.describe('today view', () => {
     await page.clock.install({ time: tenAm() });
     const m = await mockApi(page, { tasks: day() });
     m.agentsFail = true;
-    await page.goto('/');
+    await page.goto('/#/today');
     await page.clock.resume();
     await expect(page.locator('.block.lead')).toBeVisible();
     const retry = page.getByTestId('agents-error').getByRole('button', { name: 'Retry' });
@@ -1011,7 +1015,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.projects
   test('project tiles open that project in the list', async ({ page }) => {
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/today');
     await page.getByTestId('tops').getByRole('button', { name: /Beta/ }).click();
     await expect(page).toHaveURL(/#\/list.*project=beta/);
     await expect(rows(page)).toHaveText(['Plan the trip']);

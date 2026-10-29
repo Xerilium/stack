@@ -16,6 +16,9 @@ import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, 
 import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
 import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } from './day';
+import { AsksView } from './AsksView';
+import { actionsFor } from './asks';
+import { useAsks } from './useAsks';
 import { FocusMode, ListView, NowView, ProjectsView, TodayView, type NowSection, type RowProps } from './views';
 
 const api = createClient();
@@ -99,7 +102,7 @@ export function App() {
   const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v); setSaved(v === null ? null : { date: dateKey(now), minutes: v }); }, []);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
   const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
-  const rows = view === 'today' ? plan.blocks.map((b) => b.task) : view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
+  const rows = view === 'asks' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const capRows = useMemo(() => capacityRows(projects, tasks).map((r) => ({ ...r, top: topTask(tasks, r.project) })), [projects, tasks]);
@@ -132,15 +135,20 @@ export function App() {
     }
   }, [phase, toast]);
 
+  /** @req FR:ask-queue/web.live (task files changing elsewhere refresh the rest of the app too) */
+  const [stream, setStream] = useState<boolean | null>(null);
+  const asks = useAsks(api, toast, () => void refresh(), stream);
+
   useEffect(() => {
     void (async () => {
       try {
         const r = await fetch('/.auth/me', { credentials: 'same-origin' });
-        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string; identityProvider?: string } | null; local?: { mode: string; repo: string; branch: string } | null };
+        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string; identityProvider?: string } | null; local?: { mode: string; repo: string; branch: string } | null; events?: boolean };
         setInfo(j.local ?? null);
+        setStream(j.events === true);
         setMe(j.clientPrincipal?.userDetails ?? '');
         setLocal(j.clientPrincipal?.identityProvider === 'local');
-      } catch { /* the api decides access */ }
+      } catch { setStream(false); /* the api decides access */ }
       await refresh();
     })();
   }, []);
@@ -325,6 +333,13 @@ export function App() {
   const openPicker = (groups: GroupName[]) => { const refs = targets(); if (refs.length) setPicker({ refs, groups }); };
   const openCapture = () => setCaptureOpen(true);
   const commands: Command[] = [
+    { id: 'go-asks', label: 'Go to Asks', hint: 'g k', run: () => go('asks') },
+    ...(view === 'asks' && asks.current ? [
+      ...actionsFor(asks.current).filter((x) => x.send || x.open).map((x) => ({ id: `ask-${x.id}`, label: `Ask: ${x.label}`, hint: x.key === 'Enter' ? '⏎' : x.key, run: () => { const a = asks.current!; if (x.open) { if (a.link) window.open(a.link, '_blank', 'noopener,noreferrer'); } else if (x.send) void asks.answer(a, x.send, `Sent to ${a.from}`); } })),
+      { id: 'ask-defer', label: 'Ask: Defer', hint: 'z', run: () => asks.setPanel('defer') },
+      { id: 'ask-reply', label: 'Ask: Reply to the agent', hint: 'r', run: () => asks.setPanel('reply') },
+      { id: 'ask-undo', label: 'Ask: Undo last answer', hint: 'u', run: () => asks.undo() },
+    ] : []),
     { id: 'go-today', label: 'Go to Today', hint: 'g t', run: () => go('today') },
     { id: 'go-now', label: 'Go to Focus', hint: 'g n', run: () => go('now', filters) },
     { id: 'go-projects', label: 'Go to Projects', hint: 'g p', run: () => go('projects') },
@@ -382,7 +397,7 @@ export function App() {
       const now = Date.now();
       if (chord.current && now - chord.current < 1000) {
         chord.current = 0;
-        const v = { t: 'today', n: 'now', p: 'projects', a: 'list' }[k] as View | undefined;
+        const v = { k: 'asks', t: 'today', n: 'now', p: 'projects', a: 'list' }[k] as View | undefined;
         if (v) { e.preventDefault(); setFocusRef(null); A.go(v); return; }
       }
       if (k === 'g') { chord.current = now; return; }
@@ -390,6 +405,7 @@ export function App() {
       if (k === '?') { e.preventDefault(); setHelp(true); return; }
       if (k === 'c') { e.preventDefault(); setCaptureOpen(true); return; }
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
+      if (L.view === 'asks') return; // the Asks view owns its keys
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
@@ -429,7 +445,7 @@ export function App() {
   if (phase === 'error') {
     return <main class="gate"><h1>Cannot load tasks</h1><p>{loadError}</p><button type="button" class="btn primary" onClick={() => void refresh()}>Retry</button></main>;
   }
-  const tabs: [View, string, string][] = [['today', 'Today', 'g t'], ['now', 'Focus', 'g n'], ['projects', 'Projects', 'g p'], ['list', 'All tasks', 'g a']];
+  const tabs: [View, string, string][] = [['asks', 'Asks', 'g k'], ['today', 'Today', 'g t'], ['now', 'Focus', 'g n'], ['projects', 'Projects', 'g p'], ['list', 'All tasks', 'g a']];
   const toggleSet = (set: 'expanded' | 'flipped') => (k: string) => (set === 'expanded' ? setExpanded : setFlipped)((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const rowProps: RowProps = {
     showProject: view === 'now' || view === 'today', titles: new Map(projects.map((x) => [x.name, x.title || x.name])), all: tasks, cursor, selected, editing, busy, expanded, handles: view === 'list', drag, prog,
@@ -438,7 +454,7 @@ export function App() {
     onMove: (ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir)), onDragStart, onExpand: toggleSet('expanded'), onOpen: (r) => setFocusRef(r),
   };
   const focusTask = focusRef ? tasks.find((t) => t.ref === focusRef) : undefined;
-  const nav = (cls: string) => tabs.map(([v, label, hint]) => (
+  const nav = (cls: string, skip: View[] = []) => tabs.filter(([v]) => !skip.includes(v)).map(([v, label, hint]) => (
     <button type="button" key={v} class={`${cls}${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}>{label}<kbd>{hint}</kbd></button>
   ));
   return (
@@ -455,6 +471,7 @@ export function App() {
       <main class="main">
         {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
         {phase === 'loading' && <p class="loading">Loading…</p>}
+        {view === 'asks' && <AsksView asks={asks} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
@@ -477,7 +494,7 @@ export function App() {
         </div>
       )}
       <nav class="tabbar" aria-label="Views (mobile)">
-        {nav('tab')}
+        {nav('tab', ['list'])}
         <button type="button" class="tab" onClick={openCapture} aria-label="New task">＋</button>
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">More</button>
       </nav>

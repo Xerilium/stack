@@ -23,6 +23,10 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/tasks/result` | POST log an agent result (autonomy-gated) |
 | `/inbox` | GET inbox entries for agents; POST send a reply or decision to the task project agent inbox (owner session only) |
 | `/inbox/handled` | POST mark an inbox entry handled |
+| `/asks` | GET ranked asks for the owner (`state=open|answered|done|snoozed|all`) |
+| `/asks/{key}` | POST create or update an ask (agents) |
+| `/asks/{key}/answer` | POST the owner's answer (owner session only) |
+| `/asks/{key}/handle` | POST close an ask after acting, or reopen it with a reply |
 | `/agents` | GET what agents are doing (agent rows, result logs, inbox, PR state and checks) |
 | `/tasks/resume` | POST unpark a task (owner session only) |
 | `/tasks/suspend` | POST suspend for days or hours (owner session only) |
