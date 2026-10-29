@@ -149,7 +149,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Sessions', { type: 'object', properties: { items: { type: 'array', items: ref('Session') }, total: { type: 'integer' }, indexing: { type: 'integer' } } }),
   },
   'sessions.cost': {
-    operationId: 'sessionCost', summary: 'Agent spend by day, project, and model; a session counts on the UTC date of its last activity',
+    operationId: 'sessionCost', summary: "Agent spend by day, project, and model; a session counts on the date of its last activity in the owner's configured timezone (else UTC)",
     responses: ok('Cost report', { type: 'object', properties: {
       attribution: { type: 'string', enum: ['lastActive'] }, indexing: { type: 'integer' },
       days: { type: 'array', items: { type: 'object', properties: { date: { type: 'string' }, usd: { type: 'number' }, tokens: { type: 'integer' }, sessions: { type: 'integer' } } } },

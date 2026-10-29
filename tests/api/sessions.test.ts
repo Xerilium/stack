@@ -5,6 +5,7 @@ import { createApiHandler, ROUTES } from '../../src/api/handler';
 import { createAuth, createTokenService, MemoryTokenStore, routeScope } from '../../src/api';
 import { createRunManager, SessionBusy, type AgentDriver, type Session, type Update } from '../../src/agents';
 import { MemoryStorage } from '../../src/core/storage';
+import { getDefaults } from '../../src/core/config';
 
 const NOW = new Date('2026-10-29T10:00:00Z');
 const at = (h: number) => new Date(NOW.getTime() - h * 3600_000).toISOString();
@@ -110,6 +111,15 @@ describe('sessions routes', () => {
     expect(r.json.models).toEqual([{ model: 'claude-sonnet-5-5', usd: 0.1, tokens: 1000 }]);
     expect(r.json.total).toEqual({ usd: 0.6, tokens: 6000, sessions: 3 });
     expect((await call('owner', 'GET', '/sessions/cost?days=0')).status).toBe(422);
+  });
+  it('cost: days follow the configured timezone', async () => {
+    const storage = new MemoryStorage();
+    const agents = createRunManager({ driver: fakeDriver(), ctx: { storage, now: () => NOW, config: { ...getDefaults(), timezone: 'Pacific/Kiritimati' } } });
+    const owner = createApiHandler({ storage, authorize: () => true, now: () => NOW, agents });
+    const res = await owner(new Request('https://x.test/api/sessions/cost?days=2', { headers: { 'x-ms-client-principal': Buffer.from(JSON.stringify({ userDetails: 'me', identityProvider: 'github', userRoles: ['authenticated'] })).toString('base64') } }));
+    const j = await res.json() as { days: { date: string; sessions: number }[] };
+    // 10:00Z is 00:00 the next day at UTC+14: sessions 1 and 2 (at 09:00Z and 08:00Z) fall on 2026-10-29 there, session 3 (30 h ago) on 2026-10-28
+    expect(j.days.map((d) => [d.date, d.sessions])).toEqual([['2026-10-29', 2], ['2026-10-30', 0]]);
   });
   it('prompt: owner only, validates text, 409 when busy, 202 with the run id', async () => {
     const { call, mint, driver } = await mk();

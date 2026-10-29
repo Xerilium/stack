@@ -13,7 +13,15 @@ describe('scanUsage', () => {
   it('sums tokens per model and prices known models (1h cache writes at the 1h rate)', () => {
     const r = scanUsage([asst('claude-sonnet-5-5', USAGE), asst('claude-sonnet-5-5', USAGE), line({ type: 'user', message: { usage: USAGE } })].join('\n'));
     // per message: 1000*2 + 500*10 + 2000*4 (1h writes) + 4000*0.1 = 2000+5000+8000+400 = 15400 per 1e6
-    expect(r).toEqual({ byModel: { 'claude-sonnet-5-5': { usd: 0.0308, tokens: 15000 } }, usd: 0.0308, priced: true });
+    expect(r).toEqual({ byModel: { 'claude-sonnet-5-5': { usd: 0.0308, tokens: 15000 } }, usd: 0.0308, priced: true, lastId: '' });
+  });
+  it('counts one API message once however many content-block lines it was written as, also across scan steps', () => {
+    const withId = (id: string) => line({ type: 'assistant', message: { id, model: 'claude-sonnet-5-5', role: 'assistant', content: [{ type: 'text', text: 'x' }], usage: USAGE } });
+    const r = scanUsage([withId('msg_a'), withId('msg_a'), withId('msg_a'), withId('msg_b')].join('\n'));
+    expect(r.byModel['claude-sonnet-5-5'].tokens).toBe(15000);
+    expect(r.lastId).toBe('msg_b');
+    expect(scanUsage(withId('msg_b'), 'msg_b').byModel['claude-sonnet-5-5']).toBeUndefined();
+    expect(scanUsage(withId('msg_c'), 'msg_b').byModel['claude-sonnet-5-5'].tokens).toBe(7500);
   });
   it('an unknown model adds tokens but no dollars and marks the result unpriced; a dated id prices as its base', () => {
     const r = scanUsage([asst('claude-future-9', USAGE), asst('claude-haiku-4-5-20251001', { input_tokens: 1_000_000, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 })].join('\n'));
@@ -40,7 +48,7 @@ describe('readIdentity', () => {
   });
   it('scanUsage: a cost-state line resets the total to the CLI figure; usage after it is added', () => {
     const text = [asst('claude-sonnet-5-5', USAGE), line({ type: 'cost-state', totalCostUSD: 1.5, modelUsage: { 'claude-sonnet-5-5': { inputTokens: 10, outputTokens: 10, cacheReadInputTokens: 10, cacheCreationInputTokens: 10, costUSD: 1.5 } } }), asst('claude-sonnet-5-5', USAGE), asst('<synthetic>', USAGE)].join('\n');
-    expect(scanUsage(text)).toEqual({ byModel: { 'claude-sonnet-5-5': { usd: 1.5154, tokens: 7540 } }, usd: 1.5154, priced: true });
+    expect(scanUsage(text)).toEqual({ byModel: { 'claude-sonnet-5-5': { usd: 1.5154, tokens: 7540 } }, usd: 1.5154, priced: true, lastId: '' });
   });
 });
 

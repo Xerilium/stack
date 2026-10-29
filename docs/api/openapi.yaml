@@ -1039,7 +1039,7 @@ paths:
           $ref: "#/components/responses/Error"
   /sessions/cost:
     get:
-      summary: Agent spend by day, project, and model; a session counts on the UTC date of its last activity
+      summary: Agent spend by day, project, and model; a session counts on the date of its last activity in the owner's configured timezone (else UTC)
       operationId: sessionCost
       parameters:
         - name: days

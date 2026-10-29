@@ -136,6 +136,24 @@ describe('createSdkDriver', () => {
     const again = await d.prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000002', text: 'z', onPermission: async () => ({ optionId: 'allow' }) });
     await collect(again.updates);
   });
+  it('a transcript this process just wrote is not active elsewhere: the next message goes through', async () => {
+    const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
+    const id = 'a1b2c3d4-0000-0000-0000-000000000002';
+    const first = await d.prompt({ sessionId: id, text: 'x', onPermission: async () => ({ optionId: 'allow' }) });
+    await collect(first.updates);
+    const p = join(home, 'projects', '-Users-me-dev-stack--claude-worktrees-zany-fox-1a2b3c', `${id}.jsonl`);
+    utimesSync(p, new Date(), new Date());
+    expect((await d.listSessions({ limit: 10 })).find((s) => s.id === id)!.active).toBe(false);
+    const again = await d.prompt({ sessionId: id, text: 'y', onPermission: async () => ({ optionId: 'allow' }) });
+    await collect(again.updates);
+    utimesSync(p, new Date(ms(600)), new Date(ms(600)));
+  });
+  it('a permission callback that throws denies the tool instead of hanging the run', async () => {
+    const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
+    const run = await d.prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000002', text: 'x', onPermission: async () => { throw new Error('broker down'); } });
+    const u = await collect(run.updates);
+    expect(u.find((x) => x.type === 'tool_update')).toMatchObject({ status: 'failed', output: 'denied: Permission check failed: broker down' });
+  });
   it('cancel aborts the run: done with stopReason cancelled', async () => {
     const sdk = fakeSdk({ query: (args) => { const ac = (args.options as { abortController: AbortController }).abortController; return (async function* () { yield { type: 'stream_event', session_id: 's', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hi' } } }; await new Promise<void>((ok) => ac.signal.addEventListener('abort', () => ok())); throw new Error('aborted'); })() as never; } });
     const d = createSdkDriver({ sdk, now: () => NOW });

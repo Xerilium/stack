@@ -31,11 +31,10 @@ const plain = (s: string, n: number) => cut(s.replace(CTRL, ' ').replace(/\s+/g,
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** What a tool call is about, in a few words: the command, the path, else the input as JSON. */
-export function inputSummary(tool: string, input: unknown, n = 80): string {
+export function inputSummary(input: unknown, n = 80): string {
   if (!isObj(input)) return '';
   const pick = ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'prompt', 'description'].map((k) => input[k]).find((v) => typeof v === 'string' && v.trim());
   const raw = typeof pick === 'string' ? pick : JSON.stringify(input);
-  void tool;
   return plain(raw, n);
 }
 
@@ -61,7 +60,11 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
   const activeMs = o.activeMs ?? 120_000;
   const configDir = o.configDir ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
   let sdkP: Promise<SdkLike> | null = o.sdk ? Promise.resolve(o.sdk) : null;
-  const sdk = () => (sdkP ??= import('@anthropic-ai/claude-agent-sdk') as unknown as Promise<SdkLike>);
+  // A real `import()`: under `module: commonjs` tsc would turn it into `require()`, which cannot load the ESM-only SDK on Node < 22.12.
+  const dynamicImport = new Function('m', 'return import(m)') as (m: string) => Promise<SdkLike>;
+  const sdk = () => (sdkP ??= dynamicImport('@anthropic-ai/claude-agent-sdk'));
+  /** Sessions this process wrote and when: their transcript is fresh because of us, not another client. */
+  const ownWrites = new Map<string, number>();
   const runs = new Map<string, { sessionId: string | null; ac: AbortController }>();
   let seq = 0;
 
@@ -69,7 +72,8 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
 
   /** The list comes from the store index (fast, cached); the SDK is never asked to parse every transcript. */
   async function listSessions(q: { limit?: number; sinceMs?: number } = {}): Promise<Session[]> {
-    return store.list({ limit: q.limit ?? (q.sinceMs !== undefined ? 5000 : 200), sinceMs: q.sinceMs });
+    const own = (s: Session) => { const t = ownWrites.get(s.id); return t !== undefined && Date.parse(s.lastActive) <= t + 5000; };
+    return store.list({ limit: q.limit ?? (q.sinceMs !== undefined ? 5000 : 200), sinceMs: q.sinceMs }).map((s) => (s.active && own(s) ? { ...s, active: false } : s));
   }
 
   async function getMessages(id: string, q: { limit?: number } = {}): Promise<Turn[]> {
@@ -86,7 +90,7 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
       if (!Array.isArray(m.content)) continue;
       for (const b of m.content as Record<string, unknown>[]) {
         if (b.type === 'text' && typeof b.text === 'string') { const t = own(b.text); if (t) out.push({ at, role, text: t }); }
-        else if (b.type === 'tool_use' && typeof b.name === 'string') out.push({ at, role: 'assistant', text: `⚙ ${b.name}: ${inputSummary(b.name, b.input)}` });
+        else if (b.type === 'tool_use' && typeof b.name === 'string') out.push({ at, role: 'assistant', text: `⚙ ${b.name}: ${inputSummary(b.input)}` });
       }
     }
     return q.limit !== undefined && out.length > q.limit ? out.slice(out.length - q.limit) : out;
@@ -95,7 +99,7 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
   async function prompt(req: { sessionId?: string; cwd?: string; text: string; onPermission: (r: PermissionRequest) => Promise<PermissionAnswer> }): Promise<Run> {
     if (req.sessionId) {
       for (const r of runs.values()) if (r.sessionId === req.sessionId) throw new SessionBusy('Session is running; wait for it to finish');
-      const s = store.list({ limit: 400 }).find((x) => x.id === req.sessionId);
+      const s = (await listSessions({ limit: 400 })).find((x) => x.id === req.sessionId);
       if (s?.active) throw new SessionBusy('Session is active elsewhere; message it through its inbox');
     }
     const id = `run-${++seq}`;
@@ -109,9 +113,10 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
     const canUseTool = async (tool: string, input: Record<string, unknown>, ctx: { toolUseID?: string; requestId?: string; defaultToNo?: boolean }) => {
       if (allowed.has(tool)) return { behavior: 'allow' as const };
       const callId = ctx.toolUseID ?? ctx.requestId ?? tool;
-      const pr: PermissionRequest = { requestId: ctx.requestId ?? callId, callId, tool, title: `Allow ${tool}: ${inputSummary(tool, input)}`, input, options: OPTIONS, ...(ctx.defaultToNo ? { risky: true } : {}) };
+      const pr: PermissionRequest = { requestId: ctx.requestId ?? callId, callId, tool, title: `Allow ${tool}: ${inputSummary(input)}`, input, options: OPTIONS, ...(ctx.defaultToNo ? { risky: true } : {}) };
       q.push({ type: 'permission', requestId: pr.requestId, callId, title: pr.title, options: OPTIONS });
-      const a = await req.onPermission(pr);
+      let a: PermissionAnswer;
+      try { a = await req.onPermission(pr); } catch (e) { return { behavior: 'deny' as const, message: `Permission check failed: ${e instanceof Error ? e.message : String(e)}` }; }
       if (a.optionId === 'allow-session') { allowed.add(tool); return { behavior: 'allow' as const }; }
       if (a.optionId === 'allow') return { behavior: 'allow' as const };
       return { behavior: 'deny' as const, message: a.message ?? 'Denied by the owner' };
@@ -126,14 +131,14 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
           const m = raw as Record<string, unknown>;
           if (m.type === 'system' && m.subtype === 'init' && typeof m.session_id === 'string' && !state.sessionId) {
             state.sessionId = m.session_id; run.sessionId = m.session_id; q.push({ type: 'session', sessionId: m.session_id });
-          } else if (m.type === 'stream_event') {
+          } else if (m.type === 'stream_event' && m.parent_tool_use_id == null) {
             const ev = m.event as { type?: string; delta?: { type?: string; text?: string } } | undefined;
             if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && typeof ev.delta.text === 'string') { streamed = true; q.push({ type: 'message_chunk', role: 'assistant', text: ev.delta.text }); }
           } else if (m.type === 'assistant') {
             const content = (m.message as { content?: unknown })?.content;
             for (const b of Array.isArray(content) ? (content as Record<string, unknown>[]) : []) {
               if (b.type === 'text' && !streamed && typeof b.text === 'string' && b.text) q.push({ type: 'message_chunk', role: 'assistant', text: b.text });
-              else if (b.type === 'tool_use' && typeof b.name === 'string') q.push({ type: 'tool_call', callId: String(b.id ?? ''), title: `${b.name}: ${inputSummary(b.name, b.input)}`, kind: toolKind(b.name), status: 'pending' });
+              else if (b.type === 'tool_use' && typeof b.name === 'string') q.push({ type: 'tool_call', callId: String(b.id ?? ''), title: `${b.name}: ${inputSummary(b.input)}`, kind: toolKind(b.name), status: 'pending' });
             }
             streamed = false;
           } else if (m.type === 'user') {
@@ -158,6 +163,7 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
         if (!finished) q.push({ type: 'done', stopReason: ac.signal.aborted ? 'cancelled' : 'error', cost: { usd: 0, tokens: 0 }, turns: 0, durationMs: 0, ...(ac.signal.aborted ? {} : { error: e instanceof Error ? e.message : String(e) }) });
       } finally {
         runs.delete(id);
+        if (state.sessionId) ownWrites.set(state.sessionId, Date.now());
         q.close();
       }
     };

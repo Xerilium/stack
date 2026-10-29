@@ -83,8 +83,8 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
 
   const openDrawer = useCallback(async (id: string) => {
     setOpen(id); setCursor(id); setSendError(''); setTranscript(emptyTranscript()); setTurns([]); setTurnsError('');
-    const it = itemsRef.current.find((x) => x.id === id);
-    if (it && (it.state === 'running' || it.state === 'needs-you')) listen(id);
+    // Always listen: a finished run replays for 10 minutes, a running one streams, a session with no run answers 204 and the source closes.
+    listen(id);
     setTurnsLoading(true);
     try { setTurns(await api.sessionMessages(id)); } catch (e) { setTurnsError(e instanceof Error ? e.message : 'Cannot load the history'); } finally { setTurnsLoading(false); }
   }, [api, listen]);

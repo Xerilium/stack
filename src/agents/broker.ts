@@ -95,9 +95,13 @@ export function createPermissionBroker(ctx: LifecycleContext, o: BrokerOptions =
     const out = new Set<string>();
     for (const p of pending.values()) if (!p.settled) out.add(p.sessionId);
     try {
+      const t = now().getTime();
       for (const a of (await listAsks(ctx)).items) {
         const m = /^perm-([a-z0-9]{1,8})-/.exec(a.key);
-        if (m && ![...out].some((id) => id.startsWith(m[1]))) out.add(m[1]);
+        if (!m) continue;
+        // An ask from a run this process does not know (a previous process) is defaulted at its deadline, like any other.
+        if (!pending.has(a.key) && a.by && Date.parse(a.by) <= t) { await close(a.key, 'defaulted', 'No answer; the run that asked is gone'); continue; }
+        if (![...out].some((id) => id.startsWith(m[1]))) out.add(m[1]);
       }
     } catch { /* storage hiccup: in-memory pending is still right */ }
     return out;

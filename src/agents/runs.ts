@@ -47,7 +47,6 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
   const broker = o.broker ?? createPermissionBroker(ctx);
   const runs = new Map<string, RunState>();
   const bySession = new Map<string, string>();
-  const runIds = new Map<string, string>();
 
   const running = (sessionId: string) => { const id = bySession.get(sessionId); return !!id && !runs.get(id)?.done; };
 
@@ -70,7 +69,7 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
     const state: RunState = { id: '', sessionId: req.sessionId ?? null, text: req.text, buffer: [], done: false, subs: new Set(), startedAt: now() };
     const run = await driver.prompt({
       ...(req.sessionId ? { sessionId: req.sessionId } : {}), ...(req.cwd ? { cwd: req.cwd } : {}), text: req.text,
-      onPermission: (pr) => broker.ask({ id: state.sessionId ?? state.id, title: session?.title ?? projectOf(req.cwd ?? '') ?? 'new session', cwd: session?.cwd ?? req.cwd ?? '' }, pr, state.id),
+      onPermission: (pr) => broker.ask({ id: state.sessionId ?? state.id, title: session?.title || projectOf(req.cwd ?? '') || 'new session', cwd: session?.cwd ?? req.cwd ?? '' }, pr, state.id),
     });
     state.id = run.id;
     runs.set(run.id, state);
@@ -93,7 +92,6 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
       state.subs.clear();
       setTimeout(() => { runs.delete(run.id); if (bySession.get(state.sessionId ?? '') === run.id) bySession.delete(state.sessionId ?? ''); }, keepMs).unref?.();
     })();
-    runIds.set(run.id, run.id);
     return { runId: run.id, sessionId: state.sessionId };
   }
 

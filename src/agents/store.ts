@@ -100,6 +100,7 @@ function costState(line: string): Usage | null {
 }
 
 function add(into: Usage, more: Usage): Usage {
+  // `lastId` is carried separately by the caller.
   const byModel = { ...into.byModel };
   for (const [m, v] of Object.entries(more.byModel)) { const cur = byModel[m] ?? { usd: 0, tokens: 0 }; byModel[m] = { usd: round(cur.usd + v.usd), tokens: cur.tokens + v.tokens }; }
   return { byModel, usd: round(into.usd + more.usd), priced: into.priced && more.priced };
@@ -107,9 +108,11 @@ function add(into: Usage, more: Usage): Usage {
 
 /**
  * Sums assistant usage over whole lines of `text` with a line scan (no JSON parsing): per model, tokens and the list-price estimate.
+ * One API message is written once per content block with the same `id` and `usage`, so only the first line of a message counts.
  * A `cost-state` line resets the running total to the CLI's own figure. Synthetic model names are skipped.
+ * `lastId` carries the last counted message id across scan steps; the result returns the new one.
  */
-export function scanUsage(text: string): Usage {
+export function scanUsage(text: string, lastId = ''): Usage & { lastId: string } {
   let total = EMPTY_USAGE();
   let at = 0;
   for (;;) {
@@ -119,7 +122,10 @@ export function scanUsage(text: string): Usage {
     else if (line.includes('"type":"assistant"')) {
       const u = line.indexOf('"usage":{');
       const model = first(line, /"model":"([^"]+)"/) ?? 'unknown';
-      if (u >= 0 && !model.startsWith('<')) {
+      const id = first(line, /"id":"(msg_[A-Za-z0-9]+)"/) ?? '';
+      const dup = id !== '' && id === lastId;
+      if (id) lastId = id;
+      if (u >= 0 && !model.startsWith('<') && !dup) {
         const seg = line.slice(u, u + 600);
         const inT = Number(first(seg, /"input_tokens":(\d+)/) ?? 0), outT = Number(first(seg, /"output_tokens":(\d+)/) ?? 0);
         const cr = Number(first(seg, /"cache_read_input_tokens":(\d+)/) ?? 0), cw = Number(first(seg, /"cache_creation_input_tokens":(\d+)/) ?? 0);
@@ -132,13 +138,15 @@ export function scanUsage(text: string): Usage {
     if (nl < 0) break;
     at = nl + 1;
   }
-  return total;
+  return { ...total, lastId };
 }
 
 interface Cached {
   mtime: number; size: number; identity: Identity;
   /** Bytes scanned so far (always at a line boundary) and the usage up to there. */
   scanned: number; usage: Usage;
+  /** Last counted assistant message id, so a message split across scan steps counts once. */
+  lastId: string;
 }
 export interface StoreIndex {
   /** Sessions newest first (identity from samples, cost from the scan so far); only the newest `limit` files are touched. */
@@ -157,6 +165,7 @@ export function createStoreIndex(o: StoreOptions): StoreIndex {
   const root = join(o.configDir, 'projects');
   const cache = new Map<string, Cached>();
   const queue: StoreEntry[] = [];
+  const queued = new Set<string>();
   let pumping = false;
 
   function entries(): StoreEntry[] {
@@ -183,9 +192,9 @@ export function createStoreIndex(o: StoreOptions): StoreIndex {
     const identity = readIdentity(e.path, e.size);
     const next: Cached = hit && e.size >= hit.scanned
       ? { ...hit, mtime: e.mtime, size: e.size, identity }
-      : { mtime: e.mtime, size: e.size, identity, scanned: 0, usage: EMPTY_USAGE() };
+      : { mtime: e.mtime, size: e.size, identity, scanned: 0, usage: EMPTY_USAGE(), lastId: '' };
     cache.set(e.path, next);
-    if (next.scanned < next.size && !queue.some((q) => q.path === e.path)) queue.push(e);
+    if (next.scanned < next.size && !queued.has(e.path)) { queued.add(e.path); queue.push(e); }
     return next;
   }
 
@@ -197,7 +206,8 @@ export function createStoreIndex(o: StoreOptions): StoreIndex {
     try { text = readWindow(e.path, c.size, c.scanned, Math.min(stepBytes, c.size - c.scanned)); } catch { c.scanned = c.size; return; }
     const end = c.scanned + Buffer.byteLength(text) >= c.size ? text.length : text.lastIndexOf('\n') + 1;
     if (end <= 0) { c.scanned = c.size; return; }
-    c.usage = add(c.usage, scanUsage(text.slice(0, end)));
+    const r = scanUsage(text.slice(0, end), c.lastId);
+    c.usage = add(c.usage, r); c.lastId = r.lastId;
     c.scanned += Buffer.byteLength(text.slice(0, end));
   }
 
@@ -209,7 +219,7 @@ export function createStoreIndex(o: StoreOptions): StoreIndex {
       if (!e) { pumping = false; return; }
       step(e);
       const c = cache.get(e.path);
-      if (!c || c.scanned >= c.size) queue.shift();
+      if (!c || c.scanned >= c.size) { queue.shift(); queued.delete(e.path); }
       setImmediate(run);
     };
     setImmediate(run);
@@ -236,6 +246,6 @@ export function createStoreIndex(o: StoreOptions): StoreIndex {
   return {
     list, entries,
     pending: () => queue.length,
-    scanAll() { while (queue.length) { const e = queue[0]; step(e); const c = cache.get(e.path); if (!c || c.scanned >= c.size) queue.shift(); } },
+    scanAll() { while (queue.length) { const e = queue[0]; step(e); const c = cache.get(e.path); if (!c || c.scanned >= c.size) { queue.shift(); queued.delete(e.path); } } },
   };
 }

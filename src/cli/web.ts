@@ -146,11 +146,19 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         const runEvents = /^\/sessions\/([A-Za-z0-9-]{1,64})\/events$/.exec(path);
         if (runEvents && req.method === 'GET') {
           if (!agents) return send(404, 'not found', 'text/plain');
-          let started = false;
-          const frame = (u: unknown) => { if (!started) { started = true; res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no', ...extra }); res.write('retry: 3000\n\n'); } res.write(`event: update\ndata: ${JSON.stringify(u)}\n\n`); };
-          const off = agents.subscribe(runEvents[1], frame, () => { if (!started) res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', ...extra }); res.end(); });
+          // One subscription: replayed updates are held until the headers are out, then every update is written as it comes.
+          const write = (u: unknown) => res.write(`event: update\ndata: ${JSON.stringify(u)}\n\n`);
+          const held: unknown[] = [];
+          let sink: (u: unknown) => void = (u) => { held.push(u); };
+          let closed = false;
+          const off = agents.subscribe(runEvents[1], (u) => sink(u), () => { closed = true; if (res.headersSent) res.end(); });
           if (!off) return send(204, '', 'text/plain');
-          const hb = setInterval(() => { if (started) res.write(': ping\n\n'); }, beat);
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no', ...extra });
+          res.write('retry: 3000\n\n');
+          for (const u of held) write(u);
+          sink = write;
+          if (closed) return void res.end();
+          const hb = setInterval(() => res.write(': ping\n\n'), beat);
           req.on('close', () => { clearInterval(hb); off(); });
           return;
         }

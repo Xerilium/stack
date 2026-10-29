@@ -1,6 +1,6 @@
 /** @req FR:agent-sessions/perm.ask @req FR:agent-sessions/perm.answer @req FR:agent-sessions/perm.timeout */
 import { createPermissionBroker, permKey, type PermissionRequest } from '../../src/agents';
-import { answerAsk, listAsks } from '../../src/core/asks';
+import { answerAsk, listAsks, putAsk } from '../../src/core/asks';
 import { MemoryStorage } from '../../src/core/storage';
 
 const NOW = new Date('2026-10-29T10:00:00Z');
@@ -82,6 +82,18 @@ describe('permission broker', () => {
     clock.advance(11 * 60_000);
     expect(await p).toEqual({ optionId: 'deny', message: 'No answer in 10 minutes' });
     expect((await listAsks(ctx, { state: 'done' })).items[0]).toMatchObject({ outcome: 'defaulted' });
+  });
+  it('an orphan perm ask from a previous process is defaulted once its deadline passed', async () => {
+    const { ctx, broker, clock } = mk();
+    const other = createPermissionBroker({ ...ctx, now: clock.now }, { pollMs: 5, timeoutMs: 60_000 });
+    void other.ask(session, req({ requestId: 'orphan' }), 'run-x');
+    await wait(10);
+    other.release('run-x');
+    await putAsk(ctx, 'perm-deadbeef-old', { ask: 'Allow Bash: rm', kind: 'decide', from: 'session:old', options: ['Allow once', 'Deny'], by: new Date(NOW.getTime() + 60_000).toISOString() }, 'stack');
+    expect(await broker.open()).toEqual(new Set(['deadbeef']));
+    clock.advance(2 * 60_000);
+    expect(await broker.open()).toEqual(new Set());
+    expect((await listAsks(ctx, { state: 'done' })).items.find((a) => a.key === 'perm-deadbeef-old')).toMatchObject({ outcome: 'defaulted' });
   });
   it('open() lists sessions with an open permission ask', async () => {
     const { ctx, broker } = mk();
