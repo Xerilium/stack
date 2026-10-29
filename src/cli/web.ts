@@ -119,7 +119,8 @@ export async function calendarSource(o: { cachePath?: string; fixture?: string; 
   const fx = calendarFixture(o.fixture);
   if (fx) { o.log?.('calendar: fixture'); return { source: 'fixture', provider: fx }; }
   const cache = new FileTokenCache(o.cachePath ?? defaultCachePath());
-  const t = await cache.read();
+  // A broken token file must not hide the ICS feeds: fall through to them.
+  const t = await cache.read().catch(() => null);
   if (t && hasScope(t.scopes, 'Calendars.Read')) {
     o.log?.('calendar: Graph');
     return { source: 'graph', provider: createGraphCalendar({ transport: graphTransport({ token: graphToken(cache) }) }) };
