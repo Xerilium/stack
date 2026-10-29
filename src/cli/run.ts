@@ -22,6 +22,7 @@ import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageErr
 import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
+import { emailCmd } from './email';
 import { graphCmd } from './graph';
 import { findStackDir, userConfig } from './discover';
 import { redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
@@ -51,6 +52,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live commits to a branch)' },
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
+  email: { flags: ['account', 'mode', 'max', 'dry-run', 'extra', 'project'], usage: 'email run [--mode observe|drafts] [--max n] [--dry-run] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache'], usage: 'graph login --client-id <id> [--tenant t] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
   update: { flags: ['sweep', 'queries'], usage: 'update [--sweep] [--queries]', help: 'regenerate README, stack, projects, my-day' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'agents defined per project folder (tasks/agents/<slug>.md)' },
@@ -381,6 +383,7 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
     }
     case 'asks': return asksCmd(ctx, p);
     case 'agents': return agentsCmd(ctx, p);
+    case 'email': return emailCmd(ctx, p.positionals[0], p.flags, { repo: dir });
     case 'update': extra(0); return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true });
     default: throw new UsageError(`Unknown command: ${cmd}`);
   }
