@@ -29,7 +29,7 @@ export type Outcome = (typeof OUTCOMES)[number];
 export interface Caller { actor: string; owner?: boolean }
 export interface Suggestion { agent?: string; human?: string; priority?: string; effort?: string; impact?: string }
 export interface TriageResult { changed: boolean; ref: TaskRef; applied: string[]; added: TaskRef[] }
-export interface ResultInput { outcome: Outcome; summary: string; complete?: boolean; human?: string }
+export interface ResultInput { outcome: Outcome; summary: string; complete?: boolean; human?: string; /** `review` logs a verdict without touching the task (no 🙋 row, no completion). @req FR:agent-team/review.record */ action?: 'result' | 'review' }
 export interface RecordOutcome { logged: true; completed: boolean; deferred: boolean; ref: TaskRef; human?: TaskRef }
 
 const AGENT = '🪄';
@@ -439,10 +439,12 @@ export async function recordResult(ctx: LifecycleContext, ref: TaskRef, r: Resul
   if (kind === 'human') throw new TriageDenied('Needs a human');
   gate(caller, lvl, 'record');
 
-  const wants = r.complete === true;
+  const review = r.action === 'review';
+  if (r.action !== undefined && r.action !== 'result' && !review) throw new LifecycleError('action must be result or review');
+  const wants = r.complete === true && !review;
   const can = wants && r.outcome === 'done' && !openHuman(l.row) && !l.chain.some(held) && given === undefined &&
     (caller.owner === true || authorize(lvl, kind === 'agent' ? 'complete-subtask' : 'complete-task'));
-  const needsHuman = r.outcome === 'blocked' || r.outcome === 'needs-human';
+  const needsHuman = !review && (r.outcome === 'blocked' || r.outcome === 'needs-human');
   const humanText = needsHuman
     ? (given ?? subtaskText(`${r.outcome === 'blocked' ? 'Unblock' : 'Review'}: ${clip(plain(summary), 150) || 'see log'}`, 'human'))
     : given;
@@ -452,7 +454,7 @@ export async function recordResult(ctx: LifecycleContext, ref: TaskRef, r: Resul
   let human: TaskRef | undefined;
   if (humanText !== undefined) human = (await ensureChild(ctx, at, HUMAN, humanText)).ref;
   await appendLog(ctx, ref, caller, lvl, [
-    ['action', 'result'], ['outcome', r.outcome], ['completed', can ? 'yes' : wants ? 'deferred' : 'no'], ['summary', summary],
+    ['action', review ? 'review' : 'result'], ['outcome', r.outcome], ['completed', can ? 'yes' : wants ? 'deferred' : 'no'], ['summary', summary],
   ]);
   if (wants && !can && human === undefined) human = (await ensureChild(ctx, at, HUMAN, 'Review and complete')).ref;
   let completed = false;

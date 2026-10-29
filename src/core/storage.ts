@@ -25,6 +25,8 @@ export interface Storage {
   list(): Promise<string[]>;
   /** Paths of ask files (`tasks/asks/<key>.md`). @req FR:ask-queue/ask.path */
   listAsks?(): Promise<string[]>;
+  /** Paths of agent files (`tasks/agents/<slug>.md`). @req FR:agent-team/agent.path */
+  listAgents?(): Promise<string[]>;
   read(path: string): Promise<StoredFile>;
   write(path: string, content: string, opts?: WriteOptions): Promise<WriteResult>;
   /** Write several files as one operation (one commit in git). @req FR:storage-git/write.many */
@@ -67,6 +69,8 @@ const INBOX_PATH = /^tasks\/inbox\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][
 const ASK_PATH = /^tasks\/asks\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
 /** Archived (done) asks: same names, one folder down, never listed as open asks. @req FR:ask-queue/ask.archive */
 const ARCHIVE_PATH = /^tasks\/asks\/archive\/[a-z0-9][a-z0-9._-]{0,79}\.md$/;
+/** Agent definitions (one per agent, scoped to project folders), never projects. @req FR:agent-sessions/agent.path */
+const AGENT_PATH = /^tasks\/agents\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,39}\.md$/;
 
 /** Non-task state files (for example the API token store); never listed as tasks. */
 export const AUX_PATH = /^\.stack\/[a-z][a-z-]*\.json$/;
@@ -84,7 +88,7 @@ export interface AuxFiles {
 
 /** @req FR:storage-git/interface.paths @req FR:ai-triage-assist/result.path */
 export function validatePath(path: string): string {
-  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || ASK_PATH.test(path) || ARCHIVE_PATH.test(path)) || path.split('/').includes('..')) {
+  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || ASK_PATH.test(path) || ARCHIVE_PATH.test(path) || AGENT_PATH.test(path)) || path.split('/').includes('..')) {
     throw new PathError(`Invalid task path: ${JSON.stringify(path)}`);
   }
   return path;
@@ -100,6 +104,7 @@ export class MemoryStorage implements Storage {
 
   async list(): Promise<string[]> { return [...this.files.keys()].filter(p => TASK_PATH.test(p)).sort(); }
   async listAsks(): Promise<string[]> { return [...this.files.keys()].filter(p => ASK_PATH.test(p)).sort(); }
+  async listAgents(): Promise<string[]> { return [...this.files.keys()].filter(p => AGENT_PATH.test(p)).sort(); }
 
   /** @req FR:storage-git/interface.read @req FR:storage-git/interface.bytes */
   async read(path: string): Promise<StoredFile> {
@@ -210,10 +215,13 @@ export class FsStorage implements Storage {
     }
   }
 
-  async listAsks(): Promise<string[]> {
+  async listAsks(): Promise<string[]> { return this.listIn('asks', ASK_PATH); }
+  async listAgents(): Promise<string[]> { return this.listIn('agents', AGENT_PATH); }
+
+  private async listIn(folder: string, re: RegExp): Promise<string[]> {
     try {
-      const entries = await fs.readdir(await this.safe(`${TASKS_DIR}/asks`), { withFileTypes: true });
-      return entries.filter(e => e.isFile() && ASK_PATH.test(`${TASKS_DIR}/asks/${e.name}`)).map(e => `${TASKS_DIR}/asks/${e.name}`).sort();
+      const entries = await fs.readdir(await this.safe(`${TASKS_DIR}/${folder}`), { withFileTypes: true });
+      return entries.filter(e => e.isFile() && re.test(`${TASKS_DIR}/${folder}/${e.name}`)).map(e => `${TASKS_DIR}/${folder}/${e.name}`).sort();
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT' || (e as NodeJS.ErrnoException).code === 'ENOTDIR') return [];
       throw e;
