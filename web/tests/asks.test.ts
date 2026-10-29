@@ -46,10 +46,10 @@ describe('actions by kind', () => {
     expect(a[1].send).toEqual({ answer: 'option', text: 'Ship Monday' });
     expect(actionsFor(ask({ kind: 'decide', options: ['A', 'B'] }))[0].primary).toBe(true);
   });
-  it('review: Looks good, Open, Needs changes opens the reply box', () => {
+  it('review: Looks good, Needs changes (opens the reply box), Open last', () => {
     const a = actionsFor(ask({ kind: 'review', link: 'https://x.test/draft' }));
-    expect(a.map((x) => [x.label, x.key])).toEqual([['Looks good', 'Enter'], ['Open', 'o'], ['Needs changes', 'n']]);
-    expect(a[2].reply).toBe(true);
+    expect(a.map((x) => [x.label, x.key])).toEqual([['Looks good', 'Enter'], ['Needs changes', 'n'], ['Open', 'o']]);
+    expect(a[1].reply).toBe(true);
   });
   it('go-do: Done and Open; answer: no buttons, the reply box is the action', () => {
     expect(actionsFor(ask({ kind: 'go-do', link: 'https://x.test' })).map((x) => x.label)).toEqual(['Done', 'Open']);

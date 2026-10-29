@@ -58,7 +58,7 @@ export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | '
       return opts.map((o, i) => ({ id: `opt-${i}`, label: o, key: String(i + 1), primary: i === at, send: { answer: 'option' as const, text: o } }));
     }
     case 'review':
-      return [{ id: 'go', label: 'Looks good', key: 'Enter', primary: true, send: { answer: 'go' } }, ...open, { id: 'changes', label: 'Needs changes', key: 'n', reply: true }];
+      return [{ id: 'go', label: 'Looks good', key: 'Enter', primary: true, send: { answer: 'go' } }, { id: 'changes', label: 'Needs changes', key: 'n', reply: true }, ...open];
     case 'go-do':
       return [{ id: 'done', label: 'Done', key: 'Enter', primary: true, send: { answer: 'done' } }, ...open];
     default:

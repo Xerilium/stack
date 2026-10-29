@@ -39,17 +39,17 @@ function DeadlineChip({ by, now, long }: { by?: string; now: Date; long?: boolea
 /** What the owner would do with this ask, so the list can be triaged without opening each row. */
 function verbOf(a: AskItem): string | undefined {
   const p = actionsFor(a).find((x) => x.primary)?.label;
-  return { approve: p, decide: p, review: 'Review', 'go-do': 'Do', answer: 'Answer' }[a.kind];
+  return { approve: p, decide: 'Decide', review: 'Review', 'go-do': 'Do', answer: 'Answer' }[a.kind];
 }
 
 function Row({ a, n, now, fresh, leaving, onPick }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; onPick: () => void }) {
   const verb = verbOf(a);
   return (
     <li class={`ask-li${fresh ? ' fresh' : ''}${leaving ? ' leaving' : ''}`} data-key={a.key}>
-      <button type="button" class="ask-row" onClick={onPick} aria-label={`${n}. ${a.ask}`}>
+      <button type="button" class="ask-row" onClick={onPick} aria-label={[`${n}. ${a.ask}`, verb, deadline(a.by, now)?.label, a.project].filter(Boolean).join(', ')}>
         <span class="row-title">{a.ask}</span>
         {fresh && <span class="new" aria-label="New">New</span>}
-        <span class="row-meta">{verb && <span class="verb">{verb}</span>}<DeadlineChip by={a.by} now={now} />{a.project && <span class="proj">{a.project}</span>}</span>
+        <span class="row-meta"><span class="verb">{verb ?? ''}</span>{a.by ? <DeadlineChip by={a.by} now={now} /> : <span class="dl empty" aria-hidden="true" />}<span class="proj">{a.project ?? ''}</span></span>
       </button>
     </li>
   );
@@ -59,15 +59,15 @@ function Btn({ a, act, run, panel }: { a: Action; act: AskItem; run: (x: Action)
   const cls = `btn${a.primary ? ' primary' : ''}`;
   const key = a.key === 'Enter' ? '⏎' : a.key;
   const tag = a.primary && act.kind === 'decide' && act.recommend ? <span class="rec-tag">recommended</span> : null;
-  if (a.open) return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer">{a.label} {Icon.out}<kbd>{a.key}</kbd></a>;
-  return <button type="button" class={cls} onClick={() => run(a)}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd>{key}</kbd>}</button>;
+  if (a.open) return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer" aria-keyshortcuts="o">{a.label} {Icon.out}<kbd aria-hidden="true">{a.key}</kbd></a>;
+  return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd aria-hidden="true">{key}</kbd>}</button>;
 }
 
 function Card({ a, n, total, asks, run }: { a: AskItem; n: number; total: number; asks: Asks; run: (x: Action) => void }) {
   const actions = actionsFor(a);
   const silent = ifSilent(a);
   const primary = actions.find((x) => x.primary);
-  const showRec = !!a.recommend && !(primary && a.kind !== 'decide' && primary.label.toLowerCase() === a.recommend.trim().toLowerCase());
+  const showRec = !!a.recommend && !(primary && primary.label.toLowerCase() === a.recommend.trim().toLowerCase());
   const replyRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
   useEffect(() => { if (asks.panel !== 'reply') setText(''); }, [asks.panel, a.key]);
@@ -95,16 +95,16 @@ function Card({ a, n, total, asks, run }: { a: AskItem; n: number; total: number
         {asks.panel === 'defer' ? (
           <div class="ask-defer" role="group" aria-label="Defer until">
             <span class="lbl">Defer until</span>
-            {choices.map((c) => <button type="button" class="btn" key={c.key} onClick={() => void asks.defer(a, c.at, c.label)}>{c.label}<kbd>{c.key}</kbd></button>)}
-            <button type="button" class="btn quiet cancel" onClick={() => asks.setPanel('none')}>Cancel<kbd>Esc</kbd></button>
+            {choices.map((c) => <button type="button" class="btn" key={c.key} onClick={() => void asks.defer(a, c.at, c.label)}>{c.label}<kbd aria-hidden="true">{c.key}</kbd></button>)}
+            <button type="button" class="btn quiet cancel" onClick={() => asks.setPanel('none')}>Cancel<kbd aria-hidden="true">Esc</kbd></button>
           </div>
         ) : (
           !isAnswer && (
             <div class="ask-actions">
               {actions.map((x) => <Btn key={x.id} a={x} act={a} run={run} panel={asks.panel} />)}
               <span class="grow" />
-              <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd>z</kbd></button>
-              <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply<kbd>r</kbd></button>
+              <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>
+              <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply<kbd aria-hidden="true">r</kbd></button>
             </div>
           )
         )}
@@ -114,13 +114,13 @@ function Card({ a, n, total, asks, run }: { a: AskItem; n: number; total: number
               <input ref={(el) => { replyRef.current = el; if (el && asks.panel === 'reply' && document.activeElement !== el) el.focus(); }} type="text" value={text} maxLength={1000} aria-label={isAnswer ? `Answer ${a.from}` : `Reply to ${a.from}`} placeholder={isAnswer ? `Answer ${a.from}` : `Reply to ${a.from}`}
                 onInput={(e) => setText((e.target as HTMLInputElement).value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); (e.target as HTMLElement).blur(); asks.setPanel('none'); } }} />
-              <button type="submit" class="btn primary send" disabled={!text.trim()}>Send<kbd>⏎</kbd></button>
-              {isAnswer && <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd>z</kbd></button>}
+              <button type="submit" class="btn primary send" disabled={!text.trim()}>Send<kbd aria-hidden="true">⏎</kbd></button>
+              {isAnswer && <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>}
             </form>
             <p class="hint">End with ? to ask a question; anything else is an instruction</p>
           </>
         )}
-        {a.detail && <button type="button" class="more-link" onClick={() => asks.setDetail(!asks.detail)} aria-expanded={asks.detail}>{asks.detail ? 'Hide details' : 'Show details'}<kbd>e</kbd></button>}
+        {a.detail && <button type="button" class="more-link" onClick={() => asks.setDetail(!asks.detail)} aria-expanded={asks.detail}>{asks.detail ? 'Hide details' : 'Show details'}<kbd aria-hidden="true">e</kbd></button>}
         {asks.detail && a.detail && <pre class="ask-detail">{a.detail}</pre>}
       </article>
     </li>
@@ -220,7 +220,7 @@ export function AsksView({ asks }: { asks: Asks }) {
           {ghosts.map((g) => <Row key={`gone-${g.key}`} a={g} n={g.rank ?? 0} now={asks.now} fresh={false} leaving onPick={() => undefined} />)}
         </ol>
       )}
-      {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more <kbd>m</kbd></button>}
+      {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more <kbd aria-hidden="true">m</kbd></button>}
       {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · u undo</p>}
       {(asks.sent.length > 0 || asks.snoozed.length > 0) && (
         <footer class="asks-foot">
