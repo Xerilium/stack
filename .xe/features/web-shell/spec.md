@@ -30,7 +30,7 @@ First use must feel like a native app: it fills the window, the same four places
 ### FR:nav: One nav
 
 - **FR:nav.views** (P1): Views are `home` (`#/`, `#/home`; old `#/now`, `#/next`, `#/focus` still open it), `today` (My day, `#/today`), `projects` (`#/projects`; old `#/capacity`), `list` (Full stack, `#/list`; old `#/all`, `#/stack`), and `sessions` (`#/sessions`; old `#/agents`; agent-sessions `FR:web.view`), and `asks` (Needs you, `#/asks`). An unknown hash opens Home. Home is the starting screen
-- **FR:nav.rail** (P1): The desktop rail lists, in order: New task, Home, My day, Needs you (with the open count as a badge, hidden at 0), Sessions, Projects, Full stack. Commands and Shortcuts sit at the bottom. Labels are these words exactly
+- **FR:nav.rail** (P1): The desktop rail lists, in order: New task, Home, My day, Needs you (with the open count as a badge, hidden at 0), Sessions, Projects, Full stack. Commands and Shortcuts sit at the bottom, then a quiet mode pill for a local repo (`Demo copy · <branch>` or `Live · <branch>`, the path only in its tooltip). Labels are these words exactly
 - **FR:nav.tabbar** (P1): The phone tab bar has five equal slots: Home, My day, New task (the raised circle, in the middle), Needs you (count badge), More (opens the palette). The `+` glyph is optically centered in its circle (its box center within 1px of the circle's center). Projects and Full stack are reached through More / the palette
 - **FR:nav.keys** (P1): `g h` Home, `g d` or `g t` My day, `g k` Needs you, `g s` Sessions, `g p` Projects, `g a` Full stack. The rail shows the chord on hover and on the active item
 

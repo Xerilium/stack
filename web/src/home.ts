@@ -10,7 +10,7 @@ import type { NextTask, Project, Task } from './types';
 const DEFAULT_MIN = 30;
 
 export interface Countdown { text: string; tone: 'late' | 'soon' | 'calm' }
-/** `today`, `tomorrow`, a weekday inside the week, `in n d`, or `n d late`. */
+/** `today`, `tomorrow`, a weekday inside the week, `in nd`, or `nd late`. */
 export function countdown(due: string | undefined, now: Date): Countdown | null {
   const d = dueDays(due, now);
   if (d === null) return null;

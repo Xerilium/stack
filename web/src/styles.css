@@ -643,7 +643,7 @@ button.expected:hover { background: var(--line); }
 .cmd-group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 10px 10px 2px; cursor: default; }
 .cmd-group:first-child { padding-top: 2px; }
 .repo-pill { display: inline-block; font-size: 11.5px; color: var(--muted); background: var(--chip); border-radius: 999px; padding: 2px 9px; }
-.repo-pill.live { color: #b42318; background: #fde8e6; }
+.repo-pill.live { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .repo-pill strong { font-weight: 600; letter-spacing: 0; }
 .banner.mobile-only { display: none; }
 .filters select { appearance: none; -webkit-appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }

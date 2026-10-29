@@ -45,10 +45,10 @@ export interface ListProps extends RowProps {
   onFilters: (f: Partial<Filters>) => void; onSection: (key: string) => void; searchRef: { current: HTMLInputElement | null };
 }
 
-/** @req FR:web-app/list.view @req FR:web-app/list.filters */
 /** Section names without their emoji: the eyebrow is text, the file keeps its marker. */
 const plainSection = (name: string) => name.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').trim();
 
+/** @req FR:web-app/list.view @req FR:web-app/list.filters */
 export function ListView(p: ListProps) {
   const f = p.filters;
   const chips: [string, string, () => void][] = [];
