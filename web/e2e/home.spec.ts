@@ -12,6 +12,7 @@ const home = () => {
 test.describe('Home', () => {
   // @req FR:web-app/home.one @req FR:web-app/home.next @req FR:web-app/home.projects @req FR:web-app/home.quiet
   test('one thing with its time and countdown, up next (2), one row per project, nothing else', async ({ page }, info) => {
+    const ten = new Date(); ten.setHours(10, 0, 0, 0); await page.clock.setFixedTime(ten); // fit follows the time you have now
     await mockApi(page, { tasks: home() });
     await page.goto('/');
     const one = page.getByRole('group', { name: 'Next task' });
@@ -43,7 +44,7 @@ test.describe('Home', () => {
     await expect(one.getByTestId('expected')).toHaveText('30m');
     const unfit = page.getByTestId('unfit');
     await expect(unfit).toContainText('Ship the web app');
-    await expect(unfit).toContainText("doesn't fit today: needs 1h, 30m left");
+    await expect(unfit).toContainText("doesn't fit now: needs 1h, 30m until end of day");
     // keys act on the task shown as NOW, not on the waiting one
     if (info.project.name !== 'mobile') { await page.keyboard.press('s'); await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'beta:4' } }); }
     if (info.project.name === 'mobile') await unfit.getByRole('button', { name: /More time/ }).tap(); else await page.keyboard.press(']'); // +30 m: now it fits
@@ -55,7 +56,7 @@ test.describe('Home', () => {
   test('project name opens that project in Full stack', async ({ page }) => {
     await mockApi(page, { tasks: home() });
     await page.goto('/');
-    await page.getByTestId('home-projects').getByRole('button', { name: 'Gamma' }).click();
+    await page.getByTestId('home-projects').getByRole('button', { name: 'Gamma' }).click(); // @req FR:web-app/today.projects
     await expect(page).toHaveURL(/#\/list\?project=gamma/);
   });
 });

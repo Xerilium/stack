@@ -116,9 +116,9 @@ export function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: num
 }
 
 export const SHORTCUTS: [string, string][] = [
-  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g h / g d / g k / g s / g p / g a', 'Go to Home / My day / Needs you / Sessions / Projects / Full stack'], ['Sessions: Enter, s, c, n, m', 'Open the drawer, stop a run, costs, new session, show more'], ['Asks: Enter, n, o, r, z, e, u, 1-4, m', 'Primary action, reject, open link, reply, defer, details, undo, pick option, show more'], ['a / R', 'Talk to the task agent / review the task'], ['[ / ]', 'Less / more time today'],
+  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g h / g d / g k / g s / g p / g a', 'Go to Home / My day / Needs you / Sessions / Projects / Full stack'], ['Sessions: Enter, s, c, n, m', 'Open the drawer, stop a run, costs, new session, show more'], ['Asks: Enter, n, o, r, z, e, u, 1-4, m', 'Primary action, reject, open link, reply, defer, details, undo, pick option, show more'], ['a / R', 'Talk to the task agent / review the task'], ['[ / ]', 'Home: less / more time now; My day: less / more time today'], ['h then 1-4, 0', 'Home: I have 15m / 30m / 1h / 2h, reset'],
   ['j k or arrows', 'Move cursor'], ['Enter', 'Focus mode'], ['e', 'Edit row'], ['x', 'Select row'], ['Esc', 'Clear selection'],
-  ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['z', 'Defer'], ['Shift+S', 'Skip'],
+  ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['n', 'Not now (2 hours)'], ['Shift+A', 'Delegate to an agent (🪄)'], ['z', 'Defer'], ['Shift+S', 'Skip'],
   ['Shift+J / Shift+K', 'Move row down / up'], ['?', 'This sheet'],
 ];
 export function Help({ onClose }: { onClose: () => void }) {
