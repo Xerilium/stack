@@ -6,7 +6,7 @@ export interface MockInbox { id: string; at: string; project: string; ref: strin
 export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string }
 export interface MockSession { id: string; title: string; project: string; cwd: string; branch?: string; lastActive: string; state: string; cost: { usd: number; tokens: number }; prs: string[] }
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
-export interface Mock { schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
+export interface Mock { schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; insertAbove: (project: string, text: string) => void }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
 /** Short date for row text, relative to today (the plan depends on the clock). */
@@ -46,7 +46,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     m.tasks.splice(m.tasks.indexOf(mine[0]), 0, { ref: `${project}:${first}`, text, project, section: mine[0].section, done: false, depth: 0, notes: [] });
   };
 
-  await router.route('**/.auth/me', (r) => json(r, 200, { clientPrincipal: m.anonymous ? null : { userDetails: 'octocat', userRoles: ['authenticated'] }, agents: !!m.sessions }));
+  await router.route('**/.auth/me', (r) => json(r, 200, { clientPrincipal: m.anonymous ? null : { identityProvider: 'github', userId: 'd2f0c0ffee', userDetails: 'octocat', userRoles: ['authenticated'] }, agents: !!m.sessions }));
   await router.route('**/api/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -121,6 +121,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       m.inbox.push({ id, at: new Date().toISOString(), project: t.project, ref: t.ref, task: t.text.replace(/[🤖🪄🙋]/gu, '').trim(), kind: body.kind ?? 'reply', to: /🙋/u.test(t.text) ? 'human' : /🤖|🪄/u.test(t.text) ? 'agent' : 'none', text: body.text, state: 'open', row: t.ref });
       return json(route, 201, { id, path: `tasks/inbox/${t.project}.md` });
     }
+    if (path === '/sync') return json(route, 200, { rev: m.rev ?? null });
     if (path === '/inbox') return json(route, 200, { items: m.inbox.filter((e) => e.state === 'open') });
     if (path === '/projects') return json(route, 200, { items: proj.map((p) => ({ ...p, open: 0, done: 0 })) });
     if (path === '/capture') {

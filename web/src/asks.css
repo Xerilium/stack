@@ -14,6 +14,8 @@
 .live.poll .dot { background: var(--accent); }
 .live.offline, .live.down { color: var(--warn); }
 .live.offline .dot, .live.down .dot { background: var(--warn); }
+.live.signin { color: var(--warn); }
+.live.signin .dot { background: var(--warn); }
 .live.live { gap: 0; }
 .notify-btn.blocked { color: var(--muted); border-style: dashed; }
 

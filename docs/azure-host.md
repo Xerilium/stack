@@ -21,7 +21,7 @@ Set as SWA app settings. Missing or invalid required settings make everything ex
 | `STACK_REPO_TOKEN` | yes | GitHub token with contents write on that repo (sent only to the repo's origin, via env) |
 | `STACK_REPO_BRANCH` | no | Branch to read and commit to, default `main` |
 | `STACK_REPO_PATH` | no | Relative subfolder holding the tasks, default repo root |
-| `STACK_OWNERS` | yes for browser access | `provider:userId` list, for example `github:12345`. Empty denies all sessions |
+| `STACK_OWNERS` | yes for browser access | `provider:userId` list, for example `github:1a2b3c…`. The id is SWA's per-app user id (shown on the "Not on the allow-list" page), not the GitHub id. Empty denies all sessions |
 | `STACK_TOKEN_STORE` | no | Absolute path of a token file. Default: tokens live in the data repo at `.stack/tokens.json`. Requires `STACK_TOKEN_PEPPER` |
 | `STACK_TOKEN_PEPPER` | recommended | Secret mixed into token hashes |
 | `STACK_CONFIG` | no | Stack config as JSON (scoring, formats); defaults otherwise |
@@ -37,7 +37,7 @@ Allow lists are comma-separated. A channel without a secret is off; an empty all
 
 <!-- @req FR:azure-host/auth.swa -->
 
-- Storage: on first authorized request per instance the repo is cloned (single branch) into a private temp folder. Every change is a direct commit pushed to the branch. Requests with no credential, and health, never trigger a clone.
+- Storage: a `https://github.com/<owner>/<repo>` URL uses the GitHub REST API (no git, no clone): reads come from a snapshot of the branch head (one tree read per new commit, ref re-checked at most every 5 s with an ETag), and every change is one commit with a fast-forward-only ref update ([hosting](hosting.md)). Any other host is cloned (single branch) into a private temp folder on first authorized request and every change is a direct commit pushed to the branch. Requests with no credential, and health, never open storage.
 - Token store: hashes (never secrets) are committed to the data repo at `.stack/tokens.json` through the storage adapter, so tokens survive restarts. Keep the repo private. Another instance sees a revocation within about a minute. Set `STACK_TOKEN_STORE` to use a file instead: it needs `STACK_TOKEN_PEPPER`, the default path would be predictable in shared temp, and it is per instance, so a revocation on one instance does not reach the others.
 - Reachability (hard requirement): owner sessions trust the `x-ms-client-principal` header SWA adds. The Function must be reachable only through the SWA: no bring-your-own backend, no public `*.azurewebsites.net` endpoint. Otherwise anyone can forge an owner.
 - Repo safety: the clone uses `core.symlinks=false` and storage refuses symlinks, so repo content cannot read host files. Git runs with a minimal environment (no app secrets), no redirects, a 120s timeout per command, and a 30s cooldown after a failed clone.

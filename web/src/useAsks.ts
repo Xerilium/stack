@@ -34,7 +34,9 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState('');
-  const [status, setStatus] = useState<LiveStatus | 'connecting'>('connecting');
+  const [status, setStatus] = useState<LiveStatus>('connecting');
+  /** Time of the last good change probe. @req FR:live-deploy/web.state */
+  const [syncedAt, setSyncedAt] = useState<Date | null>(null);
   const live = useRef<LiveHandle | null>(null);
   const [cursor, setCursorState] = useState<string | null>(null);
   const cursorRef = useRef<string | null>(null);
@@ -90,6 +92,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     const stop = connectLive({
       make: stream ? undefined : null,
       onStatus: setStatus,
+      probe: () => api.sync(),
+      onSynced: setSyncedAt,
       onChange: (kinds) => {
         if (kinds.some((k) => k === 'asks' || k === 'state' || k === 'poll')) void load();
         if (kinds.some((k) => k === 'tasks' || k === 'poll')) tasksCb.current();
@@ -188,7 +192,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   }, [api, load]);
 
   return {
-    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, errorCode, status, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
+    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, retry, answer, reply, defer, retract, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),
   };

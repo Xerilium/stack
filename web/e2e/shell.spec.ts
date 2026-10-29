@@ -133,7 +133,7 @@ test.describe('honest states', () => {
     down = false;
     await page.getByRole('button', { name: 'Retry' }).click();
     await expect(page.locator('.ask-card .ask-title')).toHaveText('Approve PR 1');
-    await expect(badge).toHaveText(/Checks every 15 s/); // the mock host has no stream: polling, and honest about it
+    await expect(badge).toHaveText(/Synced/); // the mock host has no stream: polling, and honest about it
   });
 
   // @req FR:web-shell/state.notify

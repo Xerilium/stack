@@ -32,6 +32,8 @@ test.describe('shell and security', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Not on the allow-list' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sign out' })).toHaveAttribute('href', '/.auth/logout');
+    // @req FR:live-deploy/setup.owner
+    await expect(page.getByTestId('owner-cmd')).toHaveText('scripts/setup-azure.sh --owner github:d2f0c0ffee');
     await expect(page.getByText('Ship the')).toHaveCount(0);
   });
 
