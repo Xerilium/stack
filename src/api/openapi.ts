@@ -207,8 +207,23 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'sessions.new': {
     operationId: 'newSession', summary: 'Start a new agent session in a folder and send it a prompt. Owner session only: 403 for tokens',
-    desc: { cwd: 'Absolute path to an existing folder', text: 'The prompt' },
-    responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true } } }, '202'),
+    desc: { cwd: 'Absolute path to an existing folder; default: the served folder. Not allowed with agent, ref, or project (a task session always runs in the served folder)', text: 'The prompt', agent: 'Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task (404 when it has no file)' },
+    responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string', description: 'Set for a task or project session' }, title: { type: 'string', description: 'Set for a task or project session: `<agent> · <task> · <ref>`' } } }, '202'),
+  },
+  'team.list': {
+    operationId: 'listTeam', summary: 'Agents defined per project folder (tasks/agents/<slug>.md and project Agents metadata); with project, the agents that cover it, active first',
+    desc: { project: 'Project name: only the agents whose scope covers it, most specific first', section: 'Section heading, for section-scoped agents' },
+    responses: ok('Team', { type: 'object', properties: { items: { type: 'array', items: ref('TeamAgent') } } }),
+  },
+  'reviews.list': {
+    operationId: 'listReviews', summary: "Every row's newest review in a project (verdict, plan, estimate, agent, open need asks)",
+    desc: { project: 'Project name' },
+    responses: ok('Reviews', { type: 'object', properties: { items: { type: 'array', items: ref('Review') } } }),
+  },
+  'tasks.review': {
+    operationId: 'reviewTask', summary: "Ask the task's agent whether it can do the task: a read-only run whose verdict lands in the result log and whose needs become asks. Owner session only: 403 for tokens and for a 🙋 row; 404 without a runner",
+    desc: { agent: 'Agent slug; default: the active agent' },
+    responses: ok('Review started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string' } } }, '202'),
   },
   'sessions.prompt': {
     operationId: 'promptSession', summary: 'Resume a session with a prompt; updates stream on /sessions/{id}/events. Owner session only: 403 for tokens; 409 when the session is active elsewhere or already running',
@@ -397,6 +412,17 @@ export function buildOpenApi(): J {
             handled: { type: 'string' }, note: { type: 'string' }, snoozed: { type: 'string', format: 'date-time' }, detail: { type: 'string' },
             score: { type: 'integer' }, rank: { type: 'integer' }, overdue: { type: 'boolean' }, snoozedUntil: { type: 'string', format: 'date-time' }, agentReply: { type: 'string' },
           },
+        },
+        TeamAgent: {
+          type: 'object',
+          properties: {
+            slug: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, scope: { type: 'array', items: { type: 'string' } }, model: { type: 'string' },
+            tools: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['long-running', 'ad-hoc'] }, prompt: { type: 'string' }, defined: { type: 'boolean' }, projects: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        Review: {
+          type: 'object',
+          properties: { ref: ref('Ref'), at: { type: 'string' }, verdict: { type: 'string', enum: ['can', 'partial', 'cannot'] }, plan: { type: 'string' }, estimate: { type: 'string' }, agent: { type: 'string' }, needs: { type: 'array', items: { type: 'string' } } },
         },
         Session: {
           type: 'object',

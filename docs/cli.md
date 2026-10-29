@@ -23,4 +23,10 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `set`: set emojis and checkbox. `set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]`
 - `asks`: ask queue for the owner; agents `put` and `handle` asks, read answers with `list`. See [docs/asks.md](asks.md). `asks put <key> --ask t --kind k --from agent [...] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]`
 - `remove-completed`: delete checked rows. `remove-completed [--project name]`
+- `agents`: agents per project folder. `agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`
 - `update`: regenerate README, stack, projects, my-day. `update [--sweep] [--queries]`
+
+## Agents
+
+- `stack agents list [--project p --section s] [--json]`: the team (files in `tasks/agents/` plus agents named in a project's `Agents` metadata); with `--project`, the agents whose scope covers it, active first.
+- `stack agents add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`: write or update `tasks/agents/<slug>.md`. Scope entries are `project`, `project/section`, or `*`.

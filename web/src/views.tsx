@@ -10,6 +10,7 @@ import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from '.
 import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
 import type { Agent, InboxItem, Task } from './types';
+import type { ComponentChildren } from 'preact';
 
 export const chipsOf = (text: string) => {
   const r = parseRow(text);
@@ -26,6 +27,8 @@ export interface RowProps {
   prog: Map<string, { done: number; total: number }>;
   onSelect: (ref: string) => void; onCursor: (ref: string) => void; onEdit: (ref: string | null) => void; onSave: (ref: string, text: string) => void; onToggle: (t: Task) => void;
   onPick: Pick; onMove: (ref: string, dir: 'up' | 'down') => void; onDragStart: (ref: string, e: PointerEvent) => void; onExpand: (ref: string) => void; onOpen: (ref: string) => void;
+  /** AI on every row: the agent chip after the chips and the inline composer under the row. @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
+  agent?: { chip: (t: Task) => ComponentChildren; talk: (t: Task) => ComponentChildren };
 }
 
 /** Who/outcome/links lifted out of the title. */
@@ -139,6 +142,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
               {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
               <button type="button" class="chip ghost" aria-label="Set properties" onClick={(e) => { e.stopPropagation(); p.onPick([t.ref], GROUP_NAMES); }}>＋</button>
               {p.showProject && <span class="proj-tag">{p.titles.get(t.project) ?? t.project}</span>}
+              {p.agent?.chip(t)}
               <span class={`meta due${r.due ? dueClass(r.due) : ''}`}>{r.suspend ? `💤 ${r.suspend}` : r.due ?? ''}{r.recurrence ? ' ↻' : ''}</span>
               {(pr && pr.total > 0) || t.notes.length > 0 ? (
                 <button type="button" class="more" aria-expanded={open} aria-label={open ? 'Collapse details' : 'Expand details'} onClick={(e) => { e.stopPropagation(); p.onExpand(t.ref); }}>
@@ -150,6 +154,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
         )}
       </div>
       {open && !editing && t.notes.length > 0 && <div class="notes">{t.notes.map((n, i) => <div key={i}><Md text={n.trim()} /></div>)}</div>}
+      {p.agent?.talk(t)}
     </li>
   );
 }
@@ -303,6 +308,8 @@ export interface TodayProps {
   tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
   allDay: CalEvent[]; calError: string; onEmail: () => void;
   onAct: (a: 'start' | 'done' | 'defer', ref: string) => void; onReply: (task: RefText, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
+  /** The project's agent on each tile. @req FR:agent-team/web.anything */
+  tileAgent?: { chip: (project: string, title: string) => ComponentChildren; talk: (project: string, title: string) => ComponentChildren };
 }
 
 /**
@@ -491,7 +498,9 @@ export function TodayView(t: TodayProps) {
                 <button type="button" class="tile" onClick={() => t.onProject(x.project)}>
                   <span class="tile-name">{x.title}</span>
                   <span class="tile-top"><Md text={parseRow(x.task!.text).title || x.task!.text} /></span>
+                  {t.tileAgent?.chip(x.project, x.title)}
                 </button>
+                {t.tileAgent?.talk(x.project, x.title)}
               </li>
             ))}
           </ul>
@@ -617,8 +626,10 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', i.task.ref); }}><span class="box" /></button>
         <span class="title" onDblClick={() => p.onOpen(i.task.ref)}><Md text={r.title || i.task.text} /><Tags r={r} /></span>
         <span class="proj-tag">{p.titles.get(i.task.project) ?? i.task.project}</span>
+        {p.agent?.chip(i.task)}
         <When i={i} />
       </div>
+      {p.agent?.talk(i.task)}
     </li>
     );
   };
@@ -634,6 +645,7 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
             {chipsOf(one.task.text).filter((c) => c.group !== 'effort').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([one.task.ref], g)} />)}
             <Tags r={hero} />
             {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
+            {p.agent?.chip(one.task)}
           </div>
           {!h.fits && (
             <p class="nofit-line" data-testid="nofit">{minutesLeft > 0 ? `No time for this today: needs ${span(one.minutes)}, ${span(minutesLeft)} left` : "Day's over: no time left today"}</p>
@@ -644,6 +656,7 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
             <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('defer', one.task.ref)}>Not now <kbd>z</kbd></button>
             {!h.fits && <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
           </div>
+          {p.agent?.talk(one.task)}
         </div>
       )}
       {h.instead && (

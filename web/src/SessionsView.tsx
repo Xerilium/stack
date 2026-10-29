@@ -45,7 +45,7 @@ function TranscriptLine({ l }: { l: Line }) {
   return <p class={`tl tool ${l.status}`} title={l.output}><span class="mark" aria-hidden="true">⚙</span><span class="tool-title">{l.title}</span><span class="status">{MARK[l.status]}</span></p>;
 }
 
-function Drawer({ s, item, cursorItem, onClose }: { s: Sessions; item: SessionItem | null; cursorItem: SessionItem | null; onClose: () => void }) {
+export function Drawer({ s, item, cursorItem, onClose }: { s: Sessions; item: SessionItem | null; cursorItem: SessionItem | null; onClose: () => void }) {
   const ref = useRef<HTMLElement | null>(null);
   const box = useRef<HTMLTextAreaElement | null>(null);
   const end = useRef<HTMLDivElement | null>(null);
