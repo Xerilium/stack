@@ -330,14 +330,19 @@ function DayTimes({ day, weekday, onSave }: { day: Day; weekday: string; onSave?
   if (!onSave) return <span class="day-times">{label}</span>;
   const save = async (c: DayChange) => { if (await onSave(c)) setOpen(false); };
   if (!open) return <button type="button" class="day-times link-btn" title="Change wake and bed" data-testid="day-times" onClick={() => { setWake(hhmm(day.start)); setBed(hhmm(day.end)); setOpen(true); }}>{label}</button>;
+  // Enter: only this day; Shift+Enter: every same weekday; Esc: cancel.
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); }
+    else if (e.key === 'Enter') { e.preventDefault(); void save({ wake, bed, ...(e.shiftKey ? { every: true } : {}) }); }
+  };
   return (
-    <span class="day-times-edit" role="group" aria-label="Wake and bed" data-testid="day-times-edit">
-      <label>Up <input type="time" value={wake} onInput={(e) => setWake((e.target as HTMLInputElement).value)} /></label>
+    <span class="day-times-edit" role="group" aria-label="Wake and bed" data-testid="day-times-edit" onKeyDown={onKey}>
+      <label>Up <input type="time" value={wake} ref={(el) => { if (el && !el.dataset.seen) { el.dataset.seen = '1'; el.focus(); } }} onInput={(e) => setWake((e.target as HTMLInputElement).value)} /></label>
       <label>Bed <input type="time" value={bed} onInput={(e) => setBed((e.target as HTMLInputElement).value)} /></label>
-      <button type="button" class="btn primary" onClick={() => void save({ wake, bed })}>Today</button>
-      <button type="button" class="btn" onClick={() => void save({ wake, bed, every: true })}>Every {weekday}</button>
-      <button type="button" class="btn quiet" onClick={() => void save({ reset: true })}>Reset</button>
-      <button type="button" class="btn quiet" onClick={() => setOpen(false)}>Cancel</button>
+      <button type="button" class="link-btn strong" onClick={() => void save({ wake, bed })}>Only {weekday} <kbd>⏎</kbd></button>
+      <button type="button" class="link-btn" onClick={() => void save({ wake, bed, every: true })}>Every {weekday} <kbd>⇧⏎</kbd></button>
+      <button type="button" class="link-btn" onClick={() => void save({ reset: true })}>Reset</button>
+      <button type="button" class="link-btn" onClick={() => setOpen(false)}>Cancel <kbd>Esc</kbd></button>
     </span>
   );
 }
@@ -364,7 +369,7 @@ export function TodayView(t: TodayProps) {
   const pct = (m: number) => Math.max(0, Math.min(100, ((m - t.day.start) / total) * 100));
   const markAt = pct(Math.max(nowMin, t.day.start)); // the time label hugs the bar ends so it never clips
   const sameDate = !!t.day.origin && t.day.origin.toDateString() === t.now.toDateString();
-  const date = t.day.asleep ? `${sameDate ? 'Today' : 'Tomorrow'} from ${clock(t.day.start)}` : (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }); // @req FR:home/day.asleep
+  const date = t.tomorrow?.on ? (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) : t.day.asleep ? `${sameDate ? 'Today' : 'Tomorrow'} from ${clock(t.day.start)}` : (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }); // @req FR:home/day.asleep
   const jump = (id: string) => document.getElementById(id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   const repliesOf = (x: RowKey) => repliesFor(t.inbox, x);
   const sorted = [...t.decisions].sort((a, b) => Number(repliesOf(a.task).length > 0) - Number(repliesOf(b.task).length > 0));
@@ -430,7 +435,7 @@ export function TodayView(t: TodayProps) {
         <p class="t-sub">
           {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
           {meetingMin > 0 && <span>{span(meetingMin)} in meetings</span>}
-          {t.calendar === false && <span class="quiet" data-testid="nocal">No calendar · <a href="https://github.com/Xerilium/stack/blob/main/docs/runbook.md" target="_blank" rel="noopener noreferrer">Connect</a></span>}
+          {t.calendar === false && <span class="quiet" data-testid="nocal">No calendar · <a class="quiet-link" href="https://github.com/Xerilium/stack/blob/main/docs/runbook.md" target="_blank" rel="noopener noreferrer">Connect</a></span>}
           {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join{joinable(nextMeeting.events, t.now) && <kbd>J</kbd>}</a></>}</span>}
           {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
@@ -442,7 +447,7 @@ export function TodayView(t: TodayProps) {
           {t.plan.meetings.filter((m) => m.start < end).map((m) => <u key={`m${m.start}`} title={`${clock(m.start)} ${m.titles.join(', ')}`} style={{ left: `${pct(m.start)}%`, width: `${pct(m.end) - pct(m.start)}%` }} />)}
           {t.plan.email && <i class="mail" title={`${clock(t.plan.email.start)} Email`} style={{ left: `${pct(t.plan.email.start)}%`, width: `${pct(t.plan.email.end) - pct(t.plan.email.start)}%` }} />}
           {t.plan.blocks.map((b) => <i key={b.task.ref} title={`${clock(b.start)} ${parseRow(b.task.text).title}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}
-          <b class={markAt < 8 ? 'edge-l' : markAt > 92 ? 'edge-r' : undefined} style={{ left: `${markAt}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>
+          {!t.day.asleep && <b class={markAt < 8 ? 'edge-l' : markAt > 92 ? 'edge-r' : undefined} style={{ left: `${markAt}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>}
         </div>
         <p class="day-ends"><span>{clock(t.day.start)}</span><span>{clock(end)}</span></p>
       </header>
@@ -456,7 +461,7 @@ export function TodayView(t: TodayProps) {
             {timeline.map((r) => r.kind === 'block'
               ? <PlanBlock key={r.b.task.ref} b={r.b} p={t.p} busy={t.busy} onAct={t.onAct} />
               : r.kind === 'meeting' ? <MeetingRow key={`m${r.m.start}`} m={r.m} />
-                : r.kind === 'band' ? <li key={`band${r.at}`} class={`band${r.personal ? ' personal' : ''}`} data-testid="band"><span>{r.emoji} {r.name}</span><span class="band-time">{clock(r.from)}–{clock(r.to)}</span></li>
+                : r.kind === 'band' ? <li key={`band${r.at}`} class={`band${r.personal ? ' personal' : ''}`} data-testid="band"><span><i class="band-glyph" aria-hidden="true">{r.emoji}</i>{r.name}</span><span class="band-time">{clock(r.from)}–{clock(r.to)}</span></li>
                   : r.kind === 'gap' ? <li key={`gap${r.at}`} class="gap"><time class="when">{clock(r.at)}</time><span>{span(r.min)} free</span></li>
                     : r.kind === 'now' ? <li key="now" class="now-line" aria-label={`Now ${clock(r.at)}`}><time>{clock(r.at)}</time></li>
                       : <li key="email" class="email-block"><time class="when">{clock(r.e.start)}<small>{span(r.e.end - r.e.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {r.e.count} ask{r.e.count === 1 ? '' : 's'}</button><kbd>g k</kbd></div></li>)}

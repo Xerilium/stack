@@ -15,9 +15,9 @@ import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { DEFER, progress, startsOpen, topTask, visibleRows } from './now';
-import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, nowMinutes, planCandidates, span, type Decision } from './plan';
+import { buildPlan, clock, decisions as decisionsOf, DEFAULT_DAY, nowMinutes, planCandidates, span, type Decision } from './plan';
 import { parseRow } from './row';
-import { calendarRange, dayFrame, needsRefresh, withProjects, type DaySched } from './schedule';
+import { calendarRange, dayFrame, needsRefresh, wallMinutes, withProjects, type DaySched } from './schedule';
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
@@ -144,7 +144,7 @@ export function App() {
   // Tomorrow: the next waking day planned from its wake. @req FR:home/day.tomorrow
   const tmr = useMemo(() => {
     if (!ahead) return null;
-    const d = withProjects(dayFrame({ ...ahead.sched, asleep: false }), projects);
+    const d = withProjects(dayFrame({ ...ahead.sched, asleep: true }), projects); // no now line: tomorrow has no now
     const at = new Date(ahead.sched.wake);
     const b = busyIntervals(ahead.events, d.origin!, 2);
     const bud = budgetOf(at, d, null, b);
@@ -169,8 +169,10 @@ export function App() {
     if (!shown) return false;
     try {
       const s = await api.scheduleDay({ date: shown.date, ...c });
-      if (ahead) setAhead({ ...ahead, sched: { ...s, asleep: false } }); else setSched(s);
-      toast(c.reset ? 'Back to your usual hours' : c.every ? `Saved for every ${new Date(`${shown.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' })}` : 'Saved for this day');
+      if (ahead) setAhead({ ...ahead, sched: s }); else setSched(s);
+      const wd = new Date(`${shown.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' });
+      const span2 = `${clock(wallMinutes(new Date(s.wake), new Date(`${shown.date}T00:00:00`)))}–${clock(wallMinutes(new Date(s.bed), new Date(`${shown.date}T00:00:00`)))}`;
+      toast(c.reset ? `${wd}: back to your usual hours` : `${c.every ? 'Every ' : ''}${wd} ${span2}`);
       return true;
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not save', 'err'); return false; }
   }, [ahead, sched]);

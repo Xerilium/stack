@@ -95,3 +95,13 @@ details.nofit h3 .warn { color: var(--warn); text-transform: none; letter-spacin
 .day-times-edit input { font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
 .day-times-edit .btn { min-height: 28px; font-size: 13px; padding: 0 10px; }
 .day-switch { font: inherit; padding: 0; min-height: 0; color: var(--accent); }
+.day-switch { white-space: nowrap; }
+.day-times-edit .link-btn { font-size: 13px; padding: 2px 4px; }
+.day-times-edit .link-btn.strong { color: var(--accent); font-weight: 600; }
+.quiet-link { color: var(--ink2); text-decoration: underline dotted; text-underline-offset: 3px; }
+.band-glyph { display: inline-block; width: 18px; font-style: normal; }
+.band.personal::before { display: none; }
+@media (pointer: coarse) {
+  .day-times-edit { display: flex; width: 100%; margin: 8px 0 0; }
+  .day-times-edit input, .day-times-edit button { min-height: 44px; font-size: 16px; }
+}

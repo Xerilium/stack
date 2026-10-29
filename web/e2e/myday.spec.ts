@@ -45,7 +45,7 @@ test.describe('My day v2', () => {
     await page.getByTestId('day-times').click();
     const edit = page.getByTestId('day-times-edit');
     await edit.getByLabel('Bed').fill('01:00');
-    await edit.getByRole('button', { name: 'Today' }).click();
+    await edit.getByRole('button', { name: /^Only/ }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/schedule/day')?.body).toMatchObject({ date: ymd(at(0)), bed: '01:00' });
     await expect(page.getByTestId('day-times')).toContainText('8:00a–1:00a');
     await page.screenshot({ path: `e2e/screenshots/myday-times-${info.project.name}.png` });
@@ -78,5 +78,33 @@ test.describe('My day v2', () => {
     await open(page, at(10), { events: [{ id: 'e', subject: 'Allyte sync', start: at(11).toISOString(), end: at(12).toISOString(), allDay: false, showAs: 'busy', cancelled: false, online: false }] });
     await expect(page.getByTestId('nocal')).toHaveCount(0);
     await expect(page.locator('[data-testid="plan"] .meeting')).toContainText('Allyte sync');
+  });
+
+  // @req FR:home/day.override
+  test('Enter saves only this day; Esc cancels', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'keyboard');
+    const m = await open(page, at(10));
+    await page.getByTestId('day-times').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('day-times-edit')).toHaveCount(0);
+    await page.getByTestId('day-times').click();
+    await page.getByTestId('day-times-edit').getByLabel('Bed').fill('01:00');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => m.calls.find((c) => c.path === '/schedule/day')?.body).toMatchObject({ bed: '01:00' });
+  });
+
+  test('screens: today and tomorrow with meetings, light and dark', async ({ page }, info) => {
+    const ev = (h: number, plus: number, subject: string) => ({ id: subject, subject, start: at(h, 0, plus).toISOString(), end: at(h + 1, 0, plus).toISOString(), allDay: false, showAs: 'busy', cancelled: false, online: true, joinUrl: 'https://teams.example.test/j' });
+    await open(page, at(23, 30), { events: [ev(23, 0, 'APAC sync'), ev(9, 1, 'Allyte standup')] });
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await expect(page.locator('[data-testid="plan"] .meeting')).toContainText('APAC sync');
+      await page.screenshot({ path: `e2e/screenshots/myday-v2-today-${scheme}-${info.project.name}.png`, fullPage: true });
+      await page.getByTestId('tomorrow').click();
+      await expect(page.locator('[data-testid="plan"] .meeting')).toContainText('Allyte standup');
+      await expect(page.locator('.now-line')).toHaveCount(0);
+      await page.screenshot({ path: `e2e/screenshots/myday-v2-tomorrow-${scheme}-${info.project.name}.png`, fullPage: true });
+      await page.getByTestId('tomorrow').click();
+    }
   });
 });
