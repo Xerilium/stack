@@ -136,8 +136,8 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
   /** Closes the drawer and puts focus back on the row it came from. */
   const close = () => { const was = s.open; s.closeDrawer(); setTimeout(() => document.querySelector<HTMLElement>(`.sess-li[data-id="${CSS.escape(was ?? '')}"] button`)?.focus(), 0); };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+  // Keys act on this render's state, not the state of the render whose effect last registered the listener: the cursor row (or the drawer) paints before that effect re-runs, and a key in that gap must see what is on screen.
+  const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key;
       if (k === 'Escape' && (s.open || s.composing)) { e.preventDefault(); close(); return; }
@@ -152,10 +152,13 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
       else if (k === 'n') { e.preventDefault(); s.setComposing(true); }
       else if (k === 'm' && more > 0) { e.preventDefault(); s.setShowAll(true); }
       else if (k === 's' && cursor) { e.preventDefault(); stopFromList(cursor); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+  };
+  const latest = useRef(onKey); latest.current = onKey;
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => latest.current(e);
+    window.addEventListener('keydown', fn);
+    return () => window.removeEventListener('keydown', fn);
+  }, []);
 
   return (
     <section class="sess-view" aria-label="Sessions">
