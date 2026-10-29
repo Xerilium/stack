@@ -511,7 +511,7 @@ export function App() {
       <main class="main">
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the last copy'}</div>}
         {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
-        {phase === 'loading' && <p class="loading">Loading…</p>}
+        {phase === 'loading' && view !== 'asks' && <p class="loading">Loading…</p>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
@@ -535,9 +535,10 @@ export function App() {
         </div>
       )}
       <nav class="tabbar" aria-label="Views (mobile)">
-        {nav('tab', ['list'])}
-        <button type="button" class="tab" onClick={openCapture} aria-label="New task">＋</button>
-        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">More</button>
+        {tabs.filter(([v]) => v !== 'list').map(([v, label]) => (
+          <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><TabIcon v={v} /><span>{label}</span></button>
+        )).flatMap((b, i) => (i === 2 ? [<button type="button" key="add" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true">+</span></button>, b] : [b]))}
+        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette"><TabIcon v="more" /><span>More</span></button>
       </nav>
       {focusTask && <FocusMode task={focusTask} all={tasks} busy={busy} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onBack={() => setFocusRef(null)} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
@@ -588,4 +589,17 @@ function PaletteDialog({ commands, onClose }: { commands: Command[]; onClose: ()
       </ul>
     </Dialog>
   );
+}
+
+/** Line icons for the phone tab bar. @req FR:pwa/install.standalone */
+function TabIcon({ v }: { v: View | 'more' }) {
+  const d: Record<string, string> = {
+    asks: 'M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z',
+    today: 'M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 5h16M8 3v4m8-4v4',
+    now: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
+    projects: 'M4 6h16M4 12h16M4 18h10',
+    list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+    more: 'M5 12h.01M12 12h.01M19 12h.01',
+  };
+  return <svg class="tab-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={d[v]} fill="none" stroke="currentColor" stroke-width={v === 'more' ? 3 : 1.7} stroke-linecap="round" stroke-linejoin="round" /></svg>;
 }

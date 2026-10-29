@@ -1,5 +1,5 @@
 /* Stack service worker: app shell + read-only data cache, and notification clicks. @req FR:pwa/offline.sw @req FR:pwa/offline.private @req FR:pwa/offline.update @req FR:pwa/notify.click */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `stack-shell-${VERSION}`;
 const DATA = `stack-data-${VERSION}`;
 const DATA_PATHS = ['/api/next', '/api/tasks', '/api/projects', '/api/asks', '/api/inbox', '/api/agents', '/.auth/me'];
@@ -22,7 +22,8 @@ const ok = (res) => res && res.status === 200 && res.type !== 'opaque';
 
 async function shell(req, event) {
   const cache = await caches.open(SHELL);
-  const key = req.mode === 'navigate' ? '/' : req;
+  const path = new URL(req.url).pathname;
+  const key = path === '/' || path === '/index.html' ? '/' : req;
   const hit = await cache.match(key);
   const fresh = fetch(req).then((res) => { if (ok(res)) void cache.put(key, res.clone()); return res; }).catch(() => undefined);
   if (hit) { event.waitUntil(fresh); return hit; }

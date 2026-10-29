@@ -273,7 +273,7 @@ export function ProjectsView({ rows, week, onOpen }: { rows: (CapacityRow & { to
       <h1 class="h1">Projects</h1>
       <ul class="proj-list">
         {rows.map((r) => (
-          <li key={r.project} class={`proj${r.over ? ' over' : ''}${r.capacity === null ? ' nocap' : ''}`} data-testid={`cap-${r.project}`}>
+          <li key={r.project} class={`prow${r.over ? ' over' : ''}${r.capacity === null ? ' nocap' : ''}`} data-testid={`cap-${r.project}`}>
             <button type="button" class="proj-btn" onClick={() => onOpen(r.project)}>
               <span class="proj-name">{r.title || r.project}</span>
               <span class="proj-top">{r.top ? <Md text={parseRow(r.top.text).title || r.top.text} /> : <i>Nothing open</i>}</span>
@@ -573,13 +573,14 @@ export function WeekView({ w }: { w: Week }) {
           const name = d.today ? 'Today' : d.date.toLocaleDateString(undefined, { weekday: 'short' });
           const fill = Math.min(d.planned, d.available);
           return (
-            <li key={d.date.toISOString()} class={`wd${d.today ? ' today' : ''}${d.over ? ' over' : ''}${d.available === 0 ? ' off' : ''}`} aria-label={`${name}: ${hrs(d.planned)} planned of ${hrs(d.available)} available${d.over ? `, ${hrs(d.over)} over` : ''}`}>
+            <li key={d.date.toISOString()} class={`wd${d.today ? ' today' : ''}${d.over && d.available > 0 ? ' over' : ''}${d.available === 0 ? ' off' : ''}`} aria-label={`${name}: ${hrs(d.planned)} planned of ${hrs(d.available)} available${d.over ? `, ${hrs(d.over)} over` : ''}`}>
               <div class="wd-bar" aria-hidden="true">
                 <span class="wd-track" style={{ height: h(d.available) }} />
                 <span class="wd-fill" style={{ height: h(fill) }} />
-                {d.over > 0 && <span class="wd-over" style={{ bottom: h(d.available), height: h(d.over) }} />}
+                {d.over > 0 && d.available > 0 && <span class="wd-over" style={{ bottom: h(d.available), height: h(d.over) }} />}
+                {d.available === 0 && d.planned > 0 && <span class="wd-unset" style={{ height: h(d.planned) }} />}
               </div>
-              <p class="wd-label">{hrs(d.planned)}<small> / {hrs(d.available)}</small></p>
+              <p class="wd-label">{hrs(d.planned)}<small>{d.available === 0 ? (d.planned > 0 ? ' · no time set' : ' · off') : ` / ${hrs(d.available)}`}</small></p>
               <p class="wd-name">{name}<small>{d.date.getDate()}</small></p>
             </li>
           );
