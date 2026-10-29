@@ -689,7 +689,7 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
         <div class={`unfit${p.cursor === demoted.task.ref ? ' cursor' : ''}`} data-testid="unfit" data-ref={demoted.task.ref} onClick={() => p.onCursor(demoted.task.ref)}>
           <span class="unfit-title"><Md text={parseRow(demoted.task.text).title || demoted.task.text} /></span>
           <When i={demoted} />
-          <span class="unfit-why">doesn't fit now: needs {span(demoted.minutes)}, {span(minutesLeft)}{until ? ` until ${until}` : ' left'}</span>
+          <span class="unfit-why">{win.allow && !win.have ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : `doesn't fit now: needs ${span(demoted.minutes)}, ${span(minutesLeft)}${until ? ` until ${until}` : ' left'}`}</span>
           <span class="grow" />
           <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>
           <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('start', demoted.task.ref)}>Start anyway</button>

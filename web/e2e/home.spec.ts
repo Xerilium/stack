@@ -12,6 +12,7 @@ const home = () => {
 test.describe('Home', () => {
   // @req FR:web-app/home.one @req FR:web-app/home.next @req FR:web-app/home.projects @req FR:web-app/home.quiet
   test('one thing with its time and countdown, up next (2), one row per project, nothing else', async ({ page }, info) => {
+    const ten = new Date(); ten.setHours(10, 0, 0, 0); await page.clock.setFixedTime(ten); // fit follows the time you have now
     await mockApi(page, { tasks: home() });
     await page.goto('/');
     const one = page.getByRole('group', { name: 'Next task' });

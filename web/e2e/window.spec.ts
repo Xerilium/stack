@@ -31,8 +31,9 @@ test.describe('Home on the schedule', () => {
   test('the window runs to the next meeting; the top task does not fit, one that does is offered', async ({ page }, info) => {
     await open(page, at(15, 10), [sync]);
     await expect(page.getByTestId('window')).toContainText('45m until Allyte sync');
-    await expect(page.getByTestId('nofit')).toHaveText('No time for this now: needs 2h, 45m until Allyte sync');
-    await expect(page.getByTestId('instead')).toContainText('Send W9');
+    await expect(page.getByTestId('next-title')).toContainText('Send W9'); // the task that fits is NOW
+    await expect(page.getByTestId('unfit')).toContainText("Ship the release");
+    await expect(page.getByTestId('unfit')).toContainText("doesn't fit now: needs 2h, 45m until Allyte sync");
     await page.screenshot({ path: `e2e/screenshots/home-window-${info.project.name}.png` });
   });
 
@@ -41,9 +42,10 @@ test.describe('Home on the schedule', () => {
     await open(page, at(15, 10), [sync]);
     await page.getByTestId('have').getByRole('button', { name: /^2h/ }).click();
     await expect(page.getByTestId('window')).toContainText('You have 2h');
-    await expect(page.getByTestId('nofit')).toHaveCount(0);
+    await expect(page.getByTestId('unfit')).toHaveCount(0);
+    await expect(page.getByTestId('next-title')).toContainText('Ship the release');
     await page.getByTestId('window').getByRole('button', { name: 'Reset' }).click();
-    await expect(page.getByTestId('nofit')).toBeVisible();
+    await expect(page.getByTestId('unfit')).toBeVisible();
   });
 
   test('h then 1-4 picks; ] adds 30m to what you have', async ({ page }, info) => {
@@ -69,8 +71,8 @@ test.describe('Home on the schedule', () => {
   test('in family time only tasks tagged for it fit; one is offered', async ({ page }) => {
     await open(page, at(17));
     await expect(page.getByTestId('window')).toContainText('Family until 8:00p');
-    await expect(page.getByTestId('nofit')).toHaveText('Family until 8:00p: only 🏠 tasks now');
-    await expect(page.getByTestId('instead')).toContainText('Order dinner');
+    await expect(page.getByTestId('next-title')).toContainText('Order dinner');
+    await expect(page.getByTestId('unfit')).toContainText('Family until 8:00p: only 🏠 tasks now');
   });
 
   // @req FR:home/home.delegate
