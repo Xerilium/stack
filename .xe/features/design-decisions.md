@@ -199,3 +199,34 @@
 **Why**: A plan that ignores meetings books hours that do not exist. First fit uses the gap before a meeting for a short task instead of wasting it; capping at the work day keeps unusable gaps from pushing work into the evening.
 
 **Rejected**: IMAP (app passwords and a client library for a Microsoft 365 mailbox Graph already covers); splitting a task across a meeting (context switching); a server-side plan (the budget and clock are per viewer).
+
+## Graph sign-in is a device code flow with a local token file
+
+**Decision**: The owner signs in once with `stack graph login` (device code, public client, no secret). Scopes come from an allowlist per feature (`Calendars.Read`, `Mail.Read`, and `Mail.ReadWrite` for drafts, which is not read-only; the email guard limits writes to reply drafts) plus sign-in basics; every other scope, requested or granted, is refused in code. The refresh token lives in `~/.config/stack/graph-token.json` (0600), never in a task repo.
+
+**Date**: 2026-10-29
+
+**Why**: A terminal flow needs no redirect URI or secret, works on any machine, and keeps the token off GitHub and Azure. Refusing unsafe scopes in code means a bad app registration still cannot send mail.
+
+**Rejected**: Auth code with a localhost redirect (more moving parts, same result); storing the token in the task repo or Azure (it would leave the owner's machine); a confidential client (a secret to manage for one user).
+
+## Drive agents through the Claude Agent SDK behind an ACP-shaped driver
+
+**Decision**: Stack talks to agents through one `AgentDriver` interface that uses the Agent Client Protocol's vocabulary (sessions, prompt, streamed updates, `request_permission` with `allow_once` / `allow_always` / `reject_once` options). The first driver is the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`), loaded lazily, and only in `stack web` on the owner's machine. Files stay the contract for decisions: a permission prompt is written as an ask and answered on the home view. MCP stays what it is: the agents' door into Stack.
+
+**Date**: 2026-10-29
+
+**Why** (compared with cited evidence):
+
+| Option | What it gives | Why not alone |
+| --- | --- | --- |
+| **Claude Agent SDK** (`0.3.312`): [sessions](https://code.claude.com/docs/en/agent-sdk/sessions), [TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript) | `listSessions` / `getSessionMessages` read the same `~/.claude/projects/<cwd>/*.jsonl` that Claude Desktop writes (verified locally: transcripts carry `entrypoint: claude-desktop`, `custom-title`, `pr-link`, and a `cost-state` record with `totalCostUSD` and `modelUsage`), so the dashboard sees his real sessions, not only ones Stack started. `query({resume, canUseTool, includePartialMessages, maxBudgetUsd, abortController})` gives resume, streaming, permission interception, cost, and cancel in one call. | Vendor-specific; bundles a 263 MB native binary (optional dependency, never loaded on the Azure host); resuming a transcript another client is writing is unsafe, so active sessions are refused (`FR:driver.active`). |
+| **ACP** ([protocol overview](https://agentclientprotocol.com/protocol/v2/overview.md), [tool calls and permissions](https://agentclientprotocol.com/protocol/v2/tool-calls.md)) | An open standard (Zed, Aug 2025): JSON-RPC over stdio, agent as a subprocess, `session/new` / `session/resume` / `session/list` (capability-gated), `session/prompt`, `session/update` notifications, `session/request_permission` with option kinds. Official SDKs. The Claude Code adapter `@zed-industries/claude-code-acp` (`0.16.2`) wraps the Claude Agent SDK. | For Claude it is a second process wrapping the SDK we can call directly, with no access to Desktop's session list beyond what the adapter chooses to expose. Its shape is right, so the driver interface copies it and an `AcpDriver` can be added for other agents without touching the API or the web app. |
+| **MCP** (Stack's own server, `FR:mcp-server/*`) | Agents call Stack tools (tasks, asks). | It is agent → Stack. It cannot list the owner's sessions, stream an agent's output to the page, or surface a permission prompt. Keep it for what it does. |
+| **Files** (ask queue, `FR:ask-queue/*`) | Durable, agent-agnostic, survives any session; already the owner's answer path. | Cannot stream or cancel, and cannot see a session the agent did not write about. Keep it as the decision contract: permission prompts become asks so one home view still answers everything. |
+
+**Amended 2026-10-29 (measured)**: the SDK's `listSessions` parsed every transcript on each call: 70 s for this machine's 7,003 sessions (6.2 GB). The list is therefore built by Stack's own store index (`src/agents/store.ts`: stat scan, head and tail samples, a usage line scan, cached by size and mtime; first call about 2 s for the newest 200, then incremental). The SDK still owns transcripts (`getSessionMessages`) and runs (`query`). Cost is the CLI's `cost-state` record plus list-priced usage after it, because `cost-state` is written only at some turns and is missing from many transcripts.
+
+**Rejected**: ACP-first (an extra subprocess and adapter for no new capability today); a WebSocket for the run stream (SSE is one-way and already in `stack web`); letting the dashboard append to a session that Claude Desktop is still writing.
+
+**Risks noted**: the SDK's bundled CLI uses the machine's Claude login (`apiKeySource` in the init message says which); session resume from a different cwd is supported from CLI 2.1.223 (the SDK bundles 2.1.312); the store format is Claude Code's and may change, so every read is tolerant and tested against a fixture.

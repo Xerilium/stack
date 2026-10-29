@@ -1,6 +1,6 @@
 /**
  * Live updates: server-sent events, else polling a cheap change probe (`/api/sync`) on hosts with no watcher.
- * @req FR:ask-queue/web.live @req FR:ask-queue/live.fallback
+ * @req FR:ask-queue/web.live @req FR:ask-queue/live.fallback @req FR:web-shell/state.live
  * @req FR:live-deploy/web.poll @req FR:live-deploy/web.state @req FR:live-deploy/web.action
  */
 export interface EventSourceLike {
@@ -10,7 +10,7 @@ export interface EventSourceLike {
   addEventListener(type: string, fn: (e: { data: string }) => void): void;
   close(): void;
 }
-/** `connecting` before the first answer; `poll` means the last probe succeeded; `signin` means the session expired. */
+/** `connecting` before the first answer; `poll` means polling (with a probe: the last probe succeeded); `signin` means the session expired. */
 export type LiveStatus = 'connecting' | 'live' | 'poll' | 'offline' | 'signin';
 export interface LiveOpts {
   url?: string;
@@ -29,7 +29,8 @@ export interface LiveOpts {
   /** Subscribes to "check now" moments (page shown, back online); default uses document and window. */
   wake?: (fn: () => void) => () => void;
 }
-export interface Live { (): void; /** Check now: probe at once, or reconnect a dropped stream. */ retry(): void }
+/** Call it to stop; `retry` reopens a dropped stream, or probes now while polling. */
+export type LiveHandle = (() => void) & { retry: () => void };
 
 const ALL = ['asks', 'tasks', 'state'];
 
@@ -40,14 +41,13 @@ const defaultWake = (fn: () => void) => {
   return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('online', fn); };
 };
 
-export function connectLive(o: LiveOpts): Live {
+export function connectLive(o: LiveOpts): LiveHandle {
   const make = o.make === undefined ? (typeof EventSource === 'undefined' ? null : (u: string) => new EventSource(u) as unknown as EventSourceLike) : o.make;
   const visible = o.visible ?? (() => typeof document === 'undefined' || document.visibilityState === 'visible');
   let es: EventSourceLike | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let wasLive = false;
   let stopped = false;
-  let polling = false;
   let rev: string | null | undefined;
   let inFlight = false;
   let failed = false;
@@ -78,39 +78,44 @@ export function connectLive(o: LiveOpts): Live {
       o.onStatus((e as { status?: number } | null)?.status === 401 ? 'signin' : 'offline');
     });
   };
+
   const poll = () => {
     if (timer || stopped) return;
-    polling = true;
     if (!o.probe) o.onStatus('poll');
     timer = setInterval(check, o.pollMs ?? 15_000);
     unwake = (o.wake ?? defaultWake)(check);
     if (o.probe) check();
   };
+  const unpoll = () => { if (timer) { clearInterval(timer); timer = null; } unwake(); unwake = () => undefined; };
 
   const open = () => {
-    es = make!(o.url ?? '/events');
-    es.onopen = () => {
+    if (!make) return poll();
+    es = make(o.url ?? '/events');
+    const mine = es;
+    mine.onopen = () => {
       o.onStatus('live');
       // A reconnect may have missed changes: refresh everything once.
       if (wasLive) o.onChange(ALL);
       wasLive = true;
     };
-    es.addEventListener('change', (e) => {
+    mine.addEventListener('change', (e) => {
       try { const d = JSON.parse(e.data) as { kinds?: string[] }; o.onChange(Array.isArray(d.kinds) ? d.kinds : ALL); } catch { o.onChange(ALL); }
     });
-    es.onerror = () => {
-      if (stopped) return;
-      if (es && es.readyState === 2) { es.close(); poll(); } else o.onStatus('offline');
+    mine.onerror = () => {
+      if (stopped || es !== mine) return;
+      if (mine.readyState === 2) { mine.close(); es = null; poll(); } else o.onStatus('offline');
     };
   };
-
-  if (!make) poll(); else open();
-
-  const stop = (() => { stopped = true; if (timer) clearInterval(timer); unwake(); es?.close(); }) as Live;
+  open();
+  const stop = (() => { stopped = true; unpoll(); es?.close(); }) as LiveHandle;
+  /** Without EventSource: probe now. With it: reopen the stream, even after a permanent close (a host that came back). */
   stop.retry = () => {
     if (stopped) return;
-    if (polling) { check(); return; }
-    if (es && es.readyState !== 1) { es.close(); wasLive = true; open(); }
+    if (!make) { check(); return; }
+    unpoll();
+    es?.close();
+    es = null;
+    open();
   };
   return stop;
 }

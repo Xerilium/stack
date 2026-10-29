@@ -70,7 +70,7 @@ test.describe('now view', () => {
   test('shows the focus task with chips, Active rows below, and no horizontal scroll', async ({ page }, info) => {
     await mockApi(page);
     await page.goto('/#/now');
-    await expect(page).toHaveURL(/\/$|#\/now/);
+    await expect(page).toHaveURL(/\/$|#\/now/); // old name still opens Home
     await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
     const focus = page.locator('.focus-block');
     await expect(focus.getByRole('button', { name: /Priority: High/ })).toBeVisible();
@@ -349,8 +349,8 @@ test.describe('list', () => {
     await page.keyboard.press('Escape');
     await page.keyboard.press('g'); await page.keyboard.press('p');
     await expect(page).toHaveURL(/#\/projects/);
-    await page.keyboard.press('g'); await page.keyboard.press('n');
-    await expect(page).toHaveURL(/#\/now/);
+    await page.keyboard.press('g'); await page.keyboard.press('h');
+    await expect(page).toHaveURL(/#\/home/);
     await page.keyboard.press('g'); await page.keyboard.press('p');
     await expect(page.getByTestId('cap-alpha')).toBeVisible();
     await page.keyboard.press('?');
@@ -745,19 +745,19 @@ test.describe('feedback and mobile', () => {
       await expect(page.locator('.rail')).toBeHidden();
       for (const tab of await page.locator('.tabbar .tab').all()) expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       expect((await page.locator('.btn.primary').first().boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      // All tasks lives behind More on a phone: the bar keeps the four daily views
-      await expect(page.locator('.tabbar').getByRole('button', { name: /All tasks/ })).toHaveCount(0);
+      // Full stack and Projects live behind More on a phone
+      await expect(page.locator('.tabbar').getByRole('button', { name: /Full stack|Projects/ })).toHaveCount(0);
       await page.locator('.tabbar').getByRole('button', { name: 'Open command palette' }).click();
-      await page.getByRole('combobox', { name: 'Command' }).fill('all tasks');
+      await page.getByRole('combobox', { name: 'Command' }).fill('full stack');
       await page.keyboard.press('Enter');
       await expect(page).toHaveURL(/#\/list/);
-      await page.locator('.tabbar').getByRole('button', { name: /Projects/ }).click();
-      await expect(page).toHaveURL(/#\/projects/);
+      await page.locator('.tabbar').getByRole('button', { name: /My day/ }).click();
+      await expect(page).toHaveURL(/#\/today/);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= 375)).toBe(true);
     } else {
       await expect(page.locator('.rail')).toBeVisible();
       await expect(page.locator('.tabbar')).toBeHidden();
-      for (const name of ['Today', 'Focus', 'Projects', 'All tasks']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible();
+      for (const name of ['Home', 'My day', 'Needs you', 'Projects', 'Full stack']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible();
     }
   });
 
@@ -1093,13 +1093,13 @@ test.describe('today view', () => {
     await expect(rows(page)).toHaveText(['Plan the trip']);
   });
 
-  test('g t / g n / g p / g a move between views', async ({ page }, info) => {
+  test('g t / g h / g p / g a move between views', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
     await page.goto('/#/list');
     const chord = async (k: string, re: RegExp) => { await page.keyboard.press('g'); await page.keyboard.press(k); await expect(page).toHaveURL(re); };
     await chord('t', /#\/today/);
-    await chord('n', /#\/now/);
+    await chord('h', /#\/home/);
     await chord('p', /#\/projects/);
     await chord('a', /#\/list/);
   });

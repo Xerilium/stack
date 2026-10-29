@@ -169,6 +169,37 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { reply: 'One line shown to the owner on the reopened ask' },
     responses: ok('Handled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
   },
+  'sessions.list': {
+    operationId: 'listSessions', summary: 'Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents',
+    responses: ok('Sessions', { type: 'object', properties: { items: { type: 'array', items: ref('Session') }, total: { type: 'integer' }, indexing: { type: 'integer' } } }),
+  },
+  'sessions.cost': {
+    operationId: 'sessionCost', summary: "Agent spend by day, project, and model; a session counts on the date of its last activity in the owner's configured timezone (else UTC)",
+    responses: ok('Cost report', { type: 'object', properties: {
+      attribution: { type: 'string', enum: ['lastActive'] }, indexing: { type: 'integer' },
+      days: { type: 'array', items: { type: 'object', properties: { date: { type: 'string' }, usd: { type: 'number' }, tokens: { type: 'integer' }, sessions: { type: 'integer' } } } },
+      projects: { type: 'array', items: { type: 'object', properties: { project: { type: 'string' }, usd: { type: 'number' }, tokens: { type: 'integer' }, sessions: { type: 'integer' } } } },
+      models: { type: 'array', items: { type: 'object', properties: { model: { type: 'string' }, usd: { type: 'number' }, tokens: { type: 'integer' } } } },
+      total: { type: 'object', properties: { usd: { type: 'number' }, tokens: { type: 'integer' }, sessions: { type: 'integer' } } },
+    } }),
+  },
+  'sessions.messages': {
+    operationId: 'sessionMessages', summary: 'The last turns of a session: user and assistant text, tool calls as one line each',
+    responses: ok('Turns', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { at: { type: 'string' }, role: { type: 'string', enum: ['user', 'assistant'] }, text: { type: 'string' } } } } } }),
+  },
+  'sessions.new': {
+    operationId: 'newSession', summary: 'Start a new agent session in a folder and send it a prompt. Owner session only: 403 for tokens',
+    desc: { cwd: 'Absolute path to an existing folder', text: 'The prompt' },
+    responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true } } }, '202'),
+  },
+  'sessions.prompt': {
+    operationId: 'promptSession', summary: 'Resume a session with a prompt; updates stream on /sessions/{id}/events. Owner session only: 403 for tokens; 409 when the session is active elsewhere or already running',
+    responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true } } }, '202'),
+  },
+  'sessions.cancel': {
+    operationId: 'cancelSession', summary: 'Stop the run in flight for a session. Owner session only',
+    responses: ok('Cancelled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
+  },
   'projects.list': {
     operationId: 'listProjects', summary: 'List projects',
     responses: ok('Projects', { type: 'object', properties: { items: { type: 'array', items: ref('Project') } } }),
@@ -347,6 +378,15 @@ export function buildOpenApi(): J {
             answer: { type: 'string', enum: [...ASK_ANSWERS] }, text: { type: 'string' }, answered: { type: 'string', format: 'date-time' }, outcome: { type: 'string', enum: [...ASK_OUTCOMES] },
             handled: { type: 'string' }, note: { type: 'string' }, snoozed: { type: 'string', format: 'date-time' }, detail: { type: 'string' },
             score: { type: 'integer' }, rank: { type: 'integer' }, overdue: { type: 'boolean' }, snoozedUntil: { type: 'string', format: 'date-time' }, agentReply: { type: 'string' },
+          },
+        },
+        Session: {
+          type: 'object',
+          description: 'One Claude session on this machine (from the local session store), with its state and cost.',
+          properties: {
+            id: { type: 'string' }, title: { type: 'string' }, project: { type: 'string' }, cwd: { type: 'string' }, branch: { type: 'string' },
+            lastActive: { type: 'string', format: 'date-time' }, state: { type: 'string', enum: ['needs-you', 'running', 'active', 'idle', 'stale'] },
+            cost: { type: 'object', properties: { usd: { type: 'number' }, tokens: { type: 'integer' }, approx: { type: 'boolean' } } }, prs: { type: 'array', items: { type: 'string' } },
           },
         },
         AgentItem: {

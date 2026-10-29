@@ -1,5 +1,6 @@
 import type { CalEvent } from './meetings';
 import type { AskList, Send } from './asks';
+import type { CostReport, SessionList, Turn } from './sessions';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
 
 /** @req FR:web-app/api.client */
@@ -9,6 +10,15 @@ export class ApiFailure extends Error {
 
 const TASK_FIELDS = 'ref,text,project,section,done,depth,notes';
 
+const await0 = async <T,>(p: Promise<{ items: T[] }>) => (await p).items;
+
+/** Where the page expected Stack: the api origin, else this page's host. @req FR:web-shell/state.unreachable */
+export function unreachable(base = '/api'): string {
+  let host = '';
+  try { host = new URL(base, typeof location === 'undefined' ? 'http://localhost' : location.href).host; } catch { /* keep the fallback */ }
+  return `Can't reach Stack${host ? ` at ${host}` : ''}. Is stack web still running?`;
+}
+
 /** `onRead` hears each read: the time the service worker saved it when it came from the offline cache, else null. @req FR:pwa/offline.banner */
 export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base = '/api', onRead?: (savedAt: string | null) => void) {
   async function call<T>(path: string, body?: unknown): Promise<T> {
@@ -17,7 +27,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
       ? { credentials: 'same-origin' }
       : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' };
     let res: Response;
-    try { res = await fetchFn(`${base}${path}`, init); } catch { throw new ApiFailure(0, 'network', 'Network error'); }
+    try { res = await fetchFn(`${base}${path}`, init); } catch { throw new ApiFailure(0, 'network', unreachable(base)); }
     const text = await res.text();
     let data: unknown;
     try { data = text ? JSON.parse(text) : undefined; } catch { data = undefined; }
@@ -51,6 +61,12 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     send: (ref: string, text: string, kind: 'reply' | 'decision', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
+    sessions: () => call<SessionList>('/sessions?limit=200'),
+    sessionCost: (days = 7) => call<CostReport>(`/sessions/cost?days=${days}`),
+    sessionMessages: (id: string) => (await0(call<{ items: Turn[] }>(`/sessions/${encodeURIComponent(id)}/messages?limit=60`))),
+    promptSession: (id: string, text: string) => call<{ runId: string; sessionId: string | null }>(`/sessions/${encodeURIComponent(id)}/prompt`, { text }),
+    newSession: (cwd: string, text: string) => call<{ runId: string; sessionId: string | null }>('/sessions', { cwd, text }),
+    cancelSession: (id: string) => call<{ changed: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, {}),
     /** Repo revision for change-driven polling (null: the host has none). @req FR:live-deploy/web.poll */
     sync: async () => (await call<{ rev: string | null }>('/sync')).rev,
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
