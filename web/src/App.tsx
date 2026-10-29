@@ -136,7 +136,7 @@ export function App() {
   const titles = useMemo(() => new Map(projects.map((x) => [x.name, x.title || x.name])), [projects]);
   /** @req FR:web-app/home.one @req FR:web-app/home.fit */
   const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft: budget.minutes }), [tasks, projects, next, clockNow, budget.minutes]);
-  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (!home.fits && home.instead ? [home.instead.task, home.one?.task] : [home.one?.task, home.instead?.task]).concat(home.next.map((n) => n.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY), [tasks, clockNow, budget.minutes]);

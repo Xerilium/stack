@@ -86,6 +86,7 @@ test.describe('layout and nav', () => {
     await mockApi(page);
     await page.goto('/#/asks');
     await page.keyboard.press('Control+k');
+    await expect(page.locator('#palette-list .cmd-group')).toHaveText(['Actions', 'Go to', 'Projects']);
     const box = page.getByRole('combobox', { name: 'Command' });
     await box.fill('mark done');
     await expect(page.getByText('No matching command')).toBeVisible();
