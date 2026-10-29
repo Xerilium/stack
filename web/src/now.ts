@@ -98,40 +98,57 @@ export function actionable(t: Task, now = new Date()): boolean {
 }
 
 const REASON = /^(after|pending|blocked on|blocked by|until|waiting on|waiting for)\s+(.*)$/i;
-const keyOf = (text: string): string => parseRow(text.replace(/--.*$/, ' ')).title.toLowerCase().replace(/[`*_]/g, '').replace(/\s+/g, ' ').replace(/[.:;,]+$/, '').trim();
+const NOT_A_NAME = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d|\d{1,2}(?::\d\d)?\s*(?:am|pm)?$)/i;
+/** Title key; same steps as titleKey in the core scorer so both resolve the same names. */
+const keyOf = (text: string): string => text.replace(/--.*$/, ' ')
+  .replace(/(?:📅|⏰|💤)\s*[^:]*:/gu, ' ').replace(/🔄\s*[^:]*:/gu, ' ')
+  .replace(/[\p{Extended_Pictographic}️‍]/gu, ' ').replace(/[`*_]/g, '')
+  .replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.:;,]+$/, '').replace(/^the\s+/, '').trim();
 
-/** Names a row says it waits on (the reason after `--`); mirrors blockedOn in the core scorer. @req FR:web-app/now.blockers */
+/** Names a row says it waits on (the reason after `--`, up to a `;`); mirrors blockedOn in the core scorer. @req FR:web-app/now.blockers */
 export function blockedOn(text: string): string[] {
   const i = text.indexOf('--');
   const m = i < 0 ? null : REASON.exec(text.slice(i + 2).trim());
-  return m ? m[2].split(';')[0].split(/\s*(?:,|&|\band\b)\s*/i).map((x) => keyOf(x)).filter(Boolean) : [];
+  return m ? m[2].split(';')[0].split(/\s*(?:,|&|\band\b)\s*/i).map(keyOf).filter((n) => n !== '' && !NOT_A_NAME.test(n)) : [];
 }
 
-/** Blocked row ref -> refs it waits on: same project first (exact title, then whole word), other projects only on an exact title. */
+/**
+ * Blocked row ref -> refs it waits on, among open Active rows (the rows the core scorer sees): same project first (exact
+ * title, else a title that starts with the name), other projects only on an exact title.
+ */
 export function blockerEdges(all: Task[]): Map<string, string[]> {
-  const keyed = all.filter((t) => !t.done).map((t) => ({ t, key: keyOf(t.text) }));
-  const word = (name: string) => new RegExp(`(^|\\W)${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\W|$)`);
+  const keyed = all.filter((t) => !t.done && isActive(t)).map((t) => ({ t, key: keyOf(t.text) }));
   const out = new Map<string, string[]>();
   for (const { t } of keyed) {
     const found = new Set<string>();
     for (const name of blockedOn(t.text)) {
       const mine = keyed.filter((x) => x.t.project === t.project && x.t.ref !== t.ref);
       const exact = mine.filter((x) => x.key === name);
-      const part = exact.length === 0 && name.length >= 3 ? mine.filter((x) => word(name).test(x.key)) : [];
-      const hit = exact.length ? exact : part;
-      if (hit.length === 1) { found.add(hit[0].t.ref); continue; }
-      if (hit.length > 1) continue;
-      const far = keyed.filter((x) => x.t.project !== t.project && x.key === name);
-      if (far.length === 1) found.add(far[0].t.ref);
+      const lead = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\W|$)`);
+      const hit = exact.length ? exact : name.length >= 3 ? mine.filter((x) => lead.test(x.key)) : [];
+      const only = hit.length ? hit : keyed.filter((x) => x.t.project !== t.project && x.key === name);
+      if (only.length === 1) found.add(only[0].t.ref);
     }
     if (found.size) out.set(t.ref, [...found]);
   }
   return out;
 }
 
+/** Parent ref of each row (by depth, within its project). */
+function parents(all: Task[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const stack: Task[] = [];
+  for (const t of all) {
+    while (stack.length && (stack[stack.length - 1].project !== t.project || stack[stack.length - 1].depth >= t.depth)) stack.pop();
+    if (stack.length) out.set(t.ref, stack[stack.length - 1].ref);
+    stack.push(t);
+  }
+  return out;
+}
+
 type Key = [number, number, number];
 const cmp = (a: Key, b: Key) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
-const parked = (t: Task, now: Date): boolean => { const r = parseRow(t.text); return !!r.suspend || !!(r.start && (dueDays(r.start, now) ?? 0) > 0) || /🅿️?/u.test(t.text) || (dueDays(r.due, now) ?? 0) > HORIZON_DAYS; };
+const parkedRow = (t: Task, now: Date): boolean => { const r = parseRow(t.text); return !!r.suspend || !!(r.start && (dueDays(r.start, now) ?? 0) > 0) || /🅿️?/u.test(t.text) || (dueDays(r.due, now) ?? 0) > HORIZON_DAYS; };
 const rowKey = (t: Task, now: Date): Key => {
   const r = parseRow(t.text);
   const d = dueDays(r.due, now);
@@ -140,27 +157,42 @@ const rowKey = (t: Task, now: Date): Key => {
 
 /**
  * Order for the Now lists: due-soon first, then in progress, then priority, then file order (stable). A row that blocks
- * others takes the best key among the rows it blocks (transitive, never a sum). @req FR:web-app/now.blockers
+ * others takes the best key among the rows it blocks (transitive, never a sum); subtasks of a blocked row are held up too,
+ * and a subtask under a blocker inherits through its ancestors. @req FR:web-app/now.blockers
  */
 export function rankNow(tasks: Task[], now = new Date(), all: Task[] = tasks): Task[] {
   const edges = blockerEdges(all);
   const blocks = new Map<string, string[]>();
   for (const [blocked, bs] of edges) for (const b of bs) blocks.set(b, [...(blocks.get(b) ?? []), blocked]);
   const byRef = new Map(all.map((t) => [t.ref, t]));
+  const parentOf = parents(all);
+  const kids = new Map<string, string[]>();
+  for (const [c, p] of parentOf) kids.set(p, [...(kids.get(p) ?? []), c]);
+  const ancestors = (ref: string): string[] => {
+    const out: string[] = [];
+    for (let p = parentOf.get(ref); p && !out.includes(p); p = parentOf.get(p)) out.push(p);
+    return out;
+  };
+  const parked = (t: Task): boolean => [t.ref, ...ancestors(t.ref)].some((r) => { const x = byRef.get(r); return !!x && parkedRow(x, now); });
+  const lent = (ref: string): Key | undefined => {
+    let best: Key | undefined;
+    const seen = new Set<string>([ref]);
+    const queue = [...(blocks.get(ref) ?? [])];
+    while (queue.length) {
+      const r = queue.pop()!;
+      const x = byRef.get(r);
+      if (!x || seen.has(r) || x.done) continue;
+      seen.add(r);
+      if (parked(x)) continue;
+      const k = rowKey(x, now);
+      if (!best || cmp(k, best) < 0) best = k;
+      queue.push(...(blocks.get(r) ?? []), ...(kids.get(r) ?? []));
+    }
+    return best;
+  };
   const effective = (t: Task): Key => {
     let best = rowKey(t, now);
-    const seen = new Set<string>([t.ref]);
-    const queue = [...(blocks.get(t.ref) ?? [])];
-    while (queue.length) {
-      const ref = queue.pop()!;
-      const x = byRef.get(ref);
-      if (!x || seen.has(ref) || x.done) continue;
-      seen.add(ref);
-      if (parked(x, now)) continue;
-      const k = rowKey(x, now);
-      if (cmp(k, best) < 0) best = k;
-      queue.push(...(blocks.get(ref) ?? []));
-    }
+    for (const r of [t.ref, ...ancestors(t.ref)]) { const k = lent(r); if (k && cmp(k, best) < 0) best = k; }
     return best;
   };
   return tasks.map((t, i) => ({ t, i, k: effective(t) }))

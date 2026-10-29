@@ -68,9 +68,37 @@ describe('blocker inheritance in the Now lists', () => {
     expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['gate', '🔺 plain']);
   });
   it('lends nothing from parked or far-future rows, and survives cycles', () => {
-    const rows = [row('gate'), row('🔺 plain'), row('🚨 ⛔️ 🅿️ X -- After gate')];
-    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+    for (const lender of ['🚨 ⛔️ 🅿️ X -- After gate', '🚨 ⛔️ 📅 Mar 1, 2027: X -- After gate']) {
+      const rows = [row('gate'), row('🔺 plain'), row(lender)];
+      expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+    }
     const cyc = [row('⛔️ A -- After B'), row('⛔️ B -- After A')];
     expect(() => rankNow(cyc, day, cyc)).not.toThrow();
+  });
+});
+
+import { planCandidates } from '../src/plan';
+describe('blocker inheritance: subtasks, sections, plan', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, depth = 0, section = '🔄 Active'): Task => ({ ref: `a:${text}`, text, project: 'a', section, done: false, depth, notes: [] });
+  it('a blocked parent lends its most urgent subtask', () => {
+    const rows = [row('Phase 1'), row('🔺 plain'), row('⛔️ Phase 2 -- Pending phase 1'), row('🚨 📅 Oct 23: ship', 1)];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['Phase 1', '🔺 plain']);
+  });
+  it('rows outside Active lend nothing', () => {
+    const rows = [row('gate'), row('🔺 plain'), row('🚨 ⛔️ X -- After gate', 0, '⏭️ Up next')];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+  });
+  it('no false links on a word in the middle of a title', () => {
+    const rows = [row('Email Bob about contract'), row('🔺 plain'), row('🚨 ⛔️ X -- Waiting on Bob')];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'Email Bob about contract']);
+  });
+  it('the day plan ranks a leaf under a blocker first', () => {
+    const rows = [row('Gate'), row('step one', 1), row('🔺 plain'), row('🚨 ⛔️ ship -- After gate')];
+    expect(planCandidates(rows, day).map((t) => t.text)).toEqual(['step one', '🔺 plain']);
+  });
+  it('a parked parent makes its subtasks lend nothing', () => {
+    const rows = [row('gate'), row('🔺 plain'), row('🅿️ ⛔️ X -- After gate'), row('🚨 sub', 1)];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
   });
 });

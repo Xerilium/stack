@@ -375,22 +375,24 @@ const dueTier = (days: number | null): number => (days === null ? 0 : days < -ST
 // ---- blockers
 
 const REASON = /^(after|pending|blocked on|blocked by|until|waiting on|waiting for)\s+(.*)$/i;
+/** A date or time ("Until Oct 30", "after 5pm") is not a task name. */
+const NOT_A_NAME = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d|\d{1,2}(?::\d\d)?\s*(?:am|pm)?$)/i;
 
-/** Row title without markers, dates, reason, or emoji: what another row's reason can name. */
+/** Row title without markers, dates, reason, emoji, or a leading "the": what another row's reason can name. */
 function titleKey(text: string): string {
   return text.replace(/--.*$/, ' ')
     .replace(/(?:📅|⏰|💤)\s*[^:]*:/gu, ' ').replace(/🔄\s*[^:]*:/gu, ' ')
     .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ').replace(/[`*_]/g, '')
-    .replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.:;,]+$/, '').trim();
+    .replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.:;,]+$/, '').replace(/^the\s+/, '').trim();
 }
 
-/** Names a row says it is waiting on: the reason after `--` when it reads like a dependency. @req FR:scoring-engine/blockers.parse */
+/** Names a row says it is waiting on: the reason after `--` (up to a `;`) when it reads like a dependency. @req FR:scoring-engine/blockers.parse */
 export function blockedOn(text: string): string[] {
   const i = text.indexOf('--');
   if (i < 0) return [];
   const m = REASON.exec(text.slice(i + 2).trim());
   if (!m) return [];
-  return m[2].split(';')[0].split(/\s*(?:,|&|\band\b)\s*/i).map(titleKey).filter(n => n !== '');
+  return m[2].split(';')[0].split(/\s*(?:,|&|\band\b)\s*/i).map(titleKey).filter(n => n !== '' && !NOT_A_NAME.test(n));
 }
 
 const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -399,23 +401,18 @@ const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function resolveBlockers(projects: ScoringProject[]): Map<string, string[]> {
   const all = projects.flatMap(p => p.tasks.map(t => ({ t, key: titleKey(t.text) })));
   const edges = new Map<string, string[]>();
-  const pick = (pool: typeof all, name: string, containment: boolean): string | undefined => {
-    const exact = pool.filter(x => x.key === name);
-    if (exact.length) return exact.length === 1 ? exact[0].t.id : undefined;
-    if (!containment || name.length < 3) return undefined;
-    const re = new RegExp(`(^|\\W)${escapeRe(name)}(\\W|$)`);
-    const hit = pool.filter(x => re.test(x.key));
-    return hit.length === 1 ? hit[0].t.id : undefined;
-  };
   for (const p of projects) {
     for (const t of p.tasks) {
       const found = new Set<string>();
       for (const name of blockedOn(t.text)) {
+        // Same project: exact title, else a title that starts with the name (whole words). Any same-project hit, even an
+        // ambiguous one, stops the search; otherwise another project on an exact title only.
         const mine = all.filter(x => x.t.project === t.project && x.t.id !== t.id);
-        let id = pick(mine, name, true);
-        const sameHasAny = mine.some(x => x.key === name || (name.length >= 3 && new RegExp(`(^|\\W)${escapeRe(name)}(\\W|$)`).test(x.key)));
-        if (!id && !sameHasAny) id = pick(all.filter(x => x.t.project !== t.project), name, false);
-        if (id) found.add(id);
+        const exact = mine.filter(x => x.key === name);
+        const lead = new RegExp(`^${escapeRe(name)}(\\W|$)`);
+        const hit = exact.length ? exact : name.length >= 3 ? mine.filter(x => lead.test(x.key)) : [];
+        const only = hit.length ? hit : all.filter(x => x.t.project !== t.project && x.key === name);
+        if (only.length === 1) found.add(only[0].t.id);
       }
       if (found.size) edges.set(t.id, [...found]);
     }
@@ -455,12 +452,17 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
   const blockedBy = resolveBlockers(projects);
   const blocks = new Map<string, string[]>(); // blocker -> tasks it blocks
   for (const [blocked, blockers] of blockedBy) for (const b of blockers) blocks.set(b, [...(blocks.get(b) ?? []), blocked]);
+  const children = new Map<string, string[]>();
+  for (const s of all) if (s.task.parent) children.set(s.task.parent, [...(children.get(s.task.parent) ?? []), s.task.id]);
   const lend = (id: string): number => {
     const s = byId.get(id)!;
     const pen = s.breakdown.emojiContributions.filter(c => c.category === 'Status' && c.emoji === '⛔️').reduce((a, c) => a + c.value, 0);
     return adj.get(id)! - pen / s.breakdown.effortHours;
   };
-  /** Best score among tasks reachable through "blocks" edges, passing only through eligible tasks. */
+  /**
+   * Best score among tasks reachable through "blocks" edges, passing only through eligible tasks. A blocked row holds
+   * up its subtasks too, so they lend (and pass on what they block) like the row itself.
+   */
   const inherited = (id: string): { value: number; from?: string } => {
     let best = -Infinity, from: string | undefined;
     const seen = new Set<string>([id]);
@@ -472,7 +474,7 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
       if (!eligible.get(next)) continue;
       const v = lend(next);
       if (v > best) { best = v; from = next; }
-      queue.push(...(blocks.get(next) ?? []));
+      queue.push(...(blocks.get(next) ?? []), ...(children.get(next) ?? []));
     }
     return { value: best, from };
   };
