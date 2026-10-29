@@ -445,8 +445,6 @@ export function App() {
       { id: 'ask-reply', label: 'Ask: Reply to the agent', hint: 'r', run: () => asks.setPanel('reply') },
       { id: 'ask-undo', label: 'Ask: Undo last answer', hint: 'u', run: () => asks.undo() },
     ] : []),
-    { id: 'talk', label: 'Talk to the task agent', hint: 'a', run: () => { const t = taskAt(refNow()); if (t) team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); } },
-    { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ...(view === 'sessions' ? [
       { id: 'sess-open', label: 'Session: open', hint: '⏎', run: () => { if (sessions.cursor) void sessions.openDrawer(sessions.cursor); } },
       { id: 'sess-new', label: 'Session: new', hint: 'n', run: () => sessions.setComposing(true) },
@@ -466,6 +464,9 @@ export function App() {
       { id: 'defer', label: 'Defer', hint: 'z', run: openDefer },
       { id: 'focus', label: 'Focus mode', hint: 'Enter', run: () => { const r = refNow(); if (r) setFocusRef(r); } },
       { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
+      // @req FR:agent-team/web.keys
+      { id: 'talk', label: 'Talk to the task agent', hint: 'a', run: () => { const t = taskAt(refNow()); if (t) team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); } },
+      { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ] : []),
     ...(view === 'today' ? [
       { id: 'more-time', label: 'More time today (+30m)', hint: ']', run: () => setBudget(budget.minutes + STEP) },

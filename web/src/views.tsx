@@ -626,8 +626,10 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', i.task.ref); }}><span class="box" /></button>
         <span class="title" onDblClick={() => p.onOpen(i.task.ref)}><Md text={r.title || i.task.text} /><Tags r={r} /></span>
         <span class="proj-tag">{p.titles.get(i.task.project) ?? i.task.project}</span>
+        {p.agent?.chip(i.task)}
         <When i={i} />
       </div>
+      {p.agent?.talk(i.task)}
     </li>
     );
   };

@@ -138,6 +138,20 @@ test.describe('Agent team', () => {
     expect(m.calls.find((c) => c.path === '/sessions')!.body).toEqual({ text: 'What changed since the last review?', agent: 'alpha-lead', project: 'alpha' });
   });
 
+  test('Home rows carry the chip and the composer too', async ({ page }) => {
+    const m = await open(page);
+    await page.goto('/#/home');
+    const first = page.locator('section[aria-label="Home"] .home-row').first();
+    await expect(first).toBeVisible();
+    await first.click();
+    await expect(first.locator('.agent-chip')).toBeVisible();
+    await page.keyboard.press('a');
+    await expect(first.locator('.agent-talk')).toBeVisible();
+    await page.keyboard.type('Status?');
+    await page.keyboard.press('Enter');
+    expect(m.calls.find((c) => c.path === '/sessions')!.body.text).toBe('Status?');
+  });
+
   test('the project tile on Today carries the project agent and opens the composer', async ({ page }) => {
     const m = await open(page);
     await page.goto('/#/today');
