@@ -35,7 +35,9 @@ function voiced(d: NonNullable<TriageResult['draft']>): string {
   const v = d.voice;
   if (!v) return d.text;
   const head = v.profile ? `Voice: ${v.score}/100` : 'Voice: no profile yet';
-  const fix = [...new Set(v.violations.map((x) => `"${x.match}"`))].slice(0, 3).join(', ');
+  // Matched draft text is quoted; structural labels ("2 em dashes", "bullet list") are not.
+  const LABELS = new Set(['em-dash', 'exclamations', 'length', 'bullets', 'emoji']);
+  const fix = [...new Set(v.violations.map((x) => (LABELS.has(x.id) ? x.match : `"${x.match}"`)))].slice(0, 3).join(', ');
   return `${head}${fix ? ` · fix: ${fix}` : ''}\n\n${d.text.replace(DRAFT_MARKER, '').trim()}`;
 }
 

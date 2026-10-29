@@ -7,6 +7,8 @@
 const CUT: RegExp[] = [
   /^On .{4,200}wrote:\s*$/,
   /^-{2,}\s*Original Message\s*-{2,}\s*$/i,
+  /^-{2,}\s*Forwarded message\s*-{2,}\s*$/i,
+  /^Begin forwarded message:\s*$/i,
   /^-- ?$/,
   /^_{5,}\s*$/,
   /^>/,
@@ -34,18 +36,21 @@ const GROUP = /^(all|team|everyone|folks|there|guys|y'all|both|everybody)$/i;
 /** Words that open a reply but are not a name: "Yes," "Thanks," "Sure,". */
 const NOT_NAME = new RegExp(`^(${CLOSE_WORDS}|yes|yep|yeah|no|nope|ok|okay|sure|done|agreed|great|perfect|correct|right|absolutely|also|so|well|actually|update|fyi|note|heads up)$`, 'i');
 /** A signature line: no sentence ending, or a contact marker. */
-const SIG_LINE = /[|·・•@]|\+?\d[\d ().-]{6,}|https?:|www\.|\.(com|net|org|io)\b/i;
-const isSigLine = (l: string) => SIG_LINE.test(l) || !/[.?!]$/.test(l.trim());
+/** A signature line: a contact marker, a bare domain, or a short name/title line ("Sam Owner", "CEO, Acme Corp"). Prose with no period ("Will do") is not one. */
+const SIG_LINE = /[|·・•@]|\+?\d[\d ().-]{6,}|https?:|www\.|\.(com|net|org|io)\b|^[\w-]+(\.[\w-]+)+$/i;
+const TITLE_LINE = /^[\p{Lu}\d&][\p{L}\d&'’.,|-]*(?: (?:of|and|for|the|[\p{Lu}\d&][\p{L}\d&'’.,|-]*)){0,7}$/u;
+const isSigLine = (l: string) => { const t = l.trim(); return SIG_LINE.test(t) || ((NAME.test(t) || TITLE_LINE.test(t)) && !NOT_NAME.test(t.replace(/[^\p{L}' ]/gu, ''))); };
 
 export const paragraphs = (t: string): string[] => t.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
 export const isAutoReply = (subject: string, body = ''): boolean => AUTO_SUBJECT.test(subject.trim()) || AUTO_BODY.test(body.trim());
 
 /** Index of the sign-off paragraph: a closing line ("Thanks,"), a lone name, or a name over a signature. Only signature lines may follow it. */
 function signoffAt(paras: string[]): number {
-  for (let i = 1; i < paras.length; i++) {
+  // Paragraphs from `tail` on are all signature-like, so a sign-off can only sit at tail - 1 or later (one pass, not quadratic).
+  let tail = paras.length;
+  while (tail > 0 && paras[tail - 1].split('\n').every(isSigLine)) tail--;
+  for (let i = Math.max(1, tail - 1); i < paras.length; i++) {
     const lines = paras[i].split('\n').map((l) => l.trim());
-    const tailIsSig = paras.slice(i + 1).every((p) => p.split('\n').every(isSigLine));
-    if (!tailIsSig) continue;
     if (CLOSING.test(lines[0]) || closingName(lines[0])) return i;
     if (NAME.test(lines[0]) && !NOT_NAME.test(lines[0].replace(/[^\p{L}' ]/gu, '')) && lines.slice(1).every(isSigLine)) return i;
   }
@@ -84,9 +89,10 @@ export function greetingOf(text: string): { form: string; index: number; length:
   const g = GREETING.exec(first);
   if (g) {
     const rest = first.slice(g[0].length);
-    const m = /^(,?\s+)(\p{L}[\p{L}'-]*(?: \p{Lu}[\p{L}'-]*){0,2})\s*([,!:.])(?=\s|$)/u.exec(rest) ?? /^()()\s*([,!:.])(?=\s|$)/.exec(rest);
+    const m = /^(,?\s+)((?:(?:Mr|Mrs|Ms|Mx|Dr|Prof)\.? )?\p{L}[\p{L}'-]*(?: \p{Lu}[\p{L}'-]*){0,2})\s*([,!:.])(?=\s|$)/u.exec(rest) ?? /^()()\s*([,!:.])(?=\s|$)/.exec(rest);
     if (m) {
-      const who = !m[2] ? '' : GROUP.test(m[2]) ? m[2].toLowerCase() : /^\p{Lu}/u.test(m[2]) ? '{name}' : null;
+      // A lowercase name ("Hi alex,") is still a name; only group words ("Hi all,") stay literal.
+      const who = !m[2] ? '' : GROUP.test(m[2]) ? m[2].toLowerCase() : '{name}';
       if (who !== null) return { form: `${g[0]}${who ? `${m[1].includes(',') ? ', ' : ' '}${who}` : ''}${m[3]}`, index: 0, length: g[0].length + m[0].length };
     }
     if (!first.includes('\n') && first.split(/\s+/).length <= 3) return { form: first, index: 0, length: first.length };

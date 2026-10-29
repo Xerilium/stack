@@ -135,3 +135,32 @@ describe('run robustness', () => {
 it('auto-replies are skipped by subject or an explicit body', () => {
   expect(learnVoice([...SENT, sent('Out of office tomorrow, but yes.', { subject: 'Re: x' })], OWNER).sampleCount).toBe(9);
 });
+
+// Round 2 @req FR:email-voice/learn.clean
+describe('round 2 regressions', () => {
+  it('keeps unpunctuated body lines after an early "Thanks!"', () => {
+    expect(ownText('Hi Alex,\n\nThanks!\n\nThe plan is fine\n\nSam')).toBe('Hi Alex,\n\nThanks!\n\nThe plan is fine\n\nSam');
+    expect(ownText('Hi Alex,\n\nThanks!\n\nWill do\n\nSam')).toMatch(/Will do/);
+  });
+  it('finds the sign-off in one pass on huge bodies', () => {
+    const t0 = Date.now();
+    ownText(`Hi Alex,\n\n${'line\n\n'.repeat(10000)}Sam`);
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+  it('skips Gmail and Apple forwards with no note, keeps the note otherwise', () => {
+    expect(ownText('---------- Forwarded message ---------\nFrom: A <a@example.test>\nDate: Mon\nSubject: x\n\nold')).toBe('');
+    expect(ownText('Begin forwarded message:\n\nFrom: A\nDate: Mon\nold')).toBe('');
+    expect(ownText('FYI, see below.\n\n---------- Forwarded message ---------\nFrom: A\nDate: Mon\nold')).toBe('FYI, see below.');
+  });
+  it('reads honorifics and lowercase names as {name}', () => {
+    expect(greetingOf('Dear Mr. Lee,\n\nYes.').form).toBe('Dear {name},');
+    expect(greetingOf('Hi alex,\n\nYes.').form).toBe('Hi {name},');
+  });
+  it('does not flag noun lists or "not the X, but the Y" as adjective triples', () => {
+    expect(ids('Hi Alex,\n\nWe locked the budget, timeline, and scope last week.\n\nThanks,\nSam')).toEqual([]);
+    expect(ids('Hi Alex,\n\nA clear, simple, focused plan.\n\nThanks,\nSam')).toContain('triple');
+  });
+  it('redacts international phone numbers @req FR:email-voice/learn.examples', () => {
+    expect(redactExample('Call Jordan at +44 20 7946 0958 today.')).toBe('Call Jordan at [phone] today.');
+  });
+});

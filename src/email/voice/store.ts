@@ -16,6 +16,7 @@ export function voicePath(account: string, base = process.env.STACK_DATA_DIR || 
 /** Writes the profile with mode 0600 in a 0700 directory. */
 export function saveVoice(path: string, p: VoiceProfile): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  chmodSync(dirname(path), 0o700);
   writeFileSync(path, `${JSON.stringify(p, null, 2)}\n`, { mode: 0o600 });
   chmodSync(path, 0o600);
 }

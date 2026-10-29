@@ -79,6 +79,7 @@ function matches(address: string, list: string[]): boolean {
 export function redactExample(t: string): string {
   return redact(t.slice(0, 4000))
     .replace(/[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}/g, '[email]')
+    .replace(/\+\d{1,3}(?:[ .-]?\(?\d{2,5}\)?){2,5}/g, '[phone]')
     .replace(/(?:\+\d{1,3}[ .-]?)?\(?\b\d{3}\)?[ .-]\d{3}[ .-]\d{4}\b/g, '[phone]')
     .replace(/\d{6,}/g, '[number]');
 }

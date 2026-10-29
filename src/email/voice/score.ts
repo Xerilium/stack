@@ -52,7 +52,7 @@ export function scoreDraft(draft: string, p: VoiceProfile): VoiceScore {
   if (p.rates.bulletShare < 0.1 && BULLET.test(body)) add('bullets', 'soft', 'bullet list', 'owner rarely uses bullets');
   const nb = /\bnot (?:just |only |merely )?(?:a|an|the|about|because)\b[^,.;!?\n]{1,40}, but\b/i.exec(body);
   if (nb) add('not-but', 'soft', nb[0], '"not X, but Y" is an AI tell');
-  const tri = /\b(?:a|an|the) [a-z]+, [a-z]+,? (?:and )?[a-z]+ [a-z]+\b/.exec(body);
+  const tri = /\b[Aa]n? (?!(?:but|and|or)\b)[a-z]+, (?!(?:but|and|or)\b)[a-z]+,? (?:and )?[a-z]+ [a-z]+\b/.exec(body);
   if (tri) add('triple', 'soft', tri[0], 'three-adjective runs read as generated');
   if (p.rates.emojiShare === 0 && EMOJI.test(body)) add('emoji', 'soft', 'emoji', 'owner does not use emoji');
 
