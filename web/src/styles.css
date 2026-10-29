@@ -599,7 +599,8 @@ html, body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transpare
 .when-meta { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 12px; font-variant-numeric: tabular-nums; }
 .expected { color: var(--muted); }
 .focus-block .when-meta { font-size: 13px; margin-right: 4px; }
-.focus-block .expected { color: var(--ink2); font-weight: 600; background: var(--chip); border-radius: 6px; padding: 3px 8px; }
+.focus-block .expected { color: var(--ink2); font-weight: 600; background: var(--chip); border: 0; border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 13px; }
+button.expected:hover { background: var(--line); }
 .countdown { font-weight: 600; color: var(--ink2); }
 .countdown.soon { color: var(--warn); }
 .countdown.late { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 6px; padding: 1px 6px; }

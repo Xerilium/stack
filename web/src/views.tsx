@@ -587,10 +587,14 @@ export function WeekView({ w }: { w: Week }) {
 }
 
 /** Expected time and due countdown, the same on every Home row. */
-function When({ i }: { i: { minutes: number; assumed: boolean; due: Countdown | null } }) {
+function When({ i, onEffort }: { i: { minutes: number; assumed: boolean; due: Countdown | null }; onEffort?: () => void }) {
+  const text = `${i.assumed ? '~' : ''}${span(i.minutes)}`;
+  const title = i.assumed ? 'No effort set; 30 min assumed' : 'Expected time';
   return (
     <span class="when-meta">
-      <span class="expected" data-testid="expected" title={i.assumed ? 'No effort set; 30 min assumed' : 'Expected time'}>{i.assumed ? '~' : ''}{span(i.minutes)}</span>
+      {onEffort
+        ? <button type="button" class="expected" data-testid="expected" title={`${title}. Change`} aria-label={`Expected time ${text}. Change`} onClick={(e) => { e.stopPropagation(); onEffort(); }}>{text}</button>
+        : <span class="expected" data-testid="expected" title={title}>{text}</span>}
       {i.due && <span class={`countdown ${i.due.tone}`} data-testid="countdown">{i.due.text}</span>}
     </span>
   );
@@ -602,10 +606,10 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
 }) {
   const one = h.one;
   const hero = one ? parseRow(one.task.text) : null;
-  const row = (i: HomeItem, extra?: string) => {
+  const row = (i: HomeItem) => {
     const r = parseRow(i.task.text);
     return (
-    <li key={i.task.ref} class={`row home-row${p.cursor === i.task.ref ? ' cursor' : ''}${extra ? ` ${extra}` : ''}`} data-ref={i.task.ref} onClick={() => p.onCursor(i.task.ref)}>
+    <li key={i.task.ref} class={`row home-row${p.cursor === i.task.ref ? ' cursor' : ''}`} data-ref={i.task.ref} onClick={() => p.onCursor(i.task.ref)}>
       <div class="line">
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', i.task.ref); }}><span class="box" /></button>
         <span class="title" onDblClick={() => p.onOpen(i.task.ref)}><Md text={r.title || i.task.text} /><Tags r={r} /></span>
@@ -623,7 +627,7 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
           <p class="eyebrow">Now · {p.titles.get(one.task.project) ?? one.task.project}</p>
           <h1 data-testid="next-title" onDblClick={() => p.onOpen(one.task.ref)}><Md text={hero.title || one.task.text} /></h1>
           <div class="chips">
-            <When i={one} />
+            <When i={one} onEffort={() => p.onPick([one.task.ref], 'effort')} />
             {chipsOf(one.task.text).filter((c) => c.group !== 'effort').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([one.task.ref], g)} />)}
             <Tags r={hero} />
             {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
