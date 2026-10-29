@@ -996,6 +996,8 @@ paths:
                       $ref: "#/components/schemas/Session"
                   total:
                     type: integer
+                  indexing:
+                    type: integer
         default:
           $ref: "#/components/responses/Error"
     post:
@@ -1058,6 +1060,8 @@ paths:
                     type: string
                     enum:
                       - lastActive
+                  indexing:
+                    type: integer
                   days:
                     type: array
                     items:
@@ -1672,6 +1676,8 @@ components:
               type: number
             tokens:
               type: integer
+            approx:
+              type: boolean
         prs:
           type: array
           items:

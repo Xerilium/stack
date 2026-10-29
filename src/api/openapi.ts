@@ -146,12 +146,12 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'sessions.list': {
     operationId: 'listSessions', summary: 'Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents',
-    responses: ok('Sessions', { type: 'object', properties: { items: { type: 'array', items: ref('Session') }, total: { type: 'integer' } } }),
+    responses: ok('Sessions', { type: 'object', properties: { items: { type: 'array', items: ref('Session') }, total: { type: 'integer' }, indexing: { type: 'integer' } } }),
   },
   'sessions.cost': {
     operationId: 'sessionCost', summary: 'Agent spend by day, project, and model; a session counts on the UTC date of its last activity',
     responses: ok('Cost report', { type: 'object', properties: {
-      attribution: { type: 'string', enum: ['lastActive'] },
+      attribution: { type: 'string', enum: ['lastActive'] }, indexing: { type: 'integer' },
       days: { type: 'array', items: { type: 'object', properties: { date: { type: 'string' }, usd: { type: 'number' }, tokens: { type: 'integer' }, sessions: { type: 'integer' } } } },
       projects: { type: 'array', items: { type: 'object', properties: { project: { type: 'string' }, usd: { type: 'number' }, tokens: { type: 'integer' }, sessions: { type: 'integer' } } } },
       models: { type: 'array', items: { type: 'object', properties: { model: { type: 'string' }, usd: { type: 'number' }, tokens: { type: 'integer' } } } },
@@ -361,7 +361,7 @@ export function buildOpenApi(): J {
           properties: {
             id: { type: 'string' }, title: { type: 'string' }, project: { type: 'string' }, cwd: { type: 'string' }, branch: { type: 'string' },
             lastActive: { type: 'string', format: 'date-time' }, state: { type: 'string', enum: ['needs-you', 'running', 'active', 'idle', 'stale'] },
-            cost: { type: 'object', properties: { usd: { type: 'number' }, tokens: { type: 'integer' } } }, prs: { type: 'array', items: { type: 'string' } },
+            cost: { type: 'object', properties: { usd: { type: 'number' }, tokens: { type: 'integer' }, approx: { type: 'boolean' } } }, prs: { type: 'array', items: { type: 'string' } },
           },
         },
         AgentItem: {

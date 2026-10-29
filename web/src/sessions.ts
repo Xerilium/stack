@@ -3,11 +3,11 @@
  * @req FR:agent-sessions/web.view @req FR:agent-sessions/web.drawer @req FR:agent-sessions/web.cost @req FR:agent-sessions/web.message
  */
 export type SessionState = 'needs-you' | 'running' | 'active' | 'idle' | 'stale';
-export interface SessionItem { id: string; title: string; project: string; cwd: string; branch?: string; lastActive: string; state: SessionState; cost: { usd: number; tokens: number }; prs: string[] }
-export interface SessionList { items: SessionItem[]; total: number }
+export interface SessionItem { id: string; title: string; project: string; cwd: string; branch?: string; lastActive: string; state: SessionState; cost: { usd: number; tokens: number; approx?: boolean }; prs: string[] }
+export interface SessionList { items: SessionItem[]; total: number; indexing?: number }
 export interface Turn { at: string; role: 'user' | 'assistant'; text: string }
 export interface CostDay { date: string; usd: number; tokens: number; sessions: number }
-export interface CostReport { attribution: 'lastActive'; days: CostDay[]; projects: { project: string; usd: number; tokens: number; sessions: number }[]; models: { model: string; usd: number; tokens: number }[]; total: { usd: number; tokens: number; sessions: number } }
+export interface CostReport { attribution: 'lastActive'; indexing?: number; days: CostDay[]; projects: { project: string; usd: number; tokens: number; sessions: number }[]; models: { model: string; usd: number; tokens: number }[]; total: { usd: number; tokens: number; sessions: number } }
 export type ToolStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
 export type Update =
   | { type: 'session'; sessionId: string }
@@ -43,9 +43,15 @@ export function ago(iso: string, now: Date): string {
   return `${Math.floor(s / 86400)} d ago`;
 }
 
+/** A worktree branch name carries no meaning in a row (`xe/zany-fox-1a2b3c`); the drawer shows it. */
+export const slugBranch = (b?: string): boolean => !!b && /^[a-z]+\/[a-z]+-[a-z]+-[0-9a-f]{6}$/.test(b);
+
 export function rowOf(s: SessionItem, now: Date): { label: string; where: string; when: string; cost: string } {
-  return { label: STATE_LABEL[s.state], where: s.branch ? `${s.project} · ${s.branch}` : s.project, when: ago(s.lastActive, now), cost: fmtUsd(s.cost.usd) };
+  return { label: STATE_LABEL[s.state], where: s.branch && !slugBranch(s.branch) ? `${s.project} · ${s.branch}` : s.project, when: ago(s.lastActive, now), cost: `${s.cost.approx ? '≈' : ''}${fmtUsd(s.cost.usd)}` };
 }
+
+/** Today as `YYYY-MM-DD` in the browser's timezone. */
+export const localDay = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export function dayLabel(date: string): string {
   const [y, m, d] = date.split('-').map(Number);
@@ -54,7 +60,8 @@ export function dayLabel(date: string): string {
 
 export function costStrip(r: CostReport, today: string): { today: string; window: string } {
   const t = r.days.find((d) => d.date === today) ?? { usd: 0, tokens: 0, sessions: 0 };
-  return { today: `Today ${fmtUsd(t.usd)} · ${fmtTokens(t.tokens)} tokens · ${t.sessions} sessions`, window: `${r.days.length} days ${fmtUsd(r.total.usd)}` };
+  const approx = (r.indexing ?? 0) > 0 ? '≈' : '';
+  return { today: `Today ${approx}${fmtUsd(t.usd)} · ${fmtTokens(t.tokens)} tokens · ${t.sessions} sessions`, window: `${r.days.length} days ${approx}${fmtUsd(r.total.usd)}${r.indexing ? ` · indexing ${r.indexing}` : ''}` };
 }
 
 export function barWidths(days: CostDay[]): number[] {
@@ -102,4 +109,24 @@ export function applyUpdate(t: Transcript, u: Update): Transcript {
 
 export function splitSessions<T>(items: T[], n: number, all = false): { shown: T[]; more: number } {
   return all || items.length <= n ? { shown: items, more: 0 } : { shown: items.slice(0, n), more: items.length - n };
+}
+
+export type HistoryLine = { kind: 'text'; role: 'user' | 'assistant'; text: string } | { kind: 'tools'; count: number; titles: string[]; summary: string };
+
+/** History for reading: text turns as they are, runs of tool calls folded into one line ("12 tool calls · Bash ×9, Edit ×3"). */
+export function groupTurns(turns: Turn[]): HistoryLine[] {
+  const out: HistoryLine[] = [];
+  for (const t of turns) {
+    const m = /^⚙ ([^:]+):/.exec(t.text);
+    if (!m) { out.push({ kind: 'text', role: t.role, text: t.text }); continue; }
+    const last = out[out.length - 1];
+    if (last && last.kind === 'tools') { last.count++; last.titles.push(t.text); } else out.push({ kind: 'tools', count: 1, titles: [t.text], summary: '' });
+  }
+  for (const l of out) {
+    if (l.kind !== 'tools') continue;
+    const by = new Map<string, number>();
+    for (const title of l.titles) { const name = /^⚙ ([^:]+):/.exec(title)?.[1] ?? 'tool'; by.set(name, (by.get(name) ?? 0) + 1); }
+    l.summary = [...by].sort((a, b) => b[1] - a[1]).map(([n, c]) => (c > 1 ? `${n} ×${c}` : n)).join(', ');
+  }
+  return out;
 }

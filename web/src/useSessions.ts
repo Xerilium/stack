@@ -126,7 +126,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
 
   return {
     items, total, cost, phase, error, cursor, setCursor, open, openDrawer, closeDrawer, turns, turnsError, transcript, streaming, sendError, send, start, stop,
-    showCosts, setShowCosts, showAll, setShowAll, composing, setComposing, now, reload: load,
+    showCosts, setShowCosts, showAll, setShowAll, composing, setComposing, now, reload: load, note: (text: string) => toastRef.current(text),
   };
 }
 export type Sessions = ReturnType<typeof useSessions>;

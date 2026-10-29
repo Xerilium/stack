@@ -6,15 +6,15 @@
 import { homedir } from 'os';
 import { join } from 'path';
 import { oneLine } from '../core/asks';
-import { encodeCwd, projectOf, readTranscriptFacts, SessionBusy, toolKind, type AgentDriver, type PermissionAnswer, type PermissionRequest, type Run, type Session, type Turn, type Update } from './driver';
+import { createStoreIndex, type StoreIndex } from './store';
+import { SessionBusy, toolKind, type AgentDriver, type PermissionAnswer, type PermissionRequest, type Run, type Session, type Turn, type Update } from './driver';
 
 /** The slice of the SDK this driver uses; injectable so tests never load the real module. */
 export interface SdkLike {
-  listSessions(o?: { limit?: number; includeWorktrees?: boolean }): Promise<{ sessionId: string; summary: string; lastModified: number; customTitle?: string; firstPrompt?: string; gitBranch?: string; cwd?: string }[]>;
   getSessionMessages(id: string, o?: { limit?: number }): Promise<{ type: string; message: unknown; timestamp?: string }[]>;
   query(args: { prompt: string; options?: Record<string, unknown> }): AsyncIterable<unknown>;
 }
-export interface SdkDriverOptions { sdk?: SdkLike; configDir?: string; now?: () => Date; activeMs?: number; maxBudgetUsd?: number }
+export interface SdkDriverOptions { sdk?: SdkLike; configDir?: string; now?: () => Date; activeMs?: number; maxBudgetUsd?: number; store?: StoreIndex }
 
 const OPTIONS = [
   { optionId: 'allow', name: 'Allow once', kind: 'allow_once' as const },
@@ -22,9 +22,12 @@ const OPTIONS = [
   { optionId: 'deny', name: 'Deny', kind: 'reject_once' as const },
 ];
 const MAX_TEXT = 2000;
-const TITLE = 80;
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s);
 const clean = (s: string, n: number) => cut(oneLine(s), n);
+// eslint-disable-next-line no-control-regex
+const CTRL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
+/** Tool input for display: one line, no control characters; paths and commands stay readable (the secret redactor flags long paths). */
+const plain = (s: string, n: number) => cut(s.replace(CTRL, ' ').replace(/\s+/g, ' ').trim(), n);
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** What a tool call is about, in a few words: the command, the path, else the input as JSON. */
@@ -33,7 +36,7 @@ export function inputSummary(tool: string, input: unknown, n = 80): string {
   const pick = ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'prompt', 'description'].map((k) => input[k]).find((v) => typeof v === 'string' && v.trim());
   const raw = typeof pick === 'string' ? pick : JSON.stringify(input);
   void tool;
-  return clean(raw, n);
+  return plain(raw, n);
 }
 
 /** Unbounded async queue: producers push, one consumer iterates. */
@@ -62,20 +65,16 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
   const runs = new Map<string, { sessionId: string | null; ac: AbortController }>();
   let seq = 0;
 
-  const transcript = (cwd: string | undefined, id: string) => join(configDir, 'projects', encodeCwd(cwd ?? ''), `${id}.jsonl`);
+  const store = o.store ?? createStoreIndex({ configDir, now, activeMs });
 
-  async function listSessions(q: { limit?: number } = {}): Promise<Session[]> {
-    const items = await (await sdk()).listSessions({ limit: q.limit, includeWorktrees: true });
-    const t = now().getTime();
-    return items.map((s) => {
-      const facts = readTranscriptFacts(transcript(s.cwd, s.sessionId));
-      const title = clean(s.customTitle?.trim() || s.summary?.trim() || s.firstPrompt?.trim() || s.sessionId.slice(0, 8), TITLE);
-      return { id: s.sessionId, title, project: projectOf(s.cwd ?? ''), cwd: s.cwd ?? '', branch: s.gitBranch, lastActive: new Date(s.lastModified).toISOString(), active: t - s.lastModified < activeMs, cost: facts.cost, prs: facts.prs };
-    });
+  /** The list comes from the store index (fast, cached); the SDK is never asked to parse every transcript. */
+  async function listSessions(q: { limit?: number; sinceMs?: number } = {}): Promise<Session[]> {
+    return store.list({ limit: q.limit ?? (q.sinceMs !== undefined ? 5000 : 200), sinceMs: q.sinceMs });
   }
 
   async function getMessages(id: string, q: { limit?: number } = {}): Promise<Turn[]> {
-    const rows = await (await sdk()).getSessionMessages(id, { limit: q.limit });
+    // The SDK pages from the start; the drawer wants the end, so read everything and keep the last turns.
+    const rows = await (await sdk()).getSessionMessages(id);
     const out: Turn[] = [];
     for (const r of rows) {
       const m = r.message as { role?: string; content?: unknown } | undefined;
@@ -89,13 +88,13 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
         else if (b.type === 'tool_use' && typeof b.name === 'string') out.push({ at, role: 'assistant', text: `⚙ ${b.name}: ${inputSummary(b.name, b.input)}` });
       }
     }
-    return out;
+    return q.limit !== undefined && out.length > q.limit ? out.slice(out.length - q.limit) : out;
   }
 
   async function prompt(req: { sessionId?: string; cwd?: string; text: string; onPermission: (r: PermissionRequest) => Promise<PermissionAnswer> }): Promise<Run> {
     if (req.sessionId) {
       for (const r of runs.values()) if (r.sessionId === req.sessionId) throw new SessionBusy('Session is running; wait for it to finish');
-      const s = (await listSessions()).find((x) => x.id === req.sessionId);
+      const s = store.list({ limit: 400 }).find((x) => x.id === req.sessionId);
       if (s?.active) throw new SessionBusy('Session is active elsewhere; message it through its inbox');
     }
     const id = `run-${++seq}`;
@@ -172,5 +171,5 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
     return true;
   }
 
-  return { listSessions, getMessages, prompt, cancel };
+  return { listSessions, getMessages, prompt, cancel, indexing: () => store.pending() };
 }

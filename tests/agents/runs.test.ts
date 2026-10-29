@@ -41,7 +41,7 @@ describe('run manager', () => {
     feeds.get('run-1')!.push(chunk('Hi'));
     await wait();
     const seen: Update[] = []; let closed = false;
-    const off = rm.subscribe(S1.id, (u) => seen.push(u), () => { closed = true; });
+    const off = rm.subscribe(S1.id, (u) => seen.push(u), () => { closed = true; })!;
     expect(seen).toEqual([chunk('Hi')]);
     feeds.get('run-1')!.push(chunk(' there')); feeds.get('run-1')!.push(done); feeds.get('run-1')!.end();
     await wait();
@@ -78,11 +78,12 @@ describe('run manager', () => {
     const { driver, feeds } = fakeDriver();
     const storage = new MemoryStorage();
     const rm = createRunManager({ driver, ctx: { storage, now: () => NOW } });
-    await rm.prompt({ sessionId: S1.id, text: 'Push with token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab ' + 'y'.repeat(200) });
+    await rm.prompt({ sessionId: S1.id, text: 'Push with ghp_abcdefghijklmnopqrstuvwxyz0123456789ab then ' + 'write the release notes '.repeat(12) });
     feeds.get('run-1')!.push(done); feeds.get('run-1')!.end();
     await wait(30);
     const log = (await storage.read('tasks/logs/sessions.md')).content;
-    expect(log).toMatch(/^- 2026-10-29T10:00:00\.000Z a1b2c3d4 end_turn \$0\.12 300 tokens: Push with token \(redacted\) y+$/m);
+    expect(log).toMatch(/^- 2026-10-29T10:00:00\.000Z a1b2c3d4 end_turn \$0\.12 300 tokens: Push with \(redacted\) then write the release notes/m);
+    expect(log).not.toContain('ghp_');
     expect(log.split('\n').find((l) => l.startsWith('- '))!.length).toBeLessThan(200);
   });
   it('old runs are forgotten after keepMs; a session with no run has nothing to subscribe to', async () => {

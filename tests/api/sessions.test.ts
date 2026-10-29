@@ -75,6 +75,7 @@ describe('sessions routes', () => {
     const r = await call(await mint('tasks:read'), 'GET', '/sessions?limit=3');
     expect(r.status).toBe(200);
     expect(r.json.total).toBe(4);
+    expect(r.json.indexing).toBe(0);
     expect(r.json.items.map((i: { id: string }) => i.id.slice(-1))).toEqual(['1', '2', '3']);
     expect(r.json.items[0]).toMatchObject({ state: 'active', title: 'Session 1', project: 'stack', branch: 'main', cost: { usd: 0.1, tokens: 1000 } });
     expect(r.json.items[1].state).toBe('idle');
@@ -101,6 +102,7 @@ describe('sessions routes', () => {
     const r = await call('owner', 'GET', '/sessions/cost?days=2');
     expect(r.status).toBe(200);
     expect(r.json.attribution).toBe('lastActive');
+    expect(r.json.indexing).toBe(0);
     expect(r.json.days).toHaveLength(2);
     expect(r.json.days[1]).toMatchObject({ date: '2026-10-29', usd: 0.3, tokens: 3000, sessions: 2 });
     expect(r.json.days[0]).toMatchObject({ date: '2026-10-28', usd: 0.3, tokens: 3000, sessions: 1 });

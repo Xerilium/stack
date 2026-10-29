@@ -4,7 +4,7 @@
  * @req FR:agent-sessions/web.new @req FR:agent-sessions/web.states @req FR:agent-sessions/web.keys @req FR:agent-sessions/web.a11y
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { barWidths, costStrip, dayLabel, fmtTokens, fmtUsd, rowOf, splitSessions, type Line, type SessionItem } from './sessions';
+import { barWidths, costStrip, dayLabel, fmtTokens, fmtUsd, groupTurns, localDay, rowOf, splitSessions, type Line, type SessionItem } from './sessions';
 import type { Sessions } from './useSessions';
 import './sessions.css';
 
@@ -22,6 +22,7 @@ function Row({ s, now, cursor, onOpen, onCursor }: { s: SessionItem; now: Date; 
         <span class="sess-where">{r.where}</span>
         <span class="sess-when">{r.when}</span>
         <span class="sess-cost">{r.cost}</span>
+        <span class="sess-mob" aria-hidden="true">{r.when} · {r.cost}</span>
       </button>
     </li>
   );
@@ -32,12 +33,12 @@ function TranscriptLine({ l }: { l: Line }) {
   return <p class={`tl tool ${l.status}`} title={l.output}><span class="mark" aria-hidden="true">⚙</span><span class="tool-title">{l.title}</span><span class="status">{MARK[l.status]}</span></p>;
 }
 
-function Drawer({ s, item, onClose }: { s: Sessions; item: SessionItem | null; onClose: () => void }) {
+function Drawer({ s, item, cursorItem, onClose }: { s: Sessions; item: SessionItem | null; cursorItem: SessionItem | null; onClose: () => void }) {
   const ref = useRef<HTMLElement | null>(null);
   const box = useRef<HTMLTextAreaElement | null>(null);
   const end = useRef<HTMLDivElement | null>(null);
   const [text, setText] = useState('');
-  const [cwd, setCwd] = useState(item?.cwd ?? '');
+  const [cwd, setCwd] = useState(item?.cwd ?? cursorItem?.cwd ?? '');
   const isNew = s.composing;
   useEffect(() => { box.current?.focus(); }, []);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [s.turns, s.transcript]);
@@ -55,10 +56,11 @@ function Drawer({ s, item, onClose }: { s: Sessions; item: SessionItem | null; o
   };
   const running = s.streaming || item?.state === 'running';
   const title = isNew ? 'New session' : (item?.title ?? 'Session');
-  const facts = item && !isNew ? [item.project, item.branch, fmtUsd(item.cost.usd), `${fmtTokens(item.cost.tokens)} tokens`].filter(Boolean).join(' · ') : '';
+  const r = item ? rowOf(item, s.now) : null;
+  const facts = item && r && !isNew ? [r.label, r.when, item.project, item.branch, fmtUsd(item.cost.usd), `${fmtTokens(item.cost.tokens)} tokens`].filter(Boolean).join(' · ') : '';
   const cwds = [...new Set(s.items.map((x) => x.cwd))];
   return (
-    <aside ref={ref} class="sess-drawer" role="dialog" aria-modal="true" aria-label={title} onKeyDown={trap}>
+    <aside ref={ref} class={`sess-drawer${isNew ? ' new' : ''}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={trap}>
       <header class="drawer-head">
         <div class="drawer-titles"><h2>{title}</h2>{facts && <p class="facts">{facts}</p>}</div>
         <button type="button" class="btn quiet" onClick={onClose} aria-label="Close">Close<kbd aria-hidden="true">Esc</kbd></button>
@@ -72,7 +74,7 @@ function Drawer({ s, item, onClose }: { s: Sessions; item: SessionItem | null; o
         )}
         {s.turnsError && <p class="drawer-note err">{s.turnsError}</p>}
         <div class="turns">
-          {s.turns.map((t, i) => <p key={i} class={`tl ${t.role}`}>{t.text}</p>)}
+          {groupTurns(s.turns).map((t, i) => (t.kind === 'tools' ? <p key={i} class="tl tools" title={t.titles.join('\n')}><span class="mark" aria-hidden="true">⚙</span>{t.count} tool {t.count === 1 ? 'call' : 'calls'}<span class="tools-list"> · {t.summary}</span></p> : <p key={i} class={`tl ${t.role}`}>{t.text}</p>))}
         </div>
         <div class="stream" aria-live="off">
           {s.transcript.lines.map((l, i) => <TranscriptLine key={i} l={l} />)}
@@ -104,10 +106,19 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
   const { items, cursor } = s;
   const { shown, more } = splitSessions(items, TOP, s.showAll);
   const item = items.find((i) => i.id === s.open) ?? null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay(s.now);
   const strip = s.cost ? costStrip(s.cost, today) : null;
   const widths = s.cost ? barWidths(s.cost.days) : [];
 
+  const stopArm = useRef(0);
+  /** From the list, `s` asks for a second press within 2 s before stopping. */
+  const stopFromList = (id: string) => {
+    const it = items.find((x) => x.id === id);
+    if (!it || it.state !== 'running') return;
+    if (Date.now() - stopArm.current < 2000) { stopArm.current = 0; void s.stop(id); return; }
+    stopArm.current = Date.now();
+    s.note(`Press s again to stop ${it.title}`);
+  };
   /** Closes the drawer and puts focus back on the row it came from. */
   const close = () => { const was = s.open; s.closeDrawer(); setTimeout(() => document.querySelector<HTMLElement>(`.sess-li[data-id="${CSS.escape(was ?? '')}"] button`)?.focus(), 0); };
 
@@ -126,7 +137,7 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
       else if (k === 'c') { e.preventDefault(); s.setShowCosts(!s.showCosts); }
       else if (k === 'n') { e.preventDefault(); s.setComposing(true); }
       else if (k === 'm' && more > 0) { e.preventDefault(); s.setShowAll(true); }
-      else if (k === 's' && cursor) { e.preventDefault(); void s.stop(cursor); }
+      else if (k === 's' && cursor) { e.preventDefault(); stopFromList(cursor); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -148,8 +159,8 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
               <li key={d.date}><span class="day">{dayLabel(d.date)}</span><span class="bar" aria-hidden="true"><span style={{ width: `${widths[i]}%` }} /></span><span class="n">{fmtUsd(d.usd)} · {fmtTokens(d.tokens)} · {d.sessions} {d.sessions === 1 ? 'session' : 'sessions'}</span></li>
             ))}
           </ol>
-          <p class="cost-projects">{s.cost.projects.length ? s.cost.projects.map((p) => `${p.project} ${fmtUsd(p.usd)}`).join(' · ') : 'No spend in the last 7 days'}</p>
-          {s.cost.models.length > 0 && <p class="cost-models">{s.cost.models.map((m) => `${m.model} ${fmtUsd(m.usd)}`).join(' · ')}</p>}
+          <ul class="cost-chips projects" aria-label="By project">{s.cost.projects.length ? s.cost.projects.slice(0, 8).map((p) => <li key={p.project}>{p.project} <b>{fmtUsd(p.usd)}</b></li>) : <li class="none">No spend in the last 7 days</li>}{s.cost.projects.length > 8 && <li class="none">+{s.cost.projects.length - 8} more</li>}</ul>
+          {s.cost.models.length > 0 && <ul class="cost-chips models" aria-label="By model">{s.cost.models.slice(0, 6).map((m) => <li key={m.model}>{m.model.replace(/^claude-/, '').replace(/-\d{8}$/, '')} <b>{fmtUsd(m.usd)}</b></li>)}</ul>}
         </section>
       )}
       {enabled === false && <div class="sess-empty" data-testid="sessions-unavailable"><p class="big">Not available on this host.</p><p class="sub">Sessions live on the machine that runs the agents. Open Stack with <code>stack web</code> there.</p></div>}
@@ -164,7 +175,7 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
       {more > 0 && <button type="button" class="more-btn" onClick={() => s.setShowAll(true)}>Show {more} more <kbd aria-hidden="true">m</kbd></button>}
       {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · Enter open · s stop · c costs · n new</p>}
       {(s.open || s.composing) && <div class="sess-scrim" onClick={close} />}
-      {(s.open || s.composing) && <Drawer key={s.open ?? 'new'} s={s} item={item} onClose={close} />}
+      {(s.open || s.composing) && <Drawer key={s.open ?? 'new'} s={s} item={item} cursorItem={items.find((i) => i.id === cursor) ?? null} onClose={close} />}
     </section>
   );
 }

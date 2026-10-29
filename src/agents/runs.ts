@@ -9,9 +9,11 @@ import { createPermissionBroker, type PermissionBroker } from './broker';
 import { projectOf, SessionBusy, sessionState, STATE_ORDER, type AgentDriver, type Session, type SessionState, type Turn, type Update } from './driver';
 
 export interface RunManagerOptions { driver: AgentDriver; ctx: LifecycleContext; broker?: PermissionBroker; keepMs?: number; activeMs?: number }
-export interface ListedSession extends Omit<Session, 'active' | 'cost'> { state: SessionState; cost: { usd: number; tokens: number } }
+export interface ListedSession extends Omit<Session, 'active' | 'cost'> { state: SessionState; cost: { usd: number; tokens: number; approx?: boolean } }
 export interface CostReport {
   attribution: 'lastActive';
+  /** Sessions whose cost is still being indexed; the figures grow until it is 0. */
+  indexing: number;
   days: { date: string; usd: number; tokens: number; sessions: number }[];
   projects: { project: string; usd: number; tokens: number; sessions: number }[];
   models: { model: string; usd: number; tokens: number }[];
@@ -25,13 +27,17 @@ export interface AgentRuns {
   running(sessionId: string): boolean;
   sessionOf(runId: string): string | null;
   needsYou: () => Promise<Set<string>>;
-  sessions(o?: { limit?: number }): Promise<{ items: ListedSession[]; total: number }>;
+  sessions(o?: { limit?: number }): Promise<{ items: ListedSession[]; total: number; indexing: number }>;
   messages(id: string, o?: { limit?: number }): Promise<Turn[]>;
   cost(days: number): Promise<CostReport>;
 }
 
 interface RunState { id: string; sessionId: string | null; text: string; buffer: Update[]; done: boolean; subs: Set<{ u: (x: Update) => void; c: () => void }>; startedAt: Date }
 const LOG = 'tasks/logs/sessions.md';
+/** `YYYY-MM-DD` of an instant in a timezone (the owner's configured one, else UTC). */
+export function dayIn(iso: string | Date, timeZone: string): string {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(typeof iso === 'string' ? new Date(iso) : iso); } catch { return (typeof iso === 'string' ? new Date(iso) : iso).toISOString().slice(0, 10); }
+}
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 export function createRunManager(o: RunManagerOptions): AgentRuns {
@@ -114,32 +120,34 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
     sessionOf: (runId) => runs.get(runId)?.sessionId ?? null,
     needsYou: () => broker.open(),
     async sessions(q = {}) {
-      const [all, open] = await Promise.all([driver.listSessions(), api.needsYou()]);
+      const [all, open] = await Promise.all([driver.listSessions({ limit: 200 }), api.needsYou()]);
       const t = now();
       const items = all.map((s) => {
         const { active, cost, ...rest } = s;
         const needs = open.has(s.id) || open.has(s.id.slice(0, 8));
-        return { ...rest, state: sessionState({ lastActive: s.lastActive, running: running(s.id), needsYou: needs, active }, t, o.activeMs), cost: { usd: cost.usd, tokens: cost.tokens } };
+        return { ...rest, state: sessionState({ lastActive: s.lastActive, running: running(s.id), needsYou: needs, active }, t, o.activeMs), cost: { usd: cost.usd, tokens: cost.tokens, ...(cost.approx ? { approx: true } : {}) } };
       });
       items.sort((a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state) || b.lastActive.localeCompare(a.lastActive));
-      return { items: items.slice(0, q.limit ?? 50), total: items.length };
+      return { items: items.slice(0, q.limit ?? 50), total: items.length, indexing: driver.indexing?.() ?? 0 };
     },
     async messages(id, q = {}) {
       try { return await driver.getMessages(id, q); } catch (e) { if (e instanceof Error && /not found/i.test(e.message)) throw new NotFoundError(`Session not found: ${id}`); throw e; }
     },
     async cost(days) {
-      const all = await driver.listSessions();
       const t = now();
-      const start = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - (days - 1));
-      const date = (iso: string) => iso.slice(0, 10);
+      const tz = ctx.config?.timezone ?? 'UTC';
+      // Day keys in the owner's timezone; the window starts a safe day early and keeps only the keyed days.
       const dayRows = new Map<string, { usd: number; tokens: number; sessions: number }>();
-      for (let i = 0; i < days; i++) dayRows.set(new Date(start + i * 864e5).toISOString().slice(0, 10), { usd: 0, tokens: 0, sessions: 0 });
+      for (let i = days - 1; i >= 0; i--) dayRows.set(dayIn(new Date(t.getTime() - i * 864e5), tz), { usd: 0, tokens: 0, sessions: 0 });
+      const start = t.getTime() - (days + 1) * 864e5;
+      const all = await driver.listSessions({ sinceMs: start });
+      const date = (iso: string) => dayIn(iso, tz);
       const projects = new Map<string, { usd: number; tokens: number; sessions: number }>();
       const models = new Map<string, { usd: number; tokens: number }>();
       const total = { usd: 0, tokens: 0, sessions: 0 };
       for (const s of all) {
         const d = dayRows.get(date(s.lastActive));
-        if (!d || Date.parse(s.lastActive) < start) continue;
+        if (!d) continue;
         d.usd += s.cost.usd; d.tokens += s.cost.tokens; d.sessions++;
         const p = projects.get(s.project) ?? { usd: 0, tokens: 0, sessions: 0 };
         p.usd += s.cost.usd; p.tokens += s.cost.tokens; p.sessions++; projects.set(s.project, p);
@@ -148,6 +156,7 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
       }
       return {
         attribution: 'lastActive',
+        indexing: driver.indexing?.() ?? 0,
         days: [...dayRows].map(([dateKey, v]) => ({ date: dateKey, usd: r2(v.usd), tokens: v.tokens, sessions: v.sessions })),
         projects: [...projects].map(([project, v]) => ({ project, usd: r2(v.usd), tokens: v.tokens, sessions: v.sessions })).sort((a, b) => b.usd - a.usd || a.project.localeCompare(b.project)),
         models: [...models].map(([model, v]) => ({ model, usd: r2(v.usd), tokens: v.tokens })).sort((a, b) => b.usd - a.usd),

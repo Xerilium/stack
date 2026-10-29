@@ -1,8 +1,8 @@
-/** @req FR:agent-sessions/driver.interface @req FR:agent-sessions/driver.sdk @req FR:agent-sessions/driver.active @req FR:agent-sessions/driver.cost */
-import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+/** @req FR:agent-sessions/driver.interface @req FR:agent-sessions/driver.sdk @req FR:agent-sessions/driver.active */
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createSdkDriver, encodeCwd, projectOf, readTranscriptFacts, SessionBusy, sessionState, toolKind, type SdkLike, type Update } from '../../src/agents';
+import { createSdkDriver, encodeCwd, projectOf, SessionBusy, sessionState, toolKind, type SdkLike, type Update } from '../../src/agents';
 
 const NOW = new Date('2026-10-29T10:00:00Z');
 const ms = (minAgo: number) => NOW.getTime() - minAgo * 60_000;
@@ -11,11 +11,6 @@ function fakeSdk(over: Partial<SdkLike> = {}): SdkLike & { calls: unknown[] } {
   const calls: unknown[] = [];
   return {
     calls,
-    listSessions: async () => [
-      { sessionId: 'a1b2c3d4-0000-0000-0000-000000000001', summary: 'Ship the web app', lastModified: ms(1), cwd: '/Users/me/dev/stack', gitBranch: 'main', customTitle: 'stack: web app' },
-      { sessionId: 'a1b2c3d4-0000-0000-0000-000000000002', summary: 'Fix the parser', lastModified: ms(600), cwd: '/Users/me/dev/stack/.claude/worktrees/zany-fox-1a2b3c', gitBranch: 'xe/fix', firstPrompt: 'Fix the parser bug' },
-      { sessionId: 'a1b2c3d4-0000-0000-0000-000000000003', summary: '', lastModified: ms(60 * 48), cwd: '/Users/me/dev/todo', firstPrompt: 'Plan my week and [link](http://x.test) ' + 'word '.repeat(30) },
-    ],
     getSessionMessages: async () => [
       { type: 'user', uuid: 'u1', session_id: 's', parent_tool_use_id: null, parent_agent_id: null, message: { role: 'user', content: 'Fix the parser' } },
       { type: 'assistant', uuid: 'a1', session_id: 's', parent_tool_use_id: null, parent_agent_id: null, message: { role: 'assistant', content: [{ type: 'text', text: 'Looking.' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'git status --short' } }] } },
@@ -38,6 +33,21 @@ async function* script(args: { prompt: string; options?: Record<string, unknown>
   const decision = can ? await can('Bash', { command: 'git push' }, { toolUseID: 'tu1', requestId: 'req-1', signal: new AbortController().signal }) : { behavior: 'allow' };
   yield { type: 'user', session_id: sid, parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: decision.behavior === 'allow' ? 'pushed' : `denied: ${decision.message}`, is_error: decision.behavior !== 'allow' }] } };
   yield { type: 'result', subtype: 'success', session_id: sid, num_turns: 2, duration_ms: 1200, total_cost_usd: 0.1234, result: 'Pushed.', usage: {}, modelUsage: { 'claude-sonnet-5-5': { inputTokens: 100, outputTokens: 50, cacheReadInputTokens: 1000, cacheCreationInputTokens: 200, costUSD: 0.1234 } }, permission_denials: [] };
+}
+
+/** A session store with three transcripts: one written a minute ago (active), one ten hours ago, one two days ago. */
+function store() {
+  const home = mkdtempSync(join(tmpdir(), 'stack-home-'));
+  const put = (dir: string, id: string, lines: unknown[], minAgo: number) => {
+    const folder = join(home, 'projects', dir); mkdirSync(folder, { recursive: true });
+    const p = join(folder, `${id}.jsonl`); writeFileSync(p, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    utimesSync(p, new Date(ms(minAgo)), new Date(ms(minAgo)));
+  };
+  const user = (text: string, cwd: string, gitBranch?: string) => ({ type: 'user', cwd, gitBranch, message: { role: 'user', content: text }, timestamp: NOW.toISOString() });
+  put('-Users-me-dev-stack', 'a1b2c3d4-0000-0000-0000-000000000001', [user('Ship the web app', '/Users/me/dev/stack', 'main'), { type: 'custom-title', customTitle: 'stack: web app' }, { type: 'pr-link', prUrl: 'https://github.com/o/r/pull/9' }, { type: 'cost-state', totalCostUSD: 1.5, modelUsage: { m: { inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 1, costUSD: 1.5 } } }], 1);
+  put('-Users-me-dev-stack--claude-worktrees-zany-fox-1a2b3c', 'a1b2c3d4-0000-0000-0000-000000000002', [user('Fix the parser bug', '/Users/me/dev/stack/.claude/worktrees/zany-fox-1a2b3c', 'xe/fix')], 600);
+  put('-Users-me-dev-todo', 'a1b2c3d4-0000-0000-0000-000000000003', [user('Plan my week and [link](http://x.test) ' + 'word '.repeat(30), '/Users/me/dev/todo')], 60 * 48);
+  return home;
 }
 
 const collect = async (it: AsyncIterable<Update>) => { const out: Update[] = []; for await (const u of it) out.push(u); return out; };
@@ -65,42 +75,21 @@ describe('helpers', () => {
   });
 });
 
-describe('readTranscriptFacts', () => {
-  it('reads cost-state and pr-links, tolerating junk; sums assistant usage when there is no cost-state', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'stack-sess-'));
-    const p = join(dir, 's.jsonl');
-    writeFileSync(p, [
-      'not json',
-      JSON.stringify({ type: 'pr-link', prUrl: 'https://github.com/o/r/pull/7' }),
-      JSON.stringify({ type: 'pr-link', prUrl: 'https://github.com/o/r/pull/7' }),
-      JSON.stringify({ type: 'assistant', message: { model: 'claude-sonnet-5-5', usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 40 } } }),
-      JSON.stringify({ type: 'cost-state', totalCostUSD: 0.56, modelUsage: { 'claude-sonnet-5-5': { inputTokens: 1548, outputTokens: 14250, cacheReadInputTokens: 1590782, cacheCreationInputTokens: 64016, costUSD: 0.56 } } }),
-    ].join('\n'));
-    const f = readTranscriptFacts(p);
-    expect(f.cost).toEqual({ usd: 0.56, tokens: 1548 + 14250 + 1590782 + 64016, byModel: { 'claude-sonnet-5-5': { usd: 0.56, tokens: 1548 + 14250 + 1590782 + 64016 } } });
-    expect(f.prs).toEqual(['https://github.com/o/r/pull/7']);
-    writeFileSync(p, JSON.stringify({ type: 'assistant', message: { model: 'claude-sonnet-5-5', usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 40 } } }) + '\n');
-    expect(readTranscriptFacts(p).cost).toEqual({ usd: 0, tokens: 100, byModel: { 'claude-sonnet-5-5': { usd: 0, tokens: 100 } } });
-    expect(readTranscriptFacts(join(dir, 'missing.jsonl')).cost).toEqual({ usd: 0, tokens: 0, byModel: {} });
-  });
-});
-
 describe('createSdkDriver', () => {
-  it('lists sessions with title, project, branch, lastActive and cost from the transcript', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'stack-home-'));
-    const folder = join(home, 'projects', '-Users-me-dev-stack'); mkdirSync(folder, { recursive: true });
-    writeFileSync(join(folder, 'a1b2c3d4-0000-0000-0000-000000000001.jsonl'), JSON.stringify({ type: 'cost-state', totalCostUSD: 1.5, modelUsage: { m: { inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 1, costUSD: 1.5 } } }) + '\n' + JSON.stringify({ type: 'pr-link', prUrl: 'https://github.com/o/r/pull/9' }) + '\n');
-    const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
+  const home = store();
+  it('lists sessions from the store: title, project, branch, lastActive, cost, pull requests', async () => {
+    const d = createSdkDriver({ sdk: fakeSdk(), configDir: store(), now: () => NOW });
     const s = await d.listSessions({ limit: 10 });
     expect(s.map((x) => x.id.slice(-1))).toEqual(['1', '2', '3']);
-    expect(s[0]).toMatchObject({ title: 'stack: web app', project: 'stack', cwd: '/Users/me/dev/stack', branch: 'main', lastActive: new Date(ms(1)).toISOString(), cost: { usd: 1.5, tokens: 4 }, prs: ['https://github.com/o/r/pull/9'] });
-    expect(s[1]).toMatchObject({ title: 'Fix the parser', project: 'stack', branch: 'xe/fix', cost: { usd: 0, tokens: 0 }, prs: [] });
+    expect(s[0]).toMatchObject({ title: 'stack: web app', project: 'stack', cwd: '/Users/me/dev/stack', branch: 'main', lastActive: new Date(ms(1)).toISOString(), active: true, prs: ['https://github.com/o/r/pull/9'] });
+    expect(s[1]).toMatchObject({ title: 'Fix the parser bug', project: 'stack', branch: 'xe/fix', active: false, prs: [] });
     expect(s[2].title).toBe(('Plan my week and (link)(http://x.test) ' + 'word '.repeat(30)).slice(0, 80));
-    expect(s[2].title.length).toBeLessThanOrEqual(80);
+    expect(s[2].branch).toBeUndefined();
   });
   it('getMessages collapses tool calls to one line, cuts and redacts text', async () => {
-    const d = createSdkDriver({ sdk: fakeSdk(), now: () => NOW });
+    const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
     const m = await d.getMessages('a1b2c3d4-0000-0000-0000-000000000002', { limit: 10 });
+    expect((await d.getMessages('a1b2c3d4-0000-0000-0000-000000000002', { limit: 2 })).map((x) => x.text)).toEqual(['⚙ Bash: git status --short', 'Done. (redacted) leaked.']);
     expect(m.map((x) => [x.role, x.text])).toEqual([
       ['user', 'Fix the parser'], ['assistant', 'Looking.'], ['assistant', '⚙ Bash: git status --short'], ['assistant', 'Done. (redacted) leaked.'],
     ]);
@@ -124,7 +113,7 @@ describe('createSdkDriver', () => {
     expect(opts.abortController).toBeInstanceOf(AbortController);
   });
   it('a deny with the owner words reaches the agent; allow-session skips the next ask for that tool', async () => {
-    const d = createSdkDriver({ sdk: fakeSdk(), now: () => NOW });
+    const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
     const run = await d.prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000002', text: 'x', onPermission: async () => ({ optionId: 'deny', message: 'Not on main' }) });
     const u = await collect(run.updates);
     expect(u.find((x) => x.type === 'tool_update')).toMatchObject({ status: 'failed', output: 'denied: Not on main' });
@@ -139,7 +128,7 @@ describe('createSdkDriver', () => {
     expect((sdk.calls[0] as { options: Record<string, unknown> }).options).toMatchObject({ cwd: '/Users/me/dev/stack' });
   });
   it('refuses a session that is active elsewhere or already running', async () => {
-    const d = createSdkDriver({ sdk: fakeSdk(), now: () => NOW });
+    const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
     await expect(d.prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000001', text: 'x', onPermission: async () => ({ optionId: 'allow' }) })).rejects.toThrow(SessionBusy);
     const first = await d.prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000002', text: 'x', onPermission: async () => ({ optionId: 'allow' }) });
     await expect(d.prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000002', text: 'y', onPermission: async () => ({ optionId: 'allow' }) })).rejects.toThrow(SessionBusy);
@@ -164,7 +153,7 @@ describe('createSdkDriver', () => {
     const u = await collect(run.updates);
     expect(u[u.length - 1]).toMatchObject({ type: 'done', stopReason: 'max_budget', cost: { usd: 2 } });
     const sdk2 = fakeSdk({ query: () => (async function* () { yield { type: 'system', subtype: 'init', session_id: 's' }; throw new Error('boom'); })() as never });
-    const run2 = await createSdkDriver({ sdk: sdk2, now: () => NOW }).prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000002', text: 'x', onPermission: async () => ({ optionId: 'allow' }) });
+    const run2 = await createSdkDriver({ sdk: sdk2, configDir: home, now: () => NOW }).prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000002', text: 'x', onPermission: async () => ({ optionId: 'allow' }) });
     const u2 = await collect(run2.updates);
     expect(u2[u2.length - 1]).toMatchObject({ type: 'done', stopReason: 'error', error: 'boom' });
   });

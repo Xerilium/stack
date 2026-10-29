@@ -1,6 +1,6 @@
 /** @req FR:agent-sessions/web.view @req FR:agent-sessions/web.drawer @req FR:agent-sessions/web.cost @req FR:agent-sessions/web.message */
 import { describe, expect, it } from 'vitest';
-import { applyUpdate, barWidths, costStrip, dayLabel, fmtTokens, fmtUsd, rowOf, STATE_LABEL, type SessionItem, type Transcript } from '../src/sessions';
+import { applyUpdate, barWidths, costStrip, dayLabel, fmtTokens, fmtUsd, groupTurns, localDay, rowOf, slugBranch, STATE_LABEL, type SessionItem, type Transcript } from '../src/sessions';
 
 const now = new Date(2026, 9, 29, 10);
 const s = (o: Partial<SessionItem> = {}): SessionItem => ({ id: 'a1b2c3d4-0000-0000-0000-000000000001', title: 'stack: web app', project: 'stack', cwd: '/x/stack', branch: 'main', lastActive: new Date(now.getTime() - 12 * 60_000).toISOString(), state: 'idle', cost: { usd: 0.5607, tokens: 1_670_596 }, prs: [], ...o });
@@ -14,6 +14,10 @@ describe('formatting', () => {
     expect(rowOf(s(), now)).toEqual({ label: 'Idle', where: 'stack · main', when: '12 min ago', cost: '$0.56' });
     expect(rowOf(s({ state: 'needs-you', branch: undefined }), now).label).toBe('Needs you');
     expect(rowOf(s({ state: 'needs-you', branch: undefined }), now).where).toBe('stack');
+    expect(rowOf(s({ cost: { usd: 2, tokens: 1, approx: true } }), now).cost).toBe('≈$2.00');
+    expect(rowOf(s({ branch: 'xe/zany-fox-1a2b3c' }), now).where).toBe('stack');
+    expect(slugBranch('xe/fix-parser')).toBe(false);
+    expect(localDay(new Date(2026, 9, 28, 23, 47))).toBe('2026-10-28');
     expect(STATE_LABEL).toEqual({ 'needs-you': 'Needs you', running: 'Running', active: 'Active', idle: 'Idle', stale: 'Stale' });
   });
   it('dayLabel names the day', () => {
@@ -27,6 +31,7 @@ describe('cost strip and bars', () => {
   it('costStrip: today then the window', () => {
     expect(costStrip(report, '2026-10-29')).toEqual({ today: 'Today $4.10 · 1.2M tokens · 6 sessions', window: '2 days $31' });
     expect(costStrip({ ...report, days: [] }, '2026-10-29')).toEqual({ today: 'Today $0 · 0 tokens · 0 sessions', window: '0 days $31' });
+    expect(costStrip({ ...report, indexing: 12 }, '2026-10-29')).toEqual({ today: 'Today ≈$4.10 · 1.2M tokens · 6 sessions', window: '2 days ≈$31 · indexing 12' });
   });
   it('barWidths scale to the busiest day', () => {
     expect(barWidths(report.days)).toEqual([78, 100]);
@@ -69,5 +74,18 @@ describe('applyUpdate builds the transcript from the stream', () => {
   });
   it('a session update is ignored by the transcript', () => {
     expect(applyUpdate(empty(), { type: 'session', sessionId: 'x' })).toEqual(empty());
+  });
+});
+
+describe('groupTurns folds tool runs', () => {
+  it('keeps text, folds consecutive tool lines into a count with a per-tool summary', () => {
+    const at = '2026-10-29T10:00:00Z';
+    const g = groupTurns([{ at, role: 'user', text: 'Go' }, { at, role: 'assistant', text: '⚙ Bash: ls' }, { at, role: 'assistant', text: '⚙ Bash: cat x' }, { at, role: 'assistant', text: '⚙ Edit: x.ts' }, { at, role: 'assistant', text: 'Done.' }, { at, role: 'assistant', text: '⚙ Read: y' }]);
+    expect(g).toEqual([
+      { kind: 'text', role: 'user', text: 'Go' },
+      { kind: 'tools', count: 3, titles: ['⚙ Bash: ls', '⚙ Bash: cat x', '⚙ Edit: x.ts'], summary: 'Bash ×2, Edit' },
+      { kind: 'text', role: 'assistant', text: 'Done.' },
+      { kind: 'tools', count: 1, titles: ['⚙ Read: y'], summary: 'Read' },
+    ]);
   });
 });
