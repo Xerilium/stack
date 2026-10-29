@@ -1,4 +1,4 @@
-import { actionable, isActive, rankNow } from './now';
+import { actionable, children, isActive, isMessage, rankNow } from './now';
 import { effortMinutes, parseRow } from './row';
 import type { Task } from './types';
 
@@ -84,9 +84,13 @@ export function recommendationOf(tasks: Task[], t: Task): string | undefined {
   return undefined;
 }
 
-/** Open 🙋 rows in active work: what only you can do or decide. */
+const doing = (t: Task) => parseRow(t.text).status?.replace(/️/g, '') === '🚧';
+/** A 🙋 row with an open 💬 reply under it is answered: the agent has its decision. */
+const answered = (tasks: Task[], t: Task) => children(tasks, t.ref).some((c) => !c.done && isMessage(c));
+
+/** Open 🙋 rows in active work (an Active section, or under a row in progress): what only you can do or decide. */
 export function decisions(tasks: Task[], now: Date): Decision[] {
-  const rows = tasks.filter((t) => !t.done && whoOf(t) === 'human' && actionable(t, now) && (isActive(t) || ancestorsOf(tasks, t).length > 0));
+  const rows = tasks.filter((t) => !t.done && whoOf(t) === 'human' && actionable(t, now) && !answered(tasks, t) && (isActive(t) || ancestorsOf(tasks, t).some(doing)));
   const withParent = rows.map((t) => ({ task: t, context: ancestorsOf(tasks, t)[0], recommendation: recommendationOf(tasks, t) }));
   const ranked = rankNow(rows, now, tasks);
   return ranked.map((r) => withParent.find((x) => x.task.ref === r.ref)!);
@@ -100,13 +104,14 @@ export function agentWork(tasks: Task[], now: Date): AgentItem[] {
   const out: AgentItem[] = [];
   tasks.forEach((t, i) => {
     if (t.done || whoOf(t) !== 'agent' || !actionable(t, now)) return;
-    const inActive = isActive(t);
-    const r = parseRow(t.text);
-    const doing = !!r.status && r.status.replace(/️/g, '') === '🚧';
-    if (!inActive && !doing) return;
+    const working = doing(t);
+    if (!isActive(t) && !working) return;
     const parent = ancestorsOf(tasks, t)[0];
-    const waits = tasks.some((x, k) => k > i && !x.done && x.project === t.project && whoOf(x) === 'human' && (parent ? ancestorsOf(tasks, x)[0]?.ref === parent.ref : x.depth === t.depth + 1));
-    out.push({ task: t, state: doing ? 'working' : waits ? 'waiting' : 'queued' });
+    const asks = (x: Task) => !x.done && whoOf(x) === 'human' && !answered(tasks, x);
+    // waiting: a 🙋 in its own subtree, or a later 🙋 sibling under the same parent
+    const waits = children(tasks, t.ref).some(asks)
+      || (!!parent && tasks.some((x, k) => k > i && x.project === t.project && x.depth === t.depth && asks(x) && ancestorsOf(tasks, x)[0]?.ref === parent.ref));
+    out.push({ task: t, state: working ? 'working' : waits ? 'waiting' : 'queued' });
   });
   const order: Record<AgentState, number> = { working: 0, waiting: 1, queued: 2 };
   return out.sort((a, b) => order[a.state] - order[b.state]);

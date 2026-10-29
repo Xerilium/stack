@@ -30,6 +30,14 @@ export function App() {
   const [loadError, setLoadError] = useState('');
   const [me, setMe] = useState('');
   const [local, setLocal] = useState(false);
+  // The day plan is "from now": re-plan every minute and when the tab comes back.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => { if (document.visibilityState !== 'hidden') setTick((n) => n + 1); };
+    const h = setInterval(bump, 60_000);
+    document.addEventListener('visibilitychange', bump);
+    return () => { clearInterval(h); document.removeEventListener('visibilitychange', bump); };
+  }, []);
   const [info, setInfo] = useState<{ mode: string; repo: string; branch: string } | null>(null);
   const [allOpen, setAllOpen] = useState(false);
   const [focusRef, setFocusRef] = useState<string | null>(null);
@@ -77,7 +85,7 @@ export function App() {
     if (allOpen) secs.push({ id: 'all', title: 'All active', rows: more });
     return { sections: secs, hidden: more.length };
   }, [tasks, next, allOpen]);
-  const clockNow = useMemo(() => new Date(), [tasks]);
+  const clockNow = useMemo(() => new Date(), [tasks, tick]);
   const day = DEFAULT_DAY;
   const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day), [tasks, next, clockNow, day]);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
@@ -218,9 +226,8 @@ export function App() {
     setDeferRefs(null);
     await run(() => api.action('suspend', refs[0], d.hours ? { hours: d.hours } : { days: d.days }), () => `Deferred: ${d.label.toLowerCase()}`);
   };
-  const sendReply = async (task: Task, text: string, ok: string) => {
-    await run(() => api.add(task.project, `💬 ${text}`, task.ref), () => ok);
-  };
+  const sendReply = async (task: Task, text: string, ok: string): Promise<boolean> =>
+    (await run(() => api.add(task.project, `💬 ${text}`, task.ref, task.text), () => ok)) !== undefined;
   const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'Sent to the agent');
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
 
@@ -430,7 +437,7 @@ export function App() {
         {phase === 'loading' && <p class="loading">Loading…</p>}
         {phase === 'ready' && view === 'today' && (
           <TodayView now={clockNow} plan={plan} day={day} decisions={decisions} agents={agents} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
-            onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => void sendReply(t, text, ok)} onAccept={(d) => void accept(d)} />
+            onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={sendReply} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'now' && <NowView task={next} sections={sections} hidden={hidden} allOpen={allOpen} onToggleAll={() => setAllOpen((o) => !o)} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
         {phase === 'ready' && view === 'list' && (

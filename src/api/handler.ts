@@ -80,10 +80,11 @@ const LIST_Q: Record<string, Spec> = {
   project: { t: 'str' }, section: { t: 'str' }, state: { t: 'enum', values: STATES }, q: { t: 'str' },
   limit: { t: 'int', min: 1, max: 200 }, offset: { t: 'int', min: 0, max: 1_000_000 }, ...FIELDS_Q,
 };
+const EXPECT = { t: 'str', max: 2000, line: true } as const;
 const ADD_BODY = {
   schema: {
     project: { t: 'str', required: true, max: 200, line: true }, text: { t: 'str', required: true, line: true },
-    section: { t: 'str', max: 200, line: true }, parent: REF,
+    section: { t: 'str', max: 200, line: true }, parent: REF, expect: EXPECT,
   } satisfies Record<string, Spec>,
   required: ['project', 'text'],
 };
@@ -117,7 +118,6 @@ const RESULT_BODY = {
   required: ['ref', 'outcome', 'summary'],
 };
 const REMOVE_BODY = { schema: { project: { t: 'str', max: 200, line: true } } satisfies Record<string, Spec>, required: [] as string[] };
-const EXPECT = { t: 'str', max: 2000, line: true } as const;
 const EDIT_BODY = { schema: { ref: REF, text: { t: 'str', required: true, max: 2000, line: true }, expect: EXPECT } satisfies Record<string, Spec>, required: ['ref', 'text'] };
 const MOVE_BODY = {
   schema: { ref: REF, target: REF, position: { t: 'enum', values: ['before', 'after'] }, expect: EXPECT, expectTarget: EXPECT } satisfies Record<string, Spec>,
@@ -274,9 +274,11 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/tasks', name: 'tasks.add', body: ADD_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ project: string; text: string; section?: string; parent?: ReturnType<typeof parseRef> }>(await readBody(c.req), ADD_BODY.schema, ADD_BODY.required);
+      const b = validate<{ project: string; text: string; section?: string; parent?: ReturnType<typeof parseRef>; expect?: string }>(await readBody(c.req), ADD_BODY.schema, ADD_BODY.required);
       noAutonomyMark('text', b.text);
-      return result(await addTask(c.life, { project: b.project, text: b.text, section: b.section, parent: b.parent ?? undefined }), 201);
+      if (b.expect !== undefined && !b.parent) throw invalid([{ field: 'expect', message: 'expect needs parent' }]);
+      const parent = b.parent ? { ...b.parent, ...(b.expect !== undefined ? { text: b.expect } : {}) } : undefined;
+      return result(await addTask(c.life, { project: b.project, text: b.text, section: b.section, parent }), 201);
     },
   },
   {

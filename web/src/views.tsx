@@ -138,6 +138,17 @@ export function ListView(p: ListProps) {
   );
 }
 
+/** Touch hold (450 ms) fires `fn`; lifting, a scroll, a cancel, or moving more than 10 px cancels it. */
+function longPress(e: PointerEvent, fn: () => void) {
+  const x = e.clientX, y = e.clientY;
+  const h = setTimeout(() => { off(); fn(); }, 450);
+  const ends = ['pointerup', 'pointercancel', 'scroll'] as const; // not contextmenu: Android fires it at ~400 ms, before the hold completes
+  const move = (m: PointerEvent) => { if (Math.hypot(m.clientX - x, m.clientY - y) > 10) off(); };
+  function off() { clearTimeout(h); for (const n of ends) window.removeEventListener(n, off, true); window.removeEventListener('pointermove', move, true); }
+  for (const n of ends) window.addEventListener(n, off, true);
+  window.addEventListener('pointermove', move, true);
+}
+
 function TaskRow({ t, p }: { t: Task; p: RowProps }) {
   const r = parseRow(t.text);
   const isCursor = p.cursor === t.ref;
@@ -151,7 +162,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
     d?.over === t.ref ? `drop-${d.half}` : '', d?.ref === t.ref ? 'dragging' : ''].filter(Boolean).join(' ');
   return (
     <li ref={ref} class={cls} data-ref={t.ref} style={{ '--depth': t.depth }} aria-current={isCursor ? 'true' : undefined} onClick={() => p.onCursor(t.ref)}
-      onPointerDown={(e) => { if (e.pointerType !== 'touch') return; const h = setTimeout(() => p.onSelect(t.ref), 450); const off = () => { clearTimeout(h); window.removeEventListener('pointerup', off); window.removeEventListener('pointermove', off); }; window.addEventListener('pointerup', off); window.addEventListener('pointermove', off); }}>
+      onPointerDown={(e) => { if (e.pointerType === 'touch') longPress(e, () => p.onSelect(t.ref)); }}>
       <div class="line">
         {p.handles && <button type="button" class="handle" aria-label={`Drag ${r.title || 'task'} to reorder`} title="Drag to reorder (Shift+J/K)"
           onPointerDown={(e) => p.onDragStart(t.ref, e as unknown as PointerEvent)}
@@ -161,7 +172,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
           <Editor text={t.text} onSave={(v) => p.onSave(t.ref, v)} onCancel={() => p.onEdit(null)} />
         ) : (
           <>
-            <div class="title" onDblClick={() => p.onEdit(t.ref)}>{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><Md text={r.title || t.text} /></div>
+            <div class="title" onDblClick={() => p.onEdit(t.ref)}>{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text"><Md text={r.title || t.text} /></span></div>
             <button type="button" class="edit-btn" aria-label={`Edit ${r.title || 'task'}`} onClick={(e) => { e.stopPropagation(); p.onEdit(t.ref); }}>✎</button>
             <div class="chips">
               {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
@@ -279,15 +290,19 @@ const fmt = (n: number) => String(Math.round(n * 10) / 10);
 
 const STATE_LABEL = { working: 'Working', waiting: 'Waiting on you', queued: 'Queued' } as const;
 
-function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) => void; onClose: () => void; to: string; placeholder: string }) {
+/** Cards and the open reply box follow the task, not its line number, which shifts when the file changes. */
+const taskKey = (x: Task) => `${x.project}\u241F${x.text}`;
+
+function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) => Promise<unknown>; onClose: () => void; to: string; placeholder: string }) {
   const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   return (
-    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (text.trim()) onSend(text.trim()); }}>
+    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (!text.trim() || sending) return; setSending(true); void onSend(text.trim()).finally(() => setSending(false)); }}>
       <p class="reply-to">Replying to <b>{to}</b></p>
       <input ref={ref} type="text" aria-label="Reply" placeholder={placeholder} value={text} maxLength={500} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }} />
-      <button type="submit" class="btn primary" disabled={!text.trim()}>Send <kbd>↵</kbd></button>
+      <button type="submit" class="btn primary" disabled={!text.trim() || sending}>Send <kbd>↵</kbd></button>
     </form>
   );
 }
@@ -295,7 +310,7 @@ function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) =>
 export interface TodayProps {
   now: Date; plan: Plan; day: { start: number; end: number }; decisions: Decision[]; agents: AgentItem[]; p: RowProps; busy: boolean;
   tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
-  onAct: (a: 'start' | 'done' | 'defer', ref: string) => void; onReply: (task: Task, text: string, label: string) => void; onAccept: (d: Decision) => void;
+  onAct: (a: 'start' | 'done' | 'defer', ref: string) => void; onReply: (task: Task, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
 }
 
 /** The day plan first, then what needs you, then what your agents are doing. @req FR:web-app/today.plan @req FR:web-app/today.needs @req FR:web-app/today.agents @req FR:web-app/today.projects */
@@ -307,6 +322,7 @@ export function TodayView(t: TodayProps) {
   const nowMin = t.now.getHours() * 60 + t.now.getMinutes();
   const total = t.day.end - t.day.start;
   const pct = (m: number) => Math.max(0, Math.min(100, ((m - t.day.start) / total) * 100));
+  const markAt = pct(Math.max(nowMin, t.day.start)); // the time label hugs the bar ends so it never clips
   const working = t.agents.filter((a) => a.state === 'working').length;
   const needs = moreNeeds ? t.decisions : t.decisions.slice(0, 3);
   const date = t.now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -318,14 +334,14 @@ export function TodayView(t: TodayProps) {
     const r = parseRow(a.task.text);
     const owner = t.p.titles.get(a.task.project) ?? a.task.project;
     return (
-      <li key={a.task.ref} class={`agent ${a.state}`}>
+      <li key={taskKey(a.task)} class={`agent ${a.state}`}>
         <span class="pulse" aria-hidden="true" />
         <div class="agent-body">
           <p class="agent-title"><Md text={r.title || a.task.text} /></p>
           <p class="agent-meta">{STATE_LABEL[a.state]} · {owner}</p>
         </div>
-        <button type="button" class="btn quiet reveal" onClick={() => setReplying(replying === a.task.ref ? null : a.task.ref)}>Reply</button>
-        {replying === a.task.ref && <Reply to={`the ${owner} agent`} placeholder="Message the agent" onClose={() => setReplying(null)} onSend={(text) => { setReplying(null); t.onReply(a.task, text, 'Sent to the agent'); }} />}
+        <button type="button" class="btn quiet reveal" onClick={() => setReplying(replying === taskKey(a.task) ? null : taskKey(a.task))}>Reply</button>
+        {replying === taskKey(a.task) && <Reply to={`the ${owner} agent`} placeholder="Message the agent" onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(a.task, text, 'Sent to the agent')) setReplying(null); }} />}
       </li>
     );
   };
@@ -341,7 +357,7 @@ export function TodayView(t: TodayProps) {
         </p>
         <div class="day-bar" role="img" aria-label={`${span(t.plan.busy)} planned of ${span(t.plan.left)} left`}>
           {t.plan.blocks.map((b) => <i key={b.task.ref} title={`${clock(b.start)} ${parseRow(b.task.text).title}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}
-          <b style={{ left: `${pct(Math.max(nowMin, t.day.start))}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>
+          <b class={markAt < 8 ? 'edge-l' : markAt > 92 ? 'edge-r' : undefined} style={{ left: `${markAt}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>
         </div>
         <p class="day-ends"><span>{clock(t.day.start)}</span><span>{clock(t.day.end)}</span></p>
       </header>
@@ -367,7 +383,7 @@ export function TodayView(t: TodayProps) {
           <ul class="cards" data-testid="needs">
             {needs.map((d) => {
               const r = parseRow(d.task.text);
-              const key = d.task.ref;
+              const key = taskKey(d.task);
               const owner = t.p.titles.get(d.task.project) ?? d.task.project;
               return (
                 <li class="card need" key={key}>
@@ -379,7 +395,7 @@ export function TodayView(t: TodayProps) {
                     <button type="button" class="btn" onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
                     <button type="button" class="btn quiet" onClick={() => t.p.onOpen(d.task.ref)}>Details</button>
                   </div>
-                  {replying === key && <Reply to={`the ${owner} agent`} placeholder="Tell the agent what you decided" onClose={() => setReplying(null)} onSend={(text) => { setReplying(null); t.onReply(d.task, text, 'Reply sent'); }} />}
+                  {replying === key && <Reply to={`the ${owner} agent`} placeholder="Tell the agent what you decided" onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(d.task, text, 'Reply sent')) setReplying(null); }} />}
                 </li>
               );
             })}

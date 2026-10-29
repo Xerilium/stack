@@ -47,7 +47,15 @@ describe('parseRow cleanup', () => {
     expect(parseRow('🙋 Answer these').who).toBe('human');
     expect(parseRow('⏰ Jan 7, 2027: 📅 Feb 1, 2027: Prepare').start).toBe('Jan 7, 2027');
   });
-  it('keeps markdown links', () => {
+  it('keeps markdown links, including ones whose text is a URL; balanced parens stay in a URL', () => {
+    const r = parseRow('Read [https://a.test/x](https://a.test/x) now');
+    expect(r).toMatchObject({ title: 'Read [https://a.test/x](https://a.test/x) now', links: [] });
+    const w = parseRow('See https://en.wikipedia.org/wiki/Foo_(bar) first');
+    expect(w).toMatchObject({ title: 'See first', links: [{ href: 'https://en.wikipedia.org/wiki/Foo_(bar)' }] });
+    expect(parseRow('(see https://x.test/a)').links[0].href).toBe('https://x.test/a');
+    expect(parseRow('Read https://a.test/x, then go.').links[0].href).toBe('https://a.test/x');
+    expect(parseRow('Docs (https://a.test/x) and parse() stay').title).toBe('Docs and parse() stay');
+    expect(parseRow('Notify them (🪄 `Allyte CoS` drafts it )').title).toBe('Notify them (`Allyte CoS` drafts it)'); // no orphan ( when a marker goes
     expect(parseRow('See [spec](https://example.test/spec)').links).toEqual([]);
   });
 });

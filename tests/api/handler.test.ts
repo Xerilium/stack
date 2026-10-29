@@ -176,6 +176,14 @@ describe('add', () => {
     const c = await m.call('POST', '/api/tasks', { project: 'alpha', text: 'Child', parent: first });
     expect(c.status).toBe(201);
   });
+  it('409 when the parent row changed (expect), 422 for expect without parent', async () => {
+    const m = mk();
+    await seed(m.call);
+    const first = (await m.call('GET', '/api/tasks?q=First')).json.items[0];
+    expect((await m.call('POST', '/api/tasks', { project: 'alpha', text: 'Stale', parent: first.ref, expect: 'Something else' })).status).toBe(409);
+    expect((await m.call('POST', '/api/tasks', { project: 'alpha', text: 'Fresh', parent: first.ref, expect: first.text })).status).toBe(201);
+    expect((await m.call('POST', '/api/tasks', { project: 'alpha', text: 'No parent', expect: 'x' })).status).toBe(422);
+  });
 });
 
 // @req FR:api/routes.actions

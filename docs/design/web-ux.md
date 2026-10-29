@@ -1,5 +1,7 @@
 # Web UX redesign
 
+> **Update (round 3):** home is now **Today** (`g t`): your day plan from now, **Needs you** (🙋 decisions), **Your AI team** (🤖/🪄 work), and project tiles. The Now view below is **Focus** (`g n`). Source of truth: `.xe/features/web-app/spec.md` (FR:today.*); screens in `screens/r3-*`.
+
 Why: v1 UI mirrored the file (907-row card wall, notes inline, permanent capture box). Acceptance proved parity, not usability. Reference research: designer notes (Linear, Things 3, Superhuman, Akiflow, Sunsama, Todoist).
 
 ## Journeys (time budget)
