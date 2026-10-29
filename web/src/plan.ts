@@ -6,9 +6,9 @@ import { wallMinutes } from './wall';
 
 /** Day plan and decisions. Pure; the views only draw it. @req FR:web-app/today.plan @req FR:web-app/today.fit @req FR:web-app/today.needs */
 /** A block of the schedule, in day minutes. @req FR:home/day.personal */
-export interface DayBlock { name: string; label?: string; emoji: string; kind: 'focus' | 'personal'; start: number; end: number }
+export interface DayBlock { name: string; label?: string; emoji: string; kind: 'focus' | 'personal'; start: number; end: number; /** Projects with capacity in this block. @req FR:home/day.blocks */ projects?: string[] }
 /** Minutes after local midnight of `origin` (today when unset); a schedule day can run past 24:00. @req FR:home/day.frame */
-export interface Day { start: number; end: number; origin?: Date; blocks?: DayBlock[]; asleep?: boolean }
+export interface Day { start: number; end: number; origin?: Date; blocks?: DayBlock[]; asleep?: boolean; /** Projects that belong to some block (any day): never planned outside their blocks. @req FR:home/day.blocks */ bound?: string[] }
 export const DEFAULT_DAY: Day = { start: 9 * 60, end: 18 * 60 };
 export interface Block { task: Task; start: number; end: number; partial: boolean; assumed: boolean }
 /** `left`: work day left; `budget`: minutes you have; `free`: budget not booked; `short`: minutes the left-out tasks need; `assumed`: blocks using the default estimate. */
@@ -65,12 +65,29 @@ export const planStart = (now: Date, day: Day = DEFAULT_DAY) => Math.max(day.sta
 export const nowMinutes = (now: Date, day: Day = DEFAULT_DAY): number => wallMinutes(now, day.origin ?? now);
 
 const VS = /\uFE0F/g;
-/** Personal blocks a task may not use: all of them, except those whose emoji the row carries. @req FR:home/day.personal */
-const tagged = (b: DayBlock, text?: string) => !!(text && b.emoji && text.replace(VS, '').includes(b.emoji.replace(VS, '')));
-/** Personal blocks this task is tagged for (it carries their emoji). */
-export const openTo = (day: Day, text: string): DayBlock[] => (day.blocks ?? []).filter((b) => b.kind === 'personal' && tagged(b, text));
-export const closedTo = (day: Day, text?: string): [number, number][] =>
-  (day.blocks ?? []).filter((b) => b.kind === 'personal' && !tagged(b, text)).map((b) => [b.start, b.end]);
+type Who = Pick<Task, 'text' | 'project'>;
+const tagged = (b: DayBlock, text: string) => !!(b.emoji && text.replace(VS, '').includes(b.emoji.replace(VS, '')));
+/** A task belongs to a block when it carries the block's emoji or its project has capacity in that block. @req FR:home/day.blocks */
+export const belongs = (b: DayBlock, t: Who) => tagged(b, t.text) || !!b.projects?.includes(t.project);
+/** The blocks a task belongs to (empty: it may use any focus time). */
+export const homeBlocks = (day: Day, t: Who): DayBlock[] => (day.blocks ?? []).filter((b) => belongs(b, t));
+/** Personal blocks this task belongs to; it goes there first, outside the focus budget. @req FR:home/day.personal */
+export const openTo = (day: Day, t: Who): DayBlock[] => homeBlocks(day, t).filter((b) => b.kind === 'personal');
+/**
+ * Time a task may not use: everything outside its blocks when it belongs to some, else the personal blocks.
+ * Without a task: the personal blocks. @req FR:home/day.personal @req FR:home/day.blocks
+ */
+export function closedTo(day: Day, t?: Who): [number, number][] {
+  const home = t ? homeBlocks(day, t) : [];
+  // A project bound to blocks that are not on this day gets no time today.
+  if (t && !home.length && day.bound?.includes(t.project) && !(day.blocks ?? []).some((b) => tagged(b, t.text))) return [[-1440, 4 * 1440]];
+  if (!home.length) return (day.blocks ?? []).filter((b) => b.kind === 'personal').map((b) => [b.start, b.end]);
+  const out: [number, number][] = [];
+  let cur = -1440;
+  for (const b of [...home].sort((x, y) => x.start - y.start)) { if (b.start > cur) out.push([cur, b.start]); cur = Math.max(cur, b.end); }
+  out.push([cur, 4 * 1440]);
+  return out;
+}
 
 /**
  * Packs candidates in rank order into `budget` minutes from the plan start (default: what is left of the work day).
@@ -85,17 +102,17 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
   // The plan stays inside the work day unless the budget itself asks for more time than the day has left after meetings.
   const windowEnd = Math.min(day.origin ? 48 * 60 : 24 * 60, Math.max(day.end, start + cap + busyWithin(mergeSpans([...meetings, ...closedTo(day).map(([s, e]) => ({ start: s, end: e }))]), start, day.end)));
   /** First free slot at or after the plan start that holds `m` minutes (first fit, so a short task fills the gap before a meeting). */
-  const slot = (m: number, text?: string): number | null => {
+  const slot = (m: number, who?: Who): number | null => {
     let t = start;
-    for (const [a, b] of [...taken, ...closedTo(day, text)].sort((x, y) => x[0] - y[0])) {
+    for (const [a, b] of [...taken, ...closedTo(day, who)].sort((x, y) => x[0] - y[0])) {
       if (t + m <= a) break;
       if (b > t) t = b;
     }
     return t + m <= windowEnd ? t : null;
   };
-  /** First free slot of `m` minutes inside one of the personal blocks this task is tagged for. @req FR:home/day.personal */
-  const ownSlot = (m: number, text: string): number | null => {
-    for (const b of openTo(day, text)) {
+  /** First free slot of `m` minutes inside one of the personal blocks this task belongs to. @req FR:home/day.personal */
+  const ownSlot = (m: number, who: Who): number | null => {
+    for (const b of openTo(day, who)) {
       let t = Math.max(start, b.start);
       for (const [a, z] of [...taken].sort((x, y) => x[0] - y[0])) {
         if (t + m <= a) break;
@@ -118,8 +135,8 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
   for (const t of candidates) {
     const e = estimate(t);
     // A task tagged for a personal block goes there first, outside the focus budget; else it competes for focus time.
-    const own = ownSlot(e.minutes, t.text);
-    const at = own ?? (booked + e.minutes <= cap ? slot(e.minutes, t.text) : null);
+    const own = ownSlot(e.minutes, t);
+    const at = own ?? (booked + e.minutes <= cap ? slot(e.minutes, t) : null);
     if (at === null) { overflow.push(t); short += e.minutes; continue; }
     blocks.push({ task: t, start: at, end: at + e.minutes, partial: e.partial, assumed: e.assumed });
     taken.push([at, at + e.minutes]);

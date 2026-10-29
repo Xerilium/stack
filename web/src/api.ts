@@ -58,6 +58,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
       call<Mutation>('/tasks/move', { ref, target, position, ...(expect?.ref !== undefined ? { expect: expect.ref } : {}), ...(expect?.target !== undefined ? { expectTarget: expect.target } : {}) }),
     add: (project: string, text: string, parent?: string) => call<Mutation>('/tasks', { project, text, ...(parent ? { parent } : {}) }),
     schedule: (at: string) => call<DaySched | null>(`/schedule?at=${encodeURIComponent(at)}`),
+    scheduleDay: (body: { date: string; wake?: string; bed?: string; every?: boolean; reset?: boolean }) => call<DaySched>('/schedule/day', body),
     calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,

@@ -17,7 +17,7 @@ A plan that ends the day at 6 pm is wrong for someone who goes to bed at 2 am. S
 ## Scope
 
 - In: `kind` on time blocks; `daySchedule` (pure, `src/core/schedule.ts`); `GET /schedule`; an ICS calendar provider (`src/calendar/ics.ts`) for published calendar links; wiring in `stack web` and the Azure host.
-- Out: writing to calendars, sign-in (Graph device code is `graph-signin`), per-date overrides (vacation days), learning the schedule from activity.
+- Out: writing to calendars, sign-in (Graph device code is `graph-signin`), learning the schedule from activity.
 
 ## Decisions
 
@@ -43,9 +43,12 @@ A plan that ends the day at 6 pm is wrong for someone who goes to bed at 2 am. S
 - **FR:ics.provider** (P1): `createIcsCalendar({urls, fetch?, ttlMs?, now?})` is a `CalendarProvider` over one or more feed URLs (`https:`; `webcal:` is read as `https:`; anything else is refused at creation). It sends no credentials or cookies, times out after 10 s, refuses bodies over 5 MB and redirects to non-https URLs or to loopback, private, or link-local hosts, and caches each feed's text for `ttlMs` (default 5 min). A failed fetch is also remembered for `ttlMs` (no new attempt until then), and a feed that fails after a success keeps serving its last good copy. Events from all feeds are merged and sorted. A feed that fails is skipped; when every feed fails the call throws. Errors never include the URL (it is a secret)
 - **FR:ics.wire** (P1): `stack web` and the Azure host read `STACK_CALENDAR_ICS` (feed URLs separated by whitespace or commas) and use `createIcsCalendar`; The calendar source order is `STACK_CALENDAR_FIXTURE`, then a Graph sign-in with `Calendars.Read` (`FR:graph-signin/web.calendar`), then these feeds; an unreadable Graph token file falls through to the feeds. The URLs are never logged or returned by the api
 
+- **FR:profile.override** (P1): `daySchedule(config, at, overrides?)` applies wake and bed overrides: `overrides.dates[YYYY-MM-DD]` first, then `overrides.weekdays[Mon..Sun]`, then the time blocks. Each is `{wake?, bed?}` in `HH:mm` local; a bed at or before wake is the next morning. Blocks are clipped to the overridden day
+
 ### FR:api: Route
 
-- **FR:api.schedule** (P1): `GET /schedule?at=` (route `schedule.get`, scope `tasks:read`) returns `daySchedule(config, at)` plus `timezone`; `at` is an ISO instant and defaults to now; an `at` that is not a real date-time (bad format, month 13, Feb 30) is `422`. Only the owner session may call it (tokens get `403`): sleep times and personal blocks are personal data
+- **FR:api.schedule** (P1): `GET /schedule?at=` (route `schedule.get`, scope `tasks:read`) returns `daySchedule(config, at)` plus `timezone`; `at` is an ISO instant and defaults to now; an `at` that is not a real date-time (bad format, month 13, Feb 30) is `422`. Only the owner session may call it (tokens get `403`): sleep times and personal blocks are personal data. It applies the overrides in `.stack/schedule.json` when the storage keeps state files
+- **FR:api.override** (P1): `POST /schedule/day` (route `schedule.day`, scope `tasks:write`, owner session only) with `{date, wake?, bed?, every?, reset?}` saves an override in `.stack/schedule.json`: for that date, or with `every: true` for that date's weekday (which also removes that date's own change, so the weekday applies to it); `reset: true` removes the date's (or weekday's) override. Times must be `HH:mm` and `date` a real `YYYY-MM-DD` (`422` otherwise); a concurrent change is `409`, and so is a file that is not valid JSON (never overwritten). Entries that fail these rules in a hand-edited file are ignored on read. Returns the waking day that starts on the date, in the configured timezone
 
 ## Dependencies
 

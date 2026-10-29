@@ -160,6 +160,10 @@ const DOCS: Record<string, RouteDoc> = {
       },
     }),
   },
+  'schedule.day': {
+    operationId: 'setScheduleDay', summary: 'Change wake or bed for a date, or with every for its weekday (which also removes that date\'s own change); reset removes it. Saved in .stack/schedule.json. Owner session only',
+    responses: ok('Day', { type: 'object', properties: { timezone: { type: 'string' }, date: { type: 'string' }, wake: { type: 'string', format: 'date-time' }, bed: { type: 'string', format: 'date-time' }, asleep: { type: 'boolean' }, blocks: { type: 'array', items: { type: 'object' } } } }),
+  },
   'agents.list': {
     operationId: 'listAgents', summary: 'What agents are doing, from agent rows, result logs, inbox replies, and pull request status',
     responses: ok('Agent work', { type: 'object', properties: { items: { type: 'array', items: ref('AgentItem') } } }),
