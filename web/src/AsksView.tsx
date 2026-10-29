@@ -93,7 +93,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
         <div class="ask-eyebrow">
           <span class="of" aria-hidden="true">{n} of {total}</span>
           {a.project && <span class="proj">{a.project}</span>}
-          <span class="from">{a.from}</span>
+          {!talk?.chip(a) && <span class="from">{a.from}</span>}
           {talk?.chip(a)}
           {asks.fresh.has(a.key) && <span class="new">New</span>}
           <span class="grow" />

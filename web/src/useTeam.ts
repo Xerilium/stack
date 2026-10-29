@@ -52,7 +52,7 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   const chipOf = useCallback((t: Pick<Task, 'ref' | 'project' | 'section'>): ChipView => {
     const s = sessionOf(t.ref);
     const r = recent.get(t.ref);
-    if (s && s.state !== 'running' && s.state !== 'needs-you' && r && Date.now() - r.at < DONE_MS) return { text: `Done · $${s.cost.usd < 0.01 ? '<0.01' : s.cost.usd.toFixed(2)}`, tone: 'ok', title: `${s.title}. Open the session` };
+    if (s && s.state !== 'running' && s.state !== 'needs-you' && r && Date.now() - r.at < DONE_MS) return { text: `Done · ${s.cost.usd < 0.01 ? '<0.01' : s.cost.usd.toFixed(2)}`, tone: 'ok', title: `${s.title}. Open the session`, state: true };
     return chipFor({ agent: agentsOf(t)[0], review: reviews.get(t.ref), session: s, reviewing: reviewing.has(t.ref) });
   }, [agentsOf, reviews, sessionOf, reviewing, recent]);
 

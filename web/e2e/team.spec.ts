@@ -44,6 +44,7 @@ test.describe('Agent team', () => {
     await expect(talk).toHaveAttribute('aria-label', /Talk to 🅰️ Alpha Lead about/);
     await expect(talk.locator('select')).toHaveValue('alpha-lead');
     await expect(talk.locator('select option')).toHaveCount(2);
+    await expect(talk.locator('select option').first()).toHaveAttribute('title', 'owns alpha');
     await expect(talk.getByRole('button', { name: /^Review/ })).toBeVisible();
     await expect(talk.locator('input[type="text"]')).toBeFocused();
     await page.keyboard.type('Check the deploy and tell me if the plan is solid');
@@ -65,10 +66,13 @@ test.describe('Agent team', () => {
     await expect(page.locator('.agent-talk')).toHaveCount(0);
   });
 
-  test('Keep open starts the session and opens the drawer; Do it sends the quick prompt', async ({ page }) => {
+  test('Keep open starts the session and opens the drawer; Do it sends the quick prompt', async ({ page }, info) => {
     const m = await open(page);
-    await row(page, 'alpha:9').locator('.agent-chip').click({ force: true });
+    await row(page, 'alpha:9').click(); // the cursor row shows its chip on every device
+    await row(page, 'alpha:9').locator('.agent-chip').click();
     const talk = row(page, 'alpha:9').locator('.agent-talk');
+    // A phone has no room for the toggle: Keep open is the agent's own default there.
+    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeHidden(); await talk.getByRole('button', { name: /^Do it/ }).click(); expect(m.calls.find((c) => c.path === '/sessions')!.body.text).toContain('Do this task'); await expect(page.locator('.toast')).toContainText('Sent to alpha-lead'); return; }
     await talk.getByLabel('Keep open').check();
     await talk.getByRole('button', { name: /^Do it/ }).click();
     expect(m.calls.find((c) => c.path === '/sessions')!.body.text).toContain('Do this task');
@@ -90,6 +94,7 @@ test.describe('Agent team', () => {
     m.reviews = [{ ref: 'alpha:9', at: new Date().toISOString(), verdict: 'partial', plan: 'Read the PRs, then ask about the release gate', estimate: '1h', agent: 'alpha-lead', needs: ['rev-alpha-10-x-1', 'rev-alpha-10-x-2'] }];
     for (const x of m.sessions!) x.state = 'idle'; // the review run ended
     await expect(target.locator('.agent-chip')).toHaveText('Partial · needs 2');
+    await expect(target.locator('.agent-chip')).toHaveClass(/warn/);
     await expect(target.locator('.agent-chip')).toHaveAttribute('title', 'alpha-lead: Read the PRs, then ask about the release gate (1h)');
     await target.locator('.agent-chip').click({ force: true });
     await expect(page).toHaveURL(/#\/asks/);
@@ -108,7 +113,7 @@ test.describe('Agent team', () => {
 
   test('without a runner the chip still shows and the composer says where sessions run', async ({ page }) => {
     await open(page, { runner: false });
-    await row(page, 'alpha:6').hover();
+    await row(page, 'alpha:6').click();
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
     await row(page, 'alpha:6').locator('.agent-chip').click();
     const talk = row(page, 'alpha:6').locator('.agent-talk');
@@ -124,7 +129,7 @@ test.describe('Agent team', () => {
     m.asks = [{ key: 'pr-1', state: 'open', ask: 'Approve merging PR 879', kind: 'approve', from: 'alpha-lead', project: 'alpha', reversible: false, priority: 'normal', blocks: 0, created: new Date().toISOString(), updated: new Date().toISOString(), score: 30, rank: 1, overdue: false }];
     await page.goto('/#/asks');
     await expect(page.locator('.ask-card')).toBeVisible();
-    await expect(page.locator('.ask-card .agent-chip')).toHaveText('🅰️ Alpha Lead');
+    await expect(page.locator('.ask-card .agent-chip')).toHaveText('Talk'); // the author is the agent: no repeated name
     await page.keyboard.press('a');
     const talk = page.locator('.ask-card .agent-talk');
     await expect(talk).toHaveAttribute('aria-label', 'Talk to 🅰️ Alpha Lead about Approve merging PR 879');

@@ -19,7 +19,7 @@ export const REVIEW_SCHEMA: Record<string, unknown> = {
   properties: {
     verdict: { type: 'string', enum: ['can', 'partial', 'cannot'] },
     plan: { type: 'string', description: 'One line: how you would do it' },
-    estimate: { type: 'string', description: 'Rough effort, e.g. 20m, 2h' },
+    estimate: { type: 'string', description: 'Rough effort in a few characters, e.g. 20m, 2h, 1-2d' },
     needs: { type: 'array', items: { type: 'object', properties: { what: { type: 'string' }, kind: { type: 'string', enum: ['answer', 'go-do', 'approve'] }, why: { type: 'string' } }, required: ['what', 'kind'] } },
     risks: { type: 'array', items: { type: 'string' } },
   },
@@ -96,7 +96,7 @@ export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText
     const open = await listAsks(ctx, { state: 'open', limit: 200 });
     for (const k of open.items.filter((x) => x.key.startsWith(prefix)).map((x) => x.key)) await handleAsk(ctx, k, { outcome: 'resolved', note: 'reviewed again' }, agent.slug).catch(() => undefined);
     const outcome = a.verdict === 'can' ? 'done' : a.verdict === 'partial' ? 'partial' : 'blocked';
-    const est = a.estimate ? ` (${oneLine(a.estimate, 20)})` : '';
+    const est = a.estimate ? ` (${oneLine(a.estimate, 40)})` : '';
     await recordResult(ctx, ref, { outcome, summary: `${a.verdict}: ${oneLine(a.plan, 200)}${est}`, action: 'review' }, { actor: `agent:${agent.slug}`, owner: true });
     const base = `${prefix}${stamp(now())}-`;
     for (const [i, need] of a.needs.slice(0, 9).entries()) {

@@ -39,3 +39,6 @@ Designer rubric all ≥4; screenshots 1440/1024/390 × light/dark in PR; side-by
 ## Round 4 (Oct 29): shell
 
 The frame moved to its own spec, `.xe/features/web-shell/spec.md`: Home / My day / Needs you / Projects / Full stack, chords `g h / g d / g k / g p / g a`, phone shell under 720px, `main` fills the window with a 960px measure (1200px on My day). Names and breakpoints above that disagree are superseded by that spec.
+## Agent team (AI on every page)
+
+Spec: `.xe/features/agent-team/spec.md`. Every task row carries its active agent as a quiet chip (hover or cursor; always when it carries state: `Working`, `Needs you`, a verdict, `Done · $0.12`). `a` opens a flat inline composer under the row (To picker, text, Keep open, Review / Do it / Plan); `R` runs a read-only review whose verdict replaces the chip (`Partial · needs 4` in the warning color, `Can · 2h` green, `Can't`). The ask card and the Today project tiles carry the same chip and composer. Screens: `screens/team-*.png`. Designer rounds: round 1 scored verdict 2 / mobile density 2 / composer 3; round 2 flattened the composer (no card in a card, ghost Send until text, name-only To), gave verdicts their state color, and hid quiet chips on touch rows that are not the cursor.

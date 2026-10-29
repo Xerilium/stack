@@ -10,7 +10,7 @@ import './team.css';
 export function AgentChip({ view, onClick, onNeeds }: { view: ChipView; onClick: () => void; onNeeds?: () => void }) {
   return (
     <span class="agent-slot">
-      <button type="button" class={`chip agent-chip ${view.tone}`} title={view.title} aria-label={`Agent: ${view.text}. ${view.title}`} onClick={(e) => { e.stopPropagation(); if (view.needs && onNeeds) onNeeds(); else onClick(); }}>
+      <button type="button" class={`chip agent-chip ${view.tone}${view.state ? ' state' : ''}`} title={view.title} aria-label={`Agent: ${view.text}. ${view.title}`} onClick={(e) => { e.stopPropagation(); if (view.needs && onNeeds) onNeeds(); else onClick(); }}>
         {(view.tone === 'accent' || view.tone === 'warn') && <span class="dot" aria-hidden="true" />}
         <span>{view.text}</span>
       </button>
@@ -48,25 +48,25 @@ export function AgentTalk({ team, talk, agents, float = false }: { team: Team; t
       <div class="talk-row">
         <label class="talk-to">To
           <select value={agent} aria-label="Agent" disabled={none} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; setAgent(v); setKeep(agents.find((a) => a.slug === v)?.mode === 'long-running'); }}>
-            {none ? <option value="">No agent</option> : agents.map((a) => <option key={a.slug} value={a.slug}>{a.name}{a.role ? ` · ${a.role}` : ''}</option>)}
+            {none ? <option value="">No agent</option> : agents.map((a) => <option key={a.slug} value={a.slug} title={a.role}>{a.name}</option>)}
           </select>
         </label>
         {float && <span class="talk-about">About: {talk.about}</span>}
         <span class="grow" />
         <label class="talk-keep"><input type="checkbox" checked={keep} onChange={(e) => setKeep((e.target as HTMLInputElement).checked)} /> Keep open</label>
-        <button type="button" class="btn quiet" onClick={close} aria-label="Close">Close<kbd aria-hidden="true">Esc</kbd></button>
+        <button type="button" class="btn quiet close" onClick={close} aria-label="Close" title="Close (Esc)">×</button>
       </div>
       <form class="talk-row" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        <input ref={box} type="text" value={text} maxLength={4000} aria-label={`Message ${chosen?.name ?? 'the agent'}`} placeholder={none ? 'No agent covers this task' : offline ? 'Runs in stack web on your machine' : `Ask ${chosen?.name ?? 'the agent'} anything about this`} disabled={none || offline}
+        <input ref={box} type="text" value={text} maxLength={4000} aria-label={`Message ${chosen?.name ?? 'the agent'}`} placeholder={none ? 'No agent covers this task' : offline ? 'Runs in stack web on your machine' : 'Ask anything…'} disabled={none || offline}
           onInput={(e) => setText((e.target as HTMLInputElement).value)} />
-        <button type="submit" class="btn primary" disabled={none || offline || busy || !text.trim()}>Send<kbd aria-hidden="true">⏎</kbd></button>
+        <button type="submit" class={`btn${text.trim() ? ' primary' : ''}`} disabled={none || offline || busy || !text.trim()}>Send<kbd aria-hidden="true">⏎</kbd></button>
       </form>
-      <div class="talk-row quick">
-        {QUICK.filter((q) => q.id !== 'review' || talk.ref).map((q) => (
-          <button type="button" key={q.id} class="btn" disabled={none || offline || busy} onClick={() => quick(q.id)}>{q.label}<kbd aria-hidden="true">{q.key}</kbd></button>
+      {(talk.ref || offline) && <div class="talk-row quick">
+        {QUICK.filter(() => !!talk.ref).map((q) => (
+          <button type="button" key={q.id} class="btn" disabled={none || offline || busy} title={q.id === 'review' ? 'Can the agent do this task? What does it need from you?' : q.id === 'do' ? 'Hand the task to the agent' : 'Steps and estimates, no work yet'} onClick={() => quick(q.id)}>{q.label}</button>
         ))}
         {offline && <span class="talk-note">Runs in <code>stack web</code> on your machine</span>}
-      </div>
+      </div>}
     </div>
   );
 }

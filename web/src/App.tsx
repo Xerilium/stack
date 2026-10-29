@@ -578,7 +578,7 @@ export function App() {
   };
   /** The composer for an ask card: the ask's agent, the ask as the context. @req FR:agent-team/web.anything */
   const askTalk = {
-    chip: (a: { key: string; from: string; project?: string }) => { const ag = agentForAsk(team.team, a); return ag ? <AgentChip view={{ text: ag.name, tone: 'plain', title: `Talk to ${ag.name} (a)` }} onClick={() => team.toggleTalk({ askKey: a.key, project: a.project ?? ag.projects[0] ?? '', about: a.key })} /> : null; },
+    chip: (a: { key: string; from: string; project?: string }) => { const ag = agentForAsk(team.team, a); return ag ? <AgentChip view={{ text: ag.slug === a.from || ag.name === a.from ? 'Talk' : ag.name, tone: 'plain', title: `Talk to ${ag.name} (a)` }} onClick={() => team.toggleTalk({ askKey: a.key, project: a.project ?? ag.projects[0] ?? '', about: a.key })} /> : null; },
     render: (a: { key: string; ask: string; from: string; project?: string }) => (team.talk?.askKey === a.key ? <AgentTalk key={a.key} team={team} talk={{ ...team.talk, about: a.ask }} agents={[...new Set([agentForAsk(team.team, a), ...(a.project ? team.agentsOf({ project: a.project, section: '' }) : [])].filter((x): x is NonNullable<typeof x> => !!x))]} /> : null),
     open: (a: { key: string; ask: string; from: string; project?: string }) => { const ag = agentForAsk(team.team, a); team.toggleTalk({ askKey: a.key, project: a.project ?? ag?.projects[0] ?? '', about: a.ask }); },
     isOpen: () => team.talk?.askKey !== undefined, close: () => team.setTalk(null),
