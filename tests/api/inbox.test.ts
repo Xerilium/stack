@@ -78,7 +78,7 @@ describe('inbox and agents routes', () => {
     expect(list.json.items).toEqual([expect.objectContaining({ id: sent.id, project: 'alpha', ref: 'alpha:6', kind: 'decision', to: 'human', text: 'June 3', state: 'open' })]);
     expect((await call(ro, 'POST', '/inbox/handled', { id: sent.id })).status).toBe(403);
     expect((await call(rw, 'POST', '/inbox/handled', { id: sent.id, note: 'Booked' })).json).toEqual({ changed: true });
-    expect((await call(rw, 'POST', '/inbox/handled', { id: 'in-missing' })).status).toBe(404);
+    expect((await call(rw, 'POST', '/inbox/handled', { id: 'in-20260101T000000Z-0000' })).status).toBe(404);
     expect((await call(ro, 'GET', '/inbox')).json.items).toEqual([]);
     expect((await call(ro, 'GET', '/inbox?state=all&project=alpha')).json.items[0]).toMatchObject({ state: 'handled', note: 'Booked' });
     expect((await call(ro, 'GET', '/inbox?state=maybe')).status).toBe(422);

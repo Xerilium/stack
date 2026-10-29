@@ -21,6 +21,9 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/tasks/triage` | POST apply a triage suggestion (autonomy-gated) |
 | `/tasks/claim` | POST claim a task for an agent (autonomy-gated) |
 | `/tasks/result` | POST log an agent result (autonomy-gated) |
+| `/inbox` | GET inbox entries for agents; POST send a reply or decision to the task project agent inbox (owner session only) |
+| `/inbox/handled` | POST mark an inbox entry handled |
+| `/agents` | GET what agents are doing (agent rows, result logs, inbox, PR state and checks) |
 | `/tasks/resume` | POST unpark a task (owner session only) |
 | `/tasks/suspend` | POST suspend for days or hours (owner session only) |
 | `/tasks/set` | POST change task properties |

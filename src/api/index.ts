@@ -2,3 +2,4 @@ export { createApiHandler, ROUTES, type ApiDeps, type Authorize, type AuthDecisi
 export { toAzureHandler, registerAzure, type AzureAppLike, type AzureRequestLike, type AzureResponseLike } from './azure';
 export { ApiError, type ErrorCode } from './errors';
 export * from './auth';
+export { createGitHubPrs, type GitHubPrsOptions } from './github';

@@ -1,6 +1,7 @@
 import { LifecycleError } from '../core/lifecycle';
 import { TriageBlocked, TriageDenied } from '../core/triage';
 import { ConflictError, NotFoundError, PathError } from '../core/storage';
+import { InboxFull } from '../core/inbox';
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -33,6 +34,7 @@ export const invalid = (issues: Issue[]) => new ApiError('invalid', 'Validation 
 export function toApiError(e: unknown): ApiError {
   if (e instanceof ApiError) return e;
   if (e instanceof NotFoundError) return new ApiError('not_found', 'Not found');
+  if (e instanceof InboxFull) return new ApiError('conflict', e.message);
   if (e instanceof ConflictError) return new ApiError('conflict', 'Conflict');
   if (e instanceof PathError) return new ApiError('bad_request', 'Invalid path');
   // These two carry fixed text written in the core, never row content.

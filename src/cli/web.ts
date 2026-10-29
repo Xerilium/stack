@@ -8,6 +8,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, stat
 import { createServer, type IncomingMessage, type Server } from 'http';
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'path';
 import { createApiHandler } from '../api/handler';
+import { createGitHubPrs } from '../api/github';
 import { getDefaults, parseConfig } from '../core/config';
 import { GitStorage } from '../core/storage-git';
 
@@ -89,7 +90,9 @@ async function toRequest(req: IncomingMessage, origin: string): Promise<Request>
 export async function startWeb(o: WebOpts): Promise<WebServer> {
   const cfgPath = join(o.dir, '.xe/config/stack.json');
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
-  const api = createApiHandler({ storage: new GitStorage(o.dir), config, authorize: () => true, onError: (e) => console.error(e) });
+  // @req FR:agent-inbox/github.wire
+  const ghToken = process.env.GITHUB_TOKEN?.trim();
+  const api = createApiHandler({ storage: new GitStorage(o.dir), config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined });
   const extra = headersFrom(o.webDir);
   const who = o.label ?? 'local';
   let port = o.port;

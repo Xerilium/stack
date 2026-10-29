@@ -613,6 +613,133 @@ paths:
                     type: string
         default:
           $ref: "#/components/responses/Error"
+  /inbox:
+    post:
+      summary: "Send a reply or decision to the agent inbox of the task project (tasks/inbox). Owner session only: 403 for tokens"
+      operationId: sendToInbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+                - text
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                text:
+                  type: string
+                  maxLength: 1000
+                  description: Your words to the agent; secrets are redacted Single line.
+                kind:
+                  type: string
+                  enum:
+                    - reply
+                    - decision
+                expect:
+                  type: string
+                  maxLength: 2000
+                  description: Expected current row text at ref; 409 conflict when the row differs Single line.
+      responses:
+        "201":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  path:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+    get:
+      summary: Inbox entries for agents to act on (open by default)
+      operationId: listInbox
+      parameters:
+        - name: project
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum:
+              - open
+              - handled
+              - all
+      responses:
+        "200":
+          description: Entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InboxEntry"
+        default:
+          $ref: "#/components/responses/Error"
+  /inbox/handled:
+    post:
+      summary: Mark an inbox entry handled after acting on it
+      operationId: handleInboxEntry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - id
+              properties:
+                id:
+                  type: string
+                  maxLength: 64
+                  pattern: ^in-[0-9TZ]+-[0-9a-f]{4,}$
+                  description: Single line.
+                note:
+                  type: string
+                  maxLength: 500
+                  description: Single line.
+      responses:
+        "200":
+          description: Handled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /agents:
+    get:
+      summary: What agents are doing, from agent rows, result logs, inbox replies, and pull request status
+      operationId: listAgents
+      responses:
+        "200":
+          description: Agent work
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentItem"
+        default:
+          $ref: "#/components/responses/Error"
   /projects:
     get:
       summary: List projects
@@ -885,6 +1012,110 @@ components:
                     type: string
                   message:
                     type: string
+    InboxEntry:
+      type: object
+      description: One owner message in tasks/inbox/<project>.md. Agents act on open entries, then mark them handled.
+      properties:
+        id:
+          type: string
+        at:
+          type: string
+          format: date-time
+        project:
+          type: string
+        ref:
+          $ref: "#/components/schemas/Ref"
+        task:
+          type: string
+        kind:
+          type: string
+          enum:
+            - reply
+            - decision
+        to:
+          type: string
+          enum:
+            - agent
+            - human
+            - none
+        text:
+          type: string
+        state:
+          type: string
+          enum:
+            - open
+            - handled
+        handled:
+          type: string
+        note:
+          type: string
+    AgentItem:
+      type: object
+      properties:
+        ref:
+          $ref: "#/components/schemas/Ref"
+        project:
+          type: string
+        title:
+          type: string
+        text:
+          type: string
+        state:
+          type: string
+          enum:
+            - failing
+            - waiting
+            - review
+            - merged
+            - ci
+            - working
+            - queued
+        prs:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              repo:
+                type: string
+              number:
+                type: integer
+              state:
+                type: string
+                enum:
+                  - open
+                  - draft
+                  - merged
+                  - closed
+              checks:
+                type: string
+                enum:
+                  - passing
+                  - failing
+                  - pending
+                  - none
+              title:
+                type: string
+              updatedAt:
+                type: string
+        last:
+          type: object
+          properties:
+            at:
+              type: string
+            action:
+              type: string
+            outcome:
+              type: string
+            summary:
+              type: string
+        waitingOn:
+          $ref: "#/components/schemas/Ref"
+        replies:
+          type: integer
+        since:
+          type: string
     NextTask:
       type: object
       properties:

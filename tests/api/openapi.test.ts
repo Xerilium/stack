@@ -266,6 +266,14 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('projects.get', 'GET', '/projects/alpha?fields=name,title,open,done,aliases,metadata,sections', undefined, 200);
     await go('projects.get', 'GET', '/projects/none', undefined, 404);
     await go('summaries.get', 'GET', '/summaries', undefined, 200);
+    // @req FR:agent-inbox/api.agents
+    await go('tasks.add', 'POST', '/tasks', { project: 'alpha', text: '🪄 Agent job https://github.com/o/r/pull/1' }, 201);
+    const agent = ((await go('agents.list', 'GET', '/agents', undefined, 200)).body as any).items[0].ref as string;
+    const sent = await go('inbox.send', 'POST', '/inbox', { ref: agent, text: 'Go ahead', kind: 'decision' }, 201);
+    await go('inbox.send', 'POST', '/inbox', { ref: agent, text: '' }, 422);
+    await go('inbox.list', 'GET', '/inbox?state=all', undefined, 200);
+    await go('inbox.handle', 'POST', '/inbox/handled', { id: (sent.body as any).id, note: 'ok' }, 200);
+    await go('inbox.handle', 'POST', '/inbox/handled', { id: 'in-20260101T000000Z-0000' }, 404);
     expect([...seen].sort()).toEqual(ROUTES.map((r) => r.name).sort());
   });
 
