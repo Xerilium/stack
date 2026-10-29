@@ -20,9 +20,11 @@ export interface Message {
   bodyPreview: string;
   /** Plain-text body, when fetched for drafting. Untrusted data. */
   body?: string;
+  /** Read state; later deltas report it for messages seen before. @req FR:email-inbox-zero/sub.ledger */
+  isRead?: boolean;
   /** Outlook web link to the message. */
   webLink?: string;
-  /** Internet headers, when fetched. Names are matched case-insensitively. */
+  /** Internet headers, when fetched. Names are matched case-insensitively. `Authentication-Results` holds only the receiving server's (first) one: providers drop later copies, which a sender can write. */
   headers?: Record<string, string>;
   /** Graph `@odata.type`; `eventMessage*` marks calendar items. */
   odataType?: string;
@@ -30,7 +32,7 @@ export interface Message {
   threadLastFrom?: string;
 }
 
-export const TRIAGE_CLASSES = ['needs_reply', 'needs_decision', 'fyi', 'newsletter', 'receipt', 'calendar', 'skip', 'sensitive'] as const;
+export const TRIAGE_CLASSES = ['needs_reply', 'needs_decision', 'fyi', 'newsletter', 'receipt', 'calendar', 'skip', 'sensitive', 'spam'] as const;
 export type TriageClass = (typeof TRIAGE_CLASSES)[number];
 
 /** What a model returns for one message; re-validated in code before use. */
@@ -45,6 +47,8 @@ export interface Classification {
   options?: string[];
   recommend?: string;
   injectionSuspected?: boolean;
+  /** At most 3 sentences on the thread, from the same call. @req FR:email-inbox-zero/sum.cheap */
+  summary?: string;
 }
 
 export interface TriageResult {
@@ -56,6 +60,8 @@ export interface TriageResult {
   options?: string[];
   recommend?: string;
   vip?: boolean;
+  /** Thread summary for the ask. @req FR:email-inbox-zero/sum.ask */
+  summary?: string;
   /** The draft in the mailbox with its Outlook web link; `reused` when it was already there from an earlier pass and nothing new was created. */
   draft?: { text: string; webLink: string; reused?: boolean; voice?: DraftVoice };
 }
