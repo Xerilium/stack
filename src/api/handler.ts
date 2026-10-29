@@ -12,6 +12,7 @@ import { captureTask, CaptureError } from '../core/quick-capture';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
+import type { CalendarProvider } from '../calendar';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
@@ -37,6 +38,8 @@ export interface ApiDeps {
   basePath?: string;
   /** Pull request state and checks for `GET /agents`; absent means links without status. @req FR:agent-inbox/activity.status */
   prs?: PrStatusProvider;
+  /** Today's meetings for the day plan; absent means no calendar. @req FR:day-inputs/api.calendar */
+  calendar?: CalendarProvider;
   /** Called with unexpected errors (they are never sent to the caller). */
   onError?: (e: unknown) => void;
 }
@@ -127,6 +130,7 @@ const INBOX_BODY = {
   schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: INBOX_KINDS }, expect: { t: 'str', max: 2000, line: true } } satisfies Record<string, Spec>,
   required: ['ref', 'text'],
 };
+const CAL_Q: Record<string, Spec> = { from: { t: 'str', max: 40 }, to: { t: 'str', max: 40 } };
 const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES } };
 const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true } } satisfies Record<string, Spec>, required: ['id'] };
 const ASK_PUT_BODY = {
@@ -464,6 +468,25 @@ export const ROUTES: Route[] = [
       noQuery(c);
       const b = validate<HandleInput>(await readBody(c.req), ASK_HANDLE_BODY.schema, ASK_HANDLE_BODY.required);
       return json(200, await handleAsk(c.life, c.params[0], b, caller(c.req).actor));
+    },
+  },
+  {
+    // @req FR:day-inputs/api.calendar
+    method: 'GET', doc: '/calendar', name: 'calendar.list', query: CAL_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(CAL_Q));
+      const from = Date.parse(q.get('from') ?? ''), to = Date.parse(q.get('to') ?? '');
+      const iso = (v: string | null) => typeof v === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/.test(v);
+      if (!iso(q.get('from')) || !iso(q.get('to')) || !(from < to) || to - from > 7 * 864e5) throw invalid([{ field: 'from', message: 'from and to must be ISO date-times, from before to, at most 7 days apart' }]);
+      // Calendars hold personal data: the owner only.
+      if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can read the calendar');
+      if (!c.deps.calendar) return json(200, { configured: false, items: [] });
+      try {
+        return json(200, { configured: true, items: await c.deps.calendar.events(new Date(from).toISOString(), new Date(to).toISOString()) });
+      } catch (e) {
+        c.deps.onError?.(e);
+        return json(200, { configured: true, items: [], error: 'Calendar unavailable' });
+      }
     },
   },
   {

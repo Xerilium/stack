@@ -189,3 +189,23 @@
 **Why**: Chat overwhelms the owner; files are durable, agent-agnostic, and reviewable, and any CoS can resume from them. Parsing prose state files would guess; applying defaults needs the owning agent's knowledge.
 
 **Rejected**: A status feed (the overload to remove); WebSocket (SSE is simpler and one-way); agent-set scores (inconsistent); parsing `.stack/*-state.md`.
+
+## Meetings take time; the plan packs first-fit around them
+
+**Decision**: Calendar events come through a read-only `CalendarProvider` (Graph `calendarView` behind its own allowlist, or fixtures). Busy time lowers the default Available and blocks the timeline; tasks go to the first gap that holds them, inside the work day unless the budget asks for more. Email asks reserve one block first in the day.
+
+**Date**: 2026-10-28
+
+**Why**: A plan that ignores meetings books hours that do not exist. First fit uses the gap before a meeting for a short task instead of wasting it; capping at the work day keeps unusable gaps from pushing work into the evening.
+
+**Rejected**: IMAP (app passwords and a client library for a Microsoft 365 mailbox Graph already covers); splitting a task across a meeting (context switching); a server-side plan (the budget and clock are per viewer).
+
+## Graph sign-in is a device code flow with a local token file
+
+**Decision**: The owner signs in once with `stack graph login` (device code, public client, no secret). Scopes come from an allowlist per feature (`Calendars.Read`, `Mail.Read`, and `Mail.ReadWrite` for drafts, which is not read-only; the email guard limits writes to reply drafts) plus sign-in basics; every other scope, requested or granted, is refused in code. The refresh token lives in `~/.config/stack/graph-token.json` (0600), never in a task repo.
+
+**Date**: 2026-10-29
+
+**Why**: A terminal flow needs no redirect URI or secret, works on any machine, and keeps the token off GitHub and Azure. Refusing unsafe scopes in code means a bad app registration still cannot send mail.
+
+**Rejected**: Auth code with a localhost redirect (more moving parts, same result); storing the token in the task repo or Azure (it would leave the owner's machine); a confidential client (a secret to manage for one user).

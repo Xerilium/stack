@@ -4,7 +4,8 @@ export interface MockTask { ref: string; text: string; project: string; section:
 export interface MockAgent { ref: string; project: string; title: string; text: string; state: string; prs: { url: string; repo: string; number: number; state?: string; checks?: string; title?: string; updatedAt?: string }[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }
 export interface MockInbox { id: string; at: string; project: string; ref: string; task: string; kind: string; to: string; text: string; state: string; row?: string }
 export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string }
-export interface Mock { asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
+export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
+export interface Mock { events: MockEvent[] | null; calendarFail: boolean; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; insertAbove: (project: string, text: string) => void }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
 /** Short date for row text, relative to today (the plan depends on the clock). */
@@ -26,7 +27,7 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 /** `context: true` routes at the browser context, so requests a service worker makes are mocked too. */
 export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean } = {}): Promise<Mock> {
   const router = opts.context ? page.context() : page;
-  const m: Mock = { asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
+  const m: Mock = { events: null, calendarFail: false, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
   const proj = [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
@@ -67,6 +68,12 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     if (path === '/tasks') {
       const off = Number(url.searchParams.get('offset') ?? 0), lim = Number(url.searchParams.get('limit') ?? 50);
       return json(route, 200, { items: m.tasks.slice(off, off + lim), total: m.tasks.length, offset: off, limit: lim });
+    }
+    if (path === '/calendar') {
+      if (m.calendarFail) return json(route, 200, { configured: true, items: [], error: 'Calendar unavailable' });
+      if (!m.events) return json(route, 200, { configured: false, items: [] });
+      const from = Date.parse(url.searchParams.get('from') ?? ''), to = Date.parse(url.searchParams.get('to') ?? '');
+      return json(route, 200, { configured: true, items: m.events.filter((e) => Date.parse(e.end) > from && Date.parse(e.start) < to) });
     }
     if (path === '/asks') {
       const st = url.searchParams.get('state') ?? 'open';

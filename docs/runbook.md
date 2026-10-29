@@ -31,6 +31,8 @@ Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault,
 | `STACK_TOKEN_PEPPER` | Secret mixed into API token hashes. Changing it invalidates all tokens |
 | `STACK_REPO_TOKEN` | Credential for the private task repo |
 | `STACK_REPO_URL` | https URL of the private task repo (no credentials in it). More settings: [Azure host](azure-host.md) |
+| `STACK_CALENDAR_FIXTURE` | `stack web` only: JSON file of calendar events for Today (demo and screenshots). No live calendar until owner sign-in exists |
+| `STACK_GRAPH_CACHE` | `stack graph` and `stack web` only: path of the Graph token file. Default `~/.config/stack/graph-token.json` (mode 0600; never inside a task repo) |
 | `STACK_TOKEN_STORE` | Optional file path for the token store (needs `STACK_TOKEN_PEPPER`). Default: the data repo (`.stack/tokens.json`) |
 | `STACK_REPO_BRANCH`, `STACK_REPO_PATH` | Branch (default `main`) and optional subfolder of the task repo |
 | `STACK_CONFIG` | Optional Stack config as JSON |
@@ -65,3 +67,10 @@ Tasks are markdown in git, so the git history is the backup. Clone the task repo
 - 401 from `/api`: token missing, expired, or lacks the scope.
 - 403 in the browser: your id is not in `STACK_OWNERS`.
 - E2E skipped: `web/package.json` not present.
+
+## Live calendar and mail (Microsoft Graph, one time)
+
+1. Register an app in Entra ID: single tenant or "Accounts in any organizational directory", no redirect URI, **Allow public client flows: Yes**. Delegated permissions: `Calendars.Read` (and `Mail.Read` or `Mail.ReadWrite` when the email module runs). Never add `Mail.Send`; Stack refuses it.
+2. `stack graph login --client-id <app id> --with calendar` and follow the printed code. The token stays in `~/.config/stack/graph-token.json`, never in a repo.
+3. If login says `unsafe_scope`, remove the named permissions from the app registration **and** revoke the consent already granted (Entra ID > Enterprise applications > the app > Permissions, or myapps.microsoft.com); removing a permission alone does not revoke consent.
+4. `stack web` now shows your meetings (it logs `calendar: Graph`). `stack graph status` checks it; `stack graph logout` removes it.
