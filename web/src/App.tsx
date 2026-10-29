@@ -24,6 +24,7 @@ import { AsksView } from './AsksView';
 import { actionsFor, type AskItem, type Send } from './asks';
 import { useAsks } from './useAsks';
 import { Drawer, SessionsView } from './SessionsView';
+import { usePins } from './pins';
 import { useSessions } from './useSessions';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
 import { fromDecisions } from './needs';
@@ -250,6 +251,8 @@ export function App() {
   const [teamActive, setTeamActive] = useState(false);
   /** @req FR:agent-sessions/web.view */
   const sessions = useSessions(api, toast, agentsOn, view === 'sessions' || teamActive);
+  /** @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups */
+  const pinsCtl = usePins(store());
   /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
   const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name));
   const wantActive = team.active || team.talk !== null;
@@ -535,10 +538,12 @@ export function App() {
       { id: 'ask-undo', label: 'Ask: Undo last answer', hint: 'u', run: () => asks.undo() },
     ] : []),
     ...(view === 'sessions' ? [
-      { id: 'sess-open', label: 'Session: open', hint: '⏎', run: () => { if (sessions.cursor) void sessions.openDrawer(sessions.cursor); } },
-      { id: 'sess-new', label: 'Session: new', hint: 'n', run: () => sessions.setComposing(true) },
-      { id: 'sess-stop', label: 'Session: stop the run', hint: 's', run: () => void sessions.stop(sessions.open ?? sessions.cursor ?? undefined) },
-      { id: 'sess-costs', label: 'Session: toggle costs', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
+      { id: 'sess-open', label: 'Agent: open', hint: '⏎', run: () => { if (sessions.cursor) void sessions.openDrawer(sessions.cursor); } },
+      { id: 'sess-new', label: 'Agent: new', hint: 'n', run: () => sessions.setComposing(true) },
+      { id: 'sess-stop', label: 'Agent: stop the run', hint: 's', run: () => void sessions.stop(sessions.open ?? sessions.cursor ?? undefined) },
+      { id: 'sess-pin', label: pinsCtl.pins.includes(sessions.cursor ?? '') ? 'Agent: unpin' : 'Agent: pin to the top', hint: 'f', run: () => { if (sessions.cursor) pinsCtl.pin(sessions.cursor); } },
+      { id: 'sess-group', label: pinsCtl.byProject ? 'Agent: ungroup' : 'Agent: by project', hint: 'p', run: pinsCtl.toggleGroup },
+      { id: 'sess-costs', label: 'Agent: toggle costs', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
     ] : []),
     { id: 'capture', label: 'New task', hint: 'c', run: openCapture },
     { id: 'search', label: 'Search tasks', hint: '/', run: () => { go('list'); setTimeout(() => searchRef.current?.focus(), 0); } },
@@ -575,6 +580,7 @@ export function App() {
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
     { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
+    { id: 'go-sessions', label: 'Go to Agents', hint: HINT.sessions, group: 'Go to', run: () => go('sessions') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
     { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, group: 'Go to', run: () => go('list') },
   ];
@@ -614,7 +620,9 @@ export function App() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTyping(e.target)) return;
       const k = e.key;
-      if ((k === 'Enter' || k === ' ') && e.target instanceof HTMLElement && ['BUTTON', 'A'].includes(e.target.tagName)) return;
+      // the element under focus keeps Enter/Space (buttons, links, row titles); the agent composer keeps every key
+      if (e.target instanceof HTMLElement && e.target.closest('.agent-talk')) return;
+      if ((k === 'Enter' || k === ' ') && e.target instanceof HTMLElement && e.target.matches('button, a, [role="button"]')) return;
       const now = Date.now();
       if (chord.current && now - chord.current < 1000) {
         chord.current = 0;
@@ -666,8 +674,9 @@ export function App() {
       else if (k === 'R' && L.cursor) { e.preventDefault(); void teamRef.current.review(L.cursor); }
       else if (k === 'p' || k === 't' || k === 'f' || k === 'i') A.openPicker([GROUP_NAMES.find((g) => GROUPS[g].key === k)!]);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // capture phase: the chords and global keys run before any view's own listener, whatever mounted first
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [run]);
 
   // ---- render
@@ -729,7 +738,7 @@ export function App() {
         <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
         {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
-        {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
+        {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}

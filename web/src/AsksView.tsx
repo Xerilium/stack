@@ -90,7 +90,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
   const showRec = !!a.recommend && !(primary && primary.label.toLowerCase() === a.recommend.trim().toLowerCase());
   const replyRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
-  useEffect(() => { if (asks.panel !== 'reply') setText(''); }, [asks.panel, a.key]);
+  useEffect(() => { if (asks.panel !== 'reply') setText(''); else setText((t) => t || asks.takeDraft(a.key)); }, [asks.panel, a.key]); // Edit reopens with the previous text
   const choices = asks.deferChoices();
   const isAnswer = a.kind === 'answer';
   const replying = (asks.panel === 'reply' || isAnswer) && asks.panel !== 'defer';
@@ -186,7 +186,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return; // a finished chord is not a view key
       if (e.key === 'Escape' && talk?.isOpen()) { e.preventDefault(); talk.close(); return; }
       if (e.key === 'Escape' && asks.panelRef.current !== 'none') { e.preventDefault(); asks.setPanel('none'); return; }
       if (isTyping(e.target)) return;
@@ -263,11 +263,11 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
         <footer class="asks-foot">
           {asks.sent.length > 0 && (
             <div>
-              <button type="button" class="foot-btn" aria-expanded={openSent} onClick={() => setOpenSent(!openSent)}>Sent · {asks.sent.length}<span class="hint"> waiting on the agent</span></button>
+              <button type="button" class="foot-btn" aria-expanded={openSent} onClick={() => setOpenSent(!openSent)}>Answered · {asks.sent.length}<span class="hint"> waiting on the agent</span></button>
               {openSent && (
                 <ul class="foot-list">
-                  {asks.sent.map((s) => (
-                    <li key={s.key}><span class="f-t">{s.ask}</span><span class="f-what">{ANSWER_WORD[s.answer ?? ''] ?? 'Sent'}{s.text ? `: ${s.text}` : ''} · {s.from}</span><button type="button" class="link" onClick={() => void asks.retract(s)}>Undo</button></li>
+                  {[...asks.sent].reverse().map((s) => (
+                    <li key={s.key}><span class="f-t">{s.ask}</span><span class="f-what">{ANSWER_WORD[s.answer ?? ''] ?? 'Sent'}{s.text ? `: ${s.text}` : ''} · {s.from}</span><button type="button" class="link" onClick={() => void asks.edit(s)}>Edit</button><button type="button" class="link" onClick={() => void asks.retract(s)}>Undo</button></li>
                   ))}
                 </ul>
               )}

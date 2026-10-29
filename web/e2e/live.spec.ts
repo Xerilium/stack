@@ -57,15 +57,15 @@ test('a file written by an agent appears by itself; the answer lands back in the
 
   // owner approves with Enter: the file records the answer
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('button', { name: /Sent · 1/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Answered · 1/ })).toBeVisible();
   await expect.poll(() => readFileSync(join(repo, 'tasks/asks/pr-1.md'), 'utf8')).toContain('- state: answered');
   expect(readFileSync(join(repo, 'tasks/asks/pr-1.md'), 'utf8')).toContain('- answer: go');
   const waiting = JSON.parse(cli('asks', 'list', '--state', 'answered', '--json'));
   expect(waiting.items.map((i: { key: string }) => i.key)).toEqual(['pr-1']);
 
-  // agent handles it: the Sent footer clears by itself
+  // agent handles it: the Answered group clears by itself
   cli('asks', 'handle', 'pr-1', '--outcome', 'handled', '--note', 'merged');
-  await expect(page.getByRole('button', { name: /Sent/ })).toHaveCount(0, { timeout: 5000 });
+  await expect(page.getByRole('button', { name: /Answered/ })).toHaveCount(0, { timeout: 5000 });
   await expect(page.locator('.ask-card .ask-title')).toHaveText('Wire the invoice');
 
   // agent resolves the last one: nothing needs the owner
