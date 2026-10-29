@@ -15,7 +15,8 @@ const FRESH_MS = 6000;
 const LEAVE_MS = 200;
 
 /** `stream`: true when the host serves `/events`, false to poll, null while that is not known yet. */
-export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, stream: boolean | null) {
+export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, stream: boolean | null, onNew?: (items: AskItem[]) => void) {
+  const onNewRef = useRef(onNew); onNewRef.current = onNew;
   const [items, setItems] = useState<AskItem[]>([]);
   const [sent, setSent] = useState<AskItem[]>([]);
   const [snoozed, setSnoozed] = useState<AskItem[]>([]);
@@ -60,6 +61,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       setItems(next); setTotal(o.total - (o.items.length - next.length)); setSent(a.items); setSnoozed(s.items); setLatest(o.latest ?? a.latest); setNow(new Date());
       setPhase('ready'); setError('');
       if (gone.length) { setLeaving((l) => [...l, ...gone]); setTimeout(() => setLeaving((l) => l.filter((x) => !gone.includes(x))), LEAVE_MS); }
+      if (added.length) onNewRef.current?.(next.filter((i) => added.includes(i.key)));
       if (added.length) { setFresh((f) => new Set([...f, ...added])); setTimeout(() => setFresh((f) => { const n = new Set(f); added.forEach((k) => n.delete(k)); return n; }), FRESH_MS); }
     } catch (e) {
       if (mine !== seq.current) return;
