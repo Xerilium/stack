@@ -132,6 +132,7 @@ test.describe('Agent team', () => {
     await page.keyboard.press('a');
     const talk = page.locator('.ask-card .agent-talk');
     await expect(talk).toHaveAttribute('aria-label', 'Talk to 🅰️ Alpha Lead about Approve merging PR 879');
+    await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('What changed since the last review?');
     await page.keyboard.press('Enter');
     await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'What changed since the last review?', agent: 'alpha-lead', project: 'alpha' });
@@ -146,6 +147,7 @@ test.describe('Agent team', () => {
     await hero.click();
     await page.keyboard.press('a');
     await expect(hero.locator('.agent-talk')).toBeVisible();
+    await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('Go');
     await page.keyboard.press('Enter');
     await expect(hero.locator('.agent-talk')).toHaveCount(0);
@@ -164,6 +166,7 @@ test.describe('Agent team', () => {
     await expect(first.locator('.agent-chip')).toBeVisible();
     await page.keyboard.press('a');
     await expect(first.locator('.agent-talk')).toBeVisible();
+    await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('Status?');
     await page.keyboard.press('Enter');
     await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toBe('Status?');
@@ -176,6 +179,7 @@ test.describe('Agent team', () => {
     await expect(tile.locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
     await tile.locator('.agent-chip').click();
     await expect(tile.locator('.agent-talk')).toBeVisible();
+    await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('Where are we?');
     await page.keyboard.press('Enter');
     await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Where are we?', agent: 'alpha-lead', project: 'alpha' });

@@ -2,7 +2,7 @@
  * AI on every page: the agent chip on a row and the inline composer under it.
  * @req FR:agent-team/web.chip @req FR:agent-team/web.talk @req FR:agent-team/web.anything @req FR:agent-team/web.review @req FR:agent-team/web.norunner @req FR:agent-team/web.keys @req FR:agent-team/web.a11y
  */
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { QUICK, type ChipView, type Talk, type TeamAgent } from './team';
 import type { Team } from './useTeam';
 import './team.css';
@@ -26,7 +26,8 @@ export function AgentTalk({ team, talk, agents, float = false }: { team: Team; t
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLInputElement | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
-  useEffect(() => { box.current?.focus(); }, []);
+  // Focus before paint: a key typed right after `a` must land in the box, not on the row.
+  useLayoutEffect(() => { box.current?.focus(); }, []);
   useEffect(() => { if (!agents.some((a) => a.slug === agent)) { setAgent(agents[0]?.slug ?? ''); setKeep(agents[0]?.mode === 'long-running'); } }, [agents, agent]);
   const chosen = agents.find((a) => a.slug === agent);
   const none = agents.length === 0;

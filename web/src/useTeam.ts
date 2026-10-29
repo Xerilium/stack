@@ -97,6 +97,12 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   }, [api, enabled, sessions, loadReviews]);
 
   const openSession = useCallback((ref: string) => { const s = sessionOf(ref); if (s) void sessions.openDrawer(s.id); }, [sessionOf, sessions]);
+  // `recent` only matters for 10 minutes (the Done chip); drop old entries so polling stops once every row-started session is old news.
+  useEffect(() => {
+    if (recent.size === 0) return;
+    const t = setInterval(() => setRecent((m) => { const n = new Map([...m].filter(([, v]) => Date.now() - v.at < DONE_MS)); return n.size === m.size ? m : n; }), 30_000);
+    return () => clearInterval(t);
+  }, [recent.size]);
   const active = useMemo(() => reviewing.size > 0 || recent.size > 0, [reviewing, recent]);
 
   return { team, reviews, talk, setTalk, toggleTalk, agentsOf, chipOf, sessionOf, start, review, reviewing, openSession, enabled, active };
