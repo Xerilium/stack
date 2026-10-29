@@ -224,11 +224,10 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
   if (input.flow !== undefined) { if (typeof input.flow !== 'string' || !FLOW.test(input.flow)) throw new LifecycleError('flow must be a slug like triage-oct29'); out.flow = input.flow; }
   if (input.seq !== undefined) { if (!Number.isInteger(input.seq) || input.seq < 1 || input.seq > 99) throw new LifecycleError('seq must be 1-99'); out.seq = input.seq; }
   if (input.ref !== undefined) { parseTaskRef(input.ref); out.ref = input.ref as string; }
-  if (input.apply !== undefined) { if (typeof input.apply !== 'string') throw new LifecycleError('apply must be an action line'); parseAction(input.apply); out.apply = input.apply.trim(); }
+  if (input.apply !== undefined) { const v = line('apply', input.apply, MAX_LINE, false)!; parseAction(v); out.apply = v; }
   if (input.applies !== undefined) {
     if (!Array.isArray(input.applies) || !input.applies.every((x) => typeof x === 'string')) throw new LifecycleError('applies must list one action per option');
-    input.applies.forEach((x) => parseAction(x));
-    out.applies = input.applies.map((x) => x.trim().replace(/\|/g, '/')); // `|` separates the stored list
+    out.applies = input.applies.map((x, i) => { const v = line(`applies[${i}]`, x, MAX_LINE, false)!.replace(/\|/g, '/'); parseAction(v); return v; }); // one clean line each; `|` separates the stored list
   }
   if (input.detail !== undefined) {
     if (typeof input.detail !== 'string' || input.detail.length > MAX_DETAIL) throw new LifecycleError(`detail must be at most ${MAX_DETAIL} characters`);

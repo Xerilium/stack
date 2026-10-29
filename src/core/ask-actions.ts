@@ -108,7 +108,7 @@ export async function applyAction(ctx: LifecycleContext, at: TaskRef, a: Action)
       case 'due': {
         const { lines, version, row } = found;
         const body = row[3].replace(DUE_MARK, '');
-        const lead = /^((?:🚨|‼️|🔺|🔻)\s+)?/u.exec(body)![1] ?? '';
+        const lead = /^((?:(?:🚨|‼️|🔺|🔻|🚧|⏸️|👀|⏳|⛔️)\s+)*)/u.exec(body)![1] ?? ''; // priority and status marks stay in front of the date
         const next = `${row[1]}${row[2]}${lead}📅 ${a.date}: ${body.slice(lead.length)}`;
         lines[ref.line] = next + cr(lines[ref.line]);
         await ctx.storage.write(ref.path, lines.join('\n'), { expectedVersion: version, message: `Due ${a.date}: ${row[3]}` });

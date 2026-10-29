@@ -98,12 +98,13 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
   useEffect(() => { if (asks.panel !== 'reply') setText(''); else setText((t) => t || asks.takeDraft(a.key)); }, [asks.panel, a.key]); // Edit reopens with the previous text
   const choices = asks.deferChoices();
   const isAnswer = a.kind === 'answer';
+  const flow = flowOf(a);
   const replying = (asks.panel === 'reply' || isAnswer) && asks.panel !== 'defer';
   return (
     <li class={`ask-li${asks.fresh.has(a.key) ? ' fresh' : ''}`} data-key={a.key}>
       <article class="ask-card" data-kind={a.kind} data-panel={asks.panel} aria-label={`Ask ${n} of ${total}`}>
         <div class="ask-eyebrow">
-          {flowOf(a) ? <span class="of flow" data-testid="flow-step">Quick triage · {flowOf(a)!.step} of {flowOf(a)!.total}</span> : <span class="of" aria-hidden="true">{n} of {total}</span>}
+          {flow ? <span class="of flow" data-testid="flow-step">Quick triage · {flow.step} of {flow.total}</span> : <span class="of" aria-hidden="true">{n} of {total}</span>}
           {a.project && <span class="proj">{a.project}</span>}
           {!talk?.chip(a) && <span class="from">{a.from}</span>}
           {talk?.chip(a)}
@@ -111,7 +112,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
           <span class="grow" />
           <DeadlineChip by={a.by} now={asks.now} long />
         </div>
-        {flowOf(a) && <div class="flow-bar" role="progressbar" aria-label="Triage progress" aria-valuemin={0} aria-valuemax={flowOf(a)!.total} aria-valuenow={flowOf(a)!.done}><span style={{ width: `${(flowOf(a)!.done / Math.max(1, flowOf(a)!.total)) * 100}%` }} /></div>}
+        {flow && <div class="flow-bar" role="progressbar" aria-label="Triage progress" aria-valuemin={0} aria-valuemax={flow.total} aria-valuenow={flow.done}><span style={{ width: `${(flow.done / Math.max(1, flow.total)) * 100}%` }} /></div>}
         <h2 class="ask-title">{a.ask}</h2>
         {a.why && <p class="ask-why">{a.why}</p>}
         {a.refText && <p class="ask-row-target" title="The task this answer changes">on <span>{a.refText}</span></p>}

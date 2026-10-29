@@ -14,7 +14,8 @@ const PRIORITY: Record<string, string> = { '🚨': 'Critical', '‼️': 'High',
 const STATUS: Record<string, string> = { '🚧': 'In progress', '⏸️': 'Paused', '👀': 'Review', '⏳': 'Waiting', '⛔️': 'Blocked' };
 const EFFORT: Record<string, string> = { '🔹': '12 min', '🟢': '30 min', '🟡': '1 hour', '🟠': '2 hours', '🔴': '4 hours', '⚫️': '8 hours' };
 const IMPACT: Record<string, string> = { '⬆️': 'High', '↔️': 'Medium', '⬇️': 'Low' };
-const NAMES: Record<string, Record<string, string>> = { priority: PRIORITY, status: STATUS, effort: EFFORT, impact: IMPACT };
+const CHECKBOX: Record<string, string> = { Complete: 'Checked', Incomplete: 'Unchecked' };
+const NAMES: Record<string, Record<string, string>> = { priority: PRIORITY, status: STATUS, effort: EFFORT, impact: IMPACT, checkbox: CHECKBOX };
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** What an action did, in words: `Priority: Critical · Pay bills`. */
