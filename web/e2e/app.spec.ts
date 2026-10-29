@@ -730,7 +730,11 @@ test.describe('feedback and mobile', () => {
       await expect(page.locator('.rail')).toBeHidden();
       for (const tab of await page.locator('.tabbar .tab').all()) expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       expect((await page.locator('.btn.primary').first().boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      await page.locator('.tabbar').getByRole('button', { name: /All tasks/ }).click();
+      // All tasks lives behind More on a phone: the bar keeps the four daily views
+      await expect(page.locator('.tabbar').getByRole('button', { name: /All tasks/ })).toHaveCount(0);
+      await page.locator('.tabbar').getByRole('button', { name: 'Open command palette' }).click();
+      await page.getByRole('combobox', { name: 'Command' }).fill('all tasks');
+      await page.keyboard.press('Enter');
       await expect(page).toHaveURL(/#\/list/);
       await page.locator('.tabbar').getByRole('button', { name: /Projects/ }).click();
       await expect(page).toHaveURL(/#\/projects/);

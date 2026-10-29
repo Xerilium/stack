@@ -28,7 +28,9 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const cursorRef = useRef<string | null>(null);
   /** Synchronous, so quick key presses read the cursor they just moved. */
   const setCursor = useCallback((k: string | null) => { cursorRef.current = k; setCursorState(k); }, []);
-  const [panel, setPanel] = useState<Panel>('none');
+  const [panel, setPanelState] = useState<Panel>('none');
+  const panelRef = useRef<Panel>('none');
+  const setPanel = useCallback((p: Panel) => { panelRef.current = p; setPanelState(p); }, []);
   const [detail, setDetail] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -145,7 +147,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   }, [api, load]);
 
   return {
-    items: ranked, itemsRef, cursorRef, leaving, sent, snoozed, total, latest, phase, error, status, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
+    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, status, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, answer, reply, defer, retract, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
   };
 }

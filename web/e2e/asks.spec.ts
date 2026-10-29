@@ -31,7 +31,9 @@ test.describe('Asks', () => {
     await expect(card(page).locator('.ask-title')).toHaveText('Approve merging PR 879 into dev');
     await expect(card(page).locator('.dl')).toContainText('Today');
     await expect(card(page).locator('.dl')).toContainText('in 3 h');
-    await expect(card(page)).toContainText('Recommend');
+    await expect(card(page).locator('.btn.primary')).toHaveText(/Approve/);
+    await expect(card(page)).not.toContainText('Recommend');
+    await expect(card(page).locator('.of')).toHaveText('1 of 7');
     await expect(card(page)).toContainText('If silent: Merges Oct 29 8:00 am');
     await expect(card(page).getByRole('link', { name: /Open/ })).toHaveAttribute('href', 'https://github.com/o/r/pull/879');
     await expect(card(page).getByRole('link', { name: /Open/ })).toHaveAttribute('rel', /noopener/);
@@ -67,10 +69,26 @@ test.describe('Asks', () => {
 
   test('decide: numbered options, the recommendation is primary; 1 picks the first', async ({ page }) => {
     const m = await open(page);
-    await page.getByRole('button', { name: /3\. Pick the launch day/ }).click();
+    await page.getByRole("button", { name: /3\. Pick the launch day/ }).click();
     await expect(card(page).locator('.btn.primary')).toHaveText(/Monday/);
     await page.keyboard.press('1');
     expect(m.calls.find((c) => c.path === '/asks/launch/answer')?.body).toEqual({ answer: 'option', text: 'Friday' });
+  });
+
+  test('review shows the recommendation when it says more than the button; rows name the action to take', async ({ page }) => {
+    await open(page);
+    await expect(page.locator('.ask-row').first().locator('.verb')).toHaveText('Review');
+    await page.getByRole('button', { name: /2\. Review draft/ }).click();
+    await expect(card(page)).toContainText('Send as drafted');
+  });
+
+  test('answer kind: the input is always open with Defer beside it; no Reply button', async ({ page }) => {
+    await open(page);
+    await page.getByRole('button', { name: /Show 2 more/ }).click();
+    await page.getByRole('button', { name: /5\. What should the FTK/ }).click();
+    await expect(page.getByLabel('Answer ftk-cos')).toBeVisible();
+    await expect(card(page).getByRole('button', { name: /^Reply/ })).toHaveCount(0);
+    await expect(card(page).getByRole('button', { name: /^Defer/ })).toBeVisible();
   });
 
   test('j/k move the cursor; the open card follows', async ({ page }) => {

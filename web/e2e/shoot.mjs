@@ -15,6 +15,7 @@ const scenes = {
   defer: async (p) => { await p.keyboard.press('z'); await p.waitForTimeout(250); },
   sent: async (p) => { await p.keyboard.press('Enter'); await p.waitForTimeout(600); await p.getByRole('button', { name: /Sent/ }).click(); await p.waitForTimeout(250); },
   more: async (p) => { await p.keyboard.press('m'); await p.waitForTimeout(250); },
+  footers: async (p) => { await p.keyboard.press('z'); await p.keyboard.press('1'); await p.waitForTimeout(500); await p.keyboard.press('Enter'); await p.waitForTimeout(900); await p.getByRole('button', { name: /Sent/ }).click(); await p.getByRole('button', { name: /Snoozed/ }).click(); await p.waitForTimeout(300); },
   live: async (p) => { execSync(process.env.LIVE_CMD); await p.waitForTimeout(700); },
   answer: async (p) => { await p.keyboard.press('m'); await p.getByRole('button', { name: /Which platform/ }).click(); await p.waitForTimeout(250); },
 };

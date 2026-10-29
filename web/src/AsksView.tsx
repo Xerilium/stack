@@ -36,38 +36,49 @@ function DeadlineChip({ by, now, long }: { by?: string; now: Date; long?: boolea
   return <span class={`dl ${d.tone}`} title={d.rel}>{long && Icon.clock}<span>{d.label}</span>{long && <span class="rel">· {d.rel}</span>}</span>;
 }
 
+/** What the owner would do with this ask, so the list can be triaged without opening each row. */
+function verbOf(a: AskItem): string | undefined {
+  const p = actionsFor(a).find((x) => x.primary)?.label;
+  return { approve: p, decide: p, review: 'Review', 'go-do': 'Do', answer: 'Answer' }[a.kind];
+}
+
 function Row({ a, n, now, fresh, leaving, onPick }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; onPick: () => void }) {
+  const verb = verbOf(a);
   return (
     <li class={`ask-li${fresh ? ' fresh' : ''}${leaving ? ' leaving' : ''}`} data-key={a.key}>
       <button type="button" class="ask-row" onClick={onPick} aria-label={`${n}. ${a.ask}`}>
-        <span class="rank" aria-hidden="true">{n}</span>
         <span class="row-title">{a.ask}</span>
         {fresh && <span class="new" aria-label="New">New</span>}
-        <span class="row-meta"><DeadlineChip by={a.by} now={now} />{a.project && <span class="proj">{a.project}</span>}</span>
+        <span class="row-meta">{verb && <span class="verb">{verb}</span>}<DeadlineChip by={a.by} now={now} />{a.project && <span class="proj">{a.project}</span>}</span>
       </button>
     </li>
   );
 }
 
-function Btn({ a, act, run }: { a: Action; act: AskItem; run: (x: Action) => void }) {
+function Btn({ a, act, run, panel }: { a: Action; act: AskItem; run: (x: Action) => void; panel: string }) {
   const cls = `btn${a.primary ? ' primary' : ''}`;
+  const key = a.key === 'Enter' ? '⏎' : a.key;
+  const tag = a.primary && act.kind === 'decide' && act.recommend ? <span class="rec-tag">recommended</span> : null;
   if (a.open) return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer">{a.label} {Icon.out}<kbd>{a.key}</kbd></a>;
-  return <button type="button" class={cls} onClick={() => run(a)}>{a.label}<kbd>{a.key === 'Enter' ? '⏎' : a.key}</kbd></button>;
+  return <button type="button" class={cls} onClick={() => run(a)}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd>{key}</kbd>}</button>;
 }
 
-function Card({ a, n, asks, run }: { a: AskItem; n: number; asks: Asks; run: (x: Action) => void }) {
+function Card({ a, n, total, asks, run }: { a: AskItem; n: number; total: number; asks: Asks; run: (x: Action) => void }) {
   const actions = actionsFor(a);
   const silent = ifSilent(a);
+  const primary = actions.find((x) => x.primary);
+  const showRec = !!a.recommend && !(primary && a.kind !== 'decide' && primary.label.toLowerCase() === a.recommend.trim().toLowerCase());
   const replyRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
   useEffect(() => { if (asks.panel !== 'reply') setText(''); }, [asks.panel, a.key]);
   const choices = asks.deferChoices();
   const isAnswer = a.kind === 'answer';
+  const replying = (asks.panel === 'reply' || isAnswer) && asks.panel !== 'defer';
   return (
     <li class={`ask-li${asks.fresh.has(a.key) ? ' fresh' : ''}`} data-key={a.key}>
-      <article class="ask-card" data-kind={a.kind} aria-label={`Ask ${n}`}>
+      <article class="ask-card" data-kind={a.kind} data-panel={asks.panel} aria-label={`Ask ${n} of ${total}`}>
         <div class="ask-eyebrow">
-          <span class="rank" aria-hidden="true">{n}</span>
+          <span class="of" aria-hidden="true">{n} of {total}</span>
           {a.project && <span class="proj">{a.project}</span>}
           <span class="from">{a.from}</span>
           {asks.fresh.has(a.key) && <span class="new">New</span>}
@@ -78,32 +89,38 @@ function Card({ a, n, asks, run }: { a: AskItem; n: number; asks: Asks; run: (x:
         {a.why && <p class="ask-why">{a.why}</p>}
         {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
         <dl class="ask-facts">
-          {a.recommend && <div><dt>Recommend</dt><dd>{a.recommend}</dd></div>}
+          {showRec && <div><dt>Recommend</dt><dd>{a.recommend}</dd></div>}
           <div class={silent.waits ? 'waits' : ''}><dt class="sr-only">Default</dt><dd class="silent">{Icon.hourglass}<span>{silent.text}</span></dd></div>
-          {a.detail && <div><dt class="sr-only">Details</dt><dd><button type="button" class="more-link" onClick={() => asks.setDetail(!asks.detail)} aria-expanded={asks.detail}>{asks.detail ? 'Hide details' : 'Show details'}<kbd>e</kbd></button></dd></div>}
         </dl>
         {asks.panel === 'defer' ? (
           <div class="ask-defer" role="group" aria-label="Defer until">
             <span class="lbl">Defer until</span>
             {choices.map((c) => <button type="button" class="btn" key={c.key} onClick={() => void asks.defer(a, c.at, c.label)}>{c.label}<kbd>{c.key}</kbd></button>)}
-            <button type="button" class="btn quiet" onClick={() => asks.setPanel('none')}>Cancel<kbd>Esc</kbd></button>
+            <button type="button" class="btn quiet cancel" onClick={() => asks.setPanel('none')}>Cancel<kbd>Esc</kbd></button>
           </div>
         ) : (
-          <div class="ask-actions">
-            {actions.map((x) => <Btn key={x.id} a={x} act={a} run={run} />)}
-            <span class="grow" />
-            <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd>z</kbd></button>
-            <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>{isAnswer ? 'Answer' : 'Reply'}<kbd>r</kbd></button>
-          </div>
+          !isAnswer && (
+            <div class="ask-actions">
+              {actions.map((x) => <Btn key={x.id} a={x} act={a} run={run} panel={asks.panel} />)}
+              <span class="grow" />
+              <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd>z</kbd></button>
+              <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply<kbd>r</kbd></button>
+            </div>
+          )
         )}
-        {(asks.panel === 'reply' || isAnswer) && asks.panel !== 'defer' && (
-          <form class="ask-reply-box" onSubmit={(e) => { e.preventDefault(); void asks.reply(a, text); }}>
-            <input ref={(el) => { replyRef.current = el; if (el && asks.panel === 'reply' && document.activeElement !== el) el.focus(); }} type="text" value={text} maxLength={1000} aria-label={`Reply to ${a.from}`} placeholder={`${isAnswer ? 'Your answer' : 'Reply'} to ${a.from}. End with ? to ask a question`}
-              onInput={(e) => setText((e.target as HTMLInputElement).value)}
-              onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); (e.target as HTMLElement).blur(); asks.setPanel('none'); } }} />
-            <button type="submit" class="btn primary" disabled={!text.trim()}>Send<kbd>⏎</kbd></button>
-          </form>
+        {replying && (
+          <>
+            <form class="ask-reply-box" onSubmit={(e) => { e.preventDefault(); void asks.reply(a, text); }}>
+              <input ref={(el) => { replyRef.current = el; if (el && asks.panel === 'reply' && document.activeElement !== el) el.focus(); }} type="text" value={text} maxLength={1000} aria-label={isAnswer ? `Answer ${a.from}` : `Reply to ${a.from}`} placeholder={isAnswer ? `Answer ${a.from}` : `Reply to ${a.from}`}
+                onInput={(e) => setText((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); (e.target as HTMLElement).blur(); asks.setPanel('none'); } }} />
+              <button type="submit" class="btn primary send" disabled={!text.trim()}>Send<kbd>⏎</kbd></button>
+              {isAnswer && <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd>z</kbd></button>}
+            </form>
+            <p class="hint">End with ? to ask a question; anything else is an instruction</p>
+          </>
         )}
+        {a.detail && <button type="button" class="more-link" onClick={() => asks.setDetail(!asks.detail)} aria-expanded={asks.detail}>{asks.detail ? 'Hide details' : 'Show details'}<kbd>e</kbd></button>}
         {asks.detail && a.detail && <pre class="ask-detail">{a.detail}</pre>}
       </article>
     </li>
@@ -129,6 +146,8 @@ export function AsksView({ asks }: { asks: Asks }) {
     live.current = text;
   }, [asks.total, asks.phase]);
 
+  useEffect(() => { document.querySelector('.ask-card')?.scrollIntoView({ block: 'nearest' }); }, [asks.cursor]);
+
   const run = (x: Action) => {
     const a = asks.itemsRef.current.find((i) => i.key === asks.cursorRef.current) ?? asks.current;
     if (!a) return;
@@ -140,7 +159,7 @@ export function AsksView({ asks }: { asks: Asks }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === 'Escape' && asks.panel !== 'none') { e.preventDefault(); asks.setPanel('none'); return; }
+      if (e.key === 'Escape' && asks.panelRef.current !== 'none') { e.preventDefault(); asks.setPanel('none'); return; }
       if (isTyping(e.target)) return;
       const k = e.key;
       const list = asks.itemsRef.current;
@@ -153,7 +172,7 @@ export function AsksView({ asks }: { asks: Asks }) {
       if (k === 'm' && more > 0) { e.preventDefault(); asks.setShowAll(true); return; }
       if (!a) return;
       const actions = actionsFor(a);
-      if (asks.panel === 'defer') {
+      if (asks.panelRef.current === 'defer') {
         const c = asks.deferChoices().find((x) => x.key === k);
         if (c) { e.preventDefault(); void asks.defer(a, c.at, c.label); }
         return;
@@ -197,11 +216,12 @@ export function AsksView({ asks }: { asks: Asks }) {
       )}
       {(items.length > 0 || ghosts.length > 0) && (
         <ol class="asks" aria-label="Asks, highest score first">
-          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} asks={asks} run={run} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} />))}
+          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.total} asks={asks} run={run} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} />))}
           {ghosts.map((g) => <Row key={`gone-${g.key}`} a={g} n={g.rank ?? 0} now={asks.now} fresh={false} leaving onPick={() => undefined} />)}
         </ol>
       )}
       {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more <kbd>m</kbd></button>}
+      {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · u undo</p>}
       {(asks.sent.length > 0 || asks.snoozed.length > 0) && (
         <footer class="asks-foot">
           {asks.sent.length > 0 && (
@@ -210,7 +230,7 @@ export function AsksView({ asks }: { asks: Asks }) {
               {openSent && (
                 <ul class="foot-list">
                   {asks.sent.map((s) => (
-                    <li key={s.key}><span class="t">{s.ask}</span><span class="what">{ANSWER_WORD[s.answer ?? ''] ?? 'Sent'}{s.text ? `: ${s.text}` : ''} · {s.from}</span><button type="button" class="link" onClick={() => void asks.retract(s)}>Undo</button></li>
+                    <li key={s.key}><span class="f-t">{s.ask}</span><span class="f-what">{ANSWER_WORD[s.answer ?? ''] ?? 'Sent'}{s.text ? `: ${s.text}` : ''} · {s.from}</span><button type="button" class="link" onClick={() => void asks.retract(s)}>Undo</button></li>
                   ))}
                 </ul>
               )}
@@ -221,7 +241,7 @@ export function AsksView({ asks }: { asks: Asks }) {
               <button type="button" class="foot-btn" aria-expanded={openSnoozed} onClick={() => setOpenSnoozed(!openSnoozed)}>Snoozed · {asks.snoozed.length}</button>
               {openSnoozed && (
                 <ul class="foot-list">
-                  {asks.snoozed.map((s) => <li key={s.key}><span class="t">{s.ask}</span><span class="what">back <DeadlineChip by={s.snoozedUntil} now={asks.now} /></span></li>)}
+                  {asks.snoozed.map((s) => <li key={s.key}><span class="f-t">{s.ask}</span><span class="f-what">back <DeadlineChip by={s.snoozedUntil} now={asks.now} /></span></li>)}
                 </ul>
               )}
             </div>
