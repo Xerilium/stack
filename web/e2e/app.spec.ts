@@ -835,7 +835,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.plan
   test('default route is Today: header, lead block actions, blocks in order, done circle completes', async ({ page }, info) => {
     const m = await setup(page, day());
-    await expect(page.getByRole('region', { name: 'Today' }).getByRole('heading', { level: 1 })).toContainText('planned');
+    await expect(page.getByRole('region', { name: 'Today' }).getByRole('heading', { level: 1 })).toContainText('of 8h');
     await expect(page.locator('.t-sub')).toContainText('free');
     const blocks = page.locator('[data-testid="plan"] .block');
     await expect(blocks.first().locator('.what-title')).toContainText('Plain priority'); // the server's next task leads
@@ -861,7 +861,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.fit
   test('tasks that do not fit are listed with estimates and +30m grows the budget', async ({ page }) => {
     await setup(page, Array.from({ length: 6 }, (_, i) => mk(i + 1, `Big ${i + 1} 🔴`)));
-    await expect(page.locator('.t-sub')).toContainText('2 later');
+    await expect(page.getByTestId('nofit')).toContainText('Big 5');
     const nofit = page.getByTestId('nofit');
     await expect(nofit.locator('li').first()).toContainText('2h');
     const before = await page.locator('[data-testid="plan"] .block').count();

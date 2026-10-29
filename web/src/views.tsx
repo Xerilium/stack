@@ -305,6 +305,8 @@ function Sent({ items, now }: { items: InboxItem[]; now: Date }) {
 
 type RefText = { ref: string; text: string };
 type RowKey = RefText & { project: string };
+/** Agent rows often start with a project glyph and an `[AI]` tag; both are noise in the panel. */
+const agentTitle = (s: string) => s.replace(/^(?:[^\p{L}\p{N}`*[]+\s*)+/u, '').replace(/^\[AI\]\s*/i, '').replace(/\s+[—-]\s*$/, '').trim() || s;
 const CHECK = { passing: '✓', failing: '✕', pending: '…', none: '' } as const;
 
 export interface TodayProps {
@@ -335,9 +337,10 @@ export function TodayView(t: TodayProps) {
   const agents = t.agents ?? [];
   const live = agents.filter((a) => a.state !== 'queued');
   const queued = agents.filter((a) => a.state === 'queued');
-  const shownQueued = queuedOpen ? queued : queued.slice(0, 3);
+  const shownQueued = queuedOpen ? queued : [];
   const heads = attention(agents).filter((x) => !/queued$/.test(x)).slice(0, 2);
   const over = t.plan.overflow.length > 0;
+  const shownOver = t.plan.atRisk.length > 0 ? t.plan.atRisk.slice(0, 12) : t.plan.overflow.slice(0, 5);
   const replyBox = (key: string, task: RefText, owner: string, placeholder: string, ok: string) => replying === key && (
     <Reply to={`the ${owner} agent`} placeholder={placeholder} onClose={() => setReplying(null)} onSend={(text) => { setReplying(null); t.onReply(task, text, ok); }} />
   );
@@ -349,7 +352,7 @@ export function TodayView(t: TodayProps) {
       <li key={a.ref} class={`agent ${a.state}`}>
         <span class="pulse" aria-hidden="true" />
         <div class="agent-body">
-          <p class="agent-title"><Md text={r.title || a.title} /></p>
+          <p class="agent-title"><Md text={agentTitle(r.title || a.title)} /></p>
           <p class="agent-meta">
             <span class="agent-state">{AGENT_LABEL[a.state]}</span>
             <span>{owner}</span>
@@ -361,9 +364,9 @@ export function TodayView(t: TodayProps) {
             {line && <span class="agent-last">{line}</span>}
           </p>
           <Sent items={repliesOf(a)} now={t.now} />
-          {replyBox(a.ref, a, owner, 'Message the agent', 'Sent to the agent')}
         </div>
         <button type="button" class="btn quiet reveal" aria-expanded={replying === a.ref} onClick={() => setReplying(replying === a.ref ? null : a.ref)}>Reply</button>
+        {replyBox(a.ref, a, owner, 'Message the agent', 'Sent to the agent')}
       </li>
     );
   };
@@ -373,7 +376,7 @@ export function TodayView(t: TodayProps) {
         <div class="t-top">
           <div>
             <p class="t-date">{date}</p>
-            <h1>{t.plan.blocks.length === 0 ? (t.budget.minutes > 0 ? 'Nothing planned' : 'No time planned') : `${span(t.plan.busy)} planned`}</h1>
+            <h1>{t.plan.blocks.length === 0 ? (t.budget.minutes > 0 ? 'Nothing planned' : 'No time planned') : <>{span(t.plan.busy)} <span class="of">of {span(t.budget.minutes)}</span></>}</h1>
           </div>
           <div class="avail" role="group" aria-label="Available today" data-testid="available">
             <span class="avail-label">Available</span>
@@ -384,8 +387,7 @@ export function TodayView(t: TodayProps) {
           </div>
         </div>
         <p class="t-sub">
-          {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at risk · {span(t.plan.riskShort)} more needed</span> : <span>{span(t.plan.free)} free</span>}
-          {t.plan.overflow.length > t.plan.atRisk.length && <span class="quiet">{t.plan.overflow.length - t.plan.atRisk.length} later</span>}
+          {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
           {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
           {heads.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{heads.join(' · ')}</button>}
@@ -408,11 +410,11 @@ export function TodayView(t: TodayProps) {
           {over && (
             <div class="nofit" data-testid="nofit">
               <div class="nofit-head">
-                <h3>Doesn't fit <span>{t.plan.atRisk.length > 0 ? `${t.plan.atRisk.length} at risk · ` : ''}{t.plan.overflow.length} tasks · {span(t.plan.short)}</span></h3>
-                <button type="button" class="btn quiet" onClick={() => t.onBudget(t.budget.minutes + 30)}>+30m</button>
+                <h3>Doesn't fit{t.plan.atRisk.length > 0 && <span>{t.plan.atRisk.length} at risk</span>}</h3>
+                <button type="button" class="btn quiet" title="More time (])" onClick={() => t.onBudget(t.budget.minutes + 30)}>+30m <kbd>]</kbd></button>
               </div>
               <ul>
-                {t.plan.overflow.slice(0, 12).map((o) => {
+                {shownOver.map((o) => {
                   const e = estimate(o);
                   return (
                     <li key={o.ref} class={t.plan.atRisk.includes(o) ? 'risk' : undefined} onDblClick={() => t.p.onOpen(o.ref)}>
@@ -423,7 +425,7 @@ export function TodayView(t: TodayProps) {
                   );
                 })}
               </ul>
-              {t.plan.overflow.length > 12 && <p class="quiet">and {t.plan.overflow.length - 12} more</p>}
+              {t.plan.overflow.length > shownOver.length && <p class="nofit-later">{t.plan.overflow.length - shownOver.length} later</p>}
             </div>
           )}
         </div>
@@ -439,7 +441,7 @@ export function TodayView(t: TodayProps) {
               const rec = d.recommendation && !/:$/.test(d.recommendation) ? d.recommendation : undefined;
               return (
                 <li class={`card need${sent.length ? ' decided' : ''}`} key={key}>
-                  <p class="card-eyebrow">{owner}{d.context ? ` · ${parseRow(d.context.text).title}` : ''}</p>
+                  <p class="card-eyebrow">{owner}{d.context ? ` · ${parseRow(d.context.text).title.replace(/\s--\s/g, ' — ')}` : ''}</p>
                   <p class="card-title"><Md text={r.title || d.task.text} /></p>
                   {rec && sent.length === 0 && <p class="rec"><span>Recommended</span><Md text={rec} /></p>}
                   {sent.length > 0 && <p class="waiting-agent">Sent, waiting on the agent</p>}
@@ -467,7 +469,7 @@ export function TodayView(t: TodayProps) {
             {live.map(agentRow)}
             {shownQueued.map(agentRow)}
           </ul>
-          {queued.length > 3 && <button type="button" class="link-btn" onClick={() => setQueuedOpen((o) => !o)}>{queuedOpen ? 'Show fewer' : `${queued.length - 3} more queued`}</button>}
+          {queued.length > 0 && <button type="button" class="link-btn queued-toggle" aria-expanded={queuedOpen} onClick={() => setQueuedOpen((o) => !o)}>{queuedOpen ? 'Hide queued' : `${queued.length} queued`}</button>}
 
           <h2 class="h2">Projects</h2>
           <ul class="tiles" data-testid="tops">
