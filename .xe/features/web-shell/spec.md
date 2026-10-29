@@ -23,7 +23,7 @@ First use must feel like a native app: it fills the window, the same four places
 
 ### FR:layout: Fills the window
 
-- **FR:layout.fill** (P1): On a desktop window the shell is `rail + main` and `main` fills the rest of the window width; content has a readable measure (`--measure`, 1080px) aligned to the rail, never a centered column with equal gutters. No horizontal scroll at any width
+- **FR:layout.fill** (P1): On a desktop window the shell is `rail + main` and `main` fills the rest of the window width; content has a readable measure (`--measure`, 960px; 1200px on My day) aligned to the rail, never a centered column with equal gutters. No horizontal scroll at any width
 - **FR:layout.breakpoint** (P1): The rail shows at 720px and wider; the bottom tab bar shows below 720px. A desktop window that is narrower than a phone is the only way to get the phone layout; a reload never changes the layout for the same window
 - **FR:layout.standalone** (P2): Installed (standalone) windows get the same layout, with safe areas respected (pwa `FR:install.standalone`)
 

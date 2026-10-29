@@ -85,7 +85,8 @@ export function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [drag, setDrag] = useState<{ ref: string; over: string | null; half: 'top' | 'bottom' } | null>(null);
   const [captureText, setCaptureText] = useState('');
-  const [preview, setPreview] = useState<{ spec?: CaptureSpec; error?: string; retry?: boolean } | null>(null);
+  const [preview, setPreview] = useState<{ spec?: CaptureSpec; error?: string; retry?: 'preview' | 'submit' } | null>(null);
+  const [previewTry, setPreviewTry] = useState(0);
   const [agentItems, setAgentItems] = useState<Agent[] | null>(null);
   const [agentsError, setAgentsError] = useState('');
   const [inbox, setInbox] = useState<InboxItem[]>([]);
@@ -318,7 +319,7 @@ export function App() {
     if (s.answer === 'go') ok = await sendReply(t, `Go with the recommendation: ${a.recommend}`, 'decision', '');
     else if (s.answer === 'defer' && s.until) ok = await run(() => api.action('suspend', t.ref, { hours: Math.max(1, Math.round((new Date(s.until!).getTime() - Date.now()) / 3600_000)) }), () => '');
     else ok = await sendReply(t, s.text ?? '', 'reply', '');
-    if (!ok) throw new Error('Not sent');
+    if (!ok) throw Object.assign(new Error('Not sent'), { shown: true }); // `run` already toasted the reason
   };
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
 
@@ -375,10 +376,10 @@ export function App() {
     let stale = false;
     const h = setTimeout(async () => {
       try { const r = await api.capture(text, { project: defaultProject(), dryRun: true }); if (!stale) setPreview({ spec: r.spec }); }
-      catch (e) { if (!stale) setPreview({ error: e instanceof Error ? e.message : 'Cannot parse', retry: e instanceof ApiFailure && e.status === 0 }); }
+      catch (e) { if (!stale) setPreview({ error: e instanceof Error ? e.message : 'Cannot parse', retry: e instanceof ApiFailure && e.status === 0 ? 'preview' : undefined }); }
     }, 250);
     return () => { stale = true; clearTimeout(h); };
-  }, [captureText, next, projects]);
+  }, [captureText, next, projects, previewTry]);
 
   const submitCapture = async () => {
     const text = captureText.trim();
@@ -392,7 +393,7 @@ export function App() {
       await refresh();
     } catch (e) {
       // @req FR:web-shell/state.capture
-      setPreview({ error: e instanceof Error ? e.message : 'Capture failed', retry: e instanceof ApiFailure && e.status === 0 });
+      setPreview({ error: e instanceof Error ? e.message : 'Capture failed', retry: e instanceof ApiFailure && e.status === 0 ? 'submit' : undefined });
     } finally { setBusy(false); }
   };
 
@@ -593,7 +594,7 @@ export function App() {
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submitCapture(); } }} />
           <p class={`preview-line${preview?.error ? ' err' : ''}`} role="status" data-testid="capture-preview">
             {preview ? (preview.error ?? [preview.spec!.title, preview.spec!.due && `due ${preview.spec!.due}`, preview.spec!.effort && `${preview.spec!.effort.emoji} ${preview.spec!.effort.minutes}m`, preview.spec!.project && `#${preview.spec!.project}`].filter(Boolean).join(' · ')) : <>Natural language: due, effort, <code>#project</code>. <kbd>Enter</kbd> adds.</>}
-            {preview?.retry && <button type="button" class="link" disabled={busy} onClick={() => void submitCapture()}>Retry</button>}
+            {preview?.retry && <button type="button" class="link" disabled={busy} onClick={() => (preview.retry === 'submit' ? void submitCapture() : setPreviewTry((n) => n + 1))}>Retry</button>}
           </p>
         </Dialog>
       )}

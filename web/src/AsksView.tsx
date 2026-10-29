@@ -29,7 +29,7 @@ function LiveBadge({ a, unreachable }: { a: Asks; unreachable: boolean }) {
     <div class={`live ${state}`} role="status" data-testid="live-status">
       <span class="dot" aria-hidden="true" />
       <span class={state === 'live' ? 'sr-only' : undefined}>{text}</span>
-      {state === 'offline' && <button type="button" class="link" onClick={() => void a.retry()}>Retry</button>}
+      {(state === 'offline' || (state === 'down' && a.phase === 'ready')) && <button type="button" class="link" onClick={() => void a.retry()}>Retry</button>}
     </div>
   );
 }
@@ -147,7 +147,7 @@ export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; 
 
 export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify?: NotifyCtl; offline?: boolean }) {
   const { items, cursor } = asks;
-  const unreachable = asks.phase === 'error';
+  const unreachable = asks.phase === 'error' || asks.error !== '';
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
   const { shown, more } = splitTop(items, TOP, asks.showAll);

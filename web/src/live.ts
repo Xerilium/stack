@@ -56,9 +56,11 @@ export function connectLive(o: LiveOpts): LiveHandle {
   };
   open();
   const stop = (() => { stopped = true; if (timer) clearInterval(timer); es?.close(); }) as LiveHandle;
+  /** Reopens the stream, even after a permanent close (a host that came back); without EventSource it just refreshes. */
   stop.retry = () => {
     if (stopped) return;
-    if (timer) { o.onChange(['poll']); return; }
+    if (!make) { o.onChange(['poll']); return; }
+    if (timer) { clearInterval(timer); timer = null; }
     es?.close();
     es = null;
     open();

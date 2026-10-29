@@ -101,11 +101,10 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const retry = useCallback(async () => { live.current?.retry(); await load(); tasksCb.current(); }, [load]);
 
   // task asks join the list; the ones just answered stay out until the inbox knows
-  const [, bump] = useState(0);
-  const taskItems = (extras.tasks ?? []).filter((t) => !held(t.key));
-  const ranked = useMemo(() => mergeNeeds(items, taskItems), [items, taskItems.map((t) => t.key).join('|')]);
+  const [holdTick, bump] = useState(0);
+  const ranked = useMemo(() => mergeNeeds(items, (extras.tasks ?? []).filter((t) => !held(t.key))), [items, extras.tasks, holdTick]); // holdTick stands for the hold map
   itemsRef.current = ranked;
-  const total = serverTotal + taskItems.length;
+  const total = serverTotal + (ranked.length - items.length);
 
   useEffect(() => { document.title = pageTitle(total); }, [total]);
 
@@ -120,7 +119,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
 
   const current = ranked.find((i) => i.key === cursor) ?? null;
 
-  const release = (key: string) => { hold.current.delete(key); bump((n) => n + 1); };
+  const release = (key: string) => hold.current.delete(key);
 
   /** A 🙋 row: the answer goes to the project's agent inbox (or the row is deferred); the row leaves at once. */
   const answerTask = useCallback(async (a: AskItem, s: Send, sentText: string) => {
@@ -136,8 +135,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       toastRef.current(sentText, 'ok');
     } catch (e) {
       setCursor(a.key);
-      toastRef.current(e instanceof Error ? e.message : 'Failed', 'err');
-    } finally { release(a.key); }
+      if (!(e instanceof Error && (e as { shown?: boolean }).shown)) toastRef.current(e instanceof Error ? e.message : 'Failed', 'err');
+    } finally { release(a.key); bump((n) => n + 1); }
   }, [setCursor, setPanel]);
 
   /** Answers an ask: it leaves the list at once; a failure puts it back. @req FR:ask-queue/web.optimistic */

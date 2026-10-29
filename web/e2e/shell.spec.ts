@@ -41,7 +41,7 @@ test.describe('layout and nav', () => {
   });
 
   // @req FR:web-shell/layout.breakpoint
-  test('a tablet-wide window keeps the rail; only a phone-wide one gets the tab bar, and a reload changes nothing', async ({ page, browser }, info) => {
+  test('a tablet-wide window keeps the rail; only a phone-wide one gets the tab bar, and a reload changes nothing', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'desktop sizes');
     await mockApi(page);
     await page.setViewportSize({ width: 760, height: 900 });
@@ -52,7 +52,6 @@ test.describe('layout and nav', () => {
     await expect(page.locator('.tabbar')).toBeHidden();
     await page.setViewportSize({ width: 700, height: 900 });
     await expect(page.locator('.tabbar')).toBeVisible();
-    void browser;
   });
 
   // @req FR:web-shell/nav.keys
@@ -69,13 +68,22 @@ test.describe('layout and nav', () => {
     await chord('t', /#\/today/);
   });
 
-  // @req FR:web-shell/palette.jump
-  test('the palette jumps to a project by name', async ({ page }, info) => {
+  // @req FR:web-shell/palette.jump @req FR:web-shell/palette.scope
+  test('the palette jumps to a project by name; row commands only where there are rows', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/asks');
     await page.keyboard.press('Control+k');
     const box = page.getByRole('combobox', { name: 'Command' });
+    await box.fill('mark done');
+    await expect(page.getByText('No matching command')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('g'); await page.keyboard.press('h');
+    await expect(page).toHaveURL(/#\/home/);
+    await page.keyboard.press('Control+k');
+    await box.fill('mark done');
+    await expect(page.locator('#palette-list [role=option]').first()).toHaveText(/Mark done/);
+    await box.fill('');
     await box.fill('alpha');
     await expect(page.locator('#palette-list [role=option]').first()).toHaveText(/Project: Alpha/);
     await page.keyboard.press('Enter');
