@@ -128,6 +128,7 @@ function Card({ a, n, total, asks, run }: { a: AskItem; n: number; total: number
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); (e.target as HTMLElement).blur(); asks.setPanel('none'); } }} />
               <button type="submit" class="btn primary send" disabled={!text.trim()}>Send<kbd aria-hidden="true">⏎</kbd></button>
               {isAnswer && <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>}
+              {isAnswer && a.source === 'task' && <button type="button" class="btn quiet" onClick={() => run({ id: 'open', label: 'Details', key: 'o', open: true })} aria-keyshortcuts="o">Details<kbd aria-hidden="true">o</kbd></button>}
             </form>
             <p class="hint">End with ? to ask a question; anything else is an instruction</p>
           </>

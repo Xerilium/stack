@@ -127,7 +127,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const answerTask = useCallback(async (a: AskItem, s: Send, sentText: string) => {
     const list = itemsRef.current;
     const at = list.findIndex((i) => i.key === a.key);
-    hold.current.set(a.key, Date.now() + HOLD_MS);
+    hold.current.set(a.key, Infinity); // released in `finally`: the send, refresh and inbox reload run in series
     bump((n) => n + 1);
     setPanel('none'); setDetail(false);
     const after = list.filter((i) => i.key !== a.key);

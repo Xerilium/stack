@@ -97,17 +97,26 @@ test.describe('honest states', () => {
   test('open 🙋 rows show on Needs you when no agent wrote an ask; Go with it sends the decision', async ({ page }) => {
     const tasks = seed();
     tasks.push({ ref: 'alpha:20', text: '🙋 Pick the ADU path', project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: ['> **Recommendation:** Studio Shed quote'] });
+    tasks.push({ ref: 'alpha:21', text: '🙋 Pick a color', project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: ['Blue or green'] });
     const m = await mockApi(page, { tasks });
     await page.goto('/#/asks');
     const card = page.locator('.ask-card');
     await expect(card.locator('.ask-title')).toHaveText('Pick the ADU path');
     await expect(card).toContainText('Studio Shed quote');
     await expect(page.getByTestId('asks-empty')).toHaveCount(0);
-    await expect(page.locator('.rail, .tabbar').getByRole('button', { name: /Needs you/ }).first()).toContainText('1');
+    await expect(page.locator('.rail, .tabbar').getByRole('button', { name: /Needs you/ }).first()).toContainText('2');
     await card.getByRole('button', { name: /Go with it/ }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'alpha:20', kind: 'decision', expect: '🙋 Pick the ADU path' } });
-    await expect(page.getByTestId('asks-empty')).toContainText('Nothing needs you');
-    await expect(page.getByTestId('asks-empty')).toContainText('No open asks, decisions, or replies');
+    // a 🙋 row with no recommendation wants an answer; Details opens the row itself
+    await expect(card.locator('.ask-title')).toHaveText('Pick a color');
+    await expect(card.getByLabel('Answer Alpha agent')).toBeVisible();
+    await card.getByRole('button', { name: /Details/ }).click();
+    await expect(page.locator('.focus-mode')).toContainText('Blue or green');
+    await page.keyboard.press('Escape');
+    await card.getByLabel('Answer Alpha agent').fill('Green');
+    await card.getByLabel('Answer Alpha agent').press('Enter');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'alpha:21', kind: 'reply', text: 'Green' } });
+    await expect(page.getByTestId('asks-empty')).toContainText('Nothing needs you. No open asks, decisions, or replies');
   });
 
   // @req FR:web-shell/state.live @req FR:web-shell/state.unreachable
