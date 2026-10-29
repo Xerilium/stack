@@ -67,7 +67,7 @@ Home is the starting screen (web-shell `FR:nav.views`): the one thing to do now,
 
 - **FR:home2.order** (P1): **Projects** lists projects in priority order: by the rank of each project's top task (web-app `FR:now.active` ranking), never alphabetically
 - **FR:home2.five** (P1): **Only have 5 min?** sits after Up next: up to 3 actionable active tasks whose expected time is 15 minutes or less (🔹), ranked, not already on screen. Hidden when there are none
-- **FR:home2.fold** (P1): Projects shows 3 rows, the rest fade under a gradient with `Show all (n)`; `Show all` reveals them until the next load. Phones the same
+- **FR:home2.fold** (P1): Projects shows 3 rows, the rest fade under a gradient with `Show all (n)`; `Show all` reveals them while you stay on Home; an open row is never clipped by the fade. Phones the same
 - **FR:home2.expand** (P1): One click on a row (anywhere but a control) expands it in place: the body (`FR:home2.body`), notes, subtasks as a checklist, and the actions Start / Done / Defer. A second click, `Esc`, or expanding another row collapses it. `Enter` or the expand icon (⤢) opens the full-screen detail; double-click does nothing special
 - **FR:home2.body** (P1): A task's text is a **title** (the first line) and a **body** (its note lines under the row, rendered as paragraphs); every view shows the title and the expanded row or detail shows the body
 - **FR:home2.defer** (P1): The action is called **Defer** everywhere (buttons, palette, toasts, help): `Defer 2h` (`n`, one tap) and `Defer…` (`z`, the menu); `Not now`, `Snooze`, `Park` are gone from the UI

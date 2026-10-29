@@ -44,6 +44,7 @@ function toggleOn<E extends HTMLElement>(ref: string, p: { onCursor: (ref: strin
   role: 'button', tabIndex: 0, 'aria-expanded': p.open === ref,
   onClick: (e) => { if ((e.target as HTMLElement).closest('a')) return; e.stopPropagation(); p.onCursor(ref); p.onToggleOpen(ref); },
   onKeyDown: (e) => {
+    if (e.target !== e.currentTarget) return; // a chip or link inside keeps its own keys
     if (e.key === ' ') { e.preventDefault(); e.stopPropagation(); p.onCursor(ref); p.onToggleOpen(ref); }
     else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); p.onCursor(ref); p.onOpen(ref); } // the focused row, not the cursor row
   },
@@ -67,7 +68,7 @@ export function RowDetail({ t, all, busy, onAct, onToggle, onOpen, extra }: {
       )}
       <div class="actions small">
         <button type="button" class="btn primary" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('start', t.ref); }}>Start <kbd>s</kbd></button>
-        <button type="button" class="btn" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', t.ref); }}>Done <kbd>d</kbd></button>
+        <button type="button" class="btn" disabled={busy} onClick={(e) => { e.stopPropagation(); onToggle(t); }}>{t.done ? 'Reopen' : 'Done'} <kbd>d</kbd></button>
         <button type="button" class="btn quiet" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('defer', t.ref); }}>Defer <kbd>z</kbd></button>
         <span class="grow" />
         <button type="button" class="btn quiet" aria-label="Open" title="Open full screen (Enter)" onClick={(e) => { e.stopPropagation(); onOpen(t.ref); }}>⤢ <kbd>⏎</kbd></button>
@@ -185,7 +186,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
           <Editor text={t.text} onSave={(v) => p.onSave(t.ref, v)} onCancel={() => p.onEdit(null)} />
         ) : (
           <>
-            <div class="title" {...toggleOn<HTMLDivElement>(t.ref, p)}>{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text"><Md text={r.title || t.text} /></span></div>
+            <div class="title">{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text" {...toggleOn<HTMLSpanElement>(t.ref, p)}><Md text={r.title || t.text} /></span></div>
             <button type="button" class="edit-btn" aria-label={`Edit ${r.title || 'task'}`} onClick={(e) => { e.stopPropagation(); p.onEdit(t.ref); }}>✎</button>
             <div class="chips">
               {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
@@ -731,7 +732,7 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
     <li key={i.task.ref} class={`row home-row${p.cursor === i.task.ref ? ' cursor' : ''}${p.open === i.task.ref ? ' open' : ''}${p.justDone.has(i.task.ref) ? ' done-anim' : ''}`} data-ref={i.task.ref} onClick={() => { p.onCursor(i.task.ref); p.onToggleOpen(i.task.ref); }}>
       <div class="line">
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', i.task.ref); }}><span class="box" /></button>
-        <span class="title" {...toggleOn<HTMLSpanElement>(i.task.ref, p)}><Md text={r.title || i.task.text} /><Tags r={r} /></span>
+        <span class="title"><span class="text" {...toggleOn<HTMLSpanElement>(i.task.ref, p)}><Md text={r.title || i.task.text} /></span><Tags r={r} /></span>
         <span class="proj-tag">{p.titles.get(i.task.project) ?? i.task.project}</span>
         {p.agent?.chip(i.task)}
         <When i={i} />
@@ -743,6 +744,7 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
   };
   const projects = h.projects.filter((x) => !x.shown);
   const shownProjects = all ? projects : projects.slice(0, 3);
+  const folded = !all && projects.length > 3 && !shownProjects.some((x) => p.open === x.top.task.ref); // an open row is never clipped
   return (
     <section class="home" aria-label="Home">
       <div class="home-window">
@@ -790,6 +792,7 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
           <span class="grow" />
           <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>
           <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('start', demoted.task.ref)}>Start anyway</button>
+          {detail(demoted.task)}
         </div>
       )}
       {h.next.length > 0 && (
@@ -805,7 +808,7 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
         </div>
       )}
       {projects.length > 0 && (
-        <div class={`home-projects-wrap${!all && projects.length > 3 ? ' folded' : ''}`}>
+        <div class={`home-projects-wrap${folded ? ' folded' : ''}`}>
           <h2 class="h2">Projects</h2>
           <ul class="home-projects" data-testid="home-projects">
             {shownProjects.map((x) => (

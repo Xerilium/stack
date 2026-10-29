@@ -87,7 +87,7 @@ test.describe('Home round 3', () => {
     await mockApi(page, { tasks: tasks() });
     await page.goto('/');
     const row = page.locator('.row[data-ref="alpha:30"]');
-    const title = row.locator('.title');
+    const title = row.locator('.title .text');
     await title.focus();
     await expect(title).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press(' ');
