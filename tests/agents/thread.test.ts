@@ -78,11 +78,11 @@ describe('taskThread', () => {
     expect((await taskThread(ctx, undefined, 'flantastic-4:7')).items).toEqual([]); // the new row has no thread
   });
 
-  it('names the task session (by title suffix) when a runner lists one', async () => {
+  it('names the task session (by title suffix) when a runner lists one; a review session is never it', async () => {
     const sess = (id: string, title: string, lastActive: string): Session => ({ id, title, project: 'x', cwd: '/x', lastActive, active: false, cost: { usd: 0, tokens: 0 }, prs: [] });
     const { ctx, runs } = await mk([sess('a1b2c3d4-0000-0000-0000-000000000001', 'Cid · Release · flantastic-4:7', '2026-10-29T09:00:00Z'), sess('a1b2c3d4-0000-0000-0000-000000000002', 'Cid · review · Release · flantastic-4:7', '2026-10-29T11:00:00Z')]);
     const th = await taskThread(ctx, runs, 'flantastic-4:7');
-    expect(th.session).toMatchObject({ id: 'a1b2c3d4-0000-0000-0000-000000000002', state: expect.any(String) });
+    expect(th.session).toMatchObject({ id: 'a1b2c3d4-0000-0000-0000-000000000001', state: expect.any(String) }); // the newer one is the read-only review
   });
 });
 

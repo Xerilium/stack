@@ -391,11 +391,9 @@ async function appendLog(ctx: LifecycleContext, ref: TaskRef, caller: Caller, lv
 // ------------------------------------------------------------------ claim
 
 /**
- * Marks a row in progress for the agent. Needs `assist`; never a 🙋 row, a held row (blocked, parked, waiting, suspended), or a row under a closed one.
- * The claim is logged before the row changes.
- * @req FR:ai-triage-assist/claim.start @req FR:ai-triage-assist/claim.log
+ * The claim's checks without the write: needs `assist`; never a 🙋 row, a held row (blocked, parked, waiting, suspended), or a row under a closed one.
+ * Throws where `claimTask` would; `claimable: false` when the row is already 🚧. @req FR:agent-thread/thread.assign
  */
-/** The claim's checks without the write: throws where `claimTask` would; `claimable: false` when the row is already 🚧. @req FR:agent-thread/thread.assign */
 export async function checkClaim(ctx: LifecycleContext, ref: TaskRef, caller: Caller): Promise<{ claimable: boolean; lvl: Autonomy; l: Located }> {
   checkCaller(caller);
   const l = await locate(ctx, ref);
@@ -407,6 +405,10 @@ export async function checkClaim(ctx: LifecycleContext, ref: TaskRef, caller: Ca
   return { claimable: !norm(l.row.text).includes('🚧'), lvl, l };
 }
 
+/**
+ * Marks a row in progress for the agent (the checks are `checkClaim`'s). The claim is logged before the row changes.
+ * @req FR:ai-triage-assist/claim.start @req FR:ai-triage-assist/claim.log
+ */
 export async function claimTask(ctx: LifecycleContext, ref: TaskRef, caller: Caller): Promise<LifecycleResult> {
   const { claimable, lvl, l } = await checkClaim(ctx, ref, caller);
   if (!claimable) return { changed: false, ref: { path: ref.path, line: ref.line } };

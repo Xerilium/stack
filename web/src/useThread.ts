@@ -35,7 +35,8 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
   }, [api]);
 
   useEffect(() => {
-    if (!ref) { seq.current++; setThread(emptyThread()); setPhase('idle'); return; }
+    seq.current++; setThread(emptyThread()); // never show (or follow up) the previous task's thread while the new one loads
+    if (!ref) { setPhase('idle'); return; }
     void load(ref);
   }, [ref, load]);
   // A live change re-reads the open thread quietly; the current ref and phase are read at that moment.

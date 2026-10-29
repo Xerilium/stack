@@ -88,9 +88,9 @@ async function resolve(ctx: LifecycleContext, i: { agent?: string; ref?: string;
 }
 
 /** The persona options for a follow-up in an existing session: the same system prompt and model as a new task session, no title. @req FR:agent-thread/thread.ask */
-export async function agentPromptOptions(ctx: LifecycleContext, i: { agent?: string; ref?: string; project?: string }): Promise<{ options: PromptOptions; agent: string }> {
+export async function agentPromptOptions(ctx: LifecycleContext, i: { agent?: string; ref?: string; project?: string }): Promise<{ options: PromptOptions }> {
   const { c, agent } = await resolve(ctx, i);
-  return { options: { systemPrompt: personaOf(agent, c?.text), ...(agent.model ? { model: agent.model } : {}) }, agent: agent.slug };
+  return { options: { systemPrompt: personaOf(agent, c?.text), ...(agent.model ? { model: agent.model } : {}) } };
 }
 
 /** Starts a new session for an agent on a task (or a project). @req FR:agent-team/talk.start */
@@ -137,9 +137,8 @@ export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText
 export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string): Promise<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }> {
   const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug });
   if (!ref || !c) throw new LifecycleError('Bad ref');
-  if (c.human) throw new TriageDenied('Needs a human');
   const caller = { actor: `agent:${agent.slug}`, owner: true };
-  await checkClaim(ctx, ref, caller); // refused (held, done, autonomy) before any run starts
+  await checkClaim(ctx, ref, caller); // refused (🙋, held, done, autonomy) before any run starts
   const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text: QUICK_PROMPTS.assign }); // then the start: one that fails leaves no 🚧 behind
   const claimed = (await claimTask(ctx, ref, caller)).changed;
   return { ...r, claimed };
@@ -182,7 +181,8 @@ export async function taskThread(ctx: LifecycleContext, runs: AgentRuns | undefi
   const out: Thread = { items, ...(review ? { review } : {}) };
   if (runs) {
     const tail = ` · ${refText}`;
-    const mine = (await runs.sessions({ limit: 200 }).catch(() => ({ items: [] }))).items.filter((x) => x.title.endsWith(tail)).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
+    // A review session (` · review · `) is read-only and never the one a question continues.
+    const mine = (await runs.sessions({ limit: 200 }).catch(() => ({ items: [] }))).items.filter((x) => x.title.endsWith(tail) && !x.title.includes(' · review · ')).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
     if (mine) out.session = { id: mine.id, title: mine.title, state: mine.state };
   }
   return out;

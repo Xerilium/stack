@@ -87,6 +87,9 @@ describe('thread routes', () => {
     expect((await call('owner', 'POST', `/sessions/${sid}/prompt`, { text: 'plain' })).status).toBe(202);
     expect((prompts[2] as { options?: unknown }).options).toBeUndefined();
     expect((await call('owner', 'POST', `/sessions/${sid}/prompt`, { text: 'x', ref: 'nope' })).status).toBe(422);
+    expect((await call('owner', 'POST', `/sessions/${sid}/prompt`, { text: 'x', ref: 'flantastic-4:7', agent: 'cos' })).status).toBe(202); // the picked agent's persona
+    expect((prompts[3] as { options?: { systemPrompt?: string } }).options?.systemPrompt).toContain('You are CoS');
+    expect((await call('owner', 'POST', `/sessions/${sid}/prompt`, { text: 'x', agent: 'nobody' })).status).toBe(404);
     expect((await call('owner', 'POST', '/tasks/flantastic-4:8/assign', {})).status).toBe(403);
     expect((await call('owner', 'POST', '/tasks/flantastic-4:7/assign', { agent: 'Bad Slug' })).status).toBe(422);
     const none = await mk(false);
