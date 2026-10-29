@@ -12,6 +12,10 @@ const all = [
 describe('now helpers', () => {
   it('lists open top-level Active tasks', () => expect(activeTasks(all).map((x) => x.ref)).toEqual(['a:1', 'a:4']));
   it('counts subtask progress', () => { expect(progress(all, 0)).toEqual({ done: 1, total: 2 }); expect(progress(all, 3)).toEqual({ done: 0, total: 0 }); });
+  it('does not count replies as subtasks', () => {
+    const rows: Task[] = [{ ref: 'a:1', text: '🙋 Ask', project: 'a', section: 'Active', done: false, depth: 0, notes: [] }, { ref: 'a:2', text: '💬 Yes', project: 'a', section: 'Active', done: false, depth: 1, notes: [] }];
+    expect(progress(rows, 0)).toEqual({ done: 0, total: 0 });
+  });
   it('returns children', () => expect(children(all, 'a:1').map((x) => x.ref)).toEqual(['a:2', 'a:3']));
   it('picks the top task: Active, then Up next, then any', () => {
     expect(topTask(all, 'a')?.ref).toBe('a:1');

@@ -45,6 +45,11 @@ describe('decisions and agents', () => {
     expect(d).toHaveLength(1);
     expect(d[0]).toMatchObject({ task: { text: '🙋 Make final decision' }, context: { text: 'Decide whether to re-engage' }, recommendation: 'Let it drop.' });
   });
+  it('an answered 🙋 (open 💬 under it) leaves Needs you and stops the agent waiting', () => {
+    const rows = [t('Parent'), t('🪄 Draft options', 1), t('🙋 Pick one', 1), t('💬 Option B', 2)];
+    expect(decisions(rows, at(10))).toEqual([]);
+    expect(agentWork(rows, at(10)).map((x) => x.state)).toEqual(['queued']);
+  });
   it('ignores 🙋 rows in Backlog unless under a row in progress', () => {
     const back = '📋 Backlog';
     const rows = [t('Later', 0, [], 'a', false, back), t('🙋 Ask', 1, [], 'a', false, back), t('🚧 🪄 Doing', 0, [], 'a', false, back), t('🙋 Now ask', 1, [], 'a', false, back)];

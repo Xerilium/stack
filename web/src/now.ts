@@ -11,6 +11,7 @@ export function progress(tasks: Task[], i: number): { done: number; total: numbe
   for (let k = i + 1; k < tasks.length; k++) {
     const t = tasks[k];
     if (t.project !== base.project || t.depth <= base.depth) break;
+    if (/^\s*💬/u.test(t.text)) continue; // replies are messages, not subtasks
     total++;
     if (t.done) done++;
   }

@@ -906,6 +906,7 @@ test.describe('today view', () => {
     await plain.getByLabel('Reply').fill('Blue');
     await plain.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByText('Changed elsewhere')).toBeVisible();
+    await expect(page.getByLabel('Reply')).toHaveValue('Blue'); // the typed reply survives the conflict
     expect(m.calls.find((c) => c.path === '/tasks')).toMatchObject({ body: { text: '💬 Blue', parent: 'gamma:11' } });
     expect(m.tasks.map((t) => t.text)).not.toContain('💬 Blue');
   });

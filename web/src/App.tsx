@@ -226,9 +226,8 @@ export function App() {
     setDeferRefs(null);
     await run(() => api.action('suspend', refs[0], d.hours ? { hours: d.hours } : { days: d.days }), () => `Deferred: ${d.label.toLowerCase()}`);
   };
-  const sendReply = async (task: Task, text: string, ok: string) => {
-    await run(() => api.add(task.project, `💬 ${text}`, task.ref, task.text), () => ok);
-  };
+  const sendReply = async (task: Task, text: string, ok: string): Promise<boolean> =>
+    (await run(() => api.add(task.project, `💬 ${text}`, task.ref, task.text), () => ok)) !== undefined;
   const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'Sent to the agent');
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
 
@@ -438,7 +437,7 @@ export function App() {
         {phase === 'loading' && <p class="loading">Loading…</p>}
         {phase === 'ready' && view === 'today' && (
           <TodayView now={clockNow} plan={plan} day={day} decisions={decisions} agents={agents} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
-            onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => void sendReply(t, text, ok)} onAccept={(d) => void accept(d)} />
+            onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={sendReply} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'now' && <NowView task={next} sections={sections} hidden={hidden} allOpen={allOpen} onToggleAll={() => setAllOpen((o) => !o)} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
         {phase === 'ready' && view === 'list' && (

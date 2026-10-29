@@ -64,10 +64,12 @@ export function parseRow(text: string): Row {
   s = s.replace(/(?:@\s*)?<?(https?:\/\/[^\s<>\]]+)>?/g, (m, raw: string) => {
     let href = raw, tail = '';
     const count = (c: string) => href.split(c).length - 1;
-    while (href.endsWith(')') && count(')') > count('(')) { href = href.slice(0, -1); tail = `)${tail}`; } // a ) the URL did not open is text
+    for (;;) { // trailing punctuation, and a ) the URL did not open, are text
+      if (/[,.;:!?]$/.test(href)) { tail = href.slice(-1) + tail; href = href.slice(0, -1); } else if (href.endsWith(')') && count(')') > count('(')) { href = href.slice(0, -1); tail = `)${tail}`; } else break;
+    }
     try { row.links.push({ href, label: new URL(href).hostname.replace(/^www\./, '') }); return ` ${tail}`; } catch { return m; }
   });
   s = s.replace(/\uE000(\d+)\uE000/g, (_m, i: string) => md[Number(i)]);
-  row.title = s.replace(/🔎/gu, ' ').replace(/\s+/g, ' ').replace(/\s+([,.;:])/g, '$1').trim();
+  row.title = s.replace(/🔎/gu, ' ').replace(/\s+/g, ' ').replace(/\s+([,.;:)])/g, '$1').replace(/\(\s+/g, '(').trim();
   return row;
 }

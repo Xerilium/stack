@@ -338,6 +338,8 @@ a.tag.link:hover { background: var(--accent-soft); }
 .day-bar { background: color-mix(in srgb, var(--muted) 22%, transparent); }
 .day-bar b { width: 10px; height: 10px; top: -1px; margin-left: -5px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 3px var(--bg); }
 .day-bar b em { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font: 600 10.5px/1 var(--font, inherit); font-style: normal; color: var(--ink); white-space: nowrap; }
+.day-bar b.edge-l em { left: 50%; transform: none; }
+.day-bar b.edge-r em { left: auto; right: 50%; transform: none; }
 .t-cols { display: block; }
 @media (min-width: 1100px) { .t-cols { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 0 48px; align-items: start; } .t-side { position: sticky; top: 20px; } .t-side .h2:first-child { margin-top: 38px; } }
 @media (min-width: 1100px) { .t-side > :first-child.h2 { margin-top: 0; } }
