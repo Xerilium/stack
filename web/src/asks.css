@@ -124,7 +124,7 @@ a.btn.primary { color: #fff; }
   .ask-reply-box { flex-wrap: wrap; }
   .ask-reply-box input { flex: 1 1 100%; min-height: var(--tap); }
   .ask-reply-box .btn { min-height: var(--tap); flex: 1 1 40%; justify-content: center; }
-  .ask-eyebrow .dl .rel { display: none; }
+  .ask-eyebrow .dl:not(.late) .rel { display: none; }
   /* rows: title on one line, then "Approve · Today 10:48 pm · allyte" */
   .ask-row { min-height: 56px; flex-wrap: wrap; align-content: center; padding: 6px 17px; row-gap: 2px; }
   .ask-row .row-title { flex: 1 1 100%; }

@@ -121,6 +121,8 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
         // @req FR:ask-queue/live.sse
         if (path === '/events' && req.method === 'GET') {
+          // No watcher: refuse the stream so EventSource closes and the page polls, instead of a silent Live.
+          if (!watcher.active()) return send(503, 'no file watcher; poll instead', 'text/plain');
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no', ...extra });
           const frame = (event: string, data: unknown, id?: number) => res.write(`${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
           res.write('retry: 3000\n\n');

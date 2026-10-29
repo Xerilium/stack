@@ -114,6 +114,20 @@ describe('GET /events', () => {
       expect(JSON.parse(body).events).toBe(true);
     } finally { await s.close(); }
   });
+  it('reports no stream when the folder cannot be watched, and refuses /events', async () => {
+    const missing = join(tmp(), 'gone');
+    const w = watchRepo(missing);
+    expect(w.active()).toBe(false);
+    w.close();
+    const dir = tmp(); mkdirSync(join(dir, 'tasks'), { recursive: true });
+    const web = join(dir, 'webdist'); mkdirSync(web); writeFileSync(join(web, 'index.html'), '<html></html>');
+    const s = await startWeb({ dir: join(dir, 'nope'), port: 0, webDir: web });
+    try {
+      const get = (p: string) => new Promise<{ status: number; body: string }>((ok) => { http.get(`${s.url}${p}`, (r) => { let d = ''; r.on('data', (c) => { d += c; }); r.on('end', () => ok({ status: r.statusCode ?? 0, body: d })); }); });
+      expect(JSON.parse((await get('/.auth/me')).body).events).toBe(false);
+      expect((await get('/events')).status).toBe(503);
+    } finally { await s.close(); }
+  });
   it('keeps the loopback guards', async () => {
     const dir = tmp(); mkdirSync(join(dir, 'tasks'), { recursive: true });
     const web = join(dir, 'webdist'); mkdirSync(web); writeFileSync(join(web, 'index.html'), '<html></html>');
