@@ -28,6 +28,10 @@ describe('day plan', () => {
     const c = planCandidates(rows, at(10), rows[2].ref).map((x) => x.text);
     expect(c).toEqual(['plain 🟢', '📅 Oct 23: due today 🟢']);
   });
+  it('when the server\'s next task is a parent, its first open leaf leads', () => {
+    const rows = [t('other 🟢'), t('Ship it'), t('step one 🟢', 1), t('step two 🟢', 1)];
+    expect(planCandidates(rows, at(10), rows[1].ref).map((x) => x.text)).toEqual(['step one 🟢', 'other 🟢', 'step two 🟢']);
+  });
   it('never plans reply rows', () => {
     const ask = t('🙋 Pick a color');
     expect(planCandidates([ask, t('💬 Blue', 1)], at(10)).map((x) => x.text)).toEqual([]);

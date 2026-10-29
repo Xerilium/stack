@@ -16,6 +16,7 @@ import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { DEFER, progress, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, span, type Decision } from './plan';
+import { parseRow } from './row';
 import { calendarRange, dayFrame, needsRefresh, type DaySched } from './schedule';
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
@@ -33,7 +34,8 @@ import { AgentChip, AgentTalk } from './AgentTalk';
 import { agentForAsk } from './team';
 import { planWeek } from './week';
 import { FocusMode, HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
-import { homeOf } from './home';
+import { HAVE, homeOf, windowNow } from './home';
+import './myday.css';
 
 const reads = new Set<(savedAt: string | null) => void>();
 const api = createClient(undefined, undefined, (s) => reads.forEach((f) => f(s)));
@@ -113,6 +115,9 @@ export function App() {
   const [sched, setSched] = useState<DaySched | null>(null);
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [calError, setCalError] = useState('');
+  /** "I have N min" from Home: memory only, runs out after N minutes. @req FR:home/home.have */
+  const [have, setHaveRaw] = useState<{ minutes: number; at: number } | null>(null);
+  const haveChord = useRef(0);
   const [emailAsks, setEmailAsks] = useState(0);
   const lastProject = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -143,8 +148,15 @@ export function App() {
   const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
   const titles = useMemo(() => new Map(projects.map((x) => [x.name, x.title || x.name])), [projects]);
   /** @req FR:web-app/home.one @req FR:web-app/home.fit */
-  const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft: budget.minutes }), [tasks, projects, next, clockNow, budget.minutes]);
-  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task), home.five.map((n) => n.task), home.projects.filter((x) => !x.shown).map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first; one cursor through every row
+  const haveLeft = have ? have.minutes - Math.max(0, Math.floor((clockNow.getTime() - have.at) / 6e4)) : null;
+  const setHave = useCallback((m: number | null) => setHaveRaw(m === null ? null : { minutes: m, at: Date.now() }), []);
+  /** The time you have now: until the next meeting, personal block, or bed; "I have" overrides. @req FR:home/home.window */
+  const win = useMemo(() => windowNow(day, busyTime, clockNow, haveLeft !== null && haveLeft > 0 ? haveLeft : null), [day, busyTime, clockNow, haveLeft]);
+  // In personal time, tasks tagged for it may use the rest of the block. @req FR:home/home.window
+  const minutesLeft = win.allow && !win.have ? win.allow.minutes : win.inside && !win.have ? 0 : win.minutes;
+  const allow = win.allow && !win.have ? win.allow.emoji : undefined;
+  const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, next, clockNow, minutesLeft, allow]);
+  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task), home.five.map((n) => n.task), home.projects.filter((x) => !x.shown).map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY), [tasks, clockNow, budget.minutes]);
@@ -366,6 +378,21 @@ export function App() {
     try { setInbox(await api.inbox()); } catch { /* the next refresh catches up */ }
   };
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
+  /** Defer 2h: back in 2 hours, one key. Delegate: 🪄 on the row, so an agent takes it (undo restores). @req FR:home/home.delegate */
+  const notNow = async (ref = refNow()) => {
+    if (!ref) return;
+    const back = new Date(Date.now() + 2 * 3600_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    await run(() => api.action('suspend', ref, { hours: 2 }), () => `Deferred 2h: back at ${back}`);
+  };
+  const delegate = async (ref = refNow()) => {
+    const t = ref ? tasks.find((x) => x.ref === ref) : undefined;
+    if (!t) return;
+    if (parseRow(t.text).who === 'agent') { toast('Already with an agent'); return; }
+    const text = `🪄 ${t.text}`;
+    if (await run(() => api.edit(t.ref, text, t.text), () => '')) toast(`🪄 Delegated to the ${titles.get(t.project) ?? t.project} agent`, 'ok', () => { void run(() => api.edit(t.ref, t.text, text), () => 'Restored'); });
+  };
+  type RowAct = 'start' | 'done' | 'defer' | 'notnow' | 'delegate';
+  const rowAct = (a: RowAct, ref?: string) => (a === 'defer' ? openDefer(ref) : a === 'notnow' ? void notNow(ref) : a === 'delegate' ? void delegate(ref) : void doAct(a, ref));
 
   const markDone = (ref: string) => { setJustDone((s) => new Set(s).add(ref)); setTimeout(() => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; }), 900); };
   const toggleDone = async (t: Task) => {
@@ -472,12 +499,15 @@ export function App() {
       { id: 'skip', label: 'Skip', hint: 'Shift+S', run: () => (selected.size ? void bulk('skip') : void doAct('skip')) },
       { id: 'start', label: 'Start', hint: 's', run: () => void doAct('start') },
       { id: 'defer', label: 'Defer', hint: 'z', run: openDefer },
+      { id: 'notnow', label: 'Defer 2 hours', hint: 'n', run: () => void notNow() },
+      { id: 'delegate', label: 'Delegate to an agent (🪄)', hint: 'Shift+A', run: () => void delegate() },
       { id: 'focus', label: 'Focus mode', hint: 'Enter', run: () => { const r = refNow(); if (r) setFocusRef(r); } },
       { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
       // @req FR:agent-team/web.keys
       { id: 'talk', label: 'Talk to the task agent', hint: 'a', run: () => { const t = taskAt(refNow()); if (t) team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); } },
       { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ] : []),
+    ...(view === 'home' ? HAVE.map((m, i) => ({ id: `have-${m}`, label: `I have ${span(m)}`, hint: `h ${i + 1}`, run: () => setHave(m) })) : []),
     ...(view === 'today' ? [
       { id: 'more-time', label: 'More time today (+30m)', hint: ']', run: () => setBudget(budget.minutes + STEP) },
       { id: 'less-time', label: 'Less time today (-30m)', hint: '[', run: () => setBudget(budget.minutes - STEP) },
@@ -499,14 +529,15 @@ export function App() {
   const allCommands = [...commands, ...goTo, ...projectCmds];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events });
-  latest.current = { positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events };
+  const latest = useRef({ positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft });
+  latest.current = { positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
   const teamRef = useRef(team); teamRef.current = team;
-  const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget };
+  const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (haveChord.current && !/^[0-4h]$/.test(e.key)) haveChord.current = 0; // any other key disarms h
       const L = latest.current, A = act.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); return; }
       if (e.key === 'Escape' && (L.palette || L.help || L.picker || L.deferRefs || L.captureOpen)) { e.preventDefault(); setPalette(false); setHelp(false); setPicker(null); setDeferRefs(null); setCaptureOpen(false); return; }
@@ -548,9 +579,17 @@ export function App() {
         return;
       }
       if (L.view === 'projects') return;
+      // @req FR:home/home.have: h then 1-4 picks 15m/30m/1h/2h, 0 clears
+      if (L.view === 'home' && haveChord.current && now - haveChord.current < 1500 && /^[0-4]$/.test(k)) { e.preventDefault(); haveChord.current = 0; A.setHave(k === '0' ? null : HAVE[Number(k) - 1]); return; }
+      if (L.view === 'home' && k === 'h') { haveChord.current = now; return; }
+      // On My day these act only on the row you are on (never on a hidden parent).
+      if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'n') { e.preventDefault(); void A.notNow(); return; }
+      if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'A') { e.preventDefault(); void A.delegate(); return; }
       // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
       if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
-      if ((L.view === 'today' || L.view === 'home') && (k === '[' || k === ']')) { e.preventDefault(); A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; }
+      if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; }
+      // On Home, [ ] change the time you have now. @req FR:home/home.have
+      if (L.view === 'home' && (k === '[' || k === ']')) { e.preventDefault(); A.setHave(Math.max(0, L.minutesLeft + (k === ']' ? STEP : -STEP))); return; }
       const i = L.rows.findIndex((r) => r.ref === L.cursor);
       const step = (d: number) => { const n = L.rows[Math.max(0, Math.min(L.rows.length - 1, i + d))]; if (n) setCursor(n.ref); };
       const inList = L.view === 'list';
@@ -640,9 +679,9 @@ export function App() {
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
-            onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
+            onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'home' && <HomeView h={home} now={clockNow} minutesLeft={budget.minutes} p={rowProps} busy={busy} onAct={(a, ref) => (a === 'defer' ? openDefer(ref ?? next?.ref) : void doAct(a, ref ?? next?.ref))} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setBudget(budget.minutes + STEP)} />}
+        {phase === 'ready' && view === 'home' && <HomeView h={home} now={clockNow} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />

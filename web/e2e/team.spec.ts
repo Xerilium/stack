@@ -175,6 +175,7 @@ test.describe('Agent team', () => {
   test('the project tile on Today carries the project agent and opens the composer', async ({ page }) => {
     const m = await open(page);
     await page.goto('/#/today');
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // tiles sit below the timeline, out of the way
     const tile = page.locator('[data-testid="tops"] li').filter({ hasText: 'Alpha' });
     await expect(tile.locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
     await tile.locator('.agent-chip').click();

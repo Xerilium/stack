@@ -117,24 +117,14 @@ test.describe('now view', () => {
   });
 
   // @req FR:web-app/now.defer
-  test('Defer button opens the menu: 2 hours, tomorrow, next week', async ({ page }) => {
+  // @req FR:home/home.delegate: Defer 2h is one tap; z opens the full menu
+  test('Defer 2h defers 2 hours in one tap', async ({ page }) => {
     const m = await mockApi(page);
     await page.goto('/#/now');
-    const choose = async (name: RegExp) => {
-      await page.locator('.focus-block').getByRole('button', { name: /Defer/ }).click();
-      const dlg = page.getByRole('dialog', { name: 'Defer until' });
-      await expect(dlg).toBeVisible();
-      await dlg.getByRole('button', { name }).click();
-      await expect(dlg).toHaveCount(0);
-    };
-    await choose(/2 hours/);
+    await page.locator('.focus-block').getByRole('button', { name: /Defer 2h/ }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:6', hours: 2 } });
+    await expect(page.getByText(/Deferred 2h: back at/)).toBeVisible();
     await expect(page.getByTestId('next-title')).toContainText('Write docs');
-    await choose(/Tomorrow/);
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:7', days: 1 } });
-    await expect(page.getByTestId('next-title')).toContainText('Review pull requests');
-    await choose(/Next week/);
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:9', days: 7 } });
   });
 
   test('z then number keys defer; Esc closes the menu', async ({ page }, info) => {
@@ -739,6 +729,7 @@ test.describe('feedback and mobile', () => {
 
   // @req FR:web-app/ux.responsive
   test('layout switches between rail and tab bar', async ({ page }, info) => {
+    const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.setFixedTime(d); // Home's buttons follow the time you have
     await mockApi(page);
     await page.goto('/#/now');
     if (info.project.name === 'mobile') {
@@ -849,7 +840,8 @@ test.describe('today view', () => {
   ];
 
   // @req FR:web-app/today.plan
-  test('Today route: header, lead block actions, blocks in order, done circle completes', async ({ page }, info) => {
+  // @req FR:home/myday.actions @req FR:home/myday.timeline
+  test('My day: header, blocks in order, one-tap row actions, done circle completes', async ({ page }, info) => {
     const m = await setup(page, day());
     await expect(page.getByRole('region', { name: 'Today' }).getByRole('heading', { level: 1 })).toContainText('of 8h');
     await expect(page.locator('.t-sub')).toContainText('free');
@@ -857,28 +849,51 @@ test.describe('today view', () => {
     await expect(blocks.first().locator('.what-title')).toContainText('Plain priority'); // the server's next task leads
     await expect(blocks.nth(1).locator('.what-title')).toContainText('Due soon'); // then due-soon before file order
     await expect(blocks.nth(2).locator('.what-title')).toContainText('Third thing');
-    const lead = page.locator('.block.lead');
-    await expect(lead).toHaveCount(1);
-    for (const n of ['Start', 'Done', 'Defer']) await expect(lead.getByRole('button', { name: new RegExp(n) })).toBeVisible();
+    await expect(page.locator('.block.lead')).toHaveCount(0); // Home owns the one big task
     await blocks.nth(2).getByRole('button', { name: 'Mark done' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/complete', body: { ref: 'gamma:3' } });
-    await lead.getByRole('button', { name: /Start/ }).click();
+    await blocks.first().hover();
+    await blocks.first().getByRole('button', { name: 'Start' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'gamma:1' } });
+    await expect(page.locator('.now-line')).toHaveCount(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await shot(page, 'today', info);
   });
 
-  test('Defer on the lead block opens the defer menu', async ({ page }) => {
-    await setup(page, day());
-    await page.locator('.block.lead').getByRole('button', { name: /Defer/ }).click();
-    await expect(page.getByRole('dialog', { name: 'Defer until' })).toBeVisible();
+  // @req FR:home/myday.actions @req FR:home/home.delegate
+  test('Defer 2h on a row defers 2 hours in one tap; Delegate marks it 🪄', async ({ page }) => {
+    const m = await setup(page, day());
+    const first = page.locator('[data-testid="plan"] .block').first();
+    await first.hover();
+    await first.getByRole('button', { name: 'Defer 2h' }).click();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'gamma:1', hours: 2 } });
+    await first.hover();
+    await first.getByRole('button', { name: 'Delegate' }).click();
+    await expect.poll(() => m.calls.at(-1)?.body.text).toMatch(/^🪄 /);
+  });
+
+  // @req FR:home/myday.actions
+  test('n and Shift+A act on the cursor row', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
+    const m = await setup(page, day());
+    await page.keyboard.press('j');
+    const ref = await page.locator('.block.cursor').getAttribute('data-ref');
+    await page.keyboard.press('n');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref, hours: 2 } });
+    await page.keyboard.press('j');
+    const next = await page.locator('.block.cursor').getAttribute('data-ref');
+    await page.keyboard.press('Shift+A');
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: next } });
   });
 
   // @req FR:web-app/today.fit
   test('tasks that do not fit are listed with estimates and +30m grows the budget', async ({ page }) => {
     await setup(page, Array.from({ length: 6 }, (_, i) => mk(i + 1, `Big ${i + 1} 🔴`)));
-    await expect(page.getByTestId('nofit')).toContainText('Big 5');
     const nofit = page.getByTestId('nofit');
+    await expect(nofit).toContainText("don't fit"); // @req FR:home/myday.overflow: one collapsed line
+    await expect(nofit.locator('li').first()).toBeHidden();
+    await nofit.locator('summary h3').click();
+    await expect(nofit).toContainText('Big 5');
     await expect(nofit.locator('li').first()).toContainText('2h');
     const before = await page.locator('[data-testid="plan"] .block').count();
     await nofit.getByRole('button', { name: '+30m' }).click();
@@ -923,6 +938,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.needs @req FR:web-app/today.reply
   test('Needs you: Go with it and Reply go to the agent inbox; the card shows it was sent', async ({ page }) => {
     const m = await setup(page, day());
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const card = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a vendor' });
     await expect(card.locator('.rec')).toContainText('Use Acme for now');
     await card.getByRole('button', { name: 'Go with it' }).click();
@@ -943,6 +959,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.reply
   test('a reply to a row that moved gets 409 instead of attaching to the wrong row', async ({ page }) => {
     const m = await setup(page, day());
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const plain = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' });
     await expect(plain).toBeVisible();
     m.insertAbove('gamma', 'Added by someone else');
@@ -963,6 +980,7 @@ test.describe('today view', () => {
   // @req FR:web-app/today.needs
   test('identical 🙋 rows get their own cards and reply boxes', async ({ page }) => {
     const m = await setup(page, [mk(1, 'Plain 🟢'), mk(5, '🙋 Approve'), mk(6, '🙋 Approve')]);
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const cards = page.locator('[data-testid="needs"] .card');
     await expect(cards).toHaveCount(2);
     await cards.nth(1).getByRole('button', { name: 'Reply' }).click();
@@ -981,6 +999,8 @@ test.describe('today view', () => {
       { ref: 'gamma:20', project: 'gamma', title: 'Build the engine', text: '🤖 Build the engine 🚧', state: 'working', prs: [], last: { at: iso(2), action: 'claimed' }, replies: 0, since: iso(2) },
     ];
     const m = await (async () => { await page.clock.install({ time: tenAm() }); const mm = await mockApi(page, { tasks: day(), agents }); await page.goto('/#/today'); await page.clock.resume(); return mm; })();
+    await expect(page.getByTestId('quiet-side').locator('.quiet-toggle')).toContainText('1 CI failing');
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const panel = page.getByTestId('agents');
     await expect(panel.locator('.agent').first()).toContainText('CI failing');
     await expect(panel.getByRole('link', { name: /^r#7/ })).toHaveAttribute('href', 'https://github.com/o/r/pull/7');
@@ -1003,7 +1023,9 @@ test.describe('today view', () => {
     m.agentsFail = true;
     await page.goto('/#/today');
     await page.clock.resume();
-    await expect(page.locator('.block.lead')).toBeVisible();
+    await expect(page.locator('[data-testid="plan"] .block').first()).toBeVisible();
+    await expect(page.getByTestId('quiet-side').locator('.quiet-toggle')).toContainText('Agents unavailable');
+    await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const retry = page.getByTestId('agents-error').getByRole('button', { name: 'Retry' });
     await expect(retry).toBeVisible();
     m.agentsFail = false;
@@ -1118,15 +1140,6 @@ test.describe('today view', () => {
     await expect(page).toHaveURL(/#\/asks/);
   });
 
-  // @req FR:web-app/today.projects
-  test('project tiles open that project in the list', async ({ page }) => {
-    await mockApi(page);
-    await page.goto('/#/today');
-    await page.getByTestId('tops').getByRole('button', { name: /Beta/ }).click();
-    await expect(page).toHaveURL(/#\/list.*project=beta/);
-    await expect(rows(page)).toHaveText(['Plan the trip']);
-  });
-
   test('g t / g h / g p / g a move between views', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
@@ -1141,7 +1154,7 @@ test.describe('today view', () => {
   test('mobile: no horizontal scroll at 375px', async ({ page }, info) => {
     test.skip(info.project.name !== 'mobile', 'mobile only');
     await setup(page, day());
-    await expect(page.locator('.block.lead')).toBeVisible();
+    await expect(page.locator('[data-testid="plan"] .block').first()).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= 375)).toBe(true);
   });
 });

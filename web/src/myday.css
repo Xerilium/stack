@@ -1,0 +1,89 @@
+/* My day (and the Home "I have" picks). Tokens from styles.css; sizes 15/13/11. @req FR:home/myday.timeline */
+.have { display: flex; align-items: center; gap: 6px; margin: 12px 0 18px; flex-wrap: wrap; }
+.have-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin-right: 4px; }
+.have .chip { min-height: 30px; padding: 0 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel); color: var(--ink2); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+.have .chip kbd { display: none; }
+
+.have .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.have-key { margin-left: 2px; }
+.join-btn { min-height: 28px; padding: 0 10px; margin-left: 6px; text-decoration: none; font-size: 13px; }
+.lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 650; color: var(--accent); }
+.due { color: var(--muted); white-space: nowrap; }
+.due.near { color: var(--ink2); font-weight: 600; }
+.due.soon, .due.late { color: var(--warn); font-weight: 600; }
+@media (hover: hover) and (min-width: 801px) {
+  .today .block .row-acts { position: absolute; right: 0; top: 0; bottom: 0; align-items: center; padding-left: 12px; background: linear-gradient(90deg, transparent, var(--hover) 12px); pointer-events: none; }
+  .today .block:hover .row-acts, .today .block.cursor .row-acts, .today .block:focus-within .row-acts { pointer-events: auto; }
+  .today .block .what { position: relative; grid-template-columns: 22px minmax(0, 1fr) auto; grid-template-areas: 'tick title meta'; }
+}
+.ic { width: 28px; height: 28px; border-radius: 6px; border: 0; background: none; color: var(--ink2); font-size: 13px; }
+.ic:hover:not(:disabled) { background: var(--chip); color: var(--ink); }
+.ic { display: inline-grid; place-items: center; }
+@media (max-width: 800px), (hover: none) {
+  .ic { width: var(--tap); height: var(--tap); }
+  .today .block .tick { align-self: start; margin-top: 2px; }
+  .today .what-meta > span + span::before, .today .what-meta > span + .due::before { content: none; }
+  .today .block .what-meta { column-gap: 12px; }
+  .have .chip { min-height: var(--tap); padding: 0 16px; }
+  .have .chip kbd, .have-key { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .row-acts, .have .chip kbd { transition: none; } }
+
+/* My day: a schedule, not a card wall. @req FR:home/myday.timeline @req FR:home/myday.actions @req FR:home/myday.overflow */
+.t-cols.one { display: block; }
+section.today { max-width: 860px; }
+.nowrap { white-space: nowrap; }
+.t-cols.one .t-plan { max-width: 860px; }
+.today .block { padding: 0; }
+.today .block:not(.lead) { min-height: 0; }
+.today .block::before { display: none; }
+.today .block .what { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; grid-template-areas: 'tick title meta acts'; gap: 0 10px; align-items: center; background: none; border: 0; border-bottom: 1px solid var(--line2); border-radius: 0; padding: 5px 4px 5px 0; margin-left: 14px; min-height: var(--row); }
+.today .block .what-body { display: contents; }
+.today .block .tick { grid-area: tick; } .today .block .what-title { grid-area: title; margin: 0; } .today .block .what-meta { grid-area: meta; margin: 0; flex-wrap: nowrap; white-space: nowrap; } .today .block .row-acts { grid-area: acts; }
+.today .what-meta > span + span::before, .today .what-meta > span + .due::before { content: '·'; margin-right: 6px; color: var(--muted); }
+.plan .meeting .what { border-left: 3px solid var(--line); background: var(--chip); border-radius: 0 8px 8px 0; }
+.plan .meeting .what::after { display: none; }
+.band.personal { border-bottom: 0; padding-left: 10px; }
+.band.personal::before { content: ''; position: absolute; left: 0; top: 0; bottom: 4px; width: 3px; border-radius: 2px; background: repeating-linear-gradient(135deg, var(--muted) 0 2px, transparent 2px 5px); }
+.today .what::before { display: none; }
+@media (hover: hover) { .today .what:hover { background: var(--hover); } }
+.today .block.cursor .what { background: var(--hover); box-shadow: inset 2px 0 0 var(--accent); }
+.today .when { padding-top: 8px; }
+.today .what-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.row-acts { display: flex; gap: 2px; opacity: 0; transition: opacity .12s; flex: none; }
+.today .block:hover .row-acts, .today .block.cursor .row-acts, .today .block:focus-within .row-acts { opacity: 1; }
+.band { display: flex; justify-content: space-between; gap: 12px; margin: 18px 0 4px 70px; padding-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 650; color: var(--ink2); border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.band.personal { color: var(--muted); border-bottom-style: dashed; }
+.band-time { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); font-size: 13px; }
+.gap { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 0 28px; align-items: center; color: var(--muted); font-size: 13px; padding: 4px 0; }
+.gap .when { padding-top: 0; font-weight: 500; color: var(--muted); }
+.gap span { border: 1px dashed var(--line); border-radius: 8px; padding: 5px 10px; }
+.now-line { position: relative; height: 0; margin: 6px 0 6px 70px; border-top: 2px solid var(--accent); }
+.now-line time { position: absolute; left: -70px; top: -9px; width: 56px; text-align: right; font-size: 11px; font-weight: 650; color: var(--accent); }
+.earlier { margin: 8px 0 0 70px; color: var(--muted); font-size: 13px; }
+details.nofit { margin-left: 70px; }
+details.nofit > summary { list-style: none; cursor: pointer; }
+details.nofit > summary::-webkit-details-marker { display: none; }
+details.nofit h3 { color: var(--ink2); }
+details.nofit h3::before { content: '▸ '; color: var(--muted); }
+details.nofit[open] h3::before { content: '▾ '; }
+details.nofit h3 .warn { color: var(--warn); text-transform: none; letter-spacing: 0; font-weight: 600; }
+.quiet-side { margin: 28px 0 0 70px; max-width: 690px; }
+.quiet-toggle { background: none; border: 0; padding: 6px 0; cursor: pointer; color: var(--ink2); font-size: 13px; }
+@media (max-width: 800px), (hover: none) {
+  .row-acts { opacity: 1; }
+  /* Touch: one tap stays (Michael's rule); title on line 1, meta and actions share line 2. */
+  .today .block .what { grid-template-columns: 26px minmax(0, 1fr) auto; grid-template-areas: 'tick title title' 'tick meta acts'; padding-top: 6px; }
+  .row-acts .ic { width: var(--tap); height: var(--tap); }
+  .band, .now-line, .earlier, details.nofit, .quiet-side { margin-left: 0; }
+  .earlier { margin-bottom: 18px; }
+  .now-line time { left: auto; right: 0; top: -17px; width: auto; }
+  .today .what-title { white-space: normal; }
+}
+
+/* Home: the window and "I have". @req FR:home/home.window @req FR:home/home.have */
+.home-window { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 14px; }
+.window { margin: 0; font-size: 15px; color: var(--ink2); }
+.window strong { color: var(--ink); font-weight: 650; }
+.home-window .have { margin: 0; }

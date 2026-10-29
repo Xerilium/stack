@@ -4,6 +4,8 @@
  * @req FR:web-app/home.one @req FR:web-app/home.fit @req FR:web-app/home.next @req FR:web-app/home.projects
  */
 import { actionable, activeTasks, dueDays, isActive, isUpNext, rankNow } from './now';
+import type { Busy } from './meetings';
+import { nowMinutes, type Day } from './plan';
 import { effortMinutes, parseRow } from './row';
 import type { NextTask, Project, Task } from './types';
 
@@ -31,14 +33,16 @@ const FIVE_MAX = 15;
 const item = (t: Task, now: Date): HomeItem => { const r = parseRow(t.text); const est = effortMinutes(r.effort); return { task: t, minutes: est || DEFAULT_MIN, assumed: !est, due: countdown(r.due, now) }; };
 const doing = (t: Task) => /🚧/u.test(t.text);
 
-export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask | null; now: Date; minutesLeft: number }): Home {
+export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask | null; now: Date; minutesLeft: number; /** Only rows carrying this emoji may use the time (personal time). @req FR:home/home.window */ allow?: string }): Home {
   const { tasks, now } = o;
   const oneTask = o.next ? tasks.find((t) => t.ref === o.next!.ref) ?? null : null;
   const one = oneTask ? item(oneTask, now) : null;
   const ranked = rankNow(activeTasks(tasks).filter((t) => t.ref !== oneTask?.ref && actionable(t, now)), now, tasks);
   const ordered = [...ranked.filter(doing), ...ranked.filter((t) => !doing(t))];
-  const fits = !one || one.minutes <= o.minutesLeft;
-  const instead = !fits && o.minutesLeft > 0 ? (ordered.map((t) => item(t, now)).find((i) => i.minutes <= o.minutesLeft) ?? null) : null;
+  const vs = (s: string) => s.replace(/\uFE0F/g, '');
+  const may = (i: HomeItem) => !o.allow || vs(i.task.text).includes(vs(o.allow));
+  const fits = !one || (one.minutes <= o.minutesLeft && may(one));
+  const instead = !fits && o.minutesLeft > 0 ? (ordered.map((t) => item(t, now)).find((i) => i.minutes <= o.minutesLeft && may(i)) ?? null) : null;
   // Instead never repeats under Up next
   const next = ordered.filter((t) => t.ref !== instead?.task.ref).slice(0, 2).map((t) => item(t, now));
   const shownRefs = new Set([oneTask?.ref, instead?.task.ref, ...next.map((n) => n.task.ref)].filter((r): r is string => !!r));
@@ -57,4 +61,41 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask |
   }
   projects.sort((a, b) => (rankOf.get(a.top.task.ref) ?? Infinity) - (rankOf.get(b.top.task.ref) ?? Infinity));
   return { one, fits, instead, next, five, projects };
+}
+
+// ---- The window: how long you have now, from the schedule and the calendar.
+
+/** "I have" picks, in minutes (keys h then 1-4). */
+export const HAVE = [15, 30, 60, 120];
+
+export interface Window {
+  /** Minutes you have now. */ minutes: number;
+  /** Set from "I have N min". */ have?: boolean;
+  /** The commitment that ends the window. */ until?: { kind: 'meeting' | 'personal' | 'bed'; label: string; at: number };
+  /** You are in a meeting, personal time, or asleep (or past bed) until `until`. */ inside?: { kind: 'meeting' | 'personal' | 'sleep'; label: string; until: number };
+  /** In personal time, tasks tagged with the block's emoji may use the rest of it. */ allow?: { emoji: string; minutes: number };
+}
+
+const labelOf = (b: { name: string; label?: string }) => b.label ?? b.name;
+
+/** Minutes until the next meeting, personal block, or bed; or what you are inside now. `have` overrides. @req FR:home/home.window @req FR:home/home.have */
+export function windowNow(day: Day, busy: Busy[], now: Date, have?: number | null): Window {
+  const at = nowMinutes(now, day);
+  const personal = (day.blocks ?? []).filter((b) => b.kind === 'personal');
+  const nextUp: NonNullable<Window['until']>[] = [
+    ...busy.filter((m) => m.start > at).map((m) => ({ kind: 'meeting' as const, label: m.titles[0] ?? 'Meeting', at: m.start })),
+    ...personal.filter((b) => b.start > at).map((b) => ({ kind: 'personal' as const, label: labelOf(b), at: b.start })),
+    { kind: 'bed' as const, label: day.origin ? 'bed' : 'end of day', at: day.end },
+  ];
+  const until = nextUp.filter((x) => x.at > at).sort((a, b) => a.at - b.at)[0];
+  if (have != null) return { minutes: Math.max(0, have), have: true, ...(until ? { until } : {}) };
+  if (day.asleep || at < day.start) return { minutes: 0, inside: { kind: 'sleep', label: 'Sleep', until: day.start } };
+  // Past bed: back at the next wake (the same clock time tomorrow until the schedule refetches).
+  if (at >= day.end) return { minutes: 0, inside: { kind: 'sleep', label: day.origin ? 'Past bed' : 'After hours', until: day.start + 1440 } };
+  const m = busy.find((x) => x.start <= at && at < x.end);
+  if (m) return { minutes: 0, inside: { kind: 'meeting', label: m.titles[0] ?? 'Meeting', until: m.end } };
+  const p = personal.find((b) => b.start <= at && at < b.end);
+  // Tagged tasks may use the block up to its end or the next meeting, whichever is first.
+  if (p) return { minutes: 0, inside: { kind: 'personal', label: labelOf(p), until: p.end }, allow: { emoji: p.emoji, minutes: Math.min(p.end, ...busy.filter((x) => x.start > at).map((x) => x.start)) - at } };
+  return { minutes: Math.max(0, (until?.at ?? day.end) - at), ...(until ? { until } : {}) };
 }
