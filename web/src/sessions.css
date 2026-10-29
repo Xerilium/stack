@@ -99,8 +99,10 @@
   .sess-row .sess-title { grid-row: 1; grid-column: 1 / span 2; }
   .sess-row .sess-where, .sess-row .sess-when, .sess-row .sess-cost { display: none; }
   .sess-mob { display: block; grid-row: 2; grid-column: 2; font-size: 12px; color: var(--muted); white-space: nowrap; text-align: right; }
-  .cost-days li { grid-template-columns: 52px minmax(40px, 1fr) auto; min-height: 28px; }
-  .cost-days .n { font-size: 12px; }
+  .cost-days li { grid-template-columns: 52px 1fr; grid-template-rows: auto 6px; row-gap: 4px; min-height: 34px; }
+  .cost-days .n { font-size: 12px; grid-row: 1; grid-column: 2; }
+  .cost-days .day { grid-row: 1; }
+  .cost-days .bar { grid-row: 2; grid-column: 1 / span 2; }
   .cost-strip { display: block; }
   .cost-strip .sep { display: none; }
   .cost-strip strong { display: block; }
