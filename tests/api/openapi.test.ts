@@ -296,6 +296,10 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('sessions.new', 'POST', '/sessions', { cwd: '/', text: 'x' }, 404);
     await go('sessions.prompt', 'POST', '/sessions/a1b2c3d4-0000-0000-0000-000000000001/prompt', { text: 'x' }, 404);
     await go('sessions.cancel', 'POST', '/sessions/a1b2c3d4-0000-0000-0000-000000000001/cancel', {}, 404);
+    // @req FR:agent-team/review.api
+    await go('team.list', 'GET', '/team?project=alpha', undefined, 200);
+    await go('reviews.list', 'GET', '/reviews?project=alpha', undefined, 200);
+    await go('tasks.review', 'POST', '/tasks/review', { ref: 'alpha:4' }, 404);
     expect([...seen].sort()).toEqual(ROUTES.map((r) => r.name).sort());
   });
 

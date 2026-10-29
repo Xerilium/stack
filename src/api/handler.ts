@@ -17,6 +17,8 @@ import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handle
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
 import type { AgentRuns } from '../agents/runs';
+import { agentFor, listTeam } from '../core/agents';
+import { listReviews, reviewTask, startAgentRun } from '../agents/team';
 import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 import { generateSummaries } from '../core/summaries';
@@ -160,7 +162,12 @@ const UUID: Spec = { t: 'str', required: true, max: 36, line: true, pattern: /^[
 const SESSIONS_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 200 } };
 const COST_Q: Record<string, Spec> = { days: { t: 'int', min: 1, max: 90 } };
 const PROMPT_BODY = { schema: { text: { t: 'str', required: true, max: 4000 } } satisfies Record<string, Spec>, required: ['text'] };
-const NEW_SESSION_BODY = { schema: { cwd: { t: 'str', required: true, max: 1000, line: true }, text: { t: 'str', required: true, max: 4000 } } satisfies Record<string, Spec>, required: ['cwd', 'text'] };
+const SLUG: Spec = { t: 'str', max: 40, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,39}$/ };
+/** `cwd` is optional since agent-team: a session for a task runs in the served folder. @req FR:agent-team/talk.api */
+const NEW_SESSION_BODY = { schema: { cwd: { t: 'str', max: 1000, line: true }, text: { t: 'str', required: true, max: 4000 }, agent: SLUG, ref: REF, project: { t: 'str', max: 200, line: true, noReadme: true } } satisfies Record<string, Spec>, required: ['text'] };
+const TEAM_Q: Record<string, Spec> = { project: { t: 'str', max: 200, line: true }, section: { t: 'str', max: 200, line: true } };
+const REVIEWS_Q: Record<string, Spec> = { project: { t: 'str', required: true, max: 200, line: true } };
+const REVIEW_BODY = { schema: { ref: { t: 'ref', required: true }, agent: SLUG } satisfies Record<string, Spec>, required: ['ref'] };
 const ASK_Q: Record<string, Spec> = { state: { t: 'enum', values: LIST_STATES }, limit: { t: 'int', min: 1, max: 200 } };
 /** Inbox refs are stored 1-based with the file path; the api speaks `name:line` (0-based). */
 const apiRef = (fileRef: string) => { const m = /^(tasks\/.+\.md):(\d+)$/.exec(fileRef); return m ? formatRef({ path: m[1], line: Number(m[2]) - 1 }) : fileRef; };
@@ -518,12 +525,15 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/sessions', name: 'sessions.new', body: NEW_SESSION_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ cwd: string; text: string }>(await readBody(c.req), NEW_SESSION_BODY.schema, NEW_SESSION_BODY.required);
+      const b = validate<{ cwd?: string; text: string; agent?: string; ref?: ReturnType<typeof parseRef>; project?: string }>(await readBody(c.req), NEW_SESSION_BODY.schema, NEW_SESSION_BODY.required);
       const agents = agentsOf(c);
       ownerOnly(c, 'Only the owner can message an agent');
-      if (!isAbsolute(b.cwd) || !existsSync(b.cwd) || !statSync(b.cwd).isDirectory()) throw invalid([{ field: 'cwd', message: 'Must be an absolute path to an existing folder' }]);
+      if (b.cwd !== undefined && (!isAbsolute(b.cwd) || !existsSync(b.cwd) || !statSync(b.cwd).isDirectory())) throw invalid([{ field: 'cwd', message: 'Must be an absolute path to an existing folder' }]);
       if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
-      return json(202, await agents.prompt({ cwd: b.cwd, text: b.text }));
+      // @req FR:agent-team/talk.api: a task or project session gets its agent's persona and context.
+      if (b.ref || b.project || b.agent) return json(202, await startAgentRun(agents, c.life, { agent: b.agent, ref: b.ref ? formatRef(b.ref) : undefined, project: b.project, text: b.text, actor: caller(c.req).actor }));
+      if (b.cwd === undefined && !agents.cwd) throw invalid([{ field: 'cwd', message: 'Required' }]);
+      return json(202, await agents.prompt({ ...(b.cwd ? { cwd: b.cwd } : {}), text: b.text }));
     },
   },
   {
@@ -567,6 +577,34 @@ export const ROUTES: Route[] = [
         c.deps.onError?.(e);
         return json(200, { configured: true, items: [], error: 'Calendar unavailable' });
       }
+    },
+  },
+  {
+    // @req FR:agent-team/review.api
+    method: 'GET', doc: '/team', name: 'team.list', query: TEAM_Q,
+    async run(c) {
+      const q = validate<{ project?: string; section?: string }>(Object.fromEntries(readQuery(c.url, Object.keys(TEAM_Q)).entries()), TEAM_Q, []);
+      const team = await listTeam(c.life);
+      return json(200, { items: q.project ? agentFor(team, q.project, q.section) : team });
+    },
+  },
+  {
+    // @req FR:agent-team/review.api
+    method: 'GET', doc: '/reviews', name: 'reviews.list', query: REVIEWS_Q,
+    async run(c) {
+      const q = validate<{ project: string }>(Object.fromEntries(readQuery(c.url, Object.keys(REVIEWS_Q)).entries()), REVIEWS_Q, ['project']);
+      return json(200, { items: await listReviews(c.life, q.project) });
+    },
+  },
+  {
+    // @req FR:agent-team/review.api
+    method: 'POST', doc: '/tasks/review', name: 'tasks.review', body: REVIEW_BODY,
+    async run(c) {
+      noQuery(c);
+      const agents = agentsOf(c);
+      ownerOnly(c, 'Only the owner can ask for a review');
+      const b = validate<{ ref: ReturnType<typeof parseRef>; agent?: string }>(await readBody(c.req), REVIEW_BODY.schema, REVIEW_BODY.required);
+      return json(202, await reviewTask(agents, c.life, formatRef(b.ref!), b.agent, caller(c.req).actor));
     },
   },
   {

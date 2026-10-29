@@ -43,6 +43,9 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/projects` | GET list; POST create a project |
 | `/projects/{name}` | GET one project |
 | `/summaries` | GET generated summaries |
+| `/team` | GET agents defined per project folder (`project=` filters to the agents covering it, active first) |
+| `/reviews` | GET every row's newest review in a project (`project=`) |
+| `/tasks/review` | POST ask the task's agent whether it can do it (owner only; 404 without a runner); the verdict lands in the result log and its needs become asks |
 
 Token admin (`/auth/tokens`, `/auth/tokens/{id}/revoke`) is owner-session only and is not in the OpenAPI file. See the [threat model](../security/threat-model.md).
 

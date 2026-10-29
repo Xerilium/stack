@@ -1011,17 +1011,28 @@ paths:
               type: object
               additionalProperties: false
               required:
-                - cwd
                 - text
               properties:
                 cwd:
                   type: string
                   maxLength: 1000
-                  description: Absolute path to an existing folder Single line.
+                  description: "Absolute path to an existing folder; default: the served folder Single line."
                 text:
                   type: string
                   maxLength: 4000
                   description: The prompt
+                agent:
+                  type: string
+                  maxLength: 40
+                  pattern: ^[a-z0-9][a-z0-9._-]{0,39}$
+                  description: "Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project Single line."
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                  description: "The task the session is about: its row, notes, and subtasks become context and the agent persona is applied"
+                project:
+                  type: string
+                  maxLength: 200
+                  description: Project when there is no task Single line.
       responses:
         "202":
           description: Run started
@@ -1274,6 +1285,100 @@ paths:
                         joinUrl:
                           type: string
                           description: Online meeting join link
+        default:
+          $ref: "#/components/responses/Error"
+  /team:
+    get:
+      summary: Agents defined per project folder (tasks/agents/<slug>.md and project Agents metadata); with project, the agents that cover it, active first
+      operationId: listTeam
+      parameters:
+        - name: project
+          in: query
+          schema:
+            type: string
+            description: Single line.
+          description: "Project name: only the agents whose scope covers it, most specific first"
+        - name: section
+          in: query
+          schema:
+            type: string
+            description: Single line.
+          description: Section heading, for section-scoped agents
+      responses:
+        "200":
+          description: Team
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TeamAgent"
+        default:
+          $ref: "#/components/responses/Error"
+  /reviews:
+    get:
+      summary: Every row's newest review in a project (verdict, plan, estimate, agent, open need asks)
+      operationId: listReviews
+      parameters:
+        - name: project
+          in: query
+          schema:
+            type: string
+            description: Single line.
+          description: Project name
+      responses:
+        "200":
+          description: Reviews
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Review"
+        default:
+          $ref: "#/components/responses/Error"
+  /tasks/review:
+    post:
+      summary: "Ask the task's agent whether it can do the task: a read-only run whose verdict lands in the result log and whose needs become asks. Owner session only: 403 for tokens; 404 without a runner"
+      operationId: reviewTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                agent:
+                  type: string
+                  maxLength: 40
+                  pattern: ^[a-z0-9][a-z0-9._-]{0,39}$
+                  description: "Agent slug; default: the active agent Single line."
+      responses:
+        "202":
+          description: Review started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                  sessionId:
+                    type: string
+                    nullable: true
+                  agent:
+                    type: string
         default:
           $ref: "#/components/responses/Error"
   /agents:
@@ -1710,6 +1815,61 @@ components:
           format: date-time
         agentReply:
           type: string
+    TeamAgent:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        scope:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
+          enum:
+            - long-running
+            - ad-hoc
+        prompt:
+          type: string
+        defined:
+          type: boolean
+        projects:
+          type: array
+          items:
+            type: string
+    Review:
+      type: object
+      properties:
+        ref:
+          $ref: "#/components/schemas/Ref"
+        at:
+          type: string
+        verdict:
+          type: string
+          enum:
+            - can
+            - partial
+            - cannot
+        plan:
+          type: string
+        estimate:
+          type: string
+        agent:
+          type: string
+        needs:
+          type: array
+          items:
+            type: string
     Session:
       type: object
       description: One Claude session on this machine (from the local session store), with its state and cost.
