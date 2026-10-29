@@ -19,9 +19,12 @@ export function blockKind(b: TimeBlock): BlockKind {
   return /sleep/i.test(b.name) || /sleep/i.test(b.label ?? '') || b.emoji.replace(/️/g, '') === '😴' ? 'sleep' : 'focus';
 }
 
+const formats = new Map<string, Intl.DateTimeFormat>();
 /** UTC offset of `tz` at `ms`, in ms. */
 function offset(ms: number, tz: string): number {
-  const p = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date(ms));
+  let f = formats.get(tz);
+  if (!f) formats.set(tz, (f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })));
+  const p = f.formatToParts(new Date(ms));
   const g = (t: string) => Number(p.find((x) => x.type === t)!.value);
   return Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'), g('second')) - Math.floor(ms / 1000) * 1000;
 }

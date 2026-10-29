@@ -62,7 +62,13 @@ describe('personal time', () => {
   const day = dayFrame(wed);
   it('is not task time unless the row carries the block emoji', () => {
     const p = buildPlan([t('Report 🟡'), t('🏠 Mow the lawn 🟡')], L(28, 15, 30), day, 600);
-    expect(p.blocks.map((b) => [b.task.text, clock(b.start)])).toEqual([['🏠 Mow the lawn 🟡', '3:30p'], ['Report 🟡', '11:00p']]);
+    expect(p.blocks.map((b) => [b.task.text, clock(b.start)])).toEqual([['🏠 Mow the lawn 🟡', '4:00p'], ['Report 🟡', '11:00p']]);
+  });
+  it('a tagged task goes in its own block first and does not use the focus budget', () => {
+    const p = buildPlan([t('Report 🟡'), t('🏠 Mow the lawn 🟡'), t('Docs 🟡')], L(28, 15, 30), day, 60);
+    expect(p.blocks.map((b) => [b.task.text, clock(b.start)])).toEqual([['🏠 Mow the lawn 🟡', '4:00p'], ['Report 🟡', '11:00p']]);
+    expect(p.overflow.map((x) => x.text)).toEqual(['Docs 🟡']);
+    expect(p.busy).toBe(60);
   });
   it('the default budget leaves out personal blocks and meetings, overlaps counted once', () => {
     const ev = (h1: number, h2: number): CalEvent => ({ id: `${h1}`, subject: 'm', start: iso(28, h1), end: iso(28, h2), allDay: false, showAs: 'busy', cancelled: false, online: false });

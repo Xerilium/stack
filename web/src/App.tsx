@@ -218,7 +218,7 @@ export function App() {
     return () => { reads.delete(read); window.removeEventListener('online', up); window.removeEventListener('offline', down); };
   }, []);
   /** A tab left open past bed moves to the next day. @req FR:home/day.refresh */
-  useEffect(() => { if (needsRefresh(sched, clockNow)) void loadSide(); }, [clockNow, sched, loadSide]);
+  useEffect(() => { if (needsRefresh(sched, new Date())) void loadSide(); }, [clockNow, sched, loadSide]); // a fresh clock: a new answer is never judged by a stale minute
   /** Open asks the email module wrote reserve the Email block. @req FR:web-app/today.mail */
   useEffect(() => { setEmailAsks(asks.items.filter((a) => a.state === 'open' && a.from === 'email-triage').length); }, [asks.items]);
 

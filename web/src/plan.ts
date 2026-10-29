@@ -64,8 +64,11 @@ export const nowMinutes = (now: Date, day: Day = DEFAULT_DAY): number => wallMin
 
 const VS = /\uFE0F/g;
 /** Personal blocks a task may not use: all of them, except those whose emoji the row carries. @req FR:home/day.personal */
+const tagged = (b: DayBlock, text?: string) => !!(text && b.emoji && text.replace(VS, '').includes(b.emoji.replace(VS, '')));
+/** Personal blocks this task is tagged for (it carries their emoji). */
+export const openTo = (day: Day, text: string): DayBlock[] => (day.blocks ?? []).filter((b) => b.kind === 'personal' && tagged(b, text));
 export const closedTo = (day: Day, text?: string): [number, number][] =>
-  (day.blocks ?? []).filter((b) => b.kind === 'personal' && !(text && b.emoji && text.replace(VS, '').includes(b.emoji.replace(VS, '')))).map((b) => [b.start, b.end]);
+  (day.blocks ?? []).filter((b) => b.kind === 'personal' && !tagged(b, text)).map((b) => [b.start, b.end]);
 
 /**
  * Packs candidates in rank order into `budget` minutes from the plan start (default: what is left of the work day).
@@ -88,6 +91,18 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
     }
     return t + m <= windowEnd ? t : null;
   };
+  /** First free slot of `m` minutes inside one of the personal blocks this task is tagged for. @req FR:home/day.personal */
+  const ownSlot = (m: number, text: string): number | null => {
+    for (const b of openTo(day, text)) {
+      let t = Math.max(start, b.start);
+      for (const [a, z] of [...taken].sort((x, y) => x[0] - y[0])) {
+        if (t + m <= a) break;
+        if (z > t) t = z;
+      }
+      if (t + m <= b.end) return t;
+    }
+    return null;
+  };
   let booked = 0;
   let email: Plan['email'];
   const em = emailMinutes(opts.email ?? 0);
@@ -100,11 +115,13 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
   let short = 0;
   for (const t of candidates) {
     const e = estimate(t);
-    const at = booked + e.minutes <= cap ? slot(e.minutes, t.text) : null;
+    // A task tagged for a personal block goes there first, outside the focus budget; else it competes for focus time.
+    const own = ownSlot(e.minutes, t.text);
+    const at = own ?? (booked + e.minutes <= cap ? slot(e.minutes, t.text) : null);
     if (at === null) { overflow.push(t); short += e.minutes; continue; }
     blocks.push({ task: t, start: at, end: at + e.minutes, partial: e.partial, assumed: e.assumed });
     taken.push([at, at + e.minutes]);
-    booked += e.minutes;
+    if (own === null) booked += e.minutes;
   }
   blocks.sort((x, y) => x.start - y.start);
   const atRisk = overflow.filter((t) => atRiskTask(t, now));
