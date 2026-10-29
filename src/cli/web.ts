@@ -9,7 +9,9 @@ import { createServer, type IncomingMessage, type Server } from 'http';
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'path';
 import { createApiHandler } from '../api/handler';
 import { createGitHubPrs } from '../api/github';
-import { fixtureCalendar, type CalendarEvent } from '../calendar';
+import { createGraphCalendar, fixtureCalendar, type CalendarEvent, type CalendarProvider } from '../calendar';
+import { defaultCachePath, FileTokenCache, graphToken, hasScope } from '../graph/auth';
+import { graphTransport } from '../graph/transport';
 import { getDefaults, parseConfig } from '../core/config';
 import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo } from './watch';
@@ -90,11 +92,22 @@ async function toRequest(req: IncomingMessage, origin: string): Promise<Request>
 }
 
 /** Demo calendar from a JSON file of events; there is no live calendar until owner sign-in exists. @req FR:day-inputs/api.wire */
-export function calendarFixture(path = process.env.STACK_CALENDAR_FIXTURE): ReturnType<typeof fixtureCalendar> | undefined {
+export function calendarFixture(path: string | undefined = process.env.STACK_CALENDAR_FIXTURE): ReturnType<typeof fixtureCalendar> | undefined {
   if (!path) return undefined;
   const list = JSON.parse(readFileSync(path, 'utf8')) as CalendarEvent[];
   if (!Array.isArray(list)) throw new Error('STACK_CALENDAR_FIXTURE must be a JSON array of events');
   return fixtureCalendar(list);
+}
+
+/** Where Today's meetings come from: a fixture file wins, then a Graph sign-in with Calendars.Read, else none. Never logs a token. @req FR:graph-signin/web.calendar */
+export async function calendarSource(o: { cachePath?: string; fixture?: string; log?: (line: string) => void } = {}): Promise<{ source: 'fixture' | 'graph' | 'none'; provider?: CalendarProvider }> {
+  const fx = calendarFixture(o.fixture);
+  if (fx) { o.log?.('calendar: fixture'); return { source: 'fixture', provider: fx }; }
+  const cache = new FileTokenCache(o.cachePath ?? defaultCachePath());
+  const t = await cache.read();
+  if (!t || !hasScope(t.scopes, 'Calendars.Read')) return { source: 'none' };
+  o.log?.('calendar: Graph');
+  return { source: 'graph', provider: createGraphCalendar({ transport: graphTransport({ token: graphToken(cache) }) }) };
 }
 
 export async function startWeb(o: WebOpts): Promise<WebServer> {
@@ -102,7 +115,8 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
   // @req FR:agent-inbox/github.wire
   const ghToken = process.env.GITHUB_TOKEN?.trim();
-  const api = createApiHandler({ storage: new GitStorage(o.dir), config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined, calendar: calendarFixture() });
+  const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, log: (l) => console.log(l) }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
+  const api = createApiHandler({ storage: new GitStorage(o.dir), config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined, calendar: cal.provider });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs });

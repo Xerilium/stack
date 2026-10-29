@@ -20,6 +20,16 @@ describe('Graph transport', () => {
     expect(f.seen[0].init.redirect).toBe('error');
     expect(new Headers(f.seen[1].init.headers).get('authorization')).toBe('Bearer tok2');
   });
+  it('on a 401 asks the token function for a forced refresh and retries once', async () => {
+    const seen: string[] = [];
+    let n = 0;
+    const fetch = (async (_u: string | URL | Request, init?: RequestInit) => { seen.push(new Headers(init?.headers).get('authorization') ?? ''); return new Response('{}', { status: ++n === 1 ? 401 : 200 }); }) as typeof globalThis.fetch;
+    const forced: boolean[] = [];
+    const t = graphTransport({ token: async (o?: { force?: boolean }) => { forced.push(!!o?.force); return o?.force ? 'new' : 'old'; }, fetch });
+    expect(await t({ method: 'GET', url: 'https://graph.microsoft.com/v1.0/me' })).toEqual({});
+    expect(seen).toEqual(['Bearer old', 'Bearer new']);
+    expect(forced).toEqual([false, true]);
+  });
   it('refuses other hosts before fetching', async () => {
     const f = fake(200, {});
     await expect(graphTransport({ token: 't', fetch: f.fetch })({ method: 'GET', url: 'https://evil.test/v1.0/me' })).rejects.toThrow();
