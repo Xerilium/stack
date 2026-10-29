@@ -59,19 +59,22 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   const setTalk = useCallback((t: Talk | null) => setTalkState(t), []);
   const toggleTalk = useCallback((t: Talk) => setTalkState((cur) => (cur && (cur.ref ?? cur.askKey ?? cur.project) === (t.ref ?? t.askKey ?? t.project) ? null : t)), []);
 
+  /** A session started for a row (from the composer or the task thread) keeps the row's chip on it: Working, then Done for 10 minutes. */
+  const noteStarted = useCallback((key: string, sessionId: string) => setRecent((m) => new Map(m).set(key, { id: sessionId, at: Date.now() })), []);
+
   /** Starts a session for the talk target. @req FR:agent-team/web.talk */
   const start = useCallback(async (t: Talk, agent: string | undefined, text: string, keepOpen: boolean): Promise<boolean> => {
     if (enabled !== true) { toastRef.current('Runs in stack web on your machine', 'err'); return false; }
     try {
       const r = await api.newSession(undefined, text, { agent, ...(t.ref ? { ref: t.ref } : { project: t.project }) });
       const key = t.ref ?? t.askKey ?? t.project;
-      if (r.sessionId) setRecent((m) => new Map(m).set(key, { id: r.sessionId!, at: Date.now() }));
+      if (r.sessionId) noteStarted(key, r.sessionId);
       setTalkState(null);
       await sessions.reload();
       if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId); else toastRef.current(`Sent to ${r.agent ?? 'the agent'}`);
       return true;
     } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to start', 'err'); return false; }
-  }, [api, enabled, sessions]);
+  }, [api, enabled, sessions, noteStarted]);
 
   /** @req FR:agent-team/web.review */
   const review = useCallback(async (ref: string, agent?: string) => {
@@ -105,6 +108,6 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   }, [recent.size]);
   const active = useMemo(() => reviewing.size > 0 || recent.size > 0, [reviewing, recent]);
 
-  return { team, reviews, talk, setTalk, toggleTalk, agentsOf, chipOf, sessionOf, start, review, reviewing, openSession, enabled, active };
+  return { team, reviews, talk, setTalk, toggleTalk, agentsOf, chipOf, sessionOf, start, noteStarted, review, reviewing, openSession, enabled, active };
 }
 export type Team = ReturnType<typeof useTeam>;

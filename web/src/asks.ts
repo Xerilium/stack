@@ -10,6 +10,8 @@ export interface AskItem {
   priority: 'crit' | 'high' | 'normal' | 'low'; effort?: string; blocks: number; created: string; updated: string;
   answer?: AnswerKind; text?: string; answered?: string; snoozedUntil?: string; detail?: string;
   score: number; rank?: number; overdue: boolean; agentReply?: string;
+  /** The task the ask belongs to and where that row is now. @req FR:agent-thread/ask.ref */
+  row?: string;
   /** `task`: an open 🙋 row from a task file (`ref`), answered through the agent inbox. @req FR:web-shell/state.needs */
   source?: 'task'; ref?: string;
 }

@@ -17,7 +17,7 @@ The owner's biggest gap: talking to an agent about one task. He wants to ask a q
 ## Scope
 
 - In: a `ref` on asks so an ask belongs to a task; agent replies as inbox entries the agent writes (`from: agent`); the task thread read (`GET /tasks/{ref}/thread`); Ask and Assign on the composer (Assign claims the row and starts the agent); session resume per task (a follow-up goes to the task's live session when one exists, else starts one); the thread inside the expanded task on every view that expands rows; the thread on the Focus/hero block.
-- Out: threads for projects or asks (the `agent-team` composer stays there), editing or deleting thread entries, threads across tasks, notifications beyond the existing ask notification.
+- Out: an unread count on the collapsed row's chip (next), threads for projects or asks (the `agent-team` composer stays there), editing or deleting thread entries, threads across tasks, notifications beyond the existing ask notification.
 
 ## Scenarios
 
@@ -39,7 +39,7 @@ The owner's biggest gap: talking to an agent about one task. He wants to ask a q
 
 ### FR:web: Thread in the expanded task
 
-- **FR:web.expand** (P1): The expanded task (web-shell inline expand) shows, under the notes and subtasks, the thread: compact entries (`You · 5m ago`, `🎧 Cid Manager · 2m ago`, an ask as a mini card with its primary action and Reply, a review verdict line, `Added 3 subtasks`), newest last, then the `agent-team` composer with `Ask` (`Enter`) and `Assign` (`A`) in place of Do it / Plan (Review stays). The chip on the collapsed row shows the thread's unread count (`2 new`) when the agent wrote since the owner last expanded the task (browser storage)
+- **FR:web.expand** (P1): The expanded task (web-shell inline expand) shows, under the notes and subtasks, the thread: compact entries (`You · 5m ago`, `🎧 Cid Manager · 2m ago`, an ask as a mini card with its primary action and Reply, a review verdict line, `Added 3 subtasks`), newest last, then the `agent-team` composer with `Ask` (`Enter`) and `Assign` (`A`) in place of Do it / Plan (Review stays).
 - **FR:web.hero** (P1): The Home hero and Focus mode show the same thread under the actions
 - **FR:web.live** (P1): The thread refreshes on `asks`, `tasks`, and `sessions` changes from `/events`; while the task's session runs, the composer shows `Working…` with the drawer one click away, and an agent reply fades in like a new ask
 - **FR:web.keys** (P1): In the expanded task `a` focuses the composer, `A` assigns, `Enter` on an ask entry takes its primary action; every action is in the palette and `?`

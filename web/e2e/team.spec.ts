@@ -34,12 +34,12 @@ test.describe('Agent team', () => {
     await expect(row(page, 'beta:4').locator('.agent-chip')).toHaveText('No agent');
   });
 
-  test('a opens the inline composer on the cursor row: agent picker, quick actions, Send starts a session and the row follows it', async ({ page }) => {
+  test('a opens the task thread with its composer focused; Enter asks (saved on the task, agent started) and the row follows the session', async ({ page }) => {
     const m = await open(page);
     await row(page, 'alpha:6').click();
     await expect(row(page, 'alpha:6')).toHaveClass(/cursor/);
     await page.keyboard.press('a');
-    const talk = row(page, 'alpha:6').locator('.agent-talk');
+    const talk = row(page, 'alpha:6').locator('.thread .agent-talk');
     await expect(talk).toBeVisible();
     await expect(talk).toHaveAttribute('aria-label', /Talk to 🅰️ Alpha Lead about/);
     await expect(talk.locator('select')).toHaveValue('alpha-lead');
@@ -49,34 +49,31 @@ test.describe('Agent team', () => {
     await expect(talk.locator('input[type="text"]')).toBeFocused();
     await page.keyboard.type('Check the deploy and tell me if the plan is solid');
     await page.keyboard.press('Enter');
-    await expect(talk).toHaveCount(0);
     await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Check the deploy and tell me if the plan is solid', agent: 'alpha-lead', ref: 'alpha:6' });
-    await expect(page.locator('.toast')).toContainText('Sent to alpha-lead');
+    await expect(row(page, 'alpha:6').locator('.thread .th-text.you')).toHaveText('Check the deploy and tell me if the plan is solid');
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('Working');
-    // Only one composer at a time; Esc closes it.
-    await page.keyboard.press('a');
-    await expect(page.locator('.agent-talk')).toHaveCount(1);
+    // One open task at a time: a on another row moves the thread there.
     await page.keyboard.press('Escape');
     await page.keyboard.press('j');
     await page.keyboard.press('a');
-    await expect(page.locator('.agent-talk')).toHaveCount(1);
-    await expect(row(page, 'alpha:9').locator('.agent-talk')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('.agent-talk')).toHaveCount(0);
+    await expect(page.locator('.thread')).toHaveCount(1);
+    await expect(row(page, 'alpha:9').locator('.thread')).toBeVisible();
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+    await expect(page.locator('.thread')).toHaveCount(0);
   });
 
-  test('Keep open starts the session and opens the drawer; Do it sends the quick prompt', async ({ page }, info) => {
+  test('the chip opens the thread; Keep open + Assign hands the task over and opens the drawer', async ({ page }, info) => {
     const m = await open(page);
     await row(page, 'alpha:9').click(); // the cursor row shows its chip on every device
     await row(page, 'alpha:9').locator('.agent-chip').click();
-    const talk = row(page, 'alpha:9').locator('.agent-talk');
-    // A phone has no room for the toggle: Keep open is the agent's own default there.
-    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeHidden(); await talk.getByRole('button', { name: /^Do it/ }).click(); await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toContain('Do this task'); await expect(page.locator('.toast')).toContainText('Sent to alpha-lead'); return; }
+    const talk = row(page, 'alpha:9').locator('.thread .agent-talk');
+    await expect(talk).toBeVisible();
+    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeVisible(); await talk.getByLabel('Keep open').uncheck(); await talk.getByRole('button', { name: /^Assign/ }).click(); await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' }); await expect(page.locator('.toast')).toContainText('Assigned to alpha-lead'); return; }
     await talk.getByLabel('Keep open').check();
-    await talk.getByRole('button', { name: /^Do it/ }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toContain('Do this task');
+    await talk.getByRole('button', { name: /^Assign/ }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' });
     await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByRole('dialog')).toContainText('🅰️ Alpha Lead · Review pull requests 🟠 · alpha:9');
+    await expect(page.getByRole('dialog')).toContainText('🅰️ Alpha Lead · 🚧 Review pull requests 🟠 · alpha:9');
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
@@ -115,11 +112,11 @@ test.describe('Agent team', () => {
     await row(page, 'alpha:6').click();
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
     await row(page, 'alpha:6').locator('.agent-chip').click();
-    const talk = row(page, 'alpha:6').locator('.agent-talk');
+    const talk = row(page, 'alpha:6').locator('.thread .agent-talk');
     await expect(talk).toBeVisible();
-    await expect(talk.locator('input[type="text"]')).toBeDisabled();
+    await expect(talk.locator('input[type="text"]')).toBeEnabled(); // a question still lands on the task
     await expect(talk).toContainText('Runs in stack web on your machine');
-    await expect(talk.getByRole('button', { name: /^Send/ })).toBeDisabled();
+    await expect(talk.getByRole('button', { name: /^Assign/ })).toBeDisabled();
   });
 
   test('an ask card has the agent too: a opens the composer about the ask', async ({ page }) => {
@@ -146,11 +143,11 @@ test.describe('Agent team', () => {
     await expect(hero.locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
     await hero.click();
     await page.keyboard.press('a');
-    await expect(hero.locator('.agent-talk')).toBeVisible();
+    await expect(hero.locator('.thread .agent-talk')).toBeVisible();
     await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('Go');
     await page.keyboard.press('Enter');
-    await expect(hero.locator('.agent-talk')).toHaveCount(0);
+    await expect(hero.locator('.thread .th-text.you')).toHaveText('Go');
     // The chip follows the session: once the mock flips it to idle, a 15 s poll shows Done (no poll = stuck on Working). Two cycles of slack: the flip can land right after a poll.
     await expect(hero.locator('.agent-chip')).toHaveText('Working');
     for (const x of m.sessions!) x.state = 'idle';
@@ -165,7 +162,7 @@ test.describe('Agent team', () => {
     await first.click();
     await expect(first.locator('.agent-chip')).toBeVisible();
     await page.keyboard.press('a');
-    await expect(first.locator('.agent-talk')).toBeVisible();
+    await expect(first.locator('.thread .agent-talk')).toBeVisible();
     await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('Status?');
     await page.keyboard.press('Enter');

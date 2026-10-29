@@ -31,6 +31,8 @@ import { repliesFor } from './agents';
 import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
+import { ThreadView } from './ThreadView';
+import { useThread } from './useThread';
 import { agentForAsk } from './team';
 import { planWeek } from './week';
 import { FocusMode, HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
@@ -248,7 +250,7 @@ export function App() {
   const sessions = useSessions(api, toast, agentsOn, view === 'sessions' || teamActive);
   /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
   const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name));
-  const wantActive = team.active || team.talk !== null;
+  const wantActive = team.active || team.talk !== null || open !== null;
   useEffect(() => { setTeamActive(wantActive); }, [wantActive]);
   /** @req FR:pwa/notify.optin @req FR:pwa/notify.new */
   const [notifyOn, setNotifyOn] = useState(() => loadNotify(store()));
@@ -265,6 +267,9 @@ export function App() {
     onTask: (a, s) => answerTask(a, s),
     onOpenTask: (ref) => { setFocusRef(ref); },
   });
+  /** The open task's thread; re-read when tasks, asks, or sessions change. @req FR:agent-thread/web.live */
+  const threadTick = tasks.length + asks.items.length + asks.sent.length + sessions.items.filter((x) => x.state === 'running' || x.state === 'needs-you').length;
+  const thread = useThread(api, toast, team, sessions, open, threadTick);
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
@@ -652,7 +657,8 @@ export function App() {
       else if (k === 'S') void A.doAct('skip');
       else if (k === 'z') A.openDefer();
       // @req FR:agent-team/web.keys
-      else if (k === 'a' && L.cursor) { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) teamRef.current.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); }
+      // @req FR:agent-thread/web.keys: `a` opens the task (if closed) and focuses the thread composer; views without an expanded row keep the floating composer.
+      else if (k === 'a' && L.cursor) { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (!t) return; if (L.view === 'today') { teamRef.current.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); return; } if (L.open !== t.ref) setOpen(t.ref); setTimeout(() => document.querySelector<HTMLInputElement>(`.row[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"], .focus-block[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"]`)?.focus(), 30); }
       else if (k === 'R' && L.cursor) { e.preventDefault(); void teamRef.current.review(L.cursor); }
       else if (k === 'p' || k === 't' || k === 'f' || k === 'i') A.openPicker([GROUP_NAMES.find((g) => GROUPS[g].key === k)!]);
     };
@@ -679,9 +685,11 @@ export function App() {
     onPick: (refs, g) => setPicker({ refs: selected.size && selected.has(refs[0]) ? [...selected] : refs, groups: Array.isArray(g) ? g : [g] }),
     onMove: (ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir)), onDragStart, onExpand: toggleSet('expanded'), onOpen: (r) => setFocusRef(r),
     open, onToggleOpen: toggleOpen, justDone, onAct: (a, ref) => (a === 'defer' ? openDefer(ref) : void doAct(a, ref)),
+    // @req FR:agent-thread/web.expand @req FR:agent-thread/web.hero
+    detail: (t) => (open === t.ref ? <ThreadView t={t} th={thread} team={team} now={clockNow} /> : null),
     agent: {
-      chip: (t) => { const v = team.chipOf(t); return <AgentChip view={v} onClick={() => { if (v.tone === 'accent' || v.tone === 'warn' || v.text.startsWith('Done')) team.openSession(t.ref); else team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); }} onNeeds={() => go('asks')} />; },
-      talk: (t) => (team.talk?.ref === t.ref ? <AgentTalk key={t.ref} team={team} talk={team.talk} agents={team.agentsOf(t)} /> : null),
+      chip: (t) => { const v = team.chipOf(t); return <AgentChip view={v} onClick={() => { if (v.tone === 'accent' || v.tone === 'warn' || v.text.startsWith('Done')) { team.openSession(t.ref); return; } if (view === 'today') { team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); return; } if (open !== t.ref) setOpen(t.ref); setTimeout(() => document.querySelector<HTMLInputElement>(`.row[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"], .focus-block[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"]`)?.focus(), 30); }} onNeeds={() => go('asks')} />; },
+      talk: (t) => (team.talk?.ref === t.ref && open !== t.ref ? <AgentTalk key={t.ref} team={team} talk={team.talk} agents={team.agentsOf(t)} /> : null),
     },
   };
   /** The composer for an ask card: the ask's agent, the ask as the context. @req FR:agent-team/web.anything */
