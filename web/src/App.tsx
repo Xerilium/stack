@@ -89,8 +89,9 @@ export function App() {
   const [allProjects, setAllProjects] = useState(false);
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const [{ view, filters }, setNav] = useState(() => parseHash(location.hash));
+  useEffect(() => { if (view !== 'home') setAllProjects(false); }, [view]); // Show all lasts while you stay on Home
   const [tasks, setTasks] = useState<Task[]>([]);
-  useEffect(() => { setAllProjects(false); }, [tasks]); // Show all lasts until the next load
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [next, setNext] = useState<NextTask | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -400,6 +401,7 @@ export function App() {
     if (a === 'done') {
       markDone(ref);
       if (await run(() => hold(api.action('complete', ref)), () => '')) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
+      else unmarkDone(ref);
       return;
     } else await run(() => api.action(a, ref));
   };
@@ -442,11 +444,13 @@ export function App() {
 
   /** The check is drawn before the list refreshes: a write never unmounts the row under the animation. */
   const hold = async <T,>(p: Promise<T>): Promise<T> => { const [r] = await Promise.all([p, new Promise((ok) => setTimeout(ok, 320))]); return r; };
+  const unmarkDone = (ref: string) => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; });
   const markDone = (ref: string) => { setJustDone((s) => new Set(s).add(ref)); setTimeout(() => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; }), 900); };
   const toggleDone = async (t: Task) => {
     if (t.done) { await run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Reopened'); return; }
     markDone(t.ref);
     if (await run(() => hold(api.action('complete', t.ref)), () => '')) toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
+    else unmarkDone(t.ref);
   };
 
   const save = async (ref: string, text: string) => {
