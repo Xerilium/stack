@@ -1,6 +1,6 @@
 /** @req FR:pwa/notify.optin @req FR:pwa/notify.new @req FR:pwa/notify.quiet @req FR:pwa/notify.none */
 import { describe, expect, it } from 'vitest';
-import { loadNotify, noteFor, notifySupported, quiet, saveNotify, TAG } from '../src/notify';
+import { blockedHelp, loadNotify, noteFor, notifySupported, quiet, saveNotify, TAG } from '../src/notify';
 
 const at = (h: number) => new Date(2026, 9, 28, h, 0);
 const ask = (x: Partial<{ ask: string; project: string; by: string; priority: 'crit' | 'high' | 'normal' | 'low' }>) => ({ ask: 'Approve release', priority: 'normal' as const, ...x });
@@ -33,5 +33,12 @@ describe('notifications', () => {
     expect(notifySupported({} as never)).toBe(false);
     expect(notifySupported({ Notification: {}, navigator: {} } as never)).toBe(false);
     expect(notifySupported({ Notification: {}, navigator: { serviceWorker: {} } } as never)).toBe(true);
+  });
+});
+
+// @req FR:web-shell/state.notify
+describe('blocked', () => {
+  it('tells how to unblock in the browser, not a bare Blocked', () => {
+    expect(blockedHelp()).toBe("Allow notifications for this site in the browser's site settings (the lock icon in the address bar)");
   });
 });

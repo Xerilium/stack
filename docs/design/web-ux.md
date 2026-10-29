@@ -35,3 +35,7 @@ System UI font (SF), 13px rows / 15px body / 28px focus title; tabular nums. Neu
 
 ## Acceptance
 Designer rubric all ≥4; screenshots 1440/1024/390 × light/dark in PR; side-by-side vs Linear + Things 3 recorded in `docs/design/web-ux-review.md`.
+
+## Round 4 (Oct 29): shell
+
+The frame moved to its own spec, `.xe/features/web-shell/spec.md`: Home / My day / Needs you / Projects / Full stack, chords `g h / g d / g k / g p / g a`, phone shell under 720px, `main` fills the window with a 960px measure (1200px on My day). Names and breakpoints above that disagree are superseded by that spec.

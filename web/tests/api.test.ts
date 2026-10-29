@@ -53,3 +53,14 @@ describe('api client', () => {
     expect(JSON.parse(calls[1].init.body as string)).toEqual({ ref: 'a:1', target: 'a:2', position: 'after', expect: 'r', expectTarget: 't' });
   });
 });
+
+// @req FR:web-shell/state.unreachable
+describe('unreachable api', () => {
+  it('a rejected fetch says where Stack was expected, not "Network error"', async () => {
+    const client = createClient((async () => { throw new TypeError('Failed to fetch'); }) as typeof fetch, 'http://localhost:4190/api');
+    const e = await client.next().catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ApiFailure);
+    expect((e as ApiFailure).code).toBe('network');
+    expect((e as ApiFailure).message).toBe("Can't reach Stack at localhost:4190. Is stack web still running?");
+  });
+});

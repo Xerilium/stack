@@ -44,10 +44,11 @@ test.describe('Asks', () => {
     await expect(page.locator('.ask-li')).toHaveCount(7);
   });
 
-  test('the default view is Asks', async ({ page }) => {
+  test('Home is the default view; the rail and tab bar carry the open count', async ({ page }) => {
     const m = await mockApi(page); m.asks = seed();
     await page.goto('/');
-    await expect(page.getByRole('region', { name: 'Asks' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Now' })).toBeVisible();
+    await expect(page.locator('.badge').first()).toHaveText('7');
   });
 
   test('Enter approves: the ask leaves at once, the next one opens, toast offers Undo, the answer reached the api', async ({ page }) => {
@@ -164,7 +165,7 @@ test.describe('Asks', () => {
     await page.clock.install();
     const m = await open(page);
     await page.keyboard.press('j');
-    await expect(page.getByTestId('live-status')).toContainText('Refreshing');
+    await expect(page.getByTestId('live-status')).toContainText('Checks every 15 s');
     m.asks.push(mk({ key: 'urgent', ask: 'Wire the Teams invoice', score: 999, by: iso(1) }));
     await page.clock.fastForward(16_000);
     await expect(page.locator('.ask-li').first()).toContainText('Wire the Teams invoice');
@@ -178,7 +179,7 @@ test.describe('Asks', () => {
   test('empty state', async ({ page }) => {
     await open(page, []);
     await expect(page.getByTestId('asks-empty')).toContainText('Nothing needs you.');
-    await expect(page.getByTestId('asks-empty')).toContainText('No agent has written an ask yet');
+    await expect(page.getByTestId('asks-empty')).toContainText('No open asks, decisions, or replies · no agent has written an ask yet');
     await expect(page).toHaveTitle('Stack');
   });
 
