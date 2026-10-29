@@ -29,6 +29,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/asks/{key}/handle` | POST close an ask after acting, or reopen it with a reply |
 | `/agents` | GET what agents are doing (agent rows, result logs, inbox, PR state and checks) |
 | `/sync` | GET the repo revision (`rev`, head commit sha; `null` when the storage has none). Poll it and reload only when it changes |
+| `/calendar` | GET calendar events for a range, read-only (owner session only) |
 | `/tasks/resume` | POST unpark a task (owner session only) |
 | `/tasks/suspend` | POST suspend for days or hours (owner session only) |
 | `/tasks/set` | POST change task properties |

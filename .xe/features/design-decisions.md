@@ -189,3 +189,13 @@
 **Why**: Chat overwhelms the owner; files are durable, agent-agnostic, and reviewable, and any CoS can resume from them. Parsing prose state files would guess; applying defaults needs the owning agent's knowledge.
 
 **Rejected**: A status feed (the overload to remove); WebSocket (SSE is simpler and one-way); agent-set scores (inconsistent); parsing `.stack/*-state.md`.
+
+## Meetings take time; the plan packs first-fit around them
+
+**Decision**: Calendar events come through a read-only `CalendarProvider` (Graph `calendarView` behind its own allowlist, or fixtures). Busy time lowers the default Available and blocks the timeline; tasks go to the first gap that holds them, inside the work day unless the budget asks for more. Email asks reserve one block first in the day.
+
+**Date**: 2026-10-28
+
+**Why**: A plan that ignores meetings books hours that do not exist. First fit uses the gap before a meeting for a short task instead of wasting it; capping at the work day keeps unusable gaps from pushing work into the evening.
+
+**Rejected**: IMAP (app passwords and a client library for a Microsoft 365 mailbox Graph already covers); splitting a task across a meeting (context switching); a server-side plan (the budget and clock are per viewer).

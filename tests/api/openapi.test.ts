@@ -1,3 +1,4 @@
+import { fixtureCalendar } from '../../src/calendar';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parseDocument } from 'yaml';
@@ -208,7 +209,9 @@ describe('security parity', () => {
 describe('response parity (real handler output vs documented schemas)', () => {
   const NOW = new Date('2026-10-22T18:00:00Z');
   const storage = new MemoryStorage();
-  const h = createApiHandler({ storage, authorize: () => true, now: () => NOW });
+  // A calendar with an online meeting, so the documented event shape (joinUrl included) is checked against real output.
+  const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
+  const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
@@ -268,6 +271,9 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('summaries.get', 'GET', '/summaries', undefined, 200);
     // @req FR:live-deploy/sync.route
     await go('sync', 'GET', '/sync', undefined, 200);
+    // @req FR:day-inputs/api.calendar
+    await go('calendar.list', 'GET', '/calendar?from=2026-10-28T00:00:00Z&to=2026-10-29T00:00:00Z', undefined, 200);
+    await go('calendar.list', 'GET', '/calendar?from=x&to=y', undefined, 422);
     // @req FR:agent-inbox/api.agents
     await go('tasks.add', 'POST', '/tasks', { project: 'alpha', text: '🪄 Agent job https://github.com/o/r/pull/1' }, 201);
     const agent = ((await go('agents.list', 'GET', '/agents', undefined, 200)).body as any).items[0].ref as string;
