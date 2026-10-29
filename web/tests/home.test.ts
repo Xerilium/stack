@@ -12,8 +12,8 @@ describe('countdown', () => {
     expect(countdown('Oct 29', at)).toEqual({ text: 'today', tone: 'soon' });
     expect(countdown('Oct 30', at)).toEqual({ text: 'tomorrow', tone: 'soon' });
     expect(countdown('Oct 31', at)).toEqual({ text: 'Sat', tone: 'calm' });
-    expect(countdown('Nov 12', at)).toEqual({ text: 'in 14 d', tone: 'calm' });
-    expect(countdown('Oct 27', at)).toEqual({ text: '2 d late', tone: 'late' });
+    expect(countdown('Nov 12', at)).toEqual({ text: 'in 14d', tone: 'calm' });
+    expect(countdown('Oct 27', at)).toEqual({ text: '2d late', tone: 'late' });
     expect(countdown(undefined, at)).toBeNull();
   });
 });

@@ -40,6 +40,18 @@ test.describe('layout and nav', () => {
     }
   });
 
+  test('a local repo shows as a quiet pill: rail footer on desktop, tiny pill on phones, path only in the tooltip', async ({ page }, info) => {
+    await mockApi(page);
+    await page.route('**/.auth/me', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ clientPrincipal: { userDetails: 'local', identityProvider: 'local', userRoles: ['authenticated'] }, local: { mode: 'demo', repo: '/Users/me/todo', branch: 'main' }, events: false }) }));
+    await page.goto('/');
+    const pill = info.project.name === 'mobile' ? page.getByTestId('repo-pill') : page.getByTestId('repo-banner');
+    await expect(pill).toBeVisible();
+    await expect(pill).toContainText('Demo copy');
+    await expect(pill).not.toContainText('/Users/me/todo');
+    await expect(pill).toHaveAttribute('title', /\/Users\/me\/todo/);
+    await expect(page.getByText('/Users/me/todo')).toHaveCount(0);
+  });
+
   // @req FR:web-shell/layout.breakpoint
   test('a tablet-wide window keeps the rail; only a phone-wide one gets the tab bar, and a reload changes nothing', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'desktop sizes');
@@ -74,6 +86,7 @@ test.describe('layout and nav', () => {
     await mockApi(page);
     await page.goto('/#/asks');
     await page.keyboard.press('Control+k');
+    await expect(page.locator('#palette-list .cmd-group')).toHaveText(['Actions', 'Go to', 'Projects']);
     const box = page.getByRole('combobox', { name: 'Command' });
     await box.fill('mark done');
     await expect(page.getByText('No matching command')).toBeVisible();
@@ -85,7 +98,7 @@ test.describe('layout and nav', () => {
     await expect(page.locator('#palette-list [role=option]').first()).toHaveText(/Mark done/);
     await box.fill('');
     await box.fill('alpha');
-    await expect(page.locator('#palette-list [role=option]').first()).toHaveText(/Project: Alpha/);
+    await expect(page.locator('#palette-list [role=option]').first()).toHaveText(/^Alpha$/);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/#\/list\?project=alpha/);
     await expect(page.locator('.row')).toHaveCount(2); // alpha's open top-level rows

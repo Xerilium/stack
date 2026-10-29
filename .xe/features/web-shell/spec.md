@@ -30,13 +30,13 @@ First use must feel like a native app: it fills the window, the same four places
 ### FR:nav: One nav
 
 - **FR:nav.views** (P1): Views are `home` (`#/`, `#/home`; old `#/now`, `#/next`, `#/focus` still open it), `today` (My day, `#/today`), `projects` (`#/projects`; old `#/capacity`), `list` (Full stack, `#/list`; old `#/all`, `#/stack`), and `sessions` (`#/sessions`; old `#/agents`; agent-sessions `FR:web.view`), and `asks` (Needs you, `#/asks`). An unknown hash opens Home. Home is the starting screen
-- **FR:nav.rail** (P1): The desktop rail lists, in order: New task, Home, My day, Needs you (with the open count as a badge, hidden at 0), Sessions, Projects, Full stack. Commands and Shortcuts sit at the bottom. Labels are these words exactly
+- **FR:nav.rail** (P1): The desktop rail lists, in order: New task, Home, My day, Needs you (with the open count as a badge, hidden at 0), Sessions, Projects, Full stack. Commands and Shortcuts sit at the bottom, then a quiet mode pill for a local repo (`Demo copy · <branch>` or `Live · <branch>`, the path only in its tooltip). Labels are these words exactly
 - **FR:nav.tabbar** (P1): The phone tab bar has five equal slots: Home, My day, New task (the raised circle, in the middle), Needs you (count badge), More (opens the palette). The `+` glyph is optically centered in its circle (its box center within 1px of the circle's center). Projects and Full stack are reached through More / the palette
 - **FR:nav.keys** (P1): `g h` Home, `g d` or `g t` My day, `g k` Needs you, `g s` Sessions, `g p` Projects, `g a` Full stack. The rail shows the chord on hover and on the active item
 
 ### FR:palette: Command palette
 
-- **FR:palette.jump** (P1): `⌘K` / `Ctrl+K` and `:` open the palette. It lists `Go to …` for each view and `Project: <title>` for every project, which opens Full stack filtered to that project. Typing a project name alone (`alpha`) ranks its `Project:` command first
+- **FR:palette.jump** (P1): `⌘K` / `Ctrl+K` and `:` open the palette. With no query it is grouped: **Actions** first, then **Go to** (one per view), then **Projects** (every project by its title, which opens Full stack filtered to it). Typing filters to a flat list; a project name alone (`alpha`) ranks that project first. The list scrolls and keeps the selected command in view
 - **FR:palette.scope** (P1): Row actions (`Mark done`, `Set …`) appear only on views with rows; ask actions only on Needs you
 
 ### FR:state: Honest states
