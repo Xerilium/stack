@@ -11,7 +11,7 @@ import { mkCtx, msg, NOW } from './fixtures';
 const H = 3600_000;
 const old = (h: number) => new Date(NOW.getTime() - h * H).toISOString();
 const read = async (storage: { read(p: string): Promise<{ content: string }> }, key: string) => parseAsk(key, (await storage.read(asksPath(key))).content);
-const SIGNED = { 'Authentication-Results': 'spf=pass; dkim=pass; dmarc=pass' };
+const SIGNED = { 'Authentication-Results': 'mx.example.test; spf=pass; dkim=pass header.d=weekly.example.test; dmarc=pass' };
 const news = (over: Partial<Message> = {}): Message => msg({
   id: 'n1', conversationId: 'cn1', subject: 'Weekly digest #12', from: { name: 'Cloud Weekly', address: 'news@weekly.example.test' }, receivedAt: old(30), bodyPreview: 'This week in cloud.',
   headers: { ...SIGNED, 'List-Id': '<weekly.example.test>', 'List-Unsubscribe': '<https://weekly.example.test/u/abc>, <mailto:u@weekly.example.test>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }, ...over,
@@ -354,5 +354,53 @@ describe('runTriage with hygiene', () => {
     const { storage, ctx } = ctxNow();
     await runTriage({ ctx, provider: provider([news(), news({ id: 'n2', conversationId: 'cn2' })]), classifier, rules: DEFAULT_RULES, hygiene: { state: memoryState(), judge: { newsletterValue: async () => 'x' } } });
     expect(await storage.listAsks!()).toEqual([]);
+  });
+});
+
+// Round 2 @req FR:email-inbox-zero/gate.guard @req FR:email-inbox-zero/gate.answered @req FR:email-inbox-zero/sub.ledger
+describe('round 2 regressions', () => {
+  it('denies a move with no folder, even with approvals', () => {
+    const g = createGraphGuard({ mode: 'drafts', approvedMoves: new Map([['A1', 'archive' as const]]) });
+    for (const body of [{ destinationId: undefined }, {}, { destinationId: null }]) expect(() => g.check({ method: 'POST', url: `${GRAPH_BASE}/me/messages/ZZ/move`, body })).toThrow(GraphDenied);
+  });
+  it('refuses a batch whose kind or recommendation was changed, or that changed after the answer', async () => {
+    const { ctx } = ctxNow();
+    const state = memoryState();
+    const s = await state.get();
+    observe(s, settled(news(), 'newsletter'), { now: NOW });
+    await writeHygieneAsks(ctx, s, { now: NOW });
+    const key = keyOf(s, 'archive');
+    await putAsk(ctx, key, { recommend: 'Keep all' }, 'email-triage');
+    await answerAsk(ctx, key, { answer: 'go' });
+    expect((await approvedMoves(ctx, s)).size).toBe(0);
+
+    const c2 = mkCtx(); // a ticking clock: every write has its own time
+    const s2 = await memoryState().get();
+    observe(s2, settled(news(), 'newsletter'), { now: NOW });
+    await writeHygieneAsks(c2.ctx, s2, { now: NOW });
+    const k2 = keyOf(s2, 'archive');
+    const original = (await read(c2.storage, k2)).ask;
+    await answerAsk(c2.ctx, k2, { answer: 'go' });
+    expect((await approvedMoves(c2.ctx, s2)).size).toBe(1);
+    await putAsk(c2.ctx, k2, { ask: 'Archive 900 settled messages?' }, 'email-triage');
+    await putAsk(c2.ctx, k2, { ask: original }, 'email-triage');
+    expect((await approvedMoves(c2.ctx, s2)).size).toBe(0);
+  });
+  it('accepts an unsubscribe target only with DKIM aligned to the From domain', () => {
+    const h = (ar: string) => ({ 'Authentication-Results': ar, 'List-Unsubscribe': '<https://weekly.example.test/u>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' });
+    expect(unsubscribeTarget(h('dkim=pass header.d=weekly.example.test'), 'news@weekly.example.test').method).toBe('one-click');
+    expect(unsubscribeTarget(h('dkim=pass header.d=example.test'), 'news@weekly.example.test').method).toBe('one-click');
+    expect(unsubscribeTarget(h('dkim=pass header.d=attacker.example'), 'news@weekly.example.test').method).toBe('link');
+    expect(unsubscribeTarget(h('dkim=pass'), 'news@weekly.example.test').method).toBe('link');
+    const s = { version: 1 as const, archive: [], spam: [], batches: [], declined: [], subs: {} } as HygieneState;
+    observe(s, settled(news({ headers: { 'List-Id': '<weekly.example.test>', 'List-Unsubscribe': '<mailto:x@weekly.example.test>' } }), 'newsletter'), { now: NOW });
+    expect(s.subs[subKey('weekly.example.test')].method).toBe('none');
+  });
+  it('caps a batch at 200 messages', async () => {
+    const { ctx } = ctxNow();
+    const s = await memoryState().get();
+    for (let i = 0; i < 250; i++) observe(s, settled(msg({ id: `m${i}`, conversationId: `c${i}`, receivedAt: old(30) }), 'fyi'), { now: NOW });
+    await writeHygieneAsks(ctx, s, { now: NOW });
+    expect(s.batches[0].ids).toHaveLength(200);
   });
 });

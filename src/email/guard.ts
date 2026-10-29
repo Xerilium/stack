@@ -68,7 +68,7 @@ export function createGraphGuard(opts: { mode?: WriteMode; approvedMoves?: Reado
     const path = `/${segs.join('/')}`;
     // The one exception to the denied verbs: moving a message the owner approved in an answered ask, to Archive or Junk only. @req FR:email-inbox-zero/gate.guard
     const mv = MOVE.exec(path);
-    if (method === 'POST' && mv && mode === 'drafts' && hasOnly(req.body, 'destinationId') && opts.approvedMoves?.get(mv[1]) === (req.body as { destinationId: unknown }).destinationId && ![...u.searchParams.keys()].length) return;
+    if (method === 'POST' && mv && mode === 'drafts' && hasOnly(req.body, 'destinationId') && typeof (req.body as { destinationId: unknown }).destinationId === 'string' && opts.approvedMoves?.get(mv[1]) === (req.body as { destinationId: unknown }).destinationId && ![...u.searchParams.keys()].length) return;
     if (segs.some((s) => DENY.some((d) => s.toLowerCase() === d || (s.toLowerCase() === `create${d}` && d !== 'reply')))) return deny(req, 'denied verb');
     for (const k of u.searchParams.keys()) if (!QUERY.has(k)) return deny(req, `query ${k}`);
 

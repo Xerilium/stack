@@ -20,6 +20,9 @@ export const SUB_OPTIONS = ['Keep', 'Unsubscribe', 'Archive on arrival'];
 export const ARCHIVABLE: readonly TriageClass[] = ['newsletter', 'receipt', 'calendar', 'fyi', 'skip'];
 const KEEP_IDS = 200;
 const KEEP_DECLINED = 2000;
+/** At most this many messages per batch ask; the rest wait for the next one. */
+export const MAX_BATCH = 200;
+const KEEP_PENDING = 5000;
 const KEEP_SUBJECTS = 5;
 const DETAIL_LINES = 20;
 
@@ -60,8 +63,9 @@ const clean = (s: string, n: number) => clip(oneLine(redact(s)), n);
 const sha = (s: string) => createHash('sha1').update(s).digest('hex');
 const header = (h: Record<string, string> | undefined, name: string) => Object.entries(h ?? {}).filter(([k]) => k.toLowerCase() === name.toLowerCase()).map(([, v]) => String(v)).join('; ');
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-/** What the owner sees on an ask, hashed: a changed text or a rewrite by anyone else breaks the match. */
-export const fingerprint = (a: Pick<Ask, 'ask' | 'detail' | 'from'>) => sha(`${a.from}\n${a.ask}\n${a.detail}`);
+/** Every field the owner sees on an ask, hashed: any rewrite by anyone breaks the match. */
+export const fingerprint = (a: Pick<Ask, 'from' | 'kind' | 'ask' | 'why' | 'recommend' | 'options' | 'default' | 'detail' | 'link' | 'reversible'>) =>
+  sha(JSON.stringify([a.from, a.kind, a.ask, a.why ?? '', a.recommend ?? '', a.options ?? [], a.default ?? '', a.detail, a.link ?? '', a.reversible]));
 
 /** `sub-` plus 12 hex of the list id (or sender address). */
 export const subKey = (listOrAddress: string): string => `sub-${sha(listOrAddress.trim().toLowerCase()).slice(0, 12)}`;
@@ -70,8 +74,15 @@ function listOf(m: Message): string {
   const inner = id && /<([^>]{1,200})>/.exec(id)?.[1];
   return (inner || id || m.from.address).trim().toLowerCase();
 }
-/** RFC 8058 needs a DKIM signature over the unsubscribe headers; a passing DKIM result is the signal available here. */
-const dkimPass = (h?: Record<string, string>) => /\bdkim=pass\b/i.test(header(h, 'Authentication-Results'));
+/**
+ * RFC 8058 needs a DKIM signature over the unsubscribe headers. The signal here: the receiving server's `Authentication-Results`
+ * (the provider keeps only the first, which the sender cannot write) shows `dkim=pass` for the From domain or a parent of it.
+ */
+export function dkimAligned(h: Record<string, string> | undefined, from: string): boolean {
+  const fromDomain = from.slice(from.lastIndexOf('@') + 1).toLowerCase();
+  return [...header(h, 'Authentication-Results').matchAll(/\bdkim=pass\b[^;]*?\bheader\.d=([a-z0-9.-]{1,253})/gi)]
+    .some((x) => { const d = x[1].toLowerCase().replace(/\.+$/, ''); return d.includes('.') && (fromDomain === d || fromDomain.endsWith(`.${d}`)); });
+}
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 const PRIVATE_SUFFIX = /\.(local|localhost|localdomain|internal|intranet|lan|home|corp|home\.arpa)$/;
@@ -86,11 +97,11 @@ export function safeHttps(raw: string): string | undefined {
 }
 
 /** The unsubscribe method from the sender's own headers. One-click needs a passing DKIM result. @req FR:email-inbox-zero/sub.unsubscribe */
-export function unsubscribeTarget(headers: Record<string, string>): { method: SubMethod; url?: string; mailto?: string } {
+export function unsubscribeTarget(headers: Record<string, string>, from = ''): { method: SubMethod; url?: string; mailto?: string } {
   const parts = [...header(headers, 'List-Unsubscribe').matchAll(/<([^>]{1,2000})>/g)].map((x) => x[1].trim());
   const url = parts.map(safeHttps).find(Boolean);
   const mailto = parts.find((p) => /^mailto:/i.test(p))?.slice(7).split('?')[0];
-  if (url && /List-Unsubscribe=One-Click/i.test(header(headers, 'List-Unsubscribe-Post')) && dkimPass(headers)) return { method: 'one-click', url };
+  if (url && /List-Unsubscribe=One-Click/i.test(header(headers, 'List-Unsubscribe-Post')) && dkimAligned(headers, from)) return { method: 'one-click', url };
   if (url) return { method: 'link', url };
   if (mailto && /^[^@\s]{1,64}@[^@\s]{1,255}$/.test(mailto)) return { method: 'mailto', mailto };
   return { method: 'none' };
@@ -113,17 +124,17 @@ export function observe(s: HygieneState, r: TriageResult, o: { now: Date }): voi
       if (m.isRead) row.read++;
       row.ids = [...row.ids, { id: m.id, read: !!m.isRead }].slice(-KEEP_IDS);
       row.subjects = [...row.subjects, clean(m.subject, 100)].slice(-KEEP_SUBJECTS);
-      // Only a DKIM-passing issue may set or change where an unsubscribe goes; anyone can claim a List-Id.
-      if (m.headers && (dkimPass(m.headers) || row.method === 'none')) Object.assign(row, { url: undefined, mailto: undefined }, unsubscribeTarget(m.headers));
+      // Only an issue with aligned DKIM may set or change where an unsubscribe goes; anyone can claim a List-Id.
+      if (m.headers && dkimAligned(m.headers, m.from.address)) Object.assign(row, { url: undefined, mailto: undefined }, unsubscribeTarget(m.headers, m.from.address));
     }
   }
   if (r.vip || s.declined.includes(m.id)) return;
   const queued = (x: Pending[]) => x.some((p) => p.id === m.id);
   if (r.class === 'spam') {
-    if (!queued(s.spam)) s.spam.push(item());
+    if (!queued(s.spam)) s.spam = [...s.spam, item()].slice(-KEEP_PENDING);
     s.archive = s.archive.filter((x) => x.id !== m.id);
   } else if (ARCHIVABLE.includes(r.class) && !queued(s.archive) && !queued(s.spam)) {
-    s.archive.push(item(sub));
+    s.archive = [...s.archive, item(sub)].slice(-KEEP_PENDING);
   }
 }
 
@@ -139,7 +150,10 @@ export async function approvedChoice(ctx: LifecycleContext, key: string): Promis
 /** The batch's ask if it is still exactly what was written; null when it was changed or removed. @req FR:email-inbox-zero/gate.answered */
 async function intact(ctx: LifecycleContext, b: Batch): Promise<Ask | null> {
   const a = (await readAsk(ctx, b.key))?.ask;
-  return a && a.from === ACTOR && fingerprint(a) === b.fingerprint ? a : null;
+  if (!a || a.from !== ACTOR || a.kind !== 'approve' || fingerprint(a) !== b.fingerprint) return null;
+  // Changed after the answer (even back to the original text): the answer no longer covers it.
+  if (a.state === 'answered' && a.updated !== a.answered) return null;
+  return a;
 }
 
 /** Ids the owner approved, each with its one folder, for the guard. @req FR:email-inbox-zero/gate.guard */
@@ -163,6 +177,7 @@ function batchDetail(items: Pending[]): string {
 /** A new, immutable batch ask; while one of a kind is open, new mail waits for the next batch. @req FR:email-inbox-zero/batch.archive @req FR:email-inbox-zero/gate.answered */
 async function writeBatch(ctx: LifecycleContext, s: HygieneState, kind: BatchKind, items: Pending[], base: { project?: string }): Promise<void> {
   if (!items.length || s.batches.some((b) => b.kind === kind)) return;
+  items = items.slice(0, MAX_BATCH);
   const ids = items.map((x) => x.id);
   const key = `mail-${kind}-${sha(ids.join(',')).slice(0, 10)}`;
   const ask = kind === 'archive' ? `Archive ${plural(items.length, 'settled message')}?` : `Move ${plural(items.length, 'spam message')} to Junk?`;
