@@ -3,7 +3,7 @@
  * recorded in the result log, needs written as asks).
  * @req FR:agent-team/talk.start @req FR:agent-team/review.run @req FR:agent-team/review.record @req FR:agent-team/review.needs @req FR:agent-team/review.read
  */
-import { agentFor, listTeam, reviewOf, type Review, type TeamAgent } from '../core/agents';
+import { agentFor, listTeam, reviewsIn, type Review, type TeamAgent } from '../core/agents';
 import { handleAsk, listAsks, putAsk, type AskKind } from '../core/asks';
 import { LifecycleError, type LifecycleContext, type TaskRef } from '../core/lifecycle';
 import { parseProject, type Task } from '../core/parser';
@@ -34,6 +34,16 @@ export const QUICK_PROMPTS = {
 const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
 const oneLine = (s: string, max = 200) => { const t = redact(s).replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
 const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'z').toLowerCase();
+/** The session store keeps 80 characters of a title: the ` · <ref>` suffix the page maps on must survive, so the head is cut first. */
+export const TITLE_MAX = 80;
+export function sessionTitle(head: string, tail: string): string {
+  const suffix = tail ? ` · ${tail}` : '';
+  const room = TITLE_MAX - suffix.length;
+  const h = oneLine(head, 200);
+  return `${h.length > room ? `${h.slice(0, Math.max(1, room - 1))}…` : h}${suffix}`;
+}
+/** `rev-<slug>-<line>-<stamp>-<n>` must fit an ask key (80): a long project slug is cut. */
+export const reviewPrefix = (ref: TaskRef): string => `rev-${logName({ path: ref.path, line: 0 }).toLowerCase().slice(0, 40)}-${ref.line + 1}-`;
 const findChain = (tasks: Task[], line: number, chain: Task[] = []): Task[] | null => {
   for (const t of tasks) { if (t.line === line) return [...chain, t]; const hit = findChain(t.children, line, [...chain, t]); if (hit) return hit; }
   return null;
@@ -60,7 +70,7 @@ export function personaOf(agent: TeamAgent, context?: string): string {
   return [head, agent.prompt, context ? `## Context\n\n${context}` : ''].filter(Boolean).join('\n\n');
 }
 
-export interface AgentRunInput { agent?: string; ref?: string; project?: string; text: string; actor: string }
+export interface AgentRunInput { agent?: string; ref?: string; project?: string; text: string }
 async function resolve(ctx: LifecycleContext, i: { agent?: string; ref?: string; project?: string }) {
   const ref = i.ref ? parseRef(i.ref) : null;
   if (i.ref && !ref) throw new LifecycleError('Bad ref');
@@ -75,24 +85,24 @@ async function resolve(ctx: LifecycleContext, i: { agent?: string; ref?: string;
 /** Starts a new session for an agent on a task (or a project). @req FR:agent-team/talk.start */
 export async function startAgentRun(runs: AgentRuns, ctx: LifecycleContext, i: AgentRunInput): Promise<{ runId: string; sessionId: string | null; agent: string; title: string }> {
   const { c, project, agent } = await resolve(ctx, i);
-  const title = oneLine(`${agent.name} · ${c ? `${c.title} · ${i.ref}` : `${project}`}`, 120);
+  const title = c ? sessionTitle(`${agent.name} · ${c.title}`, i.ref!) : sessionTitle(`${agent.name} · ${project}`, '');
   const options: PromptOptions = { systemPrompt: personaOf(agent, c?.text), title, ...(agent.model ? { model: agent.model } : {}) };
   const r = await runs.prompt({ text: i.text, options });
   return { ...r, agent: agent.slug, title };
 }
 
 /** Starts a read-only review; the verdict and its needs land when the run ends. @req FR:agent-team/review.run */
-export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string): Promise<{ runId: string; sessionId: string | null; agent: string }> {
+export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string, onError: (e: unknown) => void = (e) => console.error('review:', e)): Promise<{ runId: string; sessionId: string | null; agent: string }> {
   const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug });
   if (!ref || !c) throw new LifecycleError('Bad ref');
-  const title = oneLine(`${agent.name} · review · ${c.title} · ${refText}`, 120);
+  const title = sessionTitle(`${agent.name} · review · ${c.title}`, refText);
   const options: PromptOptions = { systemPrompt: personaOf(agent, c.text), title, schema: REVIEW_SCHEMA, allowedTools: READ_ONLY_TOOLS, disallowedTools: WRITE_TOOLS, ...(agent.model ? { model: agent.model } : {}) };
   const r = await runs.prompt({ text: REVIEW_PROMPT, options });
   const now = () => (ctx.now ?? (() => new Date()))();
   const onDone = async (d: Extract<Update, { type: 'done' }>) => {
     const a = parseVerdict(d.structured ?? d.text);
     if (d.stopReason !== 'end_turn' || !a) return;
-    const prefix = `rev-${logName({ path: ref.path, line: 0 }).toLowerCase()}-${ref.line + 1}-`;
+    const prefix = reviewPrefix(ref);
     const open = await listAsks(ctx, { state: 'open', limit: 200 });
     for (const k of open.items.filter((x) => x.key.startsWith(prefix)).map((x) => x.key)) await handleAsk(ctx, k, { outcome: 'resolved', note: 'reviewed again' }, agent.slug).catch(() => undefined);
     const outcome = a.verdict === 'can' ? 'done' : a.verdict === 'partial' ? 'partial' : 'blocked';
@@ -105,7 +115,8 @@ export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText
     }
   };
   // The run manager buffers updates, so a subscription right after the prompt never misses `done`.
-  const off = runs.subscribe(r.runId, (u) => { if (u.type === 'done') { off?.(); void onDone(u).catch(() => undefined); } }, () => undefined);
+  // A failure here (a 🙋 row refuses a log entry, storage conflict) must not vanish: it is logged, and the chip then shows no verdict.
+  const off = runs.subscribe(r.runId, (u) => { if (u.type === 'done') { off?.(); void onDone(u).catch(onError); } }, () => undefined);
   return { ...r, agent: agent.slug };
 }
 
@@ -120,20 +131,22 @@ export function parseVerdict(v: unknown): ReviewAnswer | null {
   return { verdict: o.verdict as ReviewAnswer['verdict'], plan: o.plan, ...(typeof o.estimate === 'string' && o.estimate.trim() ? { estimate: o.estimate } : {}), needs, ...(Array.isArray(o.risks) ? { risks: o.risks.map(String) } : {}) };
 }
 
-/** Every row's newest review in a project. @req FR:agent-team/review.read */
+/** Every row's newest review in a project, from one pass over its log files. @req FR:agent-team/review.read */
 export async function listReviews(ctx: LifecycleContext, project: string): Promise<(Review & { ref: string })[]> {
   const path = `tasks/${project}.md`;
   let content: string;
   try { content = (await ctx.storage.read(path)).content; } catch (e) { if (e instanceof NotFoundError) return []; throw e; }
-  const slug = logName({ path, line: 0 }).toLowerCase();
-  const open = (await listAsks(ctx, { state: 'open', limit: 200 })).items.map((a) => a.key).filter((k) => k.startsWith(`rev-${slug}-`));
+  const open = (await listAsks(ctx, { state: 'open', limit: 200 })).items.map((a) => a.key);
   const lines = new Set<number>();
   const walk = (ts: Task[]) => { for (const t of ts) { lines.add(t.line); walk(t.children); } };
   for (const s of parseProject(content).sections) walk(s.tasks);
+  const all = await reviewsIn(ctx, path);
   const out: (Review & { ref: string })[] = [];
   for (const line of lines) {
-    const r = await reviewOf(ctx, { path, line }, open);
-    if (r) out.push({ ...r, ref: formatRef({ path, line }) });
+    const r = all.get(line);
+    if (!r) continue;
+    const prefix = reviewPrefix({ path, line });
+    out.push({ ...r, needs: open.filter((k) => k.startsWith(prefix)), ref: formatRef({ path, line }) });
   }
   return out;
 }

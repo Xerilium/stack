@@ -168,14 +168,18 @@ export async function listTeam(ctx: LifecycleContext): Promise<TeamAgent[]> {
 const resolveProjects = (scope: string[], all: string[]): string[] =>
   scope.includes('*') ? [...all] : [...new Set(scope.map((s) => s.split('/')[0]).filter((p) => all.includes(p)))];
 
+/** Whole words of a heading after its emoji; a scope matches when its words are the heading's first words (`Do` never covers `Done`). */
+const words = (h: string) => h.trim().toLowerCase().replace(/^[^\p{L}\p{N}]+/u, '').split(/\s+/).filter(Boolean);
+const wordPrefix = (scope: string, heading: string) => { const a = words(scope), b = words(heading); return a.length > 0 && a.length <= b.length && a.every((w, i) => w === b[i]); };
 /** How specific a scope entry is for a task: 3 project/section, 2 project, 1 everything, 0 no match. */
 function specificity(scope: string, project: string, section?: string): number {
   if (scope === '*') return 1;
   const [p, ...rest] = scope.split('/');
   if (p !== project) return 0;
   if (rest.length === 0) return 2;
+  // A section scope matches the heading's words after its emoji (`Labels` covers `🏷️ Labels`, not `Done`).
   const want = rest.join('/').trim().toLowerCase();
-  return section !== undefined && section.trim().toLowerCase().includes(want) ? 3 : 0;
+  return section !== undefined && wordPrefix(want, section) ? 3 : 0;
 }
 
 /** Agents that cover a task, most specific first; the first is the active agent. @req FR:agent-team/agent.resolve */
@@ -190,25 +194,35 @@ export function agentFor(team: TeamAgent[], project: string, section?: string): 
 export interface Review { at: string; verdict: 'can' | 'partial' | 'cannot'; plan: string; estimate?: string; agent: string; needs: string[] }
 const VERDICT: Record<string, Review['verdict']> = { done: 'can', partial: 'partial', blocked: 'cannot' };
 
-/** The newest review entry for a row, or null. Needs are the open ask keys the review created (`rev-<slug>-<line>-<n>`). @req FR:agent-team/review.read */
-export async function reviewOf(ctx: LifecycleContext, ref: TaskRef, openAskKeys: string[] = []): Promise<Review | null> {
-  const slug = logName({ path: ref.path, line: 0 });
-  const want = `${ref.path}:${ref.line + 1}`;
-  let best: Review | null = null;
+/** The newest review entry per row (0-based line) in a project's log files, one pass. @req FR:agent-team/review.read */
+export async function reviewsIn(ctx: LifecycleContext, path: string): Promise<Map<number, Omit<Review, 'needs'> & { needs: string[] }>> {
+  const slug = logName({ path, line: 0 });
+  const prefix = `${path}:`;
+  const best = new Map<number, Review>();
   for (let n = 0; n < 5; n++) {
     let content: string;
     try { content = (await ctx.storage.read(`tasks/logs/${slug}${n === 0 ? '' : `.${n + 1}`}.md`)).content; } catch (e) { if (e instanceof NotFoundError) continue; throw e; }
     for (const chunk of content.split(/^## /m).slice(1)) {
       const at = chunk.split('\n')[0].trim();
       const kv = new Map([...chunk.matchAll(/^- ([a-z]+): (.*)$/gm)].map((m) => [m[1], m[2].trim()]));
-      if (kv.get('ref') !== want || kv.get('action') !== 'review' || !/^\d{4}-\d\d-\d\dT/.test(at)) continue;
-      if (best && best.at >= at) continue;
+      const ref = kv.get('ref') ?? '';
+      if (!ref.startsWith(prefix) || kv.get('action') !== 'review' || !/^\d{4}-\d\d-\d\dT/.test(at)) continue;
+      const line = Number(ref.slice(prefix.length)) - 1;
+      if (!Number.isInteger(line) || line < 0) continue;
+      const cur = best.get(line);
+      if (cur && cur.at >= at) continue;
       const verdict = VERDICT[kv.get('outcome') ?? ''];
       if (!verdict) continue;
       const m = /^(?:can|partial|cannot): (.*?)(?: \(([^)]*)\))?$/.exec(kv.get('summary') ?? '');
-      best = { at, verdict, plan: m?.[1] ?? kv.get('summary') ?? '', ...(m?.[2] ? { estimate: m[2] } : {}), agent: (kv.get('actor') ?? '').replace(/^agent:/, ''), needs: [] };
+      best.set(line, { at, verdict, plan: m?.[1] ?? kv.get('summary') ?? '', ...(m?.[2] ? { estimate: m[2] } : {}), agent: (kv.get('actor') ?? '').replace(/^agent:/, ''), needs: [] });
     }
   }
-  if (best) { const prefix = `rev-${slug.toLowerCase()}-${ref.line + 1}-`; best.needs = openAskKeys.filter((k) => k.startsWith(prefix)); }
+  return best;
+}
+
+/** The newest review entry for a row, or null. Needs are the open ask keys the review created (`rev-<slug>-<line>-`). @req FR:agent-team/review.read */
+export async function reviewOf(ctx: LifecycleContext, ref: TaskRef, openAskKeys: string[] = []): Promise<Review | null> {
+  const best = (await reviewsIn(ctx, ref.path)).get(ref.line) ?? null;
+  if (best) { const prefix = `rev-${logName({ path: ref.path, line: 0 }).toLowerCase().slice(0, 40)}-${ref.line + 1}-`; best.needs = openAskKeys.filter((k) => k.startsWith(prefix)); }
   return best;
 }

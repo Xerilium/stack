@@ -84,7 +84,9 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
       void sessions.reload();
       // The verdict lands when the run ends: follow its stream and refresh the project's reviews on done.
       const es = typeof EventSource === 'undefined' ? null : new EventSource(`/sessions/${encodeURIComponent(r.sessionId ?? r.runId)}/events`);
-      const finish = () => { es?.close(); setReviewing((s) => { const n = new Set(s); n.delete(ref); return n; }); void loadReviews([ref.slice(0, ref.lastIndexOf(':'))]); void sessions.reload(); };
+      // `done` reaches the page before the server has written the log and the asks: read now and again shortly after.
+      const project = ref.slice(0, ref.lastIndexOf(':'));
+      const finish = () => { es?.close(); setReviewing((s) => { const n = new Set(s); n.delete(ref); return n; }); void loadReviews([project]); void sessions.reload(); for (const ms of [1500, 5000]) setTimeout(() => void loadReviews([project]), ms); };
       if (!es) { setTimeout(finish, 20_000); return; }
       es.addEventListener('update', (e) => { try { if ((JSON.parse((e as MessageEvent).data) as { type: string }).type === 'done') finish(); } catch { /* ignore */ } });
       es.onerror = () => { if (es.readyState === 2) finish(); };

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createRunManager, createSdkDriver, READ_ONLY_TOOLS, WRITE_TOOLS, type AgentDriver, type Run, type SdkLike, type Update } from '../../src/agents';
-import { listReviews, parseVerdict, personaOf, reviewTask, startAgentRun, taskContext } from '../../src/agents/team';
+import { listReviews, parseVerdict, personaOf, reviewTask, sessionTitle, startAgentRun, taskContext } from '../../src/agents/team';
 import { listAsks } from '../../src/core/asks';
 import { putAgent, reviewOf } from '../../src/core/agents';
 import { MemoryStorage } from '../../src/core/storage';
@@ -61,20 +61,29 @@ describe('taskContext and persona', () => {
   });
 });
 
+describe('sessionTitle', () => {
+  it('keeps the ` · <ref>` suffix inside the 80 characters the session store keeps', () => {
+    const long = sessionTitle(`🎧 Cid Manager · ${'Release the single and tell the label '.repeat(4)}`, 'flantastic-4:16');
+    expect(long).toHaveLength(80);
+    expect(long.endsWith(' · flantastic-4:16')).toBe(true);
+    expect(sessionTitle('CoS · flantastic-4', '')).toBe('CoS · flantastic-4');
+  });
+});
+
 describe('startAgentRun', () => {
   it('starts a session for the task agent with persona, context, model, and a title the page can map back to the task', async () => {
     const { ctx, runs, prompts } = await mk();
-    const r = await startAgentRun(runs, ctx, { ref: 'flantastic-4:7', text: 'Do it', actor: 'owner' });
+    const r = await startAgentRun(runs, ctx, { ref: 'flantastic-4:7', text: 'Do it' });
     expect(r).toMatchObject({ runId: 'run-1', agent: 'cid-manager', title: '🎧 Cid Manager · Release the single 🟡 · flantastic-4:7' });
     expect(prompts[0]).toMatchObject({ cwd: '/repo', text: 'Do it', options: { model: 'sonnet', title: '🎧 Cid Manager · Release the single 🟡 · flantastic-4:7' } });
     expect(prompts[0].options?.systemPrompt).toContain('## Context\n\nProject: 🎧 Flantastic 4');
     expect(prompts[0].options?.allowedTools).toBeUndefined();
     expect(prompts[0].options?.schema).toBeUndefined();
-    const p = await startAgentRun(runs, ctx, { project: 'flantastic-4', agent: 'cos', text: 'Plan', actor: 'owner' });
+    const p = await startAgentRun(runs, ctx, { project: 'flantastic-4', agent: 'cos', text: 'Plan' });
     expect(p.title).toBe('CoS · flantastic-4');
-    await expect(startAgentRun(runs, ctx, { ref: 'flantastic-4:99', text: 'x', actor: 'owner' })).rejects.toThrow(/not found/i);
-    await expect(startAgentRun(runs, ctx, { ref: 'nope', text: 'x', actor: 'owner' })).rejects.toThrow(/Bad ref/);
-    await expect(startAgentRun(runs, ctx, { project: 'other', agent: 'ghost', text: 'x', actor: 'owner' })).rejects.toThrow(/No agent ghost/);
+    await expect(startAgentRun(runs, ctx, { ref: 'flantastic-4:99', text: 'x' })).rejects.toThrow(/not found/i);
+    await expect(startAgentRun(runs, ctx, { ref: 'nope', text: 'x' })).rejects.toThrow(/Bad ref/);
+    await expect(startAgentRun(runs, ctx, { project: 'other', agent: 'ghost', text: 'x' })).rejects.toThrow(/No agent ghost/);
   });
 });
 
@@ -116,6 +125,13 @@ describe('reviewTask', () => {
     await reviewTask(c.runs, c.ctx, 'flantastic-4:7');
     await wait(60);
     expect(await reviewOf(c.ctx, { path: 'tasks/flantastic-4.md', line: 7 })).toBeNull();
+    // A row that refuses a log entry (🙋) reports the failure instead of swallowing it.
+    const d = await mk({ structured: answer });
+    await d.storage.write('tasks/flantastic-4.md', F4.replace('- [ ] Ship labels', '- [ ] 🙋 Ship labels'));
+    const errors: unknown[] = [];
+    await reviewTask(d.runs, d.ctx, 'flantastic-4:10', undefined, (e) => errors.push(e));
+    await wait(80);
+    expect(errors).toHaveLength(1);
   });
   it('parseVerdict is strict about the shape', () => {
     expect(parseVerdict({ verdict: 'maybe', plan: 'x', needs: [] })).toBeNull();

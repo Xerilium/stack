@@ -98,6 +98,6 @@ const KINDS: Record<string, ToolKind> = {
 export const toolKind = (name: string): ToolKind => KINDS[name] ?? 'other';
 
 /** A read-only run pre-approves reads and forbids every writer; never put an agent's own tools in `allowedTools` (that skips the permission ask). @req FR:agent-team/driver.options */
-export const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'TodoWrite'];
+export const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', 'TodoWrite']; // the web tools still ask: repo content must not leave without an ask
 export const WRITE_TOOLS = ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'];
 

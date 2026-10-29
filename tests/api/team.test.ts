@@ -90,6 +90,7 @@ describe('team, reviews, and task sessions', () => {
     expect((await call('owner', 'POST', '/sessions', { ref: 'flantastic-4:99', text: 'x' })).status).toBe(404);
     expect((await call('owner', 'POST', '/sessions', { ref: 'nope', text: 'x' })).status).toBe(422);
     expect((await call('owner', 'POST', '/sessions', { cwd: 'relative', text: 'x' })).status).toBe(422);
+    expect((await call('owner', 'POST', '/sessions', { cwd: '/', ref: 'flantastic-4:7', text: 'x' })).status).toBe(422); // a task session always runs in the served folder
   });
 
   it('POST /tasks/review starts a read-only review (owner only); the verdict and its needs land; GET /reviews lists them', async () => {

@@ -12,6 +12,9 @@ describe('agentsFor', () => {
   it('most specific first: section, project, everything', () => {
     expect(agentsFor(team, 'f4', '🏷️ Labels').map((a) => a.slug)).toEqual(['labels', 'cid', 'cos']);
     expect(agentsFor(team, 'f4', 'Active').map((a) => a.slug)).toEqual(['cid', 'cos']);
+    expect(agentsFor(team, 'f4', '✅ Labels done').map((a) => a.slug)).toEqual(['labels', 'cid', 'cos']); // the scope words lead the heading
+    expect(agentsFor(team, 'f4', '✅ Labelsmith').map((a) => a.slug)).toEqual(['cid', 'cos']);
+    expect(agentsFor(team, 'f4', 'No Labels').map((a) => a.slug)).toEqual(['cid', 'cos']);
     expect(agentsFor(team, 'other').map((a) => a.slug)).toEqual(['cos']);
     expect(agentsFor(team.slice(1), 'other')).toEqual([]);
   });
@@ -32,7 +35,8 @@ describe('chip', () => {
     expect(chipFor({ agent, session: sess({ state: 'needs-you' }), review: review() })).toMatchObject({ text: 'Needs you', tone: 'warn' });
     expect(chipFor({ agent, session: sess({ state: 'running', title: 'T' }) })).toMatchObject({ text: 'Working', tone: 'accent', title: 'T' });
     expect(chipFor({ agent, session: sess({ state: 'idle' }), review: review() })).toMatchObject({ text: 'Can · 2h', tone: 'ok', title: 'cid: Upload it (2h)' });
-    expect(chipFor({ agent, review: review({ verdict: 'partial', needs: ['a', 'b'] }) })).toMatchObject({ text: 'Partial · needs 2', tone: 'plain', needs: 2 });
+    expect(chipFor({ agent, review: review({ verdict: 'partial', needs: ['a', 'b'] }) })).toMatchObject({ text: 'Partial · needs 2', tone: 'warn', needs: 2, state: true });
+    expect(chipFor({ agent, review: review({ verdict: 'partial' }) })).toMatchObject({ text: 'Partial · 2h', tone: 'ok' });
     expect(chipFor({ agent, review: review({ verdict: 'cannot' }) })).toMatchObject({ text: "Can't", tone: 'warn' });
     expect(chipFor({ agent })).toMatchObject({ text: '🎧 Cid Manager', tone: 'plain', title: '🎧 Cid Manager: label manager. Talk to it (a)' });
     expect(chipFor({})).toMatchObject({ text: 'No agent', tone: 'muted' });

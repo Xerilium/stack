@@ -20,8 +20,9 @@ function specificity(scope: string, project: string, section?: string): number {
   const [p, ...rest] = scope.split('/');
   if (p !== project) return 0;
   if (rest.length === 0) return 2;
-  const want = rest.join('/').trim().toLowerCase();
-  return section !== undefined && section.trim().toLowerCase().includes(want) ? 3 : 0;
+  const words = (h: string) => h.trim().toLowerCase().replace(/^[^\p{L}\p{N}]+/u, '').split(/\s+/).filter(Boolean);
+  const a = words(rest.join('/')), b = section === undefined ? [] : words(section);
+  return a.length > 0 && a.length <= b.length && a.every((w, i) => w === b[i]) ? 3 : 0;
 }
 
 /** Agents covering a task, most specific first; the first is the active agent. @req FR:agent-team/web.chip */

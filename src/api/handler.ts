@@ -531,7 +531,10 @@ export const ROUTES: Route[] = [
       if (b.cwd !== undefined && (!isAbsolute(b.cwd) || !existsSync(b.cwd) || !statSync(b.cwd).isDirectory())) throw invalid([{ field: 'cwd', message: 'Must be an absolute path to an existing folder' }]);
       if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
       // @req FR:agent-team/talk.api: a task or project session gets its agent's persona and context.
-      if (b.ref || b.project || b.agent) return json(202, await startAgentRun(agents, c.life, { agent: b.agent, ref: b.ref ? formatRef(b.ref) : undefined, project: b.project, text: b.text, actor: caller(c.req).actor }));
+      if (b.ref || b.project || b.agent) {
+        if (b.cwd !== undefined) throw invalid([{ field: 'cwd', message: 'A task or project session runs in the served folder; leave cwd out' }]);
+        return json(202, await startAgentRun(agents, c.life, { agent: b.agent, ref: b.ref ? formatRef(b.ref) : undefined, project: b.project, text: b.text }));
+      }
       if (b.cwd === undefined && !agents.cwd) throw invalid([{ field: 'cwd', message: 'Required' }]);
       return json(202, await agents.prompt({ ...(b.cwd ? { cwd: b.cwd } : {}), text: b.text }));
     },

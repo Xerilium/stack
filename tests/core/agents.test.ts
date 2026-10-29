@@ -112,6 +112,11 @@ describe('agentFor', () => {
     expect(agentFor(team, 'flantastic-4', '🏷️ Labels').map((a) => a.slug)).toEqual(['labels', 'sweep-manager', 'cid-manager', 'pr-sweep-worker-f4-music', 'cos']);
     expect(agentFor(team, 'flantastic-4', '🔄 Active').map((a) => a.slug)).toEqual(['sweep-manager', 'cid-manager', 'pr-sweep-worker-f4-music', 'cos']);
     expect(agentFor(team, 'other').map((a) => a.slug)).toEqual(['cos']);
+    // A section scope is a prefix of the heading's words, never a substring (`Do` must not cover `Done`).
+    await putAgent(ctx, 'doer', { name: 'Doer', scope: ['flantastic-4/Do'] });
+    const t2 = await listTeam(ctx);
+    expect(agentFor(t2, 'flantastic-4', '✅ Done').some((a) => a.slug === 'doer')).toBe(false);
+    expect(agentFor(t2, 'flantastic-4', '🔄 Do it').some((a) => a.slug === 'doer')).toBe(true);
     expect(agentFor(team.filter((a) => a.slug !== 'cos'), 'other')).toEqual([]);
   });
 });

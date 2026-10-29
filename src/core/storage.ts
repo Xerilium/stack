@@ -69,7 +69,7 @@ const INBOX_PATH = /^tasks\/inbox\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][
 const ASK_PATH = /^tasks\/asks\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
 /** Archived (done) asks: same names, one folder down, never listed as open asks. @req FR:ask-queue/ask.archive */
 const ARCHIVE_PATH = /^tasks\/asks\/archive\/[a-z0-9][a-z0-9._-]{0,79}\.md$/;
-/** Agent definitions (one per agent, scoped to project folders), never projects. @req FR:agent-sessions/agent.path */
+/** Agent definitions (one per agent, scoped to project folders), never projects. @req FR:agent-team/agent.path */
 const AGENT_PATH = /^tasks\/agents\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,39}\.md$/;
 
 /** Non-task state files (for example the API token store); never listed as tasks. */
