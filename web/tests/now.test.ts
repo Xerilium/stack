@@ -53,7 +53,106 @@ describe('now ranking', () => {
     expect(actionable(row('📅 Oct 30: Soon'), day)).toBe(true);
   });
   it('ranks due-soon, then in progress, then priority', () => {
-    const r = rankNow([row('plain'), row('🔺 raised'), row('🚧 doing'), row('📅 Oct 30: week'), row('📅 Oct 22: late')], day).map((t) => t.text);
+    const rows = [row('plain'), row('🔺 raised'), row('🚧 doing'), row('📅 Oct 30: week'), row('📅 Oct 22: late')];
+    const r = rankNow(rows, day, rows).map((t) => t.text);
     expect(r).toEqual(['📅 Oct 22: late', '📅 Oct 30: week', '🚧 doing', '🔺 raised', 'plain']);
+  });
+});
+
+import { blockedOn, blockerEdges } from '../src/now';
+// @req FR:web-app/now.blockers
+describe('blocker inheritance in the Now lists', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, project = 'a'): Task => ({ ref: `${project}:${text}`, text, project, section: '🔄 Active', done: false, depth: 0, notes: [] });
+  it('reads reasons and resolves them', () => {
+    expect(blockedOn('⛔️ Phase 2 🟡 -- Pending phase 1')).toEqual(['phase 1']);
+    expect(blockedOn('⛔️ X -- After A, B and C')).toEqual(['a', 'b', 'c']);
+    expect(blockedOn('⛔️ X -- need licences')).toEqual([]);
+    const rows = [row('Phase 1 🟡'), row('⛔️ Phase 2 🟡 -- Pending phase 1')];
+    expect(blockerEdges(rows).get(rows[1].ref)).toEqual([rows[0].ref]);
+  });
+  it('ranks a blocker with the most urgent task it blocks (transitive, max)', () => {
+    const rows = [row('gate'), row('🔺 plain'), row('⛔️ B -- After gate'), row('🚨 ⛔️ C -- After B')];
+    const r = rankNow([rows[0], rows[1]], day, rows).map((t) => t.text);
+    expect(r).toEqual(['gate', '🔺 plain']);
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['gate', '🔺 plain']);
+  });
+  it('lends nothing from parked or far-future rows, and survives cycles', () => {
+    for (const lender of ['🚨 ⛔️ 🅿️ X -- After gate', '🚨 ⛔️ 📅 Mar 1, 2027: X -- After gate']) {
+      const rows = [row('gate'), row('🔺 plain'), row(lender)];
+      expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+    }
+    const cyc = [row('⛔️ A -- After B'), row('⛔️ B -- After A')];
+    expect(() => rankNow(cyc, day, cyc)).not.toThrow();
+  });
+});
+
+import { planCandidates } from '../src/plan';
+describe('blocker inheritance: subtasks, sections, plan', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, depth = 0, section = '🔄 Active'): Task => ({ ref: `a:${text}`, text, project: 'a', section, done: false, depth, notes: [] });
+  it('a blocked parent lends its most urgent subtask', () => {
+    const rows = [row('Phase 1'), row('🔺 plain'), row('⛔️ Phase 2 -- Pending phase 1'), row('🚨 📅 Oct 23: ship', 1)];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['Phase 1', '🔺 plain']);
+  });
+  it('rows outside Active lend nothing', () => {
+    const rows = [row('gate'), row('🔺 plain'), row('🚨 ⛔️ X -- After gate', 0, '⏭️ Up next')];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+  });
+  it('no false links on a word in the middle of a title', () => {
+    const rows = [row('Email Bob about contract'), row('🔺 plain'), row('🚨 ⛔️ X -- Waiting on Bob')];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'Email Bob about contract']);
+  });
+  it('the day plan ranks a leaf under a blocker first', () => {
+    const rows = [row('Gate'), row('step one', 1), row('🔺 plain'), row('🚨 ⛔️ ship -- After gate')];
+    expect(planCandidates(rows, day).map((t) => t.text)).toEqual(['step one', '🔺 plain']);
+  });
+  it('a parked parent makes its subtasks lend nothing', () => {
+    const rows = [row('gate'), row('🔺 plain'), row('🅿️ ⛔️ X -- After gate'), row('🚨 sub', 1)];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+  });
+});
+
+describe('blocker eligibility matches core', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, depth = 0): Task => ({ ref: `a:${text}`, text, project: 'a', section: '🔄 Active', done: false, depth, notes: [] });
+  it('any ⏰ or 💤 lends nothing, and a far-future blocked row holds its subtasks back too (as core)', () => {
+    for (const lender of ['🚨 ⛔️ ⏰ Oct 1: X -- After gate', '🚨 ⛔️ 💤 X -- After gate']) {
+      const rows = [row('gate'), row('🔺 plain'), row(lender)];
+      expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+    }
+    const rows = [row('gate'), row('🔺 plain'), row('⛔️ 📅 Mar 1, 2027: X -- After gate'), row('🚨 sub', 1)];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'gate']);
+  });
+  it('time words are not names', () => {
+    const rows = [row('Monday standup'), row('🔺 plain'), row('🚨 ⛔️ X -- Until Monday')];
+    expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'Monday standup']);
+  });
+});
+
+describe('parent rows in the Then list', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, depth = 0): Task => ({ ref: `a:${text}`, text, project: 'a', section: '🔄 Active', done: false, depth, notes: [] });
+  it('a parent takes what its subtask lends', () => {
+    const rows = [row('Project'), row('gate', 1), row('🔺 plain'), row('🚨 ⛔️ ship -- After gate')];
+    expect(rankNow([rows[2], rows[0]], day, rows).map((t) => t.text)).toEqual(['Project', '🔺 plain']);
+  });
+});
+
+import { decisions } from '../src/plan';
+describe('round 3: names and Needs you', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, depth = 0): Task => ({ ref: `a:${text}`, text, project: 'a', section: '🔄 Active', done: false, depth, notes: [] });
+  it('a year or a lookalike month is handled', () => {
+    expect(blockedOn('⛔️ X -- Until Feb 1, 2027')).toEqual([]);
+    expect(blockedOn('⛔️ X -- After decision 2')).toEqual(['decision 2']);
+  });
+  it('the whole reason matches a title before it is split', () => {
+    const rows = [row('Q&A review'), row('⛔️ X -- After Q&A review')];
+    expect(blockerEdges(rows).get(rows[1].ref)).toEqual([rows[0].ref]);
+  });
+  it('Needs you ranks a decision that blocks urgent work first', () => {
+    const rows = [row('🙋 pick a vendor'), row('🙋 🔺 other call'), row('🚨 ⛔️ ship -- After pick a vendor')];
+    expect(decisions(rows, day).map((d) => d.task.text)).toEqual(['🙋 pick a vendor', '🙋 🔺 other call']);
   });
 });

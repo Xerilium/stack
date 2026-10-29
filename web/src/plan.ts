@@ -29,7 +29,7 @@ const whoOf = (t: Task) => parseRow(t.text).who;
 /** Tasks for the plan: yours (not an agent's, not a decision), active, actionable, leaf, ranked. */
 export function planCandidates(tasks: Task[], now: Date, first?: string): Task[] {
   const mine = openLeaves(tasks).filter((t) => isActive(t) && actionable(t, now) && !whoOf(t));
-  const ranked = rankNow(mine, now);
+  const ranked = rankNow(mine, now, tasks);
   const head = first ? ranked.filter((t) => t.ref === first) : [];
   return [...head, ...ranked.filter((t) => t.ref !== first)];
 }
@@ -92,7 +92,7 @@ const answered = (tasks: Task[], t: Task) => children(tasks, t.ref).some((c) => 
 export function decisions(tasks: Task[], now: Date): Decision[] {
   const rows = tasks.filter((t) => !t.done && whoOf(t) === 'human' && actionable(t, now) && !answered(tasks, t) && (isActive(t) || ancestorsOf(tasks, t).some(doing)));
   const withParent = rows.map((t) => ({ task: t, context: ancestorsOf(tasks, t)[0], recommendation: recommendationOf(tasks, t) }));
-  const ranked = rankNow(rows, now);
+  const ranked = rankNow(rows, now, tasks);
   return ranked.map((r) => withParent.find((x) => x.task.ref === r.ref)!);
 }
 
