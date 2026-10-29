@@ -535,10 +535,10 @@ export function App() {
       { id: 'ask-undo', label: 'Ask: Undo last answer', hint: 'u', run: () => asks.undo() },
     ] : []),
     ...(view === 'sessions' ? [
-      { id: 'sess-open', label: 'Session: open', hint: '⏎', run: () => { if (sessions.cursor) void sessions.openDrawer(sessions.cursor); } },
-      { id: 'sess-new', label: 'Session: new', hint: 'n', run: () => sessions.setComposing(true) },
-      { id: 'sess-stop', label: 'Session: stop the run', hint: 's', run: () => void sessions.stop(sessions.open ?? sessions.cursor ?? undefined) },
-      { id: 'sess-costs', label: 'Session: toggle costs', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
+      { id: 'sess-open', label: 'Agent: open', hint: '⏎', run: () => { if (sessions.cursor) void sessions.openDrawer(sessions.cursor); } },
+      { id: 'sess-new', label: 'Agent: new', hint: 'n', run: () => sessions.setComposing(true) },
+      { id: 'sess-stop', label: 'Agent: stop the run', hint: 's', run: () => void sessions.stop(sessions.open ?? sessions.cursor ?? undefined) },
+      { id: 'sess-costs', label: 'Agent: toggle costs', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
     ] : []),
     { id: 'capture', label: 'New task', hint: 'c', run: openCapture },
     { id: 'search', label: 'Search tasks', hint: '/', run: () => { go('list'); setTimeout(() => searchRef.current?.focus(), 0); } },
@@ -575,6 +575,7 @@ export function App() {
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
     { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
+    { id: 'go-sessions', label: 'Go to Agents', hint: HINT.sessions, group: 'Go to', run: () => go('sessions') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
     { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, group: 'Go to', run: () => go('list') },
   ];

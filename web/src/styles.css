@@ -725,3 +725,15 @@ body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: non
   .row-detail .actions.small .btn { min-height: var(--tap); flex: 1 1 30%; justify-content: center; }
   .home-projects-wrap.folded .home-projects { max-height: 170px; }
 }
+
+/* ---- Agents: pins and groups. @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups */
+.sess-li { position: relative; }
+.sess-li .pin { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--muted); font-size: 15px; width: 32px; height: 32px; border-radius: 50%; opacity: 0; transition: opacity .12s; }
+.sess-li:hover .pin, .sess-li.cursor .pin, .sess-li .pin.on, .sess-li .pin:focus-visible { opacity: 1; }
+.sess-li .pin.on { color: var(--accent); }
+.sess-li .pin:hover { background: var(--hover); color: var(--ink); }
+.sess-li .sess-row { padding-right: 44px; }
+.sess-group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin: 14px 0 2px; padding: 0 6px; }
+.sess-group:first-child { margin-top: 0; }
+.btn.quiet.on { color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 719px) { .sess-li .pin { opacity: 1; } }

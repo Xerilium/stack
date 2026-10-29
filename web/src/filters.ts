@@ -28,7 +28,7 @@ export function buildHash(view: View, f: Filters): string {
   const p = new URLSearchParams();
   for (const k of KEYS) if (f[k] !== NO_FILTERS[k]) p.set(k, f[k]);
   const qs = p.toString();
-  return `#/${view}${qs ? `?${qs}` : ''}`;
+  return `#/${view === 'sessions' ? 'agents' : view}${qs ? `?${qs}` : ''}`; // the Agents view keeps its old id
 }
 
 export function parseHash(hash: string): { view: View; filters: Filters } {

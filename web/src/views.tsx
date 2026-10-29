@@ -581,7 +581,7 @@ export function TodayView(t: TodayProps) {
             {live.map(agentRow)}
             {shownQueued.map(agentRow)}
           </ul>
-          {queued.length > 0 && <button type="button" class="link-btn queued-toggle" aria-expanded={queuedOpen} onClick={() => setQueuedOpen((o) => !o)}>{queuedOpen ? 'Hide queued' : `${queued.length} queued`}</button>}
+          {queued.length > 0 && <button type="button" class="link-btn queued-toggle" aria-expanded={queuedOpen} onClick={() => setQueuedOpen((o) => !o)}>{queuedOpen ? 'Hide the waiting tasks' : `${queued.length} task${queued.length === 1 ? '' : 's'} waiting for an agent`}</button>}
 
           <h2 class="h2">Projects</h2>
           <ul class="tiles" data-testid="tops">

@@ -186,6 +186,15 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
 
   const defer = useCallback((a: AskItem, at: Date, label: string) => answer(a, { answer: 'defer', until: at.toISOString() }, `Deferred until ${label.toLowerCase()}`, false), [answer]);
 
+  /** Edit: take the answer back and reopen the reply box with the previous text. @req FR:ask-queue/web.answered */
+  const draft = useRef<{ key: string; text: string } | null>(null);
+  const edit = useCallback(async (a: AskItem) => {
+    draft.current = { key: a.key, text: a.text ?? '' };
+    try { await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); setPanel('reply'); }
+    catch (e) { draft.current = null; toastRef.current(e instanceof Error ? e.message : 'Edit failed', 'err'); }
+  }, [api, load]);
+  /** The text a Card starts with when it opens the reply box after Edit (read once). */
+  const takeDraft = (key: string) => { const d = draft.current; if (d && d.key === key) { draft.current = null; return d.text; } return ''; };
   const retract = useCallback(async (a: AskItem) => {
     try { await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); toastRef.current('Restored'); }
     catch (e) { toastRef.current(e instanceof Error ? e.message : 'Undo failed', 'err'); }
@@ -193,7 +202,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
 
   return {
     items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
-    reload: load, retry, answer, reply, defer, retract, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
+    reload: load, retry, answer, reply, defer, retract, edit, takeDraft, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),
   };
 }

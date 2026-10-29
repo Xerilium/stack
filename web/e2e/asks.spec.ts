@@ -57,7 +57,24 @@ test.describe('Asks', () => {
     await expect(card(page).locator('.ask-title')).toHaveText('Review draft reply to Dana: contract terms');
     await expect(page.getByText('Approved · allyte-cos has it')).toBeVisible();
     expect(m.calls.find((c) => c.path === '/asks/pr-879/answer')?.body).toEqual({ answer: 'go' });
-    await expect(page.getByRole('button', { name: /Sent · 1/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Answered · 1/ })).toBeVisible();
+  });
+
+  // @req FR:ask-queue/web.answered
+  test('an answered ask sits in the Answered group with Undo and Edit; Edit reopens it with the reply prefilled', async ({ page }) => {
+    const m = await open(page);
+    await page.keyboard.press('j'); // Review draft reply to Dana
+    await page.keyboard.press('r');
+    await page.getByLabel('Reply to email-triage').fill('Yes, but ask for Net 45');
+    await page.keyboard.press('Enter');
+    const group = page.getByRole('button', { name: /Answered · 1/ });
+    await group.click();
+    const line = page.locator('.foot-list li', { hasText: 'Review draft reply to Dana' });
+    await expect(line).toContainText('Replied: Yes, but ask for Net 45');
+    await line.getByRole('button', { name: 'Edit' }).click();
+    await expect(card(page).locator('.ask-title')).toHaveText('Review draft reply to Dana: contract terms');
+    await expect(page.getByLabel('Reply to email-triage')).toHaveValue('Yes, but ask for Net 45');
+    expect(m.calls.filter((c) => c.path === '/asks/mail-dana/answer').map((c) => c.body.answer)).toEqual(['reply', 'retract']);
   });
 
   test('Undo (u) retracts and brings the ask back to the top', async ({ page }) => {

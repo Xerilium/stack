@@ -48,7 +48,7 @@ test.describe('Sessions', () => {
     await expect(rows.nth(1)).toContainText('Running');
     await expect(rows.nth(4)).toContainText('Stale');
     await expect(rows.nth(4)).toContainText('<$0.01');
-    await expect(page).toHaveURL(/#\/sessions/);
+    await expect(page).toHaveURL(/#\/(sessions|agents)/);
   });
 
   test('Enter opens the drawer with the history; Esc closes and returns focus to the row', async ({ page }, info) => {
@@ -63,7 +63,7 @@ test.describe('Sessions', () => {
     await expect(drawer(page).getByLabel('Message stack: live ask queue')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(drawer(page)).toHaveCount(0);
-    await expect(page.locator('.sess-li').nth(1).locator('button')).toBeFocused();
+    await expect(page.locator('.sess-li').nth(1).locator('.sess-row')).toBeFocused();
   });
 
   test('a running session streams: text, tool lines with status, waiting for you with a link to Asks, done with cost', async ({ page }) => {
@@ -128,10 +128,10 @@ test.describe('Sessions', () => {
     await expect(page.getByTestId('sessions-unavailable')).toContainText('Not available on this host');
     m.sessions = [];
     await page.reload();
-    await expect(page.getByTestId('sessions-empty')).toContainText('No sessions on this machine yet.');
+    await expect(page.getByTestId('sessions-empty')).toContainText('No agents on this machine yet.');
     m.fail.set('/sessions', { status: 500, code: 'internal', message: 'Internal error' });
     await page.reload();
-    await expect(page.getByRole('alert')).toContainText('Cannot load sessions');
+    await expect(page.getByRole('alert')).toContainText('Cannot load agents');
     await page.getByRole('button', { name: 'Retry' }).click();
     await expect(page.getByTestId('sessions-empty')).toBeVisible();
   });
@@ -141,11 +141,11 @@ test.describe('Sessions', () => {
     const m = await mockApi(page); m.sessions = seed();
     await page.goto('/#/asks');
     await page.keyboard.press('g'); await page.keyboard.press('s');
-    await expect(page).toHaveURL(/#\/sessions/);
+    await expect(page).toHaveURL(/#\/agents/);
     await page.keyboard.press('Control+k');
-    await page.getByRole('combobox', { name: 'Command' }).fill('Session:');
-    await expect(page.getByRole('option', { name: /Session: new/ })).toBeVisible();
-    await expect(page.getByRole('option', { name: /Session: stop/ })).toBeVisible();
+    await page.getByRole('combobox', { name: 'Command' }).fill('Agent:');
+    await expect(page.getByRole('option', { name: /Agent: new/ })).toBeVisible();
+    await expect(page.getByRole('option', { name: /Agent: stop/ })).toBeVisible();
   });
 
   test('mobile: rows are 44px tall and the drawer is a sheet', async ({ page }, info) => {

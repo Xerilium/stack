@@ -3,7 +3,10 @@
  * @req FR:agent-sessions/web.view @req FR:agent-sessions/web.drawer @req FR:agent-sessions/web.message @req FR:agent-sessions/web.cost
  * @req FR:agent-sessions/web.new @req FR:agent-sessions/web.states @req FR:agent-sessions/web.keys @req FR:agent-sessions/web.a11y
  */
+import { Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { groupByProject, loadGroup, loadPins, orderWithPins, saveGroup, togglePin } from './pins';
+import { store } from './day';
 import { barWidths, costStrip, dayLabel, fmtTokens, fmtUsd, groupTurns, localDay, rowOf, splitSessions, type Line, type SessionItem } from './sessions';
 import type { Sessions } from './useSessions';
 import './sessions.css';
@@ -12,10 +15,10 @@ const TOP = 20;
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
 const MARK: Record<string, string> = { pending: '…', in_progress: '…', completed: '✓', failed: '✕', cancelled: '–' };
 
-function Row({ s, now, cursor, onOpen, onCursor }: { s: SessionItem; now: Date; cursor: boolean; onOpen: () => void; onCursor: () => void }) {
+function Row({ s, now, cursor, pinned, onOpen, onCursor, onPin }: { s: SessionItem; now: Date; cursor: boolean; pinned: boolean; onOpen: () => void; onCursor: () => void; onPin: () => void }) {
   const r = rowOf(s, now);
   return (
-    <li class={`sess-li${cursor ? ' cursor' : ''}`} data-id={s.id} data-state={s.state}>
+    <li class={`sess-li${cursor ? ' cursor' : ''}${pinned ? ' pinned' : ''}`} data-id={s.id} data-state={s.state}>
       <button type="button" class="sess-row" onClick={onOpen} onMouseEnter={onCursor} aria-label={`${s.title}, ${r.label}, ${r.where}, ${r.when}, ${r.cost}`}>
         <span class="sess-state"><span class="dot" aria-hidden="true" />{r.label}</span>
         <span class="sess-title">{s.title}</span>
@@ -24,6 +27,7 @@ function Row({ s, now, cursor, onOpen, onCursor }: { s: SessionItem; now: Date; 
         <span class="sess-cost">{r.cost}</span>
         <span class="sess-mob" aria-hidden="true">{r.when} · {r.cost}</span>
       </button>
+      <button type="button" class={`pin${pinned ? ' on' : ''}`} aria-label={pinned ? 'Unpin' : 'Pin'} aria-pressed={pinned} title={pinned ? 'Unpin (f)' : 'Pin to the top (f)'} onClick={(e) => { e.stopPropagation(); onPin(); }}>{pinned ? '★' : '☆'}</button>
     </li>
   );
 }
@@ -116,8 +120,15 @@ export function Drawer({ s, item, cursorItem, onClose }: { s: Sessions; item: Se
 }
 
 export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | null }) {
-  const { items, cursor } = s;
+  const { cursor } = s;
+  // pins first, then attention order; optionally grouped by project. @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups
+  const [pins, setPins] = useState(() => loadPins(store()));
+  const [byProject, setByProject] = useState(() => loadGroup(store()));
+  const items = orderWithPins(s.items, pins);
+  const pin = (id: string) => setPins(togglePin(store(), id));
+  const toggleGroup = () => setByProject((on) => { saveGroup(store(), !on); return !on; });
   const { shown, more } = splitSessions(items, TOP, s.showAll);
+  const groups = byProject ? groupByProject(shown, pins) : (pins.some((p) => shown.some((x) => x.id === p)) ? [{ title: 'Pinned', items: shown.filter((x) => pins.includes(x.id)) }, { title: '', items: shown.filter((x) => !pins.includes(x.id)) }] : [{ title: '', items: shown }]);
   const item = items.find((i) => i.id === s.open) ?? null;
   const today = localDay(s.now);
   const strip = s.cost ? costStrip(s.cost, today) : null;
@@ -152,6 +163,8 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
       else if (k === 'n') { e.preventDefault(); s.setComposing(true); }
       else if (k === 'm' && more > 0) { e.preventDefault(); s.setShowAll(true); }
       else if (k === 's' && cursor) { e.preventDefault(); stopFromList(cursor); }
+      else if (k === 'f' && cursor) { e.preventDefault(); pin(cursor); }
+      else if (k === 'p') { e.preventDefault(); toggleGroup(); }
   };
   const latest = useRef(onKey); latest.current = onKey;
   useEffect(() => {
@@ -161,10 +174,11 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
   }, []);
 
   return (
-    <section class="sess-view" aria-label="Sessions">
+    <section class="sess-view" aria-label="Agents">
       <header class="sess-head">
-        <div><h1 class="h1">Sessions</h1>{strip && <p class="cost-strip" data-testid="cost-strip"><strong>{strip.today}</strong><span class="sep">·</span><span>{strip.window}</span></p>}</div>
+        <div><h1 class="h1">Agents</h1>{strip && <p class="cost-strip" data-testid="cost-strip"><strong>{strip.today}</strong><span class="sep">·</span><span>{strip.window}</span></p>}</div>
         <div class="sess-tools">
+          <button type="button" class={`btn quiet${byProject ? ' on' : ''}`} onClick={toggleGroup} aria-pressed={byProject}>By project<kbd aria-hidden="true">p</kbd></button>
           <button type="button" class="btn quiet" onClick={() => s.setShowCosts(!s.showCosts)} aria-expanded={s.showCosts}>Costs<kbd aria-hidden="true">c</kbd></button>
           <button type="button" class="btn" onClick={() => s.setComposing(true)}>New<kbd aria-hidden="true">n</kbd></button>
         </div>
@@ -180,17 +194,22 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
           {s.cost.models.length > 0 && <ul class="cost-chips models" aria-label="By model">{s.cost.models.slice(0, 6).map((m) => <li key={m.model}>{m.model.replace(/^claude-/, '').replace(/-\d{8}$/, '')} <b>{fmtUsd(m.usd)}</b></li>)}</ul>}
         </section>
       )}
-      {enabled === false && <div class="sess-empty" data-testid="sessions-unavailable"><p class="big">Not available on this host.</p><p class="sub">Sessions live on the machine that runs the agents. Open Stack with <code>stack web</code> there.</p></div>}
-      {enabled !== false && s.phase === 'loading' && <ol class="sess-list" aria-busy="true" aria-label="Loading sessions"><li class="sk" /><li class="sk" /><li class="sk" /></ol>}
-      {enabled !== false && s.phase === 'error' && <div class="sess-error" role="alert"><p>Cannot load sessions: {s.error}</p><button type="button" class="btn primary" onClick={() => void s.reload()}>Retry</button></div>}
-      {enabled !== false && s.phase === 'ready' && items.length === 0 && <div class="sess-empty" data-testid="sessions-empty"><p class="big">No sessions on this machine yet.</p><p class="sub">Start one with <kbd aria-hidden="true">n</kbd> New.</p></div>}
+      {enabled === false && <div class="sess-empty" data-testid="sessions-unavailable"><p class="big">Not available on this host.</p><p class="sub">Agents live on the machine that runs them. Open Stack with <code>stack web</code> there.</p></div>}
+      {enabled !== false && s.phase === 'loading' && <ol class="sess-list" aria-busy="true" aria-label="Loading agents"><li class="sk" /><li class="sk" /><li class="sk" /></ol>}
+      {enabled !== false && s.phase === 'error' && <div class="sess-error" role="alert"><p>Cannot load agents: {s.error}</p><button type="button" class="btn primary" onClick={() => void s.reload()}>Retry</button></div>}
+      {enabled !== false && s.phase === 'ready' && items.length === 0 && <div class="sess-empty" data-testid="sessions-empty"><p class="big">No agents on this machine yet.</p><p class="sub">Start one with <kbd aria-hidden="true">n</kbd> New.</p></div>}
       {items.length > 0 && (
-        <ol class="sess-list" aria-label="Sessions, attention first">
-          {shown.map((x) => <Row key={x.id} s={x} now={s.now} cursor={x.id === cursor} onOpen={() => void s.openDrawer(x.id)} onCursor={() => s.setCursor(x.id)} />)}
+        <ol class="sess-list" aria-label="Agents, pinned then attention first">
+          {groups.map((g) => (
+            <Fragment key={g.title || '_'}>
+              {g.title && <li class="sess-group" role="presentation">{g.title}</li>}
+              {g.items.map((x) => <Row key={x.id} s={x} now={s.now} cursor={x.id === cursor} pinned={pins.includes(x.id)} onOpen={() => void s.openDrawer(x.id)} onCursor={() => s.setCursor(x.id)} onPin={() => pin(x.id)} />)}
+            </Fragment>
+          ))}
         </ol>
       )}
       {more > 0 && <button type="button" class="more-btn" onClick={() => s.setShowAll(true)}>Show {more} more <kbd aria-hidden="true">m</kbd></button>}
-      {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · Enter open · s stop · c costs · n new</p>}
+      {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · Enter open · f pin · p by project · s stop · c costs · n new</p>}
       {(s.open || s.composing) && <div class="sess-scrim" onClick={close} />}
       {(s.open || s.composing) && <Drawer key={s.open ?? 'new'} s={s} item={item} cursorItem={items.find((i) => i.id === cursor) ?? null} onClose={close} />}
     </section>
