@@ -66,6 +66,16 @@ describe('taskThread', () => {
     await expect(taskThread(ctx, undefined, 'flantastic-4:99')).rejects.toThrow(/not found/i);
     await expect(taskThread(ctx, undefined, 'nope')).rejects.toThrow(/Bad ref/);
   });
+  it('follows the row when rows move above it: the messages stay on the task', async () => {
+    const { ctx, storage } = await mk();
+    await sendToInbox(ctx, { path: 'tasks/flantastic-4.md', line: 7 }, 'Still here?', 'reply');
+    await replyFromAgent(ctx, { path: 'tasks/flantastic-4.md', line: 7 }, 'Yes.', 'cid-manager');
+    await storage.write('tasks/flantastic-4.md', F4.replace('## 🔄 Active\n\n', '## 🔄 Active\n\n- [ ] A new row on top 🟢\n'));
+    const th = await taskThread(ctx, undefined, 'flantastic-4:8'); // the single moved down one line
+    expect(th.items.map((i) => i.kind)).toEqual(['owner', 'agent', 'subtask']);
+    expect((await taskThread(ctx, undefined, 'flantastic-4:7')).items).toEqual([]); // the new row has no thread
+  });
+
   it('names the task session (by title suffix) when a runner lists one', async () => {
     const sess = (id: string, title: string, lastActive: string): Session => ({ id, title, project: 'x', cwd: '/x', lastActive, active: false, cost: { usd: 0, tokens: 0 }, prs: [] });
     const { ctx, runs } = await mk([sess('a1b2c3d4-0000-0000-0000-000000000001', 'Cid · Release · flantastic-4:7', '2026-10-29T09:00:00Z'), sess('a1b2c3d4-0000-0000-0000-000000000002', 'Cid · review · Release · flantastic-4:7', '2026-10-29T11:00:00Z')]);

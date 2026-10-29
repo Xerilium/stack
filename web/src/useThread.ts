@@ -57,7 +57,9 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
       setThread((t) => ({ ...t, items: [...t.items, { at: new Date().toISOString(), kind: 'owner', id: `local-${Date.now()}`, text, state: 'open' }] }));
       if (team.enabled !== true) { toastRef.current('Saved on the task; it runs in stack web on your machine'); return true; }
       try {
-        if (canFollowUp(thread) && thread.session) {
+        // A follow-up goes to the idle session only when it is the chosen agent's (the title starts with its name); another To starts a new session.
+        const chosen = agent ? team.team.find((a) => a.slug === agent)?.name : undefined;
+        if (canFollowUp(thread) && thread.session && (!chosen || thread.session.title.startsWith(`${chosen} · `))) {
           await api.promptSession(thread.session.id, text);
           if (keepOpen) void sessions.openDrawer(thread.session.id);
         } else {

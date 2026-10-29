@@ -30,7 +30,7 @@ test.describe('Agent thread', () => {
   test('the expanded task shows the thread in order: you, the agent, the verdict, the ask (answerable in place)', async ({ page }) => {
     const m = await open(page);
     const r = row(page, 'alpha:9');
-    await r.locator('.title').click();
+    await r.locator('.title .text').click();
     const th = r.locator('.thread');
     await expect(th).toBeVisible();
     await expect(th.locator('.th-item')).toHaveCount(4);
@@ -79,7 +79,7 @@ test.describe('Agent thread', () => {
   test('Assign claims the row and starts the agent with the assign prompt; the Home hero has the thread too', async ({ page }) => {
     const m = await open(page);
     const r = row(page, 'alpha:9');
-    await r.locator('.title').click();
+    await r.locator('.title .text').click();
     await r.locator('.thread').getByRole('button', { name: /^Assign/ }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' });
     await expect(page.locator('.toast')).toContainText('Assigned to alpha-lead');
@@ -90,6 +90,15 @@ test.describe('Agent thread', () => {
     await hero.locator('.h1-toggle').click();
     await expect(hero.locator('.thread')).toBeVisible();
     await expect(hero.locator('.thread input[type="text"]')).toBeVisible();
+  });
+
+  test('A on a list row assigns the task to its agent without opening it', async ({ page }) => {
+    const m = await open(page);
+    await row(page, 'alpha:9').click();
+    await page.keyboard.press('Shift+A');
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' });
+    await expect(page.locator('.toast')).toContainText('Assigned to alpha-lead');
+    await expect(row(page, 'alpha:9').locator('.agent-chip')).toHaveText('Working');
   });
 
   test('the ask card links to its task; the link opens the task in focus mode with the thread', async ({ page }) => {
@@ -108,7 +117,7 @@ test.describe('Agent thread', () => {
   test('without a runner the thread still reads and Ask saves on the task; Assign is off', async ({ page }) => {
     const m = await open(page, { runner: false });
     const r = row(page, 'alpha:9');
-    await r.locator('.title').click();
+    await r.locator('.title .text').click();
     const th = r.locator('.thread');
     await expect(th.locator('.th-item')).toHaveCount(4);
     await expect(th.getByRole('button', { name: /^Assign/ })).toBeDisabled();

@@ -31,6 +31,7 @@ export function ThreadView({ t, th, team, now }: { t: Task; th: ThreadCtl; team:
   const name = (slug: string) => team.team.find((a) => a.slug === slug || a.name === slug)?.name ?? slug;
   const agents = team.agentsOf(t);
   const items = foldSubtasks(th.thread.items);
+  const lastAgent = [...th.thread.items].reverse().find((i): i is Extract<typeof i, { kind: 'agent' }> => i.kind === 'agent');
   const running = th.thread.session?.state === 'running' || th.thread.session?.state === 'needs-you';
   return (
     <section class="thread" aria-label="Agent thread" onClick={(e) => e.stopPropagation()}>
@@ -38,9 +39,9 @@ export function ThreadView({ t, th, team, now }: { t: Task; th: ThreadCtl; team:
       {th.phase === 'error' && <p class="th-note err">Cannot load the thread. <button type="button" class="link" onClick={() => void th.reload()}>Retry</button></p>}
       {items.length > 0 && <p class="th-head" id={`th-head-${t.ref}`}>Agent thread</p>}
       {items.length > 0 && (
-        <ol class="th-items" role="log" aria-labelledby={`th-head-${t.ref}`}>
+        <ol class="th-items" aria-labelledby={`th-head-${t.ref}`}>
           {items.map((i) => (
-            <li key={i.kind === 'ask' ? i.ask.key : 'id' in i ? i.id : `${i.kind}-${i.at}`} class={`th-item ${i.kind}`} aria-live={i.kind === 'agent' ? 'polite' : undefined}>
+            <li key={i.kind === 'ask' ? i.ask.key : 'id' in i ? i.id : `${i.kind}-${i.at}`} class={`th-item ${i.kind}`}>
               <p class="th-meta">{whoLine(i, now, name)}</p>
               {i.kind === 'owner' && <p class="th-text you">{i.text}</p>}
               {i.kind === 'agent' && <p class="th-text">{i.text}</p>}
@@ -51,6 +52,8 @@ export function ThreadView({ t, th, team, now }: { t: Task; th: ThreadCtl; team:
         </ol>
       )}
       {th.phase === 'ready' && items.length === 0 && <p class="th-note">No thread yet. Ask the agent anything, or assign the task.</p>}
+      {/* One live line announces the newest agent reply (not the owner's own words or state flips). @req FR:agent-thread/web.a11y */}
+      <p class="sr-only" role="status" aria-live="polite">{lastAgent ? `${name(lastAgent.agent)}: ${lastAgent.text}` : ''}</p>
       {running && th.thread.session && <p class="th-note live" role="status"><span class="dot" aria-hidden="true" />{th.thread.session.state === 'needs-you' ? 'Waiting for you in Asks' : 'Working…'} · <button type="button" class="link" onClick={() => team.openSession(t.ref)}>Open the session</button></p>}
       <AgentTalk team={team} talk={{ ref: t.ref, project: t.project, about: t.text }} agents={agents} mode="thread" busy={th.busy}
         onAsk={(text, agent, keep) => th.ask(text, agent, keep)} onAssign={(agent, keep) => th.assign(agent, keep)} />

@@ -5,7 +5,7 @@
  */
 import { agentFor, listTeam, reviewPrefix, reviewsIn, type Review, type TeamAgent } from '../core/agents';
 import { handleAsk, listAsks, putAsk, type AskKind, type ListedAsk } from '../core/asks';
-import { listInbox, type ListedEntry } from '../core/inbox';
+import { currentRows, listInbox, type ListedEntry } from '../core/inbox';
 import { claimTask } from '../core/triage';
 import { LifecycleError, type LifecycleContext, type TaskRef } from '../core/lifecycle';
 import { parseProject, type Task } from '../core/parser';
@@ -132,8 +132,8 @@ export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText
   const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug });
   if (!ref || !c) throw new LifecycleError('Bad ref');
   if (c.human) throw new TriageDenied('Needs a human');
+  const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text: QUICK_PROMPTS.assign }); // first: a start that fails leaves no 🚧 behind
   const claimed = (await claimTask(ctx, ref, { actor: `agent:${agent.slug}`, owner: true })).changed;
-  const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text: QUICK_PROMPTS.assign });
   return { ...r, claimed };
 }
 
@@ -153,8 +153,10 @@ export async function taskThread(ctx: LifecycleContext, runs: AgentRuns | undefi
   const stored = `${ref.path}:${ref.line + 1}`;
   const items: ThreadItem[] = [];
   const inbox: ListedEntry[] = await listInbox(ctx, { project: c.project, state: 'all' }).catch(() => []);
+  // An entry follows its row when rows move (same rule as the inbox list): the current row wins over the stored line.
+  const rows = await currentRows(ctx, inbox.filter((e) => e.ref)).catch(() => new Map<string, string>());
   for (const e of inbox) {
-    if (e.ref !== stored) continue;
+    if ((rows.get(e.id) ?? e.ref) !== stored) continue;
     if (e.from === 'agent') items.push({ at: e.at, kind: 'agent', id: e.id, agent: e.agent ?? 'agent', text: e.text });
     else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state });
   }

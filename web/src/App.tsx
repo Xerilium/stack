@@ -569,7 +569,7 @@ export function App() {
       { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
       // @req FR:agent-team/web.keys
       { id: 'talk', label: 'Ask the task agent', hint: 'a', run: () => { const t = taskAt(refNow()); if (t) openThread(t); } },
-      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const r = refNow(); if (r) void team.assign(r); } },
+      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const t = taskAt(refNow()); if (t) void team.assign(t.ref, team.agentsOf(t)[0]?.slug); } },
       { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ] : []),
     ...(view === 'home' ? HAVE.map((m, i) => ({ id: `have-${m}`, label: `I have ${span(m)}`, hint: `h ${i + 1}`, run: () => setHave(m) })) : []),
@@ -651,6 +651,8 @@ export function App() {
       // On My day these act only on the row you are on (never on a hidden parent).
       if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'n') { e.preventDefault(); void A.notNow(); return; }
       if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'A') { e.preventDefault(); void A.delegate(); return; }
+      // @req FR:agent-thread/web.keys: on a list row A assigns the task to its agent (inside the composer the same key does the same)
+      if (k === 'A' && L.cursor && L.view !== 'home' && L.view !== 'today') { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) void teamRef.current.assign(t.ref, teamRef.current.agentsOf(t)[0]?.slug); return; }
       // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
       if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
       if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); if (!L.tomorrowOn) A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; } // tomorrow's Available is read-only
