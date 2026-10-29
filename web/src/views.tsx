@@ -573,8 +573,8 @@ export function WeekView({ w }: { w: Week }) {
           const name = d.today ? 'Today' : d.date.toLocaleDateString(undefined, { weekday: 'short' });
           const fill = Math.min(d.planned, d.available);
           return (
-            <li key={d.date.toISOString()} class={`wd${d.today ? ' today' : ''}${d.over && d.available > 0 ? ' over' : ''}${d.available === 0 ? ' off' : ''}`} aria-label={`${name}: ${hrs(d.planned)} planned of ${hrs(d.available)} available${d.over ? `, ${hrs(d.over)} over` : ''}`}>
-              <div class="wd-bar" aria-hidden="true">
+            <li key={d.date.toISOString()} class={`wd${d.today ? ' today' : ''}${d.over && d.available > 0 ? ' over' : ''}${d.available === 0 ? ' off' : ''}`}>
+              <div class="wd-bar" role="img" aria-label={`${name}: ${hrs(d.planned)} planned of ${hrs(d.available)} available${d.over ? `, ${hrs(d.over)} over` : ''}`}>
                 <span class="wd-track" style={{ height: h(d.available) }} />
                 <span class="wd-fill" style={{ height: h(fill) }} />
                 {d.over > 0 && d.available > 0 && <span class="wd-over" style={{ bottom: h(d.available), height: h(d.over) }} />}
