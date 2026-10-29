@@ -1024,6 +1024,7 @@ test.describe('today view', () => {
     await page.goto('/#/today');
     await page.clock.resume();
     await expect(page.locator('[data-testid="plan"] .block').first()).toBeVisible();
+    await expect(page.getByTestId('quiet-side').locator('summary')).toContainText('Agents unavailable');
     await page.getByTestId('quiet-side').locator('summary').click(); // @req FR:home/myday.quiet
     const retry = page.getByTestId('agents-error').getByRole('button', { name: 'Retry' });
     await expect(retry).toBeVisible();
