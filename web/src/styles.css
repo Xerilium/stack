@@ -658,28 +658,30 @@ button.expected:hover { background: var(--line); }
 }
 
 /* ---- fixed app shell: the document never scrolls, only the content region. @req FR:web-shell/layout.app @req FR:web-shell/layout.sticky */
-html, body { height: 100%; }
+:root { --inset-top: 0px; --sticky-h: 76px; }
 body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: none; }
 .shell { height: 100dvh; min-height: 0; }
 .rail { position: static; height: 100dvh; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.main { height: 100dvh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scroll-padding-top: 48px; }
+.main { height: 100dvh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-top: var(--sticky-h); }
 .focus-mode { height: 100dvh; overscroll-behavior: contain; }
 .dialog, .drawer-body, .ask-detail, .cmds { overscroll-behavior: contain; }
 /* the section you are reading stays in view while its rows scroll */
-.section { position: sticky; top: 0; z-index: 3; background: var(--bg); margin-top: 0; padding: 8px 0 2px; }
+.section { position: sticky; top: var(--inset-top); z-index: 3; background: var(--bg); margin-top: 0; padding: 8px 0 2px; }
 .section + .row, .group + .section { margin-top: 0; }
 @media (max-width: 719px) {
   .shell { display: block; height: 100dvh; }
-  .main { height: 100dvh; padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
+  .main { height: 100dvh; padding-bottom: calc(150px + env(safe-area-inset-bottom)); scroll-padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   .focus-mode { padding-bottom: env(safe-area-inset-bottom); }
 }
 /* top padding as a spacer, so sticky headers sit at the very top of the scrolling region */
 .main { padding-top: 0; }
 .main::before { content: ''; display: block; height: 28px; }
 @media (max-width: 719px) { .main::before { height: 16px; } }
-@media (display-mode: standalone) { .main::before { height: max(20px, env(safe-area-inset-top)); } }
+@media (display-mode: standalone) { :root { --inset-top: env(safe-area-inset-top); } .main::before { height: max(20px, env(safe-area-inset-top)); } }
 /* the project name sticks too, so a section header always says which project it belongs to */
-.group { position: sticky; top: 0; z-index: 4; background: var(--bg); margin: 0; padding: 18px 0 4px; min-height: 36px; box-sizing: border-box; }
-.group:first-child { padding-top: 0; min-height: 22px; }
-.section { top: 36px; }
-.rows > .group:first-child + .section { top: 22px; }
+.group { position: sticky; top: var(--inset-top); z-index: 4; background: var(--bg); margin: 0; padding: 16px 0 0; height: 40px; box-sizing: border-box; }
+.group:first-child { padding-top: 0; height: 24px; }
+.section { top: calc(var(--inset-top) + 40px); }
+.rows > .group:first-child + .section { top: calc(var(--inset-top) + 24px); }
+/* the offline banner is one line at the top of the content; it does not float over the stuck headers */
+.banner.offline { position: static; }

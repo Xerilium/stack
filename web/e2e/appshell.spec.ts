@@ -48,5 +48,10 @@ test.describe('fixed app shell', () => {
     expect(f.overflow).toBe('auto');
     expect(f.osb).toBe('contain');
     expect(f.doc).toBeLessThanOrEqual(f.vp);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /New task/ }).first().click();
+    const d = await page.evaluate(() => { const el = document.querySelector('.dialog') as HTMLElement; return { overflow: getComputedStyle(el).overflowY, osb: getComputedStyle(el).overscrollBehaviorY }; });
+    expect(d.overflow).toBe('auto');
+    expect(d.osb).toBe('contain');
   });
 });
