@@ -916,6 +916,18 @@ test.describe('today view', () => {
     expect(ask.ref).not.toBe('gamma:11');
   });
 
+  // @req FR:web-app/today.needs
+  test('identical 🙋 rows get their own cards and reply boxes', async ({ page }) => {
+    const m = await setup(page, [mk(1, 'Plain 🟢'), mk(5, '🙋 Approve'), mk(6, '🙋 Approve')]);
+    const cards = page.locator('[data-testid="needs"] .card');
+    await expect(cards).toHaveCount(2);
+    await cards.nth(1).getByRole('button', { name: 'Reply' }).click();
+    await expect(page.getByLabel('Reply')).toHaveCount(1);
+    await cards.nth(1).getByLabel('Reply').fill('Yes');
+    await cards.nth(1).getByRole('button', { name: 'Send' }).click();
+    await expect.poll(() => m.calls.at(-1)?.body).toMatchObject({ text: '💬 Yes', parent: 'gamma:6' });
+  });
+
   // @req FR:web-app/today.agents
   test('agent list shows Working / Waiting on you / Queued and Reply works', async ({ page }) => {
     const m = await setup(page, day());
