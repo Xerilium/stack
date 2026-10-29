@@ -266,6 +266,8 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('projects.get', 'GET', '/projects/alpha?fields=name,title,open,done,aliases,metadata,sections', undefined, 200);
     await go('projects.get', 'GET', '/projects/none', undefined, 404);
     await go('summaries.get', 'GET', '/summaries', undefined, 200);
+    // @req FR:live-deploy/sync.route
+    await go('sync', 'GET', '/sync', undefined, 200);
     // @req FR:agent-inbox/api.agents
     await go('tasks.add', 'POST', '/tasks', { project: 'alpha', text: '🪄 Agent job https://github.com/o/r/pull/1' }, 201);
     const agent = ((await go('agents.list', 'GET', '/agents', undefined, 200)).body as any).items[0].ref as string;

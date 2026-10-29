@@ -164,7 +164,7 @@ test.describe('Asks', () => {
     await page.clock.install();
     const m = await open(page);
     await page.keyboard.press('j');
-    await expect(page.getByTestId('live-status')).toContainText('Refreshing');
+    await expect(page.getByTestId('live-status')).toContainText('Synced');
     m.asks.push(mk({ key: 'urgent', ask: 'Wire the Teams invoice', score: 999, by: iso(1) }));
     await page.clock.fastForward(16_000);
     await expect(page.locator('.ask-li').first()).toContainText('Wire the Teams invoice');
@@ -203,5 +203,37 @@ test.describe('Asks', () => {
     await page.getByRole('combobox', { name: 'Command' }).fill('Ask:');
     await expect(page.getByRole('option', { name: /Ask: Approve/ })).toBeVisible();
     await expect(page.getByRole('option', { name: /Ask: Defer/ })).toBeVisible();
+  });
+});
+
+/** @req FR:live-deploy/web.state @req FR:live-deploy/web.action @req FR:live-deploy/web.poll */
+test.describe('sync state', () => {
+  test('a failed probe reads Offline with a Retry now that works; a new revision reloads', async ({ page }) => {
+    await page.clock.install();
+    const m = await mockApi(page);
+    m.asks = seed();
+    m.rev = 'a';
+    m.fail.set('/sync', { status: 503, code: 'unavailable', message: 'Service unavailable' });
+    await page.goto('/#/asks');
+    const badge = page.getByTestId('live-status');
+    await expect(badge).toContainText('Offline · retrying');
+    await badge.getByRole('button', { name: 'Retry now' }).click();
+    await expect(badge).toContainText('Synced');
+    await expect(badge.getByRole('button')).toHaveCount(0);
+    m.asks.push(mk({ key: 'urgent', ask: 'Wire the Teams invoice', score: 999, by: iso(1) }));
+    await page.clock.fastForward(16_000);
+    await expect(page.locator('.ask-li', { hasText: 'Wire the Teams invoice' })).toHaveCount(0);
+    m.rev = 'b';
+    await page.clock.fastForward(16_000);
+    await expect(page.locator('.ask-li').first()).toContainText('Wire the Teams invoice');
+  });
+  test('an expired session on the probe offers Sign in', async ({ page }) => {
+    const m = await mockApi(page);
+    m.asks = seed();
+    m.fail.set('/sync', { status: 401, code: 'unauthorized', message: 'Authentication required' });
+    await page.goto('/#/asks');
+    const badge = page.getByTestId('live-status');
+    await expect(badge).toContainText('Sign-in expired');
+    await expect(badge.getByRole('button', { name: 'Sign in' })).toBeVisible();
   });
 });

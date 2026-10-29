@@ -14,6 +14,9 @@
 .live.poll .dot { background: var(--accent); }
 .live.offline { color: var(--warn); }
 .live.offline .dot { background: var(--warn); }
+.live.signin { color: var(--warn); }
+.live.signin .dot { background: var(--warn); }
+.live.connecting .dot { background: var(--muted); }
 
 .asks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .ask-li { transition: opacity .16s var(--ease), transform .16s var(--ease); }

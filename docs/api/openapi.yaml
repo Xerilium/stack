@@ -989,6 +989,23 @@ paths:
                       $ref: "#/components/schemas/AgentItem"
         default:
           $ref: "#/components/responses/Error"
+  /sync:
+    get:
+      summary: "Change probe: the head revision of the task repo (null when the storage has none). Poll it and reload only when it changes"
+      operationId: sync
+      responses:
+        "200":
+          description: Revision
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rev:
+                    type: string
+                    nullable: true
+        default:
+          $ref: "#/components/responses/Error"
   /projects:
     get:
       summary: List projects

@@ -24,7 +24,9 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const [latest, setLatest] = useState<string | undefined>();
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState('');
-  const [status, setStatus] = useState<LiveStatus>('offline');
+  const [status, setStatus] = useState<LiveStatus>('connecting');
+  const [syncedAt, setSyncedAt] = useState<Date | null>(null);
+  const liveRef = useRef<{ retry(): void } | null>(null);
   const [cursor, setCursorState] = useState<string | null>(null);
   const cursorRef = useRef<string | null>(null);
   /** Synchronous, so quick key presses read the cursor they just moved. */
@@ -77,14 +79,20 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     const stop = connectLive({
       make: stream ? undefined : null,
       onStatus: setStatus,
+      probe: () => api.sync(),
+      onSynced: setSyncedAt,
       onChange: (kinds) => {
         if (kinds.some((k) => k === 'asks' || k === 'state' || k === 'poll')) void load();
         if (kinds.some((k) => k === 'tasks' || k === 'poll')) tasksCb.current();
       },
     });
+    liveRef.current = stop;
     const tick = setInterval(() => { if (document.visibilityState === 'visible') { setNow(new Date()); void load(); } }, 60_000);
-    return () => { stop(); clearInterval(tick); };
-  }, [load, stream]);
+    return () => { stop(); liveRef.current = null; clearInterval(tick); };
+  }, [api, load, stream]);
+
+  /** Check now: reconnect or probe, and reload. @req FR:live-deploy/web.action */
+  const retryNow = useCallback(() => { liveRef.current?.retry(); void load(); }, [load]);
 
   useEffect(() => { document.title = pageTitle(total); }, [total]);
 
@@ -149,7 +157,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   }, [api, load]);
 
   return {
-    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, status, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
+    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, status, syncedAt, retryNow, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, answer, reply, defer, retract, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
   };
 }

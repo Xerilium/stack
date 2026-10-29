@@ -4,3 +4,5 @@ export { openGitStorage, gitEnv, execGit, type GitRunner, type GitDeps } from '.
 export { createHost, botGate, type HostDeps } from './runtime';
 export { registerHost } from './register';
 export { GitTokenStore, TOKEN_PATH, type HostStorage } from './token-store';
+export { GitHubStorage, parseGitHubRepo, type GitHubStorageOptions } from './github-storage';
+export { openRepoStorage } from './runtime';

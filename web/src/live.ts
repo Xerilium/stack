@@ -1,6 +1,7 @@
 /**
- * Live updates: server-sent events with a polling fallback for hosts that have no watcher.
+ * Live updates: server-sent events, else polling a cheap change probe (`/api/sync`) on hosts with no watcher.
  * @req FR:ask-queue/web.live @req FR:ask-queue/live.fallback
+ * @req FR:live-deploy/web.poll @req FR:live-deploy/web.state @req FR:live-deploy/web.action
  */
 export interface EventSourceLike {
   readyState: number;
@@ -9,45 +10,103 @@ export interface EventSourceLike {
   addEventListener(type: string, fn: (e: { data: string }) => void): void;
   close(): void;
 }
-export type LiveStatus = 'live' | 'poll' | 'offline';
+/** `connecting` before the first answer; `poll` means the last probe succeeded; `signin` means the session expired. */
+export type LiveStatus = 'connecting' | 'live' | 'poll' | 'offline' | 'signin';
 export interface LiveOpts {
   url?: string;
   /** `null` means the platform has no EventSource: poll from the start. */
   make?: ((url: string) => EventSourceLike) | null;
   onChange: (kinds: string[]) => void;
   onStatus: (s: LiveStatus) => void;
+  /** Returns the repo revision (null: unknown, reload every time). Throws an error with `status` on failure. Without it, polling reloads blindly. */
+  probe?: () => Promise<string | null>;
+  /** Hears each successful probe. */
+  onSynced?: (at: Date) => void;
   pollMs?: number;
   visible?: () => boolean;
+  /** Subscribes to "check now" moments (page shown, back online); default uses document and window. */
+  wake?: (fn: () => void) => () => void;
 }
+export interface Live { (): void; /** Check now: probe at once, or reconnect a dropped stream. */ retry(): void }
 
 const ALL = ['asks', 'tasks', 'state'];
 
-export function connectLive(o: LiveOpts): () => void {
+const defaultWake = (fn: () => void) => {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return () => undefined;
+  const vis = () => { if (document.visibilityState === 'visible') fn(); };
+  document.addEventListener('visibilitychange', vis); window.addEventListener('online', fn);
+  return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('online', fn); };
+};
+
+export function connectLive(o: LiveOpts): Live {
   const make = o.make === undefined ? (typeof EventSource === 'undefined' ? null : (u: string) => new EventSource(u) as unknown as EventSourceLike) : o.make;
   const visible = o.visible ?? (() => typeof document === 'undefined' || document.visibilityState === 'visible');
   let es: EventSourceLike | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let wasLive = false;
   let stopped = false;
+  let polling = false;
+  let rev: string | null | undefined;
+  let inFlight = false;
+  let unwake: () => void = () => undefined;
+
+  const check = () => {
+    if (stopped || inFlight || !visible()) return;
+    if (!o.probe) { o.onChange(['poll']); return; }
+    inFlight = true;
+    o.probe().then((r) => {
+      inFlight = false;
+      if (stopped) return;
+      o.onStatus('poll');
+      o.onSynced?.(new Date());
+      // The first probe follows the initial load, so it reloads only when an earlier probe failed (changes may have been missed).
+      if (failed) o.onChange(ALL);
+      else if (seen && r === null) o.onChange(['poll']);
+      else if (seen && r !== rev) o.onChange(ALL);
+      rev = r; failed = false; seen = true;
+    }, (e: unknown) => {
+      inFlight = false;
+      if (stopped) return;
+      failed = true;
+      o.onStatus((e as { status?: number } | null)?.status === 401 ? 'signin' : 'offline');
+    });
+  };
+  let failed = false;
+  let seen = false;
+
   const poll = () => {
     if (timer || stopped) return;
-    o.onStatus('poll');
-    timer = setInterval(() => { if (visible()) o.onChange(['poll']); }, o.pollMs ?? 15_000);
+    polling = true;
+    if (!o.probe) o.onStatus('poll');
+    timer = setInterval(check, o.pollMs ?? 15_000);
+    unwake = (o.wake ?? defaultWake)(check);
+    if (o.probe) check();
   };
-  if (!make) { poll(); return () => { stopped = true; if (timer) clearInterval(timer); }; }
-  es = make(o.url ?? '/events');
-  es.onopen = () => {
-    o.onStatus('live');
-    // A reconnect may have missed changes: refresh everything once.
-    if (wasLive) o.onChange(ALL);
-    wasLive = true;
+
+  const open = () => {
+    es = make!(o.url ?? '/events');
+    es.onopen = () => {
+      o.onStatus('live');
+      // A reconnect may have missed changes: refresh everything once.
+      if (wasLive) o.onChange(ALL);
+      wasLive = true;
+    };
+    es.addEventListener('change', (e) => {
+      try { const d = JSON.parse(e.data) as { kinds?: string[] }; o.onChange(Array.isArray(d.kinds) ? d.kinds : ALL); } catch { o.onChange(ALL); }
+    });
+    es.onerror = () => {
+      if (stopped) return;
+      if (es && es.readyState === 2) { es.close(); poll(); } else o.onStatus('offline');
+    };
   };
-  es.addEventListener('change', (e) => {
-    try { const d = JSON.parse(e.data) as { kinds?: string[] }; o.onChange(Array.isArray(d.kinds) ? d.kinds : ALL); } catch { o.onChange(ALL); }
-  });
-  es.onerror = () => {
+
+  if (!make) poll(); else open();
+
+  const stop = (() => { stopped = true; if (timer) clearInterval(timer); unwake(); es?.close(); }) as Live;
+  stop.retry = () => {
     if (stopped) return;
-    if (es && es.readyState === 2) { es.close(); poll(); } else o.onStatus('offline');
+    if (polling) { check(); return; }
+    if (es && es.readyState !== 1) { es.close(); wasLive = true; open(); }
   };
-  return () => { stopped = true; if (timer) clearInterval(timer); es?.close(); };
+  return stop;
 }

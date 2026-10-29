@@ -7,6 +7,8 @@ import {
   Storage, MemoryStorage, FsStorage, writeAll, NotFoundError, ConflictError, PathError, versionOf,
 } from '../../src/core/storage';
 import { GitStorage } from '../../src/core/storage-git';
+import { GitHubStorage } from '../../src/host/github-storage';
+import { FakeGitHub } from '../host/fake-github';
 
 jest.setTimeout(20000);
 // Isolate spawned git (ours and the helper) from the developer's global/system config, hooks and signing.
@@ -62,6 +64,8 @@ const adapters: [string, () => Storage][] = [
   ['MemoryStorage', () => new MemoryStorage()],
   ['FsStorage', () => new FsStorage(tmp())],
   ['GitStorage', () => new GitStorage(freshRepo())],
+  // @req FR:live-deploy/gh.paths
+  ['GitHubStorage', () => { const gh = new FakeGitHub(); return new GitHubStorage({ owner: 'acme', repo: 'tasks', branch: 'main', token: 't', fetch: gh.fetch }); }],
 ];
 
 // @req FR:storage-git/interface.@type

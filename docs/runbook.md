@@ -7,6 +7,8 @@ Owner-only. Agents build the files here; they never deploy, create Azure resourc
 
 Free tier: Azure Static Web Apps Free plan with managed Functions. No Key Vault, no paid resources. Secrets live in app settings. Check the current Free plan limits (bandwidth, storage, Functions) before heavy use.
 
+Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are the manual equivalent.
+
 ## Prerequisites
 
 - Azure subscription and a resource group

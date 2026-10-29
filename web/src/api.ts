@@ -49,6 +49,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     send: (ref: string, text: string, kind: 'reply' | 'decision', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
+    /** Repo revision for change-driven polling (null: the host has none). @req FR:live-deploy/web.poll */
+    sync: async () => (await call<{ rev: string | null }>('/sync')).rev,
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
   };
 }

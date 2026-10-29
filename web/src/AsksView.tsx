@@ -19,13 +19,16 @@ const Icon = {
   check: <svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2.2" /><path d="M15.5 24.5l5.8 5.8 11.2-12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>,
 };
 
-function LiveBadge({ a }: { a: Asks }) {
-  const text = a.status === 'live' ? 'Live' : a.status === 'poll' ? 'Refreshing every 15 s' : 'Offline';
+/** Sync state with a working action in every state that is not good. @req FR:live-deploy/web.state @req FR:live-deploy/web.action */
+function LiveBadge({ a, onSignIn }: { a: Asks; onSignIn?: () => void }) {
+  const at = a.syncedAt ? a.syncedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+  const text = { connecting: 'Connecting…', live: 'Live', poll: at ? `Synced ${at}` : 'Synced', offline: 'Offline · retrying', signin: 'Sign-in expired' }[a.status];
   return (
-    <div class={`live ${a.status}`} role="status" data-testid="live-status">
+    <div class={`live ${a.status}`} role="status" aria-live="polite" data-testid="live-status" title={a.status === 'poll' ? 'Checks for changes every 15 s' : undefined}>
       <span class="dot" aria-hidden="true" />
       <span>{text}</span>
-      {a.status === 'offline' && <button type="button" class="link" onClick={() => void a.reload()}>Retry</button>}
+      {a.status === 'offline' && <button type="button" class="link" onClick={a.retryNow}>Retry now</button>}
+      {a.status === 'signin' && <button type="button" class="link" onClick={onSignIn ?? (() => location.assign('/.auth/login/github'))}>Sign in</button>}
     </div>
   );
 }
@@ -140,7 +143,7 @@ function Skeleton() {
 
 export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; toggle: () => void }
 
-export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify?: NotifyCtl; offline?: boolean }) {
+export function AsksView({ asks, notify, offline = false, onSignIn }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void }) {
   const { items, cursor } = asks;
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
@@ -209,7 +212,7 @@ export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify
     <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Asks">
       <header class="asks-head">
         <h1 class="h1">Needs you{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
-        <LiveBadge a={asks} />
+        <LiveBadge a={asks} onSignIn={onSignIn} />
         {notify?.supported && (
           <button type="button" class={`notify-btn${notify.on ? ' on' : ''}`} aria-pressed={notify.on} disabled={notify.blocked && !notify.on} aria-label={notify.blocked && !notify.on ? 'Blocked in browser settings' : notify.on ? 'Notifications on' : 'Notify me'} title={notify.blocked ? 'Blocked in browser settings' : notify.on ? 'Notifications are on: tap to turn off' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z" fill={notify.on ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>
@@ -221,7 +224,7 @@ export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify
       {!offline && asks.phase === 'loading' && <Skeleton />}
       {offline && asks.phase !== 'ready' && <div class="asks-error offline" role="status"><p>Offline. Asks load when you're back online.</p></div>}
       {!offline && asks.phase === 'error' && (
-        <div class="asks-error" role="alert"><p>Cannot load asks: {asks.error}</p><button type="button" class="btn primary" onClick={() => void asks.reload()}>Retry</button></div>
+        <div class="asks-error" role="alert"><p>Cannot load asks: {asks.error}</p><button type="button" class="btn primary" onClick={asks.retryNow}>Retry</button></div>
       )}
       {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && (
         <div class="asks-empty" data-testid="asks-empty">
