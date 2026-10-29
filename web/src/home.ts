@@ -25,7 +25,9 @@ export function countdown(due: string | undefined, now: Date): Countdown | null 
 
 export interface HomeItem { task: Task; minutes: number; assumed: boolean; due: Countdown | null }
 export interface HomeProject { project: string; title: string; top: HomeItem; shown: boolean }
-export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem | null; next: HomeItem[]; projects: HomeProject[] }
+export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem | null; next: HomeItem[]; five: HomeItem[]; projects: HomeProject[] }
+/** Tasks that fit a 5-minute gap: 15 minutes or less. @req FR:web-app/home2.five */
+const FIVE_MAX = 15;
 
 /** Expected time is the full effort (30 min assumed when unset), never capped: a 3 h task must not "fit" 2 h. */
 const item = (t: Task, now: Date): HomeItem => { const r = parseRow(t.text); const est = effortMinutes(r.effort); return { task: t, minutes: est || DEFAULT_MIN, assumed: !est, due: countdown(r.due, now) }; };
@@ -46,13 +48,19 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask |
   const shownRefs = new Set([oneTask?.ref, instead?.task.ref, ...next.map((n) => n.task.ref)].filter((r): r is string => !!r));
   // one ranking pass over every active row, then the first per project
   const rankedAll = rankNow(tasks.filter((t) => !t.done && t.depth === 0 && isActive(t) && actionable(t, now)), now, tasks);
+  // a short task for a short gap, ranked, never one already on screen
+  const five = ordered.filter((t) => !shownRefs.has(t.ref)).map((t) => item(t, now)).filter((i) => !i.assumed && i.minutes <= FIVE_MAX).slice(0, 3);
+  five.forEach((f) => shownRefs.add(f.task.ref));
+  // projects in priority order: by the rank of their top task (active first, then Up next, then anything open). @req FR:web-app/home2.order
+  const rankOf = new Map(rankedAll.map((t, i) => [t.ref, i]));
   const projects: HomeProject[] = [];
   for (const p of o.projects) {
     const mine = tasks.filter((t) => t.project === p.name && !t.done && t.depth === 0);
     const top = rankedAll.find((t) => t.project === p.name) ?? mine.find(isUpNext) ?? mine[0];
     if (top) projects.push({ project: p.name, title: p.title || p.name, top: item(top, now), shown: shownRefs.has(top.ref) });
   }
-  return { one, fits, instead, next, projects };
+  projects.sort((a, b) => (rankOf.get(a.top.task.ref) ?? Infinity) - (rankOf.get(b.top.task.ref) ?? Infinity));
+  return { one, fits, instead, next, five, projects };
 }
 
 // ---- The window: how long you have now, from the schedule and the calendar.

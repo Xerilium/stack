@@ -275,7 +275,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
           )}
           {asks.snoozed.length > 0 && (
             <div>
-              <button type="button" class="foot-btn" aria-expanded={openSnoozed} onClick={() => setOpenSnoozed(!openSnoozed)}>Snoozed · {asks.snoozed.length}</button>
+              <button type="button" class="foot-btn" aria-expanded={openSnoozed} onClick={() => setOpenSnoozed(!openSnoozed)}>Deferred · {asks.snoozed.length}</button>
               {openSnoozed && (
                 <ul class="foot-list">
                   {asks.snoozed.map((s) => <li key={s.key}><span class="f-t">{s.ask}</span><span class="f-what">back <DeadlineChip by={s.snoozedUntil} now={asks.now} /></span></li>)}
