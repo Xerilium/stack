@@ -31,6 +31,7 @@ async function open(page: Page, sessions = seed()): Promise<Mock> {
   ]) }));
   await page.goto('/#/sessions');
   await expect(page.locator('.sess-row').first()).toBeVisible();
+  if (sessions.length) await expect(page.locator('.sess-li.cursor')).toHaveCount(1);
   return m;
 }
 const drawer = (p: Page) => p.getByRole('dialog');
