@@ -165,3 +165,5 @@ a.btn.primary { color: #fff; }
 .btn.will small { font-weight: 400; font-size: 11.5px; color: var(--muted); }
 .btn.will.primary small { color: color-mix(in srgb, var(--accent-ink) 80%, transparent); }
 @media (max-width: 719px) { .ask-actions:has(.btn.will) { flex-direction: column; } .ask-actions:has(.btn.will) .btn { width: 100%; min-height: var(--tap); } }
+.ask-row-target { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+.ask-row-target span { color: var(--ink2); }

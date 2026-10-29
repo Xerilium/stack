@@ -228,7 +228,7 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
   if (input.applies !== undefined) {
     if (!Array.isArray(input.applies) || !input.applies.every((x) => typeof x === 'string')) throw new LifecycleError('applies must list one action per option');
     input.applies.forEach((x) => parseAction(x));
-    out.applies = input.applies.map((x) => x.trim());
+    out.applies = input.applies.map((x) => x.trim().replace(/\|/g, '/')); // `|` separates the stored list
   }
   if (input.detail !== undefined) {
     if (typeof input.detail !== 'string' || input.detail.length > MAX_DETAIL) throw new LifecycleError(`detail must be at most ${MAX_DETAIL} characters`);
@@ -275,20 +275,36 @@ export async function answerAsk(ctx: LifecycleContext, key: string, input: Answe
   const now = nowD.toISOString();
   const text = input.text === undefined ? undefined : line('text', input.text, MAX_TEXT);
   if (['reply', 'ask', 'option'].includes(input.answer) && !text) throw new LifecycleError(`text is required for ${input.answer}`);
-  // Quick triage: the row changes first; a failed action records no answer. @req FR:quick-triage/flow.apply @req FR:quick-triage/flow.text
-  let applied: string | undefined;
+  // Quick triage: the answer is recorded, then the action runs; a failed action reopens the ask and is a conflict, so a retry runs it once.
+  // @req FR:quick-triage/flow.apply @req FR:quick-triage/flow.text
   const before = await readAsk(ctx, key);
+  let action: Action | null = null;
   if (before && before.ask.state === 'open' && before.ask.ref) {
     const a = before.ask;
-    let action: Action | null = null;
     if (input.answer === 'go' && a.apply) action = parseAction(a.apply);
     else if (input.answer === 'option' && a.applies && a.options) { const i = a.options.indexOf(text!); if (i >= 0 && a.applies[i]) action = parseAction(a.applies[i]); }
     else if (a.kind === 'answer' && (input.answer === 'reply' || input.answer === 'ask')) action = { kind: 'note', text: `🙋 ${now.slice(0, 10)}: ${text}` };
-    if (action) {
-      const r = await applyAction(ctx, { ...parseTaskRef(a.ref), text: a.refText }, action);
-      applied = `${describeAction(action)} → ${r.after ?? r.before ?? ''}`.trim();
+  }
+  const result = await recordAnswer(ctx, key, input, text, now, nowD);
+  if (action && before) {
+    try {
+      const r = await applyAction(ctx, { ...parseTaskRef(before.ask.ref!), text: before.ask.refText }, action);
+      const applied = `${describeAction(action)} → ${r.after ?? r.before ?? ''}`.trim();
+      await mutate<void>(ctx, key, (cur) => (cur ? { next: { ...cur.ask, thread: [...cur.ask.thread, `- ${now} applied: ${applied}`] }, message: `Ask applied: ${key}`, result: undefined } : { skip: undefined }));
+    } catch (e) {
+      await mutate<void>(ctx, key, (cur) => {
+        if (!cur || cur.ask.state !== 'answered') return { skip: undefined };
+        const a = { ...cur.ask }; a.state = 'open'; delete a.answer; delete a.text; delete a.answered; a.updated = now;
+        return { next: a, message: `Ask reopened (action failed): ${key}`, result: undefined };
+      });
+      throw e;
     }
   }
+  return result;
+}
+
+/** The owner's answer on the ask file itself. */
+async function recordAnswer(ctx: LifecycleContext, key: string, input: AnswerInput, text: string | undefined, now: string, nowD: Date): Promise<{ changed: boolean }> {
   return mutate<{ changed: boolean }>(ctx, key, (cur) => {
     if (!cur) throw new NotFoundError(`Ask not found: ${key}`);
     const a = { ...cur.ask };
@@ -314,7 +330,6 @@ export async function answerAsk(ctx: LifecycleContext, key: string, input: Answe
     a.state = 'answered'; a.answer = input.answer; a.answered = now; a.updated = now; delete a.snoozed;
     if (text) a.text = text; else delete a.text;
     if (input.answer === 'reply' || input.answer === 'ask') a.thread = [...a.thread, `- ${now} you: ${text}`];
-    if (applied) a.thread = [...a.thread, `- ${now} applied: ${applied}`];
     return { next: a, message: `Ask answered: ${key}`, result: { changed: true } };
   });
 }

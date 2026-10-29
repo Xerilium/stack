@@ -67,22 +67,34 @@ export function parseAction(text: string): Action | null {
   }
 }
 
-/** The row at `ref`, or a NotFoundError. */
-export async function readRow(ctx: LifecycleContext, ref: TaskRef): Promise<{ lines: string[]; version: string; row: RegExpExecArray }> {
+const rowAt = (lines: string[], i: number) => ROW.exec((lines[i] ?? '').replace(/\r$/, '').replace(/^\uFEFF/, ''));
+
+/**
+ * The row at `ref`, or a NotFoundError. When the ask remembers the row's text and the line moved (a note or a new row above it),
+ * the row is found again by that text as long as it is unique in the file; otherwise it is a ConflictError.
+ */
+export async function readRow(ctx: LifecycleContext, ref: TaskRef): Promise<{ lines: string[]; version: string; row: RegExpExecArray; line: number }> {
   let f: { content: string; version: string };
   try { f = await ctx.storage.read(ref.path); } catch { throw new NotFoundError(`No such file: ${ref.path}`); }
   const lines = f.content.split('\n');
-  const row = ROW.exec((lines[ref.line] ?? '').replace(/\r$/, '').replace(/^﻿/, ''));
+  let line = ref.line;
+  let row = rowAt(lines, line);
+  if (ref.text !== undefined && (!row || row[3].trim() !== ref.text.trim())) {
+    const hits = lines.map((_, k) => k).filter((k) => rowAt(lines, k)?.[3].trim() === ref.text!.trim());
+    if (hits.length !== 1) throw new ConflictError(`Row changed since the ask was written: ${ref.path}:${ref.line}`);
+    line = hits[0]; row = rowAt(lines, line);
+  }
   if (!row) throw new NotFoundError(`Not a task row: ${ref.path}:${ref.line}`);
-  if (ref.text !== undefined && row[3].trim() !== ref.text.trim()) throw new ConflictError(`Row changed since the ask was written: ${ref.path}:${ref.line}`);
-  return { lines, version: f.version, row };
+  return { lines, version: f.version, row, line };
 }
 
 const cr = (l: string) => (l.endsWith('\r') ? '\r' : '');
 
 /** Runs one action on the row; a row that moved or vanished is a ConflictError. @req FR:quick-triage/flow.apply */
-export async function applyAction(ctx: LifecycleContext, ref: TaskRef, a: Action): Promise<LifecycleResult> {
+export async function applyAction(ctx: LifecycleContext, at: TaskRef, a: Action): Promise<LifecycleResult> {
   try {
+    const found = await readRow(ctx, at);
+    const ref: TaskRef = { path: at.path, line: found.line, text: at.text };
     switch (a.kind) {
       case 'set': return await setProperties(ctx, ref, a.props);
       case 'suspend': return await suspendTask(ctx, ref, { days: a.days, hours: a.hours });
@@ -91,7 +103,7 @@ export async function applyAction(ctx: LifecycleContext, ref: TaskRef, a: Action
       case 'start': return await startTask(ctx, ref);
       case 'resume': return await resumeTask(ctx, ref);
       case 'due': {
-        const { lines, version, row } = await readRow(ctx, ref);
+        const { lines, version, row } = found;
         const body = row[3].replace(DUE_MARK, '');
         const lead = /^((?:🚨|‼️|🔺|🔻)\s+)?/u.exec(body)![1] ?? '';
         const next = `${row[1]}${row[2]}${lead}📅 ${a.date}: ${body.slice(lead.length)}`;
@@ -100,7 +112,7 @@ export async function applyAction(ctx: LifecycleContext, ref: TaskRef, a: Action
         return { changed: true, ref, before: row[0], after: next };
       }
       case 'note': {
-        const { lines, version, row } = await readRow(ctx, ref);
+        const { lines, version, row } = found;
         const indent = `${row[1].replace(/- $/, '')}  `;
         lines.splice(ref.line + 1, 0, `${indent}> ${a.text}${cr(lines[ref.line])}`);
         await ctx.storage.write(ref.path, lines.join('\n'), { expectedVersion: version, message: `Note: ${row[3]}` });
@@ -108,7 +120,7 @@ export async function applyAction(ctx: LifecycleContext, ref: TaskRef, a: Action
       }
     }
   } catch (e) {
-    if (e instanceof NotFoundError || e instanceof LifecycleError) throw new ConflictError(`Could not apply "${describe(a)}" to ${ref.path}:${ref.line}: ${e.message}`);
+    if (e instanceof NotFoundError || e instanceof LifecycleError) throw new ConflictError(`Could not apply "${describe(a)}" to ${at.path}:${at.line}: ${e.message}`);
     throw e;
   }
 }

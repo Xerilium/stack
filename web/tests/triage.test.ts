@@ -1,7 +1,7 @@
-/** @req FR:quick-triage/web.stepper @req FR:quick-triage/web.undo @req FR:quick-triage/web.done */
+/** @req FR:quick-triage/web.stepper @req FR:quick-triage/web.done */
 import { describe, expect, it } from 'vitest';
 import type { AskItem } from '../src/asks';
-import { changeText, flowOf, reversible } from '../src/triage';
+import { changeText, flowOf } from '../src/triage';
 
 const ask = (key: string, o: Partial<AskItem> = {}): AskItem => ({ key, state: 'open', ask: key, kind: 'approve', from: 'cos', reversible: true, priority: 'normal', blocks: 0, created: '', updated: '', score: 10, overdue: false, ...o });
 
@@ -22,12 +22,5 @@ describe('changeText', () => {
     expect(changeText('complete', 'Insurer')).toBe('Done · Insurer');
     expect(changeText('note Draft the denial', 'Insurer')).toBe('Note added · Insurer');
     expect(changeText('-', 'Insurer')).toBe('Answered · Insurer');
-  });
-});
-
-describe('reversible', () => {
-  it('set, complete, suspend and start can be undone; skip, due and note cannot', () => {
-    for (const a of ['set priority=🚨', 'complete', 'suspend 7d', 'start']) expect(reversible(a)).toBe(true);
-    for (const a of ['skip', 'due Nov 3', 'note x', '-']) expect(reversible(a)).toBe(false);
   });
 });

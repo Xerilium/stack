@@ -114,6 +114,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
         {flowOf(a) && <div class="flow-bar" role="progressbar" aria-label="Triage progress" aria-valuemin={0} aria-valuemax={flowOf(a)!.total} aria-valuenow={flowOf(a)!.done}><span style={{ width: `${(flowOf(a)!.done / Math.max(1, flowOf(a)!.total)) * 100}%` }} /></div>}
         <h2 class="ask-title">{a.ask}</h2>
         {a.why && <p class="ask-why">{a.why}</p>}
+        {a.refText && <p class="ask-row-target" title="The task this answer changes">on <span>{a.refText}</span></p>}
         {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
         {talk?.render(a)}
         <dl class="ask-facts">
@@ -191,7 +192,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
       // quick triage: say what changed, and when the flow is finished say so. @req FR:quick-triage/web.undo @req FR:quick-triage/web.done
       const will = x.send.answer === 'go' && a.apply ? a.apply : x.send.answer === 'option' && a.applies && a.options ? a.applies[a.options.indexOf(x.send.text ?? '')] : undefined;
       const f = flowOf(a);
-      const last = f ? asks.itemsRef.current.filter((x) => x.flow === f.flow).length <= 1 : false; // this was the flow's last open question
+      const last = f ? asks.itemsRef.current.filter((x) => x.flow === f.flow).length <= 1 && !asks.snoozed.some((x) => x.flow === f.flow) : false; // the flow's last open question, none deferred
       const text = will && will !== '-' ? changeText(will, a.ask) : x.send.answer === 'option' ? `Sent to ${a.from}: ${x.send.text}` : `${ANSWER_WORD[x.send.answer] ?? 'Sent'} · ${a.from} has it`;
       void asks.answer(a, x.send, last ? `Triage done · ${f!.total} answered` : text, !(will && will !== '-'));
     }

@@ -415,7 +415,7 @@ export function buildOpenApi(): J {
             answer: { type: 'string', enum: [...ASK_ANSWERS] }, text: { type: 'string' }, answered: { type: 'string', format: 'date-time' }, outcome: { type: 'string', enum: [...ASK_OUTCOMES] },
             handled: { type: 'string' }, note: { type: 'string' }, snoozed: { type: 'string', format: 'date-time' }, detail: { type: 'string' },
             score: { type: 'integer' }, rank: { type: 'integer' }, overdue: { type: 'boolean' }, snoozedUntil: { type: 'string', format: 'date-time' }, agentReply: { type: 'string' },
-            flow: { type: 'string' }, seq: { type: 'integer' }, ref: { type: 'string' }, apply: { type: 'string' }, applies: { type: 'array', items: { type: 'string' } }, flowTotal: { type: 'integer' }, flowDone: { type: 'integer' },
+            flow: { type: 'string' }, seq: { type: 'integer' }, ref: { type: 'string' }, apply: { type: 'string' }, applies: { type: 'array', items: { type: 'string' } }, flowTotal: { type: 'integer' }, flowDone: { type: 'integer' }, refText: { type: 'string' },
           },
         },
         TeamAgent: {

@@ -40,6 +40,3 @@ export function changeText(action: string, title = ''): string {
   else what = cap(verb);
   return title ? `${what} · ${title}` : what;
 }
-
-/** Stack can take these back; skip, due and note stay. @req FR:quick-triage/web.undo */
-export const reversible = (action: string): boolean => /^(set |complete$|suspend |start$)/.test(action.trim());

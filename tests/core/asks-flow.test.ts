@@ -81,6 +81,21 @@ describe('apply on answer', () => {
     await expect(answerAsk(ctx, 'q5', { answer: 'go' })).rejects.toThrow(ConflictError);
     expect((await askOf(storage, 'q5')).state).toBe('open');
   });
+  it('a note above a row moves it; a later ask still finds the row by its text; a reply retries once after a failed action', async () => {
+    const { storage, ctx } = mk(); await seed(storage);
+    await putAsk(ctx, 'n1', { ...base, ask: 'Top of mind?', kind: 'answer', ref: 'finance:4' }, 'cos');
+    await putAsk(ctx, 'n2', { ...base, ask: 'Make the registration critical?', kind: 'approve', ref: 'finance:5', apply: 'set priority=🚨' }, 'cos');
+    await answerAsk(ctx, 'n1', { answer: 'reply', text: 'Taxes' }); // inserts a line after row 4: row 5 is now row 6
+    await answerAsk(ctx, 'n2', { answer: 'go' });
+    expect(await row(storage, 7)).toBe('- [ ] 🚨 Renew the car registration');
+    expect((await askOf(storage, 'n2')).thread.at(-1)).toMatch(/applied: set priority=🚨/);
+    // an edited row is a conflict: the ask reopens, nothing applied, and a retry would run once
+    await putAsk(ctx, 'n3', { ...base, ask: 'Skip the insurer?', kind: 'approve', ref: 'finance:8', apply: 'skip' }, 'cos'); // the insurer row, one down after the note
+    const file = (await storage.read('tasks/finance.md')).content;
+    await storage.write('tasks/finance.md', file.replace('Reply to the insurer', 'Reply to the insurer today'));
+    await expect(answerAsk(ctx, 'n3', { answer: 'go' })).rejects.toThrow(ConflictError);
+    expect((await askOf(storage, 'n3')).state).toBe('open');
+  });
   it('an answer to a question with a ref lands under the row as a note', async () => {
     const { storage, ctx } = mk(); await seed(storage);
     await putAsk(ctx, 'q6', { ...base, ask: 'What is top of mind?', kind: 'answer', ref: 'finance:4' }, 'cos');
