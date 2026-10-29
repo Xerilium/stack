@@ -50,8 +50,7 @@ test.describe('Agent team', () => {
     await page.keyboard.type('Check the deploy and tell me if the plan is solid');
     await page.keyboard.press('Enter');
     await expect(talk).toHaveCount(0);
-    const call = m.calls.find((c) => c.path === '/sessions')!;
-    expect(call.body).toEqual({ text: 'Check the deploy and tell me if the plan is solid', agent: 'alpha-lead', ref: 'alpha:6' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Check the deploy and tell me if the plan is solid', agent: 'alpha-lead', ref: 'alpha:6' });
     await expect(page.locator('.toast')).toContainText('Sent to alpha-lead');
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('Working');
     // Only one composer at a time; Esc closes it.
@@ -72,10 +71,10 @@ test.describe('Agent team', () => {
     await row(page, 'alpha:9').locator('.agent-chip').click();
     const talk = row(page, 'alpha:9').locator('.agent-talk');
     // A phone has no room for the toggle: Keep open is the agent's own default there.
-    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeHidden(); await talk.getByRole('button', { name: /^Do it/ }).click(); expect(m.calls.find((c) => c.path === '/sessions')!.body.text).toContain('Do this task'); await expect(page.locator('.toast')).toContainText('Sent to alpha-lead'); return; }
+    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeHidden(); await talk.getByRole('button', { name: /^Do it/ }).click(); await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toContain('Do this task'); await expect(page.locator('.toast')).toContainText('Sent to alpha-lead'); return; }
     await talk.getByLabel('Keep open').check();
     await talk.getByRole('button', { name: /^Do it/ }).click();
-    expect(m.calls.find((c) => c.path === '/sessions')!.body.text).toContain('Do this task');
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toContain('Do this task');
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByRole('dialog')).toContainText('🅰️ Alpha Lead · Review pull requests 🟠 · alpha:9');
     await page.keyboard.press('Escape');
@@ -90,7 +89,7 @@ test.describe('Agent team', () => {
     await page.route('**/sessions/*/events', (r) => setTimeout(() => r.fulfill({ status: 200, contentType: 'text/event-stream', body: frames([{ type: 'done', stopReason: 'end_turn', cost: { usd: 0.3, tokens: 10 }, turns: 2, durationMs: 9 }]) }), 400));
     await page.keyboard.press('R');
     await expect(target.locator('.agent-chip')).toHaveText('Reviewing…');
-    expect(m.calls.find((c) => c.path === '/tasks/review')!.body).toEqual({ ref: 'alpha:9' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/review')?.body).toEqual({ ref: 'alpha:9' });
     m.reviews = [{ ref: 'alpha:9', at: new Date().toISOString(), verdict: 'partial', plan: 'Read the PRs, then ask about the release gate', estimate: '1h', agent: 'alpha-lead', needs: ['rev-alpha-10-x-1', 'rev-alpha-10-x-2'] }];
     for (const x of m.sessions!) x.state = 'idle'; // the review run ended
     await expect(target.locator('.agent-chip')).toHaveText('Partial · needs 2');
@@ -135,7 +134,7 @@ test.describe('Agent team', () => {
     await expect(talk).toHaveAttribute('aria-label', 'Talk to 🅰️ Alpha Lead about Approve merging PR 879');
     await page.keyboard.type('What changed since the last review?');
     await page.keyboard.press('Enter');
-    expect(m.calls.find((c) => c.path === '/sessions')!.body).toEqual({ text: 'What changed since the last review?', agent: 'alpha-lead', project: 'alpha' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'What changed since the last review?', agent: 'alpha-lead', project: 'alpha' });
   });
 
   test('the Home hero takes a and renders the composer inline; a row-started session keeps the list polling until it ends', async ({ page }) => {
@@ -167,7 +166,7 @@ test.describe('Agent team', () => {
     await expect(first.locator('.agent-talk')).toBeVisible();
     await page.keyboard.type('Status?');
     await page.keyboard.press('Enter');
-    expect(m.calls.find((c) => c.path === '/sessions')!.body.text).toBe('Status?');
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toBe('Status?');
   });
 
   test('the project tile on Today carries the project agent and opens the composer', async ({ page }) => {
@@ -179,6 +178,6 @@ test.describe('Agent team', () => {
     await expect(tile.locator('.agent-talk')).toBeVisible();
     await page.keyboard.type('Where are we?');
     await page.keyboard.press('Enter');
-    expect(m.calls.find((c) => c.path === '/sessions')!.body).toEqual({ text: 'Where are we?', agent: 'alpha-lead', project: 'alpha' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Where are we?', agent: 'alpha-lead', project: 'alpha' });
   });
 });
