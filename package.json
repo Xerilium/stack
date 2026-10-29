@@ -62,6 +62,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.312",
     "@modelcontextprotocol/sdk": "1.32.1",
+    "ical.js": "2.2.1",
     "yaml": "^2.9.1",
     "zod": "4.6.7"
   }

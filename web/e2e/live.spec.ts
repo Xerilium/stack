@@ -19,7 +19,9 @@ test.describe.configure({ mode: 'serial' });
 test.skip(({ isMobile }) => isMobile, 'one run is enough; the mobile layout is covered by the mocked specs');
 
 test.beforeAll(async () => {
-  out = mkdtempSync(join(tmpdir(), 'stack-live-build-'));
+  // Inside the repo, so the build resolves the root's node_modules (ical.js and other runtime deps).
+  mkdirSync(join(ROOT, 'node_modules/.cache'), { recursive: true });
+  out = mkdtempSync(join(ROOT, 'node_modules/.cache/stack-live-build-'));
   execFileSync('node', [join(ROOT, 'node_modules/typescript/bin/tsc'), '-p', join(ROOT, 'tsconfig.cli.json'), '--outDir', out], { cwd: ROOT });
   repo = mkdtempSync(join(tmpdir(), 'stack-live-repo-'));
   mkdirSync(join(repo, 'tasks'));
