@@ -68,7 +68,7 @@ test.describe('Agent thread', () => {
     await expect(box).toBeFocused();
     await page.keyboard.type('And the deploy?');
     await page.keyboard.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path.endsWith('/prompt'))?.body, { timeout: 15_000 }).toEqual({ text: 'And the deploy?' });
+    await expect.poll(() => m.calls.find((c) => c.path.endsWith('/prompt'))?.body, { timeout: 15_000 }).toEqual({ text: 'And the deploy?', ref: 'alpha:6', agent: 'alpha-lead' }); // the persona rides along on a follow-up
     expect(m.calls.filter((c) => c.path === '/sessions')).toHaveLength(1);
     expect(m.calls.find((c) => c.path.endsWith('/assign'))).toBeUndefined(); // a capital A typed in the box is text, not the shortcut
     await page.keyboard.press('Escape'); // leaves the box

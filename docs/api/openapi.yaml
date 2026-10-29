@@ -1193,6 +1193,15 @@ paths:
                 text:
                   type: string
                   maxLength: 4000
+                  description: The prompt
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                  description: "The task the follow-up is about: the agent persona (and model) is applied again, since a resumed session carries no system prompt"
+                agent:
+                  type: string
+                  maxLength: 40
+                  pattern: ^[a-z0-9][a-z0-9._-]{0,39}$
+                  description: "Agent slug for the persona; default: the active agent for the task Single line."
       responses:
         "202":
           description: Run started

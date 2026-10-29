@@ -2,6 +2,7 @@
  * The thread inside the expanded task: entries in time order, asks answerable in place, the composer at the bottom.
  * @req FR:agent-thread/web.expand @req FR:agent-thread/web.hero @req FR:agent-thread/web.keys @req FR:agent-thread/web.a11y
  */
+import { useRef } from 'preact/hooks';
 import { actionsFor, type AskItem } from './asks';
 import { AgentTalk } from './AgentTalk';
 import { foldSubtasks, verdictLine, whoLine } from './thread';
@@ -32,6 +33,10 @@ export function ThreadView({ t, th, team, now }: { t: Task; th: ThreadCtl; team:
   const agents = team.agentsOf(t);
   const items = foldSubtasks(th.thread.items);
   const lastAgent = [...th.thread.items].reverse().find((i): i is Extract<typeof i, { kind: 'agent' }> => i.kind === 'agent');
+  // Announce a reply that lands while the thread is open, not the ones already there on mount.
+  const seen = useRef<string | null | undefined>(undefined);
+  if (seen.current === undefined && th.phase === 'ready') seen.current = lastAgent?.id ?? null;
+  const announce = seen.current !== undefined && lastAgent && lastAgent.id !== seen.current ? lastAgent : undefined;
   const running = th.thread.session?.state === 'running' || th.thread.session?.state === 'needs-you';
   return (
     <section class="thread" aria-label="Agent thread" onClick={(e) => e.stopPropagation()}>
@@ -53,7 +58,7 @@ export function ThreadView({ t, th, team, now }: { t: Task; th: ThreadCtl; team:
       )}
       {th.phase === 'ready' && items.length === 0 && <p class="th-note">No thread yet. Ask the agent anything, or assign the task.</p>}
       {/* One live line announces the newest agent reply (not the owner's own words or state flips). @req FR:agent-thread/web.a11y */}
-      <p class="sr-only" role="status" aria-live="polite">{lastAgent ? `${name(lastAgent.agent)}: ${lastAgent.text}` : ''}</p>
+      <p class="sr-only" role="status" aria-live="polite">{announce ? `${name(announce.agent)}: ${announce.text}` : ''}</p>
       {running && th.thread.session && <p class="th-note live" role="status"><span class="dot" aria-hidden="true" />{th.thread.session.state === 'needs-you' ? 'Waiting for you in Asks' : 'Working…'} · <button type="button" class="link" onClick={() => team.openSession(t.ref)}>Open the session</button></p>}
       <AgentTalk team={team} talk={{ ref: t.ref, project: t.project, about: t.text }} agents={agents} mode="thread" busy={th.busy}
         onAsk={(text, agent, keep) => th.ask(text, agent, keep)} onAssign={(agent, keep) => th.assign(agent, keep)} />

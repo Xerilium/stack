@@ -73,7 +73,7 @@ test.describe('Agent team', () => {
     await talk.getByRole('button', { name: /^Assign/ }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' });
     await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByRole('dialog')).toContainText('🅰️ Alpha Lead · 🚧 Review pull requests 🟠 · alpha:9');
+    await expect(page.getByRole('dialog')).toContainText('🅰️ Alpha Lead · Review pull requests 🟠 · alpha:9');
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });

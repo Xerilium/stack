@@ -1,6 +1,6 @@
 /** @req FR:agent-thread/web.expand */
 import { describe, expect, it } from 'vitest';
-import { ago, canFollowUp, emptyThread, foldSubtasks, verdictLine, whoLine, type ThreadItem } from '../src/thread';
+import { ago, canFollowUp, emptyThread, foldSubtasks, followUpSession, verdictLine, whoLine, type ThreadItem } from '../src/thread';
 
 const now = new Date('2026-10-29T12:00:00Z');
 const at = (m: number) => new Date(now.getTime() - m * 60_000).toISOString();
@@ -28,6 +28,12 @@ describe('thread helpers', () => {
   it('a follow-up goes to an idle or stale task session only', () => {
     expect(canFollowUp(emptyThread())).toBe(false);
     expect(canFollowUp({ items: [], session: { id: 's', title: 't', state: 'idle' } })).toBe(true);
+    // The idle session takes the follow-up only when it is the chosen agent's; another To starts fresh. @req FR:agent-thread/thread.ask
+    const idle = { items: [], session: { id: 's', title: '🎧 Cid Manager · Release · f4:7', state: 'idle' } };
+    expect(followUpSession(idle)?.id).toBe('s');
+    expect(followUpSession(idle, '🎧 Cid Manager')?.id).toBe('s');
+    expect(followUpSession(idle, 'CoS')).toBeUndefined();
+    expect(followUpSession({ ...idle, session: { ...idle.session, state: 'running' } }, '🎧 Cid Manager')).toBeUndefined();
     expect(canFollowUp({ items: [], session: { id: 's', title: 't', state: 'running' } })).toBe(false);
   });
 });

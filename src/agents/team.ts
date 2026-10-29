@@ -6,7 +6,7 @@
 import { agentFor, listTeam, reviewPrefix, reviewsIn, type Review, type TeamAgent } from '../core/agents';
 import { handleAsk, listAsks, putAsk, type AskKind, type ListedAsk } from '../core/asks';
 import { currentRows, listInbox, type ListedEntry } from '../core/inbox';
-import { claimTask } from '../core/triage';
+import { checkClaim, claimTask } from '../core/triage';
 import { LifecycleError, type LifecycleContext, type TaskRef } from '../core/lifecycle';
 import { parseProject, type Task } from '../core/parser';
 import { NotFoundError } from '../core/storage';
@@ -87,6 +87,12 @@ async function resolve(ctx: LifecycleContext, i: { agent?: string; ref?: string;
   return { ref, c, project, agent };
 }
 
+/** The persona options for a follow-up in an existing session: the same system prompt and model as a new task session, no title. @req FR:agent-thread/thread.ask */
+export async function agentPromptOptions(ctx: LifecycleContext, i: { agent?: string; ref?: string; project?: string }): Promise<{ options: PromptOptions; agent: string }> {
+  const { c, agent } = await resolve(ctx, i);
+  return { options: { systemPrompt: personaOf(agent, c?.text), ...(agent.model ? { model: agent.model } : {}) }, agent: agent.slug };
+}
+
 /** Starts a new session for an agent on a task (or a project). @req FR:agent-team/talk.start */
 export async function startAgentRun(runs: AgentRuns, ctx: LifecycleContext, i: AgentRunInput): Promise<{ runId: string; sessionId: string | null; agent: string; title: string }> {
   const { c, project, agent } = await resolve(ctx, i);
@@ -132,8 +138,10 @@ export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText
   const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug });
   if (!ref || !c) throw new LifecycleError('Bad ref');
   if (c.human) throw new TriageDenied('Needs a human');
-  const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text: QUICK_PROMPTS.assign }); // first: a start that fails leaves no 🚧 behind
-  const claimed = (await claimTask(ctx, ref, { actor: `agent:${agent.slug}`, owner: true })).changed;
+  const caller = { actor: `agent:${agent.slug}`, owner: true };
+  await checkClaim(ctx, ref, caller); // refused (held, done, autonomy) before any run starts
+  const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text: QUICK_PROMPTS.assign }); // then the start: one that fails leaves no 🚧 behind
+  const claimed = (await claimTask(ctx, ref, caller)).changed;
   return { ...r, claimed };
 }
 
@@ -161,7 +169,7 @@ export async function taskThread(ctx: LifecycleContext, runs: AgentRuns | undefi
     else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state });
   }
   const asks = await listAsks(ctx, { state: 'all', limit: 200 }).catch(() => ({ items: [] as ListedAsk[] }));
-  for (const a of asks.items) if (a.ref === refText || a.row === refText) items.push({ at: a.created, kind: 'ask', ask: a });
+  for (const a of asks.items) if ((a.row ?? a.ref) === refText) items.push({ at: a.created, kind: 'ask', ask: a }); // the current row wins, like inbox entries
   const review = (await reviewsIn(ctx, ref.path)).get(ref.line);
   if (review) { review.needs = asks.items.filter((a) => a.state === 'open' && a.key.startsWith(reviewPrefix(ref))).map((a) => a.key); items.push({ at: review.at, kind: 'review', verdict: review.verdict, plan: review.plan, ...(review.estimate ? { estimate: review.estimate } : {}), agent: review.agent }); }
   // Subtasks an agent owns (🤖 or 🪄) under this row.

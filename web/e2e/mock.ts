@@ -97,13 +97,14 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
         if (!m.sessions) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
         const ag = m.team.find((a) => a.slug === body?.agent) ?? m.team[0];
         const id = `a1b2c3d4-0000-0000-0000-0000000asg${m.calls.length}`.slice(0, 36);
+        const title = `${ag?.name ?? 'Agent'} · ${t.text} · ${t.ref}`; // the server titles the session before the claim
         if (!/🚧/u.test(t.text)) t.text = `🚧 ${t.text}`;
-        m.sessions.unshift({ id, title: `${ag?.name ?? 'Agent'} · ${t.text} · ${t.ref}`, project: 'stack', cwd: '/x', lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] });
-        return json(route, 202, { runId: 'run-assign', sessionId: id, agent: ag?.slug ?? 'cos', title: `${ag?.name ?? 'Agent'} · ${t.text} · ${t.ref}`, claimed: true });
+        m.sessions.unshift({ id, title, project: 'stack', cwd: '/x', lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] });
+        return json(route, 202, { runId: 'run-assign', sessionId: id, agent: ag?.slug ?? 'cos', title, claimed: true });
       }
       const items: unknown[] = [];
       for (const e of m.inbox) if (e.row === t.ref || e.ref === t.ref) items.push(e.from === 'agent' ? { at: e.at, kind: 'agent', id: e.id, agent: e.agent, text: e.text } : { at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state });
-      for (const a of m.asks) if (a.ref === t.ref || a.row === t.ref) items.push({ at: a.created, kind: 'ask', ask: a });
+      for (const a of m.asks) if ((a.row ?? a.ref) === t.ref) items.push({ at: a.created, kind: 'ask', ask: a });
       const review = m.reviews.find((r) => r.ref === t.ref);
       if (review) items.push({ at: review.at, kind: 'review', verdict: review.verdict, plan: review.plan, estimate: review.estimate, agent: review.agent });
       for (const c of m.tasks) if (c.project === t.project && c.depth === t.depth + 1 && Number(c.ref.split(':')[1]) > Number(t.ref.split(':')[1]) && /🤖|🪄/u.test(c.text) && m.tasks.indexOf(c) === m.tasks.indexOf(t) + 1) items.push({ at: '', kind: 'subtask', ref: c.ref, text: c.text, done: c.done });

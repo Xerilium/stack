@@ -245,6 +245,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'sessions.prompt': {
     operationId: 'promptSession', summary: 'Resume a session with a prompt; updates stream on /sessions/{id}/events. Owner session only: 403 for tokens; 409 when the session is active elsewhere or already running',
+    desc: { text: 'The prompt', ref: 'The task the follow-up is about: the agent persona (and model) is applied again, since a resumed session carries no system prompt', agent: 'Agent slug for the persona; default: the active agent for the task' },
     responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true } } }, '202'),
   },
   'sessions.cancel': {

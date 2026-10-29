@@ -19,7 +19,7 @@ import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFr
 import { presentedToken } from './auth/authorize';
 import type { AgentRuns } from '../agents/runs';
 import { agentFor, listTeam } from '../core/agents';
-import { assignTask, listReviews, reviewTask, startAgentRun, taskThread } from '../agents/team';
+import { agentPromptOptions, assignTask, listReviews, reviewTask, startAgentRun, taskThread } from '../agents/team';
 import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 import { generateSummaries } from '../core/summaries';
@@ -187,8 +187,9 @@ const ASK_HANDLE_BODY = {
 const UUID: Spec = { t: 'str', required: true, max: 36, line: true, pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i };
 const SESSIONS_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 200 } };
 const COST_Q: Record<string, Spec> = { days: { t: 'int', min: 1, max: 90 } };
-const PROMPT_BODY = { schema: { text: { t: 'str', required: true, max: 4000 } } satisfies Record<string, Spec>, required: ['text'] };
 const SLUG: Spec = { t: 'str', max: 40, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,39}$/ };
+/** `ref`/`agent` on a follow-up re-apply the task persona. @req FR:agent-thread/thread.ask */
+const PROMPT_BODY = { schema: { text: { t: 'str', required: true, max: 4000 }, ref: REF, agent: SLUG } satisfies Record<string, Spec>, required: ['text'] };
 /** `cwd` is optional since agent-team: a session for a task runs in the served folder. @req FR:agent-team/talk.api */
 const NEW_SESSION_BODY = { schema: { cwd: { t: 'str', max: 1000, line: true }, text: { t: 'str', required: true, max: 4000 }, agent: SLUG, ref: REF, project: { t: 'str', max: 200, line: true, noReadme: true } } satisfies Record<string, Spec>, required: ['text'] };
 const TEAM_Q: Record<string, Spec> = { project: { t: 'str', max: 200, line: true }, section: { t: 'str', max: 200, line: true } };
@@ -574,12 +575,14 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/sessions/{id}/prompt', name: 'sessions.prompt', body: PROMPT_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ text: string }>(await readBody(c.req), PROMPT_BODY.schema, PROMPT_BODY.required);
+      const b = validate<{ text: string; ref?: ReturnType<typeof parseRef>; agent?: string }>(await readBody(c.req), PROMPT_BODY.schema, PROMPT_BODY.required);
       const id = sessionId(c);
       const agents = agentsOf(c);
       ownerOnly(c, 'Only the owner can message an agent');
       if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
-      return json(202, await agents.prompt({ sessionId: id, text: b.text }));
+      // A follow-up on a task carries the persona again (a resumed session gets no system prompt otherwise). @req FR:agent-thread/thread.ask
+      const options = b.ref || b.agent ? (await agentPromptOptions(c.life, { ...(b.ref ? { ref: formatRef(b.ref) } : {}), ...(b.agent ? { agent: b.agent } : {}) })).options : undefined;
+      return json(202, await agents.prompt({ sessionId: id, text: b.text, ...(options ? { options } : {}) }));
     },
   },
   {

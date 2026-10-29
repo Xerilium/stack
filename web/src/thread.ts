@@ -48,3 +48,8 @@ export function foldSubtasks(items: ThreadItem[]): Folded[] {
 
 /** What the composer does with the text: a follow-up to the task's idle session, else a new session. */
 export const canFollowUp = (t: Thread): boolean => !!t.session && (t.session.state === 'idle' || t.session.state === 'stale');
+/** The session a question goes to: the task's idle session when it belongs to the chosen agent (its title starts with the agent's name), else none (a new session starts). @req FR:agent-thread/thread.ask */
+export function followUpSession(t: Thread, chosenName?: string): Thread['session'] | undefined {
+  if (!canFollowUp(t) || !t.session) return undefined;
+  return !chosenName || t.session.title.startsWith(`${chosenName} · `) ? t.session : undefined;
+}

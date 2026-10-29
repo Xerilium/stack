@@ -70,9 +70,11 @@ describe('taskThread', () => {
     const { ctx, storage } = await mk();
     await sendToInbox(ctx, { path: 'tasks/flantastic-4.md', line: 7 }, 'Still here?', 'reply');
     await replyFromAgent(ctx, { path: 'tasks/flantastic-4.md', line: 7 }, 'Yes.', 'cid-manager');
+    await putAsk(ctx, 'q-moved', { ask: 'Which cover?', kind: 'answer', from: 'cid-manager', ref: 'flantastic-4:7' }, 'cid-manager');
     await storage.write('tasks/flantastic-4.md', F4.replace('## 🔄 Active\n\n', '## 🔄 Active\n\n- [ ] A new row on top 🟢\n'));
     const th = await taskThread(ctx, undefined, 'flantastic-4:8'); // the single moved down one line
-    expect(th.items.map((i) => i.kind)).toEqual(['owner', 'agent', 'subtask']);
+    expect(th.items.map((i) => i.kind)).toEqual(['owner', 'agent', 'ask', 'subtask']);
+    expect(th.items[2]).toMatchObject({ kind: 'ask', ask: { key: 'q-moved', row: 'flantastic-4:8' } });
     expect((await taskThread(ctx, undefined, 'flantastic-4:7')).items).toEqual([]); // the new row has no thread
   });
 
@@ -97,6 +99,21 @@ describe('assignTask', () => {
     expect(log).toContain('- action: claimed');
     await expect(assignTask(runs, ctx, 'flantastic-4:10')).rejects.toThrow(/Needs a human/);
     expect(prompts).toHaveLength(1);
+    // A row already in progress: a new session, no new claim.
+    const again = await assignTask(runs, ctx, 'flantastic-4:7');
+    expect(again).toMatchObject({ claimed: false, agent: 'cid-manager' });
+    expect(prompts).toHaveLength(2);
+  });
+
+  it('refuses before any run when the claim would be refused; a start that fails leaves no 🚧', async () => {
+    const { ctx, runs, prompts, storage } = await mk();
+    await storage.write('tasks/flantastic-4.md', F4.replace('- [ ] Release the single 🟡', '- [ ] Release the single 🟡 💤'));
+    await expect(assignTask(runs, ctx, 'flantastic-4:7')).rejects.toThrow(/on hold/);
+    expect(prompts).toHaveLength(0);
+    await storage.write('tasks/flantastic-4.md', F4);
+    const broken = createRunManager({ driver: { listSessions: async () => [], getMessages: async () => [], prompt: async () => { throw new Error('runner down'); }, cancel: async () => false }, ctx, cwd: '/served' });
+    await expect(assignTask(broken, ctx, 'flantastic-4:7')).rejects.toThrow(/runner down/);
+    expect((await storage.read('tasks/flantastic-4.md')).content).not.toContain('🚧');
   });
 });
 

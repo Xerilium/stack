@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
 import type { Toast } from './parts';
-import { canFollowUp, emptyThread, type Thread } from './thread';
+import { emptyThread, followUpSession, type Thread } from './thread';
 import type { Sessions } from './useSessions';
 import type { Team } from './useTeam';
 import type { Send } from './asks';
@@ -57,11 +57,10 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
       setThread((t) => ({ ...t, items: [...t.items, { at: new Date().toISOString(), kind: 'owner', id: `local-${Date.now()}`, text, state: 'open' }] }));
       if (team.enabled !== true) { toastRef.current('Saved on the task; it runs in stack web on your machine'); return true; }
       try {
-        // A follow-up goes to the idle session only when it is the chosen agent's (the title starts with its name); another To starts a new session.
-        const chosen = agent ? team.team.find((a) => a.slug === agent)?.name : undefined;
-        if (canFollowUp(thread) && thread.session && (!chosen || thread.session.title.startsWith(`${chosen} · `))) {
-          await api.promptSession(thread.session.id, text);
-          if (keepOpen) void sessions.openDrawer(thread.session.id);
+        const same = followUpSession(thread, agent ? team.team.find((a) => a.slug === agent)?.name : undefined);
+        if (same) {
+          await api.promptSession(same.id, text, { ref, ...(agent ? { agent } : {}) }); // the persona rides along: a resumed session has none
+          if (keepOpen) void sessions.openDrawer(same.id);
         } else {
           const r = await api.newSession(undefined, text, { agent, ref });
           if (r.sessionId) team.noteStarted(ref, r.sessionId);
