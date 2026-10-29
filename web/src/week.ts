@@ -10,11 +10,11 @@ export interface Week { days: WeekDay[]; available: number; planned: number; lef
 const CHUNK = 120;
 const DEFAULT_MIN = 30;
 
-/** Today through Sunday; on Saturday or Sunday, through next Friday. */
+/** Today through Sunday, at least 5 days; on Saturday or Sunday, through next Friday. */
 export function weekDates(now: Date): Date[] {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dow = start.getDay(); // 0 Sun .. 6 Sat
-  const count = dow === 6 ? 7 : dow === 0 ? 6 : 8 - dow;
+  const count = dow === 6 ? 7 : dow === 0 ? 6 : Math.max(5, 8 - dow);
   return Array.from({ length: count }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
 }
 

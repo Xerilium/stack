@@ -12,6 +12,8 @@ describe('week dates', () => {
     expect(weekDates(wed).map((d) => d.getDate())).toEqual([28, 29, 30, 31, 1]);
     expect(weekDates(new Date(2026, 9, 31)).map((d) => d.getDay())).toEqual([6, 0, 1, 2, 3, 4, 5]);
     expect(weekDates(new Date(2026, 10, 1)).map((d) => d.getDay())).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(weekDates(new Date(2026, 9, 29)).map((d) => d.getDay())).toEqual([4, 5, 6, 0, 1]);
+    expect(weekDates(new Date(2026, 9, 30)).map((d) => d.getDay())).toEqual([5, 6, 0, 1, 2]);
   });
 });
 
