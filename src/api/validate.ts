@@ -55,7 +55,7 @@ export type Spec =
   | { t: 'num'; min: number; max: number }
   | { t: 'bool' }
   | { t: 'ref'; required?: boolean }
-  | { t: 'strs'; max?: number }
+  | { t: 'strs'; max?: number; commas?: boolean }
   | { t: 'caps' };
 
 export const REF_RE = /^(?![Rr][Ee][Aa][Dd][Mm][Ee]:)([^/\\:\0.][^/\\:\0]*):(\d{1,9})$/;
@@ -95,7 +95,7 @@ function check(spec: Spec, v: unknown): string | null {
       return parseRef(v) ? null : 'Must be project:line';
     case 'strs':
       if (!Array.isArray(v) || v.length > (spec.max ?? 20)) return 'Must be an array of strings';
-      return v.every((s) => typeof s === 'string' && s.trim() !== '' && s.length <= 200 && oneLine(s) && !s.includes(',')) ? null : 'Entries must be short single-line strings without commas';
+      return v.every((s) => typeof s === 'string' && s.trim() !== '' && s.length <= 200 && oneLine(s) && (spec.commas || !s.includes(','))) ? null : 'Entries must be short single-line strings without commas';
     case 'caps': {
       if (typeof v !== 'object' || v === null || Array.isArray(v)) return 'Must be an object of hours';
       const e = Object.entries(v);

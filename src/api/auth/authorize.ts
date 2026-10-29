@@ -14,6 +14,7 @@ const ROUTE_SCOPE = new Map<string, string>([
   ['tasks.resume', 'tasks:write'], ['tasks.suspend', 'tasks:write'], ['tasks.set', 'tasks:write'], ['tasks.edit', 'tasks:write'], ['tasks.move', 'tasks:write'], ['tasks.removeCompleted', 'tasks:write'],
   ['tasks.triage', 'tasks:write'], ['tasks.claim', 'tasks:write'], ['tasks.result', 'tasks:write'],
   ['inbox.send', 'tasks:write'], ['inbox.list', 'tasks:read'], ['inbox.handle', 'tasks:write'], ['agents.list', 'tasks:read'],
+  ['asks.list', 'tasks:read'], ['asks.put', 'tasks:write'], ['asks.answer', 'tasks:write'], ['asks.handle', 'tasks:write'],
   ['projects.list', 'projects:read'], ['projects.get', 'projects:read'], ['projects.add', 'projects:write'],
   ['summaries.get', 'summaries:read'],
 ]);

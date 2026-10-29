@@ -11,6 +11,7 @@ import { createApiHandler } from '../api/handler';
 import { createGitHubPrs } from '../api/github';
 import { getDefaults, parseConfig } from '../core/config';
 import { GitStorage } from '../core/storage-git';
+import { ALL_KINDS, watchRepo } from './watch';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
@@ -37,7 +38,7 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
 
 /** What the UI header shows at all times. */
 export interface RepoInfo { mode: 'demo' | 'live'; repo: string; branch: string }
-export interface WebOpts { dir: string; port: number; webDir: string; label?: string; info?: RepoInfo }
+export interface WebOpts { dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number } }
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
 export function resolveRepo(spec: string, cacheDir: string): string {
@@ -94,6 +95,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const ghToken = process.env.GITHUB_TOKEN?.trim();
   const api = createApiHandler({ storage: new GitStorage(o.dir), config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined });
   const extra = headersFrom(o.webDir);
+  // @req FR:ask-queue/live.watch
+  const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs });
+  const beat = o.watch?.heartbeatMs ?? 20_000;
   const who = o.label ?? 'local';
   let port = o.port;
   const hostOk = (h?: string) => !!h && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(h);
@@ -113,8 +117,21 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         const unsafe = req.method !== 'GET' && req.method !== 'HEAD';
         if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
         const path = (req.url ?? '/').split('?')[0];
-        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null }), 'application/json');
+        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: true }), 'application/json');
         if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
+        // @req FR:ask-queue/live.sse
+        if (path === '/events' && req.method === 'GET') {
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no', ...extra });
+          const frame = (event: string, data: unknown, id?: number) => res.write(`${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+          res.write('retry: 3000\n\n');
+          const last = Number(req.headers['last-event-id']);
+          frame('hello', { rev: watcher.rev() });
+          if (Number.isInteger(last) && last >= 0 && last < watcher.rev()) frame('change', { rev: watcher.rev(), kinds: ALL_KINDS }, watcher.rev());
+          const off = watcher.on((c) => frame('change', c, c.rev));
+          const hb = setInterval(() => res.write(': ping\n\n'), beat);
+          req.on('close', () => { clearInterval(hb); off(); });
+          return;
+        }
         if (path === '/api' || path.startsWith('/api/')) {
           const r = await api(await toRequest(req, `http://localhost:${port}`));
           const h: Record<string, string> = {};
@@ -137,5 +154,5 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   });
   await new Promise<void>((ok, bad) => { server.once('error', bad); server.listen(o.port, '127.0.0.1', ok); });
   port = (server.address() as { port: number }).port;
-  return { url: `http://localhost:${port}`, close: () => new Promise((ok) => { server.close(() => ok()); server.closeAllConnections(); }) };
+  return { url: `http://localhost:${port}`, close: () => new Promise((ok) => { watcher.close(); server.close(() => ok()); server.closeAllConnections(); }) };
 }

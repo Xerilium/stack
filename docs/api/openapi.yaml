@@ -722,6 +722,251 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Error"
+  /asks:
+    get:
+      summary: Asks for the owner, ranked by score (open by default). State answered lists asks waiting for the agent to act
+      operationId: listAsks
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum:
+              - open
+              - answered
+              - done
+              - snoozed
+              - all
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Asks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Ask"
+                  total:
+                    type: integer
+                  latest:
+                    type: string
+                    format: date-time
+                  snoozed:
+                    type: integer
+        default:
+          $ref: "#/components/responses/Error"
+  /asks/{key}:
+    post:
+      summary: Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask
+      operationId: putAsk
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ask:
+                  type: string
+                  maxLength: 200
+                  description: The one exact ask, one line. Required on create Single line.
+                kind:
+                  type: string
+                  enum:
+                    - approve
+                    - decide
+                    - review
+                    - go-do
+                    - answer
+                  description: Required on create
+                from:
+                  type: string
+                  maxLength: 80
+                  description: Agent name; defaults to the caller Single line.
+                project:
+                  type: string
+                  maxLength: 80
+                  description: Single line.
+                why:
+                  type: string
+                  maxLength: 500
+                  description: Single line.
+                recommend:
+                  type: string
+                  maxLength: 200
+                  description: Single line.
+                options:
+                  type: array
+                  maxItems: 4
+                  items:
+                    type: string
+                    maxLength: 200
+                default:
+                  type: string
+                  maxLength: 200
+                  description: What happens if the owner stays silent Single line.
+                by:
+                  type: string
+                  maxLength: 40
+                  pattern: ^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2})?)?$
+                  description: Deadline (ISO) Single line.
+                reversible:
+                  type: boolean
+                link:
+                  type: string
+                  maxLength: 2000
+                  pattern: ^https:\/\/[^\s]+$
+                  description: Single line.
+                priority:
+                  type: string
+                  enum:
+                    - crit
+                    - high
+                    - normal
+                    - low
+                effort:
+                  type: string
+                  maxLength: 4
+                  pattern: ^\d{1,3}[mh]$
+                  description: Single line.
+                blocks:
+                  type: integer
+                  minimum: 0
+                  maximum: 99
+                detail:
+                  type: string
+                  maxLength: 20000
+                  description: Free markdown shown only when the owner expands the ask
+                reopen:
+                  type: boolean
+                  description: Open a done ask again
+      responses:
+        "200":
+          description: Written
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type: string
+                  created:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /asks/{key}/answer:
+    post:
+      summary: "Answer an ask (go, no, option, reply, ask, done, defer, retract). Owner session only: 403 for tokens"
+      operationId: answerAsk
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - answer
+              properties:
+                answer:
+                  type: string
+                  enum:
+                    - go
+                    - no
+                    - option
+                    - reply
+                    - ask
+                    - done
+                    - defer
+                    - retract
+                text:
+                  type: string
+                  maxLength: 1000
+                  description: Required for option, reply, and ask Single line.
+                until:
+                  type: string
+                  maxLength: 40
+                  description: Required for defer (ISO, in the future) Single line.
+      responses:
+        "200":
+          description: Answered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /asks/{key}/handle:
+    post:
+      summary: Close an ask after acting (handled, resolved, defaulted) or reopen it with a reply to the owner
+      operationId: handleAsk
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - outcome
+              properties:
+                outcome:
+                  type: string
+                  enum:
+                    - handled
+                    - resolved
+                    - defaulted
+                    - reopen
+                note:
+                  type: string
+                  maxLength: 500
+                  description: Single line.
+                reply:
+                  type: string
+                  maxLength: 1000
+                  description: One line shown to the owner on the reopened ask Single line.
+      responses:
+        "200":
+          description: Handled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
   /agents:
     get:
       summary: What agents are doing, from agent rows, result logs, inbox replies, and pull request status
@@ -1048,6 +1293,110 @@ components:
         handled:
           type: string
         note:
+          type: string
+    Ask:
+      type: object
+      description: One ask for the owner (tasks/asks/<key>.md) with its computed score and rank.
+      properties:
+        key:
+          type: string
+        state:
+          type: string
+          enum:
+            - open
+            - answered
+            - done
+        ask:
+          type: string
+        kind:
+          type: string
+          enum:
+            - approve
+            - decide
+            - review
+            - go-do
+            - answer
+        from:
+          type: string
+        project:
+          type: string
+        why:
+          type: string
+        recommend:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        default:
+          type: string
+        by:
+          type: string
+          format: date-time
+        reversible:
+          type: boolean
+        link:
+          type: string
+          format: uri
+        priority:
+          type: string
+          enum:
+            - crit
+            - high
+            - normal
+            - low
+        effort:
+          type: string
+        blocks:
+          type: integer
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        answer:
+          type: string
+          enum:
+            - go
+            - no
+            - option
+            - reply
+            - ask
+            - done
+            - defer
+            - retract
+        text:
+          type: string
+        answered:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          enum:
+            - handled
+            - resolved
+            - defaulted
+            - reopen
+        handled:
+          type: string
+        note:
+          type: string
+        snoozed:
+          type: string
+          format: date-time
+        detail:
+          type: string
+        score:
+          type: integer
+        rank:
+          type: integer
+        overdue:
+          type: boolean
+        snoozedUntil:
+          type: string
+          format: date-time
+        agentReply:
           type: string
     AgentItem:
       type: object

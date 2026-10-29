@@ -12,6 +12,7 @@ import { captureTask, CaptureError } from '../core/quick-capture';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
+import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
 import { handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
 import { generateSummaries } from '../core/summaries';
@@ -126,6 +127,25 @@ const INBOX_BODY = {
 };
 const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES } };
 const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true } } satisfies Record<string, Spec>, required: ['id'] };
+const ASK_PUT_BODY = {
+  schema: {
+    ask: { t: 'str', max: 200, line: true }, kind: { t: 'enum', values: ASK_KINDS }, from: { t: 'str', max: 80, line: true }, project: { t: 'str', max: 80, line: true },
+    why: { t: 'str', max: 500, line: true }, recommend: { t: 'str', max: 200, line: true }, options: { t: 'strs', max: 4, commas: true }, default: { t: 'str', max: 200, line: true },
+    by: { t: 'str', max: 40, line: true, pattern: /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2})?)?$/ }, reversible: { t: 'bool' },
+    link: { t: 'str', max: 2000, line: true, pattern: /^https:\/\/[^\s]+$/ }, priority: { t: 'enum', values: ASK_PRIORITIES },
+    effort: { t: 'str', max: 4, line: true, pattern: /^\d{1,3}[mh]$/ }, blocks: { t: 'int', min: 0, max: 99 }, detail: { t: 'str', max: 20_000 }, reopen: { t: 'bool' },
+  } satisfies Record<string, Spec>,
+  required: [] as string[],
+};
+const ASK_ANSWER_BODY = {
+  schema: { answer: { t: 'enum', values: ASK_ANSWERS }, text: { t: 'str', max: 1000, line: true }, until: { t: 'str', max: 40, line: true } } satisfies Record<string, Spec>,
+  required: ['answer'],
+};
+const ASK_HANDLE_BODY = {
+  schema: { outcome: { t: 'enum', values: ASK_OUTCOMES }, note: { t: 'str', max: 500, line: true }, reply: { t: 'str', max: 1000, line: true } } satisfies Record<string, Spec>,
+  required: ['outcome'],
+};
+const ASK_Q: Record<string, Spec> = { state: { t: 'enum', values: LIST_STATES }, limit: { t: 'int', min: 1, max: 200 } };
 /** Inbox refs are stored 1-based with the file path; the api speaks `name:line` (0-based). */
 const apiRef = (fileRef: string) => { const m = /^(tasks\/.+\.md):(\d+)$/.exec(fileRef); return m ? formatRef({ path: m[1], line: Number(m[2]) - 1 }) : fileRef; };
 const REMOVE_BODY = { schema: { project: { t: 'str', max: 200, line: true } } satisfies Record<string, Spec>, required: [] as string[] };
@@ -400,6 +420,45 @@ export const ROUTES: Route[] = [
       noQuery(c);
       const b = validate<{ id: string; note?: string }>(await readBody(c.req), HANDLED_BODY.schema, HANDLED_BODY.required);
       return json(200, await handleEntry(c.life, b.id, caller(c.req).actor, b.note));
+    },
+  },
+  {
+    // @req FR:ask-queue/api.list
+    method: 'GET', doc: '/asks', name: 'asks.list', query: ASK_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(ASK_Q));
+      const v = validate<{ state?: (typeof LIST_STATES)[number] }>(Object.fromEntries([...q.entries()].filter(([k]) => k === 'state')), ASK_Q, []);
+      return json(200, await listAsks(c.life, { state: v.state, limit: intParam(q, 'limit', 50, 1, 200) }));
+    },
+  },
+  {
+    // @req FR:ask-queue/api.put
+    method: 'POST', doc: '/asks/{key}', name: 'asks.put', body: ASK_PUT_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<AskPut>(await readBody(c.req), ASK_PUT_BODY.schema, ASK_PUT_BODY.required);
+      const actor = caller(c.req).actor;
+      return json(200, await putAsk(c.life, c.params[0], b, actor.startsWith('token:') ? 'agent' : actor));
+    },
+  },
+  {
+    // @req FR:ask-queue/api.answer
+    method: 'POST', doc: '/asks/{key}/answer', name: 'asks.answer', body: ASK_ANSWER_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<AnswerInput>(await readBody(c.req), ASK_ANSWER_BODY.schema, ASK_ANSWER_BODY.required);
+      // Only the owner answers; an agent token must never answer in the owner's voice.
+      if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can answer an ask');
+      return json(200, await answerAsk(c.life, c.params[0], b));
+    },
+  },
+  {
+    // @req FR:ask-queue/api.handle
+    method: 'POST', doc: '/asks/{key}/handle', name: 'asks.handle', body: ASK_HANDLE_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<HandleInput>(await readBody(c.req), ASK_HANDLE_BODY.schema, ASK_HANDLE_BODY.required);
+      return json(200, await handleAsk(c.life, c.params[0], b, caller(c.req).actor));
     },
   },
   {

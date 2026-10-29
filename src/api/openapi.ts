@@ -6,6 +6,7 @@
 import { stringify } from 'yaml';
 import { ERROR_CODES, STATUS } from './errors';
 import { QUERY_DEFAULTS, ROUTES } from './handler';
+import { ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES } from '../core/asks';
 import { ANCHORS, CADENCES, WEEKDAYS } from '../core/model';
 import { MAX_STR, REF_RE, type Spec } from './validate';
 
@@ -123,6 +124,25 @@ const DOCS: Record<string, RouteDoc> = {
   'agents.list': {
     operationId: 'listAgents', summary: 'What agents are doing, from agent rows, result logs, inbox replies, and pull request status',
     responses: ok('Agent work', { type: 'object', properties: { items: { type: 'array', items: ref('AgentItem') } } }),
+  },
+  'asks.list': {
+    operationId: 'listAsks', summary: 'Asks for the owner, ranked by score (open by default). State answered lists asks waiting for the agent to act',
+    responses: ok('Asks', { type: 'object', properties: { items: { type: 'array', items: ref('Ask') }, total: { type: 'integer' }, latest: { type: 'string', format: 'date-time' }, snoozed: { type: 'integer' } } }),
+  },
+  'asks.put': {
+    operationId: 'putAsk', summary: 'Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask',
+    desc: { ask: 'The one exact ask, one line. Required on create', kind: 'Required on create', from: 'Agent name; defaults to the caller', default: 'What happens if the owner stays silent', by: 'Deadline (ISO)', reopen: 'Open a done ask again', detail: 'Free markdown shown only when the owner expands the ask' },
+    responses: ok('Written', { type: 'object', properties: { key: { type: 'string' }, created: { type: 'boolean' } } }),
+  },
+  'asks.answer': {
+    operationId: 'answerAsk', summary: 'Answer an ask (go, no, option, reply, ask, done, defer, retract). Owner session only: 403 for tokens',
+    desc: { text: 'Required for option, reply, and ask', until: 'Required for defer (ISO, in the future)' },
+    responses: ok('Answered', { type: 'object', properties: { changed: { type: 'boolean' } } }),
+  },
+  'asks.handle': {
+    operationId: 'handleAsk', summary: 'Close an ask after acting (handled, resolved, defaulted) or reopen it with a reply to the owner',
+    desc: { reply: 'One line shown to the owner on the reopened ask' },
+    responses: ok('Handled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
   },
   'projects.list': {
     operationId: 'listProjects', summary: 'List projects',
@@ -288,6 +308,19 @@ export function buildOpenApi(): J {
             id: { type: 'string' }, at: { type: 'string', format: 'date-time' }, project: { type: 'string' }, ref: ref('Ref'), task: { type: 'string' },
             kind: { type: 'string', enum: ['reply', 'decision'] }, to: { type: 'string', enum: ['agent', 'human', 'none'] }, text: { type: 'string' },
             state: { type: 'string', enum: ['open', 'handled'] }, handled: { type: 'string' }, note: { type: 'string' },
+          },
+        },
+        Ask: {
+          type: 'object',
+          description: 'One ask for the owner (tasks/asks/<key>.md) with its computed score and rank.',
+          properties: {
+            key: { type: 'string' }, state: { type: 'string', enum: ['open', 'answered', 'done'] }, ask: { type: 'string' }, kind: { type: 'string', enum: [...ASK_KINDS] }, from: { type: 'string' },
+            project: { type: 'string' }, why: { type: 'string' }, recommend: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, default: { type: 'string' },
+            by: { type: 'string', format: 'date-time' }, reversible: { type: 'boolean' }, link: { type: 'string', format: 'uri' }, priority: { type: 'string', enum: [...ASK_PRIORITIES] },
+            effort: { type: 'string' }, blocks: { type: 'integer' }, created: { type: 'string', format: 'date-time' }, updated: { type: 'string', format: 'date-time' },
+            answer: { type: 'string', enum: [...ASK_ANSWERS] }, text: { type: 'string' }, answered: { type: 'string', format: 'date-time' }, outcome: { type: 'string', enum: [...ASK_OUTCOMES] },
+            handled: { type: 'string' }, note: { type: 'string' }, snoozed: { type: 'string', format: 'date-time' }, detail: { type: 'string' },
+            score: { type: 'integer' }, rank: { type: 'integer' }, overdue: { type: 'boolean' }, snoozedUntil: { type: 'string', format: 'date-time' }, agentReply: { type: 'string' },
           },
         },
         AgentItem: {

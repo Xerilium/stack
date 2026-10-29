@@ -23,6 +23,8 @@ export interface FileWrite { path: string; content: string; expectedVersion?: st
 /** @req FR:storage-git/interface.@type */
 export interface Storage {
   list(): Promise<string[]>;
+  /** Paths of ask files (`tasks/asks/<key>.md`). @req FR:ask-queue/ask.path */
+  listAsks?(): Promise<string[]>;
   read(path: string): Promise<StoredFile>;
   write(path: string, content: string, opts?: WriteOptions): Promise<WriteResult>;
   /** Write several files as one operation (one commit in git). @req FR:storage-git/write.many */
@@ -58,6 +60,9 @@ const LOG_PATH = /^tasks\/logs\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Z
 /** Owner-to-agent inboxes: same name rules as logs, never projects. @req FR:agent-inbox/inbox.path */
 const INBOX_PATH = /^tasks\/inbox\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
 
+/** Agent asks for the owner: one file per ask, never projects. @req FR:ask-queue/ask.path */
+const ASK_PATH = /^tasks\/asks\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
+
 /** Non-task state files (for example the API token store); never listed as tasks. */
 export const AUX_PATH = /^\.stack\/[a-z][a-z-]*\.json$/;
 export function validateAuxPath(path: string): string {
@@ -74,7 +79,7 @@ export interface AuxFiles {
 
 /** @req FR:storage-git/interface.paths @req FR:ai-triage-assist/result.path */
 export function validatePath(path: string): string {
-  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path)) || path.split('/').includes('..')) {
+  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || ASK_PATH.test(path)) || path.split('/').includes('..')) {
     throw new PathError(`Invalid task path: ${JSON.stringify(path)}`);
   }
   return path;
@@ -89,6 +94,7 @@ export class MemoryStorage implements Storage {
   private queue: Promise<unknown> = Promise.resolve();
 
   async list(): Promise<string[]> { return [...this.files.keys()].filter(p => TASK_PATH.test(p)).sort(); }
+  async listAsks(): Promise<string[]> { return [...this.files.keys()].filter(p => ASK_PATH.test(p)).sort(); }
 
   /** @req FR:storage-git/interface.read @req FR:storage-git/interface.bytes */
   async read(path: string): Promise<StoredFile> {
@@ -194,6 +200,16 @@ export class FsStorage implements Storage {
       return entries.filter(e => e.isFile() && isTaskFile(e.name)).map(e => `${TASKS_DIR}/${e.name}`).sort();
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw e;
+    }
+  }
+
+  async listAsks(): Promise<string[]> {
+    try {
+      const entries = await fs.readdir(await this.safe(`${TASKS_DIR}/asks`), { withFileTypes: true });
+      return entries.filter(e => e.isFile() && ASK_PATH.test(`${TASKS_DIR}/asks/${e.name}`)).map(e => `${TASKS_DIR}/asks/${e.name}`).sort();
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT' || (e as NodeJS.ErrnoException).code === 'ENOTDIR') return [];
       throw e;
     }
   }
