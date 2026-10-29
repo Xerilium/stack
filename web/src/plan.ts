@@ -88,7 +88,7 @@ export function recommendationOf(tasks: Task[], t: Task): string | undefined {
 export function decisions(tasks: Task[], now: Date): Decision[] {
   const rows = tasks.filter((t) => !t.done && whoOf(t) === 'human' && actionable(t, now) && (isActive(t) || ancestorsOf(tasks, t).length > 0));
   const withParent = rows.map((t) => ({ task: t, context: ancestorsOf(tasks, t)[0], recommendation: recommendationOf(tasks, t) }));
-  const ranked = rankNow(rows, now);
+  const ranked = rankNow(rows, now, tasks);
   return ranked.map((r) => withParent.find((x) => x.task.ref === r.ref)!);
 }
 

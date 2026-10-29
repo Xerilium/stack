@@ -98,7 +98,7 @@ export function actionable(t: Task, now = new Date()): boolean {
 }
 
 const REASON = /^(after|pending|blocked on|blocked by|until|waiting on|waiting for)\s+(.*)$/i;
-const NOT_A_NAME = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d|(?:\d{1,2}(?::\d\d)?\s*(?:am|pm)?|(?:next |this )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|today|tonight|tomorrow|lunch|noon|eod|eow|end of (?:day|week|month)|(?:next|this) (?:week|month)|weekend)$)/i;
+const NOT_A_NAME = /^(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d|(?:\d+|\d{1,2}:\d\d|\d{1,2}(?::\d\d)?\s*(?:am|pm)|(?:next |this )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|today|tonight|tomorrow|lunch|noon|eod|eow|end of (?:day|week|month)|(?:next|this) (?:week|month)|weekend)$)/i;
 /** Title key; same steps as titleKey in the core scorer so both resolve the same names. */
 const keyOf = (text: string): string => text.replace(/--.*$/, ' ')
   .replace(/(?:\u{1F4C5}|\u23F0|\u{1F4A4})\s*[^:]*:/gu, ' ').replace(/\u{1F504}\s*[^:]*:/gu, ' ')
@@ -107,10 +107,15 @@ const keyOf = (text: string): string => text.replace(/--.*$/, ' ')
 
 /** Names a row says it waits on (the reason after `--`, up to a `;`); mirrors blockedOn in the core scorer. @req FR:web-app/now.blockers */
 export function blockedOn(text: string): string[] {
+  const r = reasonOf(text);
+  return r === undefined ? [] : r.split(/\s*(?:,|&|\band\b)\s*/i).map(keyOf).filter(isName);
+}
+const reasonOf = (text: string): string | undefined => {
   const i = text.indexOf('--');
   const m = i < 0 ? null : REASON.exec(text.slice(i + 2).trim());
-  return m ? m[2].split(';')[0].split(/\s*(?:,|&|\band\b)\s*/i).map(keyOf).filter((n) => n !== '' && !NOT_A_NAME.test(n)) : [];
-}
+  return m ? m[2].split(';')[0] : undefined;
+};
+const isName = (n: string) => n !== '' && !NOT_A_NAME.test(n);
 
 /**
  * Blocked row ref -> refs it waits on, among open Active rows (the rows the core scorer sees): same project first (exact
@@ -121,7 +126,11 @@ export function blockerEdges(all: Task[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const { t } of keyed) {
     const found = new Set<string>();
-    for (const name of blockedOn(t.text)) {
+    // The whole reason as one exact title first, else its parts (same as the core scorer).
+    const whole = keyOf(reasonOf(t.text) ?? '');
+    const sameWhole = keyed.filter((x) => x.t.project === t.project && x.t.ref !== t.ref && x.key === whole);
+    const wholeHit = isName(whole) && (sameWhole.length ? sameWhole : keyed.filter((x) => x.t.project !== t.project && x.key === whole)).length === 1;
+    for (const name of wholeHit ? [whole] : blockedOn(t.text)) {
       const mine = keyed.filter((x) => x.t.project === t.project && x.t.ref !== t.ref);
       const exact = mine.filter((x) => x.key === name);
       const lead = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\W|$)`);
@@ -161,7 +170,7 @@ const rowKey = (t: Task, now: Date): Key => {
  * others takes the best key among the rows it blocks (transitive, never a sum); subtasks of a blocked row are held up too,
  * a subtask under a blocker inherits through its ancestors, and a parent row takes what its subtasks lend. @req FR:web-app/now.blockers
  */
-export function rankNow(tasks: Task[], now = new Date(), all: Task[] = tasks): Task[] {
+export function rankNow(tasks: Task[], now: Date, all: Task[]): Task[] {
   const edges = blockerEdges(all);
   const blocks = new Map<string, string[]>();
   for (const [blocked, bs] of edges) for (const b of bs) blocks.set(b, [...(blocks.get(b) ?? []), blocked]);

@@ -170,3 +170,18 @@ describe('blockedOn: time words are not names', () => {
     expect(blockedOn('⛔️ X -- After lunch menu')).toEqual(['lunch menu']);
   });
 });
+
+describe('round 3: names', () => {
+  it('a year is not a name; a word that starts like a month is', () => {
+    expect(blockedOn('⛔️ X -- Until Feb 1, 2027')).toEqual([]);
+    expect(blockedOn('⛔️ X -- After decision 2')).toEqual(['decision 2']);
+    expect(blockedOn('⛔️ X -- After JUnit 5 upgrade')).toEqual(['junit 5 upgrade']);
+  });
+  it('the whole reason matches a title before it is split', () => {
+    const p = project(['Q&A review', 'R&D sign-off', 'Research and design', 'Design system cleanup', '⛔️ A -- After Q&A review', '⛔️ B -- Pending R&D sign-off', '⛔️ C -- After research and design']);
+    const e = resolveBlockers([p]);
+    expect(e.get(p.tasks[4].id)).toEqual([p.tasks[0].id]);
+    expect(e.get(p.tasks[5].id)).toEqual([p.tasks[1].id]);
+    expect(e.get(p.tasks[6].id)).toEqual([p.tasks[2].id]);
+  });
+});

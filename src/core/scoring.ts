@@ -375,8 +375,8 @@ const dueTier = (days: number | null): number => (days === null ? 0 : days < -ST
 // ---- blockers
 
 const REASON = /^(after|pending|blocked on|blocked by|until|waiting on|waiting for)\s+(.*)$/i;
-/** A date, day, or time ("Until Oct 30", "after lunch", "until Monday") is not a task name. */
-const NOT_A_NAME = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d|(?:\d{1,2}(?::\d\d)?\s*(?:am|pm)?|(?:next |this )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|today|tonight|tomorrow|lunch|noon|eod|eow|end of (?:day|week|month)|(?:next|this) (?:week|month)|weekend)$)/i;
+/** A date, day, time, or bare number ("Until Oct 30", "after lunch", "until Monday") is not a task name. */
+const NOT_A_NAME = /^(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d|(?:\d+|\d{1,2}:\d\d|\d{1,2}(?::\d\d)?\s*(?:am|pm)|(?:next |this )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|today|tonight|tomorrow|lunch|noon|eod|eow|end of (?:day|week|month)|(?:next|this) (?:week|month)|weekend)$)/i;
 
 /** Row title without markers, dates, reason, emoji, or a leading "the": what another row's reason can name. */
 function titleKey(text: string): string {
@@ -388,12 +388,17 @@ function titleKey(text: string): string {
 
 /** Names a row says it is waiting on: the reason after `--` (up to a `;`) when it reads like a dependency. @req FR:scoring-engine/blockers.parse */
 export function blockedOn(text: string): string[] {
-  const i = text.indexOf('--');
-  if (i < 0) return [];
-  const m = REASON.exec(text.slice(i + 2).trim());
-  if (!m) return [];
-  return m[2].split(';')[0].split(/\s*(?:,|&|\band\b)\s*/i).map(titleKey).filter(n => n !== '' && !NOT_A_NAME.test(n));
+  const r = reasonOf(text);
+  return r === undefined ? [] : r.split(/\s*(?:,|&|\band\b)\s*/i).map(titleKey).filter(isName);
 }
+
+/** The reason after the first `--`, up to a `;`, without its lead word; undefined when it is not a dependency. */
+function reasonOf(text: string): string | undefined {
+  const i = text.indexOf('--');
+  const m = i < 0 ? null : REASON.exec(text.slice(i + 2).trim());
+  return m ? m[2].split(';')[0] : undefined;
+}
+const isName = (n: string) => n !== '' && !NOT_A_NAME.test(n);
 
 const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -404,7 +409,11 @@ export function resolveBlockers(projects: ScoringProject[]): Map<string, string[
   for (const p of projects) {
     for (const t of p.tasks) {
       const found = new Set<string>();
-      for (const name of blockedOn(t.text)) {
+      // The whole reason as one exact title first (`After Q&A review`, `Pending research and design`), else its parts.
+      const whole = titleKey(reasonOf(t.text) ?? '');
+      const sameWhole = all.filter(x => x.t.project === t.project && x.t.id !== t.id && x.key === whole);
+      const wholeHit = isName(whole) && (sameWhole.length ? sameWhole : all.filter(x => x.t.project !== t.project && x.key === whole)).length === 1;
+      for (const name of wholeHit ? [whole] : blockedOn(t.text)) {
         // Same project: exact title, else a title that starts with the name (whole words). Any same-project hit, even an
         // ambiguous one, stops the search; otherwise another project on an exact title only.
         const mine = all.filter(x => x.t.project === t.project && x.t.id !== t.id);

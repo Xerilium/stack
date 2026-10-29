@@ -44,7 +44,8 @@ describe('now ranking', () => {
     expect(actionable(row('📅 Oct 30: Soon'), day)).toBe(true);
   });
   it('ranks due-soon, then in progress, then priority', () => {
-    const r = rankNow([row('plain'), row('🔺 raised'), row('🚧 doing'), row('📅 Oct 30: week'), row('📅 Oct 22: late')], day).map((t) => t.text);
+    const rows = [row('plain'), row('🔺 raised'), row('🚧 doing'), row('📅 Oct 30: week'), row('📅 Oct 22: late')];
+    const r = rankNow(rows, day, rows).map((t) => t.text);
     expect(r).toEqual(['📅 Oct 22: late', '📅 Oct 30: week', '🚧 doing', '🔺 raised', 'plain']);
   });
 });
@@ -126,5 +127,23 @@ describe('parent rows in the Then list', () => {
   it('a parent takes what its subtask lends', () => {
     const rows = [row('Project'), row('gate', 1), row('🔺 plain'), row('🚨 ⛔️ ship -- After gate')];
     expect(rankNow([rows[2], rows[0]], day, rows).map((t) => t.text)).toEqual(['Project', '🔺 plain']);
+  });
+});
+
+import { decisions } from '../src/plan';
+describe('round 3: names and Needs you', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, depth = 0): Task => ({ ref: `a:${text}`, text, project: 'a', section: '🔄 Active', done: false, depth, notes: [] });
+  it('a year or a lookalike month is handled', () => {
+    expect(blockedOn('⛔️ X -- Until Feb 1, 2027')).toEqual([]);
+    expect(blockedOn('⛔️ X -- After decision 2')).toEqual(['decision 2']);
+  });
+  it('the whole reason matches a title before it is split', () => {
+    const rows = [row('Q&A review'), row('⛔️ X -- After Q&A review')];
+    expect(blockerEdges(rows).get(rows[1].ref)).toEqual([rows[0].ref]);
+  });
+  it('Needs you ranks a decision that blocks urgent work first', () => {
+    const rows = [row('🙋 pick a vendor'), row('🙋 🔺 other call'), row('🚨 ⛔️ ship -- After pick a vendor')];
+    expect(decisions(rows, day).map((d) => d.task.text)).toEqual(['🙋 pick a vendor', '🙋 🔺 other call']);
   });
 });
