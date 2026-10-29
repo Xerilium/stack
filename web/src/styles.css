@@ -608,21 +608,14 @@ button.expected:hover { background: var(--line); }
 .countdown.soon { color: var(--warn); }
 .countdown.late { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 6px; padding: 1px 6px; }
 .countdown.calm { color: var(--muted); font-weight: 500; }
-.focus-block.unfit { border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
 .nofit-line { margin: 14px 0 0; color: var(--warn); font-weight: 600; font-size: 13.5px; }
-.instead { margin: 18px 0 6px; padding: 12px 14px 12px; border-radius: 12px; background: var(--accent-soft); }
-.instead .h2 { margin: 0 0 4px; color: var(--accent); }
-.instead .actions.small { margin-top: 8px; }
-.instead .actions.small .btn { min-height: 30px; }
 .home-row .line { gap: 10px; }
 .home-row .proj-tag { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .home-projects { list-style: none; margin: 0; padding: 0; }
 .home-projects li { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 36px; border-bottom: 1px solid var(--line2); padding: 0 4px; }
-.home-projects li.shown { color: var(--muted); }
 .proj-link { background: none; border: 0; padding: 0; text-align: left; font-weight: 600; color: var(--ink); border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-link:hover { color: var(--accent); }
 .home-projects .proj-top { color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-projects .proj-top.quiet { color: var(--muted); font-size: 12px; }
 @media (max-width: 719px) {
   .home-projects li { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; padding: 8px 4px; }
   .home-projects .proj-top { grid-column: 1 / -1; white-space: normal; }
@@ -632,8 +625,6 @@ button.expected:hover { background: var(--line); }
   .home-row .tick { grid-row: 1 / span 2; align-self: start; }
   .home-row .title { grid-column: 2; white-space: normal; }
   .home-row .when-meta { grid-column: 2; }
-  .instead { padding: 10px 12px; }
-  .instead .actions.small .btn { width: 100%; justify-content: center; }
 }
 
 /* ---- designer pass (Oct 29): one focal point, quiet chrome, grouped palette, skeleton, styled filters */

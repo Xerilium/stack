@@ -637,7 +637,7 @@ export function HomeView({ h, now, minutesLeft, p, busy, onAct, onProject, onMor
           <h1 data-testid="next-title" onDblClick={() => p.onOpen(one.task.ref)}><Md text={hero.title || one.task.text} /></h1>
           <div class="chips">
             <When i={one} onEffort={() => p.onPick([one.task.ref], 'effort')} />
-            <span class="ends" data-testid="ends">ends ~{ends(one)}</span>
+            {(h.fits || demoted) && <span class="ends" data-testid="ends">ends ~{ends(one)}</span>}
             {chipsOf(one.task.text).filter((c) => c.group !== 'effort').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([one.task.ref], g)} />)}
             <Tags r={hero} />
             {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}

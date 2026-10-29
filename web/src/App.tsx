@@ -5,6 +5,7 @@
  * @req FR:web-app/edit.notes @req FR:web-app/host.auth @req FR:web-app/host.nosecrets
  * @req FR:web-app/ux.feedback @req FR:web-app/ux.responsive
  */
+import { Fragment } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, createClient } from './api';
 import { capacityRows } from './capacity';
@@ -51,7 +52,7 @@ const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isCon
 /** An expired session may be followed by another account: drop the cached copy first. */
 const toLogin = () => { void clearCaches().then(() => location.assign(`/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(location.pathname + location.search + location.hash)}`)); };
 const projectOf = (ref: string) => ref.slice(0, ref.lastIndexOf(':'));
-/** `2026-10-23` as `Fri Oct 23`. */
+/** `2026-10-23` as `Fri, Oct 23`. */
 const niceDate = (iso: string) => { const d = new Date(`${iso}T00:00`); return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); };
 
 export function App() {
@@ -135,7 +136,7 @@ export function App() {
   const titles = useMemo(() => new Map(projects.map((x) => [x.name, x.title || x.name])), [projects]);
   /** @req FR:web-app/home.one @req FR:web-app/home.fit */
   const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft: budget.minutes }), [tasks, projects, next, clockNow, budget.minutes]);
-  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? [home.one?.task, home.instead?.task, ...home.next.map((n) => n.task)].filter((t): t is Task => !!t) : listRows;
+  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (!home.fits && home.instead ? [home.instead.task, home.one?.task] : [home.one?.task, home.instead?.task]).concat(home.next.map((n) => n.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY), [tasks, clockNow, budget.minutes]);
@@ -591,8 +592,8 @@ export function App() {
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        {local && <div class={`banner mobile-only ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-pill" title={info ? `${info.repo} · ${info.branch}` : undefined}>{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong></> : me}</div>}
-        {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
+        {local && <div class={`banner mobile-only ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-pill" title={info ? `${info.repo} · ${info.branch}` : undefined}>{info ? <strong>{info.mode === 'live' ? 'Live' : 'Demo copy'}</strong> : me}</div>}
+        {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
         {phase === 'ready' && view === 'today' && (
@@ -655,6 +656,8 @@ function PaletteDialog({ commands, onClose }: { commands: Command[]; onClose: ()
   const [i, setI] = useState(0);
   const shown = filterCommands(commands, q);
   const choose = (c: Command | undefined) => { if (!c) return; onClose(); setTimeout(c.run, 0); };
+  // the list scrolls: keep the selected option in view when the arrows move it
+  useEffect(() => { document.querySelector('#palette-list [aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' }); }, [i, q]);
   return (
     <Dialog title="Command palette" onClose={onClose} sheet={false}>
       <input type="text" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-label="Command" placeholder="Type a command" value={q}
@@ -666,12 +669,12 @@ function PaletteDialog({ commands, onClose }: { commands: Command[]; onClose: ()
         }} />
       <ul id="palette-list" class="cmds" role="listbox">
         {shown.map((c, n) => (
-          <>
-            {q === '' && c.group && c.group !== shown[n - 1]?.group && <li key={`g-${c.group}`} class="cmd-group" role="presentation">{c.group}</li>}
-            <li key={c.id} role="option" aria-selected={n === i} class={n === i ? 'on' : ''} onMouseEnter={() => setI(n)} onClick={() => choose(c)}>
+          <Fragment key={c.id}>
+            {q === '' && c.group && c.group !== shown[n - 1]?.group && <li class="cmd-group" role="presentation">{c.group}</li>}
+            <li role="option" aria-selected={n === i} class={n === i ? 'on' : ''} onMouseEnter={() => setI(n)} onClick={() => choose(c)}>
               <span>{c.label}</span>{c.hint && <kbd>{c.hint}</kbd>}
             </li>
-          </>
+          </Fragment>
         ))}
         {shown.length === 0 && <li class="none">No matching command</li>}
       </ul>

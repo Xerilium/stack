@@ -36,7 +36,7 @@ First use must feel like a native app: it fills the window, the same four places
 
 ### FR:palette: Command palette
 
-- **FR:palette.jump** (P1): `⌘K` / `Ctrl+K` and `:` open the palette. It lists `Go to …` for each view and `Project: <title>` for every project, which opens Full stack filtered to that project. Typing a project name alone (`alpha`) ranks its `Project:` command first
+- **FR:palette.jump** (P1): `⌘K` / `Ctrl+K` and `:` open the palette. With no query it is grouped: **Actions** first, then **Go to** (one per view), then **Projects** (every project by its title, which opens Full stack filtered to it). Typing filters to a flat list; a project name alone (`alpha`) ranks that project first. The list scrolls and keeps the selected command in view
 - **FR:palette.scope** (P1): Row actions (`Mark done`, `Set …`) appear only on views with rows; ask actions only on Needs you
 
 ### FR:state: Honest states

@@ -34,7 +34,7 @@ test.describe('Home', () => {
 
   // @req FR:web-app/home.fit
   test('says when the one thing does not fit the time left and offers one that does', async ({ page }, info) => {
-    await mockApi(page, { tasks: home() });
+    const m = await mockApi(page, { tasks: home() });
     await page.clock.install({ time: new Date(2026, 9, 29, 17, 30) }); // 30 min of the work day left
     await page.goto('/');
     // one focal point: the task that fits is NOW; the one that does not is one muted line under it
@@ -44,6 +44,8 @@ test.describe('Home', () => {
     const unfit = page.getByTestId('unfit');
     await expect(unfit).toContainText('Ship the web app');
     await expect(unfit).toContainText("doesn't fit today: needs 1h, 30m left");
+    // keys act on the task shown as NOW, not on the waiting one
+    if (info.project.name !== 'mobile') { await page.keyboard.press('s'); await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'beta:4' } }); }
     if (info.project.name === 'mobile') await unfit.getByRole('button', { name: /More time/ }).tap(); else await page.keyboard.press(']'); // +30 m: now it fits
     await expect(one.getByTestId('next-title')).toContainText('Ship the web app');
     await expect(page.getByTestId('unfit')).toHaveCount(0);
