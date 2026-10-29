@@ -4,7 +4,9 @@
  * @req FR:agent-team/talk.start @req FR:agent-team/review.run @req FR:agent-team/review.record @req FR:agent-team/review.needs @req FR:agent-team/review.read
  */
 import { agentFor, listTeam, reviewPrefix, reviewsIn, type Review, type TeamAgent } from '../core/agents';
-import { handleAsk, listAsks, putAsk, type AskKind } from '../core/asks';
+import { handleAsk, listAsks, putAsk, type AskKind, type ListedAsk } from '../core/asks';
+import { listInbox, type ListedEntry } from '../core/inbox';
+import { claimTask } from '../core/triage';
 import { LifecycleError, type LifecycleContext, type TaskRef } from '../core/lifecycle';
 import { parseProject, type Task } from '../core/parser';
 import { NotFoundError } from '../core/storage';
@@ -27,6 +29,7 @@ export const REVIEW_SCHEMA: Record<string, unknown> = {
 };
 const REVIEW_PROMPT = 'Review the task in your context: could you, as the agent in scope, do it yourself? Read what you need in the repository (read-only). Answer with the JSON schema: verdict "can" (all of it), "partial" (some of it, the rest needs the owner), or "cannot"; plan (one line); estimate; needs: every exact thing you need from the owner first (a fact to answer, a go-do only they can do, an approval), each one line; risks. Do not start the work.';
 export const QUICK_PROMPTS = {
+  assign: 'This task is yours now. First flesh out the subtasks under this row (`stack add <project> "<text>" --parent <ref>`), then raise every question for the owner as an ask with `--ref`, reply on the task with `stack inbox reply`, and start the work. Never wait in chat.',
   do: 'Do this task. Bring me anything you need as an ask (`stack asks put`, see docs/asks.md); never wait in chat.',
   plan: 'Plan this task in steps with a rough estimate each; do not start it.',
 } as const;
@@ -67,7 +70,7 @@ export async function taskContext(ctx: LifecycleContext, ref: TaskRef): Promise<
 
 /** The system prompt addition: who the agent is, its scope, the ask rule, its own prompt, then the context. */
 export function personaOf(agent: TeamAgent, context?: string): string {
-  const head = `You are ${agent.name}${agent.role ? `, ${agent.role}` : ''}, an agent in Stack (the owner's task system). Your scope: ${agent.scope.join(', ') || 'the task at hand'}. Work inside it. Bring the owner decisions only as asks (\`stack asks put\`, see docs/asks.md); never message them in chat.`;
+  const head = `You are ${agent.name}${agent.role ? `, ${agent.role}` : ''}, an agent in Stack (the owner's task system). Your scope: ${agent.scope.join(', ') || 'the task at hand'}. Work inside it. Bring the owner decisions only as asks (\`stack asks put --ref tasks/<file>.md:<line>\`, see docs/asks.md) and answer them on the task with \`stack inbox reply tasks/<file>.md:<line> --from <you> --text "..."\`; never rely on this chat alone, the owner reads the task thread.`;
   return [head, agent.prompt, context ? `## Context\n\n${context}` : ''].filter(Boolean).join('\n\n');
 }
 
@@ -115,13 +118,64 @@ export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText
     const base = `${prefix}${stamp(now())}-`;
     for (const [i, need] of a.needs.slice(0, 9).entries()) {
       const kind: AskKind = need.kind === 'go-do' || need.kind === 'approve' ? need.kind : 'answer';
-      await putAsk(ctx, `${base}${i + 1}`, { ask: oneLine(need.what, 200), kind, from: agent.slug, project: c.project, why: oneLine(`${c.title}${need.why ? ` — ${need.why}` : ''}`, 500), priority: 'normal', blocks: 1, effort: '2m', reversible: false, ...(kind === 'approve' ? { recommend: 'Approve' } : {}) }, agent.slug);
+      await putAsk(ctx, `${base}${i + 1}`, { ask: oneLine(need.what, 200), kind, from: agent.slug, project: c.project, ref: refText, why: oneLine(`${c.title}${need.why ? ` — ${need.why}` : ''}`, 500), priority: 'normal', blocks: 1, effort: '2m', reversible: false, ...(kind === 'approve' ? { recommend: 'Approve' } : {}) }, agent.slug);
     }
   };
   // The run manager buffers updates, so a subscription right after the prompt never misses `done`.
   // A failure here (a 🙋 row refuses a log entry, storage conflict) must not vanish: it is logged, and the chip then shows no verdict.
   const off = runs.subscribe(r.runId, (u) => { if (u.type === 'done') { off?.(); void onDone(u).catch(onError); } }, () => undefined);
   return { ...r, agent: agent.slug };
+}
+
+/** Assign: the row is claimed for the agent (log + in progress) and a session starts with the assign prompt. @req FR:agent-thread/thread.assign */
+export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string): Promise<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }> {
+  const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug });
+  if (!ref || !c) throw new LifecycleError('Bad ref');
+  if (c.human) throw new TriageDenied('Needs a human');
+  const claimed = (await claimTask(ctx, ref, { actor: `agent:${agent.slug}`, owner: true })).changed;
+  const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text: QUICK_PROMPTS.assign });
+  return { ...r, claimed };
+}
+
+export type ThreadItem =
+  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled' }
+  | { at: string; kind: 'agent'; id: string; agent: string; text: string }
+  | { at: string; kind: 'ask'; ask: ListedAsk }
+  | { at: string; kind: 'review'; verdict: Review['verdict']; plan: string; estimate?: string; agent: string }
+  | { at: string; kind: 'subtask'; ref: string; text: string; done: boolean };
+export interface Thread { items: ThreadItem[]; session?: { id: string; title: string; state: string }; review?: Review }
+
+/** Everything about one task in time order: the owner's messages, the agent's replies, its asks, the verdict, the subtasks agents added. @req FR:agent-thread/thread.read */
+export async function taskThread(ctx: LifecycleContext, runs: AgentRuns | undefined, refText: string): Promise<Thread> {
+  const ref = parseRef(refText);
+  if (!ref) throw new LifecycleError('Bad ref');
+  const c = await taskContext(ctx, ref);
+  const stored = `${ref.path}:${ref.line + 1}`;
+  const items: ThreadItem[] = [];
+  const inbox: ListedEntry[] = await listInbox(ctx, { project: c.project, state: 'all' }).catch(() => []);
+  for (const e of inbox) {
+    if (e.ref !== stored) continue;
+    if (e.from === 'agent') items.push({ at: e.at, kind: 'agent', id: e.id, agent: e.agent ?? 'agent', text: e.text });
+    else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state });
+  }
+  const asks = await listAsks(ctx, { state: 'all', limit: 200 }).catch(() => ({ items: [] as ListedAsk[] }));
+  for (const a of asks.items) if (a.ref === refText || a.row === refText) items.push({ at: a.created, kind: 'ask', ask: a });
+  const review = (await reviewsIn(ctx, ref.path)).get(ref.line);
+  if (review) { review.needs = asks.items.filter((a) => a.state === 'open' && a.key.startsWith(reviewPrefix(ref))).map((a) => a.key); items.push({ at: review.at, kind: 'review', verdict: review.verdict, plan: review.plan, ...(review.estimate ? { estimate: review.estimate } : {}), agent: review.agent }); }
+  // Subtasks an agent owns (🤖 or 🪄) under this row.
+  const f = parseProject((await ctx.storage.read(ref.path)).content);
+  const walk = (ts: Task[]): Task | null => { for (const t of ts) { if (t.line === ref.line) return t; const h = walk(t.children); if (h) return h; } return null; };
+  let row: Task | null = null;
+  for (const sec of f.sections) row = row ?? walk(sec.tasks);
+  for (const ch of row?.children ?? []) if (/🤖|🪄/u.test(ch.text)) items.push({ at: '', kind: 'subtask', ref: formatRef({ path: ref.path, line: ch.line }), text: ch.text, done: ch.checked });
+  items.sort((a, b) => (a.at || '9').localeCompare(b.at || '9'));
+  const out: Thread = { items, ...(review ? { review } : {}) };
+  if (runs) {
+    const tail = ` · ${refText}`;
+    const mine = (await runs.sessions({ limit: 200 }).catch(() => ({ items: [] }))).items.filter((x) => x.title.endsWith(tail)).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
+    if (mine) out.session = { id: mine.id, title: mine.title, state: mine.state };
+  }
+  return out;
 }
 
 /** The verdict from a structured answer or from JSON in the final text; null when there is none. */

@@ -14,6 +14,7 @@ import {
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
+import { replyFromAgent } from '../core/inbox';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import { AUTONOMY_LEVELS, type Autonomy } from '../core/model';
 import { applyTriage, effectiveAutonomy, setAutonomy } from '../core/triage';
@@ -51,10 +52,11 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live commits to a branch)' },
-  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
+  asks: { flags: ['ref', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days'], usage: 'asks put <key> --ask t --kind k --from agent [--ref tasks/<file>.md:<line> --project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'extra', 'project'], usage: 'email run [--mode observe|drafts] [--max n] [--dry-run] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache'], usage: 'graph login --client-id <id> [--tenant t] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
   update: { flags: ['sweep', 'queries'], usage: 'update [--sweep] [--queries]', help: 'regenerate README, stack, projects, my-day' },
+  inbox: { flags: ['from', 'text', 'expect'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t]', help: 'reply on a task as an agent (tasks/inbox, from: agent); the owner reads it in the task thread' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'agents defined per project folder (tasks/agents/<slug>.md)' },
 };
 
@@ -224,7 +226,7 @@ async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): 
       if (pr !== undefined && !(ASK_PRIORITIES as readonly string[]).includes(pr)) throw new UsageError(`--priority must be one of ${ASK_PRIORITIES.join(', ')}`);
       const detailFile = s('detail-file');
       const input: AskPut = {
-        ask: s('ask'), kind: kind as AskPut['kind'], from: s('from'), project: s('project'), why: s('why'), recommend: s('recommend'), default: s('default'), by: s('by'),
+        ask: s('ask'), kind: kind as AskPut['kind'], from: s('from'), ...(s('ref') !== undefined ? { ref: apiRef(parseRef(s('ref')!)) } : {}), project: s('project'), why: s('why'), recommend: s('recommend'), default: s('default'), by: s('by'),
         link: s('link'), priority: pr as AskPut['priority'], effort: s('effort'), blocks: n('blocks'),
         ...(s('options') !== undefined ? { options: s('options')!.split('|').map((o) => o.trim()) } : {}),
         ...(yn !== undefined ? { reversible: yn === 'yes' } : {}),
@@ -260,6 +262,9 @@ async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): 
     default: throw new UsageError('Usage: stack asks put|list|handle|archive (see stack --help)');
   }
 }
+
+/** A core ref as the api writes it (`<project>:<line>`, 0-based). */
+const apiRef = (r: { path: string; line: number }) => `${basename(r.path).replace(/\.md$/, '')}:${r.line}`;
 
 /** @req FR:agent-team/cli.agents */
 async function agentsCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): Promise<Outcome> {
@@ -383,6 +388,17 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
     }
     case 'asks': return asksCmd(ctx, p);
     case 'agents': return agentsCmd(ctx, p);
+    case 'inbox': {
+      // @req FR:agent-thread/reply.entry
+      if (p.positionals[0] !== 'reply') throw new UsageError('Usage: stack inbox reply <ref> --from <agent> --text t');
+      if (!p.positionals[1]) throw new UsageError('inbox reply needs a ref');
+      extra(2);
+      const from = flag(f, 'from'); const text = flag(f, 'text');
+      if (!from) throw new UsageError('inbox reply needs --from <agent>');
+      if (!text) throw new UsageError('inbox reply needs --text');
+      const r = await replyFromAgent(ctx, parseRef(p.positionals[1]), text, from, flag(f, 'expect'));
+      return { json: { ok: true, ...r }, text: r.id };
+    }
     case 'email': return emailCmd(ctx, p.positionals[0], p.flags, { repo: dir });
     case 'update': extra(0); return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true });
     default: throw new UsageError(`Unknown command: ${cmd}`);

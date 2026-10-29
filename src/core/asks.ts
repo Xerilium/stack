@@ -6,6 +6,8 @@
 import { LifecycleError, type LifecycleContext } from './lifecycle';
 import { ConflictError, NotFoundError, writeAll, type FileWrite } from './storage';
 import { redact } from './triage';
+import { currentRows, inboxTitle } from './inbox';
+import { parseProject, type Task } from './parser';
 
 export const ASK_KINDS = ['approve', 'decide', 'review', 'go-do', 'answer'] as const;
 export const ASK_STATES = ['open', 'answered', 'done'] as const;
@@ -23,6 +25,8 @@ export interface Ask {
   key: string; state: AskState; ask: string; kind: AskKind; from: string;
   project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string;
   reversible: boolean; link?: string; priority: AskPriority; effort?: string; blocks: number;
+  /** The task this ask belongs to: `tasks/<file>.md:<line>` (1-based) and its title, like inbox entries. @req FR:agent-thread/ask.ref */
+  ref?: string; task?: string;
   created: string; updated: string;
   answer?: AskAnswer; text?: string; answered?: string; outcome?: AskOutcome; handled?: string; note?: string; snoozed?: string;
   /** Free markdown under `## Detail`; shown only when the owner expands the ask. */
@@ -36,13 +40,17 @@ export interface Ask {
 /** What an agent may write. Owner fields are not accepted. */
 export interface AskPut {
   ask?: string; kind?: AskKind; from?: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string;
+  /** The task, as the api writes refs (`<project>:<line>`, 0-based). @req FR:agent-thread/ask.ref */
+  ref?: string;
   reversible?: boolean; link?: string; priority?: AskPriority; effort?: string; blocks?: number; detail?: string; reopen?: boolean;
 }
 export interface AnswerInput { answer: AskAnswer; text?: string; until?: string }
 export interface HandleInput { outcome: AskOutcome; note?: string; reply?: string }
 
-export interface ListedAsk extends Omit<Ask, 'extra' | 'thread'> {
+export interface ListedAsk extends Omit<Ask, 'extra' | 'thread' | 'ref'> {
   score: number; rank?: number; overdue: boolean; snoozedUntil?: string; agentReply?: string;
+  /** The task as an api ref (`<project>:<line>`, 0-based), and where that row is now. @req FR:agent-thread/ask.ref */
+  ref?: string; row?: string;
 }
 export interface AskList { items: ListedAsk[]; total: number; latest?: string; snoozed: number }
 
@@ -54,7 +62,7 @@ const MAX_LINE = 500;
 const MAX_TEXT = 1000;
 const MAX_DETAIL = 20_000;
 const KEY = /^[a-z0-9][a-z0-9._-]{0,79}$/;
-const FIELDS = ['state', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'created', 'updated', 'answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed'] as const;
+const FIELDS = ['state', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'ref', 'task', 'created', 'updated', 'answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed'] as const;
 // eslint-disable-next-line no-control-regex
 const CONTROL_RUN = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]+', 'g');
 const INVISIBLE = new RegExp('[\\uFE0E\\uFE0F\\u200B-\\u200F\\u2060\\uFEFF\\u00AD]', 'g');
@@ -82,7 +90,7 @@ export function formatAsk(a: Ask): string {
   const f: [string, string | undefined][] = [
     ['state', a.state], ['ask', a.ask], ['kind', a.kind], ['from', a.from], ['project', a.project], ['why', a.why], ['recommend', a.recommend],
     ['options', a.options?.join(' | ')], ['default', a.default], ['by', a.by], ['reversible', a.reversible ? 'yes' : 'no'], ['link', a.link], ['priority', a.priority],
-    ['effort', a.effort], ['blocks', String(a.blocks)], ['created', a.created], ['updated', a.updated],
+    ['effort', a.effort], ['blocks', String(a.blocks)], ['ref', a.ref], ['task', a.task], ['created', a.created], ['updated', a.updated],
     ['answer', a.answer], ['text', a.text], ['answered', a.answered], ['outcome', a.outcome], ['handled', a.handled], ['note', a.note], ['snoozed', a.snoozed],
   ];
   const lines = [`# Ask: ${a.key}`, '', HEADER, '', ...f.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `- ${k}: ${v}`), ...a.extra];
@@ -117,6 +125,7 @@ export function parseAsk(key: string, content: string): Ask {
       case 'effort': if (/^\d{1,3}[mh]$/.test(v)) a.effort = v; break;
       case 'link': if (isHttps(v)) a.link = v; break;
       case 'options': a.options = v.split(' | ').map((o) => o.trim()).filter(Boolean); break;
+      case 'ref': if (/^tasks\/[^:]+\.md:\d+$/.test(v)) a.ref = v; break;
       case 'by': case 'created': case 'updated': case 'answered': case 'snoozed': if (isoOk(v)) a[m[1]] = v; break;
       default: (a as unknown as Record<string, string>)[m[1]] = v;
     }
@@ -159,6 +168,10 @@ async function save(ctx: LifecycleContext, a: Ask, version: string | null, messa
   await ctx.storage.write(asksPath(a.key), formatAsk(a), { expectedVersion: version, message });
 }
 
+const findRow = (tasks: Task[], line: number): Task | null => { for (const t of tasks) { if (t.line === line) return t; const hit = findRow(t.children, line); if (hit) return hit; } return null; };
+/** The api ref (`<project>:<line>`, 0-based) of a stored `tasks/<file>.md:<line>` (1-based). */
+export const apiRefOf = (stored: string): string | undefined => { const m = /^tasks\/(.+)\.md:(\d+)$/.exec(stored); return m ? `${m[1]}:${Number(m[2]) - 1}` : undefined; };
+
 /** Retries a read-modify-write when another writer got in between. */
 type Step<T> = { next: Ask; message: string; result: T } | { skip: T };
 async function mutate<T>(ctx: LifecycleContext, key: string, fn: (cur: { ask: Ask; version: string } | null) => Step<T>): Promise<T> {
@@ -195,6 +208,7 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
     out.options = input.options.map((o) => (line('option', typeof o === 'string' ? o.replace(/\|/g, '/') : o, 80, false) as string));
   }
   if (input.by !== undefined) { if (!isoOk(input.by)) throw new LifecycleError('by must be an ISO date-time'); out.by = iso(input.by); }
+  if (input.ref !== undefined && (typeof input.ref !== 'string' || !/^[^/\\:\0.][^/\\:\0]*:\d{1,9}$/.test(input.ref) || /^readme:/i.test(input.ref))) throw new LifecycleError('ref must be <project>:<line>');
   if (input.reversible !== undefined) { if (typeof input.reversible !== 'boolean') throw new LifecycleError('reversible must be yes or no'); out.reversible = input.reversible; }
 // eslint-disable-next-line no-control-regex
   if (input.link !== undefined) { const l = typeof input.link === 'string' ? input.link.trim() : ''; if (!isHttps(l) || /[\s\u0000-\u001f]/.test(l) || l.length > 2000) throw new LifecycleError('link must be an https url'); out.link = l; }
@@ -213,6 +227,17 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
 export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, actor: string): Promise<{ key: string; created: boolean }> {
   asksPath(key);
   const fields = checkPut(input);
+  // The task must exist; the stored ref is 1-based with the file path (like inbox entries), with the title so a moved row is still found.
+  if (input.ref !== undefined) {
+    const [name, l] = input.ref.split(':');
+    const path = `tasks/${name}.md`;
+    const line = Number(l);
+    let row: Task | null = null;
+    try { for (const sec of parseProject((await ctx.storage.read(path)).content).sections) row = row ?? findRow(sec.tasks, line); } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
+    if (!row) throw new NotFoundError(`Task not found: ${input.ref}`);
+    fields.ref = `${path}:${line + 1}`;
+    fields.task = inboxTitle(row.text);
+  }
   const now = clock(ctx).toISOString();
   return mutate<{ key: string; created: boolean }>(ctx, key, (cur) => {
     if (!cur) {
@@ -362,11 +387,15 @@ export async function listAsks(ctx: LifecycleContext, o: { state?: (typeof LIST_
   const latest = all.map((a) => a.updated).sort().pop();
   const snoozed = (a: Ask) => !!a.snoozed && Date.parse(a.snoozed) > now.getTime();
   const lastReply = (a: Ask) => { const m = a.thread.length ? /^- \S+ (\S+): (.*)$/.exec(a.thread[a.thread.length - 1]) : null; return m && m[1] !== 'you' ? m[2] : undefined; };
+  // @req FR:agent-thread/ask.ref: asks with a task report it as an api ref, and where that row is now.
+  const rowOf = await currentRows(ctx, all.filter((a) => a.ref && a.task).map((a) => ({ id: a.key, ref: a.ref!, task: a.task! }))).catch(() => new Map<string, string>());
   const decorate = (a: Ask): ListedAsk => {
-    const { extra, thread, ...rest } = a;
+    const { extra, thread, ref, ...rest } = a;
     void extra;
     const agentReply = a.state === 'open' ? lastReply({ ...a, thread }) : undefined;
-    return { ...rest, score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}) };
+    const api = ref ? apiRefOf(ref) : undefined;
+    const cur = rowOf.get(a.key);
+    return { ...rest, ...(api ? { ref: api } : {}), ...(cur ? { row: apiRefOf(cur) } : {}), score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}) };
   };
   let rows: Ask[];
   if (state === 'open') {

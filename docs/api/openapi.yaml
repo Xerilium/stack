@@ -785,6 +785,9 @@ paths:
               type: object
               additionalProperties: false
               properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                  description: The task this ask belongs to (project:line); the task must exist
                 ask:
                   type: string
                   maxLength: 200
@@ -1291,6 +1294,123 @@ paths:
                         joinUrl:
                           type: string
                           description: Online meeting join link
+        default:
+          $ref: "#/components/responses/Error"
+  /inbox/reply:
+    post:
+      summary: "An agent's reply on a task (tasks/inbox, from: agent, named by the token). Tokens only: the owner session gets 403"
+      operationId: replyFromAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ref
+                - text
+              properties:
+                ref:
+                  $ref: "#/components/schemas/Ref"
+                text:
+                  type: string
+                  maxLength: 1000
+                  description: One line to the owner; secrets are redacted Single line.
+                expect:
+                  type: string
+                  maxLength: 2000
+                  description: Expected current row text; 409 when the row differs Single line.
+      responses:
+        "201":
+          description: Written
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  path:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /tasks/{ref}/thread:
+    get:
+      summary: "One task's thread in time order: the owner's messages, the agent's replies, its asks, the review verdict, agent-owned subtasks; plus the task's newest session when a runner exists"
+      operationId: getTaskThread
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Ref"
+      responses:
+        "200":
+          description: Thread
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ThreadItem"
+                  session:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      state:
+                        type: string
+                  review:
+                    $ref: "#/components/schemas/Review"
+        default:
+          $ref: "#/components/responses/Error"
+  /tasks/{ref}/assign:
+    post:
+      summary: "Hand the task to its agent: claims the row (log + in progress) and starts a session with the assign prompt. Owner session only; 404 without a runner; 403 for a 🙋 row"
+      operationId: assignTask
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Ref"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                agent:
+                  type: string
+                  maxLength: 40
+                  pattern: ^[a-z0-9][a-z0-9._-]{0,39}$
+                  description: "Agent slug; default: the active agent Single line."
+      responses:
+        "202":
+          description: Assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                  sessionId:
+                    type: string
+                    nullable: true
+                  agent:
+                    type: string
+                  title:
+                    type: string
+                  claimed:
+                    type: boolean
         default:
           $ref: "#/components/responses/Error"
   /team:
@@ -1948,6 +2068,12 @@ components:
           format: date-time
         agentReply:
           type: string
+        ref:
+          $ref: "#/components/schemas/Ref"
+        row:
+          $ref: "#/components/schemas/Ref"
+        task:
+          type: string
     TeamAgent:
       type: object
       properties:
@@ -1980,6 +2106,39 @@ components:
           type: array
           items:
             type: string
+    ThreadItem:
+      type: object
+      properties:
+        at:
+          type: string
+        kind:
+          type: string
+          enum:
+            - owner
+            - agent
+            - ask
+            - review
+            - subtask
+        id:
+          type: string
+        text:
+          type: string
+        state:
+          type: string
+        agent:
+          type: string
+        ask:
+          $ref: "#/components/schemas/Ask"
+        verdict:
+          type: string
+        plan:
+          type: string
+        estimate:
+          type: string
+        ref:
+          $ref: "#/components/schemas/Ref"
+        done:
+          type: boolean
     Review:
       type: object
       properties:
