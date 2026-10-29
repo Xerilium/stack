@@ -1016,7 +1016,7 @@ paths:
                 cwd:
                   type: string
                   maxLength: 1000
-                  description: "Absolute path to an existing folder; default: the served folder Single line."
+                  description: "Absolute path to an existing folder; default: the served folder. Not allowed with agent, ref, or project (a task session always runs in the served folder) Single line."
                 text:
                   type: string
                   maxLength: 4000
@@ -1032,7 +1032,7 @@ paths:
                 project:
                   type: string
                   maxLength: 200
-                  description: Project when there is no task Single line.
+                  description: Project when there is no task (404 when it has no file) Single line.
       responses:
         "202":
           description: Run started
@@ -1046,6 +1046,12 @@ paths:
                   sessionId:
                     type: string
                     nullable: true
+                  agent:
+                    type: string
+                    description: Set for a task or project session
+                  title:
+                    type: string
+                    description: "Set for a task or project session: `<agent> · <task> · <ref>`"
         default:
           $ref: "#/components/responses/Error"
   /sessions/cost:
@@ -1345,7 +1351,7 @@ paths:
           $ref: "#/components/responses/Error"
   /tasks/review:
     post:
-      summary: "Ask the task's agent whether it can do the task: a read-only run whose verdict lands in the result log and whose needs become asks. Owner session only: 403 for tokens; 404 without a runner"
+      summary: "Ask the task's agent whether it can do the task: a read-only run whose verdict lands in the result log and whose needs become asks. Owner session only: 403 for tokens and for a 🙋 row; 404 without a runner"
       operationId: reviewTask
       requestBody:
         required: true

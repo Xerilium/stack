@@ -194,8 +194,11 @@ export function agentFor(team: TeamAgent[], project: string, section?: string): 
 export interface Review { at: string; verdict: 'can' | 'partial' | 'cannot'; plan: string; estimate?: string; agent: string; needs: string[] }
 const VERDICT: Record<string, Review['verdict']> = { done: 'can', partial: 'partial', blocked: 'cannot' };
 
+/** The ask key prefix of a row's review needs: `rev-<slug>-<line>-` (the slug is cut to 40 so `rev-<slug>-<line>-<stamp>-<n>` fits an 80-character key). @req FR:agent-team/review.needs */
+export const reviewPrefix = (ref: TaskRef): string => `rev-${logName({ path: ref.path, line: 0 }).toLowerCase().slice(0, 40)}-${ref.line + 1}-`;
+
 /** The newest review entry per row (0-based line) in a project's log files, one pass. @req FR:agent-team/review.read */
-export async function reviewsIn(ctx: LifecycleContext, path: string): Promise<Map<number, Omit<Review, 'needs'> & { needs: string[] }>> {
+export async function reviewsIn(ctx: LifecycleContext, path: string): Promise<Map<number, Review>> {
   const slug = logName({ path, line: 0 });
   const prefix = `${path}:`;
   const best = new Map<number, Review>();
@@ -223,6 +226,6 @@ export async function reviewsIn(ctx: LifecycleContext, path: string): Promise<Ma
 /** The newest review entry for a row, or null. Needs are the open ask keys the review created (`rev-<slug>-<line>-`). @req FR:agent-team/review.read */
 export async function reviewOf(ctx: LifecycleContext, ref: TaskRef, openAskKeys: string[] = []): Promise<Review | null> {
   const best = (await reviewsIn(ctx, ref.path)).get(ref.line) ?? null;
-  if (best) { const prefix = `rev-${logName({ path: ref.path, line: 0 }).toLowerCase().slice(0, 40)}-${ref.line + 1}-`; best.needs = openAskKeys.filter((k) => k.startsWith(prefix)); }
+  if (best) { const prefix = reviewPrefix(ref); best.needs = openAskKeys.filter((k) => k.startsWith(prefix)); }
   return best;
 }

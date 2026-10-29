@@ -81,9 +81,11 @@ describe('startAgentRun', () => {
     expect(prompts[0].options?.schema).toBeUndefined();
     const p = await startAgentRun(runs, ctx, { project: 'flantastic-4', agent: 'cos', text: 'Plan' });
     expect(p.title).toBe('CoS · flantastic-4');
+    expect((await startAgentRun(runs, ctx, { agent: 'cos', text: 'Hi' })).title).toBe('CoS');
+    await expect(startAgentRun(runs, ctx, { project: 'nope', agent: 'cos', text: 'x' })).rejects.toThrow(/No project nope/);
     await expect(startAgentRun(runs, ctx, { ref: 'flantastic-4:99', text: 'x' })).rejects.toThrow(/not found/i);
     await expect(startAgentRun(runs, ctx, { ref: 'nope', text: 'x' })).rejects.toThrow(/Bad ref/);
-    await expect(startAgentRun(runs, ctx, { project: 'other', agent: 'ghost', text: 'x' })).rejects.toThrow(/No agent ghost/);
+    await expect(startAgentRun(runs, ctx, { project: 'flantastic-4', agent: 'ghost', text: 'x' })).rejects.toThrow(/No agent ghost/);
   });
 });
 
@@ -125,13 +127,18 @@ describe('reviewTask', () => {
     await reviewTask(c.runs, c.ctx, 'flantastic-4:7');
     await wait(60);
     expect(await reviewOf(c.ctx, { path: 'tasks/flantastic-4.md', line: 7 })).toBeNull();
-    // A row that refuses a log entry (🙋) reports the failure instead of swallowing it.
+    // A 🙋 row is the owner's: refused before any paid run.
     const d = await mk({ structured: answer });
     await d.storage.write('tasks/flantastic-4.md', F4.replace('- [ ] Ship labels', '- [ ] 🙋 Ship labels'));
+    await expect(reviewTask(d.runs, d.ctx, 'flantastic-4:10')).rejects.toThrow(/Needs a human/);
+    expect(d.prompts).toHaveLength(0);
+    // A failure while recording reaches onError instead of vanishing.
+    const e = await mk({ structured: answer });
     const errors: unknown[] = [];
-    await reviewTask(d.runs, d.ctx, 'flantastic-4:10', undefined, (e) => errors.push(e));
+    e.ctx.storage.write = async () => { throw new Error('disk full'); };
+    await reviewTask(e.runs, e.ctx, 'flantastic-4:7', undefined, (x) => errors.push(x));
     await wait(80);
-    expect(errors).toHaveLength(1);
+    expect(errors.length).toBeGreaterThan(0);
   });
   it('parseVerdict is strict about the shape', () => {
     expect(parseVerdict({ verdict: 'maybe', plan: 'x', needs: [] })).toBeNull();

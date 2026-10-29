@@ -9,7 +9,7 @@ import { listAsks } from '../../src/core/asks';
 import { MemoryStorage } from '../../src/core/storage';
 
 const NOW = new Date('2026-10-29T18:00:00Z');
-const F4 = '# 🎧 Flantastic 4\n\n- **Agents:**\n  - `🎧 Cid Manager` — label manager\n\n## 🔄 Active\n\n- [ ] Release the single 🟡\n- [ ] Ship labels\n';
+const F4 = '# 🎧 Flantastic 4\n\n- **Agents:**\n  - `🎧 Cid Manager` — label manager\n\n## 🔄 Active\n\n- [ ] Release the single 🟡\n- [ ] 🙋 Ship labels\n';
 const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function fakeDriver() {
@@ -97,6 +97,7 @@ describe('team, reviews, and task sessions', () => {
     const { call, mint, ctx, prompts } = await mk();
     expect((await call(await mint('tasks:write'), 'POST', '/tasks/review', { ref: 'flantastic-4:7' })).status).toBe(403);
     expect((await call('owner', 'POST', '/tasks/review', { ref: 'nope' })).status).toBe(422);
+    expect((await call('owner', 'POST', '/tasks/review', { ref: 'flantastic-4:8' })).status).toBe(403); // a 🙋 row is the owner's: no paid run
     const r = await call('owner', 'POST', '/tasks/review', { ref: 'flantastic-4:7' });
     expect(r.status).toBe(202);
     expect(r.json).toMatchObject({ runId: 'run-1', agent: 'cid-manager' });

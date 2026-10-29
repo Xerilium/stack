@@ -185,8 +185,8 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'sessions.new': {
     operationId: 'newSession', summary: 'Start a new agent session in a folder and send it a prompt. Owner session only: 403 for tokens',
-    desc: { cwd: 'Absolute path to an existing folder; default: the served folder', text: 'The prompt', agent: 'Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task' },
-    responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true } } }, '202'),
+    desc: { cwd: 'Absolute path to an existing folder; default: the served folder. Not allowed with agent, ref, or project (a task session always runs in the served folder)', text: 'The prompt', agent: 'Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task (404 when it has no file)' },
+    responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string', description: 'Set for a task or project session' }, title: { type: 'string', description: 'Set for a task or project session: `<agent> · <task> · <ref>`' } } }, '202'),
   },
   'team.list': {
     operationId: 'listTeam', summary: 'Agents defined per project folder (tasks/agents/<slug>.md and project Agents metadata); with project, the agents that cover it, active first',
@@ -199,7 +199,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Reviews', { type: 'object', properties: { items: { type: 'array', items: ref('Review') } } }),
   },
   'tasks.review': {
-    operationId: 'reviewTask', summary: "Ask the task's agent whether it can do the task: a read-only run whose verdict lands in the result log and whose needs become asks. Owner session only: 403 for tokens; 404 without a runner",
+    operationId: 'reviewTask', summary: "Ask the task's agent whether it can do the task: a read-only run whose verdict lands in the result log and whose needs become asks. Owner session only: 403 for tokens and for a 🙋 row; 404 without a runner",
     desc: { agent: 'Agent slug; default: the active agent' },
     responses: ok('Review started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string' } } }, '202'),
   },
