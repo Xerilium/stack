@@ -345,3 +345,18 @@ describe('review round 1: snapshot ordering', () => {
     expect(gh.file('tasks/a.md')).toBe('A');
   });
 });
+
+describe('review round 1: bounded blob cache', () => {
+  it('keeps at most 2000 blobs, dropping the oldest', async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 2005; i++) files[`tasks/asks/k${i}.md`] = `ask ${i}`;
+    const gh = new FakeGitHub('acme', 'tasks', files);
+    const { s } = make(gh);
+    for (let i = 0; i < 2005; i++) await s.read(`tasks/asks/k${i}.md`);
+    const before = gets(gh, 'blobs');
+    await s.read('tasks/asks/k2004.md');
+    expect(gets(gh, 'blobs')).toBe(before);
+    await s.read('tasks/asks/k0.md');
+    expect(gets(gh, 'blobs')).toBe(before + 1);
+  });
+});

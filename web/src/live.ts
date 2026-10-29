@@ -65,10 +65,11 @@ export function connectLive(o: LiveOpts): Live {
       if (stopped) return;
       o.onStatus('poll');
       o.onSynced?.(new Date());
-      // The first probe follows the initial load, so it reloads only when an earlier probe failed (changes may have been missed).
+      // After a failure, reload: changes may have been missed. A null revision cannot tell, so it reloads from the second probe on.
       if (failed) o.onChange(ALL);
       else if (seen && r === null) o.onChange(['poll']);
-      else if (seen && r !== rev) o.onChange(ALL);
+      // The first real revision also reloads once: a change between the initial load and this probe would otherwise wait for the next change.
+      else if (r !== null && r !== rev) o.onChange(ALL);
       rev = r; failed = false; seen = true;
     }, (e: unknown) => {
       inFlight = false;

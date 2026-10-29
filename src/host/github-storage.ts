@@ -29,6 +29,7 @@ const API = 'https://api.github.com';
 const NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const MAX_ATTEMPTS = 3;
+const MAX_BLOBS = 2000;
 const FILE = '100644';
 const EXEC = '100755';
 
@@ -163,8 +164,14 @@ export class GitHubStorage implements Storage, AuxFiles {
     const b = (await this.call('blob read', `blobs/${sha}`)).data as { content?: string; encoding?: string };
     if (b.encoding !== 'base64' || typeof b.content !== 'string') throw new StorageError('GitHub blob read returned an unexpected encoding');
     const text = Buffer.from(b.content.replace(/\n/g, ''), 'base64').toString('utf8');
-    this.blobs.set(sha, text);
+    this.remember(sha, text);
     return text;
+  }
+
+  /** Blob cache, bounded: the oldest entries go first (old versions of rewritten files are never read again). */
+  private remember(sha: string, text: string): void {
+    this.blobs.set(sha, text);
+    while (this.blobs.size > MAX_BLOBS) this.blobs.delete(this.blobs.keys().next().value as string);
   }
 
   private async contentAt(snap: Snap, path: string): Promise<string | null> {
@@ -251,7 +258,7 @@ export class GitHubStorage implements Storage, AuxFiles {
           if (!sha) {
             sha = String(((await this.call('blob write', 'blobs', { method: 'POST', body: { content: Buffer.from(w.content, 'utf8').toString('base64'), encoding: 'base64' } })).data as { sha: string }).sha);
             made.set(w.content, sha);
-            this.blobs.set(sha, w.content);
+            this.remember(sha, w.content);
           }
         }
         tree.push({ path: this.prefix + w.path, mode: e?.mode ?? FILE, type: 'blob', sha });

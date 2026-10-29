@@ -88,18 +88,19 @@ describe('connectLive with a change probe', () => {
     return { changes, status, synced, live };
   };
 
-  it('probes at once and reloads only when the revision changes', async () => {
+  it('probes at once, reloads once on the first revision (closing the gap after the initial load), then only on change', async () => {
     const { p, probe } = mkProbe();
     const { changes, status, synced } = run(probe);
     await flush();
     expect(p.calls).toBe(1);
     expect(status).toEqual(['poll']);
     expect(synced).toHaveLength(1);
+    expect(changes).toEqual([['asks', 'tasks', 'state']]);
     vi.advanceTimersByTime(3000); await flush();
-    expect(changes).toEqual([]);
+    expect(changes).toHaveLength(1);
     p.rev = 'b';
     vi.advanceTimersByTime(1000); await flush();
-    expect(changes).toEqual([['asks', 'tasks', 'state']]);
+    expect(changes).toEqual([['asks', 'tasks', 'state'], ['asks', 'tasks', 'state']]);
   });
   it('a null revision reloads on every probe after the first', async () => {
     const { p, probe } = mkProbe(); p.rev = null;
