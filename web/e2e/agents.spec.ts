@@ -46,6 +46,16 @@ test.describe('Agents', () => {
     await expect(page.locator('.sess-li').first()).toContainText('Fix the build');
   });
 
+  test('g p from a directly loaded Agents view navigates and leaves the grouping alone', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'keyboard');
+    const m = await mockApi(page); m.sessions = [sess('s1', 'Fix the build', 'alpha')];
+    await page.goto('/#/agents');
+    await expect(page.locator('.sess-li')).toHaveCount(1);
+    await page.keyboard.press('g'); await page.keyboard.press('p');
+    await expect(page).toHaveURL(/#\/projects/);
+    expect(await page.evaluate(() => localStorage.getItem('stack.agents.group'))).toBeNull();
+  });
+
   test('By project groups the rows with one header per project', async ({ page }) => {
     await open(page);
     await page.getByRole('button', { name: 'By project' }).click();

@@ -153,7 +153,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     const after = itemsRef.current.filter((i) => i.key !== a.key);
     setItems((x) => x.filter((i) => i.key !== a.key)); setTotal((n) => Math.max(0, n - 1)); setPanel('none'); setDetail(false);
     setLeaving((l) => [...l, a]); setTimeout(() => setLeaving((l) => l.filter((x) => x !== a)), LEAVE_MS);
-    if (s.answer !== 'defer') setSent((x) => [{ ...a, state: 'answered', answer: s.answer, text: s.text }, ...x]);
+    if (s.answer !== 'defer') setSent((x) => [...x, { ...a, state: 'answered', answer: s.answer, text: s.text }]); // oldest first, like the server; the group shows newest first
     if (cursorRef.current === a.key) setCursor(after[Math.min(Math.max(at, 0), after.length - 1)]?.key ?? null);
     const call = api.answerAsk(a.key, s);
     call.catch(() => undefined);

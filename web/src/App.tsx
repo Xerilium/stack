@@ -672,8 +672,9 @@ export function App() {
       else if (k === 'R' && L.cursor) { e.preventDefault(); void teamRef.current.review(L.cursor); }
       else if (k === 'p' || k === 't' || k === 'f' || k === 'i') A.openPicker([GROUP_NAMES.find((g) => GROUPS[g].key === k)!]);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // capture phase: the chords and global keys run before any view's own listener, whatever mounted first
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [run]);
 
   // ---- render

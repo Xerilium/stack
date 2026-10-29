@@ -5,7 +5,7 @@
  */
 import { Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { groupByProject, orderWithPins } from './pins';
+import { groupByProject, orderWithPins, type Pins } from './pins';
 import { barWidths, costStrip, dayLabel, fmtTokens, fmtUsd, groupTurns, localDay, rowOf, splitSessions, type Line, type SessionItem } from './sessions';
 import type { Sessions } from './useSessions';
 import './sessions.css';
@@ -26,7 +26,7 @@ function Row({ s, now, cursor, pinned, onOpen, onCursor, onPin }: { s: SessionIt
         <span class="sess-cost">{r.cost}</span>
         <span class="sess-mob" aria-hidden="true">{r.when} · {r.cost}</span>
       </button>
-      <button type="button" class={`pin${pinned ? ' on' : ''}`} aria-label={pinned ? 'Unpin' : 'Pin'} aria-pressed={pinned} title={pinned ? 'Unpin (f)' : 'Pin to the top (f)'} onClick={(e) => { e.stopPropagation(); onPin(); }}>{pinned ? '★' : '☆'}</button>
+      <button type="button" class={`pin${pinned ? ' on' : ''}`} aria-label={pinned ? 'Unpin' : 'Pin'} title={pinned ? 'Unpin (f)' : 'Pin to the top (f)'} onClick={(e) => { e.stopPropagation(); onPin(); }}>{pinned ? '★' : '☆'}</button>
     </li>
   );
 }
@@ -118,7 +118,6 @@ export function Drawer({ s, item, cursorItem, onClose }: { s: Sessions; item: Se
   );
 }
 
-export type Pins = ReturnType<typeof import('./pins').usePins>;
 export function SessionsView({ s, enabled, pinsCtl }: { s: Sessions; enabled: boolean | null; pinsCtl: Pins }) {
   const { cursor } = s;
   // pins first, then attention order; optionally grouped by project. @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups
@@ -128,7 +127,7 @@ export function SessionsView({ s, enabled, pinsCtl }: { s: Sessions; enabled: bo
   const groups = byProject ? groupByProject(shown, pins) : (pins.some((p) => shown.some((x) => x.id === p)) ? [{ title: 'Pinned', items: shown.filter((x) => pins.includes(x.id)) }, { title: '', items: shown.filter((x) => !pins.includes(x.id)) }] : [{ title: '', items: shown }]);
   // the keys walk the rows in the order they are painted
   const items = groups.flatMap((g) => g.items);
-  const item = items.find((i) => i.id === s.open) ?? null;
+  const item = s.items.find((i) => i.id === s.open) ?? null; // the drawer may open for a row behind Show more or from elsewhere
   const today = localDay(s.now);
   const strip = s.cost ? costStrip(s.cost, today) : null;
   const widths = s.cost ? barWidths(s.cost.days) : [];
