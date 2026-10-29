@@ -23,13 +23,13 @@ Stack lives on the home screen like an app, opens instantly, still shows today's
 
 ### FR:install: Installable app
 
-- **FR:install.manifest** (P1): `web/public/manifest.webmanifest` ships in `dist` with `name` "Stack", `short_name` "Stack", `start_url` `/#/today`, `scope` `/`, `display` `standalone`, `background_color` and `theme_color` matching the light theme, and icons: one SVG (`any`), PNG 192 and 512 (`any`), and PNG 512 `maskable`
+- **FR:install.manifest** (P1): `web/public/manifest.webmanifest` ships in `dist` with `name` "Stack", `short_name` "Stack", `start_url` `/` (the home view), `scope` `/`, `display` `standalone`, `background_color` and `theme_color` matching the light theme, and icons: one SVG (`any`), PNG 192 and 512 (`any`), and PNG 512 `maskable`
 - **FR:install.head** (P1): `index.html` links the manifest, an `apple-touch-icon` (PNG 180), a favicon (the SVG icon), `theme-color` for light and dark, and `apple-mobile-web-app-capable` / `apple-mobile-web-app-status-bar-style` so iOS opens it full screen. No inline script or style, so the CSP stays `default-src 'self'`
 - **FR:install.standalone** (P1): In standalone display the layout respects safe areas (`env(safe-area-inset-*)`) on all four sides, the bottom tab bar sits above the home indicator, and nothing scrolls sideways at 320 px or wider
 
 ### FR:offline: Offline reading
 
-- **FR:offline.sw** (P1): `web/public/sw.js` (plain script, same origin, scope `/`) is registered by the page only in a production build in a secure context. It caches the app shell (navigation and `/assets/*`, `/manifest.webmanifest`, icons) stale-while-revalidate, and read-only api responses (`GET` `/api/next`, `/api/tasks`, `/api/projects`, `/api/asks`, `/api/inbox`, `/api/agents`, `/.auth/me`) network-first with the cached copy as fallback. It never caches non-`GET` requests, `/events`, error responses (status other than 200), or any other path
+- **FR:offline.sw** (P1): `web/public/sw.js` (plain script, same origin, scope `/`) is registered by the page only in a secure context (https, or localhost). It caches the app shell (navigation and `/assets/*`, `/manifest.webmanifest`, icons) stale-while-revalidate, and read-only api responses (`GET` `/api/next`, `/api/tasks`, `/api/projects`, `/api/asks`, `/api/inbox`, `/api/agents`, `/.auth/me`) network-first with the cached copy as fallback. It never caches non-`GET` requests, `/events`, error responses (status other than 200), or any other path
 - **FR:offline.banner** (P1): When the browser is offline or a read came from the cache, the page shows a one-line banner `Offline · showing <time> copy` and disables every write control (actions, capture, replies, answers) with a tooltip `Offline`. Going back online removes the banner and refreshes once
 - **FR:offline.private** (P1): Cached data is the signed-in user's own data on their own device. Sign out deletes every Stack cache before leaving for `/.auth/logout`. A new service worker version deletes caches from older versions on activate
 - **FR:offline.update** (P2): A new version activates on the next launch (no forced reload mid-task); the page never prompts about updates

@@ -138,7 +138,9 @@ function Skeleton() {
   return <ol class="asks" aria-busy="true" aria-label="Loading asks"><li class="sk big" /><li class="sk" /><li class="sk" /></ol>;
 }
 
-export function AsksView({ asks }: { asks: Asks }) {
+export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; toggle: () => void }
+
+export function AsksView({ asks, notify, offline = false }: { asks: Asks; notify?: NotifyCtl; offline?: boolean }) {
   const { items, cursor } = asks;
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
@@ -204,10 +206,15 @@ export function AsksView({ asks }: { asks: Asks }) {
   const ghosts = asks.leaving.filter((g) => !leavingKeys.has(g.key));
 
   return (
-    <section class="asks-view" aria-label="Asks">
+    <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Asks">
       <header class="asks-head">
         <h1 class="h1">Needs you{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
         <LiveBadge a={asks} />
+        {notify?.supported && (
+          <button type="button" class={`notify-btn${notify.on ? ' on' : ''}`} aria-pressed={notify.on} disabled={notify.blocked && !notify.on} title={notify.blocked ? 'Blocked in browser settings' : notify.on ? 'Notifications are on' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>
+            {notify.blocked && !notify.on ? 'Blocked in browser settings' : notify.on ? 'Notifications on' : 'Notify me'}
+          </button>
+        )}
       </header>
       <p class="sr-only" role="status" aria-live="polite">{announce}</p>
       {asks.phase === 'loading' && <Skeleton />}

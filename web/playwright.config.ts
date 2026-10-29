@@ -13,7 +13,7 @@ export default defineConfig({
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   reporter: [['list']],
-  use: { baseURL: `http://localhost:${port}`, launchOptions, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
+  use: { baseURL: `http://localhost:${port}`, launchOptions, serviceWorkers: 'block', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   projects: [
     { name: 'desktop', use: { viewport: { width: 1280, height: 800 } } },
     { name: 'mobile', use: { viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 } },
