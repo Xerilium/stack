@@ -288,6 +288,7 @@ export function buildOpenApi(): J {
             id: { type: 'string' }, at: { type: 'string', format: 'date-time' }, project: { type: 'string' }, ref: ref('Ref'), task: { type: 'string' },
             kind: { type: 'string', enum: ['reply', 'decision'] }, to: { type: 'string', enum: ['agent', 'human', 'none'] }, text: { type: 'string' },
             state: { type: 'string', enum: ['open', 'handled'] }, handled: { type: 'string' }, note: { type: 'string' },
+            row: { ...ref('Ref'), description: 'Where the row is now, found by title (lines move); absent when the row is gone' },
           },
         },
         AgentItem: {

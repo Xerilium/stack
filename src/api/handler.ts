@@ -12,7 +12,7 @@ import { captureTask, CaptureError } from '../core/quick-capture';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
-import { handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, sendToInbox, type InboxKind } from '../core/inbox';
+import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
 import { generateSummaries } from '../core/summaries';
 import { editTask, moveTask } from './edit';
@@ -390,7 +390,8 @@ export const ROUTES: Route[] = [
       const q = readQuery(c.url, Object.keys(INBOX_Q));
       const v = validate<{ project?: string; state?: (typeof INBOX_STATES)[number] }>(Object.fromEntries(q.entries()), INBOX_Q, []);
       const items = await listInbox(c.life, { project: v.project, state: v.state });
-      return json(200, { items: items.map((e) => ({ ...e, ref: apiRef(e.ref) })) });
+      const rows = await currentRows(c.life, items);
+      return json(200, { items: items.map((e) => { const row = rows.get(e.id); return { ...e, ref: apiRef(e.ref), ...(row ? { row: apiRef(row) } : {}) }; }) });
     },
   },
   {

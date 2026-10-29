@@ -28,13 +28,5 @@ export const attention = (items: Agent[]): string[] =>
 /** Inbox text as the owner typed it: the server stores it markdown-escaped. */
 export const unescapeMd = (v: string): string => v.replace(/\\([\\<>[\]`|])/g, '$1');
 
-/** The title's words, without marks, dates, or links. Kept in step with `taskKey` in `src/core/inbox.ts`. */
-export const taskKey = (text: string): string =>
-  (unescapeMd(text.normalize('NFKC')).replace(/🤖:\S*/gu, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/(?:📅|⏰|💤|🔄)\s*[^:\n]*:/gu, ' ')
-    .toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
-
-/** Open inbox entries for a row: the same title in the same project. Lines move, so the ref alone would land on the wrong row. */
-export function repliesFor(items: InboxItem[], t: Pick<Task, 'project' | 'text'>): InboxItem[] {
-  const key = taskKey(t.text);
-  return key === '' ? [] : items.filter((e) => e.state === 'open' && e.project === t.project && taskKey(e.task) === key);
-}
+/** Open inbox entries for a row. The server says where each entry's row is now; the stored ref alone would land on the wrong row after a move. */
+export const repliesFor = (items: InboxItem[], t: Pick<Task, 'ref'>): InboxItem[] => items.filter((e) => e.state === 'open' && e.row === t.ref);

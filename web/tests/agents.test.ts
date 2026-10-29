@@ -26,18 +26,11 @@ describe('AI team helpers', () => {
     expect(attention([a({ state: 'waiting' }), a({ state: 'waiting' }), a({ state: 'failing' }), a({ state: 'working' }), a({ state: 'review' })])).toEqual(['2 need you', '1 CI failing', '1 ready for review', '1 working']);
     expect(attention([a({ state: 'queued' })])).toEqual(['1 queued']);
   });
-  it('matches open replies by task title in the project, not by line', () => {
-    const e = (id: string, project: string, ref: string, task: string): InboxItem => ({ id, at: id, project, ref, task, kind: 'reply', to: 'agent', text: id, state: 'open' });
-    const items = [
-      e('stored', 'alpha', 'tasks/alpha.md:6', 'Pick a vendor \\[A\\|B\\] 🔺 📅 Oct 30: https://github.com/o/r/pull/7'),
-      e('other-row', 'alpha', 'tasks/alpha.md:4', 'Something else'),
-      e('other-project', 'beta', 'tasks/beta.md:6', 'Pick a vendor [A|B]'),
-    ];
-    // The row moved to line 9 and gained status, effort, and a new due date.
-    expect(repliesFor(items, { project: 'alpha', text: '🙋 🚧 Pick a vendor [A|B] 🟡 📅 Nov 2: https://github.com/o/r/pull/7' }).map((i) => i.id)).toEqual(['stored']);
-    // A different row now sitting on the stored line gets nothing.
-    expect(repliesFor(items, { project: 'alpha', text: '🙋 Approve budget' })).toEqual([]);
-    expect(repliesFor(items, { project: 'alpha', text: '🙋 🔺' })).toEqual([]);
+  it('matches open replies by where the server says the row is now', () => {
+    const e = (id: string, ref: string, row?: string, state: InboxItem['state'] = 'open'): InboxItem => ({ id, at: id, project: 'alpha', ref, task: 'T', kind: 'reply', to: 'agent', text: id, state, ...(row ? { row } : {}) });
+    const items = [e('moved', 'alpha:5', 'alpha:9'), e('here', 'alpha:9', 'alpha:9'), e('gone', 'alpha:9'), e('done', 'alpha:9', 'alpha:9', 'handled')];
+    expect(repliesFor(items, { ref: 'alpha:9' }).map((i) => i.id)).toEqual(['moved', 'here']);
+    expect(repliesFor(items, { ref: 'alpha:5' })).toEqual([]); // a different row now on the stored line
   });
   it('shows inbox text as typed', () => {
     expect(unescapeMd('Use A\\|B, see \\[draft\\] and \\\\n')).toBe('Use A|B, see [draft] and \\n');

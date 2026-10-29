@@ -1049,6 +1049,9 @@ components:
           type: string
         note:
           type: string
+        row:
+          $ref: "#/components/schemas/Ref"
+          description: Where the row is now, found by title (lines move); absent when the row is gone
     AgentItem:
       type: object
       properties:

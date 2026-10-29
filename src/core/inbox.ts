@@ -103,15 +103,47 @@ function find(tasks: Task[], line: number): Task | null {
 }
 const bareRow = (l: string) => l.replace(/\r$/, '').replace(/^\s*- \[[ xX]\] ?/, '');
 const toOf = (text: string): InboxTo => (text.includes('🙋') ? 'human' : /🤖|🪄/.test(text) ? 'agent' : 'none');
-/**
- * What identifies a row for its inbox entries: the title's words, without marks, dates, or links, so status, effort, due, and PR links can change.
- * Kept in step with `web/src/agents.ts`. @req FR:agent-inbox/activity.replies
- */
-export const taskKey = (text: string): string =>
-  (text.normalize('NFKC').replace(/\\([\\<>[\]`|])/g, '$1').replace(/🤖:\S*/gu, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/(?:📅|⏰|💤|🔄)\s*[^:\n]*:/gu, ' ')
-    .toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
 /** The row title without gate marks. */
 export const taskTitle = (text: string): string => text.replace(/🤖:\S*/g, '').replace(/[🤖🪄🙋]/gu, '').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim();
+
+const MAX_TASK = 300;
+/** The `task` an entry stores for a row: redacted, escaped, at most 300 characters. */
+export const inboxTitle = (text: string): string => field(taskTitle(text)).slice(0, MAX_TASK);
+
+/** The words of a stored title, without marks, dates, or links, so status, effort, due, and PR links can change. */
+const taskKey = (title: string): string =>
+  (title.replace(/🤖:\S*/gu, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/(?:📅|⏰|💤|🔄)\s*[^:\n]*:/gu, ' ').toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
+
+/**
+ * Where each entry's row is now (entry id → `path:line`, 1-based like `ref`). Lines move, so rows are found by title words in the
+ * same file, with both sides run through the same redaction and escaping. A cut title matches by prefix; the row nearest the stored line breaks ties.
+ * Entries whose row is gone are left out.
+ * @req FR:agent-inbox/inbox.rows
+ */
+export async function currentRows(ctx: LifecycleContext, entries: Pick<InboxEntry, 'id' | 'ref' | 'task'>[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const byPath = new Map<string, typeof entries>();
+  for (const e of entries) {
+    const path = e.ref.replace(/:\d+$/, '');
+    byPath.set(path, [...(byPath.get(path) ?? []), e]);
+  }
+  for (const [path, list] of byPath) {
+    const f = await readOrNull(ctx, path);
+    if (!f) continue;
+    const rows: { line: number; key: string }[] = [];
+    const walk = (ts: Task[]) => { for (const t of ts) { rows.push({ line: t.line + 1, key: taskKey(field(taskTitle(t.text))) }); walk(t.children); } };
+    for (const s of parseProject(f.content).sections) walk(s.tasks);
+    for (const e of list) {
+      const cut = e.task.length >= MAX_TASK;
+      const key = cut ? taskKey(e.task).replace(/ ?\S+$/, '') : taskKey(e.task); // the last word may be cut short
+      if (key === '') continue;
+      const was = Number(/:(\d+)$/.exec(e.ref)?.[1] ?? 0);
+      const hit = rows.filter((r) => (cut ? r.key.startsWith(key) : r.key === key)).sort((a, b) => Math.abs(a.line - was) - Math.abs(b.line - was))[0];
+      if (hit) out.set(e.id, `${path}:${hit.line}`);
+    }
+  }
+  return out;
+}
 
 async function readOrNull(ctx: LifecycleContext, path: string): Promise<{ content: string; version: string } | null> {
   try { return await ctx.storage.read(path); } catch (e) { if (e instanceof NotFoundError) return null; throw e; }
@@ -156,7 +188,7 @@ export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: str
     while (used.has(id)) id = newId(now);
     const entry = formatEntry({
       id, at: now.toISOString(), state: 'open', kind, to: toOf(row.text), ref: `${ref.path}:${ref.line + 1}`,
-      task: field(taskTitle(row.text)).slice(0, 300), text: field(t), extra: [],
+      task: inboxTitle(row.text), text: field(t), extra: [],
     });
     const head = cur ? makeRoom(cur.content, entry.length + 1).replace(/\n*$/, '\n\n') : INBOX_HEADER(field(project.title || baseName(ref.path)));
     try {

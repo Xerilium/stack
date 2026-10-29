@@ -1,4 +1,4 @@
-import { formatEntry, handleEntry, INBOX_HEADER, listInbox, parseInbox, sendToInbox, type InboxEntry } from '../../src/core/inbox';
+import { currentRows, formatEntry, handleEntry, INBOX_HEADER, listInbox, parseInbox, sendToInbox, type InboxEntry } from '../../src/core/inbox';
 import { parseProject } from '../../src/core/parser';
 import { ConflictError, MemoryStorage, PathError, validatePath } from '../../src/core/storage';
 import { LifecycleError } from '../../src/core/lifecycle';
@@ -89,6 +89,17 @@ describe('send', () => {
     const { ctx } = await mk(doc);
     const row = parseProject(doc).sections.flatMap((x) => x.tasks)[0];
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply', row.text)).resolves.toMatchObject({ path: 'tasks/inbox/alpha.md' });
+  });
+  it('follows rows by title through moves, new marks, redaction, and long titles; the stored line breaks ties', async () => {
+    const secret = 'ghp_' + 'a'.repeat(36);
+    const long = 'Ship the ' + 'very '.repeat(80) + 'long thing';
+    const doc = (rows: string[]) => '# Alpha\n\n## Active\n\n' + rows.map((r) => `- [ ] ${r}\n`).join('');
+    const { storage, ctx } = await mk(doc(['🤖 Rotate key ' + secret, '🙋 Pick a vendor [A|B]', '🤖 ' + long, '🤖 Same', '🤖 Same']));
+    for (const line of [4, 5, 6, 8]) await sendToInbox(ctx, { path: 'tasks/alpha.md', line }, 'x', 'reply');
+    await storage.write('tasks/alpha.md', doc(['🤖 New first', '🤖 Same', '🤖 Same', '🚧 🤖 ' + long + ' 🟢', '🙋 🔺 Pick a vendor [A|B] 📅 Nov 2: https://github.com/o/r/pull/4', '🤖 Rotate key ' + secret]));
+    const all = await listInbox(ctx);
+    const rows = await currentRows(ctx, all);
+    expect(all.map((e) => rows.get(e.id))).toEqual(['tasks/alpha.md:10', 'tasks/alpha.md:9', 'tasks/alpha.md:8', 'tasks/alpha.md:7']);
   });
   it('redacts secrets and escapes markdown', async () => {
     const { storage, ctx } = await mk();

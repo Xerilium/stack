@@ -9,7 +9,7 @@ type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 /** Browser storage, or undefined where it is blocked. The only key the app ever stores is `stack.available`. @req FR:web-app/host.nosecrets */
 export const store = (): Store | undefined => { try { return window.localStorage; } catch { return undefined; } };
 
-const dateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+export const dateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** Whole minutes between 0 and 16 h. Steps add or remove STEP from the current value, so an odd default still moves by 30. */
 export const clampBudget = (m: number) => Math.max(0, Math.min(MAX, Math.round(m)));

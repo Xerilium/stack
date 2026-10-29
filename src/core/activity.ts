@@ -3,7 +3,7 @@
  * @req FR:agent-inbox/activity.rows @req FR:agent-inbox/activity.state @req FR:agent-inbox/activity.order
  */
 import { EFFORT, IMPACT, PRIORITY, SPECIAL, STATUS, type LifecycleContext } from './lifecycle';
-import { listInbox, taskKey, taskTitle, type ListedEntry } from './inbox';
+import { currentRows, listInbox, taskTitle, type ListedEntry } from './inbox';
 import { parseProject, type Task } from './parser';
 import { NotFoundError } from './storage';
 import { logName } from './triage';
@@ -98,6 +98,7 @@ function stateOf(i: Omit<AgentItem, 'state'>, doing: boolean, now: number): Agen
 export async function agentActivity(ctx: ActivityContext): Promise<AgentItem[]> {
   const now = (ctx.now ?? (() => new Date()))().getTime();
   const inbox: ListedEntry[] = await listInbox(ctx).catch(() => []);
+  const rowOf = await currentRows(ctx, inbox).catch(() => new Map<string, string>());
   const rows: { item: Omit<AgentItem, 'state'>; doing: boolean; order: number }[] = [];
   for (const path of await ctx.storage.list()) {
     const name = baseName(path);
@@ -113,8 +114,7 @@ export async function agentActivity(ctx: ActivityContext): Promise<AgentItem[]> 
       const human = [...t.children, ...(chain.length > 0 ? siblings.filter((x) => x !== t) : [])].find((x) => !x.checked && isHuman(x.text));
       const fileRef = `${path}:${t.line + 1}`;
       const title = titleOf(t.text);
-      const key = taskKey(t.text);
-      const replies = key === '' ? 0 : inbox.filter((e) => e.state === 'open' && e.project === name && taskKey(e.task) === key).length;
+      const replies = inbox.filter((e) => e.state === 'open' && rowOf.get(e.id) === fileRef).length;
       const last = logs.get(fileRef);
       rows.push({
         item: {

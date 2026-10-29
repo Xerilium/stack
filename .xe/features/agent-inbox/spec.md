@@ -50,13 +50,14 @@ Handled entries change `state: open` to `state: handled` and gain `- handled: <i
 - **FR:inbox.id** (P1): Ids are `in-<UTC yyyymmddThhmmssZ>-<4 hex>`, unique within the file
 - **FR:inbox.send** (P1): `sendToInbox(ref, text, kind, expect?)` reads the row at `ref` (404 when missing, 409 when `expect` differs from the row text) and appends one entry. Text is one line, 1-1000 characters. Every field is redacted and escaped like result log fields (`FR:ai-triage-assist/result.noleak`), so the file never renders links or images from row text. The task row file is not changed
 - **FR:inbox.list** (P1): `listInbox({project?, state?})` returns entries from every inbox file (oldest first) with `id`, `at`, `project`, `ref`, `task`, `kind`, `to`, `text`, `state`, and `handled`/`note` when set. `state` defaults to `open`; `all` returns both
+- **FR:inbox.rows** (P1): `currentRows(entries)` finds where each entry's row is now: the row in the same file whose title words match the stored `task` (marks, dates, and links ignored; both run through the same redaction and escaping; a title cut at 300 characters matches by prefix). The row nearest the stored line breaks ties. Entries whose row is gone get none
 - **FR:inbox.handle** (P1): `handleEntry(id, actor, note?)` sets `state: handled` and adds the handled line (and note) to that entry only; every other byte is unchanged. Unknown id is 404; an already handled entry is `changed: false`
 - **FR:inbox.cap** (P2): An inbox file over 256 KiB drops handled entries, oldest first, before an append; if it is still over, the append is `409 conflict` ("Inbox is full; handle some entries first"). Dropped entries stay in storage history
 
 ### FR:api: Routes
 
 - **FR:api.send** (P1): `POST /inbox` `{ref, text, kind?, expect?}` (route `inbox.send`, scope `tasks:write`) returns `201 {id, path}`. Only the owner session may call it: a token caller gets `403 forbidden`, so an agent can never write words in the owner's voice
-- **FR:api.list** (P1): `GET /inbox?project=&state=` (route `inbox.list`, scope `tasks:read`) returns `{items}`
+- **FR:api.list** (P1): `GET /inbox?project=&state=` (route `inbox.list`, scope `tasks:read`) returns `{items}`; each item has `row`, the current ref of its row (`FR:inbox.rows`), when the row still exists
 - **FR:api.handle** (P1): `POST /inbox/handled` `{id, note?}` (route `inbox.handle`, scope `tasks:write`) returns `{changed}`; `note` is one line up to 500 characters. Agents call it after acting on an entry
 - **FR:api.agents** (P1): `GET /agents` (route `agents.list`, scope `tasks:read`) returns `{items}` built by `FR:activity.*`. All four routes are in `docs/api/openapi.yaml`
 
@@ -67,7 +68,7 @@ Handled entries change `state: open` to `state: handled` and gain `- handled: <i
 - **FR:activity.status** (P1): When a status provider is configured, each pull request gains `state` (`open`, `draft`, `merged`, `closed`), `checks` (`passing`, `failing`, `pending`, `none`), `title`, and `updatedAt`. A provider failure leaves the pull request without status; the route still answers
 - **FR:activity.log** (P1): `last` is the newest result log entry (`tasks/logs/<slug>*.md`) whose `ref` is the row: `{at, action, outcome?, summary?}`
 - **FR:activity.waiting** (P1): `waitingOn` is the first open 🙋 row that is a child of the agent row, or a sibling under the same parent (top-level rows only look at children)
-- **FR:activity.replies** (P1): `replies` counts open inbox entries for the row: same project and same title words, ignoring marks, dates, and links (lines move, so `ref` alone is not used)
+- **FR:activity.replies** (P1): `replies` counts open inbox entries whose current row (`FR:inbox.rows`) is this row
 - **FR:activity.state** (P1): `state` is the first that holds: `merged` (every linked PR merged), `failing` (an open PR with failing checks), `waiting` (`waitingOn` set, or the last log outcome is `blocked` or `needs-human`), `review` (an open, non-draft PR with passing or no checks), `ci` (an open PR with pending checks), `working` (🚧, a draft PR, or a log entry in the last 24 hours), else `queued`. `since` is the newest of the PR `updatedAt` and the log `at`
 - **FR:activity.order** (P2): Items sort by state (`failing`, `waiting`, `review`, `merged`, `ci`, `working`, `queued`), then newest `since`, then file order
 
