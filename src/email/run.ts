@@ -65,9 +65,12 @@ async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<Tria
     const prior = await existingDraft(d.ctx, m);
     if (prior) r.draft = { text: prior.text, webLink: prior.webLink, reused: true };
     else {
-      const { text, voice } = await voicedDraft(d.drafter, m, d.voice, summary);
-      const marked = markDraft(text);
-      r.draft = { text: marked, webLink: (await d.provider.createDraft(m.id, marked)).webLink, voice };
+      // A failed draft is not a failed pass: the owner gets a plain "Reply to" ask instead. @req FR:email-runner/model.draft
+      const drafted = await voicedDraft(d.drafter, m, d.voice, summary).catch(() => null);
+      if (drafted?.text) {
+        const marked = markDraft(drafted.text);
+        r.draft = { text: marked, webLink: (await d.provider.createDraft(m.id, marked)).webLink, voice: drafted.voice };
+      }
     }
   }
   tally(summary, r, 'model');

@@ -6,9 +6,9 @@ import { oneLine } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
 import { NotFoundError } from '../core/storage';
 import { createPermissionBroker, type PermissionBroker } from './broker';
-import { projectOf, SessionBusy, sessionState, STATE_ORDER, type AgentDriver, type Session, type SessionState, type Turn, type Update } from './driver';
+import { projectOf, SessionBusy, sessionState, STATE_ORDER, type AgentDriver, type PromptOptions, type Session, type SessionState, type Turn, type Update } from './driver';
 
-export interface RunManagerOptions { driver: AgentDriver; ctx: LifecycleContext; broker?: PermissionBroker; keepMs?: number; activeMs?: number }
+export interface RunManagerOptions { driver: AgentDriver; ctx: LifecycleContext; broker?: PermissionBroker; keepMs?: number; activeMs?: number; /** The served folder: where a new session runs when no `cwd` is given. @req FR:agent-team/driver.cwd */ cwd?: string }
 export interface ListedSession extends Omit<Session, 'active' | 'cost'> { state: SessionState; cost: { usd: number; tokens: number; approx?: boolean } }
 export interface CostReport {
   attribution: 'lastActive';
@@ -20,7 +20,9 @@ export interface CostReport {
   total: { usd: number; tokens: number; sessions: number };
 }
 export interface AgentRuns {
-  prompt(req: { sessionId?: string; cwd?: string; text: string }): Promise<{ runId: string; sessionId: string | null }>;
+  prompt(req: { sessionId?: string; cwd?: string; text: string; options?: PromptOptions }): Promise<{ runId: string; sessionId: string | null }>;
+  /** The folder a new session runs in by default. @req FR:agent-team/driver.cwd */
+  cwd?: string;
   cancel(sessionId: string): Promise<{ changed: boolean }>;
   /** Replays the run's updates for a session id or run id, then streams; `null` when there is no run to show. */
   subscribe(key: string, onUpdate: (u: Update) => void, onClose: () => void): (() => void) | null;
@@ -63,13 +65,14 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
     }
   }
 
-  async function prompt(req: { sessionId?: string; cwd?: string; text: string }) {
+  async function prompt(req: { sessionId?: string; cwd?: string; text: string; options?: PromptOptions }) {
     if (req.sessionId && running(req.sessionId)) throw new SessionBusy('Session is running; wait for it to finish');
+    const cwd = req.cwd ?? (req.sessionId ? undefined : o.cwd);
     const session = req.sessionId ? (await driver.listSessions({ limit: 400 })).find((s) => s.id === req.sessionId) : undefined;
     const state: RunState = { id: '', sessionId: req.sessionId ?? null, text: req.text, buffer: [], done: false, subs: new Set(), startedAt: now() };
     const run = await driver.prompt({
-      ...(req.sessionId ? { sessionId: req.sessionId } : {}), ...(req.cwd ? { cwd: req.cwd } : {}), text: req.text,
-      onPermission: (pr) => broker.ask({ id: state.sessionId ?? state.id, title: session?.title || projectOf(req.cwd ?? '') || 'new session', cwd: session?.cwd ?? req.cwd ?? '' }, pr, state.id),
+      ...(req.sessionId ? { sessionId: req.sessionId } : {}), ...(cwd ? { cwd } : {}), text: req.text, ...(req.options ? { options: req.options } : {}),
+      onPermission: (pr) => broker.ask({ id: state.sessionId ?? state.id, title: session?.title || req.options?.title || projectOf(cwd ?? '') || 'new session', cwd: session?.cwd ?? cwd ?? '' }, pr, state.id),
     });
     state.id = run.id;
     runs.set(run.id, state);
@@ -114,7 +117,7 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
   }
 
   const api: AgentRuns = {
-    prompt, cancel, subscribe, running,
+    prompt, cancel, subscribe, running, ...(o.cwd ? { cwd: o.cwd } : {}),
     sessionOf: (runId) => runs.get(runId)?.sessionId ?? null,
     needsYou: () => broker.open(),
     async sessions(q = {}) {

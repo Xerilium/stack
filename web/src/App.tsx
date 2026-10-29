@@ -22,12 +22,15 @@ import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } fr
 import { AsksView } from './AsksView';
 import { actionsFor, type AskItem, type Send } from './asks';
 import { useAsks } from './useAsks';
-import { SessionsView } from './SessionsView';
+import { Drawer, SessionsView } from './SessionsView';
 import { useSessions } from './useSessions';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
 import { fromDecisions } from './needs';
 import { repliesFor } from './agents';
 import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
+import { useTeam } from './useTeam';
+import { AgentChip, AgentTalk } from './AgentTalk';
+import { agentForAsk } from './team';
 import { planWeek } from './week';
 import { FocusMode, HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
 import { homeOf } from './home';
@@ -180,8 +183,14 @@ export function App() {
   /** @req FR:ask-queue/web.live (task files changing elsewhere refresh the rest of the app too) */
   const [stream, setStream] = useState<boolean | null>(null);
   const [agentsOn, setAgentsOn] = useState<boolean | null>(null);
+  // Sessions also poll while a row has a live session or a composer open; the flag is state, so the hook sees it on the next render (a plain variable read here would always be false).
+  const [teamActive, setTeamActive] = useState(false);
   /** @req FR:agent-sessions/web.view */
-  const sessions = useSessions(api, toast, agentsOn, view === 'sessions');
+  const sessions = useSessions(api, toast, agentsOn, view === 'sessions' || teamActive);
+  /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
+  const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name));
+  const wantActive = team.active || team.talk !== null;
+  useEffect(() => { setTeamActive(wantActive); }, [wantActive]);
   /** @req FR:pwa/notify.optin @req FR:pwa/notify.new */
   const [notifyOn, setNotifyOn] = useState(() => loadNotify(store()));
   const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : 'denied'));
@@ -323,6 +332,7 @@ export function App() {
   };
 
   const refNow = (): string | undefined => focusRef ?? cursor ?? next?.ref;
+  const taskAt = (ref?: string) => (ref ? tasks.find((t) => t.ref === ref) : undefined);
   const doAct = async (a: 'start' | 'done' | 'skip', ref = refNow()) => {
     if (!ref) return;
     if (a === 'done') {
@@ -456,6 +466,9 @@ export function App() {
       { id: 'defer', label: 'Defer', hint: 'z', run: openDefer },
       { id: 'focus', label: 'Focus mode', hint: 'Enter', run: () => { const r = refNow(); if (r) setFocusRef(r); } },
       { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
+      // @req FR:agent-team/web.keys
+      { id: 'talk', label: 'Talk to the task agent', hint: 'a', run: () => { const t = taskAt(refNow()); if (t) team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); } },
+      { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ] : []),
     ...(view === 'today' ? [
       { id: 'more-time', label: 'More time today (+30m)', hint: ']', run: () => setBudget(budget.minutes + STEP) },
@@ -481,6 +494,7 @@ export function App() {
   const latest = useRef({ positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events });
   latest.current = { positions, rows, cursor, view, selected, editing, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
+  const teamRef = useRef(team); teamRef.current = team;
   const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget };
 
   useEffect(() => {
@@ -488,6 +502,7 @@ export function App() {
       const L = latest.current, A = act.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); return; }
       if (e.key === 'Escape' && (L.palette || L.help || L.picker || L.deferRefs || L.captureOpen)) { e.preventDefault(); setPalette(false); setHelp(false); setPicker(null); setDeferRefs(null); setCaptureOpen(false); return; }
+      if (e.key === 'Escape' && teamRef.current.talk && !isTyping(e.target)) { e.preventDefault(); teamRef.current.setTalk(null); return; }
       if (e.key === 'Escape' && L.focusRef && !isTyping(e.target)) { e.preventDefault(); setFocusRef(null); return; }
       if (L.palette || L.help || L.captureOpen) return;
       if (L.deferRefs) {
@@ -545,6 +560,9 @@ export function App() {
       else if (k === 's' && L.cursor) void A.doAct('start');
       else if (k === 'S') void A.doAct('skip');
       else if (k === 'z') A.openDefer();
+      // @req FR:agent-team/web.keys
+      else if (k === 'a' && L.cursor) { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) teamRef.current.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); }
+      else if (k === 'R' && L.cursor) { e.preventDefault(); void teamRef.current.review(L.cursor); }
       else if (k === 'p' || k === 't' || k === 'f' || k === 'i') A.openPicker([GROUP_NAMES.find((g) => GROUPS[g].key === k)!]);
     };
     window.addEventListener('keydown', onKey);
@@ -569,6 +587,21 @@ export function App() {
     onSelect: (ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; }), onCursor: setCursor, onEdit: setEditing, onSave: (r, t) => void save(r, t), onToggle: (t) => void toggleDone(t),
     onPick: (refs, g) => setPicker({ refs: selected.size && selected.has(refs[0]) ? [...selected] : refs, groups: Array.isArray(g) ? g : [g] }),
     onMove: (ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir)), onDragStart, onExpand: toggleSet('expanded'), onOpen: (r) => setFocusRef(r),
+    agent: {
+      chip: (t) => { const v = team.chipOf(t); return <AgentChip view={v} onClick={() => { if (v.tone === 'accent' || v.tone === 'warn' || v.text.startsWith('Done')) team.openSession(t.ref); else team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); }} onNeeds={() => go('asks')} />; },
+      talk: (t) => (team.talk?.ref === t.ref ? <AgentTalk key={t.ref} team={team} talk={team.talk} agents={team.agentsOf(t)} /> : null),
+    },
+  };
+  /** The composer for an ask card: the ask's agent, the ask as the context. @req FR:agent-team/web.anything */
+  const askTalk = {
+    chip: (a: { key: string; from: string; project?: string }) => { const ag = agentForAsk(team.team, a); return ag ? <AgentChip view={{ text: ag.slug === a.from || ag.name === a.from ? 'Talk' : ag.name, tone: 'plain', title: `Talk to ${ag.name} (a)` }} onClick={() => team.toggleTalk({ askKey: a.key, project: a.project ?? ag.projects[0] ?? '', about: a.key })} /> : null; },
+    render: (a: { key: string; ask: string; from: string; project?: string }) => (team.talk?.askKey === a.key ? <AgentTalk key={a.key} team={team} talk={{ ...team.talk, about: a.ask }} agents={[...new Set([agentForAsk(team.team, a), ...(a.project ? team.agentsOf({ project: a.project, section: '' }) : [])].filter((x): x is NonNullable<typeof x> => !!x))]} /> : null),
+    open: (a: { key: string; ask: string; from: string; project?: string }) => { const ag = agentForAsk(team.team, a); team.toggleTalk({ askKey: a.key, project: a.project ?? ag?.projects[0] ?? '', about: a.ask }); },
+    isOpen: () => team.talk?.askKey !== undefined, close: () => team.setTalk(null),
+  };
+  const tileAgent = {
+    chip: (project: string, title: string) => { const ag = team.agentsOf({ project, section: '' })[0]; return <AgentChip view={ag ? { text: ag.name, tone: 'plain', title: `Talk to ${ag.name} about ${title}` } : { text: 'No agent', tone: 'muted', title: 'No agent covers this project' }} onClick={() => team.toggleTalk({ project, about: title })} />; },
+    talk: (project: string, title: string) => (team.talk && !team.talk.ref && !team.talk.askKey && team.talk.project === project ? <AgentTalk key={project} team={team} talk={{ project, about: title }} agents={team.agentsOf({ project, section: '' })} /> : null),
   };
   const focusTask = focusRef ? tasks.find((t) => t.ref === focusRef) : undefined;
   // @req FR:web-shell/nav.rail
@@ -594,10 +627,10 @@ export function App() {
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
         {local && <div class={`banner mobile-only ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-pill" title={info ? `${info.repo} · ${info.branch}` : undefined}>{info ? <strong>{info.mode === 'live' ? 'Live' : 'Demo copy'}</strong> : me}</div>}
         {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
-        {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} />}
+        {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
         {phase === 'ready' && view === 'today' && (
-          <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
+          <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'home' && <HomeView h={home} now={clockNow} minutesLeft={budget.minutes} p={rowProps} busy={busy} onAct={(a, ref) => (a === 'defer' ? openDefer(ref ?? next?.ref) : void doAct(a, ref ?? next?.ref))} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setBudget(budget.minutes + STEP)} />}
@@ -607,6 +640,10 @@ export function App() {
         )}
         {phase === 'ready' && view === 'projects' && <ProjectsView week={week} rows={capRows} onOpen={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })} />}
       </main>
+      {/* The session drawer from a row, outside the Sessions view. @req FR:agent-team/web.talk */}
+      {view !== 'sessions' && sessions.open && <div class="sess-scrim" onClick={sessions.closeDrawer} />}
+      {view !== 'sessions' && sessions.open && <Drawer key={sessions.open} s={sessions} item={sessions.items.find((i) => i.id === sessions.open) ?? null} cursorItem={null} onClose={sessions.closeDrawer} />}
+      {team.talk && (view === 'today' || view === 'projects') && team.talk.ref && <AgentTalk key={team.talk.ref} team={team} talk={team.talk} agents={team.agentsOf(taskAt(team.talk.ref) ?? { project: team.talk.project, section: '' })} float />}
       {selected.size > 0 && view !== 'projects' && (
         <div class="bulk" role="toolbar" aria-label="Bulk edit">
           <strong>{selected.size} selected</strong>

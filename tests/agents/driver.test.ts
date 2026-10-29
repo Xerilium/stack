@@ -112,7 +112,7 @@ describe('createSdkDriver', () => {
     expect(u[2]).toMatchObject({ type: 'tool_call', callId: 'tu1', title: 'Bash: git push', kind: 'execute', status: 'pending' });
     expect(u[3]).toMatchObject({ type: 'permission', requestId: 'req-1', callId: 'tu1', title: 'Allow Bash: git push', options: [{ optionId: 'allow', kind: 'allow_once' }, { optionId: 'allow-session', kind: 'allow_always' }, { optionId: 'deny', kind: 'reject_once' }] });
     expect(u[4]).toMatchObject({ type: 'tool_update', callId: 'tu1', status: 'failed' });
-    expect(u[5]).toEqual({ type: 'done', stopReason: 'end_turn', cost: { usd: 0.1234, tokens: 1350 }, turns: 2, durationMs: 1200 });
+    expect(u[5]).toEqual({ type: 'done', stopReason: 'end_turn', cost: { usd: 0.1234, tokens: 1350 }, turns: 2, durationMs: 1200, text: 'Pushed.' });
     expect(asked).toHaveLength(1);
     const opts = (sdk.calls[0] as { options: Record<string, unknown> }).options;
     expect(opts).toMatchObject({ resume: 'a1b2c3d4-0000-0000-0000-000000000002', includePartialMessages: true });

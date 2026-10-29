@@ -7,7 +7,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { oneLine } from '../core/asks';
 import { createStoreIndex, type StoreIndex } from './store';
-import { SessionBusy, toolKind, type AgentDriver, type PermissionAnswer, type PermissionRequest, type Run, type Session, type Turn, type Update } from './driver';
+import { SessionBusy, toolKind, type AgentDriver, type PermissionAnswer, type PermissionRequest, type PromptRequest, type Run, type Session, type Turn, type Update } from './driver';
 
 /** The slice of the SDK this driver uses; injectable so tests never load the real module. */
 export interface SdkLike {
@@ -100,7 +100,7 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
     return q.limit !== undefined && out.length > q.limit ? out.slice(out.length - q.limit) : out;
   }
 
-  async function prompt(req: { sessionId?: string; cwd?: string; text: string; onPermission: (r: PermissionRequest) => Promise<PermissionAnswer> }): Promise<Run> {
+  async function prompt(req: PromptRequest): Promise<Run> {
     // The run is reserved before any await, so two prompts in one tick cannot both start on one transcript.
     if (req.sessionId) for (const r of runs.values()) if (r.sessionId === req.sessionId) throw new SessionBusy('Session is running; wait for it to finish');
     const id = `run-${++seq}`;
@@ -132,7 +132,15 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
       let streamed = false;
       let finished = false;
       try {
-        const it = (await sdk()).query({ prompt: req.text, options: { ...(req.sessionId ? { resume: req.sessionId } : {}), ...(req.cwd ? { cwd: req.cwd } : {}), includePartialMessages: true, canUseTool, abortController: ac, ...(o.maxBudgetUsd !== undefined ? { maxBudgetUsd: o.maxBudgetUsd } : {}) } });
+        const po = req.options ?? {};
+        // @req FR:agent-team/driver.options
+        const extra: Record<string, unknown> = {
+          ...(po.systemPrompt ? { systemPrompt: { type: 'preset', preset: 'claude_code', append: po.systemPrompt } } : {}),
+          ...(po.model ? { model: po.model } : {}), ...(po.title && !req.sessionId ? { title: po.title } : {}),
+          ...(po.allowedTools ? { allowedTools: po.allowedTools } : {}), ...(po.disallowedTools ? { disallowedTools: po.disallowedTools } : {}),
+          ...(po.schema ? { outputFormat: { type: 'json_schema', schema: po.schema } } : {}),
+        };
+        const it = (await sdk()).query({ prompt: req.text, options: { ...(req.sessionId ? { resume: req.sessionId } : {}), ...(req.cwd ? { cwd: req.cwd } : {}), includePartialMessages: true, canUseTool, abortController: ac, ...(o.maxBudgetUsd !== undefined ? { maxBudgetUsd: o.maxBudgetUsd } : {}), ...extra } });
         for await (const raw of it) {
           const m = raw as Record<string, unknown>;
           if (m.type === 'system' && m.subtype === 'init' && typeof m.session_id === 'string' && !state.sessionId) {
@@ -161,7 +169,7 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
             const usd = typeof m.total_cost_usd === 'number' ? m.total_cost_usd : 0;
             const errors = Array.isArray(m.errors) ? (m.errors as unknown[]).map(String).join('; ') : '';
             const stopReason = ac.signal.aborted ? 'cancelled' : m.subtype === 'success' ? 'end_turn' : m.subtype === 'error_max_budget_usd' ? 'max_budget' : 'error';
-            q.push({ type: 'done', stopReason, cost: { usd, tokens }, turns: typeof m.num_turns === 'number' ? m.num_turns : 0, durationMs: typeof m.duration_ms === 'number' ? m.duration_ms : 0, ...(stopReason === 'error' && errors ? { error: errors } : {}) });
+            q.push({ type: 'done', stopReason, cost: { usd, tokens }, turns: typeof m.num_turns === 'number' ? m.num_turns : 0, durationMs: typeof m.duration_ms === 'number' ? m.duration_ms : 0, ...(stopReason === 'error' && errors ? { error: errors } : {}), ...(typeof m.result === 'string' && m.result ? { text: cut(m.result, 20_000) } : {}), ...(m.structured_output !== undefined ? { structured: m.structured_output } : {}) });
           }
         }
         if (!finished) q.push({ type: 'done', stopReason: ac.signal.aborted ? 'cancelled' : 'error', cost: { usd: 0, tokens: 0 }, turns: 0, durationMs: 0, ...(ac.signal.aborted ? {} : { error: 'The agent stopped without a result' }) });

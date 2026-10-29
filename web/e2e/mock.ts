@@ -6,7 +6,9 @@ export interface MockInbox { id: string; at: string; project: string; ref: strin
 export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string }
 export interface MockSession { id: string; title: string; project: string; cwd: string; branch?: string; lastActive: string; state: string; cost: { usd: number; tokens: number }; prs: string[] }
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
-export interface Mock { schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; insertAbove: (project: string, text: string) => void }
+export interface MockTeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: string; prompt: string; defined: boolean; projects: string[] }
+export interface MockReview { ref: string; at: string; verdict: string; plan: string; estimate?: string; agent: string; needs: string[] }
+export interface Mock { team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; insertAbove: (project: string, text: string) => void }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
 /** Short date for row text, relative to today (the plan depends on the clock). */
@@ -28,7 +30,7 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 /** `context: true` routes at the browser context, so requests a service worker makes are mocked too. */
 export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean } = {}): Promise<Mock> {
   const router = opts.context ? page.context() : page;
-  const m: Mock = { schedule: null, events: null, calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
+  const m: Mock = { team: [], reviews: [], schedule: null, events: null, calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
   const proj = [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
@@ -85,7 +87,27 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       if (sm[2] === 'prompt') { if (s.state === 'active') return json(route, 409, { error: { code: 'conflict', message: 'Session is active elsewhere' } }); s.state = 'running'; return json(route, 202, { runId: `run-${s.id.slice(-1)}`, sessionId: s.id }); }
       s.state = 'idle'; return json(route, 200, { changed: true });
     }
-    if (path === '/sessions' && req.method() === 'POST') { const id = 'a1b2c3d4-0000-0000-0000-00000000new1'; m.sessions?.unshift({ id, title: body.text, project: 'stack', cwd: body.cwd, lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] }); return json(route, 202, { runId: 'run-new', sessionId: id }); }
+    // @req FR:agent-team/review.api @req FR:agent-team/talk.api
+    if (path === '/team') { const pr = url.searchParams.get('project'); return json(route, 200, { items: pr ? m.team.filter((a) => a.scope.includes('*') || a.scope.some((x) => x.split('/')[0] === pr)).sort((a, b) => Number(b.scope.some((x) => x.startsWith(pr))) - Number(a.scope.some((x) => x.startsWith(pr)))) : m.team }); }
+    if (path === '/reviews') { const pr = url.searchParams.get('project') ?? ''; return json(route, 200, { items: m.reviews.filter((r) => r.ref.startsWith(`${pr}:`)) }); }
+    if (path === '/tasks/review') {
+      if (!m.sessions) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+      const t = find(body.ref);
+      if (!t) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+      const id = `a1b2c3d4-0000-0000-0000-0000000rev${m.calls.length}`.slice(0, 36);
+      m.sessions.unshift({ id, title: `CoS · review · ${t.text} · ${t.ref}`, project: 'stack', cwd: '/x/stack', lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] });
+      return json(route, 202, { runId: 'run-review', sessionId: id, agent: body.agent ?? 'cos' });
+    }
+    if (path === '/sessions' && req.method() === 'POST') {
+      if (!m.sessions) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+      const id = `a1b2c3d4-0000-0000-0000-0000000new${m.calls.length}`.slice(0, 36);
+      const t = body.ref ? find(body.ref) : undefined;
+      if (body.ref && !t) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+      const ag = m.team.find((a) => a.slug === body.agent) ?? m.team[0];
+      const title = t ? `${ag?.name ?? 'Agent'} · ${t.text} · ${t.ref}` : body.project ? `${ag?.name ?? 'Agent'} · ${body.project}` : body.text;
+      m.sessions.unshift({ id, title, project: 'stack', cwd: body.cwd ?? '/x/stack', lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] });
+      return json(route, 202, { runId: 'run-new', sessionId: id, ...(ag ? { agent: ag.slug, title } : {}) });
+    }
     if (path === '/schedule') return json(route, 200, m.schedule); // null: no schedule, the 9-6 fallback
     if (path === '/calendar') {
       if (m.calendarFail) return json(route, 200, { configured: true, items: [], error: 'Calendar unavailable' });

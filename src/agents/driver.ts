@@ -28,7 +28,7 @@ export type Update =
   | { type: 'tool_call'; callId: string; title: string; kind: ToolKind; status: ToolStatus }
   | { type: 'tool_update'; callId: string; status: ToolStatus; output?: string }
   | { type: 'permission'; requestId: string; callId: string; title: string; options: PermissionOption[] }
-  | { type: 'done'; stopReason: StopReason; cost: { usd: number; tokens: number }; turns: number; durationMs: number; error?: string };
+  | { type: 'done'; stopReason: StopReason; cost: { usd: number; tokens: number }; turns: number; durationMs: number; error?: string; /** The final assistant text. @req FR:agent-team/driver.options */ text?: string; /** The parsed answer when the prompt asked for a schema. */ structured?: unknown };
 
 export interface Session {
   id: string; title: string; project: string; cwd: string; branch?: string;
@@ -40,7 +40,19 @@ export interface Session {
 }
 export interface Turn { at: string; role: 'user' | 'assistant'; text: string }
 export interface Run { id: string; sessionId: string | null; updates: AsyncIterable<Update> }
-export interface PromptRequest { sessionId?: string; cwd?: string; text: string; onPermission: (req: PermissionRequest) => Promise<PermissionAnswer> }
+/** Per-prompt options an agent persona needs; every field is optional and a driver may ignore what it cannot honour. @req FR:agent-team/driver.options */
+export interface PromptOptions {
+  /** Appended to the runtime's own system prompt (the agent's persona and the task context). */
+  systemPrompt?: string;
+  model?: string;
+  /** The session's title (new sessions only). */
+  title?: string;
+  allowedTools?: string[];
+  disallowedTools?: string[];
+  /** JSON schema for a structured answer; `done.structured` carries the parsed result. */
+  schema?: Record<string, unknown>;
+}
+export interface PromptRequest { sessionId?: string; cwd?: string; text: string; options?: PromptOptions; onPermission: (req: PermissionRequest) => Promise<PermissionAnswer> }
 
 export interface AgentDriver {
   /** Newest first; `sinceMs` lists every session touched since then (for the cost window) instead of the newest `limit`. */
@@ -84,4 +96,8 @@ const KINDS: Record<string, ToolKind> = {
   Edit: 'edit', MultiEdit: 'edit', Write: 'edit', NotebookEdit: 'edit', WebFetch: 'fetch', WebSearch: 'fetch', TodoWrite: 'think', EnterPlanMode: 'switch_mode', ExitPlanMode: 'switch_mode',
 };
 export const toolKind = (name: string): ToolKind => KINDS[name] ?? 'other';
+
+/** A read-only run pre-approves reads and forbids every writer; never put an agent's own tools in `allowedTools` (that skips the permission ask). @req FR:agent-team/driver.options */
+export const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', 'TodoWrite']; // the web tools still ask: repo content must not leave without an ask
+export const WRITE_TOOLS = ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'];
 

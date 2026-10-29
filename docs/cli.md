@@ -7,6 +7,7 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 
 - `web`: serve the web app on localhost (default port 4173) over a content repo (`--repo path-or-git-url`, else discovery). DEMO by default (scratch copy in `~/.config/stack/demo`, `--reset` re-copies); `--live` edits the real repo on branch `stack-web` (`--branch`) via a worktree. `web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]`
 - `graph`: one-time Microsoft Graph sign-in (device code) so `stack web` shows the live calendar. Read scopes only (`--with calendar,mail,drafts`); `Mail.Send` is refused. The token stays in `~/.config/stack/graph-token.json` (`--cache`, mode 0600). `graph login --client-id <id> [--tenant t] [--with calendar,mail,drafts] [--cache path] | status | logout`
+- `email`: one triage pass on the signed-in mailbox: rules first, Haiku classifies, Sonnet drafts in your voice (drafts only, never sends), archive/spam/unsubscribe asks act only after you answer. Runs where Claude Code runs (launchd or a scheduled task). `run` takes a lock and stops before any model call when one delta exceeds `--max` (default 200); `--dry-run` writes nothing. `voice` learns your style from Sent items (plus `--extra file.json` from elsewhere) into `$STACK_DATA_DIR`. `email run [--mode observe|drafts] [--max n] [--dry-run] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]`
 - `init`: create repo, tasks/, and config. `init`
 - `add-project`: create a project file. `add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force]`
 - `add`: add a task. `add <project> <text...> [--section name] [--parent ref]`
@@ -22,4 +23,10 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `set`: set emojis and checkbox. `set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]`
 - `asks`: ask queue for the owner; agents `put` and `handle` asks, read answers with `list`. See [docs/asks.md](asks.md). `asks put <key> --ask t --kind k --from agent [...] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]`
 - `remove-completed`: delete checked rows. `remove-completed [--project name]`
+- `agents`: agents per project folder. `agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`
 - `update`: regenerate README, stack, projects, my-day. `update [--sweep] [--queries]`
+
+## Agents
+
+- `stack agents list [--project p --section s] [--json]`: the team (files in `tasks/agents/` plus agents named in a project's `Agents` metadata); with `--project`, the agents whose scope covers it, active first.
+- `stack agents add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`: write or update `tasks/agents/<slug>.md`. Scope entries are `project`, `project/section`, or `*`.
