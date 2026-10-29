@@ -43,6 +43,6 @@ Agents never do these steps. They create a credential and an Azure resource.
 ## If something is off
 
 - Deploy run skipped: the deploy secret is missing. Re-run setup.
-- **Not on the allow-list** after step 3: run the command that page shows, then reload. If it still shows, you signed in with a different GitHub account.
+- **Not on the allow-list** after step 3: run the command that page shows, then reload. `--owner` replaces the owner, so run it only when that page is signed in as you. If Stack already worked before, you are signed in with a different GitHub account: sign out and sign in as yourself instead.
 - Asks shows **Offline · retrying** while you're online: the token expired or lost access. Rotate it (above).
 - Reference: [runbook](runbook.md), [Azure host settings](azure-host.md).

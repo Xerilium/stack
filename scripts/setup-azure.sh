@@ -9,10 +9,10 @@
 # The task repo token is read from a hidden prompt, or from STACK_REPO_TOKEN in the environment. On a re-run, Enter keeps the current one.
 set -euo pipefail
 
-REPO=flanakin/todo GROUP=stack-rg NAME=stack-app LOCATION=westus2 APP=Xerilium/stack OWNER=""
+REPO=flanakin/todo GROUP=stack-rg NAME=stack-app LOCATION=westus2 APP=Xerilium/stack OWNER="" REPO_SET=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --repo) REPO=$2; shift 2 ;;
+    --repo) REPO=$2; REPO_SET=1; shift 2 ;;
     --group) GROUP=$2; shift 2 ;;
     --name) NAME=$2; shift 2 ;;
     --location) LOCATION=$2; shift 2 ;;
@@ -42,8 +42,10 @@ umask 077
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/stack-setup.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
+say "Subscription: $(az account show --query name -o tsv)"
+# Only "not there" means a new site. Any other failure stops the script (set -e) instead of creating a second site or re-applying the template.
 EXISTS=0
-az staticwebapp show -n "$NAME" -g "$GROUP" -o none 2>/dev/null && EXISTS=1
+if [ "$(az group exists -n "$GROUP")" = true ] && [ -n "$(az staticwebapp list -g "$GROUP" --query "[?name=='$NAME'].name" -o tsv)" ]; then EXISTS=1; fi
 
 # --owner on an existing site: only update the allow-list (takes effect at once, no redeploy).
 if [ -n "$OWNER" ] && [ "$EXISTS" = 1 ]; then
@@ -84,7 +86,8 @@ else
   say "Updating settings on $NAME (other settings are kept)"
   az staticwebapp appsettings list -n "$NAME" -g "$GROUP" --query properties -o json > "$TMP/current.json"
   # Merge only what changed into the current list, then write it back whole (az rest reads the body from the file).
-  STACK_P_OWNERS=$OWNER STACK_P_URL=$([ "$ONLY_OWNER" = 1 ] && echo "" || echo "https://github.com/$REPO") STACK_P_TOKEN=$TOKEN \
+  # The repo URL changes only when --repo is given, so a re-run never silently repoints a site.
+  STACK_P_OWNERS=$OWNER STACK_P_URL=$([ "$REPO_SET" = 1 ] && echo "https://github.com/$REPO" || echo "") STACK_P_TOKEN=$TOKEN \
     node -e 'const fs = require("fs"), e = process.env; const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8") || "{}") || {}; if (e.STACK_P_OWNERS) p.STACK_OWNERS = e.STACK_P_OWNERS; if (e.STACK_P_URL) p.STACK_REPO_URL = e.STACK_P_URL; if (e.STACK_P_TOKEN) p.STACK_REPO_TOKEN = e.STACK_P_TOKEN; fs.writeFileSync(process.argv[2], JSON.stringify({ properties: p }));' "$TMP/current.json" "$TMP/body.json"
   ID=$(az staticwebapp show -n "$NAME" -g "$GROUP" --query id -o tsv)
   az rest --method put --url "https://management.azure.com${ID}/config/appsettings?api-version=2023-12-01" --body "@$TMP/body.json" -o none

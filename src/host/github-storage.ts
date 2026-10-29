@@ -130,7 +130,8 @@ export class GitHubStorage implements Storage, AuxFiles {
       etag = r.etag ?? undefined;
     } catch (e) {
       // A failed check (ref, commit, or tree read) keeps serving what we have to reads; rev() reports it; the next read retries.
-      if (this.snap) { this.checkedAt = this.now(); this.failed = e; return this.snap; }
+      // A write that landed meanwhile proved GitHub works and set a fresh snapshot: do not mark it failed.
+      if (this.snap) { if (seq === this.writes) { this.checkedAt = this.now(); this.failed = e; } return this.snap; }
       throw e;
     }
     // A write that landed while this read was in flight is newer than what we read: keep it.

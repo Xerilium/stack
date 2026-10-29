@@ -360,3 +360,27 @@ describe('review round 1: bounded blob cache', () => {
     expect(gets(gh, 'blobs')).toBe(before + 1);
   });
 });
+
+describe('review round 2', () => {
+  it('a check that fails while a write lands does not mark the fresh snapshot failed', async () => {
+    const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A' });
+    let release!: () => void;
+    let failNext = false;
+    let reader: Promise<unknown> | null = null;
+    const h: { s?: GitHubStorage; advance?: (ms: number) => void } = {};
+    const { s, clock } = make(gh, {
+      fetch: async (u, i = {}) => {
+        const method = i.method ?? 'GET';
+        if (method === 'POST' && String(u).endsWith('/git/blobs') && !reader) { h.advance!(10_000); failNext = true; reader = h.s!.read('tasks/a.md'); }
+        if (failNext && method === 'GET' && String(u).includes('/git/ref/')) { failNext = false; await new Promise<void>((ok) => { release = ok; }); return new Response('{}', { status: 502 }); }
+        return gh.fetch(u, i);
+      },
+    });
+    h.s = s; h.advance = clock.advance;
+    await s.read('tasks/a.md');
+    await s.write('tasks/a.md', 'A2');
+    release();
+    await reader;
+    expect(await s.rev()).toBe(gh.refs.get('main'));
+  });
+});

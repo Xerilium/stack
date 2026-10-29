@@ -28,6 +28,16 @@ describe('setup-azure.sh', () => {
     expect(script.slice(guard, deploy)).not.toMatch(/\nfi\n/);
     expect(script).toMatch(/-f infra\/main\.bicep/);
   });
+  it('only "not there" counts as a new site; any other az failure stops the script', () => {
+    expect(script).not.toMatch(/2>\/dev\/null && EXISTS=1/);
+    expect(script).toMatch(/az group exists -n "\$GROUP"/);
+    expect(script).toMatch(/az staticwebapp list -g "\$GROUP" --query/);
+    expect(script).toMatch(/Subscription: /);
+  });
+  it('a re-run changes the repo URL only when --repo is given', () => {
+    expect(script).toMatch(/--repo\) REPO=\$2; REPO_SET=1;/);
+    expect(script).toMatch(/STACK_P_URL=\$\(\[ "\$REPO_SET" = 1 \]/);
+  });
   it('sets the deploy secret and starts the deploy', () => {
     expect(script).toMatch(/gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN -R/);
     expect(script).toMatch(/gh workflow run deploy\.yml/);
