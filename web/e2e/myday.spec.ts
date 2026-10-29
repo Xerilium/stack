@@ -97,9 +97,9 @@ test.describe('My day v2', () => {
     await open(page, at(23, 30));
     await page.getByTestId('tomorrow').click();
     await expect(page.getByTestId('available').getByRole('button', { name: 'More time' })).toBeDisabled();
-    const before = await page.getByTestId('available').textContent();
-    await page.keyboard.press(']');
-    await expect(page.getByTestId('available')).toHaveText(before!); // ] does nothing to tomorrow (or to today)
+    await page.keyboard.press(']'); // must not change today's Available
+    await page.getByTestId('tomorrow').click();
+    await expect(page.getByTestId('available').getByRole('button', { name: 'Reset' })).toHaveCount(0);
   });
 
   // @req FR:home/day.override
