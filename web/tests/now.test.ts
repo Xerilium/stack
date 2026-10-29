@@ -119,3 +119,12 @@ describe('blocker eligibility matches core', () => {
     expect(rankNow([rows[1], rows[0]], day, rows).map((t) => t.text)).toEqual(['🔺 plain', 'Monday standup']);
   });
 });
+
+describe('parent rows in the Then list', () => {
+  const day = new Date(2026, 9, 23);
+  const row = (text: string, depth = 0): Task => ({ ref: `a:${text}`, text, project: 'a', section: '🔄 Active', done: false, depth, notes: [] });
+  it('a parent takes what its subtask lends', () => {
+    const rows = [row('Project'), row('gate', 1), row('🔺 plain'), row('🚨 ⛔️ ship -- After gate')];
+    expect(rankNow([rows[2], rows[0]], day, rows).map((t) => t.text)).toEqual(['Project', '🔺 plain']);
+  });
+});

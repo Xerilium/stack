@@ -159,7 +159,7 @@ const rowKey = (t: Task, now: Date): Key => {
 /**
  * Order for the Now lists: due-soon first, then in progress, then priority, then file order (stable). A row that blocks
  * others takes the best key among the rows it blocks (transitive, never a sum); subtasks of a blocked row are held up too,
- * and a subtask under a blocker inherits through its ancestors. @req FR:web-app/now.blockers
+ * a subtask under a blocker inherits through its ancestors, and a parent row takes what its subtasks lend. @req FR:web-app/now.blockers
  */
 export function rankNow(tasks: Task[], now = new Date(), all: Task[] = tasks): Task[] {
   const edges = blockerEdges(all);
@@ -194,7 +194,8 @@ export function rankNow(tasks: Task[], now = new Date(), all: Task[] = tasks): T
   };
   const effective = (t: Task): Key => {
     let best = rowKey(t, now);
-    for (const r of [t.ref, ...ancestors(t.ref)]) { const k = lent(r); if (k && cmp(k, best) < 0) best = k; }
+    const below = (ref: string): string[] => (kids.get(ref) ?? []).flatMap((c) => [c, ...below(c)]);
+    for (const r of [t.ref, ...ancestors(t.ref), ...below(t.ref)]) { const k = lent(r); if (k && cmp(k, best) < 0) best = k; }
     return best;
   };
   return tasks.map((t, i) => ({ t, i, k: effective(t) }))
