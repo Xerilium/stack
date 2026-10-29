@@ -97,15 +97,17 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
   }
 
   async function prompt(req: { sessionId?: string; cwd?: string; text: string; onPermission: (r: PermissionRequest) => Promise<PermissionAnswer> }): Promise<Run> {
-    if (req.sessionId) {
-      for (const r of runs.values()) if (r.sessionId === req.sessionId) throw new SessionBusy('Session is running; wait for it to finish');
-      const s = (await listSessions({ limit: 400 })).find((x) => x.id === req.sessionId);
-      if (s?.active) throw new SessionBusy('Session is active elsewhere; message it through its inbox');
-    }
+    // The run is reserved before any await, so two prompts in one tick cannot both start on one transcript.
+    if (req.sessionId) for (const r of runs.values()) if (r.sessionId === req.sessionId) throw new SessionBusy('Session is running; wait for it to finish');
     const id = `run-${++seq}`;
     const ac = new AbortController();
     const state = { sessionId: req.sessionId ?? null, ac };
     runs.set(id, state);
+    if (req.sessionId) {
+      let s: Session | undefined;
+      try { s = (await listSessions({ limit: 400 })).find((x) => x.id === req.sessionId); } catch (e) { runs.delete(id); throw e; }
+      if (s?.active) { runs.delete(id); throw new SessionBusy('Session is active elsewhere; message it through its inbox'); }
+    }
     const q = new Queue<Update>();
     const allowed = new Set<string>();
     const run: Run = { id, sessionId: state.sessionId, updates: q };
@@ -154,7 +156,7 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
             const tokens = Object.values(mu).reduce((t, u) => t + ['inputTokens', 'outputTokens', 'cacheReadInputTokens', 'cacheCreationInputTokens'].reduce((x, k) => x + (typeof u[k] === 'number' ? (u[k] as number) : 0), 0), 0);
             const usd = typeof m.total_cost_usd === 'number' ? m.total_cost_usd : 0;
             const errors = Array.isArray(m.errors) ? (m.errors as unknown[]).map(String).join('; ') : '';
-            const stopReason = m.subtype === 'success' ? 'end_turn' : m.subtype === 'error_max_budget_usd' ? 'max_budget' : 'error';
+            const stopReason = ac.signal.aborted ? 'cancelled' : m.subtype === 'success' ? 'end_turn' : m.subtype === 'error_max_budget_usd' ? 'max_budget' : 'error';
             q.push({ type: 'done', stopReason, cost: { usd, tokens }, turns: typeof m.num_turns === 'number' ? m.num_turns : 0, durationMs: typeof m.duration_ms === 'number' ? m.duration_ms : 0, ...(stopReason === 'error' && errors ? { error: errors } : {}) });
           }
         }

@@ -16,6 +16,8 @@ export interface StoreOptions {
   stepBytes?: number;
   /** Run the scan queue (default true); tests call `scanAll()` instead. */
   background?: boolean;
+  /** How long one stat scan of the store is reused (default 2 s; a refresh makes two or three calls back to back). */
+  entriesTtlMs?: number;
 }
 export interface StoreEntry { id: string; path: string; mtime: number; size: number }
 export interface Identity { title: string; cwd: string; branch?: string; sidechain: boolean; prs: string[] }
@@ -100,7 +102,6 @@ function costState(line: string): Usage | null {
 }
 
 function add(into: Usage, more: Usage): Usage {
-  // `lastId` is carried separately by the caller.
   const byModel = { ...into.byModel };
   for (const [m, v] of Object.entries(more.byModel)) { const cur = byModel[m] ?? { usd: 0, tokens: 0 }; byModel[m] = { usd: round(cur.usd + v.usd), tokens: cur.tokens + v.tokens }; }
   return { byModel, usd: round(into.usd + more.usd), priced: into.priced && more.priced };
@@ -110,17 +111,18 @@ function add(into: Usage, more: Usage): Usage {
  * Sums assistant usage over whole lines of `text` with a line scan (no JSON parsing): per model, tokens and the list-price estimate.
  * One API message is written once per content block with the same `id` and `usage`, so only the first line of a message counts.
  * A `cost-state` line resets the running total to the CLI's own figure. Synthetic model names are skipped.
- * `lastId` carries the last counted message id across scan steps; the result returns the new one.
+ * `base` is the running total from earlier steps (a `cost-state` in this step replaces it, as it would in one pass) and `lastId` the last counted
+ * message id across steps; the result is the new total and id.
  */
-export function scanUsage(text: string, lastId = ''): Usage & { lastId: string } {
-  let total = EMPTY_USAGE();
+export function scanUsage(text: string, lastId = '', base: Usage = EMPTY_USAGE()): Usage & { lastId: string } {
+  let total: Usage = { byModel: { ...base.byModel }, usd: base.usd, priced: base.priced };
   let at = 0;
   for (;;) {
     const nl = text.indexOf('\n', at);
     const line = text.slice(at, nl < 0 ? text.length : nl);
     if (line.startsWith('{"type":"cost-state"')) { const s = costState(line); if (s) total = s; }
     else if (line.includes('"type":"assistant"')) {
-      const u = line.indexOf('"usage":{');
+      const u = line.lastIndexOf('"usage":{');
       const model = first(line, /"model":"([^"]+)"/) ?? 'unknown';
       const id = first(line, /"id":"(msg_[A-Za-z0-9]+)"/) ?? '';
       const dup = id !== '' && id === lastId;
@@ -168,7 +170,11 @@ export function createStoreIndex(o: StoreOptions): StoreIndex {
   const queued = new Set<string>();
   let pumping = false;
 
+  let lastEntries: { at: number; out: StoreEntry[] } | null = null;
+  /** The stat scan is reused for 2 s: a page refresh makes two or three calls back to back. */
   function entries(): StoreEntry[] {
+    const t = Date.now();
+    if (lastEntries && t - lastEntries.at < (o.entriesTtlMs ?? 2000)) return lastEntries.out;
     const out: StoreEntry[] = [];
     let dirs: string[] = [];
     try { dirs = readdirSync(root); } catch { return out; }
@@ -182,7 +188,9 @@ export function createStoreIndex(o: StoreOptions): StoreIndex {
         try { const st = statSync(path); if (st.isFile() && st.size > 0) out.push({ id: f.slice(0, -6), path, mtime: st.mtimeMs, size: st.size }); } catch { /* vanished */ }
       }
     }
-    return out.sort((a, b) => b.mtime - a.mtime);
+    out.sort((a, b) => b.mtime - a.mtime);
+    lastEntries = { at: t, out };
+    return out;
   }
 
   /** Identity for an entry, re-sampled when the file changed; the usage scan is queued, not done here. */
@@ -206,8 +214,8 @@ export function createStoreIndex(o: StoreOptions): StoreIndex {
     try { text = readWindow(e.path, c.size, c.scanned, Math.min(stepBytes, c.size - c.scanned)); } catch { c.scanned = c.size; return; }
     const end = c.scanned + Buffer.byteLength(text) >= c.size ? text.length : text.lastIndexOf('\n') + 1;
     if (end <= 0) { c.scanned = c.size; return; }
-    const r = scanUsage(text.slice(0, end), c.lastId);
-    c.usage = add(c.usage, r); c.lastId = r.lastId;
+    const r = scanUsage(text.slice(0, end), c.lastId, c.usage);
+    c.usage = { byModel: r.byModel, usd: r.usd, priced: r.priced }; c.lastId = r.lastId;
     c.scanned += Buffer.byteLength(text.slice(0, end));
   }
 

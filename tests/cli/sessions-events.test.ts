@@ -68,6 +68,10 @@ describe('GET /sessions/{id}/events', () => {
       await until(() => c.ended());
       expect(c.events.map((e) => e.event)).toEqual(['update', 'update']);
       c.close();
+      // a reconnect that already saw update 1 gets only update 2
+      const again = await new Promise<string>((ok) => { http.get(`${s.url}/sessions/${SID}/events`, { headers: { 'last-event-id': '1' } }, (r) => { let d = ''; r.on('data', (x) => { d += x; }); r.on('end', () => ok(d)); }); });
+      expect(again.match(/^id: /gm)).toEqual(['id: ']);
+      expect(again).toContain('"stopReason":"end_turn"');
     } finally { await s.close(); }
   });
   it('204 when the session has no run; 404 for a bad id; the page learns agents are available', async () => {

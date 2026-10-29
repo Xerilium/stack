@@ -147,7 +147,10 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         if (runEvents && req.method === 'GET') {
           if (!agents) return send(404, 'not found', 'text/plain');
           // One subscription: replayed updates are held until the headers are out, then every update is written as it comes.
-          const write = (u: unknown) => res.write(`event: update\ndata: ${JSON.stringify(u)}\n\n`);
+          // Updates are numbered so a reconnecting EventSource (Last-Event-ID) skips what it already has.
+          const after = Number(req.headers['last-event-id']);
+          let n = 0;
+          const write = (u: unknown) => { n++; if (Number.isInteger(after) && n <= after) return; res.write(`id: ${n}\nevent: update\ndata: ${JSON.stringify(u)}\n\n`); };
           const held: unknown[] = [];
           let sink: (u: unknown) => void = (u) => { held.push(u); };
           let closed = false;

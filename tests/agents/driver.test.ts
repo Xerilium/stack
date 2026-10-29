@@ -136,6 +136,14 @@ describe('createSdkDriver', () => {
     const again = await d.prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000002', text: 'z', onPermission: async () => ({ optionId: 'allow' }) });
     await collect(again.updates);
   });
+  it('two prompts in one tick cannot both start on a session', async () => {
+    const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
+    const id = 'a1b2c3d4-0000-0000-0000-000000000002';
+    const both = await Promise.allSettled([d.prompt({ sessionId: id, text: 'a', onPermission: async () => ({ optionId: 'allow' }) }), d.prompt({ sessionId: id, text: 'b', onPermission: async () => ({ optionId: 'allow' }) })]);
+    expect(both.map((x) => x.status)).toEqual(['fulfilled', 'rejected']);
+    expect((both[1] as PromiseRejectedResult).reason).toBeInstanceOf(SessionBusy);
+    await collect((both[0] as PromiseFulfilledResult<{ updates: AsyncIterable<Update> }>).value.updates);
+  });
   it('a transcript this process just wrote is not active elsewhere: the next message goes through', async () => {
     const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
     const id = 'a1b2c3d4-0000-0000-0000-000000000002';

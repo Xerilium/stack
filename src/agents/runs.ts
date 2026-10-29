@@ -65,7 +65,7 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
 
   async function prompt(req: { sessionId?: string; cwd?: string; text: string }) {
     if (req.sessionId && running(req.sessionId)) throw new SessionBusy('Session is running; wait for it to finish');
-    const session = req.sessionId ? (await driver.listSessions()).find((s) => s.id === req.sessionId) : undefined;
+    const session = req.sessionId ? (await driver.listSessions({ limit: 400 })).find((s) => s.id === req.sessionId) : undefined;
     const state: RunState = { id: '', sessionId: req.sessionId ?? null, text: req.text, buffer: [], done: false, subs: new Set(), startedAt: now() };
     const run = await driver.prompt({
       ...(req.sessionId ? { sessionId: req.sessionId } : {}), ...(req.cwd ? { cwd: req.cwd } : {}), text: req.text,

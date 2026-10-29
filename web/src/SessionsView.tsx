@@ -128,7 +128,7 @@ export function SessionsView({ s, enabled }: { s: Sessions; enabled: boolean | n
   const stopFromList = (id: string) => {
     const it = items.find((x) => x.id === id);
     if (!it) return;
-    if (it.state !== 'running') { s.note('Only sessions Stack is running can be stopped here'); return; }
+    if (it.state !== 'running' && it.state !== 'needs-you') { s.note('Only sessions Stack is running can be stopped here'); return; }
     if (Date.now() - stopArm.current < 2000) { stopArm.current = 0; void s.stop(id); return; }
     stopArm.current = Date.now();
     s.note(`Press s again to stop ${it.title}`);

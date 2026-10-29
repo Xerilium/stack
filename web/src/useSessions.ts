@@ -121,6 +121,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
 
   const stop = useCallback(async (id = open) => {
     if (!id) return;
+    if (id.startsWith('run-')) { toastRef.current('Starting; stop it once it has a session'); return; }
     try { const r = await api.cancelSession(id); if (r.changed) toastRef.current('Stopping'); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to stop', 'err'); }
   }, [api, open]);
 
