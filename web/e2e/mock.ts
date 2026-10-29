@@ -84,7 +84,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       s.state = 'idle'; return json(route, 200, { changed: true });
     }
     if (path === '/sessions' && req.method() === 'POST') { const id = 'a1b2c3d4-0000-0000-0000-00000000new1'; m.sessions?.unshift({ id, title: body.text, project: 'stack', cwd: body.cwd, lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] }); return json(route, 202, { runId: 'run-new', sessionId: id }); }
-    if (path === '/schedule') return m.schedule ? json(route, 200, m.schedule) : json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+    if (path === '/schedule') return json(route, 200, m.schedule); // null: no schedule, the 9-6 fallback
     if (path === '/calendar') {
       if (m.calendarFail) return json(route, 200, { configured: true, items: [], error: 'Calendar unavailable' });
       if (!m.events) return json(route, 200, { configured: false, items: [] });
