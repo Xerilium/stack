@@ -1,4 +1,4 @@
-/** @req FR:web-app/week.days @req FR:web-app/week.plan @req FR:web-app/week.summary */
+/** @req FR:web-app/week.days @req FR:web-app/week.plan @req FR:web-app/week.summary @req FR:web-app/week.bars */
 import { describe, expect, it } from 'vitest';
 import { planWeek, weekDates } from '../src/week';
 import type { Task } from '../src/types';
@@ -33,6 +33,14 @@ describe('planWeek', () => {
     const full = planWeek(Array.from({ length: 12 }, () => t('Block 🔴')), wed);
     expect(full.leftover).toBeGreaterThan(0);
     expect(full.planned).toBeLessThanOrEqual(full.available);
+  });
+  it('puts long-overdue tasks on today too', () => {
+    expect(planWeek([t('📅 Jun 1, 2026: Stale 🟢')], wed).days[0].planned).toBe(30);
+  });
+  it('marks today and over days for the bars', () => {
+    const w = planWeek([t('📅 Oct 29: A ⚫️'), t('📅 Oct 29: B 🔴')], wed);
+    expect(w.days.filter((d) => d.today)).toHaveLength(1);
+    expect(w.days.map((d) => d.over > 0)).toEqual([false, true, false, false, false]);
   });
   it('shows a due-day overload as over', () => {
     const w = planWeek([t('📅 Oct 29: A ⚫️'), t('📅 Oct 29: B 🔴')], wed);

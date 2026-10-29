@@ -1,4 +1,4 @@
-/** @req FR:pwa/offline.sw @req FR:pwa/offline.private @req FR:pwa/notify.click */
+/** @req FR:pwa/offline.sw @req FR:pwa/offline.private @req FR:pwa/offline.update @req FR:pwa/notify.click */
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
@@ -29,6 +29,8 @@ describe('service worker routes', () => {
   });
   it('handles install, activate, fetch, message, and notification clicks', () => {
     expect(Object.keys(handlers).sort()).toEqual(['activate', 'fetch', 'install', 'message', 'notificationclick']);
-    expect(src).not.toMatch(/skipWaiting/);
+    // offline.update: a new version waits for the next launch and only then drops older stack-* caches
+    expect(src).not.toMatch(/skipWaiting|clients\.claim/);
+    expect(src).toMatch(/k\.startsWith\('stack-'\) && k !== SHELL && k !== DATA/);
   });
 });

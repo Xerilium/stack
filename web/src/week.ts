@@ -32,7 +32,7 @@ export function planWeek(tasks: Task[], now: Date, todayBudget?: number, day: Da
   const floating: { t: Task; left: number }[] = [];
   for (const t of ranked) {
     const d = dueDays(parseRow(t.text).due, now);
-    if (d !== null && d < days.length && d >= -30) days[Math.max(0, d)].planned += minutesOf(t);
+    if (d !== null && d < days.length) days[Math.max(0, d)].planned += minutesOf(t);
     else floating.push({ t, left: minutesOf(t) });
   }
   let leftover = 0;

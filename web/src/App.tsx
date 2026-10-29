@@ -26,16 +26,21 @@ import { FocusMode, ListView, NowView, ProjectsView, TodayView, type NowSection,
 const reads = new Set<(savedAt: string | null) => void>();
 const api = createClient(undefined, undefined, (s) => reads.forEach((f) => f(s)));
 
-/** Deletes every Stack cache before leaving for sign out. @req FR:pwa/offline.private */
-async function signOut() {
+/** Deletes every Stack cache (page and service worker) before the session ends or changes hands. @req FR:pwa/offline.private */
+async function clearCaches() {
+  try { navigator.serviceWorker?.controller?.postMessage({ type: 'clear' }); } catch { /* no worker */ }
   try { if ('caches' in window) await Promise.all((await caches.keys()).filter((k) => k.startsWith('stack-')).map((k) => caches.delete(k))); } catch { /* best effort */ }
+}
+async function signOut() {
+  await clearCaches();
   location.assign('/.auth/logout');
 }
 type Phase = 'loading' | 'ready' | 'denied' | 'error';
 interface Command { id: string; label: string; hint?: string; run: () => void }
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
-const toLogin = () => location.assign(`/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
+/** An expired session may be followed by another account: drop the cached copy first. */
+const toLogin = () => { void clearCaches().then(() => location.assign(`/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(location.pathname + location.search + location.hash)}`)); };
 const projectOf = (ref: string) => ref.slice(0, ref.lastIndexOf(':'));
 
 export function App() {
@@ -169,10 +174,11 @@ export function App() {
     if (p === 'granted') { saveNotify(store(), true); setNotifyOn(true); toast('Notifications on'); }
   };
   const notify = { supported: notifySupported(), on: notifyOn && perm === 'granted', blocked: perm === 'denied', toggle: () => void toggleNotify() };
+  const refreshRef = useRef(refresh); refreshRef.current = refresh;
   useEffect(() => {
     const read = (s: string | null) => setSavedAt(s);
     reads.add(read);
-    const up = () => { setOnline(true); setSavedAt(null); void refresh(); };
+    const up = () => { setOnline(true); setSavedAt(null); void refreshRef.current(); };
     const down = () => setOnline(false);
     window.addEventListener('online', up); window.addEventListener('offline', down);
     return () => { reads.delete(read); window.removeEventListener('online', up); window.removeEventListener('offline', down); };
@@ -508,8 +514,8 @@ export function App() {
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
         <div class="who">{!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}</div>
       </nav>
-      <main class="main">
-        {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the last copy'}</div>}
+      <main class="main" title={offline ? 'Offline' : undefined}>
+        {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
         {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
         {phase === 'loading' && view !== 'asks' && <p class="loading">Loading…</p>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} />}
