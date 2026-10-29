@@ -2,7 +2,7 @@
 id: web-shell
 title: Web shell
 author: flanakin
-description: "The frame around every view: full-window layout, one consistent nav (Home, My day, Projects, Full stack, Needs you), command palette with jump-to-project, honest connection and permission states."
+description: "The frame around every view: full-window layout, one consistent nav (Home, My day, Needs you, Sessions, Projects, Full stack), command palette with jump-to-project, honest connection and permission states."
 dependencies: [web-app, ask-queue, pwa]
 ---
 
@@ -29,10 +29,10 @@ First use must feel like a native app: it fills the window, the same four places
 
 ### FR:nav: One nav
 
-- **FR:nav.views** (P1): Views are `home` (`#/`, `#/home`; old `#/now`, `#/next`, `#/focus` still open it), `today` (My day, `#/today`), `projects` (`#/projects`; old `#/capacity`), `list` (Full stack, `#/list`; old `#/all`, `#/stack`), and `asks` (Needs you, `#/asks`). An unknown hash opens Home. Home is the starting screen
-- **FR:nav.rail** (P1): The desktop rail lists, in order: New task, Home, My day, Needs you (with the open count as a badge, hidden at 0), Projects, Full stack. Commands and Shortcuts sit at the bottom. Labels are these words exactly
+- **FR:nav.views** (P1): Views are `home` (`#/`, `#/home`; old `#/now`, `#/next`, `#/focus` still open it), `today` (My day, `#/today`), `projects` (`#/projects`; old `#/capacity`), `list` (Full stack, `#/list`; old `#/all`, `#/stack`), and `sessions` (`#/sessions`; old `#/agents`; agent-sessions `FR:web.view`), and `asks` (Needs you, `#/asks`). An unknown hash opens Home. Home is the starting screen
+- **FR:nav.rail** (P1): The desktop rail lists, in order: New task, Home, My day, Needs you (with the open count as a badge, hidden at 0), Sessions, Projects, Full stack. Commands and Shortcuts sit at the bottom. Labels are these words exactly
 - **FR:nav.tabbar** (P1): The phone tab bar has five equal slots: Home, My day, New task (the raised circle, in the middle), Needs you (count badge), More (opens the palette). The `+` glyph is optically centered in its circle (its box center within 1px of the circle's center). Projects and Full stack are reached through More / the palette
-- **FR:nav.keys** (P1): `g h` Home, `g d` or `g t` My day, `g k` Needs you, `g p` Projects, `g a` Full stack. The rail shows the chord on hover and on the active item
+- **FR:nav.keys** (P1): `g h` Home, `g d` or `g t` My day, `g k` Needs you, `g s` Sessions, `g p` Projects, `g a` Full stack. The rail shows the chord on hover and on the active item
 
 ### FR:palette: Command palette
 

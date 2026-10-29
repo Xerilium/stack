@@ -9,7 +9,7 @@ export type AgentState = 'failing' | 'waiting' | 'review' | 'merged' | 'ci' | 'w
 export interface Pr { url: string; repo: string; number: number; state?: 'open' | 'draft' | 'merged' | 'closed'; checks?: 'passing' | 'failing' | 'pending' | 'none'; title?: string; updatedAt?: string }
 export interface Agent { ref: string; project: string; title: string; text: string; state: AgentState; prs: Pr[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }
 export interface InboxItem { id: string; at: string; project: string; ref: string; task: string; kind: 'reply' | 'decision'; to: 'agent' | 'human' | 'none'; text: string; state: 'open' | 'handled'; /** Where the row is now (the server follows moved rows). */ row?: string }
-export type View = 'home' | 'asks' | 'today' | 'projects' | 'list';
+export type View = 'home' | 'asks' | 'sessions' | 'today' | 'projects' | 'list';
 export type Position = 'before' | 'after';
 export type ActionName = 'start' | 'complete' | 'skip' | 'resume' | 'suspend';
 export interface SetProps { status?: string; priority?: string; effort?: string; impact?: string; checkbox?: 'Complete' | 'Incomplete' }

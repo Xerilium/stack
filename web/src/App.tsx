@@ -20,6 +20,8 @@ import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } f
 import { AsksView } from './AsksView';
 import { actionsFor, type AskItem, type Send } from './asks';
 import { useAsks } from './useAsks';
+import { SessionsView } from './SessionsView';
+import { useSessions } from './useSessions';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
 import { fromDecisions } from './needs';
 import { repliesFor } from './agents';
@@ -124,7 +126,7 @@ export function App() {
   const titles = useMemo(() => new Map(projects.map((x) => [x.name, x.title || x.name])), [projects]);
   /** @req FR:web-app/home.one @req FR:web-app/home.fit */
   const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft: budget.minutes }), [tasks, projects, next, clockNow, budget.minutes]);
-  const rows = view === 'asks' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? [home.one?.task, home.instead?.task, ...home.next.map((n) => n.task)].filter((t): t is Task => !!t) : listRows;
+  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? [home.one?.task, home.instead?.task, ...home.next.map((n) => n.task)].filter((t): t is Task => !!t) : listRows;
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, day), [tasks, clockNow, budget.minutes, day]);
@@ -165,6 +167,9 @@ export function App() {
 
   /** @req FR:ask-queue/web.live (task files changing elsewhere refresh the rest of the app too) */
   const [stream, setStream] = useState<boolean | null>(null);
+  const [agentsOn, setAgentsOn] = useState<boolean | null>(null);
+  /** @req FR:agent-sessions/web.view */
+  const sessions = useSessions(api, toast, agentsOn, view === 'sessions');
   /** @req FR:pwa/notify.optin @req FR:pwa/notify.new */
   const [notifyOn, setNotifyOn] = useState(() => loadNotify(store()));
   const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : 'denied'));
@@ -206,12 +211,13 @@ export function App() {
     void (async () => {
       try {
         const r = await fetch('/.auth/me', { credentials: 'same-origin' });
-        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string; identityProvider?: string } | null; local?: { mode: string; repo: string; branch: string } | null; events?: boolean };
+        const j = (await r.json()) as { clientPrincipal?: { userDetails?: string; identityProvider?: string } | null; local?: { mode: string; repo: string; branch: string } | null; events?: boolean; agents?: boolean };
         setInfo(j.local ?? null);
         setStream(j.events === true);
+        setAgentsOn(j.agents === true);
         setMe(j.clientPrincipal?.userDetails ?? '');
         setLocal(j.clientPrincipal?.identityProvider === 'local');
-      } catch { setStream(false); /* the api decides access */ }
+      } catch { setStream(false); setAgentsOn(false); /* the api decides access */ }
       await refresh();
     })();
   }, []);
@@ -423,6 +429,12 @@ export function App() {
       { id: 'ask-reply', label: 'Ask: Reply to the agent', hint: 'r', run: () => asks.setPanel('reply') },
       { id: 'ask-undo', label: 'Ask: Undo last answer', hint: 'u', run: () => asks.undo() },
     ] : []),
+    ...(view === 'sessions' ? [
+      { id: 'sess-open', label: 'Session: open', hint: '⏎', run: () => { if (sessions.cursor) void sessions.openDrawer(sessions.cursor); } },
+      { id: 'sess-new', label: 'Session: new', hint: 'n', run: () => sessions.setComposing(true) },
+      { id: 'sess-stop', label: 'Session: stop the run', hint: 's', run: () => void sessions.stop(sessions.open ?? sessions.cursor ?? undefined) },
+      { id: 'sess-costs', label: 'Session: toggle costs', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
+    ] : []),
     { id: 'capture', label: 'New task', hint: 'c', run: openCapture },
     { id: 'search', label: 'Search tasks', hint: '/', run: () => { go('list'); setTimeout(() => searchRef.current?.focus(), 0); } },
     ...(['open', 'done', 'all'] as const).map((s) => ({ id: `show-${s}`, label: `Show ${s} tasks`, run: () => go('list', { ...filters, state: s }) })),
@@ -487,9 +499,9 @@ export function App() {
       if (k === 'g') { chord.current = now; return; }
       if (k === ':') { e.preventDefault(); setPalette(true); return; }
       if (k === '?') { e.preventDefault(); setHelp(true); return; }
-      if (k === 'c') { e.preventDefault(); setCaptureOpen(true); return; }
+      if (k === 'c' && L.view !== 'sessions') { e.preventDefault(); setCaptureOpen(true); return; } // Sessions uses c for costs
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
-      if (L.view === 'asks') return; // the Asks view owns its keys
+      if (L.view === 'asks' || L.view === 'sessions') return; // these views own their keys
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
@@ -558,8 +570,9 @@ export function App() {
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
         {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
-        {phase === 'loading' && view !== 'asks' && <p class="loading">Loading…</p>}
+        {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <p class="loading">Loading…</p>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} />}
+        {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
@@ -647,6 +660,7 @@ function TabIcon({ v }: { v: View | 'more' }) {
     asks: 'M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z',
     today: 'M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 5h16M8 3v4m8-4v4',
     home: 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z',
+    sessions: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Zm4 13h8M8 8l2.5 2.5L8 13m4 0h4',
     projects: 'M4 6h16M4 12h16M4 18h10',
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
     more: 'M5 12h.01M12 12h.01M19 12h.01',
