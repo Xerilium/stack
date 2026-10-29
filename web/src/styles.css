@@ -476,3 +476,21 @@ a.tag.link:hover { background: var(--accent-soft); }
 @media (prefers-color-scheme: dark) { .chip.hot { color: #fecaca; } }
 .agent-meta > .agent-last { flex-basis: 100%; }
 .agent-meta > .agent-last::before { content: none; }
+
+/* Day inputs: meetings and the email block */
+.plan .meeting, .plan .email-block { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 0 12px; align-items: baseline; padding: 6px 0; }
+.plan .meeting .what { border-left: 3px solid color-mix(in srgb, var(--muted) 55%, transparent); padding: 6px 10px; border-radius: 0 8px 8px 0;
+  background: repeating-linear-gradient(135deg, var(--chip) 0 6px, transparent 6px 12px); }
+.plan .meeting .what-title { margin: 0; font-weight: 550; color: var(--ink2); }
+.plan .meeting .what-meta, .plan .email-block .what-meta { margin: 2px 0 0; font-size: 12px; color: var(--muted); display: flex; gap: 10px; }
+.plan .meeting .join { font-weight: 600; text-decoration: none; }
+.plan .email-block .what { border-left: 3px solid var(--accent); padding: 6px 10px; border-radius: 0 8px 8px 0; background: var(--accent-soft); }
+.email-open { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent); text-align: left; }
+.email-open:hover { text-decoration: underline; }
+.plan .meeting .when, .plan .email-block .when { text-align: right; font-weight: 600; font-size: 12.5px; }
+.plan .meeting .when small, .plan .email-block .when small { display: block; font-weight: 400; color: var(--muted); }
+.day-bar u { position: absolute; top: 0; bottom: 0; text-decoration: none; border-radius: 2px; background: repeating-linear-gradient(135deg, var(--muted) 0 3px, transparent 3px 6px); opacity: .7; }
+.day-bar i.mail { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.allday { margin: -4px 0 10px; font-size: 12.5px; color: var(--ink2); }
+.cal-note { margin: -4px 0 10px; font-size: 12px; color: var(--muted); font-style: italic; }
+@media (max-width: 799px) { .plan .meeting, .plan .email-block { grid-template-columns: 44px minmax(0, 1fr); gap: 0 10px; } }

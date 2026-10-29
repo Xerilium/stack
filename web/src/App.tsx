@@ -15,6 +15,7 @@ import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
+import { allDay, busyIntervals, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
 import { actionsFor } from './asks';
@@ -68,6 +69,9 @@ export function App() {
   const [agentsError, setAgentsError] = useState('');
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [saved, setSaved] = useState<{ date: string; minutes: number } | null>(() => { const now = new Date(); const m = loadBudget(store(), now); return m === null ? null : { date: dateKey(now), minutes: m }; });
+  const [events, setEvents] = useState<CalEvent[]>([]);
+  const [calError, setCalError] = useState('');
+  const [emailAsks, setEmailAsks] = useState(0);
   const lastProject = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const captureRef = useRef<HTMLInputElement | null>(null);
@@ -96,8 +100,9 @@ export function App() {
   const clockNow = useMemo(() => new Date(), [tasks, tick, saved]); // also refresh when the budget changes, so a value set after midnight counts for the new day
   const day = DEFAULT_DAY;
   // Kept with its date: a tab left open overnight must not keep yesterday's budget, and it works without storage.
-  const budget = budgetOf(clockNow, day, saved && saved.date === dateKey(clockNow) ? saved.minutes : null);
-  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes), [tasks, next, clockNow, day, budget.minutes]);
+  const busyTime = useMemo(() => busyIntervals(events, clockNow), [events, clockNow]);
+  const budget = budgetOf(clockNow, day, saved && saved.date === dateKey(clockNow) ? saved.minutes : null, busyTime);
+  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, clockNow, day, budget.minutes, busyTime, emailAsks]);
   /** @req FR:web-app/today.capacity */
   const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v); setSaved(v === null ? null : { date: dateKey(now), minutes: v }); }, []);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
@@ -118,7 +123,11 @@ export function App() {
   // ---- data
   /** Agent activity and the inbox load on their own: a failure there never blocks the day plan. @req FR:web-app/today.agents */
   const loadSide = useCallback(async () => {
-    const [a, i] = await Promise.allSettled([api.agents(), api.inbox()]);
+    const d = new Date();
+    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(from.toISOString(), new Date(from.getTime() + 864e5).toISOString())]);
+    /** @req FR:web-app/today.meetings */
+    if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); } else setCalError('Calendar unavailable');
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
     if (i.status === 'fulfilled') setInbox(i.value);
   }, []);
@@ -138,6 +147,8 @@ export function App() {
   /** @req FR:ask-queue/web.live (task files changing elsewhere refresh the rest of the app too) */
   const [stream, setStream] = useState<boolean | null>(null);
   const asks = useAsks(api, toast, () => void refresh(), stream);
+  /** Open asks the email module wrote reserve the Email block. @req FR:web-app/today.mail */
+  useEffect(() => { setEmailAsks(asks.items.filter((a) => a.state === 'open' && a.from === 'email-triage').length); }, [asks.items]);
 
   useEffect(() => {
     void (async () => {
@@ -473,7 +484,7 @@ export function App() {
         {phase === 'loading' && <p class="loading">Loading…</p>}
         {view === 'asks' && <AsksView asks={asks} />}
         {phase === 'ready' && view === 'today' && (
-          <TodayView now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
+          <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'now' && <NowView task={next} sections={sections} hidden={hidden} allOpen={allOpen} onToggleAll={() => setAllOpen((o) => !o)} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
