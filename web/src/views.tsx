@@ -289,8 +289,20 @@ export function ProjectsView({ rows, onOpen }: { rows: (CapacityRow & { top?: Ta
 }
 const fmt = (n: number) => String(Math.round(n * 10) / 10);
 
-/** Cards and the open reply box follow the task, not its line number, which shifts when the file changes. */
-const rowKey = (x: { project: string; text: string }) => `${x.project}\u241F${x.text}`;
+/** Cards and the open reply box follow the task, not its line number, which shifts when the file changes:
+ *  project + text, plus which same-text row it is in file order (so identical rows never share a key). */
+function taskKeys(rows: { ref: string; project: string; text: string }[]): Map<string, string> {
+  const line = (x: { ref: string }) => Number(x.ref.slice(x.ref.lastIndexOf(':') + 1));
+  const seen = new Map<string, number>();
+  const out = new Map<string, string>();
+  for (const x of [...rows].sort((a, b) => line(a) - line(b))) {
+    const base = `${x.project}\u241F${x.text}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    out.set(x.ref, `${base}\u241F${n}`);
+  }
+  return out;
+}
 
 function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) => Promise<unknown>; onClose: () => void; to: string; placeholder: string }) {
   const [text, setText] = useState('');
@@ -298,7 +310,7 @@ function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) =>
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   return (
-    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (!text.trim() || sending) return; setSending(true); void onSend(text.trim()).finally(() => setSending(false)); }}>
+    <form class="reply" onSubmit={(e) => { e.preventDefault(); if (!text.trim() || sending) return; setSending(true); void onSend(text.trim()).catch(() => undefined).finally(() => setSending(false)); }}>
       <p class="reply-to">To <b>{to}</b> · lands in its inbox</p>
       <div class="reply-row">
         <input ref={ref} type="text" aria-label="Reply" placeholder={placeholder} value={text} maxLength={1000} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }} />
@@ -360,12 +372,14 @@ export function TodayView(t: TodayProps) {
   const replyBox = (key: string, task: RefText, owner: string, placeholder: string, ok: string) => replying === key && (
     <Reply to={`the ${owner} agent`} placeholder={placeholder} onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(task, text, ok)) setReplying(null); }} />
   );
+  const keys = taskKeys([...t.decisions.map((d) => d.task), ...agents]);
   const agentRow = (a: Agent) => {
+    const key = keys.get(a.ref) ?? a.ref;
     const r = parseRow(a.text);
     const owner = t.p.titles.get(a.project) ?? a.project;
     const line = lastLine(a, t.now);
     return (
-      <li key={rowKey(a)} class={`agent ${a.state}`}>
+      <li key={key} class={`agent ${a.state}`}>
         <span class="pulse" aria-hidden="true" />
         <div class="agent-body">
           <p class="agent-title"><Md text={agentTitle(r.title || a.title)} /></p>
@@ -381,8 +395,8 @@ export function TodayView(t: TodayProps) {
           </p>
           <Sent items={repliesOf(a)} now={t.now} />
         </div>
-        <button type="button" class="btn quiet reveal" aria-expanded={replying === rowKey(a)} onClick={() => setReplying(replying === rowKey(a) ? null : rowKey(a))}>Reply</button>
-        {replyBox(rowKey(a), a, owner, 'Message the agent', 'Sent to the agent')}
+        <button type="button" class="btn quiet reveal" aria-expanded={replying === key} onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
+        {replyBox(key, a, owner, 'Message the agent', 'Sent to the agent')}
       </li>
     );
   };
@@ -451,7 +465,7 @@ export function TodayView(t: TodayProps) {
           <ul class="cards" data-testid="needs">
             {needs.map((d) => {
               const r = parseRow(d.task.text);
-              const key = rowKey(d.task);
+              const key = keys.get(d.task.ref) ?? d.task.ref;
               const owner = t.p.titles.get(d.task.project) ?? d.task.project;
               const sent = repliesOf(d.task);
               const rec = d.recommendation && !/:$/.test(d.recommendation) ? d.recommendation : undefined;
