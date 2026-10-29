@@ -292,7 +292,7 @@ describe('archiveAsks', () => {
     await handleAsk(later, 'new-done', { outcome: 'resolved' }, 'cos');
     const writes: string[][] = [];
     const orig = storage.writeMany.bind(storage);
-    storage.writeMany = async (w, o) => { writes.push(w.map((x) => x.path)); return orig(w, o); };
+    storage.writeMany = async (w) => { writes.push(w.map((x) => x.path)); return orig(w); };
     expect(await archiveAsks(later, { days: 14 })).toEqual({ archived: ['old-done'] });
     expect(writes).toEqual([[archivePath('old-done'), asksPath('old-done')]]);
     expect((await storage.read(archivePath('old-done'))).content).toContain('- state: done');

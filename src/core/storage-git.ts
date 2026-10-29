@@ -42,7 +42,8 @@ export class GitStorage extends FsStorage {
         env: { ...(this.env ?? process.env), GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' },
       }, (err, stdout, stderr) => {
         /** @req FR:storage-git/git.failure */
-        if (err) reject(new StorageError(`git ${args[0]} failed: ${(stderr || err.message).trim()}`));
+        // git says 'nothing to commit' on stdout, so include it: a failure must name its reason.
+        if (err) reject(new StorageError(`git ${args[0]} failed: ${(stderr || stdout || err.message).trim()}`));
         else resolve(stdout);
       });
     });
