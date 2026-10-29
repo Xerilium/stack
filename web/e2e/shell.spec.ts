@@ -116,7 +116,7 @@ test.describe('honest states', () => {
     await card.getByLabel('Answer Alpha agent').fill('Green');
     await card.getByLabel('Answer Alpha agent').press('Enter');
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'alpha:21', kind: 'reply', text: 'Green' } });
-    await expect(page.getByTestId('asks-empty')).toContainText('Nothing needs you. No open asks, decisions, or replies');
+    await expect(page.getByTestId('asks-empty')).toContainText('No open asks, decisions, or replies');
   });
 
   // @req FR:web-shell/state.live @req FR:web-shell/state.unreachable
