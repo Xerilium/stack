@@ -24,6 +24,7 @@ describe('calendar guard', () => {
   it('allows only calendarView reads with known query keys', () => {
     ok(`${G}/me/calendarView?startDateTime=2026-10-28T00:00:00Z&endDateTime=2026-10-29T00:00:00Z&$top=100&$orderby=start/dateTime&$select=subject,start`);
     ok(`${G}/me/calendars/AAMk-1=/calendarView?startDateTime=a&endDateTime=b&$skiptoken=x`);
+    ok(`${G}/me/calendarView?startDateTime=a&endDateTime=b&$top=100&$skip=100`);
     no({ method: 'POST', url: `${G}/me/calendarView` });
     no({ method: 'GET', url: `${G}/me/events` });
     no({ method: 'GET', url: `${G}/me/calendarView?filter=x` });
@@ -38,14 +39,14 @@ describe('calendar guard', () => {
 describe('Graph calendar adapter', () => {
   const graphEvent = (id: string, o: Record<string, unknown> = {}) => ({
     id, subject: `S ${id}`, start: { dateTime: '2026-10-28T15:00:00.0000000', timeZone: 'UTC' }, end: { dateTime: '2026-10-28T15:30:00.0000000', timeZone: 'UTC' },
-    isAllDay: false, isCancelled: false, isOnlineMeeting: true, showAs: 'busy', organizer: { emailAddress: { name: 'Roland', address: 'r@x.test' } }, webLink: 'https://outlook.office.com/e/1', ...o,
+    isAllDay: false, isCancelled: false, isOnlineMeeting: true, onlineMeeting: { joinUrl: 'https://teams.microsoft.com/l/meetup-join/1' }, showAs: 'busy', organizer: { emailAddress: { name: 'Roland', address: 'r@x.test' } }, webLink: 'https://outlook.office.com/e/1', ...o,
   });
   it('reads calendarView for the range, follows pages, maps events', async () => {
     const seen: GraphRequest[] = [];
     const transport = async (req: GraphRequest) => {
       seen.push(req);
-      if (seen.length === 1) return { value: [graphEvent('1')], '@odata.nextLink': `${G}/me/calendarView?startDateTime=a&endDateTime=b&$skiptoken=p2` };
-      return { value: [graphEvent('2', { showAs: 'tentative', isOnlineMeeting: false, isCancelled: true, isAllDay: true })] };
+      if (seen.length === 1) return { value: [graphEvent('1')], '@odata.nextLink': `${G}/me/calendarView?startDateTime=a&endDateTime=b&$top=100&$skip=100` };
+      return { value: [graphEvent('2', { showAs: 'tentative', isOnlineMeeting: false, isCancelled: true, isAllDay: true, onlineMeeting: null })] };
     };
     const cal = createGraphCalendar({ transport });
     const got = await cal.events('2026-10-28T00:00:00.000Z', '2026-10-29T00:00:00.000Z');
@@ -55,7 +56,7 @@ describe('Graph calendar adapter', () => {
     expect(u.searchParams.get('startDateTime')).toBe('2026-10-28T00:00:00.000Z');
     expect(u.searchParams.get('$top')).toBe('100');
     expect(got).toEqual([
-      { id: '1', subject: 'S 1', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Roland', webLink: 'https://outlook.office.com/e/1' },
+      { id: '1', subject: 'S 1', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Roland', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/meetup-join/1' },
       expect.objectContaining({ id: '2', showAs: 'tentative', cancelled: true, allDay: true, online: false }),
     ]);
   });

@@ -38,7 +38,8 @@ export const DENY = ['send', 'sendmail', 'forward', 'reply', 'replyall', 'move',
 const ID = '[A-Za-z0-9_=-]{1,512}';
 const QUERY = new Set(['$select', '$top', '$filter', '$orderby', '$skiptoken', '$deltatoken']);
 const re = (s: string) => new RegExp(`^${s}$`);
-const FOLDER_MESSAGES = re(`/me/mailFolders/${ID}/messages(/delta)?`);
+// Graph's own next and delta links spell it `mailfolders`.
+const FOLDER_MESSAGES = re(`/me/mail[Ff]olders/${ID}/messages(/delta)?`);
 const MESSAGE = re(`/me/messages/${ID}`);
 const CREATE_REPLY = re(`/me/messages/${ID}/createReply`);
 const hasOnly = (body: unknown, key: string) => !!body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 1 && key in body;

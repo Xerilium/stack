@@ -1,6 +1,6 @@
 /** @req FR:web-app/today.meetings @req FR:web-app/today.mail */
 import { describe, expect, it } from 'vitest';
-import { busyIntervals, busyWithin, emailMinutes, type CalEvent } from '../src/meetings';
+import { busyIntervals, busyWithin, emailMinutes, joinable, type CalEvent } from '../src/meetings';
 import { buildPlan, DEFAULT_DAY } from '../src/plan';
 import { budgetOf } from '../src/day';
 import type { Task } from '../src/types';
@@ -75,5 +75,19 @@ describe('gaps too small to use', () => {
     const p = buildPlan(['🟠', '🟠', '🟠', '🟡', '🔹', '🔹', '🔹'].map((e) => t(`T ${e}`)), at(10), DEFAULT_DAY, budget, { busy });
     expect(Math.max(...p.blocks.map((b) => b.end))).toBeLessThanOrEqual(18 * 60);
     expect(p.overflow).toHaveLength(1);
+  });
+});
+
+describe('wall clock and join', () => {
+  it('places meetings by local clock time on a DST change day', () => {
+    const dst = new Date(2026, 10, 1);
+    const e = { ...ev('x', 0, 0, 0, 0), start: new Date(2026, 10, 1, 10, 0).toISOString(), end: new Date(2026, 10, 1, 11, 0).toISOString() };
+    expect(busyIntervals([e], dst).map((b) => [b.start, b.end])).toEqual([[600, 660]]);
+  });
+  it('joinable checks each event on its own: the one on now or within 10 minutes', () => {
+    const a = ev('a', 9, 0, 10, 0, { joinUrl: 'https://j/a' }), b = ev('b', 9, 30, 11, 0, { joinUrl: 'https://j/b' }), c = ev('c', 11, 5, 12, 0, { joinUrl: 'https://j/c' });
+    expect(joinable([a, b, c], at(10, 30))).toBe('https://j/b');
+    expect(joinable([a, b, c], at(11, 0))).toBe('https://j/c');
+    expect(joinable([a, c], at(10, 30))).toBeUndefined();
   });
 });

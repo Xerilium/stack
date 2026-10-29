@@ -35,22 +35,24 @@ export function createGraphMail(o: { transport: Transport; folder?: string; guar
   const validCursor = (c: string) => {
     let u: URL;
     try { u = new URL(c); } catch { return false; }
-    return `${u.origin}${u.pathname}` === base && !u.hash && [...u.searchParams.keys()].every((k) => k === '$deltatoken' || k === '$skiptoken');
+    // Graph returns links as `mailfolders/<folder id>` (lower case, id instead of the well-known name).
+    return u.origin === 'https://graph.microsoft.com' && /^\/v1\.0\/me\/mailfolders\/[A-Za-z0-9_=-]{1,512}\/messages\/delta$/i.test(u.pathname) && !u.hash && !u.username && [...u.searchParams.keys()].every((k) => k === '$deltatoken' || k === '$skiptoken');
   };
   return {
     async delta(cursor) {
       if (cursor !== undefined && !validCursor(cursor)) throw new Error('Invalid mail cursor');
       let url: string | undefined = cursor ?? `${base}?${new URLSearchParams({ $select: SELECT }).toString()}`;
       const messages: Message[] = [];
-      let next = cursor ?? base;
+      let next = url;
       for (let page = 0; url && page < MAX_PAGES; page++) {
         const body = (await guard.call({ method: 'GET', url }, o.transport)) as { value?: unknown; '@odata.nextLink'?: unknown; '@odata.deltaLink'?: unknown };
         if (!body || typeof body !== 'object' || !Array.isArray(body.value)) throw new Error('Bad mail page');
         for (const g of body.value as GraphMessage[]) if (!g['@removed']) messages.push(toMessage(g));
         if (typeof body['@odata.deltaLink'] === 'string') next = body['@odata.deltaLink'];
         url = typeof body['@odata.nextLink'] === 'string' ? body['@odata.nextLink'] : undefined;
-        if (url) guard.check({ method: 'GET', url });
+        if (url) { guard.check({ method: 'GET', url }); next = url; }
       }
+      // Stopped at the page cap: `next` is the last next link, so the next run resumes instead of starting over.
       return { messages, cursor: next };
     },
     async createDraft(messageId, text) {

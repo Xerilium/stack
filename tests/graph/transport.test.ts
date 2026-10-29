@@ -17,6 +17,7 @@ describe('Graph transport', () => {
     expect(h0.get('authorization')).toBe('Bearer tok1');
     expect(h0.get('content-type')).toBe('application/json');
     expect(f.seen[0].init.body).toBe('{"comment":"x"}');
+    expect(f.seen[0].init.redirect).toBe('error');
     expect(new Headers(f.seen[1].init.headers).get('authorization')).toBe('Bearer tok2');
   });
   it('refuses other hosts before fetching', async () => {

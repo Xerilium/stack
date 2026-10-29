@@ -44,10 +44,24 @@ describe('Graph mail adapter: cursor', () => {
   it('refuses a cursor that is not a delta link for the folder, before any request', async () => {
     let calls = 0;
     const mail = createGraphMail({ transport: async () => { calls++; return { value: [] }; } });
-    for (const bad of ['x', `${G}/me/mailFolders/archive/messages/delta?$deltatoken=1`, 'https://evil.test/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=1', `${G}/me/messages`]) {
+    for (const bad of ['x', `${G}/me/mailFolders/inbox/messages?$deltatoken=1`, `${G}/me/mailFolders/inbox/messages/delta?$filter=x`, 'https://evil.test/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=1', `${G}/me/messages`]) {
       await expect(mail.delta(bad)).rejects.toThrow('Invalid mail cursor');
     }
     expect(calls).toBe(0);
+  });
+  it('accepts the links Graph returns: lower-case mailfolders with a folder id', async () => {
+    const link = `${G}/me/mailfolders/AAMkAGI2=/messages/delta?$deltatoken=d1`;
+    const seen: GraphRequest[] = [];
+    const mail = createGraphMail({ transport: async (r) => { seen.push(r); return { value: [], '@odata.deltaLink': link }; } });
+    expect((await mail.delta(link)).cursor).toBe(link);
+    expect(seen[0].url).toBe(link);
+  });
+  it('stopping at the page cap returns the last next link, so the next run resumes', async () => {
+    let n = 0;
+    const mail = createGraphMail({ transport: async () => ({ value: [msg(String(++n))], '@odata.nextLink': `${G}/me/mailfolders/AAMk=/messages/delta?$skiptoken=s${n}` }) });
+    const r = await mail.delta();
+    expect(r.messages).toHaveLength(50);
+    expect(r.cursor).toBe(`${G}/me/mailfolders/AAMk=/messages/delta?$skiptoken=s50`);
   });
 });
 

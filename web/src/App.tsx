@@ -15,7 +15,7 @@ import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
-import { allDay, busyIntervals, type CalEvent } from './meetings';
+import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
 import { actionsFor } from './asks';
@@ -125,7 +125,8 @@ export function App() {
   const loadSide = useCallback(async () => {
     const d = new Date();
     const from = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(from.toISOString(), new Date(from.getTime() + 864e5).toISOString())]);
+    const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(from.toISOString(), to.toISOString())]);
     /** @req FR:web-app/today.meetings */
     if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); } else setCalError('Calendar unavailable');
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
@@ -375,8 +376,8 @@ export function App() {
   ];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime });
-  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime };
+  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events });
+  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
   const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget };
 
@@ -423,7 +424,7 @@ export function App() {
       }
       if (L.view === 'projects') return;
       // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
-      if (L.view === 'today' && k === 'J') { const m = new Date(); const at = m.getHours() * 60 + m.getMinutes(); const hit = L.busyTime.find((b) => b.start - 10 <= at && at < b.end)?.events.find((e) => e.online && e.webLink); if (hit?.webLink) { e.preventDefault(); window.open(hit.webLink, '_blank', 'noopener,noreferrer'); } return; }
+      if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
       if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; }
       const i = L.rows.findIndex((r) => r.ref === L.cursor);
       const step = (d: number) => { const n = L.rows[Math.max(0, Math.min(L.rows.length - 1, i + d))]; if (n) setCursor(n.ref); };

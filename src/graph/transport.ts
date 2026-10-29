@@ -22,6 +22,7 @@ export function graphTransport(o: GraphTransportOptions): Transport {
     const token = typeof o.token === 'function' ? await o.token() : o.token;
     const res = await get(req.url, {
       method: req.method,
+      redirect: 'error',
       headers: { authorization: `Bearer ${token}`, accept: 'application/json', ...(req.body !== undefined ? { 'content-type': 'application/json' } : {}) },
       ...(req.body !== undefined ? { body: JSON.stringify(req.body) } : {}),
     });

@@ -3,7 +3,7 @@ import type { CapacityRow } from './capacity';
 import type { Filters } from './filters';
 import { children, dueDays } from './now';
 import { clock, estimate, span, type Block, type Decision, type Plan } from './plan';
-import type { Busy, CalEvent } from './meetings';
+import { joinable, type Busy, type CalEvent } from './meetings';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
@@ -358,7 +358,7 @@ export function TodayView(t: TodayProps) {
   const lastEnd = Math.max(0, ...t.plan.blocks.map((b) => b.end), t.plan.email?.end ?? 0, ...t.plan.meetings.filter((m) => m.start < t.day.end + 120).map((m) => m.end));
   const end = Math.min(24 * 60, Math.max(t.day.end, start + t.budget.minutes, lastEnd));
   const nextMeeting = t.plan.meetings.find((m) => m.end > nowMin);
-  const joinOf = (m: Busy) => m.events.find((e) => e.online && e.webLink)?.webLink;
+  const joinOf = (m: Busy) => joinable(m.events, t.now, Math.max(10, m.start - nowMin)) ?? m.events.find((e) => e.joinUrl)?.joinUrl;
   const meetingMin = t.plan.meetings.reduce((m, x) => m + Math.max(0, Math.min(x.end, t.day.end) - Math.max(x.start, start)), 0);
   type Row = { at: number; kind: 'block'; b: Block; lead: boolean } | { at: number; kind: 'meeting'; m: Busy } | { at: number; kind: 'email'; e: NonNullable<Plan['email']> };
   const timeline: Row[] = [
@@ -548,7 +548,7 @@ function MeetingRow({ m }: { m: Busy }) {
           <p key={e.id} class="m-line">
             <span class="m-title">{e.subject}</span>
             {e.showAs === 'tentative' && <span class="m-tent">Tentative</span>}
-            {e.online && e.webLink && <a class="join" href={e.webLink} target="_blank" rel="noopener noreferrer">Join</a>}
+            {e.joinUrl && <a class="join" href={e.joinUrl} target="_blank" rel="noopener noreferrer">Join</a>}
           </p>
         ))}
       </div>

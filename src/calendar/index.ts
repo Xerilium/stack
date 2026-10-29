@@ -11,6 +11,8 @@ export type ShowAs = (typeof SHOW_AS)[number];
 export interface CalendarEvent {
   id: string; subject: string; start: string; end: string; allDay: boolean; showAs: ShowAs; cancelled: boolean; online: boolean;
   organizer?: string; webLink?: string;
+  /** The online meeting's join link (Teams), when there is one. */
+  joinUrl?: string;
 }
 export interface CalendarProvider { events(from: string, to: string): Promise<CalendarEvent[]> }
 
@@ -29,7 +31,8 @@ export function fixtureCalendar(list: CalendarEvent[]): CalendarProvider {
 
 /** Read scope only; the calendar is never written. */
 export const CALENDAR_SCOPES = ['Calendars.Read', 'offline_access'] as const;
-const KEYS = new Set(['startDateTime', 'endDateTime', '$select', '$top', '$orderby', '$skiptoken']);
+// Outlook calendar next links page with `$skip`; `$skiptoken` is accepted too.
+const KEYS = new Set(['startDateTime', 'endDateTime', '$select', '$top', '$orderby', '$skip', '$skiptoken']);
 const VIEW = /^\/me(?:\/calendars\/[A-Za-z0-9_=-]{1,512})?\/calendarView$/;
 
 /** `GET calendarView` and nothing else. @req FR:day-inputs/cal.guard */
@@ -50,9 +53,9 @@ export function createCalendarGuard(): GraphGuard {
 
 interface GraphEvent {
   id?: unknown; subject?: unknown; start?: { dateTime?: unknown }; end?: { dateTime?: unknown }; isAllDay?: unknown; isCancelled?: unknown;
-  isOnlineMeeting?: unknown; showAs?: unknown; organizer?: { emailAddress?: { name?: unknown } }; webLink?: unknown;
+  isOnlineMeeting?: unknown; showAs?: unknown; organizer?: { emailAddress?: { name?: unknown } }; webLink?: unknown; onlineMeeting?: { joinUrl?: unknown } | null;
 }
-const SELECT = 'id,subject,start,end,isAllDay,isCancelled,isOnlineMeeting,showAs,organizer,webLink';
+const SELECT = 'id,subject,start,end,isAllDay,isCancelled,isOnlineMeeting,onlineMeeting,showAs,organizer,webLink';
 const MAX_PAGES = 10;
 /** Graph returns `2026-10-28T15:00:00.0000000` in the requested zone (UTC by default). */
 const utc = (v: unknown): string => {
@@ -67,9 +70,10 @@ function toEvent(g: GraphEvent): CalendarEvent {
   const showAs = (SHOW_AS as readonly string[]).includes(str(g.showAs)) ? (g.showAs as ShowAs) : 'unknown';
   const organizer = str(g.organizer?.emailAddress?.name);
   const webLink = str(g.webLink);
+  const joinUrl = str(g.onlineMeeting?.joinUrl);
   return {
     id: str(g.id), subject: str(g.subject), start: utc(g.start?.dateTime), end: utc(g.end?.dateTime), allDay: g.isAllDay === true, showAs,
-    cancelled: g.isCancelled === true, online: g.isOnlineMeeting === true, ...(organizer ? { organizer } : {}), ...(webLink.startsWith('https://') ? { webLink } : {}),
+    cancelled: g.isCancelled === true, online: g.isOnlineMeeting === true, ...(organizer ? { organizer } : {}), ...(webLink.startsWith('https://') ? { webLink } : {}), ...(joinUrl.startsWith('https://') ? { joinUrl } : {}),
   };
 }
 

@@ -1018,7 +1018,7 @@ test.describe('today view', () => {
     await page.clock.install({ time: tenAm() });
     const m = await mockApi(page, { tasks: day() });
     m.events = [
-      { id: 'e1', subject: 'Allyte sync', start: at(10, 30), end: at(11, 30), allDay: false, showAs: 'busy', cancelled: false, online: true, webLink: 'https://teams.example.test/join/1' },
+      { id: 'e1', subject: 'Allyte sync', start: at(10, 30), end: at(11, 30), allDay: false, showAs: 'busy', cancelled: false, online: true, joinUrl: 'https://teams.example.test/join/1' },
       { id: 'e2', subject: 'Lunch', start: at(12), end: at(13), allDay: false, showAs: 'free', cancelled: false, online: false },
       { id: 'e3', subject: 'Offsite', start: at(0), end: at(23, 59), allDay: true, showAs: 'busy', cancelled: false, online: false },
     ];
@@ -1045,7 +1045,7 @@ test.describe('today view', () => {
     const at = (h: number, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return d; };
     await page.clock.install({ time: at(10, 25) });
     const m = await mockApi(page, { tasks: day() });
-    m.events = [{ id: 'e1', subject: 'Allyte sync', start: at(10, 30).toISOString(), end: at(11, 30).toISOString(), allDay: false, showAs: 'busy', cancelled: false, online: true, webLink: 'https://teams.example.test/join/1' }];
+    m.events = [{ id: 'e1', subject: 'Allyte sync', start: at(10, 30).toISOString(), end: at(11, 30).toISOString(), allDay: false, showAs: 'busy', cancelled: false, online: true, joinUrl: 'https://teams.example.test/join/1' }];
     await page.context().route('https://teams.example.test/**', (r) => r.fulfill({ status: 200, body: 'joined' }));
     await page.goto('/#/today');
     await page.clock.resume();
