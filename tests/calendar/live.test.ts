@@ -1,0 +1,24 @@
+import { mkdtempSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { calendarSource } from '../../src/cli/web';
+import { FileTokenCache } from '../../src/graph/auth';
+
+// @req FR:graph-signin/web.calendar
+describe('stack web calendar source', () => {
+  const tok = { version: 1 as const, tenant: 'organizations', clientId: '11111111-2222-3333-4444-555555555555', refreshToken: 'rt', accessToken: 'at', expiresAt: Date.now() + 3600_000 };
+  it('fixture wins; Graph when signed in with Calendars.Read; nothing otherwise', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'cal-src-'));
+    const cachePath = join(d, 'graph-token.json');
+    expect(await calendarSource({ cachePath })).toEqual({ source: 'none' });
+    await new FileTokenCache(cachePath).write({ ...tok, scopes: ['Mail.Read', 'offline_access'] });
+    expect((await calendarSource({ cachePath })).source).toBe('none');
+    await new FileTokenCache(cachePath).write({ ...tok, scopes: ['Calendars.Read', 'offline_access'] });
+    const g = await calendarSource({ cachePath });
+    expect(g.source).toBe('graph');
+    expect(g.provider).toBeDefined();
+    const fx = join(d, 'events.json');
+    require('fs').writeFileSync(fx, '[]');
+    expect((await calendarSource({ cachePath, fixture: fx })).source).toBe('fixture');
+  });
+});
