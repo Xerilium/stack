@@ -135,7 +135,7 @@ const DOCS: Record<string, RouteDoc> = {
             properties: {
               id: { type: 'string' }, subject: { type: 'string' }, start: { type: 'string', format: 'date-time' }, end: { type: 'string', format: 'date-time' },
               allDay: { type: 'boolean' }, showAs: { type: 'string', enum: ['free', 'tentative', 'busy', 'oof', 'workingElsewhere', 'unknown'] },
-              cancelled: { type: 'boolean' }, online: { type: 'boolean' }, organizer: { type: 'string' }, webLink: { type: 'string' },
+              cancelled: { type: 'boolean' }, online: { type: 'boolean' }, organizer: { type: 'string' }, webLink: { type: 'string' }, joinUrl: { type: 'string', description: 'Online meeting join link' },
             },
           },
         },

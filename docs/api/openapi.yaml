@@ -1032,6 +1032,9 @@ paths:
                           type: string
                         webLink:
                           type: string
+                        joinUrl:
+                          type: string
+                          description: Online meeting join link
         default:
           $ref: "#/components/responses/Error"
   /agents:

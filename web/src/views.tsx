@@ -431,7 +431,7 @@ export function TodayView(t: TodayProps) {
         <p class="t-sub">
           {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
           {meetingMin > 0 && <span>{span(meetingMin)} in meetings</span>}
-          {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join <kbd>J</kbd></a></>}</span>}
+          {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join{nextMeeting.start - nowMin <= 10 && <kbd>J</kbd>}</a></>}</span>}
           {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
           {heads.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{heads.join(' · ')}</button>}
