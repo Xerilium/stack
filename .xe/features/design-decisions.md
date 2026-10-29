@@ -189,3 +189,22 @@
 **Why**: Chat overwhelms the owner; files are durable, agent-agnostic, and reviewable, and any CoS can resume from them. Parsing prose state files would guess; applying defaults needs the owning agent's knowledge.
 
 **Rejected**: A status feed (the overload to remove); WebSocket (SSE is simpler and one-way); agent-set scores (inconsistent); parsing `.stack/*-state.md`.
+
+## Drive agents through the Claude Agent SDK behind an ACP-shaped driver
+
+**Decision**: Stack talks to agents through one `AgentDriver` interface that uses the Agent Client Protocol's vocabulary (sessions, prompt, streamed updates, `request_permission` with `allow_once` / `allow_always` / `reject_once` options). The first driver is the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`), loaded lazily, and only in `stack web` on the owner's machine. Files stay the contract for decisions: a permission prompt is written as an ask and answered on the home view. MCP stays what it is: the agents' door into Stack.
+
+**Date**: 2026-10-29
+
+**Why** (compared with cited evidence):
+
+| Option | What it gives | Why not alone |
+| --- | --- | --- |
+| **Claude Agent SDK** (`0.3.312`): [sessions](https://code.claude.com/docs/en/agent-sdk/sessions), [TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript) | `listSessions` / `getSessionMessages` read the same `~/.claude/projects/<cwd>/*.jsonl` that Claude Desktop writes (verified locally: transcripts carry `entrypoint: claude-desktop`, `custom-title`, `pr-link`, and a `cost-state` record with `totalCostUSD` and `modelUsage`), so the dashboard sees his real sessions, not only ones Stack started. `query({resume, canUseTool, includePartialMessages, maxBudgetUsd, abortController})` gives resume, streaming, permission interception, cost, and cancel in one call. | Vendor-specific; bundles a 263 MB native binary (optional dependency, never loaded on the Azure host); resuming a transcript another client is writing is unsafe, so active sessions are refused (`FR:driver.active`). |
+| **ACP** ([protocol overview](https://agentclientprotocol.com/protocol/v2/overview.md), [tool calls and permissions](https://agentclientprotocol.com/protocol/v2/tool-calls.md)) | An open standard (Zed, Aug 2025): JSON-RPC over stdio, agent as a subprocess, `session/new` / `session/resume` / `session/list` (capability-gated), `session/prompt`, `session/update` notifications, `session/request_permission` with option kinds. Official SDKs. The Claude Code adapter `@zed-industries/claude-code-acp` (`0.16.2`) wraps the Claude Agent SDK. | For Claude it is a second process wrapping the SDK we can call directly, with no access to Desktop's session list beyond what the adapter chooses to expose. Its shape is right, so the driver interface copies it and an `AcpDriver` can be added for other agents without touching the API or the web app. |
+| **MCP** (Stack's own server, `FR:mcp-server/*`) | Agents call Stack tools (tasks, asks). | It is agent → Stack. It cannot list the owner's sessions, stream an agent's output to the page, or surface a permission prompt. Keep it for what it does. |
+| **Files** (ask queue, `FR:ask-queue/*`) | Durable, agent-agnostic, survives any session; already the owner's answer path. | Cannot stream or cancel, and cannot see a session the agent did not write about. Keep it as the decision contract: permission prompts become asks so one home view still answers everything. |
+
+**Rejected**: ACP-first (an extra subprocess and adapter for no new capability today); reading `~/.claude/projects` ourselves (the SDK already parses the store and tracks its format); a WebSocket for the run stream (SSE is one-way and already in `stack web`); letting the dashboard append to a session that Claude Desktop is still writing.
+
+**Risks noted**: the SDK's bundled CLI uses the machine's Claude login (`apiKeySource` in the init message says which); session resume from a different cwd is supported from CLI 2.1.223 (the SDK bundles 2.1.312); the store format is Claude Code's and may change, so every read is tolerant and tested against a fixture.

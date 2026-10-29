@@ -27,6 +27,11 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/asks/{key}` | POST create or update an ask (agents) |
 | `/asks/{key}/answer` | POST the owner's answer (owner session only) |
 | `/asks/{key}/handle` | POST close an ask after acting, or reopen it with a reply |
+| `/sessions` | GET live agent sessions on this machine with state and cost; POST start a new session (owner only) |
+| `/sessions/cost` | GET agent spend by day, project, model |
+| `/sessions/{id}/messages` | GET the last turns of a session |
+| `/sessions/{id}/prompt` | POST resume a session with a prompt (owner only; stream on `/sessions/{id}/events`) |
+| `/sessions/{id}/cancel` | POST stop the run in flight (owner only) |
 | `/agents` | GET what agents are doing (agent rows, result logs, inbox, PR state and checks) |
 | `/tasks/resume` | POST unpark a task (owner session only) |
 | `/tasks/suspend` | POST suspend for days or hours (owner session only) |

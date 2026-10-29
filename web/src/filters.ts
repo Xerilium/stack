@@ -5,8 +5,8 @@ import type { Task, View } from './types';
 export interface Filters { q: string; project: string; state: 'open' | 'done' | 'all'; status: string; priority: string; effort: string }
 
 export const NO_FILTERS: Filters = { q: '', project: '', state: 'open', status: '', priority: '', effort: '' };
-const VIEWS: View[] = ['asks', 'today', 'now', 'projects', 'list'];
-const ALIAS: Record<string, View> = { next: 'now', focus: 'now', capacity: 'projects', all: 'list' };
+const VIEWS: View[] = ['asks', 'sessions', 'today', 'now', 'projects', 'list'];
+const ALIAS: Record<string, View> = { agents: 'sessions', next: 'now', focus: 'now', capacity: 'projects', all: 'list' };
 const STATES = ['open', 'done', 'all'];
 const KEYS = ['q', 'project', 'state', 'status', 'priority', 'effort'] as const;
 

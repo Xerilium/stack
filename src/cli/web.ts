@@ -12,6 +12,7 @@ import { createGitHubPrs } from '../api/github';
 import { getDefaults, parseConfig } from '../core/config';
 import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo } from './watch';
+import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
@@ -38,7 +39,11 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
 
 /** What the UI header shows at all times. */
 export interface RepoInfo { mode: 'demo' | 'live'; repo: string; branch: string }
-export interface WebOpts { dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number } }
+export interface WebOpts {
+  dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number };
+  /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
+  agents?: AgentRuns | false;
+}
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
 export function resolveRepo(spec: string, cacheDir: string): string {
@@ -93,7 +98,10 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
   // @req FR:agent-inbox/github.wire
   const ghToken = process.env.GITHUB_TOKEN?.trim();
-  const api = createApiHandler({ storage: new GitStorage(o.dir), config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined });
+  const storage = new GitStorage(o.dir);
+  // @req FR:agent-sessions/driver.sdk (the SDK and its binary load on the first sessions request, not here)
+  const agents: AgentRuns | undefined = o.agents === false ? undefined : o.agents ?? createRunManager({ driver: createSdkDriver(), ctx: { storage, config } });
+  const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined, agents });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs });
@@ -117,7 +125,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         const unsafe = req.method !== 'GET' && req.method !== 'HEAD';
         if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
         const path = (req.url ?? '/').split('?')[0];
-        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active() }), 'application/json');
+        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents }), 'application/json');
         if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
         // @req FR:ask-queue/live.sse
         if (path === '/events' && req.method === 'GET') {
@@ -131,6 +139,18 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           if (Number.isInteger(last) && last >= 0 && last < watcher.rev()) frame('change', { rev: watcher.rev(), kinds: ALL_KINDS }, watcher.rev());
           const off = watcher.on((c) => frame('change', c, c.rev));
           const hb = setInterval(() => res.write(': ping\n\n'), beat);
+          req.on('close', () => { clearInterval(hb); off(); });
+          return;
+        }
+        // @req FR:agent-sessions/run.events
+        const runEvents = /^\/sessions\/([A-Za-z0-9-]{1,64})\/events$/.exec(path);
+        if (runEvents && req.method === 'GET') {
+          if (!agents) return send(404, 'not found', 'text/plain');
+          let started = false;
+          const frame = (u: unknown) => { if (!started) { started = true; res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no', ...extra }); res.write('retry: 3000\n\n'); } res.write(`event: update\ndata: ${JSON.stringify(u)}\n\n`); };
+          const off = agents.subscribe(runEvents[1], frame, () => { if (!started) res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', ...extra }); res.end(); });
+          if (!off) return send(204, '', 'text/plain');
+          const hb = setInterval(() => { if (started) res.write(': ping\n\n'); }, beat);
           req.on('close', () => { clearInterval(hb); off(); });
           return;
         }
