@@ -12,7 +12,7 @@ import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
   removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, TaskProps,
 } from '../core/lifecycle';
-import { ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
+import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import { AUTONOMY_LEVELS, type Autonomy } from '../core/model';
 import { applyTriage, effectiveAutonomy, setAutonomy } from '../core/triage';
@@ -48,7 +48,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live commits to a branch)' },
-  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen] | list [--state s] | handle <key> --outcome o [--note --reply]', help: 'ask queue for the owner: agents put and handle asks' },
+  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   update: { flags: ['sweep', 'queries'], usage: 'update [--sweep] [--queries]', help: 'regenerate README, stack, projects, my-day' },
 };
 
@@ -198,7 +198,7 @@ async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: bo
   };
 }
 
-/** @req FR:ask-queue/cli.put @req FR:ask-queue/cli.list @req FR:ask-queue/cli.handle */
+/** @req FR:ask-queue/cli.put @req FR:ask-queue/cli.list @req FR:ask-queue/cli.handle @req FR:ask-queue/cli.archive */
 async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): Promise<Outcome> {
   const f = p.flags;
   const [sub, key, ...rest] = p.positionals;
@@ -244,7 +244,14 @@ async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): 
       const r = await handleAsk(ctx, key, { outcome: outcome as HandleInput['outcome'], note: s('note'), reply: s('reply') }, actor);
       return { json: { ok: true, ...r }, text: r.changed ? `${outcome} ${key}` : `no change: ${key}` };
     }
-    default: throw new UsageError('Usage: stack asks put|list|handle (see stack --help)');
+    case 'archive': {
+      // @req FR:ask-queue/cli.archive
+      if (key) throw new UsageError(`Unexpected argument: ${key}`);
+      const days = num(s('days'), 'days');
+      const r = await archiveAsks(ctx, { days });
+      return { json: { ok: true, ...r }, text: r.archived.length ? `archived ${r.archived.join(' ')}` : 'no change: nothing to archive' };
+    }
+    default: throw new UsageError('Usage: stack asks put|list|handle|archive (see stack --help)');
   }
 }
 

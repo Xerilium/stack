@@ -4,7 +4,7 @@
  * @req FR:ask-queue/flow.put @req FR:ask-queue/flow.answer @req FR:ask-queue/flow.handle @req FR:ask-queue/flow.default @req FR:ask-queue/flow.thread
  */
 import { LifecycleError, type LifecycleContext } from './lifecycle';
-import { ConflictError, NotFoundError } from './storage';
+import { ConflictError, NotFoundError, writeAll, type FileWrite } from './storage';
 import { redact } from './triage';
 
 export const ASK_KINDS = ['approve', 'decide', 'review', 'go-do', 'answer'] as const;
@@ -45,6 +45,9 @@ export interface ListedAsk extends Omit<Ask, 'extra' | 'thread'> {
   score: number; rank?: number; overdue: boolean; snoozedUntil?: string; agentReply?: string;
 }
 export interface AskList { items: ListedAsk[]; total: number; latest?: string; snoozed: number }
+
+/** Parsed asks by storage and path, reused while the file version is unchanged, so a refresh re-parses only what moved. */
+const parsed = new WeakMap<object, Map<string, { version: string; ask: Ask }>>();
 
 const MAX_ASK = 200;
 const MAX_LINE = 500;
@@ -145,7 +148,7 @@ export function scoreAsk(a: Ask, now: Date): number {
 
 const clock = (ctx: LifecycleContext) => (ctx.now ?? (() => new Date()))();
 
-async function readAsk(ctx: LifecycleContext, key: string): Promise<{ ask: Ask; version: string } | null> {
+export async function readAsk(ctx: LifecycleContext, key: string): Promise<{ ask: Ask; version: string } | null> {
   try {
     const f = await ctx.storage.read(asksPath(key));
     return { ask: parseAsk(key, f.content), version: f.version };
@@ -295,20 +298,57 @@ export async function handleAsk(ctx: LifecycleContext, key: string, input: Handl
   });
 }
 
+/** Every well-formed ask file, parsed once per version. */
+async function readAll(ctx: LifecycleContext): Promise<Ask[]> {
+  let cache = parsed.get(ctx.storage);
+  if (!cache) { cache = new Map(); parsed.set(ctx.storage, cache); }
+  const all: Ask[] = [];
+  const seen = new Set<string>();
+  for (const p of (await ctx.storage.listAsks?.()) ?? []) {
+    const key = p.replace(/^.*\//, '').replace(/\.md$/, '');
+    seen.add(p);
+    try {
+      const f = await ctx.storage.read(p);
+      const hit = cache.get(p);
+      const a = hit && hit.version === f.version ? hit.ask : parseAsk(key, f.content);
+      cache.set(p, { version: f.version, ask: a });
+      if (a.ask && a.from && a.created) all.push(a);
+    } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
+  }
+  for (const p of cache.keys()) if (!seen.has(p)) cache.delete(p);
+  return all;
+}
+
+/** The archive folder for a key. @req FR:ask-queue/ask.archive */
+export const archivePath = (key: string): string => `tasks/asks/archive/${key}.md`;
+
+/**
+ * Moves `done` asks untouched for `days` days to `tasks/asks/archive/`, one write (one commit) for all of them.
+ * The open list never reads the archive, so the queue stays small however many asks agents have closed.
+ * @req FR:ask-queue/ask.archive
+ */
+export async function archiveAsks(ctx: LifecycleContext, o: { days?: number } = {}): Promise<{ archived: string[] }> {
+  const days = o.days ?? 14;
+  if (!Number.isInteger(days) || days < 0 || days > 3650) throw new LifecycleError('days must be a whole number of days (0-3650)');
+  const cutoff = clock(ctx).getTime() - days * 86_400_000;
+  const writes: FileWrite[] = [];
+  const archived: string[] = [];
+  for (const a of await readAll(ctx)) {
+    if (a.state !== 'done' || Date.parse(a.updated) > cutoff) continue;
+    const f = await ctx.storage.read(asksPath(a.key));
+    writes.push({ path: archivePath(a.key), content: f.content }, { path: asksPath(a.key), content: null, expectedVersion: f.version });
+    archived.push(a.key);
+  }
+  if (writes.length) await writeAll(ctx.storage, writes, archived.length === 1 ? `Archive ask: ${archived[0]}` : `Archive ${archived.length} asks`);
+  return { archived };
+}
+
 /** Ranked list. @req FR:ask-queue/ask.rank @req FR:ask-queue/flow.default */
 export async function listAsks(ctx: LifecycleContext, o: { state?: (typeof LIST_STATES)[number]; limit?: number } = {}, at?: Date): Promise<AskList> {
   const state = o.state ?? 'open';
   if (!oneOf(LIST_STATES, state)) throw new LifecycleError(`state must be one of ${LIST_STATES.join(', ')}`);
   const now = at ?? clock(ctx);
-  const all: Ask[] = [];
-  for (const p of (await ctx.storage.listAsks?.()) ?? []) {
-    const key = p.replace(/^.*\//, '').replace(/\.md$/, '');
-    try {
-      const f = await ctx.storage.read(p);
-      const a = parseAsk(key, f.content);
-      if (a.ask && a.from && a.created) all.push(a);
-    } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
-  }
+  const all = await readAll(ctx);
   const latest = all.map((a) => a.updated).sort().pop();
   const snoozed = (a: Ask) => !!a.snoozed && Date.parse(a.snoozed) > now.getTime();
   const lastReply = (a: Ask) => { const m = a.thread.length ? /^- \S+ (\S+): (.*)$/.exec(a.thread[a.thread.length - 1]) : null; return m && m[1] !== 'you' ? m[2] : undefined; };

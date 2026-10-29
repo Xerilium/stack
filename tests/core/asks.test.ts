@@ -1,4 +1,4 @@
-import { answerAsk, asksPath, formatAsk, handleAsk, listAsks, parseAsk, putAsk, scoreAsk, type Ask } from '../../src/core/asks';
+import { answerAsk, archiveAsks, archivePath, asksPath, formatAsk, handleAsk, listAsks, parseAsk, putAsk, scoreAsk, type Ask } from '../../src/core/asks';
 import { ConflictError, MemoryStorage, NotFoundError, PathError, validatePath } from '../../src/core/storage';
 import { LifecycleError } from '../../src/core/lifecycle';
 
@@ -277,3 +277,50 @@ describe('list and rank', () => {
     expect((await listAsks(ctx)).items.map((i) => i.key)).toEqual(['good']);
   });
 });
+
+// @req FR:ask-queue/ask.archive
+describe('archiveAsks', () => {
+  it('moves done asks older than the window to tasks/asks/archive in one write; open, answered and recent ones stay', async () => {
+    const { storage, ctx } = mk();
+    await putAsk(ctx, 'old-done', base, 'cos');
+    await handleAsk(ctx, 'old-done', { outcome: 'handled' }, 'cos');
+    await putAsk(ctx, 'open', base, 'cos');
+    await putAsk(ctx, 'answered', base, 'cos');
+    await answerAsk(ctx, 'answered', { answer: 'go' });
+    const later = { storage, now: () => new Date(NOW.getTime() + 20 * 86_400_000) };
+    await putAsk(later, 'new-done', base, 'cos');
+    await handleAsk(later, 'new-done', { outcome: 'resolved' }, 'cos');
+    const writes: string[][] = [];
+    const orig = storage.writeMany.bind(storage);
+    storage.writeMany = async (w, o) => { writes.push(w.map((x) => x.path)); return orig(w, o); };
+    expect(await archiveAsks(later, { days: 14 })).toEqual({ archived: ['old-done'] });
+    expect(writes).toEqual([[archivePath('old-done'), asksPath('old-done')]]);
+    expect((await storage.read(archivePath('old-done'))).content).toContain('- state: done');
+    await expect(storage.read(asksPath('old-done'))).rejects.toBeInstanceOf(NotFoundError);
+    expect((await listAsks(later, { state: 'all' })).items.map((a) => a.key).sort()).toEqual(['answered', 'new-done', 'open']);
+    expect(await archiveAsks(later, { days: 14 })).toEqual({ archived: [] });
+    expect(await archiveAsks(later, { days: 0 })).toEqual({ archived: ['new-done'] });
+    await expect(archiveAsks(later, { days: -1 })).rejects.toThrow(LifecycleError);
+    expect(() => validatePath('tasks/asks/archive/Bad.md')).toThrow(PathError);
+  });
+});
+
+describe('listAsks cache', () => {
+  it('parses a file once per version and forgets files that went away', async () => {
+    const { storage, ctx } = mk();
+    await putAsk(ctx, 'a', base, 'cos');
+    await putAsk(ctx, 'b', base, 'cos');
+    const reads: string[] = [];
+    const origRead = storage.read.bind(storage);
+    storage.read = async (p) => { reads.push(p); return origRead(p); };
+    const first = await listAsks(ctx);
+    const second = await listAsks(ctx);
+    expect(second.items).toEqual(first.items);
+    expect(reads.length).toBe(4); // every file is still read (its version decides), but the parse is reused
+    await answerAsk(ctx, 'a', { answer: 'go' });
+    expect((await listAsks(ctx)).items.map((i) => i.key)).toEqual(['b']);
+    await archiveAsks({ storage, now: () => new Date(NOW.getTime() + 30 * 86_400_000) }, { days: 0 });
+    expect((await listAsks(ctx, { state: 'all' })).items.map((i) => i.key)).toEqual(['a', 'b']);
+  });
+});
+

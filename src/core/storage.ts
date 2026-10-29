@@ -18,7 +18,7 @@ export interface WriteOptions {
 }
 
 /** One file in a multi-file write. @req FR:storage-git/write.many */
-export interface FileWrite { path: string; content: string; expectedVersion?: string | null }
+export interface FileWrite { path: string; /** `null` deletes the file (multi-file writes only). @req FR:storage-git/write.delete */ content: string | null; expectedVersion?: string | null }
 
 /** @req FR:storage-git/interface.@type */
 export interface Storage {
@@ -35,7 +35,10 @@ export interface Storage {
 export async function writeAll(storage: Storage, writes: FileWrite[], message?: string): Promise<void> {
   if (storage.writeMany) return storage.writeMany(writes, { message });
   assertDistinct(writes);
-  for (const w of writes) await storage.write(w.path, w.content, { expectedVersion: w.expectedVersion, message });
+  for (const w of writes) {
+    if (w.content === null) throw new StorageError(`Cannot delete ${w.path}: the adapter has no writeMany`);
+    await storage.write(w.path, w.content, { expectedVersion: w.expectedVersion, message });
+  }
 }
 
 /** @req FR:storage-git/write.many */
@@ -62,6 +65,8 @@ const INBOX_PATH = /^tasks\/inbox\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][
 
 /** Agent asks for the owner: one file per ask, never projects. @req FR:ask-queue/ask.path */
 const ASK_PATH = /^tasks\/asks\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
+/** Archived (done) asks: same names, one folder down, never listed as open asks. @req FR:ask-queue/ask.archive */
+const ARCHIVE_PATH = /^tasks\/asks\/archive\/[a-z0-9][a-z0-9._-]{0,79}\.md$/;
 
 /** Non-task state files (for example the API token store); never listed as tasks. */
 export const AUX_PATH = /^\.stack\/[a-z][a-z-]*\.json$/;
@@ -79,7 +84,7 @@ export interface AuxFiles {
 
 /** @req FR:storage-git/interface.paths @req FR:ai-triage-assist/result.path */
 export function validatePath(path: string): string {
-  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || ASK_PATH.test(path)) || path.split('/').includes('..')) {
+  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || ASK_PATH.test(path) || ARCHIVE_PATH.test(path)) || path.split('/').includes('..')) {
     throw new PathError(`Invalid task path: ${JSON.stringify(path)}`);
   }
   return path;
@@ -137,6 +142,7 @@ export class MemoryStorage implements Storage {
     return p;
   }
 
+  /** All versions checked first; `null` content deletes. @req FR:storage-git/write.many @req FR:storage-git/write.delete */
   async writeMany(writes: FileWrite[]): Promise<void> {
     assertDistinct(writes);
     const run = async () => {
@@ -144,7 +150,7 @@ export class MemoryStorage implements Storage {
         const cur = this.files.get(w.path);
         checkExpected(w.path, cur === undefined ? null : versionOf(cur), { expectedVersion: w.expectedVersion });
       }
-      for (const w of writes) this.files.set(w.path, w.content);
+      for (const w of writes) { if (w.content === null) this.files.delete(w.path); else this.files.set(w.path, w.content); }
     };
     const p = this.queue.then(run, run);
     this.queue = p.catch(() => undefined);
@@ -262,7 +268,7 @@ export class FsStorage implements Storage {
     }
     const done: number[] = [];
     try {
-      for (let i = 0; i < writes.length; i++) { await this.atomicWrite(writes[i].path, writes[i].content); done.push(i); }
+      for (let i = 0; i < writes.length; i++) { await this.put(writes[i].path, writes[i].content); done.push(i); }
     } catch (e) {
       for (const i of done) await this.restore(writes[i].path, priors[i]).catch(() => undefined);
       throw e;
@@ -275,6 +281,11 @@ export class FsStorage implements Storage {
     checkExpected(path, cur === null ? null : versionOf(cur), opts);
     await this.atomicWrite(path, content);
     return { version: versionOf(content) };
+  }
+
+  /** Write, or delete when `content` is null. */
+  protected async put(path: string, content: string | null): Promise<void> {
+    if (content === null) await this.restore(path, null); else await this.atomicWrite(path, content);
   }
 
   protected async readRaw(path: string): Promise<string | null> {

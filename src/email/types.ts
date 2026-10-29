@@ -51,7 +51,8 @@ export interface TriageResult {
   recommend?: string;
   vip?: boolean;
   /** The draft created in the mailbox, with its Outlook web link. */
-  draft?: { text: string; webLink: string };
+  /** `reused`: the draft was already in the mailbox from an earlier pass; nothing new was created. */
+  draft?: { text: string; webLink: string; reused?: boolean };
 }
 
 export interface MailProvider {

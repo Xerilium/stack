@@ -801,7 +801,7 @@ paths:
                 from:
                   type: string
                   maxLength: 80
-                  description: Agent name; defaults to the caller Single line.
+                  description: Agent name; defaults to the token's name (the owner session writes as owner) Single line.
                 project:
                   type: string
                   maxLength: 80

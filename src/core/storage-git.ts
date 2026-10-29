@@ -160,7 +160,7 @@ export class GitStorage extends FsStorage {
     for (const p of paths) entries.push(((await this.tryGit('ls-files', '-s', '--', p)) ?? '').trim());
     let committed = false;
     try {
-      for (const w of writes) await this.atomicWrite(w.path, w.content);
+      for (const w of writes) await this.put(w.path, w.content);
       await this.git('add', '--', ...paths);
       const staged = await this.tryGit('diff', '--cached', '--quiet', '--', ...paths);
       if (staged === null) {

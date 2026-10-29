@@ -63,6 +63,7 @@ After the owner answers, Stack adds `answer`, `text`, `answered`. After the agen
 - **FR:ask.safe** (P1): Every field is redacted and escaped like inbox fields (`FR:agent-inbox/inbox.send`): single line, no control or invisible characters, no markdown links or images from agent text, `link` must be an `https` url. `## Detail` is stored as given but the page renders it as plain text with no html
 - **FR:ask.score** (P1): `scoreAsk(ask, now)` is deterministic: priority (crit 100, high 60, normal 30, low 10) plus deadline pressure (overdue 80, under 2 h 70, under 24 h 50, under 3 d 30, under 7 d 15, else 0) plus 5 per blocked item (max 20) plus 8 when effort is 5 minutes or less plus 10 when not reversible and `by` is within 3 days plus 1 per day open (max 10)
 - **FR:ask.rank** (P1): `listAsks` returns visible asks by score descending, ties by earlier `by`, then older `created`, then key. Visible means `state: open` and not snoozed (`snoozed` in the future). `state=answered` returns asks waiting on the agent, oldest answer first; `state=done` newest first; `all` returns every ask unranked by file order
+- **FR:ask.archive** (P2): `archiveAsks(ctx, {days})` (default 14) moves every `done` ask whose `updated` is older than `days` days to `tasks/asks/archive/<key>.md` in ONE write (one commit), deleting the original. `listAsks` never reads the archive, and parses each file once per version (a refresh re-parses only files that changed), so the queue stays fast however many asks agents have closed
 
 ### FR:flow: Lifecycle
 
@@ -75,7 +76,7 @@ After the owner answers, Stack adds `answer`, `text`, `answered`. After the agen
 ### FR:api: Routes
 
 - **FR:api.list** (P1): `GET /asks?state=&limit=` (route `asks.list`, scope `tasks:read`) returns `{items, total, latest, snoozed}`; `state` is `open` (default), `answered`, `done`, `snoozed` (open asks hidden until a later time, soonest first), or `all`; `limit` 1-200 default 50; `snoozed` counts open asks currently snoozed. Each item has every field plus `key`, `score`, `rank` (open only), `overdue`, and `snoozedUntil`. `latest` is the newest `updated` across all asks
-- **FR:api.put** (P1): `POST /asks/{key}` (route `asks.put`, scope `tasks:write`) with the agent fields returns `200 {key, created}`. Tokens and the owner may call it. `from` defaults to the token's actor
+- **FR:api.put** (P1): `POST /asks/{key}` (route `asks.put`, scope `tasks:write`) with the agent fields returns `200 {key, created}`. Tokens and the owner may call it. `from` defaults to the token's name (the owner session writes as `owner`)
 - **FR:api.answer** (P1): `POST /asks/{key}/answer` (route `asks.answer`, scope `tasks:write`) with `{answer, text?, until?}`. Only the owner session may call it: a token caller gets `403 forbidden`, so an agent can never answer in the owner's voice
 - **FR:api.handle** (P1): `POST /asks/{key}/handle` (route `asks.handle`, scope `tasks:write`) with `{outcome, note?, reply?}` returns `{changed}`. Unknown key is 404. All four routes are in `docs/api/openapi.yaml`
 
@@ -91,6 +92,7 @@ After the owner answers, Stack adds `answer`, `text`, `answered`. After the agen
 - **FR:cli.put** (P1): `stack asks put <key> --ask "<text>" --kind <k> --from <agent> [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file <path>]` writes the ask file in the repo folder (no server needed) and prints the key
 - **FR:cli.list** (P1): `stack asks list [--state open|answered|done|all] [--json]` prints ranked rows (`key  score  ask`); `--json` prints the api shape
 - **FR:cli.handle** (P1): `stack asks handle <key> --outcome handled|resolved|defaulted|reopen [--note --reply]`
+- **FR:cli.archive** (P2): `stack asks archive [--days n] [--json]` runs `archiveAsks` and prints the keys moved (`archived k1 k2`) or `no change: nothing to archive`
 
 ### FR:web: Asks view
 

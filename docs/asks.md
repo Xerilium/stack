@@ -15,7 +15,7 @@ stack asks put pr-879-approve \
   --priority high --effort 2m --blocks 3 [--detail-file notes.md]
 ```
 
-- `--dir <repo folder>` points at the served folder (`stack web` prints it). Over HTTP: `POST /api/asks/<key>` with the same fields and an API token (`tasks:write`).
+- `--dir <repo folder>` points at the served folder (`stack web` prints it). Over HTTP: `POST /api/asks/<key>` with the same fields and an API token (`tasks:write`); `from` defaults to the token's name.
 - The key is yours and stable. Writing it again updates the ask. A `done` ask needs `--reopen` to open again.
 - `ask` is one line, at most 200 characters, a decision not a topic ("Approve X", "Pick Y or Z", "Review draft to Dana").
 - `kind`: `approve` (yes/no), `decide` (give `--options "A|B"`, recommend one), `review` (open the link, then "Looks good" or "Needs changes"), `go-do` (a human-only step), `answer` (you need a fact in words).
@@ -42,6 +42,15 @@ stack asks handle pr-879-approve --outcome reopen --reply "Yes, all 14 checks pa
 
 At the deadline, a reversible ask with a default is yours to apply (`defaulted`). Stack never acts for you.
 
+## Keep the queue small
+
+```bash
+stack asks archive            # moves done asks untouched for 14 days to tasks/asks/archive/
+stack asks archive --days 3   # sooner
+```
+
+Run it at the start of each run (one commit, nothing is lost). The archive is never shown or ranked.
+
 ## Rules of thumb
 
 1. Write an ask only when the owner must decide or do something. Status is not an ask.
@@ -51,4 +60,4 @@ At the deadline, a reversible ask with a default is yours to apply (`defaulted`)
 
 ## For a CoS agent file
 
-> Bring Michael decisions only through `stack asks put` (see `docs/asks.md`). After each state update, upsert the asks for every open decision and `resolve` the ones no longer needed. Read `stack asks list --state answered` at the start of every run and act on the answers. Do not message him in chat.
+> Bring Michael decisions only through `stack asks put` (see `docs/asks.md`). After each state update, upsert the asks for every open decision and `resolve` the ones no longer needed. Read `stack asks list --state answered` at the start of every run and act on the answers, then `stack asks archive`. Do not message him in chat.
