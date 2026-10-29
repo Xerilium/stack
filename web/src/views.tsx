@@ -9,7 +9,7 @@ import type { Countdown, Home, HomeItem } from './home';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
-import type { Agent, InboxItem, NextTask, Task } from './types';
+import type { Agent, InboxItem, Task } from './types';
 
 export const chipsOf = (text: string) => {
   const r = parseRow(text);
@@ -26,49 +26,6 @@ export interface RowProps {
   prog: Map<string, { done: number; total: number }>;
   onSelect: (ref: string) => void; onCursor: (ref: string) => void; onEdit: (ref: string | null) => void; onSave: (ref: string, text: string) => void; onToggle: (t: Task) => void;
   onPick: Pick; onMove: (ref: string, dir: 'up' | 'down') => void; onDragStart: (ref: string, e: PointerEvent) => void; onExpand: (ref: string) => void; onOpen: (ref: string) => void;
-}
-
-export interface NowSection { id: string; title: string; rows: Task[] }
-
-/** @req FR:web-app/now.focus @req FR:web-app/now.active */
-export function NowView({ task, sections, hidden, allOpen, p, busy, onAct, onToggleAll }: {
-  task: NextTask | null; sections: NowSection[]; hidden: number; allOpen: boolean; p: RowProps; busy: boolean;
-  onAct: (a: 'start' | 'done' | 'defer') => void; onToggleAll: () => void;
-}) {
-  const hero = task ? parseRow(task.text) : null;
-  return (
-    <section aria-label="Now">
-      {!task && (
-        <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd>c</kbd></p></div>
-      )}
-      {task && hero && (
-        <div class={`focus-block${p.cursor === task.ref ? ' cursor' : ''}`} data-ref={task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(task.ref)}>
-          <p class="eyebrow">Next · {p.titles.get(task.project) ?? task.project}</p>
-          <h1 data-testid="next-title" onDblClick={() => p.onOpen(task.ref)}><Md text={hero.title || task.text} /></h1>
-          <div class="chips">
-            {chipsOf(task.text).map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([task.ref], g)} />)}
-            <Tags r={hero} />
-            {hero.due && <span class={`meta${dueClass(hero.due)}`}>{hero.due}</span>}
-            {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
-          </div>
-          <div class="actions">
-            <button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start')}>Start <kbd>s</kbd></button>
-            <button type="button" class="btn" disabled={busy} onClick={() => onAct('done')}>Done <kbd>d</kbd></button>
-            <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('defer')}>Not now <kbd>z</kbd></button>
-          </div>
-        </div>
-      )}
-      {sections.map((s) => s.rows.length > 0 && (
-        <div key={s.id}>
-          <h2 class="h2">{s.title}</h2>
-          <ul class="rows" data-testid={s.id === 'then' ? 'rows' : undefined}>
-            {s.rows.map((t) => <TaskRow key={t.ref} t={t} p={p} />)}
-          </ul>
-        </div>
-      ))}
-      {(hidden > 0 || allOpen) && <button type="button" class="btn quiet more-all" onClick={onToggleAll}>{allOpen ? 'Show less' : `Show all active (${hidden} more)`}</button>}
-    </section>
-  );
 }
 
 /** Who/outcome/links lifted out of the title. */
@@ -656,7 +613,7 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
     </li>
   );
   return (
-    <section class="home" aria-label="Now">
+    <section class="home" aria-label="Home">
       {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd>c</kbd></p></div>}
       {one && hero && (
         <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${h.fits ? '' : ' unfit'}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
@@ -699,9 +656,8 @@ export function HomeView({ h, minutesLeft, p, busy, onAct, onProject, onMoreTime
             {h.projects.map((x) => (
               <li key={x.project} class={x.shown ? 'shown' : ''}>
                 <button type="button" class="proj-link" onClick={() => onProject(x.project)}>{x.title}</button>
-                {x.task && !x.shown && <span class="proj-top" onDblClick={() => p.onOpen(x.task!.ref)}><Md text={parseRow(x.task.text).title || x.task.text} /></span>}
-                {x.task && x.shown && <span class="proj-top quiet">above</span>}
-                {x.task && !x.shown && <When i={{ minutes: x.minutes!, assumed: !!x.assumed, due: x.due ?? null }} />}
+                {x.shown ? <span class="proj-top quiet">above</span> : <span class="proj-top" onDblClick={() => p.onOpen(x.top.task.ref)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>}
+                {!x.shown && <When i={x.top} />}
               </li>
             ))}
           </ul>

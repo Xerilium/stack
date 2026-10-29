@@ -3,10 +3,11 @@
  * Pure; the view only draws it.
  * @req FR:web-app/home.one @req FR:web-app/home.fit @req FR:web-app/home.next @req FR:web-app/home.projects
  */
-import { actionable, activeTasks, dueDays, isUpNext, rankNow } from './now';
-import { estimate } from './plan';
-import { parseRow } from './row';
+import { actionable, activeTasks, dueDays, isActive, isUpNext, rankNow } from './now';
+import { effortMinutes, parseRow } from './row';
 import type { NextTask, Project, Task } from './types';
+
+const DEFAULT_MIN = 30;
 
 export interface Countdown { text: string; tone: 'late' | 'soon' | 'calm' }
 /** `today`, `tomorrow`, a weekday inside the week, `in n d`, or `n d late`. */
@@ -21,10 +22,11 @@ export function countdown(due: string | undefined, now: Date): Countdown | null 
 }
 
 export interface HomeItem { task: Task; minutes: number; assumed: boolean; due: Countdown | null }
-export interface HomeProject { project: string; title: string; task?: Task; minutes?: number; assumed?: boolean; due?: Countdown | null; shown: boolean; open: number }
+export interface HomeProject { project: string; title: string; top: HomeItem; shown: boolean }
 export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem | null; next: HomeItem[]; projects: HomeProject[] }
 
-const item = (t: Task, now: Date): HomeItem => { const e = estimate(t); return { task: t, minutes: e.minutes, assumed: e.assumed, due: countdown(parseRow(t.text).due, now) }; };
+/** Expected time is the full effort (30 min assumed when unset), never capped: a 3 h task must not "fit" 2 h. */
+const item = (t: Task, now: Date): HomeItem => { const r = parseRow(t.text); const est = effortMinutes(r.effort); return { task: t, minutes: est || DEFAULT_MIN, assumed: !est, due: countdown(r.due, now) }; };
 const doing = (t: Task) => /🚧/u.test(t.text);
 
 export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask | null; now: Date; minutesLeft: number }): Home {
@@ -36,12 +38,12 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask |
   const fits = !one || one.minutes <= o.minutesLeft;
   const instead = !fits && o.minutesLeft > 0 ? (ordered.map((t) => item(t, now)).find((i) => i.minutes <= o.minutesLeft) ?? null) : null;
   const next = ordered.slice(0, 2).map((t) => item(t, now));
-  const shownRefs = new Set([oneTask?.ref, ...next.map((n) => n.task.ref)].filter(Boolean) as string[]);
-  const projects: HomeProject[] = o.projects.map((p) => {
+  const shownRefs = new Set([oneTask?.ref, instead?.task.ref, ...next.map((n) => n.task.ref)].filter((r): r is string => !!r));
+  const projects: HomeProject[] = [];
+  for (const p of o.projects) {
     const mine = tasks.filter((t) => t.project === p.name && !t.done && t.depth === 0);
-    const top = rankNow(mine.filter((t) => activeTasks([t]).length && actionable(t, now)), now, tasks)[0] ?? mine.find(isUpNext) ?? mine[0];
-    const i = top ? item(top, now) : undefined;
-    return { project: p.name, title: p.title || p.name, task: top, minutes: i?.minutes, assumed: i?.assumed, due: i?.due, shown: !!top && shownRefs.has(top.ref), open: mine.length };
-  }).filter((p) => p.task);
+    const top = rankNow(mine.filter((t) => isActive(t) && actionable(t, now)), now, tasks)[0] ?? mine.find(isUpNext) ?? mine[0];
+    if (top) projects.push({ project: p.name, title: p.title || p.name, top: item(top, now), shown: shownRefs.has(top.ref) });
+  }
   return { one, fits, instead, next, projects };
 }

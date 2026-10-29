@@ -802,7 +802,7 @@ test.describe('now view sections', () => {
     await mockApi(page, { tasks });
     await page.goto('/#/now');
     await expect(page.getByTestId('next-title')).toContainText('Hero task');
-    const body = page.locator('section[aria-label="Now"]');
+    const body = page.locator('section[aria-label="Home"]');
     await expect(body).not.toContainText('Far future task');
     await expect(body).not.toContainText('Later task');
     await expect(body).not.toContainText('Parked task');
@@ -819,7 +819,7 @@ test.describe('now view sections', () => {
     const tasks = [mk(1, '🔺 Hero task'), ...Array.from({ length: 8 }, (_, i) => mk(i + 2, `Filler ${i + 1}`))];
     await mockApi(page, { tasks });
     await page.goto('/#/now');
-    await expect(page.locator('section[aria-label="Now"] .row')).toHaveCount(2);
+    await expect(page.locator('section[aria-label="Home"] .row')).toHaveCount(2);
     await expect(page.getByRole('button', { name: /Show all active/ })).toHaveCount(0);
   });
 });

@@ -44,16 +44,21 @@ describe('homeOf', () => {
     expect(h.fits).toBe(false);
     expect(h.instead?.task.ref).toBe('alpha:3');
     expect(h.instead?.minutes).toBe(12);
+    expect(h.projects.find((p) => p.project === 'alpha')?.shown).toBe(true);
     expect(homeOf({ tasks, projects, next, now: at, minutesLeft: 0 }).instead).toBeNull();
+    // a 3 h task never "fits" a 2 h budget (no cap)
+    const big = homeOf({ tasks: [T('alpha:9', 'Deep work ⚫️')], projects, next: { ref: 'alpha:9', text: 'Deep work ⚫️', project: 'alpha', score: 1 }, now: at, minutesLeft: 120 });
+    expect(big.one?.minutes).toBe(480);
+    expect(big.fits).toBe(false);
   });
   it('one row per project: the top task, skipping projects whose top is already shown', () => {
     const h = homeOf({ tasks, projects, next, now: at, minutesLeft: 180 });
-    expect(h.projects.map((p) => [p.project, p.task?.ref ?? null, p.shown])).toEqual([
+    expect(h.projects.map((p) => [p.project, p.top.task.ref, p.shown])).toEqual([
       ['alpha', 'alpha:1', true],
       ['beta', 'beta:1', false],
       ['gamma', 'gamma:1', false],
     ]);
-    expect(h.projects[1].minutes).toBe(60);
+    expect(h.projects[1].top.minutes).toBe(60);
   });
   it('no next task: nothing to do, no suggestion', () => {
     const h = homeOf({ tasks: [], projects: [], next: null, now: at, minutesLeft: 180 });

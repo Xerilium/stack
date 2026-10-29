@@ -241,7 +241,6 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
 a.tag.link { color: var(--accent); font-weight: 500; }
 a.tag.link:hover { background: var(--accent-soft); }
 .proj-tag { font-size: 11px; color: var(--muted); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 4px; }
-.more-all { margin-top: 14px; }
 .row.selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
 .sel { display: none !important; }
 @media (max-width: 719px) { .proj-tag { display: none; } .title { flex-wrap: wrap; } }

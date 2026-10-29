@@ -2,7 +2,6 @@
 import { expect, test } from '@playwright/test';
 import { dateTag, mockApi, seed, type MockTask } from './mock';
 
-const KEYBOARD = 'keyboard';
 const home = () => {
   const t = seed();
   // alpha:6 (the /next task) is 1 h and due today; alpha:9 is 2 h; beta:4 is 30 m
@@ -33,7 +32,6 @@ test.describe('Home', () => {
 
   // @req FR:web-app/home.fit
   test('says when the one thing does not fit the time left and offers one that does', async ({ page }, info) => {
-    test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page, { tasks: home() });
     await page.clock.install({ time: new Date(2026, 9, 29, 17, 30) }); // 30 min of the work day left
     await page.goto('/');
@@ -42,10 +40,12 @@ test.describe('Home', () => {
     const instead = page.getByTestId('instead');
     await expect(instead).toContainText('Plan the trip');
     await expect(instead.getByTestId('expected')).toHaveText('30m');
-    await page.keyboard.press(']'); await page.keyboard.press(']'); // +1 h
+    if (info.project.name === 'mobile') await one.getByRole('button', { name: /More time/ }).tap(); else await page.keyboard.press(']'); // +30 m: now it fits
     await expect(one.getByTestId('nofit')).toHaveCount(0);
+    await expect(page.getByTestId('instead')).toHaveCount(0);
   });
 
+  // @req FR:web-app/home.projects
   test('project name opens that project in Full stack', async ({ page }) => {
     await mockApi(page, { tasks: home() });
     await page.goto('/');
