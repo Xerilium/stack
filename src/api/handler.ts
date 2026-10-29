@@ -11,6 +11,8 @@ import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { Storage } from '../core/storage';
+import { agentActivity, type PrStatusProvider } from '../core/activity';
+import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
 import { generateSummaries } from '../core/summaries';
 import { editTask, moveTask } from './edit';
@@ -31,6 +33,8 @@ export interface ApiDeps {
   /** Deny-by-default: when absent every request gets 401. */
   authorize?: Authorize;
   basePath?: string;
+  /** Pull request state and checks for `GET /agents`; absent means links without status. @req FR:agent-inbox/activity.status */
+  prs?: PrStatusProvider;
   /** Called with unexpected errors (they are never sent to the caller). */
   onError?: (e: unknown) => void;
 }
@@ -117,6 +121,14 @@ const RESULT_BODY = {
   } satisfies Record<string, Spec>,
   required: ['ref', 'outcome', 'summary'],
 };
+const INBOX_BODY = {
+  schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: INBOX_KINDS }, expect: { t: 'str', max: 2000, line: true } } satisfies Record<string, Spec>,
+  required: ['ref', 'text'],
+};
+const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES } };
+const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true } } satisfies Record<string, Spec>, required: ['id'] };
+/** Inbox refs are stored 1-based with the file path; the api speaks `name:line` (0-based). */
+const apiRef = (fileRef: string) => { const m = /^(tasks\/.+\.md):(\d+)$/.exec(fileRef); return m ? formatRef({ path: m[1], line: Number(m[2]) - 1 }) : fileRef; };
 const REMOVE_BODY = { schema: { project: { t: 'str', max: 200, line: true } } satisfies Record<string, Spec>, required: [] as string[] };
 const EDIT_BODY = { schema: { ref: REF, text: { t: 'str', required: true, max: 2000, line: true }, expect: EXPECT } satisfies Record<string, Spec>, required: ['ref', 'text'] };
 const MOVE_BODY = {
@@ -360,6 +372,45 @@ export const ROUTES: Route[] = [
       const { ref, ...r } = b;
       const out = await recordResult(c.life, ref, r, caller(c.req));
       return json(200, { logged: out.logged, completed: out.completed, deferred: out.deferred, ref: formatRef(out.ref), ...(out.human ? { human: formatRef(out.human) } : {}) });
+    },
+  },
+  {
+    // @req FR:agent-inbox/api.send
+    method: 'POST', doc: '/inbox', name: 'inbox.send', body: INBOX_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; kind?: InboxKind; expect?: string }>(await readBody(c.req), INBOX_BODY.schema, INBOX_BODY.required);
+      // Only the owner speaks in the inbox; an agent token must never write words in the owner's voice.
+      if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can write to an agent inbox');
+      return json(201, await sendToInbox(c.life, b.ref, b.text, b.kind ?? 'reply', b.expect));
+    },
+  },
+  {
+    // @req FR:agent-inbox/api.list
+    method: 'GET', doc: '/inbox', name: 'inbox.list', query: INBOX_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(INBOX_Q));
+      const v = validate<{ project?: string; state?: (typeof INBOX_STATES)[number] }>(Object.fromEntries(q.entries()), INBOX_Q, []);
+      const items = await listInbox(c.life, { project: v.project, state: v.state });
+      const rows = await currentRows(c.life, items);
+      return json(200, { items: items.map((e) => { const row = rows.get(e.id); return { ...e, ref: apiRef(e.ref), ...(row ? { row: apiRef(row) } : {}) }; }) });
+    },
+  },
+  {
+    // @req FR:agent-inbox/api.handle
+    method: 'POST', doc: '/inbox/handled', name: 'inbox.handle', body: HANDLED_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ id: string; note?: string }>(await readBody(c.req), HANDLED_BODY.schema, HANDLED_BODY.required);
+      return json(200, await handleEntry(c.life, b.id, caller(c.req).actor, b.note));
+    },
+  },
+  {
+    // @req FR:agent-inbox/api.agents
+    method: 'GET', doc: '/agents', name: 'agents.list',
+    async run(c) {
+      readQuery(c.url, []);
+      return json(200, { items: await agentActivity({ ...c.life, prs: c.deps.prs }) });
     },
   },
   {

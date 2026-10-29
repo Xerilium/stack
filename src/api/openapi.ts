@@ -107,6 +107,23 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'removeCompleted', summary: 'Remove completed tasks',
     responses: ok('Removed count', { type: 'object', properties: { removed: { type: 'integer' }, files: { type: 'array', items: { type: 'string' } } } }),
   },
+  'inbox.send': {
+    operationId: 'sendToInbox', summary: 'Send a reply or decision to the agent inbox of the task project (tasks/inbox). Owner session only: 403 for tokens',
+    desc: { text: 'Your words to the agent; secrets are redacted', expect: 'Expected current row text at ref; 409 conflict when the row differs' },
+    responses: ok('Sent', { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' } } }, '201'),
+  },
+  'inbox.list': {
+    operationId: 'listInbox', summary: 'Inbox entries for agents to act on (open by default)',
+    responses: ok('Entries', { type: 'object', properties: { items: { type: 'array', items: ref('InboxEntry') } } }),
+  },
+  'inbox.handle': {
+    operationId: 'handleInboxEntry', summary: 'Mark an inbox entry handled after acting on it',
+    responses: ok('Handled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
+  },
+  'agents.list': {
+    operationId: 'listAgents', summary: 'What agents are doing, from agent rows, result logs, inbox replies, and pull request status',
+    responses: ok('Agent work', { type: 'object', properties: { items: { type: 'array', items: ref('AgentItem') } } }),
+  },
   'projects.list': {
     operationId: 'listProjects', summary: 'List projects',
     responses: ok('Projects', { type: 'object', properties: { items: { type: 'array', items: ref('Project') } } }),
@@ -262,6 +279,35 @@ export function buildOpenApi(): J {
                 details: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, message: { type: 'string' } } } },
               },
             },
+          },
+        },
+        InboxEntry: {
+          type: 'object',
+          description: 'One owner message in tasks/inbox/<project>.md. Agents act on open entries, then mark them handled.',
+          properties: {
+            id: { type: 'string' }, at: { type: 'string', format: 'date-time' }, project: { type: 'string' }, ref: ref('Ref'), task: { type: 'string' },
+            kind: { type: 'string', enum: ['reply', 'decision'] }, to: { type: 'string', enum: ['agent', 'human', 'none'] }, text: { type: 'string' },
+            state: { type: 'string', enum: ['open', 'handled'] }, handled: { type: 'string' }, note: { type: 'string' },
+            row: { ...ref('Ref'), description: 'Where the row is now, found by title (lines move); absent when the row is gone' },
+          },
+        },
+        AgentItem: {
+          type: 'object',
+          properties: {
+            ref: ref('Ref'), project: { type: 'string' }, title: { type: 'string' }, text: { type: 'string' },
+            state: { type: 'string', enum: ['failing', 'waiting', 'review', 'merged', 'ci', 'working', 'queued'] },
+            prs: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  url: { type: 'string' }, repo: { type: 'string' }, number: { type: 'integer' }, state: { type: 'string', enum: ['open', 'draft', 'merged', 'closed'] },
+                  checks: { type: 'string', enum: ['passing', 'failing', 'pending', 'none'] }, title: { type: 'string' }, updatedAt: { type: 'string' },
+                },
+              },
+            },
+            last: { type: 'object', properties: { at: { type: 'string' }, action: { type: 'string' }, outcome: { type: 'string' }, summary: { type: 'string' } } },
+            waitingOn: ref('Ref'), replies: { type: 'integer' }, since: { type: 'string' },
           },
         },
         NextTask: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' } } },

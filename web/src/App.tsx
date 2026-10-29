@@ -12,9 +12,10 @@ import { applyFilters, buildHash, parseHash, type Filters } from './filters';
 import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, Toasts, type GroupName, type Toast } from './parts';
 import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
-import type { CaptureSpec, NextTask, Project, SetProps, Task, View } from './types';
+import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
-import { agentWork, buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
+import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
+import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } from './day';
 import { FocusMode, ListView, NowView, ProjectsView, TodayView, type NowSection, type RowProps } from './views';
 
 const api = createClient();
@@ -60,6 +61,10 @@ export function App() {
   const [drag, setDrag] = useState<{ ref: string; over: string | null; half: 'top' | 'bottom' } | null>(null);
   const [captureText, setCaptureText] = useState('');
   const [preview, setPreview] = useState<{ spec?: CaptureSpec; error?: string } | null>(null);
+  const [agentItems, setAgentItems] = useState<Agent[] | null>(null);
+  const [agentsError, setAgentsError] = useState('');
+  const [inbox, setInbox] = useState<InboxItem[]>([]);
+  const [saved, setSaved] = useState<{ date: string; minutes: number } | null>(() => { const now = new Date(); const m = loadBudget(store(), now); return m === null ? null : { date: dateKey(now), minutes: m }; });
   const lastProject = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const captureRef = useRef<HTMLInputElement | null>(null);
@@ -85,11 +90,14 @@ export function App() {
     if (allOpen) secs.push({ id: 'all', title: 'All active', rows: more });
     return { sections: secs, hidden: more.length };
   }, [tasks, next, allOpen]);
-  const clockNow = useMemo(() => new Date(), [tasks, tick]);
+  const clockNow = useMemo(() => new Date(), [tasks, tick, saved]); // also refresh when the budget changes, so a value set after midnight counts for the new day
   const day = DEFAULT_DAY;
-  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day), [tasks, next, clockNow, day]);
+  // Kept with its date: a tab left open overnight must not keep yesterday's budget, and it works without storage.
+  const budget = budgetOf(clockNow, day, saved && saved.date === dateKey(clockNow) ? saved.minutes : null);
+  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes), [tasks, next, clockNow, day, budget.minutes]);
+  /** @req FR:web-app/today.capacity */
+  const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v); setSaved(v === null ? null : { date: dateKey(now), minutes: v }); }, []);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
-  const agents = useMemo(() => agentWork(tasks, clockNow), [tasks, clockNow]);
   const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
   const rows = view === 'today' ? plan.blocks.map((b) => b.task) : view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
@@ -105,7 +113,14 @@ export function App() {
   const dismiss = (id: number) => setToasts((t) => t.filter((x) => x.id !== id));
 
   // ---- data
+  /** Agent activity and the inbox load on their own: a failure there never blocks the day plan. @req FR:web-app/today.agents */
+  const loadSide = useCallback(async () => {
+    const [a, i] = await Promise.allSettled([api.agents(), api.inbox()]);
+    if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
+    if (i.status === 'fulfilled') setInbox(i.value);
+  }, []);
   const refresh = useCallback(async () => {
+    void loadSide();
     try {
       const [n, t, p] = await Promise.all([api.next(), api.tasks(), api.projects()]);
       setNext(n); setTasks(t); setProjects(p); setPhase('ready');
@@ -226,9 +241,10 @@ export function App() {
     setDeferRefs(null);
     await run(() => api.action('suspend', refs[0], d.hours ? { hours: d.hours } : { days: d.days }), () => `Deferred: ${d.label.toLowerCase()}`);
   };
-  const sendReply = async (task: Task, text: string, ok: string): Promise<boolean> =>
-    (await run(() => api.add(task.project, `💬 ${text}`, task.ref, task.text), () => ok)) !== undefined;
-  const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'Sent to the agent');
+  /** Replies go to the project's agent inbox, never into the task file. @req FR:web-app/today.reply */
+  const sendReply = async (task: Pick<Task, 'ref' | 'text'>, text: string, kind: 'reply' | 'decision', ok: string): Promise<boolean> =>
+    (await run(() => api.send(task.ref, text, kind, task.text), () => ok)) !== undefined;
+  const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'decision', 'Sent to the agent');
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
 
   const toggleDone = async (t: Task) => {
@@ -325,15 +341,18 @@ export function App() {
     { id: 'defer', label: 'Defer', hint: 'z', run: openDefer },
     { id: 'focus', label: 'Focus mode', hint: 'Enter', run: () => { const r = refNow(); if (r) setFocusRef(r); } },
     { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
+    { id: 'more-time', label: 'More time today (+30m)', hint: ']', run: () => setBudget(budget.minutes + STEP) },
+    { id: 'less-time', label: 'Less time today (-30m)', hint: '[', run: () => setBudget(budget.minutes - STEP) },
+    { id: 'reset-time', label: 'Reset available time', run: () => setBudget(null) },
     { id: 'help', label: 'Show keyboard shortcuts', hint: '?', run: () => setHelp(true) },
     { id: 'signout', label: 'Sign out', run: () => location.assign('/.auth/logout') },
   ];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen });
-  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen };
+  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes });
+  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
-  const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run };
+  const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -376,6 +395,7 @@ export function App() {
         return;
       }
       if (L.view === 'projects') return;
+      if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; }
       const i = L.rows.findIndex((r) => r.ref === L.cursor);
       const step = (d: number) => { const n = L.rows[Math.max(0, Math.min(L.rows.length - 1, i + d))]; if (n) setCursor(n.ref); };
       const inList = L.view === 'list';
@@ -436,8 +456,8 @@ export function App() {
         {local && <div class={`banner ${info?.mode ?? 'demo'}`} role="note" data-testid="repo-banner">{info ? <><strong>{info.mode === 'live' ? 'LIVE' : 'DEMO COPY'}</strong> · {info.repo} · {info.branch} · {info.mode === 'live' ? 'edits are committed' : 'edits stay in the copy'}</> : me}</div>}
         {phase === 'loading' && <p class="loading">Loading…</p>}
         {phase === 'ready' && view === 'today' && (
-          <TodayView now={clockNow} plan={plan} day={day} decisions={decisions} agents={agents} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
-            onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={sendReply} onAccept={(d) => void accept(d)} />
+          <TodayView now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
+            onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'now' && <NowView task={next} sections={sections} hidden={hidden} allOpen={allOpen} onToggleAll={() => setAllOpen((o) => !o)} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
         {phase === 'ready' && view === 'list' && (

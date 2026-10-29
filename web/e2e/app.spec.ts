@@ -848,8 +848,8 @@ test.describe('today view', () => {
   // @req FR:web-app/today.plan
   test('default route is Today: header, lead block actions, blocks in order, done circle completes', async ({ page }, info) => {
     const m = await setup(page, day());
-    await expect(page.getByRole('region', { name: 'Today' }).getByRole('heading', { level: 1 })).toContainText('planned');
-    await expect(page.locator('.t-sub')).toContainText('left');
+    await expect(page.getByRole('region', { name: 'Today' }).getByRole('heading', { level: 1 })).toContainText('of 8h');
+    await expect(page.locator('.t-sub')).toContainText('free');
     const blocks = page.locator('[data-testid="plan"] .block');
     await expect(blocks.first().locator('.what-title')).toContainText('Plain priority'); // the server's next task leads
     await expect(blocks.nth(1).locator('.what-title')).toContainText('Due soon'); // then due-soon before file order
@@ -871,32 +871,73 @@ test.describe('today view', () => {
     await expect(page.getByRole('dialog', { name: 'Defer until' })).toBeVisible();
   });
 
-  test('tasks that do not fit are collected under a note', async ({ page }) => {
+  // @req FR:web-app/today.fit
+  test('tasks that do not fit are listed with estimates and +30m grows the budget', async ({ page }) => {
     await setup(page, Array.from({ length: 6 }, (_, i) => mk(i + 1, `Big ${i + 1} 🔴`)));
-    const more = page.getByRole('button', { name: /won't fit today/ });
-    await expect(more).toBeVisible();
-    await expect(page.locator('[data-testid="plan"] .block').first()).toBeVisible();
-    await more.click();
-    await expect(page.locator('.overflow .row').first()).toBeVisible();
+    await expect(page.getByTestId('nofit')).toContainText('Big 5');
+    const nofit = page.getByTestId('nofit');
+    await expect(nofit.locator('li').first()).toContainText('2h');
+    const before = await page.locator('[data-testid="plan"] .block').count();
+    await nofit.getByRole('button', { name: '+30m' }).click();
+    await expect(page.getByTestId('available')).toContainText('8h 30m');
+    await nofit.getByRole('button', { name: '+30m' }).click();
+    await nofit.getByRole('button', { name: '+30m' }).click();
+    await nofit.getByRole('button', { name: '+30m' }).click();
+    await expect(page.locator('[data-testid="plan"] .block')).toHaveCount(before + 1);
   });
 
-  // @req FR:web-app/today.needs
-  test('Needs you: recommendation, Go with it posts a reply under the row, Reply sends text', async ({ page }) => {
+  // @req FR:web-app/today.capacity
+  test('Available time: buttons, [ ] keys, reset, and kept on reload today', async ({ page }, info) => {
+    await setup(page, day());
+    const avail = page.getByTestId('available');
+    await expect(avail).toContainText('8h');
+    await avail.getByRole('button', { name: 'Less time' }).click();
+    await expect(avail).toContainText('7h 30m');
+    if (info.project.name !== 'mobile') {
+      await page.keyboard.press('[');
+      await expect(avail).toContainText('7h');
+      await page.keyboard.press(']');
+      await page.keyboard.press(']');
+      await expect(avail).toContainText('8h');
+      for (let i = 0; i < 7; i++) await page.keyboard.press('[');
+    } else for (let i = 0; i < 6; i++) await avail.getByRole('button', { name: 'Less time' }).click();
+    await expect(avail).toContainText('4h 30m');
+    await page.reload();
+    await expect(page.getByTestId('available')).toContainText('4h 30m');
+    await page.getByTestId('available').getByRole('button', { name: 'Reset' }).click();
+    await expect(page.getByTestId('available')).toContainText('8h');
+    await expect(page.getByTestId('available').getByRole('button', { name: 'Reset' })).toHaveCount(0);
+  });
+
+  test('zero available plans nothing and says so', async ({ page }) => {
+    await setup(page, day());
+    for (let i = 0; i < 16; i++) await page.getByTestId('available').getByRole('button', { name: 'Less time' }).click();
+    await expect(page.getByTestId('available')).toContainText('0m');
+    await expect(page.locator('[data-testid="plan"] .block')).toHaveCount(0);
+    await expect(page.getByTestId('nofit')).toBeVisible();
+  });
+
+  // @req FR:web-app/today.needs @req FR:web-app/today.reply
+  test('Needs you: Go with it and Reply go to the agent inbox; the card shows it was sent', async ({ page }) => {
     const m = await setup(page, day());
     const card = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a vendor' });
     await expect(card.locator('.rec')).toContainText('Use Acme for now');
     await card.getByRole('button', { name: 'Go with it' }).click();
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks', body: { project: 'gamma', parent: 'gamma:10' } });
-    expect(m.calls.at(-1)!.body.text).toMatch(/^💬 Go with the recommendation/);
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'gamma:10', kind: 'decision', expect: '🙋 Pick a vendor' } });
+    expect(m.calls.at(-1)!.body.text).toMatch(/^Go with the recommendation: Use Acme for now/);
+    await expect(page.locator('[data-testid="needs"] .card', { hasText: 'Pick a vendor' })).toContainText('Sent, waiting on the agent');
+    await expect(page.locator('[data-testid="needs"] .card').last()).toContainText('Pick a vendor');
+    expect(m.calls.some((c) => c.path === '/tasks')).toBe(false);
     const plain = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' });
     await expect(plain.getByRole('button', { name: 'Go with it' })).toHaveCount(0);
     await plain.getByRole('button', { name: 'Reply' }).click();
     await plain.getByLabel('Reply').fill('Blue');
     await plain.getByRole('button', { name: 'Send' }).click();
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks', body: { project: 'gamma', text: '💬 Blue', parent: 'gamma:11', expect: m.tasks.find((t) => t.ref === 'gamma:11')!.text } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'gamma:11', text: 'Blue', kind: 'reply' } });
+    await expect(page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' }).locator('.sent')).toContainText('Blue');
   });
 
-  // @req FR:web-app/today.needs
+  // @req FR:web-app/today.reply
   test('a reply to a row that moved gets 409 instead of attaching to the wrong row', async ({ page }) => {
     const m = await setup(page, day());
     const plain = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' });
@@ -906,13 +947,13 @@ test.describe('today view', () => {
     await plain.getByLabel('Reply').fill('Blue');
     await plain.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByText('Changed elsewhere')).toBeVisible();
-    expect(m.calls.find((c) => c.path === '/tasks')).toMatchObject({ body: { text: '💬 Blue', parent: 'gamma:11' } });
+    expect(m.calls.find((c) => c.path === '/inbox')).toMatchObject({ body: { text: 'Blue', ref: 'gamma:11' } });
     // the draft stays on the same decision (now on a new line) and resending targets it
     await expect(plain.getByLabel('Reply')).toHaveValue('Blue');
     await expect(page.getByLabel('Reply')).toHaveCount(1);
     const ask = m.tasks.find((t) => t.text.includes('Pick a color'))!;
     await plain.getByRole('button', { name: 'Send' }).click();
-    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks').at(-1)?.body).toMatchObject({ text: '💬 Blue', parent: ask.ref, expect: ask.text });
+    await expect.poll(() => m.calls.filter((c) => c.path === '/inbox').at(-1)?.body).toMatchObject({ text: 'Blue', ref: ask.ref, expect: ask.text });
     expect(ask.ref).not.toBe('gamma:11');
   });
 
@@ -925,21 +966,46 @@ test.describe('today view', () => {
     await expect(page.getByLabel('Reply')).toHaveCount(1);
     await cards.nth(1).getByLabel('Reply').fill('Yes');
     await cards.nth(1).getByRole('button', { name: 'Send' }).click();
-    await expect.poll(() => m.calls.at(-1)?.body).toMatchObject({ text: '💬 Yes', parent: 'gamma:6' });
+    await expect.poll(() => m.calls.at(-1)?.body).toMatchObject({ text: 'Yes', ref: 'gamma:6' });
   });
 
   // @req FR:web-app/today.agents
-  test('agent list shows Working / Waiting on you / Queued and Reply works', async ({ page }) => {
-    const m = await setup(page, day());
-    const agents = page.getByTestId('agents');
-    await expect(agents.locator('.agent.working')).toContainText('Working');
-    await expect(agents.locator('.agent.waiting')).toContainText('Waiting on you');
-    await expect(agents.locator('.agent.queued')).toContainText('Queued');
-    const q = agents.locator('.agent.queued');
-    await q.getByRole('button', { name: 'Reply' }).click();
-    await q.getByLabel('Reply').fill('Keep it short');
-    await q.getByRole('button', { name: 'Send' }).click();
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks', body: { project: 'gamma', text: '💬 Keep it short', parent: 'gamma:21' } });
+  test('AI team shows state from artifacts, PR links with checks, last activity, and Reply', async ({ page }, info) => {
+    const iso = (h: number) => new Date(Date.now() - h * 36e5).toISOString();
+    const agents = [
+      { ref: 'gamma:21', project: 'gamma', title: 'Draft the report', text: '🪄 Draft the report', state: 'failing', prs: [{ url: 'https://github.com/o/r/pull/7', repo: 'o/r', number: 7, state: 'open', checks: 'failing', title: 'Report', updatedAt: iso(1) }], replies: 0, since: iso(1) },
+      { ref: 'gamma:22', project: 'gamma', title: 'Research options', text: '🤖 Research options', state: 'waiting', prs: [], waitingOn: 'gamma:23', last: { at: iso(3), action: 'result', outcome: 'needs-human', summary: 'Pick a budget' }, replies: 0, since: iso(3) },
+      { ref: 'gamma:20', project: 'gamma', title: 'Build the engine', text: '🤖 Build the engine 🚧', state: 'working', prs: [], last: { at: iso(2), action: 'claimed' }, replies: 0, since: iso(2) },
+    ];
+    const m = await (async () => { await page.clock.install({ time: tenAm() }); const mm = await mockApi(page, { tasks: day(), agents }); await page.goto('/'); await page.clock.resume(); return mm; })();
+    const panel = page.getByTestId('agents');
+    await expect(panel.locator('.agent').first()).toContainText('CI failing');
+    await expect(panel.getByRole('link', { name: /^r#7/ })).toHaveAttribute('href', 'https://github.com/o/r/pull/7');
+    await expect(panel.locator('.agent.waiting')).toContainText('Needs you');
+    await expect(panel.locator('.agent.waiting')).toContainText('needs-human: Pick a budget');
+    await expect(panel.locator('.agent.working')).toContainText('claimed');
+    await expect(page.locator('.t-sub')).toContainText('1 CI failing');
+    const w = panel.locator('.agent.working');
+    await w.getByRole('button', { name: 'Reply' }).click();
+    await w.getByLabel('Reply').fill('Keep it short');
+    await w.getByRole('button', { name: 'Send' }).click();
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'gamma:20', text: 'Keep it short', kind: 'reply' } });
+    await expect(panel.locator('.agent.working .sent')).toContainText('Keep it short');
+    await shot(page, 'today-agents', info);
+  });
+
+  test('AI team error shows Retry and the rest of Today works', async ({ page }) => {
+    await page.clock.install({ time: tenAm() });
+    const m = await mockApi(page, { tasks: day() });
+    m.agentsFail = true;
+    await page.goto('/');
+    await page.clock.resume();
+    await expect(page.locator('.block.lead')).toBeVisible();
+    const retry = page.getByTestId('agents-error').getByRole('button', { name: 'Retry' });
+    await expect(retry).toBeVisible();
+    m.agentsFail = false;
+    await retry.click();
+    await expect(page.getByTestId('agents').locator('.agent').first()).toBeVisible();
   });
 
   // @req FR:web-app/today.projects

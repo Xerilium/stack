@@ -4,7 +4,7 @@
  * @req FR:azure-host/git.lazy @req FR:azure-host/auth.api @req FR:azure-host/auth.mcp @req FR:azure-host/auth.bots @req FR:azure-host/auth.logs @req FR:azure-host/routes.paths
  */
 import { apiClient, createBotHandler } from '../bots';
-import { createApiHandler, createAuth, createTokenService, FileTokenStore, type Authorize, type TokenStore } from '../api';
+import { createApiHandler, createAuth, createGitHubPrs, createTokenService, FileTokenStore, type Authorize, type TokenStore } from '../api';
 import { createMcpHandler } from '../mcp';
 import { writeAll, type FileWrite, type Storage } from '../core/storage';
 import { openGitStorage } from './git-repo';
@@ -90,7 +90,10 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
   const event = (e: object) => log(JSON.stringify(e));
   const onError = (e: unknown) => log(`error: ${className(e)}`);
   const auth = createAuth({ owners: settings.owners, tokens, onEvent: event });
-  const api = auth.wrap(createApiHandler({ storage, config: settings.config, authorize: auth.authorize, onError }));
+  // @req FR:agent-inbox/github.wire
+  const ghToken = env.GITHUB_TOKEN?.trim();
+  const prs = ghToken ? createGitHubPrs({ token: ghToken }) : undefined;
+  const api = auth.wrap(createApiHandler({ storage, config: settings.config, authorize: auth.authorize, onError, prs }));
   const mcp = createMcpHandler({ api, tokens, basePath: '/api/mcp', onEvent: event, onError: onName });
   const botApi = createApiHandler({ storage, config: settings.config, authorize: botGate, onError });
   const bots = createBotHandler({

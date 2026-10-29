@@ -2,10 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { CapacityRow } from './capacity';
 import type { Filters } from './filters';
 import { children, dueDays } from './now';
-import { clock, span, type AgentItem, type Block, type Decision, type Plan } from './plan';
+import { clock, estimate, span, type Block, type Decision, type Plan } from './plan';
+import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
-import type { NextTask, Task } from './types';
+import type { Agent, InboxItem, NextTask, Task } from './types';
 
 export const chipsOf = (text: string) => {
   const r = parseRow(text);
@@ -288,12 +289,10 @@ export function ProjectsView({ rows, onOpen }: { rows: (CapacityRow & { top?: Ta
 }
 const fmt = (n: number) => String(Math.round(n * 10) / 10);
 
-const STATE_LABEL = { working: 'Working', waiting: 'Waiting on you', queued: 'Queued' } as const;
-
 /** Cards and the open reply box follow the task, not its line number, which shifts when the file changes:
  *  project + text, plus which same-text row it is in file order (so identical rows never share a key). */
-function taskKeys(rows: Task[]): Map<string, string> {
-  const line = (x: Task) => Number(x.ref.slice(x.ref.lastIndexOf(':') + 1));
+function taskKeys(rows: { ref: string; project: string; text: string }[]): Map<string, string> {
+  const line = (x: { ref: string }) => Number(x.ref.slice(x.ref.lastIndexOf(':') + 1));
   const seen = new Map<string, number>();
   const out = new Map<string, string>();
   for (const x of [...rows].sort((a, b) => line(a) - line(b))) {
@@ -312,82 +311,151 @@ function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) =>
   useEffect(() => { ref.current?.focus(); }, []);
   return (
     <form class="reply" onSubmit={(e) => { e.preventDefault(); if (!text.trim() || sending) return; setSending(true); void onSend(text.trim()).catch(() => undefined).finally(() => setSending(false)); }}>
-      <p class="reply-to">Replying to <b>{to}</b></p>
-      <input ref={ref} type="text" aria-label="Reply" placeholder={placeholder} value={text} maxLength={500} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }} />
-      <button type="submit" class="btn primary" disabled={!text.trim() || sending}>Send <kbd>↵</kbd></button>
+      <p class="reply-to">To <b>{to}</b> · lands in its inbox</p>
+      <div class="reply-row">
+        <input ref={ref} type="text" aria-label="Reply" placeholder={placeholder} value={text} maxLength={1000} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }} />
+        <button type="submit" class="btn primary" disabled={!text.trim() || sending}>Send <kbd>↵</kbd></button>
+      </div>
     </form>
   );
 }
 
-export interface TodayProps {
-  now: Date; plan: Plan; day: { start: number; end: number }; decisions: Decision[]; agents: AgentItem[]; p: RowProps; busy: boolean;
-  tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
-  onAct: (a: 'start' | 'done' | 'defer', ref: string) => void; onReply: (task: Task, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
+/** Your open inbox messages for an item, newest last. */
+function Sent({ items, now }: { items: InboxItem[]; now: Date }) {
+  if (items.length === 0) return null;
+  return (
+    <ul class="sent" aria-label="Sent to the agent">
+      {items.slice(-2).map((e) => <li key={e.id}><span class="sent-who">You · {ago(e.at, now)}</span> <span class="sent-text">{unescapeMd(e.text)}</span></li>)}
+    </ul>
+  );
 }
 
-/** The day plan first, then what needs you, then what your agents are doing. @req FR:web-app/today.plan @req FR:web-app/today.needs @req FR:web-app/today.agents @req FR:web-app/today.projects */
+type RefText = { ref: string; text: string };
+type RowKey = RefText & { project: string };
+/** Agent rows often start with a project glyph and an `[AI]` tag; both are noise in the panel. */
+const agentTitle = (s: string) => s.replace(/^(?:[^\p{L}\p{N}`*[]+\s*)+/u, '').replace(/^\[AI\]\s*/i, '').replace(/\s+[—-]\s*$/, '').trim() || s;
+const CHECK = { passing: '✓', failing: '✕', pending: '…', none: '' } as const;
+
+export interface TodayProps {
+  now: Date; plan: Plan; day: { start: number; end: number }; budget: { minutes: number; isDefault: boolean }; onBudget: (m: number | null) => void;
+  decisions: Decision[]; agents: Agent[] | null; agentsError: string; onRetryAgents: () => void; inbox: InboxItem[]; p: RowProps; busy: boolean;
+  tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
+  onAct: (a: 'start' | 'done' | 'defer', ref: string) => void; onReply: (task: RefText, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
+}
+
+/**
+ * The day plan sized to the time you have, then what needs you, then what your agents are doing.
+ * @req FR:web-app/today.plan @req FR:web-app/today.capacity @req FR:web-app/today.fit @req FR:web-app/today.needs @req FR:web-app/today.reply @req FR:web-app/today.agents @req FR:web-app/today.projects
+ */
 export function TodayView(t: TodayProps) {
   const [replying, setReplying] = useState<string | null>(null);
-  const [rest, setRest] = useState(false);
   const [moreNeeds, setMoreNeeds] = useState(false);
   const [queuedOpen, setQueuedOpen] = useState(false);
   const nowMin = t.now.getHours() * 60 + t.now.getMinutes();
-  const total = t.day.end - t.day.start;
+  const start = t.plan.blocks[0]?.start ?? Math.max(t.day.start, Math.ceil(nowMin / 15) * 15);
+  const end = Math.max(t.day.end, start + t.budget.minutes);
+  const total = Math.max(1, end - t.day.start);
   const pct = (m: number) => Math.max(0, Math.min(100, ((m - t.day.start) / total) * 100));
   const markAt = pct(Math.max(nowMin, t.day.start)); // the time label hugs the bar ends so it never clips
-  const working = t.agents.filter((a) => a.state === 'working').length;
-  const needs = moreNeeds ? t.decisions : t.decisions.slice(0, 3);
   const date = t.now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   const jump = (id: string) => document.getElementById(id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-  const live = t.agents.filter((a) => a.state !== 'queued');
-  const queued = t.agents.filter((a) => a.state === 'queued');
-  const shownQueued = queuedOpen ? queued : queued.slice(0, 3);
-  const keys = taskKeys([...t.decisions.map((d) => d.task), ...t.agents.map((a) => a.task)]);
-  const agentRow = (a: AgentItem) => {
-    const r = parseRow(a.task.text);
-    const owner = t.p.titles.get(a.task.project) ?? a.task.project;
-    const key = keys.get(a.task.ref) ?? a.task.ref;
+  const repliesOf = (x: RowKey) => repliesFor(t.inbox, x);
+  const sorted = [...t.decisions].sort((a, b) => Number(repliesOf(a.task).length > 0) - Number(repliesOf(b.task).length > 0));
+  const needs = moreNeeds ? sorted : sorted.slice(0, 4);
+  const agents = t.agents ?? [];
+  const live = agents.filter((a) => a.state !== 'queued');
+  const queued = agents.filter((a) => a.state === 'queued');
+  const shownQueued = queuedOpen ? queued : [];
+  const heads = attention(agents).filter((x) => !/queued$/.test(x)).slice(0, 2);
+  const over = t.plan.overflow.length > 0;
+  const shownOver = t.plan.atRisk.length > 0 ? t.plan.atRisk.slice(0, 12) : t.plan.overflow.slice(0, 5);
+  const replyBox = (key: string, task: RefText, owner: string, placeholder: string, ok: string) => replying === key && (
+    <Reply to={`the ${owner} agent`} placeholder={placeholder} onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(task, text, ok)) setReplying(null); }} />
+  );
+  const keys = taskKeys([...t.decisions.map((d) => d.task), ...agents]);
+  const agentRow = (a: Agent) => {
+    const key = keys.get(a.ref) ?? a.ref;
+    const r = parseRow(a.text);
+    const owner = t.p.titles.get(a.project) ?? a.project;
+    const line = lastLine(a, t.now);
     return (
       <li key={key} class={`agent ${a.state}`}>
         <span class="pulse" aria-hidden="true" />
         <div class="agent-body">
-          <p class="agent-title"><Md text={r.title || a.task.text} /></p>
-          <p class="agent-meta">{STATE_LABEL[a.state]} · {owner}</p>
+          <p class="agent-title"><Md text={agentTitle(r.title || a.title)} /></p>
+          <p class="agent-meta">
+            <span class="agent-state">{AGENT_LABEL[a.state]}</span>
+            <span>{owner}</span>
+            {a.prs.map((pr) => (
+              <a key={pr.url} class={`pr ${pr.checks ?? ''} ${pr.state ?? ''}`} href={pr.url} target="_blank" rel="noopener noreferrer" title={pr.title ? `${pr.title}${pr.checks ? ` · checks ${pr.checks}` : ''}` : undefined}>
+                {pr.repo.split('/')[1]}#{pr.number}{pr.state === 'merged' ? ' merged' : pr.checks && CHECK[pr.checks] ? ` ${CHECK[pr.checks]}` : ''}
+              </a>
+            ))}
+            {line && <span class="agent-last">{line}</span>}
+          </p>
+          <Sent items={repliesOf(a)} now={t.now} />
         </div>
-        <button type="button" class="btn quiet reveal" onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
-        {replying === key && <Reply to={`the ${owner} agent`} placeholder="Message the agent" onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(a.task, text, 'Sent to the agent')) setReplying(null); }} />}
+        <button type="button" class="btn quiet reveal" aria-expanded={replying === key} onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
+        {replyBox(key, a, owner, 'Message the agent', 'Sent to the agent')}
       </li>
     );
   };
   return (
     <section class="today" aria-label="Today">
       <header class="t-head">
-        <p class="t-date">{date}</p>
-        <h1>{t.plan.blocks.length === 0 ? (t.plan.left > 0 ? 'Nothing planned' : 'Day is done') : `${span(t.plan.busy)} planned`}</h1>
+        <div class="t-top">
+          <div>
+            <p class="t-date">{date}</p>
+            <h1>{t.plan.blocks.length === 0 ? (t.budget.minutes > 0 ? 'Nothing planned' : 'No time planned') : <>{span(t.plan.busy)} <span class="of">of {span(t.budget.minutes)}</span></>}</h1>
+          </div>
+          <div class="avail" role="group" aria-label="Available today" data-testid="available">
+            <span class="avail-label">Available</span>
+            <button type="button" class="step" aria-label="Less time" title="Less time ([)" disabled={t.budget.minutes <= 0} onClick={() => t.onBudget(t.budget.minutes - 30)}>−</button>
+            <output aria-live="polite">{span(t.budget.minutes)}</output>
+            <button type="button" class="step" aria-label="More time" title="More time (])" disabled={t.budget.minutes >= 960} onClick={() => t.onBudget(t.budget.minutes + 30)}>+</button>
+            {!t.budget.isDefault && <button type="button" class="link-btn" onClick={() => t.onBudget(null)}>Reset</button>}
+          </div>
+        </div>
         <p class="t-sub">
-          <span>{span(t.plan.left)} left</span>
+          {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
+          {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
-          {t.agents.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{working > 0 ? `${working} agent${working === 1 ? '' : 's'} working` : `${t.agents.length} agent task${t.agents.length === 1 ? '' : 's'} queued`}</button>}
+          {heads.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{heads.join(' · ')}</button>}
         </p>
-        <div class="day-bar" role="img" aria-label={`${span(t.plan.busy)} planned of ${span(t.plan.left)} left`}>
+        <div class="day-bar" role="img" aria-label={`${span(t.plan.busy)} planned of ${span(t.budget.minutes)} available`}>
+          <s style={{ left: `${pct(start)}%`, width: `${pct(start + t.budget.minutes) - pct(start)}%` }} />
           {t.plan.blocks.map((b) => <i key={b.task.ref} title={`${clock(b.start)} ${parseRow(b.task.text).title}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}
           <b class={markAt < 8 ? 'edge-l' : markAt > 92 ? 'edge-r' : undefined} style={{ left: `${markAt}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>
         </div>
-        <p class="day-ends"><span>{clock(t.day.start)}</span><span>{clock(t.day.end)}</span></p>
+        <p class="day-ends"><span>{clock(t.day.start)}</span><span>{clock(end)}</span></p>
       </header>
 
       <div class="t-cols">
         <div class="t-plan">
           <h2 class="h2">Your day</h2>
-          {t.plan.blocks.length === 0 && <p class="empty-note">Nothing left that fits today. Add something with <kbd>c</kbd>.</p>}
+          {t.plan.blocks.length === 0 && <p class="empty-note">{t.budget.minutes === 0 ? 'No time set for today. Add some with + or ].' : <>Nothing left that fits. Add something with <kbd>c</kbd>.</>}</p>}
           <ol class="plan" data-testid="plan">
             {t.plan.blocks.map((b, i) => <PlanBlock key={b.task.ref} b={b} lead={i === 0} p={t.p} busy={t.busy} onAct={t.onAct} />)}
           </ol>
-          {t.plan.overflow.length > 12 && <p class="overflow quiet">{t.plan.overflow.length} more tasks don't fit today. They stay in Focus and All tasks.</p>}
-          {t.plan.overflow.length > 0 && t.plan.overflow.length <= 12 && (
-            <div class="overflow">
-              <button type="button" class="link-btn" aria-expanded={rest} onClick={() => setRest((r) => !r)}>{rest ? '▾' : '▸'} {t.plan.overflow.length} won't fit today</button>
-              {rest && <ul class="rows">{t.plan.overflow.slice(0, 12).map((o) => <TaskRow key={o.ref} t={o} p={t.p} />)}</ul>}
+          {over && (
+            <div class="nofit" data-testid="nofit">
+              <div class="nofit-head">
+                <h3>Doesn't fit{t.plan.atRisk.length > 0 && <span>{t.plan.atRisk.length} at risk</span>}</h3>
+                <button type="button" class="btn quiet" title="More time (])" onClick={() => t.onBudget(t.budget.minutes + 30)}>+30m <kbd>]</kbd></button>
+              </div>
+              <ul>
+                {shownOver.map((o) => {
+                  const e = estimate(o);
+                  return (
+                    <li key={o.ref} class={t.plan.atRisk.includes(o) ? 'risk' : undefined} onDblClick={() => t.p.onOpen(o.ref)}>
+                      <span class="nofit-est">{e.assumed ? '~' : ''}{span(e.minutes)}{e.partial ? '+' : ''}</span>
+                      <span class="nofit-title"><Md text={parseRow(o.text).title || o.text} /></span>
+                      <span class="nofit-proj"><DueNote due={parseRow(o.text).due} />{t.p.titles.get(o.project) ?? o.project}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              {t.plan.overflow.length > shownOver.length && <p class="nofit-later">{t.plan.overflow.length - shownOver.length} later</p>}
             </div>
           )}
         </div>
@@ -399,29 +467,39 @@ export function TodayView(t: TodayProps) {
               const r = parseRow(d.task.text);
               const key = keys.get(d.task.ref) ?? d.task.ref;
               const owner = t.p.titles.get(d.task.project) ?? d.task.project;
+              const sent = repliesOf(d.task);
+              const rec = d.recommendation && !/:$/.test(d.recommendation) ? d.recommendation : undefined;
               return (
-                <li class="card need" key={key}>
-                  <p class="card-eyebrow">{owner}{d.context ? ` · ${parseRow(d.context.text).title}` : ''}</p>
+                <li class={`card need${sent.length ? ' decided' : ''}`} key={key}>
+                  <p class="card-eyebrow">{owner}{d.context ? ` · ${parseRow(d.context.text).title.replace(/\s--\s/g, ' — ')}` : ''}</p>
                   <p class="card-title"><Md text={r.title || d.task.text} /></p>
-                  {d.recommendation && !/:$/.test(d.recommendation) && <p class="rec"><span>Recommended</span><Md text={d.recommendation} /></p>}
+                  {rec && sent.length === 0 && <p class="rec"><span>Recommended</span><Md text={rec} /></p>}
+                  {sent.length > 0 && <p class="waiting-agent">Sent, waiting on the agent</p>}
+                  <Sent items={sent} now={t.now} />
                   <div class="card-actions">
-                    {d.recommendation && !/:$/.test(d.recommendation) && <button type="button" class="btn primary" disabled={t.busy} onClick={() => t.onAccept(d)}>Go with it</button>}
-                    <button type="button" class="btn" onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
+                    {rec && sent.length === 0 && <button type="button" class="btn primary" disabled={t.busy} onClick={() => t.onAccept(d)}>Go with it</button>}
+                    <button type="button" class="btn" aria-expanded={replying === key} onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
                     <button type="button" class="btn quiet" onClick={() => t.p.onOpen(d.task.ref)}>Details</button>
                   </div>
-                  {replying === key && <Reply to={`the ${owner} agent`} placeholder="Tell the agent what you decided" onClose={() => setReplying(null)} onSend={async (text) => { if (await t.onReply(d.task, text, 'Reply sent')) setReplying(null); }} />}
+                  {replyBox(key, d.task, owner, 'Tell the agent what you decided', 'Reply sent')}
                 </li>
               );
             })}
           </ul>
-          {t.decisions.length > 3 && <button type="button" class="link-btn" onClick={() => setMoreNeeds((m) => !m)}>{moreNeeds ? 'Show fewer' : `${t.decisions.length - 3} more`}</button>}
+          {t.decisions.length > 4 && <button type="button" class="link-btn" onClick={() => setMoreNeeds((m) => !m)}>{moreNeeds ? 'Show fewer' : `${t.decisions.length - 4} more`}</button>}
 
-          {t.agents.length > 0 && <h2 class="h2" id="ai-team">Your AI team</h2>}
+          {(agents.length > 0 || t.agentsError) && <h2 class="h2" id="ai-team">Your AI team</h2>}
+          {t.agentsError && (
+            <div class="agents-error" role="alert" data-testid="agents-error">
+              <span>Couldn't load agent activity: {t.agentsError}</span>
+              <button type="button" class="btn quiet" onClick={t.onRetryAgents}>Retry</button>
+            </div>
+          )}
           <ul class="agents" data-testid="agents">
             {live.map(agentRow)}
             {shownQueued.map(agentRow)}
           </ul>
-          {queued.length > 3 && <button type="button" class="link-btn" onClick={() => setQueuedOpen((o) => !o)}>{queuedOpen ? 'Show fewer' : `${queued.length - 3} more queued`}</button>}
+          {queued.length > 0 && <button type="button" class="link-btn queued-toggle" aria-expanded={queuedOpen} onClick={() => setQueuedOpen((o) => !o)}>{queuedOpen ? 'Hide queued' : `${queued.length} queued`}</button>}
 
           <h2 class="h2">Projects</h2>
           <ul class="tiles" data-testid="tops">
@@ -445,7 +523,7 @@ function PlanBlock({ b, lead, p, busy, onAct }: { b: Block; lead: boolean; p: Ro
   const isCursor = p.cursor === b.task.ref;
   return (
     <li class={`block${lead ? ' lead' : ''}${isCursor ? ' cursor' : ''}`} data-ref={b.task.ref} style={{ '--min': b.end - b.start }} onClick={() => p.onCursor(b.task.ref)}>
-      <time class="when">{clock(b.start)}<small>{span(b.end - b.start)}{b.partial ? '+' : ''}</small></time>
+      <time class="when">{clock(b.start)}<small title={b.assumed ? 'No effort set; 30 min assumed' : undefined}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</small></time>
       <div class="what">
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', b.task.ref); }}><span class="box" /></button>
         <div class="what-body">

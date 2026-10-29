@@ -208,7 +208,7 @@ CONFUSABLE['ı'] = 'i'; CONFUSABLE['ſ'] = 's';
 const fold = (v: string): string => v.replace(/[\u0131\u017f\u0370-\u03ff\u0400-\u04ff]/g, (c) => CONFUSABLE[c] ?? c);
 
 /** Escapes characters that render as HTML, links, images, code, or tables; keeps the `[redacted]` mark readable. */
-const md = (v: string): string => v.split(R).map((p) => p.replace(/[\\<>[\]`|]/g, '\\$&')).join(R);
+export const md = (v: string): string => v.split(R).map((p) => p.replace(/[\\<>[\]`|]/g, '\\$&')).join(R);
 
 /**
  * Best effort: replaces anything that looks like a credential with `[redacted]`. Zero-width characters are removed first.
@@ -314,7 +314,7 @@ export async function applyTriage(ctx: LifecycleContext, ref: TaskRef, s: Sugges
 
 const iso = (ctx: LifecycleContext) => (ctx.now ?? (() => new Date()))().toISOString();
 /** A storage-safe log name for any project file name. */
-const logName = (ref: TaskRef): string => {
+export const logName = (ref: TaskRef): string => {
   const slug = baseName(ref.path).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '');
   return /^readme$/i.test(slug) || slug === '' ? 'project' : slug;
 };

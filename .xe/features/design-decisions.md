@@ -149,3 +149,33 @@
 **Why**: The UI has many stateful views; Preact adds about 4 KB and keeps the footprint small. A strict CSP (no inline script) ships with the SWA config.
 
 **Rejected**: Vanilla TS (more glue for the same views); a bulk api route (YAGNI, per-row results are clearer).
+
+## Replies go to a per-project inbox file, not the task file
+
+**Decision**: Today replies and decisions append to `tasks/inbox/<project>.md` (format in `.xe/features/agent-inbox/spec.md`). Only the owner session can write it; agents read it (file or `GET /inbox`) and mark entries handled.
+
+**Date**: 2026-10-28
+
+**Why**: Child `💬` rows mixed conversation into the task list, moved with line edits, and had no handled state. A separate append-only file is durable, diffable in git, and gives agents a clear queue without touching task order.
+
+**Rejected**: `💬` child rows (clutter, no ack); pushing into a live chat session (not durable, needs a runner).
+
+## Agent activity comes from artifacts
+
+**Decision**: `GET /agents` derives state from agent rows, result logs, inbox entries, and GitHub PR state and checks (when `GITHUB_TOKEN` is set). Never from chat transcripts.
+
+**Date**: 2026-10-28
+
+**Why**: Artifacts are the truth an owner can verify; chat says what an agent intended, not what it shipped.
+
+**Rejected**: Reading session transcripts (private, unstructured, not in the task repo).
+
+## Plan to a daily budget; warn only for at-risk misses
+
+**Decision**: The owner sets available time per day (browser storage, resets daily). Tasks are packed to that budget; only tasks due today, late by 30 days or less, or in progress raise a warning when they miss.
+
+**Date**: 2026-10-28
+
+**Why**: With ~900 open tasks, "268 don't fit" is true and useless. The question is whether anything that matters today misses.
+
+**Rejected**: Showing every left-out task as a warning; a server-side setting (one more write path for a per-day convenience).

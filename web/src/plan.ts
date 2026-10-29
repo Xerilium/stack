@@ -1,12 +1,14 @@
-import { actionable, children, isActive, isMessage, rankNow } from './now';
+import { actionable, children, dueDays, isActive, isMessage, rankNow } from './now';
 import { effortMinutes, parseRow } from './row';
 import type { Task } from './types';
 
-/** Day plan, agent work, and decisions. Pure; the views only draw it. @req FR:web-app/today.plan @req FR:web-app/today.needs @req FR:web-app/today.agents */
+/** Day plan and decisions. Pure; the views only draw it. @req FR:web-app/today.plan @req FR:web-app/today.fit @req FR:web-app/today.needs */
 export interface Day { start: number; end: number } // minutes after midnight
 export const DEFAULT_DAY: Day = { start: 9 * 60, end: 18 * 60 };
-export interface Block { task: Task; start: number; end: number; partial: boolean }
-export interface Plan { blocks: Block[]; overflow: Task[]; left: number; busy: number }
+export interface Block { task: Task; start: number; end: number; partial: boolean; assumed: boolean }
+/** `left`: work day left; `budget`: minutes you have; `free`: budget not booked; `short`: minutes the left-out tasks need; `assumed`: blocks using the default estimate. */
+/** `atRisk`: left-out tasks due today, late by 30 days or less, or in progress (listed first in `overflow`); `riskShort`: minutes they need. */
+export interface Plan { blocks: Block[]; overflow: Task[]; atRisk: Task[]; left: number; busy: number; budget: number; free: number; short: number; riskShort: number; assumed: number }
 
 const MAX_BLOCK = 120;
 const DEFAULT_MIN = 30;
@@ -36,20 +38,45 @@ export function planCandidates(tasks: Task[], now: Date, first?: string): Task[]
 
 const round15 = (m: number) => Math.ceil(m / 15) * 15;
 
-/** Pack candidates into what is left of the day, in order; what does not fit goes to `overflow`. */
-export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY): Plan {
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  let cur = Math.max(day.start, round15(nowMin));
+/** Minutes a task books: its effort (30 min assumed when unset), capped at 2 h. */
+export function estimate(t: Task): { minutes: number; assumed: boolean; partial: boolean } {
+  const est = effortMinutes(parseRow(t.text).effort);
+  return { minutes: Math.min(est || DEFAULT_MIN, MAX_BLOCK), assumed: !est, partial: est > MAX_BLOCK };
+}
+
+/** Due today, late by 30 days or less (older is stale), or in progress. */
+export function atRiskTask(t: Task, now: Date): boolean {
+  const r = parseRow(t.text);
+  const d = dueDays(r.due, now);
+  return (d !== null && d <= 0 && d >= -30) || (!!r.status && r.status.replace(/\uFE0F/g, '') === '🚧');
+}
+
+/** First bookable minute: now rounded up to 15, never before the work day starts. */
+export const planStart = (now: Date, day: Day = DEFAULT_DAY) => Math.max(day.start, round15(now.getHours() * 60 + now.getMinutes()));
+
+/**
+ * Packs candidates in rank order into `budget` minutes from the plan start (default: what is left of the work day).
+ * A task that does not fit is skipped and later, smaller ones may still fit.
+ */
+export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY, budget?: number): Plan {
+  const start = planStart(now, day);
+  const left = Math.max(0, day.end - start);
+  const cap = Math.max(0, budget ?? left);
+  let cur = start;
   const blocks: Block[] = [];
   const overflow: Task[] = [];
+  let short = 0;
   for (const t of candidates) {
-    const est = effortMinutes(parseRow(t.text).effort) || DEFAULT_MIN;
-    const minutes = Math.min(est, MAX_BLOCK);
-    if (cur + minutes > day.end) { overflow.push(t); continue; }
-    blocks.push({ task: t, start: cur, end: cur + minutes, partial: est > MAX_BLOCK });
-    cur += minutes;
+    const e = estimate(t);
+    if (cur + e.minutes > start + cap) { overflow.push(t); short += e.minutes; continue; }
+    blocks.push({ task: t, start: cur, end: cur + e.minutes, partial: e.partial, assumed: e.assumed });
+    cur += e.minutes;
   }
-  return { blocks, overflow, left: Math.max(0, day.end - Math.max(day.start, round15(nowMin))), busy: blocks.reduce((s, b) => s + (b.end - b.start), 0) };
+  const busy = cur - start;
+  const atRisk = overflow.filter((t) => atRiskTask(t, now));
+  const rest = overflow.filter((t) => !atRisk.includes(t));
+  const riskShort = atRisk.reduce((m, t) => m + estimate(t).minutes, 0);
+  return { blocks, overflow: [...atRisk, ...rest], atRisk, left, busy, budget: cap, free: cap - busy, short, riskShort, assumed: blocks.filter((b) => b.assumed).length };
 }
 
 export const clock = (m: number) => { const h = Math.floor(m / 60) % 24; return `${h % 12 || 12}:${String(m % 60).padStart(2, '0')}${h < 12 ? 'a' : 'p'}`; };
@@ -94,25 +121,4 @@ export function decisions(tasks: Task[], now: Date): Decision[] {
   const withParent = rows.map((t) => ({ task: t, context: ancestorsOf(tasks, t)[0], recommendation: recommendationOf(tasks, t) }));
   const ranked = rankNow(rows, now, tasks);
   return ranked.map((r) => withParent.find((x) => x.task.ref === r.ref)!);
-}
-
-export type AgentState = 'working' | 'waiting' | 'queued';
-export interface AgentItem { task: Task; state: AgentState }
-
-/** Open agent rows (🤖/🪄) in active work and what each is doing. */
-export function agentWork(tasks: Task[], now: Date): AgentItem[] {
-  const out: AgentItem[] = [];
-  tasks.forEach((t, i) => {
-    if (t.done || whoOf(t) !== 'agent' || !actionable(t, now)) return;
-    const working = doing(t);
-    if (!isActive(t) && !working) return;
-    const parent = ancestorsOf(tasks, t)[0];
-    const asks = (x: Task) => !x.done && whoOf(x) === 'human' && !answered(tasks, x);
-    // waiting: a 🙋 in its own subtree, or a later 🙋 sibling under the same parent
-    const waits = children(tasks, t.ref).some(asks)
-      || (!!parent && tasks.some((x, k) => k > i && x.project === t.project && x.depth === t.depth && asks(x) && ancestorsOf(tasks, x)[0]?.ref === parent.ref));
-    out.push({ task: t, state: working ? 'working' : waits ? 'waiting' : 'queued' });
-  });
-  const order: Record<AgentState, number> = { working: 0, waiting: 1, queued: 2 };
-  return out.sort((a, b) => order[a.state] - order[b.state]);
 }
