@@ -68,7 +68,7 @@ test.describe('now view', () => {
   test('shows the focus task with chips, Active rows below, and no horizontal scroll', async ({ page }, info) => {
     await mockApi(page);
     await page.goto('/#/now');
-    await expect(page).toHaveURL(/\/$|#\/now/);
+    await expect(page).toHaveURL(/\/$|#\/now/); // old name still opens Home
     await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
     const focus = page.locator('.focus-block');
     await expect(focus.getByRole('button', { name: /Priority: High/ })).toBeVisible();
@@ -347,8 +347,8 @@ test.describe('list', () => {
     await page.keyboard.press('Escape');
     await page.keyboard.press('g'); await page.keyboard.press('p');
     await expect(page).toHaveURL(/#\/projects/);
-    await page.keyboard.press('g'); await page.keyboard.press('n');
-    await expect(page).toHaveURL(/#\/now/);
+    await page.keyboard.press('g'); await page.keyboard.press('h');
+    await expect(page).toHaveURL(/#\/home/);
     await page.keyboard.press('g'); await page.keyboard.press('p');
     await expect(page.getByTestId('cap-alpha')).toBeVisible();
     await page.keyboard.press('?');
@@ -743,19 +743,19 @@ test.describe('feedback and mobile', () => {
       await expect(page.locator('.rail')).toBeHidden();
       for (const tab of await page.locator('.tabbar .tab').all()) expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       expect((await page.locator('.btn.primary').first().boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      // All tasks lives behind More on a phone: the bar keeps the four daily views
-      await expect(page.locator('.tabbar').getByRole('button', { name: /All tasks/ })).toHaveCount(0);
+      // Full stack and Projects live behind More on a phone
+      await expect(page.locator('.tabbar').getByRole('button', { name: /Full stack|Projects/ })).toHaveCount(0);
       await page.locator('.tabbar').getByRole('button', { name: 'Open command palette' }).click();
-      await page.getByRole('combobox', { name: 'Command' }).fill('all tasks');
+      await page.getByRole('combobox', { name: 'Command' }).fill('full stack');
       await page.keyboard.press('Enter');
       await expect(page).toHaveURL(/#\/list/);
-      await page.locator('.tabbar').getByRole('button', { name: /Projects/ }).click();
-      await expect(page).toHaveURL(/#\/projects/);
+      await page.locator('.tabbar').getByRole('button', { name: /My day/ }).click();
+      await expect(page).toHaveURL(/#\/today/);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= 375)).toBe(true);
     } else {
       await expect(page.locator('.rail')).toBeVisible();
       await expect(page.locator('.tabbar')).toBeHidden();
-      for (const name of ['Today', 'Focus', 'Projects', 'All tasks']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible();
+      for (const name of ['Home', 'My day', 'Needs you', 'Projects', 'Full stack']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible();
     }
   });
 
@@ -1012,6 +1012,76 @@ test.describe('today view', () => {
     await expect(page.getByTestId('agents').locator('.agent').first()).toBeVisible();
   });
 
+  // @req FR:web-app/today.meetings
+  test('meetings block time: fixed rows, hatched on the bar, less available, tasks start after', async ({ page }, info) => {
+    const at = (h: number, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+    await page.clock.install({ time: tenAm() });
+    const m = await mockApi(page, { tasks: day() });
+    m.events = [
+      { id: 'e1', subject: 'Allyte sync', start: at(10, 30), end: at(11, 30), allDay: false, showAs: 'busy', cancelled: false, online: true, joinUrl: 'https://teams.example.test/join/1' },
+      { id: 'e2', subject: 'Lunch', start: at(12), end: at(13), allDay: false, showAs: 'free', cancelled: false, online: false },
+      { id: 'e3', subject: 'Offsite', start: at(0), end: at(23, 59), allDay: true, showAs: 'busy', cancelled: false, online: false },
+    ];
+    await page.goto('/#/today');
+    await page.clock.resume();
+    const meeting = page.locator('[data-testid="plan"] .meeting');
+    await expect(meeting).toHaveCount(1);
+    await expect(meeting).toContainText('Allyte sync');
+    await expect(meeting).toContainText('10:30a');
+    await expect(meeting.getByRole('link', { name: 'Join' })).toHaveAttribute('href', 'https://teams.example.test/join/1');
+    await expect(page.locator('.t-sub')).toContainText('1h in meetings');
+    await expect(page.locator('.next-meeting')).toContainText('Allyte sync in 30m');
+    await expect(page.getByTestId('available')).toContainText('7h');
+    await expect(page.locator('.allday')).toContainText('Offsite');
+    await expect(page.locator('.day-bar u')).toHaveCount(1);
+    const blocks = page.locator('[data-testid="plan"] .block');
+    await expect(blocks.nth(0).locator('.when')).toContainText('10:00a');
+    await expect(blocks.nth(1).locator('.when')).toContainText('11:30a'); // the 1h lead task would cross the meeting, so a 30m task fills the gap first
+    await shot(page, 'today-meetings', info);
+  });
+
+  test('J joins a meeting that starts within 10 minutes', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', KEYBOARD);
+    const at = (h: number, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return d; };
+    await page.clock.install({ time: at(10, 25) });
+    const m = await mockApi(page, { tasks: day() });
+    m.events = [{ id: 'e1', subject: 'Allyte sync', start: at(10, 30).toISOString(), end: at(11, 30).toISOString(), allDay: false, showAs: 'busy', cancelled: false, online: true, joinUrl: 'https://teams.example.test/join/1' }];
+    await page.context().route('https://teams.example.test/**', (r) => r.fulfill({ status: 200, body: 'joined' }));
+    await page.goto('/#/today');
+    await page.clock.resume();
+    await expect(page.locator('[data-testid="plan"] .meeting')).toBeVisible();
+    const popup = page.waitForEvent('popup');
+    await page.keyboard.press('Shift+J');
+    expect((await popup).url()).toBe('https://teams.example.test/join/1');
+  });
+
+  test('a calendar error is a quiet note; no calendar changes nothing', async ({ page }) => {
+    await page.clock.install({ time: tenAm() });
+    const m = await mockApi(page, { tasks: day() });
+    m.calendarFail = true;
+    await page.goto('/#/today');
+    await page.clock.resume();
+    await expect(page.locator('.cal-note')).toContainText('Calendar unavailable');
+    await expect(page.getByTestId('available')).toContainText('8h');
+  });
+
+  // @req FR:web-app/today.mail
+  test('email asks reserve one Email block first; it opens the Asks view', async ({ page }) => {
+    await page.clock.install({ time: tenAm() });
+    const m = await mockApi(page, { tasks: day() });
+    const ask = (key: string, from: string) => ({ key, state: 'open', ask: `Review draft reply to Ann: ${key}`, kind: 'review', from, reversible: true, priority: 'normal', blocks: 0, created: new Date().toISOString(), updated: new Date().toISOString(), score: 1, overdue: false });
+    m.asks = [ask('mail-1', 'email-triage'), ask('mail-2', 'email-triage'), ask('mail-3', 'email-triage'), ask('mail-4', 'email-triage'), ask('pr-1', 'allyte-cos')];
+    await page.goto('/#/today');
+    await page.clock.resume();
+    const email = page.locator('[data-testid="plan"] .email-block');
+    await expect(email).toContainText('Email · 4 asks');
+    await expect(email.locator('.when')).toContainText('10:00a');
+    await expect(email.locator('.when')).toContainText('20m');
+    await expect(page.locator('[data-testid="plan"] .block').first().locator('.when')).toContainText('10:20a');
+    await email.getByRole('button', { name: /Email · 4 asks/ }).click();
+    await expect(page).toHaveURL(/#\/asks/);
+  });
+
   // @req FR:web-app/today.projects
   test('project tiles open that project in the list', async ({ page }) => {
     await mockApi(page);
@@ -1021,13 +1091,13 @@ test.describe('today view', () => {
     await expect(rows(page)).toHaveText(['Plan the trip']);
   });
 
-  test('g t / g n / g p / g a move between views', async ({ page }, info) => {
+  test('g t / g h / g p / g a move between views', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
     await page.goto('/#/list');
     const chord = async (k: string, re: RegExp) => { await page.keyboard.press('g'); await page.keyboard.press(k); await expect(page).toHaveURL(re); };
     await chord('t', /#\/today/);
-    await chord('n', /#\/now/);
+    await chord('h', /#\/home/);
     await chord('p', /#\/projects/);
     await chord('a', /#\/list/);
   });

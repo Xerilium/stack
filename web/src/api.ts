@@ -1,3 +1,4 @@
+import type { CalEvent } from './meetings';
 import type { AskList, Send } from './asks';
 import type { CostReport, SessionList, Turn } from './sessions';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
@@ -11,6 +12,13 @@ const TASK_FIELDS = 'ref,text,project,section,done,depth,notes';
 
 const await0 = async <T,>(p: Promise<{ items: T[] }>) => (await p).items;
 
+/** Where the page expected Stack: the api origin, else this page's host. @req FR:web-shell/state.unreachable */
+export function unreachable(base = '/api'): string {
+  let host = '';
+  try { host = new URL(base, typeof location === 'undefined' ? 'http://localhost' : location.href).host; } catch { /* keep the fallback */ }
+  return `Can't reach Stack${host ? ` at ${host}` : ''}. Is stack web still running?`;
+}
+
 /** `onRead` hears each read: the time the service worker saved it when it came from the offline cache, else null. @req FR:pwa/offline.banner */
 export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base = '/api', onRead?: (savedAt: string | null) => void) {
   async function call<T>(path: string, body?: unknown): Promise<T> {
@@ -19,7 +27,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
       ? { credentials: 'same-origin' }
       : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' };
     let res: Response;
-    try { res = await fetchFn(`${base}${path}`, init); } catch { throw new ApiFailure(0, 'network', 'Network error'); }
+    try { res = await fetchFn(`${base}${path}`, init); } catch { throw new ApiFailure(0, 'network', unreachable(base)); }
     const text = await res.text();
     let data: unknown;
     try { data = text ? JSON.parse(text) : undefined; } catch { data = undefined; }
@@ -47,6 +55,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     move: (ref: string, target: string, position: Position, expect?: { ref?: string; target?: string }) =>
       call<Mutation>('/tasks/move', { ref, target, position, ...(expect?.ref !== undefined ? { expect: expect.ref } : {}), ...(expect?.target !== undefined ? { expectTarget: expect.target } : {}) }),
     add: (project: string, text: string, parent?: string) => call<Mutation>('/tasks', { project, text, ...(parent ? { parent } : {}) }),
+    calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
     send: (ref: string, text: string, kind: 'reply' | 'decision', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),

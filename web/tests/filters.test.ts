@@ -36,12 +36,20 @@ describe('hash state', () => {
     expect(parseHash(h)).toEqual({ view: 'list', filters: f });
   });
   it('omits defaults and tolerates junk', () => {
-    expect(buildHash('now', F())).toBe('#/now');
-    expect(parseHash('')).toEqual({ view: 'asks', filters: F() });
+    expect(buildHash('home', F())).toBe('#/home');
+    expect(parseHash('')).toEqual({ view: 'home', filters: F() });
     expect(parseHash('#/today')).toEqual({ view: 'today', filters: F() });
     expect(parseHash('#/sessions')).toEqual({ view: 'sessions', filters: F() });
     expect(parseHash('#/agents').view).toBe('sessions');
-    expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'asks', filters: F() });
+    expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'home', filters: F() });
     expect(parseHash('#/list?state=done').filters.state).toBe('done');
+  });
+  // @req FR:web-shell/nav.views
+  it('home is the start; old view names still open their view', () => {
+    expect(parseHash('#/').view).toBe('home');
+    for (const old of ['now', 'next', 'focus']) expect(parseHash(`#/${old}`).view).toBe('home');
+    expect(parseHash('#/capacity').view).toBe('projects');
+    for (const old of ['all', 'stack']) expect(parseHash(`#/${old}`).view).toBe('list');
+    expect(parseHash('#/asks').view).toBe('asks');
   });
 });

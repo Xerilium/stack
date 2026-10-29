@@ -8,20 +8,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, createClient } from './api';
 import { capacityRows } from './capacity';
-import { applyFilters, buildHash, parseHash, type Filters } from './filters';
+import { applyFilters, buildHash, NO_FILTERS, parseHash, type Filters } from './filters';
 import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, Toasts, type GroupName, type Toast } from './parts';
 import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
+import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
-import { actionsFor } from './asks';
+import { actionsFor, type AskItem, type Send } from './asks';
 import { useAsks } from './useAsks';
 import { SessionsView } from './SessionsView';
 import { useSessions } from './useSessions';
-import { loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
+import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
+import { fromDecisions } from './needs';
+import { repliesFor } from './agents';
+import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { planWeek } from './week';
 import { FocusMode, ListView, NowView, ProjectsView, TodayView, type NowSection, type RowProps } from './views';
 
@@ -84,11 +88,15 @@ export function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [drag, setDrag] = useState<{ ref: string; over: string | null; half: 'top' | 'bottom' } | null>(null);
   const [captureText, setCaptureText] = useState('');
-  const [preview, setPreview] = useState<{ spec?: CaptureSpec; error?: string } | null>(null);
+  const [preview, setPreview] = useState<{ spec?: CaptureSpec; error?: string; retry?: 'preview' | 'submit' } | null>(null);
+  const [previewTry, setPreviewTry] = useState(0);
   const [agentItems, setAgentItems] = useState<Agent[] | null>(null);
   const [agentsError, setAgentsError] = useState('');
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [saved, setSaved] = useState<{ date: string; minutes: number } | null>(() => { const now = new Date(); const m = loadBudget(store(), now); return m === null ? null : { date: dateKey(now), minutes: m }; });
+  const [events, setEvents] = useState<CalEvent[]>([]);
+  const [calError, setCalError] = useState('');
+  const [emailAsks, setEmailAsks] = useState(0);
   const lastProject = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const captureRef = useRef<HTMLInputElement | null>(null);
@@ -117,13 +125,15 @@ export function App() {
   const clockNow = useMemo(() => new Date(), [tasks, tick, saved]); // also refresh when the budget changes, so a value set after midnight counts for the new day
   const day = DEFAULT_DAY;
   // Kept with its date: a tab left open overnight must not keep yesterday's budget, and it works without storage.
-  const budget = budgetOf(clockNow, day, saved && saved.date === dateKey(clockNow) ? saved.minutes : null);
-  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes), [tasks, next, clockNow, day, budget.minutes]);
+  const busyTime = useMemo(() => busyIntervals(events, clockNow), [events, clockNow]);
+  const budget = budgetOf(clockNow, day, saved && saved.date === dateKey(clockNow) ? saved.minutes : null, busyTime);
+  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, clockNow, day, budget.minutes, busyTime, emailAsks]);
   /** @req FR:web-app/today.capacity */
   const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v); setSaved(v === null ? null : { date: dateKey(now), minutes: v }); }, []);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
   const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
-  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'now' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
+  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
+  const titles = useMemo(() => new Map(projects.map((x) => [x.name, x.title || x.name])), [projects]);
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, day), [tasks, clockNow, budget.minutes, day]);
@@ -140,7 +150,12 @@ export function App() {
   // ---- data
   /** Agent activity and the inbox load on their own: a failure there never blocks the day plan. @req FR:web-app/today.agents */
   const loadSide = useCallback(async () => {
-    const [a, i] = await Promise.allSettled([api.agents(), api.inbox()]);
+    const d = new Date();
+    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(from.toISOString(), to.toISOString())]);
+    /** @req FR:web-app/today.meetings */
+    if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); } else setCalError('Calendar unavailable');
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
     if (i.status === 'fulfilled') setInbox(i.value);
   }, []);
@@ -166,17 +181,25 @@ export function App() {
   const [notifyOn, setNotifyOn] = useState(() => loadNotify(store()));
   const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : 'denied'));
   const notifyRef = useRef(false); notifyRef.current = notifyOn && perm === 'granted';
+  /** Open 🙋 rows that have no reply yet, as asks. @req FR:web-shell/state.needs */
+  const taskAsks = useMemo(() => fromDecisions(decisions.filter((d) => repliesFor(inbox, d.task).length === 0), titles, clockNow), [decisions, inbox, titles, clockNow]);
   const asks = useAsks(api, toast, () => void refresh(), stream, (items) => {
     if (!notifyRef.current || !document.hidden) return;
     const note = noteFor(items, new Date());
     if (note) void raise(note);
+  }, {
+    tasks: taskAsks,
+    onTask: (a, s) => answerTask(a, s),
+    onOpenTask: (ref) => { setFocusRef(ref); },
   });
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
+    if (Notification.permission === 'denied') { setPerm('denied'); toast(blockedHelp(), 'err'); return; }
     const p = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
     setPerm(p);
     if (p === 'granted') { saveNotify(store(), true); setNotifyOn(true); toast('Notifications on'); }
+    else if (p === 'denied') toast(blockedHelp(), 'err');
   };
   const notify = { supported: notifySupported(), on: notifyOn && perm === 'granted', blocked: perm === 'denied', toggle: () => void toggleNotify() };
   const refreshRef = useRef(refresh); refreshRef.current = refresh;
@@ -188,6 +211,8 @@ export function App() {
     window.addEventListener('online', up); window.addEventListener('offline', down);
     return () => { reads.delete(read); window.removeEventListener('online', up); window.removeEventListener('offline', down); };
   }, []);
+  /** Open asks the email module wrote reserve the Email block. @req FR:web-app/today.mail */
+  useEffect(() => { setEmailAsks(asks.items.filter((a) => a.state === 'open' && a.from === 'email-triage').length); }, [asks.items]);
 
   useEffect(() => {
     void (async () => {
@@ -304,6 +329,18 @@ export function App() {
   const sendReply = async (task: Pick<Task, 'ref' | 'text'>, text: string, kind: 'reply' | 'decision', ok: string): Promise<boolean> =>
     (await run(() => api.send(task.ref, text, kind, task.text), () => ok)) !== undefined;
   const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'decision', 'Sent to the agent');
+  /** A 🙋 row answered from Needs you: decision or reply to the inbox, or the row deferred. @req FR:web-shell/state.needs */
+  const answerTask = async (a: AskItem, s: Send) => {
+    const t = tasks.find((x) => x.ref === a.ref);
+    if (!t) throw new Error('Row changed elsewhere');
+    let ok: unknown;
+    if (s.answer === 'go') ok = await sendReply(t, `Go with the recommendation: ${a.recommend}`, 'decision', '');
+    else if (s.answer === 'defer' && s.until) ok = await run(() => api.action('suspend', t.ref, { hours: Math.max(1, Math.round((new Date(s.until!).getTime() - Date.now()) / 3600_000)) }), () => '');
+    else ok = await sendReply(t, s.text ?? '', 'reply', '');
+    if (!ok) throw Object.assign(new Error('Not sent'), { shown: true }); // `run` already toasted the reason
+    // The row leaves Needs you only once the inbox shows the reply: wait for it, so it never pops back.
+    try { setInbox(await api.inbox()); } catch { /* the next refresh catches up */ }
+  };
   const openDefer = (ref = refNow()) => { if (ref) setDeferRefs([ref]); };
 
   const toggleDone = async (t: Task) => {
@@ -359,10 +396,10 @@ export function App() {
     let stale = false;
     const h = setTimeout(async () => {
       try { const r = await api.capture(text, { project: defaultProject(), dryRun: true }); if (!stale) setPreview({ spec: r.spec }); }
-      catch (e) { if (!stale) setPreview({ error: e instanceof Error ? e.message : 'Cannot parse' }); }
+      catch (e) { if (!stale) setPreview({ error: e instanceof Error ? e.message : 'Cannot parse', retry: e instanceof ApiFailure && e.status === 0 ? 'preview' : undefined }); }
     }, 250);
     return () => { stale = true; clearTimeout(h); };
-  }, [captureText, next, projects]);
+  }, [captureText, next, projects, previewTry]);
 
   const submitCapture = async () => {
     const text = captureText.trim();
@@ -375,7 +412,8 @@ export function App() {
       toast(`Added: ${r.after ?? r.spec.title}`);
       await refresh();
     } catch (e) {
-      setPreview({ error: e instanceof Error ? e.message : 'Capture failed' });
+      // @req FR:web-shell/state.capture
+      setPreview({ error: e instanceof Error ? e.message : 'Capture failed', retry: e instanceof ApiFailure && e.status === 0 ? 'submit' : undefined });
     } finally { setBusy(false); }
   };
 
@@ -383,48 +421,54 @@ export function App() {
   const targets = () => (selected.size ? [...selected] : (cursor ? [cursor] : []));
   const openPicker = (groups: GroupName[]) => { const refs = targets(); if (refs.length) setPicker({ refs, groups }); };
   const openCapture = () => setCaptureOpen(true);
+  const hasRows = view === 'home' || view === 'today' || view === 'list';
   const commands: Command[] = [
-    { id: 'go-asks', label: 'Go to Asks', hint: 'g k', run: () => go('asks') },
+    { id: 'go-home', label: 'Go to Home', hint: HINT.home, run: () => go('home') },
+    { id: 'go-today', label: 'Go to My day', hint: HINT.today, run: () => go('today') },
+    { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, run: () => go('asks') },
+    { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, run: () => go('projects') },
+    { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, run: () => go('list') },
+    // @req FR:web-shell/palette.jump
+    ...projects.map((p) => ({ id: `proj-${p.name}`, label: `Project: ${p.title || p.name}`, run: () => go('list', { ...NO_FILTERS, project: p.name }) })),
     ...(view === 'asks' && asks.current ? [
       ...actionsFor(asks.current).filter((x) => x.send || x.open).map((x) => ({ id: `ask-${x.id}`, label: `Ask: ${x.label}`, hint: x.key === 'Enter' ? '⏎' : x.key, run: () => { const a = asks.current!; if (x.open) { if (a.link) window.open(a.link, '_blank', 'noopener,noreferrer'); } else if (x.send) void asks.answer(a, x.send, `Sent to ${a.from}`); } })),
       { id: 'ask-defer', label: 'Ask: Defer', hint: 'z', run: () => asks.setPanel('defer') },
       { id: 'ask-reply', label: 'Ask: Reply to the agent', hint: 'r', run: () => asks.setPanel('reply') },
       { id: 'ask-undo', label: 'Ask: Undo last answer', hint: 'u', run: () => asks.undo() },
     ] : []),
-    { id: 'go-sessions', label: 'Go to Sessions', hint: 'g s', run: () => go('sessions') },
     ...(view === 'sessions' ? [
       { id: 'sess-open', label: 'Session: open', hint: '⏎', run: () => { if (sessions.cursor) void sessions.openDrawer(sessions.cursor); } },
       { id: 'sess-new', label: 'Session: new', hint: 'n', run: () => sessions.setComposing(true) },
       { id: 'sess-stop', label: 'Session: stop the run', hint: 's', run: () => void sessions.stop(sessions.open ?? sessions.cursor ?? undefined) },
       { id: 'sess-costs', label: 'Session: toggle costs', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
     ] : []),
-    { id: 'go-today', label: 'Go to Today', hint: 'g t', run: () => go('today') },
-    { id: 'go-now', label: 'Go to Focus', hint: 'g n', run: () => go('now', filters) },
-    { id: 'go-projects', label: 'Go to Projects', hint: 'g p', run: () => go('projects') },
-    { id: 'go-list', label: 'Go to all tasks', hint: 'g a', run: () => go('list') },
-    { id: 'capture', label: 'Capture a task', hint: 'c', run: openCapture },
+    { id: 'capture', label: 'New task', hint: 'c', run: openCapture },
     { id: 'search', label: 'Search tasks', hint: '/', run: () => { go('list'); setTimeout(() => searchRef.current?.focus(), 0); } },
     ...(['open', 'done', 'all'] as const).map((s) => ({ id: `show-${s}`, label: `Show ${s} tasks`, run: () => go('list', { ...filters, state: s }) })),
-    { id: 'clear', label: 'Clear filters', run: () => go('list', { q: '', project: '', state: 'open', status: '', priority: '', effort: '' }) },
-    ...projects.map((p) => ({ id: `proj-${p.name}`, label: `Filter project: ${p.title || p.name}`, run: () => go('list', { ...filters, project: p.name }) })),
-    ...GROUP_NAMES.map((g) => ({ id: `set-${g}`, label: `Set ${GROUPS[g].label.toLowerCase()} on ${selected.size ? 'selection' : 'row'}`, hint: GROUPS[g].key, run: () => openPicker([g]) })),
-    { id: 'done', label: 'Mark done', hint: 'd', run: () => (selected.size ? void bulk('complete') : void doAct('done')) },
-    { id: 'skip', label: 'Skip', hint: 'Shift+S', run: () => (selected.size ? void bulk('skip') : void doAct('skip')) },
-    { id: 'start', label: 'Start', hint: 's', run: () => void doAct('start') },
-    { id: 'defer', label: 'Defer', hint: 'z', run: openDefer },
-    { id: 'focus', label: 'Focus mode', hint: 'Enter', run: () => { const r = refNow(); if (r) setFocusRef(r); } },
-    { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
-    { id: 'more-time', label: 'More time today (+30m)', hint: ']', run: () => setBudget(budget.minutes + STEP) },
-    { id: 'less-time', label: 'Less time today (-30m)', hint: '[', run: () => setBudget(budget.minutes - STEP) },
-    { id: 'reset-time', label: 'Reset available time', run: () => setBudget(null) },
+    { id: 'clear', label: 'Clear filters', run: () => go('list', NO_FILTERS) },
+    // @req FR:web-shell/palette.scope
+    ...(hasRows ? [
+      ...GROUP_NAMES.map((g) => ({ id: `set-${g}`, label: `Set ${GROUPS[g].label.toLowerCase()} on ${selected.size ? 'selection' : 'row'}`, hint: GROUPS[g].key, run: () => openPicker([g]) })),
+      { id: 'done', label: 'Mark done', hint: 'd', run: () => (selected.size ? void bulk('complete') : void doAct('done')) },
+      { id: 'skip', label: 'Skip', hint: 'Shift+S', run: () => (selected.size ? void bulk('skip') : void doAct('skip')) },
+      { id: 'start', label: 'Start', hint: 's', run: () => void doAct('start') },
+      { id: 'defer', label: 'Defer', hint: 'z', run: openDefer },
+      { id: 'focus', label: 'Focus mode', hint: 'Enter', run: () => { const r = refNow(); if (r) setFocusRef(r); } },
+      { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
+    ] : []),
+    ...(view === 'today' ? [
+      { id: 'more-time', label: 'More time today (+30m)', hint: ']', run: () => setBudget(budget.minutes + STEP) },
+      { id: 'less-time', label: 'Less time today (-30m)', hint: '[', run: () => setBudget(budget.minutes - STEP) },
+      { id: 'reset-time', label: 'Reset available time', run: () => setBudget(null) },
+    ] : []),
     { id: 'help', label: 'Show keyboard shortcuts', hint: '?', run: () => setHelp(true) },
     ...(notify.supported ? [{ id: 'notify', label: notify.on ? 'Turn off notifications' : 'Notify me about new asks', run: notify.toggle }] : []),
     { id: 'signout', label: 'Sign out', run: () => void signOut() },
   ];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes });
-  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes };
+  const latest = useRef({ positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events });
+  latest.current = { positions, rows, cursor, view, selected, editing, commands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
   const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget };
 
@@ -456,7 +500,7 @@ export function App() {
       const now = Date.now();
       if (chord.current && now - chord.current < 1000) {
         chord.current = 0;
-        const v = { k: 'asks', s: 'sessions', t: 'today', n: 'now', p: 'projects', a: 'list' }[k] as View | undefined;
+        const v = CHORDS[k];
         if (v) { e.preventDefault(); setFocusRef(null); A.go(v); return; }
       }
       if (k === 'g') { chord.current = now; return; }
@@ -470,6 +514,8 @@ export function App() {
         return;
       }
       if (L.view === 'projects') return;
+      // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
+      if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
       if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; }
       const i = L.rows.findIndex((r) => r.ref === L.cursor);
       const step = (d: number) => { const n = L.rows[Math.max(0, Math.min(L.rows.length - 1, i + d))]; if (n) setCursor(n.ref); };
@@ -504,24 +550,25 @@ export function App() {
   if (phase === 'error') {
     return <main class="gate"><h1>Cannot load tasks</h1><p>{loadError}</p><button type="button" class="btn primary" onClick={() => void refresh()}>Retry</button></main>;
   }
-  const tabs: [View, string, string][] = [['asks', 'Asks', 'g k'], ['sessions', 'Sessions', 'g s'], ['today', 'Today', 'g t'], ['now', 'Focus', 'g n'], ['projects', 'Projects', 'g p'], ['list', 'All tasks', 'g a']];
   const toggleSet = (set: 'expanded' | 'flipped') => (k: string) => (set === 'expanded' ? setExpanded : setFlipped)((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const rowProps: RowProps = {
-    showProject: view === 'now' || view === 'today', titles: new Map(projects.map((x) => [x.name, x.title || x.name])), all: tasks, cursor, selected, editing, busy, expanded, handles: view === 'list', drag, prog,
+    showProject: view === 'home' || view === 'today', titles, all: tasks, cursor, selected, editing, busy, expanded, handles: view === 'list', drag, prog,
     onSelect: (ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; }), onCursor: setCursor, onEdit: setEditing, onSave: (r, t) => void save(r, t), onToggle: (t) => void toggleDone(t),
     onPick: (refs, g) => setPicker({ refs: selected.size && selected.has(refs[0]) ? [...selected] : refs, groups: Array.isArray(g) ? g : [g] }),
     onMove: (ref, dir) => void doMove(ref, keyboardMove(positions, ref, dir)), onDragStart, onExpand: toggleSet('expanded'), onOpen: (r) => setFocusRef(r),
   };
   const focusTask = focusRef ? tasks.find((t) => t.ref === focusRef) : undefined;
-  const nav = (cls: string, skip: View[] = []) => tabs.filter(([v]) => !skip.includes(v)).map(([v, label, hint]) => (
-    <button type="button" key={v} class={`${cls}${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}>{label}<kbd>{hint}</kbd></button>
+  // @req FR:web-shell/nav.rail
+  const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : null);
+  const nav = () => RAIL.map((v) => (
+    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
   ));
   return (
     <div class="shell">
       <nav class="rail" aria-label="Views">
         <div class="brand">Stack</div>
         <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
-        {nav('tab')}
+        {nav()}
         <div class="spacer" />
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">Commands <kbd>⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
@@ -534,10 +581,10 @@ export function App() {
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
         {phase === 'ready' && view === 'today' && (
-          <TodayView now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
+          <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'now' && <NowView task={next} sections={sections} hidden={hidden} allOpen={allOpen} onToggleAll={() => setAllOpen((o) => !o)} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
+        {phase === 'ready' && view === 'home' && <NowView task={next} sections={sections} hidden={hidden} allOpen={allOpen} onToggleAll={() => setAllOpen((o) => !o)} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />
@@ -554,11 +601,13 @@ export function App() {
           <button type="button" class="btn" onClick={() => setSelected(new Set())}>Clear</button>
         </div>
       )}
+      {/* @req FR:web-shell/nav.tabbar */}
       <nav class="tabbar" aria-label="Views (mobile)">
-        {tabs.filter(([v]) => v !== 'list' && v !== 'sessions').map(([v, label]) => (
-          <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><TabIcon v={v} /><span>{label}</span></button>
-        )).flatMap((b, i) => (i === 2 ? [<button type="button" key="add" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true">+</span></button>, b] : [b]))}
-        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette"><TabIcon v="more" /><span>More</span></button>
+        {TABBAR.map((slot) => slot === 'new'
+          ? <button type="button" key="new" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg></span></button>
+          : slot === 'more'
+            ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette"><TabIcon v="more" /><span>More</span></button>
+            : <button type="button" key={slot} class={`tab${view === slot ? ' on' : ''}`} aria-current={view === slot ? 'page' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
       </nav>
       {focusTask && <FocusMode task={focusTask} all={tasks} busy={busy} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onBack={() => setFocusRef(null)} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
@@ -574,6 +623,7 @@ export function App() {
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submitCapture(); } }} />
           <p class={`preview-line${preview?.error ? ' err' : ''}`} role="status" data-testid="capture-preview">
             {preview ? (preview.error ?? [preview.spec!.title, preview.spec!.due && `due ${preview.spec!.due}`, preview.spec!.effort && `${preview.spec!.effort.emoji} ${preview.spec!.effort.minutes}m`, preview.spec!.project && `#${preview.spec!.project}`].filter(Boolean).join(' · ')) : <>Natural language: due, effort, <code>#project</code>. <kbd>Enter</kbd> adds.</>}
+            {preview?.retry && <button type="button" class="link" disabled={busy} onClick={() => (preview.retry === 'submit' ? void submitCapture() : setPreviewTry((n) => n + 1))}>Retry</button>}
           </p>
         </Dialog>
       )}
@@ -616,7 +666,8 @@ function TabIcon({ v }: { v: View | 'more' }) {
   const d: Record<string, string> = {
     asks: 'M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z',
     today: 'M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 5h16M8 3v4m8-4v4',
-    now: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
+    home: 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z',
+    sessions: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Zm4 13h8M8 8l2.5 2.5L8 13m4 0h4',
     projects: 'M4 6h16M4 12h16M4 18h10',
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
     more: 'M5 12h.01M12 12h.01M19 12h.01',

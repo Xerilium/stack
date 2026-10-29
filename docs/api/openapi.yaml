@@ -1210,6 +1210,72 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Error"
+  /calendar:
+    get:
+      summary: "Calendar events overlapping a range (at most 7 days), read-only. Owner session only: 403 for tokens"
+      operationId: listCalendar
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+          description: ISO date-time, inclusive
+        - name: to
+          in: query
+          schema:
+            type: string
+          description: ISO date-time, exclusive
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  error:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        subject:
+                          type: string
+                        start:
+                          type: string
+                          format: date-time
+                        end:
+                          type: string
+                          format: date-time
+                        allDay:
+                          type: boolean
+                        showAs:
+                          type: string
+                          enum:
+                            - free
+                            - tentative
+                            - busy
+                            - oof
+                            - workingElsewhere
+                            - unknown
+                        cancelled:
+                          type: boolean
+                        online:
+                          type: boolean
+                        organizer:
+                          type: string
+                        webLink:
+                          type: string
+                        joinUrl:
+                          type: string
+                          description: Online meeting join link
+        default:
+          $ref: "#/components/responses/Error"
   /agents:
     get:
       summary: What agents are doing, from agent rows, result logs, inbox replies, and pull request status

@@ -73,3 +73,37 @@ describe('connectLive', () => {
     expect(changes).toEqual([['poll']]);
   });
 });
+
+// @req FR:web-shell/state.live
+describe('retry', () => {
+  it('reopens the stream after a drop and goes live again', () => {
+    const { status, changes, stop, es } = setup();
+    es().open();
+    es().fail(false);
+    const old = es();
+    stop.retry();
+    expect(old.closed).toBe(true);
+    expect(FakeES.all).toHaveLength(2);
+    es().open();
+    expect(status).toEqual(['live', 'offline', 'live']);
+    expect(changes).toEqual([['asks', 'tasks', 'state']]);
+  });
+  it('retry while polling reopens the stream (the host may be back); it polls again if that fails for good', () => {
+    const { changes, status, stop, es } = setup();
+    es().fail(true);
+    stop.retry();
+    expect(FakeES.all).toHaveLength(2);
+    es().open();
+    expect(status).toEqual(['poll', 'live']);
+    vi.advanceTimersByTime(15_000);
+    expect(changes).toEqual([]);
+    es().fail(true);
+    expect(status).toEqual(['poll', 'live', 'poll']);
+  });
+  it('retry without EventSource just asks for a refresh', () => {
+    const changes: string[][] = [];
+    const stop = connectLive({ make: null, onChange: (k) => changes.push(k), onStatus: () => undefined, pollMs: 15_000, visible: () => true });
+    stop.retry();
+    expect(changes).toEqual([['poll']]);
+  });
+});
