@@ -28,10 +28,10 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 
 /** In-memory fake of the Stack api plus SWA's `/.auth/me`. */
 /** `context: true` routes at the browser context, so requests a service worker makes are mocked too. */
-export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean } = {}): Promise<Mock> {
+export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean; projects?: { name: string; title: string; metadata?: Record<string, string> }[] } = {}): Promise<Mock> {
   const router = opts.context ? page.context() : page;
   const m: Mock = { team: [], reviews: [], schedule: null, events: null, calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
-  const proj = [
+  const proj = opts.projects?.map((p) => ({ metadata: {}, ...p })) ?? [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
     // any other project the seeded tasks mention
