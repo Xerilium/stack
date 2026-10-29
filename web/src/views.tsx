@@ -314,6 +314,32 @@ export interface TodayProps {
   onAct: (a: 'start' | 'done' | 'defer' | 'notnow' | 'delegate', ref: string) => void; onReply: (task: RefText, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
   /** The project's agent on each tile. @req FR:agent-team/web.anything */
   tileAgent?: { chip: (project: string, title: string) => ComponentChildren; talk: (project: string, title: string) => ComponentChildren };
+  /** Change wake/bed for this day or its weekday. @req FR:home/day.override */ onTimes?: (c: DayChange) => Promise<boolean>;
+  /** False when no calendar is connected. @req FR:home/day.nocal */ calendar?: boolean;
+  /** Tomorrow's plan: offered late in the day, on when shown. @req FR:home/day.tomorrow */ tomorrow?: { offer: boolean; on: boolean; toggle: () => void };
+}
+export interface DayChange { wake?: string; bed?: string; every?: boolean; reset?: boolean }
+
+const hhmm = (m: number) => { const x = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
+/** The day's wake and bed, editable inline: for this day, every same weekday, or reset. @req FR:home/day.override */
+function DayTimes({ day, weekday, onSave }: { day: Day; weekday: string; onSave?: (c: DayChange) => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const [wake, setWake] = useState(hhmm(day.start));
+  const [bed, setBed] = useState(hhmm(day.end));
+  const label = `${clock(day.start)}–${clock(day.end)}`;
+  if (!onSave) return <span class="day-times">{label}</span>;
+  const save = async (c: DayChange) => { if (await onSave(c)) setOpen(false); };
+  if (!open) return <button type="button" class="day-times link-btn" title="Change wake and bed" data-testid="day-times" onClick={() => { setWake(hhmm(day.start)); setBed(hhmm(day.end)); setOpen(true); }}>{label}</button>;
+  return (
+    <span class="day-times-edit" role="group" aria-label="Wake and bed" data-testid="day-times-edit">
+      <label>Up <input type="time" value={wake} onInput={(e) => setWake((e.target as HTMLInputElement).value)} /></label>
+      <label>Bed <input type="time" value={bed} onInput={(e) => setBed((e.target as HTMLInputElement).value)} /></label>
+      <button type="button" class="btn primary" onClick={() => void save({ wake, bed })}>Today</button>
+      <button type="button" class="btn" onClick={() => void save({ wake, bed, every: true })}>Every {weekday}</button>
+      <button type="button" class="btn quiet" onClick={() => void save({ reset: true })}>Reset</button>
+      <button type="button" class="btn quiet" onClick={() => setOpen(false)}>Cancel</button>
+    </span>
+  );
 }
 
 /**
@@ -388,7 +414,9 @@ export function TodayView(t: TodayProps) {
       <header class="t-head">
         <div class="t-top">
           <div>
-            <p class="t-date">{date}{t.allDay.length > 0 && <span class="allday"> · {t.allDay.map((e) => e.subject).join(' · ')}</span>}</p>
+            <p class="t-date">{t.tomorrow?.on ? 'Tomorrow · ' : ''}{date} · <DayTimes day={t.day} weekday={(t.day.origin ?? t.now).toLocaleDateString('en-US', { weekday: 'short' })} onSave={t.onTimes} />{t.allDay.length > 0 && <span class="allday"> · {t.allDay.map((e) => e.subject).join(' · ')}</span>}
+              {t.tomorrow && (t.tomorrow.on || t.tomorrow.offer) && <> · <button type="button" class="link-btn day-switch" data-testid="tomorrow" onClick={t.tomorrow.toggle}>{t.tomorrow.on ? 'Back to today' : 'Plan tomorrow'}</button></>}
+            </p>
             <h1>{t.plan.blocks.length === 0 ? (t.budget.minutes > 0 ? 'Nothing planned' : 'No time planned') : <>{span(t.plan.busy)} planned <span class="of nowrap">of {span(t.budget.minutes)}</span></>}</h1>
           </div>
           <div class="avail" role="group" aria-label="Available today" data-testid="available">
@@ -402,6 +430,7 @@ export function TodayView(t: TodayProps) {
         <p class="t-sub">
           {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
           {meetingMin > 0 && <span>{span(meetingMin)} in meetings</span>}
+          {t.calendar === false && <span class="quiet" data-testid="nocal">No calendar · <a href="https://github.com/Xerilium/stack/blob/main/docs/runbook.md" target="_blank" rel="noopener noreferrer">Connect</a></span>}
           {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join{joinable(nextMeeting.events, t.now) && <kbd>J</kbd>}</a></>}</span>}
           {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
@@ -677,7 +706,7 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
             {p.agent?.chip(one.task)}
           </div>
           {!h.fits && !demoted && (
-            <p class="nofit-line" data-testid="nofit">{win.allow && !win.have && !one.task.text.replace(/\uFE0F/g, '').includes(win.allow.emoji.replace(/\uFE0F/g, '')) ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : win.allow && !win.have ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${win.until && win.until.at < win.inside!.until ? win.until.label : `${win.inside!.label} ends`}` : win.inside && !win.have ? `${win.inside.label} now: back at ${clock(win.inside.until)}` : minutesLeft > 0 ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${until}` : 'No time left today'}</p>
+            <p class="nofit-line" data-testid="nofit">{win.allow && !win.have && !one.task.text.replace(/\uFE0F/g, '').includes(win.allow.emoji.replace(/\uFE0F/g, '')) && !win.allow.projects?.includes(one.task.project) ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : win.allow && !win.have ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${win.until && win.until.at < win.inside!.until ? win.until.label : `${win.inside!.label} ends`}` : win.inside && !win.have ? `${win.inside.label} now: back at ${clock(win.inside.until)}` : minutesLeft > 0 ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${until}` : 'No time left today'}</p>
           )}
           <div class="actions">
             <button type="button" class={`btn${h.fits || demoted ? ' primary' : ''}`} disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>

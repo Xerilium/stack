@@ -34,3 +34,10 @@ export function needsRefresh(s: DaySched | null, now: Date): boolean {
   const t = now.getTime();
   return t >= Date.parse(s.bed) || (s.asleep ? t >= Date.parse(s.wake) : t < Date.parse(s.wake));
 }
+
+/** Projects whose metadata gives them capacity in a block (`<Block> capacity: 2h`), per block name. @req FR:home/day.blocks */
+export function withProjects(day: Day, projects: { name: string; metadata?: Record<string, string> }[]): Day {
+  if (!day.blocks?.length) return day;
+  const has = (p: { metadata?: Record<string, string> }, block: string) => Object.entries(p.metadata ?? {}).some(([k, v]) => k.trim().toLowerCase() === `${block.toLowerCase()} capacity` && parseFloat(v) > 0);
+  return { ...day, blocks: day.blocks.map((b) => ({ ...b, projects: projects.filter((p) => has(p, b.name)).map((p) => p.name) })) };
+}

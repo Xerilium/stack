@@ -31,14 +31,14 @@ export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem |
 const item = (t: Task, now: Date): HomeItem => { const r = parseRow(t.text); const est = effortMinutes(r.effort); return { task: t, minutes: est || DEFAULT_MIN, assumed: !est, due: countdown(r.due, now) }; };
 const doing = (t: Task) => /🚧/u.test(t.text);
 
-export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask | null; now: Date; minutesLeft: number; /** Only rows carrying this emoji may use the time (personal time). @req FR:home/home.window */ allow?: string }): Home {
+export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask | null; now: Date; minutesLeft: number; /** Only rows that belong to the personal block (its emoji or its projects) may use the time. @req FR:home/home.window @req FR:home/day.blocks */ allow?: { emoji: string; projects?: string[] } }): Home {
   const { tasks, now } = o;
   const oneTask = o.next ? tasks.find((t) => t.ref === o.next!.ref) ?? null : null;
   const one = oneTask ? item(oneTask, now) : null;
   const ranked = rankNow(activeTasks(tasks).filter((t) => t.ref !== oneTask?.ref && actionable(t, now)), now, tasks);
   const ordered = [...ranked.filter(doing), ...ranked.filter((t) => !doing(t))];
   const vs = (s: string) => s.replace(/\uFE0F/g, '');
-  const may = (i: HomeItem) => !o.allow || vs(i.task.text).includes(vs(o.allow));
+  const may = (i: HomeItem) => !o.allow || vs(i.task.text).includes(vs(o.allow.emoji)) || !!o.allow.projects?.includes(i.task.project);
   const fits = !one || (one.minutes <= o.minutesLeft && may(one));
   const instead = !fits && o.minutesLeft > 0 ? (ordered.map((t) => item(t, now)).find((i) => i.minutes <= o.minutesLeft && may(i)) ?? null) : null;
   // Instead never repeats under Up next
@@ -65,7 +65,7 @@ export interface Window {
   /** Set from "I have N min". */ have?: boolean;
   /** The commitment that ends the window. */ until?: { kind: 'meeting' | 'personal' | 'bed'; label: string; at: number };
   /** You are in a meeting, personal time, or asleep (or past bed) until `until`. */ inside?: { kind: 'meeting' | 'personal' | 'sleep'; label: string; until: number };
-  /** In personal time, tasks tagged with the block's emoji may use the rest of it. */ allow?: { emoji: string; minutes: number };
+  /** In personal time, tasks tagged with the block's emoji may use the rest of it. */ allow?: { emoji: string; projects?: string[]; minutes: number };
 }
 
 const labelOf = (b: { name: string; label?: string }) => b.label ?? b.name;
@@ -88,6 +88,6 @@ export function windowNow(day: Day, busy: Busy[], now: Date, have?: number | nul
   if (m) return { minutes: 0, inside: { kind: 'meeting', label: m.titles[0] ?? 'Meeting', until: m.end } };
   const p = personal.find((b) => b.start <= at && at < b.end);
   // Tagged tasks may use the block up to its end or the next meeting, whichever is first.
-  if (p) return { minutes: 0, inside: { kind: 'personal', label: labelOf(p), until: p.end }, allow: { emoji: p.emoji, minutes: Math.min(p.end, ...busy.filter((x) => x.start > at).map((x) => x.start)) - at } };
+  if (p) return { minutes: 0, inside: { kind: 'personal', label: labelOf(p), until: p.end }, allow: { emoji: p.emoji, ...(p.projects?.length ? { projects: p.projects } : {}), minutes: Math.min(p.end, ...busy.filter((x) => x.start > at).map((x) => x.start)) - at } };
   return { minutes: Math.max(0, (until?.at ?? day.end) - at), ...(until ? { until } : {}) };
 }

@@ -78,7 +78,7 @@ describe('homeOf', () => {
 describe('personal time', () => {
   it('only rows tagged for the block fit, and one of them is offered instead', () => {
     const tasks = [T('alpha:1', 'Write the report 🟢'), T('alpha:2', '🏠 Order dinner 🟢')];
-    const h = homeOf({ tasks, projects: [P('alpha')], next: { ref: 'alpha:1', text: tasks[0].text, project: 'alpha', score: 1 }, now: at, minutesLeft: 180, allow: '🏠' });
+    const h = homeOf({ tasks, projects: [P('alpha')], next: { ref: 'alpha:1', text: tasks[0].text, project: 'alpha', score: 1 }, now: at, minutesLeft: 180, allow: { emoji: '🏠' } });
     expect(h.fits).toBe(false);
     expect(h.instead?.task.ref).toBe('alpha:2');
   });

@@ -1444,6 +1444,59 @@ paths:
                           format: date-time
         default:
           $ref: "#/components/responses/Error"
+  /schedule/day:
+    post:
+      summary: Change wake or bed for a date (or its weekday with every); reset removes it. Saved in .stack/schedule.json. Owner session only
+      operationId: setScheduleDay
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - date
+              properties:
+                date:
+                  type: string
+                  maxLength: 10
+                wake:
+                  type: string
+                  maxLength: 5
+                bed:
+                  type: string
+                  maxLength: 5
+                every:
+                  type: boolean
+                reset:
+                  type: boolean
+      responses:
+        "200":
+          description: Day
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timezone:
+                    type: string
+                  date:
+                    type: string
+                  wake:
+                    type: string
+                    format: date-time
+                  bed:
+                    type: string
+                    format: date-time
+                  asleep:
+                    type: boolean
+                  blocks:
+                    type: array
+                    items:
+                      type: object
+        default:
+          $ref: "#/components/responses/Error"
   /agents:
     get:
       summary: What agents are doing, from agent rows, result logs, inbox replies, and pull request status

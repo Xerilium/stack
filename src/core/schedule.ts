@@ -5,6 +5,10 @@
 import type { BlockKind, StackConfig, TimeBlock } from './config';
 
 export interface ScheduleBlock { name: string; label?: string; emoji: string; kind: BlockKind; start: string; end: string }
+/** Wake and bed overrides, `HH:mm` local; a bed at or before wake is the next morning. @req FR:schedule/profile.override */
+export interface DayTimes { wake?: string; bed?: string }
+export interface ScheduleOverrides { dates?: Record<string, DayTimes>; weekdays?: Record<string, DayTimes> }
+
 export interface DaySchedule { date: string; wake: string; bed: string; asleep: boolean; blocks: ScheduleBlock[] }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -74,7 +78,7 @@ function merge(spans: Span[]): { start: number; end: number }[] {
 }
 
 /** The waking day that contains `at`, or the next one when `at` is in sleep time. */
-export function daySchedule(config: StackConfig, when: Date): DaySchedule {
+export function daySchedule(config: StackConfig, when: Date, overrides: ScheduleOverrides = {}): DaySchedule {
   const tz = config.timezone;
   const now = when.getTime();
   const today = localDate(now, tz);
@@ -88,7 +92,14 @@ export function daySchedule(config: StackConfig, when: Date): DaySchedule {
     const wake = ending.length ? ending[ending.length - 1].end : at(d, mins(config.startOfDay), tz);
     const next = sleep.find((s) => s.start >= wake)?.start ?? Infinity;
     const cap = wake + NO_SLEEP_DAY_MIN * 6e4;
-    return { wake, bed: ending.length && next <= wake + 864e5 ? next : Math.min(next, cap) };
+    const base = { wake, bed: ending.length && next <= wake + 864e5 ? next : Math.min(next, cap) };
+    // Overrides: the date's, then the weekday's, field by field. @req FR:schedule/profile.override
+    const o: DayTimes = { ...overrides.weekdays?.[DAYS[new Date(d).getUTCDay()]], ...overrides.dates?.[iso(d)] };
+    if (!o.wake && !o.bed) return base;
+    const w = o.wake ? at(d, mins(o.wake), tz) : base.wake;
+    const wakeMin = Math.round((w + offset(w, tz) - d) / 6e4);
+    const bedMin = o.bed ? mins(o.bed) + (mins(o.bed) <= wakeMin ? 1440 : 0) : null;
+    return { wake: w, bed: bedMin === null ? base.bed : at(d, bedMin, tz) };
   };
   let date = today, asleep = false;
   let win = windowOf(addDays(today, -1));

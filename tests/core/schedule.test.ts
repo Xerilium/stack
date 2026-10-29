@@ -127,4 +127,24 @@ describe('daySchedule', () => {
     const sat = daySchedule(michael, new Date('2026-03-08T07:30:00Z')); // Sat Mar 7 23:30 PST
     expect(sat).toMatchObject({ date: '2026-03-07', bed: '2026-03-08T10:00:00.000Z' }); // 03:00 PDT
   });
+
+  // @req FR:schedule/profile.override
+  it('applies a date override first, then a weekday override, then the blocks', () => {
+    const at = new Date('2026-10-29T06:12:00Z'); // Wed Oct 28 23:12 PDT
+    const d = daySchedule(michael, at, { dates: { '2026-10-28': { bed: '01:00' } } });
+    expect(d).toMatchObject({ date: '2026-10-28', wake: '2026-10-28T15:00:00.000Z', bed: '2026-10-29T08:00:00.000Z' });
+    expect(d.blocks.at(-1)).toMatchObject({ name: 'Project', end: '2026-10-29T08:00:00.000Z' });
+    const w = daySchedule(michael, new Date('2026-10-28T17:00:00Z'), { weekdays: { Wed: { wake: '09:30', bed: '23:30' } } });
+    expect(w).toMatchObject({ wake: '2026-10-28T16:30:00.000Z', bed: '2026-10-29T06:30:00.000Z' });
+    const both = daySchedule(michael, new Date('2026-10-28T17:00:00Z'), { weekdays: { Wed: { wake: '09:30' } }, dates: { '2026-10-28': { wake: '07:00' } } });
+    expect(both.wake).toBe('2026-10-28T14:00:00.000Z');
+  });
+
+  // @req FR:schedule/profile.override
+  it('a later bed keeps 1:30 AM inside the day; an earlier one makes it asleep', () => {
+    const late = daySchedule(michael, new Date('2026-10-29T09:30:00Z'), { dates: { '2026-10-28': { bed: '03:00' } } }); // Thu 02:30 PDT
+    expect(late).toMatchObject({ date: '2026-10-28', asleep: false, bed: '2026-10-29T10:00:00.000Z' });
+    const early = daySchedule(michael, new Date('2026-10-29T06:12:00Z'), { dates: { '2026-10-28': { bed: '23:00' } } });
+    expect(early).toMatchObject({ date: '2026-10-29', asleep: true });
+  });
 });

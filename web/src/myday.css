@@ -78,7 +78,7 @@ details.nofit h3 .warn { color: var(--warn); text-transform: none; letter-spacin
   .row-acts .ic { width: var(--tap); height: var(--tap); }
   .band, .now-line, .earlier, details.nofit, .quiet-side { margin-left: 0; }
   .earlier { margin-bottom: 18px; }
-  .now-line time { left: auto; right: 0; top: -17px; width: auto; }
+  .now-line time { left: auto; right: 0; top: 3px; width: auto; }
   .today .what-title { white-space: normal; }
 }
 
@@ -87,3 +87,11 @@ details.nofit h3 .warn { color: var(--warn); text-transform: none; letter-spacin
 .window { margin: 0; font-size: 15px; color: var(--ink2); }
 .window strong { color: var(--ink); font-weight: 650; }
 .home-window .have { margin: 0; }
+
+/* Inline wake/bed and the day switch. @req FR:home/day.override @req FR:home/day.tomorrow */
+.day-times { font: inherit; color: inherit; padding: 0; min-height: 0; text-decoration: underline dotted; text-underline-offset: 3px; }
+.day-times-edit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 4px; text-transform: none; letter-spacing: 0; }
+.day-times-edit label { display: inline-flex; gap: 4px; align-items: center; color: var(--ink2); font-size: 13px; }
+.day-times-edit input { font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.day-times-edit .btn { min-height: 28px; font-size: 13px; padding: 0 10px; }
+.day-switch { font: inherit; padding: 0; min-height: 0; color: var(--accent); }

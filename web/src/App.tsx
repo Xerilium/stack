@@ -15,9 +15,9 @@ import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { DEFER, progress, startsOpen, topTask, visibleRows } from './now';
-import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, span, type Decision } from './plan';
+import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, nowMinutes, planCandidates, span, type Decision } from './plan';
 import { parseRow } from './row';
-import { calendarRange, dayFrame, needsRefresh, type DaySched } from './schedule';
+import { calendarRange, dayFrame, needsRefresh, withProjects, type DaySched } from './schedule';
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
@@ -110,6 +110,9 @@ export function App() {
   const [sched, setSched] = useState<DaySched | null>(null);
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [calError, setCalError] = useState('');
+  const [calOn, setCalOn] = useState(true);
+  /** Tomorrow's plan in My day: its schedule and meetings. @req FR:home/day.tomorrow */
+  const [ahead, setAhead] = useState<{ sched: DaySched; events: CalEvent[] } | null>(null);
   /** "I have N min" from Home: memory only, runs out after N minutes. @req FR:home/home.have */
   const [have, setHaveRaw] = useState<{ minutes: number; at: number } | null>(null);
   const haveChord = useRef(0);
@@ -131,12 +134,46 @@ export function App() {
   const searching = filters.q.trim() !== '' || filters.state !== 'open';
   const listRows = useMemo(() => visibleRows(filtered, tasks, expanded, collapsed, searching), [filtered, tasks, expanded, collapsed, searching]);
   const clockNow = useMemo(() => new Date(), [tasks, tick, saved]); // also refresh when the budget changes, so a value set after midnight counts for the new day
-  const day = useMemo(() => dayFrame(sched), [sched]);
+  // @req FR:home/day.blocks: blocks know their projects from "<Block> capacity" metadata
+  const day = useMemo(() => withProjects(dayFrame(sched), projects), [sched, projects]);
   // Kept with its day (the waking day, which can run past midnight): a tab left open overnight must not keep yesterday's budget.
   const dayKey = sched?.date ?? dateKey(clockNow);
   const busyTime = useMemo(() => busyIntervals(events, day.origin ?? clockNow, day.origin ? 2 : 1), [events, clockNow, day]);
   const budget = budgetOf(clockNow, day, saved && saved.date === dayKey ? saved.minutes : null, busyTime);
   const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, clockNow, day, budget.minutes, busyTime, emailAsks]);
+  // Tomorrow: the next waking day planned from its wake. @req FR:home/day.tomorrow
+  const tmr = useMemo(() => {
+    if (!ahead) return null;
+    const d = withProjects(dayFrame({ ...ahead.sched, asleep: false }), projects);
+    const at = new Date(ahead.sched.wake);
+    const b = busyIntervals(ahead.events, d.origin!, 2);
+    const bud = budgetOf(at, d, null, b);
+    return { day: d, now: at, budget: bud, plan: buildPlan(planCandidates(tasks, at), at, d, bud.minutes, { busy: b }), events: ahead.events };
+  }, [ahead, projects, tasks]);
+  const offerTomorrow = !!sched && !sched.asleep && nowMinutes(clockNow, day) >= day.end - 180;
+  const toggleTomorrow = useCallback(async () => {
+    if (ahead) { setAhead(null); return; }
+    if (!sched) return;
+    const at = new Date(Date.parse(sched.bed) + 60_000);
+    try {
+      const s = await api.schedule(at.toISOString());
+      if (!s) return;
+      const r = calendarRange(s, at);
+      const c = await api.calendar(r.from, r.to).catch(() => ({ items: [] as CalEvent[] }));
+      setAhead({ sched: s, events: c.items });
+    } catch (e) { toast(e instanceof Error ? e.message : 'Could not load tomorrow', 'err'); }
+  }, [ahead, sched]);
+  /** Change wake/bed for the shown day or its weekday; the plan reloads. @req FR:home/day.override */
+  const saveTimes = useCallback(async (c: { wake?: string; bed?: string; every?: boolean; reset?: boolean }): Promise<boolean> => {
+    const shown = ahead?.sched ?? sched;
+    if (!shown) return false;
+    try {
+      const s = await api.scheduleDay({ date: shown.date, ...c });
+      if (ahead) setAhead({ ...ahead, sched: { ...s, asleep: false } }); else setSched(s);
+      toast(c.reset ? 'Back to your usual hours' : c.every ? `Saved for every ${new Date(`${shown.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' })}` : 'Saved for this day');
+      return true;
+    } catch (e) { toast(e instanceof Error ? e.message : 'Could not save', 'err'); return false; }
+  }, [ahead, sched]);
   /** @req FR:web-app/today.capacity */
   const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v, dayKey); setSaved(v === null ? null : { date: dayKey, minutes: v }); }, [dayKey]);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
@@ -149,7 +186,7 @@ export function App() {
   const win = useMemo(() => windowNow(day, busyTime, clockNow, haveLeft !== null && haveLeft > 0 ? haveLeft : null), [day, busyTime, clockNow, haveLeft]);
   // In personal time, tasks tagged for it may use the rest of the block. @req FR:home/home.window
   const minutesLeft = win.allow && !win.have ? win.allow.minutes : win.inside && !win.have ? 0 : win.minutes;
-  const allow = win.allow && !win.have ? win.allow.emoji : undefined;
+  const allow = win.allow && !win.have ? win.allow : undefined;
   const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, next, clockNow, minutesLeft, allow]);
   const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
@@ -175,7 +212,7 @@ export function App() {
     const range = calendarRange(s, d);
     const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to)]);
     /** @req FR:web-app/today.meetings */
-    if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); } else setCalError('Calendar unavailable');
+    if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); setCalOn(c.value.configured); } else setCalError('Calendar unavailable');
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
     if (i.status === 'fulfilled') setInbox(i.value);
   }, []);
@@ -513,6 +550,7 @@ export function App() {
   const goTo: Command[] = [
     { id: 'go-home', label: 'Go to Home', hint: HINT.home, group: 'Go to', run: () => go('home') },
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
+    ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
     { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
     { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, group: 'Go to', run: () => go('list') },
@@ -669,7 +707,8 @@ export function App() {
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} />}
         {phase === 'ready' && view === 'today' && (
-          <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
+          <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={setBudget}
+            onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'home' && <HomeView h={home} now={clockNow} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
