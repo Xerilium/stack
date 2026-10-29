@@ -1,10 +1,13 @@
 import { actionable, children, dueDays, isActive, isMessage, rankNow } from './now';
 import { effortMinutes, parseRow } from './row';
 import type { Task } from './types';
-import { busyWithin, emailMinutes, type Busy } from './meetings';
+import { busyWithin, emailMinutes, mergeSpans, type Busy } from './meetings';
 
 /** Day plan and decisions. Pure; the views only draw it. @req FR:web-app/today.plan @req FR:web-app/today.fit @req FR:web-app/today.needs */
-export interface Day { start: number; end: number } // minutes after midnight
+/** A block of the schedule, in day minutes. @req FR:home/day.personal */
+export interface DayBlock { name: string; label?: string; emoji: string; kind: 'focus' | 'personal'; start: number; end: number }
+/** Minutes after local midnight of `origin` (today when unset); a schedule day can run past 24:00. @req FR:home/day.frame */
+export interface Day { start: number; end: number; origin?: Date; blocks?: DayBlock[]; asleep?: boolean }
 export const DEFAULT_DAY: Day = { start: 9 * 60, end: 18 * 60 };
 export interface Block { task: Task; start: number; end: number; partial: boolean; assumed: boolean }
 /** `left`: work day left; `budget`: minutes you have; `free`: budget not booked; `short`: minutes the left-out tasks need; `assumed`: blocks using the default estimate. */
@@ -53,7 +56,20 @@ export function atRiskTask(t: Task, now: Date): boolean {
 }
 
 /** First bookable minute: now rounded up to 15, never before the work day starts. */
-export const planStart = (now: Date, day: Day = DEFAULT_DAY) => Math.max(day.start, round15(now.getHours() * 60 + now.getMinutes()));
+export const planStart = (now: Date, day: Day = DEFAULT_DAY) => Math.max(day.start, round15(nowMinutes(now, day)));
+
+/** `now` in the day's minutes. */
+export function nowMinutes(now: Date, day: Day = DEFAULT_DAY): number {
+  if (!day.origin) return now.getHours() * 60 + now.getMinutes();
+  const o = day.origin;
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(o.getFullYear(), o.getMonth(), o.getDate()).getTime()) / 864e5);
+  return days * 1440 + now.getHours() * 60 + now.getMinutes();
+}
+
+const VS = /\uFE0F/g;
+/** Personal blocks a task may not use: all of them, except those whose emoji the row carries. @req FR:home/day.personal */
+export const closedTo = (day: Day, text?: string): [number, number][] =>
+  (day.blocks ?? []).filter((b) => b.kind === 'personal' && !(text && b.emoji && text.replace(VS, '').includes(b.emoji.replace(VS, '')))).map((b) => [b.start, b.end]);
 
 /**
  * Packs candidates in rank order into `budget` minutes from the plan start (default: what is left of the work day).
@@ -63,14 +79,14 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
   const start = planStart(now, day);
   const left = Math.max(0, day.end - start);
   const cap = Math.max(0, budget ?? left);
-  const meetings = (opts.busy ?? []).filter((m) => m.end > start);
+  const meetings = (opts.busy ?? []).filter((m) => m.end > start && m.start < Math.max(day.end, start + cap));
   const taken: [number, number][] = meetings.map((m) => [m.start, m.end]);
   // The plan stays inside the work day unless the budget itself asks for more time than the day has left after meetings.
-  const windowEnd = Math.min(24 * 60, Math.max(day.end, start + cap + busyWithin(meetings, start, day.end)));
+  const windowEnd = Math.min(day.origin ? 48 * 60 : 24 * 60, Math.max(day.end, start + cap + busyWithin(mergeSpans([...meetings, ...closedTo(day).map(([s, e]) => ({ start: s, end: e }))]), start, day.end)));
   /** First free slot at or after the plan start that holds `m` minutes (first fit, so a short task fills the gap before a meeting). */
-  const slot = (m: number): number | null => {
+  const slot = (m: number, text?: string): number | null => {
     let t = start;
-    for (const [a, b] of [...taken].sort((x, y) => x[0] - y[0])) {
+    for (const [a, b] of [...taken, ...closedTo(day, text)].sort((x, y) => x[0] - y[0])) {
       if (t + m <= a) break;
       if (b > t) t = b;
     }
@@ -88,7 +104,7 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
   let short = 0;
   for (const t of candidates) {
     const e = estimate(t);
-    const at = booked + e.minutes <= cap ? slot(e.minutes) : null;
+    const at = booked + e.minutes <= cap ? slot(e.minutes, t.text) : null;
     if (at === null) { overflow.push(t); short += e.minutes; continue; }
     blocks.push({ task: t, start: at, end: at + e.minutes, partial: e.partial, assumed: e.assumed });
     taken.push([at, at + e.minutes]);

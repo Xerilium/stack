@@ -3,6 +3,7 @@
  * @req FR:api/handler.@function
  */
 import { getDefaults, type StackConfig } from '../core/config';
+import { daySchedule } from '../core/schedule';
 import {
   addProject, addTask, completeTask, nextTask, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
   type LifecycleContext, type LifecycleResult, type TaskProps,
@@ -136,6 +137,8 @@ const INBOX_BODY = {
   required: ['ref', 'text'],
 };
 const CAL_Q: Record<string, Spec> = { from: { t: 'str', max: 40 }, to: { t: 'str', max: 40 } };
+const ISO_INSTANT = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/;
+const SCHEDULE_Q: Record<string, Spec> = { at: { t: 'str', max: 40 } };
 const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES } };
 const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true } } satisfies Record<string, Spec>, required: ['id'] };
 const ASK_PUT_BODY = {
@@ -556,7 +559,7 @@ export const ROUTES: Route[] = [
     async run(c) {
       const q = readQuery(c.url, Object.keys(CAL_Q));
       const from = Date.parse(q.get('from') ?? ''), to = Date.parse(q.get('to') ?? '');
-      const iso = (v: string | null) => typeof v === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/.test(v);
+      const iso = (v: string | null) => typeof v === 'string' && ISO_INSTANT.test(v);
       if (!iso(q.get('from')) || !iso(q.get('to')) || !(from < to) || to - from > 7 * 864e5) throw invalid([{ field: 'from', message: 'from and to must be ISO date-times, from before to, at most 7 days apart' }]);
       // Calendars hold personal data: the owner only.
       if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can read the calendar');
@@ -567,6 +570,18 @@ export const ROUTES: Route[] = [
         c.deps.onError?.(e);
         return json(200, { configured: true, items: [], error: 'Calendar unavailable' });
       }
+    },
+  },
+  {
+    // @req FR:schedule/api.schedule
+    method: 'GET', doc: '/schedule', name: 'schedule.get', query: SCHEDULE_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(SCHEDULE_Q));
+      const raw = q.get('at');
+      if (raw !== null && !ISO_INSTANT.test(raw)) throw invalid([{ field: 'at', message: 'at must be an ISO date-time' }]);
+      const config = c.deps.config ?? getDefaults();
+      const at = raw === null ? (c.deps.now ?? (() => new Date()))() : new Date(raw);
+      return json(200, { timezone: config.timezone, ...daySchedule(config, at) });
     },
   },
   {

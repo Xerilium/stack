@@ -142,6 +142,24 @@ const DOCS: Record<string, RouteDoc> = {
       },
     }),
   },
+  'schedule.get': {
+    operationId: 'getSchedule', summary: 'The waking day (wake, bed, time blocks) that contains an instant, from the time blocks in stack.json',
+    desc: { at: 'ISO date-time; default now' },
+    responses: ok('Day', {
+      type: 'object',
+      properties: {
+        timezone: { type: 'string' }, date: { type: 'string', description: 'Local date the day started on (YYYY-MM-DD)' },
+        wake: { type: 'string', format: 'date-time' }, bed: { type: 'string', format: 'date-time' }, asleep: { type: 'boolean', description: 'The instant is in sleep time; the day is the next waking day' },
+        blocks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { name: { type: 'string' }, label: { type: 'string' }, emoji: { type: 'string' }, kind: { type: 'string', enum: ['focus', 'personal', 'sleep'] }, start: { type: 'string', format: 'date-time' }, end: { type: 'string', format: 'date-time' } },
+          },
+        },
+      },
+    }),
+  },
   'agents.list': {
     operationId: 'listAgents', summary: 'What agents are doing, from agent rows, result logs, inbox replies, and pull request status',
     responses: ok('Agent work', { type: 'object', properties: { items: { type: 'array', items: ref('AgentItem') } } }),

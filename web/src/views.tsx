@@ -3,7 +3,7 @@ import type { CapacityRow } from './capacity';
 import type { Filters } from './filters';
 import { children, dueDays } from './now';
 import type { Week } from './week';
-import { clock, estimate, span, type Block, type Decision, type Plan } from './plan';
+import { clock, estimate, nowMinutes, span, type Block, type Day, type Decision, type Plan } from './plan';
 import { joinable, type Busy, type CalEvent } from './meetings';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
@@ -340,7 +340,7 @@ const agentTitle = (s: string) => s.replace(/^(?:[^\p{L}\p{N}`*[]+\s*)+/u, '').r
 const CHECK = { passing: '✓', failing: '✕', pending: '…', none: '' } as const;
 
 export interface TodayProps {
-  now: Date; plan: Plan; day: { start: number; end: number }; budget: { minutes: number; isDefault: boolean }; onBudget: (m: number | null) => void;
+  now: Date; plan: Plan; day: Day; budget: { minutes: number; isDefault: boolean }; onBudget: (m: number | null) => void;
   decisions: Decision[]; agents: Agent[] | null; agentsError: string; onRetryAgents: () => void; inbox: InboxItem[]; p: RowProps; busy: boolean;
   tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
   allDay: CalEvent[]; calError: string; onEmail: () => void;
@@ -355,10 +355,11 @@ export function TodayView(t: TodayProps) {
   const [replying, setReplying] = useState<string | null>(null);
   const [moreNeeds, setMoreNeeds] = useState(false);
   const [queuedOpen, setQueuedOpen] = useState(false);
-  const nowMin = t.now.getHours() * 60 + t.now.getMinutes();
+  const nowMin = nowMinutes(t.now, t.day); // @req FR:home/day.frame
   const start = Math.max(t.day.start, Math.ceil(nowMin / 15) * 15);
   const lastEnd = Math.max(0, ...t.plan.blocks.map((b) => b.end), t.plan.email?.end ?? 0, ...t.plan.meetings.filter((m) => m.start < t.day.end + 120).map((m) => m.end));
-  const end = Math.min(24 * 60, Math.max(t.day.end, start + t.budget.minutes, lastEnd));
+  const end = Math.min(t.day.origin ? 48 * 60 : 24 * 60, Math.max(t.day.end, start + t.budget.minutes, lastEnd));
+  const personal = (t.day.blocks ?? []).filter((b) => b.kind === 'personal' && b.end > t.day.start && b.start < end);
   const nextMeeting = t.plan.meetings.find((m) => m.end > nowMin);
   const joinOf = (m: Busy) => joinable(m.events, t.now, Math.max(10, m.start - nowMin)) ?? m.events.find((e) => e.joinUrl)?.joinUrl;
   const meetingMin = t.plan.meetings.reduce((m, x) => m + Math.max(0, Math.min(x.end, t.day.end) - Math.max(x.start, start)), 0);
@@ -371,7 +372,7 @@ export function TodayView(t: TodayProps) {
   const total = Math.max(1, end - t.day.start);
   const pct = (m: number) => Math.max(0, Math.min(100, ((m - t.day.start) / total) * 100));
   const markAt = pct(Math.max(nowMin, t.day.start)); // the time label hugs the bar ends so it never clips
-  const date = t.now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const date = t.day.asleep ? `Tomorrow from ${clock(t.day.start)}` : (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }); // @req FR:home/day.asleep
   const jump = (id: string) => document.getElementById(id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   const repliesOf = (x: RowKey) => repliesFor(t.inbox, x);
   const sorted = [...t.decisions].sort((a, b) => Number(repliesOf(a.task).length > 0) - Number(repliesOf(b.task).length > 0));
@@ -440,6 +441,7 @@ export function TodayView(t: TodayProps) {
         </p>
         <div class="day-bar" role="img" aria-label={`${span(t.plan.busy)} planned of ${span(t.budget.minutes)} available${meetingMin ? ` · ${span(meetingMin)} in meetings` : ''}${t.plan.email ? ` · email at ${clock(t.plan.email.start)}` : ''}`}>
           <s style={{ left: `${pct(start)}%`, width: `${pct(start + t.budget.minutes) - pct(start)}%` }} />
+          {personal.map((b) => <u key={`p${b.start}`} class="personal" title={`${clock(b.start)}-${clock(b.end)} ${b.label ?? b.name}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}
           {t.plan.meetings.filter((m) => m.start < end).map((m) => <u key={`m${m.start}`} title={`${clock(m.start)} ${m.titles.join(', ')}`} style={{ left: `${pct(m.start)}%`, width: `${pct(m.end) - pct(m.start)}%` }} />)}
           {t.plan.email && <i class="mail" title={`${clock(t.plan.email.start)} Email`} style={{ left: `${pct(t.plan.email.start)}%`, width: `${pct(t.plan.email.end) - pct(t.plan.email.start)}%` }} />}
           {t.plan.blocks.map((b) => <i key={b.task.ref} title={`${clock(b.start)} ${parseRow(b.task.text).title}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}

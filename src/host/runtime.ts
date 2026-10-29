@@ -6,6 +6,8 @@
 import { apiClient, createBotHandler } from '../bots';
 import { createApiHandler, createAuth, createGitHubPrs, createTokenService, FileTokenStore, type Authorize, type TokenStore } from '../api';
 import { createMcpHandler } from '../mcp';
+import { createIcsCalendar, IcsError, icsUrls } from '../calendar/ics';
+import type { CalendarProvider } from '../calendar';
 import { writeAll, type FileWrite, type Storage } from '../core/storage';
 import { openGitStorage } from './git-repo';
 import { GitTokenStore, needAux, type HostStorage } from './token-store';
@@ -93,7 +95,10 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
   // @req FR:agent-inbox/github.wire
   const ghToken = env.GITHUB_TOKEN?.trim();
   const prs = ghToken ? createGitHubPrs({ token: ghToken }) : undefined;
-  const api = auth.wrap(createApiHandler({ storage, config: settings.config, authorize: auth.authorize, onError, prs }));
+  // @req FR:schedule/ics.wire: the feed URLs are secrets; a bad value logs a URL-free reason and leaves the calendar off.
+  let calendar: CalendarProvider | undefined;
+  try { const urls = icsUrls(env.STACK_CALENDAR_ICS); calendar = urls.length ? createIcsCalendar({ urls }) : undefined; } catch (e) { log(`host: STACK_CALENDAR_ICS ${e instanceof IcsError ? e.message : className(e)}`); }
+  const api = auth.wrap(createApiHandler({ storage, config: settings.config, authorize: auth.authorize, onError, prs, calendar }));
   const mcp = createMcpHandler({ api, tokens, basePath: '/api/mcp', onEvent: event, onError: onName });
   const botApi = createApiHandler({ storage, config: settings.config, authorize: botGate, onError });
   const bots = createBotHandler({

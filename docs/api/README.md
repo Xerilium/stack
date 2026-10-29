@@ -34,6 +34,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/sessions/{id}/cancel` | POST stop the run in flight (owner only) |
 | `/agents` | GET what agents are doing (agent rows, result logs, inbox, PR state and checks) |
 | `/calendar` | GET calendar events for a range, read-only (owner session only) |
+| `/schedule` | GET the waking day (wake, bed, time blocks) that contains an instant |
 | `/tasks/resume` | POST unpark a task (owner session only) |
 | `/tasks/suspend` | POST suspend for days or hours (owner session only) |
 | `/tasks/set` | POST change task properties |
