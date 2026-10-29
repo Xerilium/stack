@@ -202,6 +202,13 @@ describe('GitStorage writeMany', () => {
     expect(existsSync(join(d, 'tasks/untracked.md'))).toBe(false);
     expect(count(d)).toBe(before + 2);
     expect(git(d, 'status', '--porcelain').trim()).toBe('');
+    // an archive batch: add + delete of an untracked file, in one commit
+    mkdirSync(join(d, 'tasks/asks'), { recursive: true }); writeFileSync(join(d, 'tasks/asks/k.md'), 'K');
+    await writeAll(s, [{ path: 'tasks/asks/archive/k.md', content: 'K', expectedVersion: null }, { path: 'tasks/asks/k.md', content: null }], 'Archive ask: k');
+    expect(count(d)).toBe(before + 3);
+    expect(git(d, 'show', '--name-status', '--format=', 'HEAD').trim()).toBe('A\ttasks/asks/archive/k.md');
+    expect(existsSync(join(d, 'tasks/asks/k.md'))).toBe(false);
+    expect(git(d, 'status', '--porcelain').trim()).toBe('');
   });
 
   it('leaves unrelated staged files alone and rolls back on conflict', async () => {

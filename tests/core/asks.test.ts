@@ -318,6 +318,14 @@ describe('archiveAsks', () => {
     await handleAsk(ctx, 'mail-1', { outcome: 'handled' }, 'cos');
     expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: [] });
     expect((await listAsks(ctx, { state: 'done' })).items.map((a) => a.key)).toEqual(['mail-1']);
+    // the longest allowed key still gets a dated name within the path limit
+    const long = 'k'.repeat(80);
+    for (let i = 0; i < 2; i++) { await putAsk(ctx, long, base, 'cos'); await handleAsk(ctx, long, { outcome: 'handled' }, 'cos'); expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: [long] }); }
+    expect(await storage.listAsks!()).toEqual([asksPath('mail-1')]);
+    expect(await storage.read(archivePath(`${'k'.repeat(71)}.20261028`))).toBeTruthy();
+    // a done ask whose updated cannot be read is left in place
+    await storage.write(asksPath('odd'), formatAsk(ask({ key: 'odd', state: 'done', updated: 'yesterday' })));
+    expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: [] });
   });
 });
 

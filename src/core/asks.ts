@@ -338,11 +338,13 @@ export async function archiveAsks(ctx: LifecycleContext, o: { days?: number } = 
   const writes: FileWrite[] = [];
   const archived: string[] = [];
   for (const a of await readAll(ctx)) {
-    if (a.state !== 'done' || Date.parse(a.updated) > cutoff) continue;
+    const updated = Date.parse(a.updated);
+    // An ask whose `updated` cannot be read is left alone rather than archived at once.
+    if (a.state !== 'done' || !Number.isFinite(updated) || updated > cutoff) continue;
     const f = await ctx.storage.read(asksPath(a.key));
-    // A key reused after an earlier archive (email threads come back) gets a dated name; nothing already archived is overwritten.
+    // A key reused after an earlier archive (email threads come back) gets a dated name (key cut to keep the 80-char limit); nothing already archived is overwritten.
     let dest = archivePath(a.key);
-    if (await exists(ctx, dest)) dest = archivePath(`${a.key}.${a.updated.slice(0, 10).replace(/-/g, '')}`);
+    if (await exists(ctx, dest)) dest = archivePath(`${a.key.slice(0, 71)}.${new Date(updated).toISOString().slice(0, 10).replace(/-/g, '')}`);
     if (await exists(ctx, dest)) continue;
     writes.push({ path: dest, content: f.content, expectedVersion: null }, { path: asksPath(a.key), content: null, expectedVersion: f.version });
     archived.push(a.key);

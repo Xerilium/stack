@@ -167,10 +167,12 @@ export class GitStorage extends FsStorage {
       const dels = writes.filter(w => w.content === null).map(w => w.path);
       if (adds.length) await this.git('add', '--', ...adds);
       if (dels.length) await this.git('rm', '-q', '--cached', '--ignore-unmatch', '--', ...dels);
-      const staged = await this.tryGit('diff', '--cached', '--quiet', '--', ...paths);
+      // `--only` rejects a pathspec that matches nothing: leave out deletes of paths git never tracked.
+      const only = paths.filter((p, i) => writes[i].content !== null || entries[i] !== '');
+      const staged = only.length ? await this.tryGit('diff', '--cached', '--quiet', '--', ...only) : '';
       if (staged === null) {
         const msg = message ?? (paths.length === 1 ? `Update ${paths[0]}` : `Update ${paths.length} files`);
-        await this.git('commit', '-q', '-m', msg, '--only', '--', ...paths);
+        await this.git('commit', '-q', '-m', msg, '--only', '--', ...only);
         committed = true;
       }
     } catch (e) {
