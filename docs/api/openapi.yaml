@@ -1387,6 +1387,63 @@ paths:
                     type: string
         default:
           $ref: "#/components/responses/Error"
+  /schedule:
+    get:
+      summary: "The waking day (wake, bed, time blocks) that contains an instant, from the time blocks in stack.json. Owner session only: 403 for tokens"
+      operationId: getSchedule
+      parameters:
+        - name: at
+          in: query
+          schema:
+            type: string
+          description: ISO date-time; default now
+      responses:
+        "200":
+          description: Day
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timezone:
+                    type: string
+                  date:
+                    type: string
+                    description: Local date the day started on (YYYY-MM-DD)
+                  wake:
+                    type: string
+                    format: date-time
+                  bed:
+                    type: string
+                    format: date-time
+                  asleep:
+                    type: boolean
+                    description: The instant is in sleep time; the day is the next waking day
+                  blocks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        label:
+                          type: string
+                        emoji:
+                          type: string
+                        kind:
+                          type: string
+                          enum:
+                            - focus
+                            - personal
+                            - sleep
+                        start:
+                          type: string
+                          format: date-time
+                        end:
+                          type: string
+                          format: date-time
+        default:
+          $ref: "#/components/responses/Error"
   /agents:
     get:
       summary: What agents are doing, from agent rows, result logs, inbox replies, and pull request status

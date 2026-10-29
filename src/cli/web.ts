@@ -10,6 +10,7 @@ import { dirname, extname, join, normalize, relative, resolve, sep } from 'path'
 import { createApiHandler } from '../api/handler';
 import { createGitHubPrs } from '../api/github';
 import { createGraphCalendar, fixtureCalendar, type CalendarEvent, type CalendarProvider } from '../calendar';
+import { createIcsCalendar, icsUrls } from '../calendar/ics';
 import { defaultCachePath, FileTokenCache, graphToken, hasScope } from '../graph/auth';
 import { graphTransport } from '../graph/transport';
 import { getDefaults, parseConfig } from '../core/config';
@@ -104,15 +105,29 @@ export function calendarFixture(path: string | undefined = process.env.STACK_CAL
   return fixtureCalendar(list);
 }
 
-/** Where Today's meetings come from: a fixture file wins, then a Graph sign-in with Calendars.Read, else none. Never logs a token. @req FR:graph-signin/web.calendar */
-export async function calendarSource(o: { cachePath?: string; fixture?: string; log?: (line: string) => void } = {}): Promise<{ source: 'fixture' | 'graph' | 'none'; provider?: CalendarProvider }> {
+/** Published calendar feeds (`STACK_CALENDAR_ICS`, separated by whitespace or commas); the URLs are secrets and never logged. @req FR:schedule/ics.wire */
+export function icsCalendar(env = process.env.STACK_CALENDAR_ICS): CalendarProvider | undefined {
+  const urls = icsUrls(env);
+  return urls.length ? createIcsCalendar({ urls }) : undefined;
+}
+
+/**
+ * Where Today's meetings come from: a fixture file wins, then a Graph sign-in with Calendars.Read, then published ICS feeds, else none.
+ * Never logs a token or a feed URL. @req FR:graph-signin/web.calendar @req FR:schedule/ics.wire
+ */
+export async function calendarSource(o: { cachePath?: string; fixture?: string; ics?: string; log?: (line: string) => void } = {}): Promise<{ source: 'fixture' | 'graph' | 'ics' | 'none'; provider?: CalendarProvider }> {
   const fx = calendarFixture(o.fixture);
   if (fx) { o.log?.('calendar: fixture'); return { source: 'fixture', provider: fx }; }
   const cache = new FileTokenCache(o.cachePath ?? defaultCachePath());
-  const t = await cache.read();
-  if (!t || !hasScope(t.scopes, 'Calendars.Read')) return { source: 'none' };
-  o.log?.('calendar: Graph');
-  return { source: 'graph', provider: createGraphCalendar({ transport: graphTransport({ token: graphToken(cache) }) }) };
+  // A broken token file must not hide the ICS feeds: fall through to them.
+  const t = await cache.read().catch(() => null);
+  if (t && hasScope(t.scopes, 'Calendars.Read')) {
+    o.log?.('calendar: Graph');
+    return { source: 'graph', provider: createGraphCalendar({ transport: graphTransport({ token: graphToken(cache) }) }) };
+  }
+  const ics = icsCalendar(o.ics);
+  if (ics) { o.log?.('calendar: ICS feeds'); return { source: 'ics', provider: ics }; }
+  return { source: 'none' };
 }
 
 export async function startWeb(o: WebOpts): Promise<WebServer> {
@@ -120,7 +135,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
   // @req FR:agent-inbox/github.wire
   const ghToken = process.env.GITHUB_TOKEN?.trim();
-  const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, log: (l) => console.log(l) }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
+  const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, ics: process.env.STACK_CALENDAR_ICS, log: (l) => console.log(l) }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
   const storage = new GitStorage(o.dir);
   // @req FR:agent-sessions/driver.sdk (the SDK and its binary load on the first sessions request, not here)
   const agents: AgentRuns | undefined = o.agents === false ? undefined : o.agents ?? createRunManager({ driver: createSdkDriver(), ctx: { storage, config }, cwd: o.dir });

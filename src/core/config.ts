@@ -8,7 +8,12 @@ export interface TimeBlock {
   startTime: string;
   endTime: string;
   emoji: string;
+  /** What the time is for; inferred when unset. @req FR:schedule/profile.kind */
+  kind?: BlockKind;
 }
+
+export const BLOCK_KINDS = ['focus', 'personal', 'sleep'] as const;
+export type BlockKind = (typeof BLOCK_KINDS)[number];
 
 export interface TaskScoring {
   emojiWeights: Record<string, Record<string, number>>;
@@ -100,6 +105,7 @@ function parseBlock(v: unknown, path: string): TimeBlock {
   const startTime = time(v.startTime, `${path}.startTime`);
   const endTime = time(v.endTime, `${path}.endTime`);
   if (startTime === endTime) throw new ConfigError(`${path}: startTime equals endTime`);
+  if (v.kind !== undefined && !BLOCK_KINDS.includes(v.kind as BlockKind)) throw new ConfigError(`${path}.kind: expected one of ${BLOCK_KINDS.join(', ')}`);
   return {
     name,
     ...(v.label !== undefined ? { label: str(v.label, `${path}.label`) } : {}),
@@ -107,6 +113,7 @@ function parseBlock(v: unknown, path: string): TimeBlock {
     startTime,
     endTime,
     emoji: str(v.emoji, `${path}.emoji`),
+    ...(v.kind !== undefined ? { kind: v.kind as BlockKind } : {}),
   };
 }
 

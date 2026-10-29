@@ -116,7 +116,7 @@ describe('ask from a needs_decision or sensitive result', () => {
 describe('quiet classes', () => {
   it('create no ask and only move counters', async () => {
     const { storage, ctx } = mkCtx();
-    expect([...QUIET_CLASSES].sort()).toEqual(['calendar', 'fyi', 'newsletter', 'receipt', 'skip']);
+    expect([...QUIET_CLASSES].sort()).toEqual(['calendar', 'fyi', 'newsletter', 'receipt', 'skip', 'spam']);
     const summary = newSummary();
     for (const c of QUIET_CLASSES) {
       const r: TriageResult = { message: msg({ conversationId: `c-${c}` }), class: c, confidence: 1 };
@@ -125,7 +125,7 @@ describe('quiet classes', () => {
       tally(summary, r, 'rule');
     }
     expect(await storage.listAsks!()).toEqual([]);
-    expect(summary).toMatchObject({ messages: 5, rules: 5, model: 0, asks: 0, counts: { newsletter: 1, receipt: 1, calendar: 1, skip: 1, fyi: 1 } });
+    expect(summary).toMatchObject({ messages: 6, rules: 6, model: 0, asks: 0, counts: { newsletter: 1, receipt: 1, calendar: 1, skip: 1, fyi: 1, spam: 1 } });
   });
 
   it('counts asks and model-settled results', () => {

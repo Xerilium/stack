@@ -47,7 +47,7 @@ test.describe('Asks', () => {
   test('Home is the default view; the rail and tab bar carry the open count', async ({ page }) => {
     const m = await mockApi(page); m.asks = seed();
     await page.goto('/');
-    await expect(page.getByRole('region', { name: 'Now' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Home' })).toBeVisible();
     await expect(page.locator('.badge').first()).toHaveText('7');
   });
 

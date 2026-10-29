@@ -42,10 +42,13 @@ const re = (s: string) => new RegExp(`^${s}$`);
 const FOLDER_MESSAGES = re(`/me/mail[Ff]olders/${ID}/messages(/delta)?`);
 const MESSAGE = re(`/me/messages/${ID}`);
 const CREATE_REPLY = re(`/me/messages/${ID}/createReply`);
+const MOVE = re(`/me/messages/(${ID})/move`);
+/** The only folders an approved move may target; both are reversible in Outlook. @req FR:email-inbox-zero/gate.guard */
+export const MOVE_TARGETS = ['archive', 'junkemail'] as const;
 const hasOnly = (body: unknown, key: string) => !!body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 1 && key in body;
 
 /** `createGraphGuard()` allows reads, reply drafts and category tags; `mode` narrows it. @req FR:email-triage/safe.allowlist */
-export function createGraphGuard(opts: { mode?: WriteMode } = {}): GraphGuard {
+export function createGraphGuard(opts: { mode?: WriteMode; approvedMoves?: ReadonlyMap<string, (typeof MOVE_TARGETS)[number]> } = {}): GraphGuard {
   const mode = opts.mode ?? 'drafts';
   const deny = (req: GraphRequest, why: string): never => { throw new GraphDenied(String(req.method), String(req.url), why); };
 
@@ -62,8 +65,11 @@ export function createGraphGuard(opts: { mode?: WriteMode } = {}): GraphGuard {
     try { segs = rel.split('/').slice(1).map(decodeURIComponent); } catch { return deny(req, 'bad path encoding'); }
     if (segs.some((s) => s === '' || s === '.' || s === '..' || /[/\\?#]/.test(s) || [...s].some((c) => c.charCodeAt(0) < 32))) return deny(req, 'bad path');
     // Defense in depth: a segment naming a denied verb (or its `create` form, bar the allowlisted createReply) is refused before the allowlist is consulted.
-    if (segs.some((s) => DENY.some((d) => s.toLowerCase() === d || (s.toLowerCase() === `create${d}` && d !== 'reply')))) return deny(req, 'denied verb');
     const path = `/${segs.join('/')}`;
+    // The one exception to the denied verbs: moving a message the owner approved in an answered ask, to Archive or Junk only. @req FR:email-inbox-zero/gate.guard
+    const mv = MOVE.exec(path);
+    if (method === 'POST' && mv && mode === 'drafts' && hasOnly(req.body, 'destinationId') && typeof (req.body as { destinationId: unknown }).destinationId === 'string' && opts.approvedMoves?.get(mv[1]) === (req.body as { destinationId: unknown }).destinationId && ![...u.searchParams.keys()].length) return;
+    if (segs.some((s) => DENY.some((d) => s.toLowerCase() === d || (s.toLowerCase() === `create${d}` && d !== 'reply')))) return deny(req, 'denied verb');
     for (const k of u.searchParams.keys()) if (!QUERY.has(k)) return deny(req, `query ${k}`);
 
     if (method === 'GET' && (FOLDER_MESSAGES.test(path) || MESSAGE.test(path))) return;

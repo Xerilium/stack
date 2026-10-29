@@ -13,10 +13,11 @@ import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, Toasts, type GroupName, type
 import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
-import { actionable, activeTasks, DEFER, progress, rankNow, startsOpen, topTask, visibleRows } from './now';
+import { DEFER, progress, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, decisions as decisionsOf, DEFAULT_DAY, planCandidates, type Decision } from './plan';
+import { calendarRange, dayFrame, needsRefresh, type DaySched } from './schedule';
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
-import { budgetOf, clampBudget, dateKey, loadBudget, saveBudget, STEP, store } from './day';
+import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
 import { actionsFor, type AskItem, type Send } from './asks';
 import { useAsks } from './useAsks';
@@ -30,7 +31,8 @@ import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
 import { agentForAsk } from './team';
 import { planWeek } from './week';
-import { FocusMode, ListView, NowView, ProjectsView, TodayView, type NowSection, type RowProps } from './views';
+import { FocusMode, HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
+import { homeOf } from './home';
 
 const reads = new Set<(savedAt: string | null) => void>();
 const api = createClient(undefined, undefined, (s) => reads.forEach((f) => f(s)));
@@ -66,7 +68,6 @@ export function App() {
     return () => { clearInterval(h); document.removeEventListener('visibilitychange', bump); };
   }, []);
   const [info, setInfo] = useState<{ mode: string; repo: string; branch: string } | null>(null);
-  const [allOpen, setAllOpen] = useState(false);
   const [focusRef, setFocusRef] = useState<string | null>(null);
   const [deferRefs, setDeferRefs] = useState<string[] | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
@@ -96,7 +97,9 @@ export function App() {
   const [agentItems, setAgentItems] = useState<Agent[] | null>(null);
   const [agentsError, setAgentsError] = useState('');
   const [inbox, setInbox] = useState<InboxItem[]>([]);
-  const [saved, setSaved] = useState<{ date: string; minutes: number } | null>(() => { const now = new Date(); const m = loadBudget(store(), now); return m === null ? null : { date: dateKey(now), minutes: m }; });
+  const [saved, setSaved] = useState<{ date: string; minutes: number } | null>(() => loadSaved(store()));
+  /** @req FR:home/day.frame */
+  const [sched, setSched] = useState<DaySched | null>(null);
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [calError, setCalError] = useState('');
   const [emailAsks, setEmailAsks] = useState(0);
@@ -116,30 +119,24 @@ export function App() {
   }, [tasks, flipped]);
   const searching = filters.q.trim() !== '' || filters.state !== 'open';
   const listRows = useMemo(() => visibleRows(filtered, tasks, expanded, collapsed, searching), [filtered, tasks, expanded, collapsed, searching]);
-  const { sections, hidden } = useMemo(() => {
-    const ranked = rankNow(activeTasks(tasks).filter((t) => t.ref !== next?.ref && actionable(t)), new Date(), tasks);
-    const doing = ranked.filter((t) => /🚧/u.test(t.text));
-    const rest = ranked.filter((t) => !doing.includes(t));
-    const then = rest.slice(0, 5), more = rest.slice(5);
-    const secs: NowSection[] = [{ id: 'doing', title: 'In progress', rows: doing }, { id: 'then', title: 'Then', rows: then }];
-    if (allOpen) secs.push({ id: 'all', title: 'All active', rows: more });
-    return { sections: secs, hidden: more.length };
-  }, [tasks, next, allOpen]);
   const clockNow = useMemo(() => new Date(), [tasks, tick, saved]); // also refresh when the budget changes, so a value set after midnight counts for the new day
-  const day = DEFAULT_DAY;
-  // Kept with its date: a tab left open overnight must not keep yesterday's budget, and it works without storage.
-  const busyTime = useMemo(() => busyIntervals(events, clockNow), [events, clockNow]);
-  const budget = budgetOf(clockNow, day, saved && saved.date === dateKey(clockNow) ? saved.minutes : null, busyTime);
+  const day = useMemo(() => dayFrame(sched), [sched]);
+  // Kept with its day (the waking day, which can run past midnight): a tab left open overnight must not keep yesterday's budget.
+  const dayKey = sched?.date ?? dateKey(clockNow);
+  const busyTime = useMemo(() => busyIntervals(events, day.origin ?? clockNow, day.origin ? 2 : 1), [events, clockNow, day]);
+  const budget = budgetOf(clockNow, day, saved && saved.date === dayKey ? saved.minutes : null, busyTime);
   const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, clockNow, day, budget.minutes, busyTime, emailAsks]);
   /** @req FR:web-app/today.capacity */
-  const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v); setSaved(v === null ? null : { date: dateKey(now), minutes: v }); }, []);
+  const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v, dayKey); setSaved(v === null ? null : { date: dayKey, minutes: v }); }, [dayKey]);
   const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
   const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
-  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? [...(next ? tasks.filter((t) => t.ref === next.ref) : []), ...sections.flatMap((s) => s.rows)] : listRows;
   const titles = useMemo(() => new Map(projects.map((x) => [x.name, x.title || x.name])), [projects]);
+  /** @req FR:web-app/home.one @req FR:web-app/home.fit */
+  const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft: budget.minutes }), [tasks, projects, next, clockNow, budget.minutes]);
+  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? [home.one?.task, home.instead?.task, ...home.next.map((n) => n.task)].filter((t): t is Task => !!t) : listRows;
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
-  const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, day), [tasks, clockNow, budget.minutes, day]);
+  const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY), [tasks, clockNow, budget.minutes]);
   const capRows = useMemo(() => capacityRows(projects, tasks).map((r) => ({ ...r, top: topTask(tasks, r.project) })), [projects, tasks]);
 
   // ---- feedback
@@ -154,9 +151,11 @@ export function App() {
   /** Agent activity and the inbox load on their own: a failure there never blocks the day plan. @req FR:web-app/today.agents */
   const loadSide = useCallback(async () => {
     const d = new Date();
-    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(from.toISOString(), to.toISOString())]);
+    // The waking day first: it sets the calendar range. @req FR:home/day.calendar
+    const s = await api.schedule(d.toISOString()).catch(() => null);
+    setSched(s);
+    const range = calendarRange(s, d);
+    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to)]);
     /** @req FR:web-app/today.meetings */
     if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); } else setCalError('Calendar unavailable');
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
@@ -218,6 +217,8 @@ export function App() {
     window.addEventListener('online', up); window.addEventListener('offline', down);
     return () => { reads.delete(read); window.removeEventListener('online', up); window.removeEventListener('offline', down); };
   }, []);
+  /** A tab left open past bed moves to the next day. @req FR:home/day.refresh */
+  useEffect(() => { if (needsRefresh(sched, new Date())) void loadSide(); }, [clockNow, sched, loadSide]); // a fresh clock: a new answer is never judged by a stale minute
   /** Open asks the email module wrote reserve the Email block. @req FR:web-app/today.mail */
   useEffect(() => { setEmailAsks(asks.items.filter((a) => a.state === 'open' && a.from === 'email-triage').length); }, [asks.items]);
 
@@ -528,7 +529,7 @@ export function App() {
       if (L.view === 'projects') return;
       // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
       if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
-      if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; }
+      if ((L.view === 'today' || L.view === 'home') && (k === '[' || k === ']')) { e.preventDefault(); A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; }
       const i = L.rows.findIndex((r) => r.ref === L.cursor);
       const step = (d: number) => { const n = L.rows[Math.max(0, Math.min(L.rows.length - 1, i + d))]; if (n) setCursor(n.ref); };
       const inList = L.view === 'list';
@@ -614,7 +615,7 @@ export function App() {
           <TodayView allDay={allDay(events)} calError={calError} onEmail={() => go('asks')} now={clockNow} plan={plan} day={day} budget={budget} onBudget={setBudget} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={(act, ref) => (act === 'defer' ? openDefer(ref) : void doAct(act, ref))} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'home' && <NowView task={next} sections={sections} hidden={hidden} allOpen={allOpen} onToggleAll={() => setAllOpen((o) => !o)} p={rowProps} busy={busy} onAct={(a) => (a === 'defer' ? openDefer(next?.ref) : void doAct(a, next?.ref))} />}
+        {phase === 'ready' && view === 'home' && <HomeView h={home} minutesLeft={budget.minutes} p={rowProps} busy={busy} onAct={(a, ref) => (a === 'defer' ? openDefer(ref ?? next?.ref) : void doAct(a, ref ?? next?.ref))} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setBudget(budget.minutes + STEP)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />

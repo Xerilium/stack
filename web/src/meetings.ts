@@ -2,6 +2,7 @@
  * Meetings and the email block for the day plan. Pure; times are minutes after local midnight.
  * @req FR:web-app/today.meetings @req FR:web-app/today.mail
  */
+import { wallMinutes } from './wall';
 export interface CalEvent {
   id: string; subject: string; start: string; end: string; allDay: boolean;
   showAs: 'free' | 'tentative' | 'busy' | 'oof' | 'workingElsewhere' | 'unknown'; cancelled: boolean; online: boolean; organizer?: string; webLink?: string; joinUrl?: string;
@@ -12,12 +13,12 @@ export interface Busy { start: number; end: number; titles: string[]; events: Ca
 const BLOCKING = new Set(['busy', 'tentative', 'oof']);
 const DAY_MIN = 24 * 60;
 
-/** Busy, tentative, and out-of-office events that are not cancelled or all-day, clipped to `day` and merged. */
-export function busyIntervals(events: CalEvent[], day: Date): Busy[] {
+/** Busy, tentative, and out-of-office events that are not cancelled or all-day, clipped to `days` days from `day`'s midnight and merged. @req FR:home/day.calendar */
+export function busyIntervals(events: CalEvent[], day: Date, days = 1): Busy[] {
   const from = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
-  const to = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
-  // Wall-clock minutes (what the plan uses), so a DST day does not shift meetings by an hour.
-  const clockMin = (ms: number) => (ms <= from ? 0 : ms >= to ? DAY_MIN - 1 : new Date(ms).getHours() * 60 + new Date(ms).getMinutes());
+  const to = new Date(day.getFullYear(), day.getMonth(), day.getDate() + days).getTime();
+  // Wall-clock minutes (what the plan uses), so a DST day does not shift meetings by an hour; later dates count past 24:00.
+  const clockMin = (ms: number) => (ms <= from ? 0 : ms >= to ? days * DAY_MIN - 1 : wallMinutes(new Date(ms), day));
   const raw = events
     .filter((e) => BLOCKING.has(e.showAs) && !e.cancelled && !e.allDay)
     .map((e) => ({ e, start: clockMin(Date.parse(e.start)), end: clockMin(Date.parse(e.end)) }))
@@ -32,8 +33,19 @@ export function busyIntervals(events: CalEvent[], day: Date): Busy[] {
   return out;
 }
 
-/** Busy minutes inside `[from, to)`. */
-export const busyWithin = (busy: Busy[], from: number, to: number): number =>
+/** Sorted, merged spans (overlaps counted once). */
+export function mergeSpans(spans: { start: number; end: number }[]): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  for (const s of [...spans].sort((a, b) => a.start - b.start)) {
+    const last = out[out.length - 1];
+    if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
+    else out.push({ start: s.start, end: s.end });
+  }
+  return out;
+}
+
+/** Busy minutes inside `[from, to)` (spans must not overlap; merge first). */
+export const busyWithin = (busy: { start: number; end: number }[], from: number, to: number): number =>
   busy.reduce((m, b) => m + Math.max(0, Math.min(b.end, to) - Math.max(b.start, from)), 0);
 
 /** Minutes the email block takes: 5 per ask, 15 to 60; none without asks. */

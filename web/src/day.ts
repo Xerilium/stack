@@ -1,5 +1,5 @@
-import { planStart, type Day } from './plan';
-import { busyWithin, type Busy } from './meetings';
+import { closedTo, planStart, type Day } from './plan';
+import { busyWithin, mergeSpans, type Busy } from './meetings';
 
 /** Available time today: a per-day budget kept in browser storage. @req FR:web-app/today.capacity */
 export const STEP = 30;
@@ -15,27 +15,33 @@ export const dateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 
 /** Whole minutes between 0 and 16 h. Steps add or remove STEP from the current value, so an odd default still moves by 30. */
 export const clampBudget = (m: number) => Math.max(0, Math.min(MAX, Math.round(m)));
 
-/** Your budget, or the time left in the work day when you have not set one. */
-/** Your budget, or the work day left minus the meetings inside it. @req FR:web-app/today.meetings */
+/** Your budget, or the focus time left: the day left minus meetings and personal blocks (overlaps once). @req FR:web-app/today.meetings @req FR:home/day.available */
 export function budgetOf(now: Date, day: Day, saved: number | null, busy: Busy[] = []): { minutes: number; isDefault: boolean } {
   const start = planStart(now, day);
-  return saved === null ? { minutes: Math.max(0, day.end - start - busyWithin(busy, start, day.end)), isDefault: true } : { minutes: saved, isDefault: false };
+  const off = mergeSpans([...busy, ...closedTo(day).map(([s, e]) => ({ start: s, end: e }))]);
+  return saved === null ? { minutes: Math.max(0, day.end - start - busyWithin(off, start, day.end)), isDefault: true } : { minutes: saved, isDefault: false };
 }
 
 /** The budget saved for today, or null (none, another day, or storage unavailable). */
-export function loadBudget(store: Store | undefined, now: Date): number | null {
+export function loadBudget(store: Store | undefined, now: Date, key = dateKey(now)): number | null {
+  const v = loadSaved(store);
+  return v && v.date === key ? v.minutes : null;
+}
+
+/** Whatever budget is saved, with the day it was set for; the caller checks the day. @req FR:home/day.available */
+export function loadSaved(store: Store | undefined): { date: string; minutes: number } | null {
   try {
     const raw = store?.getItem(KEY);
     if (!raw) return null;
     const v = JSON.parse(raw) as { date?: string; minutes?: number };
-    return v.date === dateKey(now) && typeof v.minutes === 'number' ? clampBudget(v.minutes) : null;
+    return typeof v.date === 'string' && typeof v.minutes === 'number' ? { date: v.date, minutes: clampBudget(v.minutes) } : null;
   } catch { return null; }
 }
 
-/** Saves for today only; null clears. Never throws. */
-export function saveBudget(store: Store | undefined, now: Date, minutes: number | null): void {
+/** Saves for today (or the waking day `key`) only; null clears. Never throws. */
+export function saveBudget(store: Store | undefined, now: Date, minutes: number | null, key = dateKey(now)): void {
   try {
     if (minutes === null) store?.removeItem(KEY);
-    else store?.setItem(KEY, JSON.stringify({ date: dateKey(now), minutes: clampBudget(minutes) }));
+    else store?.setItem(KEY, JSON.stringify({ date: key, minutes: clampBudget(minutes) }));
   } catch { /* storage is a convenience */ }
 }
