@@ -117,7 +117,7 @@ export function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: num
 
 export const SHORTCUTS: [string, string][] = [
   ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g h / g d / g k / g s / g p / g a', 'Go to Home / My day / Needs you / Sessions / Projects / Full stack'], ['Sessions: Enter, s, c, n, m', 'Open the drawer, stop a run, costs, new session, show more'], ['Asks: Enter, n, o, r, z, e, u, 1-4, m', 'Primary action, reject, open link, reply, defer, details, undo, pick option, show more'], ['a / R', 'Talk to the task agent / review the task'], ['[ / ]', 'Less / more time today'],
-  ['j k or arrows', 'Move cursor'], ['Enter', 'Focus mode'], ['e', 'Edit row'], ['x', 'Select row'], ['Esc', 'Clear selection'],
+  ['j k or arrows', 'Move cursor'], ['Space', 'Expand in place'], ['Enter', 'Open full screen'], ['e', 'Edit row'], ['x', 'Select row'], ['Esc', 'Clear selection'],
   ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['z', 'Defer'], ['Shift+S', 'Skip'],
   ['Shift+J / Shift+K', 'Move row down / up'], ['?', 'This sheet'],
 ];

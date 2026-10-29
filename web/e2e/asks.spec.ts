@@ -115,14 +115,14 @@ test.describe('Asks', () => {
     await expect.poll(() => m.calls.filter((c) => c.path.endsWith('/answer')).map((c) => c.body.answer)).toEqual(['reply', 'ask']);
   });
 
-  test('defer (z): choices by number snooze the ask out of the list; it shows under Snoozed', async ({ page }) => {
+  test('defer (z): choices by number snooze the ask out of the list; it shows under Deferred', async ({ page }) => {
     const m = await open(page);
     await page.keyboard.press('z');
     await expect(page.getByRole('group', { name: 'Defer until' })).toBeVisible();
     await page.keyboard.press('3');
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/pr-879/answer')?.body.answer).toBe('defer');
     expect(m.calls.find((c) => c.path === '/asks/pr-879/answer')?.body.until).toMatch(/^\d{4}-/);
-    await expect(page.getByRole('button', { name: /Snoozed · 1/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Deferred · 1/ })).toBeVisible();
     await expect(page.locator('.ask-card .ask-title')).not.toHaveText(/PR 879/);
   });
 

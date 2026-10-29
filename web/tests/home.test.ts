@@ -73,3 +73,29 @@ describe('homeOf', () => {
     expect(h.next).toEqual([]);
   });
 });
+
+// @req FR:web-app/home2.order @req FR:web-app/home2.five
+describe('home round 3', () => {
+  const at = new Date(2026, 9, 29, 10, 0);
+  const tasks = [
+    T('alpha:1', '🚨 Alpha fire 🟠'),
+    T('alpha:2', 'Quick email 🔹'),
+    T('alpha:3', 'Another quick one 🔹'),
+    T('beta:1', 'Beta plan 🟢', 'beta'),
+    T('beta:2', 'Tiny beta 🔹', 'beta'),
+    T('beta:3', 'Backlog tiny 🔹', 'beta', '📋 Backlog'),
+    T('zeta:1', 'Zeta thing 🟡', 'zeta'), // last in file order, so beta ranks above it
+  ];
+  const projects = [P('beta'), P('zeta'), P('alpha')];
+  it('projects are in priority order (by their top task), not alphabetical or file order', () => {
+    const h = homeOf({ tasks, projects, next: { ref: 'alpha:1', text: tasks[1].text, project: 'alpha', score: 9 }, now: at, minutesLeft: 240 });
+    expect(h.projects.map((p) => p.project)).toEqual(['alpha', 'beta', 'zeta']);
+  });
+  it('"only have 5 min": up to 3 ranked active tasks of 15 minutes or less that are not already on screen', () => {
+    const h = homeOf({ tasks, projects, next: { ref: 'alpha:1', text: tasks[1].text, project: 'alpha', score: 9 }, now: at, minutesLeft: 240 });
+    const shown = new Set([h.one?.task.ref, ...h.next.map((n) => n.task.ref)]);
+    expect(h.five.length).toBeGreaterThan(0);
+    expect(h.five.length).toBeLessThanOrEqual(3);
+    for (const f of h.five) { expect(f.minutes).toBeLessThanOrEqual(15); expect(shown.has(f.task.ref)).toBe(false); expect(f.task.ref).not.toBe('beta:3'); }
+  });
+});

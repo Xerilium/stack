@@ -121,7 +121,7 @@ test.describe('now view', () => {
     const m = await mockApi(page);
     await page.goto('/#/now');
     const choose = async (name: RegExp) => {
-      await page.locator('.focus-block').getByRole('button', { name: /Not now/ }).click();
+      await page.locator('.focus-block').getByRole('button', { name: /Defer/ }).click();
       const dlg = page.getByRole('dialog', { name: 'Defer until' });
       await expect(dlg).toBeVisible();
       await dlg.getByRole('button', { name }).click();
@@ -191,7 +191,7 @@ test.describe('focus mode', () => {
   test('opens from the Focus button, shows notes and a subtask checklist, and closes', async ({ page }, info) => {
     const m = await mockApi(page);
     await page.goto('/#/now');
-    await page.getByTestId('next-title').dblclick();
+    await page.locator('.focus-block').click(); await page.keyboard.press('Enter');
     const dlg = page.getByRole('dialog', { name: 'Focus' });
     await expect(dlg).toBeVisible();
     await expect(dlg.locator('h1')).toContainText('Ship the web app');
@@ -202,7 +202,7 @@ test.describe('focus mode', () => {
     await list.getByRole('button', { name: 'Mark done' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/complete', body: { ref: 'alpha:7' } });
     await expect(list.locator('li.done')).toHaveCount(1);
-    if (info.project.name === 'mobile') await dlg.getByRole('button', { name: 'Back' }).click();
+    if (info.project.name === 'mobile') await dlg.getByRole('button', { name: 'Close' }).click();
     else await page.keyboard.press('Escape');
     await expect(dlg).toHaveCount(0);
   });
@@ -456,7 +456,7 @@ test.describe('stale line numbers', () => {
     await page.goto('/#/list');
     await expect(rows(page).first()).toContainText('Ship the');
     m.insertAbove('alpha', 'Added by someone else');
-    await page.locator('.row[data-ref="alpha:6"] .title').dblclick();
+    await page.locator('.row[data-ref="alpha:6"]').click(); await page.keyboard.press('e');
     await page.getByLabel('Edit task text').fill('Ship it 🟡');
     await page.getByLabel('Edit task text').press('Enter');
     await expect(page.getByText('Changed elsewhere')).toBeVisible();
@@ -502,10 +502,10 @@ test.describe('stale line numbers', () => {
 
 test.describe('editor', () => {
   // @req FR:web-app/edit.open @req FR:web-app/edit.preview
-  test('double click edits, previews markdown, Enter saves, Esc cancels', async ({ page }) => {
+  test('e edits the cursor row, previews markdown, Enter saves, Esc cancels', async ({ page }) => {
     const m = await mockApi(page);
     await page.goto('/#/list');
-    await page.locator('.row[data-ref="alpha:9"] .title').dblclick();
+    await page.locator('.row[data-ref="alpha:9"]').click(); await page.keyboard.press('e');
     const box = page.getByLabel('Edit task text');
     await expect(box).toBeFocused();
     await expect(box).toHaveValue('Review pull requests 🟠');
@@ -517,10 +517,10 @@ test.describe('editor', () => {
     await box.press('Escape');
     await expect(box).toHaveCount(0);
     expect(m.calls.filter((c) => c.path === '/tasks/edit')).toHaveLength(0);
-    await page.locator('.row[data-ref="alpha:9"] .title').dblclick();
+    await page.locator('.row[data-ref="alpha:9"]').click(); await page.keyboard.press('e');
     await page.getByLabel('Edit task text').press('Enter');
     expect(m.calls.filter((c) => c.path === '/tasks/edit')).toHaveLength(0);
-    await page.locator('.row[data-ref="alpha:9"] .title').dblclick();
+    await page.locator('.row[data-ref="alpha:9"]').click(); await page.keyboard.press('e');
     await page.getByLabel('Edit task text').fill('Review the PRs 🟠');
     await page.getByLabel('Edit task text').press('Enter');
     await expect(page.getByText('Saved')).toBeVisible();
@@ -727,7 +727,7 @@ test.describe('feedback and mobile', () => {
     const m = await mockApi(page);
     await page.goto('/#/list');
     m.fail.set('/tasks/edit', { status: 409, code: 'conflict', message: 'Version conflict' });
-    await page.locator('.row[data-ref="alpha:9"] .title').dblclick();
+    await page.locator('.row[data-ref="alpha:9"]').click(); await page.keyboard.press('e');
     await page.getByLabel('Edit task text').fill('Changed');
     await page.getByLabel('Edit task text').press('Enter');
     await expect(page.getByText('Changed elsewhere. Reloaded; try again.')).toBeVisible();
@@ -859,7 +859,7 @@ test.describe('today view', () => {
     await expect(blocks.nth(2).locator('.what-title')).toContainText('Third thing');
     const lead = page.locator('.block.lead');
     await expect(lead).toHaveCount(1);
-    for (const n of ['Start', 'Done', 'Not now']) await expect(lead.getByRole('button', { name: new RegExp(n) })).toBeVisible();
+    for (const n of ['Start', 'Done', 'Defer']) await expect(lead.getByRole('button', { name: new RegExp(n) })).toBeVisible();
     await blocks.nth(2).getByRole('button', { name: 'Mark done' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/complete', body: { ref: 'gamma:3' } });
     await lead.getByRole('button', { name: /Start/ }).click();
@@ -868,9 +868,9 @@ test.describe('today view', () => {
     await shot(page, 'today', info);
   });
 
-  test('Not now on the lead block opens the defer menu', async ({ page }) => {
+  test('Defer on the lead block opens the defer menu', async ({ page }) => {
     await setup(page, day());
-    await page.locator('.block.lead').getByRole('button', { name: /Not now/ }).click();
+    await page.locator('.block.lead').getByRole('button', { name: /Defer/ }).click();
     await expect(page.getByRole('dialog', { name: 'Defer until' })).toBeVisible();
   });
 

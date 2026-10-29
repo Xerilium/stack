@@ -687,3 +687,41 @@ body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: non
 .rows > .group:first-child + .section { top: calc(var(--inset-top) + 24px); }
 /* the offline banner is one line at the top of the content; it does not float over the stuck headers */
 .banner.offline { position: static; }
+
+/* ---- Home round 3: inline detail, 5-minute gap, folded projects, Defer, animated Done, brand. @req FR:web-app/home2.expand @req FR:web-app/home2.fold @req FR:web-app/home2.done @req FR:web-app/home2.demo */
+.brand { display: flex; align-items: center; gap: 8px; }
+.brand .mark { flex: none; color: var(--accent); }
+.phone-brand { display: none; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; letter-spacing: -.01em; margin: 0 0 12px; }
+.phone-brand .mark { color: var(--accent); }
+@media (max-width: 719px) { .phone-brand { display: flex; } }
+.row-detail { margin: 2px 0 10px 32px; padding: 10px 14px 12px; border-left: 2px solid var(--accent-soft); animation: fade .14s var(--ease); }
+.row-detail .body { color: var(--ink2); font-size: 13.5px; }
+.row-detail .body p { margin: 0 0 6px; overflow-wrap: anywhere; }
+.row-detail .checklist { margin: 8px 0 0; }
+.row-detail .checklist li { min-height: 30px; border-bottom: 0; }
+.row-detail .actions.small { margin-top: 10px; gap: 6px; }
+.row-detail .actions.small .btn { min-height: 30px; }
+.row-detail .grow { flex: 1; }
+.row-detail .row-extra { margin-top: 10px; }
+.row.open > .line .title { font-weight: 600; }
+.home-projects li.cursor { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); border-radius: 8px; }
+.home-projects li.open { grid-template-rows: auto auto; }
+.home-projects li .row-detail { grid-column: 1 / -1; margin-left: 0; }
+.home-projects-wrap { position: relative; }
+.home-projects-wrap.folded .home-projects { max-height: 118px; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent); }
+.fold { display: flex; justify-content: center; margin-top: -6px; }
+.fold .btn { min-height: 28px; font-size: 12.5px; }
+/* Done: the check draws itself, the row fades */
+.done-anim .box, .done-anim .tick .box { border-color: var(--ok); background: var(--ok); color: #fff; }
+.done-anim .box::after { content: ''; display: block; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px, -1px); animation: check .16s var(--ease) both; }
+.row.done-anim, .focus-block.done-anim { animation: fade-out .5s .25s var(--ease) both; }
+@keyframes check { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0); } }
+@keyframes fade-out { to { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .done-anim .box::after, .row.done-anim, .focus-block.done-anim, .row-detail { animation: none !important; } }
+.focus-mode .close { position: absolute; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--ink2); display: grid; place-items: center; }
+.focus-mode .close:hover { color: var(--ink); background: var(--hover); }
+@media (max-width: 719px) {
+  .row-detail { margin-left: 0; padding: 8px 10px 10px; }
+  .row-detail .actions.small .btn { min-height: var(--tap); flex: 1 1 30%; justify-content: center; }
+  .home-projects-wrap.folded .home-projects { max-height: 170px; }
+}
