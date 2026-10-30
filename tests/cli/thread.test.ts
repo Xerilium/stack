@@ -15,7 +15,7 @@ describe('stack asks put --ref and stack inbox reply', () => {
   it('puts an ask on a task and replies as an agent', async () => {
     const d = dir();
     expect((await stack(d, 'asks', 'put', 'q1', '--ask', 'Which cover?', '--kind', 'answer', '--from', 'cid', '--ref', 'tasks/f4.md:5')).out).toBe('q1\n');
-    expect(readFileSync(join(d, 'tasks/asks/q1.md'), 'utf8')).toContain('- ref: tasks/f4.md:5');
+    expect(readFileSync(join(d, 'tasks/asks/q1.md'), 'utf8')).toContain('- ref: f4:4');
     expect((await stack(d, 'asks', 'put', 'q2', '--ask', 'x', '--kind', 'answer', '--from', 'cid', '--ref', 'tasks/f4.md:99')).code).toBe(2);
     const r = await stack(d, 'inbox', 'reply', 'tasks/f4.md:5', '--from', 'cid', '--text', 'On it.');
     expect(r.code).toBe(0);

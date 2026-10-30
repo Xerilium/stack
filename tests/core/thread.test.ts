@@ -13,16 +13,16 @@ function mk() {
 }
 
 describe('asks belong to tasks', () => {
-  it('stores the task as a 1-based file ref with its title, lists it as an api ref, and follows a moved row', async () => {
+  it('stores the task as an api ref with its row text, lists it as an api ref, and follows a moved row', async () => {
     const { storage, ctx } = mk();
     await storage.write('tasks/flantastic-4.md', F4);
     await putAsk(ctx, 'q1', { ask: 'Which cover?', kind: 'answer', from: 'cid-manager', ref: 'flantastic-4:4' }, 'cid-manager');
     const raw = (await storage.read('tasks/asks/q1.md')).content;
-    expect(raw).toContain('- ref: tasks/flantastic-4.md:5');
-    expect(raw).toContain('- task: Release the single 🟡');
-    expect(parseAsk('q1', raw)).toMatchObject({ ref: 'tasks/flantastic-4.md:5', task: 'Release the single 🟡' });
+    expect(raw).toContain('- ref: flantastic-4:4');
+    expect(raw).toContain('- reftext: Release the single 🟡');
+    expect(parseAsk('q1', raw)).toMatchObject({ ref: 'flantastic-4:4', refText: 'Release the single 🟡' });
     let list = await listAsks(ctx, { state: 'open' });
-    expect(list.items[0]).toMatchObject({ key: 'q1', ref: 'flantastic-4:4', row: 'flantastic-4:4' });
+    expect(list.items[0]).toMatchObject({ key: 'q1', ref: 'flantastic-4:4', row: 'flantastic-4:4', task: 'Release the single 🟡' });
     expect(apiRefOf('tasks/a b.md:12')).toBe('a b:11');
     // A row added above moves the task; the ask still points at it.
     await storage.write('tasks/flantastic-4.md', F4.replace('- [ ] Release', '- [ ] New first\n- [ ] Release'));

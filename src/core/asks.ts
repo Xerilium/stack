@@ -2,12 +2,13 @@
  * Live ask queue core: one markdown file per ask (`tasks/asks/<key>.md`) that agents write, the owner answers, and agents handle.
  * @req FR:ask-queue/ask.path @req FR:ask-queue/ask.format @req FR:ask-queue/ask.safe @req FR:ask-queue/ask.score @req FR:ask-queue/ask.rank
  * @req FR:ask-queue/flow.put @req FR:ask-queue/flow.answer @req FR:ask-queue/flow.handle @req FR:ask-queue/flow.default @req FR:ask-queue/flow.thread
+ * @req FR:quick-triage/flow.fields @req FR:quick-triage/flow.apply @req FR:quick-triage/flow.text @req FR:quick-triage/flow.order
  */
 import { LifecycleError, type LifecycleContext } from './lifecycle';
 import { ConflictError, NotFoundError, writeAll, type FileWrite } from './storage';
 import { redact } from './triage';
 import { currentRows, inboxTitle } from './inbox';
-import { parseProject, type Task } from './parser';
+import { applyAction, describe as describeAction, parseAction, parseTaskRef, readRow, type Action } from './ask-actions';
 
 export const ASK_KINDS = ['approve', 'decide', 'review', 'go-do', 'answer'] as const;
 export const ASK_STATES = ['open', 'answered', 'done'] as const;
@@ -25,10 +26,12 @@ export interface Ask {
   key: string; state: AskState; ask: string; kind: AskKind; from: string;
   project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string;
   reversible: boolean; link?: string; priority: AskPriority; effort?: string; blocks: number;
-  /** The task this ask belongs to: `tasks/<file>.md:<line>` (1-based) and its title, like inbox entries. @req FR:agent-thread/ask.ref */
-  ref?: string; task?: string;
   created: string; updated: string;
   answer?: AskAnswer; text?: string; answered?: string; outcome?: AskOutcome; handled?: string; note?: string; snoozed?: string;
+  /** Quick triage: the flow this question belongs to and its place; the row it is about; what Stack applies on the answer. @req FR:quick-triage/flow.fields */
+  flow?: string; seq?: number; ref?: string; apply?: string; applies?: string[];
+  /** The row's text when the ask was put: an action never lands on a row that changed. */
+  refText?: string;
   /** Free markdown under `## Detail`; shown only when the owner expands the ask. */
   detail: string;
   /** Lines under `## Thread`, as written. */
@@ -40,17 +43,18 @@ export interface Ask {
 /** What an agent may write. Owner fields are not accepted. */
 export interface AskPut {
   ask?: string; kind?: AskKind; from?: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string;
-  /** The task, as the api writes refs (`<project>:<line>`, 0-based). @req FR:agent-thread/ask.ref */
-  ref?: string;
   reversible?: boolean; link?: string; priority?: AskPriority; effort?: string; blocks?: number; detail?: string; reopen?: boolean;
+  flow?: string; seq?: number; ref?: string; apply?: string; applies?: string[];
 }
 export interface AnswerInput { answer: AskAnswer; text?: string; until?: string }
 export interface HandleInput { outcome: AskOutcome; note?: string; reply?: string }
 
-export interface ListedAsk extends Omit<Ask, 'extra' | 'thread' | 'ref'> {
+export interface ListedAsk extends Omit<Ask, 'extra' | 'thread'> {
   score: number; rank?: number; overdue: boolean; snoozedUntil?: string; agentReply?: string;
-  /** The task as an api ref (`<project>:<line>`, 0-based), and where that row is now. @req FR:agent-thread/ask.ref */
-  ref?: string; row?: string;
+  /** The task title and where that row is now. @req FR:agent-thread/ask.ref */
+  task?: string; row?: string;
+  /** Progress through the flow this ask belongs to. @req FR:quick-triage/flow.order */
+  flowTotal?: number; flowDone?: number;
 }
 export interface AskList { items: ListedAsk[]; total: number; latest?: string; snoozed: number }
 
@@ -62,7 +66,10 @@ const MAX_LINE = 500;
 const MAX_TEXT = 1000;
 const MAX_DETAIL = 20_000;
 const KEY = /^[a-z0-9][a-z0-9._-]{0,79}$/;
-const FIELDS = ['state', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'ref', 'task', 'created', 'updated', 'answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed'] as const;
+const FIELDS = ['state', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'created', 'updated', 'answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed', 'flow', 'seq', 'ref', 'apply', 'applies', 'reftext'] as const;
+const FLOW = /^[a-z0-9][a-z0-9._-]{0,79}$/;
+const actionOk = (t: string) => { try { parseAction(t); return true; } catch { return false; } };
+const refOk = (t: string) => { try { parseTaskRef(t); return true; } catch { return false; } };
 // eslint-disable-next-line no-control-regex
 const CONTROL_RUN = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]+', 'g');
 const INVISIBLE = new RegExp('[\\uFE0E\\uFE0F\\u200B-\\u200F\\u2060\\uFEFF\\u00AD]', 'g');
@@ -90,8 +97,9 @@ export function formatAsk(a: Ask): string {
   const f: [string, string | undefined][] = [
     ['state', a.state], ['ask', a.ask], ['kind', a.kind], ['from', a.from], ['project', a.project], ['why', a.why], ['recommend', a.recommend],
     ['options', a.options?.join(' | ')], ['default', a.default], ['by', a.by], ['reversible', a.reversible ? 'yes' : 'no'], ['link', a.link], ['priority', a.priority],
-    ['effort', a.effort], ['blocks', String(a.blocks)], ['ref', a.ref], ['task', a.task], ['created', a.created], ['updated', a.updated],
+    ['effort', a.effort], ['blocks', String(a.blocks)], ['created', a.created], ['updated', a.updated],
     ['answer', a.answer], ['text', a.text], ['answered', a.answered], ['outcome', a.outcome], ['handled', a.handled], ['note', a.note], ['snoozed', a.snoozed],
+    ['flow', a.flow], ['seq', a.seq === undefined ? undefined : String(a.seq)], ['ref', a.ref], ['reftext', a.refText], ['apply', a.apply], ['applies', a.applies?.join(' | ')],
   ];
   const lines = [`# Ask: ${a.key}`, '', HEADER, '', ...f.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `- ${k}: ${v}`), ...a.extra];
   if (a.detail.trim()) lines.push('', '## Detail', '', a.detail.trim().replace(/^## /gm, '\\## '));
@@ -125,7 +133,12 @@ export function parseAsk(key: string, content: string): Ask {
       case 'effort': if (/^\d{1,3}[mh]$/.test(v)) a.effort = v; break;
       case 'link': if (isHttps(v)) a.link = v; break;
       case 'options': a.options = v.split(' | ').map((o) => o.trim()).filter(Boolean); break;
-      case 'ref': if (/^tasks\/[^:]+\.md:\d+$/.test(v)) a.ref = v; break;
+      case 'flow': if (FLOW.test(v)) a.flow = v; break;
+      case 'seq': if (/^\d{1,2}$/.test(v) && Number(v) >= 1) a.seq = Number(v); break;
+      case 'ref': if (refOk(v)) a.ref = v; break;
+      case 'reftext': a.refText = v; break;
+      case 'apply': if (actionOk(v)) a.apply = v; break;
+      case 'applies': { const parts = v.split(' | ').map((o) => o.trim()); if (parts.every(actionOk)) a.applies = parts; break; }
       case 'by': case 'created': case 'updated': case 'answered': case 'snoozed': if (isoOk(v)) a[m[1]] = v; break;
       default: (a as unknown as Record<string, string>)[m[1]] = v;
     }
@@ -168,7 +181,6 @@ async function save(ctx: LifecycleContext, a: Ask, version: string | null, messa
   await ctx.storage.write(asksPath(a.key), formatAsk(a), { expectedVersion: version, message });
 }
 
-const findRow = (tasks: Task[], line: number): Task | null => { for (const t of tasks) { if (t.line === line) return t; const hit = findRow(t.children, line); if (hit) return hit; } return null; };
 /** The api ref (`<project>:<line>`, 0-based) of a stored `tasks/<file>.md:<line>` (1-based). */
 export const apiRefOf = (stored: string): string | undefined => { const m = /^tasks\/(.+)\.md:(\d+)$/.exec(stored); return m ? `${m[1]}:${Number(m[2]) - 1}` : undefined; };
 
@@ -208,13 +220,21 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
     out.options = input.options.map((o) => (line('option', typeof o === 'string' ? o.replace(/\|/g, '/') : o, 80, false) as string));
   }
   if (input.by !== undefined) { if (!isoOk(input.by)) throw new LifecycleError('by must be an ISO date-time'); out.by = iso(input.by); }
-  if (input.ref !== undefined && (typeof input.ref !== 'string' || !/^[^/\\:\0.][^/\\:\0]*:\d{1,9}$/.test(input.ref) || /^readme:/i.test(input.ref))) throw new LifecycleError('ref must be <project>:<line>');
   if (input.reversible !== undefined) { if (typeof input.reversible !== 'boolean') throw new LifecycleError('reversible must be yes or no'); out.reversible = input.reversible; }
 // eslint-disable-next-line no-control-regex
   if (input.link !== undefined) { const l = typeof input.link === 'string' ? input.link.trim() : ''; if (!isHttps(l) || /[\s\u0000-\u001f]/.test(l) || l.length > 2000) throw new LifecycleError('link must be an https url'); out.link = l; }
   if (input.priority !== undefined) { if (!oneOf(ASK_PRIORITIES, input.priority)) throw new LifecycleError(`priority must be one of ${ASK_PRIORITIES.join(', ')}`); out.priority = input.priority; }
   if (input.effort !== undefined) { if (typeof input.effort !== 'string' || !/^\d{1,3}[mh]$/.test(input.effort)) throw new LifecycleError('effort must look like 5m or 2h'); out.effort = input.effort; }
   if (input.blocks !== undefined) { if (!Number.isInteger(input.blocks) || input.blocks < 0 || input.blocks > 99) throw new LifecycleError('blocks must be 0-99'); out.blocks = input.blocks; }
+  // quick triage fields. @req FR:quick-triage/flow.fields @req FR:quick-triage/flow.actions
+  if (input.flow !== undefined) { if (typeof input.flow !== 'string' || !FLOW.test(input.flow)) throw new LifecycleError('flow must be a slug like triage-oct29'); out.flow = input.flow; }
+  if (input.seq !== undefined) { if (!Number.isInteger(input.seq) || input.seq < 1 || input.seq > 99) throw new LifecycleError('seq must be 1-99'); out.seq = input.seq; }
+  if (input.ref !== undefined) { parseTaskRef(input.ref); out.ref = input.ref as string; }
+  if (input.apply !== undefined) { const v = line('apply', input.apply, MAX_LINE, false)!; parseAction(v); out.apply = v; }
+  if (input.applies !== undefined) {
+    if (!Array.isArray(input.applies) || !input.applies.every((x) => typeof x === 'string')) throw new LifecycleError('applies must list one action per option');
+    out.applies = input.applies.map((x, i) => { const v = line(`applies[${i}]`, x, MAX_LINE, false)!.replace(/\|/g, '/'); parseAction(v); return v; }); // one clean line each; `|` separates the stored list
+  }
   if (input.detail !== undefined) {
     if (typeof input.detail !== 'string' || input.detail.length > MAX_DETAIL) throw new LifecycleError(`detail must be at most ${MAX_DETAIL} characters`);
 // eslint-disable-next-line no-control-regex
@@ -227,23 +247,14 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
 export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, actor: string): Promise<{ key: string; created: boolean }> {
   asksPath(key);
   const fields = checkPut(input);
-  // The task must exist; the stored ref is 1-based with the file path (like inbox entries), with the title so a moved row is still found.
-  if (input.ref !== undefined) {
-    const [name, l] = input.ref.split(':');
-    const path = `tasks/${name}.md`;
-    const line = Number(l);
-    let row: Task | null = null;
-    try { for (const sec of parseProject((await ctx.storage.read(path)).content).sections) row = row ?? findRow(sec.tasks, line); } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
-    if (!row) throw new NotFoundError(`Task not found: ${input.ref}`);
-    fields.ref = `${path}:${line + 1}`;
-    fields.task = inboxTitle(row.text);
-  }
+  if (fields.ref !== undefined) { try { fields.refText = (await readRow(ctx, parseTaskRef(fields.ref))).row[3]; } catch (e) { if (e instanceof NotFoundError) throw e; throw new LifecycleError(`ref: ${e instanceof Error ? e.message : 'no such row'}`); } }
   const now = clock(ctx).toISOString();
   return mutate<{ key: string; created: boolean }>(ctx, key, (cur) => {
     if (!cur) {
       const from = fields.from ?? line('from', actor, 80);
       if (!fields.ask || !fields.kind || !from) throw new LifecycleError('ask, kind and from are required');
       if (fields.kind === 'decide' && !fields.options) throw new LifecycleError('options are required for kind decide');
+      if (fields.applies && fields.applies.length !== (fields.options ?? []).length) throw new LifecycleError('applies must have one entry per option');
       const next: Ask = { key, state: 'open', reversible: false, priority: 'normal', blocks: 0, detail: '', thread: [], extra: [], ...fields, ask: fields.ask, kind: fields.kind, from, created: now, updated: now };
       return { next, message: `Ask: ${key}`, result: { key, created: true } };
     }
@@ -252,6 +263,7 @@ export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, 
     const next: Ask = { ...old, ...fields, key, updated: now };
     if (next.kind !== 'decide') delete next.options;
     if (next.kind === 'decide' && !next.options) throw new LifecycleError('options are required for kind decide');
+    if (next.applies && next.applies.length !== (next.options ?? []).length) throw new LifecycleError('applies must have one entry per option');
     if (old.state === 'done') {
       next.state = 'open';
       for (const k of ['answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed'] as const) delete next[k];
@@ -268,6 +280,39 @@ export async function answerAsk(ctx: LifecycleContext, key: string, input: Answe
   const now = nowD.toISOString();
   const text = input.text === undefined ? undefined : line('text', input.text, MAX_TEXT);
   if (['reply', 'ask', 'option'].includes(input.answer) && !text) throw new LifecycleError(`text is required for ${input.answer}`);
+  // Quick triage: the answer is recorded, then the action runs; a failed action reopens the ask and is a conflict, so a retry runs it once.
+  // @req FR:quick-triage/flow.apply @req FR:quick-triage/flow.text
+  const before = await readAsk(ctx, key);
+  let action: Action | null = null;
+  if (before && before.ask.state === 'open' && before.ask.ref) {
+    const a = before.ask;
+    if (input.answer === 'go' && a.apply) action = parseAction(a.apply);
+    else if (input.answer === 'option' && a.applies && a.options) { const i = a.options.indexOf(text!); if (i >= 0 && a.applies[i]) action = parseAction(a.applies[i]); }
+    else if (a.kind === 'answer' && (input.answer === 'reply' || input.answer === 'ask')) action = { kind: 'note', text: `🙋 ${now.slice(0, 10)}: ${text}` };
+  }
+  const result = await recordAnswer(ctx, key, input, text, now, nowD);
+  if (action && before) {
+    let r;
+    try { r = await applyAction(ctx, { ...parseTaskRef(before.ask.ref!), text: before.ask.refText }, action); }
+    catch (e) {
+      // whatever state the agent left it in, the ask is open again with the reason; the owner's reply line goes too, so a retry writes once
+      const why = e instanceof Error ? e.message : 'failed';
+      await mutate<void>(ctx, key, (cur) => {
+        if (!cur) return { skip: undefined };
+        const a = { ...cur.ask }; a.state = 'open'; delete a.answer; delete a.text; delete a.answered; delete a.outcome; delete a.handled; a.updated = now;
+        a.thread = [...a.thread.filter((l) => l !== `- ${now} you: ${text}`), `- ${now} failed: ${describeAction(action!)} (${why})`];
+        return { next: a, message: `Ask reopened (action failed): ${key}`, result: undefined };
+      });
+      throw e;
+    }
+    const applied = r.changed ? `${describeAction(action)} → ${r.after ?? r.before ?? ''}`.trim() : `${describeAction(action)} (${r.message ?? 'no change'})`;
+    await mutate<void>(ctx, key, (cur) => (cur ? { next: { ...cur.ask, thread: [...cur.ask.thread, `- ${now} applied: ${applied}`] }, message: `Ask applied: ${key}`, result: undefined } : { skip: undefined }));
+  }
+  return result;
+}
+
+/** The owner's answer on the ask file itself. */
+async function recordAnswer(ctx: LifecycleContext, key: string, input: AnswerInput, text: string | undefined, now: string, nowD: Date): Promise<{ changed: boolean }> {
   return mutate<{ changed: boolean }>(ctx, key, (cur) => {
     if (!cur) throw new NotFoundError(`Ask not found: ${key}`);
     const a = { ...cur.ask };
@@ -388,18 +433,31 @@ export async function listAsks(ctx: LifecycleContext, o: { state?: (typeof LIST_
   const snoozed = (a: Ask) => !!a.snoozed && Date.parse(a.snoozed) > now.getTime();
   const lastReply = (a: Ask) => { const m = a.thread.length ? /^- \S+ (\S+): (.*)$/.exec(a.thread[a.thread.length - 1]) : null; return m && m[1] !== 'you' ? m[2] : undefined; };
   // @req FR:agent-thread/ask.ref: asks with a task report it as an api ref, and where that row is now.
-  const rowOf = await currentRows(ctx, all.filter((a) => a.ref && a.task).map((a) => ({ id: a.key, ref: a.ref!, task: a.task! }))).catch(() => new Map<string, string>());
+  const rowOf = await currentRows(ctx, all.filter((a) => a.ref && a.refText).map((a) => { const r = parseTaskRef(a.ref!); return { id: a.key, ref: `${r.path}:${r.line + 1}`, task: inboxTitle(a.refText!) }; })).catch(() => new Map<string, string>());
   const decorate = (a: Ask): ListedAsk => {
-    const { extra, thread, ref, ...rest } = a;
+    const { extra, thread, ...rest } = a;
     void extra;
     const agentReply = a.state === 'open' ? lastReply({ ...a, thread }) : undefined;
-    const api = ref ? apiRefOf(ref) : undefined;
+    const flow = a.flow ? all.filter((x) => x.flow === a.flow) : [];
+    const progress = a.flow ? { flowTotal: flow.length, flowDone: flow.filter((x) => x.state !== 'open').length } : {};
     const cur = rowOf.get(a.key);
-    return { ...rest, ...(api ? { ref: api } : {}), ...(cur ? { row: apiRefOf(cur) } : {}), score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}) };
+    return { ...rest, ...(a.refText ? { task: inboxTitle(a.refText) } : {}), ...(cur ? { row: apiRefOf(cur) } : {}), score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}), ...progress };
+  };
+  /** A flow's questions sit together, by seq, where its best-scored question ranks. @req FR:quick-triage/flow.order */
+  const flowsTogether = (sorted: Ask[]): Ask[] => {
+    const out: Ask[] = [];
+    const seen = new Set<string>();
+    for (const a of sorted) {
+      if (!a.flow) { out.push(a); continue; }
+      if (seen.has(a.flow)) continue;
+      seen.add(a.flow);
+      out.push(...sorted.filter((x) => x.flow === a.flow).sort((x, y) => (x.seq ?? 99) - (y.seq ?? 99) || x.key.localeCompare(y.key)));
+    }
+    return out;
   };
   let rows: Ask[];
   if (state === 'open') {
-    rows = all.filter((a) => a.state === 'open' && !snoozed(a)).sort((a, b) => scoreAsk(b, now) - scoreAsk(a, now) || (Date.parse(a.by ?? '') || Infinity) - (Date.parse(b.by ?? '') || Infinity) || a.created.localeCompare(b.created) || a.key.localeCompare(b.key));
+    rows = flowsTogether(all.filter((a) => a.state === 'open' && !snoozed(a)).sort((a, b) => scoreAsk(b, now) - scoreAsk(a, now) || (Date.parse(a.by ?? '') || Infinity) - (Date.parse(b.by ?? '') || Infinity) || a.created.localeCompare(b.created) || a.key.localeCompare(b.key)));
   } else if (state === 'snoozed') rows = all.filter((a) => a.state === 'open' && snoozed(a)).sort((a, b) => (a.snoozed ?? '').localeCompare(b.snoozed ?? ''));
   else if (state === 'answered') rows = all.filter((a) => a.state === 'answered').sort((a, b) => (a.answered ?? '').localeCompare(b.answered ?? ''));
   else if (state === 'done') rows = all.filter((a) => a.state === 'done').sort((a, b) => b.updated.localeCompare(a.updated));
