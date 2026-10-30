@@ -178,7 +178,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'asks.put': {
     operationId: 'putAsk', summary: 'Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask',
-    desc: { ask: 'The one exact ask, one line. Required on create', kind: 'Required on create', from: "Agent name; defaults to the token's name (the owner session writes as owner)", default: 'What happens if the owner stays silent', by: 'Deadline (ISO)', reopen: 'Open a done ask again', detail: 'Free markdown shown only when the owner expands the ask', flow: 'Quick triage: the flow this question belongs to (slug)', seq: 'Its place in the flow (1-99)', ref: 'The task row it is about (project:line); must exist', apply: 'Action Stack runs on go: set prop=value…, due Mon d, suspend 7d, skip, complete, start, resume, note text', applies: 'One action per option (- for none)' },
+    desc: { ask: 'The one exact ask, one line. Required on create', kind: 'Required on create', from: "Agent name; defaults to the token's name (the owner session writes as owner)", default: 'What happens if the owner stays silent', by: 'Deadline (ISO)', reopen: 'Open a done ask again', detail: 'Free markdown shown only when the owner expands the ask', flow: 'Quick triage: the flow this question belongs to (slug)', seq: 'Its place in the flow (1-99)', ref: 'The task this ask belongs to (project:line); the task must exist', apply: 'Action Stack runs on go: set prop=value…, due Mon d, suspend 7d, skip, complete, start, resume, note text', applies: 'One action per option (- for none)' },
     responses: ok('Written', { type: 'object', properties: { key: { type: 'string' }, created: { type: 'boolean' } } }),
   },
   'asks.answer': {
@@ -214,6 +214,20 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { cwd: 'Absolute path to an existing folder; default: the served folder. Not allowed with agent, ref, or project (a task session always runs in the served folder)', text: 'The prompt', agent: 'Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task (404 when it has no file)' },
     responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string', description: 'Set for a task or project session' }, title: { type: 'string', description: 'Set for a task or project session: `<agent> · <task> · <ref>`' } } }, '202'),
   },
+  'inbox.reply': {
+    operationId: 'replyFromAgent', summary: "An agent's reply on a task (tasks/inbox, from: agent, named by the token). Tokens only: the owner session gets 403",
+    desc: { text: 'One line to the owner; secrets are redacted', expect: 'Expected current row text; 409 when the row differs' },
+    responses: ok('Written', { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' } } }, '201'),
+  },
+  'tasks.thread': {
+    operationId: 'getTaskThread', summary: "One task's thread in time order: the owner's messages, the agent's replies, its asks, the review verdict, agent-owned subtasks; plus the task's newest session when a runner exists",
+    responses: ok('Thread', { type: 'object', properties: { items: { type: 'array', items: ref('ThreadItem') }, session: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, state: { type: 'string' } } }, review: ref('Review') } }),
+  },
+  'tasks.assign': {
+    operationId: 'assignTask', summary: 'Hand the task to its agent: claims the row (log + in progress) and starts a session with the assign prompt. Owner session only; 404 without a runner; 403 for a 🙋 row',
+    desc: { agent: 'Agent slug; default: the active agent' },
+    responses: ok('Assigned', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string' }, title: { type: 'string' }, claimed: { type: 'boolean' } } }, '202'),
+  },
   'team.list': {
     operationId: 'listTeam', summary: 'Agents defined per project folder (tasks/agents/<slug>.md and project Agents metadata); with project, the agents that cover it, active first',
     desc: { project: 'Project name: only the agents whose scope covers it, most specific first', section: 'Section heading, for section-scoped agents' },
@@ -231,6 +245,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'sessions.prompt': {
     operationId: 'promptSession', summary: 'Resume a session with a prompt; updates stream on /sessions/{id}/events. Owner session only: 403 for tokens; 409 when the session is active elsewhere or already running',
+    desc: { text: 'The prompt', ref: 'The task the follow-up is about: the agent persona (and model) is applied again, since a resumed session carries no system prompt', agent: 'Agent slug for the persona; default: the active agent for the task' },
     responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true } } }, '202'),
   },
   'sessions.cancel': {
@@ -415,7 +430,8 @@ export function buildOpenApi(): J {
             answer: { type: 'string', enum: [...ASK_ANSWERS] }, text: { type: 'string' }, answered: { type: 'string', format: 'date-time' }, outcome: { type: 'string', enum: [...ASK_OUTCOMES] },
             handled: { type: 'string' }, note: { type: 'string' }, snoozed: { type: 'string', format: 'date-time' }, detail: { type: 'string' },
             score: { type: 'integer' }, rank: { type: 'integer' }, overdue: { type: 'boolean' }, snoozedUntil: { type: 'string', format: 'date-time' }, agentReply: { type: 'string' },
-            flow: { type: 'string' }, seq: { type: 'integer' }, ref: { type: 'string' }, apply: { type: 'string' }, applies: { type: 'array', items: { type: 'string' } }, flowTotal: { type: 'integer' }, flowDone: { type: 'integer' }, refText: { type: 'string' },
+            flow: { type: 'string' }, seq: { type: 'integer' }, ref: ref('Ref'), apply: { type: 'string' }, applies: { type: 'array', items: { type: 'string' } }, flowTotal: { type: 'integer' }, flowDone: { type: 'integer' }, refText: { type: 'string' },
+            row: ref('Ref'), task: { type: 'string' },
           },
         },
         TeamAgent: {
@@ -423,6 +439,13 @@ export function buildOpenApi(): J {
           properties: {
             slug: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, scope: { type: 'array', items: { type: 'string' } }, model: { type: 'string' },
             tools: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['long-running', 'ad-hoc'] }, prompt: { type: 'string' }, defined: { type: 'boolean' }, projects: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        ThreadItem: {
+          type: 'object',
+          properties: {
+            at: { type: 'string' }, kind: { type: 'string', enum: ['owner', 'agent', 'ask', 'review', 'subtask'] }, id: { type: 'string' }, text: { type: 'string' }, state: { type: 'string' }, agent: { type: 'string' },
+            ask: ref('Ask'), verdict: { type: 'string' }, plan: { type: 'string' }, estimate: { type: 'string' }, ref: ref('Ref'), done: { type: 'boolean' },
           },
         },
         Review: {

@@ -7,6 +7,7 @@
 import { LifecycleError, type LifecycleContext } from './lifecycle';
 import { ConflictError, NotFoundError, writeAll, type FileWrite } from './storage';
 import { redact } from './triage';
+import { currentRows, inboxTitle } from './inbox';
 import { applyAction, describe as describeAction, parseAction, parseTaskRef, readRow, type Action } from './ask-actions';
 
 export const ASK_KINDS = ['approve', 'decide', 'review', 'go-do', 'answer'] as const;
@@ -50,6 +51,8 @@ export interface HandleInput { outcome: AskOutcome; note?: string; reply?: strin
 
 export interface ListedAsk extends Omit<Ask, 'extra' | 'thread'> {
   score: number; rank?: number; overdue: boolean; snoozedUntil?: string; agentReply?: string;
+  /** The task title and where that row is now. @req FR:agent-thread/ask.ref */
+  task?: string; row?: string;
   /** Progress through the flow this ask belongs to. @req FR:quick-triage/flow.order */
   flowTotal?: number; flowDone?: number;
 }
@@ -178,6 +181,9 @@ async function save(ctx: LifecycleContext, a: Ask, version: string | null, messa
   await ctx.storage.write(asksPath(a.key), formatAsk(a), { expectedVersion: version, message });
 }
 
+/** The api ref (`<project>:<line>`, 0-based) of a stored `tasks/<file>.md:<line>` (1-based). */
+export const apiRefOf = (stored: string): string | undefined => { const m = /^tasks\/(.+)\.md:(\d+)$/.exec(stored); return m ? `${m[1]}:${Number(m[2]) - 1}` : undefined; };
+
 /** Retries a read-modify-write when another writer got in between. */
 type Step<T> = { next: Ask; message: string; result: T } | { skip: T };
 async function mutate<T>(ctx: LifecycleContext, key: string, fn: (cur: { ask: Ask; version: string } | null) => Step<T>): Promise<T> {
@@ -241,7 +247,7 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
 export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, actor: string): Promise<{ key: string; created: boolean }> {
   asksPath(key);
   const fields = checkPut(input);
-  if (fields.ref !== undefined) { try { fields.refText = (await readRow(ctx, parseTaskRef(fields.ref))).row[3]; } catch (e) { throw new LifecycleError(`ref: ${e instanceof Error ? e.message : 'no such row'}`); } }
+  if (fields.ref !== undefined) { try { fields.refText = (await readRow(ctx, parseTaskRef(fields.ref))).row[3]; } catch (e) { if (e instanceof NotFoundError) throw e; throw new LifecycleError(`ref: ${e instanceof Error ? e.message : 'no such row'}`); } }
   const now = clock(ctx).toISOString();
   return mutate<{ key: string; created: boolean }>(ctx, key, (cur) => {
     if (!cur) {
@@ -426,13 +432,16 @@ export async function listAsks(ctx: LifecycleContext, o: { state?: (typeof LIST_
   const latest = all.map((a) => a.updated).sort().pop();
   const snoozed = (a: Ask) => !!a.snoozed && Date.parse(a.snoozed) > now.getTime();
   const lastReply = (a: Ask) => { const m = a.thread.length ? /^- \S+ (\S+): (.*)$/.exec(a.thread[a.thread.length - 1]) : null; return m && m[1] !== 'you' ? m[2] : undefined; };
+  // @req FR:agent-thread/ask.ref: asks with a task report it as an api ref, and where that row is now.
+  const rowOf = await currentRows(ctx, all.filter((a) => a.ref && a.refText).map((a) => { const r = parseTaskRef(a.ref!); return { id: a.key, ref: `${r.path}:${r.line + 1}`, task: inboxTitle(a.refText!) }; })).catch(() => new Map<string, string>());
   const decorate = (a: Ask): ListedAsk => {
     const { extra, thread, ...rest } = a;
     void extra;
     const agentReply = a.state === 'open' ? lastReply({ ...a, thread }) : undefined;
     const flow = a.flow ? all.filter((x) => x.flow === a.flow) : [];
     const progress = a.flow ? { flowTotal: flow.length, flowDone: flow.filter((x) => x.state !== 'open').length } : {};
-    return { ...rest, score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}), ...progress };
+    const cur = rowOf.get(a.key);
+    return { ...rest, ...(a.refText ? { task: inboxTitle(a.refText) } : {}), ...(cur ? { row: apiRefOf(cur) } : {}), score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}), ...progress };
   };
   /** A flow's questions sit together, by seq, where its best-scored question ranks. @req FR:quick-triage/flow.order */
   const flowsTogether = (sorted: Ask[]): Ask[] => {

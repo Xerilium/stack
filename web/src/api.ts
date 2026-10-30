@@ -3,6 +3,7 @@ import type { DaySched } from './schedule';
 import type { AskList, Send } from './asks';
 import type { CostReport, SessionList, Turn } from './sessions';
 import type { ReviewItem, TeamAgent } from './team';
+import type { Thread } from './thread';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
 
 /** @req FR:web-app/api.client */
@@ -68,11 +69,14 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     sessions: () => call<SessionList>('/sessions?limit=200'),
     sessionCost: (days = 7) => call<CostReport>(`/sessions/cost?days=${days}`),
     sessionMessages: (id: string) => (await0(call<{ items: Turn[] }>(`/sessions/${encodeURIComponent(id)}/messages?limit=60`))),
-    promptSession: (id: string, text: string) => call<{ runId: string; sessionId: string | null }>(`/sessions/${encodeURIComponent(id)}/prompt`, { text }),
+    promptSession: (id: string, text: string, extra: { ref?: string; agent?: string } = {}) => call<{ runId: string; sessionId: string | null }>(`/sessions/${encodeURIComponent(id)}/prompt`, { text, ...extra }),
     newSession: (cwd: string | undefined, text: string, extra: { agent?: string; ref?: string; project?: string } = {}) => call<{ runId: string; sessionId: string | null; agent?: string; title?: string }>('/sessions', { ...(cwd ? { cwd } : {}), text, ...extra }),
     /** @req FR:agent-team/review.api */
     team: async () => (await call<{ items: TeamAgent[] }>('/team')).items,
     reviews: async (project: string) => (await call<{ items: ReviewItem[] }>(`/reviews?project=${encodeURIComponent(project)}`)).items,
+    /** @req FR:agent-thread/thread.read @req FR:agent-thread/thread.assign */
+    thread: (ref: string) => call<Thread>(`/tasks/${encodeURIComponent(ref)}/thread`),
+    assign: (ref: string, agent?: string) => call<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }>(`/tasks/${encodeURIComponent(ref)}/assign`, { ...(agent ? { agent } : {}) }),
     review: (ref: string, agent?: string) => call<{ runId: string; sessionId: string | null; agent: string }>('/tasks/review', { ref, ...(agent ? { agent } : {}) }),
     cancelSession: (id: string) => call<{ changed: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, {}),
     /** Repo revision for change-driven polling (null: the host has none). @req FR:live-deploy/web.poll */

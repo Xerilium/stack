@@ -1,7 +1,7 @@
 /** @req FR:quick-triage/flow.fields @req FR:quick-triage/flow.actions @req FR:quick-triage/flow.apply @req FR:quick-triage/flow.text @req FR:quick-triage/flow.order */
 import { answerAsk, formatAsk, listAsks, parseAsk, putAsk, type Ask } from '../../src/core/asks';
 import { parseAction } from '../../src/core/ask-actions';
-import { ConflictError, MemoryStorage } from '../../src/core/storage';
+import { ConflictError, MemoryStorage, NotFoundError } from '../../src/core/storage';
 import { LifecycleError } from '../../src/core/lifecycle';
 
 const NOW = new Date('2026-10-29T14:00:00Z');
@@ -32,7 +32,7 @@ describe('flow fields', () => {
     const put = (over: object) => putAsk(ctx, 'q', { ...base, ask: 'Q', kind: 'approve', ...over }, 'cos');
     await expect(put({ flow: 'Bad Flow' })).rejects.toThrow(LifecycleError);
     await expect(put({ seq: 0 })).rejects.toThrow(LifecycleError);
-    await expect(put({ ref: 'finance:99', apply: 'skip' })).rejects.toThrow(LifecycleError);
+    await expect(put({ ref: 'finance:99', apply: 'skip' })).rejects.toThrow(NotFoundError); // a missing row is a 404 (FR:agent-thread/ask.ref)
     await expect(put({ ref: 'finance:5', apply: 'delete' })).rejects.toThrow(LifecycleError);
     await expect(put({ ref: 'finance:5', kind: 'decide', options: ['A', 'B'], applies: ['skip'] })).rejects.toThrow(LifecycleError);
     await expect(put({ ref: 'finance:5', apply: 'set priority=🚨 effort=🟡' })).resolves.toMatchObject({ created: true });

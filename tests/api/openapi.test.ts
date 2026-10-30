@@ -8,6 +8,9 @@ import { buildOpenApi, renderOpenApi } from '../../src/api/openapi';
 import { parseRef } from '../../src/api/validate';
 import { ENUMS, MAX_STR, type Spec } from '../../src/api/validate';
 import { MemoryStorage } from '../../src/core/storage';
+import { createAuth, createTokenService, MemoryTokenStore } from '../../src/api';
+import { createRunManager, type AgentDriver, type Run, type Update } from '../../src/agents';
+import { putAgent } from '../../src/core/agents';
 
 const FILE = join(__dirname, '../../docs/api/openapi.yaml');
 const text = readFileSync(FILE, 'utf8');
@@ -308,7 +311,42 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('team.list', 'GET', '/team?project=alpha', undefined, 200);
     await go('reviews.list', 'GET', '/reviews?project=alpha', undefined, 200);
     await go('tasks.review', 'POST', '/tasks/review', { ref: 'alpha:4' }, 404);
+    // @req FR:agent-thread/thread.read
+    await go('inbox.reply', 'POST', '/inbox/reply', { ref: 'alpha:4', text: 'x' }, 403);
+    await go('tasks.thread', 'GET', `/tasks/${encodeURIComponent(ref)}/thread`, undefined, 200);
+    await go('tasks.assign', 'POST', `/tasks/${encodeURIComponent(ref)}/assign`, {}, 404);
     expect([...seen].sort()).toEqual(ROUTES.map((r) => r.name).sort());
+  });
+
+  // @req FR:agent-thread/thread.assign: the documented 201 (`{id, path}`) and 202 (`{runId, sessionId, agent, title, claimed}`) bodies, not only the error paths.
+  it('thread success bodies conform: inbox.reply 201 (agent token) and tasks.assign 202 (owner, with a runner)', async () => {
+    const st = new MemoryStorage();
+    await st.write('tasks/alpha.md', '# Alpha\n\n## Active\n\n- [ ] First task 🟢\n');
+    const ctx = { storage: st, now: () => NOW };
+    await putAgent(ctx, 'cos', { name: 'CoS', scope: ['*'] });
+    const driver: AgentDriver = {
+      listSessions: async () => [], getMessages: async () => [],
+      async prompt() { const updates = (async function* (): AsyncGenerator<Update> { yield { type: 'session', sessionId: 'a1b2c3d4-0000-0000-0000-000000000001' }; yield { type: 'done', stopReason: 'end_turn', cost: { usd: 0.1, tokens: 1 }, turns: 1, durationMs: 1 }; })(); return { id: 'run-1', sessionId: null, updates } as Run; },
+      cancel: async () => false,
+    };
+    const agents = createRunManager({ driver, ctx, cwd: '/served' });
+    const tokens = createTokenService({ store: new MemoryTokenStore(), now: () => NOW });
+    const auth = createAuth({ owners: [], tokens });
+    const viaToken = auth.wrap(createApiHandler({ storage: st, authorize: auth.authorize, now: () => NOW, agents }));
+    const viaOwner = createApiHandler({ storage: st, authorize: () => true, now: () => NOW, agents });
+    const tok = (await tokens.create({ name: 'cid-manager', scopes: ['tasks:write'] as never })).token;
+    const send = async (h: typeof viaToken, path: string, body: unknown, bearer?: string, hdr: Record<string, string> = {}) => {
+      const res = await h(new Request(`https://x.test/api${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...hdr, ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) }));
+      const t = await res.text();
+      return { status: res.status, body: t ? JSON.parse(t) : undefined };
+    };
+    const reply = await send(viaToken, '/inbox/reply', { ref: 'alpha:4', text: 'On it.' }, tok);
+    expect(reply.status).toBe(201);
+    check('inbox.reply', reply);
+    const assign = await send(viaOwner, '/tasks/alpha%3A4/assign', {}, undefined, OWNER_HDR);
+    expect(assign.status).toBe(202);
+    expect(assign.body).toMatchObject({ agent: 'cos', claimed: true });
+    check('tasks.assign', assign);
   });
 
   it('accepts every documented enum value and rejects values outside it', async () => {

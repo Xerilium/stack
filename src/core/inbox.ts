@@ -15,8 +15,11 @@ export type InboxState = 'open' | 'handled';
 export const INBOX_KINDS = ['reply', 'decision'] as const;
 export const INBOX_STATES = ['open', 'handled', 'all'] as const;
 
+export type InboxFrom = 'owner' | 'agent';
 export interface InboxEntry {
   id: string; at: string; state: InboxState; kind: InboxKind; to: InboxTo;
+  /** Who wrote it: the owner (v1 default) or an agent (`agent` names it). @req FR:agent-thread/reply.entry */
+  from?: InboxFrom; agent?: string;
   /** `tasks/<file>.md:<line>`, 1-based. */
   ref: string; task: string; text: string;
   handled?: string; note?: string;
@@ -38,7 +41,7 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_RUN = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 const INVISIBLE = /[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g;
-const KEYS = ['at', 'state', 'kind', 'to', 'ref', 'task', 'text', 'handled', 'note'] as const;
+const KEYS = ['at', 'state', 'kind', 'to', 'from', 'agent', 'ref', 'task', 'text', 'handled', 'note'] as const;
 const HEAD = /^## (in-[0-9TZ]+-[0-9a-f]{4,})\s*$/;
 const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
 
@@ -50,7 +53,9 @@ export const INBOX_HEADER = (title: string): string =>
 
 /** One entry as markdown; ends with a blank line. */
 export function formatEntry(e: InboxEntry): string {
-  const lines = [`## ${e.id}`, '', `- at: ${e.at}`, `- state: ${e.state}`, `- kind: ${e.kind}`, `- to: ${e.to}`, `- ref: ${e.ref}`, `- task: ${e.task}`, `- text: ${e.text}`];
+  const lines = [`## ${e.id}`, '', `- at: ${e.at}`, `- state: ${e.state}`, `- kind: ${e.kind}`, `- to: ${e.to}`];
+  if (e.from === 'agent') { lines.push('- from: agent'); if (e.agent) lines.push(`- agent: ${e.agent}`); }
+  lines.push(`- ref: ${e.ref}`, `- task: ${e.task}`, `- text: ${e.text}`);
   if (e.handled) lines.push(`- handled: ${e.handled}`);
   if (e.note) lines.push(`- note: ${e.note}`);
   return [...lines, ...e.extra, ''].join('\n');
@@ -82,6 +87,7 @@ function blocks(content: string): Block[] {
   for (const b of out) {
     if (b.entry.handled === undefined) delete b.entry.handled;
     if (b.entry.note === undefined) delete b.entry.note;
+    if (b.entry.from !== 'agent') { delete b.entry.from; delete b.entry.agent; }
   }
   return out;
 }
@@ -171,6 +177,17 @@ function makeRoom(content: string, need: number): string {
  * @req FR:agent-inbox/inbox.send @req FR:agent-inbox/inbox.id @req FR:agent-inbox/inbox.cap
  */
 export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect?: string): Promise<{ id: string; path: string }> {
+  return appendEntry(ctx, ref, text, kind, expect, {});
+}
+
+/** An agent's reply on a task: `from: agent`, to the owner, never a queue item for anyone (state handled). @req FR:agent-thread/reply.entry */
+export async function replyFromAgent(ctx: LifecycleContext, ref: TaskRef, text: string, agent: string, expect?: string): Promise<{ id: string; path: string }> {
+  const name = typeof agent === 'string' ? field(agent).slice(0, 80) : '';
+  if (!name) throw new LifecycleError('agent is required');
+  return appendEntry(ctx, ref, text, 'reply', expect, { from: 'agent', agent: name });
+}
+
+async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect: string | undefined, who: { from?: InboxFrom; agent?: string }): Promise<{ id: string; path: string }> {
   if (typeof text !== 'string') throw new LifecycleError('text must be a string');
   const t = text.replace(INVISIBLE, '').trim();
   if (t === '' || t.length > MAX_TEXT) throw new LifecycleError(`text must be 1-${MAX_TEXT} characters`);
@@ -190,8 +207,9 @@ export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: str
     const used = new Set(cur ? parseInbox(cur.content).map((e) => e.id) : []);
     let id = newId(now);
     while (used.has(id)) id = newId(now);
+    const agentSide = who.from === 'agent';
     const entry = formatEntry({
-      id, at: now.toISOString(), state: 'open', kind, to: toOf(row.text), ref: `${ref.path}:${ref.line + 1}`,
+      id, at: now.toISOString(), state: agentSide ? 'handled' : 'open', kind, to: agentSide ? 'human' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
       task: inboxTitle(row.text), text: field(t), extra: [],
     });
     const head = cur ? makeRoom(cur.content, entry.length + 1).replace(/\n*$/, '\n\n') : INBOX_HEADER(field(project.title || baseName(ref.path)));

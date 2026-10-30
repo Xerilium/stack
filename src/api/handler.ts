@@ -15,11 +15,11 @@ import type { AuxFiles, Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
 import type { CalendarProvider } from '../calendar';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
-import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, sendToInbox, type InboxKind } from '../core/inbox';
+import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
 import type { AgentRuns } from '../agents/runs';
 import { agentFor, listTeam } from '../core/agents';
-import { listReviews, reviewTask, startAgentRun } from '../agents/team';
+import { agentPromptOptions, assignTask, listReviews, reviewTask, startAgentRun, taskThread } from '../agents/team';
 import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 import { generateSummaries } from '../core/summaries';
@@ -167,13 +167,14 @@ const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: 
 const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true } } satisfies Record<string, Spec>, required: ['id'] };
 const ASK_PUT_BODY = {
   schema: {
+    ref: REF,
     ask: { t: 'str', max: 200, line: true }, kind: { t: 'enum', values: ASK_KINDS }, from: { t: 'str', max: 80, line: true }, project: { t: 'str', max: 80, line: true },
     why: { t: 'str', max: 500, line: true }, recommend: { t: 'str', max: 200, line: true }, options: { t: 'strs', max: 4, commas: true }, default: { t: 'str', max: 200, line: true },
     by: { t: 'str', max: 40, line: true, pattern: /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2})?)?$/ }, reversible: { t: 'bool' },
     link: { t: 'str', max: 2000, line: true, pattern: /^https:\/\/[^\s]+$/ }, priority: { t: 'enum', values: ASK_PRIORITIES },
     effort: { t: 'str', max: 4, line: true, pattern: /^\d{1,3}[mh]$/ }, blocks: { t: 'int', min: 0, max: 99 }, detail: { t: 'str', max: 20_000 }, reopen: { t: 'bool' },
     // quick triage. @req FR:quick-triage/api.put
-    flow: { t: 'str', max: 80, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,79}$/ }, seq: { t: 'int', min: 1, max: 99 }, ref: { t: 'str', max: 200, line: true }, apply: { t: 'str', max: 500, line: true }, applies: { t: 'strs', max: 4, commas: false },
+    flow: { t: 'str', max: 80, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,79}$/ }, seq: { t: 'int', min: 1, max: 99 }, apply: { t: 'str', max: 500, line: true }, applies: { t: 'strs', max: 4, commas: false },
   } satisfies Record<string, Spec>,
   required: [] as string[],
 };
@@ -188,13 +189,18 @@ const ASK_HANDLE_BODY = {
 const UUID: Spec = { t: 'str', required: true, max: 36, line: true, pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i };
 const SESSIONS_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 200 } };
 const COST_Q: Record<string, Spec> = { days: { t: 'int', min: 1, max: 90 } };
-const PROMPT_BODY = { schema: { text: { t: 'str', required: true, max: 4000 } } satisfies Record<string, Spec>, required: ['text'] };
 const SLUG: Spec = { t: 'str', max: 40, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,39}$/ };
+/** `ref`/`agent` on a follow-up re-apply the task persona. @req FR:agent-thread/thread.ask */
+const PROMPT_BODY = { schema: { text: { t: 'str', required: true, max: 4000 }, ref: REF, agent: SLUG } satisfies Record<string, Spec>, required: ['text'] };
 /** `cwd` is optional since agent-team: a session for a task runs in the served folder. @req FR:agent-team/talk.api */
 const NEW_SESSION_BODY = { schema: { cwd: { t: 'str', max: 1000, line: true }, text: { t: 'str', required: true, max: 4000 }, agent: SLUG, ref: REF, project: { t: 'str', max: 200, line: true, noReadme: true } } satisfies Record<string, Spec>, required: ['text'] };
 const TEAM_Q: Record<string, Spec> = { project: { t: 'str', max: 200, line: true }, section: { t: 'str', max: 200, line: true } };
 const REVIEWS_Q: Record<string, Spec> = { project: { t: 'str', required: true, max: 200, line: true } };
 const REVIEW_BODY = { schema: { ref: { t: 'ref', required: true }, agent: SLUG } satisfies Record<string, Spec>, required: ['ref'] };
+const REPLY_BODY = { schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, expect: { t: 'str', max: 2000, line: true } } satisfies Record<string, Spec>, required: ['ref', 'text'] };
+const ASSIGN_BODY = { schema: { agent: SLUG } satisfies Record<string, Spec>, required: [] as string[] };
+/** The ref in a path segment (`/tasks/{ref}/...`). */
+const refParam = (c: Ctx) => { const r = parseRef(c.params[0]); if (!r) throw invalid([{ field: 'ref', message: 'Must be project:line' }]); return r; };
 const ASK_Q: Record<string, Spec> = { state: { t: 'enum', values: LIST_STATES }, limit: { t: 'int', min: 1, max: 200 } };
 /** Inbox refs are stored 1-based with the file path; the api speaks `name:line` (0-based). */
 const apiRef = (fileRef: string) => { const m = /^(tasks\/.+\.md):(\d+)$/.exec(fileRef); return m ? formatRef({ path: m[1], line: Number(m[2]) - 1 }) : fileRef; };
@@ -492,10 +498,10 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/asks/{key}', name: 'asks.put', body: ASK_PUT_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<AskPut>(await readBody(c.req), ASK_PUT_BODY.schema, ASK_PUT_BODY.required);
+      const { ref, ...b } = validate<AskPut & { ref?: ReturnType<typeof parseRef> }>(await readBody(c.req), ASK_PUT_BODY.schema, ASK_PUT_BODY.required);
       // A token names its agent (the token's name); the owner session writes as `owner`.
       const actor = caller(c.req).actor;
-      return json(200, await putAsk(c.life, c.params[0], b, actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor));
+      return json(200, await putAsk(c.life, c.params[0], { ...b, ...(ref ? { ref: formatRef(ref) } : {}) }, actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor));
     },
   },
   {
@@ -571,12 +577,14 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/sessions/{id}/prompt', name: 'sessions.prompt', body: PROMPT_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ text: string }>(await readBody(c.req), PROMPT_BODY.schema, PROMPT_BODY.required);
+      const b = validate<{ text: string; ref?: ReturnType<typeof parseRef>; agent?: string }>(await readBody(c.req), PROMPT_BODY.schema, PROMPT_BODY.required);
       const id = sessionId(c);
       const agents = agentsOf(c);
       ownerOnly(c, 'Only the owner can message an agent');
       if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
-      return json(202, await agents.prompt({ sessionId: id, text: b.text }));
+      // A follow-up on a task carries the persona again (a resumed session gets no system prompt otherwise). @req FR:agent-thread/thread.ask
+      const options = b.ref || b.agent ? (await agentPromptOptions(c.life, { ...(b.ref ? { ref: formatRef(b.ref) } : {}), ...(b.agent ? { agent: b.agent } : {}) })).options : undefined;
+      return json(202, await agents.prompt({ sessionId: id, text: b.text, ...(options ? { options } : {}) }));
     },
   },
   {
@@ -606,6 +614,34 @@ export const ROUTES: Route[] = [
         c.deps.onError?.(e);
         return json(200, { configured: true, items: [], error: 'Calendar unavailable' });
       }
+    },
+  },
+  {
+    // @req FR:agent-thread/reply.entry: tokens only, so the page never writes in an agent's voice.
+    method: 'POST', doc: '/inbox/reply', name: 'inbox.reply', body: REPLY_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; expect?: string }>(await readBody(c.req), REPLY_BODY.schema, REPLY_BODY.required);
+      if (isOwner(c.req)) throw new ApiError('forbidden', 'Only an agent replies as an agent');
+      const who = c.token?.name ?? caller(c.req).actor;
+      return json(201, await replyFromAgent(c.life, b.ref, b.text, who, b.expect));
+    },
+  },
+  {
+    // @req FR:agent-thread/thread.read
+    method: 'GET', doc: '/tasks/{ref}/thread', name: 'tasks.thread',
+    async run(c) { readQuery(c.url, []); return json(200, await taskThread(c.life, c.deps.agents, formatRef(refParam(c)))); },
+  },
+  {
+    // @req FR:agent-thread/thread.assign
+    method: 'POST', doc: '/tasks/{ref}/assign', name: 'tasks.assign', body: ASSIGN_BODY,
+    async run(c) {
+      noQuery(c);
+      const ref = refParam(c);
+      const agents = agentsOf(c);
+      ownerOnly(c, 'Only the owner assigns a task');
+      const b = validate<{ agent?: string }>(await readBody(c.req), ASSIGN_BODY.schema, ASSIGN_BODY.required);
+      return json(202, await assignTask(agents, c.life, formatRef(ref), b.agent));
     },
   },
   {

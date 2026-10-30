@@ -2,8 +2,8 @@ import type { Page, Route } from '@playwright/test';
 
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
 export interface MockAgent { ref: string; project: string; title: string; text: string; state: string; prs: { url: string; repo: string; number: number; state?: string; checks?: string; title?: string; updatedAt?: string }[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }
-export interface MockInbox { id: string; at: string; project: string; ref: string; task: string; kind: string; to: string; text: string; state: string; row?: string }
-export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string; flow?: string; seq?: number; flowTotal?: number; flowDone?: number; ref?: string; apply?: string; applies?: string[] }
+export interface MockInbox { id: string; at: string; project: string; ref: string; task: string; kind: string; to: string; text: string; state: string; row?: string; from?: 'owner' | 'agent'; agent?: string }
+export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; row?: string; task?: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string; flow?: string; seq?: number; flowTotal?: number; flowDone?: number; ref?: string; apply?: string; applies?: string[] }
 export interface MockSession { id: string; title: string; project: string; cwd: string; branch?: string; lastActive: string; state: string; cost: { usd: number; tokens: number }; prs: string[] }
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
 export interface MockTeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: string; prompt: string; defined: boolean; projects: string[] }
@@ -54,7 +54,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     const url = new URL(req.url());
     const path = url.pathname.replace(/^\/api/, '');
     const body = req.postData() ? JSON.parse(req.postData()!) : undefined;
-    if (req.method() === 'POST') m.calls.push({ path, body });
+    if (req.method() === 'POST') m.calls.push({ path: decodeURIComponent(path), body });
     if (m.anonymous) return json(route, 401, { error: { code: 'unauthorized', message: 'Authentication required' } });
     if (m.forbidden) return json(route, 403, { error: { code: 'forbidden', message: 'Forbidden' } });
     const f = m.fail.get(path);
@@ -88,6 +88,30 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       s.state = 'idle'; return json(route, 200, { changed: true });
     }
     // @req FR:agent-team/review.api @req FR:agent-team/talk.api
+    // @req FR:agent-thread/thread.read @req FR:agent-thread/thread.assign
+    const thm = /^\/tasks\/([^/]+)\/(thread|assign)$/.exec(path);
+    if (thm) {
+      const t = find(decodeURIComponent(thm[1]));
+      if (!t) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+      if (thm[2] === 'assign') {
+        if (!m.sessions) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+        const ag = m.team.find((a) => a.slug === body?.agent) ?? m.team[0];
+        const id = `a1b2c3d4-0000-0000-0000-0000000asg${m.calls.length}`.slice(0, 36);
+        const title = `${ag?.name ?? 'Agent'} · ${t.text} · ${t.ref}`; // the server titles the session before the claim
+        if (!/🚧/u.test(t.text)) t.text = `🚧 ${t.text}`;
+        m.sessions.unshift({ id, title, project: 'stack', cwd: '/x', lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] });
+        return json(route, 202, { runId: 'run-assign', sessionId: id, agent: ag?.slug ?? 'cos', title, claimed: true });
+      }
+      const items: unknown[] = [];
+      for (const e of m.inbox) if (e.row === t.ref || e.ref === t.ref) items.push(e.from === 'agent' ? { at: e.at, kind: 'agent', id: e.id, agent: e.agent, text: e.text } : { at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state });
+      for (const a of m.asks) if ((a.row ?? a.ref) === t.ref) items.push({ at: a.created, kind: 'ask', ask: a });
+      const review = m.reviews.find((r) => r.ref === t.ref);
+      if (review) items.push({ at: review.at, kind: 'review', verdict: review.verdict, plan: review.plan, estimate: review.estimate, agent: review.agent });
+      for (const c of m.tasks) if (c.project === t.project && c.depth === t.depth + 1 && Number(c.ref.split(':')[1]) > Number(t.ref.split(':')[1]) && /🤖|🪄/u.test(c.text) && m.tasks.indexOf(c) === m.tasks.indexOf(t) + 1) items.push({ at: '', kind: 'subtask', ref: c.ref, text: c.text, done: c.done });
+      items.sort((a, b) => String((a as { at: string }).at || '9').localeCompare(String((b as { at: string }).at || '9')));
+      const session = m.sessions?.filter((x) => x.title.endsWith(` · ${t.ref}`)).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
+      return json(route, 200, { items, ...(session ? { session: { id: session.id, title: session.title, state: session.state } } : {}), ...(review ? { review } : {}) });
+    }
     if (path === '/team') { const pr = url.searchParams.get('project'); return json(route, 200, { items: pr ? m.team.filter((a) => a.scope.includes('*') || a.scope.some((x) => x.split('/')[0] === pr)).sort((a, b) => Number(b.scope.some((x) => x.startsWith(pr))) - Number(a.scope.some((x) => x.startsWith(pr)))) : m.team }); }
     if (path === '/reviews') { const pr = url.searchParams.get('project') ?? ''; return json(route, 200, { items: m.reviews.filter((r) => r.ref.startsWith(`${pr}:`)) }); }
     if (path === '/tasks/review') {

@@ -6,6 +6,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { actionsFor, deadline, freshness, ifSilent, splitTop, type Action, type AskItem } from './asks';
 import { blockedHelp } from './notify';
+import { Md } from './parts';
+import { parseRow } from './row';
 import { changeText, flowOf } from './triage';
 import type { Asks } from './useAsks';
 import type { ComponentChildren } from 'preact';
@@ -114,6 +116,8 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
         </div>
         {flow && <div class="flow-bar" role="progressbar" aria-label="Triage progress" aria-valuemin={0} aria-valuemax={flow.total} aria-valuenow={flow.done}><span style={{ width: `${(flow.done / Math.max(1, flow.total)) * 100}%` }} /></div>}
         <h2 class="ask-title">{a.ask}</h2>
+        {/* The task the ask belongs to: opens it (focus mode carries the thread). @req FR:agent-thread/ask.cli */}
+        {a.row && a.source !== 'task' && <a class="ask-task" href={`#/list?project=${encodeURIComponent(a.row.slice(0, a.row.lastIndexOf(':')))}`} onClick={(e) => { e.preventDefault(); asks.openTask(a.row!); }} title="Open the task">↗ {a.task ? <Md text={parseRow(a.task).title || a.task} /> : a.row}</a>}
         {a.why && <p class="ask-why">{a.why}</p>}
         {a.refText && <p class="ask-row-target" title="The task this answer changes">on <span>{a.refText}</span></p>}
         {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
