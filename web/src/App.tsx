@@ -235,6 +235,8 @@ export function App() {
   /** Live mode: what the server has not committed yet. @req FR:web-shell/state.unsaved */
   const unsaved = useUnsaved(api, (m) => toast(m, 'err'));
   const unsavedChip = unsaved.label ? <button type="button" class="chip unsaved" data-testid="unsaved" title={unsaved.title} aria-live="polite" disabled={unsaved.state.saving} onClick={() => void unsaved.flush()}>{unsaved.label}</button> : null;
+  /** Live mode on the owner's checkout: the rail footer names the branch. @req FR:web-shell/state.unsaved.pill @req FR:cli/web.live.pill */
+  const livePill = local && info?.mode === 'live' ? <span class="repo-pill live" data-testid="repo-pill" title={info.repo}>Live · {info.branch}</span> : null;
   const refresh = useCallback(async () => {
     void loadSide();
     try {
@@ -736,8 +738,7 @@ export function App() {
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
         <div class="who">
           {!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}
-          {/* @req FR:web-shell/state.unsaved.pill @req FR:cli/web.live.pill */}
-          {local && info?.mode === 'live' && <span class="repo-pill live" data-testid="repo-pill" title={info.repo}>Live · {info.branch}</span>}
+          {livePill}
           {unsavedChip}
         </div>
       </nav>
