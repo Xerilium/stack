@@ -30,6 +30,8 @@ Set as SWA app settings. Missing or invalid required settings make everything ex
 | `STACK_WEBHOOK_SECRET`, `STACK_WEBHOOK_ALLOW` | no | Generic webhook |
 | `STACK_IMESSAGE_SECRET`, `STACK_IMESSAGE_ALLOW` | no | iMessage bridge (use a different secret from the webhook) |
 | `STACK_GITHUB_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_ALLOW` | no | GitHub comments; allow-list of logins |
+| `GITHUB_TOKEN` | no | Read-only GitHub token for pull request state and checks on the AI team panel; sent only to `api.github.com` |
+| `STACK_GITHUB_REPOS` | no | Comma list of `owner` or `owner/repo`; when set, PRs in other repos get no status. Unset: every repo the token can see |
 
 Allow lists are comma-separated. A channel without a secret is off; an empty allow-list denies every sender.
 

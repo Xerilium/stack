@@ -44,6 +44,8 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 | `STACK_WEBHOOK_SECRET`, `STACK_WEBHOOK_ALLOW` | Webhook bot secret and allowed senders |
 | `STACK_IMESSAGE_SECRET`, `STACK_IMESSAGE_ALLOW` | iMessage bridge secret and allowed senders |
 | `STACK_GITHUB_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_ALLOW` | GitHub comment bot secret and allowed logins |
+| `GITHUB_TOKEN` | `stack web` and the Azure host: read-only GitHub token for pull request state and checks on the AI team panel. Sent only to `api.github.com` |
+| `STACK_GITHUB_REPOS` | Optional comma list of `owner` or `owner/repo`. When set, only PRs in these repos get status, so an agent token cannot read other PRs through `GET /agents`. Unset: every repo the token can see |
 | `STACK_REPO`, `STACK_DIR` | Local content repo for the CLI, `stack web`, and `stack-mcp` (when none is found by walking up from the current folder). Content never lives in the Stack repo; see the README "Two repos" |
 | `STACK_MCP_SCOPES` | Scopes for `stack-mcp` (stdio only), default `read,write` |
 | `STACK_DATA_DIR` | Owner-only local data (email voice profile and mail state), default `~/Library/Application Support/stack`. Never inside a repo: it holds learned writing samples |

@@ -1,12 +1,22 @@
 /**
  * Pull request state and checks from the GitHub REST api, for agent activity. The token goes only to api.github.com.
- * @req FR:agent-inbox/github.fetch
+ * @req FR:agent-inbox/github.fetch @req FR:agent-inbox/github.repos
  */
 import type { PrRef, PrStatus, PrStatusProvider } from '../core/activity';
 
-export interface GitHubPrsOptions { token: string; fetch?: typeof fetch; ttlMs?: number; now?: () => number }
+export interface GitHubPrsOptions {
+  token: string; fetch?: typeof fetch; ttlMs?: number; now?: () => number;
+  /** `owner` or `owner/repo` entries; when set, PRs in other repos get no status and GitHub is never asked about them. */
+  repos?: string[];
+}
+
+/** A `STACK_GITHUB_REPOS` entry that is not `owner` or `owner/repo`. The message never holds the value. */
+export class GitHubReposError extends Error {
+  constructor() { super('has an entry that is not owner or owner/repo'); this.name = 'GitHubReposError'; }
+}
 
 const API = 'https://api.github.com';
+const OWNER = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
 const REPO = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
 const MAX_IN_FLIGHT = 6;
 const TIMEOUT_MS = 5000;
@@ -20,11 +30,22 @@ function checksOf(runs: { status?: string; conclusion?: string | null }[]): PrSt
   return 'passing';
 }
 
+/** Parses `STACK_GITHUB_REPOS` (comma list of `owner` or `owner/repo`): undefined when unset or blank, so every repo is looked up. */
+export function githubRepos(value: string | undefined): string[] | undefined {
+  const list = (value ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (list.length === 0) return undefined;
+  if (list.some((x) => !OWNER.test(x) && !REPO.test(x))) throw new GitHubReposError();
+  return list;
+}
+
 export function createGitHubPrs(o: GitHubPrsOptions): PrStatusProvider {
   const get = o.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   const ttl = o.ttlMs ?? 60_000;
   const now = o.now ?? (() => Date.now());
   const cache = new Map<string, { at: number; v: PrStatus | null }>();
+  // GitHub names are case-insensitive.
+  const allow = o.repos && new Set(o.repos.map((x) => x.toLowerCase()));
+  const allowed = (repo: string) => !allow || allow.has(repo.toLowerCase()) || allow.has(repo.slice(0, repo.indexOf('/')).toLowerCase());
   const headers = { authorization: `Bearer ${o.token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'stack' };
   const call = async (path: string): Promise<unknown> => {
     const res = await get(`${API}${path}`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -40,7 +61,7 @@ export function createGitHubPrs(o: GitHubPrsOptions): PrStatusProvider {
   };
   return async (prs) => {
     const out = new Map<string, PrStatus>();
-    const todo = prs.filter((p) => REPO.test(p.repo) && Number.isInteger(p.number) && p.number > 0);
+    const todo = prs.filter((p) => REPO.test(p.repo) && allowed(p.repo) && Number.isInteger(p.number) && p.number > 0);
     let next = 0;
     const worker = async () => {
       while (next < todo.length) {

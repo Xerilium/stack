@@ -8,7 +8,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, stat
 import { createServer, type IncomingMessage, type Server } from 'http';
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'path';
 import { createApiHandler } from '../api/handler';
-import { createGitHubPrs } from '../api/github';
+import { createGitHubPrs, githubRepos } from '../api/github';
 import { createGraphCalendar, fixtureCalendar, type CalendarEvent, type CalendarProvider } from '../calendar';
 import { createIcsCalendar, icsUrls } from '../calendar/ics';
 import { defaultCachePath, FileTokenCache, graphToken, hasScope } from '../graph/auth';
@@ -133,13 +133,15 @@ export async function calendarSource(o: { cachePath?: string; fixture?: string; 
 export async function startWeb(o: WebOpts): Promise<WebServer> {
   const cfgPath = join(o.dir, '.xe/config/stack.json');
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
-  // @req FR:agent-inbox/github.wire
+  // @req FR:agent-inbox/github.wire @req FR:agent-inbox/github.repos: a bad repo list leaves PR status off.
   const ghToken = process.env.GITHUB_TOKEN?.trim();
+  let prs: ReturnType<typeof createGitHubPrs> | undefined;
+  try { prs = ghToken ? createGitHubPrs({ token: ghToken, repos: githubRepos(process.env.STACK_GITHUB_REPOS) }) : undefined; } catch (e) { console.error(`github: STACK_GITHUB_REPOS ${e instanceof Error ? e.message : 'is invalid'}; PR status off`); }
   const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, ics: process.env.STACK_CALENDAR_ICS, log: (l) => console.log(l) }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
   const storage = new GitStorage(o.dir);
   // @req FR:agent-sessions/driver.sdk (the SDK and its binary load on the first sessions request, not here)
   const agents: AgentRuns | undefined = o.agents === false ? undefined : o.agents ?? createRunManager({ driver: createSdkDriver(), ctx: { storage, config }, cwd: o.dir });
-  const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined, calendar: cal.provider, agents });
+  const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs });

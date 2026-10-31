@@ -75,8 +75,9 @@ Handled entries change `state: open` to `state: handled` and gain `- handled: <i
 
 ### FR:github: Pull request status provider
 
-- **FR:github.fetch** (P1): `createGitHubPrs({token, fetch?, ttlMs?})` reads `GET /repos/{o}/{r}/pulls/{n}` and `GET /repos/{o}/{r}/commits/{sha}/check-runs`, with at most 6 requests in flight and results cached for `ttlMs` (default 60 s). Checks: any failure, cancel, or timeout conclusion is `failing`; any run not completed is `pending`; no runs is `none`; else `passing`
+- **FR:github.fetch** (P1): `createGitHubPrs({token, fetch?, ttlMs?, repos?})` reads `GET /repos/{o}/{r}/pulls/{n}` and `GET /repos/{o}/{r}/commits/{sha}/check-runs`, with at most 6 requests in flight and results cached for `ttlMs` (default 60 s). Checks: any failure, cancel, or timeout conclusion is `failing`; any run not completed is `pending`; no runs is `none`; else `passing`
 - **FR:github.wire** (P2): The Azure host and `stack web` pass the provider when `GITHUB_TOKEN` is set; the token is sent only to `https://api.github.com` and never logged or returned
+- **FR:github.repos** (P1): Optional `STACK_GITHUB_REPOS`, a comma list of `owner` or `owner/repo` (case-insensitive), passed as `repos`. When set, pull requests in other repos get no status and GitHub is never asked about them, so a token with `tasks:write` cannot read a private PR through `GET /agents` by linking it in a row. Unset or blank: every repo, as before. An entry that is not `owner` or `owner/repo` logs `STACK_GITHUB_REPOS` with a value-free reason and turns PR status off
 
 ## Dependencies
 
