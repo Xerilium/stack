@@ -1844,6 +1844,9 @@ components:
           $ref: "#/components/schemas/Ref"
         task:
           type: string
+        parent:
+          type: string
+          description: Title of the parent row; absent for top-level rows
         kind:
           type: string
           enum:

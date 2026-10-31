@@ -399,6 +399,7 @@ export function buildOpenApi(): J {
           description: 'One owner message in tasks/inbox/<project>.md. Agents act on open entries, then mark them handled.',
           properties: {
             id: { type: 'string' }, at: { type: 'string', format: 'date-time' }, project: { type: 'string' }, ref: ref('Ref'), task: { type: 'string' },
+            parent: { type: 'string', description: 'Title of the parent row; absent for top-level rows' },
             kind: { type: 'string', enum: ['reply', 'decision'] }, to: { type: 'string', enum: ['agent', 'human', 'none'] }, text: { type: 'string' },
             state: { type: 'string', enum: ['open', 'handled'] }, handled: { type: 'string' }, note: { type: 'string' },
             row: { ...ref('Ref'), description: 'Where the row is now, found by title (lines move); absent when the row is gone' },

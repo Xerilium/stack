@@ -50,6 +50,12 @@ describe('inbox format', () => {
     ].join('\n'));
     expect(parseInbox(text)).toEqual([e]);
   });
+  it('writes parent after task and round-trips it', () => {
+    const e = entry({ parent: 'Ship the web app' });
+    expect(formatEntry(e).split('\n').slice(7, 10)).toEqual(['- task: Draft the release notes', '- parent: Ship the web app', '- text: Keep it short.']);
+    expect(parseInbox(formatEntry(e))).toEqual([e]);
+    expect(parseInbox(formatEntry(entry()))[0]).not.toHaveProperty('parent');
+  });
   it('parses handled entries with a note', () => {
     const e = entry({ state: 'handled', handled: '2026-10-28T15:00:00.000Z by token:abc', note: 'Done in PR 9' });
     expect(parseInbox(formatEntry(e))).toEqual([e]);
@@ -65,7 +71,7 @@ describe('send', () => {
     expect(r.path).toBe('tasks/inbox/alpha.md');
     const f = (await storage.read('tasks/inbox/alpha.md')).content;
     expect(f.startsWith('# Alpha inbox\n')).toBe(true);
-    expect(parseInbox(f)).toEqual([expect.objectContaining({ id: r.id, kind: 'reply', to: 'agent', ref: 'tasks/alpha.md:6', task: 'Draft the release notes https://github.com/o/r/pull/7', text: 'Keep it short.', state: 'open' })]);
+    expect(parseInbox(f)).toEqual([expect.objectContaining({ id: r.id, kind: 'reply', to: 'agent', ref: 'tasks/alpha.md:6', task: 'Draft the release notes https://github.com/o/r/pull/7', parent: 'Ship the web app', text: 'Keep it short.', state: 'open' })]);
     expect((await storage.read('tasks/alpha.md')).content).toBe(DOC);
     const r2 = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 6 }, 'June 3', 'decision');
     expect(r2.id).not.toBe(r.id);
@@ -74,7 +80,9 @@ describe('send', () => {
   it('marks plain rows as to: none', async () => {
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply');
-    expect(parseInbox((await storage.read('tasks/inbox/alpha.md')).content)[0].to).toBe('none');
+    const [e] = parseInbox((await storage.read('tasks/inbox/alpha.md')).content);
+    expect(e.to).toBe('none');
+    expect(e).not.toHaveProperty('parent'); // top-level row
   });
   it('refuses a missing row, a stale expect, and bad text', async () => {
     const { ctx } = await mk();
@@ -100,6 +108,26 @@ describe('send', () => {
     const all = await listInbox(ctx);
     const rows = await currentRows(ctx, all);
     expect(all.map((e) => rows.get(e.id))).toEqual(['tasks/alpha.md:10', 'tasks/alpha.md:9', 'tasks/alpha.md:8', 'tasks/alpha.md:7']);
+  });
+  it('keeps rows with the same title under different parents apart when rows are inserted above', async () => {
+    const doc = (web: string[]) => '# Alpha\n\n## Active\n\n- [ ] Ship web\n' + web.map((r) => `  - [ ] ${r}\n`).join('') + '  - [ ] 🙋 Approve\n- [ ] Ship api\n  - [ ] 🙋 Approve\n';
+    const { storage, ctx } = await mk(doc([]));
+    const web = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'web', 'decision');
+    const api = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 7 }, 'api', 'decision');
+    expect((await listInbox(ctx)).map((e) => e.parent)).toEqual(['Ship web', 'Ship api']);
+    await storage.write('tasks/alpha.md', doc(['One', 'Two', 'Three'])); // web's Approve 6→9 is now nearer the api entry's line (8) than api's Approve (11)
+    const rows = await currentRows(ctx, await listInbox(ctx));
+    expect(rows.get(web.id)).toBe('tasks/alpha.md:9');
+    expect(rows.get(api.id)).toBe('tasks/alpha.md:11');
+  });
+  it('falls back to title alone for entries without a parent, or whose parent was renamed', async () => {
+    const doc = '# Alpha\n\n## Active\n\n- [ ] Ship web\n  - [ ] One\n  - [ ] 🙋 Approve\n- [ ] Ship the API v2\n  - [ ] 🙋 Approve\n';
+    const { ctx } = await mk(doc);
+    const legacy = entry({ id: 'in-20261028T000000Z-aaaa', ref: 'tasks/alpha.md:9', task: 'Approve' });
+    const renamed = entry({ id: 'in-20261028T000000Z-bbbb', ref: 'tasks/alpha.md:6', task: 'Approve', parent: 'Ship api' });
+    const rows = await currentRows(ctx, [legacy, renamed]);
+    expect(rows.get(legacy.id)).toBe('tasks/alpha.md:9');
+    expect(rows.get(renamed.id)).toBe('tasks/alpha.md:7');
   });
   it('skips entries with a missing or bad ref instead of failing the rest', async () => {
     const { storage, ctx } = await mk();

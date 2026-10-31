@@ -36,21 +36,22 @@ One file per project: `tasks/inbox/<slug>.md`, where `<slug>` is the project fil
 - to: agent
 - ref: tasks/allyte.md:67
 - task: feat(transcript-sync): Unattended Teams transcript sync
+- parent: Teams integration
 - text: Ship it after the OIDC test passes.
 ```
 
-Handled entries change `state: open` to `state: handled` and gain `- handled: <iso> by <actor>` and an optional `- note: <one line>`. Agents must treat `text` as the owner's instruction for the task at `ref` (match on `task` when lines moved).
+Handled entries change `state: open` to `state: handled` and gain `- handled: <iso> by <actor>` and an optional `- note: <one line>`. Agents must treat `text` as the owner's instruction for the task at `ref` (match on `task`, under a parent titled `parent` when set, when lines moved).
 
 ## Scenarios
 
 ### FR:inbox: Inbox
 
 - **FR:inbox.path** (P1): Storage accepts `tasks/inbox/<name>.md` (same name rules as result logs). Inbox files are never listed as projects
-- **FR:inbox.format** (P1): `formatEntry` and `parseInbox` round-trip the v1 format above: heading `## <id>`, then one `- key: value` line each for `at`, `state` (`open` or `handled`), `kind` (`reply` or `decision`), `to` (`agent`, `human`, or `none`: the row's own 🤖/🪄 or 🙋 mark), `ref` (`path:line`, 1-based), `task` (row title, one line), `text`, and when handled `handled` and optional `note`. Unknown lines are kept. A new file starts with `# <project title> inbox` and the format comment
+- **FR:inbox.format** (P1): `formatEntry` and `parseInbox` round-trip the v1 format above: heading `## <id>`, then one `- key: value` line each for `at`, `state` (`open` or `handled`), `kind` (`reply` or `decision`), `to` (`agent`, `human`, or `none`: the row's own 🤖/🪄 or 🙋 mark), `ref` (`path:line`, 1-based), `task` (row title, one line), `parent` (the parent row's title, one line, only when the row has a parent), `text`, and when handled `handled` and optional `note`. Unknown lines are kept. A new file starts with `# <project title> inbox` and the format comment
 - **FR:inbox.id** (P1): Ids are `in-<UTC yyyymmddThhmmssZ>-<4 hex>`, unique within the file
 - **FR:inbox.send** (P1): `sendToInbox(ref, text, kind, expect?)` reads the row at `ref` (404 when missing, 409 when `expect` differs from the row text) and appends one entry. Text is one line, 1-1000 characters. Every field is redacted and escaped like result log fields (`FR:ai-triage-assist/result.noleak`), so the file never renders links or images from row text. The task row file is not changed
 - **FR:inbox.list** (P1): `listInbox({project?, state?})` returns entries from every inbox file (oldest first) with `id`, `at`, `project`, `ref`, `task`, `kind`, `to`, `text`, `state`, and `handled`/`note` when set. `state` defaults to `open`; `all` returns both
-- **FR:inbox.rows** (P1): `currentRows(entries)` finds where each entry's row is now: the row in the same file whose title words match the stored `task` (marks, dates, and links ignored; both run through the same redaction and escaping; a title cut at 300 characters matches by prefix). The row nearest the stored line breaks ties. Entries whose row is gone get none
+- **FR:inbox.rows** (P1): `currentRows(entries)` finds where each entry's row is now: the row in the same file whose title words match the stored `task` (marks, dates, and links ignored; both run through the same redaction and escaping; a title cut at 300 characters matches by prefix). When the entry has a `parent`, rows whose parent title matches it the same way win, so rows with the same title under different parents stay apart; if none does (parent renamed), title alone decides. The row nearest the stored line breaks ties. Entries whose row is gone get none
 - **FR:inbox.handle** (P1): `handleEntry(id, actor, note?)` sets `state: handled` and adds the handled line (and note) to that entry only; every other byte is unchanged. Unknown id is 404; an already handled entry is `changed: false`
 - **FR:inbox.cap** (P2): An inbox file over 256 KiB drops handled entries, oldest first, before an append; if it is still over, the append is `409 conflict` ("Inbox is full; handle some entries first"). Dropped entries stay in storage history
 
