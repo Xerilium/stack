@@ -2,7 +2,7 @@
 id: agent-thread
 title: Agent Thread
 author: flanakin
-description: "Every task has one thread with its agent inside the expanded task: ask a question or assign the task, read the agent's replies, answer the questions it raises (asks), and see the subtasks it adds. Replies live in the task repo (inbox, asks, rows), never in chat."
+description: "Per-task conversation with an agent: ask or assign, read replies and questions, see added subtasks"
 dependencies: [agent-team, agent-sessions, agent-inbox, ask-queue, ai-triage-assist, api, auth-security, web-app, web-shell]
 ---
 
@@ -12,39 +12,88 @@ dependencies: [agent-team, agent-sessions, agent-inbox, ask-queue, ai-triage-ass
 
 ## Purpose
 
-The owner's biggest gap: talking to an agent about one task. He wants to ask a question or hand the task over, have the agent come back with questions and a breakdown, and see all of it on the task itself. `agent-team` gave every row an agent and a composer; this feature turns that into a thread inside the expanded task (the in-place expand from `web-shell`): the owner's messages, the agent's replies, the asks the agent raised for this task, the review verdict, and the subtasks the agent added, in time order, with the composer at the bottom.
-
-## Scope
-
-- In: a `ref` on asks so an ask belongs to a task; agent replies as inbox entries the agent writes (`from: agent`); the task thread read (`GET /tasks/{ref}/thread`); Ask and Assign on the composer (Assign claims the row and starts the agent); session resume per task (a follow-up goes to the task's live session when one exists, else starts one); the thread inside the expanded task on every view that expands rows; the thread on the Focus/hero block.
-- Out: an unread count on the collapsed row's chip (next), Reassign / Release on a claimed row (next: the composer's agent picker plus Assign re-claims for now), run entries in the thread (the session state and the drawer show them), threads for projects or asks (the `agent-team` composer stays there), editing or deleting thread entries, threads across tasks, notifications beyond the existing ask notification.
+Give every task one place to talk with its agent. The owner asks or hands the task over, and the agent's replies, questions, and subtasks come back on the task itself. The feature ends at the task: projects and cross-task chat live elsewhere.
 
 ## Scenarios
 
 ### FR:ask: Asks belong to tasks
 
-- **FR:ask.ref** (P1): An ask may carry `ref` (`<project>:<line>`, 0-based like the api, stored as `tasks/<project>.md:<line+1>` in the file like inbox refs). `putAsk` validates it against an existing row (404 when missing); `listAsks` returns it as the api ref; `currentRows` follows a moved row like inbox entries. Review needs (`FR:agent-team/review.needs`) and permission asks raised by a task session (`FR:agent-team/talk.start`: the session title carries the ref) set it
-- **FR:ask.cli** (P1): `stack asks put --ref tasks/<file>.md:<line>` (1-based, like every CLI ref) and `POST /asks/{key}` `{ref}` (api form) set it; the ask card shows the task title as a link that opens the task (focus mode, which carries the thread)
+Owner needs to see the questions an agent raised about a task on that task so that they answer them in context.
+
+- **FR:ask.cli** (P1): Interface: `stack asks put --ref tasks/<file>.md:<line>` (1-based) and `POST /asks/{key}` `{ref}` (0-based api ref)
+- **FR:ask.ref** (P1): Ask store MUST accept an optional `ref` (`<project>:<line>`) on an ask
+  - **FR:ask.ref.validate** (P1): `putAsk` MUST return 404 when `ref` names no existing row
+  - **FR:ask.ref.list** (P1): `listAsks` MUST return `ref` in api form
+  - **FR:ask.ref.follow** (P1): `currentRows` MUST follow a moved row the way inbox entries do
+  - **FR:ask.ref.source** (P1): Review needs and permission asks raised by a task session MUST set `ref`
+    > - @req FR:agent-team/review.needs
+    > - @req FR:agent-team/talk.start
+- **FR:ask.card** (P1): Ask card MUST show the task title as a link that opens the task in focus mode
 
 ### FR:reply: Agent replies
 
-- **FR:reply.entry** (P1): Inbox entries gain `from` (`owner` or `agent`, default `owner` for v1 files). `POST /inbox/reply` `{ref, text, expect?}` (route `inbox.reply`, scope `tasks:write`, tokens only: the owner session gets 403, so a reply is never written in the owner's voice by the page) appends an entry `from: agent`, `kind: reply`, `to: human`, named by the token (`agent: <token name>`). `stack inbox reply <ref> --from <agent> --text` writes it without a server. Agent entries are never "handled" by the owner; reading the thread is enough
-- **FR:reply.session** (P1): The task session's persona (`FR:agent-team/talk.start`) tells the agent to answer the owner with `stack inbox reply` (or `POST /inbox/reply`) and to raise questions with `stack asks put --ref`, never in the chat transcript alone; the transcript stays available in the drawer
+Owner needs the agent to answer on the task, not only in a chat transcript, so that the answer is findable later.
+
+- **FR:reply.@api** (P1): Interface: `POST /inbox/reply` `{ref, text, expect?}` (route `inbox.reply`, scope `tasks:write`) and `stack inbox reply <ref> --from <agent> --text`
+- **FR:reply.entry** (P1): Inbox store MUST give entries a `from` of `owner` or `agent`, defaulting to `owner` for v1 files
+  - **FR:reply.entry.write** (P1): Reply route MUST append an entry with `from: agent`, `kind: reply`, `to: human`, and `agent: <token name>`
+  - **FR:reply.entry.token** (P1): Reply route MUST return 403 to the owner session so the page never writes in the owner's voice
+  - **FR:reply.entry.handled** (P2): Inbox store MUST NOT require the owner to handle agent entries
+- **FR:reply.session** (P1): Task session persona MUST tell the agent to answer with `stack inbox reply` and raise questions with `stack asks put --ref`
+  > - @req FR:agent-team/talk.start
 
 ### FR:thread: The thread
 
-- **FR:thread.read** (P1): `GET /tasks/{ref}/thread` (route `tasks.thread`, scope `tasks:read`) returns `{items, session?, review?}`: `items` in time order, each `{at, kind, ...}` with `kind` one of `owner` (an inbox entry from the owner: `text`, `state`), `agent` (an inbox entry from the agent: `agent`, `text`), `ask` (an open or answered ask with this `ref`: the listed ask fields), `review` (`verdict`, `plan`, `estimate`, `agent`), `subtask` (a child row an agent owns: `ref`, `text`, `done`; a child whose text carries 🤖 or 🪄, which is how the assign prompt tells the agent to add its subtasks); `session` is the task's newest session (`FR:agent-team` title suffix) with its state; `review` is the newest verdict. Unknown ref is 404
-- **FR:thread.ask** (P1): Ask sends the text to the task's live session when one exists, is idle, and belongs to the chosen agent (its title starts with the agent's name; `POST /sessions/{id}/prompt {text, ref, agent?}`, which applies the persona again since a resumed session carries no system prompt), else starts one (`POST /sessions {ref, text}`); the owner's text is also written to the inbox (`FR:agent-inbox/api.send`, `kind: reply`) so the thread shows it at once and an agent that is not running still finds it
-- **FR:thread.assign** (P1): Assign claims the row for the agent (`FR:ai-triage-assist/claim.start`: 🚧 on the row, the claim logged for `agent:<slug>`; a 🙋 row is refused) and starts the session with the assign prompt: flesh out the subtasks under this row first (each marked 🤖 so the thread shows them), then raise every question as an ask with `--ref`, reply on the task, start. Assign on a row already claimed starts a new session for the chosen agent (the 🚧 claim stays; Reassign / Release is Out for now)
+Owner needs to ask an agent about a task or assign it so that the agent answers and adds subtasks on that task.
+
+- **FR:thread.@api** (P1): Interface: `GET /tasks/{ref}/thread` (route `tasks.thread`, scope `tasks:read`)
+- **FR:thread.read** (P1): Thread route MUST return `{items, session?, review?}` with `items` in time order and 404 for an unknown ref
+  - **FR:thread.read.items** (P1): Each item MUST carry `at` and a `kind` of `owner`, `agent`, `ask`, `review`, or `subtask`
+  - **FR:thread.read.subtask** (P2): Thread route MUST list a child row as `subtask` when its text carries 🤖 or 🪄
+  - **FR:thread.read.session** (P2): Thread route MUST return the task's newest session with its state
+  - **FR:thread.read.review** (P2): Thread route MUST return the newest review verdict
+    > - @req FR:agent-team/review.needs
+- **FR:thread.ask** (P1): Composer Ask MUST send the text to the task's idle live session when its title starts with the chosen agent's name, else start a new session
+  - **FR:thread.ask.inbox** (P1): Composer Ask MUST also write the text to the inbox as `kind: reply` so the thread shows it at once
+    > - @req FR:agent-inbox/api.send
+  - **FR:thread.ask.persona** (P2): Resumed-session prompt MUST include the persona again
+- **FR:thread.assign** (P1): Composer Assign MUST claim the row for the chosen agent and start a session with the assign prompt
+  - **FR:thread.assign.refuse** (P1): Composer Assign MUST refuse a 🙋 row
+  - **FR:thread.assign.order** (P1): Assign MUST start the run before claiming so a failed start leaves no 🚧
+  - **FR:thread.assign.claimed** (P2): Assign on a claimed row MUST start a new session for the chosen agent and keep the claim
+  - **FR:thread.assign.prompt** (P2): Assign prompt MUST tell the agent to add 🤖 subtasks first, then raise every question as an ask with `--ref`, then start
+    > - @req FR:ai-triage-assist/claim.start
 
 ### FR:web: Thread in the expanded task
 
-- **FR:web.expand** (P1): The expanded task (web-shell inline expand) shows, under the notes and subtasks, the thread: compact entries (`You · 5m ago`, `🎧 Cid Manager · 2m ago`, an ask as a mini card with its primary action and Reply, a review verdict line, `Added 3 subtasks`), newest last, then the `agent-team` composer with `Ask` (`Enter`) and `Assign` (`A`) in place of Do it / Plan (Review stays).
-- **FR:web.hero** (P1): The Home hero and Focus mode show the same thread under the actions
-- **FR:web.live** (P1): The thread refreshes on `asks`, `tasks`, and `sessions` changes from `/events`; while the task's session runs, the composer shows `Working…` with the drawer one click away, and an agent reply fades in like a new ask
-- **FR:web.keys** (P1): In the expanded task `a` focuses the composer, `A` assigns (on a list row outside the composer too; Home and My day keep `A` = delegate 🪄), `Enter` on an ask entry takes its primary action; every action is in the palette and `?`
-- **FR:web.a11y** (P1): The thread is a labelled list; one polite status line announces the newest agent reply (never the owner's own words or state flips), entries have full labels, 44 px targets on touch, contrast at least 4.5:1, light and dark designed, works at 390 / 1024 / 1440 px
+Owner needs to read and drive the thread where the task is shown so that they never leave the list to talk to an agent.
 
-## Dependencies
+- **FR:web.expand** (P1): Expanded task MUST show the thread below notes and subtasks, newest last, with the composer's `Ask` (`Enter`) and `Assign` (`A`) below it
+- **FR:web.hero** (P1): Home hero and Focus mode MUST show the same thread under the actions
+- **FR:web.live** (P1): Thread MUST refresh on `asks`, `tasks`, and `sessions` changes from `/events`
+  - **FR:web.live.working** (P2): Composer MUST show `Working…` with a link to the drawer while the task's session runs
+- **FR:web.keys** (P1): Expanded task MUST focus the composer on `a` and assign on `A`, and only when focus is not inside the composer's text box or agent picker
+  - **FR:web.keys.ask** (P2): Expanded task MUST take an ask entry's primary action on `Enter`
+  - **FR:web.keys.palette** (P2): Palette and `?` MUST list every thread action
+- **FR:web.a11y** (P1): Thread MUST be a labelled list with one polite status line for the newest agent reply
+  - **FR:web.a11y.touch** (P2): Thread targets MUST be at least 44 px on touch
+  - **FR:web.a11y.contrast** (P2): Thread text MUST have contrast of at least 4.5:1 in light and dark
+  - **FR:web.a11y.width** (P2): Thread MUST work at 390, 1024, and 1440 px
 
-- agent-team (composer, chip, sessions by title), agent-sessions (prompt, drawer), agent-inbox (inbox entries, moved-row matching), ask-queue (asks, answers), ai-triage-assist (claim, result log), web-shell (inline expand surface)
+## Data Model
+
+- **FR:$thread-item** (P2): **Thread item** — One entry in a task thread.
+  - `at` (string) — ISO timestamp
+  - `kind` (string) — Allowed: owner, agent, ask, review, subtask
+  - `text` (string?) — Owner or agent text, or subtask text
+  - `agent` (string?) — Agent name for `agent` and `review` items
+  - `ref` (string?) — Child row ref for `subtask` items
+  - `done` (boolean?) — Subtask state
+
+## Architecture Constraints
+
+- Replies, asks, and rows MUST live in the task repo, never in chat alone
+
+## External Dependencies
+
+None
