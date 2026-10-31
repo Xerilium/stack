@@ -122,6 +122,7 @@ describe('connectLive with a change probe', () => {
     return { changes, status, synced, live };
   };
 
+  // @req FR:live-deploy/web.poll.reload
   it('probes at once, reloads once on the first revision (closing the gap after the initial load), then only on change', async () => {
     const { p, probe } = mkProbe();
     const { changes, status, synced } = run(probe);
@@ -136,6 +137,7 @@ describe('connectLive with a change probe', () => {
     vi.advanceTimersByTime(1000); await flush();
     expect(changes).toEqual([['asks', 'tasks', 'state'], ['asks', 'tasks', 'state']]);
   });
+  // @req FR:live-deploy/web.poll.reload
   it('a null revision reloads on every probe after the first', async () => {
     const { p, probe } = mkProbe(); p.rev = null;
     const { changes } = run(probe);
@@ -144,6 +146,7 @@ describe('connectLive with a change probe', () => {
     vi.advanceTimersByTime(1000); await flush();
     expect(changes).toEqual([['poll'], ['poll']]);
   });
+  // @req FR:live-deploy/web.action.auto
   it('a network failure is offline and keeps retrying without a click', async () => {
     const { p, probe } = mkProbe(); p.fail = { status: 0 };
     const { status, changes } = run(probe);

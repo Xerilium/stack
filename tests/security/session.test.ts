@@ -32,6 +32,7 @@ describe('parseClientPrincipal', () => {
 describe('owner allow-list', () => {
   const owners = parseOwners('GitHub:owner-1, aad:abc');
   const p = (over = {}) => parseClientPrincipal(principal(over))!;
+  // @req NFR:live-deploy/security.owner
   it('matches provider (case-insensitive) and exact user id', () => {
     expect(isOwner(p(), owners)).toBe(true);
     expect(isOwner(p({ identityProvider: 'AAD', userId: 'abc' }), owners)).toBe(true);

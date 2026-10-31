@@ -54,6 +54,11 @@ export function connectLive(o: LiveOpts): LiveHandle {
   let seen = false;
   let unwake: () => void = () => undefined;
 
+  /**
+   * One probe. Reloads only when the revision changed (a null revision reloads every time); a failure keeps the
+   * interval going, so polling resumes on its own, no click needed.
+   * @req FR:live-deploy/web.poll.reload @req FR:live-deploy/web.action.auto
+   */
   const check = () => {
     if (stopped || inFlight || !visible()) return;
     if (!o.probe) { o.onChange(['poll']); return; }

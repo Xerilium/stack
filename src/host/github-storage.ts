@@ -43,7 +43,7 @@ export function parseGitHubRepo(url: string): { owner: string; repo: string } | 
   return { owner: m[1], repo: m[2] };
 }
 
-/** Fixed text: status and operation only. */
+/** Fixed text: status and operation only; never the token, headers, URLs, or bodies. @req FR:live-deploy/gh.token.errors */
 class GitHubError extends StorageError {
   constructor(readonly op: string, readonly status: number) { super(`GitHub ${op} failed (${status})`); }
 }
@@ -51,6 +51,7 @@ class GitHubError extends StorageError {
 interface Entry { mode: string; sha: string; type: string }
 interface Snap { commit: string; tree: string; files: Map<string, Entry> }
 
+/** @req FR:live-deploy/gh.@function */
 export class GitHubStorage implements Storage, AuxFiles {
   private snap: Snap | null = null;
   private etag: string | undefined;
@@ -106,6 +107,7 @@ export class GitHubStorage implements Storage, AuxFiles {
   /**
    * Loads the head snapshot; `force` skips the freshness window. Concurrent callers share one load,
    * except that a forced check never reuses a load that started before it (it may predate a push).
+   * @req NFR:live-deploy/cost.github
    */
   private fresh(force = false): Promise<Snap> {
     if (this.snap && !force && this.now() - this.checkedAt < (this.o.freshMs ?? 5000)) return Promise.resolve(this.snap);
@@ -115,6 +117,7 @@ export class GitHubStorage implements Storage, AuxFiles {
     return p;
   }
 
+  /** @req FR:live-deploy/gh.fresh.fail */
   private async load(): Promise<Snap> {
     const seq = this.writes;
     let next: Snap | null;
@@ -147,12 +150,14 @@ export class GitHubStorage implements Storage, AuxFiles {
     const c = (await this.call('commit read', `commits/${commit}`)).data as { tree?: { sha?: string } };
     const tree = String(c.tree?.sha ?? '');
     const t = (await this.call('tree read', `trees/${tree}?recursive=1`)).data as { tree?: { path: string; mode: string; type: string; sha: string }[]; truncated?: boolean };
+    // @req FR:live-deploy/gh.limits.tree
     if (t.truncated) throw new StorageError('Task repo too large for one GitHub tree read (100,000 entries or 7 MB); use a smaller repo or STACK_REPO_PATH');
     const files = new Map<string, Entry>();
     for (const e of t.tree ?? []) if (e.type !== 'tree') files.set(e.path, { mode: e.mode, sha: e.sha, type: e.type });
     return { commit, tree, files };
   }
 
+  /** Symlinks (120000) and submodules (commit entries) are refused, never followed. @req FR:live-deploy/gh.paths.links */
   private entry(snap: Snap, path: string): Entry | undefined {
     const e = snap.files.get(this.prefix + path);
     if (e && (e.type !== 'blob' || (e.mode !== FILE && e.mode !== EXEC))) throw new StorageError(`Refusing non-regular file in storage path: ${path}`);
@@ -188,7 +193,7 @@ export class GitHubStorage implements Storage, AuxFiles {
     return s.commit;
   }
 
-  /** Forces a ref check now. */
+  /** Forces a ref check now. @req FR:live-deploy/gh.fresh.sync */
   async sync(): Promise<void> { await this.fresh(true); }
 
   // ------------------------------------------------------------ Storage
@@ -202,6 +207,7 @@ export class GitHubStorage implements Storage, AuxFiles {
   list(): Promise<string[]> { return this.rel(TASK_PATH); }
   listAsks(): Promise<string[]> { return this.rel(ASK_PATH); }
 
+  /** A path absent from the tree is NotFoundError with no network call. @req FR:live-deploy/gh.snapshot.missing */
   async read(path: string): Promise<StoredFile> {
     validatePath(path);
     const content = await this.contentAt(await this.fresh(), path);
@@ -238,7 +244,11 @@ export class GitHubStorage implements Storage, AuxFiles {
     return p;
   }
 
-  /** One commit for all changed paths, retried on a moved branch. */
+  /**
+   * One commit for all changed paths, retried on a moved branch. Every expectedVersion is checked against the head first;
+   * a write that changes no bytes makes no commit.
+   * @req FR:live-deploy/gh.write.expected @req FR:live-deploy/gh.write.noop
+   */
   private async commit(writes: FileWrite[], message?: string): Promise<void> {
     const made = new Map<string, string>(); // content -> blob sha, reused across attempts
     for (let attempt = 1; ; attempt++) {
@@ -247,9 +257,11 @@ export class GitHubStorage implements Storage, AuxFiles {
       for (const w of writes) {
         const e = this.entry(head, w.path);
         const cur = e ? await this.blob(e.sha) : null;
+        // @req FR:live-deploy/gh.write.expected
         checkExpected(w.path, cur === null ? null : versionOf(cur), { expectedVersion: w.expectedVersion });
         if (cur !== w.content) changes.push({ w, e });
       }
+      // @req FR:live-deploy/gh.write.noop
       if (changes.length === 0) return;
       const tree: { path: string; mode: string; type: 'blob'; sha: string | null }[] = [];
       for (const { w, e } of changes) {

@@ -36,6 +36,7 @@ describe('every route denies unauthenticated requests', () => {
 
 // @req FR:auth-security/authorize.session @req FR:auth-security/session.output
 describe('owner session', () => {
+  // @req NFR:live-deploy/security.owner
   it('lets the owner through every route', async () => {
     const { call } = setup();
     await call('POST', '/api/projects', { session: true, body: { name: 'Alpha' } });
@@ -44,6 +45,7 @@ describe('owner session', () => {
       expect([401, 403]).not.toContain(res.status);
     }
   });
+  // @req NFR:live-deploy/security.owner
   it('403 for a signed-in non-owner, 401 for a bad principal', async () => {
     const { call } = setup();
     const other = { 'x-ms-client-principal': principal({ userId: 'intruder' }) };

@@ -6,6 +6,7 @@ describe('markdown subset', () => {
   it('renders bold, italic, code, and https links', () => {
     expect(toHtml('a **b** *c* `d` [e](https://x.io/p?q=1)')).toBe('a <b>b</b> <i>c</i> <code>d</code> <a href="https://x.io/p?q=1" rel="noopener noreferrer" target="_blank">e</a>');
   });
+  // @req NFR:live-deploy/security.text
   it('escapes html and never emits other tags', () => {
     expect(toHtml('<img src=x onerror=alert(1)> & "q"')).toBe('&lt;img src=x onerror=alert(1)&gt; &amp; &quot;q&quot;');
     expect(toHtml('**<script>**')).toBe('<b>&lt;script&gt;</b>');

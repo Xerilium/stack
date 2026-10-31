@@ -23,8 +23,8 @@ const Icon = {
 };
 
 /**
- * Quiet while live; says what is wrong and what to do otherwise. Only the state is announced, never the clock beside it.
- * @req FR:web-shell/state.live @req FR:live-deploy/web.state @req FR:live-deploy/web.action
+ * Quiet while live; says what is wrong and what to do otherwise. Only the state is announced (politely), never the clock beside it.
+ * @req FR:web-shell/state.live @req FR:live-deploy/web.state @req FR:live-deploy/web.action @req FR:live-deploy/web.state.announce
  */
 function LiveBadge({ a, unreachable, onSignIn }: { a: Asks; unreachable: boolean; onSignIn?: () => void }) {
   if (a.status === 'connecting' && !unreachable) return null;

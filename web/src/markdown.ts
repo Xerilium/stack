@@ -1,4 +1,4 @@
-/** Tiny markdown subset as a node tree (no HTML strings reach the DOM). @req FR:web-app/edit.preview */
+/** Tiny markdown subset as a node tree (no HTML strings reach the DOM): task and ask text is rendered as text, never as html. @req FR:web-app/edit.preview @req NFR:live-deploy/security.text */
 export type Node = string | { t: 'b' | 'i'; c: Node[] } | { t: 'code'; c: string } | { t: 'a'; href: string; c: string };
 
 const RE = /`([^`]+)`|\*\*([^*]+?)\*\*|\*(?!\s)([^*]+?)\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;

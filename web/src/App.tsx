@@ -693,7 +693,10 @@ export function App() {
   if (phase === 'denied') {
     return (
       <main class="gate"><h1>Not on the allow-list</h1><p>You are signed in{me ? ` as ${me}` : ''}, but this Stack belongs to someone else.</p>
-        {/* SWA's user id is per app, so the owner learns it here on first sign-in. @req FR:live-deploy/setup.owner */}
+        {/*
+         * SWA's user id is per app, so the owner learns it here on first sign-in.
+         * @req FR:live-deploy/setup.owner
+         */}
         {ownerId && <p>If this is your Stack, add yourself as the owner, then reload: <code data-testid="owner-cmd">scripts/setup-azure.sh --owner {ownerId}</code></p>}
         <a class="btn" href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></main>
     );

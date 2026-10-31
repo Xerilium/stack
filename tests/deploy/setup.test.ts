@@ -20,6 +20,7 @@ describe('setup-azure.sh', () => {
     expect(script).toMatch(/^set -euo pipefail$/m);
     expect(statSync(join(root, 'scripts/setup-azure.sh')).mode & 0o111).not.toBe(0);
   });
+  // @req FR:live-deploy/setup.script.rerun
   it('applies the bicep template only when the site does not exist yet', () => {
     const deploy = script.indexOf('az deployment group create');
     const guard = script.lastIndexOf('if [ "$EXISTS" = 0 ]; then', deploy);
@@ -44,9 +45,11 @@ describe('setup-azure.sh', () => {
     expect(script).toMatch(/gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN -R/);
     expect(script).toMatch(/gh workflow run deploy\.yml/);
   });
+  // @req FR:live-deploy/setup.script.args
   it('validates every argument before use', () => {
     for (const f of ['--repo', '--app', '--group', '--name', '--location', '--owner']) expect(script).toMatch(new RegExp(`\\|\\| bad ${f} `));
   });
+  // @req FR:live-deploy/setup.script.rerun
   it('re-run merges only the changed settings and keeps the rest', () => {
     const dir = mkdtempSync(join(tmpdir(), 'stack-setup-test-'));
     try {
@@ -72,10 +75,12 @@ describe('setup secrets', () => {
     expect(script).toMatch(/--query properties\.apiKey -o tsv \| gh secret set/);
     expect(script).toMatch(/--body "@\$TMP\/body\.json"/);
   });
+  // @req FR:live-deploy/setup.secrets.quiet
   it('never prints a secret or puts one on a command line', () => {
     for (const line of script.split('\n').filter((l) => /^\s*(echo|printf|say)\b/.test(l))) expect(line).not.toMatch(/\$(TOKEN|PEPPER)\b/);
     for (const line of script.split('\n').filter((l) => /^\s*(az|gh) /.test(l))) expect(line).not.toMatch(/\$\{?(TOKEN|PEPPER)\b/);
   });
+  // @req FR:live-deploy/setup.secrets.json
   it('builds parameter JSON in node, so any value is encoded safely', () => {
     const dir = mkdtempSync(join(tmpdir(), 'stack-setup-test-'));
     try {
@@ -89,6 +94,7 @@ describe('setup secrets', () => {
 
 // @req FR:live-deploy/setup.owner
 describe('owner claim', () => {
+  // @req FR:live-deploy/setup.owner
   it('--owner on an existing site only updates the allow-list', () => {
     expect(script).toMatch(/if \[ -n "\$OWNER" \] && \[ "\$EXISTS" = 1 \]; then\n\s+ONLY_OWNER=1/);
     const only = script.indexOf('if [ "$ONLY_OWNER" = 1 ]; then\n  say "Done"');
@@ -99,6 +105,7 @@ describe('owner claim', () => {
 
 // @req FR:live-deploy/setup.doc
 describe('setup doc', () => {
+  // @req FR:live-deploy/setup.doc
   it('lists the human-only steps with exact clicks and the least-privilege token', () => {
     expect(doc).toMatch(/personal-access-tokens\/new\?[^)]*contents=write/);
     expect(doc).toMatch(/Only select repositories/);
