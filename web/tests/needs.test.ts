@@ -10,6 +10,7 @@ const titles = new Map([['house', 'House'], ['stack', 'Stack']]);
 const ask = (key: string, score: number): AskItem => ({ key, state: 'open', ask: key, kind: 'approve', from: 'cos', reversible: true, priority: 'normal', blocks: 0, created: '2026-10-29T08:00:00Z', updated: '2026-10-29T08:00:00Z', score, overdue: false });
 
 describe('fromDecisions', () => {
+  // @req FR:web-shell/state.needs.row
   it('a 🙋 row with a recommendation is an approve-style ask from the project agent; without one it wants an answer', () => {
     const rows = fromDecisions([
       { task: T('house:46', '🙋 Review ADU option comparison and decide which path to pursue'), context: T('house:40', 'ADU project'), recommendation: 'Studio Shed quote' },

@@ -113,7 +113,7 @@ test.describe('Home round 3', () => {
     await expect.poll(() => m.calls.find((c) => c.path === '/tasks/complete')?.body.ref).toBe('alpha:31');
   });
 
-  // @req FR:web-app/home2.demo @req FR:cli/web.demo.pill
+  // @req FR:web-app/home2.demo @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand
   test('brand reads Stack [DEMO] in demo mode, with the mark; no banner, no path', async ({ page }, info) => {
     await mockApi(page, { tasks: tasks() });
     await demoMe(page);

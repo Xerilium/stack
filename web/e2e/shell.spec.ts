@@ -8,7 +8,7 @@ const ask = (key: string, text: string, score = 50): MockAsk => ({ key, state: '
 const center = async (page: Page, sel: string) => { const b = (await page.locator(sel).boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 
 test.describe('layout and nav', () => {
-  // @req FR:web-shell/layout.fill @req FR:web-shell/nav.rail @req FR:web-shell/nav.tabbar
+  // @req FR:web-shell/layout.fill @req FR:web-shell/layout.fill.measure @req FR:web-shell/layout.fill.scroll @req FR:web-shell/nav.rail @req FR:web-shell/nav.tabbar @req FR:web-shell/nav.tabbar.glyph @req FR:web-shell/nav.keys.hint
   test('fills the window; one nav with the right words', async ({ page }, info) => {
     const m = await mockApi(page);
     m.asks = [ask('a', 'Approve PR 1'), ask('b', 'Approve PR 2')];
@@ -68,7 +68,7 @@ test.describe('layout and nav', () => {
     await chord('t', /#\/today/);
   });
 
-  // @req FR:web-shell/palette.jump @req FR:web-shell/palette.scope
+  // @req FR:web-shell/palette.jump @req FR:web-shell/palette.jump.groups @req FR:web-shell/palette.jump.filter @req FR:web-shell/palette.scope
   test('the palette jumps to a project by name; row commands only where there are rows', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
@@ -94,7 +94,7 @@ test.describe('layout and nav', () => {
 });
 
 test.describe('honest states', () => {
-  // @req FR:web-shell/state.needs
+  // @req FR:web-shell/state.needs @req FR:web-shell/state.needs.row @req FR:web-shell/state.needs.empty
   test('open 🙋 rows show on Needs you when no agent wrote an ask; Go with it sends the decision', async ({ page }) => {
     const tasks = seed();
     tasks.push({ ref: 'alpha:20', text: '🙋 Pick the ADU path', project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: ['> **Recommendation:** Studio Shed quote'] });
@@ -120,7 +120,7 @@ test.describe('honest states', () => {
     await expect(page.getByTestId('asks-empty')).toContainText('No open asks, decisions, or replies');
   });
 
-  // @req FR:web-shell/state.live @req FR:web-shell/state.unreachable
+  // @req FR:web-shell/state.live @req FR:web-shell/state.live.poll @req FR:web-shell/state.live.drop @req FR:web-shell/state.live.retry @req FR:web-shell/state.unreachable
   test('an unreachable api says so, and Retry really retries', async ({ page }) => {
     const m = await mockApi(page);
     m.asks = [ask('a', 'Approve PR 1')];
@@ -137,7 +137,7 @@ test.describe('honest states', () => {
     await expect(badge).toHaveText(/Synced/); // the mock host has no stream: polling, and honest about it
   });
 
-  // @req FR:web-shell/state.notify
+  // @req FR:web-shell/state.notify @req FR:web-shell/state.notify.denied
   test('a blocked notification permission explains how to unblock', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'Notifications API on desktop Chromium');
     await page.addInitScript(() => {

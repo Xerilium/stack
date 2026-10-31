@@ -21,7 +21,7 @@ test.describe('install', () => {
     await expect(page.locator('meta[name=apple-mobile-web-app-capable]')).toHaveAttribute('content', 'yes');
   });
 
-  // @req FR:pwa/install.standalone
+  // @req FR:pwa/install.standalone @req FR:web-shell/layout.standalone
   test('no sideways scroll at 320 px', async ({ page }, info) => {
     test.skip(info.project.name !== 'mobile', 'phone width');
     await mockApi(page);

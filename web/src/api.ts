@@ -14,7 +14,7 @@ const TASK_FIELDS = 'ref,text,project,section,done,depth,notes';
 
 const await0 = async <T,>(p: Promise<{ items: T[] }>) => (await p).items;
 
-/** Where the page expected Stack: the api origin, else this page's host. @req FR:web-shell/state.unreachable */
+/** @req FR:web-shell/state.unreachable — where the page expected Stack: the api origin, else this page's host. */
 export function unreachable(base = '/api'): string {
   let host = '';
   try { host = new URL(base, typeof location === 'undefined' ? 'http://localhost' : location.href).host; } catch { /* keep the fallback */ }

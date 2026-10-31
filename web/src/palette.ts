@@ -1,4 +1,4 @@
-/** @req FR:web-app/palette.match */
+/** A project name alone ranks that project first. @req FR:web-app/palette.match @req FR:web-shell/palette.jump.filter */
 export function fuzzyScore(query: string, label: string): number | null {
   const q = query.toLowerCase();
   const s = label.toLowerCase();
@@ -19,7 +19,7 @@ export function fuzzyScore(query: string, label: string): number | null {
   return score;
 }
 
-/** @req FR:web-app/palette.open */
+/** Typing filters to a flat list. @req FR:web-app/palette.open @req FR:web-shell/palette.jump.filter */
 export function filterCommands<T extends { label: string }>(cmds: T[], query: string): T[] {
   return cmds
     .map((c, i) => ({ c, i, s: fuzzyScore(query, c.label) }))

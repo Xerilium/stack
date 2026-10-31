@@ -11,6 +11,7 @@ const docFits = (page: Page) => page.evaluate(() => ({ doc: document.documentEle
 const scrollContent = (page: Page, px: number) => page.evaluate((n) => { const el = document.querySelector('.main') as HTMLElement; el.scrollTop = n; return el.scrollTop; }, px);
 
 test.describe('fixed app shell', () => {
+  // @req FR:web-shell/layout.app @req FR:web-shell/layout.app.main @req FR:web-shell/layout.sticky
   test('the document never scrolls; the content region does; nav and section headers stay put', async ({ page }, info) => {
     await mockApi(page, { tasks: many() });
     await page.goto('/#/list');
@@ -36,6 +37,7 @@ test.describe('fixed app shell', () => {
     expect(await page.evaluate(() => getComputedStyle(document.querySelector('.main')!).overscrollBehaviorY)).toBe('contain');
   });
 
+  // @req FR:web-shell/layout.app.inner
   test('focus mode and the capture dialog scroll inside themselves', async ({ page }) => {
     await mockApi(page, { tasks: many() });
     await page.goto('/#/list');

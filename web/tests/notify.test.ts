@@ -38,6 +38,7 @@ describe('notifications', () => {
 
 // @req FR:web-shell/state.notify
 describe('blocked', () => {
+  // @req FR:web-shell/state.notify.denied
   it('tells how to unblock in the browser, not a bare Blocked', () => {
     expect(blockedHelp()).toBe("Allow notifications for this site in the browser's site settings (the lock icon in the address bar)");
   });

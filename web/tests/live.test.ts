@@ -40,6 +40,7 @@ describe('connectLive', () => {
     expect(status).toEqual(['live', 'offline', 'live']);
     expect(changes).toEqual([['asks', 'tasks', 'state']]);
   });
+  // @req FR:web-shell/state.live.poll
   it('a permanent failure (host without a watcher) falls back to polling while visible', () => {
     const { changes, status, es } = setup();
     es().fail(true);
@@ -65,6 +66,7 @@ describe('connectLive', () => {
     expect(changes).toEqual([]);
     expect(es().closed).toBe(true);
   });
+  // @req FR:web-shell/state.live.poll
   it('a missing EventSource means polling from the start', () => {
     const changes: string[][] = []; const status: string[] = [];
     connectLive({ make: null, onChange: (k) => changes.push(k), onStatus: (s) => status.push(s), pollMs: 1000, visible: () => true });
@@ -76,6 +78,7 @@ describe('connectLive', () => {
 
 // @req FR:web-shell/state.live
 describe('retry', () => {
+  // @req FR:web-shell/state.live.drop @req FR:web-shell/state.live.retry
   it('reopens the stream after a drop and goes live again', () => {
     const { status, changes, stop, es } = setup();
     es().open();
@@ -88,6 +91,7 @@ describe('retry', () => {
     expect(status).toEqual(['live', 'offline', 'live']);
     expect(changes).toEqual([['asks', 'tasks', 'state']]);
   });
+  // @req FR:web-shell/state.live.retry
   it('retry while polling reopens the stream (the host may be back); it polls again if that fails for good', () => {
     const { changes, status, stop, es } = setup();
     es().fail(true);

@@ -19,7 +19,7 @@ function dueIso(due: string | undefined, now: Date): string | undefined {
   return d.toISOString();
 }
 
-/** A 🙋 row as an ask from its project's agent. Rank order is kept through the score. */
+/** @req FR:web-shell/state.needs.row — a 🙋 row as an ask from its project's agent. Rank order is kept through the score. */
 export function fromDecisions(decisions: Decision[], titles: Map<string, string>, now: Date): AskItem[] {
   return decisions.map((d, i) => {
     const r = parseRow(d.task.text);

@@ -35,6 +35,7 @@ describe('hash state', () => {
     expect(h.startsWith('#/list?')).toBe(true);
     expect(parseHash(h)).toEqual({ view: 'list', filters: f });
   });
+  // @req FR:web-shell/nav.views.default
   it('omits defaults and tolerates junk', () => {
     expect(buildHash('home', F())).toBe('#/home');
     expect(parseHash('')).toEqual({ view: 'home', filters: F() });
@@ -44,7 +45,7 @@ describe('hash state', () => {
     expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'home', filters: F() });
     expect(parseHash('#/list?state=done').filters.state).toBe('done');
   });
-  // @req FR:web-shell/nav.views
+  // @req FR:web-shell/nav.views @req FR:web-shell/nav.views.default
   it('home is the start; old view names still open their view', () => {
     expect(parseHash('#/').view).toBe('home');
     for (const old of ['now', 'next', 'focus']) expect(parseHash(`#/${old}`).view).toBe('home');

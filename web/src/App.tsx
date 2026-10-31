@@ -285,10 +285,12 @@ export function App() {
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
+    // @req FR:web-shell/state.notify.denied
     if (Notification.permission === 'denied') { setPerm('denied'); toast(blockedHelp(), 'err'); return; }
     const p = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
     setPerm(p);
     if (p === 'granted') { saveNotify(store(), true); setNotifyOn(true); toast('Notifications on'); }
+    // @req FR:web-shell/state.notify.denied (a request that comes back denied shows the same message at once)
     else if (p === 'denied') toast(blockedHelp(), 'err');
   };
   const notify = { supported: notifySupported(), on: notifyOn && perm === 'granted', blocked: perm === 'denied', toggle: () => void toggleNotify() };
@@ -426,7 +428,7 @@ export function App() {
   const sendReply = async (task: Pick<Task, 'ref' | 'text'>, text: string, kind: 'reply' | 'decision', ok: string): Promise<boolean> =>
     (await run(() => api.send(task.ref, text, kind, task.text), () => ok)) !== undefined;
   const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'decision', 'Sent to the agent');
-  /** A 🙋 row answered from Needs you: decision or reply to the inbox, or the row deferred. @req FR:web-shell/state.needs */
+  /** A 🙋 row answered from Needs you: decision or reply to the inbox, or the row deferred. @req FR:web-shell/state.needs @req FR:web-shell/state.needs.row */
   const answerTask = async (a: AskItem, s: Send) => {
     const t = tasks.find((x) => x.ref === a.ref);
     if (!t) throw new Error('Row changed elsewhere');
@@ -584,7 +586,7 @@ export function App() {
     ...(notify.supported ? [{ id: 'notify', label: notify.on ? 'Turn off notifications' : 'Notify me about new asks', run: notify.toggle }] : []),
     { id: 'signout', label: 'Sign out', run: () => void signOut() },
   ].map((c) => ({ group: 'Actions' as Group, ...c }));
-  // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump
+  // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump @req FR:web-shell/palette.jump.groups
   const goTo: Command[] = [
     { id: 'go-home', label: 'Go to Home', hint: HINT.home, group: 'Go to', run: () => go('home') },
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
@@ -594,6 +596,7 @@ export function App() {
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
     { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, group: 'Go to', run: () => go('list') },
   ];
+  // @req FR:web-shell/palette.jump.groups
   const projectCmds: Command[] = projects.map((p) => ({ id: `proj-${p.name}`, label: p.title || p.name, group: 'Projects' as Group, run: () => go('list', { ...NO_FILTERS, project: p.name }) }));
   const allCommands = [...commands, ...goTo, ...projectCmds];
 
@@ -730,6 +733,7 @@ export function App() {
   const focusTask = focusRef ? tasks.find((t) => t.ref === focusRef) : undefined;
   // @req FR:web-shell/nav.rail
   const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : null);
+  /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
   const nav = () => RAIL.map((v) => (
     <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
   ));
@@ -737,8 +741,8 @@ export function App() {
     <div class="shell">
       <nav class="rail" aria-label="Views">
         {/*
-         * The mode shows in the brand (`Stack [DEMO]` for a demo copy), the repo path only in its tooltip.
-         * @req FR:cli/web.demo.pill
+         * The brand is the mark plus Stack; the mode shows in it (`Stack [DEMO]` for a demo copy), the repo path only in its tooltip.
+         * @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand
          */}
         <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
         <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
@@ -823,7 +827,7 @@ function PaletteDialog({ commands, onClose }: { commands: Command[]; onClose: ()
   const [i, setI] = useState(0);
   const shown = filterCommands(commands, q);
   const choose = (c: Command | undefined) => { if (!c) return; onClose(); setTimeout(c.run, 0); };
-  // the list scrolls: keep the selected option in view when the arrows move it
+  // the list scrolls: keep the selected option in view when the arrows move it. @req FR:web-shell/palette.jump.scroll
   useEffect(() => { document.querySelector('#palette-list [aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' }); }, [i, q]);
   return (
     <Dialog title="Command palette" onClose={onClose} sheet={false}>
