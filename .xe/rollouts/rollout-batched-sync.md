@@ -25,7 +25,7 @@ last_updated: 2026-10-31
 
 - None
 
-**Next**: Phase 3 TDD: rewrite `tests/core/storage-batch.test.ts` (red), then `src/core/storage-batch.ts`; then cli, api, web per the Features tasks.
+**Next**: When the annotation subagent reports: verify `npx catalyst traceability` = 100% for cli, live-deploy, web-shell; run full jest + vitest + e2e once more; then Phase 4 (feature-complete: audit, PR via workflow-closure, review, `catalyst index`).
 
 Phase 1 done: all four specs on the current template, `catalyst check` clean, `catalyst deps` clean (storage-git now has no upstream deps; web-shell gained agent-sessions and live-deploy). Commits 854e7c1, 56946dc, 149dcd9, d8d656a. New nested FR ids from the format split (e.g. `git.isolation.state`, `write.many.check`) need `@req` tags on existing code/tests in Phase 3.
 
@@ -64,39 +64,43 @@ Context: conversation with the owner on 2026-10-31 (risk of live mode; batching 
 #### storage-git
 
 - [x] Spec: FR:batch (@function, input, write.*, pending, idle.*, flush.*, failure.*, events, reads), $file-write, $pending; format split ids
-- [ ] Tests (red): rewrite `tests/core/storage-batch.test.ts` to the spec verb map, soft-reset expectations, wider idle timings; add onPending unsubscribe, expectedVersion null, delete in writeMany, push-rejected retry (`beforePush`), non-rejection push failure, failure.retry, close stops timer, read sees pending, onError
-- [ ] Tests: add nested `@req` ids to existing tests in `tests/core/storage.test.ts` (interface.read.missing, write.many.check/rollback/commit/duplicates/fallback, write.delete.fallback, $file-write, git.isolation.state, git.push-retry.other, git.failure.rollback/mask, $errors)
-- [ ] Code: `FsStorage.putAll`; `GitStorage` protected `git/tryGit/remote/branch/checkBranch/fetch/rebase`, extract `stage()` and `pushRetry()`; new `src/core/storage-batch.ts` (`BatchedGitStorage`, `batchSummary`); `@req` on code
-- [ ] `pnpm exec jest tests/core` green; traceability storage-git 100%
+- [x] Tests (red): rewrite `tests/core/storage-batch.test.ts` to the spec verb map, soft-reset expectations, wider idle timings; add onPending unsubscribe, expectedVersion null, delete in writeMany, push-rejected retry (`beforePush`), non-rejection push failure, failure.retry, close stops timer, read sees pending, onError
+- [x] Tests: add nested `@req` ids to existing tests in `tests/core/storage.test.ts` (interface.read.missing, write.many.check/rollback/commit/duplicates/fallback, write.delete.fallback, $file-write, git.isolation.state, git.push-retry.other, git.failure.rollback/mask, $errors)
+- [x] Code: `FsStorage.putAll`; `GitStorage` protected `git/tryGit/remote/branch/checkBranch/fetch/rebase`, extract `stage()` and `pushRetry()`; new `src/core/storage-batch.ts` (`BatchedGitStorage`, `batchSummary`); `@req` on code
+- [x] `pnpm exec jest tests/core` green; traceability storage-git 100% (9259385)
 
 #### cli
 
-- [ ] Tests (red): replace `prepareLive` block in `tests/cli/web.test.ts` (real checkout on main, --branch mismatch, detached HEAD, non-repo, startWeb with BatchedGitStorage idleMs 0 and large + close, GET/POST /api/sync through startWeb, `liveLine` with/without remote and batch 0); discover test for `remote`/`batch` keys
-- [ ] Code: `prepareLive(repo, branch?)` → `{ dir, branch, remote? }`; `WebOpts.storage`; `startWeb.close()` awaits `storage.close()`; `web()` `--batch`, `liveLine`; COMMANDS usage/help; `userConfig` type; `docs/cli.md`, `README.md`
-- [ ] `pnpm exec jest tests/cli` green; traceability cli 100% (annotate web.serve.*, web.demo.*, run.git.worktree, run.help.version, ref.format/invalid, cmd.update.*, parity.script on existing tests/code)
+- [x] Tests (red): replace `prepareLive` block in `tests/cli/web.test.ts` (real checkout on main, --branch mismatch, detached HEAD, non-repo, startWeb with BatchedGitStorage idleMs 0 and large + close, GET/POST /api/sync through startWeb, `liveLine` with/without remote and batch 0); discover test for `remote`/`batch` keys
+- [x] Code: `prepareLive(repo, branch?)` → `{ dir, branch, remote? }`; `WebOpts.storage`; `startWeb.close()` awaits `storage.close()`; `web()` `--batch`, `liveLine`; COMMANDS usage/help; `userConfig` type; `docs/cli.md`, `README.md`
+- [~] `pnpm exec jest tests/cli` green (c12aedf); traceability cli 98% → annotation pass running (subagent) (annotate web.serve.*, web.demo.*, run.git.worktree, run.help.version, ref.format/invalid, cmd.update.*, parity.script on existing tests/code)
 
 #### live-deploy
 
-- [ ] Tests (red): new `tests/api/sync.test.ts` (pending/since on GET, absent for plain storage, POST owner → flushed/rev, nothing pending → 0, token/anonymous → 403, ConflictError → 409 with message, StorageError → 500 with message, batch kept); `tests/api/openapi.test.ts` parity line for `sync.flush`
-- [ ] Code: `batchOf()` duck-typing in handler, GET extension, POST route; `openapi.ts` schemas; `pnpm openapi`
-- [ ] Tests (red, web): `web/tests/unsaved.test.ts` controller (count/since, absent → 0, flush saving + re-read, error keeps count, hidden+pending → keepalive post, hidden+0 → none, visible → check, pagehide → post, stop); `web/tests/api.test.ts` syncState/flush keepalive; `web/e2e/unsaved.spec.ts` (chip text/tooltip, click → Saving… → gone + POST, re-read after a task action, absent without pending, failed flush keeps chip + toast)
-- [ ] Code: `api.ts` syncState/flush; `web/src/unsaved.ts`; `App.tsx` check in refresh + chip; `styles.css`; `mock.ts` pending/since/POST
-- [ ] Traceability live-deploy 100% (annotate gh.*, setup.*, NFRs: documented skips where not automatable)
+- [x] Tests (red): new `tests/api/sync.test.ts` (pending/since on GET, absent for plain storage, POST owner → flushed/rev, nothing pending → 0, token/anonymous → 403, ConflictError → 409 with message, StorageError → 500 with message, batch kept); `tests/api/openapi.test.ts` parity line for `sync.flush`
+- [x] Code: `batchOf()` duck-typing in handler, GET extension, POST route; `openapi.ts` schemas; `pnpm openapi`
+- [x] Tests (red, web): `web/tests/unsaved.test.ts` controller (count/since, absent → 0, flush saving + re-read, error keeps count, hidden+pending → keepalive post, hidden+0 → none, visible → check, pagehide → post, stop); `web/tests/api.test.ts` syncState/flush keepalive; `web/e2e/unsaved.spec.ts` (chip text/tooltip, click → Saving… → gone + POST, re-read after a task action, absent without pending, failed flush keeps chip + toast)
+- [x] Code: `api.ts` syncState/flush; `web/src/unsaved.ts`; `App.tsx` check in refresh + chip; `styles.css`; `mock.ts` pending/since/POST
+- [~] Traceability live-deploy 100% (annotation pass running) (annotate gh.*, setup.*, NFRs: documented skips where not automatable)
 
 #### web-shell
 
-- [ ] Tests (red): `web/e2e/unsaved.spec.ts` chip placement (rail footer desktop, phone header mobile), `Live · main` pill + brand `Stack` under a live `/.auth/me`
-- [ ] Code: pill + chip placement in `App.tsx`, `.phone-brand` flex row
-- [ ] Traceability web-shell 100% (move file-level `@req` to test cases in `web/tests`/`web/e2e`; annotate split ids)
+- [x] Tests (red): `web/e2e/unsaved.spec.ts` chip placement (rail footer desktop, phone header mobile), `Live · main` pill + brand `Stack` under a live `/.auth/me`
+- [x] Code: pill + chip placement in `App.tsx`, `.phone-brand` flex row
+- [~] Traceability web-shell 100% (annotation pass running) (move file-level `@req` to test cases in `web/tests`/`web/e2e`; annotate split ids)
 
 ### Post-implementation
 
-- [ ] Update `README.md` and `docs/cli.md` for the new live mode
-- [ ] Designer screenshot loop on the chip (desktop + phone, light + dark)
+- [x] Update `README.md` and `docs/cli.md` for the new live mode
+- [x] Designer screenshot loop on the chip (desktop + phone, light + dark): shared notes `ux-pass-shots/unsaved/`; chip reads well in both themes, 32px tall on phone, sits right of the brand; no changes needed
 - [ ] PR + `/catalyst:pr-loop`; report ready to the owner
 - [ ] Route external issues discovered during implementation
 
 ## Notes
+
+- Spec alignment (autonomous, auto-approved): cli `FR:web.demo.pill` now describes the implemented brand suffix `Stack [DEMO]` (web-app home round 3 decision) instead of a `Demo copy · <branch>` pill that was never built.
+- External issue (pre-existing, not this rollout): completing a 🔄 recurring row that is not due answers `changed: false`, yet the Home row shows a `Done · Undo` toast as if it landed. Seen on the live scratch clone (`finance:12`). Route to web-app/task-lifecycle triage.
+- Verified on a live scratch clone of ~/dev/todo (`--live --batch 60`, port 4192): Done/Start from the page land in the files at once, `/api/sync` reports `pending`, leaving the page (pagehide) committed `Stack: started 1, done 1` with both messages in the body.
 
 - Spec clarifications from the planning critique (autonomous mode, auto-approved): storage-git `batch.flush.remote` now says commit first, then fetch/rebase/push (a pre-commit rebase would stash the pending files and a stash conflict runs `reset --hard`, destroying them); `batch.@function` gains `onError` and `batch.idle.error` (a timer flush has no caller to throw to); cli `web.batch.startup` says `committed on every edit` for `--batch 0`; live-deploy `$flush-result.rev` is the flush's commit sha.
 - Out of scope, noted: cli `FR:web.demo.pill` (`Demo copy · <branch>`) is specified but not implemented and home3.spec asserts no pill in demo; left as is.

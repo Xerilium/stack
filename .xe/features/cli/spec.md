@@ -50,7 +50,7 @@ Owner needs `stack web` to serve the app over a task repo on their own machine s
 - **FR:web.demo** (P1): By default `stack web` MUST serve a copy: the content repo's `tasks/` (and `.xe/config/stack.json`) copied into `~/.config/stack/demo` as a fresh repo with no history or remote
   - **FR:web.demo.untouched** (P1): Demo mode MUST never write to the real repo
   - **FR:web.demo.reset** (P2): `--reset` MUST re-copy the demo
-  - **FR:web.demo.pill** (P2): The UI MUST show the mode as a quiet pill (`Demo copy · <branch>` in the rail footer on desktop, `Demo copy` in the phone header), with the repo path only in its tooltip
+  - **FR:web.demo.pill** (P2): The UI MUST show demo mode in the brand (`Stack [DEMO]`, web-shell `FR:nav.rail.brand`), with the repo path only in its tooltip and never as a banner
 - **FR:web.live** (P1): `--live` (or user config `mode: live`) MUST serve the owner's real checkout on the branch it has checked out (`main` included), so the files under `<repo>/tasks/` are the single source of truth for the app and the owner's editor
   - **FR:web.live.branch** (P1): `--branch <name>` (or user config `branch`) MUST only assert that branch is checked out; another branch is refused with a clear message
   - **FR:web.live.refuse** (P1): A detached HEAD or a folder that is not a git repo MUST be refused with a clear message before the server starts
