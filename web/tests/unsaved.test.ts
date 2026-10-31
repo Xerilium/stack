@@ -59,9 +59,13 @@ describe('createUnsaved', () => {
     await u.check();
     doc.visibilityState = 'hidden'; fire(doc, 'visibilitychange'); await flush();
     expect(posts).toEqual([true]);
+    expect(u.state().pending).toBe(0); // re-read after the save settled
+    fire(win, 'pagehide'); await flush();
+    expect(posts).toEqual([true]); // nothing pending any more: no second post
+    server.answer = { pending: 1, since: null }; await u.check();
     fire(win, 'pagehide'); await flush();
     expect(posts).toEqual([true, true]);
-    server.answer = { pending: 0, since: null }; doc.visibilityState = 'visible'; fire(doc, 'visibilitychange'); await flush();
+    doc.visibilityState = 'visible'; fire(doc, 'visibilitychange'); await flush();
     doc.visibilityState = 'hidden'; fire(doc, 'visibilitychange'); fire(win, 'pagehide'); await flush();
     expect(posts).toEqual([true, true]); // nothing pending: no post
   });

@@ -135,8 +135,10 @@ test.describe('Asks', () => {
   test('defer (z): choices by number snooze the ask out of the list; it shows under Deferred', async ({ page }) => {
     const m = await open(page);
     await page.keyboard.press('z');
-    await expect(page.getByRole('group', { name: 'Defer until' })).toBeVisible();
-    await page.keyboard.press('3');
+    const group = page.getByRole('group', { name: 'Defer until' });
+    await expect(group).toBeVisible();
+    // the choices depend on the clock (no evening after 4 pm, no tomorrow on weekends): press the last one, never a fixed number
+    await page.keyboard.press(String((await group.getByRole('button').count()) - 1));
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/pr-879/answer')?.body.answer).toBe('defer');
     expect(m.calls.find((c) => c.path === '/asks/pr-879/answer')?.body.until).toMatch(/^\d{4}-/);
     await expect(page.getByRole('button', { name: /Deferred · 1/ })).toBeVisible();

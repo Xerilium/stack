@@ -21,6 +21,8 @@ export interface AskExtras {
   /** Answers a task ask through the agent inbox; rejects to put the ask back. */
   onTask?: (a: AskItem, s: Send) => Promise<void>;
   onOpenTask?: (ref: string) => void;
+  /** The server's pending (uncommitted) count changed: re-read it. @req FR:live-deploy/web.unsaved.refresh */
+  onSync?: () => void;
 }
 /** `stream`: true when the host serves `/events`, false to poll, null while that is not known yet. */
 export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, stream: boolean | null, onNew?: (items: AskItem[]) => void, extras: AskExtras = {}) {
@@ -57,6 +59,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const seq = useRef(0);
   const undoRef = useRef<(() => void) | null>(null);
   const tasksCb = useRef(onTasksChange); tasksCb.current = onTasksChange;
+  const syncCb = useRef(extras.onSync); syncCb.current = extras.onSync;
   const toastRef = useRef(toast); toastRef.current = toast;
 
   const held = (key: string) => (hold.current.get(key) ?? 0) > Date.now();
@@ -97,6 +100,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       onChange: (kinds) => {
         if (kinds.some((k) => k === 'asks' || k === 'state' || k === 'poll')) void load();
         if (kinds.some((k) => k === 'tasks' || k === 'poll')) tasksCb.current();
+        if (kinds.includes('sync')) syncCb.current?.();
       },
     });
     live.current = stop;

@@ -84,10 +84,10 @@ describe('POST /api/sync', () => {
     const c = await call('POST', '/api/sync');
     expect(c.status).toBe(409);
     expect(c.json.error).toMatchObject({ code: 'conflict', message: 'Conflict on tasks/a.md: remote changed it concurrently' });
-    s.fail = new StorageError('git push failed: could not read from remote');
+    s.fail = new StorageError('git push failed: could not read from https://user:tok@github.com/x/y.git');
     const f = await call('POST', '/api/sync');
     expect(f.status).toBe(500);
-    expect(f.json.error).toMatchObject({ code: 'internal', message: 'git push failed: could not read from remote' });
+    expect(f.json.error).toMatchObject({ code: 'internal', message: 'git push failed: could not read from <url>' });
     expect(s.count).toBe(1);
     expect((await call('GET', '/api/sync')).json).toMatchObject({ pending: 1 });
   });

@@ -321,6 +321,48 @@ describe('BatchedGitStorage with remote', () => {
     } finally { await s.close().catch(() => undefined); }
   });
 
+  // @req FR:storage-git/batch.failure @req FR:storage-git/batch.failure.retry
+  it('a fetch that throws (remote unreachable) undoes the commit, keeps the batch, and the next flush pushes once the remote is back', async () => {
+    const { a, bare } = remoteSetup();
+    const s = new BatchedGitStorage(a, { idleMs: IDLE, remote: 'origin' });
+    try {
+      await s.write('tasks/a.md', 'A1', { message: 'Complete: a' });
+      git(a, 'remote', 'set-url', 'origin', join(tmp(), 'gone.git'));
+      const err = await s.flush().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(StorageError);
+      expect(commits(a)[0]).toBe('init'); // no commit left on HEAD
+      expect(readFileSync(join(a, 'tasks/a.md'), 'utf8')).toBe('A1');
+      expect(s.pending().count).toBe(1);
+      git(a, 'remote', 'set-url', 'origin', bare);
+      expect(await s.flush()).toMatch(/^[0-9a-f]{40}$/);
+      expect(commits(a, 'origin/main')[0]).toBe('Stack: done 1');
+      expect(s.pending().count).toBe(0);
+    } finally { await s.close().catch(() => undefined); }
+  });
+
+  // @req FR:storage-git/batch.flush.remote.dirty
+  it("never stashes the owner's own edits: remote ahead + dirty tracked file → ConflictError, commit undone, edit intact", async () => {
+    const { a, b } = remoteSetup();
+    const s = new BatchedGitStorage(a, { idleMs: IDLE, remote: 'origin' });
+    try {
+      writeFileSync(join(a, 'tasks/a.md'), 'hand edit'); // the owner's own uncommitted change to a tracked file
+      await s.write('tasks/b.md', 'B', { message: 'Add task: b' });
+      writeFileSync(join(b, 'tasks/z.md'), 'Z'); git(b, 'add', '.'); git(b, 'commit', '-q', '-m', 'phone'); git(b, 'push', '-q', 'origin', 'main');
+      const err = await s.flush().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictError);
+      expect((err as Error).message).toMatch(/uncommitted edits of its own/);
+      expect(commits(a)[0]).toBe('init');
+      expect(readFileSync(join(a, 'tasks/a.md'), 'utf8')).toBe('hand edit');
+      expect(readFileSync(join(a, 'tasks/b.md'), 'utf8')).toBe('B');
+      expect(s.pending().count).toBe(1);
+      expect(git(a, 'stash', 'list').trim()).toBe('');
+      // the owner commits their edit; the next flush rebases and pushes
+      git(a, 'commit', '-qam', 'mine');
+      expect(await s.flush()).toMatch(/^[0-9a-f]{40}$/);
+      expect(commits(a, 'origin/main').slice(0, 3)).toEqual(['Stack: added 1', 'mine', 'phone']);
+    } finally { await s.close().catch(() => undefined); }
+  });
+
   // @req FR:storage-git/batch.failure.retry
   it('the next flush succeeds once the conflict is resolved', async () => {
     const { a, b } = remoteSetup();

@@ -281,6 +281,7 @@ export function App() {
     tasks: taskAsks,
     onTask: (a, s) => answerTask(a, s),
     onOpenTask: (ref) => { setFocusRef(ref); },
+    onSync: () => void unsaved.check(),
   });
   const toggleNotify = async () => {
     if (!notifySupported()) return;

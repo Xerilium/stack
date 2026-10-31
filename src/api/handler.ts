@@ -11,7 +11,7 @@ import {
 import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
-import { ConflictError, StorageError, type AuxFiles, type Storage } from '../core/storage';
+import type { AuxFiles, Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
 import type { CalendarProvider } from '../calendar';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
@@ -24,7 +24,7 @@ import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 import { generateSummaries } from '../core/summaries';
 import { editTask, moveTask } from './edit';
-import { ApiError, errorResponse, invalid, json, toApiError } from './errors';
+import { ApiError, errorResponse, flushError, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
 import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
 
@@ -705,7 +705,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // Commit and push what is pending now (owner only; a keepalive POST from a closing page carries no body).
+    // Commit and push what is pending now (owner only; a keepalive POST from a closing page sends `{}` or nothing, neither is read).
     // @req FR:live-deploy/sync.flush @req FR:live-deploy/sync.flush.none @req FR:live-deploy/sync.flush.error @req FR:live-deploy/$flush-result
     method: 'POST', doc: '/sync', name: 'sync.flush',
     async run(c) {
@@ -715,12 +715,7 @@ export const ROUTES: Route[] = [
       const n = b?.pending().count ?? 0;
       if (!b || n === 0) return json(200, { flushed: 0, rev: await revOf(c.deps.storage) });
       let sha: string | null;
-      try { sha = await b.flush(); } catch (e) {
-        // The storage's own words: a conflict names the path, a push failure says why. Never row content.
-        if (e instanceof ConflictError) throw new ApiError('conflict', e.message);
-        if (e instanceof StorageError) throw new ApiError('internal', e.message);
-        throw e;
-      }
+      try { sha = await b.flush(); } catch (e) { throw flushError(e); }
       return json(200, { flushed: n, rev: sha ?? await revOf(c.deps.storage) });
     },
   },

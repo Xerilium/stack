@@ -409,6 +409,7 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
   let target: string; let info: RepoInfo; let label: string; let storage: BatchedGitStorage | undefined;
   if (live) {
     // @req FR:cli/web.live @req FR:cli/web.batch @req FR:cli/web.batch.idle @req FR:cli/web.batch.zero
+    if (cfg.batch !== undefined && (typeof cfg.batch !== 'number' || !Number.isFinite(cfg.batch) || cfg.batch < 0)) throw new UsageError('user config "batch" must be a number of minutes, 0 or more');
     const minutes = num(flag(f, 'batch'), 'batch') ?? cfg.batch ?? 5;
     if (minutes < 0) throw new UsageError('--batch must be 0 or more minutes');
     const l = prepareLive(repo, flag(f, 'branch') ?? cfg.branch, cfg.remote);

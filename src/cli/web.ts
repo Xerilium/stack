@@ -151,7 +151,10 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // @req FR:agent-inbox/github.wire
   const ghToken = process.env.GITHUB_TOKEN?.trim();
   const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, ics: process.env.STACK_CALENDAR_ICS, log: (l) => console.log(l) }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
-  const storage: Storage & { close?(): Promise<void> } = o.storage ?? new GitStorage(o.dir);
+  const storage: Storage & { close?(): Promise<void>; onPending?(fn: (n: number) => void): () => void } = o.storage ?? new GitStorage(o.dir);
+  /** Open event streams; a batched storage tells them when its pending count changes (an idle flush leaves no file change for the watcher to see). @req FR:live-deploy/web.unsaved.refresh */
+  const sinks = new Set<(event: string, data: unknown) => void>();
+  const offPending = storage.onPending?.(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['sync'] }); });
   // @req FR:agent-sessions/driver.sdk (the SDK and its binary load on the first sessions request, not here)
   const agents: AgentRuns | undefined = o.agents === false ? undefined : o.agents ?? createRunManager({ driver: createSdkDriver(), ctx: { storage, config }, cwd: o.dir });
   const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined, calendar: cal.provider, agents });
@@ -195,8 +198,10 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           frame('hello', { rev: watcher.rev() });
           if (Number.isInteger(last) && last >= 0 && last < watcher.rev()) frame('change', { rev: watcher.rev(), kinds: ALL_KINDS }, watcher.rev());
           const off = watcher.on((c) => frame('change', c, c.rev));
+          const sink = (event: string, data: unknown) => frame(event, data);
+          sinks.add(sink);
           const hb = setInterval(() => res.write(': ping\n\n'), beat);
-          req.on('close', () => { clearInterval(hb); off(); });
+          req.on('close', () => { clearInterval(hb); off(); sinks.delete(sink); });
           return;
         }
         // @req FR:agent-sessions/run.events
@@ -246,6 +251,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   port = (server.address() as { port: number }).port;
   // @req FR:cli/web.batch.shutdown
   const close = async () => {
+    offPending?.();
     watcher.close();
     await new Promise<void>((ok) => { server.close(() => ok()); server.closeAllConnections(); });
     await storage.close?.();

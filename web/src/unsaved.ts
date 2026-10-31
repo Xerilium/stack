@@ -44,7 +44,7 @@ export function createUnsaved(o: UnsavedOpts): Unsaved {
     finally { s = { ...s, saving: false }; await check(); }
   };
   /** @req FR:live-deploy/web.unsaved.hide */
-  const leaving = () => { if (s.pending > 0 && !s.saving) o.post(true).catch(() => undefined); };
+  const leaving = () => { if (s.pending > 0 && !s.saving) o.post(true).then(() => check(), () => undefined); };
   const onVisibility = () => { if (doc?.visibilityState === 'hidden') leaving(); else void check(); };
   doc?.addEventListener('visibilitychange', onVisibility);
   win?.addEventListener('pagehide', leaving);

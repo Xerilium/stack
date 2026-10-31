@@ -93,6 +93,7 @@ Owner needs edits from the app to land in the checked-out task files at once and
     - A batch with no recognized verb reads `Stack: <n> changes` (`1 change`)
   - **FR:batch.flush.body** (P2): The commit body MUST list every pending message on its own line, in order
   - **FR:batch.flush.remote** (P1): With a remote, `flush()` MUST commit first, then fetch and rebase onto the remote, then push with the `FR:git.push-retry` retry (a rebase conflict aborts cleanly and the written files stay)
+    - **FR:batch.flush.remote.dirty** (P1): When the remote is ahead and the work tree holds uncommitted edits of its own (tracked files), `flush()` MUST NOT rebase: it undoes its commit, keeps the batch, and throws `ConflictError` telling the owner to commit or stash first (Stack never stashes the owner's edits)
   - **FR:batch.flush.empty** (P1): `flush()` MUST make no commit and return `null` when nothing is pending or the pending content equals HEAD
   - **FR:batch.flush.output** (P1): The new commit sha (string), or `null`
 - **FR:batch.failure** (P1): A failed flush (commit, rebase conflict, push) MUST keep the files as written and the batch pending, leave no rebase or extra commit behind, and throw `ConflictError` or `StorageError` as `FR:git.conflict` and `FR:git.failure` do

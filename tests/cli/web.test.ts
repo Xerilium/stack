@@ -152,7 +152,19 @@ describe('prepareLive', () => {
       expect(flushed.rev).toBe(g(repo, 'rev-parse', 'HEAD'));
       expect(g(repo, 'log', '--format=%s').split('\n')[0]).toBe('Stack: done 1');
       expect(((await (await fetch(`${s.url}/api/sync`)).json()) as { pending: number }).pending).toBe(0);
+      // @req FR:live-deploy/web.unsaved.refresh — the event stream hears pending changes, so the page re-reads the count after an idle flush
+      const es = await fetch(`${s.url}/events`);
+      const reader = es.body!.getReader(); const dec = new TextDecoder(); let buf = '';
+      const waitFor = async (re: RegExp) => { const t0 = Date.now(); while (!re.test(buf)) { if (Date.now() - t0 > 5000) throw new Error(`no frame: ${buf}`); const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value); } };
+      await waitFor(/event: hello/);
       await fetch(`${s.url}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project: 'alpha', text: 'Another' }) });
+      expect(storage.pending().count).toBe(1);
+      await waitFor(/"kinds":\["sync"\]/);
+      buf = '';
+      await fetch(`${s.url}/api/sync`, { method: 'POST' });
+      await waitFor(/"kinds":\["sync"\]/);
+      await reader.cancel();
+      await fetch(`${s.url}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project: 'alpha', text: 'One more' }) });
       expect(storage.pending().count).toBe(1);
     } finally { await s.close(); } // shutdown flushes
     expect(g(repo, 'log', '--format=%s').split('\n')[0]).toBe('Stack: added 1');

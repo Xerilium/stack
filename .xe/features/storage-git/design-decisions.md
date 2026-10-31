@@ -33,3 +33,13 @@
 **Why**: `GitStorage` syncs before each write, when the work tree holds nothing of its own. A batch holds written, uncommitted files; a pre-commit rebase would stash them, and a stash-apply conflict resets the work tree hard, destroying the owner's edits.
 
 **Rejected**: Sync before commit as `GitStorage` does (loses pending files on a stash conflict); never rebasing (push always fails once the phone has written).
+
+## A batch flush never stashes the owner's own edits
+
+**Decision**: When the remote is ahead and the checkout has uncommitted edits of its own, `BatchedGitStorage.flush()` undoes its commit, keeps the batch, and throws `ConflictError` ("commit or stash them, then save again") instead of rebasing.
+
+**Date**: 2026-10-31
+
+**Why**: Live mode runs on the owner's real checkout. `GitStorage.rebase()` stashes dirty files and, on a stash re-apply conflict, hard-resets the work tree; on a scratch worktree that was acceptable, on the owner's checkout it would destroy a hand edit.
+
+**Rejected**: Stash and rebase as `GitStorage` does (can lose a hand edit); refusing to flush at all while dirty (the common case, a clean remote, would never save).

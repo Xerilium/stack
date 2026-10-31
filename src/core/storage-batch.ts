@@ -132,25 +132,56 @@ export class BatchedGitStorage extends GitStorage {
       await this.git('commit', '-q', '-m', subject, ...(body.length ? ['-m', body.join('\n')] : []), '--only', '--', ...only);
       let ours = (await this.git('rev-parse', 'HEAD')).trim();
       // @req FR:storage-git/batch.flush.remote (commit first, then fetch + rebase, then push)
-      if (this.remote) {
-        const undo = (sha: string) => this.undo(sha, p.paths);
-        if (await this.fetch()) {
-          if (!(await this.rebase())) {
-            await undo(ours);
-            throw new ConflictError(`Conflict on ${p.paths.join(', ')}: remote changed it concurrently`);
-          }
-          ours = (await this.git('rev-parse', 'HEAD')).trim();
-        }
-        await this.pushRetry(ours, undo);
-      }
+      if (this.remote) ours = await this.syncAndPush(ours, subject, p.paths);
       this.reset();
       // @req FR:storage-git/batch.flush.output
       return ours;
     } catch (e) {
       // @req FR:storage-git/batch.failure @req FR:storage-git/batch.failure.retry
-      if (!this.closed) this.arm();
+      if (!this.closed && this.idleMs > 0) this.arm(); // with idleMs 0 the next write retries; no tight loop against a broken remote
       throw e;
     }
+  }
+
+  /**
+   * Fetch, rebase onto the remote, push with retry. Whatever fails, our commit never stays on HEAD: the batch is
+   * kept pending and the error thrown. The owner's own uncommitted edits are never stashed: when the remote is ahead
+   * and tracked files are dirty, the flush gives up with ConflictError instead of rebasing over them. Returns the pushed sha.
+   * @req FR:storage-git/batch.flush.remote @req FR:storage-git/batch.flush.remote.dirty @req FR:storage-git/batch.failure
+   */
+  private async syncAndPush(ours: string, subject: string, paths: string[]): Promise<string> {
+    let undone = false;
+    const undo = async (sha: string) => { if (undone) return; undone = true; await this.undoQuietly(sha, paths); };
+    try {
+      if (await this.fetch()) {
+        const behind = ((await this.tryGit('rev-list', '--count', `HEAD..${this.ref}`)) ?? '1').trim() !== '0';
+        if (behind) {
+          if ((await this.git('status', '--porcelain', '-uno')).trim() !== '') {
+            await undo(ours);
+            throw new ConflictError(`${this.ref} has new commits and the work tree has uncommitted edits of its own; commit or stash them, then save again`);
+          }
+          if (!(await this.rebase())) {
+            await undo(ours);
+            throw new ConflictError(`Conflict on ${paths.join(', ')}: remote changed it concurrently`);
+          }
+        }
+      }
+      await this.pushRetry((await this.git('rev-parse', 'HEAD')).trim(), undo);
+      return (await this.git('rev-parse', 'HEAD')).trim(); // the tip after any rebase
+    } catch (e) {
+      // A throw from fetch/rebase/push machinery (offline, lock, stash re-apply): our commit may still be the tip.
+      if (!undone) {
+        const head = (await this.tryGit('rev-parse', 'HEAD'))?.trim();
+        const tip = (await this.tryGit('log', '-1', '--format=%s'))?.trim();
+        if (head && tip === subject) await undo(head);
+      }
+      throw e;
+    }
+  }
+
+  /** Undo for a failure path: an undo error must not mask the error being thrown. */
+  private async undoQuietly(sha: string, paths: string[]): Promise<void> {
+    try { await this.undo(sha, paths); } catch { /* original error wins */ }
   }
 
   /** Remove our commit, keeping the files as written and unstaged; nothing else in the index moves. */
