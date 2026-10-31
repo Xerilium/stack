@@ -2,7 +2,6 @@
  * Parity of the CLI against a COPY of the legacy tasks. Skipped unless STACK_LEGACY_DIR is set.
  * The folder must hold `tasks/`, the legacy README.md/stack.md/projects.md/my-day.md, and optionally
  * `.xe/config/stack.json`. The folder is only read, never written.
- * @req FR:cli/parity.script
  */
 import { execFileSync, spawnSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
@@ -30,6 +29,7 @@ d('cli parity with legacy', () => {
   }, 120000);
   afterAll(() => { rmSync(build, { recursive: true, force: true }); rmSync(work, { recursive: true, force: true }); });
 
+  // @req FR:cli/parity.script
   it.each(['README.md', 'stack.md', 'projects.md'])('update reproduces %s', (f) => {
     const nowFile = join(LEGACY!, 'now.txt');
     const now = existsSync(nowFile) ? readFileSync(nowFile, 'utf8').trim() : new Date().toISOString();

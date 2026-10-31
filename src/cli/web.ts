@@ -21,11 +21,16 @@ import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
-/** Copies the content repo's `tasks/` into `dest` as a fresh git repo (no history, no remote). Keeps earlier edits unless `reset`. */
+/**
+ * Copies the content repo's `tasks/` into `dest` as a fresh git repo (no history, no remote). Keeps earlier edits unless `reset`.
+ * The real repo is only read, never written.
+ * @req FR:cli/web.demo.untouched @req FR:cli/web.demo.reset
+ */
 export function prepareDemo(repo: string, dest: string, reset = false): void {
   const source = join(repo, 'tasks');
   if (!existsSync(source)) throw new Error(`${source} not found (expected a content repo with a tasks/ folder)`);
   const marker = join(dest, '.stack-source');
+  // @req FR:cli/web.demo.reset
   if (existsSync(join(dest, '.git')) && !reset && existsSync(marker) && readFileSync(marker, 'utf8') === resolve(repo)) return;
   const inside = (a: string, b: string) => { const r = relative(realpathSync(a), existsSync(b) ? realpathSync(b) : resolve(b)); return r === '' || (!r.startsWith('..') && !r.includes(':')); };
   if (inside(source, dest) || (existsSync(dest) && inside(dest, source))) throw new Error(`Demo source and copy overlap: ${source} / ${dest}`);
@@ -156,6 +161,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const beat = o.watch?.heartbeatMs ?? 20_000;
   const who = o.label ?? 'local';
   let port = o.port;
+  /** @req FR:cli/web.serve.loopback */
   const hostOk = (h?: string) => !!h && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(h);
 
   const server: Server = createServer((req, res) => {
@@ -166,13 +172,16 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
       };
       try {
         // DNS-rebinding guard: only loopback host names are served.
+        // @req FR:cli/web.serve.loopback
         if (!hostOk(req.headers.host)) return send(403, 'forbidden', 'text/plain');
         // CSRF guard: writes only from this page (a browser always sends Origin or Sec-Fetch-Site on cross-site posts).
         const origin = req.headers.origin;
         const site = req.headers['sec-fetch-site'];
         const unsafe = req.method !== 'GET' && req.method !== 'HEAD';
+        // @req FR:cli/web.serve.loopback
         if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
         const path = (req.url ?? '/').split('?')[0];
+        // @req FR:cli/web.serve.local
         if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents }), 'application/json');
         if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
         // @req FR:ask-queue/live.sse

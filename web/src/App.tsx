@@ -235,7 +235,10 @@ export function App() {
   /** Live mode: what the server has not committed yet. @req FR:web-shell/state.unsaved */
   const unsaved = useUnsaved(api, (m) => toast(m, 'err'));
   const unsavedChip = unsaved.label ? <button type="button" class="chip unsaved" data-testid="unsaved" title={unsaved.title} aria-live="polite" disabled={unsaved.state.saving} onClick={() => void unsaved.flush()}>{unsaved.label}</button> : null;
-  /** Live mode on the owner's checkout: the rail footer names the branch. @req FR:web-shell/state.unsaved.pill @req FR:cli/web.live.pill */
+  /**
+   * Live mode on the owner's checkout: the rail footer names the branch.
+   * @req FR:web-shell/state.unsaved.pill @req FR:cli/web.live.pill
+   */
   const livePill = local && info?.mode === 'live' ? <span class="repo-pill live" data-testid="repo-pill" title={info.repo}>Live · {info.branch}</span> : null;
   const refresh = useCallback(async () => {
     void loadSide();
@@ -730,6 +733,10 @@ export function App() {
   return (
     <div class="shell">
       <nav class="rail" aria-label="Views">
+        {/*
+         * The mode shows in the brand (`Stack [DEMO]` for a demo copy), the repo path only in its tooltip.
+         * @req FR:cli/web.demo.pill
+         */}
         <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
         <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
         {nav()}

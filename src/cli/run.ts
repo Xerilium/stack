@@ -74,6 +74,7 @@ function num(v: string | undefined, name: string): number | undefined {
   return n;
 }
 
+/** @req FR:cli/run.help.version */
 function pkgVersion(): string {
   for (let d = __dirname; ; d = dirname(d)) {
     const p = join(d, 'package.json');
@@ -107,6 +108,7 @@ function loadConfig(dir: string): StackConfig {
 const git = (dir: string, ...args: string[]): string =>
   execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
 
+/** @req FR:cli/run.git.worktree */
 function isWorkTree(dir: string): boolean {
   try { return git(dir, "rev-parse", "--is-inside-work-tree").trim() === "true"; } catch { return false; }
 }
@@ -178,7 +180,9 @@ function describe(cmd: string, r: LifecycleResult): Outcome {
 async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: boolean; queries: boolean }): Promise<Outcome> {
   const now = ctx.now ? ctx.now() : new Date();
   const config = ctx.config ?? getDefaults();
+  // @req FR:cli/cmd.update.queries
   const queries = opts.queries ? await refreshQueryTasks(storage, createGhClient(), { now, timeZone: config.timezone }) : undefined;
+  // @req FR:cli/cmd.update.sweep
   const swept = opts.sweep ? await sweep(ctx) : undefined;
   const readOpt = async (p: string) => { try { return await storage.read(p); } catch (e) { if (e instanceof NotFoundError) return null; throw e; } };
   const projects = [];
@@ -195,6 +199,7 @@ async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: bo
     if (cur && cur.content === content) continue;
     changed.push({ path: name, content, expectedVersion: cur ? cur.version : null });
   }
+  // @req FR:cli/cmd.update.commit
   if (changed.length) await writeAll(storage, changed, 'Update summaries');
   const written = changed.map(c => c.path);
   const q = queries ? ` (queries: ${queries.processed} refreshed${queries.failures.length ? `, ${queries.failures.length} failed: ${queries.failures.map(x => x.message).join('; ')}` : ''})` : '';
@@ -297,6 +302,7 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
   if (f['no-commit']) {
     storage = new FsStorage(dir);
   } else {
+    // @req FR:cli/run.git.worktree
     if (!isWorkTree(dir)) throw new StorageError(`Not a git work tree: ${dir} (run \`stack init --dir ${dir}\`, or use --no-commit)`);
     storage = new GitStorage(dir, { remote: flag(f, 'remote'), branch: flag(f, 'branch') });
   }
@@ -392,7 +398,7 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
   }
 }
 
-/** @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live */
+/** @req FR:cli/web.@cli @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live */
 async function web(f: Record<string, string | true>, io: IO, found: string | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
   const cfg = userConfig(home);
@@ -442,6 +448,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
   try {
     const p = parseArgs(argv);
     json = p.flags['json'] === true;
+    // @req FR:cli/run.help.version
     if (p.flags['version']) { io.out(`${pkgVersion()}\n`); return EXIT.ok; }
     if (p.flags['help'] || !p.command) { io.out(`${helpText()}\n`); return EXIT.ok; }
     const spec = COMMANDS[p.command];

@@ -42,7 +42,10 @@ export function parseArgs(argv: string[]): Parsed {
   return out;
 }
 
-/** `tasks/x.md:12` (1-based line) to the core's 0-based ref. @req FR:cli/ref.format @req FR:cli/ref.invalid */
+/**
+ * `tasks/x.md:12` (1-based line) to the core's 0-based ref; anything else is a usage error.
+ * @req FR:cli/ref.format @req FR:cli/ref.invalid
+ */
 export function parseRef(text: string): TaskRef {
   const m = /^(.+):(\d+)$/.exec(text);
   if (!m || Number(m[2]) < 1) throw new UsageError(`Bad task ref (expected tasks/<file>.md:<line>): ${text}`);
