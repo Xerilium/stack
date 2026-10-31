@@ -23,11 +23,11 @@ export function unreachable(base = '/api'): string {
 
 /** `onRead` hears each read: the time the service worker saved it when it came from the offline cache, else null. @req FR:pwa/offline.banner */
 export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base = '/api', onRead?: (savedAt: string | null) => void) {
-  async function call<T>(path: string, body?: unknown): Promise<T> {
+  async function call<T>(path: string, body?: unknown, extra: RequestInit = {}): Promise<T> {
     if (body !== undefined && typeof navigator !== 'undefined' && navigator.onLine === false) throw new ApiFailure(0, 'offline', 'Offline: changes need a connection');
     const init: RequestInit = body === undefined
-      ? { credentials: 'same-origin' }
-      : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' };
+      ? { credentials: 'same-origin', ...extra }
+      : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin', ...extra };
     let res: Response;
     try { res = await fetchFn(`${base}${path}`, init); } catch { throw new ApiFailure(0, 'network', unreachable(base)); }
     const text = await res.text();
@@ -77,7 +77,16 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     cancelSession: (id: string) => call<{ changed: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, {}),
     /** Repo revision for change-driven polling (null: the host has none). @req FR:live-deploy/web.poll */
     sync: async () => (await call<{ rev: string | null }>('/sync')).rev,
+    /** Revision plus what a batching server has not committed yet. @req FR:live-deploy/web.unsaved @req FR:live-deploy/$sync-state */
+    syncState: () => call<SyncState>('/sync'),
+    /** Commit and push pending edits now; `keepalive` when the page is going away. @req FR:live-deploy/web.unsaved.hide @req FR:live-deploy/$flush-result */
+    flush: (keepalive = false) => call<FlushResult>('/sync', {}, keepalive ? { keepalive: true } : {}),
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
   };
 }
 export type Client = ReturnType<typeof createClient>;
+
+/** `GET /api/sync`: `pending`/`since` only when the server batches commits. */
+export interface SyncState { rev: string | null; pending?: number; since?: string | null }
+/** `POST /api/sync`. */
+export interface FlushResult { flushed: number; rev: string | null }

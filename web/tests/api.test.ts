@@ -64,3 +64,21 @@ describe('unreachable api', () => {
     expect((e as ApiFailure).message).toBe("Can't reach Stack at localhost:4190. Is stack web still running?");
   });
 });
+
+// @req FR:live-deploy/web.unsaved @req FR:live-deploy/web.unsaved.hide
+describe('sync state and flush', () => {
+  it('syncState reads rev, pending and since', async () => {
+    const { client, calls } = rec(() => res(200, { rev: null, pending: 2, since: '2026-10-31T10:00:00.000Z' }));
+    expect(await client.syncState()).toEqual({ rev: null, pending: 2, since: '2026-10-31T10:00:00.000Z' });
+    expect(calls[0].url).toBe('/api/sync');
+    expect(calls[0].init.method ?? 'GET').toBe('GET');
+  });
+  it('flush posts to /sync, with keepalive when the page is going away', async () => {
+    const { client, calls } = rec(() => res(200, { flushed: 1, rev: 'abc' }));
+    expect(await client.flush()).toEqual({ flushed: 1, rev: 'abc' });
+    expect(calls[0].init.method).toBe('POST');
+    expect(calls[0].init.keepalive).toBeUndefined();
+    await client.flush(true);
+    expect(calls[1].init.keepalive).toBe(true);
+  });
+});

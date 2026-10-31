@@ -25,6 +25,7 @@ import { actionsFor, type AskItem, type Send } from './asks';
 import { useAsks } from './useAsks';
 import { Drawer, SessionsView } from './SessionsView';
 import { usePins } from './pins';
+import { useUnsaved } from './unsaved';
 import { useSessions } from './useSessions';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
 import { fromDecisions } from './needs';
@@ -231,11 +232,15 @@ export function App() {
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
     if (i.status === 'fulfilled') setInbox(i.value);
   }, []);
+  /** Live mode: what the server has not committed yet. @req FR:web-shell/state.unsaved */
+  const unsaved = useUnsaved(api, (m) => toast(m, 'err'));
+  const unsavedChip = unsaved.label ? <button type="button" class="chip unsaved" data-testid="unsaved" title={unsaved.title} aria-live="polite" disabled={unsaved.state.saving} onClick={() => void unsaved.flush()}>{unsaved.label}</button> : null;
   const refresh = useCallback(async () => {
     void loadSide();
     try {
       const [n, t, p] = await Promise.all([api.next(), api.tasks(), api.projects()]);
       setNext(n); setTasks(t); setProjects(p); setPhase('ready');
+      void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 401) { toLogin(); return; }
       if (e instanceof ApiFailure && e.status === 403) { setPhase('denied'); return; }
@@ -731,11 +736,14 @@ export function App() {
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
         <div class="who">
           {!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}
+          {/* @req FR:web-shell/state.unsaved.pill @req FR:cli/web.live.pill */}
+          {local && info?.mode === 'live' && <span class="repo-pill live" data-testid="repo-pill" title={info.repo}>Live · {info.branch}</span>}
+          {unsavedChip}
         </div>
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
+        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}</div>
         {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} />}
