@@ -64,16 +64,20 @@ export function unsavedTitle(s: UnsavedState): string {
   return time ? `First unsaved edit ${time} · click to save now` : 'Click to save now';
 }
 
-/** The controller as state: `check()` after each own write and change event, `flush()` on click. */
-export function useUnsaved(api: Client, onError: (message: string) => void) {
+/**
+ * The controller as state: `check()` after each own write and change event, `flush()` on click.
+ * `enabled` is false where no server batches (the hosted app over GitHub storage), so that page never asks twice.
+ */
+export function useUnsaved(api: Client, onError: (message: string) => void, enabled = true) {
   const [state, setState] = useState<UnsavedState>({ pending: 0, since: null, saving: false });
   const errRef = useRef(onError); errRef.current = onError;
   const ctl = useRef<Unsaved | null>(null);
   useEffect(() => {
+    if (!enabled) { setState({ pending: 0, since: null, saving: false }); return; }
     const u = createUnsaved({ get: () => api.syncState(), post: (k) => api.flush(k), onState: setState, onError: (m) => errRef.current(m) });
     ctl.current = u;
     return () => { u.stop(); ctl.current = null; };
-  }, [api]);
+  }, [api, enabled]);
   const check = useCallback(() => ctl.current?.check() ?? Promise.resolve(), []);
   const flush = useCallback(() => ctl.current?.flush() ?? Promise.resolve(), []);
   return { state, check, flush, label: unsavedLabel(state), title: unsavedTitle(state) };

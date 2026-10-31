@@ -22,7 +22,7 @@ class Batching extends MemoryStorage {
 const mk = (storage: MemoryStorage) => {
   const h = createApiHandler({ storage, authorize: () => true });
   return async (method: string, path: string, who: 'owner' | 'agent' | 'api' = 'owner') => {
-    const headers = who === 'owner' ? { 'x-ms-client-principal': OWNER } : who === 'agent' ? { authorization: `Bearer ${TOKEN}` } : {};
+    const headers: Record<string, string> = who === 'owner' ? { 'x-ms-client-principal': OWNER } : who === 'agent' ? { authorization: `Bearer ${TOKEN}` } : {};
     const res = await h(new Request(`https://x.test${path}`, { method, headers }));
     const text = await res.text();
     return { status: res.status, headers: res.headers, json: text ? JSON.parse(text) : undefined };

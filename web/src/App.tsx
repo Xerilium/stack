@@ -233,7 +233,7 @@ export function App() {
     if (i.status === 'fulfilled') setInbox(i.value);
   }, []);
   /** Live mode: what the server has not committed yet. @req FR:web-shell/state.unsaved */
-  const unsaved = useUnsaved(api, (m) => toast(m, 'err'));
+  const unsaved = useUnsaved(api, (m) => toast(m, 'err'), local);
   const unsavedChip = unsaved.label ? <button type="button" class="chip unsaved" data-testid="unsaved" title={unsaved.title} aria-live="polite" disabled={unsaved.state.saving} onClick={() => void unsaved.flush()}>{unsaved.label}</button> : null;
   /**
    * Live mode on the owner's checkout: the rail footer names the branch.

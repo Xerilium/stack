@@ -208,19 +208,19 @@ describe('BatchedGitStorage flush', () => {
   // @req FR:storage-git/batch.idle @req FR:storage-git/batch.idle.close
   it('flushes on its own after the idle time since the last write, and on close', async () => {
     const d = freshRepo();
-    const s = new BatchedGitStorage(d, { idleMs: 600 });
+    const s = new BatchedGitStorage(d, { idleMs: 1200 });
     await s.write('tasks/a.md', 'A1', { message: 'Complete: a' });
-    await sleep(350);
-    await s.write('tasks/b.md', 'B', { message: 'Add task: b' }); // restarts the timer
-    await sleep(350);
-    expect(s.pending().count).toBe(2); // 700 ms after the first write, 350 after the last: not yet
     await sleep(700);
+    await s.write('tasks/b.md', 'B', { message: 'Add task: b' }); // restarts the timer
+    await sleep(700);
+    expect(s.pending().count).toBe(2); // 1.4 s after the first write, 0.7 after the last: not yet
+    await sleep(1500);
     expect(s.pending().count).toBe(0);
     expect(commits(d)[0]).toBe('Stack: done 1, added 1');
     await s.write('tasks/a.md', 'A2', { message: 'Complete: a2' });
     await s.close(); // close flushes what is left and stops the timer
     expect(commits(d)[0]).toBe('Stack: done 1');
-    await sleep(700);
+    await sleep(1400);
     expect(commits(d).length).toBe(3);
   });
 
