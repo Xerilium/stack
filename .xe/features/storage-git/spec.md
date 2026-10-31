@@ -74,7 +74,7 @@ Stack System needs every write to be a direct commit on the task repo so that hi
 
 Owner needs edits from the app to land in the checked-out task files at once and be committed in quiet stretches so that the files stay the single source of truth and the history reads as sessions, not taps.
 
-- **FR:batch.@function** (P1): Interface: `new BatchedGitStorage(root, { idleMs?, remote?, branch?, env? })` extends `GitStorage` with `pending(): Pending`, `flush(): Promise<string | null>`, `onPending(fn): () => void`, `close(): Promise<void>`
+- **FR:batch.@function** (P1): Interface: `new BatchedGitStorage(root, { idleMs?, remote?, branch?, env?, onError? })` extends `GitStorage` with `pending(): Pending`, `flush(): Promise<string | null>`, `onPending(fn): () => void`, `close(): Promise<void>`
 - **FR:batch.input** (P1):
   - Writes as `GitStorage` takes them (@req FR:$write-opts, FR:$file-write)
   - Idle time `idleMs` (number) — quiet milliseconds before a commit. Default: 300000
@@ -87,11 +87,12 @@ Owner needs edits from the app to land in the checked-out task files at once and
 - **FR:batch.idle** (P1): `BatchedGitStorage` MUST flush on its own `idleMs` after the last pending write; each write restarts the timer
   - **FR:batch.idle.zero** (P1): With `idleMs` 0, `BatchedGitStorage` MUST flush after every write
   - **FR:batch.idle.close** (P1): `close()` MUST flush what is pending and stop the timer
+  - **FR:batch.idle.error** (P2): A timer flush that fails MUST be reported to `onError` (dropped when none is given); the batch stays pending
 - **FR:batch.flush** (P1): `flush()` MUST make one commit containing only the pending paths (`commit --only`), leaving the owner's other dirty files uncommitted
   - **FR:batch.flush.subject** (P1): The commit subject MUST read `Stack: <verb> <n>, …`, one entry per verb in first-seen order, built from each pending message's leading verb in past tense: `Complete` → done, `Suspended until` → deferred, `Add task`/`Add project` → added, `Edit` → edited, `Move` → moved, `Note` → noted, `Start` → started, `Park` → parked, `Resume` → resumed, `Update` → updated, `Remove` → removed, `Roll` → rolled, `Due` → due, `Ask …` → asked; any other message counts under `other`
     - A batch with no recognized verb reads `Stack: <n> changes` (`1 change`)
   - **FR:batch.flush.body** (P2): The commit body MUST list every pending message on its own line, in order
-  - **FR:batch.flush.remote** (P1): With a remote, `flush()` MUST fetch and rebase before pushing, and push with the `FR:git.push-retry` retry
+  - **FR:batch.flush.remote** (P1): With a remote, `flush()` MUST commit first, then fetch and rebase onto the remote, then push with the `FR:git.push-retry` retry (a rebase conflict aborts cleanly and the written files stay)
   - **FR:batch.flush.empty** (P1): `flush()` MUST make no commit and return `null` when nothing is pending or the pending content equals HEAD
   - **FR:batch.flush.output** (P1): The new commit sha (string), or `null`
 - **FR:batch.failure** (P1): A failed flush (commit, rebase conflict, push) MUST keep the files as written and the batch pending, leave no rebase or extra commit behind, and throw `ConflictError` or `StorageError` as `FR:git.conflict` and `FR:git.failure` do

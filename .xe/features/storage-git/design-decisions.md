@@ -23,3 +23,13 @@
 **Evidence**:
 
 - Owner conversation, 2026-10-31 (rollout `batched-sync`)
+
+## A batch flush commits before it syncs with the remote
+
+**Decision**: `flush()` commits the pending paths first, then fetches, rebases, and pushes. A rebase conflict aborts and leaves the commit undone (soft reset), with the files still written.
+
+**Date**: 2026-10-31
+
+**Why**: `GitStorage` syncs before each write, when the work tree holds nothing of its own. A batch holds written, uncommitted files; a pre-commit rebase would stash them, and a stash-apply conflict resets the work tree hard, destroying the owner's edits.
+
+**Rejected**: Sync before commit as `GitStorage` does (loses pending files on a stash conflict); never rebasing (push always fails once the phone has written).

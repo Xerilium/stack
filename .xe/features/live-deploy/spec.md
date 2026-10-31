@@ -118,7 +118,7 @@ Owner needs one script and one short doc to put Stack online so that hosting is 
   - `since` (string | null?) — ISO time of the first pending write; present only for a batching storage
 - **FR:$flush-result** (P1): **`FlushResult`** — Answer of `POST /api/sync`.
   - `flushed` (number) — writes committed by this call
-  - `rev` (string | null) — head after the flush
+  - `rev` (string | null) — the commit made by this flush, else the storage's revision (`null` when it has none)
 
 ## Architecture Constraints
 

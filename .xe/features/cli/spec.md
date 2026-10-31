@@ -65,7 +65,7 @@ Owner needs `stack web` to serve the app over a task repo on their own machine s
     > - @req FR:storage-git/batch.idle.zero
   - **FR:web.batch.shutdown** (P1): SIGINT and SIGTERM MUST flush what is pending before the process exits
     > - @req FR:storage-git/batch.idle.close
-  - **FR:web.batch.startup** (P2): The startup line MUST say where edits go and when they commit: `LIVE MODE: edits land in <repo>/tasks on <branch>; committed after <n> min idle` with `, then pushed to <remote>` when there is one
+  - **FR:web.batch.startup** (P2): The startup line MUST say where edits go and when they commit: `LIVE MODE: edits land in <repo>/tasks on <branch>; committed after <n> min idle` (`committed on every edit` with `--batch 0`), with `, then pushed to <remote>` when there is one
 
 ### FR:ref: Task references
 
