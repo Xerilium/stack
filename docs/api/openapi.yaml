@@ -1542,16 +1542,42 @@ paths:
           $ref: "#/components/responses/Error"
   /sync:
     get:
-      summary: "Change probe: the head revision of the task repo (null when the storage has none). Poll it and reload only when it changes"
+      summary: "Change probe: the head revision of the task repo (null when the storage has none), plus pending/since when the storage batches commits. Poll it and reload only when rev changes"
       operationId: sync
       responses:
         "200":
-          description: Revision
+          description: Sync state
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  rev:
+                    type: string
+                    nullable: true
+                  pending:
+                    type: integer
+                    description: Writes not yet committed (batching storage only)
+                  since:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: First pending write (batching storage only)
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Commit and push pending edits now (owner only). flushed is 0 when nothing was pending or the storage does not batch
+      operationId: flushSync
+      responses:
+        "200":
+          description: Flush result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flushed:
+                    type: integer
                   rev:
                     type: string
                     nullable: true

@@ -271,6 +271,8 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('summaries.get', 'GET', '/summaries', undefined, 200);
     // @req FR:live-deploy/sync.route
     await go('sync', 'GET', '/sync', undefined, 200);
+    // @req FR:live-deploy/sync.flush
+    await go('sync.flush', 'POST', '/sync', {}, 200);
     // @req FR:day-inputs/api.calendar
     await go('calendar.list', 'GET', '/calendar?from=2026-10-28T00:00:00Z&to=2026-10-29T00:00:00Z', undefined, 200);
     await go('calendar.list', 'GET', '/calendar?from=x&to=y', undefined, 422);

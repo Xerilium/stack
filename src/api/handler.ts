@@ -11,7 +11,7 @@ import {
 import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
-import type { AuxFiles, Storage } from '../core/storage';
+import { ConflictError, StorageError, type AuxFiles, type Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
 import type { CalendarProvider } from '../calendar';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
@@ -155,6 +155,10 @@ const SCHEDULE_DAY_BODY = {
 };
 const SCHEDULE_PATH = '.stack/schedule.json';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** A storage that batches commits (storage-git FR:batch), found by duck typing so no adapter is imported here. @req FR:live-deploy/sync.pending */
+interface Batching { pending(): { count: number; since: Date | null }; flush(): Promise<string | null> }
+const batchOf = (s: unknown): Batching | null => (s && typeof (s as Batching).pending === 'function' && typeof (s as Batching).flush === 'function' ? s as Batching : null);
+const revOf = async (s: unknown): Promise<string | null> => { const r = (s as { rev?: () => Promise<string | null> }).rev; return typeof r === 'function' ? r.call(s) : null; };
 const auxOf = (s: unknown): AuxFiles | null => (s && typeof (s as AuxFiles).readAux === 'function' && typeof (s as AuxFiles).writeAux === 'function' ? s as AuxFiles : null);
 /** Saved wake/bed overrides, or none when the storage keeps no state files. @req FR:schedule/api.override */
 async function overridesOf(storage: unknown): Promise<{ value: ScheduleOverrides; version: string | null; broken?: boolean }> {
@@ -691,12 +695,33 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // @req FR:live-deploy/sync.route @req FR:live-deploy/sync.cheap
+    // @req FR:live-deploy/sync.route @req FR:live-deploy/sync.cheap @req FR:live-deploy/sync.pending @req FR:live-deploy/sync.@api
     method: 'GET', doc: '/sync', name: 'sync',
     async run(c) {
       readQuery(c.url, []);
-      const s = c.deps.storage as { rev?: () => Promise<string | null> };
-      return json(200, { rev: typeof s.rev === 'function' ? await s.rev() : null });
+      const b = batchOf(c.deps.storage);
+      const p = b?.pending();
+      return json(200, { rev: await revOf(c.deps.storage), ...(p ? { pending: p.count, since: p.since?.toISOString() ?? null } : {}) });
+    },
+  },
+  {
+    // Commit and push what is pending now (owner only; a keepalive POST from a closing page carries no body).
+    // @req FR:live-deploy/sync.flush @req FR:live-deploy/sync.flush.none @req FR:live-deploy/sync.flush.error @req FR:live-deploy/$flush-result
+    method: 'POST', doc: '/sync', name: 'sync.flush',
+    async run(c) {
+      readQuery(c.url, []);
+      ownerOnly(c, 'Only the owner can save pending edits');
+      const b = batchOf(c.deps.storage);
+      const n = b?.pending().count ?? 0;
+      if (!b || n === 0) return json(200, { flushed: 0, rev: await revOf(c.deps.storage) });
+      let sha: string | null;
+      try { sha = await b.flush(); } catch (e) {
+        // The storage's own words: a conflict names the path, a push failure says why. Never row content.
+        if (e instanceof ConflictError) throw new ApiError('conflict', e.message);
+        if (e instanceof StorageError) throw new ApiError('internal', e.message);
+        throw e;
+      }
+      return json(200, { flushed: n, rev: sha ?? await revOf(c.deps.storage) });
     },
   },
   {
