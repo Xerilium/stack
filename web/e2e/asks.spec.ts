@@ -133,6 +133,7 @@ test.describe('Asks', () => {
   });
 
   test('defer (z): choices by number snooze the ask out of the list; it shows under Deferred', async ({ page }) => {
+    await page.clock.setFixedTime(new Date(2026, 9, 28, 10)); // a weekday morning, so all four choices show (a weekend evening has two)
     const m = await open(page);
     await page.keyboard.press('z');
     await expect(page.getByRole('group', { name: 'Defer until' })).toBeVisible();
