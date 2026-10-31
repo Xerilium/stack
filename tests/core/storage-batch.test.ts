@@ -363,6 +363,48 @@ describe('BatchedGitStorage with remote', () => {
     } finally { await s.close().catch(() => undefined); }
   });
 
+  // @req FR:storage-git/batch.flush.remote.dirty
+  it("the push-retry rebase refuses too: a hand edit survives a remote that moves between the rebase and the push", async () => {
+    const { a, b } = remoteSetup();
+    const s = new BatchedGitStorage(a, { idleMs: IDLE, remote: 'origin' });
+    try {
+      writeFileSync(join(a, 'tasks/a.md'), 'hand edit');
+      await s.write('tasks/b.md', 'B', { message: 'Add task: b' });
+      let raced = false;
+      s.beforePush = async () => {
+        if (raced) return; raced = true;
+        writeFileSync(join(b, 'tasks/a.md'), 'A-phone'); git(b, 'commit', '-qam', 'phone'); git(b, 'push', '-q', 'origin', 'main');
+      };
+      const err = await s.flush().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictError);
+      expect((err as Error).message).toMatch(/uncommitted edits of its own/);
+      expect(readFileSync(join(a, 'tasks/a.md'), 'utf8')).toBe('hand edit');
+      expect(readFileSync(join(a, 'tasks/b.md'), 'utf8')).toBe('B');
+      expect(commits(a)[0]).toBe('init');
+      expect(git(a, 'stash', 'list').trim()).toBe('');
+      expect(s.pending().count).toBe(1);
+    } finally { await s.close().catch(() => undefined); }
+  });
+
+  // @req FR:storage-git/batch.idle.zero @req FR:storage-git/batch.failure.retry
+  it('idleMs 0 does not loop against a broken remote: the write itself rejects, no timer retries, the next write tries again', async () => {
+    const { a, b } = remoteSetup();
+    const errors: unknown[] = [];
+    const s = new BatchedGitStorage(a, { idleMs: 0, remote: 'origin', onError: (e) => errors.push(e) });
+    try {
+      writeFileSync(join(b, 'tasks/a.md'), 'A-phone'); git(b, 'commit', '-qam', 'phone'); git(b, 'push', '-q', 'origin', 'main');
+      await expect(s.write('tasks/a.md', 'A-desk', { message: 'Complete: a' })).rejects.toBeInstanceOf(ConflictError);
+      await sleep(1000);
+      expect(errors).toEqual([]);
+      expect(s.pending().count).toBe(1);
+      expect(commits(a)[0]).toBe('init');
+      git(a, 'checkout', '-q', 'origin/main', '--', 'tasks/a.md'); // the owner takes the phone's version
+      await s.write('tasks/b.md', 'B', { message: 'Add task: b' }); // the next write flushes the whole batch
+      expect(commits(a, 'origin/main').slice(0, 2)).toEqual(['Stack: done 1, added 1', 'phone']);
+      expect(s.pending().count).toBe(0);
+    } finally { await s.close().catch(() => undefined); }
+  });
+
   // @req FR:storage-git/batch.failure.retry
   it('the next flush succeeds once the conflict is resolved', async () => {
     const { a, b } = remoteSetup();

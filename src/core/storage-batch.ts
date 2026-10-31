@@ -151,20 +151,11 @@ export class BatchedGitStorage extends GitStorage {
    */
   private async syncAndPush(ours: string, subject: string, paths: string[]): Promise<string> {
     let undone = false;
-    const undo = async (sha: string) => { if (undone) return; undone = true; await this.undoQuietly(sha, paths); };
+    const undo = async (sha: string) => { if (undone) return; undone = true; await this.undoQuietly(sha, subject, paths); };
     try {
-      if (await this.fetch()) {
-        const behind = ((await this.tryGit('rev-list', '--count', `HEAD..${this.ref}`)) ?? '1').trim() !== '0';
-        if (behind) {
-          if ((await this.git('status', '--porcelain', '-uno')).trim() !== '') {
-            await undo(ours);
-            throw new ConflictError(`${this.ref} has new commits and the work tree has uncommitted edits of its own; commit or stash them, then save again`);
-          }
-          if (!(await this.rebase())) {
-            await undo(ours);
-            throw new ConflictError(`Conflict on ${paths.join(', ')}: remote changed it concurrently`);
-          }
-        }
+      if (await this.fetch() && !(await this.rebase())) {
+        await undo(ours);
+        throw new ConflictError(`Conflict on ${paths.join(', ')}: remote changed it concurrently`);
       }
       await this.pushRetry((await this.git('rev-parse', 'HEAD')).trim(), undo);
       return (await this.git('rev-parse', 'HEAD')).trim(); // the tip after any rebase
@@ -173,19 +164,34 @@ export class BatchedGitStorage extends GitStorage {
       if (!undone) {
         const head = (await this.tryGit('rev-parse', 'HEAD'))?.trim();
         const tip = (await this.tryGit('log', '-1', '--format=%s'))?.trim();
-        if (head && tip === subject) await undo(head);
+        if (head && tip === subject) await undo(head); // not undone by pushRetry and still the tip
       }
       throw e;
     }
   }
 
-  /** Undo for a failure path: an undo error must not mask the error being thrown. */
-  private async undoQuietly(sha: string, paths: string[]): Promise<void> {
-    try { await this.undo(sha, paths); } catch { /* original error wins */ }
+  /**
+   * Never stash the owner's own edits: when the remote is ahead and tracked files are dirty, refuse instead of
+   * rebasing over them (`GitStorage.rebase` would stash and, on a re-apply conflict, hard-reset the work tree).
+   * Applies to the first rebase and to the ones `pushRetry` makes after a rejected push.
+   * @req FR:storage-git/batch.flush.remote.dirty
+   */
+  protected async rebase(): Promise<boolean> {
+    const behind = ((await this.tryGit('rev-list', '--count', `HEAD..${this.ref}`)) ?? '1').trim() !== '0';
+    if (behind && (await this.git('status', '--porcelain', '-uno')).trim() !== '') {
+      throw new ConflictError(`${this.ref} has new commits and the work tree has uncommitted edits of its own; commit or stash them, then save again`);
+    }
+    return super.rebase();
   }
 
-  /** Remove our commit, keeping the files as written and unstaged; nothing else in the index moves. */
-  private async undo(sha: string, paths: string[]): Promise<void> {
+  /** Undo for a failure path: an undo error must not mask the error being thrown. */
+  private async undoQuietly(sha: string, subject: string, paths: string[]): Promise<void> {
+    try { await this.undo(sha, subject, paths); } catch { /* original error wins */ }
+  }
+
+  /** Remove our commit (only if `sha` is it: a rebase may have dropped it as empty), keeping the files as written and unstaged; nothing else in the index moves. */
+  private async undo(sha: string, subject: string, paths: string[]): Promise<void> {
+    if ((await this.tryGit('log', '-1', '--format=%s', sha))?.trim() !== subject) return;
     const parent = (await this.tryGit('rev-parse', '--verify', '-q', `${sha}^`))?.trim() ?? null;
     if (parent) await this.git('reset', '-q', '--soft', parent);
     else await this.git('update-ref', '-d', 'HEAD');
