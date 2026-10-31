@@ -6,7 +6,7 @@
  */
 import { execFileSync } from 'child_process';
 import { existsSync, realpathSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { basename, dirname, join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
@@ -25,9 +25,9 @@ import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { emailCmd } from './email';
 import { graphCmd } from './graph';
 import { findStackDir, userConfig } from './discover';
-import { redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
+import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
+import { BatchedGitStorage } from '../core/storage-batch';
 import { homedir } from 'os';
-import { createHash } from 'crypto';
 
 export interface IO { out(s: string): void; err(s: string): void }
 
@@ -50,7 +50,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
-  web: { flags: ['port', 'repo', 'live', 'branch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live commits to a branch)' },
+  web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--batch minutes] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches)' },
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'extra', 'project'], usage: 'email run [--mode observe|drafts] [--max n] [--dry-run] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache'], usage: 'graph login --client-id <id> [--tenant t] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
@@ -400,14 +400,17 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
   if (!spec) throw new UsageError('No content repo. Use: stack web --repo <path-or-git-url> (or set STACK_REPO, or "repo" in ~/.config/stack/config.json)');
   const repo = resolveRepo(spec, join(home, '.config/stack/clones'));
   const live = f['live'] === true || cfg.mode === 'live';
-  let target: string; let info: RepoInfo; let label: string;
+  let target: string; let info: RepoInfo; let label: string; let storage: BatchedGitStorage | undefined;
   if (live) {
-    const branch = flag(f, 'branch') ?? cfg.branch ?? 'stack-web';
-    const wt = join(home, '.config/stack/live', `${basename(repo)}-${createHash('sha1').update(`${repo}\0${branch}`).digest('hex').slice(0, 8)}`);
-    target = prepareLive(repo, branch, wt).dir;
-    info = { mode: 'live', repo: redact(repo), branch };
-    label = `LIVE - edits are committed to branch ${branch} of ${repo}`;
-    io.out(`LIVE MODE: edits commit to branch ${branch} of ${repo} (worktree ${target}); main is untouched until you merge.\n`);
+    // @req FR:cli/web.live @req FR:cli/web.batch @req FR:cli/web.batch.idle @req FR:cli/web.batch.zero
+    const minutes = num(flag(f, 'batch'), 'batch') ?? cfg.batch ?? 5;
+    if (minutes < 0) throw new UsageError('--batch must be 0 or more minutes');
+    const l = prepareLive(repo, flag(f, 'branch') ?? cfg.branch, cfg.remote);
+    target = l.dir;
+    info = { mode: 'live', repo: redact(repo), branch: l.branch };
+    label = `LIVE - ${repo} on ${l.branch}`;
+    storage = new BatchedGitStorage(target, { idleMs: minutes * 60_000, remote: l.remote, branch: l.branch, onError: (e) => io.err(`error: commit failed, edits kept and retried: ${e instanceof Error ? e.message : String(e)}\n`) });
+    io.out(`${liveLine(repo, l.branch, minutes, l.remote)}\n`);
   } else {
     target = join(home, '.config/stack/demo');
     prepareDemo(repo, target, f['reset'] === true);
@@ -417,7 +420,7 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
   }
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
-  const s = await startWeb({ dir: target, port, webDir, label, info });
+  const s = await startWeb({ dir: target, port, webDir, label, info, storage });
   io.out(`Stack web: ${s.url}  (data: ${target}; Ctrl+C to stop)\n`);
   await new Promise<void>((ok) => { process.once('SIGINT', ok); process.once('SIGTERM', ok); });
   await s.close();

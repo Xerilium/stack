@@ -13,7 +13,8 @@ const isStackDir = (d: string): boolean => {
   try { return existsSync(join(d, '.git')) && readdirSync(join(d, 'tasks')).some((f) => f.endsWith('.md')); } catch { return false; }
 };
 
-export function userConfig(home: string): { repo?: string; dir?: string; mode?: string; branch?: string } {
+/** `~/.config/stack/config.json`: `repo`/`dir` (discovery), `mode: live`, `branch`, `remote`, `batch` (minutes) for `stack web`. @req FR:cli/web.live @req FR:cli/web.batch.idle */
+export function userConfig(home: string): { repo?: string; dir?: string; mode?: string; branch?: string; remote?: string; batch?: number } {
   try { return JSON.parse(readFileSync(join(home, '.config/stack/config.json'), 'utf8')); } catch { return {}; }
 }
 
