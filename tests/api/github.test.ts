@@ -24,7 +24,7 @@ const pull = (n: number, o: Partial<{ state: string; merged: boolean; draft: boo
 const runs = (...r: [string, string | null][]) => ({ body: { total_count: r.length, check_runs: r.map(([status, conclusion]) => ({ status, conclusion })) } });
 const ref = (n: number) => ({ url: `https://github.com/o/r/pull/${n}`, repo: 'o/r', number: n });
 
-// @req FR:agent-inbox/github.fetch
+// @req FR:github-pr-status/status.fetch
 describe('GitHub PR status provider', () => {
   it('maps PR state and check runs, sends the token only to api.github.com', async () => {
     const f = fake({
@@ -75,7 +75,7 @@ describe('GitHub PR status provider', () => {
   });
 });
 
-// @req FR:agent-inbox/github.repos
+// @req FR:github-pr-status/repos.allow
 describe('repo allow-list', () => {
   type Agents = { items: { prs: object[] }[] };
   const at = (repo: string, n: number) => ({ url: `https://github.com/${repo}/pull/${n}`, repo, number: n });
@@ -119,7 +119,7 @@ describe('repo allow-list', () => {
   });
 });
 
-// @req FR:agent-inbox/github.wire
+// @req FR:github-pr-status/wire.token
 describe('wiring', () => {
   const read = (p: string) => readFileSync(join(__dirname, '../..', p), 'utf8');
   it.each(['src/host/runtime.ts', 'src/cli/web.ts'])('%s passes the provider only when GITHUB_TOKEN is set, never logs it', (p) => {

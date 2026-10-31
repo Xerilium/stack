@@ -133,7 +133,7 @@ export async function calendarSource(o: { cachePath?: string; fixture?: string; 
 export async function startWeb(o: WebOpts): Promise<WebServer> {
   const cfgPath = join(o.dir, '.xe/config/stack.json');
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
-  // @req FR:agent-inbox/github.wire @req FR:agent-inbox/github.repos: a bad repo list leaves PR status off.
+  // @req FR:github-pr-status/wire.token @req FR:github-pr-status/repos.invalid: a bad repo list leaves PR status off.
   const ghToken = process.env.GITHUB_TOKEN?.trim();
   let prs: ReturnType<typeof createGitHubPrs> | undefined;
   try { prs = ghToken ? createGitHubPrs({ token: ghToken, repos: githubRepos(process.env.STACK_GITHUB_REPOS) }) : undefined; } catch (e) { console.error(`github: STACK_GITHUB_REPOS ${e instanceof Error ? e.message : 'is invalid'}; PR status off`); }

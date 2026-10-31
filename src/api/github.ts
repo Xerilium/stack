@@ -1,6 +1,8 @@
 /**
  * Pull request state and checks from the GitHub REST api, for agent activity. The token goes only to api.github.com.
- * @req FR:agent-inbox/github.fetch @req FR:agent-inbox/github.repos
+ * @req FR:github-pr-status/status.fetch
+ * @req FR:github-pr-status/status.checks
+ * @req FR:github-pr-status/repos.allow
  */
 import type { PrRef, PrStatus, PrStatusProvider } from '../core/activity';
 

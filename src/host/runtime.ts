@@ -111,7 +111,7 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
   const event = (e: object) => log(JSON.stringify(e));
   const onError = (e: unknown) => log(`error: ${className(e)}`);
   const auth = createAuth({ owners: settings.owners, tokens, onEvent: event });
-  // @req FR:agent-inbox/github.wire @req FR:agent-inbox/github.repos: a bad repo list logs a value-free reason and leaves PR status off.
+  // @req FR:github-pr-status/wire.token @req FR:github-pr-status/repos.invalid: a bad repo list logs a value-free reason and leaves PR status off.
   const ghToken = env.GITHUB_TOKEN?.trim();
   let prs: ReturnType<typeof createGitHubPrs> | undefined;
   try { prs = ghToken ? createGitHubPrs({ token: ghToken, repos: githubRepos(env.STACK_GITHUB_REPOS) }) : undefined; } catch (e) { log(`host: STACK_GITHUB_REPOS ${e instanceof GitHubReposError ? e.message : className(e)}`); }
