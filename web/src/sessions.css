@@ -184,5 +184,5 @@
   .org-role, .org-projects { display: none; }
   .org-tree [data-level]::before { display: none; }
   .scope-note kbd { display: none; }
-  .pick-list li { min-height: var(--tap); }
+  .pick-list li, .also-agent, .org-more .more-btn { min-height: var(--tap); }
 }

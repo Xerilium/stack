@@ -211,6 +211,7 @@ describe('parseClaudeAgent', () => {
     const e = parseClaudeAgent('x', '---\nname: x\ndescription: >\n  Stack lead.\n  Spec first.\ntools:\n  - Read\n  - Grep\nmodel: "opus"\n---\n');
     expect(e).toMatchObject({ role: 'Stack lead', tools: ['Read', 'Grep'], model: 'opus' });
     expect(parseClaudeAgent('w', '---\ndescription: "Keeps the owner\n  focused."\n---\n').role).toBe('Keeps the owner focused');
+    expect(parseClaudeAgent('v', '---\nscope:\n- stack\n- catalyst\ntools:\n- Read\nmodel: opus\n---\n')).toMatchObject({ scope: ['stack', 'catalyst'], tools: ['Read'], model: 'opus' }); // an unindented list
   });
 });
 

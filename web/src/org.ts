@@ -9,7 +9,7 @@ import { matchAgent, rollupOf, type TeamAgent } from './team';
 
 export const UNASSIGNED = 'Unassigned';
 export type OrgRow =
-  | { kind: 'agent'; key: string; level: number; agent: TeamAgent; /** Sessions in the window. */ count: number; tokens: number; hidden: number }
+  | { kind: 'agent'; key: string; level: number; agent: TeamAgent; /** Sessions in the window. */ count: number; tokens: number }
   | { kind: 'session'; key: string; level: number; s: SessionItem; pinned: boolean }
   | { kind: 'more'; key: string; level: number; agent: TeamAgent; n: number }
   | { kind: 'project'; key: string; level: number; project: string }
@@ -48,7 +48,7 @@ export function orgTree(team: TeamAgent[], items: SessionItem[], rank: Map<strin
     const mine = orderSessions(byAgent.get(a.slug) ?? [], rank);
     const open = o.more?.has(a.slug);
     const shown = open ? mine : mine.slice(0, top);
-    out.push({ kind: 'agent', key: `agent:${a.slug}`, level, agent: a, count: mine.length, tokens: mine.reduce((n, s) => n + s.cost.tokens, 0), hidden: mine.length - shown.length });
+    out.push({ kind: 'agent', key: `agent:${a.slug}`, level, agent: a, count: mine.length, tokens: mine.reduce((n, s) => n + s.cost.tokens, 0) });
     for (const s of shown) out.push({ kind: 'session', key: s.id, level: level + 1, s, pinned: pins.includes(s.id) });
     if (mine.length > shown.length) out.push({ kind: 'more', key: `more:${a.slug}`, level: level + 1, agent: a, n: mine.length - shown.length });
     const kids = orderAgents(team.filter((t) => t !== a && t.reportsTo === a.slug), rank, keep, o.showAll);

@@ -80,7 +80,7 @@ function AgentPicker({ agents, value, onPick }: { agents: TeamAgent[]; value: st
   const [hi, setHi] = useState(0);
   const chosen = agents.find((a) => a.slug === value);
   const k = nameKey(q);
-  const list = [...agents.filter((a) => !k || [a.name, a.slug, a.role ?? '', ...a.projects].some((x) => nameKey(x).includes(k))), { slug: NONE, name: 'No agent (plain session)', role: 'No persona; runs in the folder below', projects: [] as string[] } as TeamAgent];
+  const list: TeamAgent[] = [...agents.filter((a) => !k || [a.name, a.slug, a.role ?? '', ...a.projects].some((x) => nameKey(x).includes(k))), { slug: NONE, name: 'No agent (plain session)', role: 'No persona; runs in the folder below', scope: [], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: [] }];
   const pick = (slug: string) => { onPick(slug); setOpen(false); setQ(''); };
   return (
     <div class={`agent-pick${open ? ' open' : ''}`}>
@@ -100,7 +100,7 @@ function AgentPicker({ agents, value, onPick }: { agents: TeamAgent[]; value: st
             <li key={a.slug || '_none'} role="option" aria-selected={a.slug === value} class={`${i === hi ? 'hi' : ''}${a.slug === value ? ' on' : ''}`} onMouseDown={(e) => { e.preventDefault(); pick(a.slug); }} onMouseEnter={() => setHi(i)}>
               <span class="pick-name">{a.name}</span>
               {a.role && <span class="pick-role">{a.role}</span>}
-              {a.projects.length > 0 && <span class="pick-projects">{a.scope?.includes('*') ? 'all projects' : a.projects.slice(0, 3).join(' · ')}</span>}
+              {a.projects.length > 0 && <span class="pick-projects">{a.scope.includes('*') ? 'all projects' : a.projects.slice(0, 3).join(' · ')}</span>}
             </li>
           ))}
         </ul>

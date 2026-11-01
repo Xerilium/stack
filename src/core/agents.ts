@@ -111,11 +111,14 @@ export function parseClaudeAgent(slug: string, content: string): AgentDef {
   const fm = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(content);
   if (fm) {
     body = content.slice(fm[0].length);
-    // Fold YAML continuation lines onto their key, so `description: >` (a block scalar), a wrapped quoted string, or a `- item` list never reads as `>`, its first line, or nothing.
+    // Fold YAML continuation lines onto their key, so `description: >` (a block scalar), a wrapped quoted string, or a `- item` list (indented or not) never reads as `>`, its first line, or nothing.
+    let inList = false;
     const folded = fm[1].replace(/\r/g, '').split('\n').reduce<string[]>((out, raw) => {
       const prev = out[out.length - 1];
-      if (prev !== undefined && /^\s+\S/.test(raw)) { const t = raw.trim(); out[out.length - 1] = t.startsWith('- ') ? `${prev}${/:\s*$/.test(prev) ? ' ' : ', '}${t.slice(2)}` : `${prev} ${t}`; }
-      else out.push(raw.replace(/^([A-Za-z][A-Za-z0-9_-]*):\s*[>|][+-]?\s*$/, '$1:'));
+      // An unindented `- item` continues a list too: most YAML emitters write `tools:\n- Read\n- Grep` at the key's own indent.
+      const item = /^\s*- /.test(raw) && prev !== undefined && (inList || /:\s*$/.test(prev));
+      if (prev !== undefined && (item || /^\s+\S/.test(raw))) { const t = raw.trim(); out[out.length - 1] = t.startsWith('- ') ? `${prev}${/:\s*$/.test(prev) ? ' ' : ', '}${t.slice(2)}` : `${prev} ${t}`; inList = t.startsWith('- '); }
+      else { inList = false; out.push(raw.replace(/^([A-Za-z][A-Za-z0-9_-]*):\s*[>|][+-]?\s*$/, '$1:')); }
       return out;
     }, []);
     for (const raw of folded) {
