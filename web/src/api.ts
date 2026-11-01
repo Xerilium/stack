@@ -2,6 +2,8 @@ import type { CalEvent } from './meetings';
 import type { DaySched } from './schedule';
 import type { AskList, Send } from './asks';
 import type { CostReport, SessionList, Turn } from './sessions';
+import type { RankItem } from './home';
+import type { NeedItem } from './needs';
 import type { ReviewItem, TeamAgent } from './team';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
 
@@ -42,6 +44,11 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
   }
   return {
     next: async () => (await call<{ task: NextTask | null }>('/next')).task,
+    /** The one ranking (engine order plus the owner's overrides); Home draws only this. @req FR:api/routes.rank */
+    rank: async (limit = 100) => (await call<{ items: RankItem[] }>(`/rank?limit=${limit}`)).items,
+    /** The Chief of Staff's escalations. @req FR:ask-queue/needs.api */
+    needs: async () => (await call<{ items: NeedItem[] }>('/needs-you')).items,
+    answerNeed: (id: string, body: { choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }) => call<{ changed: boolean }>(`/needs-you/${encodeURIComponent(id)}/answer`, body),
     async tasks(): Promise<Task[]> {
       const all: Task[] = [];
       for (let offset = 0; ; offset += 200) {

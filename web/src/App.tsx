@@ -26,9 +26,10 @@ import { useAsks } from './useAsks';
 import { Drawer, SessionsView } from './SessionsView';
 import { usePins } from './pins';
 import { useUnsaved } from './unsaved';
+import type { RankItem } from './home';
 import { useSessions } from './useSessions';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
-import { fromDecisions } from './needs';
+import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
 import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { useTeam } from './useTeam';
@@ -96,6 +97,9 @@ export function App() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [next, setNext] = useState<NextTask | null>(null);
+  /** The server's ranking: Home draws this and nothing else. @req FR:web-app/now.active */
+  const [ranked, setRanked] = useState<RankItem[]>([]);
+  const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
@@ -203,7 +207,12 @@ export function App() {
   // In personal time, tasks tagged for it may use the rest of the block. @req FR:home/home.window
   const minutesLeft = win.allow && !win.have ? win.allow.minutes : win.inside && !win.have ? 0 : win.minutes;
   const allow = win.allow && !win.have ? win.allow : undefined;
-  const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, next, clockNow, minutesLeft, allow]);
+  /** Open 🙋 rows and the CoS's escalations: Needs you shows them, so Home must not. @req FR:web-shell/state.needs @req FR:ask-queue/needs.dedupe */
+  const taskAsks = useMemo(() => fromDecisions(decisions.filter((d) => repliesFor(inbox, d.task).length === 0), titles, clockNow), [decisions, inbox, titles, clockNow]);
+  const needAsks = useMemo(() => fromNeeds(needs, clockNow), [needs, clockNow]);
+  const needRows = useMemo(() => [...needAsks, ...taskAsks], [needAsks, taskAsks]); // one stable list: a new array every render would reset the Asks cursor
+  const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks]);
+  const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task), home.five.map((n) => n.task), home.projects.filter((x) => !x.shown).slice(0, allProjects ? undefined : 3).map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
@@ -243,8 +252,9 @@ export function App() {
   const refresh = useCallback(async () => {
     void loadSide();
     try {
-      const [n, t, p] = await Promise.all([api.next(), api.tasks(), api.projects()]);
-      setNext(n); setTasks(t); setProjects(p); setPhase('ready');
+      const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
+      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
+      api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 401) { toLogin(); return; }
@@ -272,13 +282,12 @@ export function App() {
   const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : 'denied'));
   const notifyRef = useRef(false); notifyRef.current = notifyOn && perm === 'granted';
   /** Open 🙋 rows that have no reply yet, as asks. @req FR:web-shell/state.needs */
-  const taskAsks = useMemo(() => fromDecisions(decisions.filter((d) => repliesFor(inbox, d.task).length === 0), titles, clockNow), [decisions, inbox, titles, clockNow]);
   const asks = useAsks(api, toast, () => void refresh(), stream, (items) => {
     if (!notifyRef.current || !document.hidden) return;
     const note = noteFor(items, new Date());
     if (note) void raise(note);
   }, {
-    tasks: taskAsks,
+    tasks: needRows,
     onTask: (a, s) => answerTask(a, s),
     onOpenTask: (ref) => { setFocusRef(ref); },
     onSync: () => void unsaved.check(),
@@ -323,6 +332,13 @@ export function App() {
       } catch { setStream(false); setAgentsOn(false); /* the api decides access */ }
       await refresh();
     })();
+  }, []);
+
+  /** Key hints stay out of the way until the first key press; every control carries its key in its tooltip. @req FR:web-app/home3.keys */
+  useEffect(() => {
+    const on = () => document.body.classList.add('keyed');
+    window.addEventListener('keydown', on, { once: true, capture: true });
+    return () => window.removeEventListener('keydown', on, true);
   }, []);
 
   // keep the cursor on a real row
@@ -430,7 +446,18 @@ export function App() {
     (await run(() => api.send(task.ref, text, kind, task.text), () => ok)) !== undefined;
   const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'decision', 'Sent to the agent');
   /** A 🙋 row answered from Needs you: decision or reply to the inbox, or the row deferred. @req FR:web-shell/state.needs @req FR:web-shell/state.needs.row */
+  /** The owner's answer on a CoS escalation is written onto the item; Undo clears it. @req FR:ask-queue/needs.answer @req FR:ask-queue/needs.web.answered */
+  const answerNeedItem = async (a: AskItem, s: Send) => {
+    const id = a.key.replace(/^need:/, '');
+    const body = s.answer === 'defer' && s.until ? { choice: 'defer' as const, until: s.until }
+      : s.answer === 'go' || s.answer === 'done' ? { choice: 'go' as const }
+        : { choice: 'reply' as const, text: s.text || (s.answer === 'no' ? 'No' : 'Noted') };
+    await api.answerNeed(id, body);
+    setNeeds(await api.needs());
+    toast(body.choice === 'go' ? 'Going with it · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
+  };
   const answerTask = async (a: AskItem, s: Send) => {
+    if (a.source === 'need') return answerNeedItem(a, s);
     const t = tasks.find((x) => x.ref === a.ref);
     if (!t) throw new Error('Row changed elsewhere');
     let ok: unknown;
@@ -718,6 +745,7 @@ export function App() {
     agent: {
       chip: (t) => { const v = team.chipOf(t); return <AgentChip view={v} onClick={() => { if (v.tone === 'accent' || v.tone === 'warn' || v.text.startsWith('Done')) team.openSession(t.ref); else team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); }} onNeeds={() => go('asks')} />; },
       talk: (t) => (team.talk?.ref === t.ref ? <AgentTalk key={t.ref} team={team} talk={team.talk} agents={team.agentsOf(t)} /> : null),
+      owned: (t) => team.chipOf(t).tone === 'accent',
     },
   };
   /** The composer for an ask card: the ask's agent, the ask as the context. @req FR:agent-team/web.anything */
@@ -768,7 +796,7 @@ export function App() {
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'home' && <HomeView all={allProjects} onAll={() => setAllProjects(true)} h={home} now={clockNow} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
+        {phase === 'ready' && view === 'home' && <HomeView all={allProjects} onAll={() => setAllProjects(true)} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />

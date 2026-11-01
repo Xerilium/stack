@@ -78,7 +78,8 @@ test.describe('Home on the schedule', () => {
   // @req FR:home/home.delegate
   test('Delegate marks the row 🪄 with undo', async ({ page }) => {
     const m = await open(page, at(10));
-    await page.getByRole('group', { name: 'Next task' }).getByRole('button', { name: /Delegate/ }).click();
+    await page.getByRole('group', { name: 'Next task' }).getByTestId('more').click();
+    await page.getByRole('menuitem', { name: /Delegate/ }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/tasks/edit')?.body).toMatchObject({ ref: 'alpha:1', text: '🪄 Ship the release 🟠', expect: 'Ship the release 🟠' });
     await expect(page.getByText(/Delegated to the/)).toBeVisible();
     await page.getByRole('button', { name: 'Undo' }).click();

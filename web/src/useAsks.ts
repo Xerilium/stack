@@ -142,7 +142,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     if (cursorRef.current === a.key) setCursor(after[Math.min(Math.max(at, 0), after.length - 1)]?.key ?? null);
     try {
       await extrasRef.current.onTask?.(a, s);
-      toastRef.current(sentText, 'ok');
+      if (a.source !== 'need') toastRef.current(sentText, 'ok'); // a need answer shows its own Undo toast
     } catch (e) {
       setCursor(a.key);
       if (!(e instanceof Error && (e as { shown?: boolean }).shown)) toastRef.current(e instanceof Error ? e.message : 'Failed', 'err');
@@ -151,7 +151,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
 
   /** Answers an ask: it leaves the list at once; a failure puts it back. @req FR:ask-queue/web.optimistic */
   const answer = useCallback(async (a: AskItem, s: Send, sentText: string, undoable = true) => {
-    if (a.source === 'task') return answerTask(a, s, sentText);
+    if (a.source) return answerTask(a, s, sentText);
     const at = itemsRef.current.findIndex((i) => i.key === a.key);
     hold.current.set(a.key, Date.now() + HOLD_MS);
     const after = itemsRef.current.filter((i) => i.key !== a.key);

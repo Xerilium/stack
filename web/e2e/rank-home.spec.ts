@@ -1,0 +1,121 @@
+/** One ranking, the CoS's Needs you, and a quiet Home. */
+import { expect, test } from '@playwright/test';
+import { mockApi, type MockNeed } from './mock';
+
+const need = (over: Partial<MockNeed> = {}): MockNeed => ({ id: 'pay-bills', title: 'Pay bills tonight', recommendation: 'Pay USAA first', default: 'I wait until Monday', link: 'https://example.test/bills', project: 'alpha', ...over });
+
+test.describe('Home draws the server ranking', () => {
+  // @req FR:web-app/now.active @req FR:web-app/home.one @req FR:web-app/home.next
+  test('NOW and Up next follow GET /rank, not anything the page works out itself', async ({ page }) => {
+    const m = await mockApi(page);
+    m.ranked = [{ ref: 'beta:4' }, { ref: 'alpha:9' }, { ref: 'alpha:6' }]; // the owner put "Plan the trip" first
+    await page.goto('/');
+    await expect(page.getByTestId('next-title')).toContainText('Plan the trip');
+    await expect(page.getByTestId('up-next').locator('.row .title')).toHaveText(['Review pull requests', 'Ship the web app']);
+  });
+
+  // @req FR:web-app/home.one @req FR:task-lifecycle/rank.root
+  test('a ranked leaf shows as its top-level row', async ({ page }) => {
+    const m = await mockApi(page);
+    m.tasks.push({ ref: 'alpha:20', text: 'Pay bills 💰', project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: [] } as never);
+    m.tasks.push({ ref: 'alpha:21', text: 'Mortgage', project: 'alpha', section: '🔄 Active', done: false, depth: 1, notes: [] } as never);
+    m.ranked = [{ ref: 'alpha:21', root: 'alpha:20' }, { ref: 'alpha:6' }];
+    await page.goto('/');
+    await expect(page.getByTestId('next-title')).toContainText('Pay bills');
+  });
+});
+
+test.describe('Needs you from the Chief of Staff', () => {
+  // @req FR:ask-queue/needs.web @req FR:ask-queue/needs.web.card
+  test('CoS items come first with the recommendation, the default if silent, and a link', async ({ page }) => {
+    const m = await mockApi(page);
+    m.needs = [need(), need({ id: 'second', title: 'Second thing', recommendation: 'Do it' })];
+    await page.goto('/#/asks');
+    await expect(page.locator('.ask-card .ask-title')).toHaveText('Pay bills tonight');
+    await expect(page.locator('.ask-card')).toContainText('Pay USAA first');
+    await expect(page.locator('.ask-card')).toContainText('I wait until Monday');
+    await expect(page.locator('.ask-card').getByRole('button', { name: /Go with it/ })).toBeVisible();
+  });
+
+  // @req FR:ask-queue/needs.answer @req FR:ask-queue/needs.web.answered
+  test('Go with it records the answer on the item and offers Undo, which clears it', async ({ page }) => {
+    const m = await mockApi(page);
+    m.needs = [need()];
+    await page.goto('/#/asks');
+    await page.locator('.ask-card').getByRole('button', { name: /Go with it/ }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/needs-you/pay-bills/answer')?.body).toMatchObject({ choice: 'go' });
+    await expect(page.getByText(/Going with it/)).toBeVisible();
+    await expect(page.locator('.ask-card .ask-title')).toHaveCount(0); // gone from the list
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect.poll(() => m.calls.filter((c) => c.path === '/needs-you/pay-bills/answer').at(-1)?.body).toMatchObject({ choice: 'undo' });
+    await expect(page.locator('.ask-card .ask-title')).toHaveText('Pay bills tonight');
+  });
+
+  // @req FR:web-app/home3.dedupe @req FR:ask-queue/needs.dedupe
+  test('a task that is in Needs you is not on Home', async ({ page }) => {
+    const m = await mockApi(page);
+    m.needs = [need({ ref: 'alpha:6' })]; // the NOW task
+    await page.goto('/');
+    await expect(page.getByTestId('next-title')).not.toContainText('Ship the web app');
+    await expect(page.locator('section[aria-label="Home"]')).not.toContainText('Ship the web app');
+    await page.goto('/#/asks');
+    await expect(page.locator('.ask-card .ask-title')).toHaveText('Pay bills tonight');
+  });
+
+  // @req FR:ask-queue/needs.read
+  test('no file or an empty one changes nothing', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
+  });
+});
+
+test.describe('Quiet Home', () => {
+  // @req FR:web-app/home3.keys
+  test('key hints stay hidden until the first key press; every control carries its key in its tooltip', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'keyboard');
+    await mockApi(page);
+    await page.goto('/');
+    const focus = page.locator('.focus-block');
+    await expect(focus.getByRole('button', { name: /^Start/ })).toHaveAttribute('title', /\(s\)/);
+    await expect(focus.getByRole('button', { name: /^Done/ })).toHaveAttribute('title', /\(d\)/);
+    await expect(focus.locator('kbd:visible')).toHaveCount(0);
+    await page.keyboard.press('j');
+    await expect(focus.locator('kbd:visible').first()).toBeVisible();
+  });
+
+  // @req FR:web-app/home3.menu
+  test('the … menu holds Defer 2h, Defer…, Delegate and Open, and closes on Esc and on a click outside', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/');
+    const focus = page.locator('.focus-block');
+    await expect(focus.getByTestId('more-menu')).toHaveCount(0);
+    await focus.getByTestId('more').click();
+    await expect(focus.getByRole('menuitem')).toHaveText([/Defer 2h/, /Defer…/, /Delegate/, /Open/]);
+    await page.keyboard.press('Escape');
+    await expect(focus.getByTestId('more-menu')).toHaveCount(0);
+    await focus.getByTestId('more').click();
+    await page.locator('.home-window .window').click(); // outside the menu (the menu covers what is below the card)
+    await expect(focus.getByTestId('more-menu')).toHaveCount(0);
+  });
+
+  // @req FR:web-app/home3.menu
+  test('Open from the menu opens the task full screen', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/');
+    await page.locator('.focus-block').getByTestId('more').click();
+    await page.getByRole('menuitem', { name: /Open/ }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+  });
+
+  // @req FR:web-app/home3.context
+  test('the context line says late only when overdue', async ({ page }) => {
+    const m = await mockApi(page);
+    const t = m.tasks.find((x) => x.ref === 'alpha:6')!;
+    await page.goto('/');
+    await expect(page.getByTestId('now-context')).not.toContainText('late');
+    t.text = '📅 Oct 1: Ship the web app 🟠';
+    await page.reload();
+    await expect(page.getByTestId('now-context')).toContainText('late');
+  });
+});
