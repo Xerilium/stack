@@ -30,6 +30,7 @@ const ALLYTE = `# Allyte
 - [ ] Write the OIDC test
 `;
 
+const s2write = async (st: MemoryStorage, p: string, c: string) => { let v: string | undefined; try { v = (await st.read(p)).version; } catch { /* new */ } await st.write(p, c, v ? { expectedVersion: v } : {}); };
 function mk() {
   const storage = new MemoryStorage();
   const ctx = { storage, now: () => new Date('2026-10-29T10:00:00Z') };
@@ -78,6 +79,7 @@ describe('team', () => {
   it('reads Agents metadata as list items or inline, keeping hyphens in names', () => {
     expect(parseAgentsMeta('', ['  - `🔄 Sweep Manager` — PR management', '  - `PR sweep worker: f4-music`'])).toEqual([{ name: '🔄 Sweep Manager', role: 'PR management' }, { name: 'PR sweep worker: f4-music' }]);
     expect(parseAgentsMeta('`allyte-cos` — Allyte chief of staff', [])).toEqual([{ name: 'allyte-cos', role: 'Allyte chief of staff' }]);
+    expect(parseAgentsMeta('', ['  - Subagent `allyte-cos` — prioritizes Allyte'])).toEqual([{ name: 'allyte-cos', role: 'prioritizes Allyte' }]);
     expect(slugOf('🎧 Cid Manager')).toBe('cid-manager');
     expect(slugOf('PR sweep worker: f4-music')).toBe('pr-sweep-worker-f4-music');
   });
@@ -196,10 +198,10 @@ describe('claude agent path', () => {
 describe('parseClaudeAgent', () => {
   it('reads frontmatter and the H1 as the name, the description as the role, the body as the prompt', () => {
     const a = parseClaudeAgent('cos', COS_CLAUDE);
-    expect(a).toMatchObject({ slug: 'cos', name: 'CoS', role: 'Chief of Staff.', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash'], scope: [], mode: 'ad-hoc' });
+    expect(a).toMatchObject({ slug: 'cos', name: 'CoS', role: 'Chief of Staff', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash'], scope: [], mode: 'ad-hoc' });
     expect(a.prompt).toBe("# CoS: Chief of Staff\n\nYou are Michael's Chief of Staff.");
     const b = parseClaudeAgent('allyte-cos', ALLYTE_CLAUDE);
-    expect(b).toMatchObject({ name: 'Allyte CoS', role: 'Allyte sub-CoS (solo).', reportsTo: 'cos', scope: ['allyte'], mode: 'long-running' });
+    expect(b).toMatchObject({ name: 'Allyte CoS', role: 'Allyte sub-CoS (solo)', reportsTo: 'cos', scope: ['allyte'], mode: 'long-running' });
     const c = parseClaudeAgent('plain', 'Just a prompt.\n');
     expect(c).toMatchObject({ name: 'plain', prompt: 'Just a prompt.', scope: [] });
     const d = parseClaudeAgent('x', '---\nname: x\ndescription: ' + 'word '.repeat(40) + '\n---\n');
@@ -241,6 +243,12 @@ describe('team with claude files', () => {
     ]);
     expect(team[2]).toMatchObject({ name: 'CoS', defined: true, projects: ['allyte', 'flantastic-4'], model: 'sonnet' });
     expect(team[1].defined).toBe(true);
+    // A project line naming its own `🧰 CoS` merges into the roll-up and never narrows it.
+    await s2write(storage, 'tasks/finops-toolkit.md', '# FTK\n\n- **Agents:**\n  - `🧰 CoS` — prioritizes FTK\n\n## Active\n\n- [ ] z\n');
+    const t2 = await listTeam(ctx);
+    expect(t2.filter((a) => a.slug === 'cos')).toHaveLength(1);
+    expect(t2.find((a) => a.slug === 'cos')).toMatchObject({ scope: ['*'], projects: ['allyte', 'finops-toolkit', 'flantastic-4'] });
+    expect(t2.find((a) => a.slug === 'cos')?.reportsTo).toBeUndefined();
   });
   it('a stack file wins over a claude file with the same slug; a metadata agent under a workspace CoS reports to it', async () => {
     const { storage, ctx } = mk();
@@ -254,6 +262,12 @@ describe('team with claude files', () => {
     expect(team.find((a) => a.slug === 'allyte-cos')).toMatchObject({ source: 'stack', name: 'Allyte CoS (stack)', reportsTo: 'cos' });
     // `PR sweep worker: finops-hubs` covers finops-hubs only; allyte-cos covers allyte + finops-hubs (strictly wider) and is narrower than cos (*).
     expect(team.find((a) => a.slug === 'pr-sweep-worker-finops-hubs')?.reportsTo).toBe('allyte-cos');
+    // A metadata-only agent, however broad, never manages by default.
+    await s2write(storage, 'tasks/focus.md', '# Focus\n\n- **Agents:**\n  - `🔄 Sweep Manager` — PR management across all projects\n  - `👓 Preview`\n\n## Active\n\n- [ ] y\n');
+    await s2write(storage, 'tasks/allyte.md', ALLYTE.replace('- **Agents:**', '- **Agents:**\n  - `🔄 Sweep Manager` — PR management across all projects\n  - `PR sweep worker: allyte`'));
+    const t3 = await listTeam(ctx);
+    expect(t3.find((a) => a.slug === 'preview')?.reportsTo).toBe('cos');
+    expect(t3.find((a) => a.slug === 'pr-sweep-worker-allyte')?.reportsTo).toBe('allyte-cos');
   });
   it('an explicit reports-to that names no one falls back; a cycle breaks at the first agent in team order', async () => {
     const { storage, ctx } = mk();
@@ -284,5 +298,18 @@ describe('agentFor with a roll-up', () => {
     const team = await listTeam(ctx);
     expect(agentFor(team, 'flantastic-4', '🏷️ Labels').map((a) => a.slug)).toEqual(['cos', 'labels', 'sweep-manager', 'cid-manager', 'pr-sweep-worker-f4-music', 'watcher']);
     expect(agentFor(team, 'other').map((a) => a.slug)).toEqual(['cos', 'watcher']);
+  });
+});
+
+// @req FR:agent-team/agent.team.reports
+describe('agents with no project', () => {
+  it('report to the roll-up, never to the narrowest agent by accident', async () => {
+    const { storage, ctx } = mk();
+    await storage.write('tasks/allyte.md', ALLYTE);
+    storage.seed('.claude/agents/cos.md', COS_CLAUDE);
+    storage.seed('.claude/agents/allyte-cos.md', ALLYTE_CLAUDE);
+    storage.seed('.claude/agents/stack-architect.md', '---\nname: stack-architect\ndescription: Stack engineering lead.\n---\n# Stack architect\n');
+    const team = await listTeam(ctx);
+    expect(team.find((a) => a.slug === 'stack-architect')).toMatchObject({ projects: [], reportsTo: 'cos' });
   });
 });

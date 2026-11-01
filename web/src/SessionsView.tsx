@@ -24,7 +24,7 @@ const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator
 function Row({ s, now, cursor, pinned, level = 0, onOpen, onCursor, onPin }: { s: SessionItem; now: Date; cursor: boolean; pinned: boolean; level?: number; onOpen: () => void; onCursor: () => void; onPin: () => void }) {
   const r = rowOf(s, now);
   return (
-    <li class={`sess-li${cursor ? ' cursor' : ''}${pinned ? ' pinned' : ''}`} data-id={s.id} data-state={s.state} role={level ? 'treeitem' : undefined} aria-level={level ? level + 1 : undefined} style={level ? { '--level': level } : undefined}>
+    <li class={`sess-li${cursor ? ' cursor' : ''}${pinned ? ' pinned' : ''}`} data-id={s.id} data-state={s.state} role={level ? 'treeitem' : undefined} aria-level={level ? level + 1 : undefined} data-level={level || undefined} style={level ? { '--level': level } : undefined}>
       <button type="button" class="sess-row" onClick={onOpen} onMouseEnter={onCursor} aria-label={`${s.title}, ${r.label}, ${r.where}, ${r.when}, ${r.usage} tokens`}>
         <span class="sess-state"><span class="dot" aria-hidden="true" />{r.label}</span>
         <span class="sess-title">{pinned && <span class="pin-mark" aria-hidden="true">★ </span>}{s.title}</span>
@@ -43,7 +43,7 @@ function AgentRow({ r, cursor, onCursor, onCompose }: { r: Extract<OrgRow, { kin
   const a = r.agent;
   const usage = r.count ? `${r.count} ${r.count === 1 ? 'session' : 'sessions'}, ${fmtTokens(r.tokens)} tokens` : 'no sessions';
   return (
-    <li class={`org-agent${cursor ? ' cursor' : ''}`} data-agent={a.slug} role="treeitem" aria-level={r.level + 1} style={{ '--level': r.level }}>
+    <li class={`org-agent${cursor ? ' cursor' : ''}`} data-agent={a.slug} data-level={r.level || undefined} role="treeitem" aria-level={r.level + 1} style={{ "--level": r.level }}>
       <button type="button" class="org-row" onClick={onCompose} onMouseEnter={onCursor} aria-label={`${a.name}${a.role ? `, ${a.role}` : ''}, ${usage}`} title={`Talk to ${a.name} (Enter)`}>
         <span class="org-name">{a.name}</span>
         {a.role && <span class="org-role">{a.role}</span>}
@@ -117,10 +117,10 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent }
   const isNew = s.composing;
   const [agent, setAgentState] = useState(() => (isNew ? (defaultAgent ?? rollupOf(team)?.slug ?? NONE) : NONE));
   const chosen = team.find((a) => a.slug === agent);
-  const [cwd, setCwd] = useState(() => (isNew ? (chosen ? folderFor(chosen, s.items) : (item?.cwd ?? cursorItem?.cwd ?? '')) : ''));
+  const [cwd, setCwd] = useState(() => (isNew ? (chosen ? folderFor(chosen, s.items, team) : (item?.cwd ?? cursorItem?.cwd ?? '')) : ''));
   const [editCwd, setEditCwd] = useState(() => isNew && !chosen);
   /** Choosing an agent sets the folder from its project. @req FR:agent-team/compose.folder */
-  const setAgent = (slug: string) => { setAgentState(slug); const a = team.find((x) => x.slug === slug); setCwd(a ? folderFor(a, s.items) : (cursorItem?.cwd ?? '')); setEditCwd(!a); box.current?.focus(); };
+  const setAgent = (slug: string) => { setAgentState(slug); const a = team.find((x) => x.slug === slug); setCwd(a ? folderFor(a, s.items, team) : (cursorItem?.cwd ?? '')); setEditCwd(!a); box.current?.focus(); };
   useEffect(() => { box.current?.focus(); }, []);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [s.turns, s.transcript]);
   const trap = (e: KeyboardEvent) => {
@@ -318,6 +318,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
             if (r.kind === 'agent') return <AgentRow key={r.key} r={r} cursor={r.key === cursor} onCursor={() => s.setCursor(r.key)} onCompose={() => compose(r.agent.slug)} />;
             if (r.kind === 'session') return <Row key={r.key} s={r.s} now={s.now} cursor={r.s.id === cursor} pinned={r.pinned} level={r.level} onOpen={() => void s.openDrawer(r.s.id)} onCursor={() => s.setCursor(r.s.id)} onPin={() => pin(r.s.id)} />;
             if (r.kind === 'more') return <li key={r.key} class="org-more" role="none" style={{ '--level': r.level }}><button type="button" class="more-btn" onClick={() => setMore((x) => new Set(x).add(r.agent.slug))}>{r.n} more</button></li>;
+            if (r.kind === 'also') return <li key={r.key} class="org-also" role="treeitem" aria-level={r.level + 1} data-level={r.level} style={{ '--level': r.level }} aria-label={`Also: ${r.agents.map((a) => a.name).join(', ')}, no sessions`}><span class="muted">Also</span>{r.agents.map((a) => <button type="button" key={a.slug} class="also-agent" title={`${a.name}${a.role ? `: ${a.role}` : ''} · no sessions. Talk to it`} onClick={() => compose(a.slug)}>{a.name}</button>)}</li>;
             return <li key={r.key} class="sess-group org-project" role="treeitem" aria-level={1} aria-label={`${r.project === UNASSIGNED ? UNASSIGNED : r.project} group`}>{r.project}<span class="muted"> · no agent</span></li>;
           })}
           {count === 0 && <li class="sess-group org-project" role="none"><span class="muted">{hidden > 0 ? <Fragment>No sessions for your projects yet · <button type="button" class="link" onClick={() => s.setShowAll(true)}>Show all</button></Fragment> : 'No sessions on this machine yet'}</span></li>}

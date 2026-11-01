@@ -56,10 +56,11 @@ Owner needs every agent he has defined, in the task repo or for Claude, known to
 - **FR:agent.format** (P1): `formatAgent`/`parseAgent` round-trip the v1 format: `name` (1-60 chars), `role` (one line), `scope` (comma-separated prefixes `project` or `project/section` or `*`; default: the projects whose `Agents` metadata names the agent, else none), `reports-to` (a slug), `model` (`sonnet`, `opus`, `haiku`, or a model id), `tools` (comma list), `mode` (`long-running` or `ad-hoc`, default `ad-hoc`), then `## Prompt`. Unknown lines kept; bad values dropped
   - **FR:agent.format.claude** (P1): `parseClaudeAgent` MUST read the Claude format: `slug` from the file name, `name` from the first H1 (the text before a `:`), else the frontmatter `name`; `role` from the first sentence of `description` (cut at 80); `model`, `tools` (comma list), `scope`, `reports-to`, `mode` from the frontmatter; the body as `prompt`
     - A file without frontmatter is an agent with the file name as its name and the whole file as its prompt
-- **FR:agent.team** (P1): `listTeam(ctx)` returns every agent from files plus agents named only in project metadata (`` `name` — role``, slug from the name without emoji), each with `slug`, `name`, `role`, `scope`, `model`, `mode`, `defined` (has a file), `source` (`stack`, `claude`, or `metadata`), `reportsTo`, and `projects` (scope projects resolved)
+- **FR:agent.team** (P1): `listTeam(ctx)` returns every agent from files plus agents named only in project metadata (`` `name` — role``; a backticked token inside a longer head is the name, so `` Subagent `allyte-cos` — prioritizes Allyte `` names `allyte-cos`; slug from the name without emoji), each with `slug`, `name`, `role`, `scope`, `model`, `mode`, `defined` (has a file), `source` (`stack`, `claude`, or `metadata`), `reportsTo`, and `projects` (scope projects resolved)
   - **FR:agent.team.order** (P1): `listTeam` MUST list Stack files first (file order), then Claude files (file order), then metadata-only agents (project order); a slug defined in both file folders keeps the Stack file
   - **FR:agent.team.rollup** (P1): `listTeam` MUST give the agent `cos` the scope `*` when it declares none; the first agent with scope `*` is the roll-up
-  - **FR:agent.team.reports** (P1): `listTeam` MUST set `reportsTo` to the agent's `reports-to` when that slug exists, else to the narrowest other agent whose projects strictly contain the agent's projects (fewest projects, then team order), else to the roll-up; the roll-up itself reports to no one
+  - **FR:agent.team.reports** (P1): `listTeam` MUST set `reportsTo` to the agent's `reports-to` when that slug exists, else to the narrowest other agent with a definition file whose projects strictly contain the agent's projects (fewest projects, then team order), else to the roll-up; the roll-up itself reports to no one
+    - A metadata-only agent never manages by default: a project line naming a broad worker (a PR sweeper across five projects) is not a reporting line
     - A cycle in `reports-to` lines (`a → b → a`) breaks at the agent that sorts first in team order, which then reports to the roll-up
 - **FR:agent.resolve** (P1): `agentFor(team, project, section?)` returns the agents whose scope covers the task, the roll-up first, then most specific first: `project/section` beats `project` beats `*`; ties keep team order. The first is the active agent and the default `To` of a talk. A task with no match has none (the page says so)
   - The roll-up owns every task (the owner's model: his Chief of Staff delegates); a specialist that also covers the task is second
@@ -121,6 +122,7 @@ Owner needs the Agents page to show his agents as the reporting structure they h
 - **FR:org.tree** (P1): Agents view MUST open in the **Team** grouping (`t`, kept in browser storage as `stack.agents.group` = `team`): the roll-up at the top, each agent nested under the one it reports to, and under each agent its sessions
   > - @req FR:agent-sessions/web.groups
   - **FR:org.tree.row** (P1): An agent row MUST show its name, its role muted, the projects it covers as quiet chips, and its usage over the last 7 days (the sum of its sessions' tokens); an agent with no session shows `No sessions` muted and a `Talk` action
+  - **FR:org.tree.fold** (P1): Under one manager, agents with no session and no reports of their own MUST fold into one quiet `Also: a · b · c` line (each name opens the composer with that agent), so a team of many idle workers stays one screen
   - **FR:org.tree.sessions** (P1): Under an agent the page MUST list its sessions in attention order (`needs-you`, `running`, `active`, then newest), the first 3, the rest behind `n more` on that agent
   - **FR:org.tree.unmatched** (P1): Sessions of an owned project that match no agent MUST sit under an `Unassigned` branch at the end, grouped by project in priority order
   - **FR:org.tree.pinned** (P1): A pinned session MUST keep its place in the tree and be marked; pins never reorder the tree
@@ -129,7 +131,7 @@ Owner needs the Agents page to show his agents as the reporting structure they h
   > - @req FR:agent-sessions/web.order
   - **FR:org.order.scope** (P1): Agents view MUST show by default only agents that cover at least one project, or that have a pinned or attention-state (`needs-you`, `running`) session; `Show all` (`A`) reveals the rest
     > - @req FR:agent-sessions/web.scope
-- **FR:org.match** (P1): Page MUST tie a session to an agent when its title starts with the agent's name or slug (emoji and case ignored) or ends with the ` · <ref>` / ` · <project>` suffix of a session started for that agent; a session tied to an agent counts as owned, whatever its repo
+- **FR:org.match** (P1): Page MUST tie a session to an agent when its title starts with the agent's name, slug, or short role (at most four words, so `Chief of Staff` claims `👩 💼 Chief of Staff`; emoji and case ignored) or ends with the ` · <ref>` / ` · <project>` suffix of a session started for that agent; a session tied to an agent counts as owned, whatever its repo
   > - @req FR:agent-sessions/web.scope
 - **FR:org.keys** (P1): `t` Team grouping, `p` by project, pressing the active one again returns to the flat list; `Enter` on an agent row opens the new-session composer with that agent chosen; every action is in the palette and `?` help
 - **FR:org.a11y** (P1): The tree MUST be a `tree` with `treeitem` rows and `aria-level`, the agent rows buttons with full labels (`👔 CoS, Chief of Staff, 4 sessions, 1.2M tokens`), 44 px targets on touch, contrast at least 4.5:1, light and dark designed
@@ -142,7 +144,7 @@ Owner needs to start a session by picking one of his agents and writing the brie
   > - @req FR:agent-sessions/web.new
   - **FR:compose.agent.default** (P1): The chooser MUST preselect the agent of the cursor row (its session's agent, or the agent row itself), else the roll-up
   - **FR:compose.agent.filter** (P2): Typing in the chooser MUST filter agents by name, slug, role or project
-- **FR:compose.folder** (P1): Choosing an agent MUST set the folder to the repo of the agent's first project (the newest session's repo that project owns, worktrees resolved), else the served folder; the folder reads `Runs in <repo>` with `Change` to edit it
+- **FR:compose.folder** (P1): Choosing an agent MUST set the folder to the repo the agent last ran in (its newest matched session, worktrees resolved), else the repo of its first project with one (that project's newest session), else the served folder; the folder reads `Runs in <repo>` with `Change` to edit it
   > - @req FR:agent-sessions/sessions.owner
 - **FR:compose.prompt** (P1): The prompt box MUST stay the first focused element; the chooser is reached with `Shift+Tab` or a click, and `Cmd+Enter` / `Ctrl+Enter` starts the session with `{agent, project, cwd, text}` (`{cwd, text}` for a plain session)
   > - @req FR:talk.api

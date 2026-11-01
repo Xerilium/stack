@@ -191,10 +191,11 @@ test.describe('Sessions', () => {
     const tree = page.getByRole('tree');
     await expect(tree).toBeVisible();
     const agents = page.locator('.org-agent');
-    await expect(agents.locator('.org-name')).toHaveText(['👔 CoS', '🅰️ Alpha Lead', 'Beta CoS', 'PR sweep worker: beta']); // Lonely covers no project
+    await expect(agents.locator('.org-name')).toHaveText(['👔 CoS', '🅰️ Alpha Lead', 'Beta CoS']); // Lonely covers no project; the idle beta worker folds under Beta CoS
     await expect(agents.nth(0)).toHaveAttribute('aria-level', '1');
     await expect(agents.nth(1)).toHaveAttribute('aria-level', '2');
-    await expect(agents.nth(3)).toHaveAttribute('aria-level', '3');
+    await expect(page.locator('.org-also')).toHaveText('AlsoPR sweep worker: beta');
+    await expect(page.locator('.org-also')).toHaveAttribute('aria-level', '3');
     await expect(agents.nth(0).locator('.org-usage')).toHaveText('90k');
     await expect(agents.nth(1).locator('.org-usage')).toHaveText('1.6M');
     await expect(agents.nth(2)).toContainText('No sessions');
@@ -212,7 +213,7 @@ test.describe('Sessions', () => {
     await expect(rows).toHaveCount(6);
     await expect(rows.nth(4)).toContainText('alpha-lead: old');
     await showAll(page);
-    await expect(agents.locator('.org-name')).toHaveText(['👔 CoS', '🅰️ Alpha Lead', 'Beta CoS', 'PR sweep worker: beta', 'Lonely']);
+    await expect(agents.locator('.org-name')).toHaveText(['👔 CoS', '🅰️ Alpha Lead', 'Beta CoS', 'Lonely']);
     await expect(page.locator('.org-project')).toHaveText(['beta · no agent', 'maenifold-rs · no agent']);
   });
 

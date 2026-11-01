@@ -117,7 +117,7 @@ export function parseClaudeAgent(slug: string, content: string): AgentDef {
       const v = oneLine(m[2].replace(/^(["'])(.*)\1$/, '$2'));
       switch (m[1]) {
         case 'name': if (v && v.length <= MAX_NAME) a.name = v; break;
-        case 'description': { const first = /^(.*?[.!?])(\s|$)/.exec(v)?.[1] ?? v; if (first) a.role = first.length > MAX_ROLE ? `${first.slice(0, MAX_ROLE - 1)}…` : first; break; }
+        case 'description': { const first = (/^(.*?[.!?])(\s|$)/.exec(v)?.[1] ?? v).replace(/[.]$/, ''); if (first) a.role = first.length > MAX_ROLE ? `${first.slice(0, MAX_ROLE - 1)}…` : first; break; }
         case 'tools': a.tools = v.replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter(Boolean); break;
         case 'model': if (/^[A-Za-z0-9._-]{1,80}$/.test(v)) a.model = v; break;
         case 'scope': a.scope = v.replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter((s) => s && scopeOk(s)); break;
@@ -167,7 +167,9 @@ export function parseAgentsMeta(value: string | undefined, items: string[]): { n
     if (!s) return;
     // `name` — role: the role follows a spaced dash, so a hyphen inside a name is kept.
     const m = /^(.+?)\s+[—–-]+\s+(.*)$/.exec(s);
-    const name = oneLine((m?.[1] ?? s).replace(/`/g, ''));
+    // A backticked token is the name (`Subagent \`allyte-cos\`` names allyte-cos); otherwise the whole head is.
+    const head = m?.[1] ?? s;
+    const name = oneLine(/`([^`]+)`/.exec(head)?.[1] ?? head.replace(/`/g, ''));
     if (!name) return;
     out.push({ name: name.slice(0, MAX_NAME), ...(m?.[2]?.trim() ? { role: oneLine(m[2]) } : {}) });
   };
@@ -202,7 +204,8 @@ export async function listTeam(ctx: LifecycleContext): Promise<TeamAgent[]> {
   const addFile = (a: AgentDef, source: AgentSource) => {
     if (team.some((t) => t.slug === a.slug)) return;
     const named = projects.filter((p) => p.agents.some((x) => slugOf(x.name) === a.slug || x.name === a.name)).map((p) => p.name);
-    const scope = a.scope.length ? a.scope : named.length ? named : a.slug === ROLLUP_SLUG ? ['*'] : [];
+    // `cos` with no scope line is the roll-up even when a project line names a `CoS` of its own (that line then merges into the roll-up).
+    const scope = a.scope.length ? a.scope : a.slug === ROLLUP_SLUG ? ['*'] : named;
     const { extra, ...rest } = a; void extra;
     team.push({ ...rest, scope, defined: true, source, projects: resolveProjects(scope, all) });
   };
@@ -223,17 +226,18 @@ export async function listTeam(ctx: LifecycleContext): Promise<TeamAgent[]> {
 export const rollupOf = (team: TeamAgent[]): TeamAgent | undefined => team.find((a) => a.scope.includes('*'));
 
 /**
- * Every agent's manager: its `reports-to` when that slug exists, else the narrowest other agent whose projects strictly contain its own,
+ * Every agent's manager: its `reports-to` when that slug exists, else the narrowest other defined agent whose projects strictly contain its own,
  * else the roll-up; the roll-up reports to no one. A cycle breaks at its first member in team order, which reports to the roll-up.
  * @req FR:agent-team/agent.team.reports
  */
 function withReports(team: TeamAgent[]): TeamAgent[] {
   const rollup = rollupOf(team);
-  const contains = (outer: TeamAgent, inner: TeamAgent) => outer.projects.length > inner.projects.length && inner.projects.every((p) => outer.projects.includes(p));
+  const contains = (outer: TeamAgent, inner: TeamAgent) => inner.projects.length > 0 && outer.projects.length > inner.projects.length && inner.projects.every((p) => outer.projects.includes(p));
   for (const a of team) {
     if (a === rollup) { delete a.reportsTo; continue; }
     const explicit = a.reportsTo && a.reportsTo !== a.slug ? team.find((t) => t.slug === a.reportsTo) : undefined;
-    const manager = explicit ?? team.filter((t) => t !== a && t !== rollup && contains(t, a)).sort((x, y) => x.projects.length - y.projects.length)[0] ?? rollup;
+    // Only an agent with a definition file manages by default: a metadata line naming a broad worker (a PR sweeper) is not a manager.
+    const manager = explicit ?? team.filter((t) => t !== a && t !== rollup && t.defined && contains(t, a)).sort((x, y) => x.projects.length - y.projects.length)[0] ?? rollup;
     if (manager) a.reportsTo = manager.slug; else delete a.reportsTo;
   }
   // Cycles: walk up from each agent; the first member (team order) of a cycle reports to the roll-up.

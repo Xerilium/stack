@@ -12,7 +12,9 @@ export type OrgRow =
   | { kind: 'agent'; key: string; level: number; agent: TeamAgent; /** Sessions in the window. */ count: number; tokens: number; hidden: number }
   | { kind: 'session'; key: string; level: number; s: SessionItem; pinned: boolean }
   | { kind: 'more'; key: string; level: number; agent: TeamAgent; n: number }
-  | { kind: 'project'; key: string; level: number; project: string };
+  | { kind: 'project'; key: string; level: number; project: string }
+  /** Agents under one manager with no session and no reports of their own, folded into one quiet line. @req FR:agent-team/org.tree.fold */
+  | { kind: 'also'; key: string; level: number; agents: TeamAgent[] };
 export interface OrgOptions { now: Date; /** Agents whose session list is fully open. */ more?: Set<string>; showAll?: boolean; /** Sessions shown per agent before `n more`. */ top?: number }
 const TOP = 3;
 const ATTENTION = new Set(['needs-you', 'running']);
@@ -44,7 +46,11 @@ export function orgTree(team: TeamAgent[], items: SessionItem[], rank: Map<strin
     out.push({ kind: 'agent', key: `agent:${a.slug}`, level, agent: a, count: mine.length, tokens: mine.reduce((n, s) => n + s.cost.tokens, 0), hidden: mine.length - shown.length });
     for (const s of shown) out.push({ kind: 'session', key: s.id, level: level + 1, s, pinned: pins.includes(s.id) });
     if (mine.length > shown.length) out.push({ kind: 'more', key: `more:${a.slug}`, level: level + 1, agent: a, n: mine.length - shown.length });
-    for (const c of orderAgents(team.filter((t) => t !== a && t.reportsTo === a.slug), rank, keep, o.showAll)) visit(c, level + 1);
+    const kids = orderAgents(team.filter((t) => t !== a && t.reportsTo === a.slug), rank, keep, o.showAll);
+    // Quiet leaves (no session, no reports) fold into one `Also` line so the tree stays readable. @req FR:agent-team/org.tree.fold
+    const quiet = kids.filter((c) => !(byAgent.get(c.slug) ?? []).length && !team.some((t) => t.reportsTo === c.slug && t !== c));
+    for (const c of kids.filter((c) => !quiet.includes(c))) visit(c, level + 1);
+    if (quiet.length) out.push({ kind: 'also', key: `also:${a.slug}`, level: level + 1, agents: quiet });
   };
   // Roots: the roll-up, then anyone whose manager is missing (ordered like siblings).
   const roots = team.filter((a) => a === rollup || !a.reportsTo || !team.some((t) => t.slug === a.reportsTo));
@@ -78,8 +84,10 @@ export function repoRoot(cwd: string): string {
   return cwd.replace(/-wt-[^/]+$/, '');
 }
 
-/** The repo the agent's first project with a known repo last ran in; `''` means the served folder. @req FR:agent-team/compose.folder */
-export function folderFor(agent: TeamAgent, items: SessionItem[]): string {
+/** Where the agent last ran (its newest matched session), else the repo of its first project with one; `''` means the served folder. @req FR:agent-team/compose.folder */
+export function folderFor(agent: TeamAgent, items: SessionItem[], team: TeamAgent[] = [agent]): string {
+  const mine = items.filter((s) => matchAgent(s, team) === agent).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
+  if (mine) return repoRoot(mine.cwd);
   for (const p of agent.projects) {
     const s = items.filter((x) => x.owner === p).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
     if (s) return repoRoot(s.cwd);

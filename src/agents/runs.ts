@@ -123,7 +123,8 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
     sessionOf: (runId) => runs.get(runId)?.sessionId ?? null,
     needsYou: () => broker.open(),
     async sessions(q = {}) {
-      const [all, open, repos] = await Promise.all([driver.listSessions({ limit: 200 }), api.needsYou(), projectRepos(ctx)]);
+      // Read past a flood from one repo (an untracked project can fill the newest 200): sort, then cut to the limit.
+      const [all, open, repos] = await Promise.all([driver.listSessions({ limit: Math.max(400, (q.limit ?? 50) * 2) }), api.needsYou(), projectRepos(ctx)]);
       const t = now();
       const items = all.map((s) => {
         const { active, cost, ...rest } = s;

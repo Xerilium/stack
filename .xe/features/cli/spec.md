@@ -47,7 +47,7 @@ Owner needs `stack web` to serve the app over a task repo on their own machine s
   - **FR:web.serve.local** (P1): The server MUST answer `/.auth/me` with a local sign-in stub (no Azure) whose single user is the owner
   - **FR:web.serve.loopback** (P1): The server MUST serve only loopback Host names and accept writes only from its own origin
   - Stack never holds content: tasks live in a separate content repo
-- **FR:web.demo** (P1): By default `stack web` MUST serve a copy: the content repo's `tasks/` (and `.xe/config/stack.json`) copied into `~/.config/stack/demo` as a fresh repo with no history or remote
+- **FR:web.demo** (P1): By default `stack web` MUST serve a copy: the content repo's `tasks/` (and `.xe/config/stack.json`, and `.claude/agents/` when present) copied into `~/.config/stack/demo` as a fresh repo with no history or remote
   - **FR:web.demo.untouched** (P1): Demo mode MUST never write to the real repo
   - **FR:web.demo.reset** (P2): `--reset` MUST re-copy the demo
   - **FR:web.demo.pill** (P2): The UI MUST show demo mode in the brand (`Stack [DEMO]`, web-shell `FR:nav.rail.brand`), with the repo path only in its tooltip and never as a banner

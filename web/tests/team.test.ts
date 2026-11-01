@@ -41,6 +41,10 @@ describe('matchAgent', () => {
     expect(matchAgent(sess({ title: 'Allyte CoS: release' }), t)?.slug).toBe('allyte-cos');
     expect(matchAgent(sess({ title: 'CoS helper · x' }), t)?.slug).toBe('cos-helper');
     expect(matchAgent(sess({ title: 'Cosmic research' }), t)).toBeUndefined();
+    // a short role claims the title too: the owner's CoS session is titled by its role
+    const t2 = [...t, ag('rollup', ['*'], { name: 'CoS', role: 'Chief of Staff.' }), ag('long', ['*'], { name: 'Long', role: 'Keeps Michael focused across all projects' })];
+    expect(matchAgent(sess({ title: '👩 💼 Chief of Staff' }), t2)?.slug).toBe('rollup');
+    expect(matchAgent(sess({ title: 'Keeps Michael focused across all projects' }), t2)).toBeUndefined();
     expect(matchAgent(sess({ title: 'fix the parser' }), t)).toBeUndefined();
   });
 });

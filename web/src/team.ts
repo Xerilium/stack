@@ -45,12 +45,13 @@ export function agentsFor(team: TeamAgent[], project: string, section?: string, 
 
 /** Words of a name or title, emoji and punctuation dropped: `🎧 Cid Manager` → `cid-manager`. */
 export const nameKey = (s: string): string => s.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-/** The agent whose name or slug opens the session title (whole words); the longest name wins. @req FR:agent-team/org.match */
+/** The agent whose name, slug, or short role (at most four words: `Chief of Staff`) opens the session title (whole words); the longest key wins. @req FR:agent-team/org.match */
 export function matchAgent(s: Pick<SessionItem, 'title'>, team: TeamAgent[]): TeamAgent | undefined {
   const t = nameKey(s.title);
   let best: { a: TeamAgent; len: number } | undefined;
   for (const a of team) {
-    for (const k of [nameKey(a.name), a.slug]) {
+    const role = a.role && a.role.replace(/[.!?]$/, '').trim().split(/\s+/).length <= 4 ? nameKey(a.role) : '';
+    for (const k of [nameKey(a.name), a.slug, role]) {
       if (!k || !(t === k || t.startsWith(`${k}-`))) continue;
       if (!best || k.length > best.len) best = { a, len: k.length };
     }

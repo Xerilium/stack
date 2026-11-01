@@ -1,4 +1,4 @@
-/** @req FR:agent-team/org.tree @req FR:agent-team/org.tree.row @req FR:agent-team/org.tree.sessions @req FR:agent-team/org.tree.unmatched @req FR:agent-team/org.tree.pinned @req FR:agent-team/org.order @req FR:agent-team/org.order.scope @req FR:agent-team/compose.agent @req FR:agent-team/compose.agent.default @req FR:agent-team/compose.folder */
+/** @req FR:agent-team/org.tree @req FR:agent-team/org.tree.row @req FR:agent-team/org.tree.fold @req FR:agent-team/org.tree.sessions @req FR:agent-team/org.tree.unmatched @req FR:agent-team/org.tree.pinned @req FR:agent-team/org.order @req FR:agent-team/org.order.scope @req FR:agent-team/compose.agent @req FR:agent-team/compose.agent.default @req FR:agent-team/compose.folder */
 import { describe, expect, it } from 'vitest';
 import { composeDefault, folderFor, orderAgents, orgTree, type OrgRow } from '../src/org';
 import type { SessionItem } from '../src/sessions';
@@ -17,7 +17,7 @@ const team = [
   ag('lonely', [], { name: 'Lonely', projects: [], reportsTo: 'cos' }),
 ];
 const rank = new Map([['allyte', 0], ['stack', 1], ['f4', 2]]);
-const rows = (t: OrgRow[]) => t.map((r) => (r.kind === 'agent' ? `${'  '.repeat(r.level)}@${r.agent.slug}` : r.kind === 'session' ? `${'  '.repeat(r.level)}${r.s.id}` : r.kind === 'more' ? `${'  '.repeat(r.level)}+${r.n}` : `${'  '.repeat(r.level)}#${r.project}`));
+const rows = (t: OrgRow[]) => t.map((r) => (r.kind === 'agent' ? `${'  '.repeat(r.level)}@${r.agent.slug}` : r.kind === 'session' ? `${'  '.repeat(r.level)}${r.s.id}` : r.kind === 'more' ? `${'  '.repeat(r.level)}+${r.n}` : r.kind === 'also' ? `${'  '.repeat(r.level)}also:${r.agents.map((a) => a.slug).join(',')}` : `${'  '.repeat(r.level)}#${r.project}`));
 
 // @req FR:agent-team/org.order @req FR:agent-team/org.order.scope
 describe('orderAgents', () => {
@@ -41,21 +41,21 @@ describe('orgTree', () => {
     sess({ id: 'maen', title: 'maenifold', owner: null, project: 'maenifold-rs' }),
     sess({ id: 'lonely-1', title: 'Lonely · test', owner: null, project: 'prime', state: 'needs-you' }),
   ];
-  it('nests agents under their manager with their sessions (attention order, 3 shown), unassigned owned sessions by project, hidden repos out', () => {
+  it('nests agents under their manager with their sessions (attention order, 3 shown), quiet leaves folded, unassigned owned sessions by project, hidden repos out', () => {
     const t = orgTree(team, items, rank, [], { now });
     expect(rows(t)).toEqual([
       '@cos', '  cos-1',
-      '  @allyte-cos', '    @worker',
-      '  @xe-cos',
+      '  @allyte-cos', '    also:worker', // no session, no reports: one quiet line
       '  @cid', '    cid-1', '    cid-2', '    cid-3', '    +1',
       '  @lonely', '    lonely-1', // an attention-state session shows its agent even without projects
+      '  also:xe-cos',
       '#allyte', '  free-2',
       '#stack', '  free-1',
     ]);
     const cos = t[0] as Extract<OrgRow, { kind: 'agent' }>;
     expect(cos).toMatchObject({ tokens: 500, count: 1 });
     expect((t.find((r) => r.kind === 'agent' && r.agent.slug === 'cid') as Extract<OrgRow, { kind: 'agent' }>)).toMatchObject({ tokens: 4000, count: 4 });
-    expect((t.find((r) => r.kind === 'agent' && r.agent.slug === 'xe-cos') as Extract<OrgRow, { kind: 'agent' }>)).toMatchObject({ tokens: 0, count: 0 });
+    expect(t.some((r) => r.kind === 'agent' && r.agent.slug === 'xe-cos')).toBe(false);
   });
   it('a pinned session keeps its place and is marked; more opens the rest; Show all reveals other repos under Unassigned', () => {
     const t = orgTree(team, items, rank, ['cid-4', 'maen'], { now, more: new Set(['cid']), showAll: true });
@@ -67,7 +67,7 @@ describe('orgTree', () => {
   it('a pinned session from an unowned repo shows without Show all; ids walk the rows in paint order', () => {
     const t = orgTree(team, items, rank, ['maen'], { now });
     expect(rows(t).slice(-2)).toEqual(['#maenifold-rs', '  maen']);
-    expect(t.map((r) => r.key).slice(0, 3)).toEqual(['agent:cos', 'cos-1', 'agent:allyte-cos']);
+    expect(t.map((r) => r.key).slice(0, 4)).toEqual(['agent:cos', 'cos-1', 'agent:allyte-cos', 'also:allyte-cos']);
   });
 });
 
@@ -81,10 +81,12 @@ describe('compose defaults', () => {
     expect(composeDefault(null, team, items)).toBe('cos');
     expect(composeDefault(null, team.slice(1), items)).toBe('xe-cos');
   });
-  it('the folder follows the agent: the newest session repo of its first project, worktrees resolved; else none (the served folder)', () => {
-    expect(folderFor(team[3], items)).toBe('/x/f4-music');
-    expect(folderFor(team[2], items)).toBe('/x/allyte-web');
-    expect(folderFor(team[1], items)).toBe('');
-    expect(folderFor(team[0], items)).toBe('/x/allyte-web'); // first project in its list with a repo
+  it('the folder follows the agent: where it last ran, else the newest session repo of its first project, worktrees resolved; else none (the served folder)', () => {
+    expect(folderFor(team[3], items, team)).toBe('/x/f4-music'); // its own newest session (a worktree)
+    expect(folderFor(team[2], items, team)).toBe('/x/allyte-web');
+    expect(folderFor(team[1], items, team)).toBe('');
+    expect(folderFor(team[0], items, team)).toBe('/x/allyte-web'); // no session of its own: the first project in its list with a repo
+    const mine = [...items, sess({ id: 'c0', title: '👔 CoS · brief', owner: null, cwd: '/x/todo', lastActive: at(0) })];
+    expect(folderFor(team[0], mine, team)).toBe('/x/todo');
   });
 });
