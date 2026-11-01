@@ -136,7 +136,7 @@ export function parseClaudeAgent(slug: string, content: string): AgentDef {
       }
     }
   }
-  const h1 = /^#\s+(.+?)\s*$/m.exec(body)?.[1];
+  const h1 = /^#[ \t]+(.+?)[ \t]*(?:\n|$)/.exec(body.trimStart())?.[1]; // only a title that opens the body, never a `#` inside a code block
   if (h1) { const n = oneLine(h1.split(':')[0]); if (n && n.length <= MAX_NAME) a.name = n; }
   a.prompt = body.trim().slice(0, MAX_PROMPT);
   return a;
@@ -247,7 +247,8 @@ function withReports(team: TeamAgent[]): TeamAgent[] {
     if (a === rollup) { delete a.reportsTo; continue; }
     const explicit = a.reportsTo && a.reportsTo !== a.slug ? team.find((t) => t.slug === a.reportsTo) : undefined;
     // Only an agent with a definition file manages by default: a metadata line naming a broad worker (a PR sweeper) is not a manager.
-    const manager = explicit ?? team.filter((t) => t !== a && t !== rollup && t.defined && contains(t, a)).sort((x, y) => x.projects.length - y.projects.length)[0] ?? rollup;
+    // A second `*` agent is not a manager by default either: only the roll-up manages everyone.
+    const manager = explicit ?? team.filter((t) => t !== a && t !== rollup && t.defined && !t.scope.includes('*') && contains(t, a)).sort((x, y) => x.projects.length - y.projects.length)[0] ?? rollup;
     if (manager) a.reportsTo = manager.slug; else delete a.reportsTo;
   }
   // Cycles: walk up from each agent; the first member (team order) of a cycle reports to the roll-up.

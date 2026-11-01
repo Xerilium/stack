@@ -5,7 +5,7 @@
  * @req FR:live-deploy/gh.write @req FR:live-deploy/gh.race @req FR:live-deploy/gh.serial @req FR:live-deploy/gh.limits
  */
 import {
-  ASK_PATH, ConflictError, NotFoundError, StorageError, TASK_PATH, assertDistinct, checkExpected, validateAuxPath, validatePath, versionOf,
+  ASK_PATH, ConflictError, NotFoundError, StorageError, TASK_PATH, assertDistinct, checkExpected, validateAuxPath, validatePath, validateWritePath, versionOf,
   type AuxFiles, type FileWrite, type Storage, type StoredFile, type WriteOptions, type WriteResult,
 } from '../core/storage';
 
@@ -222,7 +222,7 @@ export class GitHubStorage implements Storage, AuxFiles {
   }
 
   async write(path: string, content: string, opts: WriteOptions = {}): Promise<WriteResult> {
-    validatePath(path);
+    validateWritePath(path); // Claude's agent definitions are read-only here too. @req FR:agent-team/agent.path.claude
     await this.enqueue(() => this.commit([{ path, content, expectedVersion: opts.expectedVersion }], opts.message));
     return { version: versionOf(content) };
   }

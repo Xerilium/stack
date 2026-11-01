@@ -32,6 +32,7 @@ export function orderAgents(agents: TeamAgent[], rank: Map<string, number>, keep
 /** The whole page as rows in paint order. @req FR:agent-team/org.tree */
 export function orgTree(team: TeamAgent[], items: SessionItem[], rank: Map<string, number>, pins: string[], o: OrgOptions): OrgRow[] {
   const top = o.top ?? TOP;
+  const since = o.now.getTime() - 7 * 864e5; // the row's usage is the last 7 days, like the strip. @req FR:agent-team/org.tree.row
   const byAgent = new Map<string, SessionItem[]>();
   const free: SessionItem[] = [];
   for (const s of items) { const a = matchAgent(s, team); if (a) byAgent.set(a.slug, [...(byAgent.get(a.slug) ?? []), s]); else free.push(s); }
@@ -48,7 +49,7 @@ export function orgTree(team: TeamAgent[], items: SessionItem[], rank: Map<strin
     const mine = orderSessions(byAgent.get(a.slug) ?? [], rank);
     const open = o.more?.has(a.slug);
     const shown = open ? mine : mine.slice(0, top);
-    out.push({ kind: 'agent', key: `agent:${a.slug}`, level, agent: a, count: mine.length, tokens: mine.reduce((n, s) => n + s.cost.tokens, 0) });
+    out.push({ kind: 'agent', key: `agent:${a.slug}`, level, agent: a, count: mine.length, tokens: mine.reduce((n, s) => n + (Date.parse(s.lastActive) >= since ? s.cost.tokens : 0), 0) });
     for (const s of shown) out.push({ kind: 'session', key: s.id, level: level + 1, s, pinned: pins.includes(s.id) });
     if (mine.length > shown.length) out.push({ kind: 'more', key: `more:${a.slug}`, level: level + 1, agent: a, n: mine.length - shown.length });
     const kids = orderAgents(team.filter((t) => t !== a && t.reportsTo === a.slug), rank, keep, o.showAll);

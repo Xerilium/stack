@@ -9,7 +9,7 @@
  */
 import { Fragment } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { composeDefault, folderFor, orderAgents, orgTree, UNASSIGNED, type OrgRow } from './org';
+import { composeDefault, folderFor, orderAgents, orgTree, repoRoot, UNASSIGNED, type OrgRow } from './org';
 import { groupByProject, orderWithPins, type Pins } from './pins';
 import { barWidths, dayLabel, fmtTokens, groupTurns, localDay, orderSessions, priceLine, rowOf, scopeSessions, splitSessions, usageStrip, type Line, type SessionItem } from './sessions';
 import { matchAgent, nameKey, rollupOf, type TeamAgent } from './team';
@@ -133,7 +133,10 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent }
   const submit = async () => {
     if (!text.trim()) return;
     // A plain session needs a folder; an agent session may run in the served folder. @req FR:agent-team/compose.prompt
-    const ok = isNew ? await s.start(cwd.trim() || undefined, text, chosen ? { agent: chosen.slug, ...(chosen.projects[0] && !chosen.scope.includes('*') ? { project: chosen.projects[0] } : {}) } : undefined) : await s.send(text);
+    // The project is the one the chosen folder belongs to when the agent covers it, else its first. @req FR:agent-team/compose.prompt
+    const folderOwner = s.items.find((x) => cwd.trim() && repoRoot(x.cwd) === repoRoot(cwd.trim()))?.owner ?? null;
+    const project = chosen && !chosen.scope.includes('*') ? (folderOwner && chosen.projects.includes(folderOwner) ? folderOwner : chosen.projects[0]) : undefined;
+    const ok = isNew ? await s.start(cwd.trim() || undefined, text, chosen ? { agent: chosen.slug, ...(project ? { project } : {}) } : undefined) : await s.send(text);
     if (ok) setText('');
   };
   const running = s.streaming || item?.state === 'running';
@@ -274,7 +277,8 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
   useEffect(() => { if (keys.length && !keys.includes(cursor ?? '')) s.setCursor(keys[0]); }, [keyList, cursor]); // the painted rows changed: keep the cursor on one of them
   // A new shape (the team arrived, the grouping changed) starts the cursor at the top.
   const keysRef = useRef(keys); keysRef.current = keys;
-  useEffect(() => { const k = keysRef.current; if (k.length) s.setCursor(k[0]); }, [tree, mode]);
+  const shape = useRef<string | null>(null);
+  useEffect(() => { const now = `${tree}:${mode}`; if (shape.current !== null && shape.current !== now) { const k = keysRef.current; if (k.length) s.setCursor(k[0]); } shape.current = now; }, [tree, mode]); // not on mount: coming back to Agents keeps the cursor
 
   // In the tree, hidden = whatever is not painted (an agent with no project hides its sessions too).
   const hidden = tree ? s.items.length - count - orgRows.reduce((n, r) => n + (r.kind === 'more' ? r.n : 0), 0) : scoped.hidden;

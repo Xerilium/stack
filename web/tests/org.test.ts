@@ -55,6 +55,9 @@ describe('orgTree', () => {
     const cos = t[0] as Extract<OrgRow, { kind: 'agent' }>;
     expect(cos).toMatchObject({ tokens: 500, count: 1 });
     expect((t.find((r) => r.kind === 'agent' && r.agent.slug === 'cid') as Extract<OrgRow, { kind: 'agent' }>)).toMatchObject({ tokens: 4000, count: 4 });
+    // usage is the last 7 days: an older session still lists but adds nothing
+    const old = orgTree(team, [...items, sess({ id: 'cid-old', title: 'cid manager: ancient', owner: 'f4', lastActive: at(8 * 24 * 60), cost: { usd: 0, tokens: 9000 } })], rank, [], { now });
+    expect((old.find((r) => r.kind === 'agent' && r.agent.slug === 'cid') as Extract<OrgRow, { kind: 'agent' }>)).toMatchObject({ tokens: 4000, count: 5 });
     expect(t.some((r) => r.kind === 'agent' && r.agent.slug === 'xe-cos')).toBe(false);
   });
   it('a pinned session keeps its place and is marked; more opens the rest; Show all reveals other repos under Unassigned', () => {

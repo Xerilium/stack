@@ -207,6 +207,7 @@ describe('parseClaudeAgent', () => {
     const d = parseClaudeAgent('x', '---\nname: x\ndescription: ' + 'word '.repeat(40) + '\n---\n');
     expect(d.role!.length).toBeLessThanOrEqual(80);
     expect(parseClaudeAgent('y', '---\nname: y\n---\n# Y\n').name).toBe('Y');
+    expect(parseClaudeAgent('z', '---\nname: z\n---\nRun this:\n\n```sh\n# a comment\n```\n').name).toBe('z'); // a `#` inside the body is not the title
     // YAML block scalars, wrapped strings and `- item` lists fold onto their key.
     const e = parseClaudeAgent('x', '---\nname: x\ndescription: >\n  Stack lead.\n  Spec first.\ntools:\n  - Read\n  - Grep\nmodel: "opus"\n---\n');
     expect(e).toMatchObject({ role: 'Stack lead', tools: ['Read', 'Grep'], model: 'opus' });
@@ -303,6 +304,7 @@ describe('agentFor with a roll-up', () => {
     const team = await listTeam(ctx);
     expect(agentFor(team, 'flantastic-4', '🏷️ Labels').map((a) => a.slug)).toEqual(['cos', 'labels', 'sweep-manager', 'cid-manager', 'pr-sweep-worker-f4-music', 'watcher']);
     expect(agentFor(team, 'other').map((a) => a.slug)).toEqual(['cos', 'watcher']);
+    expect(team.find((a) => a.slug === 'labels')?.reportsTo).toBe('cos'); // a second `*` agent never manages by default
   });
 });
 
