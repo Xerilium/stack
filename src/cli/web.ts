@@ -81,7 +81,8 @@ export function prepareLive(repo: string, branch?: string, remote?: string): { d
   if (branch && branch !== current) throw new Error(`Branch ${branch} is not checked out in ${repo} (current branch: ${current})`);
   if (!existsSync(join(repo, 'tasks'))) throw new Error(`${repo}/tasks not found (expected a content repo with a tasks/ folder)`);
   let r = remote;
-  if (!r) { try { git(repo, 'remote', 'get-url', 'origin'); r = 'origin'; } catch { r = undefined; } }
+  if (r) { try { git(repo, 'remote', 'get-url', r); } catch { throw new Error(`Remote ${r} (user config "remote") not found in ${repo}`); } }
+  else { try { git(repo, 'remote', 'get-url', 'origin'); r = 'origin'; } catch { r = undefined; } }
   return { dir: repo, branch: current, remote: r };
 }
 

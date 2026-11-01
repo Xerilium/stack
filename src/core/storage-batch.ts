@@ -189,9 +189,10 @@ export class BatchedGitStorage extends GitStorage {
     try { await this.undo(sha, subject, paths); } catch { /* original error wins */ }
   }
 
-  /** Remove our commit (only if `sha` is it: a rebase may have dropped it as empty), keeping the files as written and unstaged; nothing else in the index moves. */
+  /** Remove our commit (only if `sha` is it: a rebase may have dropped it as empty, and a commit the remote already has is never ours), keeping the files as written and unstaged; nothing else in the index moves. */
   private async undo(sha: string, subject: string, paths: string[]): Promise<void> {
     if ((await this.tryGit('log', '-1', '--format=%s', sha))?.trim() !== subject) return;
+    if (this.remote && (await this.tryGit('merge-base', '--is-ancestor', sha, this.ref)) !== null) return; // the remote already has it: never ours to undo
     const parent = (await this.tryGit('rev-parse', '--verify', '-q', `${sha}^`))?.trim() ?? null;
     if (parent) await this.git('reset', '-q', '--soft', parent);
     else await this.git('update-ref', '-d', 'HEAD');

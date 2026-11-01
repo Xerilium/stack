@@ -98,7 +98,9 @@ describe('prepareLive', () => {
     expect(prepareLive(repo)).toEqual({ dir: repo, branch: 'main', remote: undefined });
     g(repo, 'remote', 'add', 'origin', join(tmp(), 'origin.git'));
     expect(prepareLive(repo)).toEqual({ dir: repo, branch: 'main', remote: 'origin' });
+    g(repo, 'remote', 'add', 'upstream', join(tmp(), 'up.git'));
     expect(prepareLive(repo, undefined, 'upstream').remote).toBe('upstream'); // user config wins
+    expect(() => prepareLive(repo, undefined, 'upstrem')).toThrow(/Remote upstrem .*not found/); // a typo fails fast
     g(repo, 'checkout', '-q', '-b', 'work');
     expect(prepareLive(repo, 'work').branch).toBe('work');
     expect(g(repo, 'worktree', 'list').split('\n')).toHaveLength(1); // no worktree is made
