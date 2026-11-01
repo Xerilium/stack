@@ -39,6 +39,7 @@ Task files are `tasks/<project>.md`. The `emoji` format (default) carries priori
 ## Interfaces
 
 - CLI: [docs/cli.md](docs/cli.md)
+- Ranking, overrides, and the CoS Needs you file: [docs/ranking.md](docs/ranking.md)
 - REST API: [docs/api/README.md](docs/api/README.md)
 - MCP server: [docs/mcp.md](docs/mcp.md)
 - Chat bots: [docs/bots/README.md](docs/bots/README.md)

@@ -156,7 +156,7 @@ test.describe('Agent team', () => {
     await page.goto('/#/home');
     const hero = page.locator('.focus-block');
     await expect(hero).toBeVisible();
-    await expect(hero.locator('.agent-chip')).toHaveText('CoS');
+    await expect(hero.locator('.agent-chip')).toHaveCount(0); // no agent name on the NOW card (home3.context)
     await hero.click();
     await page.keyboard.press('a');
     await expect(hero.locator('.agent-talk')).toBeVisible();
@@ -164,19 +164,25 @@ test.describe('Agent team', () => {
     await page.keyboard.type('Go');
     await page.keyboard.press('Enter');
     await expect(hero.locator('.agent-talk')).toHaveCount(0);
-    // The chip follows the session: once the mock flips it to idle, a 15 s poll shows Done (no poll = stuck on Working). Two cycles of slack: the flip can land right after a poll.
-    await expect(hero.locator('.agent-chip')).toHaveText('Working');
+    // The context line follows the session: `agent has it` while it works; once the mock flips it to idle, a 15 s poll clears it (no poll = stuck). Two cycles of slack: the flip can land right after a poll.
+    // @req FR:web-app/home3.context
+    await expect(hero.getByTestId('now-context')).toContainText('agent has it');
+    // @req FR:web-app/home3.menu.agent — an agent has it, so the menu does not offer Delegate
+    await hero.getByRole('button', { name: 'More actions' }).click();
+    await expect(hero.getByRole('menuitem', { name: /Delegate/ })).toHaveCount(0);
+    await expect(hero.getByRole('menuitem', { name: /Defer 2h/ })).toBeVisible();
+    await page.keyboard.press('Escape');
     for (const x of m.sessions!) x.state = 'idle';
-    await expect(hero.locator('.agent-chip')).toHaveText(/^Done/, { timeout: 35_000 });
+    await expect(hero.getByTestId('now-context')).not.toContainText('agent has it', { timeout: 35_000 });
   });
 
-  test('Home rows carry the chip and the composer too', async ({ page }) => {
+  test('Home rows carry the composer too (no agent chip on a row: title and project only)', async ({ page }) => {
     const m = await open(page);
     await page.goto('/#/home');
     const first = page.locator('section[aria-label="Home"] .home-row').first();
     await expect(first).toBeVisible();
     await first.click();
-    await expect(first.locator('.agent-chip')).toBeVisible();
+    await expect(first.locator('.agent-chip')).toHaveCount(0);
     await page.keyboard.press('a');
     await expect(first.locator('.agent-talk')).toBeVisible();
     await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();

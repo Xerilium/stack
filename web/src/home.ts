@@ -3,11 +3,11 @@
  * Pure; the view only draws it.
  * @req FR:web-app/home.one @req FR:web-app/home.fit @req FR:web-app/home.next @req FR:web-app/home.projects
  */
-import { actionable, activeTasks, dueDays, isActive, isUpNext, rankNow } from './now';
+import { dueDays, isUpNext } from './now';
 import type { Busy } from './meetings';
 import { nowMinutes, type Day } from './plan';
 import { effortMinutes, parseRow } from './row';
-import type { NextTask, Project, Task } from './types';
+import type { Project, Task } from './types';
 
 const DEFAULT_MIN = 30;
 
@@ -33,30 +33,50 @@ const FIVE_MAX = 15;
 const item = (t: Task, now: Date): HomeItem => { const r = parseRow(t.text); const est = effortMinutes(r.effort); return { task: t, minutes: est || DEFAULT_MIN, assumed: !est, due: countdown(r.due, now) }; };
 const doing = (t: Task) => /🚧/u.test(t.text);
 
-export function homeOf(o: { tasks: Task[]; projects: Project[]; next: NextTask | null; now: Date; minutesLeft: number; /** Only rows that belong to the personal block (its emoji or its projects) may use the time. @req FR:home/home.window @req FR:home/day.blocks */ allow?: { emoji: string; projects?: string[] } }): Home {
+/** One ranked task from `GET /rank`: a leaf names the top-level row it sits under. @req FR:task-lifecycle/rank.output */
+export interface RankItem { ref: string; text: string; project: string; score: number; rule?: string; root?: string }
+
+/**
+ * Home draws what the server ranked, in that order (a leaf shows as its top-level row), minus what is already in
+ * Needs you; it never ranks anything itself, so Home, `GET /next`, `stack next` and stack.md agree.
+ * @req FR:web-app/now.active
+ * @req FR:web-app/home3.dedupe
+ * @req FR:ask-queue/needs.dedupe
+ */
+export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem[]; /** Refs shown in Needs you: held back from Home. */ exclude?: Set<string>; now: Date; minutesLeft: number; /** Only rows that belong to the personal block (its emoji or its projects) may use the time. @req FR:home/home.window @req FR:home/day.blocks */ allow?: { emoji: string; projects?: string[] } }): Home {
   const { tasks, now } = o;
-  const oneTask = o.next ? tasks.find((t) => t.ref === o.next!.ref) ?? null : null;
+  const byRef = new Map(tasks.map((t) => [t.ref, t]));
+  const hidden = o.exclude ?? new Set<string>();
+  const seen = new Set<string>();
+  const rows: Task[] = [];
+  for (const r of o.ranked) {
+    const t = byRef.get(r.root ?? r.ref);
+    if (!t || t.done || seen.has(t.ref) || hidden.has(t.ref) || hidden.has(r.ref)) continue;
+    seen.add(t.ref); rows.push(t);
+  }
+  // NOW is the server's first; under it, in-progress (🚧) rows come first, then the server's order.
+  const oneTask = rows[0] ?? null;
+  const tail = rows.slice(1);
+  const rest = [...tail.filter(doing), ...tail.filter((t) => !doing(t))];
+  const ordered = oneTask ? [oneTask, ...rest] : [];
   const one = oneTask ? item(oneTask, now) : null;
-  const ranked = rankNow(activeTasks(tasks).filter((t) => t.ref !== oneTask?.ref && actionable(t, now)), now, tasks);
-  const ordered = [...ranked.filter(doing), ...ranked.filter((t) => !doing(t))];
   const vs = (s: string) => s.replace(/\uFE0F/g, '');
   const may = (i: HomeItem) => !o.allow || vs(i.task.text).includes(vs(o.allow.emoji)) || !!o.allow.projects?.includes(i.task.project);
   const fits = !one || (one.minutes <= o.minutesLeft && may(one));
-  const instead = !fits && o.minutesLeft > 0 ? (ordered.map((t) => item(t, now)).find((i) => i.minutes <= o.minutesLeft && may(i)) ?? null) : null;
+  const instead = !fits && o.minutesLeft > 0 ? (rest.map((t) => item(t, now)).find((i) => i.minutes <= o.minutesLeft && may(i)) ?? null) : null;
   // Instead never repeats under Up next
-  const next = ordered.filter((t) => t.ref !== instead?.task.ref).slice(0, 2).map((t) => item(t, now));
+  const next = rest.filter((t) => t.ref !== instead?.task.ref).slice(0, 2).map((t) => item(t, now));
   const shownRefs = new Set([oneTask?.ref, instead?.task.ref, ...next.map((n) => n.task.ref)].filter((r): r is string => !!r));
-  // one ranking pass over every active row, then the first per project
-  const rankedAll = rankNow(tasks.filter((t) => !t.done && t.depth === 0 && isActive(t) && actionable(t, now)), now, tasks);
   // a short task for a short gap, ranked, never one already on screen
-  const five = ordered.filter((t) => !shownRefs.has(t.ref)).map((t) => item(t, now)).filter((i) => !i.assumed && i.minutes <= FIVE_MAX).slice(0, 3);
+  const five = rest.filter((t) => !shownRefs.has(t.ref)).map((t) => item(t, now)).filter((i) => !i.assumed && i.minutes <= FIVE_MAX).slice(0, 3);
   five.forEach((f) => shownRefs.add(f.task.ref));
-  // projects in priority order: by the rank of their top task (active first, then Up next, then anything open). @req FR:web-app/home2.order
-  const rankOf = new Map(rankedAll.map((t, i) => [t.ref, i]));
+  // projects in the order of their top ranked row. @req FR:web-app/home2.order
+  const rankOf = new Map(ordered.map((t, i) => [t.ref, i]));
   const projects: HomeProject[] = [];
   for (const p of o.projects) {
-    const mine = tasks.filter((t) => t.project === p.name && !t.done && t.depth === 0);
-    const top = rankedAll.find((t) => t.project === p.name) ?? mine.find(isUpNext) ?? mine[0];
+    const mine = tasks.filter((t) => t.project === p.name && !t.done && t.depth === 0 && !hidden.has(t.ref));
+    // No arbitrary first row as a fallback: the server may have hidden it (a hide rule). @req FR:web-app/home.projects
+    const top = ordered.find((t) => t.project === p.name) ?? mine.find(isUpNext);
     if (top) projects.push({ project: p.name, title: p.title || p.name, top: item(top, now), shown: shownRefs.has(top.ref) });
   }
   projects.sort((a, b) => (rankOf.get(a.top.task.ref) ?? Infinity) - (rankOf.get(b.top.task.ref) ?? Infinity));

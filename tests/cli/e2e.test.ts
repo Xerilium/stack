@@ -151,6 +151,29 @@ describe('commands', () => {
     expect(file(d, 'tasks/alpha.md')).toContain('  - [ ] Child');
   });
 
+  // @req FR:cli/cmd.next
+  it('next --top n prints the first n ranked tasks, with the owner overrides applied; same order as next', () => {
+    const d = repo();
+    stack(d, 'add', 'alpha', 'Low 🔻');
+    stack(d, 'add', 'alpha', 'High 🚨 ⬆️');
+    stack(d, 'add', 'alpha', 'Mid 🔺');
+    const top = stack(d, 'next', '--top', '3', '--now', NOW);
+    expect(top.code).toBe(0);
+    const lines = top.out.trim().split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toMatch(/^tasks\/alpha\.md:\d+ [\d.]+ Alpha High/);
+    expect(lines[0]).toBe(stack(d, 'next', '--now', NOW).out.trim());
+    expect(stack(d, 'next', '--top', '2', '--now', NOW).out.trim().split('\n')).toHaveLength(2);
+    const j = JSON.parse(stack(d, 'next', '--top', '2', '--now', NOW, '--json').out);
+    expect(j.items.map((i: { text: string }) => i.text.slice(0, 3))).toEqual(['Hig', 'Mid']);
+    mkdirSync(join(d, '.stack'), { recursive: true });
+    writeFileSync(join(d, '.stack/priorities.json'), JSON.stringify({ rules: [{ match: 'Low', effect: 'top', why: 'owner said so' }] }));
+    expect(stack(d, 'next', '--now', NOW).out).toMatch(/Alpha Low/);
+    expect(stack(d, 'next', '--top', '3', '--now', NOW).out.trim().split('\n')[0]).toMatch(/Alpha Low/);
+    expect(stack(d, 'next', '--top', '0', '--now', NOW).code).toBe(2);
+    expect(stack(d, 'next', '--top', '51', '--now', NOW).code).toBe(2);
+  });
+
   it('next prints ref, score, project, text; exit 4 when none', () => {
     const d = repo();
     const none = stack(d, 'next', '--now', NOW);

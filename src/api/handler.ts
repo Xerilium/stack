@@ -5,7 +5,7 @@
 import { getDefaults, type StackConfig } from '../core/config';
 import { cleanOverrides, daySchedule, dayScheduleOn, type ScheduleOverrides } from '../core/schedule';
 import {
-  addProject, addTask, completeTask, nextTask, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
+  addProject, addTask, completeTask, nextTask, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
   type LifecycleContext, type LifecycleResult, type TaskProps,
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
@@ -24,6 +24,7 @@ import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 import { generateSummaries } from '../core/summaries';
 import { editTask, moveTask } from './edit';
+import { answerNeed, readNeeds } from '../core/needs-you';
 import { ApiError, errorResponse, flushError, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
 import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
@@ -185,6 +186,11 @@ const ASK_ANSWER_BODY = {
   schema: { answer: { t: 'enum', values: ASK_ANSWERS }, text: { t: 'str', max: 1000, line: true }, until: { t: 'str', max: 40, line: true } } satisfies Record<string, Spec>,
   required: ['answer'],
 };
+const NEED_ANSWER_BODY = {
+  schema: { choice: { t: 'enum', values: ['go', 'defer', 'reply', 'undo'] }, text: { t: 'str', max: 1000, line: true }, until: { t: 'str', max: 40, line: true } } satisfies Record<string, Spec>,
+  required: ['choice'],
+};
+const RANK_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 200 } };
 const ASK_HANDLE_BODY = {
   schema: { outcome: { t: 'enum', values: ASK_OUTCOMES }, note: { t: 'str', max: 500, line: true }, reply: { t: 'str', max: 1000, line: true } } satisfies Record<string, Spec>,
   required: ['outcome'],
@@ -323,6 +329,38 @@ export const ROUTES: Route[] = [
       const fields = parseFields(q.get('fields'), ['ref', 'text', 'project', 'score']) ?? ['ref', 'text', 'project', 'score'];
       const n = await nextTask(c.life);
       return json(200, { task: n ? pick({ ref: formatRef(n.ref), text: n.text, project: n.project, score: n.score }, fields) : null });
+    },
+  },
+  {
+    // @req FR:api/routes.rank
+    // The one ranking: engine order plus the overrides.
+    method: 'GET', doc: '/rank', name: 'rank', query: RANK_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(RANK_Q));
+      const limit = intParam(q, 'limit', 20, 1, 200);
+      const items = (await rankStack(c.life, undefined, limit)).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}) }));
+      return json(200, { items });
+    },
+  },
+  {
+    // @req FR:ask-queue/needs.api @req FR:ask-queue/needs.read
+    method: 'GET', doc: '/needs-you', name: 'needs.list',
+    async run(c) {
+      noQuery(c);
+      return json(200, { items: await readNeeds(c.deps.storage) });
+    },
+  },
+  {
+    // The owner's answer, written onto the item (the CoS owns the list). @req FR:ask-queue/needs.api @req FR:ask-queue/needs.answer
+    method: 'POST', doc: '/needs-you/{id}/answer', name: 'needs.answer', body: NEED_ANSWER_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can answer a need');
+      const b = validate<{ choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }>(await readBody(c.req), NEED_ANSWER_BODY.schema, NEED_ANSWER_BODY.required);
+      if (b.choice === 'defer' && (!b.until || Number.isNaN(Date.parse(b.until)))) throw invalid([{ field: 'until', message: 'Required for defer: an ISO date or time' }]);
+      if (b.choice === 'reply' && !b.text?.trim()) throw invalid([{ field: 'text', message: 'Required for reply' }]);
+      await answerNeed(c.deps.storage, c.params[0], b, (c.deps.now ?? (() => new Date()))());
+      return json(200, { changed: true });
     },
   },
   {

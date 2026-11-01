@@ -1,0 +1,8 @@
+{
+  "rules": [
+    { "match": "Pay bills", "effect": "top", "why": "tonight", "by": "owner" },
+    { "match": "MVP onboarding", "effect": "top", "why": "top of mind", "by": "owner" },
+    { "match": "FH 0.10", "effect": "top", "why": "release gates the FTK announcement", "by": "owner" },
+    { "match": "FOCUS", "effect": "down", "why": "not a priority now", "by": "owner" }
+  ]
+}

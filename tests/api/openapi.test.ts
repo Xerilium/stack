@@ -248,6 +248,11 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('tasks.get', 'GET', `/tasks/${encodeURIComponent(ref)}`, undefined, 200);
     await go('tasks.get', 'GET', '/tasks/zzz:99', undefined, 404);
     await go('next', 'GET', '/next', undefined, 200);
+    // @req FR:api/routes.rank
+    await go('rank', 'GET', '/rank?limit=5', undefined, 200);
+    // @req FR:ask-queue/needs.api
+    await go('needs.list', 'GET', '/needs-you', undefined, 200);
+    await go('needs.answer', 'POST', '/needs-you/none/answer', { choice: 'go' }, 404);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha', dryRun: true }, 200);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha' }, 201);
     await go('tasks.start', 'POST', '/tasks/start', { ref }, 200);

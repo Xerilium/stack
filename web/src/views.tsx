@@ -6,7 +6,7 @@ import type { Week } from './week';
 import { clock, estimate, nowMinutes, span, type Block, type Day, type Decision, type Plan } from './plan';
 import { joinable, type Busy, type CalEvent } from './meetings';
 import { timelineOf } from './timeline';
-import { countdown, HAVE, type Countdown, type Home, type HomeItem, type Window } from './home';
+import { countdown, HAVE, type Home, type HomeItem, type Window } from './home';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
@@ -29,7 +29,7 @@ export interface RowProps {
   onSelect: (ref: string) => void; onCursor: (ref: string) => void; onEdit: (ref: string | null) => void; onSave: (ref: string, text: string) => void; onToggle: (t: Task) => void;
   onPick: Pick; onMove: (ref: string, dir: 'up' | 'down') => void; onDragStart: (ref: string, e: PointerEvent) => void; onExpand: (ref: string) => void; onOpen: (ref: string) => void;
   /** AI on every row: the agent chip after the chips and the inline composer under the row. @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
-  agent?: { chip: (t: Task) => ComponentChildren; talk: (t: Task) => ComponentChildren };
+  agent?: { chip: (t: Task) => ComponentChildren; talk: (t: Task) => ComponentChildren; /** An agent has the task (a session is running on it). @req FR:web-app/home3.context */ owned?: (t: Task) => boolean };
   /** The row expanded in place (one at a time) and how to toggle it. @req FR:web-app/home2.expand */
   open: string | null; onToggleOpen: (ref: string) => void;
   /** Extra region at the end of the expanded row (the agent thread lives here). */
@@ -350,7 +350,7 @@ function Sent({ items, now }: { items: InboxItem[]; now: Date }) {
 type RefText = { ref: string; text: string };
 type RowKey = RefText & { project: string };
 /** Agent rows often start with a project glyph and an `[AI]` tag; both are noise in the panel. */
-const agentTitle = (s: string) => s.replace(/^(?:[^\p{L}\p{N}`*[]+\s*)+/u, '').replace(/^\[AI\]\s*/i, '').replace(/\s+[—-]\s*$/, '').trim() || s;
+const agentTitle = (s: string) => s.replace(/^(?:[^\p{L}\p{N}\x60*[]+\s*)+/u, '').replace(/^\[AI\]\s*/i, '').replace(/\s+[—-]\s*$/, '').trim() || s;
 const CHECK = { passing: '✓', failing: '✕', pending: '…', none: '' } as const;
 
 export interface TodayProps {
@@ -680,7 +680,7 @@ export function WeekView({ w }: { w: Week }) {
                 {d.over > 0 && d.available > 0 && <span class="wd-over" style={{ bottom: h(d.available), height: h(d.over) }} />}
                 {d.available === 0 && d.planned > 0 && <span class="wd-unset" style={{ height: h(d.planned) }} />}
               </div>
-              <p class="wd-label">{d.available === 0 && d.planned === 0 ? <small>off</small> : <>{hrs(d.planned)}<small>{d.available === 0 ? ' · no time set' : ` / ${hrs(d.available)}`}</small></>}</p>
+              <p class="wd-label">{d.available === 0 && d.planned === 0 ? <small>off</small> : <>{hrs(d.planned)}<small>{d.available === 0 ? ' · no time set' : ' / ' + hrs(d.available)}</small></>}</p>
               <p class="wd-name">{name}<small>{d.date.getDate()}</small></p>
             </li>
           );
@@ -691,22 +691,66 @@ export function WeekView({ w }: { w: Week }) {
 }
 
 /** Expected time and due countdown, the same on every Home row. */
-function When({ i, onEffort }: { i: { minutes: number; assumed: boolean; due: Countdown | null }; onEffort?: () => void }) {
-  const text = `${i.assumed ? '~' : ''}${span(i.minutes)}`;
-  const title = i.assumed ? 'No effort set; 30 min assumed' : 'Expected time';
+/**
+ * @req FR:web-app/home3.menu
+ * @req FR:web-app/home3.menu.agent
+ * The more-actions menu on the NOW card: everything that is not the decision itself.
+ */
+function MoreMenu({ busy, owned, onAct, onOpen }: { busy: boolean; owned: boolean; onAct: (a: 'notnow' | 'defer' | 'delegate') => void; onOpen: () => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const items = () => [...(box.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
+  const close = (back: boolean) => { setOpen(false); if (back) btn.current?.focus(); };
+  // Layout effects: focus and the key listener are in place as soon as the menu is on screen, not after the next paint.
+  useLayoutEffect(() => { if (open) items()[0]?.focus(); }, [open]); // focus moves into the menu
+  useLayoutEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(true); return; }
+      if (e.key === 'Tab') { close(false); return; } // Tab leaves the menu
+      const list = items(); const at = list.indexOf(document.activeElement as HTMLButtonElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); list[(at + 1) % list.length]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); list[(at - 1 + list.length) % list.length]?.focus(); }
+      else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus(); }
+      else if (e.key === 'End') { e.preventDefault(); list.at(-1)?.focus(); }
+    };
+    const click = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) close(false); };
+    document.addEventListener('keydown', key, true); document.addEventListener('mousedown', click);
+    return () => { document.removeEventListener('keydown', key, true); document.removeEventListener('mousedown', click); };
+  }, [open]);
+  const pick = (fn: () => void) => () => { close(true); fn(); };
   return (
-    <span class="when-meta">
-      {onEffort
-        ? <button type="button" class="expected" data-testid="expected" title={`${title}. Change`} aria-label={`Expected time ${text}. Change`} onClick={(e) => { e.stopPropagation(); onEffort(); }}>{text}</button>
-        : <span class="expected" data-testid="expected" title={title}>{text}</span>}
-      {i.due && <span class={`countdown ${i.due.tone}`} data-testid="countdown">{i.due.text}</span>}
-    </span>
+    <div class="more" ref={box}>
+      <button type="button" ref={btn} class="btn more-btn" aria-haspopup="menu" aria-expanded={open} aria-label="More actions" title="More actions" data-testid="more" onClick={() => setOpen((o) => !o)}>…</button>
+      {open && (
+        <div class="menu" role="menu" aria-label="More actions" data-testid="more-menu">
+          <button type="button" role="menuitem" class="menu-item" title="Back in 2 hours (n)" disabled={busy} onClick={pick(() => onAct('notnow'))}>Defer 2h <kbd>n</kbd></button>
+          <button type="button" role="menuitem" class="menu-item" title="Pick when (z)" disabled={busy} onClick={pick(() => onAct('defer'))}>Defer… <kbd>z</kbd></button>
+          {!owned && <button type="button" role="menuitem" class="menu-item" title="An agent takes it (A)" disabled={busy} onClick={pick(() => onAct('delegate'))}>Delegate <kbd>A</kbd></button>}
+          <button type="button" role="menuitem" class="menu-item" title="Open full screen (Enter)" onClick={pick(onOpen)}>Open <kbd>↵</kbd></button>
+        </div>
+      )}
+    </div>
   );
 }
 
-/** Home: the one thing now, whether it fits, the next two, the top of every project. @req FR:web-app/home.one @req FR:web-app/home.fit @req FR:web-app/home.next @req FR:web-app/home.projects @req FR:web-app/home.quiet @req FR:web-app/now.focus @req FR:home/home.window @req FR:home/home.have */
-export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAct, onProject, onMoreTime, all, onAll }: {
-  h: Home; now: Date; minutesLeft: number; win: Window; have: number | null; onHave: (m: number | null) => void; p: RowProps; busy: boolean; all: boolean; onAll: () => void;
+/**
+ * @req FR:web-app/home.one
+ * @req FR:web-app/home.fit
+ * @req FR:web-app/home.next
+ * @req FR:web-app/home.projects
+ * @req FR:web-app/home.quiet
+ * @req FR:web-app/now.focus
+ * @req FR:web-app/home3.now
+ * @req FR:web-app/home3.context
+ * @req FR:web-app/home3.rows
+ * @req FR:home/home.window
+ * @req FR:home/home.have
+ * Home: the one thing now, whether it fits, the next two, the top of every project.
+ */
+export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, onProject, onMoreTime, all, onAll }: {
+  h: Home; minutesLeft: number; win: Window; have: number | null; onHave: (m: number | null) => void; p: RowProps; busy: boolean; all: boolean; onAll: () => void;
   onAct: (a: 'start' | 'done' | 'defer' | 'notnow' | 'delegate', ref?: string) => void; onProject: (name: string) => void; onMoreTime: () => void;
 }) {
   const until = win.until?.label ?? '';
@@ -721,7 +765,6 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
   const demoted = !h.fits && h.instead ? h.one : null;
   const one = demoted ? h.instead : h.one;
   const hero = one ? parseRow(one.task.text) : null;
-  const ends = (i: HomeItem) => clock(now.getHours() * 60 + now.getMinutes() + i.minutes);
   const detail = (t: Task) => p.open === t.ref && <RowDetail t={t} all={p.all} busy={busy} onAct={p.onAct} onToggle={p.onToggle} onOpen={p.onOpen} extra={p.detail} />;
   const row = (i: HomeItem) => {
     const r = parseRow(i.task.text);
@@ -729,10 +772,8 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
     <li key={i.task.ref} class={`row home-row${p.cursor === i.task.ref ? ' cursor' : ''}${p.open === i.task.ref ? ' open' : ''}${p.justDone.has(i.task.ref) ? ' done-anim' : ''}`} data-ref={i.task.ref} onClick={() => { p.onCursor(i.task.ref); p.onToggleOpen(i.task.ref); }}>
       <div class="line">
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', i.task.ref); }}><span class="box" /></button>
-        <span class="title"><span class="text" {...toggleOn<HTMLSpanElement>(i.task.ref, p)}><Md text={r.title || i.task.text} /></span><Tags r={r} /></span>
+        <span class="title"><span class="text" {...toggleOn<HTMLSpanElement>(i.task.ref, p)}><Md text={r.title || i.task.text} /></span></span>
         <span class="proj-tag">{p.titles.get(i.task.project) ?? i.task.project}</span>
-        {p.agent?.chip(i.task)}
-        <When i={i} />
       </div>
       {detail(i.task)}
       {p.agent?.talk(i.task)}
@@ -752,30 +793,20 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
           <kbd class="have-key" title="h then 1-4; 0 resets">h</kbd>
         </div>
       </div>
-      {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd>c</kbd></p></div>}
+      {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd class="always">c</kbd></p></div>}
       {one && hero && (
         <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${p.justDone.has(one.task.ref) ? ' done-anim' : ''}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
-          <p class="eyebrow">Now · {p.titles.get(one.task.project) ?? one.task.project}</p>
           <h1 data-testid="next-title"><span class="h1-toggle" {...toggleOn<HTMLSpanElement>(one.task.ref, p)}><Md text={hero.title || one.task.text} /></span></h1>
-          <div class="chips">
-            <When i={one} onEffort={() => p.onPick([one.task.ref], 'effort')} />
-            {(h.fits || demoted) && <span class="ends" data-testid="ends">ends ~{ends(one)}</span>}
-            {chipsOf(one.task.text).filter((c) => c.group !== 'effort').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([one.task.ref], g)} />)}
-            <Tags r={hero} />
-            {hero.recurrence && <span class="meta">↻ {hero.recurrence}</span>}
-            {p.agent?.chip(one.task)}
-          </div>
+          <p class="context" data-testid="now-context">{p.titles.get(one.task.project) ?? one.task.project}{one.due?.tone === 'late' && <> · <span class="late">late</span></>}{p.agent?.owned?.(one.task) && <> · <span class="owned">agent has it</span></>}</p>
           {!h.fits && !demoted && (
             <p class="nofit-line" data-testid="nofit">{win.allow && !win.have && !one.task.text.replace(/\uFE0F/g, '').includes(win.allow.emoji.replace(/\uFE0F/g, '')) && !win.allow.projects?.includes(one.task.project) ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : win.allow && !win.have ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${win.until && win.until.at < win.inside!.until ? win.until.label : `${win.inside!.label} ends`}` : win.inside && !win.have ? `${win.inside.label} now: back at ${clock(win.inside.until)}` : minutesLeft > 0 ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${until}` : 'No time left today'}</p>
           )}
           {p.open === one.task.ref ? <RowDetail t={one.task} all={p.all} busy={busy} onAct={p.onAct} onToggle={p.onToggle} onOpen={p.onOpen} extra={p.detail} /> : (
             <div class="actions">
-              <button type="button" class={`btn${h.fits || demoted ? ' primary' : ''}`} disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>
-              <button type="button" class="btn" disabled={busy} onClick={() => onAct('done', one.task.ref)}>Done <kbd>d</kbd></button>
-              <button type="button" class="btn quiet" disabled={busy} title="Back in 2 hours" onClick={() => onAct('notnow', one.task.ref)}>Defer 2h <kbd>n</kbd></button>
-              <button type="button" class="btn quiet" disabled={busy} title="Pick when" onClick={() => onAct('defer', one.task.ref)}>Defer… <kbd>z</kbd></button>
-              <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('delegate', one.task.ref)}>🪄 Delegate <kbd>A</kbd></button>
-              {!h.fits && !demoted && <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
+              <button type="button" class={`btn${h.fits || demoted ? ' primary' : ''}`} title="Start (s)" disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>
+              <button type="button" class="btn" title="Done (d)" disabled={busy} onClick={() => onAct('done', one.task.ref)}>Done <kbd>d</kbd></button>
+              {!h.fits && !demoted && <button type="button" class="btn quiet" title="More time (])" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
+              <MoreMenu busy={busy} owned={!!p.agent?.owned?.(one.task)} onAct={(a) => onAct(a, one.task.ref)} onOpen={() => p.onOpen(one.task.ref)} />
             </div>
           )}
           {p.agent?.talk(one.task)}
@@ -784,7 +815,6 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
       {demoted && (
         <div class={`unfit${p.cursor === demoted.task.ref ? ' cursor' : ''}`} data-testid="unfit" data-ref={demoted.task.ref} onClick={() => p.onCursor(demoted.task.ref)}>
           <span class="unfit-title"><Md text={parseRow(demoted.task.text).title || demoted.task.text} /></span>
-          <When i={demoted} />
           <span class="unfit-why">{win.allow && !win.have ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : `doesn't fit now: needs ${span(demoted.minutes)}, ${span(minutesLeft)}${until ? ` until ${until}` : ' left'}`}</span>
           <span class="grow" />
           <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>
@@ -812,7 +842,6 @@ export function HomeView({ h, now, minutesLeft, win, have, onHave, p, busy, onAc
               <li key={x.project} class={`${p.cursor === x.top.task.ref ? 'cursor' : ''}${p.open === x.top.task.ref ? ' open' : ''}`} data-ref={x.top.task.ref} onClick={() => { p.onCursor(x.top.task.ref); p.onToggleOpen(x.top.task.ref); }}>
                 <button type="button" class="proj-link" onClick={(e) => { e.stopPropagation(); onProject(x.project); }}>{x.title}</button>
                 <span class="proj-top" {...toggleOn<HTMLSpanElement>(x.top.task.ref, p)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
-                <When i={x.top} />
                 {detail(x.top.task)}
               </li>
             ))}
