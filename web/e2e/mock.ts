@@ -1,5 +1,6 @@
 import type { Page, Route } from '@playwright/test';
-import { actionable, activeTasks, rankNow } from '../src/now';
+import { actionable, activeTasks, dueDays, dueTier } from '../src/now';
+import { parseRow } from '../src/row';
 import type { Task } from '../src/types';
 
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
@@ -68,7 +69,10 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     // The server's ranking, doubled: the first open task, then what the page used to rank itself (the real engine is tested in core).
     const ranking = (): { ref: string; text: string; project: string; score: number; root?: string }[] => {
       const now = new Date();
-      const rest = rankNow(activeTasks(m.tasks as Task[]).filter((t) => actionable(t, now) && t.ref !== open[0]?.ref), now, m.tasks as Task[]);
+      const prio = (t: Task) => (/🚨/u.test(t.text) ? 3 : /‼/u.test(t.text) ? 2 : /🔺/u.test(t.text) ? 1 : /🔻/u.test(t.text) ? -1 : 0);
+      const key = (t: Task): [number, number, number] => [dueTier(dueDays(parseRow(t.text).due, now)), /🚧/u.test(t.text) ? 1 : 0, prio(t)];
+      const rest = activeTasks(m.tasks as Task[]).filter((t) => actionable(t, now) && t.ref !== open[0]?.ref)
+        .map((t, i) => ({ t, i, k: key(t) })).sort((a, b) => b.k[0] - a.k[0] || b.k[1] - a.k[1] || b.k[2] - a.k[2] || a.i - b.i).map((x) => x.t);
       const order = m.ranked ? m.ranked.map((r) => ({ r, t: find(r.ref) })).filter((x) => x.t).map((x) => ({ ref: x.t!.ref, text: x.t!.text, project: x.t!.project, score: 1, ...(x.r.root ? { root: x.r.root } : {}) }))
         : [...(open[0] ? [open[0]] : []), ...rest].map((t) => ({ ref: t.ref, text: t.text, project: t.project, score: 1 }));
       return order;

@@ -1,6 +1,6 @@
 /** @req FR:web-app/today.plan @req FR:web-app/today.needs */
 import { describe, expect, it } from 'vitest';
-import { buildPlan, clock, decisions, DEFAULT_DAY, estimate, openLeaves, planCandidates, recommendationOf, span } from '../src/plan';
+import { buildPlan, byServerRank, clock, decisions, DEFAULT_DAY, estimate, openLeaves, planCandidates, recommendationOf, span } from '../src/plan';
 import type { Task } from '../src/types';
 
 let n = 0;
@@ -25,16 +25,32 @@ describe('day plan', () => {
   });
   it('plans only your own actionable leaves, hero first', () => {
     const rows = [t('🤖 agent job'), t('🙋 decide'), t('plain 🟢'), t('📅 Oct 23: due today 🟢'), t('📅 Feb 1, 2027: far 🟢')];
-    const c = planCandidates(rows, at(10), rows[2].ref).map((x) => x.text);
+    const c = planCandidates(rows, at(10), [], rows[2].ref).map((x) => x.text);
     expect(c).toEqual(['plain 🟢', '📅 Oct 23: due today 🟢']);
   });
   it('when the server\'s next task is a parent, its first open leaf leads', () => {
     const rows = [t('other 🟢'), t('Ship it'), t('step one 🟢', 1), t('step two 🟢', 1)];
-    expect(planCandidates(rows, at(10), rows[1].ref).map((x) => x.text)).toEqual(['step one 🟢', 'other 🟢', 'step two 🟢']);
+    expect(planCandidates(rows, at(10), [], rows[1].ref).map((x) => x.text)).toEqual(['step one 🟢', 'other 🟢', 'step two 🟢']);
   });
   it('never plans reply rows', () => {
     const ask = t('🙋 Pick a color');
-    expect(planCandidates([ask, t('💬 Blue', 1)], at(10)).map((x) => x.text)).toEqual([]);
+    expect(planCandidates([ask, t('💬 Blue', 1)], at(10), []).map((x) => x.text)).toEqual([]);
+  });
+});
+
+// @req FR:web-app/now.active @req FR:web-app/today.plan
+describe('the day plan takes the server order', () => {
+  const rows = [t('first in file 🟢'), t('second in file 🟢'), t('third in file 🟢')];
+  it('orders candidates by GET /rank?blocks=any; rows it did not rank follow in file order', () => {
+    expect(planCandidates(rows, at(10), [rows[2].ref, rows[0].ref]).map((x) => x.text)).toEqual(['third in file 🟢', 'first in file 🟢', 'second in file 🟢']);
+    expect(byServerRank(rows, []).map((x) => x.text)).toEqual(rows.map((x) => x.text));
+  });
+  it('the next task leads even when the order puts it later (the first open leaf of a parent)', () => {
+    expect(planCandidates(rows, at(10), [rows[0].ref, rows[1].ref, rows[2].ref], rows[2].ref).map((x) => x.text)[0]).toBe('third in file 🟢');
+  });
+  it('Needs you orders decisions by the server order too', () => {
+    const d = [t('🙋 one'), t('🙋 two')];
+    expect(decisions(d, at(10), [d[1].ref, d[0].ref]).map((x) => x.task.text)).toEqual(['🙋 two', '🙋 one']);
   });
 });
 
@@ -45,18 +61,18 @@ describe('decisions and agents', () => {
     const ask = t('🙋 Make final decision', 1);
     const rows = [p, kid, ask];
     expect(recommendationOf(rows, ask)).toBe('Let it drop.');
-    const d = decisions(rows, at(10));
+    const d = decisions(rows, at(10), []);
     expect(d).toHaveLength(1);
     expect(d[0]).toMatchObject({ task: { text: '🙋 Make final decision' }, context: { text: 'Decide whether to re-engage' }, recommendation: 'Let it drop.' });
   });
   it('an answered 🙋 (open 💬 under it) leaves Needs you', () => {
     const rows = [t('Parent'), t('🪄 Draft options', 1), t('🙋 Pick one', 1), t('💬 Option B', 2)];
-    expect(decisions(rows, at(10))).toEqual([]);
+    expect(decisions(rows, at(10), [])).toEqual([]);
   });
   it('ignores 🙋 rows in Backlog unless under a row in progress', () => {
     const back = '📋 Backlog';
     const rows = [t('Later', 0, [], 'a', false, back), t('🙋 Ask', 1, [], 'a', false, back), t('🚧 🪄 Doing', 0, [], 'a', false, back), t('🙋 Now ask', 1, [], 'a', false, back)];
-    expect(decisions(rows, at(10)).map((x) => x.task.text)).toEqual(['🙋 Now ask']);
+    expect(decisions(rows, at(10), []).map((x) => x.task.text)).toEqual(['🙋 Now ask']);
   });
 });
 
