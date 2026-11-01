@@ -62,35 +62,38 @@ describe('team, reviews, and task sessions', () => {
     for (const p of ['/team:', '/reviews:', '/tasks/review:']) expect(doc).toContain(p);
   });
 
-  it('GET /team lists the team, and the agents for a project most specific first', async () => {
+  it('GET /team lists the team, and the agents for a project with the roll-up first', async () => {
     const { call, mint } = await mk();
     const all = await call(await mint('tasks:read'), 'GET', '/team');
     expect(all.status).toBe(200);
     expect(all.json.items.map((a: { slug: string }) => a.slug)).toEqual(['cos', 'cid-manager']);
     const f4 = await call('owner', 'GET', '/team?project=flantastic-4');
-    expect(f4.json.items.map((a: { slug: string; defined: boolean }) => [a.slug, a.defined])).toEqual([['cid-manager', false], ['cos', true]]);
+    expect(f4.json.items.map((a: { slug: string; defined: boolean }) => [a.slug, a.defined])).toEqual([['cos', true], ['cid-manager', false]]);
     expect((await call('owner', 'GET', '/team?project=nope')).json.items.map((a: { slug: string }) => a.slug)).toEqual(['cos']);
     expect((await call('owner', 'GET', '/team?weird=1')).status).toBe(422);
   });
 
-  it('POST /sessions with a ref runs the task agent in the served folder with its persona; cwd stays optional', async () => {
+  it('POST /sessions with a ref runs the task agent (the roll-up by default) in the served folder with its persona; cwd stays optional', async () => {
     const { call, mint, prompts } = await mk();
     expect((await call(await mint('tasks:write'), 'POST', '/sessions', { ref: 'flantastic-4:7', text: 'hi' })).status).toBe(403);
     const r = await call('owner', 'POST', '/sessions', { ref: 'flantastic-4:7', text: 'Do it' });
     expect(r.status).toBe(202);
-    expect(r.json).toMatchObject({ runId: 'run-1', agent: 'cid-manager', title: '🎧 Cid Manager · Release the single 🟡 · flantastic-4:7' });
+    expect(r.json).toMatchObject({ runId: 'run-1', agent: 'cos', title: 'CoS · Release the single 🟡 · flantastic-4:7' });
     expect(prompts[0]).toMatchObject({ cwd: '/served', text: 'Do it' });
-    expect(prompts[0].options?.systemPrompt).toContain('You are 🎧 Cid Manager');
+    expect(prompts[0].options?.systemPrompt).toContain('You are CoS');
+    const c = await call('owner', 'POST', '/sessions', { ref: 'flantastic-4:7', agent: 'cid-manager', text: 'Do it' });
+    expect(c.json).toMatchObject({ agent: 'cid-manager', title: '🎧 Cid Manager · Release the single 🟡 · flantastic-4:7' });
     const p = await call('owner', 'POST', '/sessions', { project: 'flantastic-4', agent: 'cos', text: 'Plan' });
     expect(p.json).toMatchObject({ agent: 'cos', title: 'CoS · flantastic-4' });
-    expect(prompts[1].options?.model).toBe('opus');
+    expect(prompts[2].options?.model).toBe('opus');
     expect((await call('owner', 'POST', '/sessions', { text: 'plain' })).status).toBe(202); // served folder, no persona
-    expect(prompts[2]).toMatchObject({ cwd: '/served' });
-    expect(prompts[2].options).toBeUndefined();
+    expect(prompts[3]).toMatchObject({ cwd: '/served' });
+    expect(prompts[3].options).toBeUndefined();
     expect((await call('owner', 'POST', '/sessions', { ref: 'flantastic-4:99', text: 'x' })).status).toBe(404);
     expect((await call('owner', 'POST', '/sessions', { ref: 'nope', text: 'x' })).status).toBe(422);
     expect((await call('owner', 'POST', '/sessions', { cwd: 'relative', text: 'x' })).status).toBe(422);
-    expect((await call('owner', 'POST', '/sessions', { cwd: '/', ref: 'flantastic-4:7', text: 'x' })).status).toBe(422); // a task session always runs in the served folder
+    expect((await call('owner', 'POST', '/sessions', { cwd: '/', ref: 'flantastic-4:7', text: 'x' })).status).toBe(202); // a task session may run in a given folder
+    expect(prompts[4]).toMatchObject({ cwd: '/' });
   });
 
   it('POST /tasks/review starts a read-only review (owner only); the verdict and its needs land; GET /reviews lists them', async () => {
@@ -98,7 +101,7 @@ describe('team, reviews, and task sessions', () => {
     expect((await call(await mint('tasks:write'), 'POST', '/tasks/review', { ref: 'flantastic-4:7' })).status).toBe(403);
     expect((await call('owner', 'POST', '/tasks/review', { ref: 'nope' })).status).toBe(422);
     expect((await call('owner', 'POST', '/tasks/review', { ref: 'flantastic-4:8' })).status).toBe(403); // a 🙋 row is the owner's: no paid run
-    const r = await call('owner', 'POST', '/tasks/review', { ref: 'flantastic-4:7' });
+    const r = await call('owner', 'POST', '/tasks/review', { ref: 'flantastic-4:7', agent: 'cid-manager' });
     expect(r.status).toBe(202);
     expect(r.json).toMatchObject({ runId: 'run-1', agent: 'cid-manager' });
     expect(prompts[0].options?.schema).toBeDefined();
@@ -118,5 +121,23 @@ describe('team, reviews, and task sessions', () => {
     expect((await call('owner', 'POST', '/tasks/review', { ref: 'flantastic-4:7' })).status).toBe(404);
     expect((await call('owner', 'GET', '/team')).status).toBe(200);
     expect((await call('owner', 'GET', '/reviews?project=flantastic-4')).json).toEqual({ items: [] });
+  });
+});
+
+// @req FR:agent-team/agent.team @req FR:agent-team/review.api @req FR:agent-team/talk.api
+describe('team shape', () => {
+  it('carries reportsTo and source; project order is the roll-up first', async () => {
+    const { call, ctx } = await mk();
+    await putAgent(ctx, 'cid-manager', { name: '🎧 Cid Manager', scope: ['flantastic-4'] });
+    const all = await call('owner', 'GET', '/team');
+    expect(all.json.items.map((a: { slug: string; source: string; reportsTo?: string }) => [a.slug, a.source, a.reportsTo ?? null])).toEqual([['cid-manager', 'stack', 'cos'], ['cos', 'stack', null]]);
+    const f4 = await call('owner', 'GET', '/team?project=flantastic-4');
+    expect(f4.json.items[0].slug).toBe('cos');
+  });
+  it('a task session may run in a given folder', async () => {
+    const { call, prompts } = await mk();
+    const r = await call('owner', 'POST', '/sessions', { project: 'flantastic-4', agent: 'cos', cwd: process.cwd(), text: 'Plan the week' });
+    expect(r.status).toBe(202);
+    expect(prompts[0]).toMatchObject({ cwd: process.cwd() });
   });
 });

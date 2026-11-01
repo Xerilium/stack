@@ -4,12 +4,13 @@
  */
 import { oneLine } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
+import { ownerOf, projectRepos } from '../core/repos';
 import { NotFoundError } from '../core/storage';
 import { createPermissionBroker, type PermissionBroker } from './broker';
 import { projectOf, SessionBusy, sessionState, STATE_ORDER, type AgentDriver, type PromptOptions, type Session, type SessionState, type Turn, type Update } from './driver';
 
 export interface RunManagerOptions { driver: AgentDriver; ctx: LifecycleContext; broker?: PermissionBroker; keepMs?: number; activeMs?: number; /** The served folder: where a new session runs when no `cwd` is given. @req FR:agent-team/driver.cwd */ cwd?: string }
-export interface ListedSession extends Omit<Session, 'active' | 'cost'> { state: SessionState; cost: { usd: number; tokens: number; approx?: boolean } }
+export interface ListedSession extends Omit<Session, 'active' | 'cost'> { state: SessionState; cost: { usd: number; tokens: number; approx?: boolean }; /** The Stack project that owns the session's repo, or null. @req FR:agent-sessions/sessions.owner */ owner: string | null }
 export interface CostReport {
   attribution: 'lastActive';
   /** Sessions whose cost is still being indexed; the figures grow until it is 0. */
@@ -121,12 +122,13 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
     sessionOf: (runId) => runs.get(runId)?.sessionId ?? null,
     needsYou: () => broker.open(),
     async sessions(q = {}) {
-      const [all, open] = await Promise.all([driver.listSessions({ limit: 200 }), api.needsYou()]);
+      const [all, open, repos] = await Promise.all([driver.listSessions({ limit: 200 }), api.needsYou(), projectRepos(ctx)]);
       const t = now();
       const items = all.map((s) => {
         const { active, cost, ...rest } = s;
         const needs = open.has(s.id) || open.has(s.id.slice(0, 8));
-        return { ...rest, state: sessionState({ lastActive: s.lastActive, running: running(s.id), needsYou: needs, active }, t, o.activeMs), cost: { usd: cost.usd, tokens: cost.tokens, ...(cost.approx ? { approx: true } : {}) } };
+        // @req FR:agent-sessions/sessions.owner
+        return { ...rest, owner: ownerOf(s.project, repos), state: sessionState({ lastActive: s.lastActive, running: running(s.id), needsYou: needs, active }, t, o.activeMs), cost: { usd: cost.usd, tokens: cost.tokens, ...(cost.approx ? { approx: true } : {}) } };
       });
       items.sort((a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state) || b.lastActive.localeCompare(a.lastActive));
       return { items: items.slice(0, q.limit ?? 50), total: items.length, indexing: driver.indexing?.() ?? 0 };
@@ -141,7 +143,7 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
       const dayRows = new Map<string, { usd: number; tokens: number; sessions: number }>();
       for (let i = days - 1; i >= 0; i--) dayRows.set(dayIn(new Date(t.getTime() - i * 864e5), tz), { usd: 0, tokens: 0, sessions: 0 });
       const start = t.getTime() - (days + 1) * 864e5;
-      const all = await driver.listSessions({ sinceMs: start });
+      const [all, repos] = await Promise.all([driver.listSessions({ sinceMs: start }), projectRepos(ctx)]);
       const date = (iso: string) => dayIn(iso, tz);
       const projects = new Map<string, { usd: number; tokens: number; sessions: number }>();
       const models = new Map<string, { usd: number; tokens: number }>();
@@ -150,8 +152,10 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
         const d = dayRows.get(date(s.lastActive));
         if (!d) continue;
         d.usd += s.cost.usd; d.tokens += s.cost.tokens; d.sessions++;
-        const p = projects.get(s.project) ?? { usd: 0, tokens: 0, sessions: 0 };
-        p.usd += s.cost.usd; p.tokens += s.cost.tokens; p.sessions++; projects.set(s.project, p);
+        // By the owning Stack project when there is one, else by repo. @req FR:agent-sessions/sessions.cost
+        const key = ownerOf(s.project, repos) ?? s.project;
+        const p = projects.get(key) ?? { usd: 0, tokens: 0, sessions: 0 };
+        p.usd += s.cost.usd; p.tokens += s.cost.tokens; p.sessions++; projects.set(key, p);
         for (const [model, m] of Object.entries(s.cost.byModel ?? {})) { const cur = models.get(model) ?? { usd: 0, tokens: 0 }; cur.usd += m.usd; cur.tokens += m.tokens; models.set(model, cur); }
         total.usd += s.cost.usd; total.tokens += s.cost.tokens; total.sessions++;
       }

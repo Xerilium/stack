@@ -194,7 +194,7 @@ const SESSIONS_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 200 }
 const COST_Q: Record<string, Spec> = { days: { t: 'int', min: 1, max: 90 } };
 const PROMPT_BODY = { schema: { text: { t: 'str', required: true, max: 4000 } } satisfies Record<string, Spec>, required: ['text'] };
 const SLUG: Spec = { t: 'str', max: 40, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,39}$/ };
-/** `cwd` is optional since agent-team: a session for a task runs in the served folder. @req FR:agent-team/talk.api */
+/** `cwd` is optional since agent-team: a session for a task runs in the served folder unless a folder is given. @req FR:agent-team/talk.api */
 const NEW_SESSION_BODY = { schema: { cwd: { t: 'str', max: 1000, line: true }, text: { t: 'str', required: true, max: 4000 }, agent: SLUG, ref: REF, project: { t: 'str', max: 200, line: true, noReadme: true } } satisfies Record<string, Spec>, required: ['text'] };
 const TEAM_Q: Record<string, Spec> = { project: { t: 'str', max: 200, line: true }, section: { t: 'str', max: 200, line: true } };
 const REVIEWS_Q: Record<string, Spec> = { project: { t: 'str', required: true, max: 200, line: true } };
@@ -563,8 +563,7 @@ export const ROUTES: Route[] = [
       if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
       // @req FR:agent-team/talk.api: a task or project session gets its agent's persona and context.
       if (b.ref || b.project || b.agent) {
-        if (b.cwd !== undefined) throw invalid([{ field: 'cwd', message: 'A task or project session runs in the served folder; leave cwd out' }]);
-        return json(202, await startAgentRun(agents, c.life, { agent: b.agent, ref: b.ref ? formatRef(b.ref) : undefined, project: b.project, text: b.text }));
+        return json(202, await startAgentRun(agents, c.life, { agent: b.agent, ref: b.ref ? formatRef(b.ref) : undefined, project: b.project, ...(b.cwd ? { cwd: b.cwd } : {}), text: b.text }));
       }
       if (b.cwd === undefined && !agents.cwd) throw invalid([{ field: 'cwd', message: 'Required' }]);
       return json(202, await agents.prompt({ ...(b.cwd ? { cwd: b.cwd } : {}), text: b.text }));

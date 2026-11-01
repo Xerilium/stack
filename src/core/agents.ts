@@ -1,7 +1,9 @@
 /**
  * Agent definitions at the project folder level: one file per agent (`tasks/agents/<slug>.md`) with a scope of project or project/section prefixes,
  * plus the agents a project names in its `Agents` metadata. Resolves which agent is active for a task and reads the newest review of a row.
- * @req FR:agent-team/agent.path @req FR:agent-team/agent.format @req FR:agent-team/agent.team @req FR:agent-team/agent.resolve @req FR:agent-team/review.read
+ * Claude's own definitions (`.claude/agents/<slug>.md`) join the team read-only; every agent reports to someone (`reports-to`, else the narrowest agent
+ * whose projects strictly contain its own, else the roll-up), and the roll-up (scope `*`; `cos` by convention) is first on every task.
+ * @req FR:agent-team/agent.path @req FR:agent-team/agent.path.claude @req FR:agent-team/agent.format @req FR:agent-team/agent.format.claude @req FR:agent-team/agent.team @req FR:agent-team/agent.resolve @req FR:agent-team/review.read
  */
 import { LifecycleError, type LifecycleContext, type TaskRef } from './lifecycle';
 import { parseProject } from './parser';
@@ -11,23 +13,31 @@ import { logName, redact } from './triage';
 export const AGENT_MODES = ['long-running', 'ad-hoc'] as const;
 export type AgentMode = (typeof AGENT_MODES)[number];
 
+export type AgentSource = 'stack' | 'claude' | 'metadata';
 export interface AgentDef {
   slug: string; name: string; role?: string; scope: string[]; model?: string; tools?: string[]; mode: AgentMode;
+  /** Slug of the agent this one reports to (`reports-to`). @req FR:agent-team/agent.team.reports */
+  reportsTo?: string;
   /** System prompt addition (`## Prompt`). */
   prompt: string;
   /** Lines this version does not know; kept as is. */
   extra: string[];
 }
 export interface TeamAgent extends Omit<AgentDef, 'extra'> {
-  /** True when a `tasks/agents/<slug>.md` file exists. */
+  /** True when a definition file exists (Stack or Claude). */
   defined: boolean;
+  /** Where the agent is defined. @req FR:agent-team/agent.team */
+  source: AgentSource;
   /** Projects the scope resolves to (`*` lists every project). */
   projects: string[];
 }
 
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 const HEADER = '<!-- stack-agent v1. Scope is a list of project or project/section prefixes; `*` is everything. -->';
-const FIELDS = ['name', 'role', 'scope', 'model', 'tools', 'mode'] as const;
+const FIELDS = ['name', 'role', 'scope', 'reports-to', 'model', 'tools', 'mode'] as const;
+/** Every agent named `cos` is the roll-up unless it says otherwise. @req FR:agent-team/agent.team.rollup */
+const ROLLUP_SLUG = 'cos';
+const MAX_ROLE = 80;
 // eslint-disable-next-line no-control-regex
 const CONTROL = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]', 'g');
 const MAX_NAME = 60;
@@ -36,6 +46,11 @@ const MAX_PROMPT = 20_000;
 export function agentsPath(slug: string): string {
   if (typeof slug !== 'string' || !SLUG.test(slug)) throw new LifecycleError('Invalid agent slug (lower case letters, digits, . _ -; up to 40)');
   return `tasks/agents/${slug}.md`;
+}
+/** @req FR:agent-team/agent.path.claude */
+export function claudeAgentsPath(slug: string): string {
+  if (typeof slug !== 'string' || !SLUG.test(slug)) throw new LifecycleError('Invalid agent slug (lower case letters, digits, . _ -; up to 40)');
+  return `.claude/agents/${slug}.md`;
 }
 
 /** A slug from a display name: emoji and punctuation dropped, words joined by `-`. */
@@ -50,7 +65,7 @@ const scopeOk = (s: string) => s === '*' || /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[^/
 /** The agent as markdown (v1). */
 export function formatAgent(a: AgentDef): string {
   const f: [string, string | undefined][] = [
-    ['name', a.name], ['role', a.role], ['scope', a.scope.join(', ')], ['model', a.model], ['tools', a.tools?.join(', ')], ['mode', a.mode],
+    ['name', a.name], ['role', a.role], ['scope', a.scope.join(', ')], ['reports-to', a.reportsTo], ['model', a.model], ['tools', a.tools?.join(', ')], ['mode', a.mode],
   ];
   const lines = [`# Agent: ${a.slug}`, '', HEADER, '', ...f.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `- ${k}: ${v}`), ...a.extra];
   if (a.prompt.trim()) lines.push('', '## Prompt', '', a.prompt.trim());
@@ -67,13 +82,14 @@ export function parseAgent(slug: string, content: string): AgentDef {
     if (/^## Prompt\s*$/.test(line)) { inPrompt = true; continue; }
     if (inPrompt) { prompt.push(line); continue; }
     if (line === '' || line.startsWith('#') || line.startsWith('<!--')) continue;
-    const m = /^- ([a-z]+): (.*)$/.exec(line);
+    const m = /^- ([a-z-]+): (.*)$/.exec(line);
     if (!m || !(FIELDS as readonly string[]).includes(m[1])) { if (line.startsWith('- ')) a.extra.push(line); continue; }
     const v = oneLine(m[2]);
     switch (m[1]) {
       case 'name': if (v && v.length <= MAX_NAME) a.name = v; break;
       case 'role': if (v) a.role = v; break;
       case 'scope': a.scope = v.split(',').map((s) => s.trim()).filter((s) => s && scopeOk(s)); break;
+      case 'reports-to': if (SLUG.test(v)) a.reportsTo = v; break;
       case 'model': if (/^[A-Za-z0-9._-]{1,80}$/.test(v)) a.model = v; break;
       case 'tools': a.tools = v.split(',').map((s) => s.trim()).filter(Boolean); break;
       case 'mode': if ((AGENT_MODES as readonly string[]).includes(v)) a.mode = v as AgentMode; break;
@@ -83,7 +99,39 @@ export function parseAgent(slug: string, content: string): AgentDef {
   return a;
 }
 
-export interface AgentPut { name?: string; role?: string; scope?: string[]; model?: string; tools?: string[]; mode?: AgentMode; prompt?: string }
+/**
+ * Claude's format: YAML frontmatter (`name`, `description`, `tools`, `model`, and Stack's `scope`, `reports-to`, `mode`) over a markdown body that is the prompt.
+ * The display name is the first H1 (before a `:`), else the frontmatter name; the role is the description's first sentence.
+ * @req FR:agent-team/agent.format.claude
+ */
+export function parseClaudeAgent(slug: string, content: string): AgentDef {
+  const a: AgentDef = { slug, name: slug, scope: [], mode: 'ad-hoc', prompt: '', extra: [] };
+  let body = content;
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(content);
+  if (fm) {
+    body = content.slice(fm[0].length);
+    for (const raw of fm[1].split('\n')) {
+      const m = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(raw.replace(/\r$/, ''));
+      if (!m) continue;
+      const v = oneLine(m[2].replace(/^(["'])(.*)\1$/, '$2'));
+      switch (m[1]) {
+        case 'name': if (v && v.length <= MAX_NAME) a.name = v; break;
+        case 'description': { const first = /^(.*?[.!?])(\s|$)/.exec(v)?.[1] ?? v; if (first) a.role = first.length > MAX_ROLE ? `${first.slice(0, MAX_ROLE - 1)}…` : first; break; }
+        case 'tools': a.tools = v.replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter(Boolean); break;
+        case 'model': if (/^[A-Za-z0-9._-]{1,80}$/.test(v)) a.model = v; break;
+        case 'scope': a.scope = v.replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter((s) => s && scopeOk(s)); break;
+        case 'reports-to': case 'reportsTo': if (SLUG.test(v)) a.reportsTo = v; break;
+        case 'mode': if ((AGENT_MODES as readonly string[]).includes(v)) a.mode = v as AgentMode; break;
+      }
+    }
+  }
+  const h1 = /^#\s+(.+?)\s*$/m.exec(body)?.[1];
+  if (h1) { const n = oneLine(h1.split(':')[0]); if (n && n.length <= MAX_NAME) a.name = n; }
+  a.prompt = body.trim().slice(0, MAX_PROMPT);
+  return a;
+}
+
+export interface AgentPut { name?: string; role?: string; scope?: string[]; reportsTo?: string; model?: string; tools?: string[]; mode?: AgentMode; prompt?: string }
 
 /** Creates or updates an agent file; `name` is required on create. */
 export async function putAgent(ctx: LifecycleContext, slug: string, input: AgentPut): Promise<{ slug: string; created: boolean }> {
@@ -101,6 +149,7 @@ export async function putAgent(ctx: LifecycleContext, slug: string, input: Agent
     if (bad !== undefined) throw new LifecycleError(`Bad scope: ${JSON.stringify(bad)}`);
     next.scope = input.scope.map((s) => s.trim());
   }
+  if (input.reportsTo !== undefined) { if (!SLUG.test(input.reportsTo)) throw new LifecycleError('reports-to must be an agent slug'); next.reportsTo = input.reportsTo; }
   if (input.model !== undefined) { if (!/^[A-Za-z0-9._-]{1,80}$/.test(input.model)) throw new LifecycleError('Bad model'); next.model = input.model; }
   if (input.tools !== undefined) { if (!Array.isArray(input.tools)) throw new LifecycleError('tools must be a list'); next.tools = input.tools.map((t) => oneLine(String(t))).filter(Boolean); }
   if (input.mode !== undefined) { if (!(AGENT_MODES as readonly string[]).includes(input.mode)) throw new LifecycleError(`mode must be one of ${AGENT_MODES.join(', ')}`); next.mode = input.mode; }
@@ -128,7 +177,11 @@ export function parseAgentsMeta(value: string | undefined, items: string[]): { n
 
 const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1).replace(/\.md$/, '');
 
-/** Every agent: files first (file order), then agents named only in project metadata (project order). @req FR:agent-team/agent.team */
+/**
+ * Every agent: Stack files (file order), then Claude files (file order; a slug both define keeps the Stack file), then agents named only in
+ * project metadata (project order). `cos` with no scope is `*`. Then the reporting line.
+ * @req FR:agent-team/agent.team @req FR:agent-team/agent.team.order @req FR:agent-team/agent.team.rollup @req FR:agent-team/agent.team.reports
+ */
 export async function listTeam(ctx: LifecycleContext): Promise<TeamAgent[]> {
   const projects: { name: string; agents: { name: string; role?: string }[] }[] = [];
   for (const path of await ctx.storage.list()) {
@@ -145,22 +198,55 @@ export async function listTeam(ctx: LifecycleContext): Promise<TeamAgent[]> {
   }
   const all = projects.map((p) => p.name);
   const team: TeamAgent[] = [];
-  const files = ctx.storage.listAgents ? await ctx.storage.listAgents() : [];
-  for (const path of files) {
-    const slug = baseName(path);
-    const a = parseAgent(slug, (await ctx.storage.read(path)).content);
-    const named = projects.filter((p) => p.agents.some((x) => slugOf(x.name) === slug || x.name === a.name)).map((p) => p.name);
-    const scope = a.scope.length ? a.scope : named;
+  const addFile = (a: AgentDef, source: AgentSource) => {
+    if (team.some((t) => t.slug === a.slug)) return;
+    const named = projects.filter((p) => p.agents.some((x) => slugOf(x.name) === a.slug || x.name === a.name)).map((p) => p.name);
+    const scope = a.scope.length ? a.scope : named.length ? named : a.slug === ROLLUP_SLUG ? ['*'] : [];
     const { extra, ...rest } = a; void extra;
-    team.push({ ...rest, scope, defined: true, projects: resolveProjects(scope, all) });
-  }
+    team.push({ ...rest, scope, defined: true, source, projects: resolveProjects(scope, all) });
+  };
+  for (const path of ctx.storage.listAgents ? await ctx.storage.listAgents() : []) addFile(parseAgent(baseName(path), (await ctx.storage.read(path)).content), 'stack');
+  for (const path of ctx.storage.listClaudeAgents ? await ctx.storage.listClaudeAgents() : []) addFile(parseClaudeAgent(baseName(path), (await ctx.storage.read(path)).content), 'claude');
   for (const p of projects) {
     for (const x of p.agents) {
       const slug = slugOf(x.name);
       const have = team.find((t) => t.slug === slug || t.name === x.name);
       if (have) { if (!have.defined && !have.scope.includes(p.name)) { have.scope.push(p.name); have.projects = resolveProjects(have.scope, all); } continue; }
-      team.push({ slug, name: x.name, ...(x.role ? { role: x.role } : {}), scope: [p.name], mode: 'ad-hoc', prompt: '', defined: false, projects: [p.name] });
+      team.push({ slug, name: x.name, ...(x.role ? { role: x.role } : {}), scope: [p.name], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: [p.name] });
     }
+  }
+  return withReports(team);
+}
+
+/** The first agent whose scope is `*`. @req FR:agent-team/agent.team.rollup */
+export const rollupOf = (team: TeamAgent[]): TeamAgent | undefined => team.find((a) => a.scope.includes('*'));
+
+/**
+ * Every agent's manager: its `reports-to` when that slug exists, else the narrowest other agent whose projects strictly contain its own,
+ * else the roll-up; the roll-up reports to no one. A cycle breaks at its first member in team order, which reports to the roll-up.
+ * @req FR:agent-team/agent.team.reports
+ */
+function withReports(team: TeamAgent[]): TeamAgent[] {
+  const rollup = rollupOf(team);
+  const contains = (outer: TeamAgent, inner: TeamAgent) => outer.projects.length > inner.projects.length && inner.projects.every((p) => outer.projects.includes(p));
+  for (const a of team) {
+    if (a === rollup) { delete a.reportsTo; continue; }
+    const explicit = a.reportsTo && a.reportsTo !== a.slug ? team.find((t) => t.slug === a.reportsTo) : undefined;
+    const manager = explicit ?? team.filter((t) => t !== a && t !== rollup && contains(t, a)).sort((x, y) => x.projects.length - y.projects.length)[0] ?? rollup;
+    if (manager) a.reportsTo = manager.slug; else delete a.reportsTo;
+  }
+  // Cycles: walk up from each agent; the first member (team order) of a cycle reports to the roll-up.
+  const index = new Map(team.map((a, i) => [a.slug, i]));
+  for (const a of team) {
+    const seen = new Set<string>();
+    let cur: TeamAgent | undefined = a;
+    while (cur && cur.reportsTo && !seen.has(cur.slug)) { seen.add(cur.slug); cur = team.find((t) => t.slug === cur!.reportsTo); }
+    if (!cur || !cur.reportsTo || !seen.has(cur.slug)) continue;
+    // cur is on the cycle: collect it
+    const cycle: TeamAgent[] = []; let c: TeamAgent | undefined = cur;
+    do { cycle.push(c); c = team.find((t) => t.slug === c!.reportsTo); } while (c && c !== cur);
+    const first = cycle.sort((x, y) => (index.get(x.slug) ?? 0) - (index.get(y.slug) ?? 0))[0];
+    if (rollup && first !== rollup) first.reportsTo = rollup.slug; else delete first.reportsTo;
   }
   return team;
 }
@@ -182,10 +268,11 @@ function specificity(scope: string, project: string, section?: string): number {
   return section !== undefined && wordPrefix(want, section) ? 3 : 0;
 }
 
-/** Agents that cover a task, most specific first; the first is the active agent. @req FR:agent-team/agent.resolve */
+/** Agents that cover a task: the roll-up first, then most specific first; the first is the active agent. @req FR:agent-team/agent.resolve */
 export function agentFor(team: TeamAgent[], project: string, section?: string): TeamAgent[] {
+  const rollup = rollupOf(team);
   return team
-    .map((a, i) => ({ a, i, s: Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
+    .map((a, i) => ({ a, i, s: a === rollup ? 4 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
     .filter((x) => x.s > 0)
     .sort((x, y) => y.s - x.s || x.i - y.i)
     .map((x) => x.a);

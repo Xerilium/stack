@@ -184,3 +184,14 @@ describe('SDK driver prompt options', () => {
     expect(prompts.map((p) => p.cwd)).toEqual(['/served', '/other', undefined]);
   });
 });
+
+// @req FR:agent-team/talk.start.cwd
+describe('startAgentRun cwd', () => {
+  it("runs in the given folder, else the served one", async () => {
+    const { ctx, runs, prompts } = await mk();
+    await startAgentRun(runs, ctx, { agent: 'cos', project: 'flantastic-4', cwd: '/x/f4-music', text: 'Plan' });
+    expect(prompts[0]).toMatchObject({ cwd: '/x/f4-music', text: 'Plan' });
+    await startAgentRun(runs, ctx, { agent: 'cos', text: 'Hi' });
+    expect(prompts[1]).toMatchObject({ cwd: '/repo' });
+  });
+});

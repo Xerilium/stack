@@ -1,7 +1,7 @@
 /**
  * Sessions that belong to tasks: start a run for the task's agent (persona, context, title) and review a task (read-only run with a JSON verdict,
  * recorded in the result log, needs written as asks).
- * @req FR:agent-team/talk.start @req FR:agent-team/review.run @req FR:agent-team/review.record @req FR:agent-team/review.needs @req FR:agent-team/review.read
+ * @req FR:agent-team/talk.start @req FR:agent-team/talk.start.cwd @req FR:agent-team/review.run @req FR:agent-team/review.record @req FR:agent-team/review.needs @req FR:agent-team/review.read
  */
 import { agentFor, listTeam, reviewPrefix, reviewsIn, type Review, type TeamAgent } from '../core/agents';
 import { handleAsk, listAsks, putAsk, type AskKind } from '../core/asks';
@@ -71,7 +71,7 @@ export function personaOf(agent: TeamAgent, context?: string): string {
   return [head, agent.prompt, context ? `## Context\n\n${context}` : ''].filter(Boolean).join('\n\n');
 }
 
-export interface AgentRunInput { agent?: string; ref?: string; project?: string; text: string }
+export interface AgentRunInput { agent?: string; ref?: string; project?: string; /** Where the session runs; default the served folder. @req FR:agent-team/talk.start.cwd */ cwd?: string; text: string }
 async function resolve(ctx: LifecycleContext, i: { agent?: string; ref?: string; project?: string }) {
   const ref = i.ref ? parseRef(i.ref) : null;
   if (i.ref && !ref) throw new LifecycleError('Bad ref');
@@ -90,7 +90,7 @@ export async function startAgentRun(runs: AgentRuns, ctx: LifecycleContext, i: A
   // The title is what the page maps back to the task (` · <ref>`); without a task it names the project, or just the agent.
   const title = c ? sessionTitle(`${agent.name} · ${c.title}`, i.ref!) : sessionTitle(project ? `${agent.name} · ${project}` : agent.name, '');
   const options: PromptOptions = { systemPrompt: personaOf(agent, c?.text), title, ...(agent.model ? { model: agent.model } : {}) };
-  const r = await runs.prompt({ text: i.text, options });
+  const r = await runs.prompt({ text: i.text, options, ...(i.cwd ? { cwd: i.cwd } : {}) });
   return { ...r, agent: agent.slug, title };
 }
 

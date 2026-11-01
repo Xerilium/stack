@@ -29,4 +29,4 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 ## Agents
 
 - `stack agents list [--project p --section s] [--json]`: the team (files in `tasks/agents/` plus agents named in a project's `Agents` metadata); with `--project`, the agents whose scope covers it, active first.
-- `stack agents add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`: write or update `tasks/agents/<slug>.md`. Scope entries are `project`, `project/section`, or `*`.
+- `stack agents add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`: write or update `tasks/agents/<slug>.md`. Scope entries are `project`, `project/section`, or `*`; `--reports-to` names the manager (default: the narrowest agent covering the same projects, else the roll-up). `.claude/agents/<slug>.md` files are read into the team too, never written.

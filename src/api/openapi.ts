@@ -215,12 +215,12 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'sessions.new': {
     operationId: 'newSession', summary: 'Start a new agent session in a folder and send it a prompt. Owner session only: 403 for tokens',
-    desc: { cwd: 'Absolute path to an existing folder; default: the served folder. Not allowed with agent, ref, or project (a task session always runs in the served folder)', text: 'The prompt', agent: 'Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task (404 when it has no file)' },
+    desc: { cwd: 'Absolute path to an existing folder; default: the served folder (also with agent, ref, or project: an agent can be started in its project repo)', text: 'The prompt', agent: 'Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task (404 when it has no file)' },
     responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string', description: 'Set for a task or project session' }, title: { type: 'string', description: 'Set for a task or project session: `<agent> · <task> · <ref>`' } } }, '202'),
   },
   'team.list': {
-    operationId: 'listTeam', summary: 'Agents defined per project folder (tasks/agents/<slug>.md and project Agents metadata); with project, the agents that cover it, active first',
-    desc: { project: 'Project name: only the agents whose scope covers it, most specific first', section: 'Section heading, for section-scoped agents' },
+    operationId: 'listTeam', summary: 'The team: tasks/agents/<slug>.md, .claude/agents/<slug>.md and project Agents lines, each with who it reports to; with project, the agents that cover it, the roll-up first',
+    desc: { project: 'Project name: only the agents whose scope covers it, the roll-up first then most specific first', section: 'Section heading, for section-scoped agents' },
     responses: ok('Team', { type: 'object', properties: { items: { type: 'array', items: ref('TeamAgent') } } }),
   },
   'reviews.list': {
@@ -428,6 +428,7 @@ export function buildOpenApi(): J {
           properties: {
             slug: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, scope: { type: 'array', items: { type: 'string' } }, model: { type: 'string' },
             tools: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['long-running', 'ad-hoc'] }, prompt: { type: 'string' }, defined: { type: 'boolean' }, projects: { type: 'array', items: { type: 'string' } },
+            reportsTo: { type: 'string', description: 'Slug of the agent this one reports to; absent on the roll-up' }, source: { type: 'string', enum: ['stack', 'claude', 'metadata'], description: 'tasks/agents file, .claude/agents file, or a project Agents line' },
           },
         },
         Review: {
@@ -438,7 +439,7 @@ export function buildOpenApi(): J {
           type: 'object',
           description: 'One Claude session on this machine (from the local session store), with its state and cost.',
           properties: {
-            id: { type: 'string' }, title: { type: 'string' }, project: { type: 'string' }, cwd: { type: 'string' }, branch: { type: 'string' },
+            id: { type: 'string' }, title: { type: 'string' }, project: { type: 'string' }, owner: { type: 'string', nullable: true, description: 'The Stack project that owns the repo (name, alias, Repository, or Repos line), or null' }, cwd: { type: 'string' }, branch: { type: 'string' },
             lastActive: { type: 'string', format: 'date-time' }, state: { type: 'string', enum: ['needs-you', 'running', 'active', 'idle', 'stale'] },
             cost: { type: 'object', properties: { usd: { type: 'number' }, tokens: { type: 'integer' }, approx: { type: 'boolean' } } }, prs: { type: 'array', items: { type: 'string' } },
           },

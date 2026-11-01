@@ -1041,7 +1041,7 @@ paths:
                 cwd:
                   type: string
                   maxLength: 1000
-                  description: "Absolute path to an existing folder; default: the served folder. Not allowed with agent, ref, or project (a task session always runs in the served folder) Single line."
+                  description: "Absolute path to an existing folder; default: the served folder (also with agent, ref, or project: an agent can be started in its project repo) Single line."
                 text:
                   type: string
                   maxLength: 4000
@@ -1320,7 +1320,7 @@ paths:
           $ref: "#/components/responses/Error"
   /team:
     get:
-      summary: Agents defined per project folder (tasks/agents/<slug>.md and project Agents metadata); with project, the agents that cover it, active first
+      summary: "The team: tasks/agents/<slug>.md, .claude/agents/<slug>.md and project Agents lines, each with who it reports to; with project, the agents that cover it, the roll-up first"
       operationId: listTeam
       parameters:
         - name: project
@@ -1328,7 +1328,7 @@ paths:
           schema:
             type: string
             description: Single line.
-          description: "Project name: only the agents whose scope covers it, most specific first"
+          description: "Project name: only the agents whose scope covers it, the roll-up first then most specific first"
         - name: section
           in: query
           schema:
@@ -2052,6 +2052,16 @@ components:
           type: array
           items:
             type: string
+        reportsTo:
+          type: string
+          description: Slug of the agent this one reports to; absent on the roll-up
+        source:
+          type: string
+          enum:
+            - stack
+            - claude
+            - metadata
+          description: tasks/agents file, .claude/agents file, or a project Agents line
     Review:
       type: object
       properties:
@@ -2085,6 +2095,10 @@ components:
           type: string
         project:
           type: string
+        owner:
+          type: string
+          nullable: true
+          description: The Stack project that owns the repo (name, alias, Repository, or Repos line), or null
         cwd:
           type: string
         branch:
