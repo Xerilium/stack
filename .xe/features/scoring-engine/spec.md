@@ -91,10 +91,10 @@ A task that blocks others is at least as urgent as the most urgent task it block
 Owner needs to say what is not a priority right now, and let the Chief of Staff say it too, so that the ranking follows what matters today without anyone editing scores.
 
 - **FR:overrides.@json** (P1): Interface: `.stack/priorities.json` — `{ "rules": PriorityRule[] }` (@req FR:$priority-rule)
-- **FR:overrides.@function** (P1): Interface: `applyOverrides<T extends { text: string; project: string }>(ranked: T[], rules: PriorityRule[], at: Date): T[]`
-- **FR:overrides.match** (P1): A rule matches a row when `match` equals the row's project name or title (case-insensitive), or appears in the row's text as a case-insensitive whole word or phrase
+- **FR:overrides.@function** (P1): Interface: `applyOverrides<T extends { text: string; project: string; context?: string }>(ranked: T[], rules: PriorityRule[], at: Date): T[]`
+- **FR:overrides.match** (P1): A rule matches a row when `match` equals the row's project name or title (case-insensitive), or appears as a case-insensitive whole word or phrase in the row's text or in the text of the rows above it (`context`: its parent rows)
   - **FR:overrides.match.first** (P1): When several rules match one row, `applyOverrides` MUST use the first in file order
-- **FR:overrides.tiers** (P1): `applyOverrides` MUST order rows by tier: rows matching a `top` rule first, unmatched rows next, rows matching a `down` rule last; within a tier rows keep the engine order
+- **FR:overrides.tiers** (P1): `applyOverrides` MUST order rows by tier: rows matching a `top` rule first, unmatched rows next, rows matching a `down` rule last; rows matching `top` rules follow the order of those rules in the file, and within any other tier, or between rows of one rule, rows keep the engine order
 - **FR:overrides.hide** (P1): `applyOverrides` MUST drop rows matching a `hide` rule
 - **FR:overrides.until** (P1): `applyOverrides` MUST ignore a rule from its `until` date (YYYY-MM-DD, exclusive) onward
 - **FR:overrides.invalid** (P1): `parsePriorities(text)` MUST skip a rule with an unknown effect, an empty `match`, or a malformed `until`, and return no rules for an unparseable file, never throwing
@@ -116,7 +116,7 @@ Owner needs to say what is not a priority right now, and let the Chief of Staff 
 ## Data Model
 
 - **FR:$priority-rule** (P1): **`PriorityRule`** — One owner or CoS override.
-  - `match` (string) — a project name or title, or a word or phrase in the row text
+  - `match` (string) — a project name or title, or a word or phrase in the row text or its parent rows
   - `effect` (string) — Allowed: top, down, hide
   - `why` (string?) — Why, for the next reader
   - `until` (string?) — YYYY-MM-DD; the rule stops applying on that date

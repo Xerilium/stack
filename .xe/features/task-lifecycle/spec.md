@@ -46,6 +46,7 @@ Owner needs one ranked list of what to do next so that the CLI, the API, the `/n
 - **FR:rank.overrides** (P1): `rankStack` MUST read overrides from `.stack/priorities.json` in the storage (absent or unreadable means none)
   > - @req FR:scoring-engine/overrides.invalid
 - **FR:rank.limit** (P2): `rankStack` MUST return at most `limit` tasks when given
+- **FR:rank.root** (P1): `rankStack` MUST give each task under a parent its top-level row (`root`), so a surface that shows top-level rows groups the leaves without parsing the files itself
 - **FR:rank.output** (P1): List of ranked tasks (@req FR:$ranked-task)
 
 ### FR:start: Start
@@ -125,6 +126,7 @@ Owner needs one ranked list of what to do next so that the CLI, the API, the `/n
   - `project` (string)
   - `score` (number) — the engine score
   - `rule` (string?) — the matching override's `match`, when one applied
+  - `root` (TaskRef?) — the top-level row it sits under
 
 ## Architecture Constraints
 

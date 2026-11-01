@@ -54,7 +54,7 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 ### FR:routes: Endpoints
 
 - **FR:routes.next** (P1): `GET /next` returns `{task}`, where `task` is `{ref,text,project,score}` (the first of `GET /rank`) or `null` when nothing is active
-- **FR:routes.rank** (P1): `GET /rank?limit=` (1-200, default 20) returns `{items}`, the ranked tasks (@req FR:task-lifecycle/rank.output), each `{ref,text,project,score,rule?}`
+- **FR:routes.rank** (P1): `GET /rank?limit=` (1-200, default 20) returns `{items}`, the ranked tasks (@req FR:task-lifecycle/rank.output), each `{ref,text,project,score,rule?,root?}`
   > - @req FR:task-lifecycle/rank.order
 - **FR:routes.add** (P1): `POST /tasks` `{project,text,section?,parent?}` adds a task (201); `POST /projects` `{name,description?,repositoryUrl?,aliases?,priority?,capacity?,weeklyCapacity?,fileName?,force?}` adds a project (201 `{path,project}`)
 - **FR:routes.actions** (P1): `POST /tasks/{start|complete|skip|resume|suspend|set}` with `ref` (optional except for `set`; omitted means the next or parked task, as in the core). `complete` takes `summary?`, `remove?`; `suspend` takes `days?` or `hours?`; `set` takes `status?`, `priority?`, `effort?`, `impact?`, `checkbox?`, `suspend?`, `clearEmojis?`. Returns `{changed,ref?,before?,after?,message?}`
