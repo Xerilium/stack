@@ -136,7 +136,7 @@ test.describe('Asks', () => {
     const m = await open(page);
     await page.keyboard.press('z');
     await expect(page.getByRole('group', { name: 'Defer until' })).toBeVisible();
-    await page.keyboard.press('3');
+    await page.keyboard.press('2'); // 2 always exists: the evening and tomorrow choices depend on the clock
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/pr-879/answer')?.body.answer).toBe('defer');
     expect(m.calls.find((c) => c.path === '/asks/pr-879/answer')?.body.until).toMatch(/^\d{4}-/);
     await expect(page.getByRole('button', { name: /Deferred · 1/ })).toBeVisible();
