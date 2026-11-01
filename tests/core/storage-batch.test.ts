@@ -423,6 +423,20 @@ describe('BatchedGitStorage with remote', () => {
     } finally { await s.close().catch(() => undefined); }
   });
 
+  // @req FR:storage-git/batch.flush.remote @req FR:storage-git/batch.flush.empty
+  it('a batch the owner committed by hand is still pushed, and never undone', async () => {
+    const { a } = remoteSetup();
+    const s = new BatchedGitStorage(a, { idleMs: IDLE, remote: 'origin' });
+    try {
+      await s.write('tasks/a.md', 'A1', { message: 'Complete: a' });
+      git(a, 'commit', '-qam', 'mine'); // the owner commits the pending file themselves
+      expect(await s.flush()).toBeNull();
+      expect(commits(a, 'origin/main')[0]).toBe('mine');
+      expect(commits(a)[0]).toBe('mine');
+      expect(s.pending().count).toBe(0);
+    } finally { await s.close(); }
+  });
+
   // @req FR:storage-git/batch.failure.retry
   it('the next flush succeeds once the conflict is resolved', async () => {
     const { a, b } = remoteSetup();

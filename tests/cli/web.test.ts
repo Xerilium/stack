@@ -172,6 +172,20 @@ describe('prepareLive', () => {
     expect(g(repo, 'log', '--format=%s').split('\n')[0]).toBe('Stack: added 1');
     expect(g(repo, 'status', '--porcelain')).toBe('');
   });
+  // @req FR:cli/web.batch.shutdown
+  it('shutdown lets a request already being handled land before the final flush', async () => {
+    const repo = content();
+    const web = tmp(); writeFileSync(join(web, 'index.html'), 'x');
+    const storage = new BatchedGitStorage(repo, { idleMs: 60_000 });
+    const s = await startWeb({ dir: repo, port: 0, webDir: web, info: { mode: 'live', repo, branch: 'main' }, storage });
+    const req = fetch(`${s.url}/api/tasks/complete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'alpha:4' }) });
+    await new Promise((ok) => setTimeout(ok, 20)); // the request is in the server, not yet written
+    await s.close();
+    expect((await req).status).toBe(200);
+    expect(g(repo, 'log', '--format=%s').split('\n')[0]).toBe('Stack: done 1');
+    expect(g(repo, 'status', '--porcelain')).toBe('');
+  });
+
   // @req FR:cli/web.batch.startup
   it('says where edits go and when they commit', () => {
     expect(liveLine('/r', 'main', 5, 'origin')).toBe('LIVE MODE: edits land in /r/tasks on main; committed after 5 min idle, then pushed to origin');

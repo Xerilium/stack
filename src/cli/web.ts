@@ -167,6 +167,8 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   let port = o.port;
   /** @req FR:cli/web.serve.loopback */
   const hostOk = (h?: string) => !!h && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(h);
+  /** API requests in flight, so shutdown can let a mutation land before the storage flushes. */
+  const inflight = new Set<Promise<unknown>>();
 
   const server: Server = createServer((req, res) => {
     void (async () => {
@@ -229,7 +231,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           return;
         }
         if (path === '/api' || path.startsWith('/api/')) {
-          const r = await api(await toRequest(req, `http://localhost:${port}`));
+          const work = toRequest(req, `http://localhost:${port}`).then(api);
+          inflight.add(work); void work.catch(() => undefined).finally(() => inflight.delete(work));
+          const r = await work;
           const h: Record<string, string> = {};
           r.headers.forEach((v, k) => { h[k] = v; });
           res.writeHead(r.status, { ...extra, ...h });
@@ -254,7 +258,12 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const close = async () => {
     offPending?.();
     watcher.close();
-    await new Promise<void>((ok) => { server.close(() => ok()); server.closeAllConnections(); });
+    const closed = new Promise<void>((ok) => server.close(() => ok())); // stop accepting; open sockets stay until below
+    server.closeIdleConnections();
+    // Let api requests already being handled finish (bounded), so their writes join the final flush.
+    await Promise.race([Promise.allSettled([...inflight]), new Promise((ok) => setTimeout(ok, 10_000).unref())]);
+    server.closeAllConnections(); // ends the event streams
+    await closed;
     await storage.close?.();
   };
   return { url: `http://localhost:${port}`, close };

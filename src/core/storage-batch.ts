@@ -134,7 +134,13 @@ export class BatchedGitStorage extends GitStorage {
       try {
         // @req FR:storage-git/batch.flush.empty
         const only = await this.stage(p.paths);
-        if (!only.length) { this.reset(); return null; }
+        if (!only.length) {
+          // Nothing of ours to commit: the content equals HEAD (undone, or the owner committed the files by hand).
+          // The batch's job is still to get them to the remote; a failure keeps the batch, as for our own commit.
+          if (this.remote) await this.syncAndPush(null, subject, p.paths);
+          this.reset();
+          return null;
+        }
         await this.git('commit', '-q', '-m', subject, ...(body.length ? ['-m', body.join('\n')] : []), '--only', '--', ...only);
         ours = (await this.git('rev-parse', 'HEAD')).trim();
       } catch (e) {
@@ -159,12 +165,12 @@ export class BatchedGitStorage extends GitStorage {
    * and tracked files are dirty, the flush gives up with ConflictError instead of rebasing over them. Returns the pushed sha.
    * @req FR:storage-git/batch.flush.remote @req FR:storage-git/batch.flush.remote.dirty @req FR:storage-git/batch.failure
    */
-  private async syncAndPush(ours: string, subject: string, paths: string[]): Promise<string> {
-    let undone = false;
+  private async syncAndPush(ours: string | null, subject: string, paths: string[]): Promise<string> {
+    let undone = ours === null; // null: HEAD is the owner's commit, never ours to undo
     const undo = async (sha: string) => { if (undone) return; undone = true; await this.undoQuietly(sha, subject, paths); };
     try {
       if (await this.fetch() && !(await this.rebase())) {
-        await undo(ours);
+        if (ours) await undo(ours);
         throw new ConflictError(`Conflict on ${paths.join(', ')}: remote changed it concurrently`);
       }
       await this.pushRetry((await this.git('rev-parse', 'HEAD')).trim(), undo);
