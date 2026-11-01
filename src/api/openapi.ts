@@ -185,6 +185,19 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { ask: 'The one exact ask, one line. Required on create', kind: 'Required on create', from: "Agent name; defaults to the token's name (the owner session writes as owner)", default: 'What happens if the owner stays silent', by: 'Deadline (ISO)', reopen: 'Open a done ask again', detail: 'Free markdown shown only when the owner expands the ask', flow: 'Quick triage: the flow this question belongs to (slug)', seq: 'Its place in the flow (1-99)', ref: 'The task row it is about (project:line); must exist', apply: 'Action Stack runs on go: set prop=value…, due Mon d, suspend 7d, skip, complete, start, resume, note text', applies: 'One action per option (- for none)' },
     responses: ok('Written', { type: 'object', properties: { key: { type: 'string' }, created: { type: 'boolean' } } }),
   },
+  rank: {
+    operationId: 'rank', summary: 'The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under',
+    responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref') } } } } }),
+  },
+  'needs.list': {
+    operationId: 'listNeeds', summary: 'The Chief of Staff\'s open decisions and go-dos (`.stack/needs-you.json`), each with a recommendation, a default, and a link',
+    responses: ok('Needs', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, recommendation: { type: 'string' }, default: { type: 'string' }, by: { type: 'string' }, link: { type: 'string' }, project: { type: 'string' }, ref: { type: 'string' }, answer: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string', format: 'date-time' } } } } } } } }),
+  },
+  'needs.answer': {
+    operationId: 'answerNeed', summary: 'Record the owner\'s answer on a need (go, defer, reply) or clear it (undo). Owner session only: 403 for tokens',
+    desc: { text: 'Required for reply', until: 'Required for defer (ISO)' },
+    responses: ok('Answered', { type: 'object', properties: { changed: { type: 'boolean' } } }),
+  },
   'asks.answer': {
     operationId: 'answerAsk', summary: 'Answer an ask (go, no, option, reply, ask, done, defer, retract). Owner session only: 403 for tokens',
     desc: { text: 'Required for option, reply, and ask', until: 'Required for defer (ISO, in the future)' },
