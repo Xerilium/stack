@@ -92,3 +92,22 @@ Runs where Claude Code runs; the Stack host has no timers. Model calls use your 
    - Pushing asks needs a **private** content repo: asks carry sender names, subjects, short summaries and draft text (never message bodies).
    - Optional `rules.json` beside the state adds VIP, sensitive and receipt rules (same keys as the triage rules).
 5. Nothing moves, unsubscribes, or sends on its own: archive, spam and unsubscribe asks act only after you answer them in Stack.
+
+## Autopilot merges (`.github/workflows/autopilot.yml`)
+
+Label a PR `Status: 🤖 Autopilot` and an agent can drive it to merge. The workflow squash-merges it only while all of these hold on the current head commit:
+
+- `Status: ☑️ Finalized` is on the PR **and** a comment from you or a collaborator certifies this exact head SHA. A new push clears `Finalized`; the agent re-certifies.
+- `Status: ✅ Ready` (set by the workflow: not a draft, no changes requested, and `Autopilot` or a non-author approval).
+- Every review thread is resolved, every check on the head commit has finished green, and GitHub reports the PR `CLEAN`.
+- No `Status: ⏸️ Paused`, `🚧 WIP`, or `⛔ Blocked` label.
+
+To certify, an agent posts the comment **first**, then adds `Finalized`:
+
+```bash
+sha=$(gh pr view <n> --json headRefOid -q .headRefOid)
+gh pr comment <n> --body $'<!-- stack:finalized-head-sha -->\nFinalized certification: head SHA `'"$sha"$'`.'
+gh pr edit <n> --add-label 'Status: ☑️ Finalized'
+```
+
+Resolving a thread or approving a review starts no workflow, so a 10-minute sweep picks those up. Pause one PR with `Status: ⏸️ Paused`. After a merge the workflow dispatches `deploy.yml`, because pushes made with `GITHUB_TOKEN` start no `push` workflow. Missing labels are created on first use.

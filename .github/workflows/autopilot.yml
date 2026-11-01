@@ -1,0 +1,265 @@
+# @req FR:autopilot/triggers.events @req FR:autopilot/triggers.sweep @req FR:autopilot/safety.base
+# Squash-merges a PR the owner opted in (Status: 🤖 Autopilot) once every gate holds on its current head.
+# Decisions live in .github/scripts/autopilot-core.cjs; this file fetches state and applies the result.
+name: Autopilot
+on:
+  # pull_request_target runs THIS file from the default branch, so a PR cannot edit its own gates.
+  # Nothing below checks out or runs PR code.
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, converted_to_draft, synchronize, labeled, unlabeled]
+  # Only the Finalized certification comment is worth a run.
+  issue_comment:
+    types: [created]
+  workflow_run:
+    workflows: [CI, E2E]
+    types: [completed]
+  # Resolving a thread or approving a review starts no workflow; the sweep catches those.
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number (blank sweeps every Autopilot PR)
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: autopilot-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.pull_requests[0].number || github.event.inputs.pr || 'sweep' }}
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    name: Reconcile Autopilot
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    if: >
+      (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name != 'issue_comment' || (github.event.issue.pull_request != null && startsWith(github.event.comment.body, '<!-- stack:finalized-head-sha -->'))) &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.pull_requests[0] != null) &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || startsWith(github.event.label.name, 'Status: '))
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const path = require('path');
+            const ap = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/autopilot-core.cjs'));
+            const { owner, repo } = context.repo;
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            const event = context.eventName;
+            const payload = context.payload;
+
+            // @req FR:autopilot/triggers.labels
+            if (['labeled', 'unlabeled'].includes(payload.action) && !ap.TRIGGER_LABELS.includes(payload.label?.name)) {
+              core.info('Label outside the Autopilot set; nothing to do.');
+              return;
+            }
+
+            let prs = [];
+            if (event === 'pull_request_target') prs = [payload.pull_request.number];
+            else if (event === 'issue_comment') prs = [payload.issue.number];
+            else if (event === 'workflow_run') prs = payload.workflow_run.pull_requests.map((p) => p.number);
+            else if (payload.inputs?.pr) {
+              if (!/^\d+$/.test(payload.inputs.pr)) { core.setFailed('pr must be a number'); return; }
+              prs = [Number(payload.inputs.pr)];
+            } else {
+              // @req FR:autopilot/triggers.sweep
+              const issues = await github.paginate(github.rest.issues.listForRepo, {
+                owner, repo, state: 'open', labels: ap.AUTOPILOT, per_page: 100,
+              });
+              prs = issues.filter((i) => i.pull_request).map((i) => i.number);
+            }
+            core.info(`Reconciling ${prs.length} PR(s)`);
+
+            const PR_QUERY = `query($owner: String!, $repo: String!, $pr: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $pr) {
+                  state isDraft mergeStateStatus headRefOid baseRefName
+                  author { login }
+                  labels(first: 100) { nodes { name } }
+                  reviewThreads(first: 100) { pageInfo { hasNextPage endCursor } nodes { isResolved } }
+                  reviews: latestReviews(first: 100) { nodes { state author { login __typename } } }
+                  commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) {
+                    pageInfo { hasNextPage endCursor }
+                    nodes { __typename ... on CheckRun { name conclusion } ... on StatusContext { context state } }
+                  } } } } }
+                }
+              }
+            }`;
+            const THREADS_MORE = `query($owner: String!, $repo: String!, $pr: Int!, $after: String!) {
+              repository(owner: $owner, name: $repo) { pullRequest(number: $pr) {
+                reviewThreads(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { isResolved } }
+              } }
+            }`;
+            const CONTEXTS_MORE = `query($owner: String!, $repo: String!, $oid: GitObjectID!, $after: String!) {
+              repository(owner: $owner, name: $repo) { object(oid: $oid) { ... on Commit { statusCheckRollup { contexts(first: 100, after: $after) {
+                pageInfo { hasNextPage endCursor }
+                nodes { __typename ... on CheckRun { name conclusion } ... on StatusContext { context state } }
+              } } } } }
+            }`;
+            const FRESH_QUERY = `query($owner: String!, $repo: String!, $pr: Int!) {
+              repository(owner: $owner, name: $repo) { pullRequest(number: $pr) {
+                state mergeStateStatus headRefOid labels(first: 100) { nodes { name } }
+              } }
+            }`;
+
+            // Drain a paged window; false when a page could not be read (the gate then blocks).
+            async function drain(first, query, vars, pick) {
+              const nodes = [...(first?.nodes ?? [])];
+              let info = first?.pageInfo;
+              try {
+                while (info?.hasNextPage) {
+                  const more = pick(await github.graphql(query, { ...vars, after: info.endCursor }));
+                  nodes.push(...(more?.nodes ?? []));
+                  info = more?.pageInfo;
+                }
+                return { nodes, complete: true };
+              } catch (err) {
+                core.warning(`Could not read every page: ${err.status ?? ''} ${err.name}`);
+                return { nodes, complete: false };
+              }
+            }
+
+            // @req FR:autopilot/labels.ensure
+            async function ensureLabel(name) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (err) {
+                if (err.status !== 404) throw err;
+                const def = ap.AUTOPILOT_LABELS.find((l) => l.name === name);
+                await github.rest.issues.createLabel({ owner, repo, ...def });
+              }
+            }
+
+            async function certifiedFor(prNumber, headSha) {
+              // @req FR:autopilot/cert.match.missing
+              try {
+                const comments = await github.paginate(github.rest.issues.listComments, {
+                  owner, repo, issue_number: prNumber, per_page: 100,
+                });
+                return ap.isCertifiedOf(comments, headSha);
+              } catch (err) {
+                core.warning(`Could not read comments: ${err.status ?? ''} ${err.name}`);
+                return false;
+              }
+            }
+
+            // @req FR:autopilot/gates.retry @req FR:autopilot/gates.pin @req FR:autopilot/gates.closed
+            async function mergeWhenClean(prNumber, headSha, inputs) {
+              for (let attempt = 1; attempt <= ap.MERGE_RETRY_ATTEMPTS; attempt += 1) {
+                const { repository } = await github.graphql(FRESH_QUERY, { owner, repo, pr: prNumber });
+                const fresh = repository.pullRequest;
+                if (fresh.state === 'MERGED') return { action: 'merged', attempts: attempt };
+                if (fresh.state !== 'OPEN') return { action: 'skipped', reason: 'closed', attempts: attempt };
+                if (fresh.headRefOid !== headSha) return { action: 'skipped', reason: 'head-moved', attempts: attempt };
+                const blockers = ap.mergeBlockers({
+                  ...inputs,
+                  labels: fresh.labels.nodes.map((l) => l.name),
+                  mergeState: fresh.mergeStateStatus,
+                });
+                if (blockers.length === 1 && blockers[0] === 'merge-state-unknown' && attempt < ap.MERGE_RETRY_ATTEMPTS) {
+                  await sleep(ap.MERGE_RETRY_DELAY_MS);
+                  continue;
+                }
+                if (blockers.length) return { action: 'skipped', reason: blockers.join(','), attempts: attempt };
+                try {
+                  await github.rest.pulls.merge({
+                    owner, repo, pull_number: prNumber, merge_method: 'squash', sha: headSha,
+                  });
+                  return { action: 'merged', attempts: attempt };
+                } catch (err) {
+                  const message = String(err.message ?? err);
+                  if (ap.isRetryableMergeError(message, err.status) && attempt < ap.MERGE_RETRY_ATTEMPTS) {
+                    await sleep(ap.MERGE_RETRY_DELAY_MS);
+                    continue;
+                  }
+                  return { action: 'failed', error: `${err.status ?? ''} ${message}`.trim(), attempts: attempt };
+                }
+              }
+              return { action: 'skipped', reason: 'retries-exhausted', attempts: ap.MERGE_RETRY_ATTEMPTS };
+            }
+
+            async function reconcile(prNumber) {
+              const { repository } = await github.graphql(PR_QUERY, { owner, repo, pr: prNumber });
+              const pr = repository.pullRequest;
+              if (pr.state !== 'OPEN') return { pr: prNumber, action: 'skipped', reason: pr.state.toLowerCase() };
+              let labels = pr.labels.nodes.map((l) => l.name);
+              // @req FR:autopilot/ready.paused
+              if (labels.includes(ap.PAUSED)) return { pr: prNumber, action: 'skipped', reason: 'paused' };
+
+              const headSha = pr.headRefOid;
+              const threads = await drain(pr.reviewThreads, THREADS_MORE, { owner, repo, pr: prNumber },
+                (d) => d.repository.pullRequest.reviewThreads);
+              const rollup = pr.commits.nodes[0]?.commit?.statusCheckRollup?.contexts;
+              const contexts = await drain(rollup, CONTEXTS_MORE, { owner, repo, oid: headSha },
+                (d) => d.repository.object?.statusCheckRollup?.contexts);
+
+              const certified = labels.includes(ap.FINALIZED) ? await certifiedFor(prNumber, headSha) : false;
+              const ready = ap.isReadyOf({
+                isDraft: pr.isDraft, authorLogin: pr.author?.login, reviews: pr.reviews.nodes, labels,
+              });
+              const plan = ap.labelPlanOf({ labels, ready, certified });
+              for (const name of plan.toAdd) {
+                await ensureLabel(name);
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [name] });
+              }
+              for (const name of plan.toRemove) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name });
+                } catch (err) {
+                  if (err.status !== 404) throw err;
+                }
+              }
+              labels = labels.filter((l) => !plan.toRemove.includes(l)).concat(plan.toAdd);
+
+              const inputs = {
+                labels, ready, certified,
+                threadsResolved: ap.allThreadsResolvedOf(threads.nodes, threads.complete),
+                checks: ap.checksOf(contexts.nodes, contexts.complete),
+              };
+              // The merge state read above is stale by now; the merge loop re-reads it fresh.
+              const blockers = ap.mergeBlockers({ ...inputs, mergeState: 'CLEAN' });
+              const result = { pr: prNumber, head: headSha.slice(0, 7), labelsAdded: plan.toAdd, labelsRemoved: plan.toRemove };
+              if (blockers.length) return { ...result, action: 'skipped', reason: blockers.join(',') };
+
+              const merge = await mergeWhenClean(prNumber, headSha, inputs);
+              // @req FR:autopilot/deploy.dispatch
+              if (merge.action === 'merged' && pr.baseRefName === 'main') {
+                try {
+                  await github.rest.actions.createWorkflowDispatch({ owner, repo, workflow_id: 'deploy.yml', ref: 'main' });
+                  merge.deploy = 'dispatched';
+                } catch (err) {
+                  // @req FR:autopilot/deploy.dispatch.fail
+                  merge.deploy = `dispatch failed ${err.status ?? ''}`.trim();
+                  core.warning(`deploy dispatch failed: ${err.status ?? ''} ${err.name}`);
+                }
+              }
+              return { ...result, ...merge };
+            }
+
+            // @req FR:autopilot/safety.noleak
+            const rows = [];
+            let failed = 0;
+            for (const n of prs) {
+              try {
+                const r = await reconcile(n);
+                core.info(JSON.stringify(r));
+                rows.push([`#${n}`, r.action, r.reason ?? r.error ?? r.deploy ?? '']);
+              } catch (err) {
+                failed += 1;
+                core.warning(`#${n}: ${err.status ?? ''} ${err.name}`);
+                rows.push([`#${n}`, 'error', `${err.status ?? ''} ${err.name}`]);
+              }
+            }
+            await core.summary
+              .addHeading('Autopilot', 3)
+              .addTable([[{ data: 'PR', header: true }, { data: 'Result', header: true }, { data: 'Detail', header: true }], ...rows])
+              .write();
+            if (failed) core.setFailed(`${failed} PR(s) failed to reconcile`);
