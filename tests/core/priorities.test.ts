@@ -9,7 +9,7 @@ const at = new Date('2026-11-01T12:00:00Z');
 const rules = (r: PriorityRule[]) => r;
 
 describe('parsePriorities', () => {
-  // @req FR:scoring-engine/overrides.@json @req FR:scoring-engine/overrides.invalid
+  // @req FR:scoring-engine/overrides.@json @req FR:scoring-engine/overrides.invalid @req FR:scoring-engine/$priority-rule
   it('reads valid rules and skips unknown effects, empty matches, and bad dates; an unreadable file has none', () => {
     const t = JSON.stringify({ rules: [
       { match: 'FOCUS', effect: 'down', why: 'not now', by: 'owner' },

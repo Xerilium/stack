@@ -42,7 +42,7 @@ describe('one ranking', () => {
     expect(titles(junk)).toEqual(titles(plain));
     expect(plain.every((x) => x.rule === undefined)).toBe(true);
   });
-  // @req FR:task-lifecycle/rank.output
+  // @req FR:task-lifecycle/rank.output @req FR:task-lifecycle/$ranked-task
   it('each task names the rule that applied', async () => {
     const r = await rankStack(ctxOf(), AT);
     expect(r.find((x) => /MVP onboarding/.test(x.text))?.rule).toBe('MVP onboarding');

@@ -313,7 +313,8 @@ async function rankAll(ctx: LifecycleContext, at?: Date): Promise<{ next: Ranked
     const loc = where.get(s.task)!;
     return { doc: loc.doc, next: { ref: { path: loc.doc.path, line: loc.line, text: rowText(loc.doc, loc.line) }, text: s.task.text, project: s.task.project, score: s.score } as RankedTask };
   });
-  // The owner's and the CoS's overrides, read from the same storage. @req FR:task-lifecycle/rank.overrides
+  // @req FR:task-lifecycle/rank.overrides
+  // Overrides written by the owner and the Chief of Staff, read from the same storage.
   const aux = ctx.storage as Partial<AuxFiles>;
   const file = typeof aux.readAux === 'function' ? await aux.readAux(PRIORITIES_PATH).catch(() => null) : null;
   const rules = file ? parsePriorities(file.content) : [];

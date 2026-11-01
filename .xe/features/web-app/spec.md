@@ -87,7 +87,7 @@ Owner needs Home to show one decision at a time, with nothing on it that does no
 - **FR:home3.menu** (P1): The `…` menu MUST hold Defer 2h, Defer…, Delegate, and Open, and close on `Esc` or a click outside
   - **FR:home3.menu.agent** (P1): For a task an agent owns the menu MUST NOT offer Delegate
 - **FR:home3.rows** (P1): Up next, Only have 5 min, and Projects rows MUST show the title and the project name only
-- **FR:home3.keys** (P1): Key hints (`kbd`) MUST be hidden until the first key press in the session, and every control MUST carry its key in its tooltip
+- **FR:home3.keys** (P1): Key hints (`kbd`) in the content area MUST be hidden until the first key press in the session, and every control MUST carry its key in its tooltip
 - **FR:home3.dedupe** (P1): Home MUST NOT show a task that is in Needs you (an open need's `ref`, or an open 🙋 row; ask-queue `FR:needs.dedupe`)
 
 ### FR:now: Focus view (single next action)

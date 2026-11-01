@@ -154,7 +154,11 @@ test.describe('Agent team', () => {
     // The context line follows the session: `agent has it` while it works; once the mock flips it to idle, a 15 s poll clears it (no poll = stuck). Two cycles of slack: the flip can land right after a poll.
     // @req FR:web-app/home3.context
     await expect(hero.getByTestId('now-context')).toContainText('agent has it');
-    await expect(hero.getByRole('button', { name: 'More actions' })).toBeVisible();
+    // @req FR:web-app/home3.menu.agent — an agent has it, so the menu does not offer Delegate
+    await hero.getByRole('button', { name: 'More actions' }).click();
+    await expect(hero.getByRole('menuitem', { name: /Delegate/ })).toHaveCount(0);
+    await expect(hero.getByRole('menuitem', { name: /Defer 2h/ })).toBeVisible();
+    await page.keyboard.press('Escape');
     for (const x of m.sessions!) x.state = 'idle';
     await expect(hero.getByTestId('now-context')).not.toContainText('agent has it', { timeout: 35_000 });
   });

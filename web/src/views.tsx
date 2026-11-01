@@ -350,7 +350,7 @@ function Sent({ items, now }: { items: InboxItem[]; now: Date }) {
 type RefText = { ref: string; text: string };
 type RowKey = RefText & { project: string };
 /** Agent rows often start with a project glyph and an `[AI]` tag; both are noise in the panel. */
-const agentTitle = (s: string) => s.replace(/^(?:[^\p{L}\p{N}`*[]+\s*)+/u, '').replace(/^\[AI\]\s*/i, '').replace(/\s+[—-]\s*$/, '').trim() || s;
+const agentTitle = (s: string) => s.replace(/^(?:[^\p{L}\p{N}\x60*[]+\s*)+/u, '').replace(/^\[AI\]\s*/i, '').replace(/\s+[—-]\s*$/, '').trim() || s;
 const CHECK = { passing: '✓', failing: '✕', pending: '…', none: '' } as const;
 
 export interface TodayProps {
@@ -680,7 +680,7 @@ export function WeekView({ w }: { w: Week }) {
                 {d.over > 0 && d.available > 0 && <span class="wd-over" style={{ bottom: h(d.available), height: h(d.over) }} />}
                 {d.available === 0 && d.planned > 0 && <span class="wd-unset" style={{ height: h(d.planned) }} />}
               </div>
-              <p class="wd-label">{d.available === 0 && d.planned === 0 ? <small>off</small> : <>{hrs(d.planned)}<small>{d.available === 0 ? ' · no time set' : ` / ${hrs(d.available)}`}</small></>}</p>
+              <p class="wd-label">{d.available === 0 && d.planned === 0 ? <small>off</small> : <>{hrs(d.planned)}<small>{d.available === 0 ? ' · no time set' : ' / ' + hrs(d.available)}</small></>}</p>
               <p class="wd-name">{name}<small>{d.date.getDate()}</small></p>
             </li>
           );
@@ -692,8 +692,9 @@ export function WeekView({ w }: { w: Week }) {
 
 /** Expected time and due countdown, the same on every Home row. */
 /**
- * The `…` menu on the NOW card: everything that is not the decision itself.
- * @req FR:web-app/home3.menu @req FR:web-app/home3.menu.agent
+ * @req FR:web-app/home3.menu
+ * @req FR:web-app/home3.menu.agent
+ * The more-actions menu on the NOW card: everything that is not the decision itself.
  */
 function MoreMenu({ busy, owned, onAct, onOpen }: { busy: boolean; owned: boolean; onAct: (a: 'notnow' | 'defer' | 'delegate') => void; onOpen: () => void }) {
   const [open, setOpen] = useState(false);
@@ -721,7 +722,20 @@ function MoreMenu({ busy, owned, onAct, onOpen }: { busy: boolean; owned: boolea
   );
 }
 
-/** Home: the one thing now, whether it fits, the next two, the top of every project. @req FR:web-app/home.one @req FR:web-app/home.fit @req FR:web-app/home.next @req FR:web-app/home.projects @req FR:web-app/home.quiet @req FR:web-app/now.focus @req FR:home/home.window @req FR:home/home.have */
+/**
+ * @req FR:web-app/home.one
+ * @req FR:web-app/home.fit
+ * @req FR:web-app/home.next
+ * @req FR:web-app/home.projects
+ * @req FR:web-app/home.quiet
+ * @req FR:web-app/now.focus
+ * @req FR:web-app/home3.now
+ * @req FR:web-app/home3.context
+ * @req FR:web-app/home3.rows
+ * @req FR:home/home.window
+ * @req FR:home/home.have
+ * Home: the one thing now, whether it fits, the next two, the top of every project.
+ */
 export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, onProject, onMoreTime, all, onAll }: {
   h: Home; minutesLeft: number; win: Window; have: number | null; onHave: (m: number | null) => void; p: RowProps; busy: boolean; all: boolean; onAll: () => void;
   onAct: (a: 'start' | 'done' | 'defer' | 'notnow' | 'delegate', ref?: string) => void; onProject: (name: string) => void; onMoreTime: () => void;
@@ -770,7 +784,6 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
       {one && hero && (
         <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${p.justDone.has(one.task.ref) ? ' done-anim' : ''}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
           <h1 data-testid="next-title"><span class="h1-toggle" {...toggleOn<HTMLSpanElement>(one.task.ref, p)}><Md text={hero.title || one.task.text} /></span></h1>
-          {/* @req FR:web-app/home3.context: the project, `late` only when overdue, `agent has it` when an agent owns it */}
           <p class="context" data-testid="now-context">{p.titles.get(one.task.project) ?? one.task.project}{one.due?.tone === 'late' && <> · <span class="late">late</span></>}{p.agent?.owned?.(one.task) && <> · <span class="owned">agent has it</span></>}</p>
           {!h.fits && !demoted && (
             <p class="nofit-line" data-testid="nofit">{win.allow && !win.have && !one.task.text.replace(/\uFE0F/g, '').includes(win.allow.emoji.replace(/\uFE0F/g, '')) && !win.allow.projects?.includes(one.task.project) ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : win.allow && !win.have ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${win.until && win.until.at < win.inside!.until ? win.until.label : `${win.inside!.label} ends`}` : win.inside && !win.have ? `${win.inside.label} now: back at ${clock(win.inside.until)}` : minutesLeft > 0 ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${until}` : 'No time left today'}</p>

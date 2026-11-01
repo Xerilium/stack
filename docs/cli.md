@@ -12,7 +12,7 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `add-project`: create a project file. `add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force]`
 - `add`: add a task. `add <project> <text...> [--section name] [--parent ref]`
 - `capture`: add a task from a phrase (e.g. "call dentist tomorrow 30m #alpha"). `capture <text...> [--project name] [--section name] [--dry-run]`
-- `next`: print the top task. `next`
+- `next`: print the top task, or the first n ranked tasks (the same order as the web Home and `GET /api/rank`; overrides in [ranking.md](ranking.md)). `next [--top n]`
 - `start`: mark in progress. `start [ref] [--expect t]`
 - `complete`: check off (rolls recurring rows). `complete [ref] [--summary t] [--remove] [--expect t]`
 - `skip`: park a task (alias: park). `skip [ref] [--expect t]`

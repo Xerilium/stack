@@ -332,7 +332,8 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // The one ranking: engine order plus the owner's overrides. @req FR:api/routes.rank @req FR:task-lifecycle/rank.output
+    // @req FR:api/routes.rank
+    // The one ranking: engine order plus the overrides.
     method: 'GET', doc: '/rank', name: 'rank', query: RANK_Q,
     async run(c) {
       const q = readQuery(c.url, Object.keys(RANK_Q));

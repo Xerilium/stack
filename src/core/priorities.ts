@@ -18,7 +18,10 @@ export const PRIORITIES_PATH = '.stack/priorities.json';
 const EFFECTS: readonly string[] = ['top', 'down', 'hide'];
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Rules from the file's text: invalid rules are skipped, an unreadable file has none. @req FR:scoring-engine/overrides.invalid */
+/**
+ * @req FR:scoring-engine/overrides.invalid
+ * Rules from the text of the file: invalid rules are skipped, an unreadable file has none.
+ */
 export function parsePriorities(text: string): PriorityRule[] {
   let raw: unknown;
   try { raw = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { return []; }

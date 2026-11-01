@@ -105,7 +105,7 @@ Owner needs the Chief of Staff to put only what truly needs him in front of him,
   - **FR:needs.answer.missing** (P1): `answerNeed` MUST throw `NotFoundError` for an unknown id
 - **FR:needs.web** (P1): Needs you MUST list every open item (no `answer`, or a `defer` past its `until`) before agent asks, in file order
   - **FR:needs.web.card** (P1): An item MUST show its title, the recommendation as the primary action (`Go with it`), `If you do nothing: <default>` when set, and its link as `Open`; `Reply` and `Defer…` stay as for asks
-  - **FR:needs.web.answered** (P1): An answered item MUST move to the Answered group with Undo, like an answered ask
+  - **FR:needs.web.answered** (P1): An answered item MUST leave the list at once and show an Undo toast that clears the answer
 - **FR:needs.dedupe** (P1): A task shown in Needs you (an open item's `ref`, or an open 🙋 row) MUST NOT appear on Home (NOW, Up next, Only have 5 min, Projects)
 - **FR:needs.api** (P1): `GET /needs-you` MUST return `{items}` (@req FR:$need) and `POST /needs-you/{id}/answer` `{choice,text?,until?}` MUST record the owner's answer (`go`, `defer`, `reply`) or clear it (`undo`), owner only
 

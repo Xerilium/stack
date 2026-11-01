@@ -207,7 +207,11 @@ export function App() {
   // In personal time, tasks tagged for it may use the rest of the block. @req FR:home/home.window
   const minutesLeft = win.allow && !win.have ? win.allow.minutes : win.inside && !win.have ? 0 : win.minutes;
   const allow = win.allow && !win.have ? win.allow : undefined;
-  /** Open 🙋 rows and the CoS's escalations: Needs you shows them, so Home must not. @req FR:web-shell/state.needs @req FR:ask-queue/needs.dedupe */
+  /**
+   * @req FR:web-shell/state.needs
+   * @req FR:ask-queue/needs.dedupe
+   * Open 🙋 rows and the Chief of Staff escalations: Needs you shows them, so Home must not.
+   */
   const taskAsks = useMemo(() => fromDecisions(decisions.filter((d) => repliesFor(inbox, d.task).length === 0), titles, clockNow), [decisions, inbox, titles, clockNow]);
   const needAsks = useMemo(() => fromNeeds(needs, clockNow), [needs, clockNow]);
   const needRows = useMemo(() => [...needAsks, ...taskAsks], [needAsks, taskAsks]); // one stable list: a new array every render would reset the Asks cursor
@@ -446,7 +450,11 @@ export function App() {
     (await run(() => api.send(task.ref, text, kind, task.text), () => ok)) !== undefined;
   const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'decision', 'Sent to the agent');
   /** A 🙋 row answered from Needs you: decision or reply to the inbox, or the row deferred. @req FR:web-shell/state.needs @req FR:web-shell/state.needs.row */
-  /** The owner's answer on a CoS escalation is written onto the item; Undo clears it. @req FR:ask-queue/needs.answer @req FR:ask-queue/needs.web.answered */
+  /**
+   * @req FR:ask-queue/needs.answer
+   * @req FR:ask-queue/needs.web.answered
+   * The owner answer on a Chief of Staff escalation is written onto the item; Undo clears it.
+   */
   const answerNeedItem = async (a: AskItem, s: Send) => {
     const id = a.key.replace(/^need:/, '');
     const body = s.answer === 'defer' && s.until ? { choice: 'defer' as const, until: s.until }

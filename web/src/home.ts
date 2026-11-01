@@ -39,7 +39,9 @@ export interface RankItem { ref: string; text: string; project: string; score: n
 /**
  * Home draws what the server ranked, in that order (a leaf shows as its top-level row), minus what is already in
  * Needs you; it never ranks anything itself, so Home, `GET /next`, `stack next` and stack.md agree.
- * @req FR:web-app/now.active @req FR:web-app/home3.dedupe
+ * @req FR:web-app/now.active
+ * @req FR:web-app/home3.dedupe
+ * @req FR:ask-queue/needs.dedupe
  */
 export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem[]; /** Refs shown in Needs you: held back from Home. */ exclude?: Set<string>; now: Date; minutesLeft: number; /** Only rows that belong to the personal block (its emoji or its projects) may use the time. @req FR:home/home.window @req FR:home/day.blocks */ allow?: { emoji: string; projects?: string[] } }): Home {
   const { tasks, now } = o;
