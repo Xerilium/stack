@@ -125,12 +125,22 @@ export class BatchedGitStorage extends GitStorage {
     const p = this.pending();
     try {
       await this.checkBranch();
-      // @req FR:storage-git/batch.flush.empty
-      const only = await this.stage(p.paths);
-      if (!only.length) { this.reset(); return null; }
+      // The owner may have staged their own version of a pending path: remember the index entries so a failed
+      // staging or commit (pre-commit hook) puts them back, without touching the written files.
+      const entries: string[] = [];
+      for (const path of p.paths) entries.push(((await this.tryGit('ls-files', '-s', '--', path)) ?? '').trim());
       const [subject, , ...body] = batchSummary(this.batch.map((b) => b.message)).split('\n');
-      await this.git('commit', '-q', '-m', subject, ...(body.length ? ['-m', body.join('\n')] : []), '--only', '--', ...only);
-      let ours = (await this.git('rev-parse', 'HEAD')).trim();
+      let ours: string;
+      try {
+        // @req FR:storage-git/batch.flush.empty
+        const only = await this.stage(p.paths);
+        if (!only.length) { this.reset(); return null; }
+        await this.git('commit', '-q', '-m', subject, ...(body.length ? ['-m', body.join('\n')] : []), '--only', '--', ...only);
+        ours = (await this.git('rev-parse', 'HEAD')).trim();
+      } catch (e) {
+        await this.restoreIndex(p.paths, entries);
+        throw e;
+      }
       // @req FR:storage-git/batch.flush.remote (commit first, then fetch + rebase, then push)
       if (this.remote) ours = await this.syncAndPush(ours, subject, p.paths);
       this.reset();
@@ -182,6 +192,15 @@ export class BatchedGitStorage extends GitStorage {
       throw new ConflictError(`${this.ref} has new commits and the work tree has uncommitted edits of its own; commit or stash them, then save again`);
     }
     return super.rebase();
+  }
+
+  /** Put the index entries of `paths` back as they were (the owner's own staged content), leaving the work tree alone. */
+  private async restoreIndex(paths: string[], entries: string[]): Promise<void> {
+    for (let i = 0; i < paths.length; i++) {
+      const m = /^(\d+) ([0-9a-f]+) \d\t/.exec(entries[i]);
+      if (m) await this.tryGit('update-index', '--add', '--cacheinfo', `${m[1]},${m[2]},${paths[i]}`);
+      else await this.tryGit('rm', '-q', '--cached', '--ignore-unmatch', '--', paths[i]);
+    }
   }
 
   /** Undo for a failure path: an undo error must not mask the error being thrown. */

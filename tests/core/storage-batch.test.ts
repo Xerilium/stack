@@ -205,6 +205,24 @@ describe('BatchedGitStorage flush', () => {
     } finally { await s.close(); }
   });
 
+  // @req FR:storage-git/batch.failure
+  it("a rejected commit (pre-commit hook) puts the owner's own staged version back and keeps the written file and the batch", async () => {
+    const d = freshRepo();
+    const s = new BatchedGitStorage(d, { idleMs: IDLE });
+    try {
+      writeFileSync(join(d, 'tasks/a.md'), 'staged by hand'); git(d, 'add', 'tasks/a.md');
+      await s.write('tasks/a.md', 'A-app', { message: 'Complete: a' });
+      mkdirSync(join(d, '.git/hooks'), { recursive: true });
+      writeFileSync(join(d, '.git/hooks/pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+      const err = await s.flush().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(StorageError);
+      expect(git(d, 'show', ':tasks/a.md')).toBe('staged by hand'); // the index is theirs again
+      expect(readFileSync(join(d, 'tasks/a.md'), 'utf8')).toBe('A-app'); // the file is still the app's
+      expect(commits(d)[0]).toBe('init');
+      expect(s.pending().count).toBe(1);
+    } finally { await s.close().catch(() => undefined); }
+  });
+
   // @req FR:storage-git/batch.idle @req FR:storage-git/batch.idle.close
   it('flushes on its own after the idle time since the last write, and on close', async () => {
     const d = freshRepo();

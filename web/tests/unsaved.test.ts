@@ -83,6 +83,42 @@ describe('createUnsaved', () => {
   });
 });
 
+describe('createUnsaved edge cases', () => {
+  // @req FR:live-deploy/web.unsaved.refresh
+  it('an older reply never overwrites a newer one', async () => {
+    const { doc, win } = fakeDom();
+    const states: UnsavedState[] = [];
+    const replies: ((v: { pending: number; since: string | null }) => void)[] = [];
+    const u = createUnsaved({ get: () => new Promise((ok) => replies.push(ok)), post: async () => undefined, onState: (s) => states.push(s), doc, win });
+    const first = u.check(); const second = u.check();
+    replies[1]({ pending: 1, since: null }); await second;
+    replies[0]({ pending: 0, since: null }); await first;
+    expect(states.at(-1)?.pending).toBe(1);
+  });
+  // @req FR:live-deploy/web.unsaved.error
+  it('publishes saving=false even when the re-read after a save fails', async () => {
+    const { doc, win } = fakeDom();
+    const states: UnsavedState[] = [];
+    let gets = 0;
+    const u = createUnsaved({ get: async () => { if (++gets > 1) throw new Error('offline'); return { pending: 1, since: null }; }, post: async () => undefined, onState: (s) => states.push(s), doc, win });
+    await u.check();
+    await u.flush();
+    expect(states.at(-1)).toEqual({ pending: 1, since: null, saving: false });
+  });
+  // @req FR:live-deploy/web.unsaved.hide
+  it('sends the keepalive save while a click-started save is still in flight', async () => {
+    const { doc, win, fire } = fakeDom();
+    const posts: boolean[] = [];
+    let release: () => void = () => undefined;
+    const u = createUnsaved({ get: async () => ({ pending: 1, since: null }), post: (k) => { posts.push(k); return k ? Promise.resolve() : new Promise<void>((ok) => { release = ok; }); }, onState: () => undefined, doc, win });
+    await u.check();
+    const click = u.flush();
+    fire(win, 'pagehide'); await flush();
+    expect(posts).toEqual([false, true]);
+    release(); await click;
+  });
+});
+
 describe('chip words', () => {
   // @req FR:live-deploy/web.unsaved @req FR:live-deploy/web.unsaved.click @req FR:live-deploy/web.unsaved.none
   it('Unsaved · n, Saving… while saving, nothing when clean; the title names the first edit', () => {

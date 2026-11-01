@@ -29,10 +29,13 @@ export function createUnsaved(o: UnsavedOpts): Unsaved {
   let s: UnsavedState = { pending: 0, since: null, saving: false };
   const set = (next: Partial<UnsavedState>) => { s = { ...s, ...next }; o.onState(s); };
 
-  /** @req FR:live-deploy/web.unsaved.none @req FR:live-deploy/web.unsaved.refresh */
+  let seq = 0;
+  /** Checks overlap (event stream, own writes, visibility): only the newest reply counts. @req FR:live-deploy/web.unsaved.none @req FR:live-deploy/web.unsaved.refresh */
   const check = async () => {
+    const mine = ++seq;
     try {
       const r = await o.get();
+      if (mine !== seq) return; // a newer check has answered or is in flight
       set({ pending: r.pending ?? 0, since: r.pending ? r.since ?? null : null });
     } catch { /* keep what we know; the next check tries again */ }
   };
@@ -41,10 +44,10 @@ export function createUnsaved(o: UnsavedOpts): Unsaved {
     if (s.saving) return;
     set({ saving: true });
     try { await o.post(false); } catch (e) { o.onError?.(e instanceof Error ? e.message : 'Save failed'); }
-    finally { s = { ...s, saving: false }; await check(); }
+    finally { set({ saving: false }); await check(); } // published even when the re-read fails, so the chip is never stuck on Saving…
   };
-  /** @req FR:live-deploy/web.unsaved.hide */
-  const leaving = () => { if (s.pending > 0 && !s.saving) o.post(true).then(() => check(), () => undefined); };
+  /** A keepalive save whenever edits are pending, even while a click-started save is in flight (navigation may cancel that one; the server serializes flushes). @req FR:live-deploy/web.unsaved.hide */
+  const leaving = () => { if (s.pending > 0) o.post(true).then(() => check(), () => undefined); };
   const onVisibility = () => { if (doc?.visibilityState === 'hidden') leaving(); else void check(); };
   doc?.addEventListener('visibilitychange', onVisibility);
   win?.addEventListener('pagehide', leaving);
@@ -76,6 +79,7 @@ export function useUnsaved(api: Client, onError: (message: string) => void, enab
     if (!enabled) { setState({ pending: 0, since: null, saving: false }); return; }
     const u = createUnsaved({ get: () => api.syncState(), post: (k) => api.flush(k), onState: setState, onError: (m) => errRef.current(m) });
     ctl.current = u;
+    void u.check(); // the first refresh may have finished before the controller existed
     return () => { u.stop(); ctl.current = null; };
   }, [api, enabled]);
   const check = useCallback(() => ctl.current?.check() ?? Promise.resolve(), []);
