@@ -23,7 +23,7 @@ last_updated: 2026-11-01
 
 **Open**: None
 
-**Next**: Phase 1: rewrite both specs in the current template; run `npx catalyst check` on each; commit.
+**Next**: Phase 3: write the failing tests listed under Features (core, api, web unit, e2e), run them, then the code.
 
 **Pins**:
 
@@ -56,17 +56,19 @@ Rework the Agents experience after Michael's first use: the team model reads his
 
 #### agent-sessions
 
-- [ ] Spec in the current template
-- [ ] Failing tests with `@req`
-- [ ] Code
-- [ ] `npx catalyst check` / `traceability` clean
+Scenarios in scope: `FR:sessions.owner` (+ `.repos`, `.worktree`), `FR:sessions.cost` (bucket by owner), `FR:web.scope` (+ `.all`), `FR:web.order` (+ `.project`), `FR:web.pins`, `FR:web.groups`, `FR:web.usage` (+ `.panel`, `.price`; replaces `web.cost`), `FR:web.new` (+ `.submit`, `.context`), `FR:web.view`, `FR:web.drawer`, `FR:web.states`, `FR:web.keys`, `FR:$session`, `FR:$cost`.
+
+- [ ] Tests: `tests/core/repos.test.ts` (ownerOf: Repos, Repository, name, alias, `<alias>-` prefix, case and `_`, worktree forms, tie-break), `tests/agents/runs.test.ts` (sessions carry `owner`; cost buckets by owner), `tests/api/sessions.test.ts` (`cwd` with `agent`/`project` accepted), `web/tests/sessions.test.ts` (usage strip, rows and done line in tokens, price line), `web/tests/pins.test.ts` (order by attention → project rank → recency; scope with pins; group modes `team`/`project`/``), `web/e2e/sessions.spec.ts` (scope + Show all, usage strip and panel, prompt-first composer with Cmd+Enter, `A`/`c`/`n` keys)
+- [ ] Code: `src/core/repos.ts` (`repoOf`, `projectRepos`, `ownerOf`), `src/agents/driver.ts` (`projectOf` worktree forms), `src/agents/runs.ts` (owner on sessions, cost by owner), `src/api/handler.ts` (sessions.new accepts cwd with agent), `docs/api/openapi.yaml` (Session.owner), `web/src/sessions.ts` (owner, `usageStrip`, tokens everywhere, `orderSessions`, `scopeSessions`), `web/src/pins.ts` (group mode string), `web/src/useSessions.ts` (`showAll` repos, `start(cwd, text, extra)`), `web/src/SessionsView.tsx` (scope, order, usage, composer), `web/src/sessions.css`, `web/src/App.tsx` (project order from Home, palette entries, help)
+- [ ] `npx catalyst check agent-sessions` and `traceability` clean; `@req FR:agent-sessions/web.cost` references moved to `web.usage`
 
 #### agent-team
 
-- [ ] Spec in the current template
-- [ ] Failing tests with `@req`
-- [ ] Code
-- [ ] `npx catalyst check` / `traceability` clean
+Scenarios in scope: `FR:agent.path.claude`, `FR:agent.format` (reports-to) + `.claude`, `FR:agent.team` (+ `.order`, `.rollup`, `.reports`), `FR:agent.resolve`, `FR:talk.start.cwd`, `FR:talk.api`, `FR:cli.agents`, `FR:web.chip` (+ `.live`, `.title`), `FR:web.talk`, `FR:org.*`, `FR:compose.*`, `FR:$team-agent`.
+
+- [ ] Tests: `tests/core/storage.test.ts` (`listClaudeAgents`, read ok, write refused, memory + fs), `tests/core/agents.test.ts` (`parseClaudeAgent`, `reports-to` round trip, listTeam order/source/rollup/reportsTo with containment default and cycle break, agentFor roll-up first), `tests/agents/team.test.ts` (startAgentRun `cwd`), `tests/api/team.test.ts` (reportsTo/source in `/team`, resolve order), `tests/cli/agents.test.ts` or existing CLI test (list prints reports-to; add `--reports-to`), `web/tests/team.test.ts` (agentsFor roll-up first + 7-day live filter, `matchAgent`, `orgTree`, chip title chain, `composeDefault`), `web/e2e/team.spec.ts` (chip chain, composer To order), `web/e2e/sessions.spec.ts` (Team tree default, agent rows, Unassigned, pinned marker, `t`/`p` keys, Enter on an agent row opens the composer with it chosen, agent chooser sets the folder)
+- [ ] Code: `src/core/storage.ts` (`CLAUDE_AGENT_PATH`, `listClaudeAgents`, write refusal), `src/core/agents.ts` (`parseClaudeAgent`, `reportsTo`, `source`, roll-up, `agentFor`), `src/agents/team.ts` (cwd), `src/api/handler.ts` + `docs/api/openapi.yaml` (TeamAgent fields), `src/cli/run.ts` (agents list/add), `web/src/team.ts` (`agentsFor`, `matchAgent`, `orgTree`, `composeDefault`, chip title), `web/src/useTeam.ts` (live set from sessions), `web/src/SessionsView.tsx` (tree, agent rows, chooser), `web/src/AgentTalk.tsx` (To order), `web/src/team.css`, `web/e2e/mock.ts`
+- [ ] `npx catalyst check agent-team` and `traceability` clean
 
 ### Post-implementation
 
@@ -76,6 +78,17 @@ Rework the Agents experience after Michael's first use: the team model reads his
 - [ ] Route external issues discovered during implementation
 
 ## Notes
+
+### Planning record
+
+**Approach**: Server owns the facts that need the task repo (which project owns a repo, who reports to whom, the Claude definitions); the page owns everything that needs the session list (which agent a session matches, staleness, the tree, the order). Pure helpers in `web/src/team.ts` and `web/src/sessions.ts` carry the rules so unit tests cover them without a browser; the view only paints. The team feature layers onto the sessions view through props (`team`, `projectOrder`, a chooser slot in the composer), so `agent-sessions` never imports `agent-team` concepts.
+
+**Planning subagent**: none; the planner already held the full code context from discovery (every touched file was read in this session), so a fresh read-only agent would have re-derived it at higher cost.
+
+**Critique**: checked (1) reverse dependency: the sessions view must not know the team → it takes a grouping and a chooser from props, keyed by `stack.agents.group` values the team feature adds; (2) the `Agents` line parsing already in `listTeam` is reused for metadata agents; (3) `projectOf` worktree forms extended once in `driver.ts` and reused by `repos.ts`; (4) `sessions.new` keeps refusing nothing new: `cwd` must still be absolute and exist; (5) `web.cost` id deprecated, not removed: five `@req` references updated in the same change; (6) staleness lives on the page (the core has no sessions), documented in design-decisions.
+
+**Traceability**: 72/72 FRs in the two specs mapped to a test and a code task above; `@req` deps: task-model/$project, ask-queue/flow.put, web-app/home2.order, storage-git/interface.paths, ai-triage-assist/result.log, agent-sessions/* from agent-team — all exist on main. Gaps: none.
+
 
 - Downstream impact: `npx catalyst deps --reverse` reports none for either feature on main (web-shell's `@req FR:agent-sessions/web.view` is on PR 70's branch); the touched FR ids there (`web.view`) keep their meaning.
 - Same-scenario traceability gaps at scope time: none (both features at 100%).
