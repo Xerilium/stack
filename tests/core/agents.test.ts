@@ -222,7 +222,7 @@ describe('reports-to', () => {
   });
 });
 
-// @req FR:agent-team/agent.team.order @req FR:agent-team/agent.team.rollup @req FR:agent-team/agent.team.reports
+// @req FR:agent-team/agent.team.order @req FR:agent-team/agent.team.rollup @req FR:agent-team/agent.team.reports @req FR:agent-team/$team-agent
 describe('team with claude files', () => {
   it('orders stack files, claude files, then metadata; cos is the roll-up; the reporting line defaults by containment', async () => {
     const { storage, ctx } = mk();

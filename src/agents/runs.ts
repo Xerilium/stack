@@ -10,6 +10,7 @@ import { createPermissionBroker, type PermissionBroker } from './broker';
 import { projectOf, SessionBusy, sessionState, STATE_ORDER, type AgentDriver, type PromptOptions, type Session, type SessionState, type Turn, type Update } from './driver';
 
 export interface RunManagerOptions { driver: AgentDriver; ctx: LifecycleContext; broker?: PermissionBroker; keepMs?: number; activeMs?: number; /** The served folder: where a new session runs when no `cwd` is given. @req FR:agent-team/driver.cwd */ cwd?: string }
+/** @req FR:agent-sessions/$session @req FR:agent-sessions/$cost */
 export interface ListedSession extends Omit<Session, 'active' | 'cost'> { state: SessionState; cost: { usd: number; tokens: number; approx?: boolean }; /** The Stack project that owns the session's repo, or null. @req FR:agent-sessions/sessions.owner */ owner: string | null }
 export interface CostReport {
   attribution: 'lastActive';

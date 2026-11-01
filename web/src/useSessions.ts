@@ -1,7 +1,7 @@
 /**
  * State and effects for the Sessions view: the list and cost report (polled while visible), the open drawer with its history
  * and live run stream, sending a prompt, stopping a run.
- * @req FR:agent-sessions/web.view @req FR:agent-sessions/web.drawer @req FR:agent-sessions/web.message @req FR:agent-sessions/web.cost @req FR:agent-sessions/web.new @req FR:agent-sessions/web.states
+ * @req FR:agent-sessions/web.view @req FR:agent-sessions/web.drawer @req FR:agent-sessions/web.message @req FR:agent-sessions/web.usage @req FR:agent-sessions/web.new @req FR:agent-sessions/web.states @req FR:agent-sessions/web.scope.all @req FR:agent-team/compose.after
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
@@ -29,7 +29,9 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   const [sendError, setSendError] = useState('');
   const [showCosts, setShowCosts] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposingState] = useState(false);
+  /** The agent the composer opens with (a slug), when one was chosen from a row. */
+  const [composeAgent, setComposeAgent] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const es = useRef<EventSource | null>(null);
   const seq = useRef(0);
@@ -53,14 +55,19 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
 
   useEffect(() => {
     if (!active || enabled !== true) return;
+    loadedOnce.current = true;
     void load();
     const t = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, POLL_MS);
     return () => clearInterval(t);
   }, [load, active, enabled]);
 
   useEffect(() => {
-    setCursor((c) => (c && items.some((i) => i.id === c) ? c : (items[0]?.id ?? null)));
+    // An agent row (`agent:<slug>`) is a cursor too; the view owns those keys and picks the first painted row when the cursor is lost.
+    setCursor((c) => (c && (c.startsWith('agent:') || items.some((i) => i.id === c)) ? c : null));
   }, [items]);
+  // One read when the host says it runs agents and the view is not polling, so rows elsewhere know which agents have recent sessions.
+  const loadedOnce = useRef(false);
+  useEffect(() => { if (enabled === true && !active && !loadedOnce.current) { loadedOnce.current = true; void load(); } }, [enabled, active, load]);
 
   const closeStream = useCallback(() => { es.current?.close(); es.current = null; setStreaming(false); }, []);
 
@@ -89,7 +96,8 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
     try { setTurns(await api.sessionMessages(id)); } catch (e) { setTurnsError(e instanceof Error ? e.message : 'Cannot load the history'); } finally { setTurnsLoading(false); }
   }, [api, listen]);
 
-  const closeDrawer = useCallback(() => { closeStream(); setOpen(null); setComposing(false); }, [closeStream]);
+  const setComposing = useCallback((on: boolean, agent?: string) => { setComposingState(on); setComposeAgent(on ? (agent ?? null) : null); setSendError(''); }, []);
+  const closeDrawer = useCallback(() => { closeStream(); setOpen(null); setComposingState(false); setComposeAgent(null); }, [closeStream]);
 
   const send = useCallback(async (text: string) => {
     const t = text.trim();
@@ -108,16 +116,18 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
     }
   }, [api, open, listen]);
 
-  const start = useCallback(async (cwd: string, text: string) => {
+  /** Starts a session: plain in a folder, or for an agent (its persona, its project, an optional folder). @req FR:agent-team/compose.after */
+  const start = useCallback(async (cwd: string | undefined, text: string, extra?: { agent?: string; project?: string }) => {
     setSendError('');
     try {
-      const r = await api.newSession(cwd, text.trim());
-      setComposing(false);
+      const r = await api.newSession(cwd, text.trim(), extra ?? {});
+      setComposingState(false); setComposeAgent(null);
       setOpen(r.sessionId ?? r.runId); setTurns([{ at: new Date().toISOString(), role: 'user', text: text.trim() }]); setTranscript(emptyTranscript());
       listen(r.sessionId ?? r.runId);
+      void load();
       return true;
     } catch (e) { setSendError(e instanceof Error ? e.message : 'Failed to start'); return false; }
-  }, [api, listen]);
+  }, [api, listen, load]);
 
   const stop = useCallback(async (id = open) => {
     if (!id) return;
@@ -129,7 +139,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
 
   return {
     items, total, cost, phase, error, cursor, setCursor, open, openDrawer, closeDrawer, turns, turnsError, turnsLoading, transcript, streaming, sendError, send, start, stop,
-    showCosts, setShowCosts, showAll, setShowAll, composing, setComposing, now, reload: load, note: (text: string) => toastRef.current(text),
+    showCosts, setShowCosts, showAll, setShowAll, composing, setComposing, composeAgent, now, reload: load, note: (text: string) => toastRef.current(text),
   };
 }
 export type Sessions = ReturnType<typeof useSessions>;

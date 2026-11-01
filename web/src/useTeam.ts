@@ -1,11 +1,12 @@
 /**
  * State for AI on every page: the team, each project's reviews, which task a session belongs to, the one open composer, starting and reviewing.
- * @req FR:agent-team/web.chip @req FR:agent-team/web.talk @req FR:agent-team/web.review @req FR:agent-team/web.norunner
+ * @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live @req FR:agent-team/web.chip.title @req FR:agent-team/web.talk @req FR:agent-team/web.review @req FR:agent-team/web.norunner
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
 import type { Toast } from './parts';
-import { agentsFor, chipFor, sessionFor, type ChipView, type ReviewItem, type Talk, type TeamAgent } from './team';
+import { agentsFor, chipFor, liveAgents, sessionFor, type ChipView, type ReviewItem, type Talk, type TeamAgent } from './team';
+import { fmtTokens } from './sessions';
 import type { Sessions } from './useSessions';
 import type { Task } from './types';
 
@@ -41,7 +42,9 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
     void loadReviews(projectsKey ? projectsKey.split('␟') : []);
   }, [ready, projectsKey, loadTeam, loadReviews]);
 
-  const agentsOf = useCallback((t: Pick<Task, 'project' | 'section'>) => agentsFor(team, t.project, t.section), [team]);
+  // Metadata-only agents stay on tasks only while a session has matched them recently. @req FR:agent-team/web.chip.live
+  const live = useMemo(() => liveAgents(team, sessions.items, sessions.now), [team, sessions.items, sessions.now]);
+  const agentsOf = useCallback((t: Pick<Task, 'project' | 'section'>) => agentsFor(team, t.project, t.section, live), [team, live]);
   const sessionOf = useCallback((ref: string) => {
     const hit = sessionFor(sessions.items, ref);
     if (hit) return hit;
@@ -52,8 +55,9 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   const chipOf = useCallback((t: Pick<Task, 'ref' | 'project' | 'section'>): ChipView => {
     const s = sessionOf(t.ref);
     const r = recent.get(t.ref);
-    if (s && s.state !== 'running' && s.state !== 'needs-you' && r && Date.now() - r.at < DONE_MS) return { text: `Done · ${s.cost.usd < 0.01 ? '<0.01' : s.cost.usd.toFixed(2)}`, tone: 'ok', title: `${s.title}. Open the session`, state: true };
-    return chipFor({ agent: agentsOf(t)[0], review: reviews.get(t.ref), session: s, reviewing: reviewing.has(t.ref) });
+    if (s && s.state !== 'running' && s.state !== 'needs-you' && r && Date.now() - r.at < DONE_MS) return { text: `Done · ${fmtTokens(s.cost.tokens)}`, tone: 'ok', title: `${s.title}. Open the session`, state: true };
+    const chain = agentsOf(t);
+    return chipFor({ agent: chain[0], chain, review: reviews.get(t.ref), session: s, reviewing: reviewing.has(t.ref) });
   }, [agentsOf, reviews, sessionOf, reviewing, recent]);
 
   const setTalk = useCallback((t: Talk | null) => setTalkState(t), []);

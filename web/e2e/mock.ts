@@ -4,9 +4,9 @@ export interface MockTask { ref: string; text: string; project: string; section:
 export interface MockAgent { ref: string; project: string; title: string; text: string; state: string; prs: { url: string; repo: string; number: number; state?: string; checks?: string; title?: string; updatedAt?: string }[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }
 export interface MockInbox { id: string; at: string; project: string; ref: string; task: string; kind: string; to: string; text: string; state: string; row?: string }
 export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string; flow?: string; seq?: number; flowTotal?: number; flowDone?: number; ref?: string; apply?: string; applies?: string[] }
-export interface MockSession { id: string; title: string; project: string; cwd: string; branch?: string; lastActive: string; state: string; cost: { usd: number; tokens: number }; prs: string[] }
+export interface MockSession { id: string; title: string; project: string; owner?: string | null; cwd: string; branch?: string; lastActive: string; state: string; cost: { usd: number; tokens: number }; prs: string[] }
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
-export interface MockTeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: string; prompt: string; defined: boolean; projects: string[] }
+export interface MockTeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: string; prompt: string; defined: boolean; source?: string; projects: string[]; reportsTo?: string }
 export interface MockReview { ref: string; at: string; verdict: string; plan: string; estimate?: string; agent: string; needs: string[] }
 export interface Mock { team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; /** Pending (uncommitted) writes a batching server reports on `/api/sync`; undefined = the server does not batch. */ pending?: number; since?: string | null; insertAbove: (project: string, text: string) => void }
 
@@ -107,8 +107,8 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       if (body.ref && !t) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
       const ag = m.team.find((a) => a.slug === body.agent) ?? m.team[0];
       const title = t ? `${ag?.name ?? 'Agent'} · ${t.text} · ${t.ref}` : body.project ? `${ag?.name ?? 'Agent'} · ${body.project}` : body.text;
-      m.sessions.unshift({ id, title, project: 'stack', cwd: body.cwd ?? '/x/stack', lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] });
-      return json(route, 202, { runId: 'run-new', sessionId: id, ...(ag ? { agent: ag.slug, title } : {}) });
+      m.sessions.unshift({ id, title, project: 'stack', owner: 'stack', cwd: body.cwd ?? '/x/stack', lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] });
+      return json(route, 202, { runId: 'run-new', sessionId: id, ...(ag && (body.agent || body.ref || body.project) ? { agent: ag.slug, title } : {}) });
     }
     if (path === '/schedule/day') { // echo the schedule with the new bed (tests check the call)
       const s = m.schedule as { date: string; bed: string } | null;

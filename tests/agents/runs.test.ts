@@ -98,7 +98,7 @@ describe('run manager', () => {
   });
 });
 
-// @req FR:agent-sessions/sessions.owner @req FR:agent-sessions/sessions.cost
+// @req FR:agent-sessions/sessions.owner @req FR:agent-sessions/sessions.cost @req FR:agent-sessions/$session @req FR:agent-sessions/$cost
 describe('owners', () => {
   const ALLYTE = '# Allyte\n\n- **Repos:** finops-hubs\n\n## Active\n\n- [ ] x\n';
   const S3: Session = { ...S1, id: 'a1b2c3d4-0000-0000-0000-000000000003', title: 'hubs', project: 'finops-hubs', cwd: '/x/finops-hubs/.claude/worktrees/zany-fox-1a2b3c', lastActive: new Date(NOW.getTime() - 120_000).toISOString(), active: false, cost: { usd: 2, tokens: 50 } };

@@ -23,6 +23,7 @@ export interface AgentDef {
   /** Lines this version does not know; kept as is. */
   extra: string[];
 }
+/** @req FR:agent-team/$team-agent */
 export interface TeamAgent extends Omit<AgentDef, 'extra'> {
   /** True when a definition file exists (Stack or Claude). */
   defined: boolean;

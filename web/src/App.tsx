@@ -266,6 +266,8 @@ export function App() {
   /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
   const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name));
   const wantActive = team.active || team.talk !== null;
+  /** The Home order of projects, for the Agents page. @req FR:agent-sessions/web.order.project */
+  const projectRank = useMemo(() => new Map(home.projects.map((p, i) => [p.project, i])), [home.projects]);
   useEffect(() => { setTeamActive(wantActive); }, [wantActive]);
   /** @req FR:pwa/notify.optin @req FR:pwa/notify.new */
   const [notifyOn, setNotifyOn] = useState(() => loadNotify(store()));
@@ -552,11 +554,14 @@ export function App() {
     ] : []),
     ...(view === 'sessions' ? [
       { id: 'sess-open', label: 'Agent: open', hint: '⏎', run: () => { if (sessions.cursor) void sessions.openDrawer(sessions.cursor); } },
-      { id: 'sess-new', label: 'Agent: new', hint: 'n', run: () => sessions.setComposing(true) },
+      { id: 'sess-new', label: 'Agent: new session', hint: 'n', run: () => sessions.setComposing(true) },
       { id: 'sess-stop', label: 'Agent: stop the run', hint: 's', run: () => void sessions.stop(sessions.open ?? sessions.cursor ?? undefined) },
-      { id: 'sess-pin', label: pinsCtl.pins.includes(sessions.cursor ?? '') ? 'Agent: unpin' : 'Agent: pin to the top', hint: 'f', run: () => { if (sessions.cursor) pinsCtl.pin(sessions.cursor); } },
-      { id: 'sess-group', label: pinsCtl.byProject ? 'Agent: ungroup' : 'Agent: by project', hint: 'p', run: pinsCtl.toggleGroup },
-      { id: 'sess-costs', label: 'Agent: toggle costs', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
+      { id: 'sess-pin', label: pinsCtl.pins.includes(sessions.cursor ?? '') ? 'Agent: unpin' : 'Agent: pin (always shown)', hint: 'f', run: () => { if (sessions.cursor && !sessions.cursor.startsWith('agent:')) pinsCtl.pin(sessions.cursor); } },
+      // @req FR:agent-team/org.keys
+      { id: 'sess-team', label: pinsCtl.mode === 'team' ? 'Agent: flat list' : 'Agent: team tree', hint: 't', run: () => pinsCtl.setMode('team') },
+      { id: 'sess-group', label: pinsCtl.mode === 'project' ? 'Agent: flat list' : 'Agent: by project', hint: 'p', run: () => pinsCtl.setMode('project') },
+      { id: 'sess-all', label: sessions.showAll ? 'Agent: only my projects' : 'Agent: show all repos', hint: 'A', run: () => sessions.setShowAll(!sessions.showAll) },
+      { id: 'sess-costs', label: 'Agent: toggle usage', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
     ] : []),
     { id: 'capture', label: 'New task', hint: 'c', run: openCapture },
     { id: 'search', label: 'Search tasks', hint: '/', run: () => { go('list'); setTimeout(() => searchRef.current?.focus(), 0); } },
@@ -762,7 +767,7 @@ export function App() {
         <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}</div>
         {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
-        {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} />}
+        {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} team={team.team} projectRank={projectRank} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
@@ -777,7 +782,7 @@ export function App() {
       </main>
       {/* The session drawer from a row, outside the Sessions view. @req FR:agent-team/web.talk */}
       {view !== 'sessions' && sessions.open && <div class="sess-scrim" onClick={sessions.closeDrawer} />}
-      {view !== 'sessions' && sessions.open && <Drawer key={sessions.open} s={sessions} item={sessions.items.find((i) => i.id === sessions.open) ?? null} cursorItem={null} onClose={sessions.closeDrawer} />}
+      {view !== 'sessions' && sessions.open && <Drawer key={sessions.open} s={sessions} item={sessions.items.find((i) => i.id === sessions.open) ?? null} cursorItem={null} team={team.team} onClose={sessions.closeDrawer} />}
       {team.talk && (view === 'today' || view === 'projects') && team.talk.ref && <AgentTalk key={team.talk.ref} team={team} talk={team.talk} agents={team.agentsOf(taskAt(team.talk.ref) ?? { project: team.talk.project, section: '' })} float />}
       {selected.size > 0 && view !== 'projects' && (
         <div class="bulk" role="toolbar" aria-label="Bulk edit">

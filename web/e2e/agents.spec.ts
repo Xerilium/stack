@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mockApi, type MockSession } from './mock';
 
 const iso = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
-const sess = (id: string, title: string, project: string, state: MockSession['state'] = 'idle'): MockSession => ({ id, title, project, cwd: `/Users/me/dev/${project}`, lastActive: iso(10), state, cost: { usd: 1, tokens: 1000 }, prs: [] });
+const sess = (id: string, title: string, project: string, state: MockSession['state'] = 'idle'): MockSession => ({ id, title, project, owner: project, cwd: `/Users/me/dev/${project}`, lastActive: iso(10), state, cost: { usd: 1, tokens: 1000 }, prs: [] });
 async function open(page: Page) {
   const m = await mockApi(page);
   m.sessions = [sess('s1', 'Fix the build', 'alpha', 'running'), sess('s2', 'Write the blog post', 'beta'), sess('s3', 'Tidy the backlog', 'alpha'), sess('s4', 'Plan the launch', 'gamma')];
@@ -32,7 +32,7 @@ test.describe('Agents', () => {
     test.skip(info.project.name === 'mobile', 'keyboard');
     await open(page);
     await expect(page.locator('.sess-li').first()).toContainText('Fix the build');
-    await page.keyboard.press('j'); await page.keyboard.press('j');
+    await page.keyboard.press('j'); // running first, then alpha (the first project on Home) before beta
     await expect(page.locator('.sess-li.cursor')).toContainText('Tidy the backlog');
     await page.keyboard.press('f');
     await expect(page.locator('.sess-group').first()).toHaveText('Pinned');
@@ -58,7 +58,7 @@ test.describe('Agents', () => {
 
   test('By project groups the rows with one header per project', async ({ page }) => {
     await open(page);
-    await page.getByRole('button', { name: 'By project' }).click();
+    await page.locator('.sess-tools').getByRole('button', { name: /^Projects/ }).click();
     await expect(page.locator('.sess-group')).toHaveText(['alpha', 'beta', 'gamma']);
     await expect(page.locator('.sess-group').first().locator('xpath=following-sibling::li[1]')).toContainText('Fix the build');
     expect(await page.evaluate(() => localStorage.getItem('stack.agents.group'))).toBe('project');
