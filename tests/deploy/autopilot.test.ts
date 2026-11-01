@@ -228,8 +228,9 @@ describe('autopilot workflow', () => {
     expect(script).not.toContain('${{');
   });
   it('serializes per PR without cancelling a merge', () => {
-    expect(wf.concurrency['cancel-in-progress']).toBe(false);
-    expect(wf.concurrency.group).toContain("'sweep'");
+    expect(wf.concurrency).toBeUndefined();
+    expect(job.concurrency['cancel-in-progress']).toBe(false);
+    expect(job.concurrency.group).toContain("'sweep'");
   });
   it('uses the workflow_run names CI and E2E', () => {
     expect(parse(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8')).name).toBe('CI');

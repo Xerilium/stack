@@ -25,14 +25,15 @@ on:
 # @req FR:autopilot/safety.perms: read-only at the top; the one job adds its write scopes below.
 permissions:
   contents: read
-# @req FR:autopilot/triggers.serial: one run per PR at a time, and a merge is never cancelled.
-concurrency:
-  group: autopilot-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.pull_requests[0].number || github.event.inputs.pr || 'sweep' }}
-  cancel-in-progress: false
 jobs:
   reconcile:
     name: Reconcile Autopilot
     runs-on: ubuntu-latest
+    # Job level on purpose: a run the `if:` below skips never enters the group, so it cannot replace a pending real run.
+    # @req FR:autopilot/triggers.serial: one run per PR at a time, and a merge is never cancelled.
+    concurrency:
+      group: autopilot-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.pull_requests[0].number || github.event.inputs.pr || 'sweep' }}
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
