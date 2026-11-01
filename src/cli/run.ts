@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
-  removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, TaskProps,
+  rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
@@ -40,7 +40,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   'add-project': { flags: ['description', 'repo', 'alias', 'priority', 'capacity', 'weekly-capacity', 'file', 'force'], usage: 'add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force]', help: 'create a project file' },
   add: { flags: ['section', 'parent'], usage: 'add <project> <text...> [--section name] [--parent ref]', help: 'add a task' },
   capture: { flags: ['project', 'section', 'dry-run'], usage: 'capture <text...> [--project name] [--section name] [--dry-run]', help: 'add a task from a phrase (e.g. "call dentist tomorrow 30m #alpha")' },
-  next: { flags: [], usage: 'next', help: 'print the top task' },
+  next: { flags: ['top'], usage: 'next [--top n]', help: 'print the top task, or the first n ranked tasks (1-50); the web Home and /next use the same order' },
   start: { flags: ['expect'], usage: 'start [ref] [--expect t]', help: 'mark in progress' },
   complete: { flags: ['summary', 'remove', 'expect'], usage: 'complete [ref] [--summary t] [--remove] [--expect t]', help: 'check off (rolls recurring rows)' },
   skip: { flags: ['expect'], usage: 'skip [ref] [--expect t]', help: 'park a task (alias: park)' },
@@ -352,6 +352,17 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
     }
     case 'next': {
       extra(0);
+      // @req FR:cli/cmd.next
+      const top = num(flag(f, 'top'), 'top');
+      if (top !== undefined) {
+        if (!Number.isInteger(top) || top < 1 || top > 50) throw new UsageError('--top must be a whole number from 1 to 50');
+        const ranked = await rankStack(ctx, at, top);
+        if (!ranked.length) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
+        return {
+          json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}) })) },
+          text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'),
+        };
+      }
       const n = await nextTask(ctx, at);
       if (!n) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
       const score = Number(n.score.toFixed(1));
