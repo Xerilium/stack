@@ -49,6 +49,8 @@ describe('repoOf', () => {
     expect(repoOf('/Users/me/dev/FOCUS_Spec.worktrees/1-5-naming')).toBe('FOCUS_Spec');
     expect(repoOf('/Users/me/dev/catalyst-wt-release')).toBe('catalyst');
     expect(repoOf('/Users/me/dev/finops-hubs-wt-sync')).toBe('finops-hubs');
+    expect(repoOf('/Users/me/dev/catalyst-wt-release/web')).toBe('catalyst'); // a subfolder of a -wt- checkout
+    expect(repoOf('/Users/me/dev/stack/.claude/worktrees/a-b-c1d2e3/web')).toBe('stack');
     expect(repoOf('')).toBe('');
   });
 });

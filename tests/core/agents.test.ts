@@ -207,6 +207,10 @@ describe('parseClaudeAgent', () => {
     const d = parseClaudeAgent('x', '---\nname: x\ndescription: ' + 'word '.repeat(40) + '\n---\n');
     expect(d.role!.length).toBeLessThanOrEqual(80);
     expect(parseClaudeAgent('y', '---\nname: y\n---\n# Y\n').name).toBe('Y');
+    // YAML block scalars, wrapped strings and `- item` lists fold onto their key.
+    const e = parseClaudeAgent('x', '---\nname: x\ndescription: >\n  Stack lead.\n  Spec first.\ntools:\n  - Read\n  - Grep\nmodel: "opus"\n---\n');
+    expect(e).toMatchObject({ role: 'Stack lead', tools: ['Read', 'Grep'], model: 'opus' });
+    expect(parseClaudeAgent('w', '---\ndescription: "Keeps the owner\n  focused."\n---\n').role).toBe('Keeps the owner focused');
   });
 });
 

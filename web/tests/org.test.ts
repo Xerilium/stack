@@ -64,6 +64,16 @@ describe('orgTree', () => {
     expect((t.find((r) => r.kind === 'session' && r.s.id === 'cid-4') as Extract<OrgRow, { kind: 'session' }>).pinned).toBe(true);
     expect(rows(t).slice(-2)).toEqual(['#maenifold-rs', '  maen']);
   });
+  it('a branch under a scope-less manager still shows; an owned session keeps its agent; a cyclic payload paints once', () => {
+    const t = [...team, ag('mgr', [], { projects: [], reportsTo: 'cos' }), ag('kid', ['stack'], { reportsTo: 'mgr' }), ag('quiet', [], { projects: [], reportsTo: 'cos' })];
+    const r = rows(orgTree(t, [...items, sess({ id: 'q-1', title: 'quiet · owned work', owner: 'stack' })], rank, [], { now }));
+    expect(r).toContain('  @mgr');
+    expect(r).toContain('    also:kid');
+    expect(r).toContain('  @quiet'); // its session is owned work, which always shows
+    expect(r).toContain('    q-1');
+    const loop = [ag('a', ['stack'], { reportsTo: 'b' }), ag('b', ['stack'], { reportsTo: 'a' })];
+    expect(rows(orgTree(loop, [], rank, [], { now }))).toEqual(['@a', '  @b']); // no roll-up, no cycle: each paints once
+  });
   it('a pinned session from an unowned repo shows without Show all; ids walk the rows in paint order', () => {
     const t = orgTree(team, items, rank, ['maen'], { now });
     expect(rows(t).slice(-2)).toEqual(['#maenifold-rs', '  maen']);
@@ -83,6 +93,7 @@ describe('compose defaults', () => {
   });
   it('the folder follows the agent: where it last ran, else the newest session repo of its first project, worktrees resolved; else none (the served folder)', () => {
     expect(folderFor(team[3], items, team)).toBe('/x/f4-music'); // its own newest session (a worktree)
+    expect(folderFor(team[3], [sess({ id: 'w', title: 'cid manager', owner: 'f4', cwd: '/x/f4-music-wt-fix/web' })], team)).toBe('/x/f4-music'); // a -wt- checkout, from any depth
     expect(folderFor(team[2], items, team)).toBe('/x/allyte-web');
     expect(folderFor(team[1], items, team)).toBe('');
     expect(folderFor(team[0], items, team)).toBe('/x/allyte-web'); // no session of its own: the first project in its list with a repo

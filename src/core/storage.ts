@@ -168,8 +168,7 @@ export class MemoryStorage implements Storage {
 
   /** All versions checked first; `null` content deletes. @req FR:storage-git/write.many @req FR:storage-git/write.delete */
   async writeMany(writes: FileWrite[]): Promise<void> {
-    assertDistinct(writes);
-    writes.forEach((w) => validateWritePath(w.path));
+    assertDistinct(writes); // validates every path
     const run = async () => {
       for (const w of writes) {
         const cur = this.files.get(w.path);
@@ -282,8 +281,7 @@ export class FsStorage implements Storage {
   }
 
   async writeMany(writes: FileWrite[], opts: { message?: string } = {}): Promise<void> {
-    assertDistinct(writes);
-    writes.forEach((w) => validateWritePath(w.path));
+    assertDistinct(writes); // validates every path
     const run = () => this.lockedMany(writes, opts.message);
     const p = this.queue.then(run, run);
     this.queue = p.catch(() => undefined);

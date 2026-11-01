@@ -12,15 +12,15 @@ export type RepoMap = RepoEntry[];
 
 const norm = (s: string) => s.toLowerCase().replace(/_/g, '-');
 
-/** The repo folder a path works in: `<repo>/.claude/worktrees/<x>`, `<repo>.worktrees/<x>` and `<repo>-wt-<x>` all report `<repo>`. @req FR:agent-sessions/sessions.owner.worktree */
+/** The repo folder a path works in: `<repo>/.claude/worktrees/<x>`, `<repo>.worktrees/<x>` and `<repo>-wt-<x>` all report `<repo>`, from any depth. @req FR:agent-sessions/sessions.owner.worktree */
 export function repoOf(cwd: string): string {
   const parts = cwd.split('/').filter(Boolean);
   const i = parts.indexOf('.claude');
   if (i > 0 && parts[i + 1] === 'worktrees') return parts[i - 1];
   const wt = parts.findIndex((p) => p.endsWith('.worktrees'));
   if (wt >= 0) return parts[wt].slice(0, -'.worktrees'.length);
-  const base = parts[parts.length - 1] ?? '';
-  return base.replace(/-wt-[^/]+$/, '');
+  const wtd = parts.findIndex((p) => /-wt-[^/]+$/.test(p));
+  return (wtd >= 0 ? parts[wtd] : (parts[parts.length - 1] ?? '')).replace(/-wt-[^/]+$/, '');
 }
 
 const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1).replace(/\.md$/, '');

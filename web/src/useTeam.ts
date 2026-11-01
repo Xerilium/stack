@@ -42,8 +42,8 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
     void loadReviews(projectsKey ? projectsKey.split('␟') : []);
   }, [ready, projectsKey, loadTeam, loadReviews]);
 
-  // Metadata-only agents stay on tasks only while a session has matched them recently. @req FR:agent-team/web.chip.live
-  const live = useMemo(() => liveAgents(team, sessions.items, sessions.now), [team, sessions.items, sessions.now]);
+  // Metadata-only agents stay on tasks only while a session has matched them recently; without a runner, or before the first sessions read, there is nothing to match against, so nothing is dropped. @req FR:agent-team/web.chip.live
+  const live = useMemo(() => (enabled === true && sessions.phase === 'ready' ? liveAgents(team, sessions.items, sessions.now) : undefined), [enabled, sessions.phase, team, sessions.items, sessions.now]);
   const agentsOf = useCallback((t: Pick<Task, 'project' | 'section'>) => agentsFor(team, t.project, t.section, live), [team, live]);
   const sessionOf = useCallback((ref: string) => {
     const hit = sessionFor(sessions.items, ref);

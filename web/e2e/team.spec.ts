@@ -126,6 +126,7 @@ test.describe('Agent team', () => {
     await open(page, { runner: false });
     await row(page, 'alpha:6').click();
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('CoS');
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead › PR sweep worker: alpha. Talk to it (a)'); // no session data: nothing is dropped
     await row(page, 'alpha:6').locator('.agent-chip').click();
     const talk = row(page, 'alpha:6').locator('.agent-talk');
     await expect(talk).toBeVisible();

@@ -36,10 +36,15 @@ export function orgTree(team: TeamAgent[], items: SessionItem[], rank: Map<strin
   const free: SessionItem[] = [];
   for (const s of items) { const a = matchAgent(s, team); if (a) byAgent.set(a.slug, [...(byAgent.get(a.slug) ?? []), s]); else free.push(s); }
   // Agents with no project still show when a session of theirs is pinned or needs attention. @req FR:agent-team/org.order.scope
-  const keep = new Set(team.filter((a) => (byAgent.get(a.slug) ?? []).some((s) => pins.includes(s.id) || ATTENTION.has(s.state))).map((a) => a.slug));
+  // Owned work always shows (`FR:agent-sessions/web.scope`), so an agent with an owned session shows with it.
+  const keep = new Set(team.filter((a) => (byAgent.get(a.slug) ?? []).some((s) => pins.includes(s.id) || ATTENTION.has(s.state) || !!s.owner)).map((a) => a.slug));
+  // A manager stays while any agent under it shows: a branch must not vanish because its manager declares no scope.
+  for (const a of team.filter((x) => x.projects.length > 0 || keep.has(x.slug))) { const seen = new Set<string>(); let m = team.find((t) => t.slug === a.reportsTo); while (m && !seen.has(m.slug)) { seen.add(m.slug); keep.add(m.slug); m = team.find((t) => t.slug === m!.reportsTo); } }
   const rollup = rollupOf(team);
   const out: OrgRow[] = [];
+  const seen = new Set<string>();
   const visit = (a: TeamAgent, level: number) => {
+    if (seen.has(a.slug)) return; seen.add(a.slug); // the server breaks cycles; a stale payload must not recurse forever
     const mine = orderSessions(byAgent.get(a.slug) ?? [], rank);
     const open = o.more?.has(a.slug);
     const shown = open ? mine : mine.slice(0, top);
@@ -50,11 +55,13 @@ export function orgTree(team: TeamAgent[], items: SessionItem[], rank: Map<strin
     // Quiet leaves (no session, no reports) fold into one `Also` line so the tree stays readable. @req FR:agent-team/org.tree.fold
     const quiet = kids.filter((c) => !(byAgent.get(c.slug) ?? []).length && !team.some((t) => t.reportsTo === c.slug && t !== c));
     for (const c of kids.filter((c) => !quiet.includes(c))) visit(c, level + 1);
-    if (quiet.length) out.push({ kind: 'also', key: `also:${a.slug}`, level: level + 1, agents: quiet });
+    if (quiet.length) { quiet.forEach((c) => seen.add(c.slug)); out.push({ kind: 'also', key: `also:${a.slug}`, level: level + 1, agents: quiet }); }
   };
   // Roots: the roll-up, then anyone whose manager is missing (ordered like siblings).
   const roots = team.filter((a) => a === rollup || !a.reportsTo || !team.some((t) => t.slug === a.reportsTo));
   for (const a of [...(rollup ? [rollup] : []), ...orderAgents(roots.filter((a) => a !== rollup), rank, keep, o.showAll)]) visit(a, 0);
+  // Agents no root reaches (a cycle in a stale payload) still paint, once, as roots.
+  for (const a of orderAgents(team.filter((x) => !seen.has(x.slug)), rank, keep, o.showAll)) visit(a, 0);
   // Unassigned: owned (or pinned, or every with Show all) sessions no agent claims, by project in priority order. @req FR:agent-team/org.tree.unmatched
   const loose = orderSessions(free.filter((s) => !!s.owner || pins.includes(s.id) || o.showAll), rank);
   const groups = new Map<string, SessionItem[]>();
@@ -74,14 +81,16 @@ export function composeDefault(cursor: string | null, team: TeamAgent[], items: 
   return (hit ?? rollupOf(team) ?? team[0])?.slug ?? '';
 }
 
-/** A session folder trimmed to its repo: `<repo>/.claude/worktrees/<x>` → `<repo>`, `<dir>/<repo>.worktrees/<x>` → `<dir>/<repo>`, `<repo>-wt-<x>` → `<repo>`. */
+/** A session folder trimmed to its repo: `<repo>/.claude/worktrees/<x>` → `<repo>`, `<dir>/<repo>.worktrees/<x>` → `<dir>/<repo>`, `<repo>-wt-<x>/…` → `<repo>`; each form resolves from any depth. */
 export function repoRoot(cwd: string): string {
   const parts = cwd.split('/');
   const i = parts.indexOf('.claude');
   if (i > 0 && parts[i + 1] === 'worktrees') return parts.slice(0, i).join('/');
   const wt = parts.findIndex((p) => p.endsWith('.worktrees'));
   if (wt >= 0) return [...parts.slice(0, wt), parts[wt].slice(0, -'.worktrees'.length)].join('/');
-  return cwd.replace(/-wt-[^/]+$/, '');
+  const wtd = parts.findIndex((p) => /-wt-[^/]+$/.test(p));
+  if (wtd >= 0) return [...parts.slice(0, wtd), parts[wtd].replace(/-wt-[^/]+$/, '')].join('/');
+  return cwd;
 }
 
 /** Where the agent last ran (its newest matched session), else the repo of its first project with one; `''` means the served folder. @req FR:agent-team/compose.folder */

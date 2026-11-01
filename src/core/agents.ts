@@ -111,8 +111,15 @@ export function parseClaudeAgent(slug: string, content: string): AgentDef {
   const fm = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(content);
   if (fm) {
     body = content.slice(fm[0].length);
-    for (const raw of fm[1].split('\n')) {
-      const m = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(raw.replace(/\r$/, ''));
+    // Fold YAML continuation lines onto their key, so `description: >` (a block scalar), a wrapped quoted string, or a `- item` list never reads as `>`, its first line, or nothing.
+    const folded = fm[1].replace(/\r/g, '').split('\n').reduce<string[]>((out, raw) => {
+      const prev = out[out.length - 1];
+      if (prev !== undefined && /^\s+\S/.test(raw)) { const t = raw.trim(); out[out.length - 1] = t.startsWith('- ') ? `${prev}${/:\s*$/.test(prev) ? ' ' : ', '}${t.slice(2)}` : `${prev} ${t}`; }
+      else out.push(raw.replace(/^([A-Za-z][A-Za-z0-9_-]*):\s*[>|][+-]?\s*$/, '$1:'));
+      return out;
+    }, []);
+    for (const raw of folded) {
+      const m = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(raw);
       if (!m) continue;
       const v = oneLine(m[2].replace(/^(["'])(.*)\1$/, '$2'));
       switch (m[1]) {

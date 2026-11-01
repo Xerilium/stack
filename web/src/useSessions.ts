@@ -37,6 +37,8 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   const seq = useRef(0);
   const itemsRef = useRef<SessionItem[]>([]);
   const toastRef = useRef(toast); toastRef.current = toast;
+  /** The first list read happened (by the poll, or the one-off read below). */
+  const loadedOnce = useRef(false);
 
   const load = useCallback(async () => {
     if (enabled !== true) return;
@@ -66,7 +68,6 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
     setCursor((c) => (c && (c.startsWith('agent:') || items.some((i) => i.id === c)) ? c : null));
   }, [items]);
   // One read when the host says it runs agents and the view is not polling, so rows elsewhere know which agents have recent sessions.
-  const loadedOnce = useRef(false);
   useEffect(() => { if (enabled === true && !active && !loadedOnce.current) { loadedOnce.current = true; void load(); } }, [enabled, active, load]);
 
   const closeStream = useCallback(() => { es.current?.close(); es.current = null; setStreaming(false); }, []);
