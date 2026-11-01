@@ -36,26 +36,47 @@ interface Opts {
   compareError?: boolean;
   dispatchError?: boolean;
   mergedAtEval?: number; // another actor merges it before this evaluation
+  threadPages?: { isResolved: boolean }[][]; // pages after the first
+  contextPages?: unknown[][];
+  pageError?: boolean; // a follow-up page throws
+  pageMissing?: boolean; // a follow-up page comes back empty
+  mutate?: (st: { labels: string[]; state: string; head: string }, evals: number) => void; // PR changes between attempts
+  createLabelError?: number;
+  removeLabelError?: number;
+  permError?: number;
 }
 
 async function scenario(o: Opts = {}) {
   const calls: unknown[][] = [];
   const logs: string[] = [];
-  const st = { labels: [...(o.labels ?? GOOD)], state: o.state ?? 'OPEN', evals: 0, merged: false, mergeFails: 0 };
+  const st = { labels: [...(o.labels ?? GOOD)], state: o.state ?? 'OPEN', head: SHA, evals: 0, merged: false, mergeFails: 0 };
   const pr = () => {
+    o.mutate?.(st, st.evals);
     const mergeState = (o.mergeStates ?? ['CLEAN'])[Math.min(st.evals, (o.mergeStates ?? ['CLEAN']).length - 1)];
     st.evals += 1;
     return {
-      state: st.merged || (o.mergedAtEval !== undefined && st.evals > o.mergedAtEval) ? 'MERGED' : st.state, isDraft: o.isDraft ?? false, mergeStateStatus: mergeState, headRefOid: SHA,
+      state: st.merged || (o.mergedAtEval !== undefined && st.evals > o.mergedAtEval) ? 'MERGED' : st.state, isDraft: o.isDraft ?? false, mergeStateStatus: mergeState, headRefOid: st.head,
       baseRefName: o.baseRefName ?? 'main', headRepository: { nameWithOwner: o.headRepo ?? 'o/r' },
       author: { login: 'me' }, labels: { nodes: st.labels.map((name) => ({ name })) },
-      reviewThreads: { pageInfo: { hasNextPage: false }, nodes: o.threads ?? [] },
+      reviewThreads: { pageInfo: { hasNextPage: !!o.threadPages?.length, endCursor: 't0' }, nodes: o.threads ?? [] },
       reviews: { nodes: o.reviews ?? [] },
-      commits: { nodes: [{ commit: { oid: o.rollupOid ?? SHA, statusCheckRollup: { contexts: { pageInfo: { hasNextPage: false }, nodes: o.checks ?? ok } } } }] },
+      commits: { nodes: [{ commit: { oid: o.rollupOid ?? st.head, statusCheckRollup: { contexts: { pageInfo: { hasNextPage: !!o.contextPages?.length, endCursor: 'c0' }, nodes: o.checks ?? ok } } } }] },
     };
   };
   const github = {
-    graphql: async () => ({ repository: { pullRequest: pr() } }),
+    graphql: async (query: string, vars: { after?: string }) => {
+      if (vars.after) {
+        if (o.pageError) throw Object.assign(new Error('page down'), { status: 502 });
+        if (o.pageMissing) return { repository: { pullRequest: null, object: null } };
+        const threads = query.includes('reviewThreads');
+        const pages = (threads ? o.threadPages : o.contextPages) ?? [];
+        const i = Number(vars.after.slice(1));
+        const nodes = pages[i] ?? [];
+        const more = { pageInfo: { hasNextPage: i + 1 < pages.length, endCursor: `${vars.after[0]}${i + 1}` }, nodes };
+        return threads ? { repository: { pullRequest: { reviewThreads: more } } } : { repository: { object: { statusCheckRollup: { contexts: more } } } };
+      }
+      return { repository: { pullRequest: pr() } };
+    },
     paginate: async (fn: string) => {
       if (fn === 'listComments') {
         if (o.comments instanceof Error) throw o.comments;
@@ -67,12 +88,13 @@ async function scenario(o: Opts = {}) {
       issues: {
         listComments: 'listComments', listForRepo: 'listForRepo',
         getLabel: async () => { if (o.labelMissing) throw Object.assign(new Error('nf'), { status: 404 }); return {}; },
-        createLabel: async (a: { name: string }) => { calls.push(['createLabel', a.name]); },
+        createLabel: async (a: { name: string }) => { calls.push(['createLabel', a.name]); if (o.createLabelError) throw Object.assign(new Error('e'), { status: o.createLabelError }); },
         addLabels: async (a: { labels: string[] }) => { calls.push(['addLabels', ...a.labels]); st.labels.push(...a.labels); },
-        removeLabel: async (a: { name: string }) => { calls.push(['removeLabel', a.name]); st.labels = st.labels.filter((l) => l !== a.name); },
+        removeLabel: async (a: { name: string }) => { calls.push(['removeLabel', a.name]); if (o.removeLabelError) throw Object.assign(new Error('e'), { status: o.removeLabelError }); st.labels = st.labels.filter((l) => l !== a.name); },
       },
       repos: {
         getCollaboratorPermissionLevel: async () => {
+          if (o.permError) throw Object.assign(new Error('e'), { status: o.permError });
           if (o.perm instanceof Error) throw o.perm;
           return { data: { permission: o.perm ?? 'write' } };
         },
@@ -96,7 +118,8 @@ async function scenario(o: Opts = {}) {
       },
     },
   };
-  const summary = { addHeading() { return summary; }, addTable() { return summary; }, write: async () => summary };
+  let summaryWrites = 0;
+  const summary = { addHeading() { return summary; }, addTable() { return summary; }, write: async () => { summaryWrites += 1; return summary; } };
   const core = {
     info: (m: string) => logs.push(m), warning: (m: string) => logs.push(`WARN ${m}`),
     setFailed: (m: string) => logs.push(`FAIL ${m}`), summary,
@@ -108,7 +131,7 @@ async function scenario(o: Opts = {}) {
   await run({ github, context, core, sleep: async () => {} });
   const names = calls.map((c) => c[0]);
   const result = logs.filter((l) => l.startsWith('{')).map((l) => JSON.parse(l))[0];
-  return { calls, names, logs, result, labels: st.labels };
+  return { calls, names, logs, result, labels: st.labels, get summaryWrites() { return summaryWrites; } };
 }
 
 // @req FR:autopilot/gates.all @req FR:autopilot/gates.pin @req FR:autopilot/deploy.dispatch
@@ -270,5 +293,107 @@ describe('autopilot run', () => {
   it('logs only names, never comment bodies or thread text', async () => {
     const r = await scenario({ comments: [owner(SHA), { body: 'ghp_SECRET body text', user: { login: 'x' } }] });
     expect(JSON.stringify(r.logs)).not.toMatch(/ghp_SECRET|body text/);
+  });
+
+  // Round 2: paging, mid-retry changes, failure visibility
+  describe('paging and unreadable pages', () => {
+    // @req FR:autopilot/gates.all.threads
+    it('reads every page of threads and blocks on an unresolved one on page 2', async () => {
+      const r = await scenario({ threads: [{ isResolved: true }], threadPages: [[{ isResolved: true }], [{ isResolved: false }]] });
+      expect(r.result.reason).toContain('threads-unresolved');
+    });
+    it('merges when every page of threads and checks is clean', async () => {
+      const r = await scenario({ threadPages: [[{ isResolved: true }]], contextPages: [ok] });
+      expect(r.result.action).toBe('merged');
+    });
+    // @req FR:autopilot/gates.all.checks
+    it('blocks on a failing check that only appears on page 2', async () => {
+      const r = await scenario({ contextPages: [[{ __typename: 'CheckRun', name: 'e2e', conclusion: 'FAILURE' }]] });
+      expect(r.result.reason).toContain('checks-failing');
+    });
+    it.each([['throws', { pageError: true }], ['comes back empty', { pageMissing: true }]])('blocks when a follow-up page %s', async (_n, patch) => {
+      const t = await scenario({ threadPages: [[{ isResolved: true }]], ...(patch as Opts) });
+      expect(t.names).not.toContain('merge');
+      expect(t.result.reason).toContain('threads-unresolved');
+      const c = await scenario({ contextPages: [ok], ...(patch as Opts) });
+      expect(c.names).not.toContain('merge');
+      expect(c.result.reason).toContain('checks-unreadable');
+    });
+  });
+
+  // @req FR:autopilot/gates.retry @req FR:autopilot/gates.closed
+  describe('changes while the merge retries', () => {
+    const unknownThenChange = (change: (st: { labels: string[]; state: string; head: string }) => void) => ({
+      mergeStates: ['CLEAN', 'UNKNOWN', 'CLEAN'],
+      mutate: (st: { labels: string[]; state: string; head: string }, n: number) => { if (n === 2) change(st); },
+    });
+    it('stops when a push lands during the delay', async () => {
+      const r = await scenario(unknownThenChange((st) => { st.head = NEWER; }));
+      expect(r.result).toMatchObject({ action: 'skipped', reason: 'head-moved' });
+      expect(r.names).not.toContain('merge');
+    });
+    it('stops when Paused is added during the delay', async () => {
+      const r = await scenario(unknownThenChange((st) => { st.labels.push(ap.PAUSED); }));
+      expect(r.result).toMatchObject({ action: 'skipped', reason: 'paused' });
+      expect(r.names).not.toContain('merge');
+    });
+    it('stops when the PR is closed during the delay', async () => {
+      const r = await scenario(unknownThenChange((st) => { st.state = 'CLOSED'; }));
+      expect(r.result).toMatchObject({ action: 'skipped', reason: 'closed' });
+    });
+    it('stops when Finalized is removed during the delay', async () => {
+      const r = await scenario(unknownThenChange((st) => { st.labels = st.labels.filter((l) => l !== ap.FINALIZED); }));
+      expect(r.result.reason).toContain('not-finalized');
+      expect(r.names).not.toContain('merge');
+    });
+    it('gives up with a reason when the merge state stays UNKNOWN', async () => {
+      const r = await scenario({ mergeStates: ['CLEAN', 'UNKNOWN'] });
+      expect(r.result).toMatchObject({ action: 'skipped', attempts: ap.MERGE_RETRY_ATTEMPTS });
+      expect(r.result.reason).toContain('merge-state-unknown');
+    });
+  });
+
+  describe('label and permission edge cases', () => {
+    it('tolerates a 404 when removing a label that is already gone', async () => {
+      const r = await scenario({ comments: [owner(NEWER)], removeLabelError: 404 });
+      expect(r.logs.some((l) => l.startsWith('FAIL'))).toBe(false);
+    });
+    it('fails the run on any other label error', async () => {
+      const r = await scenario({ comments: [owner(NEWER)], removeLabelError: 500 });
+      expect(r.logs).toContain('FAIL 1 PR(s) failed to reconcile or merge');
+    });
+    it('tolerates a lost race creating a label (422) and fails on other errors', async () => {
+      const ok422 = await scenario({ labelMissing: true, createLabelError: 422 });
+      expect(ok422.names).toContain('addLabels');
+      const bad = await scenario({ labelMissing: true, createLabelError: 500 });
+      expect(bad.names).not.toContain('addLabels');
+      expect(bad.logs).toContain('FAIL 1 PR(s) failed to reconcile or merge');
+    });
+    // @req FR:autopilot/cert.stale.unknown
+    it('keeps Finalized when the permission lookup fails (not a 404), but treats a 404 as not a collaborator', async () => {
+      const down = await scenario({ permError: 500 });
+      expect(down.names).not.toContain('removeLabel');
+      expect(down.names).not.toContain('merge');
+      const stranger = await scenario({ permError: 404 });
+      expect(stranger.calls).toContainEqual(['removeLabel', ap.FINALIZED]);
+    });
+  });
+
+  // @req FR:autopilot/gates.failed
+  describe('failures are visible', () => {
+    it('fails the run when a merge fails', async () => {
+      const r = await scenario({ mergeError: { message: 'Resource not accessible by integration', status: 403 } });
+      expect(r.logs).toContain('FAIL 1 PR(s) failed to reconcile or merge');
+    });
+    it('does not fail the run for a moved head (409)', async () => {
+      const r = await scenario({ mergeError: { message: 'Head branch was modified', status: 409 } });
+      expect(r.result.action).toBe('failed');
+      expect(r.logs.some((l) => l.startsWith('FAIL'))).toBe(false);
+    });
+    it('writes no summary for an empty sweep', async () => {
+      const r = await scenario({ event: 'schedule', payload: {}, sweep: [] });
+      expect(r.logs).toContain('Reconciling 0 PR(s)');
+      expect(r.summaryWrites).toBe(0);
+    });
   });
 });

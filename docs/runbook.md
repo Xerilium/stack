@@ -100,6 +100,7 @@ Label a PR `Status: 🤖 Autopilot` and an agent can drive it to merge. The work
 - `Status: ☑️ Finalized` is on the PR **and** a comment from you or a collaborator certifies this exact head SHA. A new push clears `Finalized`; the agent re-certifies.
 - `Status: ✅ Ready` (set by the workflow: not a draft, no changes requested, and `Autopilot` or a non-author approval).
 - Every review thread is resolved, every check on the head commit has finished green, and GitHub reports the PR `CLEAN`.
+- The head contains the current tip of `main`. If `main` moved, update the PR branch, then re-certify (the push clears `Finalized`).
 - No `Status: ⏸️ Paused`, `🚧 WIP`, or `⛔ Blocked` label.
 
 To certify, an agent posts the comment **first**, then adds `Finalized`:
@@ -110,4 +111,4 @@ gh pr comment <n> --body $'<!-- stack:finalized-head-sha -->\nFinalized certific
 gh pr edit <n> --add-label 'Status: ☑️ Finalized'
 ```
 
-Resolving a thread or approving a review starts no workflow, so a 10-minute sweep picks those up. Pause one PR with `Status: ⏸️ Paused`. After a merge the workflow dispatches `deploy.yml`, because pushes made with `GITHUB_TOKEN` start no `push` workflow. Missing labels are created on first use.
+Resolving a thread or approving a review starts no workflow, so a 10-minute sweep picks those up. Pause one PR with `Status: ⏸️ Paused`. After a merge the workflow dispatches `deploy.yml`, because pushes made with `GITHUB_TOKEN` start no `push` workflow. Missing labels are created on first use. A merge that fails (for example a PR that edits `.github/workflows/*`, which `GITHUB_TOKEN` cannot merge) fails the run so it shows up; merge those yourself.

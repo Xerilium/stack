@@ -60,6 +60,7 @@ The agent certifies one commit, so that a push after certification cannot ride t
   - **FR:gates.all.clean** (P1): GitHub reports `mergeStateStatus` `CLEAN`, read fresh just before the merge
 - **FR:gates.pin** (P1): The merge call MUST pin the head SHA it checked, so a commit pushed after the check fails the merge instead of landing
 - **FR:gates.retry** (P1): `UNKNOWN` merge state and transient merge errors (`405` not mergeable yet, `429`, `5xx`) MUST be retried up to 5 times, 4 seconds apart, and every attempt MUST re-read every gate; other errors, including a `409` head mismatch, end the attempt with the status and error class recorded
+- **FR:gates.failed** (P1): A merge that fails for any reason other than a moved head (`409`) MUST fail the run, so the owner sees it instead of the sweep retrying silently. A PR that edits `.github/workflows/*` cannot be merged by `GITHUB_TOKEN` (GitHub refuses a token without the `workflows` scope) and lands here; the owner merges it
 - **FR:gates.closed** (P1): A PR that is not open, or merged while the workflow ran, MUST end without error
 
 ### FR:triggers: Triggers

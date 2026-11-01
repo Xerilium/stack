@@ -77,7 +77,8 @@ async function run({ github, context, core, sleep = (ms) => new Promise((r) => s
     try {
       while (info?.hasNextPage) {
         const more = pick(await github.graphql(query, { ...vars, after: info.endCursor }));
-        nodes.push(...(more?.nodes ?? []));
+        if (!more) throw new Error('page missing');
+        nodes.push(...(more.nodes ?? []));
         info = more?.pageInfo;
       }
       return { nodes, complete: true };
@@ -94,7 +95,12 @@ async function run({ github, context, core, sleep = (ms) => new Promise((r) => s
     } catch (err) {
       if (err.status !== 404) throw err;
       const def = ap.AUTOPILOT_LABELS.find((l) => l.name === name);
-      await github.rest.issues.createLabel({ owner, repo, ...def });
+      try {
+        await github.rest.issues.createLabel({ owner, repo, ...def });
+      } catch (e) {
+        // A sweep and an event run can race to create it; the other one won.
+        if (e.status !== 422) throw e;
+      }
     }
   }
 
@@ -105,8 +111,9 @@ async function run({ github, context, core, sleep = (ms) => new Promise((r) => s
       const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: login });
       return ['admin', 'maintain', 'write'].includes(data.permission);
     } catch (err) {
-      core.warning(`Could not read permission: ${brief(err)}`);
-      return false;
+      // 404: not a collaborator at all. Anything else is unknown, not "no", so it must not strip Finalized.
+      if (err.status === 404) return false;
+      throw err;
     }
   }
 
@@ -180,7 +187,8 @@ async function run({ github, context, core, sleep = (ms) => new Promise((r) => s
     for (let attempt = 1; attempt <= ap.MERGE_RETRY_ATTEMPTS; attempt += 1) {
       const snap = await evaluate(prNumber);
       if (snap.state === 'MERGED') return { action: 'merged', byUs: false, attempts: attempt };
-      if (snap.state !== 'OPEN' || snap.fork) return { action: 'skipped', reason: 'closed', attempts: attempt };
+      if (snap.state !== 'OPEN') return { action: 'skipped', reason: 'closed', attempts: attempt };
+      if (snap.fork) return { action: 'skipped', reason: 'fork', attempts: attempt };
       if (snap.head !== headSha) return { action: 'skipped', reason: 'head-moved', attempts: attempt };
       if (snap.labels.includes(ap.PAUSED)) return { action: 'skipped', reason: 'paused', attempts: attempt };
       const blockers = ap.mergeBlockers(snap);
@@ -253,17 +261,21 @@ async function run({ github, context, core, sleep = (ms) => new Promise((r) => s
       const r = await reconcile(n);
       core.info(JSON.stringify(r));
       rows.push([`#${n}`, r.action, r.reason ?? r.error ?? r.deploy ?? '']);
+      // A failed merge must be visible, not retried silently every sweep; a 409 is only a head that moved.
+      // @req FR:autopilot/gates.failed
+      if (r.action === 'failed' && !String(r.error).startsWith('409')) failed += 1;
     } catch (err) {
       failed += 1;
       core.warning(`#${n}: ${brief(err)}`);
       rows.push([`#${n}`, 'error', brief(err)]);
     }
   }
+  if (!rows.length) return;
   await core.summary
     .addHeading('Autopilot', 3)
     .addTable([[{ data: 'PR', header: true }, { data: 'Result', header: true }, { data: 'Detail', header: true }], ...rows])
     .write();
-  if (failed) core.setFailed(`${failed} PR(s) failed to reconcile`);
+  if (failed) core.setFailed(`${failed} PR(s) failed to reconcile or merge`);
 }
 
 module.exports = { run };
