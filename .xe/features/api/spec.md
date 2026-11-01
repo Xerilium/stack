@@ -53,7 +53,9 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 
 ### FR:routes: Endpoints
 
-- **FR:routes.next** (P1): `GET /next` returns `{task}`, where `task` is `{ref,text,project,score}` or `null` when nothing is active
+- **FR:routes.next** (P1): `GET /next` returns `{task}`, where `task` is `{ref,text,project,score}` (the first of `GET /rank`) or `null` when nothing is active
+- **FR:routes.rank** (P1): `GET /rank?limit=` (1-200, default 20) returns `{items}`, the ranked tasks (@req FR:task-lifecycle/rank.output), each `{ref,text,project,score,rule?}`
+  > - @req FR:task-lifecycle/rank.order
 - **FR:routes.add** (P1): `POST /tasks` `{project,text,section?,parent?}` adds a task (201); `POST /projects` `{name,description?,repositoryUrl?,aliases?,priority?,capacity?,weeklyCapacity?,fileName?,force?}` adds a project (201 `{path,project}`)
 - **FR:routes.actions** (P1): `POST /tasks/{start|complete|skip|resume|suspend|set}` with `ref` (optional except for `set`; omitted means the next or parked task, as in the core). `complete` takes `summary?`, `remove?`; `suspend` takes `days?` or `hours?`; `set` takes `status?`, `priority?`, `effort?`, `impact?`, `checkbox?`, `suspend?`, `clearEmojis?`. Returns `{changed,ref?,before?,after?,message?}`
 - **FR:routes.remove** (P1): `POST /tasks/remove-completed` `{project?}` returns `{removed,files}`
@@ -77,3 +79,15 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 - **FR:docs.openapi** (P1): `docs/api/openapi.yaml` is OpenAPI 3.0.3, documents every route, the error model, and `fields`; the document MUST be generated from the route table (`pnpm openapi`) and a test MUST fail when the committed file differs from the generated one
   - **FR:docs.openapi.parity** (P1): Tests MUST check, per route, schema-level parity between the handler and the document: path and query params (names, types, bounds, enum, defaults), request body (properties, required, enums, bounds, `additionalProperties: false`), response schemas against real handler output, and the global `security` requirement (every route denies without a grant)
   - **FR:docs.openapi.valid** (P1): The document MUST be structurally valid OpenAPI 3.0.3 (single `components`, every `$ref` resolves, operationIds unique)
+
+## Data Model
+
+None (bodies are in `FR:routes.*`; entities live in the features that own them)
+
+## Architecture Constraints
+
+None
+
+## External Dependencies
+
+None

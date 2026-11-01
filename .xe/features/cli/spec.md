@@ -87,8 +87,8 @@ Owner needs one command per core operation so that the terminal can do everythin
   > - @req FR:task-lifecycle/project.file
 - **FR:cmd.add** (P1): `stack add <project> <text...> [--section name] [--parent ref]` MUST call `addTask` and print the new task ref
   > - @req FR:task-lifecycle/add.insert
-- **FR:cmd.next** (P1): `stack next` MUST print `ref score project text` for the top task, or nothing and exit 4 when there is none
-  > - @req FR:task-lifecycle/next.rank
+- **FR:cmd.next** (P1): `stack next [--top n]` MUST print `ref score project text` for each of the first `n` ranked tasks (default 1, max 50), or nothing and exit 4 when there is none; the order is `rankStack`'s, so the `/next` skill and the web Home cannot drift
+  > - @req FR:task-lifecycle/rank.order
 - **FR:cmd.start** (P1): `stack start [ref]` MUST call `startTask`
   > - @req FR:task-lifecycle/start.status
 - **FR:cmd.complete** (P1): `stack complete [ref] [--summary t] [--remove]` MUST call `completeTask`

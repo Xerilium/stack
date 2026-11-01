@@ -94,6 +94,21 @@ After the owner answers, Stack adds `answer`, `text`, `answered`. After the agen
 - **FR:cli.handle** (P1): `stack asks handle <key> --outcome handled|resolved|defaulted|reopen [--note --reply]`
 - **FR:cli.archive** (P2): `stack asks archive [--days n] [--json]` runs `archiveAsks` and prints the keys moved (`archived k1 k2`) or `no change: nothing to archive`
 
+### FR:needs: Chief of Staff escalations
+
+Owner needs the Chief of Staff to put only what truly needs him in front of him, each with a recommendation, what happens if he stays silent, and a working link, so that Needs you is short, trusted, and never filled by relays or duplicates.
+
+- **FR:needs.@json** (P1): Interface: `.stack/needs-you.json` — `{ "items": Need[] }` (@req FR:$need)
+  - The Chief of Staff writes the file; Stack adds and clears only `answer` on an item and never adds or removes an item
+- **FR:needs.read** (P1): `readNeeds(storage)` MUST return the items with a valid `id`, `title`, `recommendation`, and `link`, in file order, skipping the rest, and no items for an unreadable file
+- **FR:needs.answer** (P1): `answerNeed(storage, id, answer)` MUST write `answer` (`go`, `defer` with `until`, or `reply` with `text`, stamped with the time) onto the item with the storage's version check, and `undo` MUST clear it
+  - **FR:needs.answer.missing** (P1): `answerNeed` MUST throw `NotFoundError` for an unknown id
+- **FR:needs.web** (P1): Needs you MUST list every open item (no `answer`, or a `defer` past its `until`) before agent asks, in file order
+  - **FR:needs.web.card** (P1): An item MUST show its title, the recommendation as the primary action (`Go with it`), `If you do nothing: <default>` when set, and its link as `Open`; `Reply` and `Defer…` stay as for asks
+  - **FR:needs.web.answered** (P1): An answered item MUST move to the Answered group with Undo, like an answered ask
+- **FR:needs.dedupe** (P1): A task shown in Needs you (an open item's `ref`, or an open 🙋 row) MUST NOT appear on Home (NOW, Up next, Only have 5 min, Projects)
+- **FR:needs.api** (P1): `GET /needs-you` MUST return `{items}` (@req FR:$need) and `POST /needs-you/{id}/answer` `{choice,text?,until?}` MUST record the owner's answer (`go`, `defer`, `reply`) or clear it (`undo`), owner only
+
 ### FR:web: Asks view
 
 - **FR:web.home** (P1): The Asks view (`#asks`, **Needs you** in the nav, `g k`) is one key from every view and its open count shows as a badge in the rail and tab bar (web-shell `FR:nav.rail`) and in the tab title (`(3) Stack`). Home (web-shell `FR:nav.views`) is the starting screen. It shows at most 5 asks; the rest are behind `n more` and the view says so once, not with a badge
@@ -110,3 +125,24 @@ After the owner answers, Stack adds `answer`, `text`, `answered`. After the agen
 ## Dependencies
 
 - agent-inbox (redaction helpers, owner-only rule), storage-git (paths, atomic writes, one commit per write), api (routes, validation), auth-security (scope table), web-app (shell, keys, palette)
+
+## Data Model
+
+- **FR:$need** (P1): **`Need`** — One escalation from the Chief of Staff.
+  - `id` (string) — `[a-z0-9-]{1,64}`, stable
+  - `title` (string) — at most 200 characters
+  - `recommendation` (string) — what the CoS recommends, at most 300
+  - `default` (string?) — what happens if the owner stays silent, at most 200
+  - `by` (string?) — ISO date the default applies
+  - `link` (string) — an `https://` url or a repo-relative path that opens
+  - `project` (string?) — project name
+  - `ref` (string?) — the task row this is about (`project:line`)
+  - `answer` (object?) — `{ choice, text?, until?, at }`; `choice` is go, defer, or reply; written only by Stack
+
+## Architecture Constraints
+
+None
+
+## External Dependencies
+
+None
