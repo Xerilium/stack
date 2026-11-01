@@ -164,6 +164,8 @@ test.describe('Agent team', () => {
     await page.keyboard.type('Go');
     await page.keyboard.press('Enter');
     await expect(hero.locator('.agent-talk')).toHaveCount(0);
+    // The roll-up is long-running, so Keep open is its default and the session drawer opens; close it to get back to the card.
+    if (await page.getByRole('dialog').count()) { await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); }
     // The context line follows the session: `agent has it` while it works; once the mock flips it to idle, a 15 s poll clears it (no poll = stuck). Two cycles of slack: the flip can land right after a poll.
     // @req FR:web-app/home3.context
     await expect(hero.getByTestId('now-context')).toContainText('agent has it');
