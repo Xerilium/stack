@@ -702,8 +702,9 @@ function MoreMenu({ busy, owned, onAct, onOpen }: { busy: boolean; owned: boolea
   const btn = useRef<HTMLButtonElement>(null);
   const items = () => [...(box.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
   const close = (back: boolean) => { setOpen(false); if (back) btn.current?.focus(); };
-  useEffect(() => { if (open) items()[0]?.focus(); }, [open]); // focus moves into the menu
-  useEffect(() => {
+  // Layout effects: focus and the key listener are in place as soon as the menu is on screen, not after the next paint.
+  useLayoutEffect(() => { if (open) items()[0]?.focus(); }, [open]); // focus moves into the menu
+  useLayoutEffect(() => {
     if (!open) return;
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.stopPropagation(); close(true); return; }

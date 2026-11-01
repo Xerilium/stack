@@ -102,13 +102,17 @@ test.describe('Quiet Home', () => {
   // @req FR:web-app/home3.menu.keys
   test('the … menu takes focus, moves with the arrow keys, returns focus on Esc, and closes on Tab', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keyboard');
-    await mockApi(page);
+    const m = await mockApi(page);
     await page.goto('/');
     const focus = page.locator('.focus-block');
     await focus.getByTestId('more').click();
     await expect(focus.getByRole('menuitem', { name: /Defer 2h/ })).toBeFocused();
+    const before = await page.locator('.cursor').first().getAttribute('data-ref');
     await page.keyboard.press('ArrowDown');
     await expect(focus.getByRole('menuitem', { name: /Defer…/ })).toBeFocused();
+    expect(await page.locator('.cursor').first().getAttribute('data-ref')).toBe(before); // the arrow moved the menu, not the Home cursor
+    await page.keyboard.press('n'); // a key inside the open menu is not the global defer
+    expect(m.calls.some((c) => c.path === '/tasks/suspend')).toBe(false);
     await page.keyboard.press('End');
     await expect(focus.getByRole('menuitem', { name: /Open/ })).toBeFocused();
     await page.keyboard.press('Escape');
