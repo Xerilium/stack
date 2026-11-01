@@ -35,6 +35,17 @@ describe('one ranking', () => {
     expect(r.findIndex((x) => /FOCUS issues/.test(x.text))).toBeGreaterThan(2);
     expect(r.at(-1)!.project).toMatch(/FOCUS/);
   });
+  // @req FR:scoring-engine/overrides.top.blocks @req FR:task-lifecycle/rank.overrides
+  it('a top rule keeps its rows in the ranking when the time block would hide them (Finance in the Work block)', async () => {
+    const MON = new Date('2026-11-02T10:00:00-08:00'); // Monday in the Work block; Finance only has family-time capacity
+    const plain = await rankStack(ctxOf(null), MON);
+    expect(plain.some((x) => /Mortgage|USAA/.test(x.text))).toBe(false);
+    const r = await rankStack(ctxOf(), MON);
+    expect(titles(r)[0]).toMatch(/Mortgage|USAA/);
+    expect(r.filter((x) => x.rule === 'Pay bills').length).toBeGreaterThan(0);
+    // a down rule never brings rows back
+    expect(r.some((x) => /Weekly: .*unemployment/.test(x.text))).toBe(false);
+  });
   // @req FR:task-lifecycle/rank.overrides
   it('without the file the engine order stands, and an unreadable file changes nothing', async () => {
     const plain = await rankStack(ctxOf(null), AT);

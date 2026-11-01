@@ -119,3 +119,15 @@ test.describe('Quiet Home', () => {
     await expect(page.getByTestId('now-context')).toContainText('late');
   });
 });
+
+test.describe('Needs you cursor', () => {
+  // @req FR:ask-queue/needs.web
+  test('a CoS item that arrives after the asks took the card: the cursor follows the top item', async ({ page }) => {
+    const m = await mockApi(page);
+    m.asks = [{ key: 'pr-1', state: 'open', ask: 'Review PR 1', kind: 'approve', from: 'cos', project: 'alpha', reversible: true, priority: 'normal', blocks: 0, created: '2026-10-31T10:00:00Z', updated: '2026-10-31T10:00:00Z', score: 60, overdue: false }];
+    m.needs = [need()];
+    await page.route('**/api/needs-you', async (route) => { await new Promise((ok) => setTimeout(ok, 600)); await route.fallback(); }); // the file loads after the asks
+    await page.goto('/#/asks');
+    await expect(page.locator('.ask-card .ask-title')).toHaveText('Pay bills tonight');
+  });
+});

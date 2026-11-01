@@ -6,8 +6,8 @@
 import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { rollRecurring } from './recurring';
-import { DEFAULT_ENGINE, getEngine, rankTasks, ScoringTask, toScoringProject } from './scoring';
-import { applyOverrides, parsePriorities, PRIORITIES_PATH, ruleFor } from './priorities';
+import { DEFAULT_ENGINE, getEngine, rankTasks, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
+import { applyOverrides, matcherFor, parsePriorities, PRIORITIES_PATH } from './priorities';
 import { ConflictError, NotFoundError, Storage, writeAll, type AuxFiles } from './storage';
 
 export class LifecycleError extends Error {}
@@ -309,22 +309,34 @@ async function rankAll(ctx: LifecycleContext, at?: Date): Promise<{ next: Ranked
     p.tasks.forEach((t, k) => where.set(t, { doc: docs[i], line: rows[k] }));
   });
   const when = at ?? clock(ctx);
-  const ranked = rankTasks(getEngine(ctx.engine ?? DEFAULT_ENGINE), projects, cfg(ctx), when).map((s) => {
-    const loc = where.get(s.task)!;
-    return { doc: loc.doc, next: { ref: { path: loc.doc.path, line: loc.line, text: rowText(loc.doc, loc.line) }, text: s.task.text, project: s.task.project, score: s.score } as RankedTask };
-  });
+  const engine = getEngine(ctx.engine ?? DEFAULT_ENGINE);
   // @req FR:task-lifecycle/rank.overrides
   // Overrides written by the owner and the Chief of Staff, read from the same storage.
   const aux = ctx.storage as Partial<AuxFiles>;
   const file = typeof aux.readAux === 'function' ? await aux.readAux(PRIORITIES_PATH).catch(() => null) : null;
   const rules = file ? parsePriorities(file.content) : [];
   const above = new Map(docs.map((d) => [d, parentTexts(d)] as const));
-  const ordered = applyOverrides(ranked.map((r) => ({ ...r, text: r.next.text, project: r.next.project, context: above.get(r.doc)?.get(r.next.ref.line)?.text ?? '' })), rules, when);
+  const rowOf = (s: ScoredTask) => {
+    const loc = where.get(s.task)!;
+    const next: RankedTask = { ref: { path: loc.doc.path, line: loc.line, text: rowText(loc.doc, loc.line) }, text: s.task.text, project: s.task.project, score: s.score };
+    return { doc: loc.doc, next, text: s.task.text, project: s.task.project, context: above.get(loc.doc)?.get(loc.line)?.text ?? '', task: s.task };
+  };
+  let rows = rankTasks(engine, projects, cfg(ctx), when).map(rowOf);
+  const names = projects.flatMap((p) => [p.name, p.name.replace(/^[^\p{L}\p{N}]+/u, '')]);
+  const match = matcherFor(rules, when, names);
+  // A top rule is the owner saying "this, now": its rows stay even when the time block would hide them. @req FR:scoring-engine/overrides.top.blocks
+  if (rules.some((r) => r.effect === 'top')) {
+    const have = new Set(rows.map((r) => r.task));
+    const extra = rankTasks(engine, projects, cfg(ctx), when, { ignoreBlocks: true }).map(rowOf).filter((r) => !have.has(r.task) && match(r)?.rule.effect === 'top');
+    rows = [...rows, ...extra].sort((a, b) => b.next.score - a.next.score);
+  }
+  const ordered = applyOverrides(rows, rules, when, names);
   for (const o of ordered) {
     const rootLine = above.get(o.doc)?.get(o.next.ref.line)?.root;
     if (rootLine !== undefined) o.next.root = { path: o.doc.path, line: rootLine, text: rowText(o.doc, rootLine) };
+    const m = match(o);
+    if (m) o.next.rule = m.rule.match;
   }
-  for (const o of ordered) { const rule = ruleFor(o, rules, when); if (rule) o.next.rule = rule.match; }
   return ordered.map(({ doc, next }) => ({ doc, next }));
 }
 

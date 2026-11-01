@@ -763,3 +763,9 @@ body:not(.keyed) .main kbd { display: none; }
 .menu-item { display: flex; justify-content: space-between; gap: 18px; align-items: center; width: 100%; text-align: left; padding: 9px 10px; background: transparent; border: 0; border-radius: 7px; color: inherit; font: inherit; cursor: pointer; }
 .menu-item:hover, .menu-item:focus-visible { background: var(--chip); }
 @media (max-width: 719px) { .menu { left: auto; right: 0; } .menu-item { min-height: 44px; } }
+@media (max-width: 719px) {
+  .focus-block .actions { flex-wrap: nowrap; }
+  .focus-block .actions .btn { flex: 1 1 0; }
+  .focus-block .actions .more { flex: 0 0 auto; }
+  .focus-block .actions .more .more-btn { flex: 0 0 auto; min-width: var(--tap); padding: 0 14px; }
+}

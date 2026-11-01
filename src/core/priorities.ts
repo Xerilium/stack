@@ -42,24 +42,42 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** The phrase appears as whole words, case-insensitively. @req FR:scoring-engine/overrides.match */
 const has = (haystack: string, phrase: string): boolean => new RegExp(`(?<![\\p{L}\\p{N}])${esc(phrase)}(?![\\p{L}\\p{N}])`, 'iu').test(haystack);
 
-/** The first live rule in file order that matches the row. @req FR:scoring-engine/overrides.match.first */
-export function ruleFor(row: { text: string; project: string; context?: string }, rules: PriorityRule[], at: Date): PriorityRule | undefined {
+const norm = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+export interface Matched { rule: PriorityRule; index: number; /** `own`: the project, or the row itself; `parent`: only a row above it. */ via: 'own' | 'parent' }
+type Row = { text: string; project: string; context?: string };
+
+/**
+ * Finds, for a row, the first live rule in file order that matches it. A rule that names a project (by name or title)
+ * applies to that project only; any other rule matches a whole word or phrase in the row, or in the rows above it.
+ * @req FR:scoring-engine/overrides.match @req FR:scoring-engine/overrides.match.project @req FR:scoring-engine/overrides.match.first
+ */
+export function matcherFor(rules: PriorityRule[], at: Date, projects: string[]): (row: Row) => Matched | undefined {
   const today = at.toISOString().slice(0, 10);
-  return rules.find((r) => (!r.until || today < r.until) && (has(row.project, r.match) || has(row.text, r.match) || (!!row.context && has(row.context, r.match))));
+  const known = new Set(projects.map(norm));
+  const live = rules.map((rule, index) => ({ rule, index })).filter(({ rule }) => !rule.until || today < rule.until);
+  return (row) => {
+    for (const { rule, index } of live) {
+      if (known.has(norm(rule.match))) { if (norm(row.project) === norm(rule.match)) return { rule, index, via: 'own' }; continue; }
+      if (has(row.text, rule.match)) return { rule, index, via: 'own' };
+      if (row.context && has(row.context, rule.match)) return { rule, index, via: 'parent' };
+    }
+    return undefined;
+  };
 }
 
 /**
- * Orders rows by tier (top, unmatched, down), keeping the engine order inside a tier; hide removes.
+ * Orders rows by tier (top, unmatched, down), keeping the engine order inside a tier; hide removes. Top rows follow
+ * the order of their rules, and inside one rule the rows that match on their own come before those matching through a parent.
  * @req FR:scoring-engine/overrides.tiers @req FR:scoring-engine/overrides.hide @req FR:scoring-engine/overrides.until
  */
-export function applyOverrides<T extends { text: string; project: string; context?: string }>(ranked: T[], rules: PriorityRule[], at: Date): T[] {
+export function applyOverrides<T extends Row>(ranked: T[], rules: PriorityRule[], at: Date, projects: string[] = [...new Set(ranked.map((r) => r.project))]): T[] {
   if (!rules.length) return ranked;
-  // tier 0: top (by rule position), 1: unmatched, 2: down
-  const keep: { row: T; t: number; k: number; i: number }[] = [];
+  const match = matcherFor(rules, at, projects);
+  const keep: { row: T; t: number; k: number; v: number; i: number }[] = [];
   ranked.forEach((row, i) => {
-    const r = ruleFor(row, rules, at);
-    if (r?.effect === 'hide') return;
-    keep.push({ row, t: r?.effect === 'top' ? 0 : r?.effect === 'down' ? 2 : 1, k: r?.effect === 'top' ? rules.indexOf(r) : 0, i });
+    const m = match(row);
+    if (m?.rule.effect === 'hide') return;
+    keep.push({ row, t: m?.rule.effect === 'top' ? 0 : m?.rule.effect === 'down' ? 2 : 1, k: m?.rule.effect === 'top' ? m.index : 0, v: m?.rule.effect === 'top' && m.via === 'parent' ? 1 : 0, i });
   });
-  return keep.sort((a, b) => a.t - b.t || a.k - b.k || a.i - b.i).map((k) => k.row);
+  return keep.sort((a, b) => a.t - b.t || a.k - b.k || a.v - b.v || a.i - b.i).map((k) => k.row);
 }

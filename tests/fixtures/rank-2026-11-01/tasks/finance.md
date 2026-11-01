@@ -2,6 +2,8 @@
 
 - **Project value:** 💰💰💰 ⚠️⚠️
 - **Aliases:** finance
+- **Family evening capacity:** 2h
+- **Family weekend capacity:** 4h
 
 ## 🔄 Active
 

@@ -46,6 +46,18 @@ describe('applyOverrides', () => {
   it('top rows follow the order of their rules in the file', () => {
     expect(applyOverrides([A, B, D], [{ match: 'MVP onboarding', effect: 'top' }, { match: 'Pay bills', effect: 'top' }], at)).toEqual([B, A, D]);
   });
+  // @req FR:scoring-engine/overrides.match.project
+  it('a rule that names a project applies to that project only, not to rows that mention the word', () => {
+    const ftk = row('FinOps toolkit', 'Sweep all FTK FOCUS 1.4 features');
+    expect(applyOverrides([ftk, C, A], [{ match: 'FOCUS', effect: 'down' }], at)).toEqual([ftk, A, C]); // only the FOCUS project goes down
+    expect(applyOverrides([ftk, A], [{ match: 'FOCUS 1.4', effect: 'down' }], at)).toEqual([A, ftk]); // not a project: a phrase in the text
+  });
+  // @req FR:scoring-engine/overrides.tiers
+  it('inside a top rule, rows that match on their own come before rows that match only through a parent', () => {
+    const goalLeaf = { project: 'Allyte', text: 'Draft the post', context: 'FinOps hubs FH 0.10 goals' };
+    const release = { project: 'Allyte', text: 'FH 0.10 released', context: '' };
+    expect(applyOverrides([goalLeaf, release], [{ match: 'FH 0.10', effect: 'top' }], at)).toEqual([release, goalLeaf]);
+  });
   // @req FR:scoring-engine/overrides.match.first
   it('the first matching rule in file order decides', () => {
     expect(applyOverrides([C, A], [{ match: 'FOCUS', effect: 'top' }, { match: 'FOCUS', effect: 'down' }], at)[0]).toBe(C);

@@ -119,10 +119,15 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   useEffect(() => { document.title = pageTitle(total); }, [total]);
 
   // keep the cursor on the same ask when the order changes
+  // A Chief of Staff item outranks everything: when one arrives while the cursor sits on the old top, the cursor follows it.
+  const topKey = useRef<string | null>(null);
   useEffect(() => {
     const c = cursorRef.current;
     const i = c ? lastIndex.current : 0;
-    setCursor(keepCursor(c, ranked, i));
+    const top = ranked[0]?.key ?? null;
+    const followNeed = !!c && c === topKey.current && !!top && top !== c && top.startsWith('need:');
+    topKey.current = top;
+    setCursor(followNeed ? top : keepCursor(c, ranked, i));
   }, [ranked, setCursor]);
   const lastIndex = useRef(0);
   lastIndex.current = Math.max(0, ranked.findIndex((x) => x.key === cursor));
