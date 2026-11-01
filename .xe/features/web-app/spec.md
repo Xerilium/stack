@@ -61,7 +61,7 @@ Home is the starting screen (web-shell `FR:nav.views`): the one thing to do now,
 - **FR:home.one** (P1): The focus block shows the first ranked task from `GET /rank` that is not in Needs you (`FR:home3.dedupe`), as the NOW card (`FR:home3.now`)
 - **FR:home.fit** (P1): When the next task needs more than the time you have now (the window, `FR:home/home.window`: until the next meeting, personal block, or bed, or what "I have" says), the highest-ranked actionable task that fits becomes NOW (one focal point) and the next task waits as one muted line under it (`<title> · 2h · doesn't fit now: needs 2h, 45m until Allyte sync` with `More time ]` and `Start anyway`); the cursor starts on the task shown as NOW. When nothing fits, the block keeps the next task and says `No time for this now: needs 2h, 45m until …`. In personal time only rows that belong to the block fit (`Family until 8:00p: only 🏠 tasks now`); in a meeting or past bed it says when you are back
 - **FR:home.next** (P1): **Up next** lists the next 2 tasks in `GET /rank` order, one line each: title and project (`FR:home3.rows`). In-progress (🚧) tasks come first
-- **FR:home.projects** (P1): **Projects** lists every project with open work: its top task (highest rank among Active rows, else the first Up next, else the first open row), expected time, countdown; the project name opens its Full stack list. Projects whose top task is already on screen (NOW, the waiting task, Up next) are left out
+- **FR:home.projects** (P1): **Projects** lists every project with open work: its top task (highest rank among Active rows, else the first Up next; never an arbitrary open row, which the ranking may have hidden), expected time, countdown; the project name opens its Full stack list. Projects whose top task is already on screen (NOW, the waiting task, Up next) are left out
 - **FR:home.quiet** (P1): Nothing else: no `Show all active`, no counts, no agent activity. Full stack is one chord away (`g a`)
 
 ### FR:home2: Home, round 3 (Michael, Oct 29)
@@ -85,7 +85,8 @@ Owner needs Home to show one decision at a time, with nothing on it that does no
 - **FR:home3.context** (P1): The context line MUST be the project name, plus `late` only when the task is overdue, plus `agent has it` when an agent owns the task
   - The card has no effort, lateness detail, ends-at, Critical or AI badge, or agent name
 - **FR:home3.menu** (P1): The `…` menu MUST hold Defer 2h, Defer…, Delegate, and Open, and close on `Esc` or a click outside
-  - **FR:home3.menu.agent** (P1): For a task an agent owns the menu MUST NOT offer Delegate
+  - **FR:home3.menu.keys** (P1): The `…` menu MUST move focus into itself on open, move between items with the arrow keys, `Home`, and `End`, close on `Tab`, and return focus to its button on `Esc` or a choice
+- **FR:home3.menu.agent** (P1): For a task an agent owns the menu MUST NOT offer Delegate
 - **FR:home3.rows** (P1): Up next, Only have 5 min, and Projects rows MUST show the title and the project name only
 - **FR:home3.keys** (P1): Key hints (`kbd`) in the content area MUST be hidden until the first key press in the session, and every control MUST carry its key in its tooltip
 - **FR:home3.dedupe** (P1): Home MUST NOT show a task that is in Needs you (an open need's `ref`, or an open 🙋 row; ask-queue `FR:needs.dedupe`)

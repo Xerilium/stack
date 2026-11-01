@@ -357,7 +357,7 @@ export const ROUTES: Route[] = [
       noQuery(c);
       ownerOnly(c, 'Only the owner can answer a need');
       const b = validate<{ choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }>(await readBody(c.req), NEED_ANSWER_BODY.schema, NEED_ANSWER_BODY.required);
-      if (b.choice === 'defer' && !b.until) throw invalid([{ field: 'until', message: 'Required for defer' }]);
+      if (b.choice === 'defer' && (!b.until || Number.isNaN(Date.parse(b.until)))) throw invalid([{ field: 'until', message: 'Required for defer: an ISO date or time' }]);
       if (b.choice === 'reply' && !b.text?.trim()) throw invalid([{ field: 'text', message: 'Required for reply' }]);
       await answerNeed(c.deps.storage, c.params[0], b, (c.deps.now ?? (() => new Date()))());
       return json(200, { changed: true });

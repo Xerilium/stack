@@ -699,19 +699,31 @@ export function WeekView({ w }: { w: Week }) {
 function MoreMenu({ busy, owned, onAct, onOpen }: { busy: boolean; owned: boolean; onAct: (a: 'notnow' | 'defer' | 'delegate') => void; onOpen: () => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const items = () => [...(box.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
+  const close = (back: boolean) => { setOpen(false); if (back) btn.current?.focus(); };
+  useEffect(() => { if (open) items()[0]?.focus(); }, [open]); // focus moves into the menu
   useEffect(() => {
     if (!open) return;
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
-    const click = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(true); return; }
+      if (e.key === 'Tab') { close(false); return; } // Tab leaves the menu
+      const list = items(); const at = list.indexOf(document.activeElement as HTMLButtonElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); list[(at + 1) % list.length]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); list[(at - 1 + list.length) % list.length]?.focus(); }
+      else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus(); }
+      else if (e.key === 'End') { e.preventDefault(); list.at(-1)?.focus(); }
+    };
+    const click = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) close(false); };
     document.addEventListener('keydown', key, true); document.addEventListener('mousedown', click);
     return () => { document.removeEventListener('keydown', key, true); document.removeEventListener('mousedown', click); };
   }, [open]);
-  const pick = (fn: () => void) => () => { setOpen(false); fn(); };
+  const pick = (fn: () => void) => () => { close(true); fn(); };
   return (
     <div class="more" ref={box}>
-      <button type="button" class="btn more-btn" aria-haspopup="menu" aria-expanded={open} aria-label="More actions" title="More actions" data-testid="more" onClick={() => setOpen((o) => !o)}>…</button>
+      <button type="button" ref={btn} class="btn more-btn" aria-haspopup="menu" aria-expanded={open} aria-label="More actions" title="More actions" data-testid="more" onClick={() => setOpen((o) => !o)}>…</button>
       {open && (
-        <div class="menu" role="menu" data-testid="more-menu">
+        <div class="menu" role="menu" aria-label="More actions" data-testid="more-menu">
           <button type="button" role="menuitem" class="menu-item" title="Back in 2 hours (n)" disabled={busy} onClick={pick(() => onAct('notnow'))}>Defer 2h <kbd>n</kbd></button>
           <button type="button" role="menuitem" class="menu-item" title="Pick when (z)" disabled={busy} onClick={pick(() => onAct('defer'))}>Defer… <kbd>z</kbd></button>
           {!owned && <button type="button" role="menuitem" class="menu-item" title="An agent takes it (A)" disabled={busy} onClick={pick(() => onAct('delegate'))}>Delegate <kbd>A</kbd></button>}
@@ -780,7 +792,7 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
           <kbd class="have-key" title="h then 1-4; 0 resets">h</kbd>
         </div>
       </div>
-      {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd>c</kbd></p></div>}
+      {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd class="always">c</kbd></p></div>}
       {one && hero && (
         <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${p.justDone.has(one.task.ref) ? ' done-anim' : ''}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
           <h1 data-testid="next-title"><span class="h1-toggle" {...toggleOn<HTMLSpanElement>(one.task.ref, p)}><Md text={hero.title || one.task.text} /></span></h1>

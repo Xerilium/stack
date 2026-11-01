@@ -13,6 +13,7 @@ describe('readNeeds', () => {
   // @req FR:ask-queue/needs.@json @req FR:ask-queue/needs.read @req FR:ask-queue/$need
   it('returns the valid items in file order and skips the rest; no file or a broken file has none', async () => {
     const s = await mk([
+      item({ id: 'back', link: '/\\evil.example' }), item({ id: 'slash', link: '/etc/passwd' }), item({ id: 'bs', link: 'docs\\x.md' }),
       item(), item({ id: 'b', title: '' }), item({ id: 'Bad Id' }), item({ id: 'c', link: 'javascript:alert(1)' }),
       item({ id: 'd', recommendation: '' }), item({ id: 'e', link: 'docs/plan.md', ref: 'finance:12', project: 'finance' }), 'junk', null,
     ]);
@@ -45,6 +46,18 @@ describe('answerNeed', () => {
     expect((await readNeeds(s))[0].answer).toMatchObject({ choice: 'reply', text: 'Pay Visa first' });
     await answerNeed(s, 'pay-bills', { choice: 'undo' }, NOW);
     expect((await readNeeds(s))[0].answer).toBeUndefined();
+  });
+  // @req FR:ask-queue/needs.answer
+  it('a defer needs a real time, and a lost race with the CoS is retried once on the fresh file', async () => {
+    const s = await mk([item()]);
+    await expect(answerNeed(s, 'pay-bills', { choice: 'defer', until: 'tomorrow-ish' }, NOW)).rejects.toBeInstanceOf(StorageError);
+    const real = s.writeAux.bind(s);
+    let raced = false;
+    s.writeAux = async (p, c, o) => { if (!raced) { raced = true; await real(p, JSON.stringify({ items: [item(), item({ id: 'cos-added' })] }), { expectedVersion: o.expectedVersion }); } return real(p, c, o); };
+    await answerNeed(s, 'pay-bills', { choice: 'go' }, NOW);
+    const got = await readNeeds(s);
+    expect(got.map((n) => n.id)).toEqual(['pay-bills', 'cos-added']); // the CoS edit survived
+    expect(got[0].answer?.choice).toBe('go');
   });
   // @req FR:ask-queue/needs.answer.missing
   it('an unknown id is NotFoundError and nothing is written', async () => {

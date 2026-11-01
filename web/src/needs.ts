@@ -54,7 +54,7 @@ export interface NeedItem {
  * @req FR:ask-queue/needs.web @req FR:ask-queue/needs.web.card
  */
 export function fromNeeds(items: NeedItem[], now: Date): AskItem[] {
-  return items.filter((n) => !n.answer || (n.answer.choice === 'defer' && !!n.answer.until && new Date(n.answer.until).getTime() <= now.getTime())).map((n, i) => ({
+  return items.filter((n) => !n.answer || (n.answer.choice === 'defer' && !(Date.parse(n.answer.until ?? '') > now.getTime()))).map((n, i) => ({
     key: `need:${n.id}`, source: 'need' as const, state: 'open' as const, ask: n.title, kind: 'approve' as const, from: 'Chief of Staff', project: n.project, ref: n.ref,
     recommend: n.recommendation, default: n.default, by: n.by, link: n.link, reversible: true, priority: 'high' as const, blocks: 0,
     created: '', updated: '', score: 1000 - i, overdue: !!n.by && new Date(n.by).getTime() < now.getTime(),

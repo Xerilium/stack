@@ -99,6 +99,25 @@ test.describe('Quiet Home', () => {
     await expect(focus.getByTestId('more-menu')).toHaveCount(0);
   });
 
+  // @req FR:web-app/home3.menu.keys
+  test('the … menu takes focus, moves with the arrow keys, returns focus on Esc, and closes on Tab', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'keyboard');
+    await mockApi(page);
+    await page.goto('/');
+    const focus = page.locator('.focus-block');
+    await focus.getByTestId('more').click();
+    await expect(focus.getByRole('menuitem', { name: /Defer 2h/ })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(focus.getByRole('menuitem', { name: /Defer…/ })).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(focus.getByRole('menuitem', { name: /Open/ })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(focus.getByTestId('more')).toBeFocused();
+    await focus.getByTestId('more').click();
+    await page.keyboard.press('Tab');
+    await expect(focus.getByTestId('more-menu')).toHaveCount(0);
+  });
+
   // @req FR:web-app/home3.menu
   test('Open from the menu opens the task full screen', async ({ page }) => {
     await mockApi(page);

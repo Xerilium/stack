@@ -59,10 +59,10 @@ export interface ScoredTask {
 
 export interface ProjectWeight { name: string; valueScore: number; calculatedPriority: number; weight: number }
 
-/** @req FR:scoring-engine/engine.interface */
 /** `ignoreBlocks`: keep the due-date lens but do not drop tasks the current time block would hide. @req FR:scoring-engine/overrides.top.blocks */
 export interface RankOptions { ignoreBlocks?: boolean }
 
+/** @req FR:scoring-engine/engine.interface */
 export interface ScoringEngine {
   readonly id: string;
   score(projects: ScoringProject[], config: StackConfig): ScoredTask[];

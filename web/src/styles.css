@@ -753,7 +753,7 @@ body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: non
 .phone-brand .chip.unsaved { margin-left: auto; min-height: 32px; padding: 4px 12px; }
 
 /* Quiet Home: one decision, one context line, hints only after the first key. @req FR:web-app/home3.now @req FR:web-app/home3.keys @req FR:web-app/home3.menu */
-body:not(.keyed) .main kbd { display: none; }
+body:not(.keyed) .main kbd:not(.always) { display: none; }
 .focus-block .context { margin: 4px 0 14px; color: var(--muted); font-size: 14px; }
 .focus-block .context .late { color: var(--danger, #c2410c); font-weight: 600; }
 .focus-block .context .owned { color: var(--accent-ink, var(--accent)); }

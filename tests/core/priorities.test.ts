@@ -68,6 +68,18 @@ describe('applyOverrides', () => {
     expect(applyOverrides([C, A], [{ match: 'FOCUS', effect: 'hide' }], at)).toEqual([A]);
   });
   // @req FR:scoring-engine/overrides.until
+  it('until is the owner day, not UTC: a rule until Nov 2 still applies at 8 pm Nov 1 in Los Angeles', () => {
+    const rule: PriorityRule = { match: 'FOCUS', effect: 'down', until: '2026-11-02' };
+    const evening = new Date('2026-11-02T04:00:00Z'); // 8 pm Nov 1 (PDT/PST)
+    expect(applyOverrides([C, A], [rule], evening, undefined, 'America/Los_Angeles')).toEqual([A, C]);
+    expect(applyOverrides([C, A], [rule], evening)).toEqual([C, A]); // UTC says Nov 2: expired
+    expect(applyOverrides([C, A], [rule], new Date('2026-11-02T09:00:00Z'), undefined, 'America/Los_Angeles')).toEqual([C, A]); // midnight local has passed
+  });
+  // @req FR:scoring-engine/overrides.invalid
+  it('skips a date that is not a calendar day and a match that is absurdly long', () => {
+    expect(parsePriorities(JSON.stringify({ rules: [{ match: 'a', effect: 'top', until: '2026-02-31' }, { match: 'x'.repeat(101), effect: 'top' }, { match: 'ok', effect: 'top', until: '2026-02-28' }] })).map((r) => r.match)).toEqual(['ok']);
+  });
+  // @req FR:scoring-engine/overrides.until
   it('a rule stops applying on its until date', () => {
     const rule: PriorityRule = { match: 'FOCUS', effect: 'down', until: '2026-11-01' };
     expect(applyOverrides([C, A], [rule], new Date('2026-10-30T12:00:00Z'))).toEqual([A, C]);

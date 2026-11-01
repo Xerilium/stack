@@ -62,13 +62,19 @@ describe('homeOf', () => {
     expect(big.fits).toBe(false);
   });
   // @req FR:web-app/home.projects @req FR:web-app/home2.order
-  it('projects are in the order of their top ranked row; a project with nothing ranked falls back to its first row', () => {
+  it('projects are in the order of their top ranked row; a project with nothing ranked is left out unless it has an Up next row', () => {
     const h = homeOf({ tasks, projects, ranked: next('beta:1', 'alpha:2', 'alpha:1'), now: at, minutesLeft: 600 });
     expect(h.projects.map((p) => [p.project, p.top.task.ref, p.shown])).toEqual([
       ['beta', 'beta:1', true],
       ['alpha', 'alpha:2', true],
-      ['gamma', 'gamma:1', false],
     ]);
+  });
+  // @req FR:web-app/home.projects
+  it('a project with nothing ranked shows its Up next row, never an arbitrary open row (the ranking may have hidden it)', () => {
+    const t2 = [...tasks, T('delta:1', 'Hidden by a rule', 'delta'), T('eps:1', 'Next in line', 'eps', '⏭️ Up next')];
+    const h = homeOf({ tasks: t2, projects: [...projects, P('delta'), P('eps')], ranked: next('alpha:1'), now: at, minutesLeft: 600 });
+    expect(h.projects.map((p) => p.project)).toContain('eps');
+    expect(h.projects.map((p) => p.project)).not.toContain('delta');
   });
   // @req FR:web-app/home.fit
   it('no effort set: 30 min assumed and marked', () => {

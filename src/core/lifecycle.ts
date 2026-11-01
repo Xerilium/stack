@@ -313,7 +313,8 @@ async function rankAll(ctx: LifecycleContext, at?: Date): Promise<{ next: Ranked
   // @req FR:task-lifecycle/rank.overrides
   // Overrides written by the owner and the Chief of Staff, read from the same storage.
   const aux = ctx.storage as Partial<AuxFiles>;
-  const file = typeof aux.readAux === 'function' ? await aux.readAux(PRIORITIES_PATH).catch(() => null) : null;
+  // A read error is not "no overrides": it propagates, so rows never reappear silently when the storage hiccups.
+  const file = typeof aux.readAux === 'function' ? await aux.readAux(PRIORITIES_PATH) : null;
   const rules = file ? parsePriorities(file.content) : [];
   const above = new Map(docs.map((d) => [d, parentTexts(d)] as const));
   const rowOf = (s: ScoredTask) => {
@@ -322,15 +323,15 @@ async function rankAll(ctx: LifecycleContext, at?: Date): Promise<{ next: Ranked
     return { doc: loc.doc, next, text: s.task.text, project: s.task.project, context: above.get(loc.doc)?.get(loc.line)?.text ?? '', task: s.task };
   };
   let rows = rankTasks(engine, projects, cfg(ctx), when).map(rowOf);
-  const names = projects.flatMap((p) => [p.name, p.name.replace(/^[^\p{L}\p{N}]+/u, '')]);
-  const match = matcherFor(rules, when, names);
+  const names = projects.map((p) => p.name);
+  const match = matcherFor(rules, when, names, cfg(ctx).timezone);
   // A top rule is the owner saying "this, now": its rows stay even when the time block would hide them. @req FR:scoring-engine/overrides.top.blocks
   if (rules.some((r) => r.effect === 'top')) {
     const have = new Set(rows.map((r) => r.task));
     const extra = rankTasks(engine, projects, cfg(ctx), when, { ignoreBlocks: true }).map(rowOf).filter((r) => !have.has(r.task) && match(r)?.rule.effect === 'top');
     rows = [...rows, ...extra].sort((a, b) => b.next.score - a.next.score);
   }
-  const ordered = applyOverrides(rows, rules, when, names);
+  const ordered = applyOverrides(rows, rules, when, names, cfg(ctx).timezone);
   for (const o of ordered) {
     const rootLine = above.get(o.doc)?.get(o.next.ref.line)?.root;
     if (rootLine !== undefined) o.next.root = { path: o.doc.path, line: rootLine, text: rowText(o.doc, rootLine) };

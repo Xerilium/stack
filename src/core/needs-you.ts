@@ -2,7 +2,7 @@
  * The Chief of Staff's escalations: `.stack/needs-you.json`. The CoS writes it; Stack only adds or clears `answer`.
  * @req FR:ask-queue/needs.@json
  */
-import { NotFoundError, StorageError, type AuxFiles, type Storage } from './storage';
+import { ConflictError, NotFoundError, StorageError, type AuxFiles, type Storage } from './storage';
 
 export const NEEDS_PATH = '.stack/needs-you.json';
 
@@ -21,7 +21,8 @@ const safeLink = (v: unknown): string | undefined => {
   const s = str(v, 500);
   if (!s) return undefined;
   if (/^https:\/\//i.test(s)) return s;
-  return /^[a-z][a-z0-9+.-]*:/i.test(s) || s.startsWith('//') ? undefined : s;
+  // A repo path: no scheme, no leading slash or backslash (a browser reads `/\\host` as another site), no backslashes at all.
+  return /^[a-z][a-z0-9+.-]*:/i.test(s) || /^[/\\]/.test(s) || s.includes('\\') ? undefined : s;
 };
 
 function parseAnswer(v: unknown): NeedAnswer | undefined {
@@ -65,6 +66,11 @@ export async function readNeeds(storage: Storage): Promise<Need[]> {
  * @req FR:ask-queue/needs.answer @req FR:ask-queue/needs.answer.missing
  */
 export async function answerNeed(storage: Storage, id: string, input: NeedAnswerInput, now: Date): Promise<void> {
+  // The CoS edits the same file: one lost race is retried on the fresh content, a second is a conflict.
+  try { await answerOnce(storage, id, input, now); } catch (e) { if (!(e instanceof ConflictError)) throw e; await answerOnce(storage, id, input, now); }
+}
+
+async function answerOnce(storage: Storage, id: string, input: NeedAnswerInput, now: Date): Promise<void> {
   const a = aux(storage);
   const f = a ? await a.readAux(NEEDS_PATH) : null;
   if (!a || !f) throw new NotFoundError(`No needs-you file: ${id}`);
@@ -74,7 +80,7 @@ export async function answerNeed(storage: Storage, id: string, input: NeedAnswer
   if (!item) throw new NotFoundError(`Unknown need: ${id}`);
   if (input.choice === 'undo') delete item.answer;
   else {
-    if (input.choice === 'defer' && !str(input.until, 40)) throw new StorageError('A deferred need needs an until time');
+    if (input.choice === 'defer' && !(str(input.until, 40) && !Number.isNaN(Date.parse(input.until!)))) throw new StorageError('A deferred need needs a valid until time');
     if (input.choice === 'reply' && !str(input.text, 2000)) throw new StorageError('A reply needs text');
     item.answer = { choice: input.choice, at: now.toISOString(), ...(input.choice === 'reply' ? { text: str(input.text, 2000) } : {}), ...(input.choice === 'defer' ? { until: str(input.until, 40) } : {}) };
   }

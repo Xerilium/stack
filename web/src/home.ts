@@ -75,7 +75,8 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
   const projects: HomeProject[] = [];
   for (const p of o.projects) {
     const mine = tasks.filter((t) => t.project === p.name && !t.done && t.depth === 0 && !hidden.has(t.ref));
-    const top = ordered.find((t) => t.project === p.name) ?? mine.find(isUpNext) ?? mine[0];
+    // No arbitrary first row as a fallback: the server may have hidden it (a hide rule). @req FR:web-app/home.projects
+    const top = ordered.find((t) => t.project === p.name) ?? mine.find(isUpNext);
     if (top) projects.push({ project: p.name, title: p.title || p.name, top: item(top, now), shown: shownRefs.has(top.ref) });
   }
   projects.sort((a, b) => (rankOf.get(a.top.task.ref) ?? Infinity) - (rankOf.get(b.top.task.ref) ?? Infinity));
