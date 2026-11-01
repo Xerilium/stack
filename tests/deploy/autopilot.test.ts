@@ -8,7 +8,7 @@ const ap = require(join(root, '.github/scripts/autopilot-core.cjs'));
 
 const SHA = 'a'.repeat(40);
 const OTHER = 'b'.repeat(40);
-const cert = (sha: string, assoc = 'OWNER') => ({ body: ap.formatCertification(sha), author_association: assoc });
+const cert = (sha: string, login = 'owner') => ({ body: ap.formatCertification(sha), user: { login } });
 const run = (name: string, conclusion: string | null) => ({ __typename: 'CheckRun', name, conclusion });
 const green = ap.checksOf([run('test', 'SUCCESS'), run('e2e', 'SUCCESS')]);
 const base = {
@@ -18,13 +18,13 @@ const base = {
   threadsResolved: true,
   checks: green,
   mergeState: 'CLEAN',
+  behindBy: 0,
 };
 
 // @req FR:autopilot/gates.all
 describe('mergeBlockers', () => {
   it('merges when every gate holds', () => {
     expect(ap.mergeBlockers(base)).toEqual([]);
-    expect(ap.shouldAutoMerge(base)).toBe(true);
   });
   it.each([
     ['paused', { labels: [...base.labels, ap.PAUSED] }, 'paused'],
@@ -33,6 +33,9 @@ describe('mergeBlockers', () => {
     ['no autopilot', { labels: [ap.READY, ap.FINALIZED] }, 'no-autopilot'],
     ['not finalized', { labels: [ap.AUTOPILOT, ap.READY] }, 'not-finalized'],
     ['not ready', { ready: false }, 'not-ready'],
+    ['no Ready label', { labels: [ap.AUTOPILOT, ap.FINALIZED] }, 'not-ready'],
+    ['behind the base', { behindBy: 2 }, 'behind-base'],
+    ['unreadable base comparison', { behindBy: null }, 'base-unreadable'],
     ['head moved past the certification', { certified: false }, 'head-not-certified'],
     ['unresolved thread', { threadsResolved: false }, 'threads-unresolved'],
     ['failing check', { checks: ap.checksOf([run('test', 'FAILURE')]) }, 'checks-failing'],
@@ -45,7 +48,6 @@ describe('mergeBlockers', () => {
   ])('blocks on %s', (_n, patch, reason) => {
     const out = ap.mergeBlockers({ ...base, ...patch });
     expect(out).toContain(reason);
-    expect(ap.shouldAutoMerge({ ...base, ...patch })).toBe(false);
   });
 });
 
@@ -117,20 +119,25 @@ describe('certification', () => {
     'reads %p as no certification',
     (body) => expect(ap.parseCertification(body)).toBeNull(),
   );
-  it('matches the current head among any comments, in any order', () => {
-    expect(ap.isCertifiedOf([cert(OTHER), { body: 'hi', author_association: 'OWNER' }, cert(SHA)], SHA)).toBe(true);
+  it('lists who certified the head, once each, in any order', () => {
+    expect(ap.certifiersOf([cert(OTHER, 'x'), { body: 'hi', user: { login: 'y' } }, cert(SHA, 'a'), cert(SHA, 'a'), cert(SHA, 'b')], SHA)).toEqual(['a', 'b']);
+  });
+  it('matches the current head when a trusted login certified it', () => {
+    expect(ap.isCertifiedOf([cert(OTHER), cert(SHA)], SHA, ['owner'])).toBe(true);
   });
   it('does not match a different head, no comments, or no head', () => {
-    expect(ap.isCertifiedOf([cert(OTHER)], SHA)).toBe(false);
-    expect(ap.isCertifiedOf([], SHA)).toBe(false);
-    expect(ap.isCertifiedOf(undefined, SHA)).toBe(false);
-    expect(ap.isCertifiedOf([cert(SHA)], null)).toBe(false);
+    expect(ap.isCertifiedOf([cert(OTHER)], SHA, ['owner'])).toBe(false);
+    expect(ap.isCertifiedOf([], SHA, ['owner'])).toBe(false);
+    expect(ap.isCertifiedOf(undefined, SHA, ['owner'])).toBe(false);
+    expect(ap.isCertifiedOf([cert(SHA)], null, ['owner'])).toBe(false);
   });
-  it('ignores a certification from someone without write standing', () => {
-    expect(ap.isCertifiedOf([cert(SHA, 'NONE')], SHA)).toBe(false);
-    expect(ap.isCertifiedOf([cert(SHA, 'CONTRIBUTOR')], SHA)).toBe(false);
-    expect(ap.isCertifiedOf([cert(SHA, 'COLLABORATOR')], SHA)).toBe(true);
-    expect(ap.isCertifiedOf([cert(SHA, 'MEMBER')], SHA)).toBe(true);
+  it('ignores a certification from a login without write access', () => {
+    expect(ap.isCertifiedOf([cert(SHA, 'stranger')], SHA, ['owner'])).toBe(false);
+    expect(ap.isCertifiedOf([cert(SHA, 'stranger')], SHA, [])).toBe(false);
+    expect(ap.isCertifiedOf([cert(SHA, 'stranger')], SHA, undefined)).toBe(false);
+  });
+  it('ignores a comment with no author', () => {
+    expect(ap.certifiersOf([{ body: ap.formatCertification(SHA), user: null }], SHA)).toEqual([]);
   });
 });
 
@@ -145,6 +152,9 @@ describe('labelPlanOf', () => {
     expect(ap.labelPlanOf({ labels: [ap.FINALIZED], ready: false, certified: false }).toRemove).toEqual([ap.FINALIZED]);
     expect(ap.labelPlanOf({ labels: [ap.FINALIZED], ready: false, certified: true }).toRemove).toEqual([]);
     expect(ap.staleFinalizedOf([], false)).toBe(false);
+  });
+  it('leaves Finalized alone when the comments could not be read', () => {
+    expect(ap.labelPlanOf({ labels: [ap.FINALIZED], ready: false, certified: false, certKnown: false }).toRemove).toEqual([]);
   });
   it('touches no other label', () => {
     const p = ap.labelPlanOf({ labels: [ap.PAUSED, ap.WIP, ap.AUTOPILOT, 'bug'], ready: false, certified: false });
@@ -168,7 +178,7 @@ describe('isRetryableMergeError', () => {
   });
 });
 
-// @req FR:autopilot/labels.set
+// @req FR:autopilot/labels.set @req FR:autopilot/labels.owners @req FR:autopilot/triggers.self
 describe('labels', () => {
   it('defines the six labels with a color and description', () => {
     expect(ap.AUTOPILOT_LABELS.map((l: { name: string }) => l.name)).toEqual([
@@ -179,6 +189,10 @@ describe('labels', () => {
       expect(l.description.length).toBeGreaterThan(0);
     }
     expect(ap.TRIGGER_LABELS).toHaveLength(6);
+  });
+  it('writes labels only with GITHUB_TOKEN, so its own writes start no run', () => {
+    const text = readFileSync(join(root, '.github/workflows/autopilot.yml'), 'utf8');
+    expect(text).not.toMatch(/secrets\.|github-token/);
   });
 });
 
@@ -201,21 +215,21 @@ describe('autopilot workflow', () => {
   });
   it('keeps top-level read and gives the one job its write scopes', () => {
     expect(wf.permissions).toEqual({ contents: 'read' });
-    expect(job.permissions).toEqual({ contents: 'write', 'pull-requests': 'write', issues: 'write', actions: 'write' });
+    expect(job.permissions).toEqual({ contents: 'write', 'pull-requests': 'write', issues: 'write', actions: 'write', checks: 'read', statuses: 'read' });
   });
-  it('ignores forks and non-certification comments', () => {
+  it('ignores forks and certification-looking comments from strangers', () => {
     expect(job.if).toContain('head.repo.full_name == github.repository');
     expect(job.if).toContain('<!-- stack:finalized-head-sha -->');
+    expect(job.if).toContain('author_association');
+  });
+  it('hands the whole job to the tested module and interpolates nothing into the script', () => {
+    const script = job.steps.find((s: { uses?: string }) => s.uses?.startsWith('actions/github-script')).with.script as string;
+    expect(script).toContain('autopilot-run.cjs');
+    expect(script).not.toContain('${{');
   });
   it('serializes per PR without cancelling a merge', () => {
     expect(wf.concurrency['cancel-in-progress']).toBe(false);
     expect(wf.concurrency.group).toContain("'sweep'");
-  });
-  it('squash-merges pinned to the checked head, then dispatches deploy', () => {
-    expect(text).toContain("merge_method: 'squash'");
-    expect(text).toMatch(/sha: headSha/);
-    expect(text).toContain("workflow_id: 'deploy.yml'");
-    expect(text).not.toMatch(/\$\{\{\s*github\.event\.(comment|pull_request\.title|pull_request\.body)/);
   });
   it('uses the workflow_run names CI and E2E', () => {
     expect(parse(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8')).name).toBe('CI');

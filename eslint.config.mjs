@@ -19,7 +19,8 @@ export default tseslint.config(
   {
     // GitHub Actions helper modules are CommonJS: actions/github-script can only require CJS.
     files: ['.github/scripts/**/*.cjs'],
-    languageOptions: { sourceType: 'commonjs', globals: { module: 'writable', require: 'readonly', process: 'readonly' } },
+    languageOptions: { sourceType: 'commonjs', globals: { module: 'writable', require: 'readonly', process: 'readonly', setTimeout: 'readonly' } },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   {
     files: ['tests/**/*.ts', 'web/e2e/**/*.ts'],

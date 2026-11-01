@@ -13,6 +13,8 @@ const PAUSED = 'Status: ⏸️ Paused';
 const WIP = 'Status: 🚧 WIP';
 const BLOCKED = 'Status: ⛔ Blocked';
 
+// Inputs (set by people or agents): Autopilot, Finalized, Paused, WIP, Blocked. Ready is set and cleared by the workflow only.
+// @req FR:autopilot/labels.owners
 // @req FR:autopilot/labels.set
 const AUTOPILOT_LABELS = [
   { name: AUTOPILOT, color: '000000', description: 'AI drives this PR to merge, escalating only decisions' },
@@ -34,8 +36,6 @@ const CERT_MARKER = '<!-- stack:finalized-head-sha -->';
 const GOOD_CHECK = ['SUCCESS', 'NEUTRAL', 'SKIPPED'];
 const GOOD_STATUS = ['SUCCESS'];
 const PENDING_STATUS = ['PENDING', 'EXPECTED'];
-// Anyone can comment on a PR; only these can vouch for a head commit.
-const CERT_AUTHORS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 
 /**
  * One state per reviewer from a `latestReviews` window.
@@ -125,16 +125,26 @@ function parseCertification(body) {
 }
 
 /**
- * Is the current head certified by any comment? Membership, not "pick one", so
- * two racing agents or a reordered list cannot shadow a valid certification.
- * Only comments from an owner, member, or collaborator count.
+ * Logins of everyone who posted a certification for this head. The host checks
+ * which of them have write access; anyone can comment on a PR.
  * @req FR:autopilot/cert.match
  */
-function isCertifiedOf(comments, headSha) {
-  if (!headSha) return false;
-  return (comments ?? []).some(
-    (c) => CERT_AUTHORS.includes(c.author_association) && parseCertification(c.body) === headSha,
-  );
+function certifiersOf(comments, headSha) {
+  if (!headSha) return [];
+  const logins = (comments ?? [])
+    .filter((c) => c.user?.login && parseCertification(c.body) === headSha)
+    .map((c) => c.user.login);
+  return [...new Set(logins)];
+}
+
+/**
+ * Is the current head certified by a trusted commenter? Membership, not "pick one",
+ * so two racing agents or a reordered list cannot shadow a valid certification.
+ * @param {string[]} trusted — logins the host confirmed have write access.
+ * @req FR:autopilot/cert.match
+ */
+function isCertifiedOf(comments, headSha, trusted) {
+  return certifiersOf(comments, headSha).some((login) => (trusted ?? []).includes(login));
 }
 
 /**
@@ -149,14 +159,14 @@ function staleFinalizedOf(labels, certified) {
  * Every gate that blocks the merge, by name. Empty means merge.
  * @req FR:autopilot/gates.all
  */
-function mergeBlockers({ labels, ready, certified, threadsResolved, checks, mergeState }) {
+function mergeBlockers({ labels, ready, certified, threadsResolved, checks, mergeState, behindBy }) {
   const blockers = [];
   if (labels.includes(PAUSED)) blockers.push('paused');
   if (labels.includes(WIP)) blockers.push('wip');
   if (labels.includes(BLOCKED)) blockers.push('blocked');
   if (!labels.includes(AUTOPILOT)) blockers.push('no-autopilot');
   if (!labels.includes(FINALIZED)) blockers.push('not-finalized');
-  if (!ready) blockers.push('not-ready');
+  if (!ready || !labels.includes(READY)) blockers.push('not-ready');
   if (!certified) blockers.push('head-not-certified');
   if (!threadsResolved) blockers.push('threads-unresolved');
   if (!checks.green) {
@@ -168,12 +178,11 @@ function mergeBlockers({ labels, ready, certified, threadsResolved, checks, merg
           : 'checks-unreadable',
     );
   }
+  // Without branch protection nothing else keeps a PR from landing on a base its checks never saw.
+  // @req FR:autopilot/gates.all.base
+  if (behindBy !== 0) blockers.push(behindBy == null ? 'base-unreadable' : 'behind-base');
   if (mergeState !== 'CLEAN') blockers.push(`merge-state-${String(mergeState).toLowerCase()}`);
   return blockers;
-}
-
-function shouldAutoMerge(input) {
-  return mergeBlockers(input).length === 0;
 }
 
 /**
@@ -188,16 +197,16 @@ function isRetryableMergeError(message, status) {
 
 /**
  * Label writes to reach the target: Ready follows `ready`, stale Finalized comes off.
- * Nothing else is touched.
+ * Nothing else is touched. `certKnown` false (comments unreadable) leaves Finalized alone.
  * @req FR:autopilot/ready.derive
  * @req FR:autopilot/cert.stale
  */
-function labelPlanOf({ labels, ready, certified }) {
+function labelPlanOf({ labels, ready, certified, certKnown = true }) {
   const toAdd = [];
   const toRemove = [];
   if (ready && !labels.includes(READY)) toAdd.push(READY);
   if (!ready && labels.includes(READY)) toRemove.push(READY);
-  if (staleFinalizedOf(labels, certified)) toRemove.push(FINALIZED);
+  if (certKnown && staleFinalizedOf(labels, certified)) toRemove.push(FINALIZED);
   return { toAdd, toRemove };
 }
 
@@ -221,10 +230,10 @@ module.exports = {
   checksOf,
   formatCertification,
   parseCertification,
+  certifiersOf,
   isCertifiedOf,
   staleFinalizedOf,
   mergeBlockers,
-  shouldAutoMerge,
   isRetryableMergeError,
   labelPlanOf,
 };
