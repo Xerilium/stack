@@ -1,14 +1,14 @@
 import { parseConfig } from '../../src/core/config';
-import { daysUntilDue, getEngine, NOW_HORIZON_DAYS, OVERDUE_WINDOW_DAYS, rankTasks, resolveBlockers, type ScoringProject } from '../../src/core/scoring';
-import { actionable, dueDays, HORIZON_DAYS, OVERDUE_WINDOW_DAYS as WEB_WINDOW, rankNow, blockerEdges } from '../../web/src/now';
+import { daysUntilDue, getEngine, NOW_HORIZON_DAYS, OVERDUE_WINDOW_DAYS, rankTasks, type ScoringProject } from '../../src/core/scoring';
+import { actionable, dueDays, HORIZON_DAYS, OVERDUE_WINDOW_DAYS as WEB_WINDOW } from '../../web/src/now';
 
-// The web client ranks over HTTP rows (it may not import src/); this keeps its date rules in step with the stack engine.
+// The page no longer ranks (it draws GET /rank); what it still reads on its own, dates and which rows are actionable, stays in step with the stack engine.
 // @req FR:scoring-engine/engine.stack @req FR:web-app/now.active
 const config = { ...parseConfig(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const row = (text: string) => ({ ref: text, text, project: 'P', section: '🔄 Active', done: false, depth: 0, notes: [] });
 
-describe('web now ranking matches the stack engine', () => {
+describe('the page date rules match the stack engine', () => {
   it('shares constants', () => {
     expect(HORIZON_DAYS).toBe(NOW_HORIZON_DAYS);
     expect(WEB_WINDOW).toBe(OVERDUE_WINDOW_DAYS);
@@ -22,25 +22,13 @@ describe('web now ranking matches the stack engine', () => {
     }
   });
 
-  it('candidates and due order agree', () => {
+  it('the rows the page calls actionable are exactly the rows the server ranks', () => {
     const at = new Date('2026-10-23T12:00');
     const texts = ['Plain 🟢', '📅 Oct 30: week 🟢', '📅 Oct 22: late 🟢', '📅 Oct 25: soon 🟢', '📅 Sep 1: stale 🟢', '📅 Mar 1: far 🟢', '💬 reply 🟢'];
     const p: ScoringProject = { name: 'P', value: [], weeklyCapacity: 40, capacity: {}, tasks: texts.map((text, i) => ({ id: `P_${i}`, parent: null, text, level: 0, project: 'P' })) };
     const server = rankTasks(getEngine('stack'), [p], config, at).map((s) => s.task.text);
     const rows = texts.map(row);
-    const web = rankNow(rows.filter((t) => actionable(t, at)), at, rows).map((t) => t.text);
-    expect(web).toEqual(server);
-  });
-
-  // @req FR:scoring-engine/blockers.resolve @req FR:web-app/now.blockers
-  it('blocker names resolve the same', () => {
-    const texts = ['Phase 1 🟡', '⛔️ Phase 2 🟡 -- Pending phase 1', 'Email Bob about contract', '⛔️ A -- Waiting on Bob', 'Q&A review',
-      '⛔️ B -- After Q&A review', 'Stack architectural review process', '⛔️ C -- Blocked on the Stack architectural review process',
-      '2027 roadmap', '⛔️ D -- Until Feb 1, 2027', 'Monday standup', '⛔️ E -- Until Monday', '⛔️ F -- After set-engineering-tasks', 'set-engineering-tasks playbook'];
-    const p: ScoringProject = { name: 'P', value: [], weeklyCapacity: 40, capacity: {}, tasks: texts.map((text) => ({ id: text, parent: null, text, level: 0, project: 'P' })) };
-    const server = [...resolveBlockers([p])].sort();
-    const web = [...blockerEdges(texts.map(row))].sort();
-    expect(web).toEqual(server);
-    expect(server.length).toBe(4);
+    const web = rows.filter((t) => actionable(t, at)).map((t) => t.text);
+    expect([...web].sort()).toEqual([...server].sort());
   });
 });

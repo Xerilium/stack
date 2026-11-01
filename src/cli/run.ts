@@ -18,7 +18,8 @@ import { captureTask, CaptureError } from '../core/quick-capture';
 import { AUTONOMY_LEVELS, type Autonomy } from '../core/model';
 import { applyTriage, effectiveAutonomy, setAutonomy } from '../core/triage';
 import { createGhClient, refreshQueryTasks } from '../core/query-tasks';
-import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageError, writeAll } from '../core/storage';
+import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageError, writeAll, type AuxFiles } from '../core/storage';
+import { PRIORITIES_PATH } from '../core/priorities';
 import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
@@ -54,7 +55,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'extra', 'project'], usage: 'email run [--mode observe|drafts] [--max n] [--dry-run] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache'], usage: 'graph login --client-id <id> [--tenant t] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
-  update: { flags: ['sweep', 'queries'], usage: 'update [--sweep] [--queries]', help: 'regenerate README, stack, projects, my-day' },
+  update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (--engine stack: scores and order like `stack next`, with .stack/priorities.json)' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'agents defined per project folder (tasks/agents/<slug>.md)' },
 };
 
@@ -177,7 +178,7 @@ function describe(cmd: string, r: LifecycleResult): Outcome {
 }
 
 /** @req FR:cli/cmd.update */
-async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: boolean; queries: boolean }): Promise<Outcome> {
+async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: boolean; queries: boolean; engine?: 'legacy' | 'stack' }): Promise<Outcome> {
   const now = ctx.now ? ctx.now() : new Date();
   const config = ctx.config ?? getDefaults();
   // @req FR:cli/cmd.update.queries
@@ -188,8 +189,10 @@ async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: bo
   const projects = [];
   for (const p of await storage.list()) projects.push({ fileName: p.replace(/^tasks\//, ''), content: (await storage.read(p)).content });
   const strip = (s?: string | null) => s?.replace(/^﻿/, '');
+  // @req FR:cli/cmd.update.engine
+  const priorities = opts.engine === 'stack' ? (await (storage as Partial<AuxFiles>).readAux?.(PRIORITIES_PATH))?.content : undefined;
   const files = generateSummaries({
-    projects, config, now,
+    projects, config, now, ...(opts.engine ? { engine: opts.engine } : {}), ...(priorities ? { priorities } : {}),
     previousReadme: strip((await readOpt('README.md'))?.content), previousProjects: strip((await readOpt('projects.md'))?.content),
   });
   const changed: { path: string; content: string; expectedVersion: string | null }[] = [];
@@ -404,7 +407,12 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
     case 'asks': return asksCmd(ctx, p);
     case 'agents': return agentsCmd(ctx, p);
     case 'email': return emailCmd(ctx, p.positionals[0], p.flags, { repo: dir });
-    case 'update': extra(0); return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true });
+    case 'update': {
+      extra(0);
+      const engine = flag(f, 'engine');
+      if (engine !== undefined && engine !== 'legacy' && engine !== 'stack') throw new UsageError('--engine must be legacy or stack');
+      return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true, engine: engine as 'legacy' | 'stack' | undefined });
+    }
     default: throw new UsageError(`Unknown command: ${cmd}`);
   }
 }
