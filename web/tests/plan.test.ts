@@ -45,6 +45,11 @@ describe('the day plan takes the server order', () => {
     expect(planCandidates(rows, at(10), [rows[2].ref, rows[0].ref]).map((x) => x.text)).toEqual(['third in file 🟢', 'first in file 🟢']);
     expect(byServerRank(rows, []).map((x) => x.text)).toEqual(rows.map((x) => x.text));
   });
+  it('a decision with children is not in the leaf ranking and stays, after the ranked ones', () => {
+    const a = t('Pick the vendor 🙋 🟢'); const b = { ...t('Sub step 🟢'), depth: 1 } as typeof a;
+    expect(byServerRank([a, b], [b.ref], true).map((x) => x.ref)).toEqual([b.ref, a.ref]);
+    expect(byServerRank([a, b], [b.ref]).map((x) => x.ref)).toEqual([b.ref]);
+  });
   it('the next task leads even when the order puts it later (the first open leaf of a parent)', () => {
     expect(planCandidates(rows, at(10), [rows[0].ref, rows[1].ref, rows[2].ref], rows[2].ref).map((x) => x.text)[0]).toBe('third in file 🟢');
   });

@@ -38,10 +38,12 @@ const whoOf = (t: Task) => parseRow(t.text).who;
  * with); with no ranking at all (it failed, or nothing is ranked) rows keep their file order.
  * The page never ranks: this is the one ordering Home, `stack next`, and the day plan share. @req FR:web-app/now.active
  */
-export function byServerRank<T extends { ref: string }>(rows: T[], order: string[]): T[] {
+export function byServerRank<T extends { ref: string }>(rows: T[], order: string[], keepUnranked = false): T[] {
   if (!order.length) return rows;
   const at = new Map(order.map((r, i) => [r, i]));
-  return rows.filter((t) => at.has(t.ref)).sort((a, b) => at.get(a.ref)! - at.get(b.ref)!);
+  // keepUnranked: rows the ranking cannot hold (it ranks leaves only, so a decision with children is never in it) follow the ranked ones in file order.
+  const k = (t: T, i: number) => at.get(t.ref) ?? order.length + i;
+  return rows.map((t, i) => ({ t, k: k(t, i) })).filter((x) => keepUnranked || at.has(x.t.ref)).sort((a, b) => a.k - b.k).map((x) => x.t);
 }
 
 /** Tasks for the plan: yours (not an agent's, not a decision), active, actionable, leaf, in the server's order. @req FR:web-app/today.plan */
@@ -200,5 +202,5 @@ const answered = (tasks: Task[], t: Task) => children(tasks, t.ref).some((c) => 
 export function decisions(tasks: Task[], now: Date, order: string[]): Decision[] {
   const rows = tasks.filter((t) => !t.done && whoOf(t) === 'human' && actionable(t, now) && !answered(tasks, t) && (isActive(t) || ancestorsOf(tasks, t).some(doing)));
   const withParent = rows.map((t) => ({ task: t, context: ancestorsOf(tasks, t)[0], recommendation: recommendationOf(tasks, t) }));
-  return byServerRank(rows, order).map((r) => withParent.find((x) => x.task.ref === r.ref)!);
+  return byServerRank(rows, order, true).map((r) => withParent.find((x) => x.task.ref === r.ref)!);
 }
