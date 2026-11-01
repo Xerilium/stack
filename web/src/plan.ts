@@ -34,12 +34,14 @@ export function openLeaves(tasks: Task[]): Task[] {
 const whoOf = (t: Task) => parseRow(t.text).who;
 
 /**
- * Rows in the server's order (`GET /rank?blocks=any`); rows it did not rank keep their file order after the ranked ones.
+ * Rows in the server's order (`GET /rank?blocks=any`). A row the ranking left out is excluded (hidden by a rule, blocked, or done
+ * with); with no ranking at all (it failed, or nothing is ranked) rows keep their file order.
  * The page never ranks: this is the one ordering Home, `stack next`, and the day plan share. @req FR:web-app/now.active
  */
 export function byServerRank<T extends { ref: string }>(rows: T[], order: string[]): T[] {
+  if (!order.length) return rows;
   const at = new Map(order.map((r, i) => [r, i]));
-  return rows.map((t, i) => ({ t, k: at.get(t.ref) ?? order.length + i })).sort((a, b) => a.k - b.k).map((x) => x.t);
+  return rows.filter((t) => at.has(t.ref)).sort((a, b) => at.get(a.ref)! - at.get(b.ref)!);
 }
 
 /** Tasks for the plan: yours (not an agent's, not a decision), active, actionable, leaf, in the server's order. @req FR:web-app/today.plan */

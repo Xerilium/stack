@@ -157,7 +157,7 @@ export function App() {
   const dayKey = sched?.date ?? dateKey(clockNow);
   const busyTime = useMemo(() => busyIntervals(events, day.origin ?? clockNow, day.origin ? 2 : 1), [events, clockNow, day]);
   const budget = budgetOf(clockNow, day, saved && saved.date === dayKey ? saved.minutes : null, busyTime);
-  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, dayOrder, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, clockNow, day, budget.minutes, busyTime, emailAsks]);
+  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, dayOrder, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, dayOrder, clockNow, day, budget.minutes, busyTime, emailAsks]);
   // Tomorrow: the next waking day planned from its wake. @req FR:home/day.tomorrow
   const tmr = useMemo(() => {
     if (!ahead) return null;
@@ -166,7 +166,7 @@ export function App() {
     const b = busyIntervals(ahead.events, d.origin!, 2);
     const bud = budgetOf(at, d, null, b);
     return { day: d, now: at, budget: bud, plan: buildPlan(planCandidates(tasks, at, dayOrder), at, d, bud.minutes, { busy: b }), events: ahead.events };
-  }, [ahead, projects, tasks]);
+  }, [ahead, projects, tasks, dayOrder]);
   const offerTomorrow = !!sched && !sched.asleep && nowMinutes(clockNow, day) >= day.end - 180;
   const toggleTomorrow = useCallback(async () => {
     if (ahead) { setAhead(null); return; }
@@ -258,7 +258,7 @@ export function App() {
   const refresh = useCallback(async () => {
     void loadSide();
     try {
-      const [rk, rkAny, t, p] = await Promise.all([api.rank(100), api.rank(200, 'any'), api.tasks(), api.projects()]);
+      const [rk, rkAny, t, p] = await Promise.all([api.rank(100), api.rank(1000, 'any').catch(() => [] as RankItem[]), api.tasks(), api.projects()]);
       setRanked(rk); setDayOrder(rkAny.map((x) => x.ref)); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
       api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)

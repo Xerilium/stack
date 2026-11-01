@@ -409,7 +409,7 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
     case 'email': return emailCmd(ctx, p.positionals[0], p.flags, { repo: dir });
     case 'update': {
       extra(0);
-      const engine = flag(f, 'engine');
+      const engine = f['engine'] === true ? '' : flag(f, 'engine'); // a bare --engine is an error, not legacy
       if (engine !== undefined && engine !== 'legacy' && engine !== 'stack') throw new UsageError('--engine must be legacy or stack');
       return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true, engine: engine as 'legacy' | 'stack' | undefined });
     }

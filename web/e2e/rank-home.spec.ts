@@ -25,6 +25,16 @@ test.describe('Home draws the server ranking', () => {
   });
 });
 
+test.describe('My day takes the whole-day ranking', () => {
+  // @req FR:web-app/today.plan
+  test('the page asks for blocks=any and keeps a failed whole-day ranking from blanking Home', async ({ page }) => {
+    const m = await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByTestId('next-title')).toBeVisible();
+    expect(m.rankQueries.some((q) => q.includes('blocks=any'))).toBe(true);
+  });
+});
+
 test.describe('Needs you from the Chief of Staff', () => {
   // @req FR:ask-queue/needs.web @req FR:ask-queue/needs.web.card
   test('CoS items come first with the recommendation, the default if silent, and a link', async ({ page }) => {

@@ -564,7 +564,7 @@ function breakdownLines(b: ScoreBreakdown, actual: number, indent: string, lens?
     // @req FR:summaries/engine.breakdown
     // The stack engine moved the score: say how, so the arithmetic stays honest.
     lines.push(lens.from !== undefined
-      ? `${indent}  - ↪ inherits ${formatNumber(actual)} from ${lens.fromText ?? lens.from}`
+      ? `${indent}  - ↪ inherits ${formatNumber(actual)} from ${lens.fromText ?? 'its parent task'}`
       : `${indent}  - 📅 + ${formatNumber(Math.round((actual - lens.legacy) * 1e6) / 1e6)} due-date lens = ${formatNumber(actual)}`);
   } else if (Math.abs(Number(total.toString()) - actual) > 0.01) lines.push(`${indent}  - ⚠️ Expanded scoring algorithm does not match the evaluated score!`);
   return lines;

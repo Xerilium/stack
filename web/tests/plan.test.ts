@@ -41,8 +41,8 @@ describe('day plan', () => {
 // @req FR:web-app/now.active @req FR:web-app/today.plan
 describe('the day plan takes the server order', () => {
   const rows = [t('first in file 🟢'), t('second in file 🟢'), t('third in file 🟢')];
-  it('orders candidates by GET /rank?blocks=any; rows it did not rank follow in file order', () => {
-    expect(planCandidates(rows, at(10), [rows[2].ref, rows[0].ref]).map((x) => x.text)).toEqual(['third in file 🟢', 'first in file 🟢', 'second in file 🟢']);
+  it('orders candidates by GET /rank?blocks=any; a row it left out is excluded, and with no ranking rows keep file order', () => {
+    expect(planCandidates(rows, at(10), [rows[2].ref, rows[0].ref]).map((x) => x.text)).toEqual(['third in file 🟢', 'first in file 🟢']);
     expect(byServerRank(rows, []).map((x) => x.text)).toEqual(rows.map((x) => x.text));
   });
   it('the next task leads even when the order puts it later (the first open leaf of a parent)', () => {

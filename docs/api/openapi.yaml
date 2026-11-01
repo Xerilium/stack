@@ -40,7 +40,7 @@ paths:
           schema:
             type: integer
             minimum: 1
-            maximum: 200
+            maximum: 1000
         - name: blocks
           in: query
           schema:
