@@ -61,6 +61,7 @@ describe('run', () => {
     expect(readFileSync(join(build, 'cli/index.js'), 'utf8').startsWith('#!/usr/bin/env node')).toBe(true);
   });
 
+  // @req FR:cli/run.help @req FR:cli/run.help.version
   it('prints help and version', () => {
     const h = stack(null, '--help');
     expect(h.code).toBe(0);
@@ -74,6 +75,7 @@ describe('run', () => {
     expect(stack(repo(), 'next', '--bogus', 'x').code).toBe(2);
   });
 
+  // @req FR:cli/run.git.worktree
   it('fails with a hint outside a git work tree', () => {
     const d = tmp();
     const r = stack(d, 'next');
@@ -126,6 +128,7 @@ describe('commands', () => {
     expect(stack(d, 'add-project', 'Alpha', '--force').code).toBe(0);
   });
 
+  // @req FR:cli/ref.format
   it('add by alias prints a 1-based ref and commits', () => {
     const d = repo();
     const before = commits(d);
@@ -146,6 +149,29 @@ describe('commands', () => {
     const ref = `tasks/alpha.md:${lines.findIndex(l => l.includes('Parent')) + 1}`;
     expect(stack(d, 'add', 'alpha', 'Child', '--parent', ref).code).toBe(0);
     expect(file(d, 'tasks/alpha.md')).toContain('  - [ ] Child');
+  });
+
+  // @req FR:cli/cmd.next
+  it('next --top n prints the first n ranked tasks, with the owner overrides applied; same order as next', () => {
+    const d = repo();
+    stack(d, 'add', 'alpha', 'Low 🔻');
+    stack(d, 'add', 'alpha', 'High 🚨 ⬆️');
+    stack(d, 'add', 'alpha', 'Mid 🔺');
+    const top = stack(d, 'next', '--top', '3', '--now', NOW);
+    expect(top.code).toBe(0);
+    const lines = top.out.trim().split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toMatch(/^tasks\/alpha\.md:\d+ [\d.]+ Alpha High/);
+    expect(lines[0]).toBe(stack(d, 'next', '--now', NOW).out.trim());
+    expect(stack(d, 'next', '--top', '2', '--now', NOW).out.trim().split('\n')).toHaveLength(2);
+    const j = JSON.parse(stack(d, 'next', '--top', '2', '--now', NOW, '--json').out);
+    expect(j.items.map((i: { text: string }) => i.text.slice(0, 3))).toEqual(['Hig', 'Mid']);
+    mkdirSync(join(d, '.stack'), { recursive: true });
+    writeFileSync(join(d, '.stack/priorities.json'), JSON.stringify({ rules: [{ match: 'Low', effect: 'top', why: 'owner said so' }] }));
+    expect(stack(d, 'next', '--now', NOW).out).toMatch(/Alpha Low/);
+    expect(stack(d, 'next', '--top', '3', '--now', NOW).out.trim().split('\n')[0]).toMatch(/Alpha Low/);
+    expect(stack(d, 'next', '--top', '0', '--now', NOW).code).toBe(2);
+    expect(stack(d, 'next', '--top', '51', '--now', NOW).code).toBe(2);
   });
 
   it('next prints ref, score, project, text; exit 4 when none', () => {
@@ -245,6 +271,7 @@ describe('commands', () => {
     expect(stack(d, 'set', 'bad-ref', '--status', 'none').code).toBe(2);
   });
 
+  // @req FR:cli/ref.invalid
   it('ref that is not a task line is a usage error', () => {
     const d = repo('X');
     expect(stack(d, 'start', 'tasks/alpha.md:1').code).toBe(2);
@@ -299,7 +326,7 @@ describe('update', () => {
 });
 
 describe('update lifecycle gaps', () => {
-  // @req FR:cli/cmd.update
+  // @req FR:cli/cmd.update @req FR:cli/cmd.update.commit
   it('makes ONE commit for all changed summary files', () => {
     const d = repo('Plan', 'Ship');
     const before = commits(d);
@@ -308,7 +335,7 @@ describe('update lifecycle gaps', () => {
     expect(git(d, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort()).toEqual(['README.md', 'my-day.md', 'projects.md', 'stack.md']);
   });
 
-  // @req FR:cli/cmd.update
+  // @req FR:cli/cmd.update @req FR:cli/cmd.update.sweep
   it('--sweep escalates due dates and commits task files once, then summaries once', () => {
     const d = repo('Pay 📅 Oct 22: bill', 'Nap');
     stack(d, 'update', '--now', NOW);
@@ -318,7 +345,7 @@ describe('update lifecycle gaps', () => {
     expect(commits(d)).toBe(before + 2);
   });
 
-  // @req FR:cli/cmd.update
+  // @req FR:cli/cmd.update @req FR:cli/cmd.update.queries
   it('--queries refreshes query tasks (fake gh on PATH); off by default', () => {
     const d = repo('Q 🔎 @GitHub/xerilium/stack (is:open)');
     const bin = tmp();
@@ -336,7 +363,7 @@ describe('update lifecycle gaps', () => {
     expect(git(d, 'status', '--porcelain')).toBe('');
   });
 
-  // @req FR:cli/cmd.update
+  // @req FR:cli/cmd.update @req FR:cli/cmd.update.queries
   it('--queries reports failures without failing the command', () => {
     const d = repo('Q 🔎 @Nope/x/y (a)');
     const j = JSON.parse(stack(d, 'update', '--queries', '--now', NOW, '--json').out);

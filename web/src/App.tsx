@@ -25,9 +25,11 @@ import { actionsFor, type AskItem, type Send } from './asks';
 import { useAsks } from './useAsks';
 import { Drawer, SessionsView } from './SessionsView';
 import { usePins } from './pins';
+import { useUnsaved } from './unsaved';
+import type { RankItem } from './home';
 import { useSessions } from './useSessions';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
-import { fromDecisions } from './needs';
+import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
 import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { useTeam } from './useTeam';
@@ -96,6 +98,9 @@ export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [next, setNext] = useState<NextTask | null>(null);
+  /** The server's ranking: Home draws this and nothing else. @req FR:web-app/now.active */
+  const [ranked, setRanked] = useState<RankItem[]>([]);
+  const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
@@ -203,7 +208,16 @@ export function App() {
   // In personal time, tasks tagged for it may use the rest of the block. @req FR:home/home.window
   const minutesLeft = win.allow && !win.have ? win.allow.minutes : win.inside && !win.have ? 0 : win.minutes;
   const allow = win.allow && !win.have ? win.allow : undefined;
-  const home = useMemo(() => homeOf({ tasks, projects, next, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, next, clockNow, minutesLeft, allow]);
+  /**
+   * @req FR:web-shell/state.needs
+   * @req FR:ask-queue/needs.dedupe
+   * Open 🙋 rows and the Chief of Staff escalations: Needs you shows them, so Home must not.
+   */
+  const taskAsks = useMemo(() => fromDecisions(decisions.filter((d) => repliesFor(inbox, d.task).length === 0), titles, clockNow), [decisions, inbox, titles, clockNow]);
+  const needAsks = useMemo(() => fromNeeds(needs, clockNow), [needs, clockNow]);
+  const needRows = useMemo(() => [...needAsks, ...taskAsks], [needAsks, taskAsks]); // one stable list: a new array every render would reset the Asks cursor
+  const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks]);
+  const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task), home.five.map((n) => n.task), home.projects.filter((x) => !x.shown).slice(0, allProjects ? undefined : 3).map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
@@ -232,11 +246,21 @@ export function App() {
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
     if (i.status === 'fulfilled') setInbox(i.value);
   }, []);
+  /** Live mode: what the server has not committed yet. @req FR:web-shell/state.unsaved */
+  const unsaved = useUnsaved(api, (m) => toast(m, 'err'), local);
+  const unsavedChip = unsaved.label ? <button type="button" class="chip unsaved" data-testid="unsaved" title={unsaved.title} aria-live="polite" disabled={unsaved.state.saving} onClick={() => void unsaved.flush()}>{unsaved.label}</button> : null;
+  /**
+   * Live mode on the owner's checkout: the rail footer names the branch.
+   * @req FR:web-shell/state.unsaved.pill @req FR:cli/web.live.pill
+   */
+  const livePill = local && info?.mode === 'live' ? <span class="repo-pill live" data-testid="repo-pill" title={info.repo}>Live · {info.branch}</span> : null;
   const refresh = useCallback(async () => {
     void loadSide();
     try {
-      const [n, t, p] = await Promise.all([api.next(), api.tasks(), api.projects()]);
-      setNext(n); setTasks(t); setProjects(p); setPhase('ready');
+      const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
+      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
+      api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
+      void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 401) { toLogin(); return; }
       if (e instanceof ApiFailure && e.status === 403) { setPhase('denied'); return; }
@@ -271,15 +295,15 @@ export function App() {
   const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : 'denied'));
   const notifyRef = useRef(false); notifyRef.current = notifyOn && perm === 'granted';
   /** Open 🙋 rows that have no reply yet, as asks. @req FR:web-shell/state.needs */
-  const taskAsks = useMemo(() => fromDecisions(decisions.filter((d) => repliesFor(inbox, d.task).length === 0), titles, clockNow), [decisions, inbox, titles, clockNow]);
   const asks = useAsks(api, toast, () => void refresh(), stream, (items) => {
     if (!notifyRef.current || !document.hidden) return;
     const note = noteFor(items, new Date());
     if (note) void raise(note);
   }, {
-    tasks: taskAsks,
+    tasks: needRows,
     onTask: (a, s) => answerTask(a, s),
     onOpenTask: (ref) => { setFocusRef(ref); },
+    onSync: () => void unsaved.check(),
   });
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
@@ -287,10 +311,12 @@ export function App() {
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
+    // @req FR:web-shell/state.notify.denied
     if (Notification.permission === 'denied') { setPerm('denied'); toast(blockedHelp(), 'err'); return; }
     const p = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
     setPerm(p);
     if (p === 'granted') { saveNotify(store(), true); setNotifyOn(true); toast('Notifications on'); }
+    // @req FR:web-shell/state.notify.denied (a request that comes back denied shows the same message at once)
     else if (p === 'denied') toast(blockedHelp(), 'err');
   };
   const notify = { supported: notifySupported(), on: notifyOn && perm === 'granted', blocked: perm === 'denied', toggle: () => void toggleNotify() };
@@ -322,6 +348,13 @@ export function App() {
       } catch { setStream(false); setAgentsOn(false); /* the api decides access */ }
       await refresh();
     })();
+  }, []);
+
+  /** Key hints stay out of the way until the first key press; every control carries its key in its tooltip. @req FR:web-app/home3.keys */
+  useEffect(() => {
+    const on = () => document.body.classList.add('keyed');
+    window.addEventListener('keydown', on, { once: true, capture: true });
+    return () => window.removeEventListener('keydown', on, true);
   }, []);
 
   // keep the cursor on a real row
@@ -428,8 +461,23 @@ export function App() {
   const sendReply = async (task: Pick<Task, 'ref' | 'text'>, text: string, kind: 'reply' | 'decision', ok: string): Promise<boolean> =>
     (await run(() => api.send(task.ref, text, kind, task.text), () => ok)) !== undefined;
   const accept = (d: Decision) => sendReply(d.task, `Go with the recommendation: ${d.recommendation}`, 'decision', 'Sent to the agent');
-  /** A 🙋 row answered from Needs you: decision or reply to the inbox, or the row deferred. @req FR:web-shell/state.needs */
+  /** A 🙋 row answered from Needs you: decision or reply to the inbox, or the row deferred. @req FR:web-shell/state.needs @req FR:web-shell/state.needs.row */
+  /**
+   * @req FR:ask-queue/needs.answer
+   * @req FR:ask-queue/needs.web.answered
+   * The owner answer on a Chief of Staff escalation is written onto the item; Undo clears it.
+   */
+  const answerNeedItem = async (a: AskItem, s: Send) => {
+    const id = a.key.replace(/^need:/, '');
+    const body = s.answer === 'defer' && s.until ? { choice: 'defer' as const, until: s.until }
+      : s.answer === 'go' || s.answer === 'done' ? { choice: 'go' as const }
+        : { choice: 'reply' as const, text: s.text || (s.answer === 'no' ? 'No' : 'Noted') };
+    await api.answerNeed(id, body);
+    setNeeds(await api.needs());
+    toast(body.choice === 'go' ? 'Going with it · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
+  };
   const answerTask = async (a: AskItem, s: Send) => {
+    if (a.source === 'need') return answerNeedItem(a, s);
     const t = tasks.find((x) => x.ref === a.ref);
     if (!t) throw new Error('Row changed elsewhere');
     let ok: unknown;
@@ -587,7 +635,7 @@ export function App() {
     ...(notify.supported ? [{ id: 'notify', label: notify.on ? 'Turn off notifications' : 'Notify me about new asks', run: notify.toggle }] : []),
     { id: 'signout', label: 'Sign out', run: () => void signOut() },
   ].map((c) => ({ group: 'Actions' as Group, ...c }));
-  // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump
+  // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump @req FR:web-shell/palette.jump.groups
   const goTo: Command[] = [
     { id: 'go-home', label: 'Go to Home', hint: HINT.home, group: 'Go to', run: () => go('home') },
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
@@ -597,6 +645,7 @@ export function App() {
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
     { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, group: 'Go to', run: () => go('list') },
   ];
+  // @req FR:web-shell/palette.jump.groups
   const projectCmds: Command[] = projects.map((p) => ({ id: `proj-${p.name}`, label: p.title || p.name, group: 'Projects' as Group, run: () => go('list', { ...NO_FILTERS, project: p.name }) }));
   const allCommands = [...commands, ...goTo, ...projectCmds];
 
@@ -634,7 +683,7 @@ export function App() {
       if (isTyping(e.target)) return;
       const k = e.key;
       // the element under focus keeps Enter/Space (buttons, links, row titles); the agent composer keeps every key
-      if (e.target instanceof HTMLElement && e.target.closest('.agent-talk')) return;
+      if (e.target instanceof HTMLElement && e.target.closest('.agent-talk, [role="menu"]')) return; // typing in a composer, or arrowing through the open menu
       if ((k === 'Enter' || k === ' ') && e.target instanceof HTMLElement && e.target.matches('button, a, [role="button"]')) return;
       const now = Date.now();
       if (chord.current && now - chord.current < 1000) {
@@ -699,7 +748,10 @@ export function App() {
   if (phase === 'denied') {
     return (
       <main class="gate"><h1>Not on the allow-list</h1><p>You are signed in{me ? ` as ${me}` : ''}, but this Stack belongs to someone else.</p>
-        {/* SWA's user id is per app, so the owner learns it here on first sign-in. @req FR:live-deploy/setup.owner */}
+        {/*
+         * SWA's user id is per app, so the owner learns it here on first sign-in.
+         * @req FR:live-deploy/setup.owner
+         */}
         {ownerId && <p>If this is your Stack, add yourself as the owner, then reload: <code data-testid="owner-cmd">scripts/setup-azure.sh --owner {ownerId}</code></p>}
         <a class="btn" href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></main>
     );
@@ -719,6 +771,7 @@ export function App() {
     agent: {
       chip: (t) => { const v = team.chipOf(t); return <AgentChip view={v} onClick={() => { if (v.tone === 'accent' || v.tone === 'warn' || v.text.startsWith('Done')) team.openSession(t.ref); else openThread(t); }} onNeeds={() => go('asks')} />; },
       talk: (t) => (team.talk?.ref === t.ref && open !== t.ref ? <AgentTalk key={t.ref} team={team} talk={team.talk} agents={team.agentsOf(t)} /> : null),
+      owned: (t) => team.chipOf(t).tone === 'accent',
     },
   };
   /** The composer for an ask card: the ask's agent, the ask as the context. @req FR:agent-team/web.anything */
@@ -735,12 +788,17 @@ export function App() {
   const focusTask = focusRef ? tasks.find((t) => t.ref === focusRef) : undefined;
   // @req FR:web-shell/nav.rail
   const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : null);
+  /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
   const nav = () => RAIL.map((v) => (
     <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
   ));
   return (
     <div class="shell">
       <nav class="rail" aria-label="Views">
+        {/*
+         * The brand is the mark plus Stack; the mode shows in it (`Stack [DEMO]` for a demo copy), the repo path only in its tooltip.
+         * @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand
+         */}
         <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
         <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
         {nav()}
@@ -749,11 +807,13 @@ export function App() {
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
         <div class="who">
           {!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}
+          {livePill}
+          {unsavedChip}
         </div>
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
+        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}</div>
         {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} />}
@@ -762,7 +822,7 @@ export function App() {
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'home' && <HomeView all={allProjects} onAll={() => setAllProjects(true)} h={home} now={clockNow} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
+        {phase === 'ready' && view === 'home' && <HomeView all={allProjects} onAll={() => setAllProjects(true)} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />
@@ -822,7 +882,7 @@ function PaletteDialog({ commands, onClose }: { commands: Command[]; onClose: ()
   const [i, setI] = useState(0);
   const shown = filterCommands(commands, q);
   const choose = (c: Command | undefined) => { if (!c) return; onClose(); setTimeout(c.run, 0); };
-  // the list scrolls: keep the selected option in view when the arrows move it
+  // the list scrolls: keep the selected option in view when the arrows move it. @req FR:web-shell/palette.jump.scroll
   useEffect(() => { document.querySelector('#palette-list [aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' }); }, [i, q]);
   return (
     <Dialog title="Command palette" onClose={onClose} sheet={false}>

@@ -25,8 +25,9 @@ const Icon = {
 };
 
 /**
- * Quiet while live; says what is wrong and what to do otherwise. Only the state is announced, never the clock beside it.
- * @req FR:web-shell/state.live @req FR:live-deploy/web.state @req FR:live-deploy/web.action
+ * Quiet while live; says what is wrong and what to do otherwise. Only the state is announced (politely), never the clock beside it.
+ * @req FR:web-shell/state.live @req FR:live-deploy/web.state @req FR:live-deploy/web.action @req FR:live-deploy/web.state.announce
+ * @req FR:web-shell/state.live.poll @req FR:web-shell/state.live.drop @req FR:web-shell/state.live.retry
  */
 function LiveBadge({ a, unreachable, onSignIn }: { a: Asks; unreachable: boolean; onSignIn?: () => void }) {
   if (a.status === 'connecting' && !unreachable) return null;
@@ -263,6 +264,10 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
       {!offline && asks.phase === 'error' && (
         <div class="asks-error" role="alert"><p>Cannot load asks: {asks.error}</p><button type="button" class="btn primary" onClick={() => void asks.retry()}>Retry</button></div>
       )}
+      {/*
+       * The empty state says what was checked.
+       * @req FR:web-shell/state.needs.empty
+       */}
       {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && (
         <div class="asks-empty" data-testid="asks-empty">
           <div class="tick-art">{Icon.check}</div>

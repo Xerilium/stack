@@ -44,6 +44,8 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 | `STACK_WEBHOOK_SECRET`, `STACK_WEBHOOK_ALLOW` | Webhook bot secret and allowed senders |
 | `STACK_IMESSAGE_SECRET`, `STACK_IMESSAGE_ALLOW` | iMessage bridge secret and allowed senders |
 | `STACK_GITHUB_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_ALLOW` | GitHub comment bot secret and allowed logins |
+| `GITHUB_TOKEN` | `stack web` and the Azure host: read-only GitHub token for pull request state and checks on the AI team panel. Sent only to `api.github.com` |
+| `STACK_GITHUB_REPOS` | Optional comma list of `owner` or `owner/repo`. When set, only PRs in these repos get status, so an agent token cannot read other PRs through `GET /agents`. Unset: every repo the token can see |
 | `STACK_REPO`, `STACK_DIR` | Local content repo for the CLI, `stack web`, and `stack-mcp` (when none is found by walking up from the current folder). Content never lives in the Stack repo; see the README "Two repos" |
 | `STACK_MCP_SCOPES` | Scopes for `stack-mcp` (stdio only), default `read,write` |
 | `STACK_DATA_DIR` | Owner-only local data (email voice profile and mail state), default `~/Library/Application Support/stack`. Never inside a repo: it holds learned writing samples |
@@ -90,3 +92,23 @@ Runs where Claude Code runs; the Stack host has no timers. Model calls use your 
    - Pushing asks needs a **private** content repo: asks carry sender names, subjects, short summaries and draft text (never message bodies).
    - Optional `rules.json` beside the state adds VIP, sensitive and receipt rules (same keys as the triage rules).
 5. Nothing moves, unsubscribes, or sends on its own: archive, spam and unsubscribe asks act only after you answer them in Stack.
+
+## Autopilot merges (`.github/workflows/autopilot.yml`)
+
+Label a PR `Status: 🤖 Autopilot` and an agent can drive it to merge. The workflow squash-merges it only while all of these hold on the current head commit:
+
+- `Status: ☑️ Finalized` is on the PR **and** a comment from you or a collaborator certifies this exact head SHA. A new push clears `Finalized`; the agent re-certifies.
+- `Status: ✅ Ready` (set by the workflow: not a draft, no changes requested, and `Autopilot` or a non-author approval).
+- Every review thread is resolved, every check on the head commit has finished green, and GitHub reports the PR `CLEAN`.
+- The head contains the current tip of `main`. If `main` moved, update the PR branch, then re-certify (the push clears `Finalized`).
+- No `Status: ⏸️ Paused`, `🚧 WIP`, or `⛔ Blocked` label.
+
+To certify, an agent posts the comment **first**, then adds `Finalized`:
+
+```bash
+sha=$(gh pr view <n> --json headRefOid -q .headRefOid)
+gh pr comment <n> --body $'<!-- stack:finalized-head-sha -->\nFinalized certification: head SHA `'"$sha"$'`.'
+gh pr edit <n> --add-label 'Status: ☑️ Finalized'
+```
+
+Resolving a thread or approving a review starts no workflow, so a 10-minute sweep picks those up. Pause one PR with `Status: ⏸️ Paused`. After a merge the workflow dispatches `deploy.yml`, because pushes made with `GITHUB_TOKEN` start no `push` workflow. Missing labels are created on first use. A merge that fails (for example a PR that edits `.github/workflows/*`, which `GITHUB_TOKEN` cannot merge) fails the run so it shows up; merge those yourself.

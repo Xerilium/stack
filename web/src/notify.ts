@@ -26,7 +26,7 @@ export function noteFor(added: Pick<AskItem, 'ask' | 'project' | 'by' | 'priorit
   return { title: top.ask, body: [top.project, due ? `${due.label} · ${due.rel}` : ''].filter(Boolean).join(' · ') || 'New ask', tag: TAG };
 }
 
-/** What to do when the browser has the permission on deny. @req FR:web-shell/state.notify */
+/** What to do when the browser has the permission on deny, or a request comes back denied. @req FR:web-shell/state.notify @req FR:web-shell/state.notify.denied */
 export const blockedHelp = (): string => "Allow notifications for this site in the browser's site settings (the lock icon in the address bar)";
 
 /** Notifications need both the Notifications API and service workers (a page-only Notification is not reliable on phones). */

@@ -21,6 +21,8 @@ export interface AskExtras {
   /** Answers a task ask through the agent inbox; rejects to put the ask back. */
   onTask?: (a: AskItem, s: Send) => Promise<void>;
   onOpenTask?: (ref: string) => void;
+  /** The server's pending (uncommitted) count changed: re-read it. @req FR:live-deploy/web.unsaved.refresh */
+  onSync?: () => void;
 }
 /** `stream`: true when the host serves `/events`, false to poll, null while that is not known yet. */
 export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, stream: boolean | null, onNew?: (items: AskItem[]) => void, extras: AskExtras = {}) {
@@ -57,6 +59,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const seq = useRef(0);
   const undoRef = useRef<(() => void) | null>(null);
   const tasksCb = useRef(onTasksChange); tasksCb.current = onTasksChange;
+  const syncCb = useRef(extras.onSync); syncCb.current = extras.onSync;
   const toastRef = useRef(toast); toastRef.current = toast;
 
   const held = (key: string) => (hold.current.get(key) ?? 0) > Date.now();
@@ -98,6 +101,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
         setLiveTick((n) => n + 1);
         if (kinds.some((k) => k === 'asks' || k === 'state' || k === 'poll')) void load();
         if (kinds.some((k) => k === 'tasks' || k === 'poll')) tasksCb.current();
+        if (kinds.includes('sync')) syncCb.current?.();
       },
     });
     live.current = stop;
@@ -118,10 +122,15 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   useEffect(() => { document.title = pageTitle(total); }, [total]);
 
   // keep the cursor on the same ask when the order changes
+  // A Chief of Staff item outranks everything: when one arrives while the cursor sits on the old top, the cursor follows it.
+  const topKey = useRef<string | null>(null);
   useEffect(() => {
     const c = cursorRef.current;
     const i = c ? lastIndex.current : 0;
-    setCursor(keepCursor(c, ranked, i));
+    const top = ranked[0]?.key ?? null;
+    const followNeed = !!c && c === topKey.current && !!top && top !== c && top.startsWith('need:');
+    topKey.current = top;
+    setCursor(followNeed ? top : keepCursor(c, ranked, i));
   }, [ranked, setCursor]);
   const lastIndex = useRef(0);
   lastIndex.current = Math.max(0, ranked.findIndex((x) => x.key === cursor));
@@ -141,7 +150,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     if (cursorRef.current === a.key) setCursor(after[Math.min(Math.max(at, 0), after.length - 1)]?.key ?? null);
     try {
       await extrasRef.current.onTask?.(a, s);
-      toastRef.current(sentText, 'ok');
+      if (a.source !== 'need') toastRef.current(sentText, 'ok'); // a need answer shows its own Undo toast
     } catch (e) {
       setCursor(a.key);
       if (!(e instanceof Error && (e as { shown?: boolean }).shown)) toastRef.current(e instanceof Error ? e.message : 'Failed', 'err');
@@ -150,7 +159,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
 
   /** Answers an ask: it leaves the list at once; a failure puts it back. @req FR:ask-queue/web.optimistic */
   const answer = useCallback(async (a: AskItem, s: Send, sentText: string, undoable = true) => {
-    if (a.source === 'task') return answerTask(a, s, sentText);
+    if (a.source) return answerTask(a, s, sentText);
     const at = itemsRef.current.findIndex((i) => i.key === a.key);
     hold.current.set(a.key, Date.now() + HOLD_MS);
     const after = itemsRef.current.filter((i) => i.key !== a.key);

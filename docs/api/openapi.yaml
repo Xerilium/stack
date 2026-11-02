@@ -30,6 +30,143 @@ paths:
                     nullable: true
         default:
           $ref: "#/components/responses/Error"
+  /rank:
+    get:
+      summary: "The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under"
+      operationId: rank
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Ranked tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ref:
+                          $ref: "#/components/schemas/Ref"
+                        text:
+                          type: string
+                        project:
+                          type: string
+                        score:
+                          type: number
+                        rule:
+                          type: string
+                          description: The override that applied
+                        root:
+                          $ref: "#/components/schemas/Ref"
+        default:
+          $ref: "#/components/responses/Error"
+  /needs-you:
+    get:
+      summary: The Chief of Staff's open decisions and go-dos (`.stack/needs-you.json`), each with a recommendation, a default, and a link
+      operationId: listNeeds
+      responses:
+        "200":
+          description: Needs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        recommendation:
+                          type: string
+                        default:
+                          type: string
+                        by:
+                          type: string
+                        link:
+                          type: string
+                        project:
+                          type: string
+                        ref:
+                          type: string
+                        answer:
+                          type: object
+                          properties:
+                            choice:
+                              type: string
+                              enum:
+                                - go
+                                - defer
+                                - reply
+                            text:
+                              type: string
+                            until:
+                              type: string
+                            at:
+                              type: string
+                              format: date-time
+        default:
+          $ref: "#/components/responses/Error"
+  /needs-you/{id}/answer:
+    post:
+      summary: "Record the owner's answer on a need (go, defer, reply) or clear it (undo). Owner session only: 403 for tokens"
+      operationId: answerNeed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - choice
+              properties:
+                choice:
+                  type: string
+                  enum:
+                    - go
+                    - defer
+                    - reply
+                    - undo
+                text:
+                  type: string
+                  maxLength: 1000
+                  description: Required for reply Single line.
+                until:
+                  type: string
+                  maxLength: 40
+                  description: Required for defer (ISO) Single line.
+      responses:
+        "200":
+          description: Answered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
   /tasks:
     get:
       summary: List tasks
@@ -1667,16 +1804,42 @@ paths:
           $ref: "#/components/responses/Error"
   /sync:
     get:
-      summary: "Change probe: the head revision of the task repo (null when the storage has none). Poll it and reload only when it changes"
+      summary: "Change probe: the head revision of the task repo (null when the storage has none), plus pending/since when the storage batches commits. Poll it and reload only when rev changes"
       operationId: sync
       responses:
         "200":
-          description: Revision
+          description: Sync state
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  rev:
+                    type: string
+                    nullable: true
+                  pending:
+                    type: integer
+                    description: Writes not yet committed (batching storage only)
+                  since:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: First pending write (batching storage only)
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Commit and push pending edits now (owner only). flushed is 0 when nothing was pending or the storage does not batch
+      operationId: flushSync
+      responses:
+        "200":
+          description: Flush result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flushed:
+                    type: integer
                   rev:
                     type: string
                     nullable: true
@@ -1969,6 +2132,9 @@ components:
           $ref: "#/components/schemas/Ref"
         task:
           type: string
+        parent:
+          type: string
+          description: Title of the parent row; absent for top-level rows
         kind:
           type: string
           enum:

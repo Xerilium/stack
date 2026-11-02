@@ -59,13 +59,16 @@ export interface ScoredTask {
 
 export interface ProjectWeight { name: string; valueScore: number; calculatedPriority: number; weight: number }
 
+/** `ignoreBlocks`: keep the due-date lens but do not drop tasks the current time block would hide. @req FR:scoring-engine/overrides.top.blocks */
+export interface RankOptions { ignoreBlocks?: boolean }
+
 /** @req FR:scoring-engine/engine.interface */
 export interface ScoringEngine {
   readonly id: string;
   score(projects: ScoringProject[], config: StackConfig): ScoredTask[];
   filter(tasks: ScoredTask[], projects: ScoringProject[], config: StackConfig, at: Date): ScoredTask[];
   /** Optional: replaces candidate selection and filtering in `rankTasks` (sees every scored task, parked ones too). */
-  rank?(scored: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date): ScoredTask[];
+  rank?(scored: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date, opts?: RankOptions): ScoredTask[];
 }
 
 // ---------------------------------------------------------------- emojis
@@ -448,7 +451,7 @@ function lens(s: ScoredTask, config: StackConfig, at: Date | undefined): { drop:
   return { drop: days !== null && days > NOW_HORIZON_DAYS, adj: s.score + dueTier(days) * 1000 };
 }
 
-function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date): ScoredTask[] {
+function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date, opts: RankOptions = {}): ScoredTask[] {
   const byId = new Map(all.map(s => [s.task.id, s]));
   const adj = new Map<string, number>();
   const eligible = new Map<string, boolean>();
@@ -495,7 +498,7 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
   };
 
   const candidates = all.filter(s => s.leaf && !s.parked);
-  const kept = at ? filterByTimeBlock(candidates, projects, config, at) : candidates;
+  const kept = at && !opts.ignoreBlocks ? filterByTimeBlock(candidates, projects, config, at) : candidates;
   const out: ScoredTask[] = [];
   for (const s of kept) {
     if (isMessage(s.task.text)) continue;
@@ -550,11 +553,11 @@ export function byScore<T extends { score: number }>(tasks: T[]): T[] {
 }
 
 /** @req FR:scoring-engine/rank.@function @req FR:scoring-engine/rank.order */
-export function rankTasks(engine: ScoringEngine, projects: ScoringProject[], config: StackConfig, at?: Date): ScoredTask[] {
+export function rankTasks(engine: ScoringEngine, projects: ScoringProject[], config: StackConfig, at?: Date, opts: RankOptions = {}): ScoredTask[] {
   const all = engine.score(projects, config);
-  if (engine.rank) return engine.rank(all, projects, config, at);
+  if (engine.rank) return engine.rank(all, projects, config, at, opts);
   const candidates = all.filter(s => s.leaf && !s.parked);
-  return byScore(at ? engine.filter(candidates, projects, config, at) : candidates);
+  return byScore(at && !opts.ignoreBlocks ? engine.filter(candidates, projects, config, at) : candidates);
 }
 
 // ---------------------------------------------------------------- adapter

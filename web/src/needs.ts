@@ -19,7 +19,7 @@ function dueIso(due: string | undefined, now: Date): string | undefined {
   return d.toISOString();
 }
 
-/** A 🙋 row as an ask from its project's agent. Rank order is kept through the score. */
+/** @req FR:web-shell/state.needs.row — a 🙋 row as an ask from its project's agent. Rank order is kept through the score. */
 export function fromDecisions(decisions: Decision[], titles: Map<string, string>, now: Date): AskItem[] {
   return decisions.map((d, i) => {
     const r = parseRow(d.task.text);
@@ -40,4 +40,23 @@ export function fromDecisions(decisions: Decision[], titles: Map<string, string>
 /** One list, highest score first, ranks reassigned. */
 export function mergeNeeds(asks: AskItem[], decisions: AskItem[]): AskItem[] {
   return [...asks, ...decisions].sort((a, b) => b.score - a.score).map((a, i) => ({ ...a, rank: i + 1 }));
+}
+
+/** One escalation from the Chief of Staff (`.stack/needs-you.json`). @req FR:ask-queue/$need */
+export interface NeedItem {
+  id: string; title: string; recommendation: string; default?: string; by?: string; link: string; project?: string; ref?: string;
+  answer?: { choice: 'go' | 'defer' | 'reply'; text?: string; until?: string; at: string };
+}
+
+/**
+ * The open escalations as asks from the Chief of Staff, ahead of everything else, in file order.
+ * An answered one is gone until a deferral passes its `until`.
+ * @req FR:ask-queue/needs.web @req FR:ask-queue/needs.web.card
+ */
+export function fromNeeds(items: NeedItem[], now: Date): AskItem[] {
+  return items.filter((n) => !n.answer || (n.answer.choice === 'defer' && !(Date.parse(n.answer.until ?? '') > now.getTime()))).map((n, i) => ({
+    key: `need:${n.id}`, source: 'need' as const, state: 'open' as const, ask: n.title, kind: 'approve' as const, from: 'Chief of Staff', project: n.project, ref: n.ref,
+    recommend: n.recommendation, default: n.default, by: n.by, link: n.link, reversible: true, priority: 'high' as const, blocks: 0,
+    created: '', updated: '', score: 1000 - i, overdue: !!n.by && new Date(n.by).getTime() < now.getTime(),
+  }));
 }

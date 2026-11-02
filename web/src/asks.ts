@@ -13,7 +13,7 @@ export interface AskItem {
   /** The task the ask belongs to (its title) and where that row is now. @req FR:agent-thread/ask.ref */
   task?: string; row?: string;
   /** `task`: an open 🙋 row from a task file (`ref`), answered through the agent inbox. @req FR:web-shell/state.needs */
-  source?: 'task'; ref?: string;
+  source?: 'task' | 'need'; ref?: string;
   /** Quick triage: the flow and its progress; what Stack applies on the answer. @req FR:quick-triage/web.stepper */
   flow?: string; seq?: number; flowTotal?: number; flowDone?: number; apply?: string; applies?: string[]; refText?: string;
 }
@@ -49,6 +49,8 @@ export interface Action { id: string; label: string; key: string; primary?: bool
 export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'>): Action[] {
   const open: Action[] = a.link ? [{ id: 'open', label: 'Open', key: 'o', open: true }] : [];
   const rec = a.recommend?.trim().toLowerCase();
+  // A CoS escalation: go with her recommendation, or open the link; Defer and Reply stay as for any ask. @req FR:ask-queue/needs.web.card
+  if (a.source === 'need') return [{ id: 'go', label: 'Go with it', key: 'Enter', primary: true, send: { answer: 'go' } }, ...open];
   // A 🙋 row: go with the agent's recommendation, or answer it; Details opens the row. @req FR:web-shell/state.needs
   if (a.source === 'task') {
     const details: Action = { id: 'open', label: 'Details', key: 'o', open: true };

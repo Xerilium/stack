@@ -87,7 +87,7 @@ describe('workflows', () => {
   it("least-privilege permissions and SHA-pinned actions", () => {
     for (const [f, d] of docs) {
       expect(d.permissions).toEqual({ contents: "read" });
-      for (const m of read(`.github/workflows/${f}`).matchAll(/uses:\s*(\S+)/g)) expect(m[1]).toMatch(/@[0-9a-f]{40}$/);
+      for (const m of read(`.github/workflows/${f}`).matchAll(/\buses:\s*(\S+)/g)) expect(m[1]).toMatch(/@[0-9a-f]{40}$/);
     }
   });
   it('e2e runs Playwright on pull requests and guards on web/', () => {

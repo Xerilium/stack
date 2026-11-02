@@ -17,7 +17,7 @@ stack web --repo ~/path/to/your-content-repo        # DEMO: serves a scratch COP
 1. Stack (this repo) is code only. It never holds tasks.
 2. Your content repo is a separate git repo with `tasks/*.md`. Point Stack at it: `--repo <path-or-git-url>`, `$STACK_REPO`, or `repo` in `~/.config/stack/config.json`.
 3. DEMO (default): works on a scratch copy in `~/.config/stack/demo`; nothing touches your repo. `--reset` re-copies.
-4. LIVE (`--live`): reads and writes your real repo, committing to branch `stack-web` (`--branch` to change) in a git worktree; your checkout and `main` stay untouched until you merge.
+4. LIVE (`--live`): reads and writes `tasks/` in your real checkout, on the branch you have checked out (`main` included). Edits land in the files at once and are committed as one summarized commit after 5 quiet minutes (`--batch <minutes>`, `0` = every edit), when you leave the page, or when you stop the server; pushed to `origin` when the repo has one. The app shows `Unsaved · n` until then.
 5. The page header always shows mode, repo path, and branch.
 
 If `stack` is not found, run `pnpm setup` and reopen the shell. Needs Node 22 and pnpm. CLI commands find the repo by walking up from the current folder, then `$STACK_REPO`/`$STACK_DIR`, then user config; `--dir` overrides.
@@ -39,6 +39,7 @@ Task files are `tasks/<project>.md`. The `emoji` format (default) carries priori
 ## Interfaces
 
 - CLI: [docs/cli.md](docs/cli.md)
+- Ranking, overrides, and the CoS Needs you file: [docs/ranking.md](docs/ranking.md)
 - REST API: [docs/api/README.md](docs/api/README.md)
 - MCP server: [docs/mcp.md](docs/mcp.md)
 - Chat bots: [docs/bots/README.md](docs/bots/README.md)

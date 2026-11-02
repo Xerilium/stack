@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { createGitHubPrs } from '../../src/api/github';
+import { createGitHubPrs, githubRepos, GitHubReposError } from '../../src/api/github';
+import { ENV, setup } from '../host/helpers';
 
 type Reply = { status?: number; body: unknown };
 function fake(routes: Record<string, Reply>) {
@@ -23,7 +24,7 @@ const pull = (n: number, o: Partial<{ state: string; merged: boolean; draft: boo
 const runs = (...r: [string, string | null][]) => ({ body: { total_count: r.length, check_runs: r.map(([status, conclusion]) => ({ status, conclusion })) } });
 const ref = (n: number) => ({ url: `https://github.com/o/r/pull/${n}`, repo: 'o/r', number: n });
 
-// @req FR:agent-inbox/github.fetch
+// @req FR:github-pr-status/status.fetch
 describe('GitHub PR status provider', () => {
   it('maps PR state and check runs, sends the token only to api.github.com', async () => {
     const f = fake({
@@ -74,13 +75,57 @@ describe('GitHub PR status provider', () => {
   });
 });
 
-// @req FR:agent-inbox/github.wire
+// @req FR:github-pr-status/repos.allow
+describe('repo allow-list', () => {
+  type Agents = { items: { prs: object[] }[] };
+  const at = (repo: string, n: number) => ({ url: `https://github.com/${repo}/pull/${n}`, repo, number: n });
+  const routes = (...rs: [string, number][]) => Object.fromEntries(rs.flatMap(([repo, n]) => [[`/repos/${repo}/pulls/${n}`, pull(n)], [`/repos/${repo}/commits/sha${n}/check-runs?per_page=100`, runs()]]));
+  it('parses a comma list of owner or owner/repo; unset or blank means every repo', () => {
+    expect(githubRepos(undefined)).toBeUndefined();
+    expect(githubRepos(' , ')).toBeUndefined();
+    expect(githubRepos(' Xerilium, o/r.js ,')).toEqual(['Xerilium', 'o/r.js']);
+    for (const bad of ['o/r/x', '-o', '../evil', 'https://github.com/o/r', 'o/']) expect(() => githubRepos(bad)).toThrow(GitHubReposError);
+    expect(() => githubRepos('secret-ish/../x')).toThrow(expect.objectContaining({ message: expect.not.stringContaining('secret-ish') }));
+  });
+  it('gives status only to PRs in listed owners or repos, never asking GitHub about the rest', async () => {
+    const f = fake(routes(['Xerilium/stack', 1], ['o/r', 2], ['o/other', 3], ['private/repo', 4]));
+    const prs = createGitHubPrs({ token: 't', fetch: f.fetch, repos: ['xerilium', 'O/R'] });
+    const m = await prs([at('Xerilium/stack', 1), at('o/r', 2), at('o/other', 3), at('private/repo', 4)]);
+    expect([...m.keys()]).toEqual([at('Xerilium/stack', 1).url, at('o/r', 2).url]);
+    expect(f.seen.some((x) => /other|private/.test(x.url))).toBe(false);
+  });
+  it('looks up every repo when no list is given', async () => {
+    const f = fake(routes(['o/r', 1], ['private/repo', 2]));
+    expect((await createGitHubPrs({ token: 't', fetch: f.fetch })([at('o/r', 1), at('private/repo', 2)])).size).toBe(2);
+  });
+  it('host: GET /agents shows status only for allowed repos; a bad list logs a value-free reason and turns PR status off', async () => {
+    const doc = '# Alpha\n\n## Active\n\n- [ ] 🤖 Ship it https://github.com/o/r/pull/1 https://github.com/private/repo/pull/2\n';
+    const f = fake(routes(['o/r', 1], ['private/repo', 2]));
+    const spy = jest.spyOn(globalThis, 'fetch').mockImplementation(f.fetch);
+    try {
+      const ok = await setup({ ...ENV, GITHUB_TOKEN: 't', STACK_GITHUB_REPOS: 'o' });
+      await ok.storage.write('tasks/alpha.md', doc);
+      const { items } = (await (await ok.owner('/api/agents')).json()) as Agents;
+      expect(items[0].prs).toEqual([expect.objectContaining({ repo: 'o/r', state: 'open' }), { url: 'https://github.com/private/repo/pull/2', repo: 'private/repo', number: 2 }]);
+      expect(f.seen.some((x) => x.url.includes('private'))).toBe(false);
+      const bad = await setup({ ...ENV, GITHUB_TOKEN: 't', STACK_GITHUB_REPOS: 'o, hidden/x/y' });
+      await bad.storage.write('tasks/alpha.md', doc);
+      const before = f.seen.length;
+      expect(((await (await bad.owner('/api/agents')).json()) as Agents).items[0].prs.every((p) => !('state' in p))).toBe(true);
+      expect(f.seen).toHaveLength(before);
+      expect(bad.logs.join('\n')).toContain('STACK_GITHUB_REPOS');
+      expect(bad.logs.join('\n')).not.toContain('hidden');
+    } finally { spy.mockRestore(); }
+  });
+});
+
+// @req FR:github-pr-status/wire.token
 describe('wiring', () => {
   const read = (p: string) => readFileSync(join(__dirname, '../..', p), 'utf8');
   it.each(['src/host/runtime.ts', 'src/cli/web.ts'])('%s passes the provider only when GITHUB_TOKEN is set, never logs it', (p) => {
     const src = read(p);
     expect(src).toMatch(/GITHUB_TOKEN\?\.trim\(\)/);
-    expect(src).toMatch(/ghToken \? createGitHubPrs\(\{ token: ghToken \}\) : undefined/);
+    expect(src).toMatch(/ghToken \? createGitHubPrs\(\{ token: ghToken, repos: githubRepos\((env|process\.env)\.STACK_GITHUB_REPOS\) \}\) : undefined/);
     expect(src).not.toMatch(/log\([^)]*ghToken|console\.\w+\([^)]*ghToken/);
   });
 });

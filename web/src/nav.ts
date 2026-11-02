@@ -5,7 +5,7 @@
 import type { View } from './types';
 
 export const LABEL: Record<View, string> = { home: 'Home', today: 'My day', asks: 'Needs you', sessions: 'Agents', projects: 'Projects', list: 'Full stack' };
-/** The chord shown next to each view (the first letter after `g`). */
+/** @req FR:web-shell/nav.keys.hint — the chord shown next to each view (the first letter after `g`). */
 export const HINT: Record<View, string> = { home: 'g h', today: 'g d', asks: 'g k', sessions: 'g s', projects: 'g p', list: 'g a' };
 export const CHORDS: Record<string, View> = { h: 'home', d: 'today', t: 'today', k: 'asks', s: 'sessions', p: 'projects', a: 'list' };
 /** Desktop rail, top to bottom. */

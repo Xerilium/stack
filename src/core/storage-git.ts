@@ -15,14 +15,14 @@ const MAX_PUSH_ATTEMPTS = 3;
 
 /**
  * Work-tree adapter: every write is a direct commit (no PRs).
- * @req FR:storage-git/git.commit @req FR:storage-git/git.noop @req FR:storage-git/git.isolation
+ * @req FR:storage-git/git.@function @req FR:storage-git/git.commit @req FR:storage-git/git.noop @req FR:storage-git/git.isolation
  * @req FR:storage-git/git.remote @req FR:storage-git/git.push-retry @req FR:storage-git/git.conflict @req FR:storage-git/write.many
  */
 export class GitStorage extends FsStorage {
   /** Test seam: awaited just before each push attempt. */
   beforePush?: () => Promise<void>;
-  private remote?: string;
-  private branch: string;
+  protected remote?: string;
+  protected branch: string;
   private branchExplicit: boolean;
   private env?: NodeJS.ProcessEnv;
 
@@ -35,7 +35,7 @@ export class GitStorage extends FsStorage {
   }
 
   /** @req FR:storage-git/git.exec @req FR:storage-git/git.env */
-  private git(...args: string[]): Promise<string> {
+  protected git(...args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
       execFile('git', args, {
         cwd: this.root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
@@ -49,13 +49,13 @@ export class GitStorage extends FsStorage {
     });
   }
 
-  private async tryGit(...args: string[]): Promise<string | null> {
+  protected async tryGit(...args: string[]): Promise<string | null> {
     try { return await this.git(...args); } catch { return null; }
   }
 
-  private get ref() { return `${this.remote}/${this.branch}`; }
+  protected get ref() { return `${this.remote}/${this.branch}`; }
 
-  private async fetch(): Promise<boolean> {
+  protected async fetch(): Promise<boolean> {
     // Explicit destination so the tracking ref exists regardless of refspec config.
     try { await this.git('fetch', '-q', this.remote!, `+refs/heads/${this.branch}:refs/remotes/${this.ref}`); } catch (e) {
       if (/couldn't find remote ref/i.test((e as Error).message)) return false;
@@ -80,8 +80,9 @@ export class GitStorage extends FsStorage {
    * Rebase local state onto the remote; false when it conflicted (rebase aborted).
    * Tracked local changes (staged and unstaged) are stashed and re-applied with --index so the
    * index is preserved. Other failures (lock files, hooks) and stash re-apply conflicts throw StorageError.
+   * @req FR:storage-git/git.isolation.state
    */
-  private async rebase(): Promise<boolean> {
+  protected async rebase(): Promise<boolean> {
     if (((await this.tryGit('rev-list', '--count', `HEAD..${this.ref}`)) ?? '1').trim() === '0') return true;
     const dirty = (await this.git('status', '--porcelain', '-uno')).trim() !== '';
     let stash: string | null = null;
@@ -118,7 +119,7 @@ export class GitStorage extends FsStorage {
   }
 
   /** Reject writes when the checked-out branch is not the configured one. @req FR:storage-git/git.branch */
-  private async checkBranch(): Promise<void> {
+  protected async checkBranch(): Promise<void> {
     if (!this.remote && !this.branchExplicit) return;
     const cur = (await this.tryGit('symbolic-ref', '--short', '-q', 'HEAD'))?.trim() ?? null;
     if (cur !== this.branch) throw new StorageError(`Configured branch ${this.branch} is not the current branch (${cur ?? 'detached HEAD'})`);
@@ -145,7 +146,7 @@ export class GitStorage extends FsStorage {
     return { version: versionOf(content) };
   }
 
-  /** One commit (and one push) for all changed paths; serialized per adapter instance only. @req FR:storage-git/write.many @req FR:storage-git/git.concurrency */
+  /** One commit (and one push) for all changed paths; serialized per adapter instance only. @req FR:storage-git/write.many @req FR:storage-git/write.many.commit @req FR:storage-git/git.concurrency */
   protected async lockedMany(writes: FileWrite[], message?: string): Promise<void> {
     await this.checkBranch();
     if (this.remote) await this.syncNow();
@@ -159,25 +160,17 @@ export class GitStorage extends FsStorage {
     // Remember each path's index entry so a failed commit restores the user's own staged edit.
     const entries: string[] = [];
     for (const p of paths) entries.push(((await this.tryGit('ls-files', '-s', '--', p)) ?? '').trim());
-    // `commit --only` names paths by what HEAD knows: a delete of a path HEAD never had (untracked, or staged but never committed) is left out of it.
-    const inHead: boolean[] = [];
-    for (const p of paths) inHead.push((await this.tryGit('cat-file', '-e', `HEAD:${p}`)) !== null);
     let committed = false;
     try {
       for (const w of writes) await this.put(w.path, w.content);
-      // A deleted path may be untracked (written with --no-commit), which `git add` rejects; `git rm --cached` stages either case.
-      const adds = writes.filter(w => w.content !== null).map(w => w.path);
-      const dels = writes.filter(w => w.content === null).map(w => w.path);
-      if (adds.length) await this.git('add', '--', ...adds);
-      if (dels.length) await this.git('rm', '-q', '--cached', '--ignore-unmatch', '--', ...dels);
-      const only = paths.filter((p, i) => writes[i].content !== null || inHead[i]);
-      const staged = only.length ? await this.tryGit('diff', '--cached', '--quiet', '--', ...only) : '';
-      if (staged === null) {
+      const only = await this.stage(paths);
+      if (only.length) {
         const msg = message ?? (paths.length === 1 ? `Update ${paths[0]}` : `Update ${paths.length} files`);
         await this.git('commit', '-q', '-m', msg, '--only', '--', ...only);
         committed = true;
       }
     } catch (e) {
+      // @req FR:storage-git/git.failure.rollback
       for (let i = 0; i < paths.length; i++) {
         const m = /^(\d+) ([0-9a-f]+) \d\t/.exec(entries[i]);
         if (m) await this.tryGit('update-index', '--add', '--cacheinfo', `${m[1]},${m[2]},${paths[i]}`);
@@ -189,27 +182,56 @@ export class GitStorage extends FsStorage {
     if (committed && this.remote) await this.push(writes);
   }
 
+  /**
+   * Stage `paths` as they are on disk (present → `add`, missing → `rm --cached`) and return the ones
+   * `commit --only` can name that carry a staged change; empty when nothing changed.
+   * A deleted path may be untracked (written with --no-commit), which `git add` rejects; `git rm --cached` stages either case.
+   * `commit --only` names paths by what HEAD knows: a delete of a path HEAD never had (untracked, or staged but never committed) is left out of it.
+   */
+  protected async stage(paths: string[]): Promise<string[]> {
+    const adds: string[] = []; const dels: string[] = []; const only: string[] = [];
+    for (const p of paths) {
+      const exists = (await this.readRaw(p)) !== null;
+      (exists ? adds : dels).push(p);
+      if (exists || (await this.tryGit('cat-file', '-e', `HEAD:${p}`)) !== null) only.push(p);
+    }
+    if (adds.length) await this.git('add', '--', ...adds);
+    if (dels.length) await this.git('rm', '-q', '--cached', '--ignore-unmatch', '--', ...dels);
+    const staged = only.length ? await this.tryGit('diff', '--cached', '--quiet', '--', ...only) : '';
+    return staged === null ? only : [];
+  }
+
   private async push(writes: FileWrite[]): Promise<void> {
     const paths = writes.map(w => w.path);
     // Our commit is HEAD now; re-read after every rebase because the SHA changes.
-    let ours = (await this.git('rev-parse', 'HEAD')).trim();
+    const ours = (await this.git('rev-parse', 'HEAD')).trim();
+    await this.pushRetry(ours, (sha) => this.dropQuietly(paths, sha), writes);
+  }
+
+  /**
+   * Push `ours` (the HEAD tip), retrying on non-fast-forward after a fetch + rebase; `undo(sha)` removes our commit on failure.
+   * `recheck` writes with an `expectedVersion` are compared against the fetched remote before the rebase.
+   * @req FR:storage-git/git.push-retry @req FR:storage-git/git.push-retry.other
+   */
+  protected async pushRetry(ours: string, undo: (ours: string) => Promise<void>, recheck: FileWrite[] = []): Promise<void> {
+    const paths = recheck.map(w => w.path);
     for (let attempt = 1; ; attempt++) {
       if (this.beforePush) await this.beforePush();
       try { await this.git('push', '-q', this.remote!, `HEAD:refs/heads/${this.branch}`); return; } catch (e) {
         const msg = (e as Error).message;
         if (!/\[rejected\]|non-fast-forward|fetch first/i.test(msg)) {
           // Auth, network, hook rejection: not a race. Roll back so a failed write leaves nothing behind.
-          await this.dropQuietly(paths, ours);
+          await undo(ours);
           throw e instanceof StorageError ? e : new StorageError(msg);
         }
         if (attempt >= MAX_PUSH_ATTEMPTS) {
-          await this.dropQuietly(paths, ours);
+          await undo(ours);
           throw new ConflictError(`Push rejected after ${attempt} attempts: ${msg}`);
         }
       }
       let ok = await this.fetch();
       if (ok) {
-        for (const w of writes) {
+        for (const w of recheck) {
           if (w.expectedVersion === undefined) continue;
           const theirs = await this.tryGit('show', `${this.ref}:${w.path}`);
           if ((theirs === null ? null : versionOf(theirs)) !== w.expectedVersion) ok = false;
@@ -218,13 +240,13 @@ export class GitStorage extends FsStorage {
       if (ok) ok = await this.rebase();
       if (ok) ours = (await this.git('rev-parse', 'HEAD')).trim();
       if (!ok) {
-        await this.dropQuietly(paths, ours);
-        throw new ConflictError(`Conflict on ${paths.join(', ')}: remote changed it concurrently`);
+        await undo(ours);
+        throw new ConflictError(`Conflict${paths.length ? ` on ${paths.join(', ')}` : ''}: remote changed it concurrently`);
       }
     }
   }
 
-  /** Roll back for a push failure; a rollback error must not mask the original error thrown by the caller. */
+  /** Roll back for a push failure; a rollback error must not mask the original error thrown by the caller. @req FR:storage-git/git.failure.mask */
   private async dropQuietly(paths: string[], ours: string): Promise<void> {
     try { await this.dropCommit(paths, ours); } catch { /* original error wins */ }
   }

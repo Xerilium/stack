@@ -22,6 +22,7 @@ while [ $# -gt 0 ]; do
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
+# @req FR:live-deploy/setup.script.args
 bad() { echo "Invalid $1: $2" >&2; exit 2; }
 [[ "$REPO" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$ ]] || bad --repo "$REPO (want owner/name)"
 [[ "$APP" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$ ]] || bad --app "$APP (want owner/name)"
@@ -38,6 +39,7 @@ az account show >/dev/null 2>&1 || { echo "Run 'az login' first." >&2; exit 1; }
 gh auth status >/dev/null 2>&1 || { echo "Run 'gh auth login' first." >&2; exit 1; }
 
 # Secrets live only in this mode-600 temp folder (outside any git work tree) and are deleted on exit.
+# @req FR:live-deploy/setup.secrets.quiet
 umask 077
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/stack-setup.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -45,6 +47,7 @@ trap 'rm -rf "$TMP"' EXIT
 say "Subscription: $(az account show --query name -o tsv)"
 # Only "not there" means a new site. Any other failure stops the script (set -e) instead of creating a second site or re-applying the template.
 # Plain assignments, not `if` conditions: set -e is off inside a condition.
+# @req FR:live-deploy/setup.script.rerun
 EXISTS=0
 GROUP_EXISTS=$(az group exists -n "$GROUP")
 FOUND=""
@@ -52,6 +55,7 @@ if [ "$GROUP_EXISTS" = true ]; then FOUND=$(az staticwebapp list -g "$GROUP" --q
 [ -n "$FOUND" ] && EXISTS=1
 
 # --owner on an existing site: only update the allow-list (takes effect at once, no redeploy).
+# @req FR:live-deploy/setup.owner
 if [ -n "$OWNER" ] && [ "$EXISTS" = 1 ]; then
   ONLY_OWNER=1
 else
@@ -83,6 +87,7 @@ if [ "$EXISTS" = 0 ]; then
   az group create -n "$GROUP" -l "$LOCATION" -o none
   # First run only: the template writes the whole settings list, so it never runs against a live site.
   # Values are JSON-encoded by node (env in, file out), never interpolated by the shell.
+  # @req FR:live-deploy/setup.secrets.json @req FR:live-deploy/setup.script.rerun
   # shellcheck disable=SC2016 # $schema is a JSON key for node, not a shell variable
   STACK_P_NAME=$NAME STACK_P_LOCATION=$LOCATION STACK_P_OWNERS=$OWNER STACK_P_PEPPER=$(openssl rand -hex 32) STACK_P_URL="https://github.com/$REPO" STACK_P_TOKEN=$TOKEN \
     node -e 'const e = process.env, v = (x) => ({ value: x }); require("fs").writeFileSync(process.argv[1], JSON.stringify({ $schema: "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#", contentVersion: "1.0.0.0", parameters: { name: v(e.STACK_P_NAME), location: v(e.STACK_P_LOCATION), owners: v(e.STACK_P_OWNERS), tokenPepper: v(e.STACK_P_PEPPER), repoUrl: v(e.STACK_P_URL), repoToken: v(e.STACK_P_TOKEN) } }));' "$TMP/params.json"
@@ -93,6 +98,7 @@ else
   az staticwebapp appsettings list -n "$NAME" -g "$GROUP" --query properties -o json > "$TMP/current.json"
   # Merge only what changed into the current list, then write it back whole (az rest reads the body from the file).
   # The repo URL changes only when --repo is given, so a re-run never silently repoints a site.
+  # @req FR:live-deploy/setup.script.rerun @req FR:live-deploy/setup.secrets.json
   STACK_P_OWNERS=$OWNER STACK_P_URL=$([ "$REPO_SET" = 1 ] && echo "https://github.com/$REPO" || echo "") STACK_P_TOKEN=$TOKEN \
     node -e 'const fs = require("fs"), e = process.env; const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8") || "{}") || {}; if (e.STACK_P_OWNERS) p.STACK_OWNERS = e.STACK_P_OWNERS; if (e.STACK_P_URL) p.STACK_REPO_URL = e.STACK_P_URL; if (e.STACK_P_TOKEN) p.STACK_REPO_TOKEN = e.STACK_P_TOKEN; fs.writeFileSync(process.argv[2], JSON.stringify({ properties: p }));' "$TMP/current.json" "$TMP/body.json"
   ID=$(az staticwebapp show -n "$NAME" -g "$GROUP" --query id -o tsv)

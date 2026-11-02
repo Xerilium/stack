@@ -31,9 +31,23 @@ Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-St
 ### FR:next: Next-task selection
 
 - **FR:next.@function** (P1): Interface: `nextTask(ctx, at?): Promise<NextTask | null>` where `NextTask = { ref, text, project, score }`
-- **FR:next.rank** (P1): MUST return the highest-scoring leaf, non-parked task across all project files, using the scoring engine named by `ctx.engine` (default `legacy`) and its time-block filter at `at` (default now)
+- **FR:next.rank** (P1): MUST return the first task of `rankStack` (`FR:rank.order`), so `nextTask`, `GET /next`, `stack next`, and the web Home never disagree
 - **FR:next.map** (P1): The returned `ref` MUST point at the exact line of the scored task (Active section only, unchecked rows only, as the scoring adapter sees them)
 - **FR:next.none** (P1): MUST return `null` when no task qualifies
+
+### FR:rank: Ranked tasks
+
+Owner needs one ranked list of what to do next so that the CLI, the API, the `/next` skill, and the web Home all show the same order.
+
+- **FR:rank.@function** (P1): Interface: `rankStack(ctx, at?, limit?): Promise<RankedTask[]>`
+- **FR:rank.order** (P1): `rankStack` MUST return the highest-scoring leaf, non-parked tasks across all project files, using the scoring engine named by `ctx.engine` (default `stack`) and its time-block filter at `at` (default now), then apply the owner's overrides
+  > - @req FR:scoring-engine/rank.order
+  > - @req FR:scoring-engine/overrides.tiers
+- **FR:rank.overrides** (P1): `rankStack` MUST read overrides from `.stack/priorities.json` in the storage (absent or unreadable means none) and MUST keep the rows of a `top` rule in the ranking even when the time block would hide them
+  > - @req FR:scoring-engine/overrides.invalid
+- **FR:rank.limit** (P2): `rankStack` MUST return at most `limit` tasks when given
+- **FR:rank.root** (P1): `rankStack` MUST give each task under a parent its top-level row (`root`), so a surface that shows top-level rows groups the leaves without parsing the files itself
+- **FR:rank.output** (P1): List of ranked tasks (@req FR:$ranked-task)
 
 ### FR:start: Start
 
@@ -103,3 +117,21 @@ Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-St
 - **FR:sweep.due** (P1): `sweepDueDates` escalates unchecked rows carrying `📅 Mon D:` (the label stays) by days until due: 1 to 3 days ahead gets `🔺` (kept if `‼️`/`🚨` is present); due today to 2 days overdue gets `‼️` (kept if `🚨`); 3+ days overdue gets `🚨`. Any other priority emoji (`🔺 ‼️ 🚨 🔻`) is replaced, the new one goes first, whitespace collapses. Rows with a lower escalation than they already hold, and rows more than 3 days out, are untouched
 - **FR:sweep.due-move** (P2): A top-level row escalated to `‼️` or `🚨` in the `⏭️ Up next` or `📋 Backlog` section moves, with its nested lines, to the top of the Active task list (before the first Active task row; at the end of Active when it has none). Legacy moved only the single line above the section text; this keeps the block together
 - **FR:sweep.all** (P2): `sweep` runs start, suspend, and due sweeps and writes all changed files in one multi-file write (one commit)
+
+## Data Model
+
+- **FR:$ranked-task** (P1): **`RankedTask`** — One ranked task.
+  - `ref` (TaskRef) — the exact line (`FR:next.map`)
+  - `text` (string) — row text
+  - `project` (string)
+  - `score` (number) — the engine score
+  - `rule` (string?) — the matching override's `match`, when one applied
+  - `root` (TaskRef?) — the top-level row it sits under
+
+## Architecture Constraints
+
+None
+
+## External Dependencies
+
+None

@@ -251,6 +251,11 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('tasks.get', 'GET', `/tasks/${encodeURIComponent(ref)}`, undefined, 200);
     await go('tasks.get', 'GET', '/tasks/zzz:99', undefined, 404);
     await go('next', 'GET', '/next', undefined, 200);
+    // @req FR:api/routes.rank
+    await go('rank', 'GET', '/rank?limit=5', undefined, 200);
+    // @req FR:ask-queue/needs.api
+    await go('needs.list', 'GET', '/needs-you', undefined, 200);
+    await go('needs.answer', 'POST', '/needs-you/none/answer', { choice: 'go' }, 404);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha', dryRun: true }, 200);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha' }, 201);
     await go('tasks.start', 'POST', '/tasks/start', { ref }, 200);
@@ -274,6 +279,8 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('summaries.get', 'GET', '/summaries', undefined, 200);
     // @req FR:live-deploy/sync.route
     await go('sync', 'GET', '/sync', undefined, 200);
+    // @req FR:live-deploy/sync.flush
+    await go('sync.flush', 'POST', '/sync', {}, 200);
     // @req FR:day-inputs/api.calendar
     await go('calendar.list', 'GET', '/calendar?from=2026-10-28T00:00:00Z&to=2026-10-29T00:00:00Z', undefined, 200);
     await go('calendar.list', 'GET', '/calendar?from=x&to=y', undefined, 422);

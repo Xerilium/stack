@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
 import { dirname, join } from 'path';
 
+/** @req FR:storage-git/$errors */
 export class StorageError extends Error {}
 export class NotFoundError extends StorageError {}
 export class ConflictError extends StorageError {}
@@ -17,7 +18,7 @@ export interface WriteOptions {
   message?: string;
 }
 
-/** One file in a multi-file write. @req FR:storage-git/write.many */
+/** One file in a multi-file write. @req FR:storage-git/write.many @req FR:storage-git/$file-write */
 export interface FileWrite { path: string; /** `null` deletes the file (multi-file writes only). @req FR:storage-git/write.delete */ content: string | null; expectedVersion?: string | null }
 
 /** @req FR:storage-git/interface.@type */
@@ -33,7 +34,10 @@ export interface Storage {
   writeMany?(writes: FileWrite[], opts?: { message?: string }): Promise<void>;
 }
 
-/** Multi-file write; adapters without `writeMany` fall back to one write per file. @req FR:storage-git/write.many */
+/**
+ * Multi-file write; adapters without `writeMany` fall back to one write per file (and refuse deletes).
+ * @req FR:storage-git/write.many @req FR:storage-git/write.many.fallback @req FR:storage-git/write.delete.fallback
+ */
 export async function writeAll(storage: Storage, writes: FileWrite[], message?: string): Promise<void> {
   if (storage.writeMany) return storage.writeMany(writes, { message });
   assertDistinct(writes);
@@ -43,7 +47,7 @@ export async function writeAll(storage: Storage, writes: FileWrite[], message?: 
   }
 }
 
-/** @req FR:storage-git/write.many */
+/** @req FR:storage-git/write.many @req FR:storage-git/write.many.duplicates */
 export function assertDistinct(writes: FileWrite[]): void {
   const seen = new Set<string>();
   for (const w of writes) {
@@ -228,6 +232,7 @@ export class FsStorage implements Storage {
     }
   }
 
+  /** @req FR:storage-git/interface.read @req FR:storage-git/interface.read.missing */
   async read(path: string): Promise<StoredFile> {
     validatePath(path);
     const content = await this.readRaw(path);
@@ -235,6 +240,7 @@ export class FsStorage implements Storage {
     return { path, content, version: versionOf(content) };
   }
 
+  /** @req FR:storage-git/write.input @req FR:storage-git/write.output */
   async write(path: string, content: string, opts: WriteOptions = {}): Promise<WriteResult> {
     validatePath(path);
     const run = () => this.locked(path, content, opts);
@@ -268,6 +274,14 @@ export class FsStorage implements Storage {
   /** Runs inside the serial queue: check every version, write all, restore all on failure. */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected async lockedMany(writes: FileWrite[], _message?: string): Promise<void> {
+    await this.putAll(writes);
+  }
+
+  /**
+   * Check every version first, then write all; a failure restores every written path.
+   * @req FR:storage-git/write.many.check @req FR:storage-git/write.many.rollback
+   */
+  protected async putAll(writes: FileWrite[]): Promise<void> {
     const priors: (string | null)[] = [];
     for (const w of writes) {
       const cur = await this.readRaw(w.path);

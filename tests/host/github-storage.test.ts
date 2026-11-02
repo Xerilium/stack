@@ -38,6 +38,7 @@ describe('token handling', () => {
       expect(c.init.redirect).toBe('manual');
     }
   });
+  // @req FR:live-deploy/gh.token.errors
   it('errors carry a fixed message with the status, never the token or the body', async () => {
     const gh = new FakeGitHub();
     gh.failWith = 401;
@@ -65,6 +66,7 @@ describe('snapshot reads', () => {
     expect(gets(gh, 'trees')).toBe(1);
     expect(gets(gh, 'blobs')).toBe(2);
   });
+  // @req FR:live-deploy/gh.snapshot.missing
   it('a missing path is NotFoundError with no network call', async () => {
     const gh = new FakeGitHub();
     const { s } = make(gh);
@@ -86,6 +88,7 @@ describe('snapshot reads', () => {
 
 // @req FR:live-deploy/gh.fresh @req FR:live-deploy/sync.cheap @req NFR:live-deploy/cost
 describe('freshness', () => {
+  // @req NFR:live-deploy/cost.github
   it('checks the ref at most every freshMs, conditionally, and picks up pushes from elsewhere', async () => {
     const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A1' });
     const { s, clock } = make(gh, { freshMs: 5000 });
@@ -104,6 +107,7 @@ describe('freshness', () => {
     expect((await s.read('tasks/a.md')).content).toBe('A2');
     expect(await s.listAsks()).toEqual(['tasks/asks/k.md']);
   });
+  // @req FR:live-deploy/gh.fresh.sync @req FR:live-deploy/gh.@function
   it('sync() and rev() force a check and rev is the head sha', async () => {
     const gh = new FakeGitHub();
     const { s } = make(gh);
@@ -113,6 +117,7 @@ describe('freshness', () => {
     expect(await s.list()).toEqual(['tasks/n.md']);
     expect(await s.rev()).toBe(sha);
   });
+  // @req FR:live-deploy/gh.fresh.fail
   it('a failed check serves the current snapshot to reads, but rev() reports it until a check succeeds', async () => {
     const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A' });
     const { s, clock } = make(gh);
@@ -149,6 +154,7 @@ describe('paths', () => {
     expect(await s.list()).toEqual(['tasks/a.md']);
     expect(await s.listAsks()).toEqual(['tasks/asks/ok.md']);
   });
+  // @req FR:live-deploy/gh.paths.links
   it('refuses symlinks and submodules', async () => {
     const gh = new FakeGitHub();
     gh.pushEntry('tasks/link.md', '120000');
@@ -174,6 +180,7 @@ describe('paths', () => {
 
 // @req FR:live-deploy/gh.write @req FR:live-deploy/gh.limits
 describe('writes', () => {
+  // @req FR:live-deploy/gh.@function
   it('one commit for many files, on the head, with author and message', async () => {
     const gh = new FakeGitHub('acme', 'tasks', { 'tasks/old.md': 'O' });
     const { s } = make(gh, { author: { name: 'Stack', email: 'stack@users.noreply.github.com' } });
@@ -199,6 +206,7 @@ describe('writes', () => {
     await s.write('tasks/a.md', 'A');
     expect(JSON.parse(seen[0]).force).toBe(false);
   });
+  // @req FR:live-deploy/gh.write.noop
   it('an unchanged write makes no commit', async () => {
     const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A' });
     const { s } = make(gh);
@@ -207,6 +215,7 @@ describe('writes', () => {
     await writeAll(s, [{ path: 'tasks/missing.md', content: null }]);
     expect(gh.commitCount()).toBe(n);
   });
+  // @req FR:live-deploy/gh.write.expected
   it('checks versions against the head, not a stale snapshot', async () => {
     const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A1' });
     const { s } = make(gh, { freshMs: 60_000 });
@@ -224,6 +233,7 @@ describe('writes', () => {
     expect(await s.list()).toEqual(['tasks/a.md']);
     expect((await s.read('tasks/a.md')).content).toBe('A');
   });
+  // @req FR:live-deploy/gh.limits.tree
   it('a truncated tree is a StorageError naming the limit', async () => {
     const gh = new FakeGitHub();
     gh.truncated = true;

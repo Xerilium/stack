@@ -5,14 +5,14 @@
 
 Global flags: `--dir <path>` (optional; default: found by walking up from the current folder, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`), `--json`, `--no-commit`, `--remote <name>`, `--branch <name>`, `--now <ISO>`, `--help`, `--version`.
 
-- `web`: serve the web app on localhost (default port 4173) over a content repo (`--repo path-or-git-url`, else discovery). DEMO by default (scratch copy in `~/.config/stack/demo`, `--reset` re-copies); `--live` edits the real repo on branch `stack-web` (`--branch`) via a worktree. `web [--repo path-or-url] [--live] [--branch name] [--port n] [--reset]`
+- `web`: serve the web app on localhost (default port 4173) over a content repo (`--repo path-or-git-url`, else discovery). DEMO by default (scratch copy in `~/.config/stack/demo`, `--reset` re-copies); `--live` edits `tasks/` in your real checkout on its current branch (`--branch` asserts which), committed in batches after `--batch` minutes idle (default 5, `0` = every edit), on `POST /api/sync`, and on shutdown; pushed to `origin` when present. `web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset]`. User config `~/.config/stack/config.json` keys: `repo`, `mode` (`live`), `branch`, `remote`, `batch` (minutes)
 - `graph`: one-time Microsoft Graph sign-in (device code) so `stack web` shows the live calendar. Read scopes only (`--with calendar,mail,drafts`); `Mail.Send` is refused. The token stays in `~/.config/stack/graph-token.json` (`--cache`, mode 0600). `graph login --client-id <id> [--tenant t] [--with calendar,mail,drafts] [--cache path] | status | logout`
 - `email`: one triage pass on the signed-in mailbox: rules first, Haiku classifies, Sonnet drafts in your voice (drafts only, never sends), archive/spam/unsubscribe asks act only after you answer. Runs where Claude Code runs (launchd or a scheduled task). `run` takes a lock and stops before any model call when one delta exceeds `--max` (default 200); `--dry-run` writes nothing. `voice` learns your style from Sent items (plus `--extra file.json` from elsewhere) into `$STACK_DATA_DIR`. `email run [--mode observe|drafts] [--max n] [--dry-run] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]`
 - `init`: create repo, tasks/, and config. `init`
 - `add-project`: create a project file. `add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force]`
 - `add`: add a task. `add <project> <text...> [--section name] [--parent ref]`
 - `capture`: add a task from a phrase (e.g. "call dentist tomorrow 30m #alpha"). `capture <text...> [--project name] [--section name] [--dry-run]`
-- `next`: print the top task. `next`
+- `next`: print the top task, or the first n ranked tasks (the same order as the web Home and `GET /api/rank`; overrides in [ranking.md](ranking.md)). `next [--top n]`
 - `start`: mark in progress. `start [ref] [--expect t]`
 - `complete`: check off (rolls recurring rows). `complete [ref] [--summary t] [--remove] [--expect t]`
 - `skip`: park a task (alias: park). `skip [ref] [--expect t]`

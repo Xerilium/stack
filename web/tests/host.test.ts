@@ -36,6 +36,7 @@ describe('client source', () => {
   // day.ts is the one module that may touch browser storage, for the per-day available time only.
   const src = all.filter((f) => !f.endsWith('day.ts')).map((f) => readFileSync(f, 'utf8')).join('\n');
   const day = readFileSync(join(ROOT, 'web/src/day.ts'), 'utf8');
+  // @req NFR:live-deploy/security.text
   it('has no secrets, env inlining, tokens, or innerHTML', () => {
     expect(src).not.toMatch(/import\.meta\.env/);
     expect(src).not.toMatch(/dangerouslySetInnerHTML|innerHTML/);

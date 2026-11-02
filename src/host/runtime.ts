@@ -4,7 +4,7 @@
  * @req FR:azure-host/git.lazy @req FR:azure-host/auth.api @req FR:azure-host/auth.mcp @req FR:azure-host/auth.bots @req FR:azure-host/auth.logs @req FR:azure-host/routes.paths
  */
 import { apiClient, createBotHandler } from '../bots';
-import { createApiHandler, createAuth, createGitHubPrs, createTokenService, FileTokenStore, type Authorize, type TokenStore } from '../api';
+import { createApiHandler, createAuth, createGitHubPrs, createTokenService, githubRepos, GitHubReposError, FileTokenStore, type Authorize, type TokenStore } from '../api';
 import { createMcpHandler } from '../mcp';
 import { createIcsCalendar, IcsError, icsUrls } from '../calendar/ics';
 import type { CalendarProvider } from '../calendar';
@@ -111,9 +111,10 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
   const event = (e: object) => log(JSON.stringify(e));
   const onError = (e: unknown) => log(`error: ${className(e)}`);
   const auth = createAuth({ owners: settings.owners, tokens, onEvent: event });
-  // @req FR:agent-inbox/github.wire
+  // @req FR:github-pr-status/wire.token @req FR:github-pr-status/repos.invalid: a bad repo list logs a value-free reason and leaves PR status off.
   const ghToken = env.GITHUB_TOKEN?.trim();
-  const prs = ghToken ? createGitHubPrs({ token: ghToken }) : undefined;
+  let prs: ReturnType<typeof createGitHubPrs> | undefined;
+  try { prs = ghToken ? createGitHubPrs({ token: ghToken, repos: githubRepos(env.STACK_GITHUB_REPOS) }) : undefined; } catch (e) { log(`host: STACK_GITHUB_REPOS ${e instanceof GitHubReposError ? e.message : className(e)}`); }
   // @req FR:schedule/ics.wire: the feed URLs are secrets; a bad value logs a URL-free reason and leaves the calendar off.
   let calendar: CalendarProvider | undefined;
   try { const urls = icsUrls(env.STACK_CALENDAR_ICS); calendar = urls.length ? createIcsCalendar({ urls }) : undefined; } catch (e) { log(`host: STACK_CALENDAR_ICS ${e instanceof IcsError ? e.message : className(e)}`); }

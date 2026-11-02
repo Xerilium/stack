@@ -1,6 +1,6 @@
 import { LifecycleError } from '../core/lifecycle';
 import { TriageBlocked, TriageDenied } from '../core/triage';
-import { ConflictError, NotFoundError, PathError } from '../core/storage';
+import { ConflictError, NotFoundError, PathError, StorageError } from '../core/storage';
 import { InboxFull } from '../core/inbox';
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -43,6 +43,19 @@ export function toApiError(e: unknown): ApiError {
   // Core messages can quote file content or user input, so clients only get fixed text.
   if (e instanceof LifecycleError) return /not found/i.test(e.message) ? new ApiError('not_found', 'Not found') : new ApiError('invalid', 'Request cannot be applied');
   return new ApiError('internal', 'Internal error');
+}
+
+/**
+ * The one route that relays a storage message: a flush failure names the path or says why the push failed, which the
+ * owner needs to act (live-deploy FR:sync.flush.error). The message comes from Stack's own code and git, never from row
+ * content; urls (remote addresses) are scrubbed anyway. Everything else keeps the fixed-text rule of `toApiError`.
+ * @req FR:live-deploy/sync.flush.error
+ */
+export function flushError(e: unknown): ApiError {
+  const words = (m: string) => m.replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>');
+  if (e instanceof ConflictError) return new ApiError('conflict', words(e.message));
+  if (e instanceof StorageError) return new ApiError('internal', words(e.message));
+  return toApiError(e);
 }
 
 /** @req FR:api/errors.shape @req FR:api/compact.cache */

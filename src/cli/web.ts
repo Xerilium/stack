@@ -6,25 +6,31 @@ import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type Server } from 'http';
-import { dirname, extname, join, normalize, relative, resolve, sep } from 'path';
+import { extname, join, normalize, relative, resolve, sep } from 'path';
 import { createApiHandler } from '../api/handler';
-import { createGitHubPrs } from '../api/github';
+import { createGitHubPrs, githubRepos } from '../api/github';
 import { createGraphCalendar, fixtureCalendar, type CalendarEvent, type CalendarProvider } from '../calendar';
 import { createIcsCalendar, icsUrls } from '../calendar/ics';
 import { defaultCachePath, FileTokenCache, graphToken, hasScope } from '../graph/auth';
 import { graphTransport } from '../graph/transport';
 import { getDefaults, parseConfig } from '../core/config';
+import type { Storage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo } from './watch';
 import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
-/** Copies the content repo's `tasks/` into `dest` as a fresh git repo (no history, no remote). Keeps earlier edits unless `reset`. */
+/**
+ * Copies the content repo's `tasks/` into `dest` as a fresh git repo (no history, no remote). Keeps earlier edits unless `reset`.
+ * The real repo is only read, never written.
+ * @req FR:cli/web.demo.untouched @req FR:cli/web.demo.reset
+ */
 export function prepareDemo(repo: string, dest: string, reset = false): void {
   const source = join(repo, 'tasks');
   if (!existsSync(source)) throw new Error(`${source} not found (expected a content repo with a tasks/ folder)`);
   const marker = join(dest, '.stack-source');
+  // @req FR:cli/web.demo.reset
   if (existsSync(join(dest, '.git')) && !reset && existsSync(marker) && readFileSync(marker, 'utf8') === resolve(repo)) return;
   const inside = (a: string, b: string) => { const r = relative(realpathSync(a), existsSync(b) ? realpathSync(b) : resolve(b)); return r === '' || (!r.startsWith('..') && !r.includes(':')); };
   if (inside(source, dest) || (existsSync(dest) && inside(dest, source))) throw new Error(`Demo source and copy overlap: ${source} / ${dest}`);
@@ -45,6 +51,8 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
 export interface RepoInfo { mode: 'demo' | 'live'; repo: string; branch: string }
 export interface WebOpts {
   dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number };
+  /** The task storage; default a direct-commit `GitStorage` on `dir`. A storage with `close()` (batched live mode) is closed, and so flushed, on shutdown. @req FR:cli/web.batch */
+  storage?: Storage & { close?(): Promise<void> };
   /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
   agents?: AgentRuns | false;
 }
@@ -60,20 +68,28 @@ export function resolveRepo(spec: string, cacheDir: string): string {
 /** Repo spec for display: credentials in a url are dropped. */
 export const redact = (spec: string): string => spec.replace(/\/\/[^/@]*@/, '//');
 
-/** LIVE: a git worktree of the real repo on a dedicated branch, so its checkout and main are never touched. */
-export function prepareLive(repo: string, branch: string, wtDir: string): { dir: string; branch: string } {
-  if (/^(main|master|HEAD)$/.test(branch)) throw new Error(`LIVE never commits to ${branch}; pick a dedicated branch`);
-  if (branch.startsWith('-')) throw new Error(`Bad branch name: ${branch}`);
-  try { git(repo, 'check-ref-format', '--branch', branch); } catch { throw new Error(`Bad branch name: ${branch}`); }
+/**
+ * LIVE: the owner's own checkout on the branch it has checked out (`main` included); the files are the source of truth.
+ * `branch` only asserts which branch must be checked out; `remote` (user config) wins over an `origin` found in the repo.
+ * @req FR:cli/web.live @req FR:cli/web.live.branch @req FR:cli/web.live.refuse @req FR:cli/web.live.remote
+ */
+export function prepareLive(repo: string, branch?: string, remote?: string): { dir: string; branch: string; remote: string | undefined } {
   try { git(repo, 'rev-parse', '--git-dir'); } catch { throw new Error(`${repo} is not a git repo`); }
-  if (!existsSync(join(wtDir, '.git'))) {
-    mkdirSync(dirname(wtDir), { recursive: true });
-    let exists = true;
-    try { git(repo, 'rev-parse', '--verify', '-q', `refs/heads/${branch}`); } catch { exists = false; }
-    if (exists) git(repo, 'worktree', 'add', wtDir, branch); else git(repo, 'worktree', 'add', '-b', branch, wtDir);
-  }
-  if (!existsSync(join(wtDir, 'tasks'))) throw new Error(`${wtDir}/tasks not found on branch ${branch}`);
-  return { dir: wtDir, branch };
+  let current = '';
+  try { current = git(repo, 'symbolic-ref', '--short', '-q', 'HEAD').trim(); } catch { /* detached */ }
+  if (!current) throw new Error(`${repo} has a detached HEAD; check out a branch first`);
+  if (branch && branch !== current) throw new Error(`Branch ${branch} is not checked out in ${repo} (current branch: ${current})`);
+  if (!existsSync(join(repo, 'tasks'))) throw new Error(`${repo}/tasks not found (expected a content repo with a tasks/ folder)`);
+  let r = remote;
+  if (r) { try { git(repo, 'remote', 'get-url', r); } catch { throw new Error(`Remote ${r} (user config "remote") not found in ${repo}`); } }
+  else { try { git(repo, 'remote', 'get-url', 'origin'); r = 'origin'; } catch { r = undefined; } }
+  return { dir: repo, branch: current, remote: r };
+}
+
+/** The live-mode startup line: where edits go and when they commit. @req FR:cli/web.batch.startup */
+export function liveLine(repo: string, branch: string, minutes: number, remote?: string): string {
+  const when = minutes === 0 ? 'committed on every edit' : `committed after ${minutes} min idle`;
+  return `LIVE MODE: edits land in ${repo}/tasks on ${branch}; ${when}${remote ? `, then pushed to ${remote}` : ''}`;
 }
 export interface WebServer { url: string; close(): Promise<void> }
 
@@ -133,20 +149,28 @@ export async function calendarSource(o: { cachePath?: string; fixture?: string; 
 export async function startWeb(o: WebOpts): Promise<WebServer> {
   const cfgPath = join(o.dir, '.xe/config/stack.json');
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
-  // @req FR:agent-inbox/github.wire
+  // @req FR:github-pr-status/wire.token @req FR:github-pr-status/repos.invalid: a bad repo list leaves PR status off.
   const ghToken = process.env.GITHUB_TOKEN?.trim();
+  let prs: ReturnType<typeof createGitHubPrs> | undefined;
+  try { prs = ghToken ? createGitHubPrs({ token: ghToken, repos: githubRepos(process.env.STACK_GITHUB_REPOS) }) : undefined; } catch (e) { console.error(`github: STACK_GITHUB_REPOS ${e instanceof Error ? e.message : 'is invalid'}; PR status off`); }
   const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, ics: process.env.STACK_CALENDAR_ICS, log: (l) => console.log(l) }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
-  const storage = new GitStorage(o.dir);
+  const storage: Storage & { close?(): Promise<void>; onPending?(fn: (n: number) => void): () => void } = o.storage ?? new GitStorage(o.dir);
+  /** Open event streams; a batched storage tells them when its pending count changes (an idle flush leaves no file change for the watcher to see). @req FR:live-deploy/web.unsaved.refresh */
+  const sinks = new Set<(event: string, data: unknown) => void>();
+  const offPending = storage.onPending?.(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['sync'] }); });
   // @req FR:agent-sessions/driver.sdk (the SDK and its binary load on the first sessions request, not here)
   const agents: AgentRuns | undefined = o.agents === false ? undefined : o.agents ?? createRunManager({ driver: createSdkDriver(), ctx: { storage, config }, cwd: o.dir });
-  const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs: ghToken ? createGitHubPrs({ token: ghToken }) : undefined, calendar: cal.provider, agents });
+  const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs });
   const beat = o.watch?.heartbeatMs ?? 20_000;
   const who = o.label ?? 'local';
   let port = o.port;
+  /** @req FR:cli/web.serve.loopback */
   const hostOk = (h?: string) => !!h && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(h);
+  /** API requests in flight, so shutdown can let a mutation land before the storage flushes. */
+  const inflight = new Set<Promise<unknown>>();
 
   const server: Server = createServer((req, res) => {
     void (async () => {
@@ -156,13 +180,16 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
       };
       try {
         // DNS-rebinding guard: only loopback host names are served.
+        // @req FR:cli/web.serve.loopback
         if (!hostOk(req.headers.host)) return send(403, 'forbidden', 'text/plain');
         // CSRF guard: writes only from this page (a browser always sends Origin or Sec-Fetch-Site on cross-site posts).
         const origin = req.headers.origin;
         const site = req.headers['sec-fetch-site'];
         const unsafe = req.method !== 'GET' && req.method !== 'HEAD';
+        // @req FR:cli/web.serve.loopback
         if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
         const path = (req.url ?? '/').split('?')[0];
+        // @req FR:cli/web.serve.local
         if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents }), 'application/json');
         if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
         // @req FR:ask-queue/live.sse
@@ -176,8 +203,10 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           frame('hello', { rev: watcher.rev() });
           if (Number.isInteger(last) && last >= 0 && last < watcher.rev()) frame('change', { rev: watcher.rev(), kinds: ALL_KINDS }, watcher.rev());
           const off = watcher.on((c) => frame('change', c, c.rev));
+          const sink = (event: string, data: unknown) => frame(event, data);
+          sinks.add(sink);
           const hb = setInterval(() => res.write(': ping\n\n'), beat);
-          req.on('close', () => { clearInterval(hb); off(); });
+          req.on('close', () => { clearInterval(hb); off(); sinks.delete(sink); });
           return;
         }
         // @req FR:agent-sessions/run.events
@@ -204,7 +233,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           return;
         }
         if (path === '/api' || path.startsWith('/api/')) {
-          const r = await api(await toRequest(req, `http://localhost:${port}`));
+          const work = toRequest(req, `http://localhost:${port}`).then(api);
+          inflight.add(work); void work.catch(() => undefined).finally(() => inflight.delete(work));
+          const r = await work;
           const h: Record<string, string> = {};
           r.headers.forEach((v, k) => { h[k] = v; });
           res.writeHead(r.status, { ...extra, ...h });
@@ -225,5 +256,17 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   });
   await new Promise<void>((ok, bad) => { server.once('error', bad); server.listen(o.port, '127.0.0.1', ok); });
   port = (server.address() as { port: number }).port;
-  return { url: `http://localhost:${port}`, close: () => new Promise((ok) => { watcher.close(); server.close(() => ok()); server.closeAllConnections(); }) };
+  // @req FR:cli/web.batch.shutdown
+  const close = async () => {
+    offPending?.();
+    watcher.close();
+    const closed = new Promise<void>((ok) => server.close(() => ok())); // stop accepting; open sockets stay until below
+    server.closeIdleConnections();
+    // Let api requests already being handled finish (bounded), so their writes join the final flush.
+    await Promise.race([Promise.allSettled([...inflight]), new Promise((ok) => setTimeout(ok, 10_000).unref())]);
+    server.closeAllConnections(); // ends the event streams
+    await closed;
+    await storage.close?.();
+  };
+  return { url: `http://localhost:${port}`, close };
 }

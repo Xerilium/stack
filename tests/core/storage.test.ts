@@ -80,7 +80,7 @@ describe.each(adapters)('%s contract', (_n, make) => {
   });
   it('lists empty when no tasks dir', async () => { expect(await s.list()).toEqual([]); });
 
-  // @req FR:storage-git/interface.read
+  // @req FR:storage-git/interface.read @req FR:storage-git/interface.read.missing @req FR:storage-git/$errors
   it('throws NotFoundError for missing file', async () => {
     await expect(s.read('tasks/nope.md')).rejects.toBeInstanceOf(NotFoundError);
   });
@@ -109,7 +109,7 @@ describe.each(adapters)('%s contract', (_n, make) => {
       await expect(s.read(p)).rejects.toBeInstanceOf(PathError);
     });
 
-  // @req FR:storage-git/write.expected @req FR:storage-git/$write-opts @req FR:storage-git/write.result
+  // @req FR:storage-git/write.expected @req FR:storage-git/$write-opts @req FR:storage-git/write.result @req FR:storage-git/write.input @req FR:storage-git/write.output
   it('enforces expectedVersion', async () => {
     const w1 = await s.write('tasks/x.md', 'one', { expectedVersion: null });
     await expect(s.write('tasks/x.md', 'dup', { expectedVersion: null })).rejects.toBeInstanceOf(ConflictError);
@@ -136,12 +136,14 @@ describe.each(adapters)('%s writeMany', (_n, make) => {
   let s: Storage;
   beforeEach(() => { s = make(); });
 
+  // @req FR:storage-git/write.many @req FR:storage-git/$file-write
   it('writes all files and returns versions', async () => {
     await writeAll(s, [{ path: 'tasks/a.md', content: 'A' }, { path: 'README.md', content: 'R' }], 'both');
     expect((await s.read('tasks/a.md')).content).toBe('A');
     expect((await s.read('README.md')).content).toBe('R');
   });
 
+  // @req FR:storage-git/write.many.check
   it('checks every expectedVersion first and writes nothing on a mismatch', async () => {
     await s.write('tasks/a.md', 'A1');
     await expect(writeAll(s, [
@@ -164,6 +166,7 @@ describe.each(adapters)('%s writeMany', (_n, make) => {
     expect((await s.read('tasks/asks/k2.md')).content).toBe('K2');
   });
 
+  // @req FR:storage-git/write.many.duplicates
   it('rejects duplicate and bad paths without writing', async () => {
     await expect(writeAll(s, [{ path: 'tasks/a.md', content: '1' }, { path: 'tasks/a.md', content: '2' }])).rejects.toBeInstanceOf(StorageError);
     await expect(writeAll(s, [{ path: 'tasks/a.md', content: '1' }, { path: '../x.md', content: '2' }])).rejects.toBeInstanceOf(PathError);
@@ -172,6 +175,7 @@ describe.each(adapters)('%s writeMany', (_n, make) => {
 });
 
 describe('writeAll fallback', () => {
+  // @req FR:storage-git/write.many.fallback @req FR:storage-git/write.delete.fallback
   it('writes one by one for adapters without writeMany', async () => {
     const inner = new MemoryStorage();
     const plain: Storage = { list: () => inner.list(), read: (p) => inner.read(p), write: (p, c, o) => inner.write(p, c, o) };
@@ -183,6 +187,7 @@ describe('writeAll fallback', () => {
 
 describe('GitStorage writeMany', () => {
   const count = (d: string) => Number(git(d, 'rev-list', '--count', 'HEAD').trim());
+  // @req FR:storage-git/write.many.commit
   it('makes ONE commit for all changed paths and skips unchanged ones', async () => {
     const d = freshRepo();
     const s = new GitStorage(d);
@@ -222,6 +227,7 @@ describe('GitStorage writeMany', () => {
     expect(git(d, 'status', '--porcelain').trim()).toBe('');
   });
 
+  // @req FR:storage-git/write.many.rollback
   it('leaves unrelated staged files alone and rolls back on conflict', async () => {
     const d = freshRepo();
     const s = new GitStorage(d);
@@ -268,7 +274,7 @@ describe('GitStorage rollback', () => {
     expect(git(d, 'status', '--porcelain')).toBe('A  other.txt\n');
   });
 
-  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
+  // @req FR:storage-git/git.failure.rollback @req FR:storage-git/git.concurrency
   it("keeps the user's own staged edit of the same path when the commit fails", async () => {
     const d = freshRepo();
     const s = new GitStorage(d);
@@ -484,7 +490,7 @@ describe('GitStorage with remote', () => {
     expect(git(b, 'stash', 'list')).toContain('stack-storage-sync'); // user's change kept
   });
 
-  // @req FR:storage-git/git.isolation
+  // @req FR:storage-git/git.isolation.state
   it('keeps staged and unstaged changes across a remote sync', async () => {
     const { a, b } = remoteSetup();
     const sa = new GitStorage(a, { remote: 'origin', branch: 'main' });
@@ -500,7 +506,7 @@ describe('GitStorage with remote', () => {
     expect(git(b, 'stash', 'list')).toBe('');
   });
 
-  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
+  // @req FR:storage-git/git.push-retry.other @req FR:storage-git/git.concurrency
   it('throws StorageError (not ConflictError) for non-rejection push failures and drops the commit', async () => {
     const { bare, b } = remoteSetup();
     writeFileSync(join(bare, 'hooks', 'pre-receive'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
@@ -540,7 +546,7 @@ describe('GitStorage with remote', () => {
     await expect(sb.write('tasks/x.md', 'from-b')).rejects.toBeInstanceOf(ConflictError);
   });
 
-  // @req FR:storage-git/git.failure @req FR:storage-git/git.concurrency
+  // @req FR:storage-git/git.failure.mask @req FR:storage-git/git.concurrency
   it('surfaces the push StorageError when the rollback restore itself fails', async () => {
     const { b } = remoteSetup();
     const sb = new GitStorage(b, { remote: 'origin', branch: 'main' });
@@ -568,7 +574,7 @@ describe('GitStorage with remote', () => {
 });
 
 describe('GitStorage env option', () => {
-  /** @req FR:storage-git/git.env */
+  /** @req FR:storage-git/git.env @req FR:storage-git/git.@function */
   it('uses the supplied env for git and leaves process.env alone', async () => {
     const d = tmp(); initRepo(d);
     const before = JSON.stringify(process.env);

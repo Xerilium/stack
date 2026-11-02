@@ -58,10 +58,10 @@ My day plans the day; it is not a list. Home is the top of the stack (web-shell 
 
 Home is the starting screen (web-shell `FR:nav.views`): the one thing to do now, whether it fits, what is next, and the top of every project. Source: Michael's first-use feedback, Oct 28 2026.
 
-- **FR:home.one** (P1): The focus block shows the single next task from `GET /next` with its **expected time** (effort, `~30m` when unset) and, when dated, a **countdown** (`today`, `tomorrow`, `Sat`, `in 10d`, `2d late`) and, when it fits, `ends ~5:45p` (now plus the expected time). Actions stay Start (`s`), Done (`d`), Defer (`z`)
+- **FR:home.one** (P1): The focus block shows the first ranked task from `GET /rank` that is not in Needs you (`FR:home3.dedupe`), as the NOW card (`FR:home3.now`)
 - **FR:home.fit** (P1): When the next task needs more than the time you have now (the window, `FR:home/home.window`: until the next meeting, personal block, or bed, or what "I have" says), the highest-ranked actionable task that fits becomes NOW (one focal point) and the next task waits as one muted line under it (`<title> · 2h · doesn't fit now: needs 2h, 45m until Allyte sync` with `More time ]` and `Start anyway`); the cursor starts on the task shown as NOW. When nothing fits, the block keeps the next task and says `No time for this now: needs 2h, 45m until …`. In personal time only rows that belong to the block fit (`Family until 8:00p: only 🏠 tasks now`); in a meeting or past bed it says when you are back
-- **FR:home.next** (P1): **Up next** lists the next 2 ranked tasks (web-app `FR:now.active` ranking), one line each with project, expected time and countdown. In-progress (🚧) tasks come first
-- **FR:home.projects** (P1): **Projects** lists every project with open work: its top task (highest rank among Active rows, else the first Up next, else the first open row), expected time, countdown; the project name opens its Full stack list. Projects whose top task is already on screen (NOW, the waiting task, Up next) are left out
+- **FR:home.next** (P1): **Up next** lists the next 2 tasks in `GET /rank` order, one line each: title and project (`FR:home3.rows`). In-progress (🚧) tasks come first
+- **FR:home.projects** (P1): **Projects** lists every project with open work: its top task (highest rank among Active rows, else the first Up next; never an arbitrary open row, which the ranking may have hidden), expected time, countdown; the project name opens its Full stack list. Projects whose top task is already on screen (NOW, the waiting task, Up next) are left out
 - **FR:home.quiet** (P1): Nothing else: no `Show all active`, no counts, no agent activity. Full stack is one chord away (`g a`)
 
 ### FR:home2: Home, round 3 (Michael, Oct 29)
@@ -77,13 +77,27 @@ Home is the starting screen (web-shell `FR:nav.views`): the one thing to do now,
 - **FR:home2.close** (P1): The full-screen detail closes with an × at the top right and `Esc`; there is no Back button
 - **FR:home2.demo** (P1): The brand is the mark (the three-bar icon) plus the word `Stack`; in demo mode it reads `Stack [DEMO]` in the rail and in the phone header; live mode reads `Stack`. There is no banner, no pill and no path on screen (the path stays in the brand's tooltip)
 
+### FR:home3: Quiet Home
+
+Owner needs Home to show one decision at a time, with nothing on it that does not help him decide or act, so that he trusts it and can act in seconds. Source: Michael, Nov 1 2026 ("noisy as hell").
+
+- **FR:home3.now** (P1): The NOW card MUST show the task title, one context line, Start, Done, and a `…` button: five elements at most
+- **FR:home3.context** (P1): The context line MUST be the project name, plus `late` only when the task is overdue, plus `agent has it` when an agent owns the task
+  - The card has no effort, lateness detail, ends-at, Critical or AI badge, or agent name
+- **FR:home3.menu** (P1): The `…` menu MUST hold Defer 2h, Defer…, Delegate, and Open, and close on `Esc` or a click outside
+  - **FR:home3.menu.keys** (P1): The `…` menu MUST move focus into itself on open, move between items with the arrow keys, `Home`, and `End`, close on `Tab`, and return focus to its button on `Esc` or a choice
+  - **FR:home3.menu.agent** (P1): For a task an agent owns the menu MUST NOT offer Delegate
+- **FR:home3.rows** (P1): Up next, Only have 5 min, and Projects rows MUST show the title and the project name only
+- **FR:home3.keys** (P1): Key hints (`kbd`) in the content area MUST be hidden until the first key press in the session, and every control MUST carry its key in its tooltip
+- **FR:home3.dedupe** (P1): Home MUST NOT show a task that is in Needs you (an open need's `ref`, or an open 🙋 row; ask-queue `FR:needs.dedupe`)
+
 ### FR:now: Focus view (single next action)
 
 Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
-- **FR:now.focus** (P1): The focus block on Home (`FR:home.one`) shows the single next task from `GET /next` (title, project, chips, links) with Start (`s`), Done (`d`), Defer 2h (`n`, one tap), Delegate (`a`); `z` opens the defer menu. Skip is `Shift+S` and Focus mode is `Enter` (no buttons). Nothing active shows an empty state that points at capture (`c`)
-- **FR:now.active** (P1): Ranking under the focus block (`FR:home.next` takes the first 2): 🚧 first, then by due-soon, in progress, priority, then file order. Parked (💤, ⏰ later, 🅿️, ⛔), done, and tasks due more than 14 days out are never listed. The cursor (`j`/`k`) starts on the focus task and moves through the shown rows, each once
-- **FR:now.blockers** (P1): The lists under the focus task, the day plan, and Needs you rank a row with the best key among the rows it blocks (reason after `--`: after, pending, blocked on, blocked by, until, waiting on/for), transitively and never summed, resolving names and subtasks like the `stack` engine (open Active rows only); parked, done, or far-future blocked rows, or rows under a parked parent, lend nothing
+- **FR:now.focus** (P1): The focus block on Home (`FR:home.one`) is the NOW card (`FR:home3.now`): Start (`s`), Done (`d`) and a `…` menu holding Defer 2h (`n`), Defer… (`z`), Delegate (`a`), and Open. Skip is `Shift+S` and Focus mode is `Enter` (no buttons). Nothing active shows an empty state that points at capture (`c`)
+- **FR:now.active** (P1): Home draws only what `GET /rank` returns, in that order (a ranked leaf shows as its top-level row), 🚧 first; the page never ranks Home itself, so Home, `GET /next`, `stack next`, and stack.md agree. Parked (💤, ⏰ later, 🅿️, ⛔), done, and tasks due more than 14 days out are never listed. The cursor (`j`/`k`) starts on the focus task and moves through the shown rows, each once
+- **FR:now.blockers** (P1): The day plan and Needs you rank a row with the best key among the rows it blocks (reason after `--`: after, pending, blocked on, blocked by, until, waiting on/for), transitively and never summed, resolving names and subtasks like the `stack` engine (open Active rows only); parked, done, or far-future blocked rows, or rows under a parked parent, lend nothing
 - **FR:now.undo** (P1): Done shows an undo toast for 8 seconds (`set` checkbox Incomplete). Writes update the screen at once and reload after
 - **FR:now.defer** (P1): `z` opens a defer menu: 2 hours, tomorrow, next week (number keys 1-3) calling `suspend` with `hours` or `days`
 - **FR:now.focusmode** (P1): `Enter` on any row opens focus mode: one task large with its subtasks as a checklist and its notes rendered; `s`, `d`, `z` work; `Esc` returns
@@ -153,7 +167,11 @@ Design: `docs/design/web-ux.md`. Journeys J1-J5.
 - **FR:ux.feedback** (P1): Every write shows a toast with the api message; failures show the error text. A `409` reloads data and asks the user to retry. Buttons disable while a call runs
 - **FR:ux.a11y** (P2): Rows and controls are real buttons or inputs with labels, the palette and pickers are dialogs with focus returned on close, color is never the only signal, and the page works in light and dark
 
-## Architecture constraints
+## Data Model
+
+None
+
+## Architecture Constraints
 
 - **FR:arch.deps** (P2): Runtime dependency is `preact` only. Dev: `vite`, `vitest`, `jsdom`, `@playwright/test`, `typescript`. All versions exact, pnpm only
 - **FR:arch.tsconfig** (P2): `web/tsconfig.json` is separate from the root configs and does not import `src/` (the client talks to the api over HTTP, with its own types)
@@ -162,3 +180,7 @@ Design: `docs/design/web-ux.md`. Journeys J1-J5.
 ## Dependencies
 
 - api (routes), auth-security (session cookie, SWA config), quick-capture (`/capture`)
+
+## External Dependencies
+
+None

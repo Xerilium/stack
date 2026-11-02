@@ -1,4 +1,6 @@
 import type { Page, Route } from '@playwright/test';
+import { actionable, activeTasks, rankNow } from '../src/now';
+import type { Task } from '../src/types';
 
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
 export interface MockAgent { ref: string; project: string; title: string; text: string; state: string; prs: { url: string; repo: string; number: number; state?: string; checks?: string; title?: string; updatedAt?: string }[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }
@@ -8,7 +10,8 @@ export interface MockSession { id: string; title: string; project: string; cwd: 
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
 export interface MockTeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: string; prompt: string; defined: boolean; projects: string[] }
 export interface MockReview { ref: string; at: string; verdict: string; plan: string; estimate?: string; agent: string; needs: string[] }
-export interface Mock { team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; insertAbove: (project: string, text: string) => void }
+export interface Mock { team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; /** Pending (uncommitted) writes a batching server reports on `/api/sync`; undefined = the server does not batch. */ pending?: number; since?: string | null; /** CoS escalations (`.stack/needs-you.json`). */ needs: MockNeed[]; /** Rank override (refs in order); default: the first open task, then the old client order. */ ranked?: { ref: string; root?: string }[]; insertAbove: (project: string, text: string) => void }
+export interface MockNeed { id: string; title: string; recommendation: string; default?: string; link: string; project?: string; ref?: string; answer?: { choice: string; text?: string; until?: string; at: string } }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
 /** Short date for row text, relative to today (the plan depends on the clock). */
@@ -30,7 +33,7 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 /** `context: true` routes at the browser context, so requests a service worker makes are mocked too. */
 export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean; projects?: { name: string; title: string; metadata?: Record<string, string> }[] } = {}): Promise<Mock> {
   const router = opts.context ? page.context() : page;
-  const m: Mock = { team: [], reviews: [], schedule: null, events: null, calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, insertAbove: () => undefined };
+  const m: Mock = { team: [], reviews: [], schedule: null, events: null, calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, needs: [], insertAbove: () => undefined };
   const proj = opts.projects?.map((p) => ({ metadata: {}, ...p })) ?? [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
@@ -55,14 +58,33 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     const path = url.pathname.replace(/^\/api/, '');
     const body = req.postData() ? JSON.parse(req.postData()!) : undefined;
     if (req.method() === 'POST') m.calls.push({ path: decodeURIComponent(path), body });
+    if (req.method() === 'POST' && path.startsWith('/tasks') && m.pending !== undefined) { m.pending++; m.since ??= new Date().toISOString(); }
     if (m.anonymous) return json(route, 401, { error: { code: 'unauthorized', message: 'Authentication required' } });
     if (m.forbidden) return json(route, 403, { error: { code: 'forbidden', message: 'Forbidden' } });
-    const f = m.fail.get(path);
-    if (f) { m.fail.delete(path); return json(route, f.status, { error: { code: f.code, message: f.message } }); }
+    const fk = m.fail.has(`${req.method()} ${path}`) ? `${req.method()} ${path}` : path;
+    const f = m.fail.get(fk);
+    if (f) { m.fail.delete(fk); return json(route, f.status, { error: { code: f.code, message: f.message } }); }
     const open = m.tasks.filter((t) => !t.done);
+    // The server's ranking, doubled: the first open task, then what the page used to rank itself (the real engine is tested in core).
+    const ranking = (): { ref: string; text: string; project: string; score: number; root?: string }[] => {
+      const now = new Date();
+      const rest = rankNow(activeTasks(m.tasks as Task[]).filter((t) => actionable(t, now) && t.ref !== open[0]?.ref), now, m.tasks as Task[]);
+      const order = m.ranked ? m.ranked.map((r) => ({ r, t: find(r.ref) })).filter((x) => x.t).map((x) => ({ ref: x.t!.ref, text: x.t!.text, project: x.t!.project, score: 1, ...(x.r.root ? { root: x.r.root } : {}) }))
+        : [...(open[0] ? [open[0]] : []), ...rest].map((t) => ({ ref: t.ref, text: t.text, project: t.project, score: 1 }));
+      return order;
+    };
     if (path === '/next') {
-      const t = open[0];
+      const t = ranking()[0];
       return json(route, 200, { task: t ? { ref: t.ref, text: t.text, project: t.project, score: 1 } : null });
+    }
+    if (path === '/rank') return json(route, 200, { items: ranking() });
+    if (path === '/needs-you') return json(route, 200, { items: m.needs });
+    const nm = /^\/needs-you\/([^/]+)\/answer$/.exec(path);
+    if (nm && req.method() === 'POST') {
+      const n = m.needs.find((x) => x.id === nm[1]);
+      if (!n) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
+      if (body.choice === 'undo') delete n.answer; else n.answer = { choice: body.choice, text: body.text, until: body.until, at: new Date().toISOString() };
+      return json(route, 200, { changed: true });
     }
     if (path === '/tasks' && req.method() === 'POST') {
       const parent = body.parent ? find(body.parent) : undefined;
@@ -174,7 +196,8 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       m.inbox.push({ id, at: new Date().toISOString(), project: t.project, ref: t.ref, task: t.text.replace(/[🤖🪄🙋]/gu, '').trim(), kind: body.kind ?? 'reply', to: /🙋/u.test(t.text) ? 'human' : /🤖|🪄/u.test(t.text) ? 'agent' : 'none', text: body.text, state: 'open', row: t.ref });
       return json(route, 201, { id, path: `tasks/inbox/${t.project}.md` });
     }
-    if (path === '/sync') return json(route, 200, { rev: m.rev ?? null });
+    if (path === '/sync' && req.method() === 'POST') { const n = m.pending ?? 0; if (m.pending !== undefined) { m.pending = 0; m.since = null; } return json(route, 200, { flushed: n, rev: m.rev ?? null }); }
+    if (path === '/sync') return json(route, 200, { rev: m.rev ?? null, ...(m.pending !== undefined ? { pending: m.pending, since: m.since ?? null } : {}) });
     if (path === '/inbox') return json(route, 200, { items: m.inbox.filter((e) => e.state === 'open') });
     if (path === '/projects') return json(route, 200, { items: proj.map((p) => ({ ...p, open: 0, done: 0 })) });
     if (path === '/capture') {

@@ -11,23 +11,26 @@ const home = () => {
 
 test.describe('Home', () => {
   // @req FR:web-app/home.one @req FR:web-app/home.next @req FR:web-app/home.projects @req FR:web-app/home.quiet
-  test('one thing with its time and countdown, up next (2), one row per project, nothing else', async ({ page }, info) => {
+  // @req FR:web-app/home3.now @req FR:web-app/home3.context @req FR:web-app/home3.rows
+  test('one thing (title, one context line, Start, Done, …), up next (2), one row per project, nothing else', async ({ page }, info) => {
     const ten = new Date(); ten.setHours(10, 0, 0, 0); await page.clock.setFixedTime(ten); // fit follows the time you have now
     await mockApi(page, { tasks: home() });
     await page.goto('/');
     const one = page.getByRole('group', { name: 'Next task' });
     await expect(one.getByTestId('next-title')).toContainText('Ship the web app');
-    await expect(one.getByTestId('expected')).toHaveText('1h');
-    await expect(one.getByTestId('countdown')).toHaveText('today');
+    await expect(one.getByTestId('now-context')).toHaveText('Alpha'); // project; `late` only when overdue
+    // the card is five things at most: title, context line, Start, Done, …
+    expect(await one.locator('h1, .context, button').count()).toBeLessThanOrEqual(5);
+    await expect(one.getByTestId('expected')).toHaveCount(0);
+    await expect(one.getByTestId('ends')).toHaveCount(0);
     await expect(page.getByTestId('up-next').locator('.row')).toHaveCount(2);
     await expect(page.getByTestId('up-next').locator('.row .title')).toHaveText(['Review pull requests', 'Plan the trip']);
-    await expect(page.getByTestId('up-next').locator('.row').first().getByTestId('expected')).toHaveText('2h');
+    await expect(page.getByTestId('up-next').locator('.row').first().getByTestId('expected')).toHaveCount(0); // title + project only
     // projects whose top task is already on screen (alpha, beta) are not repeated
     const projects = page.getByTestId('home-projects').locator('li');
     await expect(projects).toHaveCount(1);
     await expect(projects.first()).toContainText('Chase the invoice');
-    await expect(projects.first().getByTestId('countdown')).toHaveText('2d late');
-    await expect(one.getByTestId('ends')).toHaveText(/^ends ~\d{1,2}:\d\d[ap]$/);
+    await expect(projects.first().getByTestId('countdown')).toHaveCount(0);
     await expect(page.getByText(/Show all active/)).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `e2e/screenshots/home-${info.project.name}.png` });
@@ -41,7 +44,6 @@ test.describe('Home', () => {
     // one focal point: the task that fits is NOW; the one that does not is one muted line under it
     const one = page.getByRole('group', { name: 'Next task' });
     await expect(one.getByTestId('next-title')).toContainText('Plan the trip');
-    await expect(one.getByTestId('expected')).toHaveText('30m');
     const unfit = page.getByTestId('unfit');
     await expect(unfit).toContainText('Ship the web app');
     await expect(unfit).toContainText("doesn't fit now: needs 1h, 30m until end of day");

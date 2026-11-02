@@ -42,7 +42,10 @@ export function parseOwners(setting: string | null | undefined): Owner[] {
   return out;
 }
 
-/** Provider is case-insensitive, user id exact; `userDetails` is never consulted. @req FR:auth-security/session.allow @req FR:auth-security/session.allow.empty @req FR:auth-security/session.allow.details */
+/**
+ * Provider is case-insensitive, user id exact; `userDetails` is never consulted. This allow-list, over the SWA GitHub sign-in, is owner access.
+ * @req FR:auth-security/session.allow @req FR:auth-security/session.allow.empty @req FR:auth-security/session.allow.details @req NFR:live-deploy/security.owner
+ */
 export function isOwner(p: Principal, owners: Owner[]): boolean {
   return owners.some((o) => o.provider === p.provider.toLowerCase() && o.userId === p.userId);
 }

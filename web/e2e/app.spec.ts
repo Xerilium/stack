@@ -67,14 +67,16 @@ const selectRow = async (page: Page, ref: string) => { await page.locator(`.row[
 
 test.describe('now view', () => {
   // @req FR:web-app/now.focus @req FR:web-app/ux.responsive
-  test('shows the focus task with chips, Active rows below, and no horizontal scroll', async ({ page }, info) => {
+  // @req FR:web-app/home3.now @req FR:web-app/home3.context @req FR:web-app/home3.rows
+  test('shows the focus task quietly (title, one context line, Start, Done, …), Active rows below, and no horizontal scroll', async ({ page }, info) => {
     await mockApi(page);
     await page.goto('/#/now');
     await expect(page).toHaveURL(/\/$|#\/now/); // old name still opens Home
     await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
     const focus = page.locator('.focus-block');
-    await expect(focus.getByRole('button', { name: /Priority: High/ })).toBeVisible();
-    await expect(focus.getByTestId('expected')).toHaveText('1h'); // effort reads as expected time on Home
+    await expect(focus.getByTestId('now-context')).toHaveText('Alpha'); // the project; `late` only when overdue
+    await expect(focus.getByTestId('expected')).toHaveCount(0); // no effort, countdown, ends-at or badges on Home
+    await expect(focus.getByRole('button', { name: /Priority/ })).toHaveCount(0);
     // @req FR:web-app/now.active @req FR:web-app/home.next
     await expect(rows(page)).toHaveText(['Review pull requests', 'Plan the trip']);
     await expect(page.locator('.row[data-ref="alpha:6"]')).toHaveCount(0);
@@ -121,7 +123,8 @@ test.describe('now view', () => {
   test('Defer 2h defers 2 hours in one tap', async ({ page }) => {
     const m = await mockApi(page);
     await page.goto('/#/now');
-    await page.locator('.focus-block').getByRole('button', { name: /Defer 2h/ }).click();
+    await page.locator('.focus-block').getByTestId('more').click();
+    await page.getByRole('menuitem', { name: /Defer 2h/ }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:6', hours: 2 } });
     await expect(page.getByText(/Deferred 2h: back at/)).toBeVisible();
     await expect(page.getByTestId('next-title')).toContainText('Write docs');
@@ -799,12 +802,10 @@ test.describe('now view sections', () => {
     await expect(body).not.toContainText('Far future task');
     await expect(body).not.toContainText('Later task');
     await expect(body).not.toContainText('Parked task');
+    // Home rows are title + project only (home3.rows): no AI badge, no link tag; the link is in the title's text
     const ai = page.locator('.row', { hasText: 'Robot chore' });
-    await expect(ai.locator('.tag', { hasText: 'AI' })).toBeVisible();
-    const link = page.locator('.row', { hasText: 'Read' }).locator('a.tag.link');
-    await expect(link).toHaveText('example.test ↗');
-    await expect(link).toHaveAttribute('href', 'https://www.example.test/page/x');
-    await expect(page.locator('.row', { hasText: 'Read' }).locator('.title')).not.toContainText('https://');
+    await expect(ai.locator('.tag')).toHaveCount(0);
+    await expect(page.locator('.row', { hasText: 'Read' }).locator('a.tag.link')).toHaveCount(0);
   });
 
   // @req FR:web-app/home.next @req FR:web-app/home.quiet

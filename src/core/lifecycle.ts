@@ -6,8 +6,9 @@
 import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { rollRecurring } from './recurring';
-import { DEFAULT_ENGINE, getEngine, rankTasks, ScoringTask, toScoringProject } from './scoring';
-import { ConflictError, NotFoundError, Storage, writeAll } from './storage';
+import { DEFAULT_ENGINE, getEngine, rankTasks, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
+import { applyOverrides, matcherFor, parsePriorities, PRIORITIES_PATH } from './priorities';
+import { ConflictError, NotFoundError, Storage, writeAll, type AuxFiles } from './storage';
 
 export class LifecycleError extends Error {}
 
@@ -272,6 +273,15 @@ const brief = (s: string) => {
   return t.length > 60 ? `${t.slice(0, 57)}...` : t;
 };
 
+/** Parent row texts of every row, by line, in the Active section (rule matching reads them). */
+function parentTexts(doc: Doc): Map<number, { text: string; root?: number }> {
+  const active = doc.project.sections.find((s) => ACTIVE.test(s.heading));
+  const out = new Map<number, { text: string; root?: number }>();
+  const walk = (ts: Project['sections'][number]['tasks'], above: string[], root?: number) => { for (const t of ts) { out.set(t.line, { text: above.join(' '), root }); walk(t.children, [...above, t.text], root ?? t.line); } };
+  if (active) walk(active.tasks, []);
+  return out;
+}
+
 /** Lines of the first Active section the scoring adapter reads, in its order (unchecked rows only). */
 function scoringRows(doc: Doc): number[] {
   const active = doc.project.sections.find((s) => ACTIVE.test(s.heading));
@@ -283,7 +293,14 @@ function scoringRows(doc: Doc): number[] {
 
 // ------------------------------------------------------------------ next
 
-async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextTask; doc: Doc } | null> {
+/** One ranked task. @req FR:task-lifecycle/$ranked-task */
+export interface RankedTask extends NextTask {
+  /** The override that applied (its `match`). */ rule?: string;
+  /** The top-level row this task sits under; absent for a top-level row. @req FR:task-lifecycle/rank.root */
+  root?: TaskRef;
+}
+
+async function rankAll(ctx: LifecycleContext, at?: Date): Promise<{ next: RankedTask; doc: Doc }[]> {
   const docs = await loadDocs(ctx.storage);
   const projects = docs.map((d) => toScoringProject(d.project, d.name));
   const where = new Map<ScoringTask, { doc: Doc; line: number }>();
@@ -291,13 +308,50 @@ async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextT
     const rows = scoringRows(docs[i]);
     p.tasks.forEach((t, k) => where.set(t, { doc: docs[i], line: rows[k] }));
   });
-  const top = rankTasks(getEngine(ctx.engine ?? DEFAULT_ENGINE), projects, cfg(ctx), at ?? clock(ctx))[0];
-  if (!top) return null;
-  const loc = where.get(top.task)!;
-  return {
-    doc: loc.doc,
-    next: { ref: { path: loc.doc.path, line: loc.line, text: rowText(loc.doc, loc.line) }, text: top.task.text, project: top.task.project, score: top.score },
+  const when = at ?? clock(ctx);
+  const engine = getEngine(ctx.engine ?? DEFAULT_ENGINE);
+  // @req FR:task-lifecycle/rank.overrides
+  // Overrides written by the owner and the Chief of Staff, read from the same storage.
+  const aux = ctx.storage as Partial<AuxFiles>;
+  // A read error is not "no overrides": it propagates, so rows never reappear silently when the storage hiccups.
+  const file = typeof aux.readAux === 'function' ? await aux.readAux(PRIORITIES_PATH) : null;
+  const rules = file ? parsePriorities(file.content) : [];
+  const above = new Map(docs.map((d) => [d, parentTexts(d)] as const));
+  const rowOf = (s: ScoredTask) => {
+    const loc = where.get(s.task)!;
+    const next: RankedTask = { ref: { path: loc.doc.path, line: loc.line, text: rowText(loc.doc, loc.line) }, text: s.task.text, project: s.task.project, score: s.score };
+    return { doc: loc.doc, next, text: s.task.text, project: s.task.project, context: above.get(loc.doc)?.get(loc.line)?.text ?? '', task: s.task };
   };
+  let rows = rankTasks(engine, projects, cfg(ctx), when).map(rowOf);
+  const names = projects.map((p) => p.name);
+  const match = matcherFor(rules, when, names, cfg(ctx).timezone);
+  // A top rule is the owner saying "this, now": its rows stay even when the time block would hide them. @req FR:scoring-engine/overrides.top.blocks
+  if (rules.some((r) => r.effect === 'top')) {
+    const have = new Set(rows.map((r) => r.task));
+    const extra = rankTasks(engine, projects, cfg(ctx), when, { ignoreBlocks: true }).map(rowOf).filter((r) => !have.has(r.task) && match(r)?.rule.effect === 'top');
+    rows = [...rows, ...extra].sort((a, b) => b.next.score - a.next.score);
+  }
+  const ordered = applyOverrides(rows, rules, when, names, cfg(ctx).timezone);
+  for (const o of ordered) {
+    const rootLine = above.get(o.doc)?.get(o.next.ref.line)?.root;
+    if (rootLine !== undefined) o.next.root = { path: o.doc.path, line: rootLine, text: rowText(o.doc, rootLine) };
+    const m = match(o);
+    if (m) o.next.rule = m.rule.match;
+  }
+  return ordered.map(({ doc, next }) => ({ doc, next }));
+}
+
+async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextTask; doc: Doc } | null> {
+  return (await rankAll(ctx, at))[0] ?? null;
+}
+
+/**
+ * The ranked tasks: engine order, then the owner's overrides; `nextTask` is the first.
+ * @req FR:task-lifecycle/rank.@function @req FR:task-lifecycle/rank.order @req FR:task-lifecycle/rank.limit @req FR:task-lifecycle/rank.output
+ */
+export async function rankStack(ctx: LifecycleContext, at?: Date, limit?: number): Promise<RankedTask[]> {
+  const all = (await rankAll(ctx, at)).map((r) => r.next);
+  return limit !== undefined ? all.slice(0, limit) : all;
 }
 
 /** @req FR:task-lifecycle/next.@function @req FR:task-lifecycle/next.rank @req FR:task-lifecycle/next.map @req FR:task-lifecycle/next.none */

@@ -22,6 +22,8 @@ export interface InboxEntry {
   from?: InboxFrom; agent?: string;
   /** `tasks/<file>.md:<line>`, 1-based. */
   ref: string; task: string; text: string;
+  /** Title of the row's parent when it has one, so rows with the same title under different parents stay apart. */
+  parent?: string;
   handled?: string; note?: string;
   /** Lines this version does not know; kept as is. */
   extra: string[];
@@ -41,7 +43,7 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_RUN = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 const INVISIBLE = /[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g;
-const KEYS = ['at', 'state', 'kind', 'to', 'from', 'agent', 'ref', 'task', 'text', 'handled', 'note'] as const;
+const KEYS = ['at', 'state', 'kind', 'to', 'from', 'agent', 'ref', 'task', 'parent', 'text', 'handled', 'note'] as const;
 const HEAD = /^## (in-[0-9TZ]+-[0-9a-f]{4,})\s*$/;
 const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
 
@@ -55,7 +57,9 @@ export const INBOX_HEADER = (title: string): string =>
 export function formatEntry(e: InboxEntry): string {
   const lines = [`## ${e.id}`, '', `- at: ${e.at}`, `- state: ${e.state}`, `- kind: ${e.kind}`, `- to: ${e.to}`];
   if (e.from === 'agent') { lines.push('- from: agent'); if (e.agent) lines.push(`- agent: ${e.agent}`); }
-  lines.push(`- ref: ${e.ref}`, `- task: ${e.task}`, `- text: ${e.text}`);
+  lines.push(`- ref: ${e.ref}`, `- task: ${e.task}`);
+  if (e.parent) lines.push(`- parent: ${e.parent}`);
+  lines.push(`- text: ${e.text}`);
   if (e.handled) lines.push(`- handled: ${e.handled}`);
   if (e.note) lines.push(`- note: ${e.note}`);
   return [...lines, ...e.extra, ''].join('\n');
@@ -85,6 +89,7 @@ function blocks(content: string): Block[] {
   }
   close(content.length);
   for (const b of out) {
+    if (b.entry.parent === undefined) delete b.entry.parent;
     if (b.entry.handled === undefined) delete b.entry.handled;
     if (b.entry.note === undefined) delete b.entry.note;
     if (b.entry.from !== 'agent') { delete b.entry.from; delete b.entry.agent; }
@@ -99,10 +104,11 @@ const field = (v: string) => md(redact(v.replace(INVISIBLE, '')).split(CONTROL_R
 const iso = (ctx: LifecycleContext) => (ctx.now ?? (() => new Date()))();
 const newId = (at: Date) => `in-${at.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}-${randomBytes(2).toString('hex')}`;
 
-function find(tasks: Task[], line: number): Task | null {
+/** The row at `line` and its parent row, if any. */
+function find(tasks: Task[], line: number, parent: Task | null = null): { row: Task; parent: Task | null } | null {
   for (const t of tasks) {
-    if (t.line === line) return t;
-    const hit = find(t.children, line);
+    if (t.line === line) return { row: t, parent };
+    const hit = find(t.children, line, t);
     if (hit) return hit;
   }
   return null;
@@ -125,11 +131,13 @@ export const rowKey = taskKey;
 
 /**
  * Where each entry's row is now (entry id → `path:line`, 1-based like `ref`). Lines move, so rows are found by title words in the
- * same file, with both sides run through the same redaction and escaping. A cut title matches by prefix; the row nearest the stored line breaks ties.
+ * same file, with both sides run through the same redaction and escaping. A cut title matches by prefix. When the entry stores a `parent`, rows under a
+ * parent with that title win (rows with the same title under different parents stay apart); if none is left, title alone decides. The row nearest the
+ * stored line breaks ties.
  * Entries whose row is gone, or whose `ref` is missing or not a task file (hand-edited), are left out; one bad entry never fails the rest.
  * @req FR:agent-inbox/inbox.rows
  */
-export async function currentRows(ctx: LifecycleContext, entries: Pick<InboxEntry, 'id' | 'ref' | 'task'>[]): Promise<Map<string, string>> {
+export async function currentRows(ctx: LifecycleContext, entries: Pick<InboxEntry, 'id' | 'ref' | 'task' | 'parent'>[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const byPath = new Map<string, typeof entries>();
   for (const e of entries) {
@@ -140,19 +148,29 @@ export async function currentRows(ctx: LifecycleContext, entries: Pick<InboxEntr
     let f: { content: string } | null;
     try { f = await readOrNull(ctx, path); } catch { continue; } // e.g. a hand-edited ref outside the task files
     if (!f) continue;
-    const rows: { line: number; key: string }[] = [];
-    const walk = (ts: Task[]) => { for (const t of ts) { rows.push({ line: t.line + 1, key: taskKey(field(taskTitle(t.text))) }); walk(t.children); } };
-    for (const s of parseProject(f.content).sections) walk(s.tasks);
+    const rows: { line: number; key: string; parent: string }[] = [];
+    const walk = (ts: Task[], parent: string) => { for (const t of ts) { const key = taskKey(field(taskTitle(t.text))); rows.push({ line: t.line + 1, key, parent }); walk(t.children, key); } };
+    for (const s of parseProject(f.content).sections) walk(s.tasks, '');
     for (const e of list) {
-      const cut = e.task.length >= MAX_TASK;
-      const key = cut ? taskKey(e.task).replace(/ ?\S+$/, '') : taskKey(e.task); // the last word may be cut short
-      if (key === '') continue;
+      const key = matcher(e.task);
+      if (!key) continue;
+      const under = e.parent ? matcher(e.parent) : null;
       const was = Number(/:(\d+)$/.exec(e.ref)?.[1] ?? 0);
-      const hit = rows.filter((r) => (cut ? r.key.startsWith(key) : r.key === key)).sort((a, b) => Math.abs(a.line - was) - Math.abs(b.line - was))[0];
+      const same = rows.filter((r) => key(r.key));
+      const near = under ? same.filter((r) => under(r.parent)) : [];
+      const hit = (near.length ? near : same).sort((a, b) => Math.abs(a.line - was) - Math.abs(b.line - was))[0];
       if (hit) out.set(e.id, `${path}:${hit.line}`);
     }
   }
   return out;
+}
+
+/** Tests a row key against a stored title; a title cut at 300 characters matches by prefix (its last word may be cut short). */
+function matcher(stored: string): ((rowKey: string) => boolean) | null {
+  const cut = stored.length >= MAX_TASK;
+  const key = cut ? taskKey(stored).replace(/ ?\S+$/, '') : taskKey(stored);
+  if (key === '') return null;
+  return cut ? (k) => k.startsWith(key) : (k) => k === key;
 }
 
 async function readOrNull(ctx: LifecycleContext, path: string): Promise<{ content: string; version: string } | null> {
@@ -195,9 +213,10 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
   if (!(INBOX_KINDS as readonly string[]).includes(kind)) throw new LifecycleError('Invalid kind');
   const file = await ctx.storage.read(ref.path);
   const project = parseProject(file.content);
-  let row: Task | null = null;
-  for (const s of project.sections) row = row ?? find(s.tasks, ref.line);
-  if (!row) throw new LifecycleError('Task not found');
+  let found: ReturnType<typeof find> = null;
+  for (const s of project.sections) found = found ?? find(s.tasks, ref.line);
+  if (!found) throw new LifecycleError('Task not found');
+  const { row, parent } = found;
   const rowText = bareRow(project.lines[ref.line] ?? row.text);
   if (expect !== undefined && expect !== rowText) throw new ConflictError('Row changed');
   const path = inboxPath(ref);
@@ -210,7 +229,7 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
     const agentSide = who.from === 'agent';
     const entry = formatEntry({
       id, at: now.toISOString(), state: agentSide ? 'handled' : 'open', kind, to: agentSide ? 'human' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
-      task: inboxTitle(row.text), text: field(t), extra: [],
+      task: inboxTitle(row.text), ...(parent ? { parent: inboxTitle(parent.text) } : {}), text: field(t), extra: [],
     });
     const head = cur ? makeRoom(cur.content, entry.length + 1).replace(/\n*$/, '\n\n') : INBOX_HEADER(field(project.title || baseName(ref.path)));
     try {

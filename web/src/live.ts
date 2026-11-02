@@ -54,6 +54,11 @@ export function connectLive(o: LiveOpts): LiveHandle {
   let seen = false;
   let unwake: () => void = () => undefined;
 
+  /**
+   * One probe. Reloads only when the revision changed (a null revision reloads every time); a failure keeps the
+   * interval going, so polling resumes on its own, no click needed.
+   * @req FR:live-deploy/web.poll.reload @req FR:live-deploy/web.action.auto
+   */
   const check = () => {
     if (stopped || inFlight || !visible()) return;
     if (!o.probe) { o.onChange(['poll']); return; }
@@ -79,6 +84,7 @@ export function connectLive(o: LiveOpts): LiveHandle {
     });
   };
 
+  /** The polling fallback (the badge reads Checks every 15 s). @req FR:web-shell/state.live.poll */
   const poll = () => {
     if (timer || stopped) return;
     if (!o.probe) o.onStatus('poll');
@@ -88,6 +94,7 @@ export function connectLive(o: LiveOpts): LiveHandle {
   };
   const unpoll = () => { if (timer) { clearInterval(timer); timer = null; } unwake(); unwake = () => undefined; };
 
+  /** Opens the stream; a drop reconnects, a permanent close falls back to polling. @req FR:web-shell/state.live.drop */
   const open = () => {
     if (!make) return poll();
     es = make(o.url ?? '/events');
@@ -108,7 +115,7 @@ export function connectLive(o: LiveOpts): LiveHandle {
   };
   open();
   const stop = (() => { stopped = true; unpoll(); es?.close(); }) as LiveHandle;
-  /** Without EventSource: probe now. With it: reopen the stream, even after a permanent close (a host that came back). */
+  /** Without EventSource: probe now. With it: reopen the stream, even after a permanent close (a host that came back). @req FR:web-shell/state.live.retry */
   stop.retry = () => {
     if (stopped) return;
     if (!make) { check(); return; }

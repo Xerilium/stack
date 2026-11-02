@@ -34,8 +34,8 @@ importers:
         specifier: 22.20.5
         version: 22.20.5
       '@xerilium/catalyst':
-        specifier: 0.3.2
-        version: 0.3.2(zod@4.6.7)
+        specifier: 0.3.3
+        version: 0.3.3(zod@4.6.7)
       eslint:
         specifier: 9.39.5
         version: 9.39.5
@@ -998,8 +998,8 @@ packages:
   '@vitest/spy@5.0.5':
     resolution: {integrity: sha512-lwJRExuH417257Q5wv9QYugN9IMJkoxcrKrYxGPQkBzl7wlNpTUxD/5yNX4ESKVUIShKPgkGchYPFMWOOk0wzw==}
 
-  '@xerilium/catalyst@0.3.2':
-    resolution: {integrity: sha512-b0AM6SeeYnDJaIsBssKIBdvB0UILmpd9SfT8mKex3km22xEPPYg+Vgrtmw2xuy2eiv6ZSneVemOP5tpoGkrACg==}
+  '@xerilium/catalyst@0.3.3':
+    resolution: {integrity: sha512-ivrkne4Q5R+iVaXGNrg0mg57M87UmqoG47PEexH038ASpg69Lhvdc1m0t6DZ92zBmfDRKTyoMXDbPNH3IgDXbw==}
     hasBin: true
 
   accepts@2.0.0:
@@ -3775,7 +3775,7 @@ snapshots:
 
   '@vitest/spy@5.0.5': {}
 
-  '@xerilium/catalyst@0.3.2(zod@4.6.7)':
+  '@xerilium/catalyst@0.3.3(zod@4.6.7)':
     dependencies:
       '@anthropic-ai/sdk': 0.71.2(zod@4.6.7)
       '@google/generative-ai': 0.24.1
