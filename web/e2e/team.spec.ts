@@ -152,6 +152,7 @@ test.describe('Agent team', () => {
     // @req FR:web-app/home3.context
     await expect(hero.getByTestId('now-context')).toContainText('agent has it');
     // @req FR:web-app/home3.menu.agent — an agent has it, so the menu does not offer Delegate
+    await hero.locator('.h1-toggle').click(); // the open card shows its detail; closed, it shows the actions and the menu
     await hero.getByRole('button', { name: 'More actions' }).click();
     await expect(hero.getByRole('menuitem', { name: /Delegate/ })).toHaveCount(0);
     await expect(hero.getByRole('menuitem', { name: /Defer 2h/ })).toBeVisible();
