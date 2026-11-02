@@ -18,6 +18,9 @@ export function AgentChip({ view, onClick, onNeeds }: { view: ChipView; onClick:
   );
 }
 
+/** A thread Ask is saved through /inbox first: its text limit applies (the session composers keep 4,000). */
+const INBOX_MAX = 1000;
+
 /** The composer: who, what, send. Only one is open at a time (the hook holds it). @req FR:agent-team/web.talk */
 /** `mode: 'thread'`: the composer at the bottom of a task thread. Always there (no Close), Ask and Assign instead of Send / Do it, focus only on `a`. @req FR:agent-thread/web.expand */
 export function AgentTalk({ team, talk, agents, float = false, mode = 'row', busy: outerBusy = false, onAsk, onAssign }: {
@@ -51,7 +54,8 @@ export function AgentTalk({ team, talk, agents, float = false, mode = 'row', bus
   return (
     <div ref={root} class={`agent-talk${float ? ' float' : ''}${thread ? ' in-thread' : ''}`} role="group" aria-label={`Talk to ${chosen?.name ?? 'an agent'} about ${talk.about}`}
       onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); if (thread) box.current?.blur(); else close(); } const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement; if (thread && e.key === 'A' && !typing) { e.preventDefault(); void assign(); } }}>
+      onKeyDown={(e) => { if (e.key !== 'Tab') e.stopPropagation(); // Tab bubbles so a focus trap around the composer (Focus mode) can handle it
+        if (e.key === 'Escape') { e.preventDefault(); if (thread) box.current?.blur(); else close(); } const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement; if (thread && e.key === 'A' && !typing) { e.preventDefault(); void assign(); } }}>
       <div class="talk-row">
         <label class="talk-to">To
           <select value={agent} aria-label="Agent" disabled={none} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; setAgent(v); setKeep(agents.find((a) => a.slug === v)?.mode === 'long-running'); }}>
@@ -64,7 +68,7 @@ export function AgentTalk({ team, talk, agents, float = false, mode = 'row', bus
         {!thread && <button type="button" class="btn quiet close" onClick={close} aria-label="Close" title="Close (Esc)">×</button>}
       </div>
       <form class="talk-row" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        <input ref={box} type="text" value={text} maxLength={4000} aria-label={`Message ${chosen?.name ?? 'the agent'}`} placeholder={none ? 'No agent covers this task' : offline ? (thread ? 'Ask anything (saved on the task; runs in stack web)' : 'Runs in stack web on your machine') : thread ? 'Ask about this task…' : 'Ask anything…'} disabled={none || (offline && !thread)}
+        <input ref={box} type="text" value={text} maxLength={thread ? INBOX_MAX : 4000} aria-label={`Message ${chosen?.name ?? 'the agent'}`} placeholder={none ? 'No agent covers this task' : offline ? (thread ? 'Ask anything (saved on the task; runs in stack web)' : 'Runs in stack web on your machine') : thread ? 'Ask about this task…' : 'Ask anything…'} disabled={none || (offline && !thread)}
           onInput={(e) => setText((e.target as HTMLInputElement).value)} />
         <button type="submit" class={`btn${text.trim() ? ' primary' : ''}`} disabled={none || (offline && !thread) || busy || outerBusy || !text.trim()}>{thread ? 'Ask' : 'Send'}<kbd aria-hidden="true">⏎</kbd></button>
       </form>

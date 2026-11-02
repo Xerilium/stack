@@ -19,17 +19,19 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
+  const cur = useRef(ref); cur.current = ref; // the task open right now: a late answer for another one is dropped
   const toastRef = useRef(toast); toastRef.current = toast;
 
   const load = useCallback(async (r: string, quiet = false) => {
+    if (r !== cur.current) return;
     const mine = ++seq.current;
     if (!quiet) setPhase('loading');
     try {
       const t = await api.thread(r);
-      if (mine !== seq.current) return;
+      if (mine !== seq.current || r !== cur.current) return;
       setThread(t); setPhase('ready');
     } catch (e) {
-      if (mine !== seq.current) return;
+      if (mine !== seq.current || r !== cur.current) return;
       setPhase('error'); if (!quiet) toastRef.current(e instanceof Error ? e.message : 'Cannot load the thread', 'err');
     }
   }, [api]);
@@ -55,7 +57,7 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
     try {
       try { await api.send(ref, text, 'reply'); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to send', 'err'); return false; }
       // From here the message is on the task: the box clears even if the session step fails (a retry would write it twice).
-      setThread((t) => ({ ...t, items: [...t.items, { at: new Date().toISOString(), kind: 'owner', id: `local-${Date.now()}`, text, state: 'open' }] }));
+      if (cur.current === ref) setThread((t) => ({ ...t, items: [...t.items, { at: new Date().toISOString(), kind: 'owner', id: `local-${Date.now()}`, text, state: 'open' }] }));
       if (team.enabled !== true) { toastRef.current('Saved on the task; it runs in stack web on your machine'); return true; }
       try {
         const same = followUpSession(thread, agent ? team.team.find((a) => a.slug === agent)?.name : undefined);

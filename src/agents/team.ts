@@ -34,6 +34,8 @@ export const QUICK_PROMPTS = {
   plan: 'Plan this task in steps with a rough estimate each; do not start it.',
 } as const;
 
+/** No cap: a task's questions must not drop out because unrelated asks sort first. */
+const ALL = Number.MAX_SAFE_INTEGER;
 const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
 /** A 🙋 row is the owner's alone: no agent reviews or works it. */
 const HUMAN = /🙋/u;
@@ -116,7 +118,7 @@ export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText
     const a = parseVerdict(d.structured ?? d.text);
     if (d.stopReason !== 'end_turn' || !a) return;
     const prefix = reviewPrefix(ref);
-    const open = await listAsks(ctx, { state: 'open', limit: 200 });
+    const open = await listAsks(ctx, { state: 'open', limit: ALL });
     for (const k of open.items.filter((x) => x.key.startsWith(prefix)).map((x) => x.key)) await handleAsk(ctx, k, { outcome: 'resolved', note: 'reviewed again' }, agent.slug).catch(onError);
     const outcome = a.verdict === 'can' ? 'done' : a.verdict === 'partial' ? 'partial' : 'blocked';
     const est = a.estimate ? ` (${oneLine(a.estimate, 40)})` : '';
@@ -140,6 +142,12 @@ export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText
   const caller = { actor: `agent:${agent.slug}`, owner: true };
   await checkClaim(ctx, ref, caller); // refused (🙋, held, done, autonomy) before any run starts
   const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text: QUICK_PROMPTS.assign }); // then the start: one that fails leaves no 🚧 behind
+  // The start is async: rows may have moved meanwhile, and the bare line would then claim a different task than the agent was told about.
+  const now = await taskContext(ctx, ref).catch(() => null);
+  if (!now || now.title !== c.title) {
+    await runs.cancel(r.sessionId ?? r.runId).catch(() => undefined);
+    throw new LifecycleError('The task moved while the agent started; nothing was claimed. Assign again');
+  }
   const claimed = (await claimTask(ctx, ref, caller)).changed;
   return { ...r, claimed };
 }
@@ -163,12 +171,13 @@ export async function taskThread(ctx: LifecycleContext, runs: AgentRuns | undefi
   // An entry follows its row when rows move (same rule as the inbox list): the current row wins over the stored line.
   const rows = await currentRows(ctx, inbox.filter((e) => e.ref)).catch(() => new Map<string, string>());
   for (const e of inbox) {
-    if ((rows.get(e.id) ?? e.ref) !== stored) continue;
+    if (rows.get(e.id) !== stored) continue; // no resolved row (the task was deleted or renamed): never the one that moved into its line
     if (e.from === 'agent') items.push({ at: e.at, kind: 'agent', id: e.id, agent: e.agent ?? 'agent', text: e.text });
     else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state });
   }
-  const asks = await listAsks(ctx, { state: 'all', limit: 200 }).catch(() => ({ items: [] as ListedAsk[] }));
-  for (const a of asks.items) if ((a.row ?? a.ref) === refText) items.push({ at: a.created, kind: 'ask', ask: a }); // the current row wins, like inbox entries
+  const asks = await listAsks(ctx, { state: 'all', limit: ALL }).catch(() => ({ items: [] as ListedAsk[] }));
+  // An ask with a task title needs its resolved row; only a legacy ask without one falls back to its stored ref.
+  for (const a of asks.items) if ((a.task ? a.row : a.ref) === refText) items.push({ at: a.created, kind: 'ask', ask: a }); // the current row wins, like inbox entries
   const review = (await reviewsIn(ctx, ref.path)).get(ref.line);
   if (review) { review.needs = asks.items.filter((a) => a.state === 'open' && a.key.startsWith(reviewPrefix(ref))).map((a) => a.key); items.push({ at: review.at, kind: 'review', verdict: review.verdict, plan: review.plan, ...(review.estimate ? { estimate: review.estimate } : {}), agent: review.agent }); }
   // Subtasks an agent owns (🤖 or 🪄) under this row.
@@ -182,7 +191,10 @@ export async function taskThread(ctx: LifecycleContext, runs: AgentRuns | undefi
   if (runs) {
     const tail = ` · ${refText}`;
     // A review session (` · review · `) is read-only and never the one a question continues.
-    const mine = (await runs.sessions({ limit: 200 }).catch(() => ({ items: [] }))).items.filter((x) => x.title.endsWith(tail) && !x.title.includes(' · review · ')).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
+    // The title also carries the task's title: a session whose row has moved (or been replaced) is not this task's.
+    const head = oneLine(c.title, 200);
+    const same = (title: string) => { const h = title.slice(0, -tail.length); const body = h.slice(h.indexOf(' · ') + 3); return body.endsWith('…') ? head.startsWith(body.slice(0, -1)) : body === head; };
+    const mine = (await runs.sessions({ limit: 200 }).catch(() => ({ items: [] }))).items.filter((x) => x.title.endsWith(tail) && !x.title.includes(' · review · ') && same(x.title)).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
     if (mine) out.session = { id: mine.id, title: mine.title, state: mine.state };
   }
   return out;
@@ -204,7 +216,7 @@ export async function listReviews(ctx: LifecycleContext, project: string): Promi
   const path = `tasks/${project}.md`;
   let content: string;
   try { content = (await ctx.storage.read(path)).content; } catch (e) { if (e instanceof NotFoundError) return []; throw e; }
-  const open = (await listAsks(ctx, { state: 'open', limit: 200 })).items.map((a) => a.key);
+  const open = (await listAsks(ctx, { state: 'open', limit: ALL })).items.map((a) => a.key);
   const lines = new Set<number>();
   const walk = (ts: Task[]) => { for (const t of ts) { lines.add(t.line); walk(t.children); } };
   for (const s of parseProject(content).sections) walk(s.tasks);

@@ -80,13 +80,42 @@ describe('taskThread', () => {
 
   it('names the task session (by title suffix) when a runner lists one; a review session is never it', async () => {
     const sess = (id: string, title: string, lastActive: string): Session => ({ id, title, project: 'x', cwd: '/x', lastActive, active: false, cost: { usd: 0, tokens: 0 }, prs: [] });
-    const { ctx, runs } = await mk([sess('a1b2c3d4-0000-0000-0000-000000000001', 'Cid · Release · flantastic-4:7', '2026-10-29T09:00:00Z'), sess('a1b2c3d4-0000-0000-0000-000000000002', 'Cid · review · Release · flantastic-4:7', '2026-10-29T11:00:00Z')]);
+    const { ctx, runs } = await mk([sess('a1b2c3d4-0000-0000-0000-000000000001', 'Cid · Release the single 🟡 · flantastic-4:7', '2026-10-29T09:00:00Z'), sess('a1b2c3d4-0000-0000-0000-000000000002', 'Cid · review · Release the single 🟡 · flantastic-4:7', '2026-10-29T11:00:00Z')]);
     const th = await taskThread(ctx, runs, 'flantastic-4:7');
     expect(th.session).toMatchObject({ id: 'a1b2c3d4-0000-0000-0000-000000000001', state: expect.any(String) }); // the newer one is the read-only review
   });
 });
 
+describe('thread identity', () => {
+  it('a session whose row moved is not the task at its old line; a deleted task leaves no messages on the row that took its line; asks past 200 still show', async () => {
+    const sess = (id: string, title: string): Session => ({ id, title, project: 'x', cwd: '/x', lastActive: '2026-10-29T09:00:00Z', active: false, cost: { usd: 0, tokens: 0 }, prs: [] });
+    const { ctx, runs, storage } = await mk([sess('a1b2c3d4-0000-0000-0000-000000000001', 'Cid · Some other task · flantastic-4:7')]);
+    expect((await taskThread(ctx, runs, 'flantastic-4:7')).session).toBeUndefined();
+    await sendToInbox(ctx, { path: 'tasks/flantastic-4.md', line: 10 }, 'Sign it today', 'reply');
+    const cur = (await storage.read('tasks/flantastic-4.md')).content;
+    await storage.write('tasks/flantastic-4.md', cur.replace('- [ ] 🙋 Sign the contract\n', '- [ ] Brand new row\n'), { expectedVersion: (await storage.read('tasks/flantastic-4.md')).version });
+    expect((await taskThread(ctx, undefined, 'flantastic-4:10')).items.filter((i) => i.kind === 'owner')).toEqual([]);
+    for (let i = 0; i < 205; i++) await putAsk(ctx, `a-${String(i).padStart(3, '0')}`, { ask: 'x', kind: 'answer', from: 'cos' }, 'cos');
+    await putAsk(ctx, 'z-mine', { ask: 'Which cover?', kind: 'answer', from: 'cid-manager', ref: 'flantastic-4:7' }, 'cid-manager');
+    expect((await taskThread(ctx, undefined, 'flantastic-4:7')).items.some((i) => i.kind === 'ask' && i.ask.key === 'z-mine')).toBe(true);
+  });
+});
+
 describe('assignTask', () => {
+  it('cancels the run and claims nothing when the row moved while the agent started', async () => {
+    const { ctx, runs, storage } = await mk();
+    const cancelled: string[] = [];
+    const slow = { ...runs, prompt: async (req: Parameters<typeof runs.prompt>[0]) => {
+      const r = await runs.prompt(req);
+      const f = await storage.read('tasks/flantastic-4.md');
+      await storage.write('tasks/flantastic-4.md', f.content.replace('- [ ] Release the single 🟡', '- [ ] Inserted\n- [ ] Release the single 🟡'), { expectedVersion: f.version });
+      return r;
+    }, cancel: async (id: string) => { cancelled.push(id); return { changed: true }; } };
+    await expect(assignTask(slow as typeof runs, ctx, 'flantastic-4:7')).rejects.toThrow(/moved/);
+    expect(cancelled).toHaveLength(1);
+    expect((await storage.read('tasks/flantastic-4.md')).content).not.toContain('🚧');
+  });
+
   it('claims the row for the agent and starts the session with the assign prompt; a 🙋 row is refused', async () => {
     const { ctx, runs, prompts, storage } = await mk();
     const r = await assignTask(runs, ctx, 'flantastic-4:7');

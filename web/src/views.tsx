@@ -248,7 +248,7 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack, extra }: {
     <div ref={box} tabIndex={-1} class="focus-mode" role="dialog" aria-modal="true" aria-label="Focus"
       onKeyDown={(e) => {
         if (e.key !== 'Tab') return;
-        const els = [...box.current!.querySelectorAll<HTMLElement>('button')].filter((x) => !(x as HTMLButtonElement).disabled);
+        const els = [...box.current!.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((x) => !(x as HTMLButtonElement).disabled && x.getAttribute('type') !== 'hidden');
         if (!els.length) return;
         const i = els.indexOf(document.activeElement as HTMLElement);
         e.preventDefault();

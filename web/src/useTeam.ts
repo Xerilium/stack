@@ -113,6 +113,8 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   }, [api, enabled, sessions, loadReviews]);
 
   const openSession = useCallback((ref: string) => { const s = sessionOf(ref); if (s) void sessions.openDrawer(s.id); }, [sessionOf, sessions]);
+  /** Opens a session by id (the thread's own run, not whichever session a lookup by ref finds). */
+  const openSessionId = useCallback((id: string) => { void sessions.openDrawer(id); }, [sessions]);
   // `recent` only matters for 10 minutes (the Done chip); drop old entries so polling stops once every row-started session is old news.
   useEffect(() => {
     if (recent.size === 0) return;
@@ -121,6 +123,6 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   }, [recent.size]);
   const active = useMemo(() => reviewing.size > 0 || recent.size > 0, [reviewing, recent]);
 
-  return { team, reviews, talk, setTalk, toggleTalk, agentsOf, chipOf, sessionOf, start, noteStarted, assign, review, reviewing, openSession, enabled, active };
+  return { team, reviews, talk, setTalk, toggleTalk, agentsOf, chipOf, sessionOf, start, noteStarted, assign, review, reviewing, openSession, openSessionId, enabled, active };
 }
 export type Team = ReturnType<typeof useTeam>;

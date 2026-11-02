@@ -99,7 +99,7 @@ export function createRunManager(o: RunManagerOptions): AgentRuns {
   }
 
   async function cancel(sessionId: string) {
-    const id = bySession.get(sessionId);
+    const id = bySession.get(sessionId) ?? (runs.has(sessionId) ? sessionId : undefined); // a session id, or the run id of one that has no session yet
     const r = id ? runs.get(id) : undefined;
     if (!r || r.done) return { changed: false };
     await driver.cancel(r.id);

@@ -41,6 +41,16 @@ describe('permission broker', () => {
     expect(await pending).toEqual({ optionId: 'allow' });
     expect((await listAsks(ctx, { state: 'done' })).items[0]).toMatchObject({ key: a.key, outcome: 'handled', note: 'Allow once' });
   });
+  it('a task session links its ask to the task; a stale ref still writes the ask', async () => {
+    const { ctx, storage, broker } = mk();
+    await storage.write('tasks/f4.md', '# F4\n\n## Active\n\n- [ ] Ship it\n');
+    void broker.ask({ ...session, title: 'Cid · Ship it · f4:4' }, req(), 'run-1');
+    void broker.ask({ ...session, title: 'Cid · Gone · f4:40' }, req({ requestId: 'req-2' }), 'run-2');
+    await wait(20);
+    const { items } = await listAsks(ctx);
+    expect(items.find((a) => a.key.endsWith('req-1'))).toMatchObject({ ref: 'f4:4' });
+    expect(items.find((a) => a.key.endsWith('req-2'))?.ref).toBeUndefined();
+  });
   it('a risky request recommends Deny', async () => {
     const { ctx, broker } = mk();
     const p = broker.ask(session, req({ risky: true }), 'run-1');

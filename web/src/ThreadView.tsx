@@ -59,7 +59,7 @@ export function ThreadView({ t, th, team, now }: { t: Task; th: ThreadCtl; team:
       {th.phase === 'ready' && items.length === 0 && <p class="th-note">No thread yet. Ask the agent anything, or assign the task.</p>}
       {/* One live line announces the newest agent reply (not the owner's own words or state flips). @req FR:agent-thread/web.a11y */}
       <p class="sr-only" role="status" aria-live="polite">{announce ? `${name(announce.agent)}: ${announce.text}` : ''}</p>
-      {running && th.thread.session && <p class="th-note live" role="status"><span class="dot" aria-hidden="true" />{th.thread.session.state === 'needs-you' ? 'Waiting for you in Asks' : 'Working…'} · <button type="button" class="link" onClick={() => team.openSession(t.ref)}>Open the session</button></p>}
+      {running && th.thread.session && <p class="th-note live" role="status"><span class="dot" aria-hidden="true" />{th.thread.session.state === 'needs-you' ? 'Waiting for you in Asks' : 'Working…'} · <button type="button" class="link" onClick={() => team.openSessionId(th.thread.session!.id)}>Open the session</button></p>}
       <AgentTalk team={team} talk={{ ref: t.ref, project: t.project, about: t.text }} agents={agents} mode="thread" busy={th.busy}
         onAsk={(text, agent, keep) => th.ask(text, agent, keep)} onAssign={(agent, keep) => th.assign(agent, keep)} />
     </section>
