@@ -24,7 +24,7 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `asks`: ask queue for the owner; agents `put` and `handle` asks, read answers with `list`. See [docs/asks.md](asks.md). `asks put <key> --ask t --kind k --from agent [...] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]`
 - `remove-completed`: delete checked rows. `remove-completed [--project name]`
 - `agents`: agents per project folder. `agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`
-- `update`: regenerate README, stack, projects, my-day. `update [--sweep] [--queries]`
+- `update`: regenerate README, stack, projects, my-day (legacy scorer by default; `--engine stack` scores and orders like `stack next`, see [ranking.md](ranking.md)). `update [--sweep] [--queries] [--engine legacy|stack]`
 
 ## Agents
 

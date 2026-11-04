@@ -1,5 +1,6 @@
 import type { Page, Route } from '@playwright/test';
-import { actionable, activeTasks, rankNow } from '../src/now';
+import { actionable, activeTasks, dueDays, dueTier } from '../src/now';
+import { parseRow } from '../src/row';
 import type { Task } from '../src/types';
 
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
@@ -10,7 +11,7 @@ export interface MockSession { id: string; title: string; project: string; owner
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
 export interface MockTeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: string; prompt: string; defined: boolean; source?: string; projects: string[]; reportsTo?: string }
 export interface MockReview { ref: string; at: string; verdict: string; plan: string; estimate?: string; agent: string; needs: string[] }
-export interface Mock { team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; /** Pending (uncommitted) writes a batching server reports on `/api/sync`; undefined = the server does not batch. */ pending?: number; since?: string | null; /** CoS escalations (`.stack/needs-you.json`). */ needs: MockNeed[]; /** Rank override (refs in order); default: the first open task, then the old client order. */ ranked?: { ref: string; root?: string }[]; insertAbove: (project: string, text: string) => void }
+export interface Mock { team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; /** Query strings of the GET /rank calls. */ rankQueries: string[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; /** Pending (uncommitted) writes a batching server reports on `/api/sync`; undefined = the server does not batch. */ pending?: number; since?: string | null; /** CoS escalations (`.stack/needs-you.json`). */ needs: MockNeed[]; /** Rank override (refs in order); default: the first open task, then the old client order. */ ranked?: { ref: string; root?: string }[]; insertAbove: (project: string, text: string) => void }
 export interface MockNeed { id: string; title: string; recommendation: string; default?: string; link: string; project?: string; ref?: string; answer?: { choice: string; text?: string; until?: string; at: string } }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
@@ -33,7 +34,7 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 /** `context: true` routes at the browser context, so requests a service worker makes are mocked too. */
 export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean; projects?: { name: string; title: string; metadata?: Record<string, string> }[] } = {}): Promise<Mock> {
   const router = opts.context ? page.context() : page;
-  const m: Mock = { team: [], reviews: [], schedule: null, events: null, calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], fail: new Map(), anonymous: false, forbidden: false, needs: [], insertAbove: () => undefined };
+  const m: Mock = { team: [], reviews: [], schedule: null, events: null, calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], rankQueries: [], fail: new Map(), anonymous: false, forbidden: false, needs: [], insertAbove: () => undefined };
   const proj = opts.projects?.map((p) => ({ metadata: {}, ...p })) ?? [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
@@ -68,7 +69,10 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     // The server's ranking, doubled: the first open task, then what the page used to rank itself (the real engine is tested in core).
     const ranking = (): { ref: string; text: string; project: string; score: number; root?: string }[] => {
       const now = new Date();
-      const rest = rankNow(activeTasks(m.tasks as Task[]).filter((t) => actionable(t, now) && t.ref !== open[0]?.ref), now, m.tasks as Task[]);
+      const prio = (t: Task) => (/🚨/u.test(t.text) ? 3 : /‼/u.test(t.text) ? 2 : /🔺/u.test(t.text) ? 1 : /🔻/u.test(t.text) ? -1 : 0);
+      const key = (t: Task): [number, number, number] => [dueTier(dueDays(parseRow(t.text).due, now)), /🚧/u.test(t.text) ? 1 : 0, prio(t)];
+      const rest = activeTasks(m.tasks as Task[]).filter((t) => actionable(t, now) && t.ref !== open[0]?.ref)
+        .map((t, i) => ({ t, i, k: key(t) })).sort((a, b) => b.k[0] - a.k[0] || b.k[1] - a.k[1] || b.k[2] - a.k[2] || a.i - b.i).map((x) => x.t);
       const order = m.ranked ? m.ranked.map((r) => ({ r, t: find(r.ref) })).filter((x) => x.t).map((x) => ({ ref: x.t!.ref, text: x.t!.text, project: x.t!.project, score: 1, ...(x.r.root ? { root: x.r.root } : {}) }))
         : [...(open[0] ? [open[0]] : []), ...rest].map((t) => ({ ref: t.ref, text: t.text, project: t.project, score: 1 }));
       return order;
@@ -77,7 +81,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       const t = ranking()[0];
       return json(route, 200, { task: t ? { ref: t.ref, text: t.text, project: t.project, score: 1 } : null });
     }
-    if (path === '/rank') return json(route, 200, { items: ranking() });
+    if (path === '/rank') { m.rankQueries.push(new URL(req.url()).search); return json(route, 200, { items: ranking() }); }
     if (path === '/needs-you') return json(route, 200, { items: m.needs });
     const nm = /^\/needs-you\/([^/]+)\/answer$/.exec(path);
     if (nm && req.method() === 'POST') {

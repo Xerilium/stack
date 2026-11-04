@@ -32,7 +32,7 @@ paths:
           $ref: "#/components/responses/Error"
   /rank:
     get:
-      summary: "The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under"
+      summary: "The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. `blocks=any` keeps tasks the current time block would hide"
       operationId: rank
       parameters:
         - name: limit
@@ -40,7 +40,14 @@ paths:
           schema:
             type: integer
             minimum: 1
-            maximum: 200
+            maximum: 1000
+        - name: blocks
+          in: query
+          schema:
+            type: string
+            enum:
+              - now
+              - any
       responses:
         "200":
           description: Ranked tasks

@@ -39,12 +39,13 @@ Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-St
 
 Owner needs one ranked list of what to do next so that the CLI, the API, the `/next` skill, and the web Home all show the same order.
 
-- **FR:rank.@function** (P1): Interface: `rankStack(ctx, at?, limit?): Promise<RankedTask[]>`
+- **FR:rank.@function** (P1): Interface: `rankStack(ctx, at?, limit?, opts?): Promise<RankedTask[]>`
 - **FR:rank.order** (P1): `rankStack` MUST return the highest-scoring leaf, non-parked tasks across all project files, using the scoring engine named by `ctx.engine` (default `stack`) and its time-block filter at `at` (default now), then apply the owner's overrides
   > - @req FR:scoring-engine/rank.order
   > - @req FR:scoring-engine/overrides.tiers
 - **FR:rank.overrides** (P1): `rankStack` MUST read overrides from `.stack/priorities.json` in the storage (absent or unreadable means none) and MUST keep the rows of a `top` rule in the ranking even when the time block would hide them
   > - @req FR:scoring-engine/overrides.invalid
+- **FR:rank.blocks** (P2): With `opts.ignoreBlocks`, `rankStack` MUST NOT drop tasks the current time block would hide (a surface that places tasks across the whole day), keeping the due-date lens, the overrides, and the order otherwise
 - **FR:rank.limit** (P2): `rankStack` MUST return at most `limit` tasks when given
 - **FR:rank.root** (P1): `rankStack` MUST give each task under a parent its top-level row (`root`), so a surface that shows top-level rows groups the leaves without parsing the files itself
 - **FR:rank.output** (P1): List of ranked tasks (@req FR:$ranked-task)

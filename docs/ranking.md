@@ -54,3 +54,15 @@ Only the CoS writes this file. Stack lists the items first in Needs you and writ
 - `id`: `[a-z0-9-]`, stable. `title` (200), `recommendation` (300), `default` (200, what happens if the owner stays silent), `link` (an `https://` url or a repo path) are required except `default`.
 - `ref`: the task row the item is about; that row is held back from Home.
 - The owner's answer is added as `answer: { choice: "go" | "defer" | "reply", text?, until?, at }`. The CoS reads it from the same file and removes the item when handled; Undo clears the answer.
+
+## stack.md, README.md and my-day.md
+
+`stack update` writes them with the legacy scorer by default (byte-for-byte what the PowerShell script wrote). To make the files agree with `stack next`, the web Home, and My day:
+
+```bash
+stack update --engine stack
+```
+
+- Each leaf shows the `stack` engine score (`🟰`), the one `stack next` prints; its breakdown adds one line when the score differs from the formula (`📅 + N due-date lens`, or `↪ inherits N from <task>`).
+- Every list orders by that score, then by `.stack/priorities.json` (`top` first, `down` last; a `hide` row sinks to the end instead of disappearing, so the files still list all the work).
+- The README top list keeps a `top` row even when the current time block would hide it.

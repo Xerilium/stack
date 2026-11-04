@@ -1,7 +1,8 @@
 import type { StackConfig } from './config';
 import { parseProject } from './parser';
+import { matcherFor, parsePriorities } from './priorities';
 import {
-  extractEmojis, legacyEngine, activeTimeBlocks, toScoringProject, weighProjects,
+  extractEmojis, legacyEngine, activeTimeBlocks, rankTasks, stackEngine, toScoringProject, weighProjects,
   type ScoreBreakdown, type ScoredTask, type ScoringProject, type ScoringTask, type TaskEmojis,
 } from './scoring';
 
@@ -15,6 +16,13 @@ export interface SummaryInput {
   now: Date;
   previousReadme?: string;
   previousProjects?: string;
+  /**
+   * @req FR:summaries/engine.@option
+   * legacy (default) keeps the PowerShell output; stack scores and orders like stack next.
+   */
+  engine?: 'legacy' | 'stack';
+  /** Text of the overrides file (.stack/priorities.json); only the stack engine reads it. */
+  priorities?: string;
 }
 
 /** @req FR:summaries/$summary-files */
@@ -182,7 +190,8 @@ export function netSort<T>(items: T[], cmp: (a: T, b: T) => number): T[] {
 
 const collator = new Intl.Collator('en-US', { sensitivity: 'accent' });
 const cmpStr = (a: string, b: string): number => collator.compare(a, b);
-const cmpScoreDesc = (a: { score: number }, b: { score: number }): number => (a.score < b.score ? 1 : a.score > b.score ? -1 : 0);
+/** Orders by `key`: the score, or with the `stack` engine the score moved by the owner's overrides. */
+const cmpScoreDesc = (a: { key: number }, b: { key: number }): number => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0);
 const eqi = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 const inCi = (v: string, list: string[]): boolean => list.some(x => eqi(x, v));
 const WS = /^[^\S﻿]+|[^\S﻿]+$/g;
@@ -244,6 +253,12 @@ interface STask {
   quotes: string[];
   lists: string[];
   score: number;
+  /** What lists sort by; equals `score` unless the `stack` engine moves a row by an override. */
+  key: number;
+  /** The legacy score before the `stack` engine changed it, and why it did. */
+  lens?: { legacy: number; from?: string };
+  /** A `top` rule matches this row (it stays in the README top list even outside the time block). */
+  top?: boolean;
   breakdown: ScoreBreakdown;
   scored: ScoredTask;
 }
@@ -361,11 +376,40 @@ function load(input: SummaryInput): { projects: SProject[]; world: World; sorted
     return {
       id: s.task.id, text: s.task.text, level: s.task.level, parent: s.task.parent, leaf: s.leaf,
       project: projectByName.get(s.task.project)!, emojis: extractEmojis(s.task.text, config),
-      quotes: raw.quotes, lists: raw.lists, score: s.score, breakdown: s.breakdown, scored: s,
+      quotes: raw.quotes, lists: raw.lists, score: s.score, key: s.score, breakdown: s.breakdown, scored: s,
     };
   });
+  if (input.engine === 'stack') applyStackEngine(list, scoring, config, input);
   const sorted = netSort(list, cmpScoreDesc);
   return { projects: ranked.map(r => r.project), world: new World(sorted), sorted, scoring };
+}
+
+/**
+ * @req FR:summaries/engine.scores
+ * @req FR:summaries/engine.order
+ * @req FR:summaries/engine.order.hide
+ * Scores from the stack engine for the leaves it ranks, then the overrides as a sort key; the printed score stays the engine score.
+ */
+function applyStackEngine(list: STask[], scoring: ScoringProject[], config: StackConfig, input: SummaryInput): void {
+  const ranked = new Map(rankTasks(stackEngine, scoring, config, input.now, { ignoreBlocks: true }).map((s) => [s.task.id, s]));
+  const byId = new Map(list.map((t) => [t.id, t]));
+  for (const t of list) {
+    const s = t.leaf ? ranked.get(t.id) : undefined;
+    if (!s) continue;
+    t.lens = { legacy: t.score, ...(s.breakdown.inheritedFrom ? { from: s.breakdown.inheritedFrom } : {}) };
+    t.score = s.score; t.key = s.score; t.breakdown = s.breakdown;
+  }
+  const rules = parsePriorities(input.priorities ?? '');
+  if (!rules.length) return;
+  const match = matcherFor(rules, input.now, scoring.map((p) => p.name), config.timezone);
+  const above = (t: STask): string => { const out: string[] = []; for (let c = t.parent ? byId.get(t.parent) : undefined; c; c = c.parent ? byId.get(c.parent) : undefined) out.push(c.text); return out.join(' '); };
+  for (const t of list) {
+    const m = match({ text: t.text, project: t.project.name, context: above(t) });
+    if (!m) continue;
+    // tiers far beyond any score: top (in rule order, own matches before parent matches), unmatched, down, hide
+    if (m.rule.effect === 'top') { t.key = 1e12 - m.index * 1e9 - (m.via === 'parent' ? 1e8 : 0) + t.score; t.top = true; }
+    else t.key = (m.rule.effect === 'down' ? -1e12 : -2e12) + t.score;
+  }
 }
 
 // ------------------------------------------------------------------ task helpers (TaskHelpers.ps1)
@@ -495,7 +539,7 @@ function hierarchy(task: STask, w: World, opts: { removeStatus?: boolean; includ
 
 const CATEGORY_ORDER = ['Priority', 'Status', 'Effort', 'Impact', 'Value', 'TimeBlocks', 'Special'];
 
-function breakdownLines(b: ScoreBreakdown, actual: number, indent: string): string[] {
+function breakdownLines(b: ScoreBreakdown, actual: number, indent: string, lens?: { legacy: number; from?: string; fromText?: string }): string[] {
   const parts: string[] = [];
   for (const cat of CATEGORY_ORDER) {
     for (const c of b.emojiContributions.filter(x => x.category === cat)) {
@@ -516,7 +560,13 @@ function breakdownLines(b: ScoreBreakdown, actual: number, indent: string): stri
       ? `${indent}  - 🧮 ${total} = (${formula}) / ⏱️${effort}h`
       : `${indent}  - 🧮 ${total} = ${formula}`,
   ];
-  if (Math.abs(Number(total.toString()) - actual) > 0.01) lines.push(`${indent}  - ⚠️ Expanded scoring algorithm does not match the evaluated score!`);
+  if (lens && Math.abs(actual - lens.legacy) > 0.01) {
+    // @req FR:summaries/engine.breakdown
+    // The stack engine moved the score: say how, so the arithmetic stays honest.
+    lines.push(lens.from !== undefined
+      ? `${indent}  - ↪ inherits ${formatNumber(actual)} from ${lens.fromText ?? 'its parent task'}`
+      : `${indent}  - 📅 + ${formatNumber(Math.round((actual - lens.legacy) * 1e6) / 1e6)} due-date lens = ${formatNumber(actual)}`);
+  } else if (Math.abs(Number(total.toString()) - actual) > 0.01) lines.push(`${indent}  - ⚠️ Expanded scoring algorithm does not match the evaluated score!`);
   return lines;
 }
 
@@ -544,7 +594,8 @@ function buildStack(w: World, projects: SProject[], config: StackConfig): string
     let depth = 0;
     let cur = task.parent;
     while (cur && w.byId.has(cur)) { depth++; cur = w.byId.get(cur)!.parent; }
-    for (const l of breakdownLines(task.breakdown, task.score, '  '.repeat(depth + 1))) content += `\n${l}`;
+    const lens = task.lens ? { ...task.lens, ...(task.lens.from ? { fromText: w.byId.get(task.lens.from)?.text } : {}) } : undefined;
+    for (const l of breakdownLines(task.breakdown, task.score, '  '.repeat(depth + 1), lens)) content += `\n${l}`;
     if (task.emojis.Effort.length === 0) content += '\n    - ⚠️ Missing effort estimation';
     content += '\n';
   }
@@ -581,7 +632,8 @@ function buildProjects(w: World, projects: SProject[], config: StackConfig): str
   for (const [rootId, group] of groups) {
     const rootTask = group.find(t => t.id === rootId) ?? netSort(group, cmpScoreDesc)[0];
     const best = Math.max(...group.map(t => t.score));
-    reps.push({ ...rootTask, score: best });
+    const bestKey = Math.max(...group.map(t => t.key));
+    reps.push({ ...rootTask, score: best, key: bestKey });
   }
   const repPool = new Map(reps.map(t => [t.id, t]));
   const active = reps.filter(t => !isParked(t, repPool) && t.text.trim() !== '' && t.project.name.trim() !== '');
@@ -713,9 +765,17 @@ function buildReadme(
 
   const leaves = w.list.filter(t => t.leaf);
   const activeTasks = leaves.filter(t => !isParked(t, w.byId));
-  const filtered = activeTasks.length > 0
-    ? legacyEngine.filter(activeTasks.map(t => t.scored), scoring, config, input.now).map(s => w.byId.get(s.task.id)!)
+  const engine = input.engine === 'stack' ? stackEngine : legacyEngine;
+  let filtered = activeTasks.length > 0
+    ? engine.filter(activeTasks.map(t => t.scored), scoring, config, input.now).map(s => w.byId.get(s.task.id)!)
     : [];
+  if (input.engine === 'stack') {
+    // @req FR:summaries/engine.top.blocks
+    // A top rule keeps its row even when the time block would hide it.
+    const kept = new Set(filtered.map(t => t.id));
+    const extra = activeTasks.filter(t => t.top && !kept.has(t.id));
+    if (extra.length) filtered = netSort([...filtered, ...extra], cmpScoreDesc);
+  }
 
   const parkedAtLevel = w.list.filter(t => t.emojis.Special.includes('🅿️') || t.emojis.Special.includes('💤'));
   const unique = uniqueOutcomeTasks(filtered, w);

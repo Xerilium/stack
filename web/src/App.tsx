@@ -99,6 +99,8 @@ export function App() {
   const [next, setNext] = useState<NextTask | null>(null);
   /** The server's ranking: Home draws this and nothing else. @req FR:web-app/now.active */
   const [ranked, setRanked] = useState<RankItem[]>([]);
+  /** The same ranking across the whole day's time blocks, for My day and the week. @req FR:web-app/today.plan */
+  const [dayOrder, setDayOrder] = useState<string[]>([]);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -155,7 +157,7 @@ export function App() {
   const dayKey = sched?.date ?? dateKey(clockNow);
   const busyTime = useMemo(() => busyIntervals(events, day.origin ?? clockNow, day.origin ? 2 : 1), [events, clockNow, day]);
   const budget = budgetOf(clockNow, day, saved && saved.date === dayKey ? saved.minutes : null, busyTime);
-  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, clockNow, day, budget.minutes, busyTime, emailAsks]);
+  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, dayOrder, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, dayOrder, clockNow, day, budget.minutes, busyTime, emailAsks]);
   // Tomorrow: the next waking day planned from its wake. @req FR:home/day.tomorrow
   const tmr = useMemo(() => {
     if (!ahead) return null;
@@ -163,8 +165,8 @@ export function App() {
     const at = new Date(ahead.sched.wake);
     const b = busyIntervals(ahead.events, d.origin!, 2);
     const bud = budgetOf(at, d, null, b);
-    return { day: d, now: at, budget: bud, plan: buildPlan(planCandidates(tasks, at), at, d, bud.minutes, { busy: b }), events: ahead.events };
-  }, [ahead, projects, tasks]);
+    return { day: d, now: at, budget: bud, plan: buildPlan(planCandidates(tasks, at, dayOrder), at, d, bud.minutes, { busy: b }), events: ahead.events };
+  }, [ahead, projects, tasks, dayOrder]);
   const offerTomorrow = !!sched && !sched.asleep && nowMinutes(clockNow, day) >= day.end - 180;
   const toggleTomorrow = useCallback(async () => {
     if (ahead) { setAhead(null); return; }
@@ -196,7 +198,7 @@ export function App() {
   }, [ahead, sched]);
   /** @req FR:web-app/today.capacity */
   const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v, dayKey); setSaved(v === null ? null : { date: dayKey, minutes: v }); }, [dayKey]);
-  const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
+  const decisions = useMemo(() => decisionsOf(tasks, clockNow, dayOrder), [tasks, clockNow, dayOrder]);
   const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
   const titles = useMemo(() => new Map(projects.map((x) => [x.name, x.title || x.name])), [projects]);
   /** @req FR:web-app/home.one @req FR:web-app/home.fit */
@@ -220,7 +222,7 @@ export function App() {
   const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task), home.five.map((n) => n.task), home.projects.filter((x) => !x.shown).slice(0, allProjects ? undefined : 3).map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
-  const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY), [tasks, clockNow, budget.minutes]);
+  const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
   const capRows = useMemo(() => capacityRows(projects, tasks).map((r) => ({ ...r, top: topTask(tasks, r.project) })), [projects, tasks]);
 
   // ---- feedback
@@ -256,8 +258,8 @@ export function App() {
   const refresh = useCallback(async () => {
     void loadSide();
     try {
-      const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
-      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
+      const [rk, rkAny, t, p] = await Promise.all([api.rank(100), api.rank(1000, 'any').catch(() => [] as RankItem[]), api.tasks(), api.projects()]);
+      setRanked(rk); setDayOrder(rkAny.map((x) => x.ref)); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
       api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {

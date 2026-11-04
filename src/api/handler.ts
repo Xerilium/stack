@@ -190,7 +190,7 @@ const NEED_ANSWER_BODY = {
   schema: { choice: { t: 'enum', values: ['go', 'defer', 'reply', 'undo'] }, text: { t: 'str', max: 1000, line: true }, until: { t: 'str', max: 40, line: true } } satisfies Record<string, Spec>,
   required: ['choice'],
 };
-const RANK_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 200 } };
+const RANK_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 1000 }, blocks: { t: 'enum', values: ['now', 'any'] } };
 const ASK_HANDLE_BODY = {
   schema: { outcome: { t: 'enum', values: ASK_OUTCOMES }, note: { t: 'str', max: 500, line: true }, reply: { t: 'str', max: 1000, line: true } } satisfies Record<string, Spec>,
   required: ['outcome'],
@@ -337,8 +337,11 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/rank', name: 'rank', query: RANK_Q,
     async run(c) {
       const q = readQuery(c.url, Object.keys(RANK_Q));
-      const limit = intParam(q, 'limit', 20, 1, 200);
-      const items = (await rankStack(c.life, undefined, limit)).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}) }));
+      const limit = intParam(q, 'limit', 20, 1, 1000);
+      const blocks = q.get('blocks') ?? 'now';
+      // readQuery checks names only, not enum values: this check is the only one for `blocks`.
+      if (blocks !== 'now' && blocks !== 'any') throw invalid([{ field: 'blocks', message: 'Must be now or any' }]);
+      const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}) }));
       return json(200, { items });
     },
   },

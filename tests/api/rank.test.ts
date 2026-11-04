@@ -45,7 +45,16 @@ describe('GET /api/rank', () => {
     const { call } = await mk();
     expect((await call('GET', '/api/rank?limit=2')).json.items).toHaveLength(2);
     expect((await call('GET', '/api/rank?limit=0')).status).toBe(422);
-    expect((await call('GET', '/api/rank?limit=201')).status).toBe(422);
+    expect((await call('GET', '/api/rank?limit=1000')).status).toBe(200);
+    expect((await call('GET', '/api/rank?limit=1001')).status).toBe(422);
+  });
+  // @req FR:api/routes.rank
+  it('blocks=any keeps rows the time block hides; an unknown value is rejected', async () => {
+    const { call } = await mk();
+    const now = (await call('GET', '/api/rank')).json.items.length;
+    const any = (await call('GET', '/api/rank?blocks=any')).json.items.length;
+    expect(any).toBeGreaterThanOrEqual(now);
+    expect((await call('GET', '/api/rank?blocks=sometimes')).status).toBe(422);
   });
   // @req FR:api/routes.next
   it('/next is the first of /rank, overrides included', async () => {

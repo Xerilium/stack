@@ -30,7 +30,21 @@ Show the ranked stack in four readable files so a person can see what to do now,
 - **FR:generate.pure** (P1): `generateSummaries` MUST be a pure function of its input
 - **FR:generate.load** (P1): Projects MUST be loaded in file-name order, named from the H1 on line 1 (emoji split when the first word is 1-4 UTF-16 units with a non-ASCII character), and ordered by calculated priority then previous `projects.md` order (999 when absent) then file order
 - **FR:generate.parse** (P1): Tasks MUST be the unchecked `- [ ]` lines of the first `## 🔄 Active` section, each carrying its `>` quote lines and `- ` list lines
-- **FR:generate.rank** (P1): Tasks MUST be scored with the legacy engine and ordered by score descending
+- **FR:generate.rank** (P1): Tasks MUST be scored with the engine named by `input.engine` (default `legacy`) and ordered by score descending
+
+### FR:engine: The shared scorer
+
+Owner needs stack.md, README.md, my-day.md, and `stack next` to agree, so that the order he reads in a file is the order the app and the CLI act on.
+
+- **FR:engine.@option** (P1): Interface: `SummaryInput.engine?: 'legacy' | 'stack'` and `SummaryInput.priorities?: string` (the text of `.stack/priorities.json`); `legacy` is the default and keeps every output byte-for-byte as the PowerShell parity requires
+- **FR:engine.scores** (P1): With `stack`, each leaf row the `stack` engine ranks MUST show that engine's score (`🟰`), the one `stack next` prints; parent rows and rows the engine does not rank keep their legacy score
+  > - @req FR:scoring-engine/engine.stack
+- **FR:engine.order** (P1): With `stack`, every list MUST order by the engine score and then by the owner's overrides (`top` rows first, in the order of their rules, `down` rows last), so the first row of stack.md and the README top task are the first rows of `stack next`
+  > - @req FR:scoring-engine/overrides.tiers
+  - **FR:engine.order.hide** (P2): A row matching a `hide` rule MUST sink to the end of every list instead of disappearing (the files list all the work)
+- **FR:engine.top.blocks** (P1): With `stack`, the README top list MUST keep a row matching a `top` rule even when the current time block would hide it
+  > - @req FR:scoring-engine/overrides.top.blocks
+- **FR:engine.breakdown** (P1): With `stack`, the breakdown under a leaf MUST stay arithmetically honest: when the engine score differs from the formula, a line says why (`📅 + N due-date lens`, or `↪ inherits N from <task>`), and the `does not match` warning appears only for a real mismatch
 
 ### FR:stack: stack.md
 
@@ -65,7 +79,7 @@ Show the ranked stack in four readable files so a person can see what to do now,
 
 ## Data Model
 
-- **FR:$summary-input** (P1): **`SummaryInput`** — `projects` (`{ fileName, content }[]`), `config`, `now` (Date), `previousReadme?`, `previousProjects?`.
+- **FR:$summary-input** (P1): **`SummaryInput`** — `projects` (`{ fileName, content }[]`), `config`, `now` (Date), `previousReadme?`, `previousProjects?`, `engine?`, `priorities?`.
 - **FR:$summary-files** (P1): **`SummaryFiles`** — `readme`, `stack`, `projects`, `myDay`: the exact file text to write (UTF-8 BOM on the first three, none on my-day, one trailing newline).
 
 ## Legacy Parity
