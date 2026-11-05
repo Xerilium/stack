@@ -189,6 +189,15 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'rank', summary: 'The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. `blocks=any` keeps tasks the current time block would hide',
     responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref') } } } } }),
   },
+  'inboxItems.list': {
+    operationId: 'listInboxItems', summary: 'All mail, unread Teams and unread Slack items, each with a summary and a suggested action, plus the action catalog',
+    responses: ok('Inbox', { type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, actions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, ready: { type: 'boolean' } } } } } }),
+  },
+  'inboxItems.action': {
+    operationId: 'inboxAction', summary: 'Run an inbox action (reply-draft makes a draft and never sends), or with request true file a request for a missing action. Owner session only: 403 for tokens',
+    desc: { text: 'Draft text for reply-draft', until: 'ISO date for snooze', request: 'File a GitHub issue (label help wanted) for a missing action' },
+    responses: ok('Result', { type: 'object' }),
+  },
   'needs.list': {
     operationId: 'listNeeds', summary: 'The Chief of Staff\'s open decisions and go-dos (`.stack/needs-you.json`), each with a recommendation, a default, and a link',
     responses: ok('Needs', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, recommendation: { type: 'string' }, default: { type: 'string' }, by: { type: 'string' }, link: { type: 'string' }, project: { type: 'string' }, ref: { type: 'string' }, answer: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string', format: 'date-time' } } } } } } } }),

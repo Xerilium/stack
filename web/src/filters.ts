@@ -5,7 +5,7 @@ import type { Task, View } from './types';
 export interface Filters { q: string; project: string; state: 'open' | 'done' | 'all'; status: string; priority: string; effort: string }
 
 export const NO_FILTERS: Filters = { q: '', project: '', state: 'open', status: '', priority: '', effort: '' };
-const VIEWS: View[] = ['home', 'brief', 'asks', 'sessions', 'today', 'projects', 'list'];
+const VIEWS: View[] = ['home', 'brief', 'asks', 'inbox', 'sessions', 'today', 'projects', 'list'];
 /** Old view names still open their view. @req FR:web-shell/nav.views */
 const ALIAS: Record<string, View> = { now: 'home', next: 'home', focus: 'home', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions' };
 const STATES = ['open', 'done', 'all'];
