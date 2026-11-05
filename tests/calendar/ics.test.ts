@@ -107,15 +107,16 @@ describe('parseIcs: busy-only, all-day, range, limits', () => {
     );
     expect(parseIcs(t, '2026-10-28T09:00:00Z', '2026-10-28T17:00:00Z').map((e) => e.id.split('/')[0])).toEqual(['across', 'inside']);
   });
-  it('expands years-old series quickly and in step with the rule', () => {
+  it('expands years-old series by jumping to the window, not by walking every past occurrence', () => {
     const t = cal(...PACIFIC,
       ...vevent('UID:old', 'DTSTART;TZID=Pacific Standard Time:20160105T090000', 'DTEND;TZID=Pacific Standard Time:20160105T100000',
         'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU', 'EXDATE;TZID=Pacific Standard Time:20261110T090000'),
       ...Array.from({ length: 60 }, (_, i) => vevent(`UID:daily${i}`, 'DTSTART:20100104T170000Z', 'DTEND:20100104T173000Z', 'RRULE:FREQ=DAILY')).flat(),
     );
-    const t0 = Date.now();
     const got = parseIcs(t, '2026-10-20T00:00:00Z', '2026-11-25T00:00:00Z');
-    expect(Date.now() - t0).toBeLessThan(2000);
+    // No stopwatch: walking 60 daily series from 2010 would need ~370k steps and run out of the step budget (50k) long before the last one.
+    // Getting the 55th series in full (the 2000-occurrence cap stops later ones) proves the expansion jumped to the window.
+    expect(got.filter((e) => e.id.startsWith('daily54/'))).toHaveLength(36);
     expect(got.filter((e) => e.id.startsWith('old/')).map((e) => e.start)).toEqual(['2026-10-27T16:00:00.000Z', '2026-11-24T17:00:00.000Z']);
     expect(got.filter((e) => e.id.startsWith('daily0/'))).toHaveLength(36);
   });

@@ -14,6 +14,8 @@ export default defineConfig({
   testDir: 'e2e',
   outputDir: 'test-results',
   fullyParallel: true,
+  // Each worker is a whole Chromium; more than this starves the page under test on a busy machine and fails on load, not on bugs.
+  workers: process.env.CI ? 2 : 4,
   retries: process.env.CI ? 1 : 0,
   reporter: [['list']],
   use: { timezoneId: 'America/Los_Angeles', baseURL: `http://localhost:${port}`, launchOptions, serviceWorkers: 'block', trace: 'retain-on-failure', screenshot: 'only-on-failure' },

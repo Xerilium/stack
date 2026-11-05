@@ -815,3 +815,7 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
 .brief-empty { color: var(--muted); margin: 0; font-size: 14px; }
 .brief-one h1 { font-size: 22px; }
 @media (max-width: 720px) { .brief .btn { min-height: 44px; } .brief-meeting, .brief-slot { flex-wrap: wrap; } }
+.brief-meeting { flex-wrap: wrap; } .brief-meeting .brief-title { min-width: 8em; }
+.brief-detail { flex-basis: 100%; padding-left: 76px; font-size: 13px; color: var(--ink2); }
+.brief-layer { font-weight: 400; }
+.brief-free { margin: 0 0 0.5rem; font-weight: 600; }

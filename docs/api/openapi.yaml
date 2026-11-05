@@ -76,6 +76,43 @@ paths:
                           $ref: "#/components/schemas/Ref"
         default:
           $ref: "#/components/responses/Error"
+  /meetings:
+    get:
+      summary: "The owner's weekly meetings (`.stack/meetings.md`): days (0 = Sunday), local start and end, topic, owner agent, join link. Owner session only: 403 for tokens"
+      operationId: listMeetings
+      responses:
+        "200":
+          description: Meetings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        days:
+                          type: array
+                          items:
+                            type: integer
+                        start:
+                          type: string
+                        end:
+                          type: string
+                        biweekly:
+                          type: boolean
+                        topic:
+                          type: string
+                        owner:
+                          type: string
+                        join:
+                          type: string
+        default:
+          $ref: "#/components/responses/Error"
   /needs-you:
     get:
       summary: The Chief of Staff's open decisions and go-dos (`.stack/needs-you.json`), each with a recommendation, a default, and a link

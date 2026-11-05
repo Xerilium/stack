@@ -35,6 +35,7 @@ import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
 import { CHORDS, EXPERIMENTAL, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { briefOf } from './brief';
+import { enrich, expandWeekly, type Rule } from './weekly';
 import { BriefView } from './BriefView';
 import { aiRows, type AiSummary } from './briefAi';
 import { useTeam } from './useTeam';
@@ -142,6 +143,8 @@ export function App() {
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [calError, setCalError] = useState('');
   const [calOn, setCalOn] = useState(true);
+  /** Weekly meetings (`.stack/meetings.md`): Brief's second layer. @req FR:cos-view/meet.layers */
+  const [rules, setRules] = useState<Rule[]>([]);
   /** Tomorrow's plan in My day: its schedule and meetings. @req FR:home/day.tomorrow */
   const [ahead, setAhead] = useState<{ sched: DaySched; events: CalEvent[] } | null>(null);
   /** "I have N min" from Home: memory only, runs out after N minutes. @req FR:home/home.have */
@@ -257,7 +260,8 @@ export function App() {
     const s = await api.schedule(d.toISOString()).catch(() => null);
     setSched(s);
     const range = calendarRange(s, d);
-    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to)]);
+    const [a, i, c, w] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to), api.meetings()]);
+    setRules(w.status === 'fulfilled' ? w.value : []);
     /** @req FR:web-app/today.meetings */
     if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); setCalOn(c.value.configured); } else setCalError('Calendar unavailable');
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
@@ -274,8 +278,10 @@ export function App() {
   const refresh = useCallback(async () => {
     void loadSide();
     try {
-      const [rk, rkAny, t, p] = await Promise.all([api.rank(100), api.rank(1000, 'any').catch(() => [] as RankItem[]), api.tasks(), api.projects()]);
-      setRanked(rk); setDayOrder(rkAny.map((x) => x.ref)); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
+      // @req FR:perf/client.paint — the first screen waits for the ranking, tasks, and projects; the all-day order fills in when it arrives.
+      void api.rank(1000, 'any').catch(() => [] as RankItem[]).then((a) => setDayOrder(a.map((x) => x.ref)));
+      const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
+      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
       api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
@@ -327,11 +333,17 @@ export function App() {
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
+  /** Live calendar when it works, else the weekly schedule. @req FR:cos-view/meet.layers */
+  const liveCal = calOn && !calError;
+  const briefBusy = useMemo(() => {
+    const d0 = day.origin ?? clockNow, n = day.origin ? 2 : 1;
+    return liveCal ? busyTime.map((b) => ({ ...b, events: enrich(b.events, rules) })) : busyIntervals(expandWeekly(rules, d0, n), d0, n);
+  }, [liveCal, busyTime, rules, day, clockNow]);
   // The AI daily brief: read once when Brief opens (the server caches it per day); a failure just hides the section. @req FR:cos-view/brief.ai.web
   const [ai, setAi] = useState<AiSummary | null>(null);
   useEffect(() => { if (view === 'brief' && !ai) { let live = true; api.briefSummary().then((r) => { if (live) setAi(r); }).catch(() => undefined); return () => { live = false; }; } }, [view, ai]);
   const aiView = useMemo(() => aiRows(ai, asks.items), [ai, asks.items]);
-  const brief = useMemo(() => briefOf({ asks: asks.items, busy: busyTime, day, now: clockNow, one: home.one }), [asks.items, busyTime, day, clockNow, home.one]);
+  const brief = useMemo(() => briefOf({ asks: asks.items, busy: briefBusy, day, now: clockNow, one: home.one }), [asks.items, briefBusy, day, clockNow, home.one]);
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
@@ -359,6 +371,8 @@ export function App() {
   useEffect(() => { setEmailAsks(asks.items.filter((a) => a.state === 'open' && a.from === 'email-triage').length); }, [asks.items]);
 
   useEffect(() => {
+    // @req FR:perf/client.parallel — the data loads while the sign-in stub answers.
+    void refresh();
     void (async () => {
       try {
         const r = await fetch('/.auth/me', { credentials: 'same-origin' });
@@ -370,7 +384,6 @@ export function App() {
         setOwnerId(j.clientPrincipal?.identityProvider && j.clientPrincipal.userId ? `${j.clientPrincipal.identityProvider}:${j.clientPrincipal.userId}` : '');
         setLocal(j.clientPrincipal?.identityProvider === 'local');
       } catch { setStream(false); setAgentsOn(false); /* the api decides access */ }
-      await refresh();
     })();
   }, []);
 
@@ -859,7 +872,7 @@ export function App() {
         )}
         {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : a === 'defer' ? void notNow(nowTask?.task.ref) : void delegate(nowTask?.task.ref))} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
-        {phase === 'ready' && view === 'brief' && <BriefView b={brief} ai={aiView} onAi={(r) => { if (r.send) void asks.answer(r.ask, r.send, r.sent ?? 'Done'); }} win={win} busy={busy} onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onOpenAsks={() => go('asks')} onAct={(a, ref) => rowAct(a, ref)} />}
+        {phase === 'ready' && view === 'brief' && <BriefView b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} ai={aiView} onAi={(r) => { if (r.send) void asks.answer(r.ask, r.send, r.sent ?? 'Done'); }} win={win} busy={busy} onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onOpenAsks={() => go('asks')} onAct={(a, ref) => rowAct(a, ref)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />

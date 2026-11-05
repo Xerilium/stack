@@ -198,6 +198,10 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { text: 'Draft text for reply-draft', until: 'ISO date for snooze', request: 'File a GitHub issue (label help wanted) for a missing action' },
     responses: ok('Result', { type: 'object' }),
   },
+  'meetings.list': {
+    operationId: 'listMeetings', summary: 'The owner\'s weekly meetings (`.stack/meetings.md`): days (0 = Sunday), local start and end, topic, owner agent, join link. Owner session only: 403 for tokens',
+    responses: ok('Meetings', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, days: { type: 'array', items: { type: 'integer' } }, start: { type: 'string' }, end: { type: 'string' }, biweekly: { type: 'boolean' }, topic: { type: 'string' }, owner: { type: 'string' }, join: { type: 'string' } } } } } }),
+  },
   'needs.list': {
     operationId: 'listNeeds', summary: 'The Chief of Staff\'s open decisions and go-dos (`.stack/needs-you.json`), each with a recommendation, a default, and a link',
     responses: ok('Needs', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, recommendation: { type: 'string' }, default: { type: 'string' }, by: { type: 'string' }, link: { type: 'string' }, project: { type: 'string' }, ref: { type: 'string' }, answer: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string', format: 'date-time' } } } } } } } }),

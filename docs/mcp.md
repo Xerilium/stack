@@ -17,6 +17,12 @@ Tools: `next`, `list`, `add`, `complete`, `start`, `skip`, `resume`, `suspend`, 
 | `triage` | `POST /tasks/triage` | `tasks:write` |
 | `claim` | `POST /tasks/claim` | `tasks:write` |
 | `record-result` | `POST /tasks/result` | `tasks:write` |
+| `asks_put` | `POST /asks/{key}` | `tasks:write` |
+| `asks_list` | `GET /asks` | `tasks:read` |
+| `asks_handle` | `POST /asks/{key}/handle` | `tasks:write` |
+| `asks_answer_wait` | `GET /asks` | `tasks:read` |
+
+Asks tools: `key` goes in the path; `options` and `applies` are `|`-separated text. There is no answer tool, because agents never answer. `asks_answer_wait` re-reads once a second for up to `waitSec` (0-20, default 0) and replies `pending` until the owner answers. See [asks.md](asks.md).
 
 `read` and `write` also cover these. Mint a token as the owner (see [runbook](runbook.md)); give agents only the scopes they need.
 

@@ -6,6 +6,8 @@ import { wallMinutes } from './wall';
 export interface CalEvent {
   id: string; subject: string; start: string; end: string; allDay: boolean;
   showAs: 'free' | 'tentative' | 'busy' | 'oof' | 'workingElsewhere' | 'unknown'; cancelled: boolean; online: boolean; organizer?: string; webLink?: string; joinUrl?: string;
+  /** Agent that owns the meeting and its topic, from the weekly schedule (`FR:cos-view/meet.enrich`). */
+  owner?: string; topic?: string;
 }
 /** Merged busy time with the events inside it. */
 export interface Busy { start: number; end: number; titles: string[]; events: CalEvent[] }
