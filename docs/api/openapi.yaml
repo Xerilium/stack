@@ -1258,6 +1258,52 @@ paths:
                 type: object
         default:
           $ref: "#/components/responses/Error"
+  /brief/summary:
+    get:
+      summary: "AI daily brief over the top open asks, cached per day. Owner session only: 403 for tokens. configured is false when the host has no model"
+      operationId: briefSummary
+      parameters:
+        - name: refresh
+          in: query
+          schema:
+            type: string
+          description: 1 forces a new model call
+      responses:
+        "200":
+          description: Brief
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  date:
+                    type: string
+                  headline:
+                    type: string
+                  cached:
+                    type: boolean
+                  error:
+                    type: string
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        text:
+                          type: string
+                        action:
+                          type: string
+                          enum:
+                            - go
+                            - no
+                            - done
+                            - none
+        default:
+          $ref: "#/components/responses/Error"
   /sessions:
     get:
       summary: Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents

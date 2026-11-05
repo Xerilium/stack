@@ -211,6 +211,11 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { text: 'Required for reply', until: 'Required for defer (ISO)' },
     responses: ok('Answered', { type: 'object', properties: { changed: { type: 'boolean' } } }),
   },
+  'brief.summary': {
+    operationId: 'briefSummary', summary: 'AI daily brief over the top open asks, cached per day. Owner session only: 403 for tokens. configured is false when the host has no model',
+    desc: { refresh: '1 forces a new model call' },
+    responses: ok('Brief', { type: 'object', properties: { configured: { type: 'boolean' }, date: { type: 'string' }, headline: { type: 'string' }, cached: { type: 'boolean' }, error: { type: 'string' }, lines: { type: 'array', items: { type: 'object', properties: { key: { type: 'string' }, text: { type: 'string' }, action: { type: 'string', enum: ['go', 'no', 'done', 'none'] } } } } } }),
+  },
   'asks.answer': {
     operationId: 'answerAsk', summary: 'Answer an ask (go, no, option, reply, ask, done, defer, retract). Owner session only: 403 for tokens',
     desc: { text: 'Required for option, reply, and ask', until: 'Required for defer (ISO, in the future)' },
