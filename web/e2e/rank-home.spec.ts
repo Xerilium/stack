@@ -144,6 +144,7 @@ test.describe('Quiet Home', () => {
   // @req FR:web-app/home3.context
   test('the context line says late only when overdue', async ({ page }) => {
     const m = await mockApi(page);
+    const ten = new Date(); ten.setHours(10, 0, 0, 0); await page.clock.setFixedTime(ten); // fit follows the clock; CI runs in UTC, past the work day
     const t = m.tasks.find((x) => x.ref === 'alpha:6')!;
     await page.goto('/');
     await expect(page.getByTestId('now-context')).not.toContainText('late');
