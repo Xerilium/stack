@@ -12,3 +12,10 @@ Open: real owner picks are not logged yet. The 8/10 bake-off run waits for them.
 
 Fixture: `tests/fixtures/auto-priority/ground-truth.md` (ranks 1-6 as pairwise misses). Source: todo `.stack/auto-pri-ground-truth.md`.
 Scoring proposal: `(urgency + unblock leverage + value) / effort`; unblocker weight highest. Not in this PR: the fixture gates it. Next PR tunes `stack` engine weights until the fixture passes on real tasks.
+
+## Tagging and explain (this PR)
+
+1. `autopri.ts`: extract `autopriParts` from the engine (no score change).
+2. `autopri-tags.ts`: pure `applyTags`, `parseTruth`, `matchTruth`, `formatExplain`.
+3. `lifecycle.ts`: `tagTask`, `explainAutopri`. CLI: `stack tag`, `stack rank`.
+4. Tests first: `tests/core/autopri-tags.test.ts`, `tests/cli/autopri-tags.test.ts`.

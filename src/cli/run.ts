@@ -10,11 +10,12 @@ import { basename, dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
-  rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, TaskProps,
+  explainAutopri, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
 import { replyFromAgent } from '../core/inbox';
+import { registerAutopriEngine } from '../core/autopri';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import { AUTONOMY_LEVELS, type Autonomy } from '../core/model';
 import { applyTriage, effectiveAutonomy, setAutonomy } from '../core/triage';
@@ -50,6 +51,8 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   resume: { flags: ['expect'], usage: 'resume [ref] [--expect t]', help: 'unpark the first parked task' },
   suspend: { flags: ['days', 'hours', 'expect'], usage: 'suspend [ref] [--days n | --hours n] [--expect t]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
+  tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
+  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks; --explain (autopri) shows score parts; --truth lists ground-truth items to tag or add' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches)' },
@@ -395,6 +398,41 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
     case 'set': {
       if (p.positionals.length !== 1) throw new UsageError('set needs exactly one <ref>');
       return describe(cmd, await setProperties(ctx, { ...parseRef(p.positionals[0]), text: flag(f, 'expect') }, props(f)));
+    }
+    // @req FR:autopri-tagging/tag.cli
+    case 'tag': {
+      if (p.positionals.length !== 1) throw new UsageError('tag needs exactly one <ref>');
+      const u = flag(f, 'unblocker'), d = flag(f, 'due');
+      if (u === undefined && d === undefined) throw new UsageError('tag needs --unblocker or --due');
+      if (u !== undefined && u !== 'yes' && u !== 'no') throw new UsageError('--unblocker must be yes or no');
+      return describe('set', await tagTask(ctx, { ...parseRef(p.positionals[0]), text: flag(f, 'expect') }, {
+        ...(u !== undefined ? { unblocker: u === 'yes' } : {}), ...(d !== undefined ? { due: d.toLowerCase() === 'none' ? null : d } : {}),
+      }));
+    }
+    // @req FR:autopri-tagging/explain.cli @req FR:autopri-tagging/truth.report
+    case 'rank': {
+      extra(0);
+      const engine = flag(f, 'engine') ?? 'stack';
+      if (engine !== 'autopri' && engine !== 'stack') throw new UsageError('--engine must be autopri or stack');
+      const explain = f['explain'] === true;
+      if (explain && engine !== 'autopri') throw new UsageError('--explain needs --engine autopri');
+      if (flag(f, 'truth') !== undefined && !explain) throw new UsageError('--truth needs --explain');
+      const top = num(flag(f, 'top'), 'top');
+      if (top !== undefined && (!Number.isInteger(top) || top < 1 || top > 50)) throw new UsageError('--top must be a whole number from 1 to 50');
+      registerAutopriEngine();
+      const rctx = { ...ctx, engine };
+      if (explain) {
+        const tf = flag(f, 'truth');
+        let truth: string | undefined;
+        if (tf !== undefined) { try { truth = readFileSync(resolve(tf), 'utf8'); } catch { throw new UsageError(`Cannot read --truth file: ${tf}`); } }
+        const r = await explainAutopri(rctx, at, { top, truth });
+        return { json: { ok: true, items: r.items, ...(r.truth ? { truth: r.truth } : {}) }, text: r.text, code: r.items.length ? EXIT.ok : EXIT.none };
+      }
+      const ranked = await rankStack(rctx, at, top);
+      return {
+        json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text })) },
+        text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'), code: ranked.length ? EXIT.ok : EXIT.none,
+      };
     }
     case 'triage': {
       if (p.positionals.length !== 1) throw new UsageError('triage needs exactly one <ref>');

@@ -67,3 +67,17 @@ Formula: `(unblock + urgency + value) / sqrt(effort)`. Unblocker beats nearest h
 - **FR:engine.horizon** (P2): A dated leaf past `NOW_HORIZON_DAYS` MUST stay ranked (not dropped), so it can reach the top 10
 - **FR:engine.rows** (P1): Parked leaves and `💬` messages MUST be absent
 - **FR:engine.ground-truth** (P1): On the fixture tasks at 2026-11-05, the order MUST be Catalyst sweeps, FH 0.10, FTK v15 blog, FTK v16 PRs, Christmas After Dark, FOCUS v1.6 (`checkMisses` returns none)
+
+### FR:autopri-tagging: Tag tasks and explain the ranking
+
+CoS owns the todo `tasks/` files. Stack gives it a command to set the tags the `autopri` engine reads, and a report that shows why each task scores as it does.
+
+- **FR:tag.@function** (P1): Interface: `applyTags(line: string, tags: { unblocker?: boolean; due?: string | null }): string` (pure) and `tagTask(ctx, ref, tags): Promise<LifecycleResult>`
+- **FR:tag.unblocker** (P1): `unblocker: true` MUST add `🔓` once; `false` MUST remove it. Adding twice MUST change nothing
+- **FR:tag.due** (P1): `due: 'MMM d'` MUST set one `📅 MMM d:` marker, replacing any old one. `due: null` MUST remove it. Any other format MUST throw
+- **FR:tag.cli** (P1): `stack tag <ref> [--unblocker yes|no] [--due "MMM d"|none]` MUST edit the row and commit. It MUST need at least one flag. `--unblocker` MUST accept only `yes` or `no`
+- **FR:explain.parts** (P1): `autopriParts(...)` MUST return `{ unblock, urgency, value }` per task id; the engine score MUST be their sum before blockers lift
+- **FR:explain.cli** (P1): `stack rank --engine autopri --explain` MUST print, per ranked task, rank, ref, score, and `unblock`, `urgency`, `value` parts. `--top n` limits rows. `--engine` accepts `autopri` or `stack`. `--explain` needs `--engine autopri`
+- **FR:truth.parse** (P1): `parseTruth(text)` MUST read the ground-truth table rows (`| Rank | Project | Work | Hard date | Why |`) with a numeric or `-` rank
+- **FR:truth.match** (P1): A ground-truth item matches a task when the project name or alias matches (when one resolves) and every anchor is in the task text or context. Anchors are the version tokens of the work (`0.3.4`, `v16`, `v1.6`), else its first three words
+- **FR:truth.report** (P1): With `--truth <file>`, the report MUST list each item as ranked (with its actual rank), untagged (matched; needs `🔓` because its Why says unblock/enabler/speeds; names the `stack tag` command), or missing (no task; names the `stack add` command, and the date when the Hard date is `MMM d`)
