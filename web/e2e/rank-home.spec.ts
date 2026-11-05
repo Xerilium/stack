@@ -147,7 +147,8 @@ test.describe('Quiet Home', () => {
     const t = m.tasks.find((x) => x.ref === 'alpha:6')!;
     await page.goto('/');
     await expect(page.getByTestId('now-context')).not.toContainText('late');
-    t.text = '📅 Oct 1: Ship the web app 🟠';
+    const ago = new Date(Date.now() - 3 * 864e5); // inside the overdue window, whatever today is
+    t.text = `📅 ${ago.toLocaleString('en-US', { month: 'short' })} ${ago.getDate()}: Ship the web app 🟠`;
     await page.reload();
     await expect(page.getByTestId('now-context')).toContainText('late');
   });
