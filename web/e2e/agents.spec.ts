@@ -56,9 +56,10 @@ test.describe('Agents', () => {
     expect(await page.evaluate(() => localStorage.getItem('stack.agents.group'))).toBeNull();
   });
 
-  test('By project groups the rows with one header per project', async ({ page }) => {
+  test('p groups the rows with one header per project (no team: no toggle)', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'keyboard; the My team / Other sessions toggle shows only with a team');
     await open(page);
-    await page.locator('.sess-tools').getByRole('button', { name: /^Projects/ }).click();
+    await page.keyboard.press('p');
     await expect(page.locator('.sess-group')).toHaveText(['alpha', 'beta', 'gamma']);
     await expect(page.locator('.sess-group').first().locator('xpath=following-sibling::li[1]')).toContainText('Fix the build');
     expect(await page.evaluate(() => localStorage.getItem('stack.agents.group'))).toBe('project');
