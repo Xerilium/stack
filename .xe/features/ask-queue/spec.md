@@ -18,8 +18,8 @@ Design and rationale: `docs/design/ask-queue.md`. Agent contract: `docs/asks.md`
 
 ## Scope
 
-- In: ask file format and storage path, core put/answer/handle/snooze/list/score, API routes `asks.list`, `asks.put`, `asks.answer`, `asks.handle`, a file watcher and server-sent events in `stack web`, CLI `stack asks`, the Asks view in the web app.
-- Out: MCP tools (next: `asks_list`, `asks_put`, `asks_handle`, no answer tool because agents never answer; needs path parameters and array arguments in the MCP tool table), parsing CoS state files (they are prose and agent-owned; see design doc), pushing answers into a running chat session, email/Slack ingestion (module `email-triage` feeds asks), notifications, multi-user.
+- In: MCP tools (`FR:mcp-server/tools.asks`), the wake file (`FR:wake`), ask file format and storage path, core put/answer/handle/snooze/list/score, API routes `asks.list`, `asks.put`, `asks.answer`, `asks.handle`, a file watcher and server-sent events in `stack web`, CLI `stack asks`, the Asks view in the web app.
+- Out: parsing CoS state files (they are prose and agent-owned; see design doc), pushing answers into a running chat session, email/Slack ingestion (module `email-triage` feeds asks), notifications, multi-user.
 
 ## Ask file format (v1)
 
@@ -72,6 +72,15 @@ After the owner answers, Stack adds `answer`, `text`, `answered`. After the agen
 - **FR:flow.handle** (P1): `handleAsk(key, {outcome, note?, reply?}, actor)` is called by the agent. `outcome` is `handled` (acted on the answer), `resolved` (moot, no answer needed), `defaulted` (applied the default after `by`), or `reopen` (needs the owner again, `reply` is the agent's one-line response to the owner's question or reply and is appended to `## Thread`). The first three set `state: done`, `outcome`, `handled`; `reopen` returns to `open`, keeps `ask` unless the agent also puts a new one. Handling an already done ask is `changed: false`
 - **FR:flow.default** (P2): When `by` has passed, the ask is marked `overdue` in the list. Stack never applies a default itself: acting is the agent's job (`FR:ask-queue/flow.handle` with `defaulted`). The page shows the default only for reversible asks; for an irreversible ask it says `No default: waits for you`
 - **FR:flow.thread** (P2): `## Thread` gets one line per exchange: `- <iso> you: <text>` for an owner answer of kind `reply` or `ask`, `- <iso> <actor>: <reply>` for an agent `reopen` reply. The page shows only the last agent line on the card
+
+### FR:wake: Wake the agent
+
+The agent that wrote an ask needs to learn that the owner answered without polling every ask. Stack writes a file; it sends nothing over any network.
+
+- **FR:wake.path** (P1): Storage accepts `tasks/wake/<slug>.md` (same name rules as inboxes). `<slug>` is the ask's `from` lowercased, with each run of characters outside `a-z0-9._-` made one `-`, cut at 80 characters. Wake files are never projects
+- **FR:wake.write** (P1): After `answerAsk` sets `state: answered` (not `defer`, not `retract`), Stack adds one line `- <iso> <key> <answer>` to the wake file of the ask's `from`, under a `# Wake: <slug>` heading. One line per key: a newer answer replaces the older line. The line holds no answer text; the agent reads it with `asks list --state answered`
+- **FR:wake.clear** (P1): `handleAsk` (any outcome) and a `retract` answer remove that key's line. The file stays, possibly empty, so a watcher sees the change
+- **FR:wake.fail** (P2): A wake write failure never undoes the answer; the answer stands and the ask is still found by `asks list --state answered`
 
 ### FR:api: Routes
 

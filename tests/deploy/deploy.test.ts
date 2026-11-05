@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
+import { run } from '../../src/cli/run';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -120,6 +121,16 @@ describe('docs', () => {
     expect(cmds.length).toBeGreaterThan(10);
     const doc = read('docs/cli.md');
     for (const c of cmds) expect(doc).toContain(`\`${c}`);
+  });
+
+  // @req FR:deploy-docs/docs.cli
+  it('documents every flag that `stack --help` lists', async () => {
+    let out = '';
+    await run(['--help'], { out: (s: string) => { out += s; }, err: () => {} });
+    const doc = read('docs/cli.md');
+    const flags = [...new Set(out.match(/--[a-z][a-z-]*/g) ?? [])];
+    expect(flags.length).toBeGreaterThan(20);
+    expect(flags.filter((f) => !doc.includes(f))).toEqual([]);
   });
 
   // @req FR:deploy-docs/docs.mcp

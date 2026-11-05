@@ -7,6 +7,7 @@
 import { LifecycleError, type LifecycleContext } from './lifecycle';
 import { ConflictError, NotFoundError, writeAll, type FileWrite } from './storage';
 import { redact } from './triage';
+import { updateWake } from './ask-wake';
 import { currentRows, inboxTitle } from './inbox';
 import { applyAction, describe as describeAction, parseAction, parseTaskRef, readRow, type Action } from './ask-actions';
 
@@ -291,6 +292,7 @@ export async function answerAsk(ctx: LifecycleContext, key: string, input: Answe
     else if (a.kind === 'answer' && (input.answer === 'reply' || input.answer === 'ask')) action = { kind: 'note', text: `🙋 ${now.slice(0, 10)}: ${text}` };
   }
   const result = await recordAnswer(ctx, key, input, text, now, nowD);
+  if (result.changed && before && !['defer'].includes(input.answer)) await updateWake(ctx, before.ask.from, key, input.answer === 'retract' ? null : input.answer, nowD);
   if (action && before) {
     let r;
     try { r = await applyAction(ctx, { ...parseTaskRef(before.ask.ref!), text: before.ask.refText }, action); }
@@ -303,6 +305,7 @@ export async function answerAsk(ctx: LifecycleContext, key: string, input: Answe
         a.thread = [...a.thread.filter((l) => l !== `- ${now} you: ${text}`), `- ${now} failed: ${describeAction(action!)} (${why})`];
         return { next: a, message: `Ask reopened (action failed): ${key}`, result: undefined };
       });
+      await updateWake(ctx, before!.ask.from, key, null, nowD);
       throw e;
     }
     const applied = r.changed ? `${describeAction(action)} → ${r.after ?? r.before ?? ''}`.trim() : `${describeAction(action)} (${r.message ?? 'no change'})`;
@@ -350,8 +353,10 @@ export async function handleAsk(ctx: LifecycleContext, key: string, input: Handl
   const reply = input.reply === undefined ? undefined : line('reply', input.reply, MAX_TEXT);
   const who = /^[A-Za-z0-9._:-]{1,64}$/.test(actor) ? actor : 'api';
   const now = clock(ctx).toISOString();
-  return mutate<{ changed: boolean }>(ctx, key, (cur) => {
+  let from = '';
+  const res = await mutate<{ changed: boolean }>(ctx, key, (cur) => {
     if (!cur) throw new NotFoundError(`Ask not found: ${key}`);
+    from = cur.ask.from;
     const a = { ...cur.ask };
     if (input.outcome === 'reopen') {
       if (a.state === 'open') return { skip: { changed: false } };
@@ -366,6 +371,9 @@ export async function handleAsk(ctx: LifecycleContext, key: string, input: Handl
     if (note) a.note = note;
     return { next: a, message: `Ask ${input.outcome}: ${key}`, result: { changed: true } };
   });
+  // @req FR:ask-queue/wake.clear
+  if (from) await updateWake(ctx, from, key, null, new Date(now));
+  return res;
 }
 
 /** Every well-formed ask file, parsed once per version. */

@@ -254,9 +254,8 @@ async function loadDoc(storage: Storage, path: string): Promise<Doc> {
 /** @req FR:task-lifecycle/doc.load */
 async function loadDocs(storage: Storage): Promise<Doc[]> {
   const paths = (await storage.list()).filter((p) => baseName(p).toLowerCase() !== 'readme');
-  const docs: Doc[] = [];
-  for (const p of [...paths].sort()) docs.push(await loadDoc(storage, p));
-  return docs;
+  // @req FR:perf/load.parallel
+  return Promise.all([...paths].sort().map((p) => loadDoc(storage, p)));
 }
 
 /**
@@ -302,21 +301,38 @@ export interface RankedTask extends NextTask {
   root?: TaskRef;
 }
 
-async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {}): Promise<{ next: RankedTask; doc: Doc; task: ScoringTask; context: string }[]> {
+type Ranked = { next: RankedTask; doc: Doc; task: ScoringTask; context: string }[];
+/** The last ranking per storage. Read-only: callers copy what they hand out. @req FR:perf/rank.cache */
+const rankMemo = new WeakMap<object, Map<string, { key: string; config: StackConfig | undefined; engine: string | undefined; value: Ranked }>>();
+
+async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {}): Promise<Ranked> {
   const docs = await loadDocs(ctx.storage);
+  // The ranking is a function of the file versions, the owner's rules, the options, and the clock (to the minute unless the caller pins it).
+  const aux0 = ctx.storage as Partial<AuxFiles>;
+  const rules0 = typeof aux0.readAux === 'function' ? await aux0.readAux(PRIORITIES_PATH) : null;
+  const when0 = at ?? clock(ctx);
+  const key = JSON.stringify([docs.map((d) => [d.path, d.version]), rules0?.version ?? null, at ? when0.getTime() : Math.floor(when0.getTime() / 60_000)]);
+  const slot = opts.ignoreBlocks ? 'any' : 'now'; // the page asks for both
+  let mine = rankMemo.get(ctx.storage);
+  if (!mine) rankMemo.set(ctx.storage, (mine = new Map()));
+  const memo = mine.get(slot);
+  if (memo && memo.key === key && memo.config === ctx.config && memo.engine === ctx.engine) return memo.value;
+  const value = await rankDocs(ctx, docs, rules0, when0, opts);
+  mine.set(slot, { key, config: ctx.config, engine: ctx.engine, value });
+  return value;
+}
+
+async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: string } | null, when: Date, opts: RankOptions): Promise<Ranked> {
   const projects = docs.map((d) => toScoringProject(d.project, d.name));
   const where = new Map<ScoringTask, { doc: Doc; line: number }>();
   projects.forEach((p, i) => {
     const rows = scoringRows(docs[i]);
     p.tasks.forEach((t, k) => where.set(t, { doc: docs[i], line: rows[k] }));
   });
-  const when = at ?? clock(ctx);
   const engine = getEngine(ctx.engine ?? DEFAULT_ENGINE);
   // @req FR:task-lifecycle/rank.overrides
   // Overrides written by the owner and the Chief of Staff, read from the same storage.
-  const aux = ctx.storage as Partial<AuxFiles>;
-  // A read error is not "no overrides": it propagates, so rows never reappear silently when the storage hiccups.
-  const file = typeof aux.readAux === 'function' ? await aux.readAux(PRIORITIES_PATH) : null;
+  // A read error is not "no overrides": it propagates (the caller read the file), so rows never reappear silently when the storage hiccups.
   const rules = file ? parsePriorities(file.content) : [];
   const above = new Map(docs.map((d) => [d, parentTexts(d)] as const));
   const rowOf = (s: ScoredTask) => {

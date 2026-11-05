@@ -24,6 +24,7 @@ import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 import { generateSummaries } from '../core/summaries';
 import { editTask, moveTask } from './edit';
+import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
 import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, readInbox, requestAction, runAction, type ActionId, type IssueFiler } from '../inbox';
@@ -252,12 +253,11 @@ const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
 const key = (h: string) => h.replace(/^[^\p{L}\p{N}]+/u, '').trim().toLowerCase();
 
 async function loadDocs(storage: Storage): Promise<Doc[]> {
-  const docs: Doc[] = [];
-  for (const path of (await storage.list()).filter((p) => baseName(p).toLowerCase() !== 'readme')) {
+  // @req FR:perf/load.parallel
+  return Promise.all((await storage.list()).filter((p) => baseName(p).toLowerCase() !== 'readme').map(async (path) => {
     const f = await storage.read(path);
-    docs.push({ name: baseName(path), path, content: f.content, project: parseProject(f.content) });
-  }
-  return docs;
+    return { name: baseName(path), path, content: f.content, project: parseProject(f.content) };
+  }));
 }
 
 interface TaskView { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
@@ -364,6 +364,15 @@ export const ROUTES: Route[] = [
       if (blocks !== 'now' && blocks !== 'any') throw invalid([{ field: 'blocks', message: 'Must be now or any' }]);
       const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}) }));
       return json(200, { items });
+    },
+  },
+  {
+    // The weekly meetings in `.stack/meetings.md`: Brief's fallback when no calendar is signed in. @req FR:cos-view/meet.api
+    method: 'GET', doc: '/meetings', name: 'meetings.list',
+    async run(c) {
+      noQuery(c);
+      if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can read the meetings');
+      return json(200, { items: await readMeetings(c.deps.storage) });
     },
   },
   {
