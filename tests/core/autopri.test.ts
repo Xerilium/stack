@@ -86,3 +86,16 @@ describe('misses', () => {
     expect(checkMisses([row('F', 'Pay bills')], [misses[1]])).toEqual([misses[1]]); // above absent
   });
 });
+
+describe('ground truth 2026-11-05', () => {
+  const gt = parseMisses(readFileSync(join(FIX, 'ground-truth.md'), 'utf8'));
+  const order = ['Catalyst 0.3.4 release', 'finops-hubs 0.10 and allyte-web', 'v15 blog co-author ack', 'Update v16 PRs', 'Christmas After Dark album', 'FOCUS v1.6 ramp-up'].map((t) => row('P', t));
+  // @req FR:auto-priority/picks.match @req FR:auto-priority/misses.check
+  it("ranks 1-6 in the owner's order pass; a swapped order fails the pair", () => {
+    expect(gt).toHaveLength(5);
+    expect(checkMisses(order, gt)).toEqual([]);
+    const swapped = [order[1], order[0], ...order.slice(2)];
+    expect(checkMisses(swapped, gt)).toEqual([gt[0], gt[1]]);
+    expect(pickMatch(order, ['Catalyst 0.3.4', 'finops-hubs 0.10', 'v15 blog', 'v16 PRs', 'Christmas After Dark', 'FOCUS v1.6'], 6).misses).toEqual([]);
+  });
+});
