@@ -72,6 +72,10 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     send: (ref: string, text: string, kind: 'reply' | 'decision', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
+    /** The Inbox page: all mail, unread Teams and Slack. @req FR:inbox-page/api.read */
+    inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] }>('/inbox-items'),
+    /** Runs one action; never sends. @req FR:inbox-page/api.act */
+    inboxAct: (id: string, body: { action: string; text?: string; until?: string; request?: boolean }) => call<import('./inbox').ActResult>(`/inbox-items/${encodeURIComponent(id)}/action`, body),
     sessions: () => call<SessionList>('/sessions?limit=200'),
     sessionCost: (days = 7) => call<CostReport>(`/sessions/cost?days=${days}`),
     sessionMessages: (id: string) => (await0(call<{ items: Turn[] }>(`/sessions/${encodeURIComponent(id)}/messages?limit=60`))),
