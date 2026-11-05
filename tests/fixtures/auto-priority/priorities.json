@@ -1,0 +1,79 @@
+{
+  "rules": [
+    {
+      "match": "MVP onboarding",
+      "effect": "down",
+      "why": "no real deadline; not urgent",
+      "by": "owner"
+    },
+    {
+      "match": "Printer",
+      "effect": "hide",
+      "why": "paused Nov 1, not a priority",
+      "by": "owner"
+    },
+    {
+      "match": "406",
+      "effect": "hide",
+      "why": "FH 406 paused, not worth time now",
+      "by": "owner"
+    },
+    {
+      "match": "12 Days",
+      "effect": "hide",
+      "why": "parked until the song is final",
+      "by": "owner"
+    },
+    {
+      "match": "FH preview signup emails",
+      "effect": "top",
+      "why": "Allyte/FH/FTK are his personal priorities; send the preview emails",
+      "until": "2026-11-03",
+      "by": "owner"
+    },
+    {
+      "match": "FH open announcement",
+      "effect": "top",
+      "why": "Allyte/FH/FTK priority; precedes FTK v15 post",
+      "until": "2026-11-03",
+      "by": "owner"
+    },
+    {
+      "match": "FTK v15 announcement",
+      "effect": "top",
+      "why": "Allyte/FH/FTK priority; Tue Nov 3",
+      "until": "2026-11-04",
+      "by": "owner"
+    },
+    {
+      "match": "FOCUS",
+      "effect": "down",
+      "why": "not a priority right now",
+      "by": "owner"
+    },
+    {
+      "match": "Establish budget",
+      "effect": "hide",
+      "why": "low pri; not important now",
+      "by": "owner"
+    },
+    {
+      "match": "USAA",
+      "effect": "hide",
+      "why": "low pri; not important now",
+      "by": "owner"
+    },
+    {
+      "match": "BECU",
+      "effect": "down",
+      "why": "low pri",
+      "by": "owner"
+    },
+    {
+      "match": "Sent Zac",
+      "effect": "hide",
+      "why": "done",
+      "by": "owner"
+    }
+  ]
+}
