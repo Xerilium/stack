@@ -51,6 +51,7 @@ export function watchRepo(dir: string, o: WatchOptions = {}): Watcher {
   const ws = new Map<string, FSWatcher>();
   let root: FSWatcher | null = null;
   let active = false;
+  let closed = false;
   const flush = () => {
     timer = null;
     if (pending.size === 0) return;
@@ -69,7 +70,7 @@ export function watchRepo(dir: string, o: WatchOptions = {}): Watcher {
   const fail = (e: Error) => { active = false; console.error(`stack web: file watcher stopped (${e.message}); the page polls instead`); };
   /** Watch one of the folders once it exists. */
   const arm = (name: string): boolean => {
-    if (ws.has(name) || !existsSync(join(dir, name))) return false;
+    if (closed || ws.has(name) || !existsSync(join(dir, name))) return false; // a root event queued before close() must not arm a watcher nobody closes
     const w = watch(join(dir, name), { recursive: true }, (_ev, file) => { if (file) { o.onRaw?.(`${name}/${String(file)}`); note(`${name}/${String(file)}`); } });
     w.on('error', fail);
     ws.set(name, w);
@@ -90,6 +91,6 @@ export function watchRepo(dir: string, o: WatchOptions = {}): Watcher {
     rev: () => rev,
     active: () => active,
     on(fn) { subs.add(fn); return () => { subs.delete(fn); }; },
-    close() { if (timer) clearTimeout(timer); timer = null; for (const w of ws.values()) w.close(); ws.clear(); root?.close(); root = null; active = false; subs.clear(); },
+    close() { closed = true; if (timer) clearTimeout(timer); timer = null; for (const w of ws.values()) w.close(); ws.clear(); root?.close(); root = null; active = false; subs.clear(); },
   };
 }
