@@ -76,6 +76,43 @@ paths:
                           $ref: "#/components/schemas/Ref"
         default:
           $ref: "#/components/responses/Error"
+  /meetings:
+    get:
+      summary: "The owner's weekly meetings (`.stack/meetings.md`): days (0 = Sunday), local start and end, topic, owner agent, join link. Owner session only: 403 for tokens"
+      operationId: listMeetings
+      responses:
+        "200":
+          description: Meetings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        days:
+                          type: array
+                          items:
+                            type: integer
+                        start:
+                          type: string
+                        end:
+                          type: string
+                        biweekly:
+                          type: boolean
+                        topic:
+                          type: string
+                        owner:
+                          type: string
+                        join:
+                          type: string
+        default:
+          $ref: "#/components/responses/Error"
   /needs-you:
     get:
       summary: The Chief of Staff's open decisions and go-dos (`.stack/needs-you.json`), each with a recommendation, a default, and a link
@@ -1141,7 +1178,7 @@ paths:
           $ref: "#/components/responses/Error"
   /inbox-items:
     get:
-      summary: All mail, unread Teams and unread Slack items, each with a summary and a suggested action, plus the action catalog
+      summary: "All mail, unread Teams and unread Slack items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens"
       operationId: listInboxItems
       responses:
         "200":
@@ -1219,6 +1256,52 @@ paths:
             application/json:
               schema:
                 type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /brief/summary:
+    get:
+      summary: "AI daily brief over the top open asks, cached per day. Owner session only: 403 for tokens. configured is false when the host has no model"
+      operationId: briefSummary
+      parameters:
+        - name: refresh
+          in: query
+          schema:
+            type: string
+          description: 1 forces a new model call
+      responses:
+        "200":
+          description: Brief
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  date:
+                    type: string
+                  headline:
+                    type: string
+                  cached:
+                    type: boolean
+                  error:
+                    type: string
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        text:
+                          type: string
+                        action:
+                          type: string
+                          enum:
+                            - go
+                            - no
+                            - done
+                            - none
         default:
           $ref: "#/components/responses/Error"
   /sessions:

@@ -7,6 +7,8 @@ import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { rollRecurring } from './recurring';
 import { DEFAULT_ENGINE, getEngine, rankTasks, type RankOptions, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
+import { applyTags, formatExplain, matchTruth, parseTruth, type ExplainRow, type Tags, type TruthMatch } from './autopri-tags';
+import { autopriEngine, autopriParts, registerAutopriEngine } from './autopri';
 import { applyOverrides, matcherFor, parsePriorities, PRIORITIES_PATH } from './priorities';
 import { ConflictError, NotFoundError, Storage, writeAll, type AuxFiles } from './storage';
 
@@ -252,9 +254,8 @@ async function loadDoc(storage: Storage, path: string): Promise<Doc> {
 /** @req FR:task-lifecycle/doc.load */
 async function loadDocs(storage: Storage): Promise<Doc[]> {
   const paths = (await storage.list()).filter((p) => baseName(p).toLowerCase() !== 'readme');
-  const docs: Doc[] = [];
-  for (const p of [...paths].sort()) docs.push(await loadDoc(storage, p));
-  return docs;
+  // @req FR:perf/load.parallel
+  return Promise.all([...paths].sort().map((p) => loadDoc(storage, p)));
 }
 
 /**
@@ -300,21 +301,38 @@ export interface RankedTask extends NextTask {
   root?: TaskRef;
 }
 
-async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {}): Promise<{ next: RankedTask; doc: Doc }[]> {
+type Ranked = { next: RankedTask; doc: Doc; task: ScoringTask; context: string }[];
+/** The last ranking per storage. Read-only: callers copy what they hand out. @req FR:perf/rank.cache */
+const rankMemo = new WeakMap<object, Map<string, { key: string; config: StackConfig | undefined; engine: string | undefined; value: Ranked }>>();
+
+async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {}): Promise<Ranked> {
   const docs = await loadDocs(ctx.storage);
+  // The ranking is a function of the file versions, the owner's rules, the options, and the clock (to the minute unless the caller pins it).
+  const aux0 = ctx.storage as Partial<AuxFiles>;
+  const rules0 = typeof aux0.readAux === 'function' ? await aux0.readAux(PRIORITIES_PATH) : null;
+  const when0 = at ?? clock(ctx);
+  const key = JSON.stringify([docs.map((d) => [d.path, d.version]), rules0?.version ?? null, at ? when0.getTime() : Math.floor(when0.getTime() / 60_000)]);
+  const slot = opts.ignoreBlocks ? 'any' : 'now'; // the page asks for both
+  let mine = rankMemo.get(ctx.storage);
+  if (!mine) rankMemo.set(ctx.storage, (mine = new Map()));
+  const memo = mine.get(slot);
+  if (memo && memo.key === key && memo.config === ctx.config && memo.engine === ctx.engine) return memo.value;
+  const value = await rankDocs(ctx, docs, rules0, when0, opts);
+  mine.set(slot, { key, config: ctx.config, engine: ctx.engine, value });
+  return value;
+}
+
+async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: string } | null, when: Date, opts: RankOptions): Promise<Ranked> {
   const projects = docs.map((d) => toScoringProject(d.project, d.name));
   const where = new Map<ScoringTask, { doc: Doc; line: number }>();
   projects.forEach((p, i) => {
     const rows = scoringRows(docs[i]);
     p.tasks.forEach((t, k) => where.set(t, { doc: docs[i], line: rows[k] }));
   });
-  const when = at ?? clock(ctx);
   const engine = getEngine(ctx.engine ?? DEFAULT_ENGINE);
   // @req FR:task-lifecycle/rank.overrides
   // Overrides written by the owner and the Chief of Staff, read from the same storage.
-  const aux = ctx.storage as Partial<AuxFiles>;
-  // A read error is not "no overrides": it propagates, so rows never reappear silently when the storage hiccups.
-  const file = typeof aux.readAux === 'function' ? await aux.readAux(PRIORITIES_PATH) : null;
+  // A read error is not "no overrides": it propagates (the caller read the file), so rows never reappear silently when the storage hiccups.
   const rules = file ? parsePriorities(file.content) : [];
   const above = new Map(docs.map((d) => [d, parentTexts(d)] as const));
   const rowOf = (s: ScoredTask) => {
@@ -338,7 +356,7 @@ async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {})
     const m = match(o);
     if (m) o.next.rule = m.rule.match;
   }
-  return ordered.map(({ doc, next }) => ({ doc, next }));
+  return ordered.map(({ doc, next, task, context }) => ({ doc, next, task, context }));
 }
 
 async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextTask; doc: Doc } | null> {
@@ -555,6 +573,41 @@ export async function setProperties(ctx: LifecycleContext, ref: TaskRef, props: 
   const t = await target(ctx, ref);
   if (!t) return NONE;
   return editLine(ctx, t, applyTaskProps(stripBom(bare(t.doc.project.lines[t.ref.line])), props), `Update: ${brief(t.row[3])}`);
+}
+
+// ------------------------------------------------------------------ autopri tags and explain
+
+/** Sets the `🔓` / `📅` tags the autopri engine reads. @req FR:autopri-tagging/tag.@function */
+export async function tagTask(ctx: LifecycleContext, ref: TaskRef, tags: Tags): Promise<LifecycleResult> {
+  const t = await target(ctx, ref);
+  if (!t) return NONE;
+  let next: string;
+  try { next = applyTags(stripBom(bare(t.doc.project.lines[t.ref.line])), tags); } catch (e) { throw new LifecycleError((e as Error).message); }
+  return editLine(ctx, t, next, `Tag: ${brief(t.row[3])}`);
+}
+
+export interface Explained { items: (ExplainRow & { path: string; line: number })[]; truth?: TruthMatch[]; text: string }
+
+/** Ranked tasks with autopri score parts; optional ground-truth report. @req FR:autopri-tagging/explain.cli @req FR:autopri-tagging/truth.report */
+/** File name plus the `**Aliases:**` line of a project file. */
+const aliasesOf = (d: Doc): string[] => [d.name, ...(d.project.lines.map((l) => /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean)?.split(',').map((a) => a.trim()).filter(Boolean) ?? [])];
+const formatRef = (r: TaskRef): string => `${r.path}:${r.line + 1}`;
+
+export async function explainAutopri(ctx: LifecycleContext, at?: Date, opts: { top?: number; truth?: string } = {}): Promise<Explained> {
+  registerAutopriEngine();
+  const c = { ...ctx, engine: autopriEngine.id };
+  const ranked = await rankAll(c, at);
+  const docs = await loadDocs(ctx.storage);
+  const projects = docs.map((d) => toScoringProject(d.project, d.name));
+  const parts = autopriParts(autopriEngine.score(projects, cfg(ctx)), projects, cfg(ctx), at ?? clock(ctx));
+  const zero = { unblock: 0, urgency: 0, value: 0 };
+  const all = ranked.map((r, i) => ({
+    rank: i + 1, ref: formatRef(r.next.ref), path: r.next.ref.path, line: r.next.ref.line + 1, project: r.next.project, text: r.next.text, score: r.next.score,
+    parts: parts.get(r.task.id) ?? zero, ...(r.next.rule ? { rule: r.next.rule } : {}),
+  }));
+  const truth = opts.truth === undefined ? undefined : matchTruth(parseTruth(opts.truth), ranked.map((r, i) => ({ project: r.next.project, aliases: aliasesOf(r.doc), text: r.next.text, context: r.context, ref: all[i].ref })));
+  const items = opts.top === undefined ? all : all.slice(0, opts.top);
+  return { items, truth, text: formatExplain(items, truth) };
 }
 
 // ------------------------------------------------------------------ remove completed

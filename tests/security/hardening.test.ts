@@ -29,9 +29,9 @@ describe('token cache (L1, L2)', () => {
   it('a corrupt file error never quotes the file', async () => {
     const d = mkdtempSync(join(tmpdir(), 'tok-'));
     const p = join(d, 'graph-token.json');
-    writeFileSync(p, 'oops0.AAAsecretrefreshtoken', { mode: 0o600 });
-    await expect(new FileTokenCache(p).read()).rejects.toThrow(/not valid/);
-    await new FileTokenCache(p).read().catch((e: Error) => expect(e.message).not.toContain('secret'));
+    writeFileSync(p, 'secret0.AAArefreshtoken', { mode: 0o600 });
+    const e = await new FileTokenCache(p).read().then(() => undefined, (x: Error) => x);
+    expect(e?.message).toBe('Graph token file is not valid');
   });
   it('write tightens a loose directory', async () => {
     const d = mkdtempSync(join(tmpdir(), 'tok-'));

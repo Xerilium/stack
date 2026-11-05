@@ -254,7 +254,10 @@ describe('response parity (real handler output vs documented schemas)', () => {
     // @req FR:api/routes.rank
     await go('rank', 'GET', '/rank?limit=5', undefined, 200);
     // @req FR:ask-queue/needs.api
+    // @req FR:cos-view/meet.api
+    await go('meetings.list', 'GET', '/meetings', undefined, 200);
     await go('needs.list', 'GET', '/needs-you', undefined, 200);
+    await go('brief.summary', 'GET', '/brief/summary', undefined, 200);
     await go('needs.answer', 'POST', '/needs-you/none/answer', { choice: 'go' }, 404);
     // @req FR:inbox-page/api.read @req FR:inbox-page/api.act
     await go('inboxItems.list', 'GET', '/inbox-items', undefined, 200);

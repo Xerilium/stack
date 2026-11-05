@@ -53,7 +53,9 @@ const remoteSetup = () => {
 };
 const commits = (d: string, ref = 'HEAD') => git(d, 'log', '--format=%s', ref).trim().split('\n');
 const status = (d: string) => git(d, 'status', '--porcelain').replace(/\n$/, '');
-const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+/** Fake only the idle timer; git, fs and the awaits in the test stay real. */
+const fakeIdle = () => jest.useFakeTimers({ doNotFake: ['Date', 'hrtime', 'nextTick', 'performance', 'queueMicrotask', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval'] });
+afterEach(() => { jest.useRealTimers(); });
 const IDLE = 60_000;
 
 describe('batchSummary', () => {
@@ -226,19 +228,22 @@ describe('BatchedGitStorage flush', () => {
   // @req FR:storage-git/batch.idle @req FR:storage-git/batch.idle.close
   it('flushes on its own after the idle time since the last write, and on close', async () => {
     const d = freshRepo();
+    fakeIdle();
     const s = new BatchedGitStorage(d, { idleMs: 1200 });
+    const drained = new Promise<void>((ok) => { s.onPending((n) => { if (n === 0) ok(); }); });
     await s.write('tasks/a.md', 'A1', { message: 'Complete: a' });
-    await sleep(700);
+    jest.advanceTimersByTime(700);
     await s.write('tasks/b.md', 'B', { message: 'Add task: b' }); // restarts the timer
-    await sleep(700);
+    jest.advanceTimersByTime(700);
     expect(s.pending().count).toBe(2); // 1.4 s after the first write, 0.7 after the last: not yet
-    await sleep(1500);
-    expect(s.pending().count).toBe(0);
+    jest.advanceTimersByTime(500); // 1.2 s after the last write: the timer fires
+    await drained;
     expect(commits(d)[0]).toBe('Stack: done 1, added 1');
     await s.write('tasks/a.md', 'A2', { message: 'Complete: a2' });
     await s.close(); // close flushes what is left and stops the timer
     expect(commits(d)[0]).toBe('Stack: done 1');
-    await sleep(1400);
+    expect(jest.getTimerCount()).toBe(0); // no timer left to commit again
+    jest.advanceTimersByTime(1400);
     expect(commits(d).length).toBe(3);
   });
 
@@ -259,11 +264,15 @@ describe('BatchedGitStorage flush', () => {
   it('reports a failed timer flush to onError and keeps the batch', async () => {
     const { a, b } = remoteSetup();
     const errors: unknown[] = [];
-    const s = new BatchedGitStorage(a, { idleMs: 300, remote: 'origin', onError: (e) => errors.push(e) });
+    let failed!: () => void;
+    const reported = new Promise<void>((ok) => { failed = ok; });
+    fakeIdle();
+    const s = new BatchedGitStorage(a, { idleMs: 300, remote: 'origin', onError: (e) => { errors.push(e); failed(); } });
     try {
       await s.write('tasks/a.md', 'A-desk', { message: 'Complete: a' });
       writeFileSync(join(b, 'tasks/a.md'), 'A-phone'); git(b, 'commit', '-qam', 'phone'); git(b, 'push', '-q', 'origin', 'main');
-      await sleep(1000);
+      jest.advanceTimersByTime(300);
+      await reported;
       expect(errors.length).toBeGreaterThanOrEqual(1);
       for (const e of errors) expect(e).toBeInstanceOf(ConflictError);
       expect(s.pending().count).toBe(1);
@@ -408,11 +417,13 @@ describe('BatchedGitStorage with remote', () => {
   it('idleMs 0 does not loop against a broken remote: the write itself rejects, no timer retries, the next write tries again', async () => {
     const { a, b } = remoteSetup();
     const errors: unknown[] = [];
+    fakeIdle();
     const s = new BatchedGitStorage(a, { idleMs: 0, remote: 'origin', onError: (e) => errors.push(e) });
     try {
       writeFileSync(join(b, 'tasks/a.md'), 'A-phone'); git(b, 'commit', '-qam', 'phone'); git(b, 'push', '-q', 'origin', 'main');
       await expect(s.write('tasks/a.md', 'A-desk', { message: 'Complete: a' })).rejects.toBeInstanceOf(ConflictError);
-      await sleep(1000);
+      expect(jest.getTimerCount()).toBe(0); // nothing is scheduled to retry
+      jest.advanceTimersByTime(1000);
       expect(errors).toEqual([]);
       expect(s.pending().count).toBe(1);
       expect(commits(a)[0]).toBe('init');

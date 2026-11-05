@@ -7,7 +7,19 @@ import { MemoryStorage, FsStorage } from '../../src/core/storage';
 import { GitStorage } from '../../src/core/storage-git';
 import { GitTokenStore, TOKEN_PATH } from '../../src/host';
 
+// Real git subprocesses: cost scales with machine load, so the budget matches storage-batch.test.ts.
+jest.setTimeout(30000);
 const g = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+
+/** A bare origin holding one commit on main; two git calls, no clone-and-push dance. */
+function originWithCommit(dir: string): string {
+  const seed = join(dir, 'seed');
+  g(dir, 'init', '-q', '-b', 'main', seed);
+  g(seed, 'commit', '-q', '--allow-empty', '-m', 'init');
+  const bare = join(dir, 'origin.git');
+  g(dir, 'clone', '-q', '--bare', seed, bare);
+  return bare;
+}
 
 describe('azure-host git token store', () => {
   /** @req FR:azure-host/tokens.git */
@@ -23,18 +35,11 @@ describe('azure-host git token store', () => {
   it('persists hashes (never secrets) as a commit in the data repo and survives a new clone', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'stack-tok-'));
     try {
-      const bare = join(dir, 'origin.git');
-      g(dir, 'init', '-q', '--bare', '-b', 'main', bare);
-      const seed = join(dir, 'seed');
-      g(dir, 'clone', '-q', bare, seed);
-      g(seed, 'checkout', '-q', '-B', 'main');
-      g(seed, 'commit', '-q', '--allow-empty', '-m', 'init');
-      g(seed, 'push', '-q', 'origin', 'main');
+      const bare = originWithCommit(dir);
 
       const clone = async (n: string) => {
         const c = join(dir, n);
-        g(dir, 'clone', '-q', bare, c);
-        g(c, 'config', 'user.name', 'Stack'); g(c, 'config', 'user.email', 's@x');
+        g(dir, 'clone', '-q', '-c', 'user.name=Stack', '-c', 'user.email=s@x', bare, c);
         return new GitStorage(c, { remote: 'origin', branch: 'main' });
       };
       const a = await clone('a');
@@ -90,21 +95,27 @@ describe('azure-host sync is serialized with writes', () => {
   it('sync waits for an in-flight write instead of interleaving', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'stack-q-'));
     try {
-      const bare = join(dir, 'o.git');
-      g(dir, 'init', '-q', '--bare', '-b', 'main', bare);
+      const bare = originWithCommit(dir);
       const w = join(dir, 'w');
-      g(dir, 'clone', '-q', bare, w);
-      g(w, 'checkout', '-q', '-B', 'main'); g(w, 'config', 'user.name', 'S'); g(w, 'config', 'user.email', 's@x');
-      g(w, 'commit', '-q', '--allow-empty', '-m', 'i'); g(w, 'push', '-q', 'origin', 'main');
+      g(dir, 'clone', '-q', '-c', 'user.name=S', '-c', 'user.email=s@x', bare, w);
       const st = new GitStorage(w, { remote: 'origin', branch: 'main' });
+      // Count the git commands the storage starts, so "sync did not run" is observed, not guessed with a sleep.
+      const gitCalls: string[] = [];
+      const host = st as unknown as { git: (...a: string[]) => Promise<string> };
+      const realGit = host.git.bind(st);
+      host.git = (...a) => { gitCalls.push(a[0]); return realGit(...a); };
       const order: string[] = [];
       let release!: () => void;
-      st.beforePush = () => new Promise<void>((r) => { order.push('push-wait'); release = r; });
+      let midPush!: () => void;
+      const reachedPush = new Promise<void>((r) => { midPush = r; });
+      st.beforePush = () => new Promise<void>((r) => { order.push('push-wait'); release = r; midPush(); });
       const write = st.writeAux(TOKEN_PATH, '{}', { expectedVersion: null }).then(() => order.push('write-done'));
-      await new Promise((r) => setTimeout(r, 300));
+      await reachedPush;
+      const before = gitCalls.length;
       const sync = st.sync().then(() => order.push('sync-done'));
-      await new Promise((r) => setTimeout(r, 300));
-      expect(order).toEqual(['push-wait']); // sync has not run while the write is mid-push
+      await new Promise((r) => setImmediate(r)); // every microtask a non-queued sync would use has run
+      expect(gitCalls.length).toBe(before); // sync has not started any git work while the write is mid-push
+      expect(order).toEqual(['push-wait']);
       release();
       await Promise.all([write, sync]);
       expect(order).toEqual(['push-wait', 'write-done', 'sync-done']);

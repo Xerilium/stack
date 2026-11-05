@@ -1,6 +1,8 @@
 import type { CalEvent } from './meetings';
 import type { DaySched } from './schedule';
+import type { Rule } from './weekly';
 import type { AskList, Send } from './asks';
+import type { AiSummary } from './briefAi';
 import type { CostReport, SessionList, Turn } from './sessions';
 import type { RankItem } from './home';
 import type { NeedItem } from './needs';
@@ -51,12 +53,12 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     needs: async () => (await call<{ items: NeedItem[] }>('/needs-you')).items,
     answerNeed: (id: string, body: { choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }) => call<{ changed: boolean }>(`/needs-you/${encodeURIComponent(id)}/answer`, body),
     async tasks(): Promise<Task[]> {
-      const all: Task[] = [];
-      for (let offset = 0; ; offset += 200) {
-        const page = await call<{ items: Task[]; total: number }>(`/tasks?state=all&limit=200&offset=${offset}&fields=${TASK_FIELDS}`);
-        all.push(...page.items);
-        if (page.items.length === 0 || all.length >= page.total) return all;
-      }
+      // @req FR:perf/client.pages — the first page gives the total; the rest go out together.
+      const page = (offset: number) => call<{ items: Task[]; total: number }>(`/tasks?state=all&limit=200&offset=${offset}&fields=${TASK_FIELDS}`);
+      const first = await page(0);
+      if (first.items.length === 0 || first.items.length >= first.total) return first.items;
+      const rest = await Promise.all(Array.from({ length: Math.ceil((first.total - 200) / 200) }, (_, i) => page(200 * (i + 1))));
+      return [...first.items, ...rest.flatMap((r) => r.items)];
     },
     projects: async () => (await call<{ items: Project[] }>('/projects?fields=name,title,open,done,metadata')).items,
     action: (name: ActionName, ref?: string, extra: Record<string, unknown> = {}) => call<Mutation>(`/tasks/${name}`, { ...(ref ? { ref } : {}), ...extra }),
@@ -67,11 +69,13 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     add: (project: string, text: string, parent?: string) => call<Mutation>('/tasks', { project, text, ...(parent ? { parent } : {}) }),
     schedule: (at: string) => call<DaySched | null>(`/schedule?at=${encodeURIComponent(at)}`),
     scheduleDay: (body: { date: string; wake?: string; bed?: string; every?: boolean; reset?: boolean }) => call<DaySched>('/schedule/day', body),
+    meetings: async () => (await call<{ items: Rule[] }>('/meetings')).items,
     calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
     send: (ref: string, text: string, kind: 'reply' | 'decision', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
+    briefSummary: (refresh = false) => call<AiSummary>(`/brief/summary${refresh ? '?refresh=1' : ''}`),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
     /** The Inbox page: all mail, unread Teams and Slack. @req FR:inbox-page/api.read */
     inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] }>('/inbox-items'),

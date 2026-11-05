@@ -80,12 +80,27 @@ const IMPACT = ['⬆️', '↔️', '⬇️'];
 const VALUE = ['💰', '⚠️', '😊', '⏱️', '🌱', '🏃', '🌟'];
 const SPECIAL = ['🅿️', '💤', '⏰', '📅', '🎯', '🔀'];
 
+const lowered = new WeakMap<string[], string[]>();
 const present = (text: string, list: string[]): string[] => {
   const t = text.toLowerCase();
-  return list.filter(e => t.includes(e.toLowerCase()));
+  let low = lowered.get(list);
+  if (!low) lowered.set(list, (low = list.map(e => e.toLowerCase())));
+  return list.filter((_, i) => t.includes(low![i]));
 };
 
+const BASE_MAX = 20_000;
+const baseCache = new Map<string, Omit<TaskEmojis, 'TimeBlocks'>>();
+/** Emojis of a row; read-only (shared by every caller that asks about the same text, as every ranking asks again for every row). */
 function baseEmojis(text: string): Omit<TaskEmojis, 'TimeBlocks'> {
+  const hit = baseCache.get(text);
+  if (hit) return hit;
+  if (baseCache.size >= BASE_MAX) baseCache.clear();
+  const e = baseEmojisOf(text);
+  baseCache.set(text, e);
+  return e;
+}
+
+function baseEmojisOf(text: string): Omit<TaskEmojis, 'TimeBlocks'> {
   return {
     Priority: present(text, PRIORITY),
     Status: present(text, STATUS),
@@ -96,12 +111,29 @@ function baseEmojis(text: string): Omit<TaskEmojis, 'TimeBlocks'> {
   };
 }
 
+const blockEmojis = new WeakMap<object, string[]>();
+const emojiCache = new WeakMap<object, Map<string, TaskEmojis>>();
+/** Read-only twin of `extractEmojis` for the engine: one answer per row text and config. */
+function emojisOf(text: string, config: StackConfig): TaskEmojis {
+  let per = emojiCache.get(config.timeBlocks);
+  if (!per) emojiCache.set(config.timeBlocks, (per = new Map()));
+  const hit = per.get(text);
+  if (hit) return hit;
+  let list = blockEmojis.get(config.timeBlocks);
+  if (!list) blockEmojis.set(config.timeBlocks, (list = config.timeBlocks.map(b => b.emoji).filter(Boolean)));
+  if (per.size >= BASE_MAX) per.clear();
+  const e = { ...baseEmojis(text), TimeBlocks: present(text, list) };
+  per.set(text, e);
+  return e;
+}
+
 /**
  * @req FR:scoring-engine/emojis.@function @req FR:scoring-engine/emojis.input @req FR:scoring-engine/emojis.output
  * @req FR:scoring-engine/emojis.categories @req FR:scoring-engine/emojis.value-repeat @req FR:scoring-engine/emojis.timeblocks
  */
 export function extractEmojis(text: string, config: StackConfig): TaskEmojis {
-  return { ...baseEmojis(text), TimeBlocks: present(text, config.timeBlocks.map(b => b.emoji).filter(Boolean)) };
+  const e = emojisOf(text, config);
+  return { Priority: [...e.Priority], Status: [...e.Status], Effort: [...e.Effort], Impact: [...e.Impact], Value: [...e.Value], Special: [...e.Special], TimeBlocks: [...e.TimeBlocks] };
 }
 
 // ---------------------------------------------------------------- weights
@@ -153,6 +185,8 @@ interface Ctx {
   byId: Map<string, ScoringTask>;
   children: Map<string, ScoringTask[]>;
   emojis: Map<string, TaskEmojis>;
+  parked?: Map<string, boolean>;
+  effort?: Map<string, number>;
 }
 
 function ancestors(t: ScoringTask, ctx: Ctx): ScoringTask[] {
@@ -214,20 +248,41 @@ function outcomeParent(t: ScoringTask, ctx: Ctx): ScoringTask | undefined {
 function outcomeEffort(t: ScoringTask, ctx: Ctx): number {
   const parent = outcomeParent(t, ctx);
   if (!parent) return ownEffort(t, ctx);
-  const leaves: ScoringTask[] = [];
-  const walk = (id: string) => {
-    for (const c of ctx.children.get(id) ?? []) {
-      if (!(ctx.children.get(c.id)?.length)) { if (!c.complete) leaves.push(c); } else walk(c.id);
-    }
-  };
-  walk(parent.id);
-  if (!leaves.length) return ownEffort(t, ctx);
-  return leaves.reduce((s, l) => s + ownEffort(l, ctx), 0);
+  const cache = (ctx.effort ??= new Map()); // one leaf walk per outcome parent, not per task
+  let sum = cache.get(parent.id);
+  if (sum === undefined) {
+    const leaves: ScoringTask[] = [];
+    const walk = (id: string) => {
+      for (const c of ctx.children.get(id) ?? []) {
+        if (!(ctx.children.get(c.id)?.length)) { if (!c.complete) leaves.push(c); } else walk(c.id);
+      }
+    };
+    walk(parent.id);
+    sum = leaves.length ? leaves.reduce((s, l) => s + ownEffort(l, ctx), 0) : -1;
+    cache.set(parent.id, sum);
+  }
+  return sum < 0 ? ownEffort(t, ctx) : sum;
 }
 
 /** @req FR:scoring-engine/filter.parked */
 export function isParked(task: ScoringTask, all: ScoringTask[]): boolean {
   return parkedIn(task, new Map(all.map(t => [t.id, t])));
+}
+
+/** `parkedIn` over the emojis already extracted, sharing the answer along each parent chain. */
+function parkedMemo(task: ScoringTask, ctx: Ctx): boolean {
+  const memo = (ctx.parked ??= new Map());
+  const walk = (t: ScoringTask, seen: Set<string>): boolean => {
+    const known = memo.get(t.id);
+    if (known !== undefined) return known;
+    seen.add(t.id);
+    const e = ctx.emojis.get(t.id)!;
+    let r = e.Special.some(s => s === '🅿️' || s === '💤' || s === '⏰') || e.Status.includes('⛔️');
+    if (!r && t.parent) { const up = ctx.byId.get(t.parent); if (up && !seen.has(up.id)) r = walk(up, seen); }
+    memo.set(t.id, r);
+    return r;
+  };
+  return walk(task, new Set());
 }
 
 function parkedIn(task: ScoringTask, byId: Map<string, ScoringTask>): boolean {
@@ -249,18 +304,19 @@ function scoreAll(projects: ScoringProject[], config: StackConfig): ScoredTask[]
   const ctx: Ctx = {
     config, weights: effectiveWeights(config),
     byId: new Map(all.map(t => [t.id, t])), children: new Map(),
-    emojis: new Map(all.map(t => [t.id, extractEmojis(t.text, config)])),
+    emojis: new Map(all.map(t => [t.id, emojisOf(t.text, config)])),
   };
-  for (const t of all) if (t.parent) ctx.children.set(t.parent, [...(ctx.children.get(t.parent) ?? []), t]);
+  for (const t of all) if (t.parent) { const k = ctx.children.get(t.parent); if (k) k.push(t); else ctx.children.set(t.parent, [t]); }
   const weights = new Map<string, number>();
   for (const w of weighProjects(projects, config)) if (!weights.has(w.name.toLowerCase())) weights.set(w.name.toLowerCase(), w.weight);
 
   const out: ScoredTask[] = [];
   for (const p of projects) {
     const leaves = p.tasks.filter(t => !ctx.children.has(t.id));
+    const leafPos = new Map(leaves.map((t, i) => [t, i] as const)); // first position, like indexOf
     for (const t of p.tasks) {
       const leaf = !ctx.children.has(t.id);
-      const pos = leaves.indexOf(t);
+      const pos = leafPos.get(t) ?? -1;
       const placementBonus = leaf && leaves.length > 0 ? (leaves.length - pos) / 10.0 : 0;
       const projectBonus = weights.get(t.project.toLowerCase()) ?? 0;
       const { score: emoji, contributions } = emojiScore(t, ctx);
@@ -269,7 +325,7 @@ function scoreAll(projects: ScoringProject[], config: StackConfig): ScoredTask[]
       if (!(effortHours > 0)) throw new ScoringError(`effort hours must be positive for task ${t.id}`);
       const score = baseScore / effortHours;
       out.push({
-        task: t, leaf, parked: parkedIn(t, ctx.byId), score,
+        task: t, leaf, parked: parkedMemo(t, ctx), score,
         breakdown: { emojiContributions: contributions, projectBonus, placementBonus, baseScore, effortHours, calculatedTotal: score },
       });
     }
@@ -318,7 +374,7 @@ export function filterByTimeBlock(tasks: ScoredTask[], projects: ScoringProject[
     const project = byName.get(task.project.toLowerCase());
     let anyBlock = false;
     let matched: string | undefined;
-    for (const e of extractEmojis(task.text, config).TimeBlocks) {
+    for (const e of emojisOf(task.text, config).TimeBlocks) {
       const block = config.timeBlocks.find(b => b.emoji.toLowerCase() === e.toLowerCase());
       if (!block) continue;
       anyBlock = true;
@@ -359,6 +415,18 @@ export const DEFAULT_ENGINE = 'stack';
 export const isMessage = (text: string): boolean => /^\s*💬/u.test(text);
 const dayFormatters = new Map<string, Intl.DateTimeFormat>();
 
+let lastToday: { tz: string; at: number; year: number; today: number } | undefined;
+/** The calendar date of `at` in `timeZone`; the last answer is kept, since one ranking asks for the same instant once per task. */
+function calendarToday(timeZone: string, at: Date): { year: number; today: number } {
+  if (lastToday && lastToday.tz === timeZone && lastToday.at === at.getTime()) return lastToday;
+  let f = dayFormatters.get(timeZone);
+  if (!f) dayFormatters.set(timeZone, (f = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' })));
+  const parts = f.formatToParts(at);
+  const n = (t: string) => Number(parts.find(p => p.type === t)?.value);
+  lastToday = { tz: timeZone, at: at.getTime(), year: n('year'), today: Date.UTC(n('year'), n('month') - 1, n('day')) };
+  return lastToday;
+}
+
 /** Days from `at` (calendar days in the config timezone) to the 📅 date in `text`; null when none. Without a year, the next occurrence
  *  wins, counting up to `OVERDUE_WINDOW_DAYS` past as overdue. */
 export function daysUntilDue(text: string, config: StackConfig, at: Date): number | null {
@@ -366,14 +434,10 @@ export function daysUntilDue(text: string, config: StackConfig, at: Date): numbe
   if (!m) return null;
   const mo = MONTHS.indexOf(m[1].toLowerCase());
   if (mo < 0) return null;
-  let f = dayFormatters.get(config.timezone);
-  if (!f) dayFormatters.set(config.timezone, (f = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, year: 'numeric', month: 'numeric', day: 'numeric' })));
-  const parts = f.formatToParts(at);
-  const n = (t: string) => Number(parts.find(p => p.type === t)?.value);
-  const today = Date.UTC(n('year'), n('month') - 1, n('day'));
+  const { year, today } = calendarToday(config.timezone, at);
   const day = Number(m[2]);
   if (m[3]) return Math.round((Date.UTC(Number(m[3]), mo, day) - today) / 86400000);
-  const near = [n('year') - 1, n('year'), n('year') + 1].map((y) => Math.round((Date.UTC(y, mo, day) - today) / 86400000));
+  const near = [year - 1, year, year + 1].map((y) => Math.round((Date.UTC(y, mo, day) - today) / 86400000));
   return near.find((d) => d >= -OVERDUE_WINDOW_DAYS)!;
 }
 
@@ -414,22 +478,31 @@ const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Blocked task id -> ids of the tasks it waits on. @req FR:scoring-engine/blockers.resolve */
 export function resolveBlockers(projects: ScoringProject[]): Map<string, string[]> {
   const all = projects.flatMap(p => p.tasks.map(t => ({ t, key: titleKey(t.text) })));
+  // Index once; the lookups below then touch only rows with the same key or project, not every row.
+  const byKey = new Map<string, typeof all>();
+  const byProject = new Map<string, typeof all>();
+  for (const x of all) {
+    (byKey.get(x.key) ?? byKey.set(x.key, []).get(x.key)!).push(x);
+    (byProject.get(x.t.project) ?? byProject.set(x.t.project, []).get(x.t.project)!).push(x);
+  }
+  const keyed = (key: string) => byKey.get(key) ?? [];
   const edges = new Map<string, string[]>();
   for (const p of projects) {
     for (const t of p.tasks) {
+      if (reasonOf(t.text) === undefined) continue; // no dependency reason: nothing to resolve
       const found = new Set<string>();
       // The whole reason as one exact title first (`After Q&A review`, `Pending research and design`), else its parts.
       const whole = titleKey(reasonOf(t.text) ?? '');
-      const sameWhole = all.filter(x => x.t.project === t.project && x.t.id !== t.id && x.key === whole);
-      const wholeHit = isName(whole) && (sameWhole.length ? sameWhole : all.filter(x => x.t.project !== t.project && x.key === whole)).length === 1;
+      const sameWhole = keyed(whole).filter(x => x.t.project === t.project && x.t.id !== t.id);
+      const wholeHit = isName(whole) && (sameWhole.length ? sameWhole : keyed(whole).filter(x => x.t.project !== t.project)).length === 1;
       for (const name of wholeHit ? [whole] : blockedOn(t.text)) {
         // Same project: exact title, else a title that starts with the name (whole words). Any same-project hit, even an
         // ambiguous one, stops the search; otherwise another project on an exact title only.
-        const mine = all.filter(x => x.t.project === t.project && x.t.id !== t.id);
-        const exact = mine.filter(x => x.key === name);
+        const mine = (byProject.get(t.project) ?? []).filter(x => x.t.id !== t.id);
+        const exact = keyed(name).filter(x => x.t.project === t.project && x.t.id !== t.id);
         const lead = new RegExp(`^${escapeRe(name)}(\\W|$)`);
         const hit = exact.length ? exact : name.length >= 3 ? mine.filter(x => lead.test(x.key)) : [];
-        const only = hit.length ? hit : all.filter(x => x.t.project !== t.project && x.key === name);
+        const only = hit.length ? hit : keyed(name).filter(x => x.t.project !== t.project);
         if (only.length === 1) found.add(only[0].t.id);
       }
       if (found.size) edges.set(t.id, [...found]);
@@ -455,16 +528,23 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
   const byId = new Map(all.map(s => [s.task.id, s]));
   const adj = new Map<string, number>();
   const eligible = new Map<string, boolean>();
+  // Parked for any reason but ⛔️ (own row or a parent); each row's answer is shared with its subtasks.
+  const soft = new Map<string, boolean>();
+  const softParked = (task: ScoringTask): boolean => {
+    const known = soft.get(task.id);
+    if (known !== undefined) return known;
+    soft.set(task.id, false); // a cycle ends here, like the `seen` guard it replaces
+    let r = baseEmojis(task.text).Special.some(e => e === '🅿️' || e === '💤' || e === '⏰');
+    const up = task.parent ? byId.get(task.parent)?.task : undefined;
+    if (!r && up) r = softParked(up);
+    soft.set(task.id, r);
+    return r;
+  };
   for (const s of all) {
     const l = lens(s, config, at);
     adj.set(s.task.id, l.adj);
     // Could be worked on once unblocked: not parked for any reason but ⛔️, and not due beyond the horizon.
-    let parked = false;
-    const seen = new Set<string>();
-    for (let cur: ScoringTask | undefined = s.task; cur && !seen.has(cur.id); cur = cur.parent ? byId.get(cur.parent)?.task : undefined) {
-      seen.add(cur.id);
-      if (baseEmojis(cur.text).Special.some(e => e === '🅿️' || e === '💤' || e === '⏰')) { parked = true; break; }
-    }
+    const parked = softParked(s.task);
     eligible.set(s.task.id, !parked && !l.drop && !isMessage(s.task.text));
   }
   const blockedBy = resolveBlockers(projects);
@@ -481,7 +561,15 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
    * Best score among tasks reachable through "blocks" edges, passing only through eligible tasks. A blocked row holds
    * up its subtasks too, so they lend (and pass on what they block) like the row itself.
    */
+  const memo = new Map<string, { value: number; from?: string }>();
   const inherited = (id: string): { value: number; from?: string } => {
+    const known = memo.get(id);
+    if (known) return known;
+    const r = inheritedOf(id);
+    memo.set(id, r);
+    return r;
+  };
+  const inheritedOf = (id: string): { value: number; from?: string } => {
     let best = -Infinity, from: string | undefined;
     const seen = new Set<string>([id]);
     const queue = [...(blocks.get(id) ?? [])];

@@ -26,8 +26,9 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/tasks/result` | POST log an agent result (autonomy-gated) |
 | `/inbox` | GET inbox entries for agents; POST send a reply or decision to the task project agent inbox (owner session only) |
 | `/inbox/handled` | POST mark an inbox entry handled |
-| `/inbox-items` | GET all mail, unread Teams and Slack items with summaries and suggested actions (Inbox page) |
+| `/inbox-items` | GET all mail, unread Teams and Slack items with summaries and suggested actions (Inbox page; owner session only) |
 | `/inbox-items/{id}/action` | POST run an inbox action; reply-draft makes a draft and never sends (owner session only) |
+| `/brief/summary` | GET the AI daily brief (owner only; `refresh=1` bypasses the cache) |
 | `/asks` | GET ranked asks for the owner (`state=open|answered|done|snoozed|all`) |
 | `/asks/{key}` | POST create or update an ask (agents) |
 | `/asks/{key}/answer` | POST the owner's answer (owner session only) |
@@ -40,6 +41,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/agents` | GET what agents are doing (agent rows, result logs, inbox, PR state and checks) |
 | `/sync` | GET the repo revision (`rev`, head commit sha; `null` when the storage has none). Poll it and reload only when it changes |
 | `/calendar` | GET calendar events for a range, read-only (owner session only) |
+| `/meetings` | GET the weekly meeting rules from `.stack/meetings.md` (owner session only) |
 | `/schedule` | GET the waking day (wake, bed, time blocks) that contains an instant (owner session only) |
 | `/schedule/day` | POST change wake or bed for a date or its weekday; reset removes it (owner session only) |
 | `/tasks/resume` | POST unpark a task (owner session only) |

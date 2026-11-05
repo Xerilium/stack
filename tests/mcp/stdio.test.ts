@@ -33,7 +33,7 @@ describe('runStdio', () => {
     return m.result.tools.map((t: any) => t.name);
   };
   it('STACK_MCP_SCOPES narrows; --scopes overrides env; default is read+write', async () => {
-    expect(await toolNames([], { STACK_MCP_SCOPES: 'read' })).toEqual(['next', 'list']);
+    expect(await toolNames([], { STACK_MCP_SCOPES: 'read' })).toEqual(['next', 'list', 'asks_list', 'asks_answer_wait']);
     expect(await toolNames(['--scopes', 'write'], { STACK_MCP_SCOPES: 'read' })).not.toContain('next');
     expect(await toolNames([], {})).toContain('add');
   });
@@ -54,7 +54,7 @@ describe('runStdio', () => {
     await new Promise((r) => setTimeout(r, 400));
     const msgs = lines.map((l) => JSON.parse(l)).sort((a, b) => a.id - b.id);
     expect(msgs.map((m) => m.id)).toEqual([1, 2, 3, 4]);
-    expect(msgs[1].result.tools.map((t: any) => t.name)).toEqual(['next', 'list']);
+    expect(msgs[1].result.tools.map((t: any) => t.name)).toEqual(['next', 'list', 'asks_list', 'asks_answer_wait']);
     expect(JSON.parse(msgs[2].result.content[0].text).items[0][1]).toBe('Local task');
     expect(msgs[3].result).toEqual({ content: [{ type: 'text', text: 'error forbidden' }], isError: true });
     stdin.end();
