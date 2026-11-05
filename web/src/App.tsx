@@ -47,7 +47,7 @@ import { planWeek } from './week';
 import { FocusMode, HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
 import { nowOf } from './nowscreen';
-import { NowScreen } from './NowScreen';
+import { NowScreen } from './NowView';
 import './myday.css';
 
 const reads = new Set<(savedAt: string | null) => void>();

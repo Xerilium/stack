@@ -37,7 +37,7 @@ Owner needs the app to use the whole window like a native app so that nothing lo
 
 Owner needs the same few places reachable the same way on every screen so that moving around is muscle memory.
 
-- **FR:nav.views** (P1): Views MUST be `home` (`#/`, `#/home`; old `#/now`, `#/next`, `#/focus` still open it), `today` (My day, `#/today`), `projects` (`#/projects`; old `#/capacity`), `list` (Full stack, `#/list`; old `#/all`, `#/stack`), `sessions` (`#/sessions`; old `#/agents`), and `asks` (Needs you, `#/asks`)
+- **FR:nav.views** (P1): Views MUST be `home` (`#/`, `#/home`; old `#/next`, `#/focus` still open it), `now` (`#/now`, see `FR:now-screen/now.one`), `today` (My day, `#/today`), `projects` (`#/projects`; old `#/capacity`), `list` (Full stack, `#/list`; old `#/all`, `#/stack`), `sessions` (`#/sessions`; old `#/agents`), and `asks` (Needs you, `#/asks`)
   > - @req FR:agent-sessions/web.view
   - **FR:nav.views.default** (P1): An unknown hash MUST open Home; Home is the starting screen
     > - @req FR:web-app/home.one

@@ -56,8 +56,10 @@ test.describe('shell and security', () => {
     await expect(rows(page).first()).toBeVisible();
     await page.goto('/#/projects');
     await expect(page.getByTestId('cap-alpha')).toBeVisible();
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toBeVisible();
+    await page.goto('/#/now');
+    await expect(page.getByTestId('now')).toBeVisible();
     expect(errs).toEqual([]);
   });
 });
@@ -70,8 +72,8 @@ test.describe('now view', () => {
   // @req FR:web-app/home3.now @req FR:web-app/home3.context @req FR:web-app/home3.rows
   test('shows the focus task quietly (title, one context line, Start, Done, …), Active rows below, and no horizontal scroll', async ({ page }, info) => {
     await mockApi(page);
-    await page.goto('/#/now');
-    await expect(page).toHaveURL(/\/$|#\/now/); // old name still opens Home
+    await page.goto('/#/home');
+    await expect(page).toHaveURL(/#\/home/);
     await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
     const focus = page.locator('.focus-block');
     await expect(focus.getByTestId('now-context')).toHaveText('Alpha'); // the project; `late` only when overdue
@@ -95,14 +97,14 @@ test.describe('now view', () => {
 
   test('empty state when nothing is active', async ({ page }) => {
     await mockApi(page, { tasks: [] });
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await expect(page.getByRole('heading', { name: 'Nothing active' })).toBeVisible();
   });
 
   // @req FR:web-app/now.focus @req FR:web-app/now.undo
   test('start, skip, done with undo', async ({ page }) => {
     const m = await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     const focus = page.locator('.focus-block');
     await focus.getByRole('button', { name: 'Start' }).click();
     await expect(page.getByText('Started')).toBeVisible();
@@ -122,7 +124,7 @@ test.describe('now view', () => {
   // @req FR:home/home.delegate: Defer 2h is one tap; z opens the full menu
   test('Defer 2h defers 2 hours in one tap', async ({ page }) => {
     const m = await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await page.locator('.focus-block').getByTestId('more').click();
     await page.getByRole('menuitem', { name: /Defer 2h/ }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'alpha:6', hours: 2 } });
@@ -133,7 +135,7 @@ test.describe('now view', () => {
   test('z then number keys defer; Esc closes the menu', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await page.keyboard.press('z');
     await expect(page.getByRole('dialog', { name: 'Defer until' })).toBeVisible();
@@ -155,7 +157,7 @@ test.describe('now view', () => {
   test('keys: cursor starts on the focus task, j/k move, d/s act, Shift+S skips', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await expect(page.locator('.focus-block.cursor')).toHaveAttribute('data-ref', 'alpha:6');
     await page.keyboard.press('j');
     await expect(page.locator('.top-rows li.cursor')).toHaveAttribute('data-ref', 'beta:4');
@@ -169,7 +171,7 @@ test.describe('now view', () => {
   // @req FR:web-app/now.undo
   test('a failed complete shows an error, not Done with Undo', async ({ page }) => {
     const m = await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     m.fail.set('/tasks/complete', { status: 500, code: 'internal', message: 'Boom' });
     await page.locator('.focus-block').getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('Boom')).toBeVisible();
@@ -181,7 +183,7 @@ test.describe('focus mode', () => {
   // @req FR:web-app/now.focusmode
   test('opens from the Focus button, shows notes and a subtask checklist, and closes', async ({ page }, info) => {
     const m = await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await page.locator('.focus-block').click(); await page.keyboard.press('Enter');
     const dlg = page.getByRole('dialog', { name: 'Focus' });
     await expect(dlg).toBeVisible();
@@ -315,7 +317,7 @@ test.describe('list', () => {
   test('keyboard: g chords, cursor, selection with x, search focus, help', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await page.keyboard.press('g'); await page.keyboard.press('a');
     await expect(page).toHaveURL(/#\/list/);
     await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:6');
@@ -637,7 +639,7 @@ test.describe('capture', () => {
 
   test('parse errors stay inline and keep the text and the overlay', async ({ page }) => {
     await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await page.getByRole('button', { name: /New task/ }).first().click();
     const box = page.getByLabel('Quick capture');
     await box.fill('x');
@@ -650,7 +652,7 @@ test.describe('capture', () => {
   test('c opens capture, Enter adds, Esc closes', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await page.keyboard.press('c');
     await expect(page.getByLabel('Quick capture')).toBeFocused();
@@ -696,7 +698,7 @@ test.describe('palette', () => {
   test('colon opens it and bad queries say so', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await page.keyboard.press(':');
     await page.getByLabel('Command', { exact: true }).fill('zzzz');
@@ -706,7 +708,7 @@ test.describe('palette', () => {
   test('mobile: More opens the palette', async ({ page }, info) => {
     test.skip(info.project.name !== 'mobile', 'mobile only');
     await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await page.getByRole('button', { name: 'Open command palette' }).click();
     await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   });
@@ -732,7 +734,7 @@ test.describe('feedback and mobile', () => {
   test('layout switches between rail and tab bar', async ({ page }, info) => {
     const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.setFixedTime(d); // Home's buttons follow the time you have
     await mockApi(page);
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     if (info.project.name === 'mobile') {
       await expect(page.locator('.rail')).toBeHidden();
       for (const tab of await page.locator('.tabbar .tab').all()) expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -794,7 +796,7 @@ test.describe('now view sections', () => {
       mk(6, 'Read https://www.example.test/page/x now'),
     ];
     await mockApi(page, { tasks });
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toContainText('Hero task');
     const body = page.locator('section[aria-label="Home"]');
     await expect(body).not.toContainText('Far future task');
@@ -810,7 +812,7 @@ test.describe('now view sections', () => {
   test('with one project Home shows only NOW: no list, no expander; the rest is one chord away', async ({ page }) => {
     const tasks = [mk(1, '🔺 Hero task'), ...Array.from({ length: 8 }, (_, i) => mk(i + 2, `Filler ${i + 1}`))];
     await mockApi(page, { tasks });
-    await page.goto('/#/now');
+    await page.goto('/#/home');
     await expect(page.locator('section[aria-label="Home"] .row')).toHaveCount(0);
     await expect(page.getByTestId('top-asks')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /Show all active/ })).toHaveCount(0);
