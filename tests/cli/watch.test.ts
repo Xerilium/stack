@@ -22,16 +22,22 @@ describe('classify', () => {
   });
 });
 
-/** A stand-in for `fs.watch`: the test pushes file events by hand, so nothing waits on the OS. */
+/** A stand-in for `fs.watch`: the test pushes repo-relative file events by hand, so nothing waits on the OS. Routes each event to the watcher on that folder, or to the root watcher. */
 function fakeFs() {
-  let cb: ((ev: string, file: string) => void) | null = null;
-  let closed = false;
-  const fn = ((_dir: string, _o: unknown, listener: (ev: string, file: string) => void) => {
-    cb = listener;
-    return { on() { return this; }, close() { closed = true; cb = null; } };
+  const subs = new Map<string, { cb: (ev: string, file: string) => void; recursive: boolean }>();
+  let closed = 0; let opened = 0;
+  const fn = ((p: string, o: { recursive?: boolean } | undefined, listener: (ev: string, file: string) => void) => {
+    subs.set(p, { cb: listener, recursive: o?.recursive === true }); opened++;
+    return { on() { return this; }, close() { closed++; subs.delete(p); } };
   }) as unknown as typeof import('fs').watch;
-  return { fn, emit: (file: string) => cb?.('change', file), closed: () => closed };
+  const emit = (file: string) => {
+    const [head, ...rest] = file.split('/');
+    for (const [p, s] of subs) if (s.recursive && p.endsWith('/' + head)) return s.cb('change', rest.join('/'));
+    for (const s of subs.values()) if (!s.recursive) return s.cb('change', file);
+  };
+  return { fn, emit, closed: () => opened > 0 && closed === opened };
 }
+const repoDir = () => { const d = tmp(); mkdirSync(join(d, 'tasks')); mkdirSync(join(d, '.stack')); return d; };
 /** Fake only the debounce timer; everything else stays real. */
 const fakeDebounce = () => jest.useFakeTimers({ doNotFake: ['Date', 'hrtime', 'nextTick', 'performance', 'queueMicrotask', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval'] });
 
@@ -39,7 +45,7 @@ describe('watchRepo', () => {
   afterEach(() => { jest.useRealTimers(); });
   it('coalesces a burst into one change with the kinds that moved', () => {
     fakeDebounce();
-    const os = fakeFs(); const w = watchRepo('/x', { debounceMs: 60, watchFn: os.fn });
+    const os = fakeFs(); const w = watchRepo(repoDir(), { debounceMs: 60, watchFn: os.fn });
     const seen: Change[] = [];
     w.on((c) => seen.push(c));
     os.emit('tasks/asks/a.md'); os.emit('tasks/asks/b.md'); jest.advanceTimersByTime(59); os.emit('tasks/alpha.md'); // each event restarts the window
@@ -56,7 +62,7 @@ describe('watchRepo', () => {
   });
   it('ignores dotfiles and .git, and stops after close', () => {
     fakeDebounce();
-    const os = fakeFs(); const w = watchRepo('/x', { debounceMs: 40, watchFn: os.fn });
+    const os = fakeFs(); const w = watchRepo(repoDir(), { debounceMs: 40, watchFn: os.fn });
     const seen: Change[] = [];
     w.on((c) => seen.push(c));
     os.emit('.git/HEAD'); os.emit('tasks/.tmp123.tmp');
@@ -169,29 +175,29 @@ describe('GET /events', () => {
 
 describe('watch scope', () => {
   // @req FR:perf/watch.scope
-  it('watches tasks/ and .stack/ only, never the whole repo recursively', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require('fs') as typeof import('fs');
+  it('watches tasks/ and .stack/ only, never the whole repo recursively', () => {
     const dir = tmp(); mkdirSync(join(dir, 'tasks'), { recursive: true }); mkdirSync(join(dir, 'node_modules/x'), { recursive: true });
-    const spy = jest.spyOn(fs, 'watch');
-    const w = watchRepo(dir, { debounceMs: 40 });
-    const calls = spy.mock.calls.map((c) => ({ path: String(c[0]), recursive: (c[1] as { recursive?: boolean } | undefined)?.recursive === true }));
-    spy.mockRestore();
+    const calls: { path: string; recursive: boolean }[] = [];
+    const watchFn = ((p: string, o: { recursive?: boolean } | undefined) => { calls.push({ path: String(p), recursive: o?.recursive === true }); return { on() { return this; }, close() { /* none */ } }; }) as unknown as typeof import('fs').watch;
+    const w = watchRepo(dir, { debounceMs: 40, watchFn });
     w.close();
     expect(calls.filter((c) => c.recursive).map((c) => c.path)).toEqual([join(dir, 'tasks')]);
     expect(calls.some((c) => c.path === dir && c.recursive)).toBe(false);
   });
   // @req FR:perf/watch.scope
-  it('notices .stack/ created after start', async () => {
+  it('notices .stack/ created after start', () => {
+    fakeDebounce();
     const dir = tmp(); mkdirSync(join(dir, 'tasks'), { recursive: true });
-    const w = watchRepo(dir, { debounceMs: 40 });
+    const os = fakeFs(); const w = watchRepo(dir, { debounceMs: 40, watchFn: os.fn });
     const seen: Change[] = [];
     w.on((c) => seen.push(c));
-    await sleep(150);
     mkdirSync(join(dir, '.stack'));
-    await sleep(100);
-    writeFileSync(join(dir, '.stack/cos-state.md'), 'x');
-    await until(() => seen.some((c) => c.kinds.includes('state')));
+    os.emit('.stack'); // root event: the folder appeared
+    jest.advanceTimersByTime(40);
+    expect(seen.map((c) => c.kinds)).toEqual([['state']]);
+    os.emit('.stack/cos-state.md');
+    jest.advanceTimersByTime(40);
+    expect(seen).toHaveLength(2);
     w.close();
   });
 });
