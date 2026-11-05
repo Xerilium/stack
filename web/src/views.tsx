@@ -6,7 +6,8 @@ import type { Week } from './week';
 import { clock, estimate, nowMinutes, span, type Block, type Day, type Decision, type Plan } from './plan';
 import { joinable, type Busy, type CalEvent } from './meetings';
 import { timelineOf } from './timeline';
-import { countdown, HAVE, type Home, type HomeItem, type Window } from './home';
+import { countdown, HAVE, topAsksOf, type Home, type HomeProject, type Window } from './home';
+import type { LiveStatus } from './live';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
@@ -231,8 +232,10 @@ function Editor({ text, onSave, onCancel }: { text: string; onSave: (t: string) 
 }
 
 /** @req FR:web-app/now.focusmode */
-export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
+export function FocusMode({ task, all, busy, onToggle, onAct, onBack, extra }: {
   task: Task; all: Task[]; busy: boolean; onToggle: (t: Task) => void; onAct: (a: 'start' | 'defer') => void; onBack: () => void;
+  /** Rendered under the actions (the task's agent thread). @req FR:agent-thread/web.hero */
+  extra?: ComponentChildren;
 }) {
   const r = parseRow(task.text);
   const subs = children(all, task.ref);
@@ -246,7 +249,7 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
     <div ref={box} tabIndex={-1} class="focus-mode" role="dialog" aria-modal="true" aria-label="Focus"
       onKeyDown={(e) => {
         if (e.key !== 'Tab') return;
-        const els = [...box.current!.querySelectorAll<HTMLElement>('button')].filter((x) => !(x as HTMLButtonElement).disabled);
+        const els = [...box.current!.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((x) => !(x as HTMLButtonElement).disabled && x.getAttribute('type') !== 'hidden');
         if (!els.length) return;
         const i = els.indexOf(document.activeElement as HTMLElement);
         e.preventDefault();
@@ -275,6 +278,7 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
           <button type="button" class="btn" disabled={busy} onClick={() => onToggle(task)}>Done <kbd>d</kbd></button>
           <button type="button" class="btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>z</kbd></button>
         </div>
+        {extra}
       </div>
     </div>
   );
@@ -749,8 +753,8 @@ function MoreMenu({ busy, owned, onAct, onOpen }: { busy: boolean; owned: boolea
  * @req FR:home/home.have
  * Home: the one thing now, whether it fits, the next two, the top of every project.
  */
-export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, onProject, onMoreTime, all, onAll }: {
-  h: Home; minutesLeft: number; win: Window; have: number | null; onHave: (m: number | null) => void; p: RowProps; busy: boolean; all: boolean; onAll: () => void;
+export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, onProject, onMoreTime, live }: {
+  h: Home; minutesLeft: number; win: Window; have: number | null; onHave: (m: number | null) => void; p: RowProps; busy: boolean; /** Stream or polling state of the page. @req FR:top-asks/top.status */ live: LiveStatus;
   onAct: (a: 'start' | 'done' | 'defer' | 'notnow' | 'delegate', ref?: string) => void; onProject: (name: string) => void; onMoreTime: () => void;
 }) {
   const until = win.until?.label ?? '';
@@ -766,23 +770,9 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
   const one = demoted ? h.instead : h.one;
   const hero = one ? parseRow(one.task.text) : null;
   const detail = (t: Task) => p.open === t.ref && <RowDetail t={t} all={p.all} busy={busy} onAct={p.onAct} onToggle={p.onToggle} onOpen={p.onOpen} extra={p.detail} />;
-  const row = (i: HomeItem) => {
-    const r = parseRow(i.task.text);
-    return (
-    <li key={i.task.ref} class={`row home-row${p.cursor === i.task.ref ? ' cursor' : ''}${p.open === i.task.ref ? ' open' : ''}${p.justDone.has(i.task.ref) ? ' done-anim' : ''}`} data-ref={i.task.ref} onClick={() => { p.onCursor(i.task.ref); p.onToggleOpen(i.task.ref); }}>
-      <div class="line">
-        <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', i.task.ref); }}><span class="box" /></button>
-        <span class="title"><span class="text" {...toggleOn<HTMLSpanElement>(i.task.ref, p)}><Md text={r.title || i.task.text} /></span></span>
-        <span class="proj-tag">{p.titles.get(i.task.project) ?? i.task.project}</span>
-      </div>
-      {detail(i.task)}
-      {p.agent?.talk(i.task)}
-    </li>
-    );
-  };
-  const projects = h.projects.filter((x) => !x.shown);
-  const shownProjects = all ? projects : projects.slice(0, 3);
-  const folded = !all && projects.length > 3 && !shownProjects.some((x) => p.open === x.top.task.ref); // an open row is never clipped
+  const { rows } = topAsksOf(h);
+  const armed = useArmed();
+  const count = useCountAnnounce(rows.length);
   return (
     <section class="home" aria-label="Home">
       <div class="home-window">
@@ -822,33 +812,52 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
           {detail(demoted.task)}
         </div>
       )}
-      {h.next.length > 0 && (
-        <div>
-          <h2 class="h2">Up next</h2>
-          <ul class="rows" data-testid="up-next">{h.next.map((i) => row(i))}</ul>
-        </div>
-      )}
-      {h.five.length > 0 && (
-        <div>
-          <h2 class="h2">Only have 5 min?</h2>
-          <ul class="rows" data-testid="five">{h.five.map((i) => row(i))}</ul>
-        </div>
-      )}
-      {projects.length > 0 && (
-        <div class={`home-projects-wrap${folded ? ' folded' : ''}`}>
-          <h2 class="h2">Projects</h2>
-          <ul class="home-projects" data-testid="home-projects">
-            {shownProjects.map((x) => (
-              <li key={x.project} class={`${p.cursor === x.top.task.ref ? 'cursor' : ''}${p.open === x.top.task.ref ? ' open' : ''}`} data-ref={x.top.task.ref} onClick={() => { p.onCursor(x.top.task.ref); p.onToggleOpen(x.top.task.ref); }}>
-                <button type="button" class="proj-link" onClick={(e) => { e.stopPropagation(); onProject(x.project); }}>{x.title}</button>
-                <span class="proj-top" {...toggleOn<HTMLSpanElement>(x.top.task.ref, p)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
-                {detail(x.top.task)}
-              </li>
-            ))}
+      {rows.length > 0 && (
+        <div class="top-asks">
+          <h2 class="h2 top-head">
+            Top asks
+            <span class="top-count" data-testid="top-count">{rows.length} {rows.length === 1 ? 'project' : 'projects'}</span>
+            {(live === 'live' || live === 'poll') && <span class={`top-live ${live}`} data-testid="top-live" title={live === 'live' ? 'Updates by itself' : 'Checks for changes every 15 s'}><span class="dot" aria-hidden="true" /><span class="sr-only">{live === 'live' ? 'Live' : 'Synced'}</span></span>}
+          </h2>
+          <span class="sr-only" role="status" aria-live="polite">{count}</span>
+          <ul class="top-rows" data-testid="top-asks">
+            {rows.map((x) => <TopRow key={`${x.project}:${x.top.task.ref}`} armed={armed} x={x} p={p} detail={detail} onProject={onProject} />)}
           </ul>
-          {!all && projects.length > 3 && <div class="fold"><button type="button" class="btn quiet" onClick={onAll}>Show all ({projects.length})</button></div>}
         </div>
       )}
     </section>
+  );
+}
+
+/** True after the first paint: rows that mount later fade in, the first ones do not. @req FR:top-asks/top.live */
+function useArmed(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setOn(true), 400); return () => clearTimeout(t); }, []);
+  return on;
+}
+/** Announces the project count only when it changes after the first paint. @req FR:top-asks/top.status */
+function useCountAnnounce(n: number): string {
+  const first = useRef(n);
+  const [text, setText] = useState('');
+  useEffect(() => { if (n !== first.current) setText(`${n} ${n === 1 ? 'project' : 'projects'}`); }, [n]);
+  return text;
+}
+
+/** One project's top task: project name, title, expected time, countdown. @req FR:top-asks/top.row */
+function TopRow({ x, p, detail, onProject, armed }: { armed: boolean; x: HomeProject; p: RowProps; detail: (t: Task) => ComponentChildren; onProject: (name: string) => void }) {
+  const ref = x.top.task.ref;
+  const fresh = useRef(armed).current; // mounted after the first paint: a change from elsewhere
+  const late = x.top.due && (x.top.due.tone === 'late' || x.top.due.tone === 'soon');
+  return (
+    <li class={`${p.cursor === ref ? 'cursor' : ''}${p.open === ref ? ' open' : ''}${fresh ? ' fresh' : ''}`} data-ref={ref} onClick={() => { p.onCursor(ref); p.onToggleOpen(ref); }}>
+      <button type="button" class="proj-link" onClick={(e) => { e.stopPropagation(); onProject(x.project); }}>{x.title}</button>
+      <span class="proj-top" {...toggleOn<HTMLSpanElement>(ref, p)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
+      <span class="top-meta">
+        <span class="top-time" data-testid="top-time">{x.top.assumed ? '~' : ''}{span(x.top.minutes)}</span>
+        {x.top.due ? <span class={`top-due ${late ? x.top.due.tone : ''}`} data-testid="countdown">{x.top.due.text}</span> : <span class="top-due" aria-hidden="true" />}
+      </span>
+      {detail(x.top.task)}
+      {p.agent?.talk(x.top.task)}
+    </li>
   );
 }

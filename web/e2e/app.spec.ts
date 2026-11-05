@@ -77,8 +77,8 @@ test.describe('now view', () => {
     await expect(focus.getByTestId('now-context')).toHaveText('Alpha'); // the project; `late` only when overdue
     await expect(focus.getByTestId('expected')).toHaveCount(0); // no effort, countdown, ends-at or badges on Home
     await expect(focus.getByRole('button', { name: /Priority/ })).toHaveCount(0);
-    // @req FR:web-app/now.active @req FR:web-app/home.next
-    await expect(rows(page)).toHaveText(['Review pull requests', 'Plan the trip']);
+    // @req FR:web-app/now.active @req FR:top-asks/top.rows
+    await expect(page.getByTestId('top-asks').locator('.proj-top')).toHaveText(['Plan the trip']); // one row per other project
     await expect(page.locator('.row[data-ref="alpha:6"]')).toHaveCount(0);
     await expect(page.locator('.row[data-ref="alpha:7"]')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -158,14 +158,12 @@ test.describe('now view', () => {
     await page.goto('/#/now');
     await expect(page.locator('.focus-block.cursor')).toHaveAttribute('data-ref', 'alpha:6');
     await page.keyboard.press('j');
-    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:9');
-    await page.keyboard.press('j');
-    await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'beta:4');
-    await page.keyboard.press('k');
+    await expect(page.locator('.top-rows li.cursor')).toHaveAttribute('data-ref', 'beta:4');
     await page.keyboard.press('s');
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'alpha:9' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'beta:4' } });
+    await page.keyboard.press('k');
     await page.keyboard.press('Shift+S');
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/skip', body: { ref: 'alpha:9' } });
+    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/skip', body: { ref: 'alpha:6' } });
   });
 
   // @req FR:web-app/now.undo
@@ -808,12 +806,13 @@ test.describe('now view sections', () => {
     await expect(page.locator('.row', { hasText: 'Read' }).locator('a.tag.link')).toHaveCount(0);
   });
 
-  // @req FR:web-app/home.next @req FR:web-app/home.quiet
-  test('Home shows two up next and no expander; the rest is one chord away', async ({ page }) => {
+  // @req FR:top-asks/top.empty @req FR:web-app/home.quiet
+  test('with one project Home shows only NOW: no list, no expander; the rest is one chord away', async ({ page }) => {
     const tasks = [mk(1, '🔺 Hero task'), ...Array.from({ length: 8 }, (_, i) => mk(i + 2, `Filler ${i + 1}`))];
     await mockApi(page, { tasks });
     await page.goto('/#/now');
-    await expect(page.locator('section[aria-label="Home"] .row')).toHaveCount(2);
+    await expect(page.locator('section[aria-label="Home"] .row')).toHaveCount(0);
+    await expect(page.getByTestId('top-asks')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /Show all active/ })).toHaveCount(0);
   });
 });

@@ -10,9 +10,9 @@ const home = () => {
 };
 
 test.describe('Home', () => {
-  // @req FR:web-app/home.one @req FR:web-app/home.next @req FR:web-app/home.projects @req FR:web-app/home.quiet
+  // @req FR:web-app/home.one @req FR:top-asks/top.rows @req FR:web-app/home.projects @req FR:web-app/home.quiet
   // @req FR:web-app/home3.now @req FR:web-app/home3.context @req FR:web-app/home3.rows
-  test('one thing (title, one context line, Start, Done, …), up next (2), one row per project, nothing else', async ({ page }, info) => {
+  test('one thing (title, one context line, Start, Done, …), one row per other project, nothing else', async ({ page }, info) => {
     const ten = new Date(); ten.setHours(10, 0, 0, 0); await page.clock.setFixedTime(ten); // fit follows the time you have now
     await mockApi(page, { tasks: home() });
     await page.goto('/');
@@ -23,14 +23,14 @@ test.describe('Home', () => {
     expect(await one.locator('h1, .context, button').count()).toBeLessThanOrEqual(5);
     await expect(one.getByTestId('expected')).toHaveCount(0);
     await expect(one.getByTestId('ends')).toHaveCount(0);
-    await expect(page.getByTestId('up-next').locator('.row')).toHaveCount(2);
-    await expect(page.getByTestId('up-next').locator('.row .title')).toHaveText(['Review pull requests', 'Plan the trip']);
-    await expect(page.getByTestId('up-next').locator('.row').first().getByTestId('expected')).toHaveCount(0); // title + project only
-    // projects whose top task is already on screen (alpha, beta) are not repeated
-    const projects = page.getByTestId('home-projects').locator('li');
-    await expect(projects).toHaveCount(1);
-    await expect(projects.first()).toContainText('Chase the invoice');
-    await expect(projects.first().getByTestId('countdown')).toHaveCount(0);
+    await expect(page.getByTestId('up-next')).toHaveCount(0);
+    // every other project has one row; the NOW project (alpha) is not repeated
+    const projects = page.getByTestId('top-asks').locator('li');
+    await expect(projects).toHaveCount(2);
+    await expect(projects.locator('.proj-link')).toHaveText(['Beta', 'Gamma']); // the server's order
+    await expect(projects.first()).toContainText('Plan the trip');
+    await expect(projects.nth(1)).toContainText('Chase the invoice');
+    await expect(projects.nth(1).getByTestId('countdown')).toHaveText('2d late');
     await expect(page.getByText(/Show all active/)).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `e2e/screenshots/home-${info.project.name}.png` });
@@ -58,7 +58,7 @@ test.describe('Home', () => {
   test('project name opens that project in Full stack', async ({ page }) => {
     await mockApi(page, { tasks: home() });
     await page.goto('/');
-    await page.getByTestId('home-projects').getByRole('button', { name: 'Gamma' }).click(); // @req FR:web-app/today.projects
+    await page.getByTestId('top-asks').getByRole('button', { name: 'Gamma' }).click(); // @req FR:web-app/today.projects
     await expect(page).toHaveURL(/#\/list\?project=gamma/);
   });
 });

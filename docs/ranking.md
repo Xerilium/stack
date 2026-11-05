@@ -9,6 +9,8 @@ stack next --top 5    # the first five, one line each: ref score project text
 
 The order is the `stack` scoring engine (score, due dates, blockers, time block), then your overrides.
 
+The web Home replaces the `/next` skill's table (`FR:top-asks/top.next`): the NOW card is `stack next`, and **Top asks** lists the top of every other project, live. `GET /next`, `GET /rank` and `stack next` do not change.
+
 ## Overrides: `.stack/priorities.json`
 
 The owner and the Chief of Staff (CoS) edit this file. A missing or broken file means no overrides; bad rules are skipped.

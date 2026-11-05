@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countdown, homeOf } from '../src/home';
+import { countdown, homeOf, topAsksOf } from '../src/home';
 import type { Project, Task } from '../src/types';
 import type { RankItem } from '../src/home';
 
@@ -36,10 +36,8 @@ describe('homeOf', () => {
   it('draws only what the server ranked, in that order, in-progress first; the page does not rank', () => {
     const h = homeOf({ tasks, projects, ranked: next('beta:1', 'alpha:2', 'alpha:1'), now: at, minutesLeft: 600 });
     expect(h.one?.task.ref).toBe('beta:1');
-    expect(h.next.map((n) => n.task.ref)).toEqual(['alpha:2', 'alpha:1']);
     const doing = homeOf({ tasks, projects, ranked, now: at, minutesLeft: 600 });
     expect(doing.one?.task.ref).toBe('alpha:1'); // NOW is the server's first, even with a 🚧 row below
-    expect(doing.next.map((n) => n.task.ref)).toEqual(['alpha:3', 'alpha:2']); // 🚧 first under it
     expect(homeOf({ tasks, projects, ranked: [], now: at, minutesLeft: 600 }).one).toBeNull();
   });
   // @req FR:web-app/home.one @req FR:task-lifecycle/rank.root
@@ -47,7 +45,6 @@ describe('homeOf', () => {
     const t2 = [...tasks, T('alpha:9', 'Pay bills 💰', 'alpha'), { ...T('alpha:10', 'Mortgage', 'alpha'), depth: 1 }];
     const h = homeOf({ tasks: t2, projects, ranked: [R('alpha:10', 'alpha:9'), R('alpha:2')], now: at, minutesLeft: 600 });
     expect(h.one?.task.ref).toBe('alpha:9');
-    expect(h.next.map((n) => n.task.ref)).toEqual(['alpha:2']);
   });
   // @req FR:web-app/home.fit
   it('says when the one thing does not fit and offers the best ranked task that does', () => {
@@ -55,7 +52,6 @@ describe('homeOf', () => {
     expect(h.fits).toBe(false);
     expect(h.instead?.task.ref).toBe('alpha:2');
     expect(h.instead?.minutes).toBe(30);
-    expect(h.next.map((n) => n.task.ref)).toEqual(['beta:1']); // instead never repeats under up next
     expect(homeOf({ tasks, projects, ranked: next('alpha:1', 'alpha:2'), now: at, minutesLeft: 0 }).instead).toBeNull();
     const big = homeOf({ tasks: [T('alpha:9', 'Deep work ⚫️')], projects, ranked: next('alpha:9'), now: at, minutesLeft: 120 });
     expect(big.one?.minutes).toBe(480);
@@ -64,9 +60,9 @@ describe('homeOf', () => {
   // @req FR:web-app/home.projects @req FR:web-app/home2.order
   it('projects are in the order of their top ranked row; a project with nothing ranked is left out unless it has an Up next row', () => {
     const h = homeOf({ tasks, projects, ranked: next('beta:1', 'alpha:2', 'alpha:1'), now: at, minutesLeft: 600 });
-    expect(h.projects.map((p) => [p.project, p.top.task.ref, p.shown])).toEqual([
-      ['beta', 'beta:1', true],
-      ['alpha', 'alpha:2', true],
+    expect(h.projects.map((p) => [p.project, p.top.task.ref])).toEqual([
+      ['beta', 'beta:1'],
+      ['alpha', 'alpha:2'],
     ]);
   });
   // @req FR:web-app/home.projects
@@ -87,7 +83,7 @@ describe('homeOf', () => {
   it('nothing ranked: nothing to do, no suggestion', () => {
     const h = homeOf({ tasks: [], projects: [], ranked: [], now: at, minutesLeft: 180 });
     expect(h.one).toBeNull();
-    expect(h.next).toEqual([]);
+    expect(h.projects).toEqual([]);
   });
 });
 
@@ -95,8 +91,8 @@ describe('homeOf', () => {
 describe('no duplicates between Needs you and Home', () => {
   const tasks = [T('alpha:1', 'Decide the vendor 🟡'), T('alpha:2', 'Write docs 🟢'), T('alpha:3', 'Fix the build 🔹'), T('beta:1', 'Plan the trip 🟢', 'beta')];
   const projects = [P('alpha'), P('beta')];
-  const all = (h: ReturnType<typeof homeOf>) => [h.one?.task.ref, h.instead?.task.ref, ...h.next.map((n) => n.task.ref), ...h.five.map((n) => n.task.ref), ...h.projects.filter((p) => !p.shown).map((p) => p.top.task.ref)];
-  it('a task that is in Needs you is not NOW, Up next, Only have 5 min, or a project row', () => {
+  const all = (h: ReturnType<typeof homeOf>) => [h.one?.task.ref, h.instead?.task.ref, ...h.projects.map((p) => p.top.task.ref)];
+  it('a task that is in Needs you is not NOW or a project row', () => {
     const ranked = next('alpha:1', 'alpha:2', 'alpha:3', 'beta:1');
     const without = homeOf({ tasks, projects, ranked, now: at, minutesLeft: 600 });
     expect(all(without)).toContain('alpha:1');
@@ -115,5 +111,31 @@ describe('personal time', () => {
     const h = homeOf({ tasks, projects: [P('alpha')], ranked: next('alpha:1', 'alpha:2'), now: at, minutesLeft: 180, allow: { emoji: '🏠' } });
     expect(h.fits).toBe(false);
     expect(h.instead?.task.ref).toBe('alpha:2');
+  });
+});
+
+// @req FR:top-asks/top.rows @req FR:top-asks/top.one
+describe('topAsksOf', () => {
+  const tasks = [
+    T('alpha:1', 'Ship the web app 🟠'), T('alpha:2', 'Write docs 🟢'),
+    T('beta:1', 'Plan the trip 🟡', 'beta'), T('beta:2', 'Book flights 🟢', 'beta'),
+    T('gamma:1', 'Fix the outage 🟠', 'gamma'), T('delta:1', 'Someday', 'delta', '📋 Backlog'),
+  ];
+  const projects = [P('alpha'), P('beta'), P('gamma'), P('delta')];
+  it('is the top task, then one row per other project in rank order; the top project is not repeated', () => {
+    const h = homeOf({ tasks, projects, ranked: next('beta:1', 'alpha:1', 'beta:2', 'gamma:1', 'alpha:2'), now: at, minutesLeft: 600 });
+    const t = topAsksOf(h);
+    expect(t.top?.task.ref).toBe('beta:1');
+    expect(t.rows.map((r) => [r.project, r.top.task.ref])).toEqual([['alpha', 'alpha:1'], ['gamma', 'gamma:1']]); // no Up next, no second beta row, delta has nothing ranked
+  });
+  it('when the top task does not fit, the task that fits is the top and its project is not repeated', () => {
+    const h = homeOf({ tasks, projects, ranked: next('alpha:1', 'alpha:2', 'beta:1', 'gamma:1'), now: at, minutesLeft: 45 });
+    const t = topAsksOf(h);
+    expect(t.top?.task.ref).toBe('alpha:2');
+    expect(t.rows.map((r) => r.project)).toEqual(['beta', 'gamma']);
+  });
+  it('nothing ranked or one project: no rows', () => {
+    expect(topAsksOf(homeOf({ tasks: [], projects: [], ranked: [], now: at, minutesLeft: 60 }))).toEqual({ top: null, rows: [] });
+    expect(topAsksOf(homeOf({ tasks, projects, ranked: next('alpha:1', 'alpha:2'), now: at, minutesLeft: 600 })).rows).toEqual([]);
   });
 });

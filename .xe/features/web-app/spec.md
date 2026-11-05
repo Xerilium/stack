@@ -60,20 +60,17 @@ Home is the starting screen (web-shell `FR:nav.views`): the one thing to do now,
 
 - **FR:home.one** (P1): The focus block shows the first ranked task from `GET /rank` that is not in Needs you (`FR:home3.dedupe`), as the NOW card (`FR:home3.now`)
 - **FR:home.fit** (P1): When the next task needs more than the time you have now (the window, `FR:home/home.window`: until the next meeting, personal block, or bed, or what "I have" says), the highest-ranked actionable task that fits becomes NOW (one focal point) and the next task waits as one muted line under it (`<title> · 2h · doesn't fit now: needs 2h, 45m until Allyte sync` with `More time ]` and `Start anyway`); the cursor starts on the task shown as NOW. When nothing fits, the block keeps the next task and says `No time for this now: needs 2h, 45m until …`. In personal time only rows that belong to the block fit (`Family until 8:00p: only 🏠 tasks now`); in a meeting or past bed it says when you are back
-- **FR:home.next** (P1): **Up next** lists the next 2 tasks in `GET /rank` order, one line each: title and project (`FR:home3.rows`). In-progress (🚧) tasks come first
-- **FR:home.projects** (P1): **Projects** lists every project with open work: its top task (highest rank among Active rows, else the first Up next; never an arbitrary open row, which the ranking may have hidden), expected time, countdown; the project name opens its Full stack list. Projects whose top task is already on screen (NOW, the waiting task, Up next) are left out
+- **FR:home.projects** (P1): Home lists the top of every other project as **Top asks**, one row per project (`FR:top-asks/top.rows`): its top task (highest rank among Active rows, else the first Up next row; never an arbitrary open row, which the ranking may have hidden), expected time, countdown; the project name opens its Full stack list
 - **FR:home.quiet** (P1): Nothing else: no `Show all active`, no counts, no agent activity. Full stack is one chord away (`g a`)
 
 ### FR:home2: Home, round 3 (Michael, Oct 29)
 
 - **FR:home2.order** (P1): **Projects** lists projects in priority order: by the rank of each project's top task (web-app `FR:now.active` ranking), never alphabetically
-- **FR:home2.five** (P1): **Only have 5 min?** sits after Up next: up to 3 actionable active tasks whose expected time is 15 minutes or less (🔹), ranked, not already on screen. Hidden when there are none
-- **FR:home2.fold** (P1): Projects shows 3 rows, the rest fade under a gradient with `Show all (n)`; `Show all` reveals them while you stay on Home; an open row is never clipped by the fade. Phones the same
 - **FR:home2.expand** (P1): One click on a row (anywhere but a control) expands it in place: the body (`FR:home2.body`), notes, subtasks as a checklist, and the actions Start / Done / Defer. A second click, `Esc`, or expanding another row collapses it. `Enter` or the expand icon (⤢) opens the full-screen detail; double-click does nothing special
 - **FR:home2.body** (P1): A task's text is a **title** (the first line) and a **body** (its note lines under the row, rendered as paragraphs); every view shows the title and the expanded row or detail shows the body
 - **FR:home2.defer** (P1): The action is called **Defer** everywhere (buttons, palette, toasts, help): `Defer 2h` (`n`, one tap) and `Defer…` (`z`, the menu); `Not now`, `Snooze`, `Park` are gone from the UI
 - **FR:home2.done** (P1): Done shows a green check that draws itself (160 ms) and the row fades out; with `prefers-reduced-motion` the state changes without animation
-- **FR:home2.cursor** (P1): `j`/`k`/arrows move one cursor through NOW, the waiting task, Up next, Only have 5 min, and Projects (the project rows are rows: `Space` expands the top task in place, `Enter` opens it, `s` starts it); the view scrolls to keep the cursor visible
+- **FR:home2.cursor** (P1): `j`/`k`/arrows move one cursor through NOW, the waiting task, and Top asks (the project rows are rows: `Space` expands the top task in place, `Enter` opens it, `s` starts it); the view scrolls to keep the cursor visible
 - **FR:home2.close** (P1): The full-screen detail closes with an × at the top right and `Esc`; there is no Back button
 - **FR:home2.demo** (P1): The brand is the mark (the three-bar icon) plus the word `Stack`; in demo mode it reads `Stack [DEMO]` in the rail and in the phone header; live mode reads `Stack`. There is no banner, no pill and no path on screen (the path stays in the brand's tooltip)
 
@@ -87,7 +84,7 @@ Owner needs Home to show one decision at a time, with nothing on it that does no
 - **FR:home3.menu** (P1): The `…` menu MUST hold Defer 2h, Defer…, Delegate, and Open, and close on `Esc` or a click outside
   - **FR:home3.menu.keys** (P1): The `…` menu MUST move focus into itself on open, move between items with the arrow keys, `Home`, and `End`, close on `Tab`, and return focus to its button on `Esc` or a choice
   - **FR:home3.menu.agent** (P1): For a task an agent owns the menu MUST NOT offer Delegate
-- **FR:home3.rows** (P1): Up next, Only have 5 min, and Projects rows MUST show the title and the project name only
+- **FR:home3.rows** (P1): Top asks rows MUST show the project name, the title, the expected time, and the countdown only
 - **FR:home3.keys** (P1): Key hints (`kbd`) in the content area MUST be hidden until the first key press in the session, and every control MUST carry its key in its tooltip
 - **FR:home3.dedupe** (P1): Home MUST NOT show a task that is in Needs you (an open need's `ref`, or an open 🙋 row; ask-queue `FR:needs.dedupe`)
 
