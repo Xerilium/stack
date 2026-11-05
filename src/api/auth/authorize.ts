@@ -2,9 +2,10 @@
  * The api `authorize` hook (owner session or scoped token) and the token admin endpoints.
  * @req FR:auth-security/authorize.@function
  */
-import { ApiError, errorResponse, json, toApiError } from '../errors';
+import { ApiError, errorResponse, invalid, json, toApiError } from '../errors';
 import type { Authorize, AuthDecision, RouteInfo } from '../handler';
 import { readBody, readQuery, validate } from '../validate';
+import { DeviceError, parsePushSubscription, type DeviceService } from './devices';
 import { isOwner, parseClientPrincipal, type Owner } from './session';
 import { StoreConflict, TokenInputError, type TokenService, type Verified } from './tokens';
 
@@ -32,6 +33,10 @@ export interface AuthOptions {
   /** Receives only `{ kind, route, status, tokenId? }`. */
   onEvent?: (e: AuthEvent) => void;
   basePath?: string;
+  /** Enables the device endpoints (`FR:iphone-access`). */
+  devices?: DeviceService;
+  /** VAPID public key served to devices; never the private key. */
+  vapidPublicKey?: string;
 }
 
 const DENY401: AuthDecision = { allow: false, status: 401 };
@@ -145,7 +150,76 @@ export function createAuth(opts: AuthOptions): { authorize: Authorize; wrap: (ap
     }
   }
 
-  /** Everything outside `/auth/tokens` goes to the api handler unchanged. @req FR:auth-security/admin.rest */
+  // ---------------------------------------------------------------- devices
+
+  const NO_STORE = { 'cache-control': 'no-store' };
+  const statusOf = (d: AuthDecision) => (d as { status: number }).status;
+  const denyResponse = (status: number) => errorResponse(new ApiError(status === 401 ? 'unauthorized' : 'forbidden', status === 401 ? 'Authentication required' : 'Forbidden'));
+  const VAPID = /^[A-Za-z0-9_-]{1,200}$/;
+
+  /** Owner-session device endpoints. @req FR:iphone-access/device.session */
+  async function deviceAdmin(req: Request, segs: string[], devices: DeviceService): Promise<Response> {
+    const method = req.method.toUpperCase();
+    const route: RouteInfo = { name: `auth.devices.${segs.length === 2 ? (method === 'GET' ? 'list' : 'create') : 'revoke'}`, method, write: method !== 'GET' && method !== 'HEAD' };
+    const d = presentedToken(req) !== null ? deny(DENY403, route.name) : session(req, route);
+    if (!(d as { allow: boolean }).allow) return denyResponse((d as { status: number }).status);
+    try {
+      const allowed = segs.length === 2 ? ['GET', 'POST'] : ['POST'];
+      if (segs.length !== 2 && !(segs.length === 4 && segs[3] === 'revoke')) throw new ApiError('not_found', 'Not found');
+      if (!allowed.includes(method)) throw new ApiError('method_not_allowed', 'Method not allowed', undefined, { allow: allowed.join(', ') });
+      readQuery(new URL(req.url), []);
+      if (method === 'GET') return json(200, { items: await devices.list() });
+      const body = await readBody(req);
+      if (segs.length === 4) {
+        validate(body, {});
+        const result = await devices.revoke(segs[2]);
+        if (result === 'not_found') throw new ApiError('not_found', 'Device not found');
+        return json(200, { id: segs[2], result });
+      }
+      const b = validate<{ name: string }>(body, { name: { t: 'str', required: true, max: 80, line: true } }, ['name']);
+      return json(201, await devices.create(b.name));
+    } catch (e) {
+      if (e instanceof DeviceError) return errorResponse(e.kind === 'limit' ? new ApiError('conflict', 'Too many active devices') : invalid([{ field: 'name', message: 'Invalid device name' }]));
+      if (e instanceof StoreConflict) return errorResponse(new ApiError('conflict', 'Conflict'));
+      return errorResponse(toApiError(e));
+    }
+  }
+
+  /** Device-token endpoints under `/auth/devices/me`. @req FR:iphone-access/sub.auth @req FR:iphone-access/sub.put @req FR:iphone-access/sub.delete @req FR:iphone-access/sub.key */
+  async function deviceSelf(req: Request, segs: string[], devices: DeviceService): Promise<Response> {
+    const method = req.method.toUpperCase();
+    const name = `auth.devices.me.${segs[3]}`;
+    try {
+      const token = presentedToken(req);
+      if (token === null) return denyResponse(statusOf(deny(parseClientPrincipal(req.headers.get('x-ms-client-principal')) ? DENY403 : DENY401, name)));
+      const v = await opts.tokens.verify(token);
+      if (!v) return denyResponse(statusOf(deny(DENY401, name)));
+      const dev = await devices.byTokenId(v.id);
+      if (!dev) return denyResponse(statusOf(deny(DENY403, name, v.id)));
+      const allowed = segs[3] === 'push' ? ['PUT', 'DELETE'] : segs[3] === 'push-key' ? ['GET'] : null;
+      if (!allowed || segs.length !== 4) throw new ApiError('not_found', 'Not found');
+      if (!allowed.includes(method)) throw new ApiError('method_not_allowed', 'Method not allowed', undefined, { allow: allowed.join(', ') });
+      readQuery(new URL(req.url), []);
+      emit('allow', name, 200, v.id);
+      if (method === 'GET') {
+        if (!opts.vapidPublicKey || !VAPID.test(opts.vapidPublicKey)) throw new ApiError('not_found', 'Push is not configured');
+        return json(200, { key: opts.vapidPublicKey });
+      }
+      if (method === 'DELETE') {
+        await devices.setPush(dev.id, null);
+        return new Response(null, { status: 204, headers: NO_STORE });
+      }
+      const sub = parsePushSubscription(await readBody(req));
+      if (!sub) throw invalid([{ field: 'endpoint', message: 'Must be a push service https endpoint with p256dh and auth keys' }]);
+      await devices.setPush(dev.id, sub);
+      return json(200, { id: dev.id, push: true });
+    } catch (e) {
+      if (e instanceof StoreConflict) return errorResponse(new ApiError('conflict', 'Conflict'));
+      return errorResponse(toApiError(e));
+    }
+  }
+
+  /** Everything outside `/auth/tokens` and `/auth/devices` goes to the api handler unchanged. @req FR:auth-security/admin.rest */
   const wrap = (api: (req: Request) => Promise<Response>) => async (req: Request): Promise<Response> => {
     let segs: string[] = [];
     try {
@@ -153,6 +227,7 @@ export function createAuth(opts: AuthOptions): { authorize: Authorize; wrap: (ap
       if (path.startsWith(`${base}/`)) segs = path.slice(base.length).split('/').filter(Boolean).map(decodeURIComponent);
     } catch { return api(req); }
     if (segs[0] === 'auth' && segs[1] === 'tokens') return admin(req, segs);
+    if (segs[0] === 'auth' && segs[1] === 'devices' && opts.devices) return segs[2] === 'me' ? deviceSelf(req, segs, opts.devices) : deviceAdmin(req, segs, opts.devices);
     return api(req);
   };
 

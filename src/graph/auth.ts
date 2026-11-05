@@ -157,12 +157,15 @@ export class FileTokenCache {
     let st;
     try { st = await fs.stat(this.path); } catch { return null; }
     if ((st.mode & 0o077) !== 0) throw new Error(`Graph token file has loose permissions; run: chmod 600 ${this.path}`);
-    const v = JSON.parse(await fs.readFile(this.path, 'utf8')) as Partial<CachedToken>;
+    let v: Partial<CachedToken>;
+    // A parse error can quote the file; say nothing about its content.
+    try { v = JSON.parse(await fs.readFile(this.path, 'utf8')) as Partial<CachedToken>; } catch { throw new Error('Graph token file is not valid'); }
     if (v.version !== 1 || typeof v.refreshToken !== 'string' || typeof v.tenant !== 'string' || typeof v.clientId !== 'string' || !Array.isArray(v.scopes)) throw new Error('Graph token file is not valid');
     return v as CachedToken;
   }
   async write(t: CachedToken): Promise<void> {
     await fs.mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+    await fs.chmod(dirname(this.path), 0o700).catch(() => undefined); // not ours (shared folder): leave it
     const tmp = `${this.path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
     try {
       await fs.writeFile(tmp, JSON.stringify(t), { mode: 0o600, flag: 'wx' });

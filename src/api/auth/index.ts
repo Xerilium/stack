@@ -4,3 +4,4 @@ export {
   type Scope, type TokenService, type TokenStore, type TokenView, type Verified, type TokenRequest,
 } from './tokens';
 export { createAuth, routeScope, presentedToken, scopeCovers, type AuthEvent, type AuthOptions } from './authorize';
+export { createDeviceService, parsePushSubscription, DeviceError, DEVICE_SCOPES, MAX_DEVICES, type DeviceService, type DeviceView, type PushSubscriptionRecord } from './devices';

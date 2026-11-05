@@ -1,6 +1,7 @@
 /** Runs one inbox action. Nothing here sends: the only mail write is a reply draft. @req FR:inbox-page/action.reply @req FR:inbox-page/action.done @req FR:inbox-page/action.missing */
 import { answerAsk, handleAsk } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
+import { taskTitle } from '../core/inbox';
 import { NotFoundError } from '../core/storage';
 import type { MailProvider } from '../email/types';
 import { actionInfo } from './actions';
@@ -11,6 +12,8 @@ export type ActionResult = { ok: true; link?: string } | { ok: false; missing: t
 
 /** Next morning (UTC date) after the context clock. */
 const tomorrow = (ctx: LifecycleContext) => new Date((ctx.now?.() ?? new Date()).getTime() + 864e5).toISOString().slice(0, 10);
+/** Task text from untrusted mail or chat: no autonomy marker, agent mark, status or date syntax, so a sender cannot hand itself to an agent. */
+export const plainTask = (s: string): string => taskTitle(s).replace(/[⏸👀⏳💤🅿⛔📅⏰🔄]/gu, '').replace(/\s+/g, ' ').trim();
 const quiet = async (p: Promise<unknown>) => { try { await p; } catch (e) { if (!(e instanceof NotFoundError)) throw e; } };
 
 export async function runAction(item: InboxItem, req: { action: ActionId; text?: string; until?: string }, d: Deps): Promise<ActionResult> {
@@ -37,7 +40,7 @@ export async function runAction(item: InboxItem, req: { action: ActionId; text?:
       return { ok: true };
     case 'create-task':
       if (!d.addTask) throw new Error('No task writer');
-      await d.addTask(`${item.source === 'email' ? 'Reply to' : 'Follow up with'} ${item.from}: ${item.subject}`.replace(/\s+/g, ' ').trim());
+      await d.addTask(plainTask(`${item.source === 'email' ? 'Reply to' : 'Follow up with'} ${item.from}: ${item.subject}`));
       return { ok: true };
     default:
       return { ok: false, missing: true };

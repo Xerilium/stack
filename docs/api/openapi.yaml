@@ -1178,7 +1178,7 @@ paths:
           $ref: "#/components/responses/Error"
   /inbox-items:
     get:
-      summary: All mail, unread Teams and unread Slack items, each with a summary and a suggested action, plus the action catalog
+      summary: "All mail, unread Teams and unread Slack items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens"
       operationId: listInboxItems
       responses:
         "200":

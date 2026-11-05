@@ -3,3 +3,4 @@ export { toAzureHandler, registerAzure, type AzureAppLike, type AzureRequestLike
 export { ApiError, type ErrorCode } from './errors';
 export * from './auth';
 export { createGitHubPrs, githubRepos, GitHubReposError, type GitHubPrsOptions } from './github';
+export * from './push';

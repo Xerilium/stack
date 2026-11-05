@@ -4,7 +4,7 @@
  * @req FR:azure-host/git.lazy @req FR:azure-host/auth.api @req FR:azure-host/auth.mcp @req FR:azure-host/auth.bots @req FR:azure-host/auth.logs @req FR:azure-host/routes.paths
  */
 import { apiClient, createBotHandler } from '../bots';
-import { createApiHandler, createAuth, createGitHubPrs, createTokenService, githubRepos, GitHubReposError, FileTokenStore, type Authorize, type TokenStore } from '../api';
+import { createApiHandler, createAuth, createDeviceService, createGitHubPrs, createTokenService, githubRepos, GitHubReposError, FileTokenStore, type Authorize, type TokenStore } from '../api';
 import { createMcpHandler } from '../mcp';
 import { createIcsCalendar, IcsError, icsUrls } from '../calendar/ics';
 import type { CalendarProvider } from '../calendar';
@@ -12,7 +12,7 @@ import { writeAll, type FileWrite, type Storage } from '../core/storage';
 import { openGitStorage, type GitDeps } from './git-repo';
 import { GitHubStorage, parseGitHubRepo } from './github-storage';
 import { ghIssueFiler, type IssueFiler } from '../inbox';
-import { GitTokenStore, needAux, type HostStorage } from './token-store';
+import { DEVICE_PATH, GitTokenStore, needAux, type HostStorage } from './token-store';
 import { parseSettings, SettingsError, type Env, type HostSettings } from './settings';
 
 export interface HostDeps {
@@ -113,7 +113,9 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
   const tokens = createTokenService({ store: deps.tokenStore ?? (settings.tokenStore ? new FileTokenStore(settings.tokenStore) : new GitTokenStore(async () => storage, { onError: onName })), pepper: settings.pepper });
   const event = (e: object) => log(JSON.stringify(e));
   const onError = (e: unknown) => log(`error: ${className(e)}`);
-  const auth = createAuth({ owners: settings.owners, tokens, onEvent: event });
+  // @req FR:iphone-access/device.@http: device records live beside the tokens in the data repo.
+  const devices = createDeviceService({ store: new GitTokenStore(async () => storage, { path: DEVICE_PATH, onError: onName }), tokens });
+  const auth = createAuth({ owners: settings.owners, tokens, onEvent: event, devices, vapidPublicKey: env.STACK_VAPID_PUBLIC_KEY?.trim() || undefined });
   // @req FR:github-pr-status/wire.token @req FR:github-pr-status/repos.invalid: a bad repo list logs a value-free reason and leaves PR status off.
   const ghToken = env.GITHUB_TOKEN?.trim();
   let prs: ReturnType<typeof createGitHubPrs> | undefined;

@@ -1,6 +1,7 @@
 /** "Request this action": a GitHub issue, else a Stack task. Carries source and class only, never message text. @req FR:inbox-page/action.request */
 import { execFile } from 'child_process';
 import { actionInfo } from './actions';
+import { plainTask } from './run';
 import type { ActionId, InboxItem, IssueFiler } from './types';
 
 export const REPO = 'Xerilium/stack';
@@ -16,7 +17,7 @@ export async function requestAction(item: InboxItem, action: ActionId, d: { file
     const r = await d.filer.file({ repo: REPO, title, body, labels: ['help wanted'] });
     return { via: 'issue', url: r.url };
   } catch {
-    await d.addTask(`${title} (${item.source}, ${item.kind ?? 'unknown'})`);
+    await d.addTask(plainTask(`${title} (${item.source}, ${item.kind ?? 'unknown'})`));
     return { via: 'task' };
   }
 }

@@ -18,8 +18,14 @@ export type ClaudeJson = <T>(call: JsonCall) => Promise<JsonResult<T>>;
 /** Spawns a command in `cwd` with stdin and returns stdout; the seam tests replace. */
 export type Runner = (cmd: string, args: string[], stdin: string, o: { timeoutMs: number; cwd: string }) => Promise<{ code: number; stdout: string; stderr: string }>;
 
+const ENV_KEEP = /^(PATH|HOME|USER|LOGNAME|SHELL|TMPDIR|LANG|LC_[A-Z_]+|TERM|TZ|XDG_[A-Z_]+|ANTHROPIC_[A-Z_]+|CLAUDE_[A-Z_]+|HTTPS?_PROXY|NO_PROXY|ALL_PROXY|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|SSL_CERT_DIR|CURL_CA_BUNDLE|REQUESTS_CA_BUNDLE)$/i;
+/** The environment `claude -p` gets: what it needs to run and sign in, none of Stack's other secrets (GitHub, Graph, Slack, Azure). */
+export function childEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => ENV_KEEP.test(k)));
+}
+
 export const spawnRunner: Runner = (cmd, args, stdin, o) => new Promise((resolve, reject) => {
-  const p = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env: process.env, cwd: o.cwd });
+  const p = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env: childEnv(), cwd: o.cwd });
   let stdout = '';
   let stderr = '';
   const t = setTimeout(() => { p.kill('SIGKILL'); reject(new Error(`claude timed out after ${o.timeoutMs / 1000}s`)); }, o.timeoutMs);

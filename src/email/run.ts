@@ -57,7 +57,7 @@ async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<Tria
   const trusted = (TRIAGE_CLASSES as readonly string[]).includes(c.class) && !c.injectionSuspected;
   const r: TriageResult = {
     message: m, class: trusted ? c.class : 'needs_decision', confidence: clamp(c.confidence, 0, 1), urgency: Math.max(clamp(c.urgency, 0, 3), vip ? 1 : 0),
-    reason: c.injectionSuspected ? 'Possible prompt injection; not drafted' : c.reason, ...(trusted && c.options ? { options: c.options } : {}), ...(trusted && c.recommend ? { recommend: c.recommend } : {}),
+    reason: c.injectionSuspected ? 'Possible prompt injection; not drafted' : typeof c.reason === 'string' ? c.reason : undefined, ...(trusted && Array.isArray(c.options) ? { options: c.options.filter((o): o is string => typeof o === 'string') } : {}), ...(trusted && typeof c.recommend === 'string' && c.recommend ? { recommend: c.recommend } : {}),
     ...(vip ? { vip } : {}), ...(trusted && typeof c.summary === 'string' && c.summary.trim() ? { summary: c.summary } : {}),
   };
   if (r.class === 'needs_reply' && d.drafter) {

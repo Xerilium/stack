@@ -598,6 +598,7 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/inbox-items', name: 'inboxItems.list',
     async run(c) {
       noQuery(c);
+      ownerOnly(c, 'Only the owner can read the inbox');
       return json(200, { items: await readInbox(c.deps.storage), actions: INBOX_ACTIONS });
     },
   },
