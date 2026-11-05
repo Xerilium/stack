@@ -230,3 +230,13 @@
 **Rejected**: ACP-first (an extra subprocess and adapter for no new capability today); a WebSocket for the run stream (SSE is one-way and already in `stack web`); letting the dashboard append to a session that Claude Desktop is still writing.
 
 **Risks noted**: the SDK's bundled CLI uses the machine's Claude login (`apiKeySource` in the init message says which); session resume from a different cwd is supported from CLI 2.1.223 (the SDK bundles 2.1.312); the store format is Claude Code's and may change, so every read is tolerant and tested against a fixture.
+
+## Add an ACP stdio driver beside the SDK driver
+
+**Decision**: `createAcpDriver` (`src/agents/acp.ts`) drives any ACP agent (Gemini CLI, Codex, Copilot) over stdio. Claude stays on the Agent SDK driver. `stack agent run <command> --prompt` is the first caller; the API's `ApiDeps.agents` wiring is next.
+
+**Date**: 2026-11-05
+
+**Why**: `.xe/features/stack-app/research-architecture.md` (Smallest first slice). ACP's only defined transport is stdio, so the Stack host must be the client that spawns the agent. The official SDK is `@agentclientprotocol/sdk` `2.4.0` (Apache-2.0), stable v1 entrypoint; v2 is a draft and stays off. The driver advertises no fs or terminal capability, so every risky tool call returns as `session/request_permission` and goes to the ask queue through the existing permission broker. A failure to answer never allows.
+
+**Trade-offs**: The SDK is ESM-only and the repo is CommonJS: it loads through a native `import()` (the same trick as the Agent SDK driver), and Jest compiles the SDK's JavaScript to CommonJS in `jest.config.js` (tests only). The child gets an allow-list environment, so an agent's own login must live under `HOME` or in `env` passed to the driver. Session resume across processes (`session/load`) and cost (ACP v1 reports none) are not in this slice.

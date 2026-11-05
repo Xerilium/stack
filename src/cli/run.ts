@@ -25,6 +25,7 @@ import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { emailCmd } from './email';
+import { agentCmd } from './agent';
 import { graphCmd } from './graph';
 import { findStackDir, userConfig } from './discover';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
@@ -57,6 +58,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
   inbox: { flags: ['from', 'text', 'expect'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t]', help: 'reply on a task as an agent (tasks/inbox, from: agent); the owner reads it in the task thread' },
+  agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini --experimental-acp); permission requests become asks; never auto-allows' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
   update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (--engine stack: scores and order like `stack next`, with .stack/priorities.json)' },
 };
@@ -308,9 +310,8 @@ async function agentsCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>)
   }
 }
 
-async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: string): Promise<Outcome> {
-  const f = p.flags;
-  if (cmd === 'init') return init(dir);
+/** The storage, config, and clock every command that touches the repo runs on. */
+function buildCtx(f: Record<string, string | true>, dir: string): LifecycleContext {
   let storage: Storage;
   if (f['no-commit']) {
     storage = new FsStorage(dir);
@@ -322,7 +323,16 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
   const nowFlag = flag(f, 'now');
   const at = nowFlag ? new Date(nowFlag) : undefined;
   if (at && Number.isNaN(at.getTime())) throw new UsageError(`--now must be an ISO date: ${nowFlag}`);
-  const ctx: LifecycleContext = { storage, config: loadConfig(dir), now: () => at ?? new Date() };
+  return { storage, config: loadConfig(dir), now: () => at ?? new Date() };
+}
+
+async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: string): Promise<Outcome> {
+  const f = p.flags;
+  if (cmd === 'init') return init(dir);
+  const ctx = buildCtx(f, dir);
+  const { storage } = ctx;
+  const nowFlag = flag(f, 'now');
+  const at = nowFlag ? new Date(nowFlag) : undefined;
   const ref = () => (p.positionals[0] ? { ...parseRef(p.positionals[0]), text: flag(f, 'expect') } : undefined);
   const extra = (n: number) => { if (p.positionals.length > n) throw new UsageError(`Unexpected argument: ${p.positionals[n]}`); };
 
@@ -503,6 +513,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     const dir = resolve(explicit ?? found ?? process.cwd());
     if (p.command === 'web') return await web(p.flags, io, explicit ?? found, home);
     if (p.command === 'graph') return await graphCmd(p.positionals[0], p.flags, io, json);
+    if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
     const r = await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);

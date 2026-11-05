@@ -60,6 +60,7 @@
     "stack-mcp": "dist/mcp/stdio.js"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "2.4.0",
     "@anthropic-ai/claude-agent-sdk": "0.3.312",
     "@modelcontextprotocol/sdk": "1.32.1",
     "ical.js": "2.2.1",
