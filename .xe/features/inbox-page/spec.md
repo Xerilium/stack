@@ -44,6 +44,22 @@ Triage must be part of normal Stack work. One page lists all mail, unread Teams 
 - **FR:conn.slack** (P1): Slack unread = conversation with a `last_read` and a newer message from another user (`conversations.history` with `oldest=last_read`). Needs a user token with `im:read`, `mpim:read`, `channels:read`, `groups:read` and the matching `*:history`.
 - **FR:conn.guard** (P1): The Teams request allowlist permits only `GET /me/chats`. The Slack allowlist permits only `users.conversations`, `conversations.info`, `conversations.history`. Anything else throws.
 
+### FR:run: Runner
+
+- **FR:run.email** (P1): After each email pass, the runner turns the pass results into items (`fromTriage`) and merges them into `.stack/inbox-items.json`. Items replace by id. Items from other mailboxes stay, so every inbox shares one file. A dry run writes nothing.
+- **FR:run.chat** (P1): `runInbox` reads each `ChatConnector`. It replaces all stored items of that source with the unread result, and writes one `go-do` ask per item (`FR:item.ask`). If one connector fails, its stored items stay and the others still run. The result lists failed sources by name only.
+- **FR:run.store** (P1): The file keeps the newest 500 items in display order. A write conflict is retried up to 3 times.
+
+### FR:live: Live transports
+
+- **FR:live.teams** (P1): `teamsConnector` calls `GET /v1.0/me/chats?$expand=lastMessagePreview` with a bearer token from an injected function. It follows `@odata.nextLink` up to 5 pages. Every URL passes the guard first. Errors name the HTTP status only.
+- **FR:live.slack** (P1): `slackConnector` calls `users.conversations`, then `conversations.info` (for `last_read`) and `conversations.history` (`oldest=last_read`) per conversation, up to 100 conversations. Every method passes the guard first. Errors name the Slack error code only. Never a token in an error.
+- **FR:live.http** (P1): Both take an injected HTTP function. Tests use fixtures; no network. The default uses `fetch` and does not follow redirects.
+
+### FR:wire: Host wiring
+
+- **FR:wire.issue** (P1): The host passes an `IssueFiler` to the API. The default is `ghIssueFiler()` (the `gh` CLI). `HostDeps.issues` replaces it. "Request this action" then files a `help wanted` issue in `Xerilium/stack`, or adds a task if filing fails.
+
 ### FR:web: Page
 
 - **FR:web.view** (P1): `#/inbox` lists items. Each row: source, sender, subject, summary, one primary button for the suggested action, a menu of other actions. Missing actions show "Request this action".

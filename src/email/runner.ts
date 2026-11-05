@@ -14,7 +14,7 @@ import { createClassifier, createDrafter, createJudge, newUsage } from './models
 import { DEFAULT_RULES, type RulesConfig } from './rules';
 import { runTriage } from './run';
 import { resolveAsk, type RunSummary } from './to-ask';
-import type { Classifier, MailProvider, Message } from './types';
+import type { Classifier, MailProvider, Message, TriageResult } from './types';
 import { loadVoice, voicePath } from './voice';
 
 export const LOCK_STALE_MS = 30 * 60_000;
@@ -135,6 +135,8 @@ export interface PassOptions {
   dataDir?: string;
   /** Keeps state in memory and writes nothing to the mailbox. */
   dryRun?: boolean;
+  /** Gets the triaged results after a successful pass (the Inbox page writer). Never called on a dry run. @req FR:inbox-page/run.email */
+  onResults?: (results: TriageResult[]) => Promise<void>;
 }
 
 /**
@@ -166,13 +168,14 @@ export async function runPass(o: PassOptions): Promise<PassSummary> {
   const inbox = createGraphMail({ transport: o.transport, ...(st.cursor ? {} : { since: lookback }) });
   const marked: MailProvider = { ...inbox, async delta(c) { const r = await inbox.delta(c); return { ...r, messages: r.messages.map((m) => (answered.has(m.conversationId) && answered.get(m.conversationId)! >= m.receivedAt ? { ...m, threadLastFrom: o.account } : m)) }; } };
   const provider = withDetails(marked, (id) => messageDetails({ transport: o.transport }, id), o.max ?? DEFAULT_MAX);
-  const { cursor, summary } = await runTriage({
+  const { cursor, summary, results } = await runTriage({
     ctx: o.ctx, provider, rules: o.rules ?? rulesFor(o.account, o.dataDir), project: o.project, cursor: st.cursor, voice,
     classifier: tolerant(createClassifier(llm, usage), () => { modelErrors++; }),
     ...(live ? { drafter: createDrafter(llm, voice, usage) } : {}),
     hygiene: { state, judge: createJudge(llm, usage), ...(live ? { actions: createGraphActions({ transport: o.transport, approvedMoves: moves }), ...(o.http ? { http: o.http } : {}) } : {}) },
   });
   const lastSummary: PassSummary = { ...summary, resolved: summary.resolved + resolved, modelCalls: usage.calls, costUsd: Math.round(usage.costUsd * 10000) / 10000, modelErrors };
+  if (!o.dryRun) await o.onResults?.(results);
   if (!o.dryRun) writeState(sPath, { version: 1, cursor, sentCursor: sent.cursor, hygiene, lastRun: now.toISOString(), lastSummary });
   return lastSummary;
 }

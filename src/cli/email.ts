@@ -6,6 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import type { LifecycleContext } from '../core/lifecycle';
 import { MemoryStorage } from '../core/storage';
+import { syncInbox } from '../inbox/runner';
 import { sentItems } from '../email/graph-mail';
 import type { Transport } from '../email/guard';
 import { createSafeHttp } from '../email/http';
@@ -81,7 +82,7 @@ export async function emailCmd(ctx: LifecycleContext, action: string | undefined
       if (max !== undefined && (!Number.isInteger(max) || max < 1)) throw new UsageError('--max must be a positive integer');
       const dry = f['dry-run'] === true;
       const passCtx: LifecycleContext = dry ? { ...ctx, storage: new MemoryStorage() } : ctx;
-      const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), project: flag(f, 'project') });
+      const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), onResults: async (r) => { await syncInbox(ctx, { account, results: r }); }, project: flag(f, 'project') });
       return { json: { ok: true, account, mode, dryRun: dry, ...s }, text: `${mode}${dry ? ' (dry run)' : ''}: ${s!.messages} messages, ${s!.rules} by rules, ${s!.model} by model, ${s!.asks} asks, ${s!.drafts} drafts, archive ${s!.archivePending}, spam ${s!.spamPending}, ${s!.modelCalls} model calls` };
     } catch (e) {
       if (e instanceof MaxExceeded) return { json: { ok: false, found: e.found, max: e.max }, text: e.message, code: 4 };
