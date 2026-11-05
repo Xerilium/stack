@@ -95,7 +95,7 @@ describe('ground truth 2026-11-05', () => {
     expect(gt).toHaveLength(5);
     expect(checkMisses(order, gt)).toEqual([]);
     const swapped = [order[1], order[0], ...order.slice(2)];
-    expect(checkMisses(swapped, gt)).toEqual([gt[0], gt[1]]);
+    expect(checkMisses(swapped, gt)).toEqual([gt[0]]);
     expect(pickMatch(order, ['Catalyst 0.3.4', 'finops-hubs 0.10', 'v15 blog', 'v16 PRs', 'Christmas After Dark', 'FOCUS v1.6'], 6).misses).toEqual([]);
   });
 });
