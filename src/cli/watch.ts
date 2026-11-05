@@ -2,7 +2,7 @@
  * Watches the served folder and turns bursts of file changes into one classified change.
  * @req FR:ask-queue/live.watch
  */
-import { watch, type FSWatcher } from 'fs';
+import { watch as fsWatch, type FSWatcher } from 'fs';
 
 export type ChangeKind = 'asks' | 'tasks' | 'state';
 export const ALL_KINDS: ChangeKind[] = ['asks', 'tasks', 'state'];
@@ -29,7 +29,16 @@ export function classify(rel: string): ChangeKind | null {
   return null;
 }
 
-export function watchRepo(dir: string, o: { debounceMs?: number } = {}): Watcher {
+export interface WatchOptions {
+  debounceMs?: number;
+  /** Hears every raw file event before filtering; tests use it to know the OS watcher is armed. */
+  onRaw?: (file: string) => void;
+  /** Test seam: replaces `fs.watch`, so unit tests drive events by hand instead of waiting for the OS. */
+  watchFn?: typeof fsWatch;
+}
+
+export function watchRepo(dir: string, o: WatchOptions = {}): Watcher {
+  const watch = o.watchFn ?? fsWatch;
   const wait = o.debounceMs ?? 150;
   let rev = 0;
   let pending = new Set<ChangeKind>();
@@ -47,6 +56,7 @@ export function watchRepo(dir: string, o: { debounceMs?: number } = {}): Watcher
   };
   try {
     w = watch(dir, { recursive: true }, (_ev, file) => {
+      if (file) o.onRaw?.(String(file));
       const k = file ? classify(String(file)) : null;
       if (!k) return;
       pending.add(k);

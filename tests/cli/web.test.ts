@@ -1,7 +1,7 @@
 /** `stack web`: demo copy, live checkout, and the local server. */
 import http from 'http';
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, symlinkSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, symlinkSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb } from '../../src/cli/web';
@@ -9,6 +9,10 @@ import { BatchedGitStorage } from '../../src/core/storage-batch';
 
 const ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 Object.assign(process.env, ENV);
+// Real git subprocesses: cost scales with machine load, so the budget matches storage-batch.test.ts.
+jest.setTimeout(30000);
+/** These tests do not look at file events; a do-nothing watcher keeps the OS (FSEvents) out of them. */
+const quiet = { watch: { watchFn: (() => ({ on() { return this; }, close() { /* nothing to release */ } })) as unknown as typeof import('fs').watch } };
 const tmp = () => mkdtempSync(join(tmpdir(), 'stack-web-'));
 
 function source(): string {
@@ -73,7 +77,7 @@ describe('startWeb', () => {
   it('serves the app, local auth stub, and the api over the repo', async () => {
     const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
     const web = tmp(); writeFileSync(join(web, 'index.html'), '<html>app</html>');
-    const s = await startWeb({ dir: dest, port: 0, webDir: web, label: 'demo copy' });
+    const s = await startWeb({ ...quiet, dir: dest, port: 0, webDir: web, label: 'demo copy' });
     try {
       expect(await (await fetch(s.url)).text()).toContain('app');
       const me = await (await fetch(`${s.url}/.auth/me`)).json() as { clientPrincipal: { userDetails: string } };
@@ -97,10 +101,13 @@ describe('startWeb', () => {
 
 describe('prepareLive', () => {
   const g = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
-  function content(): string {
-    const r = source(); g(r, 'init', '-q', '-b', 'main'); g(r, 'add', '-A');
-    g(r, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init'); return r;
-  }
+  // One committed repo is built once and copied per test: three git calls per test become none.
+  let template: string;
+  beforeAll(() => {
+    template = source(); g(template, 'init', '-q', '-b', 'main'); g(template, 'add', '-A');
+    g(template, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
+  });
+  function content(): string { const r = tmp(); cpSync(template, r, { recursive: true }); return r; }
   // @req FR:cli/web.live @req FR:cli/web.live.remote
   it('serves the real checkout on its current branch (main included) and finds the remote', () => {
     const repo = content();
@@ -134,7 +141,7 @@ describe('prepareLive', () => {
     const repo = content();
     const web = tmp(); writeFileSync(join(web, 'index.html'), 'x');
     const storage = new BatchedGitStorage(repo, { idleMs: 0 });
-    const s = await startWeb({ dir: repo, port: 0, webDir: web, info: { mode: 'live', repo, branch: 'main' }, storage });
+    const s = await startWeb({ ...quiet, dir: repo, port: 0, webDir: web, info: { mode: 'live', repo, branch: 'main' }, storage });
     try {
       const d = await fetch(`${s.url}/api/tasks/complete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'alpha:4' }) });
       expect(d.status).toBe(200);
@@ -150,7 +157,7 @@ describe('prepareLive', () => {
     const repo = content();
     const web = tmp(); writeFileSync(join(web, 'index.html'), 'x');
     const storage = new BatchedGitStorage(repo, { idleMs: 60_000 });
-    const s = await startWeb({ dir: repo, port: 0, webDir: web, info: { mode: 'live', repo, branch: 'main' }, storage });
+    const s = await startWeb({ ...quiet, dir: repo, port: 0, webDir: web, info: { mode: 'live', repo, branch: 'main' }, storage });
     try {
       await fetch(`${s.url}/api/tasks/complete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'alpha:4' }) });
       expect(readFileSync(join(repo, 'tasks/alpha.md'), 'utf8')).toContain('- [x] Write the plan');
@@ -166,7 +173,7 @@ describe('prepareLive', () => {
       // @req FR:live-deploy/web.unsaved.refresh — the event stream hears pending changes, so the page re-reads the count after an idle flush
       const es = await fetch(`${s.url}/events`);
       const reader = es.body!.getReader(); const dec = new TextDecoder(); let buf = '';
-      const waitFor = async (re: RegExp) => { const t0 = Date.now(); while (!re.test(buf)) { if (Date.now() - t0 > 5000) throw new Error(`no frame: ${buf}`); const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value); } };
+      const waitFor = async (re: RegExp) => { while (!re.test(buf)) { const { value, done } = await reader.read(); if (done) throw new Error(`stream ended without ${re}: ${buf}`); buf += dec.decode(value); } };
       await waitFor(/event: hello/);
       await fetch(`${s.url}/api/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project: 'alpha', text: 'Another' }) });
       expect(storage.pending().count).toBe(1);
@@ -186,11 +193,18 @@ describe('prepareLive', () => {
     const repo = content();
     const web = tmp(); writeFileSync(join(web, 'index.html'), 'x');
     const storage = new BatchedGitStorage(repo, { idleMs: 60_000 });
-    const s = await startWeb({ dir: repo, port: 0, webDir: web, info: { mode: 'live', repo, branch: 'main' }, storage });
+    const s = await startWeb({ ...quiet, dir: repo, port: 0, webDir: web, info: { mode: 'live', repo, branch: 'main' }, storage });
+    // Hold the handler at its write until shutdown has begun: no sleep decides whether the request "arrived" yet.
+    let entered!: () => void; const inHandler = new Promise<void>((ok) => { entered = ok; });
+    let open!: () => void; const gate = new Promise<void>((ok) => { open = ok; });
+    const held = storage as unknown as Record<'write' | 'writeMany', (...a: unknown[]) => Promise<unknown>>;
+    for (const m of ['write', 'writeMany'] as const) { const real = held[m].bind(storage); held[m] = async (...a) => { entered(); await gate; return real(...a); }; }
     const req = fetch(`${s.url}/api/tasks/complete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'alpha:4' }) });
-    await new Promise((ok) => setTimeout(ok, 20)); // the request is in the server, not yet written
-    await s.close();
+    await inHandler; // the request is in the server, not yet written
+    const closing = s.close();
+    open();
     expect((await req).status).toBe(200);
+    await closing;
     expect(g(repo, 'log', '--format=%s').split('\n')[0]).toBe('Stack: done 1');
     expect(g(repo, 'status', '--porcelain')).toBe('');
   });

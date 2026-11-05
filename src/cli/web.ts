@@ -16,7 +16,7 @@ import { graphTransport } from '../graph/transport';
 import { getDefaults, parseConfig } from '../core/config';
 import type { Storage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
-import { ALL_KINDS, watchRepo } from './watch';
+import { ALL_KINDS, watchRepo, type WatchOptions } from './watch';
 import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
@@ -53,7 +53,7 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
 /** What the UI header shows at all times. */
 export interface RepoInfo { mode: 'demo' | 'live'; repo: string; branch: string }
 export interface WebOpts {
-  dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number };
+  dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number; onRaw?: (file: string) => void; watchFn?: WatchOptions['watchFn'] };
   /** The task storage; default a direct-commit `GitStorage` on `dir`. A storage with `close()` (batched live mode) is closed, and so flushed, on shutdown. @req FR:cli/web.batch */
   storage?: Storage & { close?(): Promise<void> };
   /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
@@ -166,7 +166,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
-  const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs });
+  const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
   const beat = o.watch?.heartbeatMs ?? 20_000;
   const who = o.label ?? 'local';
   let port = o.port;
@@ -237,7 +237,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         }
         if (path === '/api' || path.startsWith('/api/')) {
           const work = toRequest(req, `http://localhost:${port}`).then(api);
-          inflight.add(work); void work.catch(() => undefined).finally(() => inflight.delete(work));
+          // In flight until the reply is on the wire (res 'close'), not just until the api settles: shutdown must not cut the answer off.
+          const replied = new Promise<void>((ok) => res.once('close', ok));
+          inflight.add(replied); void replied.finally(() => inflight.delete(replied));
           const r = await work;
           const h: Record<string, string> = {};
           r.headers.forEach((v, k) => { h[k] = v; });

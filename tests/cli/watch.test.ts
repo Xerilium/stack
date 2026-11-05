@@ -1,14 +1,16 @@
-/** @req FR:ask-queue/live.watch @req FR:ask-queue/live.sse */
+/**
+ * Unit tests drive a fake `fs.watch` by hand: nothing here waits on the OS (macOS FSEvents can take seconds to start).
+ * The real OS watcher is covered end to end in web/e2e/live.spec.ts, which waits for it to be armed.
+ * @req FR:ask-queue/live.watch @req FR:ask-queue/live.sse
+ */
 import http from 'http';
-import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { classify, watchRepo, type Change } from '../../src/cli/watch';
 import { startWeb } from '../../src/cli/web';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'stack-watch-'));
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const until = async (cond: () => boolean, ms = 3000) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) throw new Error('timeout'); await sleep(20); } };
 
 describe('classify', () => {
   it('maps paths to kinds and ignores noise', () => {
@@ -20,40 +22,59 @@ describe('classify', () => {
   });
 });
 
+/** A stand-in for `fs.watch`: the test pushes file events by hand, so nothing waits on the OS. */
+function fakeFs() {
+  let cb: ((ev: string, file: string) => void) | null = null;
+  let closed = false;
+  const fn = ((_dir: string, _o: unknown, listener: (ev: string, file: string) => void) => {
+    cb = listener;
+    return { on() { return this; }, close() { closed = true; cb = null; } };
+  }) as unknown as typeof import('fs').watch;
+  return { fn, emit: (file: string) => cb?.('change', file), closed: () => closed };
+}
+/** Fake only the debounce timer; everything else stays real. */
+const fakeDebounce = () => jest.useFakeTimers({ doNotFake: ['Date', 'hrtime', 'nextTick', 'performance', 'queueMicrotask', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval'] });
+
 describe('watchRepo', () => {
-  it('coalesces a burst into one change with the kinds that moved', async () => {
-    const dir = tmp(); mkdirSync(join(dir, 'tasks/asks'), { recursive: true });
-    const w = watchRepo(dir, { debounceMs: 60 });
+  afterEach(() => { jest.useRealTimers(); });
+  it('coalesces a burst into one change with the kinds that moved', () => {
+    fakeDebounce();
+    const os = fakeFs(); const w = watchRepo('/x', { debounceMs: 60, watchFn: os.fn });
     const seen: Change[] = [];
     w.on((c) => seen.push(c));
-    await sleep(150);
-    writeFileSync(join(dir, 'tasks/asks/a.md'), '1'); writeFileSync(join(dir, 'tasks/asks/b.md'), '2'); writeFileSync(join(dir, 'tasks/alpha.md'), '3');
-    await until(() => seen.length > 0);
-    await sleep(200);
-    w.close();
+    os.emit('tasks/asks/a.md'); os.emit('tasks/asks/b.md'); jest.advanceTimersByTime(59); os.emit('tasks/alpha.md'); // each event restarts the window
+    jest.advanceTimersByTime(59);
+    expect(seen).toHaveLength(0);
+    jest.advanceTimersByTime(1);
     expect(seen).toHaveLength(1);
     expect(seen[0].kinds.sort()).toEqual(['asks', 'tasks']);
     expect(seen[0].rev).toBe(1);
     expect(w.rev()).toBe(1);
+    jest.advanceTimersByTime(1000);
+    expect(seen).toHaveLength(1);
+    w.close();
   });
-  it('ignores dotfiles and .git, and stops after close', async () => {
-    const dir = tmp(); mkdirSync(join(dir, '.git'), { recursive: true }); mkdirSync(join(dir, 'tasks'), { recursive: true });
-    const w = watchRepo(dir, { debounceMs: 40 });
+  it('ignores dotfiles and .git, and stops after close', () => {
+    fakeDebounce();
+    const os = fakeFs(); const w = watchRepo('/x', { debounceMs: 40, watchFn: os.fn });
     const seen: Change[] = [];
     w.on((c) => seen.push(c));
-    await sleep(150);
-    writeFileSync(join(dir, '.git/HEAD'), 'x'); writeFileSync(join(dir, 'tasks/.tmp123.tmp'), 'x');
-    await sleep(250);
+    os.emit('.git/HEAD'); os.emit('tasks/.tmp123.tmp');
+    expect(jest.getTimerCount()).toBe(0); // ignored events do not even start the debounce
+    jest.advanceTimersByTime(1000);
     expect(seen).toHaveLength(0);
+    os.emit('tasks/late.md'); // pending when the watcher closes: it must never fire
     w.close();
-    appendFileSync(join(dir, 'tasks/late.md'), 'x');
-    await sleep(250);
+    expect(os.closed()).toBe(true);
+    expect(jest.getTimerCount()).toBe(0);
+    jest.advanceTimersByTime(1000);
     expect(seen).toHaveLength(0);
   });
 });
 
 function sse(url: string, headers: Record<string, string> = {}) {
   const events: { event: string; data: string; id?: string }[] = [];
+  const waiters: (() => boolean)[] = [];
   let buf = '';
   const req = http.get(url, { headers }, (res) => {
     res.setEncoding('utf8');
@@ -66,24 +87,30 @@ function sse(url: string, headers: Record<string, string> = {}) {
         for (const l of block.split('\n')) { if (l.startsWith('event: ')) ev.event = l.slice(7); else if (l.startsWith('data: ')) ev.data = l.slice(6); else if (l.startsWith('id: ')) ev.id = l.slice(4); }
         if (ev.data || ev.event !== 'message') events.push(ev);
       }
+      for (const w of [...waiters]) if (w()) waiters.splice(waiters.indexOf(w), 1);
     });
   });
   req.on('error', () => undefined);
-  return { events, close: () => req.destroy() };
+  /** Resolves when an event matches; a hang is caught by the jest test timeout, not a guess. */
+  const waitFor = (event: string) => new Promise<void>((ok) => {
+    const check = () => { if (events.some((e) => e.event === event)) { ok(); return true; } return false; };
+    if (!check()) waiters.push(check);
+  });
+  return { events, waitFor, close: () => req.destroy() };
 }
 
 describe('GET /events', () => {
   it('sends hello, then a change per file change, with a heartbeat', async () => {
     const dir = tmp(); mkdirSync(join(dir, 'tasks/asks'), { recursive: true });
     const web = join(dir, 'webdist'); mkdirSync(web); writeFileSync(join(web, 'index.html'), '<html></html>');
-    const s = await startWeb({ dir, port: 0, webDir: web, watch: { debounceMs: 40, heartbeatMs: 100 } });
+    const os = fakeFs();
+    const s = await startWeb({ dir, port: 0, webDir: web, watch: { debounceMs: 40, heartbeatMs: 100, watchFn: os.fn } });
     const c = sse(`${s.url}/events`);
     try {
-      await until(() => c.events.some((e) => e.event === 'hello'));
+      await c.waitFor('hello');
       expect(JSON.parse(c.events[0].data)).toEqual({ rev: 0 });
-      await sleep(100);
-      writeFileSync(join(dir, 'tasks/asks/a.md'), 'x');
-      await until(() => c.events.some((e) => e.event === 'change'));
+      os.emit('tasks/asks/a.md');
+      await c.waitFor('change');
       const ch = c.events.find((e) => e.event === 'change')!;
       expect(JSON.parse(ch.data)).toEqual({ rev: 1, kinds: ['asks'] });
       expect(ch.id).toBe('1');
@@ -92,15 +119,16 @@ describe('GET /events', () => {
   it('a client that reconnects with an old rev gets one catch-up change', async () => {
     const dir = tmp(); mkdirSync(join(dir, 'tasks/asks'), { recursive: true });
     const web = join(dir, 'webdist'); mkdirSync(web); writeFileSync(join(web, 'index.html'), '<html></html>');
-    const s = await startWeb({ dir, port: 0, webDir: web, watch: { debounceMs: 30 } });
+    const os = fakeFs();
+    const s = await startWeb({ dir, port: 0, webDir: web, watch: { debounceMs: 30, watchFn: os.fn } });
     const first = sse(`${s.url}/events`);
     try {
-      await sleep(150);
-      writeFileSync(join(dir, 'tasks/asks/a.md'), 'x');
-      await until(() => first.events.some((e) => e.event === 'change'));
+      await first.waitFor('hello');
+      os.emit('tasks/asks/a.md');
+      await first.waitFor('change');
       first.close();
       const again = sse(`${s.url}/events`, { 'last-event-id': '0' });
-      await until(() => again.events.some((e) => e.event === 'change'));
+      await again.waitFor('change');
       expect(JSON.parse(again.events.find((e) => e.event === 'change')!.data)).toEqual({ rev: 1, kinds: ['asks', 'tasks', 'state'] });
       again.close();
     } finally { await s.close(); }
