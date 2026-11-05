@@ -28,6 +28,8 @@ export interface Storage {
   listAsks?(): Promise<string[]>;
   /** Paths of agent files (`tasks/agents/<slug>.md`). @req FR:agent-team/agent.path */
   listAgents?(): Promise<string[]>;
+  /** Paths of Claude agent definitions (`.claude/agents/<slug>.md`), read-only. @req FR:agent-team/agent.path.claude */
+  listClaudeAgents?(): Promise<string[]>;
   read(path: string): Promise<StoredFile>;
   write(path: string, content: string, opts?: WriteOptions): Promise<WriteResult>;
   /** Write several files as one operation (one commit in git). @req FR:storage-git/write.many */
@@ -51,7 +53,7 @@ export async function writeAll(storage: Storage, writes: FileWrite[], message?: 
 export function assertDistinct(writes: FileWrite[]): void {
   const seen = new Set<string>();
   for (const w of writes) {
-    validatePath(w.path);
+    validateWritePath(w.path);
     if (seen.has(w.path)) throw new StorageError(`Duplicate path in multi-file write: ${w.path}`);
     seen.add(w.path);
   }
@@ -75,6 +77,9 @@ export const ASK_PATH = /^tasks\/asks\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9]
 const ARCHIVE_PATH = /^tasks\/asks\/archive\/[a-z0-9][a-z0-9._-]{0,79}\.md$/;
 /** Agent definitions (one per agent, scoped to project folders), never projects. @req FR:agent-team/agent.path */
 const AGENT_PATH = /^tasks\/agents\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,39}\.md$/;
+/** Claude's own agent definitions: read into the team, never written by Stack. @req FR:agent-team/agent.path.claude */
+export const CLAUDE_AGENT_PATH = /^\.claude\/agents\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,39}\.md$/;
+const CLAUDE_AGENTS_DIR = '.claude/agents';
 
 /** Non-task state files (for example the API token store); never listed as tasks. */
 export const AUX_PATH = /^\.stack\/[a-z][a-z-]*\.json$/;
@@ -92,9 +97,16 @@ export interface AuxFiles {
 
 /** @req FR:storage-git/interface.paths @req FR:ai-triage-assist/result.path */
 export function validatePath(path: string): string {
-  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || ASK_PATH.test(path) || ARCHIVE_PATH.test(path) || AGENT_PATH.test(path)) || path.split('/').includes('..')) {
+  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || ASK_PATH.test(path) || ARCHIVE_PATH.test(path) || AGENT_PATH.test(path) || CLAUDE_AGENT_PATH.test(path)) || path.split('/').includes('..')) {
     throw new PathError(`Invalid task path: ${JSON.stringify(path)}`);
   }
+  return path;
+}
+
+/** A path Stack may write: every readable path except Claude's agent definitions. @req FR:agent-team/agent.path.claude */
+export function validateWritePath(path: string): string {
+  validatePath(path);
+  if (CLAUDE_AGENT_PATH.test(path)) throw new PathError(`Read-only path: ${JSON.stringify(path)} (Claude owns .claude/agents)`);
   return path;
 }
 
@@ -109,6 +121,9 @@ export class MemoryStorage implements Storage {
   async list(): Promise<string[]> { return [...this.files.keys()].filter(p => TASK_PATH.test(p)).sort(); }
   async listAsks(): Promise<string[]> { return [...this.files.keys()].filter(p => ASK_PATH.test(p)).sort(); }
   async listAgents(): Promise<string[]> { return [...this.files.keys()].filter(p => AGENT_PATH.test(p)).sort(); }
+  async listClaudeAgents(): Promise<string[]> { return [...this.files.keys()].filter(p => CLAUDE_AGENT_PATH.test(p)).sort(); }
+  /** Puts a file in place without the write rules (fixtures and read-only paths such as Claude agent definitions). */
+  seed(path: string, content: string): void { this.files.set(path, content); }
 
   /** @req FR:storage-git/interface.read @req FR:storage-git/interface.bytes */
   async read(path: string): Promise<StoredFile> {
@@ -120,7 +135,7 @@ export class MemoryStorage implements Storage {
 
   /** @req FR:storage-git/write.result @req FR:storage-git/interface.bytes */
   async write(path: string, content: string, opts: WriteOptions = {}): Promise<WriteResult> {
-    validatePath(path);
+    validateWritePath(path);
     const run = async () => {
       const cur = this.files.get(path);
       checkExpected(path, cur === undefined ? null : versionOf(cur), opts);
@@ -153,7 +168,7 @@ export class MemoryStorage implements Storage {
 
   /** All versions checked first; `null` content deletes. @req FR:storage-git/write.many @req FR:storage-git/write.delete */
   async writeMany(writes: FileWrite[]): Promise<void> {
-    assertDistinct(writes);
+    assertDistinct(writes); // validates every path
     const run = async () => {
       for (const w of writes) {
         const cur = this.files.get(w.path);
@@ -221,11 +236,13 @@ export class FsStorage implements Storage {
 
   async listAsks(): Promise<string[]> { return this.listIn('asks', ASK_PATH); }
   async listAgents(): Promise<string[]> { return this.listIn('agents', AGENT_PATH); }
+  async listClaudeAgents(): Promise<string[]> { return this.listDir(CLAUDE_AGENTS_DIR, CLAUDE_AGENT_PATH); }
 
-  private async listIn(folder: string, re: RegExp): Promise<string[]> {
+  private listIn(folder: string, re: RegExp): Promise<string[]> { return this.listDir(`${TASKS_DIR}/${folder}`, re); }
+  private async listDir(dir: string, re: RegExp): Promise<string[]> {
     try {
-      const entries = await fs.readdir(await this.safe(`${TASKS_DIR}/${folder}`), { withFileTypes: true });
-      return entries.filter(e => e.isFile() && re.test(`${TASKS_DIR}/${folder}/${e.name}`)).map(e => `${TASKS_DIR}/${folder}/${e.name}`).sort();
+      const entries = await fs.readdir(await this.safe(dir), { withFileTypes: true });
+      return entries.filter(e => e.isFile() && re.test(`${dir}/${e.name}`)).map(e => `${dir}/${e.name}`).sort();
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT' || (e as NodeJS.ErrnoException).code === 'ENOTDIR') return [];
       throw e;
@@ -242,7 +259,7 @@ export class FsStorage implements Storage {
 
   /** @req FR:storage-git/write.input @req FR:storage-git/write.output */
   async write(path: string, content: string, opts: WriteOptions = {}): Promise<WriteResult> {
-    validatePath(path);
+    validateWritePath(path);
     const run = () => this.locked(path, content, opts);
     const p = this.queue.then(run, run);
     this.queue = p.catch(() => undefined);
@@ -264,7 +281,7 @@ export class FsStorage implements Storage {
   }
 
   async writeMany(writes: FileWrite[], opts: { message?: string } = {}): Promise<void> {
-    assertDistinct(writes);
+    assertDistinct(writes); // validates every path
     const run = () => this.lockedMany(writes, opts.message);
     const p = this.queue.then(run, run);
     this.queue = p.catch(() => undefined);

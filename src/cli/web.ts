@@ -38,6 +38,9 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
   mkdirSync(dest, { recursive: true });
   const cfg = join(repo, '.xe/config/stack.json');
   cpSync(source, join(dest, 'tasks'), { recursive: true, dereference: true, filter: (p) => !p.split(sep).includes('.git') });
+  // The team reads Claude's agent definitions too; the copy carries them so the demo shows the real team. @req FR:agent-team/agent.path.claude
+  const claudeAgents = join(repo, '.claude/agents');
+  if (existsSync(claudeAgents)) cpSync(claudeAgents, join(dest, '.claude/agents'), { recursive: true, dereference: true, filter: (p) => !p.split(sep).includes('.git') });
   mkdirSync(join(dest, '.xe/config'), { recursive: true });
   writeFileSync(join(dest, '.xe/config/stack.json'), existsSync(cfg) ? readFileSync(cfg) : '{}\n');
   writeFileSync(marker, resolve(repo));

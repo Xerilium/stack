@@ -27,6 +27,15 @@ describe('prepareDemo', () => {
     expect(existsSync(join(dest, '.git'))).toBe(true);
     expect(execFileSync('git', ['log', '--oneline'], { cwd: dest, encoding: 'utf8' })).toContain('demo');
   });
+  // @req FR:cli/web.demo @req FR:agent-team/agent.path.claude
+  it('carries .claude/agents so the demo shows the real team', () => {
+    const src = source(); const dest = join(tmp(), 'demo');
+    mkdirSync(join(src, '.claude/agents'), { recursive: true });
+    writeFileSync(join(src, '.claude/agents/cos.md'), '---\nname: cos\n---\n# CoS\n');
+    prepareDemo(src, dest);
+    expect(readFileSync(join(dest, '.claude/agents/cos.md'), 'utf8')).toContain('# CoS');
+    prepareDemo(source(), join(tmp(), 'demo2')); // no .claude folder: still fine
+  });
   // @req FR:cli/web.demo.reset
   it('keeps existing edits unless reset', () => {
     const src = source(); const dest = join(tmp(), 'demo');

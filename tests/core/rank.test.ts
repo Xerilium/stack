@@ -65,6 +65,16 @@ describe('one ranking', () => {
     expect(r.find((x) => /Mortgage/.test(x.text))?.root?.text).toMatch(/Pay bills/);
     expect(r.find((x) => /FH 0\.10/.test(x.text))?.root).toBeUndefined();
   });
+  // @req FR:task-lifecycle/rank.blocks
+  it('ignoreBlocks keeps what the Work block would hide (My day places tasks across the day), in the same lens order', async () => {
+    const MON = new Date('2026-11-02T10:00:00-08:00');
+    const now = await rankStack(ctxOf(null), MON);
+    const any = await rankStack(ctxOf(null), MON, undefined, { ignoreBlocks: true });
+    expect(now.some((x) => /Mortgage|USAA/.test(x.text))).toBe(false);
+    expect(any.some((x) => /Mortgage/.test(x.text))).toBe(true);
+    expect(any.length).toBeGreaterThan(now.length);
+    expect(any.filter((x) => now.some((n) => n.text === x.text)).map((x) => x.text)).toEqual(now.map((x) => x.text)); // the same order for what both keep
+  });
   // @req FR:task-lifecycle/rank.limit
   it('limit caps the list', async () => { expect(await rankStack(ctxOf(), AT, 2)).toHaveLength(2); });
   // @req FR:task-lifecycle/next.rank

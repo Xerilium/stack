@@ -23,11 +23,23 @@ describe('stack agents', () => {
     expect(raw).toContain('Read the charter first.');
     expect((await stack(d, 'agents', 'add', 'cos', '--role', 'Boss')).out).toBe('updated cos\n');
     const list = await stack(d, 'agents', 'list');
-    expect(list.out).toBe('cos  CoS  *\ncid-manager  🎧 Cid Manager  f4  (metadata only)\n');
+    expect(list.out).toBe('cos  CoS  *  -\ncid-manager  🎧 Cid Manager  f4  cos  (metadata only)\n');
     const f4 = await stack(d, 'agents', 'list', '--project', 'f4', '--json');
-    expect(JSON.parse(f4.out).items.map((a: { slug: string }) => a.slug)).toEqual(['cid-manager', 'cos']);
+    expect(JSON.parse(f4.out).items.map((a: { slug: string }) => a.slug)).toEqual(['cos', 'cid-manager']);
     expect((await stack(d, 'agents', 'add', 'x', '--name', 'X', '--mode', 'weird')).code).toBe(2);
     expect((await stack(d, 'agents', 'add', 'Bad Slug', '--name', 'X')).code).toBe(2);
     expect((await stack(d, 'agents', 'nope')).code).toBe(2);
+  });
+});
+
+// @req FR:agent-team/cli.agents
+describe('stack agents reports-to', () => {
+  it('add --reports-to writes the line and list prints it', async () => {
+    const d = dir();
+    await stack(d, 'agents', 'add', 'cos', '--name', 'CoS', '--scope', '*');
+    expect((await stack(d, 'agents', 'add', 'cid-manager', '--name', '🎧 Cid Manager', '--scope', 'f4', '--reports-to', 'cos')).out).toBe('added cid-manager\n');
+    expect(readFileSync(join(d, 'tasks/agents/cid-manager.md'), 'utf8')).toContain('- reports-to: cos');
+    expect((await stack(d, 'agents', 'list')).out).toBe('cid-manager  🎧 Cid Manager  f4  cos\ncos  CoS  *  -\n');
+    expect((await stack(d, 'agents', 'add', 'x', '--name', 'X', '--reports-to', 'Bad Slug')).code).toBe(2);
   });
 });

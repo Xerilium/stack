@@ -73,7 +73,7 @@ describe('thread routes', () => {
     expect((await call(await mint('tasks:write'), 'POST', '/tasks/flantastic-4:7/assign', {})).status).toBe(403);
     const r = await call('owner', 'POST', '/tasks/flantastic-4:7/assign', {});
     expect(r.status).toBe(202);
-    expect(r.json).toMatchObject({ agent: 'cid-manager', claimed: true });
+    expect(r.json).toMatchObject({ agent: 'cos', claimed: true });
     expect(prompts).toHaveLength(1);
     await tick(20);
     expect((await storage.read('tasks/flantastic-4.md')).content).toContain('🚧');
@@ -82,7 +82,7 @@ describe('thread routes', () => {
     const sid = 'a1b2c3d4-0000-0000-0000-000000000001'; // the id the fake driver announced for run 1
     const f = await call('owner', 'POST', `/sessions/${sid}/prompt`, { text: 'And the date?', ref: 'flantastic-4:7' });
     expect(f.status).toBe(202);
-    expect((prompts[1] as { options?: { systemPrompt?: string; title?: string } }).options?.systemPrompt).toContain('You are 🎧 Cid Manager');
+    expect((prompts[1] as { options?: { systemPrompt?: string; title?: string } }).options?.systemPrompt).toContain('You are CoS');
     expect((prompts[1] as { options?: { title?: string } }).options?.title).toBeUndefined();
     expect((await call('owner', 'POST', `/sessions/${sid}/prompt`, { text: 'plain' })).status).toBe(202);
     expect((prompts[2] as { options?: unknown }).options).toBeUndefined();

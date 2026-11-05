@@ -4,6 +4,7 @@
  */
 import type { View } from './types';
 
+/** @req FR:agent-sessions/web.agents */
 export const LABEL: Record<View, string> = { home: 'Home', today: 'My day', asks: 'Needs you', sessions: 'Agents', projects: 'Projects', list: 'Full stack' };
 /** @req FR:web-shell/nav.keys.hint — the chord shown next to each view (the first letter after `g`). */
 export const HINT: Record<View, string> = { home: 'g h', today: 'g d', asks: 'g k', sessions: 'g s', projects: 'g p', list: 'g a' };

@@ -6,7 +6,7 @@
 import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { rollRecurring } from './recurring';
-import { DEFAULT_ENGINE, getEngine, rankTasks, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
+import { DEFAULT_ENGINE, getEngine, rankTasks, type RankOptions, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
 import { applyOverrides, matcherFor, parsePriorities, PRIORITIES_PATH } from './priorities';
 import { ConflictError, NotFoundError, Storage, writeAll, type AuxFiles } from './storage';
 
@@ -300,7 +300,7 @@ export interface RankedTask extends NextTask {
   root?: TaskRef;
 }
 
-async function rankAll(ctx: LifecycleContext, at?: Date): Promise<{ next: RankedTask; doc: Doc }[]> {
+async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {}): Promise<{ next: RankedTask; doc: Doc }[]> {
   const docs = await loadDocs(ctx.storage);
   const projects = docs.map((d) => toScoringProject(d.project, d.name));
   const where = new Map<ScoringTask, { doc: Doc; line: number }>();
@@ -322,7 +322,7 @@ async function rankAll(ctx: LifecycleContext, at?: Date): Promise<{ next: Ranked
     const next: RankedTask = { ref: { path: loc.doc.path, line: loc.line, text: rowText(loc.doc, loc.line) }, text: s.task.text, project: s.task.project, score: s.score };
     return { doc: loc.doc, next, text: s.task.text, project: s.task.project, context: above.get(loc.doc)?.get(loc.line)?.text ?? '', task: s.task };
   };
-  let rows = rankTasks(engine, projects, cfg(ctx), when).map(rowOf);
+  let rows = rankTasks(engine, projects, cfg(ctx), when, opts).map(rowOf);
   const names = projects.map((p) => p.name);
   const match = matcherFor(rules, when, names, cfg(ctx).timezone);
   // A top rule is the owner saying "this, now": its rows stay even when the time block would hide them. @req FR:scoring-engine/overrides.top.blocks
@@ -347,10 +347,10 @@ async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextT
 
 /**
  * The ranked tasks: engine order, then the owner's overrides; `nextTask` is the first.
- * @req FR:task-lifecycle/rank.@function @req FR:task-lifecycle/rank.order @req FR:task-lifecycle/rank.limit @req FR:task-lifecycle/rank.output
+ * @req FR:task-lifecycle/rank.@function @req FR:task-lifecycle/rank.order @req FR:task-lifecycle/rank.limit @req FR:task-lifecycle/rank.output @req FR:task-lifecycle/rank.blocks
  */
-export async function rankStack(ctx: LifecycleContext, at?: Date, limit?: number): Promise<RankedTask[]> {
-  const all = (await rankAll(ctx, at)).map((r) => r.next);
+export async function rankStack(ctx: LifecycleContext, at?: Date, limit?: number, opts: RankOptions = {}): Promise<RankedTask[]> {
+  const all = (await rankAll(ctx, at, opts)).map((r) => r.next);
   return limit !== undefined ? all.slice(0, limit) : all;
 }
 

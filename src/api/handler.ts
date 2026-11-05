@@ -191,7 +191,7 @@ const NEED_ANSWER_BODY = {
   schema: { choice: { t: 'enum', values: ['go', 'defer', 'reply', 'undo'] }, text: { t: 'str', max: 1000, line: true }, until: { t: 'str', max: 40, line: true } } satisfies Record<string, Spec>,
   required: ['choice'],
 };
-const RANK_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 200 } };
+const RANK_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 1000 }, blocks: { t: 'enum', values: ['now', 'any'] } };
 const ASK_HANDLE_BODY = {
   schema: { outcome: { t: 'enum', values: ASK_OUTCOMES }, note: { t: 'str', max: 500, line: true }, reply: { t: 'str', max: 1000, line: true } } satisfies Record<string, Spec>,
   required: ['outcome'],
@@ -202,7 +202,7 @@ const COST_Q: Record<string, Spec> = { days: { t: 'int', min: 1, max: 90 } };
 const SLUG: Spec = { t: 'str', max: 40, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,39}$/ };
 /** `ref`/`agent` on a follow-up re-apply the task persona. @req FR:agent-thread/thread.ask */
 const PROMPT_BODY = { schema: { text: { t: 'str', required: true, max: 4000 }, ref: REF, agent: SLUG } satisfies Record<string, Spec>, required: ['text'] };
-/** `cwd` is optional since agent-team: a session for a task runs in the served folder. @req FR:agent-team/talk.api */
+/** `cwd` is optional since agent-team: a session for a task runs in the served folder unless a folder is given. @req FR:agent-team/talk.api */
 const NEW_SESSION_BODY = { schema: { cwd: { t: 'str', max: 1000, line: true }, text: { t: 'str', required: true, max: 4000 }, agent: SLUG, ref: REF, project: { t: 'str', max: 200, line: true, noReadme: true } } satisfies Record<string, Spec>, required: ['text'] };
 const TEAM_Q: Record<string, Spec> = { project: { t: 'str', max: 200, line: true }, section: { t: 'str', max: 200, line: true } };
 const REVIEWS_Q: Record<string, Spec> = { project: { t: 'str', required: true, max: 200, line: true } };
@@ -343,8 +343,11 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/rank', name: 'rank', query: RANK_Q,
     async run(c) {
       const q = readQuery(c.url, Object.keys(RANK_Q));
-      const limit = intParam(q, 'limit', 20, 1, 200);
-      const items = (await rankStack(c.life, undefined, limit)).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}) }));
+      const limit = intParam(q, 'limit', 20, 1, 1000);
+      const blocks = q.get('blocks') ?? 'now';
+      // readQuery checks names only, not enum values: this check is the only one for `blocks`.
+      if (blocks !== 'now' && blocks !== 'any') throw invalid([{ field: 'blocks', message: 'Must be now or any' }]);
+      const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}) }));
       return json(200, { items });
     },
   },
@@ -607,8 +610,7 @@ export const ROUTES: Route[] = [
       if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
       // @req FR:agent-team/talk.api: a task or project session gets its agent's persona and context.
       if (b.ref || b.project || b.agent) {
-        if (b.cwd !== undefined) throw invalid([{ field: 'cwd', message: 'A task or project session runs in the served folder; leave cwd out' }]);
-        return json(202, await startAgentRun(agents, c.life, { agent: b.agent, ref: b.ref ? formatRef(b.ref) : undefined, project: b.project, text: b.text }));
+        return json(202, await startAgentRun(agents, c.life, { agent: b.agent, ref: b.ref ? formatRef(b.ref) : undefined, project: b.project, ...(b.cwd ? { cwd: b.cwd } : {}), text: b.text }));
       }
       if (b.cwd === undefined && !agents.cwd) throw invalid([{ field: 'cwd', message: 'Required' }]);
       return json(202, await agents.prompt({ ...(b.cwd ? { cwd: b.cwd } : {}), text: b.text }));

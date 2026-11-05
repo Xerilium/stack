@@ -100,6 +100,8 @@ export function App() {
   const [next, setNext] = useState<NextTask | null>(null);
   /** The server's ranking: Home draws this and nothing else. @req FR:web-app/now.active */
   const [ranked, setRanked] = useState<RankItem[]>([]);
+  /** The same ranking across the whole day's time blocks, for My day and the week. @req FR:web-app/today.plan */
+  const [dayOrder, setDayOrder] = useState<string[]>([]);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -156,7 +158,7 @@ export function App() {
   const dayKey = sched?.date ?? dateKey(clockNow);
   const busyTime = useMemo(() => busyIntervals(events, day.origin ?? clockNow, day.origin ? 2 : 1), [events, clockNow, day]);
   const budget = budgetOf(clockNow, day, saved && saved.date === dayKey ? saved.minutes : null, busyTime);
-  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, clockNow, day, budget.minutes, busyTime, emailAsks]);
+  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, dayOrder, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, dayOrder, clockNow, day, budget.minutes, busyTime, emailAsks]);
   // Tomorrow: the next waking day planned from its wake. @req FR:home/day.tomorrow
   const tmr = useMemo(() => {
     if (!ahead) return null;
@@ -164,8 +166,8 @@ export function App() {
     const at = new Date(ahead.sched.wake);
     const b = busyIntervals(ahead.events, d.origin!, 2);
     const bud = budgetOf(at, d, null, b);
-    return { day: d, now: at, budget: bud, plan: buildPlan(planCandidates(tasks, at), at, d, bud.minutes, { busy: b }), events: ahead.events };
-  }, [ahead, projects, tasks]);
+    return { day: d, now: at, budget: bud, plan: buildPlan(planCandidates(tasks, at, dayOrder), at, d, bud.minutes, { busy: b }), events: ahead.events };
+  }, [ahead, projects, tasks, dayOrder]);
   const offerTomorrow = !!sched && !sched.asleep && nowMinutes(clockNow, day) >= day.end - 180;
   const toggleTomorrow = useCallback(async () => {
     if (ahead) { setAhead(null); return; }
@@ -197,7 +199,7 @@ export function App() {
   }, [ahead, sched]);
   /** @req FR:web-app/today.capacity */
   const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v, dayKey); setSaved(v === null ? null : { date: dayKey, minutes: v }); }, [dayKey]);
-  const decisions = useMemo(() => decisionsOf(tasks, clockNow), [tasks, clockNow]);
+  const decisions = useMemo(() => decisionsOf(tasks, clockNow, dayOrder), [tasks, clockNow, dayOrder]);
   const tops = useMemo(() => projects.map((p) => ({ project: p.name, title: p.title || p.name, task: topTask(tasks, p.name), open: p.open })), [projects, tasks]);
   const titles = useMemo(() => new Map(projects.map((x) => [x.name, x.title || x.name])), [projects]);
   /** @req FR:web-app/home.one @req FR:web-app/home.fit */
@@ -221,7 +223,7 @@ export function App() {
   const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(home.next.map((n) => n.task), home.five.map((n) => n.task), home.projects.filter((x) => !x.shown).slice(0, allProjects ? undefined : 3).map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
-  const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY), [tasks, clockNow, budget.minutes]);
+  const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
   const capRows = useMemo(() => capacityRows(projects, tasks).map((r) => ({ ...r, top: topTask(tasks, r.project) })), [projects, tasks]);
 
   // ---- feedback
@@ -257,8 +259,8 @@ export function App() {
   const refresh = useCallback(async () => {
     void loadSide();
     try {
-      const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
-      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
+      const [rk, rkAny, t, p] = await Promise.all([api.rank(100), api.rank(1000, 'any').catch(() => [] as RankItem[]), api.tasks(), api.projects()]);
+      setRanked(rk); setDayOrder(rkAny.map((x) => x.ref)); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
       api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
@@ -289,6 +291,8 @@ export function App() {
     // The thread mounts on the next paint; the focus request runs after it.
     setTimeout(() => document.querySelector<HTMLInputElement>(`.row[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"], .focus-block[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"]`)?.focus(), 30);
   }, [team]);
+  /** The Home order of projects, for the Agents page. @req FR:agent-sessions/web.order.project */
+  const projectRank = useMemo(() => new Map(home.projects.map((p, i) => [p.project, i])), [home.projects]);
   useEffect(() => { setTeamActive(wantActive); }, [wantActive]);
   /** @req FR:pwa/notify.optin @req FR:pwa/notify.new */
   const [notifyOn, setNotifyOn] = useState(() => loadNotify(store()));
@@ -599,11 +603,14 @@ export function App() {
     ] : []),
     ...(view === 'sessions' ? [
       { id: 'sess-open', label: 'Agent: open', hint: '⏎', run: () => { if (sessions.cursor) void sessions.openDrawer(sessions.cursor); } },
-      { id: 'sess-new', label: 'Agent: new', hint: 'n', run: () => sessions.setComposing(true) },
+      { id: 'sess-new', label: 'Agent: new session', hint: 'n', run: () => sessions.setComposing(true) },
       { id: 'sess-stop', label: 'Agent: stop the run', hint: 's', run: () => void sessions.stop(sessions.open ?? sessions.cursor ?? undefined) },
-      { id: 'sess-pin', label: pinsCtl.pins.includes(sessions.cursor ?? '') ? 'Agent: unpin' : 'Agent: pin to the top', hint: 'f', run: () => { if (sessions.cursor) pinsCtl.pin(sessions.cursor); } },
-      { id: 'sess-group', label: pinsCtl.byProject ? 'Agent: ungroup' : 'Agent: by project', hint: 'p', run: pinsCtl.toggleGroup },
-      { id: 'sess-costs', label: 'Agent: toggle costs', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
+      { id: 'sess-pin', label: pinsCtl.pins.includes(sessions.cursor ?? '') ? 'Agent: unpin' : 'Agent: pin (always shown)', hint: 'f', run: () => { if (sessions.cursor && !sessions.cursor.startsWith('agent:')) pinsCtl.pin(sessions.cursor); } },
+      // @req FR:agent-team/org.keys
+      { id: 'sess-team', label: pinsCtl.mode === 'team' ? 'Agent: flat list' : 'Agent: team tree', hint: 't', run: () => pinsCtl.setMode('team') },
+      { id: 'sess-group', label: pinsCtl.mode === 'project' ? 'Agent: flat list' : 'Agent: by project', hint: 'p', run: () => pinsCtl.setMode('project') },
+      { id: 'sess-all', label: sessions.showAll ? 'Agent: only my projects' : 'Agent: show all repos', hint: 'A', run: () => sessions.setShowAll(!sessions.showAll) },
+      { id: 'sess-costs', label: 'Agent: toggle usage', hint: 'c', run: () => sessions.setShowCosts(!sessions.showCosts) },
     ] : []),
     { id: 'capture', label: 'New task', hint: 'c', run: openCapture },
     { id: 'search', label: 'Search tasks', hint: '/', run: () => { go('list'); setTimeout(() => searchRef.current?.focus(), 0); } },
@@ -816,7 +823,7 @@ export function App() {
         <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}</div>
         {phase === 'loading' && view !== 'asks' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
-        {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} />}
+        {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} team={team.team} projectRank={projectRank} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
@@ -831,7 +838,7 @@ export function App() {
       </main>
       {/* The session drawer from a row, outside the Sessions view. @req FR:agent-team/web.talk */}
       {view !== 'sessions' && sessions.open && <div class="sess-scrim" onClick={sessions.closeDrawer} />}
-      {view !== 'sessions' && sessions.open && <Drawer key={sessions.open} s={sessions} item={sessions.items.find((i) => i.id === sessions.open) ?? null} cursorItem={null} onClose={sessions.closeDrawer} />}
+      {view !== 'sessions' && sessions.open && <Drawer key={sessions.open} s={sessions} item={sessions.items.find((i) => i.id === sessions.open) ?? null} cursorItem={null} team={team.team} onClose={sessions.closeDrawer} />}
       {team.talk && (view === 'today' || view === 'projects') && team.talk.ref && <AgentTalk key={team.talk.ref} team={team} talk={team.talk} agents={team.agentsOf(taskAt(team.talk.ref) ?? { project: team.talk.project, section: '' })} float />}
       {selected.size > 0 && view !== 'projects' && (
         <div class="bulk" role="toolbar" aria-label="Bulk edit">

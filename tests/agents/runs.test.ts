@@ -7,11 +7,11 @@ const S1: Session = { id: 'a1b2c3d4-0000-0000-0000-000000000001', title: 'stack:
 const S2: Session = { ...S1, id: 'a1b2c3d4-0000-0000-0000-000000000002', title: 'todo: plan', project: 'todo', cwd: '/x/todo', lastActive: new Date(NOW.getTime() - 3 * 3600_000).toISOString(), active: false, cost: { usd: 0.2, tokens: 5 } };
 
 /** A driver whose runs are fed by hand. */
-function fakeDriver() {
+function fakeDriver(sessions: Session[] = [S1, S2]) {
   const feeds = new Map<string, { push: (u: Update) => void; end: () => void }>();
   const cancelled: string[] = [];
   const driver: AgentDriver = {
-    listSessions: async () => [S1, S2],
+    listSessions: async () => sessions,
     getMessages: async () => [],
     async prompt(req) {
       const id = `run-${feeds.size + 1}`;
@@ -95,5 +95,29 @@ describe('run manager', () => {
     expect(rm.subscribe(S1.id, () => undefined, () => undefined)).not.toBeNull();
     await wait(40);
     expect(rm.subscribe(S1.id, () => undefined, () => undefined)).toBeNull();
+  });
+});
+
+// @req FR:agent-sessions/sessions.owner @req FR:agent-sessions/sessions.cost @req FR:agent-sessions/$session @req FR:agent-sessions/$cost
+describe('owners', () => {
+  const ALLYTE = '# Allyte\n\n- **Repos:** finops-hubs\n\n## Active\n\n- [ ] x\n';
+  const S3: Session = { ...S1, id: 'a1b2c3d4-0000-0000-0000-000000000003', title: 'hubs', project: 'finops-hubs', cwd: '/x/finops-hubs/.claude/worktrees/zany-fox-1a2b3c', lastActive: new Date(NOW.getTime() - 120_000).toISOString(), active: false, cost: { usd: 2, tokens: 50 } };
+  const S4: Session = { ...S1, id: 'a1b2c3d4-0000-0000-0000-000000000004', title: 'maenifold', project: 'maenifold-rs', cwd: '/x/maenifold-rs', active: false, cost: { usd: 1, tokens: 7 } };
+  async function setup() {
+    const storage = new MemoryStorage();
+    await storage.write('tasks/allyte.md', ALLYTE);
+    await storage.write('tasks/stack.md', '# Stack\n\n## Active\n\n- [ ] y\n');
+    const { driver } = fakeDriver([S1, S2, S3, S4]);
+    return createRunManager({ driver, ctx: { storage, now: () => NOW } });
+  }
+  it('every session names the Stack project that owns its repo, or null', async () => {
+    const rm = await setup();
+    const { items } = await rm.sessions();
+    expect(items.map((s) => [s.project, s.owner])).toEqual([['stack', 'stack'], ['maenifold-rs', null], ['finops-hubs', 'allyte'], ['todo', null]]);
+  });
+  it('cost buckets projects by owner when there is one, else by repo', async () => {
+    const rm = await setup();
+    const r = await rm.cost(7);
+    expect(r.projects.map((p) => [p.project, p.tokens])).toEqual([['allyte', 50], ['maenifold-rs', 7], ['stack', 10], ['todo', 5]]);
   });
 });

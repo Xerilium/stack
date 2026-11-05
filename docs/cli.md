@@ -25,10 +25,10 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `remove-completed`: delete checked rows. `remove-completed [--project name]`
 - `inbox`: reply on a task as an agent. `inbox reply <ref> --from <agent> --text t [--expect t]`
 - `agents`: agents per project folder. `agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`
-- `update`: regenerate README, stack, projects, my-day. `update [--sweep] [--queries]`
+- `update`: regenerate README, stack, projects, my-day (legacy scorer by default; `--engine stack` scores and orders like `stack next`, see [ranking.md](ranking.md)). `update [--sweep] [--queries] [--engine legacy|stack]`
 
 ## Agents
 
 - `stack inbox reply tasks/<file>.md:<line> --from <agent> --text "..."`: an agent's reply on a task (`tasks/inbox/<project>.md`, `from: agent`); the owner reads it in the task thread. `stack asks put ... --ref tasks/<file>.md:<line>` ties an ask to a task the same way.
-- `stack agents list [--project p --section s] [--json]`: the team (files in `tasks/agents/` plus agents named in a project's `Agents` metadata); with `--project`, the agents whose scope covers it, active first.
-- `stack agents add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`: write or update `tasks/agents/<slug>.md`. Scope entries are `project`, `project/section`, or `*`.
+- `stack agents list [--project p --section s] [--json]`: the team (files in `tasks/agents/` and `.claude/agents/`, plus agents named in a project's `Agents` metadata); with `--project`, the agents whose scope covers it, the roll-up first, then most specific first.
+- `stack agents add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`: write or update `tasks/agents/<slug>.md`. Scope entries are `project`, `project/section`, or `*`; `--reports-to` names the manager (default: the narrowest agent covering the same projects, else the roll-up). `.claude/agents/<slug>.md` files are read into the team too, never written.

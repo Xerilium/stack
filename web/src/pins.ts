@@ -22,29 +22,31 @@ export function orderWithPins<T extends { id: string }>(items: T[], pins: string
   return [...top, ...items.filter((i) => !pins.includes(i.id))];
 }
 export interface Group<T> { title: string; items: T[] }
-/** One group per project in first-seen order; pinned rows form a `Pinned` group first. */
-export function groupByProject<T extends { id: string; project: string }>(items: T[], pins: string[]): Group<T>[] {
+export const OTHER_REPOS = 'Other repos';
+/** One group per owning project in priority order (then name), unowned repos last under `Other repos`; pinned rows form a `Pinned` group first. @req FR:agent-sessions/web.groups */
+export function groupByProject<T extends { id: string; project: string; owner?: string | null }>(items: T[], pins: string[], rank: Map<string, number> = new Map()): Group<T>[] {
   const pinned = orderWithPins(items, pins).filter((i) => pins.includes(i.id));
   const rest = items.filter((i) => !pins.includes(i.id));
-  const out: Group<T>[] = pinned.length ? [{ title: 'Pinned', items: pinned }] : [];
-  for (const i of rest) {
-    const g = out.find((x) => x.title === i.project && x.title !== 'Pinned');
-    if (g) g.items.push(i); else out.push({ title: i.project, items: [i] });
-  }
-  return out;
+  const groups = new Map<string, T[]>();
+  for (const i of rest) { const k = i.owner ?? OTHER_REPOS; groups.set(k, [...(groups.get(k) ?? []), i]); }
+  const r = (k: string) => (k === OTHER_REPOS ? Infinity : (rank.get(k) ?? rank.size));
+  const titles = [...groups.keys()].sort((a, b) => r(a) - r(b) || a.localeCompare(b));
+  return [...(pinned.length ? [{ title: 'Pinned', items: pinned }] : []), ...titles.map((title) => ({ title, items: groups.get(title)! }))];
 }
-export const loadGroup = (s: Store | undefined): boolean => { try { return s?.getItem(GROUP_KEY) === 'project'; } catch { return false; } };
-export function saveGroup(s: Store | undefined, on: boolean): void {
-  try { if (on) s?.setItem(GROUP_KEY, 'project'); else s?.removeItem(GROUP_KEY); } catch { /* storage is a convenience */ }
+/** `team` (the org tree, the default), `project`, or `` (flat). @req FR:agent-sessions/web.groups */
+export type GroupMode = 'team' | 'project' | '';
+export const loadGroup = (s: Store | undefined): GroupMode => { try { const v = s?.getItem(GROUP_KEY); return v === 'project' ? 'project' : v === 'flat' ? '' : 'team'; } catch { return 'team'; } };
+export function saveGroup(s: Store | undefined, mode: GroupMode): void {
+  try { s?.setItem(GROUP_KEY, mode === '' ? 'flat' : mode); } catch { /* storage is a convenience */ }
 }
 
 import { useCallback, useState } from 'preact/hooks';
-/** Pins and the by-project choice as state, shared by the Agents view and the palette. */
-export type Pins = { pins: string[]; pin: (id: string) => void; byProject: boolean; toggleGroup: () => void };
+/** Pins and the grouping choice as state, shared by the Agents view and the palette. */
+export type Pins = { pins: string[]; pin: (id: string) => void; mode: GroupMode; /** Sets a mode; the active one again returns to the flat list. */ setMode: (m: GroupMode) => void };
 export function usePins(s: Store | undefined): Pins {
   const [pins, setPins] = useState(() => loadPins(s));
-  const [byProject, setByProject] = useState(() => loadGroup(s));
+  const [mode, setModeState] = useState<GroupMode>(() => loadGroup(s));
   const pin = useCallback((id: string) => setPins(togglePin(s, id)), [s]);
-  const toggleGroup = useCallback(() => setByProject((on) => { saveGroup(s, !on); return !on; }), [s]);
-  return { pins, pin, byProject, toggleGroup };
+  const setMode = useCallback((m: GroupMode) => setModeState((cur) => { const next = cur === m ? '' : m; saveGroup(s, next); return next; }), [s]);
+  return { pins, pin, mode, setMode };
 }

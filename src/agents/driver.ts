@@ -3,6 +3,7 @@
  * and permission requests with `allow_once` / `allow_always` / `reject_once` options. The API and the web app depend on this only.
  * @req FR:agent-sessions/driver.interface @req FR:agent-sessions/driver.active @req FR:agent-sessions/driver.cost
  */
+import { repoOf } from '../core/repos';
 import { ConflictError } from '../core/storage';
 
 export type ToolKind = 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'think' | 'fetch' | 'switch_mode' | 'other';
@@ -80,13 +81,8 @@ export function sessionState(s: { lastActive: number | string; running: boolean;
   return age < DAY ? 'idle' : 'stale';
 }
 
-/** The repo folder a session works in; a `.claude/worktrees/<name>` checkout reports its repo. */
-export function projectOf(cwd: string): string {
-  const parts = cwd.split('/').filter(Boolean);
-  const i = parts.indexOf('.claude');
-  const base = i > 0 && parts[i + 1] === 'worktrees' ? parts.slice(0, i) : parts;
-  return base[base.length - 1] ?? '';
-}
+/** The repo folder a session works in; worktree checkouts report their repo. @req FR:agent-sessions/sessions.owner.worktree */
+export const projectOf = (cwd: string): string => repoOf(cwd);
 
 /** The session store folder for a working directory (every non-alphanumeric character becomes `-`). */
 export const encodeCwd = (cwd: string): string => cwd.replace(/[^A-Za-z0-9]/g, '-');

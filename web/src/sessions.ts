@@ -1,9 +1,10 @@
 /**
- * Pure helpers for the Sessions view: formatting, the cost strip, and folding a run's update stream into a transcript.
- * @req FR:agent-sessions/web.view @req FR:agent-sessions/web.drawer @req FR:agent-sessions/web.cost @req FR:agent-sessions/web.message
+ * Pure helpers for the Agents view: formatting, the usage strip, scope and order of the sessions, and folding a run's update stream into a transcript.
+ * @req FR:agent-sessions/web.view @req FR:agent-sessions/web.drawer @req FR:agent-sessions/web.usage @req FR:agent-sessions/web.message @req FR:agent-sessions/web.order @req FR:agent-sessions/web.scope
  */
 export type SessionState = 'needs-you' | 'running' | 'active' | 'idle' | 'stale';
-export interface SessionItem { id: string; title: string; project: string; cwd: string; branch?: string; lastActive: string; state: SessionState; cost: { usd: number; tokens: number; approx?: boolean }; prs: string[] }
+/** @req FR:agent-sessions/$session @req FR:agent-sessions/$cost */
+export interface SessionItem { id: string; title: string; project: string; /** The Stack project that owns the repo, or null. @req FR:agent-sessions/sessions.owner */ owner?: string | null; cwd: string; branch?: string; lastActive: string; state: SessionState; cost: { usd: number; tokens: number; approx?: boolean }; prs: string[] }
 export interface SessionList { items: SessionItem[]; total: number; indexing?: number }
 export interface Turn { at: string; role: 'user' | 'assistant'; text: string }
 export interface CostDay { date: string; usd: number; tokens: number; sessions: number }
@@ -47,8 +48,9 @@ export function ago(iso: string, now: Date): string {
 /** A worktree branch name carries no meaning in a row (`xe/zany-fox-1a2b3c`); the drawer shows it. */
 export const slugBranch = (b?: string): boolean => !!b && /^[a-z]+\/[a-z]+-[a-z]+-[0-9a-f]{6}$/.test(b);
 
-export function rowOf(s: SessionItem, now: Date): { label: string; where: string; when: string; cost: string } {
-  return { label: STATE_LABEL[s.state], where: s.branch && !slugBranch(s.branch) ? `${s.project} · ${s.branch}` : s.project, when: ago(s.lastActive, now), cost: `${s.cost.approx ? '≈' : ''}${fmtUsd(s.cost.usd)}` };
+/** @req FR:agent-sessions/web.usage */
+export function rowOf(s: SessionItem, now: Date): { label: string; where: string; when: string; usage: string } {
+  return { label: STATE_LABEL[s.state], where: s.branch && !slugBranch(s.branch) ? `${s.project} · ${s.branch}` : s.project, when: ago(s.lastActive, now), usage: `${s.cost.approx ? '≈' : ''}${fmtTokens(s.cost.tokens)}` };
 }
 
 /** Today as `YYYY-MM-DD` in the browser's timezone. */
@@ -59,15 +61,33 @@ export function dayLabel(date: string): string {
   return `${new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short' })} ${d}`;
 }
 
-export function costStrip(r: CostReport, today: string): { today: string; window: string } {
+/** Tokens are the number; the owner runs on one prepaid plan. @req FR:agent-sessions/web.usage */
+export function usageStrip(r: CostReport, today: string): { today: string; window: string } {
   const t = r.days.find((d) => d.date === today) ?? { usd: 0, tokens: 0, sessions: 0 };
   const approx = (r.indexing ?? 0) > 0 ? '≈' : '';
-  return { today: `Today ${approx}${fmtUsd(t.usd)} · ${fmtTokens(t.tokens)} tokens · ${t.sessions} sessions`, window: `${r.days.length} days ${approx}${fmtUsd(r.total.usd)}${r.indexing ? ` · indexing ${r.indexing}` : ''}` };
+  return { today: `Today ${approx}${fmtTokens(t.tokens)} tokens · ${t.sessions} sessions`, window: `${r.days.length} days ${approx}${fmtTokens(r.total.tokens)}${r.indexing ? ` · indexing ${r.indexing}` : ''}` };
+}
+/** The dollar weight, once, muted. @req FR:agent-sessions/web.usage.price */
+export const priceLine = (r: CostReport): string => `≈ ${fmtUsd(r.total.usd)} at list price · prepaid plan`;
+
+/** @req FR:agent-sessions/web.usage.panel */
+export function barWidths(days: CostDay[]): number[] {
+  const max = Math.max(0, ...days.map((d) => d.tokens));
+  return days.map((d) => (max > 0 ? Math.round((d.tokens / max) * 100) : 0));
 }
 
-export function barWidths(days: CostDay[]): number[] {
-  const max = Math.max(0, ...days.map((d) => d.usd));
-  return days.map((d) => (max > 0 ? Math.round((d.usd / max) * 100) : 0));
+const ATTENTION: Record<SessionState, number> = { 'needs-you': 0, running: 1, active: 2, idle: 3, stale: 3 };
+/** Attention first, then the owning project's priority (unowned last), then newest. @req FR:agent-sessions/web.order @req FR:agent-sessions/web.order.project */
+export function orderSessions<T extends Pick<SessionItem, 'state' | 'owner' | 'lastActive'>>(items: T[], rank: Map<string, number>): T[] {
+  const r = (s: T) => (s.owner ? (rank.get(s.owner) ?? rank.size) : rank.size + 1);
+  return [...items].sort((a, b) => ATTENTION[a.state] - ATTENTION[b.state] || r(a) - r(b) || b.lastActive.localeCompare(a.lastActive));
+}
+
+/** Owned or pinned (or tied to an agent) by default; `all` shows every session. @req FR:agent-sessions/web.scope @req FR:agent-sessions/web.scope.all */
+export function scopeSessions<T extends Pick<SessionItem, 'id' | 'owner'>>(items: T[], pins: string[], owned: Set<string>, all = false): { shown: T[]; hidden: number } {
+  if (all) return { shown: items, hidden: 0 };
+  const shown = items.filter((s) => !!s.owner || pins.includes(s.id) || owned.has(s.id));
+  return { shown, hidden: items.length - shown.length };
 }
 
 /** Folds one update into the transcript; returns a new transcript (the input is not changed). */
@@ -96,9 +116,9 @@ export function applyUpdate(t: Transcript, u: Update): Transcript {
       waiting = { callId: u.callId, title: u.title };
       break;
     case 'done':
-      done = u.stopReason === 'end_turn' ? { text: `Done · ${fmtUsd(u.cost.usd)} · ${u.turns} ${u.turns === 1 ? 'turn' : 'turns'}`, error: false }
+      done = u.stopReason === 'end_turn' ? { text: `Done · ${fmtTokens(u.cost.tokens)} tokens · ${u.turns} ${u.turns === 1 ? 'turn' : 'turns'}`, error: false }
         : u.stopReason === 'cancelled' ? { text: 'Stopped', error: false }
-        : u.stopReason === 'max_budget' ? { text: `Stopped at the budget · ${fmtUsd(u.cost.usd)}`, error: true }
+        : u.stopReason === 'max_budget' ? { text: `Stopped at the budget · ${fmtTokens(u.cost.tokens)} tokens`, error: true }
         : { text: `Failed: ${u.error ?? 'unknown error'}`, error: true };
       waiting = null;
       break;

@@ -165,6 +165,8 @@ describe('paths', () => {
     await expect(s.read('tasks/link.md')).rejects.not.toBeInstanceOf(NotFoundError);
     await expect(s.write('tasks/link.md', 'x')).rejects.toBeInstanceOf(StorageError);
     await expect(s.read('tasks/sub.md')).rejects.toBeInstanceOf(StorageError);
+    // Claude's agent definitions are read-only on every adapter. @req FR:agent-team/agent.path.claude
+    await expect(s.write('.claude/agents/cos.md', 'x')).rejects.toBeInstanceOf(StorageError);
   });
   it('state files: read, create, version-check', async () => {
     const gh = new FakeGitHub();

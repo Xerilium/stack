@@ -47,7 +47,7 @@ Owner needs `stack web` to serve the app over a task repo on their own machine s
   - **FR:web.serve.local** (P1): The server MUST answer `/.auth/me` with a local sign-in stub (no Azure) whose single user is the owner
   - **FR:web.serve.loopback** (P1): The server MUST serve only loopback Host names and accept writes only from its own origin
   - Stack never holds content: tasks live in a separate content repo
-- **FR:web.demo** (P1): By default `stack web` MUST serve a copy: the content repo's `tasks/` (and `.xe/config/stack.json`) copied into `~/.config/stack/demo` as a fresh repo with no history or remote
+- **FR:web.demo** (P1): By default `stack web` MUST serve a copy: the content repo's `tasks/` (and `.xe/config/stack.json`, and `.claude/agents/` when present) copied into `~/.config/stack/demo` as a fresh repo with no history or remote
   - **FR:web.demo.untouched** (P1): Demo mode MUST never write to the real repo
   - **FR:web.demo.reset** (P2): `--reset` MUST re-copy the demo
   - **FR:web.demo.pill** (P2): The UI MUST show demo mode in the brand (`Stack [DEMO]`, web-shell `FR:nav.rail.brand`), with the repo path only in its tooltip and never as a banner
@@ -105,8 +105,10 @@ Owner needs one command per core operation so that the terminal can do everythin
   - An emoji flag takes an emoji or `none`
 - **FR:cmd.remove-completed** (P1): `stack remove-completed [--project name]` MUST call `removeCompleted` and print the removed count
   > - @req FR:task-lifecycle/remove.blocks
-- **FR:cmd.update** (P1): `stack update [--sweep]` MUST regenerate README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writing only files whose text changed
+- **FR:cmd.update** (P1): `stack update [--sweep] [--engine legacy|stack]` MUST regenerate README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writing only files whose text changed
   > - @req FR:summaries/generate.@function
+  - **FR:cmd.update.engine** (P1): `--engine stack` MUST generate the files with the `stack` engine and the overrides in `.stack/priorities.json`, so their scores and order match `stack next`; the default is `legacy` (PowerShell parity)
+    > - @req FR:summaries/engine.@option
   - **FR:cmd.update.commit** (P1): `update` MUST make ONE commit for all changed summary files
     > - @req FR:storage-git/write.many.commit
   - **FR:cmd.update.sweep** (P1): `--sweep` MUST first run the start-date, suspend, and due-date sweeps (one commit for the task files)

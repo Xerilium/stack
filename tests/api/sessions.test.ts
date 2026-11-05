@@ -151,3 +151,15 @@ describe('sessions routes', () => {
     expect((await call('owner', 'POST', `/sessions/${SESSIONS[1].id}/cancel`)).json).toEqual({ changed: true });
   });
 });
+
+// @req FR:agent-sessions/sessions.owner @req FR:agent-team/talk.api
+describe('sessions with owners', () => {
+  it('lists owner per session and accepts cwd with an agent', async () => {
+    const { call, driver } = await mk();
+    const s = await call('owner', 'GET', '/sessions');
+    expect(s.json.items.map((x: { owner: string | null }) => x.owner)).toEqual([null, null, null, null]);
+    const r = await call('owner', 'POST', '/sessions', { cwd: process.cwd(), agent: 'nope', text: 'x' });
+    expect(r.status).toBe(404); // the agent is looked up; cwd no longer refused
+    expect(driver.prompts).toHaveLength(0);
+  });
+});

@@ -1,10 +1,11 @@
-/** @req FR:agent-team/web.chip @req FR:agent-team/web.talk @req FR:agent-team/web.anything @req FR:agent-team/web.review @req FR:agent-team/web.norunner @req FR:agent-team/web.keys @req FR:agent-team/web.a11y */
+/** @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live @req FR:agent-team/web.chip.title @req FR:agent-team/web.talk @req FR:agent-team/web.anything @req FR:agent-team/web.review @req FR:agent-team/web.norunner @req FR:agent-team/web.keys @req FR:agent-team/web.a11y */
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi, type Mock, type MockTeamAgent } from './mock';
 
 const team: MockTeamAgent[] = [
-  { slug: 'cos', name: 'CoS', role: 'Roll-up', scope: ['*'], mode: 'long-running', prompt: '', defined: true, projects: ['alpha', 'beta'] },
-  { slug: 'alpha-lead', name: '🅰️ Alpha Lead', role: 'owns alpha', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] },
+  { slug: 'cos', name: 'CoS', role: 'Roll-up', scope: ['*'], mode: 'long-running', prompt: '', defined: true, source: 'claude', projects: ['alpha', 'beta'] },
+  { slug: 'alpha-lead', name: '🅰️ Alpha Lead', role: 'owns alpha', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: ['alpha'], reportsTo: 'cos' },
+  { slug: 'old-worker', name: 'PR sweep worker: alpha', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: ['alpha'], reportsTo: 'cos' },
 ];
 const frames = (updates: unknown[]) => updates.map((u) => `event: update\ndata: ${JSON.stringify(u)}\n\n`).join('');
 
@@ -21,36 +22,47 @@ async function open(page: Page, o: { runner?: boolean; review?: boolean } = {}):
 const row = (p: Page, ref: string) => p.locator(`.row[data-ref="${ref}"]`);
 
 test.describe('Agent team', () => {
-  test('every row names its active agent (most specific scope) on hover or cursor; a project with no agent says so', async ({ page }) => {
+  test('every row names its agent (the roll-up, then the specialists in the title) on hover or cursor; a project with no agent says so', async ({ page }) => {
     const m = await open(page);
     await row(page, 'alpha:6').hover();
-    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
-    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', /owns alpha. Talk to it \(a\)/);
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('CoS');
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead. Talk to it (a)'); // the stale metadata worker is gone
     await row(page, 'beta:4').hover();
     await expect(row(page, 'beta:4').locator('.agent-chip')).toHaveText('CoS');
+    await expect(row(page, 'beta:4').locator('.agent-chip')).toHaveAttribute('title', 'CoS: Roll-up. Talk to it (a)');
     m.team = [team[1]];
     await page.reload();
+    await row(page, 'alpha:6').hover();
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
     await row(page, 'beta:4').hover();
     await expect(row(page, 'beta:4').locator('.agent-chip')).toHaveText('No agent');
+    // a metadata-only worker with a recent session is live again
+    m.team = team; m.sessions = [{ id: 'a1b2c3d4-0000-0000-0000-000000000009', title: 'PR sweep worker: alpha', project: 'alpha', owner: 'alpha', cwd: '/x/alpha', lastActive: new Date().toISOString(), state: 'idle', cost: { usd: 0, tokens: 10 }, prs: [] }];
+    await page.reload();
+    await row(page, 'alpha:6').hover();
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead › PR sweep worker: alpha. Talk to it (a)');
   });
 
-  test('a opens the task thread with its composer focused; Enter asks (saved on the task, agent started) and the row follows the session', async ({ page }) => {
+  test('a opens the inline composer on the cursor row: agent picker, quick actions, Send starts a session and the row follows it', async ({ page }, info) => {
     const m = await open(page);
     await row(page, 'alpha:6').click();
     await expect(row(page, 'alpha:6')).toHaveClass(/cursor/);
     await page.keyboard.press('a');
     const talk = row(page, 'alpha:6').locator('.thread .agent-talk');
     await expect(talk).toBeVisible();
-    await expect(talk).toHaveAttribute('aria-label', /Talk to 🅰️ Alpha Lead about/);
-    await expect(talk.locator('select')).toHaveValue('alpha-lead');
+    await expect(talk).toHaveAttribute('aria-label', /Talk to CoS about/);
+    await expect(talk.locator('select')).toHaveValue('cos');
     await expect(talk.locator('select option')).toHaveCount(2);
-    await expect(talk.locator('select option').first()).toHaveAttribute('title', 'owns alpha');
+    await expect(talk.locator('select option').first()).toHaveAttribute('title', 'Roll-up');
+    await expect(talk.locator('select option').nth(1)).toHaveText('🅰️ Alpha Lead');
     await expect(talk.getByRole('button', { name: /^Review/ })).toBeVisible();
     await expect(talk.locator('input[type="text"]')).toBeFocused();
+    if (info.project.name !== 'mobile') { await expect(talk.getByLabel('Keep open')).toBeChecked(); await talk.getByLabel('Keep open').uncheck(); await talk.locator('input[type="text"]').focus(); } // the roll-up is long-running
     await page.keyboard.type('Check the deploy and tell me if the plan is solid');
     await page.keyboard.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Check the deploy and tell me if the plan is solid', agent: 'alpha-lead', ref: 'alpha:6' });
-    await expect(row(page, 'alpha:6').locator('.thread .th-text.you')).toHaveText('Check the deploy and tell me if the plan is solid');
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Check the deploy and tell me if the plan is solid', agent: 'cos', ref: 'alpha:6' });
+    if (info.project.name === 'mobile') { await expect(page.getByRole('dialog')).toBeVisible(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); } // a phone keeps the long-running agent's drawer open
+    await expect(row(page, 'alpha:6').locator('.thread .th-text.you')).toHaveText('Check the deploy and tell me if the plan is solid'); // the composer is the thread's own: it stays, the message lands above it
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('Working');
     // One open task at a time: a on another row moves the thread there.
     await page.keyboard.press('Escape');
@@ -68,12 +80,12 @@ test.describe('Agent team', () => {
     await row(page, 'alpha:9').locator('.agent-chip').click();
     const talk = row(page, 'alpha:9').locator('.thread .agent-talk');
     await expect(talk).toBeVisible();
-    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeVisible(); await talk.getByLabel('Keep open').uncheck(); await talk.getByRole('button', { name: /^Assign/ }).click(); await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' }); await expect(page.locator('.toast')).toContainText('Assigned to alpha-lead'); return; }
+    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeVisible(); await talk.getByLabel('Keep open').uncheck(); await talk.getByRole('button', { name: /^Assign/ }).click(); await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'cos' }); await expect(page.locator('.toast')).toContainText('Assigned to cos'); return; }
     await talk.getByLabel('Keep open').check();
     await talk.getByRole('button', { name: /^Assign/ }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'cos' });
     await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByRole('dialog')).toContainText('🅰️ Alpha Lead · Review pull requests 🟠 · alpha:9');
+    await expect(page.getByRole('dialog')).toContainText('CoS · Review pull requests 🟠 · alpha:9');
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
@@ -110,7 +122,8 @@ test.describe('Agent team', () => {
   test('without a runner the chip still shows and the composer says where sessions run', async ({ page }) => {
     await open(page, { runner: false });
     await row(page, 'alpha:6').click();
-    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('CoS');
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead › PR sweep worker: alpha. Talk to it (a)'); // no session data: nothing is dropped
     await row(page, 'alpha:6').locator('.agent-chip').click();
     const talk = row(page, 'alpha:6').locator('.thread .agent-talk');
     await expect(talk).toBeVisible();
@@ -148,6 +161,8 @@ test.describe('Agent team', () => {
     await page.keyboard.type('Go');
     await page.keyboard.press('Enter');
     await expect(hero.locator('.thread .th-text.you')).toHaveText('Go');
+    // The roll-up is long-running, so Keep open is its default and the session drawer opens; close it to get back to the card.
+    if (await page.getByRole('dialog').count()) { await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); }
     // The context line follows the session: `agent has it` while it works; once the mock flips it to idle, a 15 s poll clears it (no poll = stuck). Two cycles of slack: the flip can land right after a poll.
     // @req FR:web-app/home3.context
     await expect(hero.getByTestId('now-context')).toContainText('agent has it');
@@ -181,12 +196,12 @@ test.describe('Agent team', () => {
     await page.goto('/#/today');
     await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // tiles sit below the timeline, out of the way
     const tile = page.locator('[data-testid="tops"] li').filter({ hasText: 'Alpha' });
-    await expect(tile.locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
+    await expect(tile.locator('.agent-chip')).toHaveText('CoS');
     await tile.locator('.agent-chip').click();
     await expect(tile.locator('.agent-talk')).toBeVisible();
     await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('Where are we?');
     await page.keyboard.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Where are we?', agent: 'alpha-lead', project: 'alpha' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Where are we?', agent: 'cos', project: 'alpha' });
   });
 });

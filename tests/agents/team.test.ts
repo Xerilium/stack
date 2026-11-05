@@ -53,7 +53,7 @@ describe('taskContext and persona', () => {
     expect(c.text).toBe('Project: 🎧 Flantastic 4 (tasks/flantastic-4.md)\nSection: 🔄 Active\nTask (line 8):\n- [ ] Release the single 🟡\n  > cover is done\n  - [ ] Upload to DistroKid');
     expect((await taskContext(ctx, { path: 'tasks/flantastic-4.md', line: 9 })).text).toContain('Parent: Release the single 🟡');
     await expect(taskContext(ctx, { path: 'tasks/flantastic-4.md', line: 99 })).rejects.toThrow(/not found/i);
-    const p = personaOf({ slug: 'cid-manager', name: '🎧 Cid Manager', role: 'Label manager', scope: ['flantastic-4'], mode: 'ad-hoc', prompt: 'Own the label.', defined: true, projects: ['flantastic-4'] }, 'Task: x');
+    const p = personaOf({ slug: 'cid-manager', name: '🎧 Cid Manager', role: 'Label manager', scope: ['flantastic-4'], mode: 'ad-hoc', prompt: 'Own the label.', defined: true, source: 'stack', projects: ['flantastic-4'] }, 'Task: x');
     expect(p).toContain('You are 🎧 Cid Manager, Label manager, an agent in Stack');
     expect(p).toContain('Your scope: flantastic-4');
     expect(p).toContain('stack asks put');
@@ -71,10 +71,12 @@ describe('sessionTitle', () => {
 });
 
 describe('startAgentRun', () => {
-  it('starts a session for the task agent with persona, context, model, and a title the page can map back to the task', async () => {
+  it('starts a session for the task agent (the roll-up by default) with persona, context, model, and a title the page can map back to the task', async () => {
     const { ctx, runs, prompts } = await mk();
-    const r = await startAgentRun(runs, ctx, { ref: 'flantastic-4:7', text: 'Do it' });
-    expect(r).toMatchObject({ runId: 'run-1', agent: 'cid-manager', title: '🎧 Cid Manager · Release the single 🟡 · flantastic-4:7' });
+    expect((await startAgentRun(runs, ctx, { ref: 'flantastic-4:7', text: 'Do it' })).agent).toBe('cos'); // the roll-up owns every task
+    prompts.length = 0;
+    const r = await startAgentRun(runs, ctx, { ref: 'flantastic-4:7', agent: 'cid-manager', text: 'Do it' });
+    expect(r).toMatchObject({ runId: 'run-1', agent: 'cid-manager', title: '🎧 Cid Manager · Release the single 🟡 · flantastic-4:7' }); // the fake driver numbers from the cleared list
     expect(prompts[0]).toMatchObject({ cwd: '/repo', text: 'Do it', options: { model: 'sonnet', title: '🎧 Cid Manager · Release the single 🟡 · flantastic-4:7' } });
     expect(prompts[0].options?.systemPrompt).toContain('## Context\n\nProject: 🎧 Flantastic 4');
     expect(prompts[0].options?.allowedTools).toBeUndefined();
@@ -93,7 +95,7 @@ describe('reviewTask', () => {
   const answer = { verdict: 'partial', plan: 'Upload the cover, then wait for the DistroKid login', estimate: '1h', needs: [{ what: 'Share the DistroKid login', kind: 'go-do', why: 'no credentials' }, { what: 'Confirm the release date', kind: 'answer' }] };
   it('runs read-only with the schema, records the verdict, and turns needs into asks; a re-review resolves the old ones', async () => {
     const { ctx, runs, prompts, storage } = await mk({ structured: answer });
-    const r = await reviewTask(runs, ctx, 'flantastic-4:7');
+    const r = await reviewTask(runs, ctx, 'flantastic-4:7', 'cid-manager');
     expect(r).toMatchObject({ runId: 'run-1', agent: 'cid-manager' });
     expect(prompts[0].options).toMatchObject({ allowedTools: READ_ONLY_TOOLS, disallowedTools: WRITE_TOOLS, schema: expect.objectContaining({ type: 'object' }), title: '🎧 Cid Manager · review · Release the single 🟡 · flantastic-4:7' });
     expect(prompts[0].text).toContain('Do not start the work');
@@ -182,5 +184,16 @@ describe('SDK driver prompt options', () => {
     await runs.prompt({ text: 'b', cwd: '/other' });
     await runs.prompt({ text: 'c', sessionId: 'a1b2c3d4-0000-0000-0000-000000000009' });
     expect(prompts.map((p) => p.cwd)).toEqual(['/served', '/other', undefined]);
+  });
+});
+
+// @req FR:agent-team/talk.start.cwd
+describe('startAgentRun cwd', () => {
+  it("runs in the given folder, else the served one", async () => {
+    const { ctx, runs, prompts } = await mk();
+    await startAgentRun(runs, ctx, { agent: 'cos', project: 'flantastic-4', cwd: '/x/f4-music', text: 'Plan' });
+    expect(prompts[0]).toMatchObject({ cwd: '/x/f4-music', text: 'Plan' });
+    await startAgentRun(runs, ctx, { agent: 'cos', text: 'Hi' });
+    expect(prompts[1]).toMatchObject({ cwd: '/repo' });
   });
 });

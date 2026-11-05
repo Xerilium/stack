@@ -148,7 +148,7 @@ describe('assignTask', () => {
 
 describe('persona', () => {
   it('tells the agent to reply on the task and raise asks with --ref', () => {
-    const p = personaOf({ slug: 'cos', name: 'CoS', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, projects: [] });
+    const p = personaOf({ slug: 'cos', name: 'CoS', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: [] });
     expect(p).toContain('stack inbox reply tasks/<file>.md:<line>');
     expect(p).toContain('stack asks put --ref');
   });
