@@ -236,7 +236,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
     const seen = new Set<string>();
     const go = async (name: string, method: string, path: string, body?: unknown, status?: number) => {
       const r = await call(method, path, body);
-      if (status !== undefined) expect([name, r.status]).toEqual([name, status]);
+      if (status !== undefined) expect([name, r.status, status === r.status ? '' : JSON.stringify(r.body)]).toEqual([name, status, '']);
       check(name, r);
       seen.add(name);
       return r;
@@ -256,6 +256,9 @@ describe('response parity (real handler output vs documented schemas)', () => {
     // @req FR:ask-queue/needs.api
     await go('needs.list', 'GET', '/needs-you', undefined, 200);
     await go('needs.answer', 'POST', '/needs-you/none/answer', { choice: 'go' }, 404);
+    // @req FR:inbox-page/api.read @req FR:inbox-page/api.act
+    await go('inboxItems.list', 'GET', '/inbox-items', undefined, 200);
+    await go('inboxItems.action', 'POST', '/inbox-items/mail-000000000000/action', { action: 'mark-done' }, 404);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha', dryRun: true }, 200);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha' }, 201);
     await go('tasks.start', 'POST', '/tasks/start', { ref }, 200);
