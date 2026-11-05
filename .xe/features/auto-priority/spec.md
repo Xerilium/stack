@@ -54,3 +54,16 @@ Every task needs value or impact tags so it scores. A task without them ranks by
 ## Architecture Constraints
 
 - Pure functions; no file or network access.
+
+### FR:engine: The `autopri` engine ranks the owner's ground truth
+
+Formula: `(unblock + urgency + value) / sqrt(effort)`. Unblocker beats nearest hard date, which beats value. Registered next to `stack`; never the default.
+
+- **FR:engine.@function** (P1): Interface: `autopriEngine: ScoringEngine` and `registerAutopriEngine(): void` (idempotent)
+- **FR:engine.unblock** (P1): A leaf with the `🔓` marker (or a parent with it) MUST rank above every leaf without it, due or not
+- **FR:engine.blockers** (P1): A task that blocks another (`-- after <title>`) MUST score at least as high as the most urgent task it blocks, transitively
+- **FR:engine.urgency** (P1): A dated leaf MUST score `2000` when due today or overdue (up to 30 days), else `2000 / (1 + days) ^ 2`; undated leaves score `0`. A date far out MUST NOT lift a task above an undated task with Priority and Impact tags and equal value
+- **FR:engine.project-value** (P1): Value MUST include half the project's own value score (`**Project value:**` emojis), so a task in a high-value project beats a similar one in a low-value project
+- **FR:engine.horizon** (P2): A dated leaf past `NOW_HORIZON_DAYS` MUST stay ranked (not dropped), so it can reach the top 10
+- **FR:engine.rows** (P1): Parked leaves and `💬` messages MUST be absent
+- **FR:engine.ground-truth** (P1): On the fixture tasks at 2026-11-05, the order MUST be Catalyst sweeps, FH 0.10, FTK v15 blog, FTK v16 PRs, Christmas After Dark, FOCUS v1.6 (`checkMisses` returns none)
