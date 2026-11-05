@@ -166,3 +166,32 @@ describe('GET /events', () => {
     } finally { await s.close(); }
   });
 });
+
+describe('watch scope', () => {
+  // @req FR:perf/watch.scope
+  it('watches tasks/ and .stack/ only, never the whole repo recursively', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as typeof import('fs');
+    const dir = tmp(); mkdirSync(join(dir, 'tasks'), { recursive: true }); mkdirSync(join(dir, 'node_modules/x'), { recursive: true });
+    const spy = jest.spyOn(fs, 'watch');
+    const w = watchRepo(dir, { debounceMs: 40 });
+    const calls = spy.mock.calls.map((c) => ({ path: String(c[0]), recursive: (c[1] as { recursive?: boolean } | undefined)?.recursive === true }));
+    spy.mockRestore();
+    w.close();
+    expect(calls.filter((c) => c.recursive).map((c) => c.path)).toEqual([join(dir, 'tasks')]);
+    expect(calls.some((c) => c.path === dir && c.recursive)).toBe(false);
+  });
+  // @req FR:perf/watch.scope
+  it('notices .stack/ created after start', async () => {
+    const dir = tmp(); mkdirSync(join(dir, 'tasks'), { recursive: true });
+    const w = watchRepo(dir, { debounceMs: 40 });
+    const seen: Change[] = [];
+    w.on((c) => seen.push(c));
+    await sleep(150);
+    mkdirSync(join(dir, '.stack'));
+    await sleep(100);
+    writeFileSync(join(dir, '.stack/cos-state.md'), 'x');
+    await until(() => seen.some((c) => c.kinds.includes('state')));
+    w.close();
+  });
+});

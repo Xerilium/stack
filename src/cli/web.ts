@@ -253,7 +253,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           const cand = realpathSync(join(root, normalize(decodeURIComponent(path))));
           if (path !== '/' && cand.startsWith(root + sep) && statSync(cand).isFile()) file = cand;
         } catch { /* unknown path: single-page app fallback */ }
-        send(200, readFileSync(file), TYPES[extname(file)] ?? 'application/octet-stream');
+        // @req FR:perf/serve.assets — built files carry a content hash in their name, so the browser may keep them.
+        const hashed = file.startsWith(join(root, 'assets') + sep);
+        send(200, readFileSync(file), TYPES[extname(file)] ?? 'application/octet-stream', hashed ? { 'cache-control': 'public, max-age=31536000, immutable' } : {});
       } catch (e) {
         console.error(e);
         if (!res.headersSent) send(500, 'internal error', 'text/plain'); else res.end();

@@ -274,8 +274,10 @@ export function App() {
   const refresh = useCallback(async () => {
     void loadSide();
     try {
-      const [rk, rkAny, t, p] = await Promise.all([api.rank(100), api.rank(1000, 'any').catch(() => [] as RankItem[]), api.tasks(), api.projects()]);
-      setRanked(rk); setDayOrder(rkAny.map((x) => x.ref)); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
+      // @req FR:perf/client.paint — the first screen waits for the ranking, tasks, and projects; the all-day order fills in when it arrives.
+      void api.rank(1000, 'any').catch(() => [] as RankItem[]).then((a) => setDayOrder(a.map((x) => x.ref)));
+      const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
+      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
       api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
@@ -365,6 +367,8 @@ export function App() {
   useEffect(() => { setEmailAsks(asks.items.filter((a) => a.state === 'open' && a.from === 'email-triage').length); }, [asks.items]);
 
   useEffect(() => {
+    // @req FR:perf/client.parallel — the data loads while the sign-in stub answers.
+    void refresh();
     void (async () => {
       try {
         const r = await fetch('/.auth/me', { credentials: 'same-origin' });
@@ -376,7 +380,6 @@ export function App() {
         setOwnerId(j.clientPrincipal?.identityProvider && j.clientPrincipal.userId ? `${j.clientPrincipal.identityProvider}:${j.clientPrincipal.userId}` : '');
         setLocal(j.clientPrincipal?.identityProvider === 'local');
       } catch { setStream(false); setAgentsOn(false); /* the api decides access */ }
-      await refresh();
     })();
   }, []);
 

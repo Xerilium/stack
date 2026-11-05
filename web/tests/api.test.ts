@@ -21,6 +21,20 @@ describe('api client', () => {
     expect(calls[0].url).toContain('state=all');
     expect(calls[0].url).toContain('fields=ref,text,project,section,done,depth,notes');
   });
+  // @req FR:perf/client.pages
+  it('fetches the pages after the first together', async () => {
+    let live = 0, peak = 0;
+    const fetchFn = (async (url: string) => {
+      live++; peak = Math.max(peak, live);
+      await new Promise((r) => setTimeout(r, 10));
+      live--;
+      const off = Number(new URL(url, 'http://x').searchParams.get('offset'));
+      return res(200, { items: Array.from({ length: Math.min(200, 650 - off) }, (_, i) => ({ ref: `a:${off + i}`, text: 't', project: 'a', section: 's', done: false })), total: 650, offset: off, limit: 200 });
+    }) as typeof fetch;
+    const all = await createClient(fetchFn).tasks();
+    expect(all.map((t) => t.ref)).toEqual(Array.from({ length: 650 }, (_, i) => `a:${i}`));
+    expect(peak).toBe(3);
+  });
   it('sends JSON bodies and only that header', async () => {
     const { client, calls } = rec(() => res(200, { changed: true, ref: 'a:1' }));
     await client.set('a:1', { priority: '‼️' });

@@ -253,12 +253,11 @@ const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
 const key = (h: string) => h.replace(/^[^\p{L}\p{N}]+/u, '').trim().toLowerCase();
 
 async function loadDocs(storage: Storage): Promise<Doc[]> {
-  const docs: Doc[] = [];
-  for (const path of (await storage.list()).filter((p) => baseName(p).toLowerCase() !== 'readme')) {
+  // @req FR:perf/load.parallel
+  return Promise.all((await storage.list()).filter((p) => baseName(p).toLowerCase() !== 'readme').map(async (path) => {
     const f = await storage.read(path);
-    docs.push({ name: baseName(path), path, content: f.content, project: parseProject(f.content) });
-  }
-  return docs;
+    return { name: baseName(path), path, content: f.content, project: parseProject(f.content) };
+  }));
 }
 
 interface TaskView { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }

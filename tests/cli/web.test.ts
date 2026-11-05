@@ -99,6 +99,20 @@ describe('startWeb', () => {
   });
 });
 
+describe('static caching', () => {
+  // @req FR:perf/serve.assets
+  it('keeps hashed assets for a year and leaves the page and api uncached', async () => {
+    const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
+    const web = tmp(); mkdirSync(join(web, 'assets')); writeFileSync(join(web, 'index.html'), '<html>app</html>'); writeFileSync(join(web, 'assets/index-abc.js'), 'x');
+    const s = await startWeb({ dir: dest, port: 0, webDir: web });
+    try {
+      expect((await fetch(`${s.url}/assets/index-abc.js`)).headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+      expect((await fetch(s.url)).headers.get('cache-control')).toBe('no-store');
+      expect((await fetch(`${s.url}/api/tasks`)).headers.get('cache-control')).not.toContain('immutable');
+    } finally { await s.close(); }
+  });
+});
+
 describe('prepareLive', () => {
   const g = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
   // One committed repo is built once and copied per test: three git calls per test become none.
