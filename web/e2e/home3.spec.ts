@@ -6,45 +6,39 @@ const KEYBOARD = 'keyboard';
 const mk = (ref: string, text: string, project: string, extra: Partial<MockTask> = {}): MockTask => ({ ref, text, project, section: '🔄 Active', done: false, depth: 0, notes: [], ...extra });
 const tasks = (): MockTask[] => [
   ...seed(), // alpha:6 is /next (1 h, due today); alpha:9 2 h; beta:4 30 m
-  mk('alpha:30', 'Reply to Dana 🔹', 'alpha', { notes: ['She asked about Net 45.', 'Draft is in Outlook.'] }),
-  mk('alpha:31', 'Water the plants 🔹', 'alpha'),
   mk('gamma:3', '🚨 Fix the outage 🟠', 'gamma'),
   mk('delta:3', 'Plan the offsite 🟡', 'delta'),
-  mk('epsilon:3', 'Sort receipts 🟢', 'epsilon'),
-  mk('zeta:3', 'Read the report 🟢', 'zeta'),
+  mk('epsilon:3', 'Reply to Dana 🔹', 'epsilon', { notes: ['She asked about Net 45.', 'Draft is in Outlook.'] }),
+  mk('zeta:3', 'Water the plants 🔹', 'zeta'),
 ];
 const demoMe = (page: Page) => page.route('**/.auth/me', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ clientPrincipal: { userDetails: 'local', identityProvider: 'local', userRoles: ['authenticated'] }, local: { mode: 'demo', repo: '/Users/me/todo', branch: 'main' }, events: false }) }));
 
 test.describe('Home round 3', () => {
-  // @req FR:web-app/home2.order @req FR:web-app/home2.five @req FR:web-app/home2.fold
-  test('projects by priority, only-have-5-min, three projects then Show all', async ({ page }) => {
+  // @req FR:web-app/home2.order @req FR:top-asks/top.rows
+  test('every other project is a row, by priority, none folded', async ({ page }) => {
     await mockApi(page, { tasks: tasks() });
     await page.goto('/');
-    const five = page.getByTestId('five');
-    await expect(five.locator('.row .title')).toHaveText(['Reply to Dana', 'Water the plants']);
-    const projects = page.getByTestId('home-projects');
-    await expect(projects.locator('li:visible')).toHaveCount(3);
-    await expect(page.getByTestId('up-next').locator('.row .title').first()).toHaveText('Fix the outage'); // 🚨 ranks first, so it is Up next
-    await expect(projects.locator('li').first()).toContainText('Beta'); // then the next-ranked project, not alphabetical (Delta/Epsilon come later)
-    await expect(page.locator('.home-projects-wrap .fold')).toBeVisible();
-    await page.getByRole('button', { name: /Show all \(\d+\)/ }).click();
-    await expect(projects.locator('li:visible').count()).resolves.toBeGreaterThan(3);
+    const projects = page.getByTestId('top-asks');
+    await expect(projects.locator('li:visible')).toHaveCount(5); // alpha is NOW
+    await expect(projects.locator('li').first()).toContainText('Fix the outage'); // 🚨 ranks first
+    await expect(projects.locator('li').nth(1)).toContainText('Beta'); // then the next-ranked project, not alphabetical
+    await expect(page.getByRole('button', { name: /Show all/ })).toHaveCount(0);
   });
 
   // @req FR:web-app/home2.expand @req FR:web-app/home2.body @req FR:web-app/home2.close @req FR:web-app/home2.defer
   test('one click expands a row in place with its body and actions; Enter opens the detail which closes with ×', async ({ page }, info) => {
     await mockApi(page, { tasks: tasks() });
     await page.goto('/');
-    const row = page.locator('.row[data-ref="alpha:30"]');
-    await row.locator('.title').click();
+    const row = page.locator('li[data-ref="epsilon:3"]');
+    await row.locator('.proj-top').click();
     const detail = row.locator('.row-detail');
     await expect(detail).toBeVisible();
     await expect(detail.locator('.body')).toContainText('She asked about Net 45.');
     await expect(detail.getByRole('button', { name: /Defer/ })).toBeVisible();
     await expect(page.getByText('Not now')).toHaveCount(0);
-    await row.locator('.title').click();
+    await row.locator('.proj-top').click();
     await expect(detail).toHaveCount(0);
-    await row.locator('.title').click();
+    await row.locator('.proj-top').click();
     await expect(detail).toBeVisible();
     if (info.project.name !== 'mobile') {
       await page.keyboard.press('Escape');
@@ -60,25 +54,18 @@ test.describe('Home round 3', () => {
   });
 
   // @req FR:web-app/home2.cursor
-  test('one cursor runs from NOW through Up next, 5 min and Projects', async ({ page }, info) => {
+  test('one cursor runs from NOW through the Top asks rows', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page, { tasks: tasks() });
     await page.goto('/');
     await expect(page.locator('.focus-block')).toHaveClass(/cursor/);
-    for (let i = 0; i < 2; i++) await page.keyboard.press('j');
-    await expect(page.getByTestId('up-next').locator('.row.cursor')).toHaveCount(1);
-    for (let i = 0; i < 2; i++) await page.keyboard.press('j');
-    await expect(page.getByTestId('five').locator('.row.cursor')).toHaveCount(1);
-    for (let i = 0; i < 2; i++) await page.keyboard.press('j');
-    await expect(page.getByTestId('home-projects').locator('li.cursor')).toHaveCount(1);
+    await page.keyboard.press('j');
+    await expect(page.getByTestId('top-asks').locator('li.cursor')).toHaveCount(1);
+    await expect(page.getByTestId('top-asks').locator('li').first()).toHaveClass(/cursor/);
+    await page.keyboard.press('j');
+    await expect(page.getByTestId('top-asks').locator('li').nth(1)).toHaveClass(/cursor/);
     await page.keyboard.press(' ');
-    await expect(page.getByTestId('home-projects').locator('.row-detail')).toBeVisible();
-    // the cursor never runs past the fold: the last reachable row is the third project
-    for (let i = 0; i < 6; i++) await page.keyboard.press('j');
-    await expect(page.getByTestId('home-projects').locator('li.cursor')).toHaveCount(1);
-    await expect(page.getByTestId('home-projects').locator('li:visible').nth(2)).toHaveClass(/cursor/);
-    await page.keyboard.press('Enter');
-    await expect(page.getByRole('dialog', { name: 'Focus' })).toBeVisible();
+    await expect(page.getByTestId('top-asks').locator('.row-detail')).toBeVisible();
   });
 
   // @req FR:web-app/home2.expand
@@ -86,8 +73,8 @@ test.describe('Home round 3', () => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page, { tasks: tasks() });
     await page.goto('/');
-    const row = page.locator('.row[data-ref="alpha:30"]');
-    const title = row.locator('.title .text');
+    const row = page.locator('li[data-ref="epsilon:3"]');
+    const title = row.locator('.proj-top');
     await title.focus();
     await expect(title).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press(' ');
@@ -103,14 +90,14 @@ test.describe('Home round 3', () => {
   });
 
   // @req FR:web-app/home2.done
-  test('Done draws a green check and fades the row', async ({ page }) => {
+  test('Done fades the NOW card', async ({ page }) => {
     const m = await mockApi(page, { tasks: tasks() });
     await page.goto('/');
-    const row = page.locator('.row[data-ref="alpha:31"]');
+    const row = page.locator('.focus-block');
     await page.route('**/api/tasks/complete', async (r) => { await new Promise((ok) => setTimeout(ok, 400)); await r.fallback(); }); // the check is drawn before the write lands
-    await row.locator('.tick').click();
+    await row.getByRole('button', { name: 'Done' }).click();
     await expect(row).toHaveClass(/done-anim/);
-    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/complete')?.body.ref).toBe('alpha:31');
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/complete')?.body.ref).toBe('alpha:6');
   });
 
   // @req FR:web-app/home2.demo @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand

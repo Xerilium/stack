@@ -176,10 +176,10 @@ test.describe('Agent team', () => {
     await expect(hero.getByTestId('now-context')).not.toContainText('agent has it', { timeout: 35_000 });
   });
 
-  test('Home rows carry the composer too (no agent chip on a row: title and project only)', async ({ page }) => {
+  test('Top asks rows carry the composer too (no agent chip on a row)', async ({ page }) => {
     const m = await open(page);
     await page.goto('/#/home');
-    const first = page.locator('section[aria-label="Home"] .home-row').first();
+    const first = page.locator('section[aria-label="Home"] .top-rows li').first();
     await expect(first).toBeVisible();
     await first.click();
     await expect(first.locator('.agent-chip')).toHaveCount(0);

@@ -1,7 +1,7 @@
 /**
- * Home = top of the stack: the one thing now, whether it fits the time left, the next two, the top of every project.
+ * Home = top of the stack: the one thing now, whether it fits the time left, the top of every other project.
  * Pure; the view only draws it.
- * @req FR:web-app/home.one @req FR:web-app/home.fit @req FR:web-app/home.next @req FR:web-app/home.projects
+ * @req FR:web-app/home.one @req FR:web-app/home.fit @req FR:top-asks/top.rows @req FR:web-app/home.projects
  */
 import { dueDays, isUpNext } from './now';
 import type { Busy } from './meetings';
@@ -24,10 +24,8 @@ export function countdown(due: string | undefined, now: Date): Countdown | null 
 }
 
 export interface HomeItem { task: Task; minutes: number; assumed: boolean; due: Countdown | null }
-export interface HomeProject { project: string; title: string; top: HomeItem; shown: boolean }
-export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem | null; next: HomeItem[]; five: HomeItem[]; projects: HomeProject[] }
-/** Tasks that fit a 5-minute gap: 15 minutes or less. @req FR:web-app/home2.five */
-const FIVE_MAX = 15;
+export interface HomeProject { project: string; title: string; top: HomeItem }
+export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem | null; projects: HomeProject[] }
 
 /** Expected time is the full effort (30 min assumed when unset), never capped: a 3 h task must not "fit" 2 h. */
 const item = (t: Task, now: Date): HomeItem => { const r = parseRow(t.text); const est = effortMinutes(r.effort); return { task: t, minutes: est || DEFAULT_MIN, assumed: !est, due: countdown(r.due, now) }; };
@@ -35,6 +33,17 @@ const doing = (t: Task) => /🚧/u.test(t.text);
 
 /** One ranked task from `GET /rank`: a leaf names the top-level row it sits under. @req FR:task-lifecycle/rank.output */
 export interface RankItem { ref: string; text: string; project: string; score: number; rule?: string; root?: string }
+
+/**
+ * Top asks: the task on top, and one row for every other project. The top project is not repeated.
+ * @req FR:top-asks/top.one @req FR:top-asks/top.rows
+ */
+export function topAsksOf(h: Home): { top: HomeItem | null; rows: HomeProject[] } {
+  const top = (!h.fits && h.instead) ? h.instead : h.one;
+  // The task that does not fit waits under NOW as its own line, so its project row would repeat it.
+  const waiting = top !== h.one ? h.one?.task.ref : undefined;
+  return { top, rows: h.projects.filter((p) => p.top.task.project !== top?.task.project && p.top.task.ref !== waiting) };
+}
 
 /**
  * Home draws what the server ranked, in that order (a leaf shows as its top-level row), minus what is already in
@@ -64,12 +73,6 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
   const may = (i: HomeItem) => !o.allow || vs(i.task.text).includes(vs(o.allow.emoji)) || !!o.allow.projects?.includes(i.task.project);
   const fits = !one || (one.minutes <= o.minutesLeft && may(one));
   const instead = !fits && o.minutesLeft > 0 ? (rest.map((t) => item(t, now)).find((i) => i.minutes <= o.minutesLeft && may(i)) ?? null) : null;
-  // Instead never repeats under Up next
-  const next = rest.filter((t) => t.ref !== instead?.task.ref).slice(0, 2).map((t) => item(t, now));
-  const shownRefs = new Set([oneTask?.ref, instead?.task.ref, ...next.map((n) => n.task.ref)].filter((r): r is string => !!r));
-  // a short task for a short gap, ranked, never one already on screen
-  const five = rest.filter((t) => !shownRefs.has(t.ref)).map((t) => item(t, now)).filter((i) => !i.assumed && i.minutes <= FIVE_MAX).slice(0, 3);
-  five.forEach((f) => shownRefs.add(f.task.ref));
   // projects in the order of their top ranked row. @req FR:web-app/home2.order
   const rankOf = new Map(ordered.map((t, i) => [t.ref, i]));
   const projects: HomeProject[] = [];
@@ -77,10 +80,10 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
     const mine = tasks.filter((t) => t.project === p.name && !t.done && t.depth === 0 && !hidden.has(t.ref));
     // No arbitrary first row as a fallback: the server may have hidden it (a hide rule). @req FR:web-app/home.projects
     const top = ordered.find((t) => t.project === p.name) ?? mine.find(isUpNext);
-    if (top) projects.push({ project: p.name, title: p.title || p.name, top: item(top, now), shown: shownRefs.has(top.ref) });
+    if (top) projects.push({ project: p.name, title: p.title || p.name, top: item(top, now) });
   }
   projects.sort((a, b) => (rankOf.get(a.top.task.ref) ?? Infinity) - (rankOf.get(b.top.task.ref) ?? Infinity));
-  return { one, fits, instead, next, five, projects };
+  return { one, fits, instead, projects };
 }
 
 // ---- The window: how long you have now, from the schedule and the calendar.
