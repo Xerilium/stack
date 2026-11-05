@@ -48,7 +48,7 @@ test.describe('Agent team', () => {
     await row(page, 'alpha:6').click();
     await expect(row(page, 'alpha:6')).toHaveClass(/cursor/);
     await page.keyboard.press('a');
-    const talk = row(page, 'alpha:6').locator('.agent-talk');
+    const talk = row(page, 'alpha:6').locator('.thread .agent-talk');
     await expect(talk).toBeVisible();
     await expect(talk).toHaveAttribute('aria-label', /Talk to CoS about/);
     await expect(talk.locator('select')).toHaveValue('cos');
@@ -60,33 +60,30 @@ test.describe('Agent team', () => {
     if (info.project.name !== 'mobile') { await expect(talk.getByLabel('Keep open')).toBeChecked(); await talk.getByLabel('Keep open').uncheck(); await talk.locator('input[type="text"]').focus(); } // the roll-up is long-running
     await page.keyboard.type('Check the deploy and tell me if the plan is solid');
     await page.keyboard.press('Enter');
-    await expect(talk).toHaveCount(0);
     await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Check the deploy and tell me if the plan is solid', agent: 'cos', ref: 'alpha:6' });
     if (info.project.name === 'mobile') { await expect(page.getByRole('dialog')).toBeVisible(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); } // a phone keeps the long-running agent's drawer open
-    else await expect(page.locator('.toast')).toContainText('Sent to cos');
+    await expect(row(page, 'alpha:6').locator('.thread .th-text.you')).toHaveText('Check the deploy and tell me if the plan is solid'); // the composer is the thread's own: it stays, the message lands above it
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('Working');
-    // Only one composer at a time; Esc closes it.
-    await page.keyboard.press('a');
-    await expect(page.locator('.agent-talk')).toHaveCount(1);
+    // One open task at a time: a on another row moves the thread there.
     await page.keyboard.press('Escape');
     await page.keyboard.press('j');
     await page.keyboard.press('a');
-    await expect(page.locator('.agent-talk')).toHaveCount(1);
-    await expect(row(page, 'alpha:9').locator('.agent-talk')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('.agent-talk')).toHaveCount(0);
+    await expect(page.locator('.thread')).toHaveCount(1);
+    await expect(row(page, 'alpha:9').locator('.thread')).toBeVisible();
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+    await expect(page.locator('.thread')).toHaveCount(0);
   });
 
-  test('Keep open starts the session and opens the drawer; Do it sends the quick prompt', async ({ page }, info) => {
+  test('the chip opens the thread; Keep open + Assign hands the task over and opens the drawer', async ({ page }, info) => {
     const m = await open(page);
     await row(page, 'alpha:9').click(); // the cursor row shows its chip on every device
     await row(page, 'alpha:9').locator('.agent-chip').click();
-    const talk = row(page, 'alpha:9').locator('.agent-talk');
-    // A phone has no room for the toggle: Keep open is the agent's own default there.
-    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeHidden(); await talk.getByRole('button', { name: /^Do it/ }).click(); await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toContain('Do this task'); await expect(page.getByRole('dialog')).toBeVisible(); return; } // a long-running agent keeps the drawer open by default
-    await expect(talk.getByLabel('Keep open')).toBeChecked(); // the roll-up is long-running
-    await talk.getByRole('button', { name: /^Do it/ }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toContain('Do this task');
+    const talk = row(page, 'alpha:9').locator('.thread .agent-talk');
+    await expect(talk).toBeVisible();
+    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeVisible(); await talk.getByLabel('Keep open').uncheck(); await talk.getByRole('button', { name: /^Assign/ }).click(); await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'cos' }); await expect(page.locator('.toast')).toContainText('Assigned to cos'); return; }
+    await talk.getByLabel('Keep open').check();
+    await talk.getByRole('button', { name: /^Assign/ }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'cos' });
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByRole('dialog')).toContainText('CoS · Review pull requests 🟠 · alpha:9');
     await page.keyboard.press('Escape');
@@ -128,11 +125,11 @@ test.describe('Agent team', () => {
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('CoS');
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead › PR sweep worker: alpha. Talk to it (a)'); // no session data: nothing is dropped
     await row(page, 'alpha:6').locator('.agent-chip').click();
-    const talk = row(page, 'alpha:6').locator('.agent-talk');
+    const talk = row(page, 'alpha:6').locator('.thread .agent-talk');
     await expect(talk).toBeVisible();
-    await expect(talk.locator('input[type="text"]')).toBeDisabled();
+    await expect(talk.locator('input[type="text"]')).toBeEnabled(); // a question still lands on the task
     await expect(talk).toContainText('Runs in stack web on your machine');
-    await expect(talk.getByRole('button', { name: /^Send/ })).toBeDisabled();
+    await expect(talk.getByRole('button', { name: /^Assign/ })).toBeDisabled();
   });
 
   test('an ask card has the agent too: a opens the composer about the ask', async ({ page }) => {
@@ -159,17 +156,18 @@ test.describe('Agent team', () => {
     await expect(hero.locator('.agent-chip')).toHaveCount(0); // no agent name on the NOW card (home3.context)
     await hero.click();
     await page.keyboard.press('a');
-    await expect(hero.locator('.agent-talk')).toBeVisible();
+    await expect(hero.locator('.thread .agent-talk')).toBeVisible();
     await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('Go');
     await page.keyboard.press('Enter');
-    await expect(hero.locator('.agent-talk')).toHaveCount(0);
+    await expect(hero.locator('.thread .th-text.you')).toHaveText('Go');
     // The roll-up is long-running, so Keep open is its default and the session drawer opens; close it to get back to the card.
     if (await page.getByRole('dialog').count()) { await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); }
     // The context line follows the session: `agent has it` while it works; once the mock flips it to idle, a 15 s poll clears it (no poll = stuck). Two cycles of slack: the flip can land right after a poll.
     // @req FR:web-app/home3.context
     await expect(hero.getByTestId('now-context')).toContainText('agent has it');
     // @req FR:web-app/home3.menu.agent — an agent has it, so the menu does not offer Delegate
+    await hero.locator('.h1-toggle').click(); // the open card shows its detail; closed, it shows the actions and the menu
     await hero.getByRole('button', { name: 'More actions' }).click();
     await expect(hero.getByRole('menuitem', { name: /Delegate/ })).toHaveCount(0);
     await expect(hero.getByRole('menuitem', { name: /Defer 2h/ })).toBeVisible();
@@ -186,7 +184,7 @@ test.describe('Agent team', () => {
     await first.click();
     await expect(first.locator('.agent-chip')).toHaveCount(0);
     await page.keyboard.press('a');
-    await expect(first.locator('.agent-talk')).toBeVisible();
+    await expect(first.locator('.thread .agent-talk')).toBeVisible();
     await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('Status?');
     await page.keyboard.press('Enter');
