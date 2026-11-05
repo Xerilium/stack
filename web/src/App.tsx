@@ -32,7 +32,9 @@ import { createInstall, isStandalone, type InstallEvent } from './install';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
 import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
-import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
+import { CHORDS, EXPERIMENTAL, HINT, LABEL, RAIL, TABBAR } from './nav';
+import { briefOf } from './brief';
+import { BriefView } from './BriefView';
 import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
 import { ThreadView } from './ThreadView';
@@ -227,7 +229,7 @@ export function App() {
   const needRows = useMemo(() => [...needAsks, ...taskAsks], [needAsks, taskAsks]); // one stable list: a new array every render would reset the Asks cursor
   const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks]);
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
-  const rows = view === 'asks' || view === 'sessions' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const rows = view === 'asks' || view === 'sessions' || view === 'brief' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
@@ -316,9 +318,13 @@ export function App() {
     onOpenTask: (ref) => { setFocusRef(ref); },
     onSync: () => void unsaved.check(),
   });
+<<<<<<< HEAD
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
+=======
+  const brief = useMemo(() => briefOf({ asks: asks.items, busy: busyTime, day, now: clockNow, one: home.one }), [asks.items, busyTime, day, clockNow, home.one]);
+>>>>>>> bd5dec1 (feat(web): Brief (Experimental) Chief of Staff view)
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
@@ -656,6 +662,7 @@ export function App() {
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
     { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
+    { id: 'go-brief', label: 'Go to Brief (Experimental)', hint: HINT.brief, group: 'Go to', run: () => go('brief') },
     { id: 'go-sessions', label: 'Go to Agents', hint: HINT.sessions, group: 'Go to', run: () => go('sessions') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
     { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, group: 'Go to', run: () => go('list') },
@@ -711,7 +718,7 @@ export function App() {
       if (k === '?') { e.preventDefault(); setHelp(true); return; }
       if (k === 'c' && L.view !== 'sessions') { e.preventDefault(); setCaptureOpen(true); return; } // Sessions uses c for costs
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
-      if (L.view === 'asks' || L.view === 'sessions') return; // these views own their keys
+      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'brief') return; // these views own their keys
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
@@ -805,7 +812,7 @@ export function App() {
   const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : null);
   /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
   const nav = () => RAIL.map((v) => (
-    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
+    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{EXPERIMENTAL.has(v) && <span class="exp">Experimental</span>}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
   ));
   return (
     <div class="shell">
@@ -838,6 +845,7 @@ export function App() {
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
+        {phase === 'ready' && view === 'brief' && <BriefView b={brief} win={win} busy={busy} onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onOpenAsks={() => go('asks')} onAct={(a, ref) => rowAct(a, ref)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />
