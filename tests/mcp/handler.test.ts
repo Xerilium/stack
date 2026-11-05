@@ -124,6 +124,6 @@ describe('azure', () => {
     const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
     const res = await fn!({ method: 'POST', url: URL_MCP, headers: new Headers({ authorization: `Bearer ${t}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }), text: async () => body });
     expect(res.status).toBe(200);
-    expect(JSON.parse(res.body).result.tools.map((x: any) => x.name)).toEqual(['next', 'list']);
+    expect(JSON.parse(res.body).result.tools.map((x: any) => x.name)).toEqual(['next', 'list', 'asks_list', 'asks_answer_wait']);
   });
 });

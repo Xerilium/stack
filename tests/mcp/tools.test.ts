@@ -7,17 +7,17 @@ describe('tools/list', () => {
   it('shows only tools the scopes allow, concisely and closed', async () => {
     const { rpc, mint } = await setup();
     const names = async (t: string) => (await rpc(t, 'tools/list')).json.result.tools.map((x: any) => x.name);
-    expect(await names(await mint('tasks:read'))).toEqual(['next', 'list']);
-    expect(await names(await mint('read'))).toEqual(['next', 'list']);
-    expect(await names(await mint('write'))).toEqual(['add', 'complete', 'start', 'skip', 'resume', 'suspend', 'set', 'triage', 'claim', 'record-result']);
+    expect(await names(await mint('tasks:read'))).toEqual(['next', 'list', 'asks_list', 'asks_answer_wait']);
+    expect(await names(await mint('read'))).toEqual(['next', 'list', 'asks_list', 'asks_answer_wait']);
+    expect(await names(await mint('write'))).toEqual(['add', 'complete', 'start', 'skip', 'resume', 'suspend', 'set', 'triage', 'claim', 'record-result', 'asks_put', 'asks_handle']);
     expect(await names(await mint('projects:read', 'summaries:read'))).toEqual([]);
     const all = (await rpc(await mint('read', 'write'), 'tools/list')).json.result.tools;
-    expect(all).toHaveLength(12);
+    expect(all).toHaveLength(16);
     for (const t of all) {
       expect(t.description.length).toBeLessThan(100);
       expect(t.inputSchema.additionalProperties).toBe(false);
     }
-    expect(TOOLS.map((t) => t.name)).toHaveLength(12);
+    expect(TOOLS.map((t) => t.name)).toHaveLength(16);
   });
   it('denies calling a tool outside scope and changes nothing', async () => {
     const { call, mint, storage, text } = await setup();

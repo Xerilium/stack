@@ -43,6 +43,14 @@ stack asks handle pr-879-approve --outcome reopen --reply "Yes, all 14 checks pa
 
 At the deadline, a reversible ask with a default is yours to apply (`defaulted`). Stack never acts for you.
 
+## MCP tools
+
+Same operations as the CLI, for agents on the Stack MCP server: `asks_put` (`options` and `applies` are `a|b` text), `asks_list` (`state`, `limit`), `asks_handle` (`key`, `outcome`, `note`, `reply`), and `asks_answer_wait` (`key`, `waitSec` 0-20; returns the answer or `pending`). There is no answer tool: only the owner answers.
+
+## Wake on answer
+
+When the owner answers, Stack adds one line to `tasks/wake/<from>.md` (your `--from`, lowercased, odd characters as `-`): `- <iso> <key> <answer>`. It holds no answer text and sends nothing over the network. Watch or read this file, then run `stack asks list --state answered`. `handle` (or a retract) removes the line.
+
 ## Keep the queue small
 
 ```bash
@@ -62,6 +70,10 @@ Run it at the start of each run (one commit, nothing is lost). The archive is ne
 ## For a CoS agent file
 
 > Bring Michael decisions only through `stack asks put` (see `docs/asks.md`). After each state update, upsert the asks for every open decision and `resolve` the ones no longer needed. Read `stack asks list --state answered` at the start of every run and act on the answers, then `stack asks archive`. Do not message him in chat.
+
+Use this paragraph instead of "message Michael":
+
+> When you need a decision, fact, approval, or human-only step from Michael, do not message him. Put one ask: `asks_put` (MCP) or `stack asks put <key> --from <you> ...`, with your recommendation and a default only if silence is safe. Then carry on with other work. Your wake file `tasks/wake/<you>.md` lists answered asks; at the start of each run read it (or `asks_list state=answered`), act, and close each with `asks_handle`. To block on one answer, call `asks_answer_wait`. Resolve asks that became moot.
 
 ## Quick triage: a few questions, answered in one sitting
 
