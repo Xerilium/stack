@@ -28,6 +28,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/inbox/handled` | POST mark an inbox entry handled |
 | `/inbox-items` | GET all mail, unread Teams and Slack items with summaries and suggested actions (Inbox page) |
 | `/inbox-items/{id}/action` | POST run an inbox action; reply-draft makes a draft and never sends (owner session only) |
+| `/brief/summary` | GET the AI daily brief (owner only; `refresh=1` bypasses the cache) |
 | `/asks` | GET ranked asks for the owner (`state=open|answered|done|snoozed|all`) |
 | `/asks/{key}` | POST create or update an ask (agents) |
 | `/asks/{key}/answer` | POST the owner's answer (owner session only) |
