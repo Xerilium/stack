@@ -33,7 +33,7 @@ test.describe('Unsaved chip', () => {
     await page.goto('/');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await expect(chipOf(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Mark done' }).first().click();
+    await page.getByRole('button', { name: 'Done' }).first().click();
     await expect(chipOf(page)).toHaveText('Unsaved · 1');
   });
 

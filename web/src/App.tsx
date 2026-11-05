@@ -286,7 +286,7 @@ export function App() {
     if (viewRef.current === 'today') { team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); return; }
     setOpen(t.ref);
     // The thread mounts on the next paint; the focus request runs after it.
-    setTimeout(() => document.querySelector<HTMLInputElement>(`.row[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"], .focus-block[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"]`)?.focus(), 30);
+    setTimeout(() => document.querySelector<HTMLInputElement>(`.row[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"], .focus-block[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"], .top-rows li[data-ref="${CSS.escape(t.ref)}"] .thread input[type="text"]`)?.focus(), 30);
   }, [team]);
   /** The Home order of projects, for the Agents page. @req FR:agent-sessions/web.order.project */
   const projectRank = useMemo(() => new Map(home.projects.map((p, i) => [p.project, i])), [home.projects]);
