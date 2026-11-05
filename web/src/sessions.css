@@ -128,36 +128,7 @@
 .price-line { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 .sess-title .pin-mark { color: var(--accent); font-size: 11px; }
 
-/* the team tree: agents nested under their manager, sessions under each agent */
-.org-tree { gap: 2px; }
-.org-tree > li { position: relative; }
-.org-tree .sess-li, .org-agent, .org-more { padding-left: calc(var(--level, 0) * 20px); }
-.org-tree [data-level]::before { content: ""; position: absolute; left: calc(var(--level, 0) * 20px - 11px); top: 0; bottom: 0; width: 1px; background: var(--line2); }
-.org-row { width: 100%; display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto 60px; gap: 12px; align-items: center; min-height: 40px; padding: 0 12px; background: none; border: 0; border-radius: 10px; text-align: left; color: var(--ink); transition: background .12s var(--ease); font-variant-numeric: tabular-nums; }
-.org-row:hover, .org-agent.cursor .org-row { background: var(--hover); }
-.org-agent.cursor .org-row { box-shadow: inset 2px 0 0 var(--accent); }
-.org-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.org-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.005em; }
-.org-role { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.org-projects { display: inline-flex; gap: 4px; flex-wrap: nowrap; overflow: hidden; }
-.org-projects .chip { font-size: 11px; color: var(--muted); background: var(--chip); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
-.org-usage { font-size: 12px; color: var(--ink2); text-align: right; white-space: nowrap; font-weight: 600; }
-.org-usage .muted { color: var(--muted); font-weight: 500; }
-.org-talk { display: none; }
-.org-row:hover .org-talk, .org-agent.cursor .org-talk { display: inline; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--accent); }
-.org-row:hover .org-usage .muted, .org-agent.cursor .org-usage .muted { visibility: hidden; }
-.org-agent:not([data-level]) .org-row { min-height: 44px; }
-.org-agent:not([data-level]) .org-name { font-size: 15px; }
-.org-more .more-btn { margin: 0 0 0 12px; font-size: 12px; min-height: 28px; }
-.org-project { margin-top: 10px; }
-.org-project .muted, .sess-group .muted { color: var(--muted); font-weight: 500; text-transform: none; letter-spacing: 0; }
 
-/* quiet agents folded under their manager */
-.org-also { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding-left: calc(var(--level, 0) * 20px + 12px); min-height: 28px; font-size: 12px; }
-.org-also .muted { color: var(--muted); margin-right: 2px; }
-.also-agent { background: none; border: 0; padding: 2px 0; color: var(--ink2); font-size: 12px; cursor: pointer; border-radius: 4px; }
-.also-agent:hover, .also-agent:focus-visible { color: var(--accent); outline: none; text-decoration: underline; }
-.also-agent + .also-agent::before { content: '·'; color: var(--muted); margin-right: 8px; }
 
 /* the agent-first composer */
 .compose.new { padding: 14px 20px 16px; gap: 10px; overflow: auto; }
@@ -179,10 +150,73 @@
 .sess-drawer.new .compose-actions kbd { font-size: 10px; }
 
 @media (max-width: 799px) {
-  .org-tree .sess-li, .org-agent, .org-more { padding-left: calc(var(--level, 0) * 14px); }
-  .org-row { grid-template-columns: minmax(0, 1fr) auto; min-height: var(--tap); }
-  .org-role, .org-projects { display: none; }
-  .org-tree [data-level]::before { display: none; }
   .scope-note kbd { display: none; }
-  .pick-list li, .also-agent, .org-more .more-btn { min-height: var(--tap); }
+  .pick-list li { min-height: var(--tap); }
+}
+
+
+/* My team: org chart of primary agents, the selected agent's chat under it (agents-team) */
+.sess-view.team { max-width: 1120px; }
+.seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--chip); border-radius: 9px; }
+.seg-btn { min-height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: none; color: var(--ink2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.seg-btn.on { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgb(20 20 30 / 12%); }
+.seg-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.chart-wrap { overflow-x: auto; padding: 4px 2px 14px; margin-bottom: 14px; }
+.chart, .chart ul { list-style: none; margin: 0; padding: 0; display: flex; justify-content: center; }
+.chart-node { position: relative; display: flex; flex-direction: column; align-items: center; padding: 0 7px; }
+.chart-node > .chart { position: relative; padding-top: 26px; }
+.chart-node > .chart::before { content: ""; position: absolute; top: 0; left: 50%; height: 14px; width: 1px; background: var(--line); }
+.chart-node > .chart > .chart-node { padding-top: 12px; }
+.chart-node > .chart > .chart-node::before { content: ""; position: absolute; top: -12px; left: 0; right: 0; height: 1px; background: var(--line); }
+.chart-node > .chart > .chart-node::after { content: ""; position: absolute; top: -12px; left: 50%; width: 1px; height: 24px; background: var(--line); }
+.chart-node > .chart > .chart-node:first-child::before { left: 50%; }
+.chart-node > .chart > .chart-node:last-child::before { right: 50%; }
+.chart-node > .chart > .chart-node:only-child::before { display: none; }
+.agent-card { display: flex; flex-direction: column; gap: 3px; width: 168px; min-height: 86px; padding: 10px 12px; text-align: left; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; cursor: pointer; position: relative; z-index: 1; transition: border-color .12s var(--ease), box-shadow .12s var(--ease); }
+.agent-card:hover { border-color: var(--muted); }
+.agent-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.agent-card.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+.ac-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.ac-name { font-weight: 650; font-size: 14px; letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ac-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--accent); }
+.ac-dot.needs-you { background: var(--warn); }
+.ac-role { font-size: 12px; color: var(--muted); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.agent-card.on .ac-role { color: var(--ink2); }
+.ac-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 4px; }
+.ac-projects { display: inline-flex; gap: 4px; overflow: hidden; min-width: 0; }
+.ac-projects .chip { font-size: 11px; color: var(--ink2); background: var(--chip); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+.agent-card.on .chip { background: var(--panel); }
+.ac-chats { font-size: 11px; color: var(--muted); white-space: nowrap; font-weight: 600; }
+.chat-pane { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.chat-tabs { display: flex; gap: 2px; padding: 6px 6px 0; overflow-x: auto; background: var(--rail); border-bottom: 1px solid var(--line); }
+.chat-tab { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; max-width: 240px; padding: 0 12px; border: 0; border-radius: 8px 8px 0 0; background: none; color: var(--ink2); font: inherit; font-size: 13px; cursor: pointer; flex: none; }
+.chat-tab:hover { background: var(--hover); }
+.chat-tab.on { background: var(--panel); color: var(--ink); font-weight: 600; box-shadow: inset 0 2px 0 var(--accent); }
+.chat-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.chat-tab .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+.chat-tab[data-state="running"] .dot { background: var(--accent); }
+.chat-tab[data-state="needs-you"] .dot { background: var(--warn); }
+.chat-tab[data-state="active"] .dot { background: var(--ok); }
+.ct-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-when { font-size: 11px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+.sess-view .sess-drawer.inline { position: static; width: auto; height: min(640px, 72vh); z-index: auto; border: 0; border-radius: 0; box-shadow: none; animation: none; }
+.sess-drawer.inline .drawer-head { padding: 14px 20px 10px; }
+.sess-drawer.inline .drawer-head h2 { font-size: 16px; }
+.chat-empty { text-align: center; padding: 44px 16px 48px; color: var(--muted); }
+.chat-empty .big { margin: 0; font-size: 17px; font-weight: 650; color: var(--ink); }
+.chat-empty .sub { margin: 4px 0 16px; font-size: 13px; }
+@media (max-width: 719px) {
+  .chart-wrap { overflow: visible; padding-bottom: 10px; }
+  .chart, .chart ul { display: block; }
+  .chart-node { align-items: stretch; padding: 0; }
+  .agent-card { width: 100%; min-height: var(--tap); margin: 0 0 6px; }
+  .ac-role { -webkit-line-clamp: 1; }
+  .chart-node > .chart { padding: 0 0 0 16px; margin-left: 10px; border-left: 1px solid var(--line); }
+  .chart-node > .chart::before, .chart-node > .chart > .chart-node::after { display: none; }
+  .chart-node > .chart > .chart-node { padding: 0; }
+  .chart-node > .chart > .chart-node::before, .chart-node > .chart > .chart-node:first-child::before, .chart-node > .chart > .chart-node:last-child::before, .chart-node > .chart > .chart-node:only-child::before { display: block; top: 22px; left: -16px; right: auto; width: 14px; height: 1px; margin: 0; }
+  .sess-tools { flex-wrap: wrap; }
+  .seg-btn { min-height: var(--tap); }
+  .sess-view .sess-drawer.inline { height: min(560px, 75vh); }
+  .chat-tab { min-height: var(--tap); }
 }
