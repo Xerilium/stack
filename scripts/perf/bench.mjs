@@ -4,7 +4,7 @@
  * Usage: node scripts/perf/bench.mjs [--repo DIR] [--synthetic N] [--runs R] [--json]
  * Reports min/median wall ms and CPU ms (user+sys) per step. CPU is steady when the machine is loaded; trust it over wall.
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -71,7 +71,7 @@ for (let r = 0; r < runs; r++) {
   await time('first-load burst', () => Promise.all([get('/api/tasks?state=open&limit=200'), get('/api/rank'), get('/api/projects')]));
   // What the web client does on load (App.tsx refresh + loadSide), request for request. Counted so a waterfall regression shows.
   const rangeFrom = new Date().toISOString(), rangeTo = new Date(Date.now() + 864e5).toISOString();
-  const first = await time('client load', async () => {
+  await time('client load', async () => {
     let n = 0; const g = (p) => { n++; return get(p); };
     await g('/.auth/me');
     const side = (async () => { await g('/api/schedule?at=' + encodeURIComponent(rangeFrom)).catch(() => 0); await Promise.allSettled([g('/api/agents'), g('/api/inbox'), g(`/api/calendar?from=${encodeURIComponent(rangeFrom)}&to=${encodeURIComponent(rangeTo)}`)]); })();
