@@ -28,6 +28,7 @@ import { usePins } from './pins';
 import { useUnsaved } from './unsaved';
 import type { RankItem } from './home';
 import { useSessions } from './useSessions';
+import { createInstall, isStandalone, type InstallEvent } from './install';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
 import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
@@ -109,6 +110,15 @@ export function App() {
   const [picker, setPicker] = useState<{ refs: string[]; groups: GroupName[] } | null>(null);
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
+  /** @req FR:desktop-app/install.prompt */
+  const install = useRef(createInstall(isStandalone())).current;
+  const [, setInstallTick] = useState(0);
+  useEffect(() => {
+    const before = (e: Event) => { install.onBeforeInstall(e as InstallEvent); setInstallTick((n) => n + 1); };
+    const done = () => { install.onInstalled(); setInstallTick((n) => n + 1); };
+    window.addEventListener('beforeinstallprompt', before); window.addEventListener('appinstalled', done);
+    return () => { window.removeEventListener('beforeinstallprompt', before); window.removeEventListener('appinstalled', done); };
+  }, [install]);
   const [working, setBusy] = useState(false);
   /** @req FR:pwa/offline.banner */
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine !== false);
@@ -640,6 +650,7 @@ export function App() {
     ] : []),
     { id: 'help', label: 'Show keyboard shortcuts', hint: '?', run: () => setHelp(true) },
     ...(notify.supported ? [{ id: 'notify', label: notify.on ? 'Turn off notifications' : 'Notify me about new asks', run: notify.toggle }] : []),
+    ...(install.available() ? [{ id: 'install', label: 'Install Stack as an app', run: () => { void install.run().then(() => setInstallTick((n) => n + 1)); } }] : []),
     { id: 'signout', label: 'Sign out', run: () => void signOut() },
   ].map((c) => ({ group: 'Actions' as Group, ...c }));
   // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump @req FR:web-shell/palette.jump.groups
