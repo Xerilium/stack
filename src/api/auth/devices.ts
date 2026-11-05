@@ -100,7 +100,8 @@ export function createDeviceService(opts: { store: TokenStore; tokens: TokenServ
     const found = await mutate<{ r: 'revoked' | 'already' | 'not_found'; tokenId?: string }>((devices) => {
       const d = devices.find((x) => x.id === id);
       if (!d) return { result: { r: 'not_found' }, save: false };
-      if (d.revokedAt) return { result: { r: 'already' }, save: false };
+      // @req FR:iphone-access/device.revoke.retry: a repeat still revokes the token, so a failed token revoke never leaves it live.
+      if (d.revokedAt) return { result: { r: 'already', tokenId: d.tokenId }, save: false };
       d.revokedAt = now().toISOString();
       delete d.push;
       return { result: { r: 'revoked', tokenId: d.tokenId }, save: true };

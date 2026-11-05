@@ -32,7 +32,8 @@ Owner needs one revocable login per phone so that a lost phone is cut off alone.
   - **FR:device.create.limit** (P1): Service MUST refuse more than 10 active devices (`409`)
   - **FR:device.create.atomic** (P1): When the device record cannot be saved, the new token MUST be revoked
 - **FR:device.list** (P1): List returns `id`, `name`, `createdAt`, `revokedAt`, `status` (`active`/`revoked`) and `push` (boolean). It MUST NOT return the token id, hash, or subscription endpoint
-- **FR:device.revoke** (P1): Revoke MUST revoke the bound token, drop the saved subscription, and mark the device revoked. A repeat is a no-op; an unknown id is `404`
+- **FR:device.revoke** (P1): Revoke MUST revoke the bound token, drop the saved subscription, and mark the device revoked. A repeat changes no device state; an unknown id is `404`
+  - **FR:device.revoke.retry** (P1): A repeat revoke MUST revoke the bound token again, so a failed first token revoke never leaves a live token
 - **FR:device.login** (P1): A device token authenticates through the existing `authorize` hook with its scopes. After revoke it MUST answer `401` on the next request
 
 ### FR:sub: Push subscription

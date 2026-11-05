@@ -48,8 +48,16 @@ export function createMcpServer(opts: McpServerOptions): Server {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('Timeout')), opts.timeoutMs ?? 30000); });
       let res: Response;
-      try { res = await Promise.race([opts.api(buildRequest(t, args, BASE, opts.headers ?? {})), timeout]); } finally { clearTimeout(timer); }
-      const r = await replyFrom(t, res);
+      const deadline = Date.now() + (typeof args['waitSec'] === 'number' ? args['waitSec'] : 0) * 1000;
+      try {
+        for (;;) {
+          res = await Promise.race([opts.api(buildRequest(t, args, BASE, opts.headers ?? {})), timeout]);
+          if (!t.wait || !res.ok || Date.now() >= deadline) break;
+          if (t.wait.ready(await res.clone().json().catch(() => undefined), args)) break;
+          await Promise.race([new Promise((r) => setTimeout(r, Math.min(1000, Math.max(0, deadline - Date.now())))), timeout]);
+        }
+      } finally { clearTimeout(timer); }
+      const r = await replyFrom(t, res, args);
       emit({ kind: r.status === 401 || r.status === 403 ? 'deny' : 'allow', tool: t.name, status: r.status });
       return r.isError ? fail(r.text) : { content: [{ type: 'text' as const, text: r.text }] };
     } catch (e) {

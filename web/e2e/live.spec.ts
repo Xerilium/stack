@@ -3,7 +3,7 @@
  * @req FR:ask-queue/live.watch @req FR:ask-queue/live.sse @req FR:ask-queue/live.quiet @req FR:ask-queue/web.live @req FR:ask-queue/flow.answer @req FR:ask-queue/cli.put
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -19,6 +19,7 @@ test.describe.configure({ mode: 'serial' });
 test.skip(({ isMobile }) => isMobile, 'one run is enough; the mobile layout is covered by the mocked specs');
 
 test.beforeAll(async () => {
+  test.setTimeout(90_000); // the tsc build below is CPU-bound; nothing here polls a clock
   // Inside the repo, so the build resolves the root's node_modules (ical.js and other runtime deps).
   mkdirSync(join(ROOT, 'node_modules/.cache'), { recursive: true });
   out = mkdtempSync(join(ROOT, 'node_modules/.cache/stack-live-build-'));
@@ -35,7 +36,11 @@ test.beforeAll(async () => {
   // The agent CLI writes without committing here so its git commits never race the server's (one git index, two writers).
   cli = (...a) => execFileSync('node', [join(out, 'cli/index.js'), ...a, '--dir', repo, '--no-commit'], { env, encoding: 'utf8' });
   const { startWeb } = await import(pathToFileURL(join(out, 'cli/web.js')).href);
-  server = await startWeb({ dir: repo, port: 0, webDir: join(ROOT, 'web/dist'), watch: { debounceMs: 60 } });
+  // macOS FSEvents drops events written before its stream is live (seconds under load), so no test may write until the watcher has reported a probe file.
+  let armed = false;
+  server = await startWeb({ dir: repo, port: 0, webDir: join(ROOT, 'web/dist'), watch: { debounceMs: 60, onRaw: (f: string) => { if (f.endsWith('.armed-probe')) armed = true; } } });
+  for (let n = 0; !armed; n++) { writeFileSync(join(repo, '.armed-probe'), String(n)); await new Promise((ok) => setTimeout(ok, 10)); }
+  unlinkSync(join(repo, '.armed-probe'));
 });
 test.afterAll(async () => { await server?.close(); rmSync(out, { recursive: true, force: true }); rmSync(repo, { recursive: true, force: true }); });
 

@@ -69,6 +69,19 @@ describe('device login', () => {
     expect(list[0].status).toBe('revoked');
   });
 
+  // @req FR:iphone-access/device.revoke.retry
+  it('a repeat revoke kills the token when the first token revoke failed', async () => {
+    const s = setup();
+    const { createDeviceService, MemoryTokenStore } = await import('../../src/api/auth');
+    let fail = true;
+    const flaky = { ...s.tokens, revoke: async (id: string) => { if (fail) { fail = false; throw new Error('disk'); } return s.tokens.revoke(id); } };
+    const d = createDeviceService({ store: new MemoryTokenStore(), tokens: flaky });
+    const { device, token } = await d.create('x');
+    await expect(d.revoke(device.id)).rejects.toThrow();
+    expect(await d.revoke(device.id)).toBe('already');
+    expect(await s.tokens.verify(token)).toBeNull();
+  });
+
   // @req FR:iphone-access/device.revoke @req FR:iphone-access/device.login
   it('revoke kills the token and drops the subscription', async () => {
     const s = setup();

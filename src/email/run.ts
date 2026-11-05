@@ -78,16 +78,18 @@ async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<Tria
 }
 
 /** Runs one pass over the provider's delta; only the newest message of each conversation is triaged. */
-export async function runTriage(d: RunDeps): Promise<{ cursor: string; summary: RunSummary }> {
+export async function runTriage(d: RunDeps): Promise<{ cursor: string; summary: RunSummary; results: TriageResult[] }> {
   const { messages, cursor } = await d.provider.delta(d.cursor);
   const newest = new Map<string, Message>();
   for (const m of [...messages].sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt))) newest.set(m.conversationId, m);
   const summary = newSummary();
+  const results: TriageResult[] = [];
   const now = (d.ctx.now ?? (() => new Date()))();
   const h = d.hygiene;
   const s = h ? await h.state.get() : undefined;
   for (const m of newest.values()) {
     const r = await triage(d, m, summary);
+    results.push(r);
     await recordResult(d.ctx, r, { project: d.project });
     // Only the message that was triaged: a class never spreads to the rest of its thread.
     if (s) observe(s, r, { now });
@@ -103,5 +105,5 @@ export async function runTriage(d: RunDeps): Promise<{ cursor: string; summary: 
     await h.state.put(cur);
     summary.archivePending = pending.archive; summary.spamPending = pending.spam;
   }
-  return { cursor, summary };
+  return { cursor, summary, results };
 }
