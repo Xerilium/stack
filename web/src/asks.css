@@ -53,6 +53,8 @@
 .ask-eyebrow .from::before { content: "·"; margin-right: 8px; }
 .grow { flex: 1; }
 .ask-title { margin: 10px 0 0; font-size: 22px; line-height: 1.28; letter-spacing: -.018em; font-weight: 650; overflow-wrap: anywhere; text-wrap: balance; }
+.ask-task { display: inline-block; margin: 6px 0 0; font-size: 13px; color: var(--accent); text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-task:hover, .ask-task:focus-visible { text-decoration: underline; }
 .ask-why { margin: 8px 0 0; color: var(--ink2); font-size: 14px; line-height: 1.5; max-width: 60ch; }
 .ask-reply { margin: 12px 0 0; padding: 8px 12px; border-left: 2px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; font-size: 14px; color: var(--ink); }
 .ask-reply strong { margin-right: 8px; font-weight: 650; color: var(--accent); }
