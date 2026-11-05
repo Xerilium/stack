@@ -34,6 +34,8 @@ One owner, one private task repo, hosted on Azure Static Web Apps (SWA) free tie
 | 11 | Two writers corrupt the token file | Version-checked atomic writes under a per-path lock (in-process queue + lockfile, stale recovery) with retry | `tokens.test.ts` |
 | 12 | Corrupt token file grants access | Unreadable file means no token verifies (401); creating refuses to overwrite it | `tokens.test.ts` |
 | 13 | Other sign-in providers | SWA route rules return 404 for non-GitHub login (`docs/security/staticwebapp.config.json`) | `docs.test.ts` |
+| 14 | Lost or stolen phone | One token per device (3 scopes, 90 days); owner revokes the device, which revokes the token and drops its push subscription | `devices.test.ts` |
+| 15 | Host posts to an attacker URL via a saved push endpoint | Endpoint must be https on a known push-service host, no credentials or port; a device token is needed to save it | `devices.test.ts` |
 
 ## Residual risk
 
