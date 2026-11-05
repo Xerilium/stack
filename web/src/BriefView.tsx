@@ -4,6 +4,7 @@
  */
 import { actionsFor, type AskItem } from './asks';
 import type { Brief } from './brief';
+import type { AiRow, AiView } from './briefAi';
 import type { Window } from './home';
 import { clock, span } from './plan';
 import { parseRow } from './row';
@@ -24,12 +25,27 @@ function Card({ a, onAnswer }: { a: AskItem; onAnswer: (a: AskItem) => void }) {
   );
 }
 
-export function BriefView({ b, win, busy, onAnswer, onOpenAsks, onAct }: { b: Brief; win: Window; busy: boolean; onAnswer: (a: AskItem) => void; onOpenAsks: () => void; onAct: (a: Act, ref?: string) => void }) {
+export function BriefView({ b, ai, onAi, win, busy, onAnswer, onOpenAsks, onAct }: { b: Brief; ai: AiView | null; onAi: (r: AiRow) => void; win: Window; busy: boolean; onAnswer: (a: AskItem) => void; onOpenAsks: () => void; onAct: (a: Act, ref?: string) => void }) {
   const one = b.one, title = one ? parseRow(one.task.text).title || one.task.text : '';
   const more = (n: number) => n > 0 && <button type="button" class="link-btn" onClick={onOpenAsks}>{n} more in Needs you</button>;
   return (
     <section class="brief" aria-label="Brief">
       <p class="brief-tag"><span class="exp">Experimental</span> Chief of Staff · {win.inside ? win.inside.label : `${span(win.minutes)} until ${win.until?.label ?? 'end of day'}`}</p>
+
+      {ai && (
+        <div class="brief-ai" data-testid="brief-ai">
+          <h2 class="h2">AI summary</h2>
+          <p class="brief-headline">{ai.headline}</p>
+          <ul class="brief-list">
+            {ai.rows.map((r) => (
+              <li key={r.key} class="brief-card" data-testid="brief-ai-line">
+                <p class="brief-ask">{r.text}</p>
+                {r.label && <button type="button" class="btn primary" onClick={() => onAi(r)}>{r.label}</button>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <h2 class="h2">Next meetings</h2>
       {b.meetings.length === 0 ? <p class="brief-empty">No meetings left today.</p> : (

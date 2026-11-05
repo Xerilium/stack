@@ -36,6 +36,7 @@ import { repliesFor } from './agents';
 import { CHORDS, EXPERIMENTAL, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { briefOf } from './brief';
 import { BriefView } from './BriefView';
+import { aiRows, type AiSummary } from './briefAi';
 import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
 import { ThreadView } from './ThreadView';
@@ -322,6 +323,10 @@ export function App() {
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
+  // The AI daily brief: read once when Brief opens (the server caches it per day); a failure just hides the section. @req FR:cos-view/brief.ai.web
+  const [ai, setAi] = useState<AiSummary | null>(null);
+  useEffect(() => { if (view === 'brief' && !ai) { let live = true; api.briefSummary().then((r) => { if (live) setAi(r); }).catch(() => undefined); return () => { live = false; }; } }, [view, ai]);
+  const aiView = useMemo(() => aiRows(ai, asks.items), [ai, asks.items]);
   const brief = useMemo(() => briefOf({ asks: asks.items, busy: busyTime, day, now: clockNow, one: home.one }), [asks.items, busyTime, day, clockNow, home.one]);
   const toggleNotify = async () => {
     if (!notifySupported()) return;
@@ -845,7 +850,7 @@ export function App() {
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
-        {phase === 'ready' && view === 'brief' && <BriefView b={brief} win={win} busy={busy} onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onOpenAsks={() => go('asks')} onAct={(a, ref) => rowAct(a, ref)} />}
+        {phase === 'ready' && view === 'brief' && <BriefView b={brief} ai={aiView} onAi={(r) => { if (r.send) void asks.answer(r.ask, r.send, r.sent ?? 'Done'); }} win={win} busy={busy} onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onOpenAsks={() => go('asks')} onAct={(a, ref) => rowAct(a, ref)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />

@@ -1,6 +1,7 @@
 import type { CalEvent } from './meetings';
 import type { DaySched } from './schedule';
 import type { AskList, Send } from './asks';
+import type { AiSummary } from './briefAi';
 import type { CostReport, SessionList, Turn } from './sessions';
 import type { RankItem } from './home';
 import type { NeedItem } from './needs';
@@ -72,6 +73,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
     send: (ref: string, text: string, kind: 'reply' | 'decision', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
+    briefSummary: (refresh = false) => call<AiSummary>(`/brief/summary${refresh ? '?refresh=1' : ''}`),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
     /** The Inbox page: all mail, unread Teams and Slack. @req FR:inbox-page/api.read */
     inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] }>('/inbox-items'),

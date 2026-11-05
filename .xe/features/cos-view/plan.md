@@ -6,3 +6,4 @@
 4. `nav.ts`, `types.ts`, `filters.ts`, `App.tsx`: add `brief` view, `Experimental` tag.
 5. `web/e2e/brief.spec.ts`; screenshots 1280 and 375.
 6. Draft PR stacked on top-asks home (#79).
+7. AI brief: `src/api/brief.ts`, route `brief.summary`, `web/src/briefAi.ts`, section in BriefView.

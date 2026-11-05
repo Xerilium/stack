@@ -36,4 +36,29 @@ test.describe('Brief', () => {
     await expect(page.getByText('Nothing needs you.')).toBeVisible();
     await expect(page.getByText('No meetings left today.')).toBeVisible();
   });
+
+  test('AI summary: lines with one-tap actions, hidden when off', async ({ page }, info) => {
+    const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.install({ time: d });
+    const m = await mockApi(page);
+    m.asks = [ask('a1', 'Chief of Staff', 90, { ask: 'Approve the budget' }), ask('g1', 'Chief of Staff', 80, { ask: 'Sign the form', kind: 'go-do' }), ask('x1', 'Chief of Staff', 70, { ask: 'Pick a venue', kind: 'decide' })];
+    m.brief = { configured: true, date: '2026-11-05', headline: 'Three things need you, the budget first.', lines: [{ key: 'a1', text: 'The budget is ready; approve it.', action: 'go' }, { key: 'g1', text: 'Sign the form today.', action: 'done' }, { key: 'x1', text: 'Venue still open, no quick answer.', action: 'none' }] };
+    await page.goto('/#/brief');
+    await page.clock.resume();
+    const ai = page.getByTestId('brief-ai');
+    await expect(ai).toContainText('Three things need you');
+    await expect(ai.getByTestId('brief-ai-line')).toHaveCount(3);
+    await expect(ai.getByRole('button')).toHaveText(['Approve', 'Done']);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `e2e/screenshots/brief-ai-${info.project.name}.png`, fullPage: true });
+    await ai.getByRole('button', { name: 'Approve' }).click();
+    await expect.poll(() => m.asks.find((a) => a.key === 'a1')?.answer).toBe('go');
+    await expect(ai.getByTestId('brief-ai-line')).toHaveCount(2);
+  });
+
+  test('AI summary section is hidden when not configured', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/#/brief');
+    await expect(page.getByText('No messages waiting.')).toBeVisible();
+    await expect(page.getByTestId('brief-ai')).toHaveCount(0);
+  });
 });

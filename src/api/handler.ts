@@ -27,6 +27,8 @@ import { editTask, moveTask } from './edit';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
 import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, readInbox, requestAction, runAction, type ActionId, type IssueFiler } from '../inbox';
+import { createBriefCache } from './brief';
+import type { ClaudeJson } from '../email/llm';
 import { ApiError, errorResponse, flushError, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
 import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
@@ -55,11 +57,13 @@ export interface ApiDeps {
   issues?: IssueFiler;
   /** Today's meetings for the day plan; absent means no calendar. @req FR:day-inputs/api.calendar */
   calendar?: CalendarProvider;
+  /** Model for the AI daily brief (`claude -p`); absent means `GET /brief/summary` says not configured. @req FR:cos-view/brief.ai.route */
+  brief?: ClaudeJson;
   /** Called with unexpected errors (they are never sent to the caller). */
   onError?: (e: unknown) => void;
 }
 
-type Ctx = { deps: ApiDeps; life: LifecycleContext; req: Request; url: URL; params: string[]; /** Set when the request was allowed by an API token. */ token?: { id: string; name: string } };
+type Ctx = { deps: ApiDeps; /** Per-handler AI brief cache. */ briefCache: ReturnType<typeof createBriefCache>; life: LifecycleContext; req: Request; url: URL; params: string[]; /** Set when the request was allowed by an API token. */ token?: { id: string; name: string } };
 interface Route {
   method: 'GET' | 'POST';
   /** Path relative to basePath, with `{param}` placeholders; also the OpenAPI path key. */
@@ -221,6 +225,7 @@ const REPLY_BODY = { schema: { ref: REF, text: { t: 'str', required: true, max: 
 const ASSIGN_BODY = { schema: { agent: SLUG } satisfies Record<string, Spec>, required: [] as string[] };
 /** The ref in a path segment (`/tasks/{ref}/...`). */
 const refParam = (c: Ctx) => { const r = parseRef(c.params[0]); if (!r) throw invalid([{ field: 'ref', message: 'Must be project:line' }]); return r; };
+const BRIEF_Q: Record<string, Spec> = { refresh: { t: 'str', max: 1 } };
 const ASK_Q: Record<string, Spec> = { state: { t: 'enum', values: LIST_STATES }, limit: { t: 'int', min: 1, max: 200 } };
 /** Inbox refs are stored 1-based with the file path; the api speaks `name:line` (0-based). */
 const apiRef = (fileRef: string) => { const m = /^(tasks\/.+\.md):(\d+)$/.exec(fileRef); return m ? formatRef({ path: m[1], line: Number(m[2]) - 1 }) : fileRef; };
@@ -602,6 +607,18 @@ export const ROUTES: Route[] = [
       return json(200, await runAction(item, b, { ctx: c.life, ...(c.deps.mail ? { mail: c.deps.mail } : {}), addTask: addProjectTask }));
     },
   },
+  {
+    // @req FR:cos-view/brief.ai.route
+    method: 'GET', doc: '/brief/summary', name: 'brief.summary', query: BRIEF_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(BRIEF_Q));
+      if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can read the brief');
+      if (!c.deps.brief) return json(200, { configured: false });
+      const now = (c.deps.now ?? (() => new Date()))();
+      const asks = await listAsks(c.life, { state: 'open', limit: 200 });
+      return json(200, await c.briefCache({ model: c.deps.brief, asks: asks.items, now, refresh: q.get('refresh') === '1', onError: c.deps.onError }));
+    },
+  },
   // ---- agent sessions (404 without a driver) @req FR:agent-sessions/driver.interface
   {
     // @req FR:agent-sessions/sessions.list
@@ -898,6 +915,7 @@ function decide(d: unknown): ApiError | null {
 export function createApiHandler(deps: ApiDeps): (req: Request) => Promise<Response> {
   const base = (deps.basePath ?? '/api').replace(/\/+$/, '');
   const life: LifecycleContext = { storage: deps.storage, config: deps.config, now: deps.now, engine: deps.engine };
+  const briefCache = createBriefCache();
 
   return async (req) => {
     try {
@@ -934,7 +952,7 @@ export function createApiHandler(deps: ApiDeps): (req: Request) => Promise<Respo
         throw new ApiError('not_found', 'Not found');
       }
       params = hit.p!;
-      return await hit.r.run({ deps, life, req, url, params, ...(token ? { token } : {}) });
+      return await hit.r.run({ deps, briefCache, life, req, url, params, ...(token ? { token } : {}) });
     } catch (e) {
       const err = toApiError(e);
       if (err.code === 'internal') deps.onError?.(e);
