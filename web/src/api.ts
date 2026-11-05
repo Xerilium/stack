@@ -1,5 +1,6 @@
 import type { CalEvent } from './meetings';
 import type { DaySched } from './schedule';
+import type { Rule } from './weekly';
 import type { AskList, Send } from './asks';
 import type { CostReport, SessionList, Turn } from './sessions';
 import type { RankItem } from './home';
@@ -67,6 +68,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     add: (project: string, text: string, parent?: string) => call<Mutation>('/tasks', { project, text, ...(parent ? { parent } : {}) }),
     schedule: (at: string) => call<DaySched | null>(`/schedule?at=${encodeURIComponent(at)}`),
     scheduleDay: (body: { date: string; wake?: string; bed?: string; every?: boolean; reset?: boolean }) => call<DaySched>('/schedule/day', body),
+    meetings: async () => (await call<{ items: Rule[] }>('/meetings')).items,
     calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,

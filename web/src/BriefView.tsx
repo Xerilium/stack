@@ -24,20 +24,21 @@ function Card({ a, onAnswer }: { a: AskItem; onAnswer: (a: AskItem) => void }) {
   );
 }
 
-export function BriefView({ b, win, busy, onAnswer, onOpenAsks, onAct }: { b: Brief; win: Window; busy: boolean; onAnswer: (a: AskItem) => void; onOpenAsks: () => void; onAct: (a: Act, ref?: string) => void }) {
+export function BriefView({ b, layer, win, busy, onAnswer, onOpenAsks, onAct }: { b: Brief; layer: 'live' | 'weekly' | 'none'; win: Window; busy: boolean; onAnswer: (a: AskItem) => void; onOpenAsks: () => void; onAct: (a: Act, ref?: string) => void }) {
   const one = b.one, title = one ? parseRow(one.task.text).title || one.task.text : '';
   const more = (n: number) => n > 0 && <button type="button" class="link-btn" onClick={onOpenAsks}>{n} more in Needs you</button>;
   return (
     <section class="brief" aria-label="Brief">
       <p class="brief-tag"><span class="exp">Experimental</span> Chief of Staff · {win.inside ? win.inside.label : `${span(win.minutes)} until ${win.until?.label ?? 'end of day'}`}</p>
 
-      <h2 class="h2">Next meetings</h2>
+      <h2 class="h2">Next meetings{layer !== 'none' && <span class="brief-layer" data-testid="brief-layer"> · {layer === 'live' ? 'Live calendar' : 'Weekly schedule'}</span>}</h2>
       {b.meetings.length === 0 ? <p class="brief-empty">No meetings left today.</p> : (
         <ul class="brief-list" data-testid="brief-meetings">
           {b.meetings.map((m) => (
             <li key={m.start + m.title} class="brief-meeting">
               <span class="brief-when">{clock(m.start)}</span><span class="brief-title">{m.title}</span>
               <span class={`brief-in${m.now ? ' on' : ''}`}>{m.now ? 'now' : `in ${span(m.in)}`}</span>
+              {(m.owner || m.topic) && <span class="brief-detail">{m.owner}{m.owner && m.topic && ' · '}{m.topic}</span>}
               {m.join && <a class="btn primary" href={m.join} target="_blank" rel="noopener noreferrer">Join</a>}
             </li>
           ))}
@@ -66,11 +67,12 @@ export function BriefView({ b, win, busy, onAnswer, onOpenAsks, onAct }: { b: Br
       )}
 
       <h2 class="h2">Next 90 minutes</h2>
+      <p class="brief-free" data-testid="brief-free">{b.free.busy ? `In a meeting until ${clock(b.free.until)}` : `Free until ${clock(b.free.until)} (${span(b.free.minutes)})`}</p>
       {b.ninety.length === 0 ? <p class="brief-empty">No open time.</p> : (
         <ol class="brief-strip" data-testid="brief-ninety">
-          {b.ninety.map((s, i) => (
+          {b.ninety.map((s) => (
             <li key={s.start} class={`brief-slot ${s.kind}`}>
-              <span class="brief-when">{clock(s.start)}{i === 0 ? ' now' : ''}</span>
+              <span class="brief-when">{clock(s.start)}{s.now ? ' now' : ''}</span>
               <span class="brief-title">{s.kind === 'meeting' ? s.title : s.task && one ? `Suggest: ${parseRow(one.task.text).title || one.task.text}` : 'Free'}</span>
               <span class="brief-in">{span(s.end - s.start)}</span>
             </li>

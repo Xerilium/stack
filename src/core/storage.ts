@@ -82,7 +82,8 @@ export const CLAUDE_AGENT_PATH = /^\.claude\/agents\/(?![Rr][Ee][Aa][Dd][Mm][Ee]
 const CLAUDE_AGENTS_DIR = '.claude/agents';
 
 /** Non-task state files (for example the API token store); never listed as tasks. */
-export const AUX_PATH = /^\.stack\/[a-z][a-z-]*\.json$/;
+/** Also the weekly meetings list (`.stack/meetings.md`, `FR:cos-view/meet.config`). */
+export const AUX_PATH = /^\.stack\/(?:[a-z][a-z-]*\.json|meetings\.md)$/;
 export function validateAuxPath(path: string): string {
   if (typeof path !== 'string' || !AUX_PATH.test(path)) throw new PathError(`Invalid state path: ${JSON.stringify(path)}`);
   return path;

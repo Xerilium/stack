@@ -36,4 +36,28 @@ test.describe('Brief', () => {
     await expect(page.getByText('Nothing needs you.')).toBeVisible();
     await expect(page.getByText('No meetings left today.')).toBeVisible();
   });
+
+  test('no calendar: weekly schedule gives next meetings with owner, topic, free window', async ({ page }, info) => {
+    const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.install({ time: d });
+    const m = await mockApi(page);
+    const hm = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+    const all = [0, 1, 2, 3, 4, 5, 6];
+    m.meetings = [
+      { title: 'Printer sync', days: all, start: hm(10 * 60 + 5), end: hm(10 * 60 + 35), owner: '🖨️ Prototype', topic: 'Printer', join: 'https://example.test/printer' },
+      { title: 'FOCUS maintainers', days: all, start: '13:00', end: '14:30' },
+      { title: 'Third', days: all, start: '15:00', end: '16:00' },
+    ];
+    await page.goto('/#/brief');
+    await page.clock.resume();
+    await expect(page.getByTestId('brief-layer')).toHaveText(/Weekly schedule/);
+    const list = page.getByTestId('brief-meetings');
+    await expect(list.locator('li')).toHaveCount(2);
+    await expect(list).toContainText('Printer sync');
+    await expect(list).toContainText('🖨️ Prototype');
+    await expect(list).toContainText('Printer');
+    await expect(list.getByRole('link', { name: 'Join' })).toHaveAttribute('href', 'https://example.test/printer');
+    await expect(page.getByTestId('brief-free')).toContainText('Free until 10:05a');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `e2e/screenshots/brief-weekly-${info.project.name}.png`, fullPage: true });
+  });
 });

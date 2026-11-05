@@ -35,6 +35,7 @@ import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
 import { CHORDS, EXPERIMENTAL, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { briefOf } from './brief';
+import { enrich, expandWeekly, type Rule } from './weekly';
 import { BriefView } from './BriefView';
 import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
@@ -139,6 +140,8 @@ export function App() {
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [calError, setCalError] = useState('');
   const [calOn, setCalOn] = useState(true);
+  /** Weekly meetings (`.stack/meetings.md`): Brief's second layer. @req FR:cos-view/meet.layers */
+  const [rules, setRules] = useState<Rule[]>([]);
   /** Tomorrow's plan in My day: its schedule and meetings. @req FR:home/day.tomorrow */
   const [ahead, setAhead] = useState<{ sched: DaySched; events: CalEvent[] } | null>(null);
   /** "I have N min" from Home: memory only, runs out after N minutes. @req FR:home/home.have */
@@ -252,7 +255,8 @@ export function App() {
     const s = await api.schedule(d.toISOString()).catch(() => null);
     setSched(s);
     const range = calendarRange(s, d);
-    const [a, i, c] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to)]);
+    const [a, i, c, w] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to), api.meetings()]);
+    setRules(w.status === 'fulfilled' ? w.value : []);
     /** @req FR:web-app/today.meetings */
     if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); setCalOn(c.value.configured); } else setCalError('Calendar unavailable');
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
@@ -322,7 +326,13 @@ export function App() {
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
-  const brief = useMemo(() => briefOf({ asks: asks.items, busy: busyTime, day, now: clockNow, one: home.one }), [asks.items, busyTime, day, clockNow, home.one]);
+  /** Live calendar when it works, else the weekly schedule. @req FR:cos-view/meet.layers */
+  const liveCal = calOn && !calError;
+  const briefBusy = useMemo(() => {
+    const d0 = day.origin ?? clockNow, n = day.origin ? 2 : 1;
+    return liveCal ? busyTime.map((b) => ({ ...b, events: enrich(b.events, rules) })) : busyIntervals(expandWeekly(rules, d0, n), d0, n);
+  }, [liveCal, busyTime, rules, day, clockNow]);
+  const brief = useMemo(() => briefOf({ asks: asks.items, busy: briefBusy, day, now: clockNow, one: home.one }), [asks.items, briefBusy, day, clockNow, home.one]);
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
@@ -845,7 +855,7 @@ export function App() {
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
-        {phase === 'ready' && view === 'brief' && <BriefView b={brief} win={win} busy={busy} onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onOpenAsks={() => go('asks')} onAct={(a, ref) => rowAct(a, ref)} />}
+        {phase === 'ready' && view === 'brief' && <BriefView b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} win={win} busy={busy} onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onOpenAsks={() => go('asks')} onAct={(a, ref) => rowAct(a, ref)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />

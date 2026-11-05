@@ -35,11 +35,30 @@ describe('briefOf', () => {
   });
   it('next 90 minutes: stops at bed', () => {
     const b = briefOf({ asks: [], busy: [], day, now: at(17, 0), one: null });
-    expect(b.ninety).toEqual([{ kind: 'free', start: 1020, end: 1080 }]);
+    expect(b.ninety).toEqual([{ kind: 'free', start: 1020, end: 1080, now: true }]);
   });
   it('the one task goes in the first gap long enough for it', () => {
     const one = { task: { ref: 'a:1', text: 'T', project: 'a', section: '', done: false, depth: 0, notes: [] }, minutes: 30, assumed: false, due: null };
     const b = briefOf({ asks: [], busy: [busy(610, 640, 'Sync')], day, now: at(10, 0), one });
     expect(b.ninety.find((s) => s.task)).toMatchObject({ kind: 'free', start: 640 });
+  });
+});
+
+describe('briefOf: meeting detail and free window', () => {
+  const b2 = (title: string, s: number, e: number, extra: Record<string, string> = {}): Busy => ({ start: s, end: e, titles: [title], events: [{ id: title, subject: title, start: '', end: '', allDay: false, showAs: 'busy', cancelled: false, online: false, ...extra }] });
+  it('carries owner, topic, and the recurring join link', () => {
+    const b = briefOf({ asks: [], busy: [b2('Sync', 605, 640, { owner: '🧰 CoS', topic: 'Roadmap', joinUrl: 'https://j/9' })], day, now: at(10, 0), one: null });
+    expect(b.meetings[0]).toMatchObject({ owner: '🧰 CoS', topic: 'Roadmap', join: 'https://j/9' });
+  });
+  it('free until the next meeting, with minutes', () => {
+    const b = briefOf({ asks: [], busy: [b2('Sync', 645, 700)], day, now: at(10, 0), one: null });
+    expect(b.free).toEqual({ busy: false, until: 645, minutes: 45 });
+  });
+  it('free until bed when nothing is left', () => {
+    expect(briefOf({ asks: [], busy: [], day, now: at(17, 0), one: null }).free).toEqual({ busy: false, until: 1080, minutes: 60 });
+  });
+  it('in a meeting: until it ends (back-to-back meetings chain)', () => {
+    const b = briefOf({ asks: [], busy: [b2('A', 590, 650)], day, now: at(10, 0), one: null });
+    expect(b.free).toEqual({ busy: true, until: 650, minutes: 50 });
   });
 });
