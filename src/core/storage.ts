@@ -71,6 +71,8 @@ const LOG_PATH = /^tasks\/logs\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Z
 /** Owner-to-agent inboxes: same name rules as logs, never projects. @req FR:agent-inbox/inbox.path */
 const INBOX_PATH = /^tasks\/inbox\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
 
+/** Wake files for agents whose asks were answered: same name rules as inboxes, never projects. @req FR:ask-queue/wake.path */
+const WAKE_PATH = /^tasks\/wake\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
 /** Agent asks for the owner: one file per ask, never projects. @req FR:ask-queue/ask.path */
 export const ASK_PATH = /^tasks\/asks\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
 /** Archived (done) asks: same names, one folder down, never listed as open asks. @req FR:ask-queue/ask.archive */
@@ -82,7 +84,8 @@ export const CLAUDE_AGENT_PATH = /^\.claude\/agents\/(?![Rr][Ee][Aa][Dd][Mm][Ee]
 const CLAUDE_AGENTS_DIR = '.claude/agents';
 
 /** Non-task state files (for example the API token store); never listed as tasks. */
-export const AUX_PATH = /^\.stack\/[a-z][a-z-]*\.json$/;
+/** Also the weekly meetings list (`.stack/meetings.md`, `FR:cos-view/meet.config`). */
+export const AUX_PATH = /^\.stack\/(?:[a-z][a-z-]*\.json|meetings\.md)$/;
 export function validateAuxPath(path: string): string {
   if (typeof path !== 'string' || !AUX_PATH.test(path)) throw new PathError(`Invalid state path: ${JSON.stringify(path)}`);
   return path;
@@ -97,7 +100,7 @@ export interface AuxFiles {
 
 /** @req FR:storage-git/interface.paths @req FR:ai-triage-assist/result.path */
 export function validatePath(path: string): string {
-  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || ASK_PATH.test(path) || ARCHIVE_PATH.test(path) || AGENT_PATH.test(path) || CLAUDE_AGENT_PATH.test(path)) || path.split('/').includes('..')) {
+  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || WAKE_PATH.test(path) || ASK_PATH.test(path) || ARCHIVE_PATH.test(path) || AGENT_PATH.test(path) || CLAUDE_AGENT_PATH.test(path)) || path.split('/').includes('..')) {
     throw new PathError(`Invalid task path: ${JSON.stringify(path)}`);
   }
   return path;

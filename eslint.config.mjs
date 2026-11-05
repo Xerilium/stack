@@ -23,6 +23,11 @@ export default tseslint.config(
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   {
+    // Node ES module scripts (benchmarks and tooling).
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { sourceType: 'module', globals: { process: 'readonly', console: 'readonly', URL: 'readonly', fetch: 'readonly', performance: 'readonly', setTimeout: 'readonly' } },
+  },
+  {
     files: ['tests/**/*.ts', 'web/e2e/**/*.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
   }
