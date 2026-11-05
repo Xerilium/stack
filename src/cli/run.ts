@@ -162,12 +162,17 @@ function props(f: Record<string, string | true>): TaskProps {
   return p;
 }
 
+/** Canonical command name for JSON output (`park` is `skip`). */
+const canon = (cmd: string): string => (cmd === 'park' ? 'skip' : cmd);
+
+/** @req FR:task-lifecycle/doc.json */
 function describe(cmd: string, r: LifecycleResult): Outcome {
   const json: Record<string, unknown> = {
-    ok: true, changed: r.changed,
+    ok: true, command: canon(cmd), changed: r.changed,
+    ...(r.ref ? { project: r.ref.path.replace(/^.*\//, '').replace(/\.md$/, '') } : {}),
     ...(r.ref ? { ref: { path: r.ref.path, line: r.ref.line + 1 } } : {}),
     ...(r.before !== undefined ? { before: r.before } : {}),
-    ...(r.after !== undefined ? { after: r.after } : {}),
+    ...(r.after !== undefined ? { after: r.after, text: taskText(r.after) } : {}),
     ...(r.message ? { message: r.message } : {}),
     ...(r.rolled ? { rolled: true } : {}),
   };
@@ -209,7 +214,7 @@ async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: bo
   const written = changed.map(c => c.path);
   const q = queries ? ` (queries: ${queries.processed} refreshed${queries.failures.length ? `, ${queries.failures.length} failed: ${queries.failures.map(x => x.message).join('; ')}` : ''})` : '';
   return {
-    json: { ok: true, changed: written.length > 0, files: written, ...(swept ? { swept } : {}), ...(queries ? { queries } : {}) },
+    json: { ok: true, command: 'update', changed: written.length > 0, files: written, ...(swept ? { swept } : {}), ...(queries ? { queries } : {}) },
     text: (written.length ? `updated ${written.join(' ')}` : 'no change: summaries are current') + q,
   };
 }
@@ -481,6 +486,7 @@ function exitCodeFor(e: unknown): number {
  */
 export async function run(argv: string[], io: IO = { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) }): Promise<number> {
   let json = argv.includes('--json') && !argv.includes('--');
+  let command: string | undefined;
   try {
     const p = parseArgs(argv);
     json = p.flags['json'] === true;
@@ -488,6 +494,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     if (p.flags['version']) { io.out(`${pkgVersion()}\n`); return EXIT.ok; }
     if (p.flags['help'] || !p.command) { io.out(`${helpText()}\n`); return EXIT.ok; }
     const spec = COMMANDS[p.command];
+    if (spec) command = canon(p.command);
     if (!spec) throw new UsageError(`Unknown command: ${p.command}`);
     for (const k of Object.keys(p.flags)) if (!GLOBAL.includes(k) && !spec.flags.includes(k)) throw new UsageError(`Unknown option for ${p.command}: --${k}`);
     const home = homedir();
@@ -503,7 +510,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
   } catch (e) {
     const code = exitCodeFor(e);
     const msg = e instanceof Error ? e.message : String(e);
-    if (json) io.out(`${JSON.stringify({ ok: false, error: msg, code })}\n`);
+    if (json) io.out(`${JSON.stringify({ ok: false, ...(command ? { command } : {}), error: msg, code })}\n`);
     else io.err(`error: ${msg}\n`);
     return code;
   }

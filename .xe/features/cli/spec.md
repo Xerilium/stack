@@ -123,7 +123,9 @@ AI Agent needs terse, predictable output and exit codes so that scripts and agen
 - **FR:out.text** (P1): Default output MUST be one short line per result (verb, ref, task text), nothing else
   - A no-op prints `no change: <reason>`
 - **FR:out.json** (P1): `--json` MUST print one JSON object on stdout: the result (`ok`, `changed`, `ref`, `before`, `after`, `message`, `rolled`, or command fields)
-  - Errors print `{ ok: false, error, code }` on stdout
+  - Errors print `{ ok: false, command, error, code }` on stdout (`command` is absent when it is unknown)
+  - `start`, `complete`, `skip`, `resume`, `suspend`, and `set` add `command`, `project`, and `text` per `FR:task-lifecycle/doc.json`; `update` adds `command: "update"`
+    > - @req FR:task-lifecycle/doc.json
 - **FR:out.quiet** (P2): Errors in text mode MUST go to stderr as `error: <message>`, leaving stdout empty
 - **FR:out.codes** (P1): Exit codes MUST be: 0 ok (including no-op), 1 runtime failure (git, storage, config), 2 usage or invalid input (`LifecycleError`, bad flags), 3 conflict (`ConflictError`), 4 nothing to act on (no task qualifies)
 

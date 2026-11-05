@@ -288,6 +288,29 @@ describe('commands', () => {
     expect(JSON.parse(e.out)).toMatchObject({ ok: false, code: 2 });
     expect(e.err).toBe('');
   });
+
+  // @req FR:task-lifecycle/doc.json @req FR:cli/out.json
+  it('json mode adds command, project, and text to lifecycle results', () => {
+    const d = repo('Alpha job');
+    const s = JSON.parse(stack(d, 'start', '--json', '--now', NOW).out);
+    expect(s).toMatchObject({ ok: true, command: 'start', project: 'alpha' });
+    expect(s.text).toContain('Alpha job');
+    expect(s.text).not.toMatch(/^- \[/);
+    const k = JSON.parse(stack(d, 'park', '--json', '--now', NOW).out);
+    expect(k).toMatchObject({ command: 'skip', project: 'alpha' });
+    const r = JSON.parse(stack(d, 'resume', '--json', '--now', NOW).out);
+    expect(r).toMatchObject({ command: 'resume', project: 'alpha', changed: true });
+    const none = JSON.parse(stack(d, 'resume', '--json', '--now', NOW).out);
+    expect(none).toMatchObject({ command: 'resume', changed: false });
+  });
+
+  // @req FR:cli/out.json
+  it('json errors and update name the command', () => {
+    const d = repo('J');
+    expect(JSON.parse(stack(d, 'add', 'nope', 'x', '--json').out)).toMatchObject({ ok: false, command: 'add', code: 2 });
+    expect(JSON.parse(stack(null, 'bogus', '--json').out)).not.toHaveProperty('command');
+    expect(JSON.parse(stack(d, 'update', '--json', '--now', NOW).out)).toMatchObject({ ok: true, command: 'update' });
+  });
 });
 
 describe('update', () => {
