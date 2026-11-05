@@ -782,3 +782,23 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
 @keyframes top-in { from { background: var(--accent-soft); opacity: .4; } to { background: transparent; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .top-rows li.fresh { animation: none; } }
 .top-rows li > .agent-talk { grid-column: 1 / -1; }
+
+/* Brief (Experimental). @req FR:cos-view/brief.phone */
+.exp { font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; color: var(--warn); border: 1px solid var(--warn); border-radius: 999px; padding: 1px 6px; margin-left: 6px; }
+.brief { max-width: 720px; }
+.brief-tag { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
+.brief-tag .exp { margin: 0 6px 0 0; }
+.brief-list, .brief-strip { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.brief-meeting, .brief-slot { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.brief-slot.free { border-style: dashed; background: transparent; color: var(--ink2); }
+.brief-when { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 64px; }
+.brief-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.brief-in { color: var(--muted); font-size: 13px; } .brief-in.on { color: var(--ok); font-weight: 600; }
+.brief-card { padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); display: grid; gap: 6px; justify-items: start; }
+.brief-ask { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.brief-why, .brief-meta { margin: 0; color: var(--muted); font-size: 13px; }
+.brief-rec { margin: 0; color: var(--ink2); font-size: 14px; overflow-wrap: anywhere; } .brief-rec span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-right: 4px; }
+.brief-headline { margin: 0 0 8px; font-size: 16px; overflow-wrap: anywhere; }
+.brief-empty { color: var(--muted); margin: 0; font-size: 14px; }
+.brief-one h1 { font-size: 22px; }
+@media (max-width: 720px) { .brief .btn { min-height: 44px; } .brief-meeting, .brief-slot { flex-wrap: wrap; } }
