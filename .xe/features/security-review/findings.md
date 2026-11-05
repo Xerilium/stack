@@ -1,7 +1,7 @@
 # Security review: email and inbox (PRs 76, 82, 84, 87)
 
 Reviewed: pr76 (email runner), pr84 (inbox runner, Teams/Slack; includes pr82), pr87 (brief AI). Base for fixes: main + pr76 + pr84. pr87 read from its branch (merge conflicts in web files prevented one tree).
-Counts: Critical 0 · High 3 · Medium 4 · Low 4 · Info 5.
+Counts: Critical 0 · High 3 (fixed) · Medium 4 (M3, M4 fixed; M1, M2 on PR 87 only) · Low 4 (L1, L2 fixed) · Info 5.
 
 ## Results by focus
 1. **No send path: PASS.** `guard.ts` denies send/forward/reply/move/copy/DELETE by path segment before the allowlist; only `createReply` (body `comment` only, drafts mode) and approved Archive/Junk moves pass. `auth.ts` allowlist has no `Mail.Send`/`Chat.Send`; Chat.Read is not requested anywhere (Teams token is injected, never obtained here). Chat/Slack guards allow reads only.
@@ -15,15 +15,15 @@ Counts: Critical 0 · High 3 · Medium 4 · Low 4 · Info 5.
 - **H2. `GET /inbox-items` readable by any `tasks:read` token.** `src/api/handler.ts:584`. Returns every mailbox's sender, subject, summary and Graph `messageId`; calendar and schedule reads are owner-only, this was not. Fix: `ownerOnly`. Test: `tests/security/authorize.test.ts` (owner-only list).
 - **H3. Inbox item summary unredacted; sensitive mail falls back to body preview.** `src/inbox/items.ts:21`. Asks use `redact()` and "sensitive mail never carries a body"; items did neither, and the file `.stack/inbox-items.json` goes into the task repo. Fix: `redact()`, fixed text for `sensitive`. Test: `tests/security/inbox-review.test.ts`.
 
-## Medium (not fixed)
+## Medium (M3, M4 fixed in `src/email/llm.ts` `childEnv`, `src/email/run.ts`; M1, M2 need a change on PR 87's branch)
 - **M1. Brief one-tap actions steered by attacker text.** `src/api/brief.ts:38,45`. Ask text from email/Teams goes to the model; the model's `text` is shown beside a go/no/done button for the key it picks. Actions are allowlisted per ask kind (good), but a crafted ask can make a line misdescribe another ask. Fix: show the ask's own title beside the button; use model text only as a second line.
 - **M2. `GET /brief/summary?refresh=1` spends model calls.** `pr87 src/api/handler.ts:579-586`. A cross-site GET to loopback `stack web` passes the Host guard (CSRF guard covers non-GET only, `src/cli/web.ts:193`); response is unreadable but cost is real. Fix: POST for refresh, or a 60 s floor between refreshes.
-- **M3. Whole environment passed to `claude -p`.** `src/email/llm.ts:22` (`env: process.env`). No tools, so no exfil path today, but GH/Graph/Slack secrets in env reach a child that reads hostile text. Fix: pass an allowlist (PATH, HOME, ANTHROPIC_*, locale).
-- **M4. No server-side shape check of model fields.** `src/email/to-ask.ts` calls `oneLine(redact(r.summary))` on model output; the CLI enforces the schema, Stack does not. A non-string summary throws and aborts the pass (DoS by one mail, if the CLI schema check ever lapses). Fix: coerce with `typeof === 'string'` in `run.ts`.
+- **M3 (fixed). Whole environment passed to `claude -p`.** `src/email/llm.ts:22` (`env: process.env`). No tools, so no exfil path today, but GH/Graph/Slack secrets in env reach a child that reads hostile text. Fix: pass an allowlist (PATH, HOME, ANTHROPIC_*, locale).
+- **M4 (fixed). No server-side shape check of model fields.** `src/email/to-ask.ts` calls `oneLine(redact(r.summary))` on model output; the CLI enforces the schema, Stack does not. A non-string summary throws and aborts the pass (DoS by one mail, if the CLI schema check ever lapses). Fix: coerce with `typeof === 'string'` in `run.ts`.
 
 ## Low
-- **L1.** `src/graph/auth.ts:160` `JSON.parse` of a corrupt token file puts a file snippet in the error, which `emailAll` writes to `run.log` (`src/cli/email.ts`). Fix: catch and throw a fixed message.
-- **L2.** `src/graph/auth.ts` `write`: `mkdir mode 0700` does not tighten an existing loose directory. Fix: `chmod` the directory.
+- **L1 (fixed).** `src/graph/auth.ts:160` `JSON.parse` of a corrupt token file puts a file snippet in the error, which `emailAll` writes to `run.log` (`src/cli/email.ts`). Fix: catch and throw a fixed message.
+- **L2 (fixed).** `src/graph/auth.ts` `write`: `mkdir mode 0700` does not tighten an existing loose directory. Fix: `chmod` the directory.
 - **L3.** `src/inbox/request.ts:26` "Request this action" files a public issue per click, no dedupe. Owner-only. Fix: look for an open issue with the same title first.
 - **L4.** `src/cli/email.ts:61` plist logs (`run.log`) are created with launchd's default 0644 in a 0700 dir; contents are counts and account names only. Fix: none needed unless logs grow content.
 
