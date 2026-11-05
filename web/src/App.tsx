@@ -318,13 +318,10 @@ export function App() {
     onOpenTask: (ref) => { setFocusRef(ref); },
     onSync: () => void unsaved.check(),
   });
-<<<<<<< HEAD
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
-=======
   const brief = useMemo(() => briefOf({ asks: asks.items, busy: busyTime, day, now: clockNow, one: home.one }), [asks.items, busyTime, day, clockNow, home.one]);
->>>>>>> bd5dec1 (feat(web): Brief (Experimental) Chief of Staff view)
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
