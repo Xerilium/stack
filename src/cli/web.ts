@@ -8,6 +8,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, stat
 import { createServer, type IncomingMessage, type Server } from 'http';
 import { extname, join, normalize, relative, resolve, sep } from 'path';
 import { createApiHandler } from '../api/handler';
+import { createClaudeJson } from '../email/llm';
 import { createGitHubPrs, githubRepos } from '../api/github';
 import { createGraphCalendar, fixtureCalendar, type CalendarEvent, type CalendarProvider } from '../calendar';
 import { createIcsCalendar, icsUrls } from '../calendar/ics';
@@ -163,7 +164,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const offPending = storage.onPending?.(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['sync'] }); });
   // @req FR:agent-sessions/driver.sdk (the SDK and its binary load on the first sessions request, not here)
   const agents: AgentRuns | undefined = o.agents === false ? undefined : o.agents ?? createRunManager({ driver: createSdkDriver(), ctx: { storage, config }, cwd: o.dir });
-  const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents });
+  const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });

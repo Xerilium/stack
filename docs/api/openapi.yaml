@@ -1139,6 +1139,134 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Error"
+  /inbox-items:
+    get:
+      summary: All mail, unread Teams and unread Slack items, each with a summary and a suggested action, plus the action catalog
+      operationId: listInboxItems
+      responses:
+        "200":
+          description: Inbox
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  actions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        label:
+                          type: string
+                        ready:
+                          type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /inbox-items/{id}/action:
+    post:
+      summary: "Run an inbox action (reply-draft makes a draft and never sends), or with request true file a request for a missing action. Owner session only: 403 for tokens"
+      operationId: inboxAction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - action
+              properties:
+                action:
+                  type: string
+                  enum:
+                    - reply-draft
+                    - mark-done
+                    - snooze
+                    - ask-me-later
+                    - create-task
+                    - archive
+                    - unsubscribe
+                    - delegate
+                    - schedule
+                    - forward-draft
+                text:
+                  type: string
+                  maxLength: 5000
+                  description: Draft text for reply-draft
+                until:
+                  type: string
+                  maxLength: 40
+                  description: ISO date for snooze Single line.
+                request:
+                  type: boolean
+                  description: File a GitHub issue (label help wanted) for a missing action
+      responses:
+        "200":
+          description: Result
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /brief/summary:
+    get:
+      summary: "AI daily brief over the top open asks, cached per day. Owner session only: 403 for tokens. configured is false when the host has no model"
+      operationId: briefSummary
+      parameters:
+        - name: refresh
+          in: query
+          schema:
+            type: string
+          description: 1 forces a new model call
+      responses:
+        "200":
+          description: Brief
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  date:
+                    type: string
+                  headline:
+                    type: string
+                  cached:
+                    type: boolean
+                  error:
+                    type: string
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        text:
+                          type: string
+                        action:
+                          type: string
+                          enum:
+                            - go
+                            - no
+                            - done
+                            - none
+        default:
+          $ref: "#/components/responses/Error"
   /sessions:
     get:
       summary: Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents
