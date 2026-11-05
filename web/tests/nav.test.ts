@@ -13,6 +13,6 @@ describe('nav model', () => {
   });
   // @req FR:web-shell/nav.keys
   it('chords: g h, g d (and g t), g k, g p, g a', () => {
-    expect(CHORDS).toEqual({ h: 'home', b: 'brief', d: 'today', t: 'today', k: 'asks', s: 'sessions', p: 'projects', a: 'list' });
+    expect(CHORDS).toEqual({ h: 'home', b: 'brief', d: 'today', t: 'today', k: 'asks', i: 'inbox', s: 'sessions', p: 'projects', a: 'list' });
   });
 });
