@@ -45,6 +45,8 @@ import { agentForAsk } from './team';
 import { planWeek } from './week';
 import { FocusMode, HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
+import { nowOf } from './nowscreen';
+import { NowScreen } from './NowScreen';
 import './myday.css';
 
 const reads = new Set<(savedAt: string | null) => void>();
@@ -231,7 +233,9 @@ export function App() {
   const needRows = useMemo(() => [...needAsks, ...taskAsks], [needAsks, taskAsks]); // one stable list: a new array every render would reset the Asks cursor
   const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks]);
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
-  const rows = view === 'asks' || view === 'sessions' || view === 'brief' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
+  const nowTask = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
+  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'brief' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
@@ -513,7 +517,8 @@ export function App() {
   const notNow = async (ref = refNow()) => {
     if (!ref) return;
     const back = new Date(Date.now() + 2 * 3600_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    await run(() => api.action('suspend', ref, { hours: 2 }), () => `Deferred 2h: back at ${back}`);
+    // @req FR:now-screen/now.undo: Undo resumes the row
+    if (await run(() => api.action('suspend', ref, { hours: 2 }), () => '')) toast(`Deferred 2h: back at ${back}`, 'ok', () => { void run(() => api.action('resume', ref), () => 'Restored'); });
   };
   const delegate = async (ref = refNow()) => {
     const t = ref ? tasks.find((x) => x.ref === ref) : undefined;
@@ -661,6 +666,7 @@ export function App() {
   ].map((c) => ({ group: 'Actions' as Group, ...c }));
   // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump @req FR:web-shell/palette.jump.groups
   const goTo: Command[] = [
+    { id: 'go-now', label: 'Go to Now', hint: HINT.now, group: 'Go to', run: () => go('now') },
     { id: 'go-home', label: 'Go to Home', hint: HINT.home, group: 'Go to', run: () => go('home') },
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
@@ -722,6 +728,8 @@ export function App() {
       if (k === '?') { e.preventDefault(); setHelp(true); return; }
       if (k === 'c' && L.view !== 'sessions') { e.preventDefault(); setCaptureOpen(true); return; } // Sessions uses c for costs
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
+      // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
+      if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } } return; }
       if (L.view === 'asks' || L.view === 'sessions' || L.view === 'brief' || L.view === 'inbox') return; // these views own their keys
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
@@ -849,6 +857,7 @@ export function App() {
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
+        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : a === 'defer' ? void notNow(nowTask?.task.ref) : void delegate(nowTask?.task.ref))} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'brief' && <BriefView b={brief} ai={aiView} onAi={(r) => { if (r.send) void asks.answer(r.ask, r.send, r.sent ?? 'Done'); }} win={win} busy={busy} onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onOpenAsks={() => go('asks')} onAct={(a, ref) => rowAct(a, ref)} />}
         {phase === 'ready' && view === 'list' && (
@@ -946,6 +955,7 @@ function TabIcon({ v }: { v: View | 'more' }) {
   const d: Record<string, string> = {
     asks: 'M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z',
     today: 'M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 5h16M8 3v4m8-4v4',
+    now: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z',
     home: 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z',
     inbox: 'M4 13h4l1.5 3h5L16 13h4M4 13l2-7h12l2 7v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z',
     sessions: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Zm4 13h8M8 8l2.5 2.5L8 13m4 0h4',

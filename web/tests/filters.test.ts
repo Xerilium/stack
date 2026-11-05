@@ -48,7 +48,8 @@ describe('hash state', () => {
   // @req FR:web-shell/nav.views @req FR:web-shell/nav.views.default
   it('home is the start; old view names still open their view', () => {
     expect(parseHash('#/').view).toBe('home');
-    for (const old of ['now', 'next', 'focus']) expect(parseHash(`#/${old}`).view).toBe('home');
+    for (const old of ['next', 'focus']) expect(parseHash(`#/${old}`).view).toBe('home');
+    expect(parseHash('#/now').view).toBe('now'); // @req FR:now-screen/now.one
     expect(parseHash('#/capacity').view).toBe('projects');
     for (const old of ['all', 'stack']) expect(parseHash(`#/${old}`).view).toBe('list');
     expect(parseHash('#/asks').view).toBe('asks');

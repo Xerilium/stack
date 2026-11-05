@@ -42,6 +42,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     // any other project the seeded tasks mention
     ...[...new Set(m.tasks.map((t) => t.project))].filter((n) => n !== 'alpha' && n !== 'beta').map((n) => ({ name: n, title: n[0].toUpperCase() + n.slice(1), metadata: {} })),
   ];
+  const stash = new Map<string, { task: MockTask; at: number; text: string }>();
   const find = (ref: string) => m.tasks.find((t) => t.ref === ref);
   const strip = (t: MockTask, group: string) => { for (const e of EMOJI[group]) t.text = t.text.split(e).join('').split(vs(e)).join(''); t.text = t.text.replace(/\s+/g, ' ').trim(); };
 
@@ -225,6 +226,8 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       m.tasks.push({ ref, text: `${spec.title}${spec.effort ? ' 🟢' : ''}`, project, section: '🔄 Active', done: false, depth: 0, notes: [] });
       return json(route, 201, { changed: true, ref, after: spec.title, spec });
     }
+    // Resume (the Undo of Defer): the suspended row comes back as it was.
+    if (path === '/tasks/resume') { const x = stash.get(body.ref); if (!x) return json(route, 404, { error: { code: 'not_found', message: 'Task not found' } }); stash.delete(body.ref); x.task.text = x.text; m.tasks.splice(x.at, 0, x.task); return json(route, 200, { changed: true, ref: body.ref, message: 'Resumed' }); }
     const t = body?.ref ? find(body.ref) : open[0];
     if (!t && path.startsWith('/tasks/')) return json(route, 404, { error: { code: 'not_found', message: 'Task not found' } });
     const stale = (r: string | undefined, x: MockTask) => r !== undefined && r !== x.text;
@@ -233,7 +236,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     switch (path) {
       case '/tasks/start': strip(t!, 'status'); t!.text = `🚧 ${t!.text}`; return json(route, 200, { changed: true, ref: t!.ref, message: 'Started' });
       case '/tasks/skip': strip(t!, 'status'); t!.text = `⏸️ ${t!.text}`; m.tasks.push(m.tasks.splice(m.tasks.indexOf(t!), 1)[0]); return json(route, 200, { changed: true, ref: t!.ref, message: 'Skipped' });
-      case '/tasks/suspend': t!.text = `💤 Oct 23: ${t!.text}`; m.tasks.splice(m.tasks.indexOf(t!), 1); return json(route, 200, { changed: true, ref: t!.ref, message: `Suspended ${body.hours ? `${body.hours} hour(s)` : `${body.days} day(s)`}` });
+      case '/tasks/suspend': { const at = m.tasks.indexOf(t!); stash.set(t!.ref, { task: t!, at, text: t!.text }); } t!.text = `💤 Oct 23: ${t!.text}`; m.tasks.splice(m.tasks.indexOf(t!), 1); return json(route, 200, { changed: true, ref: t!.ref, message: `Suspended ${body.hours ? `${body.hours} hour(s)` : `${body.days} day(s)`}` });
       case '/tasks/complete': t!.done = true; return json(route, 200, { changed: true, ref: t!.ref, message: 'Completed' });
       case '/tasks/set': {
         if (body.checkbox) t!.done = body.checkbox === 'Complete';

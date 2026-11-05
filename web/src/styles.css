@@ -1,13 +1,26 @@
 :root {
-  --bg: #fbfbfa; --panel: #ffffff; --rail: #f4f4f2; --ink: #1d1d1f; --ink2: #4b4b50; --muted: #8a8a92; --line: #e7e7e4; --line2: #efefec;
+  --bg: #fbfbfa; --panel: #ffffff; --rail: #f4f4f2; --ink: #1d1d1f; --ink2: #4b4b50; --muted: #6e6e76; --line: #e7e7e4; --line2: #efefec;
   --accent: #5b5fe0; --accent-soft: #eeeefc; --accent-ink: #fff; --warn: #c2410c; --ok: #15803d; --chip: #f1f1ee; --hover: #f3f3f1; --focus: #5b5fe0;
   --shadow: 0 12px 40px rgb(20 20 30 / 14%), 0 2px 6px rgb(20 20 30 / 6%);
   --railw: 208px; --tap: 44px; --row: 34px; --ease: cubic-bezier(.2,.7,.2,1);
+  /* space: 4 pt grid. @req FR:now-screen/tokens.scale */
+  --s-4: 4px; --s-8: 8px; --s-12: 12px; --s-16: 16px; --s-24: 24px; --s-32: 32px; --s-48: 48px;
+  --r-chip: 6px; --r-row: 10px; --r-card: 16px;
+  /* type: touch sizes (Dynamic Type styles); desktop overrides below. */
+  --fs-title: 28px; --fs-screen: 22px; --fs-body: 17px; --fs-secondary: 15px; --fs-caption: 13px;
+  /* motion. @req FR:now-screen/tokens.motion */
+  --t-feedback: 120ms; --t-enter: 200ms; --t-sheet: 280ms;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.45; color-scheme: light dark;
   -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
 }
+@media (hover: hover) and (pointer: fine) {
+  :root { --fs-title: 28px; --fs-screen: 20px; --fs-body: 13px; --fs-secondary: 12px; --fs-caption: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-feedback: 0ms; --t-enter: 0ms; --t-sheet: 0ms; }
+}
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #141416; --panel: #1b1b1e; --rail: #111113; --ink: #ececee; --ink2: #b7b7bd; --muted: #7d7d86; --line: #2a2a2f; --line2: #232327;
+  :root { --bg: #111113; --panel: #1a1a1d; --rail: #0e0e10; --ink: #f2f2f3; --ink2: #c4c4c8; --muted: #8a8a92; --line: #2c2c31; --line2: #232327;
     --accent: #8b8ff5; --accent-soft: #23233a; --accent-ink: #12121c; --warn: #fb923c; --ok: #4ade80; --chip: #26262b; --hover: #202024; --focus: #a3a6ff;
     --shadow: 0 12px 40px rgb(0 0 0 / 55%), 0 2px 6px rgb(0 0 0 / 40%); }
 }
