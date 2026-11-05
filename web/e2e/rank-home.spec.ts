@@ -5,13 +5,13 @@ import { mockApi, type MockNeed } from './mock';
 const need = (over: Partial<MockNeed> = {}): MockNeed => ({ id: 'pay-bills', title: 'Pay bills tonight', recommendation: 'Pay USAA first', default: 'I wait until Monday', link: 'https://example.test/bills', project: 'alpha', ...over });
 
 test.describe('Home draws the server ranking', () => {
-  // @req FR:web-app/now.active @req FR:web-app/home.one @req FR:web-app/home.next
-  test('NOW and Up next follow GET /rank, not anything the page works out itself', async ({ page }) => {
+  // @req FR:web-app/now.active @req FR:web-app/home.one @req FR:top-asks/top.rows
+  test('NOW and Top asks follow GET /rank, not anything the page works out itself', async ({ page }) => {
     const m = await mockApi(page);
     m.ranked = [{ ref: 'beta:4' }, { ref: 'alpha:9' }, { ref: 'alpha:6' }]; // the owner put "Plan the trip" first
     await page.goto('/');
     await expect(page.getByTestId('next-title')).toContainText('Plan the trip');
-    await expect(page.getByTestId('up-next').locator('.row .title')).toHaveText(['Review pull requests', 'Ship the web app']);
+    await expect(page.getByTestId('top-asks').locator('.proj-top')).toHaveText(['Review pull requests']); // alpha's top row; beta is NOW
   });
 
   // @req FR:web-app/home.one @req FR:task-lifecycle/rank.root
