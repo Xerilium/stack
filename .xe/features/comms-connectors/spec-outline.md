@@ -4,12 +4,14 @@ Not a spec. Headings for the spec that follows approval.
 
 ## Purpose
 
-One connector contract. Any source yields `Item`s. Stack ranks them by the signal the owner must act on.
+One connector contract. Any source yields `InboxItem`s. Stack ranks them by the signal the owner must act on.
 
 ## Contract
 
-- `Connector`: `id`, `account{name,kind}`, `poll(cursor) -> {items, cursor}`, `capabilities{read, draft, send}`.
-- `Item`: `source`, `id`, `url`, `from`, `at`, `text` (untrusted), `thread`, `signal`, `due?`.
+- Extend the existing contract in `src/inbox/types.ts`. Do not add a parallel type.
+- `Source`: add `github | calendar | youtube | gmail | instagram | x | imessage`.
+- `InboxItem` already has `id`, `source`, `account`, `from`, `subject`, `receivedAt`, `unread`, `urgency`, `summary`, `suggested`, `actions`, `link`, `kind`. Add `signal`, `due?` and `accountKind: personal|work`.
+- Connector: generalize `ChatConnector.unread()` to `poll(cursor) -> {items, cursor}` with `capabilities{read, draft, send}`. Keep `unread()` working for Teams and Slack.
 - `signal`: `reply | mention | deadline | approval | fyi`. See research.md.
 - `send` is false for every connector in v1. Drafts only.
 

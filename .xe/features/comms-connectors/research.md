@@ -32,7 +32,7 @@ Value: how often it holds a real action for the owner. Effort: build + auth + up
 | # | Connector | Value | Effort | Read | Write | Auto level | Risk |
 |---|---|---|---|---|---|---|---|
 | 1 | GitHub notifications | H | L | Poll, free on 304 | Mark read only | Full read; no replies | Token type [verify] |
-| 2 | Calendar (Graph) | H | L | Delta poll | None needed | Full read | Low |
+| 2 | Calendar (Graph) | H | L | Range read exists; delta later | None needed | Full read | Low |
 | 3 | YouTube comments | M | L | Poll, 1 quota unit | Reply: draft only | Read + draft | Quota |
 | 4 | Gmail | H* | M-H | Pub/Sub push or poll | Draft only | Read + draft | Google review |
 | 5 | Instagram comments | M | M | Poll (webhooks need review) | Reply: draft only | Read + draft | Meta app setup |
@@ -49,7 +49,7 @@ Top 3 new connectors: GitHub notifications, Calendar, YouTube comments. Gmail mo
 
 ### 1. GitHub notifications
 
-- API: `GET /notifications`. Built for polling with `Last-Modified`. No change returns `304` and costs no rate limit. Obey `X-Poll-Interval` (60 s, may grow). Source: [GitHub REST notifications](https://docs.GitHub.com/en/rest/activity/notifications).
+- API: `GET /notifications`. Built for polling with `Last-Modified`. No change returns `304` and costs no rate limit. Obey `X-Poll-Interval` (60 s, may grow). Source: [GitHub REST notifications](https://docs.github.com/en/rest/activity/notifications).
 - Signal: `reason` field. `review_requested` -> `approval`. `mention`, `team_mention` -> `mention`. `assign` -> `reply`/task. `author`, `subscribed` -> `fyi`. A thread reason can change over time, so do not cache it.
 - Token: the notifications endpoint is reported to reject GitHub App tokens and fine-grained PATs. Use a classic PAT with `notifications` scope. **[verify]** Source: [GHES docs](https://docs.github.com/enterprise-server@3.12/rest/activity/notifications).
 - Push: no webhook found for the personal feed. **[verify]** Poll every 60 s.
@@ -60,7 +60,8 @@ Top 3 new connectors: GitHub notifications, Calendar, YouTube comments. Gmail mo
 ### 2. Calendar
 
 - Graph: `GET /me/calendarView/delta` (or `/me/events/delta`). First call is a full sync, then use the delta link. Delta does not accept `$filter`, `$expand`, `$orderby`, `$search`. Scope `Calendars.Read` (delegated, works for personal accounts). Source: [event delta](https://learn.microsoft.com/en-us/graph/api/event-delta).
-- Reuse the existing `graph-signin` cache. One added scope.
+- Read already exists on main: `createGraphCalendar` (`day-inputs`) reads `calendarView` with `Calendars.Read` through `createCalendarGuard`. No new scope. The new work is the signal map.
+- Delta needs a guard change: the guard allows only `calendarView` and a fixed key list, so `/calendarView/delta` is denied today. Keep the range read first; add delta only if polling cost matters.
 - Calendar change notifications (push) exist in Graph but were not confirmed in this pass. **[verify]** Poll with delta first.
 - Signal: invite not answered -> `approval`. Event in the next 24 h -> `deadline`. Conflicts -> `reply`.
 - Write: none. Accept/decline stays human.
