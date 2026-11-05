@@ -11,7 +11,11 @@ export type HostStorage = Storage & AuxFiles & { sync?(): Promise<void>; /** Hea
 
 export const TOKEN_PATH = '.stack/tokens.json';
 
+export const DEVICE_PATH = '.stack/devices.json';
+
 export interface GitTokenStoreOptions {
+  /** State file path; default the token file. */
+  path?: string;
   /** Minimum milliseconds between remote syncs on read (revocations made elsewhere show up after this). Default 60000. */
   syncMs?: number;
   now?: () => number;
@@ -31,13 +35,13 @@ export class GitTokenStore implements TokenStore {
       // A failed sync keeps serving the local copy; the next read retries after the interval.
       try { await s.sync(); } catch (e) { this.opts.onError?.(e instanceof Error ? e.constructor.name : 'Error'); }
     }
-    return s.readAux(TOKEN_PATH);
+    return s.readAux(this.opts.path ?? TOKEN_PATH);
   }
 
   async write(content: string, expectedVersion: string | null) {
     const s = await this.get();
     try {
-      await s.writeAux(TOKEN_PATH, content, { expectedVersion });
+      await s.writeAux(this.opts.path ?? TOKEN_PATH, content, { expectedVersion });
     } catch (e) {
       if (e instanceof ConflictError) throw new StoreConflict();
       throw e;

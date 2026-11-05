@@ -1,5 +1,5 @@
 import { createApiHandler } from '../../src/api/handler';
-import { createAuth, createTokenService, MemoryTokenStore, parseOwners } from '../../src/api/auth';
+import { createAuth, createDeviceService, createTokenService, MemoryTokenStore, parseOwners } from '../../src/api/auth';
 import { MemoryStorage } from '../../src/core/storage';
 
 export const NOW = new Date('2026-10-22T18:00:00Z');
@@ -10,10 +10,11 @@ export const principal = (over: Record<string, unknown> = {}) =>
     identityProvider: 'github', userId: 'owner-1', userDetails: 'octocat', userRoles: ['anonymous', 'authenticated'], ...over,
   })).toString('base64');
 
-export function setup(opts: { owners?: string; onEvent?: (e: unknown) => void; pepper?: string } = {}) {
+export function setup(opts: { owners?: string; onEvent?: (e: unknown) => void; pepper?: string; vapid?: string } = {}) {
   const store = new MemoryTokenStore();
   const tokens = createTokenService({ store, now: () => NOW, pepper: opts.pepper });
-  const auth = createAuth({ owners: parseOwners(opts.owners ?? 'github:owner-1'), tokens, onEvent: opts.onEvent });
+  const devices = createDeviceService({ store: new MemoryTokenStore(), tokens, now: () => NOW });
+  const auth = createAuth({ owners: parseOwners(opts.owners ?? 'github:owner-1'), tokens, onEvent: opts.onEvent, devices, vapidPublicKey: opts.vapid });
   const storage = new MemoryStorage();
   const logs: unknown[] = [];
   const api = createApiHandler({ storage, authorize: auth.authorize, now: () => NOW, onError: (e) => logs.push(e) });
@@ -28,5 +29,5 @@ export function setup(opts: { owners?: string; onEvent?: (e: unknown) => void; p
     let json: any; try { json = text ? JSON.parse(text) : undefined; } catch { json = undefined; }
     return { status: res.status, headers: res.headers, text, json };
   };
-  return { store, tokens, auth, storage, handler, call, logs };
+  return { store, tokens, devices, auth, storage, handler, call, logs };
 }

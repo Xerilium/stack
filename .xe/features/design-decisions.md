@@ -231,6 +231,16 @@
 
 **Risks noted**: the SDK's bundled CLI uses the machine's Claude login (`apiKeySource` in the init message says which); session resume from a different cwd is supported from CLI 2.1.223 (the SDK bundles 2.1.312); the store format is Claude Code's and may change, so every read is tolerant and tested against a fixture.
 
+## Log the iPhone in with a per-device token; push with Web Push
+
+**Decision**: Each phone gets its own scoped, revocable API token and a device record (`iphone-access`). Push uses Web Push (VAPID) through the installed PWA. Passkeys, a native shell and a Cloudflare tunnel wait.
+
+**Date**: 2026-11-05
+
+**Why**: Tokens are already hashed, scoped, expiring and tested, so a device login adds no dependency. Web Push on a Home Screen app is free and supported from iOS 16.4 ([WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)). Details and sources: [research](iphone-access/research.md).
+
+**Rejected**: Passkeys first (new dependency; unconfirmed in the installed iOS app); Cloudflare Tunnel (public hostname, more accounts); native SwiftUI (second UI, $99/yr, no need yet).
+
 ## Add an ACP stdio driver beside the SDK driver
 
 **Decision**: `createAcpDriver` (`src/agents/acp.ts`) drives any ACP agent (Gemini CLI, Codex, Copilot) over stdio. Claude stays on the Agent SDK driver. `stack agent run <command> --prompt` is the first caller; the API's `ApiDeps.agents` wiring is next.
