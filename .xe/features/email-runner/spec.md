@@ -3,7 +3,8 @@ id: email-runner
 title: Email Runner
 author: flanakin
 description: "One command runs a triage pass on the owner's mailbox: Graph delta, deterministic rules, a cheap model to classify, a bigger model only for drafts, inbox-zero asks, and approved actions. Models run through the owner's Claude login (`claude -p`, no tools). Runs where Claude Code runs (launchd or a scheduled task), never in the Stack host."
-dependencies: [email-triage, email-voice, email-inbox-zero, graph-signin, day-inputs]
+dependencies:
+  [email-triage, email-voice, email-inbox-zero, graph-signin, day-inputs]
 ---
 
 <!-- markdownlint-disable single-title -->
@@ -16,7 +17,7 @@ The triage, voice and inbox-zero modules are pure and injected. This feature wir
 
 ## Scope
 
-- In: `stack email run|voice|status`; the `claude -p` model adapter and the three model roles; Graph message details, sent items and approved moves; the one-click unsubscribe HTTP client; the per-mailbox state file and run lock.
+- In: `stack email run|voice|status`; the offline dry run; the `claude -p` model adapter and the three model roles; Graph message details, sent items and approved moves; the one-click unsubscribe HTTP client; the per-mailbox state file and run lock.
 - Out: sign-in (`graph-signin`), the ask UI, the launchd install itself (owner approves it as a `go-do` ask), Gmail/IMAP.
 
 ## Scenarios
@@ -30,7 +31,8 @@ The triage, voice and inbox-zero modules are pure and injected. This feature wir
 - **FR:cli.schedule** (P1): `stack email schedule [--remote origin]` prints a LaunchAgent plist that runs `email run --all` every 15 minutes with absolute paths for node, the CLI and `claude` (launchd has no shell PATH) and logs beside the state. It prints only; the owner installs it with `launchctl bootstrap`
 - **FR:cli.account** (P1): `--account` must be the signed-in mailbox when the token names one
 - **FR:cli.all** (P1): `stack email run|status --all` serves every signed-in inbox (`FR:graph-signin/cache.accounts`): each cache with a mail scope and a named account is one mailbox with its own state, lock, voice and rules, and its asks go to the project named by the address. One mailbox failing (sign-in lost, lock held, over `--max`) never stops the others. The result lists every mailbox; exit `4` when any one failed, else `0`. A cache without a mail scope (calendar only) is skipped
-- **FR:cli.nosend** (P1): No code path requests `Mail.Send` or calls send, forward, or a bare reply; drafts come only from `createReply` (`FR:email-triage/safe.allowlist`)
+- **FR:cli.nosend** (P1): No code path requests `Mail.Send` or calls send, forward, or a bare reply; drafts come only from `createReply` (`FR:email-triage/safe.allowlist`). Tests prove it three ways: no source file under `src` names the send scope or a send, forward or reply-all path outside the guard deny list and the sign-in scope allowlist; every request a full pass makes in every mode passes the guard allowlist and none is a send, forward or reply; and the guard and the scope check refuse every send, forward and reply form in every mode
+- **FR:cli.offline** (P1): `stack email run --dry-run --offline [--fixture messages.json] [--account a]` runs a pass with no network, no sign-in, no `claude` and no HTTP: mail comes from `--fixture` (a JSON array of Graph message objects; default none), models are replaced by a fixed stub, state and asks stay in memory, and nothing is written to the mailbox or the repo. `--offline` without `--dry-run` is a usage error. The pass still goes through the guard, so the run proves the allowlist holds
 
 ### FR:model: Model tiers
 

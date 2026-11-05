@@ -1,13 +1,13 @@
 /**
  * `stack email run|voice|status`: one triage pass, voice learning, and status for the signed-in mailbox. Never prints mail text.
- * @req FR:email-runner/cli.run @req FR:email-runner/cli.voice @req FR:email-runner/cli.status @req FR:email-runner/cli.lock
+ * @req FR:email-runner/cli.run @req FR:email-runner/cli.offline @req FR:email-runner/cli.voice @req FR:email-runner/cli.status @req FR:email-runner/cli.lock
  */
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import type { LifecycleContext } from '../core/lifecycle';
 import { MemoryStorage } from '../core/storage';
 import { sentItems } from '../email/graph-mail';
-import type { Transport } from '../email/guard';
+import { GRAPH_BASE, type GraphRequest, type Transport } from '../email/guard';
 import { createSafeHttp } from '../email/http';
 import type { ClaudeJson } from '../email/llm';
 import { lockPath, MaxExceeded, readState, rulesFor, runPass, statePath, takeLock } from '../email/runner';
@@ -26,6 +26,35 @@ function readExtra(path: string): SentMessage[] {
     return { id: `extra-${i}`, subject: typeof o.subject === 'string' ? o.subject : '', sentAt: typeof o.sentAt === 'string' ? o.sentAt : '1970-01-01T00:00:00Z', body: o.body.slice(0, 20_000), to: [], kind: 'other' as const };
   });
 }
+
+/** `--fixture`: a JSON array of Graph message objects. Anything else is refused. @req FR:email-runner/cli.offline */
+function readFixture(path: string): Record<string, unknown>[] {
+  const v: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  if (!Array.isArray(v) || v.length > 5000 || v.some((x) => !x || typeof x !== 'object' || typeof (x as { id?: unknown }).id !== 'string')) throw new UsageError('--fixture must be a JSON array (at most 5000 items) of Graph message objects with an id');
+  return v as Record<string, unknown>[];
+}
+
+/** A Graph stand-in with no network: guarded GETs answer from the fixture, every other request fails. @req FR:email-runner/cli.offline */
+export function offlineTransport(messages: Record<string, unknown>[]): Transport {
+  return async (req: GraphRequest) => {
+    if (req.method.toUpperCase() !== 'GET') throw new Error(`offline dry run: ${req.method} refused`);
+    const u = new URL(req.url);
+    if (/\/messages\/delta$/i.test(u.pathname)) {
+      const sent = /\/mailfolders\/sentitems\//i.test(u.pathname);
+      return { value: sent ? [] : messages, '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/${sent ? 'sentitems' : 'inbox'}/messages/delta?$deltatoken=offline` };
+    }
+    const id = /^\/v1\.0\/me\/messages\/([^/]+)$/.exec(u.pathname)?.[1];
+    const m = id === undefined ? undefined : messages.find((x) => x.id === decodeURIComponent(id));
+    if (!m) throw new Error('offline dry run: no such message in the fixture');
+    return m;
+  };
+}
+/** A fixed model stand-in: a neutral class and a plain sentence, so a pass runs with no Claude binary. @req FR:email-runner/cli.offline */
+export const offlineLlm: ClaudeJson = async <T>(call: { schema: object }) => {
+  const props = (call.schema as { properties?: Record<string, unknown> }).properties ?? {};
+  const value = 'class' in props ? { class: 'fyi', urgency: 0, confidence: 1, reason: 'offline stub', injectionSuspected: false } : { value: 'Offline stub.' };
+  return { value: value as T, costUsd: 0 };
+};
 
 /** A launchd job that runs one pass every 15 minutes with absolute paths (launchd has no shell PATH) and logs beside the state. @req FR:email-runner/cli.schedule */
 export function launchdPlist(o: { node: string; cli: string; claudeDir: string; repo: string; logDir: string; remote?: string }): string {
@@ -65,11 +94,23 @@ async function emailAll(ctx: LifecycleContext, action: string | undefined, f: Re
   return { json: { ok: !bad.length, accounts }, text: accounts.map((a) => `${String(a.account ?? a.cache)}: ${a.ok ? 'ok' : String(a.error ?? a.text ?? 'failed')}`).join('\n'), ...(bad.length ? { code: 4 } : {}) };
 }
 
+/** @req FR:email-runner/cli.offline */
+async function emailOffline(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps): Promise<EmailOutcome> {
+  if (f.offline !== true) throw new UsageError('--fixture needs --offline');
+  if (action !== 'run' || f['dry-run'] !== true) throw new UsageError('--offline needs --dry-run (stack email run --dry-run --offline [--fixture messages.json])');
+  const account = (flag(f, 'account') ?? 'offline@example.invalid').toLowerCase();
+  const fixture = flag(f, 'fixture');
+  const transport = offlineTransport(fixture ? readFixture(fixture) : []);
+  const s = await runPass({ ctx: { ...ctx, storage: new MemoryStorage() }, account, transport, mode: 'drafts', dryRun: true, dataDir: d.dataDir, llm: offlineLlm, project: flag(f, 'project') });
+  return { json: { ok: true, account, mode: 'drafts', dryRun: true, offline: true, ...s }, text: `offline dry run: ${s.messages} messages, ${s.rules} by rules, ${s.model} by model, ${s.asks} asks, no network` };
+}
+
 export async function emailCmd(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps = {}): Promise<EmailOutcome> {
   return f.all === true ? emailAll(ctx, action, f, d) : emailOne(ctx, action, f, d);
 }
 
 async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps): Promise<EmailOutcome> {
+  if (f.offline !== undefined || f.fixture !== undefined) return emailOffline(ctx, action, f, d);
   const cache = d.cache ?? new FileTokenCache(process.env.STACK_GRAPH_CACHE ?? defaultCachePath());
   const t = await cache.read();
   if (!t) return { json: { ok: false, signedIn: false }, text: 'not signed in (run: stack graph login --with mail,drafts)', code: 4 };
