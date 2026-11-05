@@ -22,6 +22,7 @@ stack asks put pr-879-approve \
 - `recommend` always; `default` and `--reversible yes` only when silence is safe. Irreversible, costly, or external actions never get a default.
 - `by` is the real deadline. `blocks` is how many things wait on this. `priority`: `crit`, `high`, `normal`, `low`.
 - `--from <agent>` is required: it names you on the page and in `waiting on <agent>`.
+- `--ref tasks/<file>.md:<line>` (1-based, the CLI ref; over HTTP `ref` is `<project>:<line>`) ties the ask to a task: it shows in that task's thread and follows the row when it moves. Answer the owner on the task with `stack inbox reply tasks/<file>.md:<line> --from <agent> --text "..."`.
 - Never answer for the owner. Over HTTP always send your token (a token on `/answer` gets `403`); without a token the local server treats the request as the owner's page. Never edit `answer` or `state` in an ask file by hand.
 - Never put secrets, tokens, or full message bodies in an ask. Detail is for the owner's eyes only and renders as plain text.
 

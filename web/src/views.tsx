@@ -231,8 +231,10 @@ function Editor({ text, onSave, onCancel }: { text: string; onSave: (t: string) 
 }
 
 /** @req FR:web-app/now.focusmode */
-export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
+export function FocusMode({ task, all, busy, onToggle, onAct, onBack, extra }: {
   task: Task; all: Task[]; busy: boolean; onToggle: (t: Task) => void; onAct: (a: 'start' | 'defer') => void; onBack: () => void;
+  /** Rendered under the actions (the task's agent thread). @req FR:agent-thread/web.hero */
+  extra?: ComponentChildren;
 }) {
   const r = parseRow(task.text);
   const subs = children(all, task.ref);
@@ -246,7 +248,7 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
     <div ref={box} tabIndex={-1} class="focus-mode" role="dialog" aria-modal="true" aria-label="Focus"
       onKeyDown={(e) => {
         if (e.key !== 'Tab') return;
-        const els = [...box.current!.querySelectorAll<HTMLElement>('button')].filter((x) => !(x as HTMLButtonElement).disabled);
+        const els = [...box.current!.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((x) => !(x as HTMLButtonElement).disabled && x.getAttribute('type') !== 'hidden');
         if (!els.length) return;
         const i = els.indexOf(document.activeElement as HTMLElement);
         e.preventDefault();
@@ -275,6 +277,7 @@ export function FocusMode({ task, all, busy, onToggle, onAct, onBack }: {
           <button type="button" class="btn" disabled={busy} onClick={() => onToggle(task)}>Done <kbd>d</kbd></button>
           <button type="button" class="btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>z</kbd></button>
         </div>
+        {extra}
       </div>
     </div>
   );

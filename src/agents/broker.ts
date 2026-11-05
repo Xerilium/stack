@@ -43,11 +43,14 @@ export function createPermissionBroker(ctx: LifecycleContext, o: BrokerOptions =
     const by = new Date(now().getTime() + timeoutMs);
     const why = oneLine(redact(JSON.stringify(req.input))).slice(0, 200);
     const detail = redact(JSON.stringify(req.input, null, 2)).slice(0, 4000);
-    await putAsk(ctx, key, {
-      ask: req.title.slice(0, 200), kind: 'decide', from: `session:${session.title}`.slice(0, 80), project: projectOf(session.cwd) || undefined,
+    // A task's session title ends ` · <project>:<line>`: the ask links back to that task (resumed runs keep their title too).
+    const ref = /(?: · review)? · ([a-z0-9][a-z0-9._-]*:\d+)$/i.exec(session.title)?.[1];
+    const put = (withRef: boolean) => putAsk(ctx, key, {
+      ask: req.title.slice(0, 200), kind: 'decide', ...(withRef && ref ? { ref } : {}), from: `session:${session.title}`.slice(0, 80), project: projectOf(session.cwd) || undefined,
       why, options: req.options.map((x) => x.name), recommend: req.risky ? 'Deny' : req.options[0]?.name ?? 'Allow once',
       default: 'Denied; the agent continues without it', reversible: true, by: by.toISOString(), priority: 'high', effort: '1m', detail,
     }, 'stack');
+    await put(true).catch(() => put(false)); // a stale ref (the row is gone) must not lose the permission ask
     const byOption = (name: string) => req.options.find((x) => x.name === name);
     return new Promise<PermissionAnswer>((resolve) => {
       pending.set(key, { runId, sessionId: session.id, resolve, settled: false });
