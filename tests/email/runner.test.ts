@@ -3,13 +3,13 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { answerAsk, asksPath, parseAsk } from '../../src/core/asks';
 import { createGraphActions, createGraphMail, htmlToText, messageDetails, sentItems } from '../../src/email/graph-mail';
-import { GRAPH_BASE, GraphDenied, type GraphRequest } from '../../src/email/guard';
+import { createGraphGuard, GRAPH_BASE, GraphDenied, type GraphRequest } from '../../src/email/guard';
 import { createServer, request as httpRequest } from 'http';
 import { createSafeHttp, isPrivateAddress, pinnedLookup } from '../../src/email/http';
 import { claudeArgs, createClaudeJson, MODELS, type ClaudeJson, type JsonCall } from '../../src/email/llm';
 import { createClassifier, createDrafter, createJudge, emailBlock, newUsage } from '../../src/email/models';
 import { lockPath, readState, rulesFor, rulesPath, runPass, statePath, takeLock, tolerant, withDetails } from '../../src/email/runner';
-import { emailCmd } from '../../src/cli/email';
+import { emailCmd, launchdPlist } from '../../src/cli/email';
 import { FileTokenCache } from '../../src/graph/auth';
 import { mkCtx, msg, NOW } from './fixtures';
 
@@ -315,7 +315,7 @@ describe('stack email', () => {
     process.env.STACK_CLAUDE_BIN = '/opt/claude/bin/claude';
     try {
       const r = await emailCmd(ctx, 'schedule', { remote: 'origin' }, { cache: await cacheWith(['Mail.Read']), dataDir, repo: '/repo/todo' });
-      expect(r.text).toContain('<string>email</string><string>run</string><string>--dir</string><string>/repo/todo</string><string>--remote</string><string>origin</string>');
+      expect(r.text).toContain('<string>email</string><string>run</string><string>--all</string><string>--dir</string><string>/repo/todo</string><string>--remote</string><string>origin</string>');
       expect(r.text).toContain(`<string>${process.execPath}</string>`);
       expect(r.text).toContain('<string>/opt/claude/bin:/usr/bin:/bin</string>');
       expect(r.text).toContain('<integer>900</integer>');
@@ -362,5 +362,49 @@ describe('pinned lookup', () => {
     });
     server.close();
     expect(status).toBe(200);
+  });
+});
+
+// @req FR:email-runner/cli.all
+describe('stack email --all', () => {
+  const cacheAt = async (dir: string, account: string | undefined, scopes: string[], file = `graph-token-${account}.json`) => {
+    const c = new FileTokenCache(join(dir, file));
+    await c.write({ version: 1, tenant: 't', clientId: 'id', scopes, refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, ...(account ? { account } : {}) });
+    return c;
+  };
+  const delta = { '/messages/delta': { value: [], '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t` } };
+  it('runs every mail mailbox, skips calendar-only caches, and keeps going when one is busy', async () => {
+    const { ctx } = mkCtx();
+    const dir = tmp(); const dataDir = tmp();
+    await cacheAt(dir, 'sam@outlook.com', ['Mail.ReadWrite']);
+    await cacheAt(dir, 'sam@contoso.test', ['Mail.ReadWrite']);
+    await cacheAt(dir, 'cal@contoso.test', ['Calendars.Read']);
+    const release = takeLock(lockPath('sam@contoso.test', dataDir))!;
+    const r = await emailCmd(ctx, 'run', { all: true, 'dry-run': true }, { cacheDir: dir, dataDir, transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    release();
+    const list = r.json.accounts as { account: string; ok: boolean }[];
+    expect(list.map((a) => [a.account, a.ok]).sort()).toEqual([['sam@contoso.test', false], ['sam@outlook.com', true]]);
+    expect(r.code).toBe(4);
+  });
+  it('exits 0 when every mailbox passes, and 4 when none is signed in', async () => {
+    const { ctx } = mkCtx();
+    const dir = tmp();
+    await cacheAt(dir, 'sam@outlook.com', ['Mail.Read']);
+    const ok = await emailCmd(ctx, 'run', { all: true, 'dry-run': true }, { cacheDir: dir, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    expect(ok.code).toBeUndefined();
+    const none = await emailCmd(ctx, 'run', { all: true }, { cacheDir: tmp(), dataDir: tmp() });
+    expect(none.code).toBe(4);
+  });
+  it('schedules --all', () => {
+    expect(launchdPlist({ node: '/n', cli: '/c', claudeDir: '/b', repo: '/r', logDir: '/l' })).toContain('<string>--all</string>');
+  });
+});
+
+// @req FR:email-runner/cli.nosend
+describe('no send', () => {
+  it('the guard refuses send, forward, and bare reply; createReply stays allowed', () => {
+    const g = createGraphGuard();
+    for (const p of ['sendMail', 'messages/m1/send', 'messages/m1/forward', 'messages/m1/reply', 'messages/m1/replyAll']) expect(() => g.check({ method: 'POST', url: `${GRAPH_BASE}/me/${p}`, body: {} })).toThrow(GraphDenied);
+    expect(() => g.check({ method: 'POST', url: `${GRAPH_BASE}/me/messages/m1/createReply`, body: { comment: 'x' } })).not.toThrow();
   });
 });

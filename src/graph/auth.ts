@@ -5,7 +5,7 @@
  * @req FR:graph-signin/cache.file @req FR:graph-signin/cache.provider
  */
 import { randomBytes } from 'crypto';
-import { existsSync, promises as fs, statSync } from 'fs';
+import { existsSync, promises as fs, readdirSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join, resolve } from 'path';
 
@@ -121,6 +121,24 @@ export interface CachedToken {
   version: 1; tenant: string; clientId: string; scopes: string[]; refreshToken: string; accessToken?: string; expiresAt?: number; account?: string;
 }
 export const defaultCachePath = (home = homedir()) => join(home, '.config', 'stack', 'graph-token.json');
+
+/** The folder of the cache files: beside `STACK_GRAPH_CACHE` when set, else `~/.config/stack`. */
+export const cacheDir = (): string => dirname(process.env.STACK_GRAPH_CACHE ?? defaultCachePath());
+const PERSONAL = new Set(['outlook.com', 'hotmail.com', 'live.com', 'msn.com']);
+/** Personal Microsoft accounts sign in on the `consumers` tenant; work accounts on `organizations`. @req FR:graph-signin/cache.accounts */
+export const tenantFor = (account?: string): string => (account && PERSONAL.has(account.slice(account.lastIndexOf('@') + 1).toLowerCase()) ? 'consumers' : 'organizations');
+/** One cache file per mailbox, beside the default one. @req FR:graph-signin/cache.accounts */
+export function accountCachePath(account: string, dir = cacheDir()): string {
+  const a = account.trim().toLowerCase();
+  if (!/^[^\s@/\\]+@[a-z0-9.-]+$/.test(a)) throw new Error('Invalid account address');
+  return join(dir, `graph-token-${a}.json`);
+}
+/** The default cache and every per-mailbox cache that exists. @req FR:graph-signin/cache.accounts */
+export function listCachePaths(dir = cacheDir()): string[] {
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return []; }
+  return names.filter((n) => n === 'graph-token.json' || /^graph-token-.+\.json$/.test(n)).sort().map((n) => join(dir, n));
+}
 
 /** True when `dir` or a parent holds a `tasks/` folder: a Stack task repo, which a token must never enter. */
 function inTaskRepo(path: string): boolean {

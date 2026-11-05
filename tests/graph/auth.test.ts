@@ -1,3 +1,7 @@
+import { mkdtempSync as mkd, writeFileSync as wf } from 'fs';
+import { tmpdir as td } from 'os';
+import { join as j } from 'path';
+import { accountCachePath, listCachePaths, tenantFor } from '../../src/graph/auth';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -199,5 +203,23 @@ describe('access token provider', () => {
     const f = fakeLogin([]);
     await expect(graphToken(cache, { fetch: f.fetch, now: () => 1 })()).rejects.toThrow();
     expect(f.hits).toHaveLength(0);
+  });
+});
+
+// @req FR:graph-signin/cache.accounts
+describe('per-mailbox caches', () => {
+  it('names a cache per address, refuses path characters, and picks consumers for personal domains', () => {
+    expect(accountCachePath('Sam@Outlook.com', '/h')).toBe('/h/graph-token-sam@outlook.com.json');
+    expect(() => accountCachePath('../x@y.com', '/h')).toThrow();
+    expect(tenantFor('sam@outlook.com')).toBe('consumers');
+    expect(tenantFor('sam@Hotmail.com')).toBe('consumers');
+    expect(tenantFor('sam@contoso.com')).toBe('organizations');
+    expect(tenantFor(undefined)).toBe('organizations');
+  });
+  it('lists the default cache and every per-mailbox cache that exists', () => {
+    const d = mkd(j(td(), 'caches-'));
+    for (const f of ['graph-token.json', 'graph-token-a@outlook.com.json', 'graph-token-b@contoso.com.json', 'other.json']) wf(j(d, f), '{}');
+    expect(listCachePaths(d).map((p: string) => p.slice(d.length + 1)).sort()).toEqual(['graph-token-a@outlook.com.json', 'graph-token-b@contoso.com.json', 'graph-token.json']);
+    expect(listCachePaths(j(d, 'none'))).toEqual([]);
   });
 });

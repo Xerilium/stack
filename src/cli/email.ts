@@ -12,7 +12,7 @@ import { createSafeHttp } from '../email/http';
 import type { ClaudeJson } from '../email/llm';
 import { lockPath, MaxExceeded, readState, rulesFor, runPass, statePath, takeLock } from '../email/runner';
 import { learnVoice, loadVoice, renderStyleGuide, saveVoice, voicePath, type SentMessage } from '../email/voice';
-import { defaultCachePath, FileTokenCache, graphToken, hasScope } from '../graph/auth';
+import { defaultCachePath, FileTokenCache, graphToken, hasScope, listCachePaths } from '../graph/auth';
 import { graphTransport } from '../graph/transport';
 import { UsageError } from './args';
 
@@ -30,19 +30,46 @@ function readExtra(path: string): SentMessage[] {
 /** A launchd job that runs one pass every 15 minutes with absolute paths (launchd has no shell PATH) and logs beside the state. @req FR:email-runner/cli.schedule */
 export function launchdPlist(o: { node: string; cli: string; claudeDir: string; repo: string; logDir: string; remote?: string }): string {
   const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const args = [o.node, o.cli, 'email', 'run', '--dir', o.repo, ...(o.remote ? ['--remote', o.remote] : [])];
+  const args = [o.node, o.cli, 'email', 'run', '--all', '--dir', o.repo, ...(o.remote ? ['--remote', o.remote] : [])];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n  <key>Label</key><string>com.xerilium.stack-email</string>\n  <key>ProgramArguments</key><array>${args.map((a) => `<string>${esc(a)}</string>`).join('')}</array>\n  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${esc(`${o.claudeDir}:/usr/bin:/bin`)}</string></dict>\n  <key>StartInterval</key><integer>900</integer>\n  <key>StandardOutPath</key><string>${esc(join(o.logDir, 'run.log'))}</string>\n  <key>StandardErrorPath</key><string>${esc(join(o.logDir, 'run.err.log'))}</string>\n</dict></plist>\n`;
 }
 
 export interface EmailOutcome { json: Record<string, unknown>; text: string; code?: number }
-export interface EmailDeps { cache?: FileTokenCache; transport?: Transport; llm?: ClaudeJson; dataDir?: string; repo?: string }
+export interface EmailDeps { cache?: FileTokenCache; transport?: Transport; llm?: ClaudeJson; dataDir?: string; repo?: string; cacheDir?: string }
 function whichSync(cmd: string): string | undefined {
   for (const p of (process.env.PATH ?? '').split(':')) { const c = join(p, cmd); if (p && existsSync(c)) return c; }
   return undefined;
 }
 const flag = (f: Record<string, string | true>, n: string): string | undefined => (typeof f[n] === 'string' ? (f[n] as string) : undefined);
 
+/** Every signed-in mailbox, one after another; a failure in one never stops the rest. @req FR:email-runner/cli.all */
+async function emailAll(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps): Promise<EmailOutcome> {
+  if (action !== 'run' && action !== 'status') throw new UsageError('--all works with run and status');
+  const rest = { ...f }; delete rest.all; delete rest.account;
+  const accounts: Record<string, unknown>[] = [];
+  for (const path of listCachePaths(d.cacheDir)) {
+    const cache = new FileTokenCache(path);
+    let account: string;
+    try {
+      const t = await cache.read();
+      if (!t || !t.account || !(hasScope(t.scopes, 'Mail.Read') || hasScope(t.scopes, 'Mail.ReadWrite'))) continue;
+      account = t.account.toLowerCase();
+    } catch (e) { accounts.push({ ok: false, cache: path, error: e instanceof Error ? e.message : String(e) }); continue; }
+    try {
+      const r = await emailOne(ctx, action, { ...rest, project: flag(f, 'project') ?? account }, { ...d, cache });
+      accounts.push({ ...r.json, account, ok: r.json.ok !== false && !r.code, ...(r.code ? { text: r.text } : {}) });
+    } catch (e) { accounts.push({ account, ok: false, error: e instanceof Error ? e.message : String(e) }); }
+  }
+  if (!accounts.length) return { json: { ok: false, accounts }, text: 'no signed-in mailbox (run: stack graph login --account <address> --with drafts)', code: 4 };
+  const bad = accounts.filter((a) => !a.ok);
+  return { json: { ok: !bad.length, accounts }, text: accounts.map((a) => `${String(a.account ?? a.cache)}: ${a.ok ? 'ok' : String(a.error ?? a.text ?? 'failed')}`).join('\n'), ...(bad.length ? { code: 4 } : {}) };
+}
+
 export async function emailCmd(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps = {}): Promise<EmailOutcome> {
+  return f.all === true ? emailAll(ctx, action, f, d) : emailOne(ctx, action, f, d);
+}
+
+async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps): Promise<EmailOutcome> {
   const cache = d.cache ?? new FileTokenCache(process.env.STACK_GRAPH_CACHE ?? defaultCachePath());
   const t = await cache.read();
   if (!t) return { json: { ok: false, signedIn: false }, text: 'not signed in (run: stack graph login --with mail,drafts)', code: 4 };

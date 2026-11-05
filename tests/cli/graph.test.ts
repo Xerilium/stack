@@ -1,4 +1,5 @@
-import { mkdtempSync, existsSync, statSync } from 'fs';
+import { mkdtempSync, existsSync, readFileSync, statSync } from 'fs';
+import { FEATURES, scopesFor } from '../../src/graph/auth';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { run } from '../../src/cli/run';
@@ -71,5 +72,30 @@ describe('stack graph', () => {
     expect((await stack('graph', 'login', '--cache', cache)).code).toBe(2);
     expect((await stack('graph', 'login', '--client-id', CLIENT, '--with', 'send', '--cache', cache)).code).toBe(2);
     expect((await stack('graph', 'nope', '--cache', cache)).code).toBe(2);
+  });
+});
+
+// @req FR:graph-signin/cli.login.account @req FR:graph-signin/cli.login.nosend
+describe('stack graph login --account', () => {
+  it('a personal Outlook.com mailbox uses consumers, its own cache, and records the account', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'graph-home-'));
+    const prev = process.env.STACK_GRAPH_CACHE;
+    try { process.env.STACK_GRAPH_CACHE = join(home, 'graph-token.json');
+    const seen = replies([
+      { device_code: 'dc', user_code: 'ABCD', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 0, message: 'enter ABCD' },
+      { access_token: 'secret-at', refresh_token: 'secret-rt', expires_in: 3600, scope: 'Mail.ReadWrite offline_access' },
+    ]);
+    const r = await stack('graph', 'login', '--client-id', CLIENT, '--with', 'drafts', '--account', 'Sam@Outlook.com');
+    expect(r.code).toBe(0);
+    expect(seen[0]).toBe('https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode');
+    const file = join(home, 'graph-token-sam@outlook.com.json');
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ tenant: 'consumers', account: 'sam@outlook.com' });
+    expect(JSON.parse((await stack('graph', 'status', '--account', 'sam@outlook.com', '--json')).out)).toMatchObject({ signedIn: true, account: 'sam@outlook.com' });
+    expect((await stack('graph', 'logout', '--account', 'sam@outlook.com')).code).toBe(0);
+    expect(existsSync(file)).toBe(false);
+    } finally { if (prev === undefined) delete process.env.STACK_GRAPH_CACHE; else process.env.STACK_GRAPH_CACHE = prev; }
+  });
+  it('never asks for a send scope', () => {
+    for (const f of Object.keys(FEATURES)) expect(scopesFor([f as keyof typeof FEATURES]).join(' ')).not.toMatch(/send/i);
   });
 });
