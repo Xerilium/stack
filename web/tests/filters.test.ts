@@ -35,21 +35,23 @@ describe('hash state', () => {
     expect(h.startsWith('#/list?')).toBe(true);
     expect(parseHash(h)).toEqual({ view: 'list', filters: f });
   });
-  // @req FR:web-shell/nav.views.default
+  // @req FR:ux-consolidation/one.start
   it('omits defaults and tolerates junk', () => {
     expect(buildHash('home', F())).toBe('#/home');
-    expect(parseHash('')).toEqual({ view: 'home', filters: F() });
+    expect(parseHash('')).toEqual({ view: 'now', filters: F() });
     expect(parseHash('#/today')).toEqual({ view: 'today', filters: F() });
     expect(parseHash('#/sessions')).toEqual({ view: 'sessions', filters: F() });
     expect(parseHash('#/agents').view).toBe('sessions');
-    expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'home', filters: F() });
+    expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'now', filters: F() });
     expect(parseHash('#/list?state=done').filters.state).toBe('done');
   });
-  // @req FR:web-shell/nav.views @req FR:web-shell/nav.views.default
-  it('home is the start; old view names still open their view', () => {
-    expect(parseHash('#/').view).toBe('home');
+  // @req FR:ux-consolidation/one.start @req FR:ux-consolidation/nav.brief @req FR:ux-consolidation/nav.home
+  it('Now is the start; old view names still open their view; Brief opens Now', () => {
+    expect(parseHash('#/').view).toBe('now');
+    expect(parseHash('#/home').view).toBe('home');
     for (const old of ['next', 'focus']) expect(parseHash(`#/${old}`).view).toBe('home');
     expect(parseHash('#/now').view).toBe('now'); // @req FR:now-screen/now.one
+    expect(parseHash('#/brief').view).toBe('now');
     expect(parseHash('#/capacity').view).toBe('projects');
     for (const old of ['all', 'stack']) expect(parseHash(`#/${old}`).view).toBe('list');
     expect(parseHash('#/asks').view).toBe('asks');

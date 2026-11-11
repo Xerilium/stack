@@ -17,7 +17,7 @@ test.describe('Home round 3', () => {
   // @req FR:web-app/home2.order @req FR:top-asks/top.rows
   test('every other project is a row, by priority, none folded', async ({ page }) => {
     await mockApi(page, { tasks: tasks() });
-    await page.goto('/');
+    await page.goto('/#/home');
     const projects = page.getByTestId('top-asks');
     await expect(projects.locator('li:visible')).toHaveCount(5); // alpha is NOW
     await expect(projects.locator('li').first()).toContainText('Fix the outage'); // 🚨 ranks first
@@ -28,7 +28,7 @@ test.describe('Home round 3', () => {
   // @req FR:web-app/home2.expand @req FR:web-app/home2.body @req FR:web-app/home2.close @req FR:web-app/home2.defer
   test('one click expands a row in place with its body and actions; Enter opens the detail which closes with ×', async ({ page }, info) => {
     await mockApi(page, { tasks: tasks() });
-    await page.goto('/');
+    await page.goto('/#/home');
     const row = page.locator('li[data-ref="epsilon:3"]');
     await row.locator('.proj-top').click();
     const detail = row.locator('.row-detail');
@@ -57,7 +57,7 @@ test.describe('Home round 3', () => {
   test('one cursor runs from NOW through the Top asks rows', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page, { tasks: tasks() });
-    await page.goto('/');
+    await page.goto('/#/home');
     await expect(page.locator('.focus-block')).toHaveClass(/cursor/);
     await page.keyboard.press('j');
     await expect(page.getByTestId('top-asks').locator('li.cursor')).toHaveCount(1);
@@ -72,7 +72,7 @@ test.describe('Home round 3', () => {
   test('clicks inside the detail keep it open; a focused title toggles with Space and opens with Enter', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     await mockApi(page, { tasks: tasks() });
-    await page.goto('/');
+    await page.goto('/#/home');
     const row = page.locator('li[data-ref="epsilon:3"]');
     const title = row.locator('.proj-top');
     await title.focus();
@@ -92,7 +92,7 @@ test.describe('Home round 3', () => {
   // @req FR:web-app/home2.done
   test('Done fades the NOW card', async ({ page }) => {
     const m = await mockApi(page, { tasks: tasks() });
-    await page.goto('/');
+    await page.goto('/#/home');
     const row = page.locator('.focus-block');
     await page.route('**/api/tasks/complete', async (r) => { await new Promise((ok) => setTimeout(ok, 400)); await r.fallback(); }); // the check is drawn before the write lands
     await row.getByRole('button', { name: 'Done' }).click();
@@ -104,7 +104,7 @@ test.describe('Home round 3', () => {
   test('brand reads Stack [DEMO] in demo mode, with the mark; no banner, no path', async ({ page }, info) => {
     await mockApi(page, { tasks: tasks() });
     await demoMe(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     const brand = info.project.name === 'mobile' ? page.locator('.phone-brand') : page.locator('.rail .brand');
     await expect(brand).toHaveText('Stack [DEMO]');
     await expect(brand.locator('svg')).toHaveCount(1);

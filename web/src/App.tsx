@@ -33,11 +33,9 @@ import { createInstall, isStandalone, type InstallEvent } from './install';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
 import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
-import { CHORDS, EXPERIMENTAL, HINT, LABEL, RAIL, TABBAR } from './nav';
+import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { briefOf } from './brief';
 import { enrich, expandWeekly, type Rule } from './weekly';
-import { BriefView } from './BriefView';
-import { aiRows, type AiSummary } from './briefAi';
 import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
 import { ThreadView } from './ThreadView';
@@ -238,7 +236,7 @@ export function App() {
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
   const nowTask = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
-  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'brief' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
@@ -339,10 +337,7 @@ export function App() {
     const d0 = day.origin ?? clockNow, n = day.origin ? 2 : 1;
     return liveCal ? busyTime.map((b) => ({ ...b, events: enrich(b.events, rules) })) : busyIntervals(expandWeekly(rules, d0, n), d0, n);
   }, [liveCal, busyTime, rules, day, clockNow]);
-  // The AI daily brief: read once when Brief opens (the server caches it per day); a failure just hides the section. @req FR:cos-view/brief.ai.web
-  const [ai, setAi] = useState<AiSummary | null>(null);
-  useEffect(() => { if (view === 'brief' && !ai) { let live = true; api.briefSummary().then((r) => { if (live) setAi(r); }).catch(() => undefined); return () => { live = false; }; } }, [view, ai]);
-  const aiView = useMemo(() => aiRows(ai, asks.items), [ai, asks.items]);
+  /** Now's second layer: next meetings and the top messages. @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.messages */
   const brief = useMemo(() => briefOf({ asks: asks.items, busy: briefBusy, day, now: clockNow, one: home.one }), [asks.items, briefBusy, day, clockNow, home.one]);
   const toggleNotify = async () => {
     if (!notifySupported()) return;
@@ -680,11 +675,10 @@ export function App() {
   // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump @req FR:web-shell/palette.jump.groups
   const goTo: Command[] = [
     { id: 'go-now', label: 'Go to Now', hint: HINT.now, group: 'Go to', run: () => go('now') },
-    { id: 'go-home', label: 'Go to Home', hint: HINT.home, group: 'Go to', run: () => go('home') },
+    { id: 'go-home', label: `Go to ${LABEL.home}`, hint: HINT.home, group: 'Go to', run: () => go('home') }, // @req FR:ux-consolidation/nav.home
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
     { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
-    { id: 'go-brief', label: 'Go to Brief (Experimental)', hint: HINT.brief, group: 'Go to', run: () => go('brief') },
     { id: 'go-inbox', label: 'Go to Inbox', hint: HINT.inbox, group: 'Go to', run: () => go('inbox') },
     { id: 'go-sessions', label: 'Go to Agents', hint: HINT.sessions, group: 'Go to', run: () => go('sessions') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
@@ -743,7 +737,7 @@ export function App() {
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
       if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } } return; }
-      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'brief' || L.view === 'inbox') return; // these views own their keys
+      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox') return; // these views own their keys
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
@@ -837,7 +831,7 @@ export function App() {
   const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : null);
   /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
   const nav = () => RAIL.map((v) => (
-    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{EXPERIMENTAL.has(v) && <span class="exp">Experimental</span>}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
+    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
   ));
   return (
     <div class="shell">
@@ -870,9 +864,9 @@ export function App() {
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : a === 'defer' ? void notNow(nowTask?.task.ref) : void delegate(nowTask?.task.ref))} />}
+        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : a === 'defer' ? void notNow(nowTask?.task.ref) : void delegate(nowTask?.task.ref))}
+          onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onReply={(a) => { asks.setCursor(a.key); asks.setPanel('reply'); go('asks'); }} onOpenAsks={() => go('asks')} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
-        {phase === 'ready' && view === 'brief' && <BriefView b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} ai={aiView} onAi={(r) => { if (r.send) void asks.answer(r.ask, r.send, r.sent ?? 'Done'); }} win={win} busy={busy} onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onOpenAsks={() => go('asks')} onAct={(a, ref) => rowAct(a, ref)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />

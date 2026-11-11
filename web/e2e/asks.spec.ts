@@ -44,10 +44,11 @@ test.describe('Asks', () => {
     await expect(page.locator('.ask-li')).toHaveCount(7);
   });
 
-  test('Home is the default view; the rail and tab bar carry the open count', async ({ page }) => {
+  // @req FR:ux-consolidation/one.start
+  test('Now is the default view; the rail and tab bar carry the open count', async ({ page }) => {
     const m = await mockApi(page); m.asks = seed();
     await page.goto('/');
-    await expect(page.getByRole('region', { name: 'Home' })).toBeVisible();
+    await expect(page.getByTestId('now')).toBeVisible();
     await expect(page.locator('.badge').first()).toHaveText('7');
   });
 

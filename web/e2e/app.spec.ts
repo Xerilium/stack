@@ -751,7 +751,7 @@ test.describe('feedback and mobile', () => {
     } else {
       await expect(page.locator('.rail')).toBeVisible();
       await expect(page.locator('.tabbar')).toBeHidden();
-      for (const name of ['Home', 'My day', 'Needs you', 'Projects', 'Full stack']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible();
+      for (const name of ['Now', 'My day', 'Needs you', 'Projects', 'Full stack']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible(); // @req FR:ux-consolidation/nav.rail
     }
   });
 

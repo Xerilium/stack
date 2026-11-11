@@ -1,6 +1,8 @@
 /** Now: one task, one reason, Done / Defer / Delegate with Undo, an empty state. */
 import { expect, test } from '@playwright/test';
-import { mockApi, seed } from './mock';
+import { mockApi, seed, type MockAsk } from './mock';
+
+const ask = (key: string, from: string, score: number, extra: Partial<MockAsk> = {}): MockAsk => ({ key, state: 'open', ask: `Ask ${key}`, kind: 'approve', from, reversible: true, priority: 'normal', blocks: 0, created: '2026-11-05T09:00:00Z', updated: '2026-11-05T09:00:00Z', score, overdue: false, recommend: 'Go ahead', ...extra });
 
 const ten = async (page: import('@playwright/test').Page) => { const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.setFixedTime(d); };
 
@@ -88,5 +90,79 @@ test.describe('Now screen', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await page.waitForTimeout(400); // past the enter motion
     await page.screenshot({ path: `e2e/screenshots/now-dark-${info.project.name}.png` });
+  });
+
+  // @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.answer @req FR:ux-consolidation/one.focus @req FR:ux-consolidation/one.layout
+  test('the one place: next meetings and top messages under the task; one tap answers', async ({ page }, info) => {
+    const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.install({ time: d });
+    const m = await mockApi(page, { tasks: seed() });
+    const at = (h: number, mi = 0) => { const x = new Date(d); x.setHours(h, mi, 0, 0); return x.toISOString(); };
+    m.events = [
+      { id: 'e1', subject: 'Allyte sync', start: at(10, 5), end: at(10, 35), allDay: false, showAs: 'busy', cancelled: false, online: true, joinUrl: 'https://example.test/join' },
+      { id: 'e2', subject: 'FOCUS TF1', start: at(13), end: at(14), allDay: false, showAs: 'busy', cancelled: false, online: true },
+      { id: 'e3', subject: 'Third', start: at(15), end: at(16), allDay: false, showAs: 'busy', cancelled: false, online: false },
+    ];
+    m.asks = [ask('m1', 'email-triage', 50, { ask: 'Reply to Dana' }), ask('a1', 'Chief of Staff', 90, { ask: 'Approve the budget' }), ask('a2', 'cos', 80, { ask: 'Pick a venue' }), ask('a3', 'cos', 70, { ask: 'Fourth ask' })];
+    await page.goto('/#/now');
+    await page.clock.resume();
+    const now = page.getByTestId('now');
+    await expect(now.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
+    // the first screen: task, reason, actions, then the two sections
+    const meetings = page.getByTestId('now-meetings');
+    await expect(meetings.locator('li')).toHaveCount(2);
+    await expect(meetings).toContainText('Allyte sync');
+    await expect(meetings).toContainText('in 5m');
+    await expect(meetings.getByRole('link', { name: 'Join' })).toHaveAttribute('href', 'https://example.test/join');
+    await expect(meetings).not.toContainText('Third');
+    await expect(page.getByTestId('now-layer')).toHaveText(/Live calendar/);
+    const waiting = page.getByTestId('now-asks');
+    await expect(waiting.locator('li')).toHaveCount(3);
+    await expect(waiting.locator('li').first()).toContainText('Reply to Dana'); // messages first
+    await expect(waiting).toContainText('Approve the budget');
+    await expect(waiting).not.toContainText('Fourth ask');
+    await expect(page.getByRole('button', { name: '1 more in Needs you' })).toBeVisible();
+    // only the task, the reason, and the actions sit above the first section head
+    const sections = await now.locator('h2').count();
+    expect(sections).toBe(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (info.project.name === 'mobile') for (const b of await now.locator('button, a.now-join').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `e2e/screenshots/now-one-${info.project.name}.png`, fullPage: true });
+    // one tap answers the message the same way Needs you does, and the line leaves
+    await waiting.locator('li').first().getByRole('button').click();
+    await expect.poll(() => m.asks.find((a) => a.key === 'm1')?.state).toBe('answered');
+    await expect(waiting).not.toContainText('Reply to Dana');
+    await expect(page.getByRole('status')).toContainText('Sent to email-triage');
+  });
+
+  test('empty sections say so in one line; Needs you link opens Needs you', async ({ page }) => {
+    await ten(page);
+    await mockApi(page, { tasks: seed() });
+    await page.goto('/#/now');
+    await expect(page.getByText('No meetings left today.')).toBeVisible();
+    await expect(page.getByText('Nothing waiting.')).toBeVisible();
+    await expect(page.getByRole('button', { name: /more in Needs you/ })).toHaveCount(0);
+  });
+
+  // @req FR:ux-consolidation/one.clamp
+  test('a long title clamps; the full text is in the tooltip; actions stay on the first screen', async ({ page }, info) => {
+    await ten(page);
+    const long = 'Ship the web app (879 merged to dev Oct 29; must precede the FTK v15 announcement on Tue Nov 3, else delay that; the Sweep Manager merges, never ask the owner to merge; see the release notes and the runbook for the rest of the steps)';
+    await mockApi(page, { tasks: [{ ...seed()[0], text: `‼️ ${long} 🟡` }] });
+    await page.goto('/#/now');
+    const h1 = page.getByTestId('now').getByRole('heading', { level: 1 });
+    await expect(h1).toHaveAttribute('title', long);
+    const lines = await h1.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
+    expect(lines).toBeLessThanOrEqual(info.project.name === 'mobile' ? 4 : 3);
+    const done = (await page.getByRole('button', { name: /^Done/ }).boundingBox())!;
+    expect(done.y + done.height).toBeLessThanOrEqual(info.project.name === 'mobile' ? 812 : 800);
+  });
+
+  // @req FR:ux-consolidation/nav.brief
+  test('#/brief opens Now', async ({ page }) => {
+    await ten(page);
+    await mockApi(page, { tasks: seed() });
+    await page.goto('/#/brief');
+    await expect(page.getByTestId('now')).toBeVisible();
   });
 });

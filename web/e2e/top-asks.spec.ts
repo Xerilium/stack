@@ -18,7 +18,7 @@ test.describe('Top asks', () => {
   test('NOW, then one row per other project; no Up next, no 5-minute list, no fold', async ({ page }, info) => {
     await ten(page);
     await mockApi(page, { tasks: tasks() });
-    await page.goto('/');
+    await page.goto('/#/home');
     await page.clock.resume();
     await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
     const list = page.getByTestId('top-asks');
@@ -36,7 +36,7 @@ test.describe('Top asks', () => {
   test('a click opens a row in place; the project name opens its Full stack', async ({ page }) => {
     await ten(page);
     await mockApi(page, { tasks: tasks() });
-    await page.goto('/');
+    await page.goto('/#/home');
     await page.clock.resume();
     const row = page.getByTestId('top-asks').locator('li', { hasText: 'Plan the offsite' });
     await row.locator('.proj-top').click();
@@ -49,7 +49,7 @@ test.describe('Top asks', () => {
     test.skip(info.project.name === 'mobile', 'keyboard');
     await ten(page);
     await mockApi(page, { tasks: tasks() });
-    await page.goto('/');
+    await page.goto('/#/home');
     await page.clock.resume();
     await expect(page.locator('.focus-block')).toHaveClass(/cursor/);
     await page.keyboard.press('j');
@@ -64,7 +64,7 @@ test.describe('Top asks', () => {
     await ten(page);
     const m = await mockApi(page, { tasks: tasks() });
     m.rev = 'r1';
-    await page.goto('/');
+    await page.goto('/#/home');
     await page.clock.resume();
     const list = page.getByTestId('top-asks');
     await expect(list.locator('li')).toHaveCount(3);

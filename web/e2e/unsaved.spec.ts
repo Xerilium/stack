@@ -13,7 +13,7 @@ test.describe('Unsaved chip', () => {
     const m = await mockApi(page, { tasks: seed() });
     m.pending = 2; m.since = since;
     await liveMe(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     const chip = chipOf(page);
     await expect(chip).toHaveText('Unsaved · 2');
     await expect(chip).toHaveAttribute('title', /First unsaved edit 2:05 PM/);
@@ -30,7 +30,7 @@ test.describe('Unsaved chip', () => {
     const m = await mockApi(page, { tasks: seed() });
     m.pending = 0;
     await liveMe(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await expect(chipOf(page)).toHaveCount(0);
     await page.getByRole('button', { name: 'Done' }).first().click();
@@ -40,7 +40,7 @@ test.describe('Unsaved chip', () => {
   // @req FR:live-deploy/web.unsaved.none
   test('absent when the answer has no pending (hosted app) and in demo mode', async ({ page }) => {
     await mockApi(page, { tasks: seed() });
-    await page.goto('/');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toBeVisible();
     await expect(chipOf(page)).toHaveCount(0);
   });
@@ -51,7 +51,7 @@ test.describe('Unsaved chip', () => {
     m.pending = 1; m.since = since;
     m.fail.set('POST /sync', { status: 409, code: 'conflict', message: 'Conflict on tasks/alpha.md: remote changed it concurrently' });
     await liveMe(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     await chipOf(page).click();
     await expect(page.getByText('Conflict on tasks/alpha.md: remote changed it concurrently')).toBeVisible();
     await expect(chipOf(page)).toHaveText('Unsaved · 1');
@@ -61,7 +61,7 @@ test.describe('Unsaved chip', () => {
   test('live mode: brand reads Stack and the rail pill names the branch', async ({ page }, info) => {
     await mockApi(page, { tasks: seed() });
     await liveMe(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     const brand = info.project.name === 'mobile' ? page.locator('.phone-brand .brand-text') : page.locator('.rail .brand');
     await expect(brand).toHaveText('Stack');
     if (info.project.name !== 'mobile') await expect(page.locator('.rail .who').getByTestId('repo-pill')).toHaveText('Live · main');

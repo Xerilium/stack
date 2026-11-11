@@ -1,8 +1,9 @@
 /* Now: one focal point. Restraint is the design: type, space, three buttons. @req FR:now-screen/now.layout */
-.main > .now, .now { display: flex; flex-direction: column; justify-content: center; gap: var(--s-48); min-height: min(68vh, 640px); max-width: 560px; margin-inline: auto; padding-block: var(--s-24); }
+.main > .now, .now { display: flex; flex-direction: column; gap: var(--s-32); max-width: 560px; margin-inline: auto; padding-block: var(--s-24); }
 .now-stage { min-height: 0; }
 .now-card { animation: now-in var(--t-enter) var(--ease) both; }
-.now-title { margin: 0; font-size: var(--fs-title); line-height: 1.15; letter-spacing: -.022em; font-weight: 600; text-wrap: balance; overflow-wrap: anywhere; }
+.now-title { margin: 0; font-size: var(--fs-title); line-height: 1.15; letter-spacing: -.022em; font-weight: 600; text-wrap: balance; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; } /* @req FR:ux-consolidation/one.clamp: the full text is in the tooltip */
 .now-why { margin: var(--s-12) 0 0; font-size: var(--fs-secondary); line-height: 1.4; color: var(--ink2); }
 .now-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-12); }
 .now-btn { min-height: var(--tap); padding: 0 var(--s-16); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: var(--fs-body); font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-8);
@@ -19,7 +20,35 @@
   .now-btn.primary { grid-column: auto; min-height: 40px; }
   .now-btn kbd { display: inline-block; }
   .now-btn.primary kbd { color: inherit; background: rgb(255 255 255 / 18%); border-color: transparent; }
-  .now { gap: var(--s-32); min-height: min(62vh, 560px); }
+  .now { gap: var(--s-24); }
+  .now-title { -webkit-line-clamp: 3; }
+  .now-side { margin-top: var(--s-24); }
+}
+
+/* Under the task: the next meetings and the top messages, one line each. Eyebrow heads; nothing competes with the task. @req FR:ux-consolidation/one.focus */
+.now-side { display: grid; gap: var(--s-8); margin-top: var(--s-16); }
+.now-h2 { margin: var(--s-16) 0 0; font-size: var(--fs-caption); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.now-layer { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.now-none { margin: 0; color: var(--muted); font-size: var(--fs-secondary); }
+.now-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.now-row { display: flex; align-items: center; gap: var(--s-12); min-height: var(--tap); padding: var(--s-8) 0; border-top: 1px solid var(--line2); }
+.now-row:first-child { border-top: 0; }
+.now-when { flex: none; min-width: 3.6em; font-variant-numeric: tabular-nums; color: var(--ink2); font-size: var(--fs-secondary); }
+.now-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.now-main { font-size: var(--fs-body); line-height: 1.3; overflow-wrap: anywhere; }
+.now-sub { font-size: var(--fs-caption); color: var(--muted); }
+.now-in { flex: none; font-size: var(--fs-caption); color: var(--muted); font-variant-numeric: tabular-nums; } .now-in.on { color: var(--ok); font-weight: 600; }
+.now-late { color: var(--warn); }
+.now-join, .now-mini { flex: none; display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); padding: 0 var(--s-16); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--panel); color: var(--accent); font-size: var(--fs-secondary); font-weight: 600; text-decoration: none; cursor: pointer;
+  transition: background var(--t-feedback) var(--ease); }
+.now-join:hover, .now-mini:hover:not(:disabled) { background: var(--hover); }
+.now-mini:disabled { opacity: .5; cursor: default; }
+.now-more { justify-self: start; background: none; border: 0; padding: var(--s-8) 0; color: var(--muted); font-size: var(--fs-secondary); cursor: pointer; min-height: var(--tap); }
+.now-more:hover { color: var(--ink); }
+@media (hover: hover) and (pointer: fine) {
+  .now-row { min-height: 36px; padding: var(--s-4) 0; }
+  .now-join, .now-mini { min-height: 30px; padding: 0 var(--s-12); font-size: var(--fs-caption); }
+  .now-more { min-height: 0; }
 }
 /* Empty = the win state: calm, no button, no red. */
 .now-empty { text-align: center; }

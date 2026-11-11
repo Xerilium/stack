@@ -15,7 +15,7 @@ test.describe('Home', () => {
   test('one thing (title, one context line, Start, Done, …), one row per other project, nothing else', async ({ page }, info) => {
     const ten = new Date(); ten.setHours(10, 0, 0, 0); await page.clock.setFixedTime(ten); // fit follows the time you have now
     await mockApi(page, { tasks: home() });
-    await page.goto('/');
+    await page.goto('/#/home');
     const one = page.getByRole('group', { name: 'Next task' });
     await expect(one.getByTestId('next-title')).toContainText('Ship the web app');
     await expect(one.getByTestId('now-context')).toHaveText('Alpha'); // project; `late` only when overdue
@@ -40,7 +40,7 @@ test.describe('Home', () => {
   test('says when the one thing does not fit the time left and offers one that does', async ({ page }, info) => {
     const m = await mockApi(page, { tasks: home() });
     await page.clock.install({ time: new Date(2026, 9, 29, 17, 30) }); // 30 min of the work day left
-    await page.goto('/');
+    await page.goto('/#/home');
     // one focal point: the task that fits is NOW; the one that does not is one muted line under it
     const one = page.getByRole('group', { name: 'Next task' });
     await expect(one.getByTestId('next-title')).toContainText('Plan the trip');
@@ -57,7 +57,7 @@ test.describe('Home', () => {
   // @req FR:web-app/home.projects
   test('project name opens that project in Full stack', async ({ page }) => {
     await mockApi(page, { tasks: home() });
-    await page.goto('/');
+    await page.goto('/#/home');
     await page.getByTestId('top-asks').getByRole('button', { name: 'Gamma' }).click(); // @req FR:web-app/today.projects
     await expect(page).toHaveURL(/#\/list\?project=gamma/);
   });

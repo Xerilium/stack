@@ -9,7 +9,7 @@ test.describe('Home draws the server ranking', () => {
   test('NOW and Top asks follow GET /rank, not anything the page works out itself', async ({ page }) => {
     const m = await mockApi(page);
     m.ranked = [{ ref: 'beta:4' }, { ref: 'alpha:9' }, { ref: 'alpha:6' }]; // the owner put "Plan the trip" first
-    await page.goto('/');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toContainText('Plan the trip');
     await expect(page.getByTestId('top-asks').locator('.proj-top')).toHaveText(['Review pull requests']); // alpha's top row; beta is NOW
   });
@@ -20,7 +20,7 @@ test.describe('Home draws the server ranking', () => {
     m.tasks.push({ ref: 'alpha:20', text: 'Pay bills 💰', project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: [] } as never);
     m.tasks.push({ ref: 'alpha:21', text: 'Mortgage', project: 'alpha', section: '🔄 Active', done: false, depth: 1, notes: [] } as never);
     m.ranked = [{ ref: 'alpha:21', root: 'alpha:20' }, { ref: 'alpha:6' }];
-    await page.goto('/');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toContainText('Pay bills');
   });
 });
@@ -29,7 +29,7 @@ test.describe('My day takes the whole-day ranking', () => {
   // @req FR:web-app/today.plan
   test('the page asks for blocks=any and keeps a failed whole-day ranking from blanking Home', async ({ page }) => {
     const m = await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toBeVisible();
     expect(m.rankQueries.some((q) => q.includes('blocks=any'))).toBe(true);
   });
@@ -65,7 +65,7 @@ test.describe('Needs you from the Chief of Staff', () => {
   test('a task that is in Needs you is not on Home', async ({ page }) => {
     const m = await mockApi(page);
     m.needs = [need({ ref: 'alpha:6' })]; // the NOW task
-    await page.goto('/');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).not.toContainText('Ship the web app');
     await expect(page.locator('section[aria-label="Home"]')).not.toContainText('Ship the web app');
     await page.goto('/#/asks');
@@ -75,7 +75,7 @@ test.describe('Needs you from the Chief of Staff', () => {
   // @req FR:ask-queue/needs.read
   test('no file or an empty one changes nothing', async ({ page }) => {
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     await expect(page.getByTestId('next-title')).toContainText('Ship the web app');
   });
 });
@@ -85,7 +85,7 @@ test.describe('Quiet Home', () => {
   test('key hints stay hidden until the first key press; every control carries its key in its tooltip', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keyboard');
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     const focus = page.locator('.focus-block');
     await expect(focus.getByRole('button', { name: /^Start/ })).toHaveAttribute('title', /\(s\)/);
     await expect(focus.getByRole('button', { name: /^Done/ })).toHaveAttribute('title', /\(d\)/);
@@ -97,7 +97,7 @@ test.describe('Quiet Home', () => {
   // @req FR:web-app/home3.menu
   test('the … menu holds Defer 2h, Defer…, Delegate and Open, and closes on Esc and on a click outside', async ({ page }) => {
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     const focus = page.locator('.focus-block');
     await expect(focus.getByTestId('more-menu')).toHaveCount(0);
     await focus.getByTestId('more').click();
@@ -113,7 +113,7 @@ test.describe('Quiet Home', () => {
   test('the … menu takes focus, moves with the arrow keys, returns focus on Esc, and closes on Tab', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keyboard');
     const m = await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     const focus = page.locator('.focus-block');
     await focus.getByTestId('more').click();
     await expect(focus.getByRole('menuitem', { name: /Defer 2h/ })).toBeFocused();
@@ -135,7 +135,7 @@ test.describe('Quiet Home', () => {
   // @req FR:web-app/home3.menu
   test('Open from the menu opens the task full screen', async ({ page }) => {
     await mockApi(page);
-    await page.goto('/');
+    await page.goto('/#/home');
     await page.locator('.focus-block').getByTestId('more').click();
     await page.getByRole('menuitem', { name: /Open/ }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -146,7 +146,7 @@ test.describe('Quiet Home', () => {
     const m = await mockApi(page);
     const ten = new Date(); ten.setHours(10, 0, 0, 0); await page.clock.setFixedTime(ten); // fit follows the clock; CI runs in UTC, past the work day
     const t = m.tasks.find((x) => x.ref === 'alpha:6')!;
-    await page.goto('/');
+    await page.goto('/#/home');
     await expect(page.getByTestId('now-context')).not.toContainText('late');
     const ago = new Date(Date.now() - 3 * 864e5); // inside the overdue window, whatever today is
     t.text = `📅 ${ago.toLocaleString('en-US', { month: 'short' })} ${ago.getDate()}: Ship the web app 🟠`;

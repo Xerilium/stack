@@ -13,11 +13,11 @@ test.describe('layout and nav', () => {
     const m = await mockApi(page);
     m.asks = [ask('a', 'Approve PR 1'), ask('b', 'Approve PR 2')];
     await page.goto('/');
-    await expect(page).toHaveURL(/\/$|#\/home/);
-    await expect(page.getByTestId('next-title')).toBeVisible();
+    await expect(page).toHaveURL(/\/$|#\/now/); // @req FR:ux-consolidation/one.start
+    await expect(page.getByTestId('now')).toBeVisible();
     if (info.project.name === 'mobile') {
       const tabs = page.locator('.tabbar .tab');
-      await expect(tabs).toHaveText(['Home', 'My day', '', 'Needs you2', 'More']);
+      await expect(tabs).toHaveText(['Now', 'My day', '', 'Needs you2', 'More']); // @req FR:ux-consolidation/nav.tabbar
       await expect(page.locator('.tabbar').getByRole('button', { name: 'New task' })).toBeVisible();
       // the + sits in the middle of its circle (optical centering, not just box centering)
       const fab = await center(page, '.tabbar .fab');
@@ -30,7 +30,9 @@ test.describe('layout and nav', () => {
       expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     } else {
-      await expect(page.locator('.rail .tab:not(.add)').filter({ hasNotText: /Commands|Shortcuts/ })).toHaveText(['Nowg n', 'Homeg h', 'BriefExperimentalg b', 'My dayg d', 'Needs you2g k', 'Inboxg i', 'Agentsg s', 'Projectsg p', 'Full stackg a']);
+      // @req FR:ux-consolidation/nav.rail @req FR:ux-consolidation/nav.brief
+      await expect(page.locator('.rail .tab:not(.add)').filter({ hasNotText: /Commands|Shortcuts/ })).toHaveText(['Nowg n', 'My dayg d', 'Needs you2g k', 'Inboxg i', 'Agentsg s', 'Projectsg p', 'Full stackg a']);
+      await expect(page.locator('.rail .exp')).toHaveCount(0);
       await expect(page.locator('.tabbar')).toBeHidden();
       const main = (await page.locator('.main').boundingBox())!;
       const rail = (await page.locator('.rail').boundingBox())!;
