@@ -1,10 +1,10 @@
 /** @req FR:status-ingest/cli.report @req FR:status-ingest/cli.errors */
 import { createServer } from 'http';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
-import { readStdin, run } from '../../src/cli/run';
+import { readStdin, run, webReportStore } from '../../src/cli/run';
 import { writeHostFile } from '../../src/core/reports';
 
 const tmp = (p: string) => mkdtempSync(join(tmpdir(), p));
@@ -110,5 +110,19 @@ describe('stack report', () => {
     expect((await stack('{}', 'report', 'extra-arg', '--agent', 'a', '--project', 'p')).code).toBe(2);
     expect((await stack('{"agent":"other"}', 'report', '--agent', 'a', '--project', 'p')).err).toContain('does not match --agent');
     expect(existsSync(join(home, 'reports.json'))).toBe(false);
+  });
+});
+
+describe('stack web report store', () => {
+  // @req FR:status-ingest/host.demo
+  it('demo mode writes reports beside the demo copy, nowhere under the Stack home; live uses the default store', async () => {
+    const userHome = tmp('stack-user-');
+    const demo = webReportStore(false, userHome)!;
+    expect(demo.dir).toBe(join(userHome, '.config/stack/demo-state'));
+    await demo.put({ ...REPORT, agent: 'a', project: 'p' });
+    expect(existsSync(join(demo.dir, 'reports.json'))).toBe(true);
+    expect(readdirSync(home)).toEqual([]); // STACK_HOME untouched
+    expect(existsSync(join(userHome, '.stack'))).toBe(false);
+    expect(webReportStore(true, userHome)).toBeUndefined();
   });
 });

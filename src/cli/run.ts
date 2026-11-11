@@ -560,6 +560,14 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
   }
 }
 
+/**
+ * The report store for `stack web`: demo keeps reports beside the demo copy, never in live state; live uses the default store (undefined).
+ * @req FR:status-ingest/host.demo
+ */
+export function webReportStore(live: boolean, home: string): ReportStore | undefined {
+  return live ? undefined : new ReportStore(join(home, '.config/stack/demo-state'));
+}
+
 /** @req FR:cli/web.@cli @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live */
 async function web(f: Record<string, string | true>, io: IO, found: string | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
@@ -590,7 +598,8 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
   // Demo never touches live state (~/.stack): its reports stay beside the demo copy. @req FR:status-ingest/host.demo
-  const s = await startWeb({ dir: target, port, webDir, label, info, storage, ...(live ? {} : { reports: new ReportStore(join(home, '.config/stack/demo-state')) }) });
+  const reports = webReportStore(live, home);
+  const s = await startWeb({ dir: target, port, webDir, label, info, storage, ...(reports ? { reports } : {}) });
   io.out(`Stack web: ${s.url}  (data: ${target}; Ctrl+C to stop)\n`);
   await new Promise<void>((ok) => { process.once('SIGINT', ok); process.once('SIGTERM', ok); });
   await s.close();
