@@ -5,7 +5,7 @@
 import { mkdirSync, mkdtempSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { answerAsk } from '../../src/core/asks';
+import { answerAsk, readAsk } from '../../src/core/asks';
 import { FsStorage } from '../../src/core/storage';
 import { run } from '../../src/cli/run';
 
@@ -102,9 +102,76 @@ describe('stack agent run', () => {
     expect(err).toContain('agent run');
   });
 
+  it('help names the current Gemini ACP flag (--acp), not --experimental-acp', async () => {
+    let out = '';
+    expect(await run(['--help'], { out: (s) => { out += s; }, err: () => undefined })).toBe(0);
+    const line = out.split('\n').find((l) => l.includes('ACP agent')) ?? '';
+    expect(line).toMatch(/gemini (-- )?--acp/);
+    expect(out).not.toContain('--experimental-acp');
+  });
+
   it('exits 1 when the command does not exist', async () => {
     const r = await stack(dir(), [join(__dirname, 'no-such-binary'), '--prompt', 'x']);
     expect(r.code).toBe(1);
     expect(r.err).toContain('error:');
+  });
+});
+
+/**
+ * Cancel, timeout, and crash end cleanly: exit 1, a clear error, no child left, no signal handler left.
+ * @req FR:acp-driver/cli.signal @req FR:acp-driver/cli.timeout @req FR:acp-driver/cli.crash @req FR:acp-driver/perm.flow
+ */
+describe('stack agent run: cancel, timeout, crash', () => {
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const pidOf = (out: string) => Number(/fake-(\d+)/.exec(out)?.[1]);
+  const sigints = () => process.listenerCount('SIGINT');
+  /** Emits `SIGINT` `times` times, the first as soon as the command listens, then `gapMs` apart. */
+  const interrupt = (base: number, times = 1, gapMs = 300) => (async () => {
+    while (sigints() <= base) await new Promise((r) => setImmediate(r));
+    for (let i = 0; i < times; i++) { if (i) await new Promise((r) => setTimeout(r, gapMs)); process.emit('SIGINT' as never); }
+  })();
+
+  it('a timeout closes an agent that ignores session/cancel, within timeout + grace', async () => {
+    const t0 = Date.now();
+    const r = await stack(dir(), [process.execPath, FAKE, '--prompt', 'stuck', '--timeout', '1', '--json']);
+    expect(Date.now() - t0).toBeLessThan(9000);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out)).toMatchObject({ ok: false, stopReason: 'cancelled', error: 'timed out after 1 s' });
+    expect(alive(pidOf(r.out))).toBe(false);
+  });
+
+  it('SIGINT cancels the run, also before it started, and removes its handler', async () => {
+    const base = sigints();
+    const sig = interrupt(base);
+    const r = await stack(dir(), [process.execPath, FAKE, '--prompt', 'slow']);
+    await sig;
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('error: cancelled (SIGINT)');
+    expect(sigints()).toBe(base);
+  });
+
+  it('a second SIGINT closes an agent that ignores session/cancel at once', async () => {
+    const base = sigints();
+    const sig = interrupt(base, 2, 500);
+    const t0 = Date.now();
+    const r = await stack(dir(), [process.execPath, FAKE, '--prompt', 'stuck', '--json']);
+    await sig;
+    expect(Date.now() - t0).toBeLessThan(2900);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out)).toMatchObject({ ok: false, stopReason: 'cancelled', error: 'cancelled (SIGINT)' });
+    expect(alive(pidOf(r.out))).toBe(false);
+  });
+
+  it('an agent that exits while asking: exit 1, the exit code, the stderr tail, and the ask resolved', async () => {
+    const d = dir();
+    const r = await stack(d, [process.execPath, FAKE, '--prompt', 'ask-die']);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('error: Agent exited (code 4)');
+    expect(r.err).toContain('agent stderr: fake agent died mid-ask');
+    const keys = readdirSync(join(d, 'tasks/asks')).filter((f) => f.startsWith('perm-'));
+    expect(keys).toHaveLength(1);
+    await new Promise((res) => setTimeout(res, 100));
+    const ask = await readAsk({ storage: new FsStorage(d) }, keys[0].replace(/\.md$/, ''));
+    expect(ask?.ask).toMatchObject({ state: 'done', outcome: 'resolved' });
   });
 });

@@ -63,9 +63,9 @@ describe('brief summary', () => {
     await seed(t.storage, 'g2', 'go-do', 'Sign the other form');
     const r = await t.get();
     expect(r.json.lines).toEqual([
-      { key: 'a1', text: 'Approve the budget', action: 'go' },
-      { key: 'g1', text: 'Go do it', action: 'none' },
-      { key: 'g2', text: 'Done it', action: 'done' },
+      { key: 'a1', text: 'Approve budget', note: 'Approve the budget', action: 'go' },
+      { key: 'g1', text: 'Sign the form', note: 'Go do it', action: 'none' },
+      { key: 'g2', text: 'Sign the other form', note: 'Done it', action: 'done' },
     ]);
     expect(t.calls[0].model).toBe('claude-sonnet-5-5');
     expect(t.calls[0].user).toContain('untrusted');
@@ -80,6 +80,7 @@ describe('brief summary', () => {
     expect(a.json.cached).toBeFalsy();
     expect(b.json.cached).toBe(true);
     expect(t.calls).toHaveLength(1);
+    NOW = new Date('2026-11-05T15:01:01Z');
     await t.get('/brief/summary?refresh=1');
     expect(t.calls).toHaveLength(2);
     NOW = new Date('2026-11-06T15:00:00Z');
@@ -101,6 +102,34 @@ describe('brief summary', () => {
     const r = await t.get();
     expect(r.json).toEqual({ configured: true, date: '2026-11-05', error: 'Summary unavailable' });
     await t.get();
+    expect(t.calls).toHaveLength(2);
+  });
+});
+
+// Security follow-up M1, M2. @req FR:cos-view/brief.ai.route @req FR:cos-view/brief.ai.cache
+describe('brief summary: security', () => {
+  afterEach(() => { NOW = new Date('2026-11-05T15:00:00Z'); });
+
+  it('M1: the button sits beside the ask\'s own text, never model text', async () => {
+    const t = await mk({ headline: 'H', lines: [{ key: 'a1', text: 'Approve the tiny $5 coffee refund', action: 'go' }] });
+    await seed(t.storage, 'a1', 'approve', 'Wire $50,000 to vendor');
+    const [l] = (await t.get()).json.lines;
+    expect(l.text).toBe('Wire $50,000 to vendor');
+    expect(l.note).toBe('Approve the tiny $5 coffee refund');
+    expect(l.action).toBe('go');
+  });
+
+  it('M2: refresh spends at most one model call per 60 s', async () => {
+    const t = await mk({ headline: 'H', lines: [] });
+    await seed(t.storage, 'a1', 'approve', 'Approve budget');
+    await t.get('/brief/summary?refresh=1');
+    NOW = new Date('2026-11-05T15:00:30Z');
+    const r = await t.get('/brief/summary?refresh=1');
+    await t.get('/brief/summary?refresh=1');
+    expect(t.calls).toHaveLength(1);
+    expect(r.json.cached).toBe(true);
+    NOW = new Date('2026-11-05T15:01:01Z');
+    await t.get('/brief/summary?refresh=1');
     expect(t.calls).toHaveLength(2);
   });
 });

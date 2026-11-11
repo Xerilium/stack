@@ -2,7 +2,7 @@
 /**
  * A fake ACP agent for tests: newline-delimited JSON-RPC 2.0 on stdio, no dependencies, no network, no model.
  * The prompt text picks the behavior: `ask` (tool call + permission request), `slow` (waits for session/cancel),
- * `crash` (exits), `error` (JSON-RPC error), `refusal` (stop reason), `env` (echoes the environment it was given).
+ * `ask-read` (a read tool), `ask-die` (exits while asking), `stuck` (ignores session/cancel), `crash` (exits), `error` (JSON-RPC error), `refusal` (stop reason), `env` (echoes the environment it was given).
  * @req FR:acp-driver/test.fake
  */
 'use strict';
@@ -23,16 +23,21 @@ async function prompt(id, params) {
   if (text.includes('error')) { out({ id, error: { code: -32603, message: 'Internal error: token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab' } }); return; }
   chunk(sid, 'Hello');
   if (text.includes('env')) chunk(sid, ` GH_TOKEN=${process.env.GH_TOKEN ? 'set' : 'unset'} FAKE_FLAG=${process.env.FAKE_FLAG || 'unset'}`);
+  if (text.includes('stuck')) { await new Promise(() => undefined); return; } // ignores session/cancel
   if (text.includes('slow')) {
     await new Promise((r) => { cancel = r; });
     out({ id, result: { stopReason: 'cancelled' } });
     return;
   }
   if (text.includes('ask')) {
-    update(sid, { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Run: git push', kind: 'execute', status: 'pending', rawInput: { command: 'git push' } });
+    const read = text.includes('ask-read');
+    const title = read ? 'Read: README.md' : 'Run: git push';
+    const kind = read ? 'read' : 'execute';
+    update(sid, { sessionUpdate: 'tool_call', toolCallId: 't1', title, kind, status: 'pending', rawInput: read ? { path: 'README.md' } : { command: 'git push' } });
+    if (text.includes('ask-die')) setTimeout(() => { process.stderr.write('fake agent died mid-ask\n'); process.exit(4); }, 1500);
     const r = await call('session/request_permission', {
       sessionId: sid,
-      toolCall: { toolCallId: 't1', title: 'Run: git push', kind: 'execute' },
+      toolCall: { toolCallId: 't1', title, kind },
       options: [
         { optionId: 'opt-allow', name: 'Allow once', kind: 'allow_once' },
         { optionId: 'opt-reject', name: 'Reject', kind: 'reject_once' },
