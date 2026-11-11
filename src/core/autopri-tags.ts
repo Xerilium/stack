@@ -3,6 +3,7 @@
  * @req FR:autopri-tagging/tag.@function @req FR:autopri-tagging/truth.parse @req FR:autopri-tagging/truth.match @req FR:autopri-tagging/truth.report
  */
 import { UNBLOCK, type AutopriParts } from './autopri';
+import { escapeRe } from './regex';
 
 export interface Tags { unblocker?: boolean; due?: string | null }
 
@@ -44,8 +45,7 @@ export interface TruthRow { project: string; aliases: string[]; text: string; co
 export type TruthStatus = 'ranked' | 'untagged' | 'missing';
 export interface TruthMatch { item: TruthItem; status: TruthStatus; /** 1-based rank of the matched row */ actual?: number; row?: number; suggest?: string }
 
-const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const tokenIn = (hay: string, tok: string) => new RegExp(`(?<![\\w.])${esc(tok)}(?!\\w|\\.\\d)`, 'iu').test(hay);
+const tokenIn = (hay: string, tok: string) => new RegExp(`(?<![\\w.])${escapeRe(tok)}(?!\\w|\\.\\d)`, 'iu').test(hay);
 const anchors = (work: string): string[] => {
   const v = work.match(/(?<![\w.])(?:v\d+(?:\.\d+)*|\d+(?:\.\d+)+)(?!\w|\.\d)/giu);
   return v?.length ? [...new Set(v)] : work.split(/\s+/).filter(Boolean).slice(0, 3);

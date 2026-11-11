@@ -2,7 +2,7 @@ import type { StackConfig } from './config';
 import { parseProject } from './parser';
 import { matcherFor, parsePriorities } from './priorities';
 import {
-  extractEmojis, legacyEngine, activeTimeBlocks, rankTasks, stackEngine, toScoringProject, weighProjects,
+  extractEmojis, legacyEngine, activeTimeBlocks, getEngine, rankTasks, stackEngine, toScoringProject, weighProjects,
   type ScoreBreakdown, type ScoredTask, type ScoringProject, type ScoringTask, type TaskEmojis,
 } from './scoring';
 
@@ -765,7 +765,7 @@ function buildReadme(
 
   const leaves = w.list.filter(t => t.leaf);
   const activeTasks = leaves.filter(t => !isParked(t, w.byId));
-  const engine = input.engine === 'stack' ? stackEngine : legacyEngine;
+  const engine = getEngine(input.engine ?? 'legacy');
   let filtered = activeTasks.length > 0
     ? engine.filter(activeTasks.map(t => t.scored), scoring, config, input.now).map(s => w.byId.get(s.task.id)!)
     : [];

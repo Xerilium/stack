@@ -1,4 +1,5 @@
 import type { StackConfig } from './config';
+import { escapeRe } from './regex';
 import type { Project, Task as ParsedTask } from './parser';
 
 export class ScoringError extends Error {}
@@ -472,8 +473,6 @@ function reasonOf(text: string): string | undefined {
   return m ? m[2].split(';')[0] : undefined;
 }
 const isName = (n: string) => n !== '' && !NOT_A_NAME.test(n);
-
-const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Blocked task id -> ids of the tasks it waits on. @req FR:scoring-engine/blockers.resolve */
 export function resolveBlockers(projects: ScoringProject[]): Map<string, string[]> {

@@ -25,7 +25,7 @@ export const balancedEngine: ScoringEngine = {
       return { ...s, score, breakdown: { ...s.breakdown, calculatedTotal: score } };
     });
   },
-  filter: (tasks, projects, config, at) => legacyEngine.filter(tasks, projects, config, at),
+  filter: legacyEngine.filter,
 };
 
 /**

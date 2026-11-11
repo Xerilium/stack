@@ -16,12 +16,12 @@ The owner wants one place: next meeting(s), top messages, top actions, one task.
 
 ### FR:brief: Brief (Experimental)
 
-- **FR:brief.nav** (P1): Nav has a `Brief` entry (chord `g b`) tagged `Experimental` in the rail and in More. Hash `#/brief`. Existing views are unchanged
+- ~~**FR:brief.nav**~~: [deprecated: FR:ux-consolidation/nav.brief; the Brief view folded into Now]
 - **FR:brief.meetings** (P1): Up to 2 busy meetings that have not ended: title, start time, `in 25m` or `now`, and `Join` when a join link exists and the meeting starts within 10 min or is on
 - **FR:brief.messages** (P1): Up to 3 open asks from `email-triage`, best score first. Each shows ask, why, the draft or recommendation, and one primary button (the ask's primary action). `{n} more` links to Needs you
 - **FR:brief.actions** (P1): Up to 3 open asks that are not messages, best score first, same card. `{n} more` links to Needs you
-- **FR:brief.one** (P1): The one task is Home's task (server rank): title, project, Start, Done, Delegate. When none: `Nothing active`
-- **FR:brief.ninety** (P2): `Next 90 minutes`: a strip of meetings and free gaps of 15 min or more from now, clipped to 90 min and to bed. The one task shows in the first gap long enough for its effort. A suggestion only; nothing is moved
+- ~~**FR:brief.one**~~: [deprecated: FR:now-screen/now.one]
+- ~~**FR:brief.ninety**~~: [deprecated: no view draws the strip since FR:ux-consolidation/nav.brief]
 - **FR:brief.empty** (P2): With no meetings, messages, or actions, each empty section says so in one short line; the page never shows a blank
 - **FR:brief.phone** (P1): At 375 px: one column, no horizontal scroll, 44 px tap targets
 
@@ -50,4 +50,4 @@ The Brief needs meetings even when no calendar is signed in. Two layers; the fir
 - **FR:meet.expand** (P1): `expandWeekly(rules, day)` returns calendar events (busy, `FR:day-inputs/cal.model`, plus `owner` and `topic`) for the local day and the spill of the day before. A `biweekly` rule runs on every second ISO week (even weeks). Local clock times; DST safe
 - **FR:meet.enrich** (P2): A live event whose title matches a rule title (case-insensitive, either contains the other) gets that rule's `owner`, `topic`, and `join` (when the event has none)
 - **FR:brief.meetings.detail** (P1): Each Brief meeting shows start time, `in 25m` or `now`, title, owner agent, topic, and `Join` when a link exists and the meeting is on or starts within 10 min
-- **FR:brief.free** (P1): `Free until`: when no meeting is on, `Free until {time} ({n}m)` to the next meeting (or bed); when one is on, `In a meeting until {time}`. It heads the `Next 90 minutes` strip, and the strip's first free gap starts at now
+- ~~**FR:brief.free**~~: [deprecated: no view draws `Free until` since FR:ux-consolidation/nav.brief]

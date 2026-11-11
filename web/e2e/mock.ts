@@ -1,7 +1,11 @@
 import type { Page, Route } from '@playwright/test';
-import { actionable, activeTasks, dueDays, dueTier } from '../src/now';
+import { actionable, activeTasks, dueDays } from '../src/now';
 import { parseRow } from '../src/row';
 import type { Task } from '../src/types';
+
+/** The stack engine's due tier (src/core/scoring.ts), kept here for the fake `/rank` only: 3 overdue/today, 2 within 3 days, 1 within a week or stale, 0 undated or later. */
+const STALE_DAYS = 30;
+const dueTier = (d: number | null): number => (d === null ? 0 : d < -STALE_DAYS ? 1 : d <= 0 ? 3 : d <= 3 ? 2 : d <= 7 ? 1 : 0);
 
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
 export interface MockAgent { ref: string; project: string; title: string; text: string; state: string; prs: { url: string; repo: string; number: number; state?: string; checks?: string; title?: string; updatedAt?: string }[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }

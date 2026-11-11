@@ -34,23 +34,33 @@ For the development process, see [`.xe/process/development.md`](process/developm
 
 ## Repository Structure
 
-One package with shared core logic for every surface.
+A pnpm workspace: one core package, a web package, and two thin shells that start the same host.
 
 ```text
 stack/
-├── .xe/        # Catalyst context, features, rollouts
+├── .xe/          # Catalyst context, features, rollouts
 ├── src/
-│   ├── core/   # Task model, parser, scoring, lifecycle, summaries, config
-│   ├── storage/ # Storage interface and git adapter
-│   ├── cli/    # CLI
-│   ├── api/    # REST, auth, MCP
-│   └── web/    # Web app
-├── tests/      # Tests mirroring src
-└── tasks/      # Example task files
+│   ├── core/     # Task model, parser, scoring engines, overrides, lifecycle, summaries, storage (interface + git), config
+│   ├── api/      # REST routes, auth, OpenAPI, push
+│   ├── mcp/      # MCP server over the same lifecycle
+│   ├── cli/      # CLI, and `stack web` (the local Node host the web app and the desktop shell use)
+│   ├── agents/   # Agent drivers: Claude SDK, ACP (stdio), sessions and runs
+│   ├── inbox/    # Agent inbox and connectors
+│   ├── email/    # Email triage, hygiene, voice
+│   ├── calendar/ # Live calendar (Graph) and ICS
+│   ├── graph/    # Microsoft Graph sign-in
+│   ├── bots/     # Chat bots
+│   └── host/     # Azure Functions wiring (settings, git repo, push sender)
+├── host/         # Azure Functions package entry (host.json, main.ts)
+├── web/          # Web app (Preact, Vite, Vitest, Playwright)
+├── desktop/      # Electron shell: starts `stack web` in-process
+├── infra/        # Bicep
+├── tests/        # Tests mirroring src
+└── docs/         # User and operator docs
 ```
 
 ## Technical Architecture Patterns
 
 ### Dependency Abstraction Pattern
 
-Applies to storage (git today, database later), formatters (emoji-markdown, clean), and the scoring engine (legacy formula default): each sits behind an interface so it can be swapped and tested alone.
+Applies to storage (git today, database later), formatters (emoji-markdown, clean), and the scoring engines: each sits behind an interface so it can be swapped and tested alone. `legacy` (the PowerShell formula) is the default for the generated files (`stack update`); `stack` (legacy plus due dates and blockers) is the default for `stack next`, `GET /next` and `GET /rank`; `autopri` is opt-in.

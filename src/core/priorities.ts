@@ -2,6 +2,7 @@
  * Owner and Chief of Staff priority overrides: `.stack/priorities.json`, applied on top of the engine order.
  * @req FR:scoring-engine/overrides.@json @req FR:scoring-engine/overrides.@function
  */
+import { wordsRe } from './regex';
 
 /** One override. @req FR:scoring-engine/$priority-rule */
 export interface PriorityRule {
@@ -40,10 +41,6 @@ export function parsePriorities(text: string): PriorityRule[] {
   }
   return out;
 }
-
-const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-/** The phrase appears as whole words, case-insensitively. @req FR:scoring-engine/overrides.match */
-const wordsRe = (phrase: string): RegExp => new RegExp(`(?<![\\p{L}\\p{N}])${esc(phrase)}(?![\\p{L}\\p{N}])`, 'iu');
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 export interface Matched { rule: PriorityRule; index: number; /** `own`: the project, or the row itself; `parent`: only a row above it. */ via: 'own' | 'parent' }

@@ -1,6 +1,6 @@
 # Status
 
-Final status, 2026-10-22. Phases 1-4 of the blueprint are built and merged to `main`. Phases 5 and 6 (enterprise, scale) are out of scope. Cutover from the legacy system is Michael's call.
+Snapshot at PR 38, 2026-10-22: the close of blueprint Phases 1-4. Later work (PRs 39-114: web shell, Now, Needs you, agents, email, desktop, iPhone) is tracked in `.xe/features/*/spec.md` and `.xe/features/stack-app/architecture-review.md`; the counts below are from that date. Phases 1-4 of the blueprint are built and merged to `main`. Phases 5 and 6 (enterprise, scale) are out of scope. Cutover from the legacy system is Michael's call.
 
 ## What is built
 

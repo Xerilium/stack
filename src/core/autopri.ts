@@ -4,6 +4,7 @@
  */
 import type { StackConfig } from './config';
 import type { ScoredTask, ScoringEngine, ScoringProject } from './scoring';
+import { wordsRe } from './regex';
 import { byScore, daysUntilDue, filterByTimeBlock, isMessage, legacyEngine, listEngines, registerEngine, resolveBlockers, weighProjects } from './scoring';
 
 /** One logged miss. @req FR:auto-priority/$miss */
@@ -12,9 +13,7 @@ export interface PickMatch { hits: string[]; misses: string[]; n: number }
 type Row = { text: string; context?: string };
 
 const SCORING = ['Value', 'Impact', 'Priority'];
-const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const has = (row: Row, phrase: string): boolean =>
-  new RegExp(`(?<![\\p{L}\\p{N}])${esc(phrase)}(?![\\p{L}\\p{N}])`, 'iu').test(`${row.text}\n${row.context ?? ''}`);
+const has = (row: Row, phrase: string): boolean => wordsRe(phrase).test(`${row.text}\n${row.context ?? ''}`);
 
 /** @req FR:auto-priority/tags.untagged @req FR:auto-priority/tags.parked */
 export function untaggedTasks(scored: ScoredTask[]): ScoredTask[] {
@@ -91,7 +90,7 @@ export function autopriParts(all: ScoredTask[], projects: ScoringProject[], conf
 export const autopriEngine: ScoringEngine = {
   id: 'autopri',
   score: legacyEngine.score,
-  filter: (tasks, projects, config, at) => legacyEngine.filter(tasks, projects, config, at),
+  filter: legacyEngine.filter,
   rank(all, projects, config, at, opts = {}) {
     const byId = new Map(all.map((s) => [s.task.id, s]));
     const parts = autopriParts(all, projects, config, at);

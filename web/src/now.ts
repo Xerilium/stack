@@ -68,8 +68,8 @@ export const DEFER: DeferChoice[] = [
   { label: 'Next week', key: '3', days: 7 },
 ];
 
-// ---- Now ranking (client side, for the lists under the focus task)
-// Mirrors the server's stack engine (src/core/scoring.ts) over HTTP-shaped rows; tests/parity/now-parity.test.ts keeps them in step.
+// ---- Date rules (client side): which rows My day can plan. The page does not rank; it draws GET /rank.
+// Mirrors the stack engine's dates (src/core/scoring.ts) over HTTP-shaped rows; tests/parity/now-parity.test.ts keeps them in step.
 import { parseRow } from './row';
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -87,9 +87,6 @@ export function dueDays(due: string | undefined, now = new Date()): number | nul
   return [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(at).find((d) => d >= -OVERDUE_WINDOW_DAYS)!;
 }
 export const HORIZON_DAYS = 14;
-const STALE_DAYS = 30;
-/** Due-soon tier: 3 overdue/today, 2 within 3 days, 1 within a week or stale (overdue more than 30 days), 0 undated or later. */
-export const dueTier = (d: number | null): number => (d === null ? 0 : d < -STALE_DAYS ? 1 : d <= 0 ? 3 : d <= 3 ? 2 : d <= 7 ? 1 : 0);
 /** Reply rows (`💬 …`) are messages to an agent, not work. */
 export const isMessage = (t: Task): boolean => /^\s*💬/u.test(t.text);
 const vsx = (s: string) => s.replace(/️/g, '');

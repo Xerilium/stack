@@ -338,7 +338,7 @@ export function App() {
     return liveCal ? busyTime.map((b) => ({ ...b, events: enrich(b.events, rules) })) : busyIntervals(expandWeekly(rules, d0, n), d0, n);
   }, [liveCal, busyTime, rules, day, clockNow]);
   /** Now's second layer: next meetings and the top messages. @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.messages */
-  const brief = useMemo(() => briefOf({ asks: asks.items, busy: briefBusy, day, now: clockNow, one: home.one }), [asks.items, briefBusy, day, clockNow, home.one]);
+  const brief = useMemo(() => briefOf({ asks: asks.items, busy: briefBusy, day, now: clockNow }), [asks.items, briefBusy, day, clockNow]);
   const toggleNotify = async () => {
     if (!notifySupported()) return;
     if (notifyOn) { saveNotify(store(), false); setNotifyOn(false); return; }
