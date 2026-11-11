@@ -190,7 +190,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref') } } } } }),
   },
   'inboxItems.list': {
-    operationId: 'listInboxItems', summary: 'All mail, unread Teams and unread Slack items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens',
+    operationId: 'listInboxItems', summary: 'All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens',
     responses: ok('Inbox', { type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, actions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, ready: { type: 'boolean' } } } } } }),
   },
   'inboxItems.action': {

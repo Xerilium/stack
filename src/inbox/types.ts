@@ -1,10 +1,10 @@
 /** Inbox contracts. Types only. @req FR:inbox-page/item.shape */
 export const ACTION_IDS = ['reply-draft', 'mark-done', 'snooze', 'ask-me-later', 'create-task', 'archive', 'unsubscribe', 'delegate', 'schedule', 'forward-draft'] as const;
 export type ActionId = (typeof ACTION_IDS)[number];
-export type Source = 'email' | 'teams' | 'slack';
+export type Source = 'email' | 'teams' | 'slack' | 'github';
 
 export interface InboxItem {
-  /** The ask key: `mail-<hash>` for email, `chat-<hash>` for chats. */
+  /** The ask key: `mail-<hash>` for email, `chat-<hash>` for chats, `gh-<hash>` for GitHub. */
   id: string;
   source: Source;
   /** Mailbox address, workspace or tenant. */

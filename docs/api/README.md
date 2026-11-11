@@ -26,7 +26,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/tasks/result` | POST log an agent result (autonomy-gated) |
 | `/inbox` | GET inbox entries for agents; POST send a reply or decision to the task project agent inbox (owner session only) |
 | `/inbox/handled` | POST mark an inbox entry handled |
-| `/inbox-items` | GET all mail, unread Teams and Slack items with summaries and suggested actions (Inbox page; owner session only) |
+| `/inbox-items` | GET all mail, unread Teams, Slack and GitHub items with summaries and suggested actions (Inbox page; owner session only) |
 | `/inbox-items/{id}/action` | POST run an inbox action; reply-draft makes a draft and never sends (owner session only) |
 | `/brief/summary` | GET the AI daily brief (owner only; `refresh=1` bypasses the cache) |
 | `/asks` | GET ranked asks for the owner (`state=open|answered|done|snoozed|all`) |
