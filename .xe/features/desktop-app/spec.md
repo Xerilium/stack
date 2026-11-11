@@ -36,7 +36,7 @@ Stack opens like a Mac app: own window, Dock icon, starts at login, taps you for
 
 ### FR:native: Native shell (deferred, P3)
 
-- **FR:native.gate** (P3): Build a native shell only when the owner asks for a menu-bar icon or a global hotkey. Choice then: Tauri with the host as a `pkg` sidecar (default), Electron if the host must stay unbundled
+- **FR:native.gate** (P3): Build a native shell only when the owner asks for a menu-bar icon or a global hotkey. The owner asked; the shell is Electron and lives in [desktop-shell](../desktop-shell/spec.md)
 - **FR:native.human** (P3): These steps MUST stay human-only: enroll in the Apple Developer Program, create the Developer ID certificate, add notarization and updater signing secrets to CI, publish a release
 
 ## Non-functional

@@ -250,3 +250,15 @@
 **Why**: `.xe/features/stack-app/research-architecture.md` (Smallest first slice). ACP's only defined transport is stdio, so the Stack host must be the client that spawns the agent. The official SDK is `@agentclientprotocol/sdk` `2.4.0` (Apache-2.0), stable v1 entrypoint; v2 is a draft and stays off. The driver advertises no fs or terminal capability, so every risky tool call returns as `session/request_permission` and goes to the ask queue through the existing permission broker. A failure to answer never allows.
 
 **Trade-offs**: The SDK is ESM-only and the repo is CommonJS: it loads through a native `import()` (the same trick as the Agent SDK driver), and Jest compiles the SDK's JavaScript to CommonJS in `jest.config.js` (tests only). The child gets an allow-list environment, so an agent's own login must live under `HOME` or in `env` passed to the driver. Session resume across processes (`session/load`) and cost (ACP v1 reports none) are not in this slice.
+
+## Ship the Mac shell with Electron
+
+**Decision**: The Mac app is an Electron shell (`desktop/`) that runs the Stack host (`startWeb`) in its main process, loads the web UI from a loopback port, and adds a tray icon, a global hotkey, and a single-instance lock. The iPhone stays on the PWA.
+
+**Date**: 2026-11-10
+
+**Why**: `.xe/features/stack-app/research-architecture.md`, section 2. The host must spawn ACP agents over stdio, so it needs a long-lived Node process on the Mac. Electron's main process is that Node process: one language, no sidecar, the `web/` UI as is. Tauri's size advantage is gone once the Agent SDK binary (263 MB) ships. The owner asked for a menu-bar icon and a hotkey, which is the gate in `FR:desktop-app/native.gate`.
+
+**Trade-offs**: Electron adds ~100 MB and its own release cadence (pinned, bumped by renovate). Build scripts for `electron` stay blocked in pnpm so CI never downloads the binary; the smoke script downloads it on demand. Signing and notarization are human steps and wait for a later slice.
+
+**Rejected**: Tauri (Rust toolchain, sidecar stdio plumbing for no size win); native Swift (second UI); PWA alone (cannot own the host process).

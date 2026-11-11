@@ -7,7 +7,7 @@ module.exports = {
     '^.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true, module: 'commonjs', skipLibCheck: true }, diagnostics: false }],
   },
   transformIgnorePatterns: ['/node_modules/(?!\\.pnpm/@agentclientprotocol|@agentclientprotocol)'],
-  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  roots: ['<rootDir>/src', '<rootDir>/tests', '<rootDir>/desktop/src', '<rootDir>/desktop/tests'],
   testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
   collectCoverageFrom: [
     'src/**/*.ts',

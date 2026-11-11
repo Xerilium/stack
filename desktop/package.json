@@ -1,0 +1,18 @@
+{
+  "name": "@xerilium/stack-desktop",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Electron shell for Stack on the Mac: runs the Stack host on loopback and shows the web UI.",
+  "main": "dist/desktop/src/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "start": "node scripts/smoke.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "electron": "45.3.0",
+    "typescript": "5.9.3"
+  }
+}

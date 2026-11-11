@@ -2,7 +2,7 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'host/dist/**', 'node_modules/**', 'coverage/**', '.xe/**', 'jest.config.js', 'tests/fixtures/**/*.js', 'web/dist/**', 'web/test-results/**', 'web/playwright-report/**'] },
+  { ignores: ['dist/**', 'host/dist/**', 'desktop/dist/**', 'node_modules/**', 'coverage/**', '.xe/**', 'jest.config.js', 'tests/fixtures/**/*.js', 'web/dist/**', 'web/test-results/**', 'web/playwright-report/**'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -24,11 +24,11 @@ export default tseslint.config(
   },
   {
     // Node ES module scripts (benchmarks and tooling).
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'desktop/scripts/**/*.mjs'],
     languageOptions: { sourceType: 'module', globals: { process: 'readonly', console: 'readonly', URL: 'readonly', fetch: 'readonly', performance: 'readonly', setTimeout: 'readonly' } },
   },
   {
-    files: ['tests/**/*.ts', 'web/e2e/**/*.ts'],
+    files: ['tests/**/*.ts', 'web/e2e/**/*.ts', 'desktop/tests/**/*.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
   }
 );

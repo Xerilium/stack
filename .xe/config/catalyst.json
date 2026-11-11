@@ -2,8 +2,8 @@
   "traceability": {
     "default": { "code": "warning", "test": "warning" },
     "paths": {
-      "code": ["src/", "web/src/", "scripts/", "docs/"],
-      "test": ["tests/", "web/tests/", "web/e2e/", "**/*.test.*", "**/*.spec.*"],
+      "code": ["src/", "web/src/", "scripts/", "docs/", "desktop/src/", "desktop/scripts/"],
+      "test": ["tests/", "web/tests/", "desktop/tests/", "web/e2e/", "**/*.test.*", "**/*.spec.*"],
       "exclude": ["**/node_modules/**", "**/dist/**", "**/coverage/**", "**/.git/**"]
     }
   }
