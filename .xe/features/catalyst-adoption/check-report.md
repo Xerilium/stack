@@ -15,10 +15,10 @@ Mostly conforms. The flow (specs, `@req` tests, branches, PR titles, draft PRs) 
 | Headless skill | `claude -p "reply OK"`                               | Fail: "OAuth session expired". Same as the pilot                                                  |
 | Doc quality    | `npx catalyst check`                                 | 0 errors, 607 warnings                                                                            |
 | Traceability   | `npx catalyst traceability`                          | 96% (1,344 reqs). Code 84%, test 94%. 56 uncovered                                                |
-| Dependencies   | `npx catalyst deps`                                  | 129 errors in 12 features (exit 1)                                                                |
+| Dependencies   | `npx catalyst deps`                                  | 129 errors on main, 128 after drift fix 4. 12 features (exit 1)                                   |
 | Blueprint      | `start-blueprint.md` by hand                         | Updated (issue 4)                                                                                 |
 | PR conventions | `gh pr list` for 75-119                              | All conform                                                                                       |
-| PR review      | `review-pull-request.md` phases 1-4 on 112, 113, 117 | 8 findings, all new to humans                                                                     |
+| PR review      | `review-pull-request.md` phases 1-4 on 112, 113, 117 | 7 findings, all new to humans. 6 still open on main                                               |
 
 ## What conforms
 
@@ -31,26 +31,26 @@ Mostly conforms. The flow (specs, `@req` tests, branches, PR titles, draft PRs) 
 
 ## What drifts
 
-| #   | Drift                                                                                                                                           | Size   | Action                                                      |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------- |
-| 1   | Blueprint listed 21 of 55 features; the roadmap had no spec links                                                                               | Large  | Fixed: regenerated from spec frontmatter                    |
-| 2   | `CONTRIBUTING.md` said `[Catalyst][Create]` titles                                                                                              | Small  | Fixed                                                       |
-| 3   | `FR:catalyst-adoption/flow.pr` left out `Explore`                                                                                               | Small  | Fixed                                                       |
-| 4   | `config` uses `@req FR:recurring-rows/...` but did not list it as a dependency                                                                  | Small  | Fixed                                                       |
-| 5   | 128 frontmatter dependencies have no `@req` link in the spec (`catalyst deps`)                                                                  | Medium | Open: add one `@req` per dependency, or drop the dependency |
-| 6   | `spec.opener` (212) and `spec.refs` (203): FRs start with code, not a plain sentence                                                            | Medium | Open: fix when each spec is next changed                    |
-| 7   | `spec.sections` (107): specs miss `Data Model`, `Architecture Constraints`, or `External Dependencies`                                          | Medium | Open: add "None" sections when touched                      |
-| 8   | `spec.one-req` (52): one FR holds more than one MUST                                                                                            | Medium | Open: split when touched                                    |
-| 9   | `comms-connectors`, `stack-app`, `security-review` have no `spec.md` (research only). `now-screen` and `ux-consolidation` depend on `stack-app` | Small  | Open: move research to an explore folder or write specs     |
-| 10  | `agents-team` and `agent-team` are two features with near-same names                                                                            | Small  | Open: merge or rename                                       |
-| 11  | Rollout files were committed and left behind for many PRs. They were cleaned in 119. Catalyst treats them as untracked scratch                  | Small  | Open: add `.xe/rollouts/rollout-*.md` to `.gitignore`       |
-| 12  | Catalyst default PR title is Conventional Commits. Stack overrides it. The override is only in `CONTRIBUTING.md` and the catalyst-adoption spec | Small  | OK: the playbook prefers repo rules                         |
-| 13  | Phase 2 features (Now, Home, shell) depend on Phase 3 features (ask queue). Phases do not follow the strategy order                             | Note   | Recorded in the blueprint                                   |
-| 14  | `catalyst-adoption` has 0 of 19 requirements traced                                                                                             | Small  | Open: tag the docs and config that meet them                |
+| #   | Drift                                                                                                                                            | Size   | Action                                                                                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------- |
+| 1   | Blueprint listed 21 of 55 features; the roadmap had no spec links                                                                                | Large  | Fixed: regenerated from spec frontmatter. connector-github moved after comms-connectors |
+| 2   | `CONTRIBUTING.md` said `[Catalyst][Create]` titles                                                                                               | Small  | Fixed                                                                                   |
+| 3   | `FR:catalyst-adoption/flow.pr` left out `Explore`                                                                                                | Small  | Fixed                                                                                   |
+| 4   | `config` uses `@req FR:recurring-rows/...` but did not list it as a dependency                                                                   | Small  | Fixed                                                                                   |
+| 5   | 128 frontmatter dependencies have no `@req` link in the spec (`catalyst deps`)                                                                   | Medium | Open: add one `@req` per dependency, or drop the dependency                             |
+| 6   | `spec.opener` (212) and `spec.refs` (203): FRs start with code, not a plain sentence                                                             | Medium | Open: fix when each spec is next changed                                                |
+| 7   | `spec.sections` (107): specs miss `Data Model`, `Architecture Constraints`, or `External Dependencies`                                           | Medium | Open: add "None" sections when touched                                                  |
+| 8   | `spec.one-req` (52): one FR holds more than one MUST                                                                                             | Medium | Open: split when touched                                                                |
+| 9   | `comms-connectors`, `stack-app`, `security-review` have no `spec.md` (research only). `now-screen` and `ux-consolidation` depend on `stack-app`  | Small  | Open: move research to an explore folder or write specs                                 |
+| 10  | `agents-team` and `agent-team` are two features with near-same names                                                                             | Small  | Open: merge or rename                                                                   |
+| 11  | Rollout files were committed and left behind for many PRs. They were cleaned in 119. Catalyst treats them as untracked scratch                   | Small  | Open: add `.xe/rollouts/rollout-*.md` to `.gitignore`                                   |
+| 12  | Catalyst default PR title is Conventional Commits. Stack overrides it. The override is only in `CONTRIBUTING.md` and the catalyst-adoption spec  | Small  | OK: the playbook prefers repo rules                                                     |
+| 13  | Phase 2 features (Now, Home, shell) depend on Phase 3 (ask queue) and Phase 4 (azure-host, live-deploy). Phases do not follow the strategy order | Note   | Recorded in the blueprint                                                               |
+| 14  | `catalyst-adoption` has 0 of 19 requirements traced                                                                                              | Small  | Open: tag the docs and config that meet them                                            |
 
 ## PR review: findings humans missed
 
-None of the 3 PRs had inline human comments. Copilot did not run (quota). Every finding below is new.
+None of the 3 PRs had inline human comments. Copilot did not run (quota). Every finding below is new. 7 findings: 1 fixed in 119, 6 open on main (3 should fix).
 
 | PR                                                | Severity   | Where                                                               | Problem                                                                                                     | On main      |
 | ------------------------------------------------- | ---------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------ |

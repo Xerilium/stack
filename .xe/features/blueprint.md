@@ -217,6 +217,7 @@ graph TD
   inbox-page --> web-shell
   connector-github --> inbox-page
   connector-github --> ask-queue
+  connector-github --> comms-connectors
   comms-connectors --> inbox-page
   comms-connectors --> ask-queue
   cos-view --> web-app
@@ -328,7 +329,7 @@ classDiagram
 
 Goal: a secure, $0-cost, anywhere-accessible task system (git markdown truth, Azure Static Web Apps host) that tells the owner what to do next and lets AI work the stack. The legacy system is the parity target; agents never touch it.
 
-Phases follow `.xe/product.md` Product Strategy. Waves are dependency levels within a phase. Phase 2 and 3 interleave: the Now, Home, and shell features (Phase 2) build on the ask queue (Phase 3), so a Phase 2 wave can wait on a Phase 3 feature.
+Phases follow `.xe/product.md` Product Strategy. Waves are dependency levels within a phase. Phase 2 and 3 interleave: the Now, Home, and shell features (Phase 2) build on the ask queue (Phase 3), so a Phase 2 wave can wait on a Phase 3 feature. iphone-access, web-shell, and desktop-app also wait on Phase 4 hosting (azure-host, live-deploy). now-screen and ux-consolidation also depend on stack-app, which has no spec yet.
 
 ```mermaid
 gantt
@@ -385,8 +386,8 @@ gantt
     quick-triage :quick_triage, after ask_queue task_lifecycle web_shell, 1
     email-runner :email_runner, after email_triage email_voice email_inbox_zero graph_signin day_inputs, 1
     inbox-page :inbox_page, after email_triage email_inbox_zero email_voice ask_queue web_shell, 1
-    connector-github :connector_github, after inbox_page ask_queue, 1
     comms-connectors :comms_connectors, after inbox_page ask_queue, 1
+    connector-github :connector_github, after inbox_page comms_connectors ask_queue, 1
     cos-view :cos_view, after web_app home ask_queue top_asks day_inputs, 1
   section Phase 4
     test-reliability :test_reliability, 0, 1
@@ -542,7 +543,6 @@ _Agents, bots, and comms work the stack and bring only the asks that need the ow
 
 #### Wave 3.13
 
-- **connector-github** — [spec](connector-github/spec.md)
 - **comms-connectors** (Medium) — one connector contract for chat and social sources (Teams, Slack, LinkedIn) that feeds the Inbox page and asks
   - Scope: in: connector interface, build order from research; out: posting on the owner's behalf
   - Dependencies: inbox-page, ask-queue
@@ -550,6 +550,7 @@ _Agents, bots, and comms work the stack and bring only the asks that need the ow
 
 #### Wave 3.14
 
+- **connector-github** — [spec](connector-github/spec.md)
 - **cos-view** — [spec](cos-view/spec.md)
 
 ### Phase 4: Platform
