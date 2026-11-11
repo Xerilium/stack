@@ -3,6 +3,7 @@
  * @req FR:cli/web.serve @req FR:cli/web.demo
  */
 import { createHash } from 'crypto';
+import { ReportStore, stackHome } from '../core/reports';
 import { execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type Server } from 'http';
@@ -59,6 +60,8 @@ export interface WebOpts {
   storage?: Storage & { close?(): Promise<void> };
   /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
   agents?: AgentRuns | false;
+  /** The live report store; default `~/.stack` (or `STACK_HOME`). @req FR:status-ingest/api.put */
+  reports?: ReportStore;
 }
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
@@ -164,7 +167,11 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const offPending = storage.onPending?.(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['sync'] }); });
   // @req FR:agent-sessions/driver.sdk (the SDK and its binary load on the first sessions request, not here)
   const agents: AgentRuns | undefined = o.agents === false ? undefined : o.agents ?? createRunManager({ driver: createSdkDriver(), ctx: { storage, config }, cwd: o.dir });
-  const api = createApiHandler({ storage, config, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
+  const reports = o.reports ?? new ReportStore(stackHome());
+  // reports.json is outside the watched repo: a report write tells open pages to refresh (Needs you reloads on `tasks`).
+  // @req FR:status-ingest/store.live
+  const offReports = reports.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks'] }); });
+  const api = createApiHandler({ storage, config, reports, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
@@ -267,6 +274,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // @req FR:cli/web.batch.shutdown
   const close = async () => {
     offPending?.();
+    offReports();
     watcher.close();
     const closed = new Promise<void>((ok) => server.close(() => ok())); // stop accepting; open sockets stay until below
     server.closeIdleConnections();

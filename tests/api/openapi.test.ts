@@ -1,5 +1,5 @@
 import { fixtureCalendar } from '../../src/calendar';
-import { readFileSync } from 'fs';
+import { mkdtempSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { parseDocument } from 'yaml';
 import { createApiHandler, QUERY_DEFAULTS, ROUTES } from '../../src/api/handler';
@@ -8,6 +8,8 @@ import { buildOpenApi, renderOpenApi } from '../../src/api/openapi';
 import { parseRef } from '../../src/api/validate';
 import { ENUMS, MAX_STR, type Spec } from '../../src/api/validate';
 import { MemoryStorage } from '../../src/core/storage';
+import { ReportStore } from '../../src/core/reports';
+import { tmpdir } from 'os';
 import { createAuth, createTokenService, MemoryTokenStore } from '../../src/api';
 import { createRunManager, type AgentDriver, type Run, type Update } from '../../src/agents';
 import { putAgent } from '../../src/core/agents';
@@ -167,7 +169,8 @@ describe('route parity', () => {
   // @req FR:api/docs.openapi.parity
   it('matches request bodies: properties, required, bounds, enums, strictness', () => {
     for (const { route, op } of ops) {
-      if (!route.body) { expect(op.requestBody).toBeUndefined(); continue; }
+      // reports.put has a nested body the core validates; its schema is authored (FR:status-ingest/api.put).
+      if (!route.body) { if (route.name === 'reports.put') expect(resolve(op.requestBody).required).toBe(true); else expect(op.requestBody).toBeUndefined(); continue; }
       const rb = resolve(op.requestBody);
       expect(!!rb.required).toBe(route.body.required.length > 0);
       const s = resolve(rb.content['application/json'].schema);
@@ -214,7 +217,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
   const storage = new MemoryStorage();
   // A calendar with an online meeting, so the documented event shape (joinUrl included) is checked against real output.
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
-  const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar });
+  const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))) });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
@@ -313,6 +316,9 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('asks.answer', 'POST', '/asks/pr-1/answer', { answer: 'go' }, 409);
     await go('asks.handle', 'POST', '/asks/pr-1/handle', { outcome: 'handled', note: 'merged' }, 200);
     await go('asks.handle', 'POST', '/asks/zzz/handle', { outcome: 'handled' }, 404);
+    // @req FR:status-ingest/api.put @req FR:status-ingest/api.invalid
+    await go('reports.put', 'POST', '/reports', { agent: 'xe-cos', project: 'stack', top: [{ text: 'Ship' }], asks: [{ id: 'a', ask: 'Approve', link: 'https://x.test/1', by: '2026-10-23' }] }, 200);
+    await go('reports.put', 'POST', '/reports', { agent: 'Bad' }, 400);
     // @req FR:agent-sessions/driver.interface (no driver here: every sessions route is 404 and the error shape still conforms)
     await go('sessions.list', 'GET', '/sessions', undefined, 404);
     await go('sessions.cost', 'GET', '/sessions/cost', undefined, 404);

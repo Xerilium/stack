@@ -13,8 +13,9 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | --- | --- |
 | `/next` | GET the top-ranked task (the first of `/rank`) |
 | `/rank` | GET the ranked tasks (`limit` 1-200; `blocks=any` keeps tasks the current time block would hide, for My day): engine order plus the owner and CoS overrides in `.stack/priorities.json`; each has `rule` when an override applied and `root` when it sits under a parent. See [ranking.md](../ranking.md) |
-| `/needs-you` | GET the Chief of Staff's open decisions and go-dos (`.stack/needs-you.json`) |
+| `/needs-you` | GET the Chief of Staff's open decisions and go-dos (`.stack/needs-you.json`), then report asks from the host's live store |
 | `/needs-you/{id}/answer` | POST the owner's answer onto an item (`go`, `defer` with `until`, `reply` with `text`, or `undo`). Owner session only |
+| `/reports` | POST an agent status report into the desktop host's live store (`~/.stack`, never git); 400 lists every issue. See [report.md](../report.md) |
 | `/tasks` | GET list tasks; POST add a task |
 | `/tasks/{ref}` | GET one task |
 | `/capture` | POST add a task from a phrase |

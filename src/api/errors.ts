@@ -3,6 +3,7 @@ import { TriageBlocked, TriageDenied } from '../core/triage';
 import { ConflictError, NotFoundError, PathError, StorageError } from '../core/storage';
 import { InboxFull } from '../core/inbox';
 import { AskDenied } from '../core/asks';
+import { ReportBusy, ReportDenied } from '../core/reports';
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -39,7 +40,8 @@ export function toApiError(e: unknown): ApiError {
   if (e instanceof ConflictError) return new ApiError('conflict', 'Conflict');
   if (e instanceof PathError) return new ApiError('bad_request', 'Invalid path');
   // These two carry fixed text written in the core, never row content.
-  if (e instanceof TriageDenied || e instanceof AskDenied) return new ApiError('forbidden', e.message);
+  if (e instanceof TriageDenied || e instanceof AskDenied || e instanceof ReportDenied) return new ApiError('forbidden', e.message);
+  if (e instanceof ReportBusy) return new ApiError('conflict', e.message);
   if (e instanceof TriageBlocked) return new ApiError('conflict', e.message);
   // Core messages can quote file content or user input, so clients only get fixed text.
   if (e instanceof LifecycleError) return /not found/i.test(e.message) ? new ApiError('not_found', 'Not found') : new ApiError('invalid', 'Request cannot be applied');

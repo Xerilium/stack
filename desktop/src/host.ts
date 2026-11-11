@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { prepareDemo, prepareLive, redact, resolveRepo, startWeb, type RepoInfo, type WebOpts } from '../../src/cli/web';
 import { BatchedGitStorage, type BatchedGitStorageOptions } from '../../src/core/storage-batch';
+import { ReportStore, stackHome, writeHostFile } from '../../src/core/reports';
 
 export interface UserConfig { repo?: string; dir?: string; mode?: string; branch?: string; remote?: string; batch?: number }
 
@@ -19,6 +20,8 @@ export interface HostDeps {
   prepareDemo?: typeof prepareDemo;
   storage?: (dir: string, o: BatchedGitStorageOptions) => WebOpts['storage'];
   log?: (line: string) => void;
+  /** The Stack home for live state (`reports.json`, `host.json`); default `STACK_HOME` or `<home>/.stack`. */
+  stateDir?: string;
 }
 
 const NO_REPO = 'No content repo. Set "repo" in ~/.config/stack/config.json';
@@ -59,11 +62,17 @@ export async function startHost(plan: HostPlan, deps: HostDeps = {}): Promise<Ho
     label = `DEMO COPY of ${redact(repo)} - edits stay in the copy`;
   }
   log(`host: ${info.mode} ${redact(repo)}`);
-  const s = await (deps.startWeb ?? startWeb)({ dir, port: 0, webDir, label, info, storage });
+  // Demo never touches live state: its reports live beside the demo copy, and it publishes no host.json. @req FR:status-ingest/host.demo
+  const state = plan.live ? deps.stateDir ?? stackHome(process.env, plan.home) : join(plan.home, '.config/stack/demo-state');
+  const s = await (deps.startWeb ?? startWeb)({ dir, port: 0, webDir, label, info, storage, reports: new ReportStore(state) });
   const url = `http://127.0.0.1:${new URL(s.url).port}`;
+  // The port is random: `stack report` finds the host here. Best effort: a host that cannot write it still serves.
+  // @req FR:status-ingest/host.file
+  let removeHostFile = () => {};
+  if (plan.live) try { removeHostFile = writeHostFile(state, { url, pid: process.pid }); } catch (e) { log(`host: cannot write ${state}/host.json (${e instanceof Error ? e.message : String(e)})`); }
   let closed = false;
   return {
     url,
-    close: async () => { if (closed) return; closed = true; await s.close(); },
+    close: async () => { if (closed) return; closed = true; removeHostFile(); await s.close(); },
   };
 }

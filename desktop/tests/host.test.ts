@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { hostPlan, startHost, type HostDeps } from '../src/host';
+import { readHostFile, type ReportStore } from '../../src/core/reports';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'stack-desktop-'));
 
@@ -82,6 +83,24 @@ describe('startHost', () => {
   it('fails when the web app is not built', async () => {
     const { d } = deps({ webDir: join(tmp(), 'missing') });
     await expect(startHost({ repo: '/r', live: false, batchMinutes: 5, home: '/h' }, d)).rejects.toThrow('Web app not built. Run: pnpm build');
+  });
+  // @req FR:status-ingest/host.file @req FR:status-ingest/api.put
+  it('serves the live report store and writes host.json in the Stack home; close removes it', async () => {
+    const state = tmp();
+    const { d, calls } = deps({ stateDir: state });
+    const h = await startHost({ repo: '/r', live: true, batchMinutes: 5, home: '/h' }, d);
+    expect((calls.startWeb[0] as { reports: ReportStore }).reports.dir).toBe(state);
+    expect(readHostFile(state)).toEqual({ url: h.url, pid: process.pid });
+    await h.close();
+    expect(existsSync(join(state, 'host.json'))).toBe(false);
+  });
+  // @req FR:status-ingest/host.demo
+  it('demo keeps reports beside the demo copy and publishes no host.json', async () => {
+    const state = tmp();
+    const { d, calls } = deps({ stateDir: state });
+    await startHost({ repo: '/r', live: false, batchMinutes: 5, home: '/h' }, d);
+    expect((calls.startWeb[0] as { reports: ReportStore }).reports.dir).toBe('/h/.config/stack/demo-state');
+    expect(existsSync(join(state, 'host.json'))).toBe(false);
   });
   // @req FR:desktop-shell/host.stop
   it('closes the host once', async () => {

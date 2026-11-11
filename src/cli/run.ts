@@ -13,6 +13,7 @@ import {
   explainAutopri, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
+import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
 import { replyFromAgent } from '../core/inbox';
 import { registerAutopriEngine } from '../core/autopri';
@@ -33,7 +34,23 @@ import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type
 import { BatchedGitStorage } from '../core/storage-batch';
 import { homedir } from 'os';
 
-export interface IO { out(s: string): void; err(s: string): void }
+/** `in` reads all of stdin; `null` means no piped input (a terminal). */
+export interface IO { out(s: string): void; err(s: string): void; in?: () => Promise<string | null> }
+
+/** All of stdin, or `null` when stdin is a terminal or an open pipe sends nothing for `idleMs` (an agent shell that never closes stdin). */
+export async function readStdin(stdin: NodeJS.ReadableStream & { isTTY?: boolean } = process.stdin, idleMs = 5000): Promise<string | null> {
+  if (stdin.isTTY) return null;
+  return new Promise((ok, fail) => {
+    const chunks: Buffer[] = [];
+    let timer: NodeJS.Timeout | undefined;
+    const done = (v: string | null) => { if (timer) clearTimeout(timer); stdin.removeListener('data', onData); stdin.removeListener('end', onEnd); stdin.removeListener('error', fail); stdin.pause(); ok(v); };
+    const arm = () => { if (timer) clearTimeout(timer); timer = setTimeout(() => done(chunks.length ? Buffer.concat(chunks).toString('utf8') : null), idleMs); };
+    const onData = (c: Buffer | string) => { chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)); arm(); };
+    const onEnd = () => done(Buffer.concat(chunks).toString('utf8'));
+    stdin.on('data', onData); stdin.once('end', onEnd); stdin.once('error', fail);
+    arm();
+  });
+}
 
 /** Exit codes. @req FR:cli/out.codes */
 export const EXIT = { ok: 0, failure: 1, usage: 2, conflict: 3, none: 4 } as const;
@@ -63,6 +80,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   inbox: { flags: ['from', 'text', 'expect'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t]', help: 'reply on a task as an agent (tasks/inbox, from: agent); the owner reads it in the task thread' },
   agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
+  report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
   update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (--engine stack: scores and order like `stack next`, with .stack/priorities.json)' },
 };
 
@@ -284,6 +302,49 @@ async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): 
   }
 }
 
+/**
+ * Sends a report to the running host (`host.json`), or writes the local store itself when no host answers. Never touches git.
+ * @req FR:status-ingest/cli.report @req FR:status-ingest/cli.errors @req FR:status-ingest/cli.host @req FR:status-ingest/cli.direct
+ */
+async function reportCmd(p: ReturnType<typeof parseArgs>, input: () => Promise<string | null>): Promise<Outcome> {
+  if (p.positionals.length) throw new UsageError(`Unexpected argument: ${p.positionals[0]}`);
+  const agent = flag(p.flags, 'agent'); const project = flag(p.flags, 'project'); const file = flag(p.flags, 'file');
+  if (!agent) throw new UsageError('report needs --agent <name>');
+  if (!project) throw new UsageError('report needs --project <p>');
+  let text: string | null;
+  if (file !== undefined) { try { text = readFileSync(resolve(file), 'utf8'); } catch { throw new UsageError(`Cannot read --file: ${file}`); } }
+  else text = await input();
+  if (text === null || text.trim() === '') throw new UsageError('report needs JSON on stdin or --file <path>');
+  let body: unknown;
+  try { body = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { throw new UsageError('report input is not valid JSON'); }
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new UsageError('report input must be a JSON object');
+  // The flags name the pair; a body that names another pair is a mistake, not something to overwrite silently.
+  for (const [k, v] of [['agent', agent], ['project', project]] as const) {
+    const b = (body as Record<string, unknown>)[k];
+    if (b !== undefined && b !== v) throw new UsageError(`report body ${k} "${String(b)}" does not match --${k} ${v}`);
+  }
+  const full = { ...body, agent, project };
+  const home = stackHome();
+  const host = readHostFile(home);
+  let r: Awaited<ReturnType<ReportStore['put']>> | undefined;
+  let via: 'host' | 'store' = 'store';
+  // A host.json whose process is gone is stale (crash, or the port now belongs to something else).
+  if (host && pidAlive(host.pid)) {
+    let res: Response | undefined;
+    try { res = await fetch(`${host.url}/api/reports`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(full), signal: AbortSignal.timeout(5000) }); } catch { res = undefined; } // no host listening: write the store directly
+    if (res) {
+      const j = await res.json().catch(() => null) as { asks?: { put?: unknown; dropped?: unknown; answers?: unknown }; error?: { code?: string; message?: string; details?: { field: string; message: string }[] } } | null;
+      if (res.status === 400 && Array.isArray(j?.error?.details)) throw new ReportInvalid(j.error.details);
+      if (res.ok && Array.isArray(j?.asks?.put) && Array.isArray(j?.asks?.dropped) && typeof j?.asks?.answers === 'object') { r = j as Awaited<ReturnType<ReportStore['put']>>; via = 'host'; }
+      // A Stack error other than 404 (no store) is the host's answer; anything else is not a Stack host: write the store directly.
+      else if (j?.error?.code && res.status !== 404) throw new StorageError(`host refused the report (${res.status}): ${j.error.message ?? 'error'}`);
+    }
+  }
+  r ??= await new ReportStore(home).put(full);
+  const answered = Object.keys(r.asks.answers ?? {}).length;
+  return { json: { ok: true, via, ...r }, text: `report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped${answered ? `, ${answered} answered (see --json)` : ''} (${via})` };
+}
+
 /** A core ref as the api writes it (`<project>:<line>`, 0-based). */
 const apiRef = (r: { path: string; line: number }) => `${basename(r.path).replace(/\.md$/, '')}:${r.line}`;
 
@@ -499,6 +560,14 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
   }
 }
 
+/**
+ * The report store for `stack web`: demo keeps reports beside the demo copy, never in live state; live uses the default store (undefined).
+ * @req FR:status-ingest/host.demo
+ */
+export function webReportStore(live: boolean, home: string): ReportStore | undefined {
+  return live ? undefined : new ReportStore(join(home, '.config/stack/demo-state'));
+}
+
 /** @req FR:cli/web.@cli @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live */
 async function web(f: Record<string, string | true>, io: IO, found: string | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
@@ -528,7 +597,9 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
   }
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
-  const s = await startWeb({ dir: target, port, webDir, label, info, storage });
+  // Demo never touches live state (~/.stack): its reports stay beside the demo copy. @req FR:status-ingest/host.demo
+  const reports = webReportStore(live, home);
+  const s = await startWeb({ dir: target, port, webDir, label, info, storage, ...(reports ? { reports } : {}) });
   io.out(`Stack web: ${s.url}  (data: ${target}; Ctrl+C to stop)\n`);
   await new Promise<void>((ok) => { process.once('SIGINT', ok); process.once('SIGTERM', ok); });
   await s.close();
@@ -536,7 +607,7 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
 }
 
 function exitCodeFor(e: unknown): number {
-  if (e instanceof UsageError || e instanceof LifecycleError || e instanceof NotFoundError || e instanceof PathError) return EXIT.usage;
+  if (e instanceof UsageError || e instanceof LifecycleError || e instanceof NotFoundError || e instanceof PathError || e instanceof ReportInvalid) return EXIT.usage;
   if (e instanceof ConflictError) return EXIT.conflict;
   return EXIT.failure;
 }
@@ -565,14 +636,15 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     if (p.command === 'web') return await web(p.flags, io, explicit ?? found, home);
     if (p.command === 'graph') return await graphCmd(p.positionals[0], p.flags, io, json);
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
-    const r = await dispatch(p.command, p, dir);
+    // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report
+    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
     return r.code ?? EXIT.ok;
   } catch (e) {
     const code = exitCodeFor(e);
     const msg = e instanceof Error ? e.message : String(e);
-    if (json) io.out(`${JSON.stringify({ ok: false, ...(command ? { command } : {}), error: msg, code })}\n`);
+    if (json) io.out(`${JSON.stringify({ ok: false, ...(command ? { command } : {}), error: msg, code, ...(e instanceof ReportInvalid ? { issues: e.issues } : {}) })}\n`);
     else io.err(`error: ${msg}\n`);
     return code;
   }
