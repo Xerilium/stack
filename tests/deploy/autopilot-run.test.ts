@@ -165,6 +165,7 @@ describe('autopilot run', () => {
     expect(r.logs.some((l) => l.startsWith('WARN deploy dispatch failed'))).toBe(true);
   });
 
+  // @req FR:autopilot/gates.all.labels @req FR:autopilot/gates.all.cert @req FR:autopilot/gates.all.base @req FR:autopilot/gates.all.clean
   describe.each([
     ['an unresolved thread', { threads: [{ isResolved: false }] }, 'threads-unresolved'],
     ['a failing check', { checks: [{ __typename: 'CheckRun', name: 'e2e', conclusion: 'FAILURE' }] }, 'checks-failing'],
@@ -189,7 +190,7 @@ describe('autopilot run', () => {
   });
 
   it('removes Finalized when the certification is for an older head', async () => {
-    // @req FR:autopilot/cert.stale
+    // @req FR:autopilot/cert.stale @req FR:autopilot/cert.stale.push
     const r = await scenario({ comments: [owner(NEWER)] });
     expect(r.calls).toContainEqual(['removeLabel', ap.FINALIZED]);
   });

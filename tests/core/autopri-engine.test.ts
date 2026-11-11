@@ -33,6 +33,11 @@ describe('autopri engine', () => {
   it('puts an unblocker above a due-today task', () => {
     expect(order([mk('A', ['🚨 📅 Nov 5: due today 🟢', 'Enabler 🔓 ⚫️'])])[0]).toContain('Enabler');
   });
+  // @req FR:auto-priority/engine.project-value
+  it('ranks a task in a high-value project above the same task in a low-value one', () => {
+    const o = order([mk('Low', ['Low task 🟡'], ''), mk('High', ['High task 🟡'], '💰 🌟')]);
+    expect(o).toEqual(['High task 🟡', 'Low task 🟡']);
+  });
   // @req FR:auto-priority/engine.blockers
   it('lifts a blocker to the score of the task it blocks', () => {
     const o = order([mk('A', ['Do the thing 🟡', 'Hot task 🚨 📅 Nov 5: -- after Do the thing', 'Cold task ‼️ ⬆️ 🟢'])]);

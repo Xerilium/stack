@@ -46,6 +46,7 @@ describe('thread routes', () => {
     for (const p of ['/inbox/reply:', '/tasks/{ref}/thread:', '/tasks/{ref}/assign:']) expect(doc).toContain(p);
   });
 
+  // @req FR:agent-thread/reply.@api @req FR:agent-thread/reply.entry.write @req FR:agent-thread/reply.entry.token @req FR:agent-thread/ask.ref.validate @req FR:agent-thread/ask.ref.list @req FR:agent-thread/thread.@api
   it('an agent token replies on a task (the owner session cannot); the thread shows owner and agent messages and the ask with a ref', async () => {
     const { call, mint } = await mk();
     const w = await mint('tasks:read', 'tasks:write');
@@ -77,7 +78,7 @@ describe('thread routes', () => {
     expect(prompts).toHaveLength(1);
     await tick(20);
     expect((await storage.read('tasks/flantastic-4.md')).content).toContain('🚧');
-    // A follow-up on the task carries the persona again (a resumed session has no system prompt). @req FR:agent-thread/thread.ask
+    // A follow-up on the task carries the persona again (a resumed session has no system prompt). @req FR:agent-thread/thread.ask @req FR:agent-thread/thread.ask.persona
     await tick(20);
     const sid = 'a1b2c3d4-0000-0000-0000-000000000001'; // the id the fake driver announced for run 1
     const f = await call('owner', 'POST', `/sessions/${sid}/prompt`, { text: 'And the date?', ref: 'flantastic-4:7' });

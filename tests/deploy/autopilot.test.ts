@@ -78,6 +78,7 @@ describe('checksOf', () => {
 describe('isReadyOf', () => {
   const approve = (login: string, extra = {}) => ({ state: 'APPROVED', author: { login, __typename: 'User' }, ...extra });
   const input = { isDraft: false, authorLogin: 'me', reviews: [], labels: [] as string[] };
+  // @req FR:autopilot/ready.derive.approved
   it('counts Autopilot as the owner sign-off', () => {
     expect(ap.isReadyOf({ ...input, labels: [ap.AUTOPILOT] })).toBe(true);
   });
@@ -94,6 +95,7 @@ describe('isReadyOf', () => {
   it('is not ready with neither a sign-off nor an approval', () => {
     expect(ap.isReadyOf(input)).toBe(false);
   });
+  // @req FR:autopilot/ready.derive.latest
   it('reads only each reviewer latest review', () => {
     expect(ap.latestReviewStateOf([{ state: 'APPROVED', author: { login: 'a' } }, { state: 'COMMENTED', author: null }])).toEqual({ a: 'APPROVED' });
   });
@@ -125,6 +127,7 @@ describe('certification', () => {
   it('matches the current head when a trusted login certified it', () => {
     expect(ap.isCertifiedOf([cert(OTHER), cert(SHA)], SHA, ['owner'])).toBe(true);
   });
+  // @req FR:autopilot/cert.match.missing
   it('does not match a different head, no comments, or no head', () => {
     expect(ap.isCertifiedOf([cert(OTHER)], SHA, ['owner'])).toBe(false);
     expect(ap.isCertifiedOf([], SHA, ['owner'])).toBe(false);

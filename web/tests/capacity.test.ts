@@ -5,7 +5,7 @@ import type { Project, Task } from '../src/types';
 const P = (name: string, metadata: Record<string, string> = {}): Project => ({ name, title: name, open: 0, done: 0, metadata });
 const T = (project: string, text: string, done = false, section = 'Active'): Task => ({ ref: `${project}:1`, text, project, section, done, depth: 0, notes: [] });
 
-// @req FR:web-app/capacity.view
+// @req FR:web-app/projects.glance
 describe('capacity', () => {
   it('reads hours from capacity metadata', () => {
     expect(capacityHours({ 'Work capacity': '10h', 'Home capacity': '2.5h', Repository: 'x' })).toBe(12.5);
