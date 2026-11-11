@@ -67,5 +67,5 @@ Pull, run `pnpm desktop:package` again, and replace `/Applications/Stack.app`. E
 ## Limits
 
 - Apple silicon only. No auto-update.
-- Agents spawned from a Finder launch get the login `PATH`, not your shell `PATH`.
+- A Finder launch gets the bare system `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`), not your shell `PATH`. Agents that need Homebrew or `~/.local/bin` tools may not start. Workaround: launch from a terminal with `/Applications/Stack.app/Contents/MacOS/Stack`.
 - Logs: run `/Applications/Stack.app/Contents/MacOS/Stack` from a terminal to see host lines.

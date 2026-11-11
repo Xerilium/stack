@@ -5,7 +5,7 @@ import { checkPlatform, packPlan } from '../src/pack';
 const root = '/repo';
 const plan = () => packPlan({
   root,
-  rootPkg: { dependencies: { yaml: '^2.9.1', zod: '4.6.7' } },
+  rootPkg: { dependencies: { yaml: '^2.9.1', zod: '4.6.7' }, devDependencies: { jest: '30.2.0' } },
   desktopPkg: { version: '1.2.3', devDependencies: { electron: '45.3.0' } },
 });
 const out = join(root, 'desktop/out');
@@ -18,9 +18,10 @@ describe('desktop packaging plan', () => {
   });
 
   /** @req FR:desktop-app/package.build */
-  it('builds web and desktop, then writes the app, zip, and dmg under desktop/out', () => {
+  it('builds web, then writes the app, zip, and dmg under desktop/out', () => {
     const p = plan();
-    expect(p.build).toEqual([['pnpm', ['--filter', 'stack-web', 'build']], ['pnpm', ['--filter', '@xerilium/stack-desktop', 'build']]]);
+    expect(p.build).toEqual([['pnpm', ['--filter', 'stack-web', 'build']]]);
+    expect(p.cleanup).toEqual([p.stageDir, p.dmg.dir, p.icon.iconset, p.icon.icns]);
     expect(p.appPath).toBe(join(out, 'Stack-darwin-arm64/Stack.app'));
     expect(p.zipPath).toBe(join(out, 'Stack-1.2.3-arm64.zip'));
     expect(p.dmgPath).toBe(join(out, 'Stack-1.2.3-arm64.dmg'));
@@ -33,18 +34,19 @@ describe('desktop packaging plan', () => {
       [join(root, 'desktop/dist'), join(p.stageDir, 'desktop/dist')],
       [join(root, 'desktop/assets'), join(p.stageDir, 'desktop/assets')],
       [join(root, 'web/dist'), join(p.stageDir, 'web/dist')],
+      [join(root, 'pnpm-lock.yaml'), join(p.stageDir, 'pnpm-lock.yaml')],
     ]);
     expect(p.manifest).toEqual({
       name: 'stack-desktop', productName: 'Stack', version: '1.2.3', private: true,
-      main: 'desktop/dist/desktop/src/main.js', dependencies: { yaml: '^2.9.1', zod: '4.6.7' },
+      main: 'desktop/dist/desktop/src/main.js', dependencies: { yaml: '^2.9.1', zod: '4.6.7' }, devDependencies: { jest: '30.2.0' },
     });
   });
 
   /** @req FR:desktop-app/package.stage */
-  it('installs production dependencies flat, outside the workspace', () => {
+  it('installs production dependencies flat from the repo lockfile, outside the workspace', () => {
     const [cmd, args, cwd] = plan().install;
-    expect(cmd).toBe('npm');
-    expect(args).toEqual(expect.arrayContaining(['install', '--omit=dev', '--no-package-lock']));
+    expect(cmd).toBe('pnpm');
+    expect(args).toEqual(['install', '--prod', '--frozen-lockfile', '--ignore-workspace', '--config.node-linker=hoisted']);
     expect(cwd).toBe(plan().stageDir);
   });
 

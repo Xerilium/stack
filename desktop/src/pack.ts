@@ -5,7 +5,7 @@ export type Cmd = [cmd: string, args: string[]];
 
 export interface PackInput {
   root: string;
-  rootPkg: { dependencies?: Record<string, string> };
+  rootPkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   desktopPkg: { version: string; devDependencies?: Record<string, string> };
 }
 
@@ -38,14 +38,17 @@ export function packPlan(i: PackInput) {
   iconCommands.push(['iconutil', ['-c', 'icns', iconset, '-o', icns]]);
 
   return {
-    build: [['pnpm', ['--filter', 'stack-web', 'build']], ['pnpm', ['--filter', '@xerilium/stack-desktop', 'build']]] as Cmd[],
+    // The script builds desktop first: it needs this file compiled.
+    build: [['pnpm', ['--filter', 'stack-web', 'build']]] as Cmd[],
     stageDir,
-    copies: ['desktop/dist', 'desktop/assets', 'web/dist'].map((p): [string, string] => [join(i.root, p), join(stageDir, p)]),
+    copies: ['desktop/dist', 'desktop/assets', 'web/dist', 'pnpm-lock.yaml'].map((p): [string, string] => [join(i.root, p), join(stageDir, p)]),
     manifest: {
       name: 'stack-desktop', productName: NAME, version, private: true,
-      main: 'desktop/dist/desktop/src/main.js', dependencies: i.rootPkg.dependencies ?? {},
+      main: 'desktop/dist/desktop/src/main.js',
+      // devDependencies only so the root lockfile matches; `--prod` skips them.
+      dependencies: i.rootPkg.dependencies ?? {}, devDependencies: i.rootPkg.devDependencies ?? {},
     },
-    install: ['npm', ['install', '--omit=dev', '--no-package-lock', '--no-audit', '--no-fund'], stageDir] as [string, string[], string],
+    install: ['pnpm', ['install', '--prod', '--frozen-lockfile', '--ignore-workspace', '--config.node-linker=hoisted'], stageDir] as [string, string[], string],
     icon: { src: iconSrc, iconset, icns, commands: iconCommands },
     packager: {
       dir: stageDir, out, name: NAME, platform: 'darwin', arch: ARCH, electronVersion, appVersion: version,
@@ -63,5 +66,7 @@ export function packPlan(i: PackInput) {
       link: [join(dmgDir, 'Applications'), '/Applications'] as [string, string],
       create: ['hdiutil', ['create', '-volname', NAME, '-srcfolder', dmgDir, '-ov', '-format', 'UDZO', dmgPath]] as Cmd,
     },
+    /** Scratch copies (about 1 GB) removed after a good build. */
+    cleanup: [stageDir, dmgDir, iconset, icns],
   };
 }
