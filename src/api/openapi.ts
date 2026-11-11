@@ -463,7 +463,7 @@ export function buildOpenApi(): J {
           properties: {
             id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,23}$' }, title: { type: 'string', minLength: 1, maxLength: 200 }, status: { type: 'string', enum: [...PRI_STATUSES] },
             items: { type: 'array', maxItems: 20, items: ref('PriItem') }, backlog: { type: 'array', maxItems: 50, items: ref('PriItem') },
-            weekly: { type: 'array', maxItems: 12, description: 'Weekly progress, newest first', items: { type: 'object', additionalProperties: false, required: ['week', 'text'], properties: { week: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' }, text: { type: 'string', minLength: 1, maxLength: 500 } } } },
+            weekly: { type: 'array', maxItems: 12, description: 'Weekly progress, newest first', items: { type: 'object', additionalProperties: false, required: ['week', 'text'], properties: { week: { type: 'string', pattern: '^\\d{4}-W(0[1-9]|[1-4]\\d|5[0-3])$' }, text: { type: 'string', minLength: 1, maxLength: 500 } } } },
           },
         },
         PrisFile: {

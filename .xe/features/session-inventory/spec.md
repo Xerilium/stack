@@ -26,9 +26,9 @@ The owner runs hundreds of Claude sessions across projects. The app sidebar does
 The owner needs Stack to see every session without risk to the app's own files.
 
 - **FR:read.files** (P1): Stack reads `<sessions>/*/*/local_*.json` and `<sessions>/*/*/scheduled-tasks.json`, where `<sessions>` is `STACK_SESSIONS_DIR` or `~/Library/Application Support/Claude/claude-code-sessions`. Stack never writes, renames, or deletes a file there
-- **FR:read.tail** (P1): For a session that is not archived, Stack reads at most the last 64 KiB of its transcript (`<transcripts>/<cwd with each non-alphanumeric character as "-">/<cliSessionId>.jsonl`, where `<transcripts>` is `STACK_TRANSCRIPTS_DIR` or `~/.claude/projects`). It keeps only the kind of the last main-chain event: `turn-end`, `question` (a pending `AskUserQuestion` or `ExitPlanMode`), `tool` (another pending tool call), `tool-result`, `user`, `assistant-text`, `api-error`, or `none`. No transcript text leaves the reader
+- **FR:read.tail** (P1): For a session that is not archived, Stack reads the last 64 KiB of its transcript, and more (at most 4 MiB) only when no whole event fits (`<transcripts>/<cwd with each non-alphanumeric character as "-">/<cliSessionId>.jsonl`, where `<transcripts>` is `STACK_TRANSCRIPTS_DIR` or `~/.claude/projects`). It keeps only the kind of the last main-chain event: `turn-end`, `question` (a pending `AskUserQuestion` or `ExitPlanMode`), `tool` (another pending tool call), `tool-result`, `user` (a user line that starts `[Request interrupted by user` is `turn-end`), `assistant-text`, `api-error`, or `none`. No transcript text leaves the reader
 - **FR:read.bad** (P1): A file that is missing, not JSON, or has no `sessionId` is skipped. One bad file never fails the inventory
-- **FR:read.cache** (P1): Stack caches the facts of each session file in `<home>/sessions.json` by file path, file mtime and size, and transcript mtime. A file whose stats did not change is not read again. Entries for files that are gone are dropped
+- **FR:read.cache** (P1): Stack caches the facts of each session file in `<home>/sessions.json` by file path, file mtime and size, and transcript mtime. A file whose stats did not change is not read again. Entries for files that are gone are dropped. A cache of another version or another transcripts folder is not used
 - **FR:read.fast** (P2): An inventory of 1,000 session files with a warm cache completes in under 1 s
 
 ### FR:state: Classify each session
@@ -59,7 +59,7 @@ The owner needs one ranked list so that he acts on the most important session fi
 The owner needs a short list of sessions to archive, and Stack must not edit the app's files.
 
 - **FR:archive.list** (P1): Archive candidates are every `done` session and every superseded scheduled run. Stack only lists them; it never changes a session file
-- **FR:archive.superseded** (P1): A scheduled run is superseded when a newer run of the same `scheduledTaskId` exists and the run is not pinned and not running
+- **FR:archive.superseded** (P1): A scheduled run is superseded when a newer run of the same `scheduledTaskId` exists (archived or not) and the run is not pinned and not running
 
 ### FR:store: Inventory result
 
@@ -70,10 +70,11 @@ The owner needs a short list of sessions to archive, and Stack must not edit the
 
 The owner needs his ordered priorities in Stack so that the CoS and the Needs-you view use one source of truth.
 
-- **FR:pris.model** (P1): `<home>/pris.json` is `{version: 1, rev, updatedAt, seed?, pris}`. `pris` is ordered, most important first, at most 30. Each priority is `{id, title, status, items, backlog, weekly}`: `id` matches `[a-z0-9][a-z0-9-]{0,23}` and is unique; `title` is one line of 1-200 characters; `status` is `active`, `paused`, `blocked` or `done`; `items` (at most 20) and `backlog` (at most 50) are `{text, status}` with `text` one line of 1-300 characters and `status` `todo`, `doing`, `blocked` or `done`; `weekly` (at most 12, newest first) is `{week, text}` with `week` an ISO week `YYYY-Www` and `text` one line of 1-500 characters
+- **FR:pris.model** (P1): `<home>/pris.json` is `{version: 1, rev, updatedAt, seed?, pris}`. `pris` is ordered, most important first, at most 30. Each priority is `{id, title, status, items, backlog, weekly}`: `id` matches `[a-z0-9][a-z0-9-]{0,23}` and is unique; `title` is one line of 1-200 characters; `status` is `active`, `paused`, `blocked` or `done`; `items` (at most 20) and `backlog` (at most 50) are `{text, status}` with `text` one line of 1-300 characters and `status` `todo`, `doing`, `blocked` or `done`; `weekly` (at most 12, newest first) is `{week, text}` with `week` an ISO week `YYYY-Www` and `text` one line of 1-500 characters, one entry per week
 - **FR:pris.validate** (P1): `parsePris` checks the whole list and throws one `PrisInvalid` that lists every issue as `{field, message}`. Unknown keys are rejected. Nothing is written when the list is invalid
-- **FR:pris.seed** (P1): `stack pris seed --file <md>` reads each numbered line `N. ...` of the file as one priority, in order, with `id` `p<N>`. The title is the text before the first `:` outside parentheses. With no such `:`, the title is the text before the first `;` outside parentheses, or the whole line. The rest splits into items at `;` and at sentence ends outside parentheses; when the title ends at `:` and that gives one part, at `, ` outside parentheses. A leading `N.M` and a final `.` are removed. Items start as `todo`, priorities as `active`
+- **FR:pris.seed** (P1): `stack pris seed --file <md>` reads each numbered line `N. ...` of the file as one priority, in order, with `id` `p<N>`; a later line with a number already seen is skipped. The title is the text before the first `:` outside parentheses. With no such `:`, the title is the text before the first `;` outside parentheses, or the whole line. The rest splits into items at `;` and at sentence ends outside parentheses; when the title ends at `:` and that gives one part, at `, ` outside parentheses. A leading `N.M` and a final `.` are removed. Items start as `todo`, priorities as `active`
 - **FR:pris.seed.once** (P1): The seed runs only when `pris.json` does not exist. When it exists, the seed changes nothing and reports `already seeded`. The seed stores `{source, at, sha256}`
+- **FR:pris.broken** (P2): A write that finds `pris.json` broken moves it aside as `pris.json.broken-<ms>` before writing. Read shows a broken file as an empty list at `rev` 0
 - **FR:pris.write** (P1): Each write increments `rev`, sets `updatedAt`, and goes through a temp file and a rename under the single-writer lock `<home>/pris.lock` (same lock rules as `FR:status-ingest/store.lock`). A write with a `rev` that is not the current one fails `conflict` and changes nothing
 
 ### FR:cli: CLI

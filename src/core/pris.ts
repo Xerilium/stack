@@ -3,7 +3,7 @@
  * @req FR:session-inventory/$pri
  */
 import { createHash } from 'crypto';
-import { mkdirSync, readFileSync } from 'fs';
+import { mkdirSync, readFileSync, renameSync } from 'fs';
 import { join } from 'path';
 import { withFileLock, writeAtomic, type LockOptions } from './file-lock';
 import type { Issue } from './reports';
@@ -89,6 +89,7 @@ export function parsePris(body: unknown): Pri[] {
       const t = text(`${g}.text`, w.text, 500);
       return week && t ? [{ week, text: t }] : [];
     });
+    for (let j = 1; j < weekly.length; j++) if (weekly[j].week >= weekly[j - 1].week) { bad(`${f}.weekly`, 'Must be newest first, one entry per week'); break; }
     return id && title && status ? [{ id, title, status, items: its, backlog, weekly }] : [];
   });
   if (issues.length) throw new PrisInvalid(issues);
@@ -118,9 +119,12 @@ const clean = (s: string) => s.replace(/^\d+\.\d+\s+/, '').replace(/\.$/, '').tr
  * @req FR:session-inventory/pris.seed
  */
 export function parsePrisMarkdown(md: string): Pri[] {
+  const seen = new Set<string>();
   return md.split(/\r?\n/).flatMap((l): Pri[] => {
     const m = /^(\d+)\.\s+(.+)$/.exec(l.trim());
-    if (!m) return [];
+    // A later list that reuses a number is not a new priority: the first line with each number wins.
+    if (!m || seen.has(m[1])) return [];
+    seen.add(m[1]);
     const body = m[2].trim();
     const colon = splitOutside(body, /^:\s/);
     let title: string; let rest: string;
@@ -145,14 +149,14 @@ export class PriStore {
   readonly file: string;
   constructor(readonly dir: string, private readonly o: LockOptions & { now?: () => Date } = {}) { this.file = join(dir, 'pris.json'); }
 
-  private load(): { data: PrisFile; exists: boolean } {
+  private load(): { data: PrisFile; exists: boolean; broken?: boolean } {
     let t: string;
     try { t = readFileSync(this.file, 'utf8'); } catch { return { data: { ...EMPTY, pris: [] }, exists: false }; }
     try {
       const j = JSON.parse(t) as Partial<PrisFile>;
       if (isObj(j) && Array.isArray(j.pris) && typeof j.rev === 'number') return { data: j as PrisFile, exists: true };
     } catch { /* broken */ }
-    return { data: { ...EMPTY, pris: [] }, exists: true };
+    return { data: { ...EMPTY, pris: [] }, exists: true, broken: true };
   }
 
   /** The stored file, or an empty list (rev 0) when none or broken. @req FR:session-inventory/api.pris.get */
@@ -172,8 +176,10 @@ export class PriStore {
   async put(rev: number, body: unknown): Promise<PrisFile> {
     const pris = parsePris(body);
     return this.locked(() => {
-      const cur = this.load().data;
+      const { data: cur, broken } = this.load();
       if (cur.rev !== rev) throw new PrisConflict(`Priorities changed (rev ${cur.rev}); reload and try again`);
+      // A broken file is moved aside, never silently overwritten. @req FR:session-inventory/pris.broken
+      if (broken) renameSync(this.file, `${this.file}.broken-${Date.now()}`);
       return this.save({ ...cur, pris });
     });
   }

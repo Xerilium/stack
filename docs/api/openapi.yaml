@@ -2486,7 +2486,7 @@ components:
             properties:
               week:
                 type: string
-                pattern: ^\d{4}-W\d{2}$
+                pattern: ^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$
               text:
                 type: string
                 minLength: 1

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { parsePris, parsePrisMarkdown, PrisConflict, PrisInvalid, PriStore } from '../../src/core/pris';
@@ -14,6 +14,7 @@ Rule: only these.
 4. FH 0.11: marketplace, FH backend, maybe 1 extensibility step (extensions, e.g. hub.allyte.com).
 7. Personal: Clyde's patch, Clyde's Xbox gift card.
 8. Stack v2 as central tracker/hub for this list; backlog items tracked, progressed weekly.
+1. Duplicate number in a later list.
 9. Catalyst 0.3.4 / 0.4: status, target, accelerate with quality (no PR clean; predict corrections).
 
 Next evolution: not a priority.
@@ -55,6 +56,11 @@ describe('parsePris', () => {
       ]));
     }
   });
+  it('needs weekly progress newest first, one per week', () => {
+    expect(() => parsePris([pri({ weekly: [{ week: '2026-W45', text: 'a' }, { week: '2026-W46', text: 'b' }] })])).toThrow(PrisInvalid);
+    expect(() => parsePris([pri({ weekly: [{ week: '2026-W46', text: 'a' }, { week: '2026-W46', text: 'b' }] })])).toThrow(PrisInvalid);
+    expect(() => parsePris([pri({ weekly: [{ week: '2026-W54', text: 'a' }] })])).toThrow(PrisInvalid);
+  });
   it('rejects a non-array and too many items', () => {
     expect(() => parsePris({})).toThrow(PrisInvalid);
     expect(() => parsePris(Array.from({ length: 31 }, (_, i) => pri({ id: `p${i}` })))).toThrow(PrisInvalid);
@@ -95,11 +101,16 @@ describe('PriStore', () => {
     expect(existsSync(join(dir, 'pris.lock'))).toBe(false);
   });
 
-  it('a broken file reads as none and is never seeded over silently', async () => {
+  // @req FR:session-inventory/pris.broken
+  it('a broken file reads as none, is never seeded over, and a write moves it aside', async () => {
     const { dir, s } = store();
     writeFileSync(join(dir, 'pris.json'), '{bad');
     expect(s.read()).toEqual({ version: 1, rev: 0, pris: [] });
     const md = join(dir, 'x.md'); writeFileSync(md, SEED);
     expect(await s.seed(md)).toEqual({ seeded: false, count: 0 });
+    expect((await s.put(0, [pri()])).rev).toBe(1);
+    const aside = readdirSync(dir).filter((n) => n.startsWith('pris.json.broken-'));
+    expect(aside).toHaveLength(1);
+    expect(readFileSync(join(dir, aside[0]), 'utf8')).toBe('{bad');
   });
 });

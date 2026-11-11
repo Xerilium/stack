@@ -84,10 +84,15 @@ describe('readTail', () => {
     expect(readTail(write('h.jsonl', [{ type: 'attachment' }]))).toBe('none');
     expect(readTail(join(dir, 'missing.jsonl'))).toBeUndefined();
   });
-  it('reads only the last 64 KiB', () => {
+  it('reads past a last line over 64 KiB; an owner interrupt closes the turn', () => {
     const f = join(dir, 'big.jsonl');
-    writeFileSync(f, JSON.stringify(asst([{ type: 'tool_use', name: 'AskUserQuestion' }])) + '\n' + `${JSON.stringify({ type: 'progress', pad: 'x'.repeat(70_000) })}\n`);
-    expect(readTail(f)).toBe('none');
+    writeFileSync(f, JSON.stringify(asst([{ type: 'tool_use', name: 'Bash' }])) + '\n' + `${JSON.stringify({ type: 'progress', pad: 'x'.repeat(70_000) })}\n`);
+    expect(readTail(f)).toBe('tool');
+    const g = join(dir, 'huge.jsonl');
+    writeFileSync(g, `${JSON.stringify(asst([{ type: 'tool_use', name: 'Write', input: { c: 'x'.repeat(300_000) } }]))}\n`);
+    expect(readTail(g)).toBe('tool');
+    expect(readTail(write('i.jsonl', [asst([{ type: 'tool_use', name: 'Bash' }]), { type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] } }]))).toBe('turn-end');
+    expect(readTail(write('j.jsonl', [{ type: 'user', message: { content: '[Request interrupted by user for tool use]' } }]))).toBe('turn-end');
   });
 });
 
@@ -116,6 +121,9 @@ describe('runInventory', () => {
     e.put('local_old', { scheduledTaskId: 'daily', createdAt: T - 2000 * MIN, interruptedAwaitingPerson: true });
     e.put('local_new', { scheduledTaskId: 'daily', createdAt: T - 100 * MIN, interruptedAwaitingPerson: true });
     e.put('local_arch', { isArchived: true, interruptedAwaitingPerson: true });
+    // an archived newer run still supersedes an older one
+    e.put('local_w1', { scheduledTaskId: 'weekly', createdAt: T - 3000 * MIN, interruptedAwaitingPerson: true });
+    e.put('local_w2', { scheduledTaskId: 'weekly', createdAt: T - 10 * MIN, isArchived: true });
     e.put('local_pin', { isStarred: true });
     writeFileSync(join(e.acct, 'local_bad.json'), '{nope');
     writeFileSync(join(e.acct, 'local_noid.json'), '{}');
@@ -123,14 +131,14 @@ describe('runInventory', () => {
     const before = readdirSync(e.acct).map((f) => [f, statSync(join(e.acct, f)).mtimeMs]);
     const r = e.run();
     expect(readdirSync(e.acct).map((f) => [f, statSync(join(e.acct, f)).mtimeMs])).toEqual(before);
-    expect(r.total).toBe(7);
-    expect(r.counts).toEqual({ running: 0, waiting: 4, stuck: 1, done: 1, pinned: 1, idle: 0 });
+    expect(r.total).toBe(8);
+    expect(r.counts).toEqual({ running: 0, waiting: 5, stuck: 1, done: 1, pinned: 1, idle: 0 });
     expect(r.needsYou.map((s) => s.id)).toEqual(['local_a2', 'local_a1', 'local_x1', 'local_new']);
     const a2 = r.needsYou[0];
     expect(a2).toMatchObject({ project: 'allyte', state: 'waiting', reason: 'blocked', ask: 'Approve the plan', link: 'claude://claude.ai/epitaxy/local_a2', pinned: false, prs: [] });
     expect(a2.lastActivityAt).toBe(new Date(T - 5 * MIN).toISOString());
     expect(r.needsYou[3].scheduled).toEqual({ id: 'daily', name: 'Daily check-in' });
-    expect(r.archive.map((s) => [s.id, s.reason])).toEqual([['local_f1', 'pr-merged'], ['local_old', 'superseded']]);
+    expect(r.archive.map((s) => [s.id, s.reason])).toEqual([['local_f1', 'pr-merged'], ['local_old', 'superseded'], ['local_w1', 'superseded']]);
     expect(r.sessions[0].id).toBe('local_x1');
     expect(JSON.stringify(r)).not.toContain('AskUserQuestion');
   });
@@ -155,6 +163,10 @@ describe('runInventory', () => {
     // a new mtime is read again
     const later = new Date(m.getTime() + 5000); utimesSync(f1, later, later);
     expect(e.run().counts.waiting).toBe(0);
+    // a cache for another transcripts folder is not used
+    const other = runInventory({ sessionsDir: e.sessions, projectsDir: join(e.root, 'other'), home: e.home, now: () => NOW });
+    expect(other.counts.waiting).toBe(0);
+    expect(JSON.parse(readFileSync(file, 'utf8')).projectsDir).toBe(join(e.root, 'other'));
     // gone files leave the cache
     unlinkSync(join(e.acct, 'local_s2.json'));
     e.run();

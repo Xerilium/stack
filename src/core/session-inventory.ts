@@ -64,32 +64,48 @@ export function projectOf(cwd: string): SessionProject {
   return RULES.find(([re]) => re.test(m[1]))?.[1] ?? 'other';
 }
 
-/** The kind of the last main-chain event in the transcript tail; undefined when there is no transcript. @req FR:session-inventory/read.tail */
-export function readTail(file: string): TailKind | undefined {
-  let buf: Buffer;
-  try {
-    const fd = openSync(file, 'r');
-    try { const size = fstatSync(fd).size; const n = Math.min(size, TAIL_BYTES); buf = Buffer.alloc(n); readSync(fd, buf, 0, n, size - n); } finally { closeSync(fd); }
-  } catch { return undefined; }
-  const lines = buf.toString('utf8').split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    let e: { type?: string; subtype?: string; isSidechain?: boolean; isMeta?: boolean; message?: { content?: unknown } };
-    try { e = JSON.parse(lines[i]); } catch { continue; } // the first line can be cut
-    if (!e || e.isSidechain || e.isMeta) continue;
-    if (e.type === 'system') {
-      if (e.subtype === 'stop_hook_summary' || e.subtype === 'turn_duration') return 'turn-end';
-      if (e.subtype === 'api_error') return 'api-error';
-      continue;
-    }
-    const c = e.message?.content;
-    if (e.type === 'user') return Array.isArray(c) && c.some((b) => (b as { type?: string })?.type === 'tool_result') ? 'tool-result' : 'user';
-    if (e.type === 'assistant') {
-      const last = Array.isArray(c) ? (c.at(-1) as { type?: string; name?: string } | undefined) : undefined;
-      if (last?.type === 'tool_use') return QUESTION_TOOLS.has(String(last.name)) ? 'question' : 'tool';
-      return 'assistant-text';
-    }
+const TAIL_MAX = 4 * 1024 * 1024;
+const INTERRUPTED = /^\[Request interrupted by user/;
+
+/** The kind of one transcript line, or undefined when it is not a main-chain turn event. */
+function eventKind(l: string): TailKind | undefined {
+  let e: { type?: string; subtype?: string; isSidechain?: boolean; isMeta?: boolean; message?: { content?: unknown } };
+  try { e = JSON.parse(l); } catch { return undefined; }
+  if (!e || typeof e !== 'object' || e.isSidechain || e.isMeta) return undefined;
+  if (e.type === 'system') return e.subtype === 'stop_hook_summary' || e.subtype === 'turn_duration' ? 'turn-end' : e.subtype === 'api_error' ? 'api-error' : undefined;
+  const c = e.message?.content;
+  if (e.type === 'user') {
+    if (Array.isArray(c) && c.some((x) => (x as { type?: string })?.type === 'tool_result')) return 'tool-result';
+    // The owner stopped the turn: it is closed, not dead.
+    const first = typeof c === 'string' ? c : Array.isArray(c) ? (c[0] as { text?: unknown })?.text : undefined;
+    return typeof first === 'string' && INTERRUPTED.test(first) ? 'turn-end' : 'user';
   }
-  return 'none';
+  if (e.type === 'assistant') {
+    const last = Array.isArray(c) ? (c.at(-1) as { type?: string; name?: string } | undefined) : undefined;
+    if (last?.type === 'tool_use') return QUESTION_TOOLS.has(String(last.name)) ? 'question' : 'tool';
+    return 'assistant-text';
+  }
+  return undefined;
+}
+
+/**
+ * The kind of the last main-chain event in the transcript tail; undefined when there is no transcript. Reads the last 64 KiB,
+ * and more (up to 4 MiB) only when no whole event fits. @req FR:session-inventory/read.tail
+ */
+export function readTail(file: string): TailKind | undefined {
+  let fd: number;
+  try { fd = openSync(file, 'r'); } catch { return undefined; }
+  try {
+    const size = fstatSync(fd).size;
+    for (let want = TAIL_BYTES; ; want *= 4) {
+      const n = Math.min(size, want, TAIL_MAX);
+      const buf = Buffer.alloc(n); readSync(fd, buf, 0, n, size - n);
+      const lines = buf.toString('utf8').split('\n');
+      // The first line is cut unless the window starts at the file start.
+      for (let i = lines.length - 1; i >= (n < size ? 1 : 0); i--) { const k = eventKind(lines[i]); if (k) return k; }
+      if (n >= size || n >= TAIL_MAX) return 'none';
+    }
+  } catch { return undefined; } finally { closeSync(fd); }
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
@@ -154,7 +170,7 @@ export function classify(f: SessionFacts, now: number): { state: SessionState; r
 }
 
 interface CacheEntry { mtimeMs: number; size: number; tx?: string; txMtimeMs?: number; facts: SessionFacts | null }
-interface SessionsFile { version: 1; at: string; cache: Record<string, CacheEntry>; inventory: Inventory }
+interface SessionsFile { version: 1; at: string; projectsDir: string; cache: Record<string, CacheEntry>; inventory: Inventory }
 
 const listDirs = (d: string): string[] => { try { return readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(d, e.name)); } catch { return []; } };
 const statOf = (f: string) => { try { const s = statSync(f); return { mtimeMs: s.mtimeMs, size: s.size }; } catch { return undefined; } };
@@ -184,7 +200,8 @@ export function runInventory(o: InventoryOptions): Inventory {
   const projectsDir = o.projectsDir ?? defaultProjectsDir();
   const cacheFile = join(o.home, 'sessions.json');
   let old: Record<string, CacheEntry> = {};
-  try { const c = (JSON.parse(readFileSync(cacheFile, 'utf8')) as Partial<SessionsFile>).cache; if (c && typeof c === 'object') old = c; } catch { /* cold cache */ }
+  // Another version or transcripts folder means cached paths and facts may not fit: start cold.
+  try { const j = JSON.parse(readFileSync(cacheFile, 'utf8')) as Partial<SessionsFile>; if (j.version === 1 && j.projectsDir === projectsDir && j.cache && typeof j.cache === 'object') old = j.cache; } catch { /* cold cache */ }
   // Read-only: only stat, readdir and read on the app store. @req FR:session-inventory/read.files
   const folders = listDirs(sessionsDir).flatMap(listDirs);
   const cache: Record<string, CacheEntry> = {};
@@ -223,7 +240,8 @@ export function runInventory(o: InventoryOptions): Inventory {
   // @req FR:session-inventory/state.archived
   const facts = Object.values(cache).map((e) => e.facts).filter((f): f is SessionFacts => !!f && !f.archived);
   const latestRun = new Map<string, number>();
-  for (const f of facts) if (f.scheduledTaskId) latestRun.set(f.scheduledTaskId, Math.max(latestRun.get(f.scheduledTaskId) ?? -Infinity, f.createdAt ?? f.lastActivityAt));
+  // An archived newer run still supersedes older runs.
+  for (const f of Object.values(cache).map((e) => e.facts)) if (f?.scheduledTaskId) latestRun.set(f.scheduledTaskId, Math.max(latestRun.get(f.scheduledTaskId) ?? -Infinity, f.createdAt ?? f.lastActivityAt));
   const counts = Object.fromEntries(SESSION_STATES.map((s) => [s, 0])) as Record<SessionState, number>;
   const items: (SessionItem & { at: number; superseded: boolean })[] = facts.map((f) => {
     const { state, reason } = classify(f, T);
@@ -247,7 +265,7 @@ export function runInventory(o: InventoryOptions): Inventory {
   const inventory: Inventory = { at: now.toISOString(), total: items.length, counts, needsYou, archive, sessions: items.map(strip) };
   try {
     mkdirSync(o.home, { recursive: true, mode: 0o700 });
-    writeAtomic(cacheFile, `${JSON.stringify({ version: 1, at: inventory.at, cache, inventory } satisfies SessionsFile)}\n`);
+    writeAtomic(cacheFile, `${JSON.stringify({ version: 1, at: inventory.at, projectsDir, cache, inventory } satisfies SessionsFile)}\n`);
   } catch { /* the cache is best effort: a failed write never fails the inventory */ }
   return inventory;
 }

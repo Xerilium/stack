@@ -376,7 +376,8 @@ async function prisCmd(p: ReturnType<typeof parseArgs>): Promise<Outcome> {
     let r: { seeded: boolean; count: number };
     try { r = await store.seed(resolve(file)); } catch (e) {
       if (e instanceof PrisInvalid) throw e;
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT' || (e as NodeJS.ErrnoException).code === 'EACCES' || (e as NodeJS.ErrnoException).code === 'EISDIR') throw new UsageError(`Cannot read --file: ${file}`);
+      // Any file-system error opening or reading --file is a usage error. @req FR:session-inventory/cli.pris
+      if (['open', 'read'].includes(String((e as NodeJS.ErrnoException).syscall))) throw new UsageError(`Cannot read --file: ${file}`);
       throw e;
     }
     return { json: { ok: true, ...r }, text: r.seeded ? `seeded ${r.count} priorities` : `already seeded (${r.count} priorities)` };
