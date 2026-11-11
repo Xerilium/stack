@@ -97,8 +97,10 @@ export function createPushNotifier(opts: PushNotifierOptions) {
   let tail: Promise<unknown> = Promise.resolve();
   return {
     /** @req FR:iphone-access/notify.send @req FR:iphone-access/notify.prune @req FR:iphone-access/notify.isolate @req FR:iphone-access/notify.none @req FR:iphone-access/notify.events @req FR:iphone-access/notify.quiet @req FR:iphone-access/notify.dedupe @req FR:iphone-access/notify.serial */
-    notify(asks: DueAsk[]): Promise<PushCounts> {
-      const run = tail.then(() => notifyOnce(asks));
+    notify(asks: DueAsk[] | Promise<DueAsk[]>): Promise<PushCounts> {
+      const list = Promise.resolve(asks);
+      list.catch(() => undefined); // handled when its turn comes
+      const run = tail.then(async () => notifyOnce(await list));
       tail = run.catch(() => undefined);
       return run;
     },

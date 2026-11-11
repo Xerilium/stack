@@ -1,5 +1,6 @@
 import { setup, ENV } from './helpers';
 import type { PushRequest } from '../../src/host/push-sender';
+import { PushCheckTimeout, withPush } from '../../src/host/push';
 
 // RFC 8291 example keys: a valid P-256 pair for VAPID and a valid subscription key.
 const VAPID_ENV = {
@@ -31,12 +32,12 @@ describe('host push wiring', () => {
     const s = await paired();
     const w = await s.putAsk('deploy-ok', { ask: 'Approve deploy', kind: 'approve', by: soon() });
     expect(w.status).toBeLessThan(300);
-    expect(s.reqs).toHaveLength(1);
-    expect(s.reqs[0].url).toBe(SUB.endpoint);
-    expect(s.reqs[0].headers.authorization).toMatch(/^vapid t=/);
+    // The write starts the check in the background; this check queues behind it.
     const c = await s.check();
     expect(c.status).toBe(200);
     expect(await c.json()).toEqual({ sent: 0, removed: 0, failed: 0, skipped: 1 });
+    expect(s.reqs[0].url).toBe(SUB.endpoint);
+    expect(s.reqs[0].headers.authorization).toMatch(/^vapid t=/);
     expect(s.reqs).toHaveLength(1);
     const ledger = await s.storage.readAux('.stack/push-sent.json');
     expect(ledger?.content).toContain('deploy-ok');
@@ -50,6 +51,7 @@ describe('host push wiring', () => {
     const s = await paired();
     await s.putAsk('later', { ask: 'Later', kind: 'approve', by: new Date(Date.now() + 5 * 3600_000).toISOString() });
     await s.putAsk('none', { ask: 'No deadline', kind: 'approve' });
+    await s.check();
     expect(s.reqs).toHaveLength(0);
   });
 
@@ -57,9 +59,9 @@ describe('host push wiring', () => {
   it('a 410 from the push service removes the subscription', async () => {
     const s = await paired(undefined, 410);
     await s.putAsk('k', { ask: 'K', kind: 'approve', by: soon() });
+    expect(await (await s.check()).json()).toEqual({ sent: 0, removed: 0, failed: 0, skipped: 0 });
     const file = await s.storage.readAux('.stack/devices.json');
     expect(file?.content).not.toContain('web.push.apple.com');
-    expect(await (await s.check()).json()).toEqual({ sent: 0, removed: 0, failed: 0, skipped: 0 });
   });
 
   // @req FR:iphone-access/check.@http
@@ -81,5 +83,39 @@ describe('host push wiring', () => {
     expect((await bad.check()).status).toBe(404);
     expect(bad.logs).toContain('host: STACK_VAPID_* invalid');
     expect(bad.logs.join('\n')).not.toContain('AAAA');
+  });
+});
+
+describe('ask-write check runs in the background', () => {
+  const ok = async () => new Response('{}', { status: 200 });
+  const authorize = async () => true;
+  const write = () => new Request('https://h/api/asks/k', { method: 'POST' });
+  const counts = { sent: 1, removed: 0, failed: 0, skipped: 0 };
+
+  // @req FR:iphone-access/check.asks
+  it('the ask write answers before a slow check ends', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let ended = false;
+    const check = async () => { await gate; ended = true; return counts; };
+    const h = withPush(ok, { authorize, check, onError: () => undefined });
+    const res = await h(write());
+    expect(res.status).toBe(200);
+    expect(ended).toBe(false);
+    release();
+  });
+
+  // @req FR:iphone-access/check.asks
+  it('a failed or hung check is logged and never changes the answer', async () => {
+    const errors: unknown[] = [];
+    const fail = withPush(ok, { authorize, check: async () => { throw new Error('boom'); }, onError: (e) => errors.push(e) });
+    expect((await fail(write())).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(errors).toHaveLength(1);
+    const hung = withPush(ok, { authorize, check: () => new Promise<never>(() => undefined), onError: (e) => errors.push(e), checkTimeoutMs: 20 });
+    expect((await hung(write())).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(errors).toHaveLength(2);
+    expect(errors[1]).toBeInstanceOf(PushCheckTimeout);
   });
 });

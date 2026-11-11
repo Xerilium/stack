@@ -85,7 +85,7 @@ Host needs to deliver the payload to Apple, Google and Mozilla push services so 
 Host needs a caller for the notifier so that a deadline that comes within 1h is pushed without the owner opening the app.
 
 - **FR:check.@http** (P1): Interface: `POST /api/push/check` (body `{}` or empty), route name `push.check`, scope `tasks:write` or an owner session (CSRF rule applies). Answers `200` with `{ sent, removed, failed, skipped }` only, or `404` when push is not configured
-- **FR:check.asks** (P1): A successful `POST /api/asks/{key}` (an ask write) MUST run the check before the response returns. A failed check MUST NOT change the ask response
+- **FR:check.asks** (P1): A successful `POST /api/asks/{key}` (an ask write) MUST start the check and MUST NOT wait for it: the response returns at once. The check runs in the background, bounded by 30 s (`PushCheckTimeout`). A failed or timed-out check is logged through `onError` and MUST NOT change the ask response
 - **FR:check.config** (P1): Push is configured when `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY` and `STACK_VAPID_SUBJECT` are set and valid. A bad value logs `host: STACK_VAPID_* invalid` (no values) and leaves push off. The host also passes the storage ask listing through, so the host api lists asks
 - **FR:check.read** (P1): The check reads open asks through the api handler (`asks.list`, limit 200), so it sees what the owner sees
 - **FR:check.cron** (P2, human): A scheduler (GitHub Actions cron or the Mac host) calls `POST /api/push/check` every 5 minutes with a token. Not built here

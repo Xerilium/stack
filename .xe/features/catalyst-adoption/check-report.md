@@ -54,15 +54,15 @@ None of the 3 PRs had inline human comments. Copilot did not run (quota). Every 
 
 | PR                                                | Severity   | Where                                                               | Problem                                                                                                     | On main      |
 | ------------------------------------------------- | ---------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------ |
-| [112](https://github.com/Xerilium/stack/pull/112) | Should fix | `src/host/push.ts:84`                                               | Push check runs before the ask-write response. One dead endpoint can hold the write for 10 s or more        | Open         |
-| [112](https://github.com/Xerilium/stack/pull/112) | Should fix | `src/api/push.ts:108-116`                                           | Ledger read and write have no lock. Cron and ask-write checks can overlap and push twice                    | Open         |
+| [112](https://github.com/Xerilium/stack/pull/112) | Should fix | `src/host/push.ts:84`                                               | Push check runs before the ask-write response. One dead endpoint can hold the write for 10 s or more        | Fixed        |
+| [112](https://github.com/Xerilium/stack/pull/112) | Should fix | `src/api/push.ts:108-116`                                           | Ledger read and write have no lock. Cron and ask-write checks can overlap and push twice                    | Fixed        |
 | [112](https://github.com/Xerilium/stack/pull/112) | Suggestion | `src/host/runtime.ts:141`                                           | Check lists 200 asks by score, not deadline. A low-score ask that is due soon can be skipped                | Open         |
-| [113](https://github.com/Xerilium/stack/pull/113) | Should fix | `desktop/src/shell.ts:96-97`                                        | `activate` or `second-instance` before the host starts reads `host!.url` and crashes the main process       | Open         |
+| [113](https://github.com/Xerilium/stack/pull/113) | Should fix | `desktop/src/shell.ts:96-97`                                        | `activate` or `second-instance` before the host starts reads `host!.url` and crashes the main process       | Fixed        |
 | [113](https://github.com/Xerilium/stack/pull/113) | Suggestion | `.xe/features/desktop-shell/spec.md:36`, `desktop/src/policy.ts:38` | Spec lists a `cwd` input that `hostPlan` does not take. Same-origin window-open behavior is not in the spec | Open         |
 | [117](https://github.com/Xerilium/stack/pull/117) | Should fix | `.xe/features/cos-view/spec.md`                                     | Prose deprecation tags, and FRs still active after the Brief page was removed                               | Fixed in 119 |
 | [117](https://github.com/Xerilium/stack/pull/117) | Suggestion | `web/e2e/mock.ts:7-8`                                               | `dueTier` and `STALE_DAYS` are copied from core with no parity test                                         | Open         |
 
-Next: open one `[Stack][Fix]` PR for the 3 push and desktop should-fix items (each needs a failing test first).
+The 3 should-fix items are fixed test-first in `[Stack][Fix] Fix review findings from Catalyst check`. The 3 suggestions stay open.
 
 ## Cost
 

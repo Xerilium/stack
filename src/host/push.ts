@@ -47,17 +47,25 @@ export function createPushCheck(o: {
   const quiet = quietFrom(o.env.STACK_PUSH_QUIET, o.timeZone);
   if (quiet === null) { o.log('host: STACK_PUSH_QUIET invalid'); return null; }
   const notifier = createPushNotifier({ devices: o.devices, sender, quiet, ledger: createPushLedger(o.ledgerStore), onEvent: (c) => o.log(JSON.stringify({ kind: 'push', ...c })) });
-  return async () => notifier.notify(await o.asks());
+  // Queue first, then read: checks run in call order (@req FR:iphone-access/notify.serial).
+  return () => notifier.notify(o.asks());
 }
+
+/** A background check that ran past its bound. @req FR:iphone-access/check.asks */
+export class PushCheckTimeout extends Error { constructor() { super('push check timed out'); this.name = 'PushCheckTimeout'; } }
+
+/** Bound on one background check: 10 s per push send, a few devices. */
+export const PUSH_CHECK_TIMEOUT_MS = 30_000;
 
 const ROUTE = { name: 'push.check', method: 'POST', write: true };
 const ASK_WRITE = /^\/asks\/[^/]+$/;
 
 /**
- * Serves `POST <base>/push/check` and runs the check after each ask write.
+ * Serves `POST <base>/push/check` and starts the check after each ask write. The write answers at once;
+ * the check runs in the background, bounded by `checkTimeoutMs`, and logs through `onError`.
  * @req FR:iphone-access/check.@http @req FR:iphone-access/check.asks
  */
-export function withPush(next: (req: Request) => Promise<Response>, o: { authorize: Authorize; check: (() => Promise<PushCounts>) | null; onError: (e: unknown) => void; basePath?: string }) {
+export function withPush(next: (req: Request) => Promise<Response>, o: { authorize: Authorize; check: (() => Promise<PushCounts>) | null; onError: (e: unknown) => void; basePath?: string; checkTimeoutMs?: number }) {
   const base = (o.basePath ?? '/api').replace(/\/+$/, '');
   return async (req: Request): Promise<Response> => {
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
@@ -80,8 +88,11 @@ export function withPush(next: (req: Request) => Promise<Response>, o: { authori
     }
     const res = await next(req);
     if (o.check && method === 'POST' && res.status < 300 && path.startsWith(base) && ASK_WRITE.test(path.slice(base.length))) {
-      // A failed check never changes the ask write's answer.
-      try { await o.check(); } catch (e) { o.onError(e); }
+      // A push send can take 10 s or more, so the write never waits. A failed check never changes the answer.
+      const check = o.check;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const bound = new Promise<never>((_ok, fail) => { timer = setTimeout(() => fail(new PushCheckTimeout()), o.checkTimeoutMs ?? PUSH_CHECK_TIMEOUT_MS); timer.unref?.(); });
+      void Promise.race([Promise.resolve().then(check), bound]).catch((e) => { try { o.onError(e); } catch { /* a broken logger never reaches the caller */ } }).finally(() => clearTimeout(timer));
     }
     return res;
   };
