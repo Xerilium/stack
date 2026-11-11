@@ -93,34 +93,42 @@ export interface PushNotifierOptions {
 }
 
 export function createPushNotifier(opts: PushNotifierOptions) {
+  // @req FR:iphone-access/notify.serial: one check at a time, so two checks never read the same ledger state and both send.
+  let tail: Promise<unknown> = Promise.resolve();
   return {
-    /** @req FR:iphone-access/notify.send @req FR:iphone-access/notify.prune @req FR:iphone-access/notify.isolate @req FR:iphone-access/notify.none @req FR:iphone-access/notify.events @req FR:iphone-access/notify.quiet @req FR:iphone-access/notify.dedupe */
-    async notify(asks: DueAsk[]): Promise<PushCounts> {
-      const counts: PushCounts = { sent: 0, removed: 0, failed: 0, skipped: 0 };
-      const now = (opts.now ?? (() => new Date()))();
-      let due = dueWithin(asks, now);
-      if (opts.quiet && inQuiet(opts.quiet, now)) due = due.filter((a) => a.priority === 'crit');
-      if (due.length === 0) return counts;
-      const subs = await opts.devices.subscriptions();
-      if (subs.length === 0) return counts;
-      for (const { deviceId, sub } of subs) {
-        try {
-          const seen = opts.ledger ? await opts.ledger.sent(deviceId) : {};
-          const fresh = due.filter((a) => seen[a.key] !== a.by);
-          if (fresh.length === 0) { counts.skipped++; continue; }
-          const { status } = await opts.sender.send(sub, payloadFor(fresh));
-          if (status === 404 || status === 410) { await opts.devices.removePush(deviceId, sub.endpoint); counts.removed++; }
-          else if (status >= 200 && status < 300) {
-            counts.sent++;
-            // A lost ledger write costs one repeat push at most; it never fails the delivery.
-            await opts.ledger?.mark(deviceId, Object.fromEntries(fresh.map((a) => [a.key, a.by as string]))).catch(() => undefined);
-          } else counts.failed++;
-        } catch {
-          counts.failed++;
-        }
-      }
-      try { opts.onEvent?.({ ...counts }); } catch { /* a broken logger never changes delivery */ }
-      return counts;
+    /** @req FR:iphone-access/notify.send @req FR:iphone-access/notify.prune @req FR:iphone-access/notify.isolate @req FR:iphone-access/notify.none @req FR:iphone-access/notify.events @req FR:iphone-access/notify.quiet @req FR:iphone-access/notify.dedupe @req FR:iphone-access/notify.serial */
+    notify(asks: DueAsk[]): Promise<PushCounts> {
+      const run = tail.then(() => notifyOnce(asks));
+      tail = run.catch(() => undefined);
+      return run;
     },
   };
+
+  async function notifyOnce(asks: DueAsk[]): Promise<PushCounts> {
+    const counts: PushCounts = { sent: 0, removed: 0, failed: 0, skipped: 0 };
+    const now = (opts.now ?? (() => new Date()))();
+    let due = dueWithin(asks, now);
+    if (opts.quiet && inQuiet(opts.quiet, now)) due = due.filter((a) => a.priority === 'crit');
+    if (due.length === 0) return counts;
+    const subs = await opts.devices.subscriptions();
+    if (subs.length === 0) return counts;
+    for (const { deviceId, sub } of subs) {
+      try {
+        const seen = opts.ledger ? await opts.ledger.sent(deviceId) : {};
+        const fresh = due.filter((a) => seen[a.key] !== a.by);
+        if (fresh.length === 0) { counts.skipped++; continue; }
+        const { status } = await opts.sender.send(sub, payloadFor(fresh));
+        if (status === 404 || status === 410) { await opts.devices.removePush(deviceId, sub.endpoint); counts.removed++; }
+        else if (status >= 200 && status < 300) {
+          counts.sent++;
+          // A lost ledger write costs one repeat push at most; it never fails the delivery.
+          await opts.ledger?.mark(deviceId, Object.fromEntries(fresh.map((a) => [a.key, a.by as string]))).catch(() => undefined);
+        } else counts.failed++;
+      } catch {
+        counts.failed++;
+      }
+    }
+    try { opts.onEvent?.({ ...counts }); } catch { /* a broken logger never changes delivery */ }
+    return counts;
+  }
 }

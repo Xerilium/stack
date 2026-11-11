@@ -65,6 +65,7 @@ Owner needs a ping only for asks that are due soon so that every push is worth r
 - **FR:notify.quiet** (P1): With `quiet` set (`{ start, end, timeZone }`, hours 0-23; host: `STACK_PUSH_QUIET` `21-8` default or `off`, in the config `timezone`), the notifier MUST send only `crit` asks while the local hour is in `[start, end)`. Other asks are not marked sent, so they push after quiet hours if they are still due. This replaces research §5 ("no quiet hours"): a 1h deadline set by an agent must not wake the owner unless it is `crit`
 - **FR:notify.dedupe** (P1): With a `ledger`, a device MUST get at most one push per ask key and `by` value. Only a `2xx` marks the pair sent. A changed `by` is a new pair. Each device gets a payload built from its own unsent asks; a device with none gets nothing (`skipped`)
   - **FR:notify.dedupe.store** (P1): `createPushLedger(store)` keeps `{ version: 1, sent: { <deviceId>: { <askKey>: <by> } } }` over the `TokenStore` interface (version-checked, retried). Pairs whose `by` is more than 1h past are dropped on write. The host file is `.stack/push-sent.json` in the private data repo. It holds device ids, ask keys and times only
+  - **FR:notify.serial** (P1): One notifier MUST run one check at a time. A check that starts while another runs waits for it, so two checks never read the same ledger state and push the same pair twice. Two host processes on one ledger are out of scope (the host is one process)
 
 ### FR:send: Web Push sender
 
