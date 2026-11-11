@@ -269,9 +269,9 @@
 
 **Date**: 2026-11-11
 
-**Why**: The owner wants a real Mac app now without the $99/yr Apple account. Ad-hoc signing runs on Apple silicon; Gatekeeper asks once (right-click, Open). Packager is one function call; the rest is macOS tools (`codesign`, `ditto`, `hdiutil`) with no extra dependencies.
+**Why**: The owner wants a real Mac app now without the $99/yr Apple account. Ad-hoc signing runs on Apple silicon; A build made on the same Mac opens with no prompt; a copied or downloaded build needs `Open Anyway` once (macOS 15+). Packager is one function call; the rest is macOS tools (`codesign`, `ditto`, `hdiutil`) with no extra dependencies.
 
-**Trade-offs**: First launch needs right-click, Open (or `xattr -dr com.apple.quarantine`). No auto-update. `asar` is off so the host reads `web/dist` and spawns agent binaries from plain files.
+**Trade-offs**: A copied build needs `Open Anyway` once (or `xattr -dr com.apple.quarantine`). No auto-update. `asar` is off so the host reads `web/dist` and spawns agent binaries from plain files.
 
 **Rejected**: electron-builder (large dependency tree, pnpm workspace dependency collection, config surface for features not used); bundling with esbuild (the Agent SDK resolves its own binary by path).
 

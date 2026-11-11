@@ -27,15 +27,18 @@ Or from the terminal: `ditto desktop/out/Stack-darwin-arm64/Stack.app /Applicati
 
 ## First launch (one time)
 
-macOS blocks apps that are not notarized.
+- Built on this Mac: no prompt. Stack opens on double-click.
+- Copied from another Mac or downloaded (quarantined): macOS blocks it once because it is not notarized.
 
-1. In Finder, open `/Applications`.
-2. Control-click (or right-click) `Stack`, then select `Open`.
-3. Select `Open` in the dialog.
+macOS 15 or later:
 
-On macOS 15 or later, if no `Open` button shows: open System Settings > Privacy & Security, find "Stack was blocked", select `Open Anyway`.
+1. Double-click `Stack` in `/Applications`. Select `Done` in the dialog.
+2. Open System Settings > Privacy & Security.
+3. Find "Stack was blocked", select `Open Anyway`, then confirm.
 
-Terminal option: `xattr -dr com.apple.quarantine /Applications/Stack.app`.
+macOS 14 or earlier: Control-click (right-click) `Stack`, select `Open`, then `Open` again.
+
+Any version, from the terminal: `xattr -dr com.apple.quarantine /Applications/Stack.app`.
 
 After this, Stack opens like any app (Dock, Spotlight, Launchpad).
 
@@ -62,10 +65,10 @@ After this, Stack opens like any app (Dock, Spotlight, Launchpad).
 
 ## Update
 
-Pull, run `pnpm desktop:package` again, and replace `/Applications/Stack.app`. Each new build needs the first-launch step again.
+Pull, run `pnpm desktop:package` again, and replace `/Applications/Stack.app`. A copied build needs the first-launch step again.
 
 ## Limits
 
 - Apple silicon only. No auto-update.
-- A Finder launch gets the bare system `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`), not your shell `PATH`. Agents that need Homebrew or `~/.local/bin` tools may not start. Workaround: launch from a terminal with `/Applications/Stack.app/Contents/MacOS/Stack`.
+- A Finder launch gets the bare system `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`), not your shell `PATH`. Agents and the host's `gh` calls (GitHub PRs, task queries) fail when the tool is in Homebrew or `~/.local/bin`. Workaround: launch from a terminal with `/Applications/Stack.app/Contents/MacOS/Stack`.
 - Logs: run `/Applications/Stack.app/Contents/MacOS/Stack` from a terminal to see host lines.

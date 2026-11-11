@@ -84,6 +84,6 @@ describe('desktop install doc', () => {
   /** @req FR:desktop-app/package.docs */
   it('gives the build command, install steps, first launch, and how the host is found', () => {
     const doc = readFileSync(join(__dirname, '../../docs/desktop-install.md'), 'utf8');
-    for (const s of ['pnpm desktop:package', '/Applications', 'right-click', 'Open', '~/.config/stack/config.json', '127.0.0.1']) expect(doc).toContain(s);
+    for (const s of ['pnpm desktop:package', '/Applications', 'Open Anyway', 'macOS 14', 'xattr -dr com.apple.quarantine', '`gh`', '~/.config/stack/config.json', '127.0.0.1']) expect(doc).toContain(s);
   });
 });
