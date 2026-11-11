@@ -32,7 +32,7 @@ const teamSeed = (): MockSession[] => [
   mk(7, { title: 'maenifold research', project: 'maenifold-rs', owner: null, cwd: '/x/maenifold-rs', lastActive: iso(5) }),
   mk(8, { title: 'Lonely · tests', project: 'prime', owner: null, cwd: '/x/prime', lastActive: iso(7) }),
 ];
-const today = new Date().toISOString().slice(0, 10);
+const today = new Date().toLocaleDateString('en-CA'); // local date: the page counts Today in the browser time zone
 const cost = { attribution: 'lastActive', days: [{ date: '2026-10-23', usd: 3.2, tokens: 410_000, sessions: 4 }, { date: today, usd: 4.1, tokens: 1_200_000, sessions: 6 }], projects: [{ project: 'allyte', usd: 14.2, tokens: 5_000_000, sessions: 3 }, { project: 'stack', usd: 9.8, tokens: 3_000_000, sessions: 2 }], models: [{ model: 'claude-sonnet-5-5', usd: 24, tokens: 8_000_000 }], total: { usd: 31, tokens: 8_000_000, sessions: 10 } };
 
 const frames = (updates: unknown[]) => updates.map((u) => `event: update\ndata: ${JSON.stringify(u)}\n\n`).join('');
