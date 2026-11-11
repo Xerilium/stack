@@ -236,6 +236,33 @@ describe('commands', () => {
     expect(JSON.parse(stack(d, 'remove-completed', '--json').out)).toMatchObject({ ok: true, removed: 0 });
   });
 
+  it('remove-completed --dry-run previews rows and writes nothing', () => {
+    const d = repo('ItemA', 'ItemB');
+    const line = (t: string) => file(d, 'tasks/alpha.md').split('\n').findIndex(l => l.includes(t)) + 1;
+    stack(d, 'complete', `tasks/alpha.md:${line('ItemA')}`);
+    stack(d, 'complete', `tasks/alpha.md:${line('ItemB')}`);
+    const before = file(d, 'tasks/alpha.md');
+    const beforeCommits = commits(d);
+    const r = stack(d, 'remove-completed', '--dry-run');
+    expect(r.code).toBe(0);
+    expect(r.out).toContain('would remove 2');
+    expect(r.out).toContain('ItemA');
+    expect(r.out).toContain('ItemB');
+    // nothing written, no commit
+    expect(file(d, 'tasks/alpha.md')).toBe(before);
+    expect(commits(d)).toBe(beforeCommits);
+    // --json shape
+    const j = JSON.parse(stack(d, 'remove-completed', '--dry-run', '--json').out);
+    expect(j.ok).toBe(true);
+    expect(j.dryRun).toBe(true);
+    expect(j.removed).toBe(2);
+    expect(Array.isArray(j.rows)).toBe(true);
+    expect(j.rows.length).toBe(2);
+    expect(j.rows[0]).toMatchObject({ ref: expect.stringMatching(/^tasks\/alpha\.md:\d+$/), text: expect.any(String) });
+    // rows still present after dry run
+    expect(file(d, 'tasks/alpha.md')).toBe(before);
+  });
+
   it('skip then resume', () => {
     const d = repo('Only');
     const s = stack(d, 'skip', '--now', NOW);

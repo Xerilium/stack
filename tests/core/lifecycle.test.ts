@@ -502,7 +502,7 @@ describe('removeCompleted', () => {
   // @req FR:task-lifecycle/remove.count
   it('writes nothing when no task is complete', async () => {
     const s = await mem({ 'tasks/a.md': '# A\n\n## 🔄 Active\n\n- [ ] x\n' });
-    expect(await removeCompleted(ctx(s))).toEqual({ removed: 0, files: [] });
+    expect(await removeCompleted(ctx(s))).toEqual({ removed: 0, files: [], rows: [] });
   });
 });
 

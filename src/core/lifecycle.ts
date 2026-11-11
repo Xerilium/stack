@@ -613,7 +613,8 @@ export async function explainAutopri(ctx: LifecycleContext, at?: Date, opts: { t
 // ------------------------------------------------------------------ remove completed
 
 /** @req FR:task-lifecycle/remove.blocks @req FR:task-lifecycle/remove.count @req FR:task-lifecycle/remove.missing */
-export async function removeCompleted(ctx: LifecycleContext, opts: { project?: string } = {}): Promise<{ removed: number; files: string[] }> {
+export interface RemovedRow { ref: { path: string; line: number }; text: string }
+export async function removeCompleted(ctx: LifecycleContext, opts: { project?: string; dryRun?: boolean } = {}): Promise<{ removed: number; files: string[]; rows: RemovedRow[] }> {
   let docs = await loadDocs(ctx.storage);
   if (opts.project !== undefined) {
     docs = docs.filter((d) => d.name === opts.project);
@@ -621,25 +622,31 @@ export async function removeCompleted(ctx: LifecycleContext, opts: { project?: s
   }
   let removed = 0;
   const files: string[] = [];
+  const rows: RemovedRow[] = [];
   for (const doc of docs) {
     const src = doc.project.lines;
     const limit = contentEnd(src);
     const out: string[] = [];
     let n = 0;
     for (let i = 0; i < src.length; i++) {
-      if (i < limit && /^(\s*)- \[x\] (.+)$/.test(bare(src[i]))) {
+      const m = i < limit ? /^(\s*)- \[x\] (.+)$/.exec(bare(src[i])) : null;
+      if (m) {
         n++;
+        rows.push({ ref: { path: doc.path, line: i }, text: m[2] });
         i = blockEnd(src, i, limit) - 1;
       } else {
         out.push(src[i]);
       }
     }
-    if (n > 0 && (await commit(ctx, doc, out, `Remove ${n} completed task${n === 1 ? '' : 's'}`))) {
+    if (n > 0 && !opts.dryRun && (await commit(ctx, doc, out, `Remove ${n} completed task${n === 1 ? '' : 's'}`))) {
+      removed += n;
+      files.push(doc.path);
+    } else if (n > 0 && opts.dryRun) {
       removed += n;
       files.push(doc.path);
     }
   }
-  return { removed, files };
+  return { removed, files, rows };
 }
 
 // ------------------------------------------------------------------ add project

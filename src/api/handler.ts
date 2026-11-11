@@ -490,7 +490,8 @@ export const ROUTES: Route[] = [
       noQuery(c);
       if (!isOwner(c.req)) throw new TriageDenied('Owner only');
       const b = validate<{ project?: string }>(await readBody(c.req), REMOVE_BODY.schema);
-      return json(200, await removeCompleted(c.life, { project: b.project }));
+      const r = await removeCompleted(c.life, { project: b.project });
+      return json(200, { removed: r.removed, files: r.files });
     },
   },
   {

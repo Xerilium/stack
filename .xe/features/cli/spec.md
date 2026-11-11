@@ -105,6 +105,7 @@ Owner needs one command per core operation so that the terminal can do everythin
   - An emoji flag takes an emoji or `none`
 - **FR:cmd.remove-completed** (P1): `stack remove-completed [--project name]` MUST call `removeCompleted` and print the removed count
   > - @req FR:task-lifecycle/remove.blocks
+  - **FR:cmd.remove-completed.dry-run** (P1): `stack remove-completed --dry-run` MUST print the rows it would remove (ref and text) and the count, write nothing, and make no commit; `--json` gives `{ ok: true, dryRun: true, removed: n, rows: [{ ref, text }] }`
 - **FR:cmd.update** (P1): `stack update [--sweep] [--engine legacy|stack]` MUST regenerate README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writing only files whose text changed
   > - @req FR:summaries/generate.@function
   - **FR:cmd.update.engine** (P1): `--engine stack` MUST generate the files with the `stack` engine and the overrides in `.stack/priorities.json`, so their scores and order match `stack next`; the default is `legacy` (PowerShell parity)

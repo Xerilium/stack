@@ -24,7 +24,7 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `tag`: set the 🔓 unblocker and 📅 due tags the autopri engine reads. `tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]`
 - `rank`: ranked tasks; `--explain` (autopri) shows score parts; `--truth` lists ground-truth items to tag or add. `rank [--engine autopri|stack] [--top n] [--explain [--truth file]]`
 - `asks`: ask queue for the owner; agents `put` and `handle` asks, read answers with `list`. See [docs/asks.md](asks.md). `asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]`
-- `remove-completed`: delete checked rows. `remove-completed [--project name]`
+- `remove-completed`: delete checked rows. `remove-completed [--project name] [--dry-run]` (dry-run previews which rows and count, writes nothing)
 - `inbox`: reply on a task as an agent. `inbox reply <ref> --from <agent> --text t [--expect t]`
 - `agent`: run one prompt on an ACP agent over stdio (e.g. `gemini -- --acp`). Each permission request becomes an ask (`tasks/asks/perm-*.md`); nothing is auto-allowed. The agent gets an allow-listed environment, never Stack tokens. `agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]` (default 600 s; put `--` before an agent argument that starts with `--`)
 - `agents`: agents per project folder. `agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`
