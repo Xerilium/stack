@@ -3,7 +3,8 @@ import { createServer } from 'http';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { run } from '../../src/cli/run';
+import { PassThrough } from 'stream';
+import { readStdin, run } from '../../src/cli/run';
 import { writeHostFile } from '../../src/core/reports';
 
 const tmp = (p: string) => mkdtempSync(join(tmpdir(), p));
@@ -42,7 +43,7 @@ describe('stack report', () => {
     writeFileSync(join(cwd, 'r.json'), JSON.stringify({ top: [{ text: 'Next' }] }));
     const r = await stack(null, 'report', '--agent', 'xe-cos', '--project', 'stack', '--file', join(cwd, 'r.json'), '--json');
     expect(r.code).toBe(0);
-    expect(JSON.parse(r.out)).toEqual({ ok: true, via: 'store', agent: 'xe-cos', project: 'stack', created: false, asks: { put: [], dropped: ['rp.xe-cos.stack.pr-12'] } });
+    expect(JSON.parse(r.out)).toEqual({ ok: true, via: 'store', agent: 'xe-cos', project: 'stack', created: false, asks: { put: [], dropped: ['rp.xe-cos.stack.pr-12'], answers: {} } });
     expect(stored().reports['xe-cos/stack'].top).toEqual([{ text: 'Next' }]);
   });
 
@@ -53,7 +54,7 @@ describe('stack report', () => {
       let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
         const body = JSON.parse(b); seen.push({ url: req.url, method: req.method, body });
         if (body.top?.[0]?.text === 'bad') { res.writeHead(400, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'bad_request', message: 'Validation failed', details: [{ field: 'top[0].text', message: 'x' }] } })); return; }
-        res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ agent: body.agent, project: body.project, created: true, asks: { put: ['rp.a.p.pr-12'], dropped: [] } }));
+        res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ agent: body.agent, project: body.project, created: true, asks: { put: ['rp.a.p.pr-12'], dropped: [], answers: {} } }));
       });
     });
     await new Promise<void>((ok) => srv.listen(0, '127.0.0.1', ok));
@@ -81,6 +82,14 @@ describe('stack report', () => {
       const r = await stack(JSON.stringify(REPORT), 'report', '--agent', 'a', '--project', 'p');
       expect(r).toMatchObject({ code: 0, out: 'report a/p: 1 asks, 0 dropped (store)\n' });
     } finally { await new Promise((ok) => srv.close(ok)); }
+  });
+
+  // @req FR:status-ingest/cli.report
+  it('reads stdin to its end, and treats an open pipe that stays silent as no input', async () => {
+    const ended = new PassThrough(); setTimeout(() => { ended.write('{"a":'); ended.end('1}'); }, 10);
+    expect(await readStdin(ended, 1000)).toBe('{"a":1}');
+    expect(await readStdin(new PassThrough(), 30)).toBeNull();
+    expect(await readStdin(Object.assign(new PassThrough(), { isTTY: true }), 30)).toBeNull();
   });
 
   it('exits 2 on bad input and names every issue; nothing is written', async () => {

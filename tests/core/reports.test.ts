@@ -69,7 +69,7 @@ describe('ReportStore', () => {
   it('stores the report in <home>/reports.json with each ask key; nothing goes to a repo', async () => {
     const s = store();
     const r = await s.put({ agent: 'xe-cos', project: 'stack', ...BODY });
-    expect(r).toEqual({ agent: 'xe-cos', project: 'stack', created: true, asks: { put: ['rp.xe-cos.stack.pr-12'], dropped: [] } });
+    expect(r).toEqual({ agent: 'xe-cos', project: 'stack', created: true, asks: { put: ['rp.xe-cos.stack.pr-12'], dropped: [], answers: {} } });
     const raw = JSON.parse(readFileSync(join(s.dir, 'reports.json'), 'utf8'));
     expect(raw.reports['xe-cos/stack']).toMatchObject({ agent: 'xe-cos', project: 'stack', at: NOW.toISOString(), top: BODY.top, asks: [{ ...ASK, kind: 'answer', key: 'rp.xe-cos.stack.pr-12' }] });
     expect(raw.reports['xe-cos/stack'].writer).toBeUndefined(); // only a token claims a pair
@@ -92,7 +92,7 @@ describe('ReportStore', () => {
     await s.answer('rp.xe-cos.stack.pr-12', { choice: 'reply', text: 'Wait for CI' });
     await s.answer('rp.xe-cos.stack.other', { choice: 'go' });
     const r = await s.put({ agent: 'xe-cos', project: 'stack', top: [{ text: 'New top' }], asks: [{ ...ASK, ask: 'Approve PR 12 now' }] });
-    expect(r).toEqual({ agent: 'xe-cos', project: 'stack', created: false, asks: { put: ['rp.xe-cos.stack.pr-12'], dropped: ['rp.xe-cos.stack.other'] } });
+    expect(r).toEqual({ agent: 'xe-cos', project: 'stack', created: false, asks: { put: ['rp.xe-cos.stack.pr-12'], dropped: ['rp.xe-cos.stack.other'], answers: { 'rp.xe-cos.stack.pr-12': { choice: 'reply', text: 'Wait for CI', at: NOW.toISOString() } } } });
     const all = s.list();
     const xe = all.find((x) => x.agent === 'xe-cos')!;
     expect(xe).toMatchObject({ top: [{ text: 'New top' }], blockers: [] });

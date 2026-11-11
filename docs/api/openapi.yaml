@@ -1211,6 +1211,24 @@ paths:
                         type: array
                         items:
                           type: string
+                      answers:
+                        type: object
+                        description: "Owner answers on the kept asks, by ask key: {choice, text?, until?, at}"
+                        additionalProperties:
+                          type: object
+                          properties:
+                            choice:
+                              type: string
+                              enum:
+                                - go
+                                - defer
+                                - reply
+                            text:
+                              type: string
+                            until:
+                              type: string
+                            at:
+                              type: string
         default:
           $ref: "#/components/responses/Error"
   /inbox-items:

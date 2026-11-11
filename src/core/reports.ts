@@ -26,7 +26,7 @@ export interface ReportAsk {
 export interface ReportInput { agent: string; project: string; top: ReportItem[]; asks: ReportAsk[]; blockers: ReportItem[]; progress: ReportItem[] }
 /** One stored report. @req FR:status-ingest/$report */
 export interface Report extends Omit<ReportInput, 'asks'> { at: string; writer?: string; asks: (ReportAsk & { key: string; answer?: NeedAnswer })[] }
-export interface ReportResult { agent: string; project: string; created: boolean; asks: { put: string[]; dropped: string[] } }
+export interface ReportResult { agent: string; project: string; created: boolean; asks: { put: string[]; dropped: string[]; answers: Record<string, NeedAnswer> } }
 export interface Issue { field: string; message: string }
 
 /** A report that fails the schema; `issues` lists every problem. */
@@ -210,7 +210,9 @@ export class ReportStore {
       const writer = prior?.writer ?? opts.writer;
       data.reports[pair] = { ...r, asks, at: (this.o.now ?? (() => new Date()))().toISOString(), ...(writer ? { writer } : {}) };
       this.write(data);
-      return { agent: r.agent, project: r.project, created: !prior, asks: { put: asks.map((a) => a.key), dropped } };
+      // The owner's answers on the kept asks go back to the agent, so it acts without another read. @req FR:status-ingest/asks.result
+      const back = Object.fromEntries(asks.filter((a) => a.answer).map((a) => [a.key, a.answer!]));
+      return { agent: r.agent, project: r.project, created: !prior, asks: { put: asks.map((a) => a.key), dropped, answers: back } };
     });
   }
 

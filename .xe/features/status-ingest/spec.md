@@ -49,9 +49,9 @@ The owner needs only the latest status from each agent, kept off git, so that ol
 
 ### FR:asks: Asks on the owner
 
-- **FR:asks.key** (P1): Each ask has key `rp.<agent>.<project>.<id>`. Sending the same `id` again updates that ask
+- **FR:asks.key** (P1): Each ask has key `rp.<agent>.<project>.<id>`. The `id` names one item: sending the same `id` again updates that ask; a new item needs a new `id`
 - **FR:asks.answer.keep** (P1): The owner's answer on an ask is kept when the next report lists the same `id`. An ask the next report drops is removed with its answer
-- **FR:asks.result** (P1): The result is `{agent, project, created, asks: {put, dropped}}`; `created` is true for the first report of that pair; `dropped` lists keys of the prior report that the new one does not list
+- **FR:asks.result** (P1): The result is `{agent, project, created, asks: {put, dropped, answers}}`; `created` is true for the first report of that pair; `dropped` lists keys of the prior report that the new one does not list; `answers` maps each kept ask key to the owner's answer, so the agent reads answers from its next report
 
 ### FR:needs: Needs you
 
@@ -71,7 +71,7 @@ The owner needs report asks in **Needs you** so that there is one list, read fro
 
 ### FR:cli: CLI
 
-- **FR:cli.report** (P1): `stack report --agent <name> --project <p> [--file <path>] [--json]` reads the report JSON from `--file`, or from stdin when no file is given. It needs no content repo. It prints `report <agent>/<project>: <n> asks, <m> dropped (host|store)` (or the result plus `via` with `--json`)
+- **FR:cli.report** (P1): `stack report --agent <name> --project <p> [--file <path>] [--json]` reads the report JSON from `--file`, or from stdin when no file is given (an open pipe that sends nothing for 5 s counts as no input). It needs no content repo. It prints `report <agent>/<project>: <n> asks, <m> dropped (host|store)` (or the result plus `via` with `--json`)
 - **FR:cli.host** (P1): When `host.json` names a running process (its `pid`) whose url answers as a Stack host, the CLI posts the report to `<url>/api/reports` and does not write the store itself. A host `400` is exit 2 with the host's issues; another Stack error (not `404`) fails
 - **FR:cli.direct** (P1): When there is no `host.json`, its pid is not running, nothing answers, the host has no store (`404`), or the answer is not from Stack, the CLI writes the store directly under the single-writer lock
 - **FR:cli.errors** (P1): Missing `--agent` or `--project`, no input (stdin is a terminal and no `--file`), a file that cannot be read, input that is not JSON, a body whose `agent` or `project` differs from the flags, or a body that fails the schema exits with code 2 and names every issue

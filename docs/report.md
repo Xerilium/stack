@@ -47,7 +47,9 @@ stack report --agent <name> --project <p> [--file report.json] [--json] < report
 - `asks`: at most 10. Required: `id` (`[a-z0-9][a-z0-9-]{0,23}`, unique), `ask` (1-200), `link` (`https`), `by` (ISO date or date-time). Optional: `kind` (`approve`, `review`, `go-do`, `answer`; default `answer`), `recommend`, `why`, `default`, `priority` (`crit`, `high`, `normal`, `low`).
 - `agent` and `project`: `[a-z0-9][a-z0-9-]{0,23}`. Unknown keys, line breaks, and control characters are rejected.
 - Each ask shows in Needs you as `rp.<agent>.<project>.<id>`. Send the same `id` to update it; the owner's answer is kept.
-- A new report replaces the prior one. An ask the new report drops leaves Needs you.
+- A new report replaces the prior one. An ask the new report drops leaves Needs you. Send `{}` for the pair to clear it.
+- An `id` names one item. Use a new `id` for a new item, or it inherits the owner's answer on the old one.
+- The result's `asks.answers` maps each kept ask key to the owner's answer (`{choice, text?, until?, at}`); read it with `--json` and act.
 - On a host with token auth, the first token to write a pair owns it; another token gets `403`. The desktop host treats loopback callers as the owner, so this rule does not apply there.
 - `--agent`/`--project` must match `agent`/`project` in the body when the body has them.
 - Stored in `~/.stack/reports.json` (`STACK_HOME` overrides `~/.stack`). Never in git.

@@ -236,7 +236,7 @@ const DOCS: Record<string, RouteDoc> = {
       type: 'object',
       properties: {
         agent: { type: 'string' }, project: { type: 'string' }, created: { type: 'boolean' },
-        asks: { type: 'object', properties: { put: { type: 'array', items: { type: 'string' } }, dropped: { type: 'array', items: { type: 'string' } } } },
+        asks: { type: 'object', properties: { put: { type: 'array', items: { type: 'string' } }, dropped: { type: 'array', items: { type: 'string' } }, answers: { type: 'object', description: 'Owner answers on the kept asks, by ask key: {choice, text?, until?, at}', additionalProperties: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string' } } } } } },
       },
     }),
   },

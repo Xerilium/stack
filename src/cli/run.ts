@@ -37,12 +37,19 @@ import { homedir } from 'os';
 /** `in` reads all of stdin; `null` means no piped input (a terminal). */
 export interface IO { out(s: string): void; err(s: string): void; in?: () => Promise<string | null> }
 
-/** All of stdin, or `null` when stdin is a terminal. */
-async function readStdin(): Promise<string | null> {
-  if (process.stdin.isTTY) return null;
-  const chunks: Buffer[] = [];
-  for await (const c of process.stdin) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
-  return Buffer.concat(chunks).toString('utf8');
+/** All of stdin, or `null` when stdin is a terminal or an open pipe sends nothing for `idleMs` (an agent shell that never closes stdin). */
+export async function readStdin(stdin: NodeJS.ReadableStream & { isTTY?: boolean } = process.stdin, idleMs = 5000): Promise<string | null> {
+  if (stdin.isTTY) return null;
+  return new Promise((ok, fail) => {
+    const chunks: Buffer[] = [];
+    let timer: NodeJS.Timeout | undefined;
+    const done = (v: string | null) => { if (timer) clearTimeout(timer); stdin.removeListener('data', onData); stdin.removeListener('end', onEnd); stdin.removeListener('error', fail); stdin.pause(); ok(v); };
+    const arm = () => { if (timer) clearTimeout(timer); timer = setTimeout(() => done(chunks.length ? Buffer.concat(chunks).toString('utf8') : null), idleMs); };
+    const onData = (c: Buffer | string) => { chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)); arm(); };
+    const onEnd = () => done(Buffer.concat(chunks).toString('utf8'));
+    stdin.on('data', onData); stdin.once('end', onEnd); stdin.once('error', fail);
+    arm();
+  });
 }
 
 /** Exit codes. @req FR:cli/out.codes */
@@ -326,15 +333,16 @@ async function reportCmd(p: ReturnType<typeof parseArgs>, input: () => Promise<s
     let res: Response | undefined;
     try { res = await fetch(`${host.url}/api/reports`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(full), signal: AbortSignal.timeout(5000) }); } catch { res = undefined; } // no host listening: write the store directly
     if (res) {
-      const j = await res.json().catch(() => null) as { asks?: { put?: unknown; dropped?: unknown }; error?: { code?: string; message?: string; details?: { field: string; message: string }[] } } | null;
+      const j = await res.json().catch(() => null) as { asks?: { put?: unknown; dropped?: unknown; answers?: unknown }; error?: { code?: string; message?: string; details?: { field: string; message: string }[] } } | null;
       if (res.status === 400 && Array.isArray(j?.error?.details)) throw new ReportInvalid(j.error.details);
-      if (res.ok && Array.isArray(j?.asks?.put) && Array.isArray(j?.asks?.dropped)) { r = j as Awaited<ReturnType<ReportStore['put']>>; via = 'host'; }
+      if (res.ok && Array.isArray(j?.asks?.put) && Array.isArray(j?.asks?.dropped) && typeof j?.asks?.answers === 'object') { r = j as Awaited<ReturnType<ReportStore['put']>>; via = 'host'; }
       // A Stack error other than 404 (no store) is the host's answer; anything else is not a Stack host: write the store directly.
       else if (j?.error?.code && res.status !== 404) throw new StorageError(`host refused the report (${res.status}): ${j.error.message ?? 'error'}`);
     }
   }
   r ??= await new ReportStore(home).put(full);
-  return { json: { ok: true, via, ...r }, text: `report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped (${via})` };
+  const answered = Object.keys(r.asks.answers ?? {}).length;
+  return { json: { ok: true, via, ...r }, text: `report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped${answered ? `, ${answered} answered (see --json)` : ''} (${via})` };
 }
 
 /** A core ref as the api writes it (`<project>:<line>`, 0-based). */

@@ -43,7 +43,7 @@ describe('POST /reports', () => {
   it('a token stores the report in the live store, not the content repo', async () => {
     const { call, mint, storage, reports } = await mk();
     const r = await call(await mint('xe-cos', 'tasks:write'), BODY);
-    expect(r).toEqual({ status: 200, json: { agent: 'xe-cos', project: 'stack', created: true, asks: { put: ['rp.xe-cos.stack.pr-12'], dropped: [] } } });
+    expect(r).toEqual({ status: 200, json: { agent: 'xe-cos', project: 'stack', created: true, asks: { put: ['rp.xe-cos.stack.pr-12'], dropped: [], answers: {} } } });
     expect(reports!.list()[0]).toMatchObject({ agent: 'xe-cos', writer: 'token:xe-cos', top: [{ text: 'Ship it' }] });
     expect(await storage.list()).toEqual([]);
     expect(await storage.listAsks()).toEqual([]);
