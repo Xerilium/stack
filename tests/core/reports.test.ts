@@ -151,7 +151,7 @@ describe('ReportStore', () => {
   });
 
   // @req FR:status-ingest/store.lock @req FR:status-ingest/store.atomic
-  it('one writer at a time: a held lock waits then fails busy; a stale lock is taken over; no temp files remain', async () => {
+  it('one writer at a time: a held lock waits then fails busy; a stale lock is taken over by one waiter; no temp files remain', async () => {
     const dir = home();
     writeFileSync(join(dir, 'reports.lock'), '');
     await expect(new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' })).rejects.toBeInstanceOf(ReportBusy);
@@ -159,6 +159,9 @@ describe('ReportStore', () => {
     writeFileSync(join(dir, 'reports.lock'), String(process.pid)); utimesSync(join(dir, 'reports.lock'), old, old);
     await expect(new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' })).rejects.toBeInstanceOf(ReportBusy); // old but its writer lives
     writeFileSync(join(dir, 'reports.lock'), '999999999'); // fresh, but its writer is gone: freed at once
+    writeFileSync(join(dir, 'reports.lock'), '999999999'); writeFileSync(join(dir, 'reports.lock.takeover'), ''); // another waiter is taking it over: do not race it
+    await expect(new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' })).rejects.toBeInstanceOf(ReportBusy);
+    utimesSync(join(dir, 'reports.lock.takeover'), old, old); // a takeover guard left by a crash is cleared
     await new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' });
     const s = new ReportStore(dir);
     await Promise.all(['b', 'c', 'd', 'e'].map((agent) => s.put({ agent, project: 'p' })));

@@ -175,7 +175,7 @@ export class ReportStore {
    */
   onWrite(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
 
-  /** Runs `fn` while holding the lock file (it holds the writer's pid). A lock older than `staleMs` whose writer is gone is taken over. */
+  /** Runs `fn` while holding the lock file (it holds the writer's pid). A stale lock is taken over (see `takeOver`). */
   private async locked<T>(fn: () => T): Promise<T> {
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     const deadline = Date.now() + (this.o.lockWaitMs ?? 5000);
@@ -183,16 +183,35 @@ export class ReportStore {
       try { const fd = openSync(this.lockFile, 'wx'); try { writeSync(fd, String(process.pid)); } finally { closeSync(fd); } break; } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
         try {
-          // A live writer's lock is never taken. A named writer that is gone frees it at once; a lock with no pid yet (being written) only after staleMs.
-          const pid = Number(readFileSync(this.lockFile, 'utf8'));
-          const old = Date.now() - statSync(this.lockFile).mtimeMs > (this.o.staleMs ?? 30_000);
-          if (pid > 0 ? !pidAlive(pid) : old) { unlinkSync(this.lockFile); continue; }
+          if (this.takeOver()) continue;
         } catch (err) { if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue; throw err; }
         if (Date.now() > deadline) throw new ReportBusy('Report store is busy (reports.lock); try again');
         await sleep(25);
       }
     }
     try { return fn(); } finally { try { unlinkSync(this.lockFile); } catch { /* already gone */ } }
+  }
+
+  /**
+   * Removes a stale lock; true when it did. A live writer's lock is never taken. A named writer that is gone frees it at once;
+   * a lock with no pid yet (being written) only after staleMs. One remover at a time holds `reports.lock.takeover`, and it
+   * checks the lock again inside, so two waiters that both saw the same stale lock never remove a fresh lock.
+   */
+  private takeOver(): boolean {
+    const guard = `${this.lockFile}.takeover`;
+    try { closeSync(openSync(guard, 'wx')); } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      // The guard is held for microseconds; one left by a crash is cleared after a second.
+      try { if (Date.now() - statSync(guard).mtimeMs > 1000) unlinkSync(guard); } catch (g) { if ((g as NodeJS.ErrnoException).code !== 'ENOENT') throw g; }
+      return false;
+    }
+    try {
+      const pid = Number(readFileSync(this.lockFile, 'utf8'));
+      const old = Date.now() - statSync(this.lockFile).mtimeMs > (this.o.staleMs ?? 30_000);
+      if (pid > 0 ? pidAlive(pid) : !old) return false;
+      unlinkSync(this.lockFile);
+      return true;
+    } finally { try { unlinkSync(guard); } catch { /* already gone */ } }
   }
 
   /** Every stored report, newest first; none for a missing or broken file. @req FR:status-ingest/store.read */
