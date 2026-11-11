@@ -50,6 +50,9 @@ describe('links and safety', () => {
     expect(i.link).toBeUndefined();
     expect(i.subject.length).toBeLessThanOrEqual(300);
     expect(byKind('mention').subject).not.toMatch(/[<>]/);
+    const [s] = githubItems([{ ...fx[0], id: '10', subject: { title: 'Leak: token ghp_abc123def456ghi', url: null } }], 'octo');
+    expect(s.subject).not.toContain('ghp_abc123');
+    expect(s.summary).not.toContain('ghp_abc123');
   });
 });
 

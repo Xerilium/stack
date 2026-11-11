@@ -2,6 +2,7 @@
 import { execFile } from 'child_process';
 import { createHash } from 'crypto';
 import { oneLine } from '../../core/asks';
+import { redact } from '../../core/triage';
 import type { ActionId, InboxItem } from '../types';
 
 export type GhSignal = 'reply' | 'mention' | 'approval' | 'fyi';
@@ -49,8 +50,8 @@ export function githubItems(notes: GhNotification[], account = 'github'): Github
   for (const n of notes) {
     if (!n?.id || n.unread === false) continue;
     const { signal, kind } = githubSignal(n);
-    const repo = clip(oneLine(n.repository?.full_name ?? 'GitHub'), 120);
-    const title = clip(oneLine(n.subject?.title ?? '(no title)'), 300);
+    const repo = clip(oneLine(redact(n.repository?.full_name ?? 'GitHub')), 120);
+    const title = clip(oneLine(redact(n.subject?.title ?? '(no title)')), 300);
     const link = webLink(n, kind);
     const suggested = SUGGEST[signal];
     out.push({

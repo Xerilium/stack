@@ -34,6 +34,7 @@ Step 1 of `comms-connectors/build-order.md`. GitHub holds review requests, menti
 - **FR:item.shape** (P1): Each unread thread becomes one `InboxItem` with `source: 'github'`, id `gh-<hash of thread id>`, `account`, `from` = repo full name, `subject` = thread title, `receivedAt` = `updated_at`, `summary`, `link`.
 - **FR:item.link** (P1): The link is the web URL. API pull and issue URLs map to `https://github.com/<owner>/<repo>/pull|issues/<n>`. Threads without a subject URL link to the repo `actions` page for CI, else to the repo.
 - **FR:item.safe** (P1): Title and summary are one line, redacted and clipped (300 and 400 chars). A link that is not `https://github.com/` is dropped.
+- **FR:item.label** (P1): The Inbox page labels `github` items "GitHub".
 
 ### FR:conn: Connector
 
@@ -52,7 +53,6 @@ Step 1 of `comms-connectors/build-order.md`. GitHub holds review requests, menti
 - Mark read, comments, reviews, merges.
 - `Last-Modified` / `304` polling and `X-Poll-Interval`. Comes with the cursor `poll()` in build-order step 0.
 - A stored `signal` field. Step 0 adds it to `InboxItem`; `kind` carries it until then.
-- Web page label for `github`. The page shows the raw source until `web/src/inbox.ts` adds it.
 
 ## Dependencies
 
