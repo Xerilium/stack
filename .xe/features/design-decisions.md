@@ -273,4 +273,3 @@
 
 **Trade-offs**: The web AI summary section went with the Brief page (`FR:cos-view/brief.ai.web` deprecated). Keep, fold into Now, or remove the server route is an open owner call (`.xe/features/stack-app/architecture-review.md` #3).
 
-**Rejected**: Keep Brief as a second dashboard (two places to look); keep Home in the nav (same task twice).
