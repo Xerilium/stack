@@ -6,11 +6,15 @@
   "main": "dist/desktop/src/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "clean": "rm -rf dist",
-    "start": "node scripts/smoke.mjs"
+    "clean": "rm -rf dist out",
+    "start": "node scripts/smoke.mjs",
+    "package": "node scripts/package.mjs"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "devDependencies": {
+    "@electron/packager": "20.3.0",
     "@types/node": "22.20.5",
     "electron": "45.3.0",
     "typescript": "5.9.3"

@@ -13,6 +13,7 @@
     "build:host": "tsc -p host/tsconfig.json",
     "build:desktop": "tsc -p desktop/tsconfig.json",
     "desktop": "node desktop/scripts/smoke.mjs",
+    "desktop:package": "pnpm --filter @xerilium/stack-desktop package",
     "openapi": "pnpm run build:api && node dist/api/openapi-write.js",
     "bakeoff": "node dist/core/bakeoff.js",
     "clean": "rm -rf dist",
