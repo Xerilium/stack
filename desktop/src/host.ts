@@ -62,13 +62,14 @@ export async function startHost(plan: HostPlan, deps: HostDeps = {}): Promise<Ho
     label = `DEMO COPY of ${redact(repo)} - edits stay in the copy`;
   }
   log(`host: ${info.mode} ${redact(repo)}`);
-  const state = deps.stateDir ?? stackHome(process.env, plan.home);
+  // Demo never touches live state: its reports live beside the demo copy, and it publishes no host.json. @req FR:status-ingest/host.demo
+  const state = plan.live ? deps.stateDir ?? stackHome(process.env, plan.home) : join(plan.home, '.config/stack/demo-state');
   const s = await (deps.startWeb ?? startWeb)({ dir, port: 0, webDir, label, info, storage, reports: new ReportStore(state) });
   const url = `http://127.0.0.1:${new URL(s.url).port}`;
   // The port is random: `stack report` finds the host here. Best effort: a host that cannot write it still serves.
   // @req FR:status-ingest/host.file
   let removeHostFile = () => {};
-  try { removeHostFile = writeHostFile(state, { url, pid: process.pid }); } catch (e) { log(`host: cannot write ${state}/host.json (${e instanceof Error ? e.message : String(e)})`); }
+  if (plan.live) try { removeHostFile = writeHostFile(state, { url, pid: process.pid }); } catch (e) { log(`host: cannot write ${state}/host.json (${e instanceof Error ? e.message : String(e)})`); }
   let closed = false;
   return {
     url,

@@ -614,7 +614,7 @@ export const ROUTES: Route[] = [
       const name = actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor;
       try {
         if (!c.deps.reports) throw new ApiError('not_found', 'No report store on this host');
-        return json(200, await c.deps.reports.put(body, name, actor.startsWith('token:') ? { writer: `token:${name}` } : {}));
+        return json(200, await c.deps.reports.put(body, actor.startsWith('token:') ? { writer: `token:${name}` } : {}));
       } catch (e) {
         if (e instanceof ReportInvalid) throw new ApiError('bad_request', 'Validation failed', e.issues);
         throw e;

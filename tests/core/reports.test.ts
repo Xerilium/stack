@@ -51,8 +51,9 @@ describe('parseReport', () => {
       { ...ASK, id: 'dup' }, { ...ASK, id: 'dup' },
       { ...ASK, id: 'k', kind: 'decide', priority: 'urgent', options: ['a', 'b'] },
       { ...ASK, id: 'm', link: undefined },
+      { ...ASK, id: 'n', by: '2026-02-30' },
     ] }));
-    expect(bad.map((i) => i.field)).toEqual(['asks[0].id', 'asks[1].by', 'asks[3].id', 'asks[4].kind', 'asks[4].priority', 'asks[4].options', 'asks[5].link']);
+    expect(bad.map((i) => i.field)).toEqual(['asks[0].id', 'asks[1].by', 'asks[3].id', 'asks[4].kind', 'asks[4].priority', 'asks[4].options', 'asks[5].link', 'asks[6].by']);
     expect(issues(() => parseReport({ agent: 'a', project: 'p', asks: Array.from({ length: 11 }, (_, i) => ({ ...ASK, id: `a${i}` })) })).map((i) => i.field)).toEqual(['asks']);
   });
 
@@ -67,10 +68,11 @@ describe('ReportStore', () => {
   // @req FR:status-ingest/store.path @req FR:status-ingest/asks.key @req FR:status-ingest/asks.result @req FR:status-ingest/store.read
   it('stores the report in <home>/reports.json with each ask key; nothing goes to a repo', async () => {
     const s = store();
-    const r = await s.put({ agent: 'xe-cos', project: 'stack', ...BODY }, 'xe-cos');
+    const r = await s.put({ agent: 'xe-cos', project: 'stack', ...BODY });
     expect(r).toEqual({ agent: 'xe-cos', project: 'stack', created: true, asks: { put: ['rp.xe-cos.stack.pr-12'], dropped: [] } });
     const raw = JSON.parse(readFileSync(join(s.dir, 'reports.json'), 'utf8'));
-    expect(raw.reports['xe-cos/stack']).toMatchObject({ agent: 'xe-cos', project: 'stack', at: NOW.toISOString(), writer: 'xe-cos', top: BODY.top, asks: [{ ...ASK, kind: 'answer', key: 'rp.xe-cos.stack.pr-12' }] });
+    expect(raw.reports['xe-cos/stack']).toMatchObject({ agent: 'xe-cos', project: 'stack', at: NOW.toISOString(), top: BODY.top, asks: [{ ...ASK, kind: 'answer', key: 'rp.xe-cos.stack.pr-12' }] });
+    expect(raw.reports['xe-cos/stack'].writer).toBeUndefined(); // only a token claims a pair
     expect(s.list().map((x) => `${x.agent}/${x.project}`)).toEqual(['xe-cos/stack']);
     expect(existsSync(join(s.dir, 'reports.lock'))).toBe(false);
   });
@@ -85,11 +87,11 @@ describe('ReportStore', () => {
   it('the latest report replaces the prior one; answers on kept asks stay, dropped asks go', async () => {
     const s = store();
     const other = { id: 'other', ask: 'Pick a name', link: ASK.link, by: ASK.by };
-    await s.put({ agent: 'xe-cos', project: 'stack', asks: [ASK, other] }, 'xe-cos');
-    await s.put({ agent: 'allyte-cos', project: 'allyte', top: [{ text: 'Keep me' }] }, 'allyte-cos');
+    await s.put({ agent: 'xe-cos', project: 'stack', asks: [ASK, other] });
+    await s.put({ agent: 'allyte-cos', project: 'allyte', top: [{ text: 'Keep me' }] });
     await s.answer('rp.xe-cos.stack.pr-12', { choice: 'reply', text: 'Wait for CI' });
     await s.answer('rp.xe-cos.stack.other', { choice: 'go' });
-    const r = await s.put({ agent: 'xe-cos', project: 'stack', top: [{ text: 'New top' }], asks: [{ ...ASK, ask: 'Approve PR 12 now' }] }, 'xe-cos');
+    const r = await s.put({ agent: 'xe-cos', project: 'stack', top: [{ text: 'New top' }], asks: [{ ...ASK, ask: 'Approve PR 12 now' }] });
     expect(r).toEqual({ agent: 'xe-cos', project: 'stack', created: false, asks: { put: ['rp.xe-cos.stack.pr-12'], dropped: ['rp.xe-cos.stack.other'] } });
     const all = s.list();
     const xe = all.find((x) => x.agent === 'xe-cos')!;
@@ -104,8 +106,8 @@ describe('ReportStore', () => {
   // @req FR:status-ingest/needs.list
   it('needs() maps report asks to Needs you items, newest report first', async () => {
     const dir = home();
-    await store(dir).put({ agent: 'a', project: 'p', asks: [{ ...ASK, recommend: 'Approve', default: 'Waits' }] }, 'a');
-    await store(dir, new Date('2026-11-11T19:00:00Z')).put({ agent: 'b', project: 'q', asks: [{ ...ASK, id: 'x' }] }, 'b');
+    await store(dir).put({ agent: 'a', project: 'p', asks: [{ ...ASK, recommend: 'Approve', default: 'Waits' }] });
+    await store(dir, new Date('2026-11-11T19:00:00Z')).put({ agent: 'b', project: 'q', asks: [{ ...ASK, id: 'x' }] });
     expect(store(dir).needs()).toEqual([
       { id: 'rp.b.q.x', title: 'Approve PR 12', recommendation: 'Open the link and decide', link: ASK.link, project: 'q', by: ASK.by },
       { id: 'rp.a.p.pr-12', title: 'Approve PR 12', recommendation: 'Approve', default: 'Waits', link: ASK.link, project: 'p', by: ASK.by },
@@ -115,16 +117,18 @@ describe('ReportStore', () => {
   // @req FR:status-ingest/schema.errors
   it('writes nothing for an invalid body', async () => {
     const s = store();
-    await expect(s.put({ agent: 'a', project: 'p', asks: [ASK, { ...ASK, id: 'b', link: 'nope' }] }, 'a')).rejects.toBeInstanceOf(ReportInvalid);
+    await expect(s.put({ agent: 'a', project: 'p', asks: [ASK, { ...ASK, id: 'b', link: 'nope' }] })).rejects.toBeInstanceOf(ReportInvalid);
     expect(existsSync(join(s.dir, 'reports.json'))).toBe(false);
   });
 
   // @req FR:status-ingest/auth.writer
-  it('a token writes only pairs it owns; the owner writes any pair and the first writer keeps it', async () => {
+  it('a token writes only pairs it owns; the owner writes any pair and the first token keeps it', async () => {
     const s = store();
-    await s.put({ agent: 'a', project: 'p', asks: [ASK] }, 'cos', { writer: 'token:cos' });
-    await expect(s.put({ agent: 'a', project: 'p' }, 'evil', { writer: 'token:evil' })).rejects.toBeInstanceOf(ReportDenied);
-    await expect(s.put({ agent: 'a', project: 'p' }, 'owner')).resolves.toMatchObject({ created: false });
+    await s.put({ agent: 'z', project: 'p' });
+    await expect(s.put({ agent: 'z', project: 'p' }, { writer: 'token:cos' })).resolves.toMatchObject({ created: false }); // an unclaimed pair
+    await s.put({ agent: 'a', project: 'p', asks: [ASK] }, { writer: 'token:cos' });
+    await expect(s.put({ agent: 'a', project: 'p' }, { writer: 'token:evil' })).rejects.toBeInstanceOf(ReportDenied);
+    await expect(s.put({ agent: 'a', project: 'p' })).resolves.toMatchObject({ created: false });
     expect(s.list()[0].writer).toBe('token:cos');
   });
 
@@ -135,15 +139,28 @@ describe('ReportStore', () => {
     expect(store(dir).list()).toEqual([]);
   });
 
+  // @req FR:status-ingest/store.broken
+  it('a write moves a broken file aside instead of overwriting it silently', async () => {
+    const dir = home(); writeFileSync(join(dir, 'reports.json'), '{oops');
+    await store(dir).put({ agent: 'a', project: 'p' });
+    const aside = readdirSync(dir).filter((n) => n.startsWith('reports.json.broken-'));
+    expect(aside).toHaveLength(1);
+    expect(readFileSync(join(dir, aside[0]), 'utf8')).toBe('{oops');
+    expect(store(dir).list().map((x) => x.agent)).toEqual(['a']);
+  });
+
   // @req FR:status-ingest/store.lock @req FR:status-ingest/store.atomic
   it('one writer at a time: a held lock waits then fails busy; a stale lock is taken over; no temp files remain', async () => {
     const dir = home();
     writeFileSync(join(dir, 'reports.lock'), '');
-    await expect(new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' }, 'a')).rejects.toBeInstanceOf(ReportBusy);
-    const old = new Date(Date.now() - 60_000); utimesSync(join(dir, 'reports.lock'), old, old);
-    await new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' }, 'a');
+    await expect(new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' })).rejects.toBeInstanceOf(ReportBusy);
+    const old = new Date(Date.now() - 60_000);
+    writeFileSync(join(dir, 'reports.lock'), String(process.pid)); utimesSync(join(dir, 'reports.lock'), old, old);
+    await expect(new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' })).rejects.toBeInstanceOf(ReportBusy); // old but its writer lives
+    writeFileSync(join(dir, 'reports.lock'), '999999999'); utimesSync(join(dir, 'reports.lock'), old, old);
+    await new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' });
     const s = new ReportStore(dir);
-    await Promise.all(['b', 'c', 'd', 'e'].map((agent) => s.put({ agent, project: 'p' }, agent)));
+    await Promise.all(['b', 'c', 'd', 'e'].map((agent) => s.put({ agent, project: 'p' })));
     expect(s.list().map((x) => x.agent).sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
     expect(readdirSync(dir).sort()).toEqual(['reports.json']);
   });

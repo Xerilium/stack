@@ -70,6 +70,19 @@ describe('stack report', () => {
     } finally { await new Promise((ok) => srv.close(ok)); }
   });
 
+  // @req FR:status-ingest/cli.direct
+  it('a host.json whose process is gone, or a port that is not a Stack host, falls back to the store', async () => {
+    writeHostFile(home, { url: 'http://127.0.0.1:9', pid: 999999999 });
+    expect((await stack(JSON.stringify(REPORT), 'report', '--agent', 'a', '--project', 'p')).out).toContain('(store)');
+    const srv = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html>other app</html>'); });
+    await new Promise<void>((ok) => srv.listen(0, '127.0.0.1', ok));
+    try {
+      writeHostFile(home, { url: `http://127.0.0.1:${(srv.address() as { port: number }).port}`, pid: process.pid });
+      const r = await stack(JSON.stringify(REPORT), 'report', '--agent', 'a', '--project', 'p');
+      expect(r).toMatchObject({ code: 0, out: 'report a/p: 1 asks, 0 dropped (store)\n' });
+    } finally { await new Promise((ok) => srv.close(ok)); }
+  });
+
   it('exits 2 on bad input and names every issue; nothing is written', async () => {
     const bad = await stack(JSON.stringify({ top: [{ text: '' }], asks: [{ id: 'x', ask: 'y' }], extra: 1 }), 'report', '--agent', 'a', '--project', 'p');
     expect(bad.code).toBe(2);
@@ -86,6 +99,7 @@ describe('stack report', () => {
     expect((await stack('{}', 'report', '--agent', 'Bad', '--project', 'p')).code).toBe(2);
     expect((await stack(null, 'report', '--agent', 'a', '--project', 'p', '--file', join(cwd, 'missing.json'))).code).toBe(2);
     expect((await stack('{}', 'report', 'extra-arg', '--agent', 'a', '--project', 'p')).code).toBe(2);
+    expect((await stack('{"agent":"other"}', 'report', '--agent', 'a', '--project', 'p')).err).toContain('does not match --agent');
     expect(existsSync(join(home, 'reports.json'))).toBe(false);
   });
 });

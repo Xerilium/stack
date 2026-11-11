@@ -13,7 +13,7 @@ import {
   explainAutopri, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
-import { readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
+import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
 import { replyFromAgent } from '../core/inbox';
 import { registerAutopriEngine } from '../core/autopri';
@@ -311,22 +311,29 @@ async function reportCmd(p: ReturnType<typeof parseArgs>, input: () => Promise<s
   let body: unknown;
   try { body = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { throw new UsageError('report input is not valid JSON'); }
   if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new UsageError('report input must be a JSON object');
+  // The flags name the pair; a body that names another pair is a mistake, not something to overwrite silently.
+  for (const [k, v] of [['agent', agent], ['project', project]] as const) {
+    const b = (body as Record<string, unknown>)[k];
+    if (b !== undefined && b !== v) throw new UsageError(`report body ${k} "${String(b)}" does not match --${k} ${v}`);
+  }
   const full = { ...body, agent, project };
   const home = stackHome();
   const host = readHostFile(home);
   let r: Awaited<ReturnType<ReportStore['put']>> | undefined;
   let via: 'host' | 'store' = 'store';
-  if (host) {
+  // A host.json whose process is gone is stale (crash, or the port now belongs to something else).
+  if (host && pidAlive(host.pid)) {
     let res: Response | undefined;
     try { res = await fetch(`${host.url}/api/reports`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(full), signal: AbortSignal.timeout(5000) }); } catch { res = undefined; } // no host listening: write the store directly
     if (res) {
-      const j = await res.json().catch(() => ({})) as { error?: { message?: string; details?: { field: string; message: string }[] } };
-      if (res.status === 400 && j.error?.details) throw new ReportInvalid(j.error.details);
-      if (!res.ok) throw new StorageError(`host refused the report (${res.status}): ${j.error?.message ?? 'error'}`);
-      r = j as Awaited<ReturnType<ReportStore['put']>>; via = 'host';
+      const j = await res.json().catch(() => null) as { asks?: { put?: unknown; dropped?: unknown }; error?: { code?: string; message?: string; details?: { field: string; message: string }[] } } | null;
+      if (res.status === 400 && Array.isArray(j?.error?.details)) throw new ReportInvalid(j.error.details);
+      if (res.ok && Array.isArray(j?.asks?.put) && Array.isArray(j?.asks?.dropped)) { r = j as Awaited<ReturnType<ReportStore['put']>>; via = 'host'; }
+      // A Stack error other than 404 (no store) is the host's answer; anything else is not a Stack host: write the store directly.
+      else if (j?.error?.code && res.status !== 404) throw new StorageError(`host refused the report (${res.status}): ${j.error.message ?? 'error'}`);
     }
   }
-  r ??= await new ReportStore(home).put(full, agent);
+  r ??= await new ReportStore(home).put(full);
   return { json: { ok: true, via, ...r }, text: `report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped (${via})` };
 }
 
@@ -574,7 +581,8 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
   }
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
-  const s = await startWeb({ dir: target, port, webDir, label, info, storage });
+  // Demo never touches live state (~/.stack): its reports stay beside the demo copy. @req FR:status-ingest/host.demo
+  const s = await startWeb({ dir: target, port, webDir, label, info, storage, ...(live ? {} : { reports: new ReportStore(join(home, '.config/stack/demo-state')) }) });
   io.out(`Stack web: ${s.url}  (data: ${target}; Ctrl+C to stop)\n`);
   await new Promise<void>((ok) => { process.once('SIGINT', ok); process.once('SIGTERM', ok); });
   await s.close();

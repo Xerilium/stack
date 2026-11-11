@@ -31,7 +31,7 @@ An agent needs a strict schema so that a bad report is rejected before anything 
 
 - **FR:schema.body** (P1): A report body is a JSON object with only the keys `agent`, `project`, `top`, `asks`, `blockers`, `progress` (lists optional, default empty). Any other key is rejected (@req FR:$report)
 - **FR:schema.items** (P1): `top` has at most 3 items; `blockers` and `progress` have at most 10. Each item is `{text, link?}`: `text` is one line of 1-200 characters; `link` is an `https` url of at most 2000 characters. Any other key is rejected
-- **FR:schema.asks** (P1): `asks` has at most 10 items. Each is `{id, ask, link, by, kind?, recommend?, why?, default?, priority?}`. `id` matches `[a-z0-9][a-z0-9-]{0,23}` and is unique in the report. `ask` is one line of 1-200 characters. `link` (`https` url) and `by` (ISO date or date-time) are required. `kind` is `approve`, `review`, `go-do` or `answer` (default `answer`). `recommend` and `default` are one line of at most 200 characters, `why` at most 500. `priority` is `crit`, `high`, `normal` or `low`. Any other key is rejected
+- **FR:schema.asks** (P1): `asks` has at most 10 items. Each is `{id, ask, link, by, kind?, recommend?, why?, default?, priority?}`. `id` matches `[a-z0-9][a-z0-9-]{0,23}` and is unique in the report. `ask` is one line of 1-200 characters. `link` (`https` url) and `by` (ISO date or date-time on a real calendar date) are required. `kind` is `approve`, `review`, `go-do` or `answer` (default `answer`). `recommend` and `default` are one line of at most 200 characters, `why` at most 500. `priority` is `crit`, `high`, `normal` or `low`. Any other key is rejected
 - **FR:schema.names** (P1): `agent` and `project` match `[a-z0-9][a-z0-9-]{0,23}`
 - **FR:schema.text** (P1): A text field with a control character, a line break, or an invisible format character is rejected, not cleaned
 - **FR:schema.errors** (P1): `parseReport` MUST check the whole body and throw one `ReportInvalid` that lists every issue as `{field, message}` (for example `asks[0].link`). Nothing is written when the body is invalid
@@ -40,9 +40,10 @@ An agent needs a strict schema so that a bad report is rejected before anything 
 
 The owner needs only the latest status from each agent, kept off git, so that old reports never pile up and the repo holds only durable docs.
 
-- **FR:store.path** (P1): Reports live in `<home>/reports.json`, where `<home>` is `STACK_HOME` or `~/.stack`, as `{ "reports": { "<agent>/<project>": Report } }`. Each stored report adds `agent`, `project`, `at` (ISO time Stack wrote it) and `writer`, and each ask its `key`. Nothing is written to the content repo
+- **FR:store.path** (P1): Reports live in `<home>/reports.json`, where `<home>` is `STACK_HOME` or `~/.stack`, as `{ "reports": { "<agent>/<project>": Report } }`. Each stored report adds `agent`, `project`, `at` (ISO time Stack wrote it) and, for a token caller, `writer`, and each ask its `key`. Nothing is written to the content repo
 - **FR:store.atomic** (P1): Every write goes to a temp file in the same folder, then is renamed over `reports.json`, so a reader never sees a partial file
-- **FR:store.lock** (P1): One writer at a time holds `<home>/reports.lock` (created exclusively). Another writer waits up to 5 s, then fails `busy` (API `409`). A lock older than 30 s (a crashed writer) is taken over
+- **FR:store.lock** (P1): One writer at a time holds `<home>/reports.lock` (created exclusively, holding the writer's pid). Another writer waits up to 5 s, then fails `busy` (API `409`). A lock older than 30 s whose pid is not running (a crashed writer) is taken over; a live writer's lock is never taken
+- **FR:store.broken** (P2): A write that finds `reports.json` broken moves it aside as `reports.json.broken-<ms>` before writing, so nothing is lost silently
 - **FR:store.replace** (P1): A new report for the same agent and project replaces the prior one completely. Reports for other pairs stay as written
 - **FR:store.read** (P1): `ReportStore.list()` MUST return every stored report, newest `at` first, and none for a missing or broken file
 
@@ -61,18 +62,19 @@ The owner needs report asks in **Needs you** so that there is one list, read fro
 
 ### FR:auth: Who may write
 
-- **FR:auth.writer** (P1): The first writer of an agent and project pair owns it. A token caller writes as `token:<name>`; a token that is not the stored writer gets `403 forbidden`. The owner may write any pair and the first writer keeps it
+- **FR:auth.writer** (P1): Only a token caller claims a pair: the first token (`token:<name>`) to write it is stored as `writer`, and another token gets `403 forbidden`. The owner, loopback callers (the desktop host and `stack web` treat every caller as the owner) and direct CLI writes never claim a pair and may write any pair
 
 ### FR:host: Host discovery
 
 - **FR:host.file** (P1): The desktop host serves the live store and, on start, writes `<home>/host.json` as `{url, pid}` (atomic; `url` is `http://127.0.0.1:<port>`, the port is random). On close it removes the file if it still names this host. A host that cannot write the file still serves. `readHostFile` accepts only a loopback url
+- **FR:host.demo** (P1): A demo host (desktop or `stack web`) never touches live state: its store is `~/.config/stack/demo-state` and it writes no `host.json`
 
 ### FR:cli: CLI
 
 - **FR:cli.report** (P1): `stack report --agent <name> --project <p> [--file <path>] [--json]` reads the report JSON from `--file`, or from stdin when no file is given. It needs no content repo. It prints `report <agent>/<project>: <n> asks, <m> dropped (host|store)` (or the result plus `via` with `--json`)
-- **FR:cli.host** (P1): When `host.json` names a host that answers, the CLI posts the report to `<url>/api/reports` and does not write the store itself. A host `400` is exit 2 with the host's issues
-- **FR:cli.direct** (P1): When there is no `host.json` or no host answers, the CLI writes the store directly under the single-writer lock
-- **FR:cli.errors** (P1): Missing `--agent` or `--project`, no input (stdin is a terminal and no `--file`), a file that cannot be read, input that is not JSON, or a body that fails the schema exits with code 2 and names every issue
+- **FR:cli.host** (P1): When `host.json` names a running process (its `pid`) whose url answers as a Stack host, the CLI posts the report to `<url>/api/reports` and does not write the store itself. A host `400` is exit 2 with the host's issues; another Stack error (not `404`) fails
+- **FR:cli.direct** (P1): When there is no `host.json`, its pid is not running, nothing answers, the host has no store (`404`), or the answer is not from Stack, the CLI writes the store directly under the single-writer lock
+- **FR:cli.errors** (P1): Missing `--agent` or `--project`, no input (stdin is a terminal and no `--file`), a file that cannot be read, input that is not JSON, a body whose `agent` or `project` differs from the flags, or a body that fails the schema exits with code 2 and names every issue
 
 ### FR:api: API
 
@@ -85,7 +87,7 @@ The owner needs report asks in **Needs you** so that there is one list, read fro
   - `agent` (string) — agent slug
   - `project` (string) — project slug
   - `at` (string) — ISO time Stack stored it
-  - `writer` (string) — `token:<name>`, or the CLI or owner actor
+  - `writer` (string?) — `token:<name>` of the token that claimed the pair
   - `top` (Item[]) — at most 3, most important first
   - `asks` (ReportAsk[]) — at most 10; each with its `key` and the owner's `answer` when set
   - `blockers` (Item[]) — at most 10

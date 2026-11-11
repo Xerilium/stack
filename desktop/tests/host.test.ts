@@ -88,10 +88,18 @@ describe('startHost', () => {
   it('serves the live report store and writes host.json in the Stack home; close removes it', async () => {
     const state = tmp();
     const { d, calls } = deps({ stateDir: state });
-    const h = await startHost({ repo: '/r', live: false, batchMinutes: 5, home: '/h' }, d);
+    const h = await startHost({ repo: '/r', live: true, batchMinutes: 5, home: '/h' }, d);
     expect((calls.startWeb[0] as { reports: ReportStore }).reports.dir).toBe(state);
     expect(readHostFile(state)).toEqual({ url: h.url, pid: process.pid });
     await h.close();
+    expect(existsSync(join(state, 'host.json'))).toBe(false);
+  });
+  // @req FR:status-ingest/host.demo
+  it('demo keeps reports beside the demo copy and publishes no host.json', async () => {
+    const state = tmp();
+    const { d, calls } = deps({ stateDir: state });
+    await startHost({ repo: '/r', live: false, batchMinutes: 5, home: '/h' }, d);
+    expect((calls.startWeb[0] as { reports: ReportStore }).reports.dir).toBe('/h/.config/stack/demo-state');
     expect(existsSync(join(state, 'host.json'))).toBe(false);
   });
   // @req FR:desktop-shell/host.stop

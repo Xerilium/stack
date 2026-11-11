@@ -9,7 +9,7 @@ stack report --agent <name> --project <p> [--file report.json] [--json] < report
 ```
 
 - Reads JSON from `--file`, else from stdin. Needs no content repo.
-- Posts to the running desktop host (url in `~/.stack/host.json`); if no host answers, writes the store directly under a lock.
+- Posts to the running desktop host (url and pid in `~/.stack/host.json`); if no live Stack host answers, writes the store directly under a lock. A demo host uses its own store and is never posted to.
 - Exit `0` stored, `2` bad input (every issue is named; nothing is written).
 
 ## API
@@ -48,5 +48,6 @@ stack report --agent <name> --project <p> [--file report.json] [--json] < report
 - `agent` and `project`: `[a-z0-9][a-z0-9-]{0,23}`. Unknown keys, line breaks, and control characters are rejected.
 - Each ask shows in Needs you as `rp.<agent>.<project>.<id>`. Send the same `id` to update it; the owner's answer is kept.
 - A new report replaces the prior one. An ask the new report drops leaves Needs you.
-- The first writer of an agent and project pair owns it; another token gets `403`.
+- On a host with token auth, the first token to write a pair owns it; another token gets `403`. The desktop host treats loopback callers as the owner, so this rule does not apply there.
+- `--agent`/`--project` must match `agent`/`project` in the body when the body has them.
 - Stored in `~/.stack/reports.json` (`STACK_HOME` overrides `~/.stack`). Never in git.

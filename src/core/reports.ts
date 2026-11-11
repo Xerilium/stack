@@ -3,7 +3,7 @@
  * store under ~/.stack (live state, never git). Their asks are shown in Needs you. No LLM call.
  * @req FR:status-ingest/$report
  */
-import { closeSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import { closeSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { AskKind, AskPriority } from './asks';
@@ -25,7 +25,7 @@ export interface ReportAsk {
 }
 export interface ReportInput { agent: string; project: string; top: ReportItem[]; asks: ReportAsk[]; blockers: ReportItem[]; progress: ReportItem[] }
 /** One stored report. @req FR:status-ingest/$report */
-export interface Report extends Omit<ReportInput, 'asks'> { at: string; writer: string; asks: (ReportAsk & { key: string; answer?: NeedAnswer })[] }
+export interface Report extends Omit<ReportInput, 'asks'> { at: string; writer?: string; asks: (ReportAsk & { key: string; answer?: NeedAnswer })[] }
 export interface ReportResult { agent: string; project: string; created: boolean; asks: { put: string[]; dropped: string[] } }
 export interface Issue { field: string; message: string }
 
@@ -36,6 +36,10 @@ export class ReportInvalid extends Error {
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isHttps = (v: string) => { try { return new URL(v).protocol === 'https:'; } catch { return false; } };
+/** The calendar date exists (rejects 2026-02-30, which Date.parse rolls over). */
+const realDate = (v: string) => { const [y, m, d] = v.slice(0, 10).split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCMonth() === m - 1 && t.getUTCDate() === d; };
+/** A process with this id is running (EPERM still means it exists). */
+export const pidAlive = (pid: number): boolean => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; } };
 
 /**
  * Checks a report body against the schema and returns it with defaults, or throws one `ReportInvalid` with every issue.
@@ -98,7 +102,7 @@ export function parseReport(body: unknown): ReportInput {
     const l = link(`${f}.link`, raw.link, true);
     let by: string | undefined;
     if (raw.by === undefined) bad(`${f}.by`, 'Required');
-    else if (typeof raw.by !== 'string' || !ISO.test(raw.by) || Number.isNaN(Date.parse(raw.by))) bad(`${f}.by`, 'Must be an ISO date or date-time');
+    else if (typeof raw.by !== 'string' || !ISO.test(raw.by) || Number.isNaN(Date.parse(raw.by)) || !realDate(raw.by)) bad(`${f}.by`, 'Must be an ISO date or date-time');
     else by = raw.by;
     let kind: ReportAsk['kind'] = 'answer';
     if (raw.kind !== undefined) { if ((REPORT_ASK_KINDS as readonly unknown[]).includes(raw.kind)) kind = raw.kind as ReportAsk['kind']; else bad(`${f}.kind`, `Must be one of ${REPORT_ASK_KINDS.join(', ')}`); }
@@ -137,13 +141,24 @@ export class ReportStore {
     this.lockFile = join(dir, 'reports.lock');
   }
 
-  private read(): ReportsFile {
+  /** The reports in the file; `broken` when it exists but is not a reports object. */
+  private read(): ReportsFile & { broken?: boolean } {
     let text: string;
     try { text = readFileSync(this.file, 'utf8'); } catch { return { reports: {} }; }
     try {
       const raw = JSON.parse(text.replace(/^\uFEFF/, '')) as Partial<ReportsFile>;
-      return { reports: isObj(raw.reports) ? raw.reports as Record<string, Report> : {} };
-    } catch { return { reports: {} }; }
+      return isObj(raw) && isObj(raw.reports) ? { reports: raw.reports as Record<string, Report> } : { reports: {}, broken: true };
+    } catch { return { reports: {}, broken: true }; }
+  }
+
+  /**
+   * Reads for a write: a broken file is moved aside (`reports.json.broken-<ms>`), never silently overwritten.
+   * @req FR:status-ingest/store.broken
+   */
+  private readForWrite(): ReportsFile {
+    const d = this.read();
+    if (d.broken) renameSync(this.file, `${this.file}.broken-${Date.now()}`);
+    return { reports: d.reports };
   }
 
   private write(data: ReportsFile): void {
@@ -152,14 +167,17 @@ export class ReportStore {
     renameSync(tmp, this.file);
   }
 
-  /** Runs `fn` while holding the lock file; a lock older than `staleMs` (a crashed writer) is taken over. */
+  /** Runs `fn` while holding the lock file (it holds the writer's pid). A lock older than `staleMs` whose writer is gone is taken over. */
   private async locked<T>(fn: () => T): Promise<T> {
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     const deadline = Date.now() + (this.o.lockWaitMs ?? 5000);
     for (;;) {
-      try { closeSync(openSync(this.lockFile, 'wx')); break; } catch (e) {
+      try { const fd = openSync(this.lockFile, 'wx'); try { writeSync(fd, String(process.pid)); } finally { closeSync(fd); } break; } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-        try { if (Date.now() - statSync(this.lockFile).mtimeMs > (this.o.staleMs ?? 30_000)) { unlinkSync(this.lockFile); continue; } } catch { continue; }
+        try {
+          // A live writer's lock is never taken, however old, so two writers cannot both hold it.
+          if (Date.now() - statSync(this.lockFile).mtimeMs > (this.o.staleMs ?? 30_000) && !pidAlive(Number(readFileSync(this.lockFile, 'utf8')))) { unlinkSync(this.lockFile); continue; }
+        } catch (err) { if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue; throw err; }
         if (Date.now() > deadline) throw new ReportBusy('Report store is busy (reports.lock); try again');
         await sleep(25);
       }
@@ -177,19 +195,20 @@ export class ReportStore {
    * `opts.writer` names a token caller, which may replace only reports it wrote.
    * @req FR:status-ingest/store.replace @req FR:status-ingest/asks.answer.keep @req FR:status-ingest/asks.result @req FR:status-ingest/auth.writer
    */
-  async put(body: unknown, actor: string, opts: { writer?: string } = {}): Promise<ReportResult> {
+  async put(body: unknown, opts: { writer?: string } = {}): Promise<ReportResult> {
     const r = parseReport(body);
     const pair = `${r.agent}/${r.project}`;
     return this.locked(() => {
-      const data = this.read();
+      const data = this.readForWrite();
       const prior = data.reports[pair];
       if (opts.writer && prior?.writer && prior.writer !== opts.writer) throw new ReportDenied('Only the agent that wrote this report can replace it');
       const answers = new Map((Array.isArray(prior?.asks) ? prior.asks : []).filter((a) => a?.answer).map((a) => [a.key, a.answer!]));
       const asks = r.asks.map((a) => { const key = reportAskKey(r.agent, r.project, a.id); const ans = answers.get(key); return { ...a, key, ...(ans ? { answer: ans } : {}) }; });
       const keep = new Set(asks.map((a) => a.key));
       const dropped = (Array.isArray(prior?.asks) ? prior.asks : []).map((a) => a?.key).filter((k): k is string => typeof k === 'string' && !keep.has(k));
-      // The first writer keeps the pair, even when the owner writes it later.
-      data.reports[pair] = { ...r, asks, at: (this.o.now ?? (() => new Date()))().toISOString(), writer: prior?.writer ?? opts.writer ?? actor };
+      // Only a token claims a pair, and the first token keeps it; the owner and loopback callers never claim one.
+      const writer = prior?.writer ?? opts.writer;
+      data.reports[pair] = { ...r, asks, at: (this.o.now ?? (() => new Date()))().toISOString(), ...(writer ? { writer } : {}) };
       this.write(data);
       return { agent: r.agent, project: r.project, created: !prior, asks: { put: asks.map((a) => a.key), dropped } };
     });
@@ -206,7 +225,7 @@ export class ReportStore {
   /** Records (or with `undo` clears) the owner's answer on a report ask. @req FR:status-ingest/needs.answer */
   async answer(key: string, input: NeedAnswerInput): Promise<void> {
     await this.locked(() => {
-      const data = this.read();
+      const data = this.readForWrite();
       const ask = Object.values(data.reports).flatMap((r) => (isObj(r) && Array.isArray(r.asks) ? r.asks : [])).find((a) => a?.key === key);
       if (!ask) throw new NotFoundError(`Unknown report ask: ${key}`);
       if (input.choice === 'undo') delete ask.answer;
