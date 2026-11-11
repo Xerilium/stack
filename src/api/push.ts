@@ -90,6 +90,8 @@ export interface PushNotifierOptions {
   quiet?: QuietHours;
   /** One push per device, ask key and deadline. */
   ledger?: PushLedger;
+  /** Longest wait for the check before this one. A hung check never blocks later checks for good. */
+  waitMs?: number;
 }
 
 export function createPushNotifier(opts: PushNotifierOptions) {
@@ -101,10 +103,19 @@ export function createPushNotifier(opts: PushNotifierOptions) {
       const list = Promise.resolve(asks);
       list.catch(() => undefined); // handled when its turn comes
       const run = tail.then(async () => notifyOnce(await list));
-      tail = run.catch(() => undefined);
+      // @req FR:iphone-access/notify.serial: the next check waits for this one at most `waitMs`.
+      tail = tail.then(() => bounded(run, opts.waitMs));
       return run;
     },
   };
+
+  function bounded(p: Promise<unknown>, ms: number | undefined): Promise<unknown> {
+    const settled = p.catch(() => undefined);
+    if (ms === undefined) return settled;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<void>((ok) => { timer = setTimeout(ok, ms); timer.unref?.(); });
+    return Promise.race([settled, limit]).finally(() => clearTimeout(timer));
+  }
 
   async function notifyOnce(asks: DueAsk[]): Promise<PushCounts> {
     const counts: PushCounts = { sent: 0, removed: 0, failed: 0, skipped: 0 };

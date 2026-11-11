@@ -44,6 +44,15 @@ describe('instance', () => {
     expect(e.windows).toHaveLength(1);
     expect(win().isVisible()).toBe(true);
   });
+  // @req FR:desktop-shell/instance.early @req FR:desktop-shell/host.fail
+  it('activate before a host that fails to start never crashes and shows nothing', async () => {
+    const { e, shell } = setup({ startHost: async () => { throw new Error('no repo'); } });
+    const started = shell.start();
+    expect(() => { e.emit('activate'); e.emit('second-instance'); }).not.toThrow();
+    await started;
+    expect(() => e.emit('activate')).not.toThrow();
+    expect(e.windows).toHaveLength(0);
+  });
 });
 
 describe('window', () => {

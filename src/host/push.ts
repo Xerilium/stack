@@ -46,7 +46,7 @@ export function createPushCheck(o: {
   }
   const quiet = quietFrom(o.env.STACK_PUSH_QUIET, o.timeZone);
   if (quiet === null) { o.log('host: STACK_PUSH_QUIET invalid'); return null; }
-  const notifier = createPushNotifier({ devices: o.devices, sender, quiet, ledger: createPushLedger(o.ledgerStore), onEvent: (c) => o.log(JSON.stringify({ kind: 'push', ...c })) });
+  const notifier = createPushNotifier({ devices: o.devices, sender, quiet, ledger: createPushLedger(o.ledgerStore), waitMs: PUSH_CHECK_TIMEOUT_MS, onEvent: (c) => o.log(JSON.stringify({ kind: 'push', ...c })) });
   // Queue first, then read: checks run in call order (@req FR:iphone-access/notify.serial).
   return () => notifier.notify(o.asks());
 }

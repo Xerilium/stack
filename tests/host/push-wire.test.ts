@@ -107,15 +107,15 @@ describe('ask-write check runs in the background', () => {
 
   // @req FR:iphone-access/check.asks
   it('a failed or hung check is logged and never changes the answer', async () => {
-    const errors: unknown[] = [];
-    const fail = withPush(ok, { authorize, check: async () => { throw new Error('boom'); }, onError: (e) => errors.push(e) });
+    // onError resolves a promise, so the test awaits the log and never sleeps.
+    const logged = () => { let got!: (e: unknown) => void; const p = new Promise<unknown>((r) => { got = r; }); return { p, onError: (e: unknown) => got(e) }; };
+    const a = logged();
+    const fail = withPush(ok, { authorize, check: async () => { throw new Error('boom'); }, onError: a.onError });
     expect((await fail(write())).status).toBe(200);
-    await new Promise((r) => setTimeout(r, 0));
-    expect(errors).toHaveLength(1);
-    const hung = withPush(ok, { authorize, check: () => new Promise<never>(() => undefined), onError: (e) => errors.push(e), checkTimeoutMs: 20 });
+    expect(await a.p).toEqual(new Error('boom'));
+    const b = logged();
+    const hung = withPush(ok, { authorize, check: () => new Promise<never>(() => undefined), onError: b.onError, checkTimeoutMs: 20 });
     expect((await hung(write())).status).toBe(200);
-    await new Promise((r) => setTimeout(r, 40));
-    expect(errors).toHaveLength(2);
-    expect(errors[1]).toBeInstanceOf(PushCheckTimeout);
+    expect(await b.p).toBeInstanceOf(PushCheckTimeout);
   });
 });
