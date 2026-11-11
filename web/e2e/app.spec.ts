@@ -14,7 +14,8 @@ test.describe('shell and security', () => {
     const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)]));
     const all = files(dist).filter((f) => !f.endsWith('.json')).map((f) => readFileSync(f, 'utf8')).join('\n');
     for (const t of seed()) expect(all).not.toContain(t.text.replace(/^[^A-Za-z]+/, '').slice(0, 12));
-    expect(all).not.toMatch(/ghp_|github_pat_|Bearer /);
+    // A runtime `Bearer ${token}` header (device push, FR:iphone-access/install.subscribe) is fine; a literal token is not.
+    expect(all).not.toMatch(/ghp_|github_pat_|Bearer [A-Za-z0-9_.~+/-]{8,}/);
     expect(readFileSync(join(dist, 'index.html'), 'utf8')).not.toMatch(/<script(?![^>]*\bsrc=)/);
     expect(files(dist).some((f) => f.endsWith('staticwebapp.config.json'))).toBe(true);
   });
