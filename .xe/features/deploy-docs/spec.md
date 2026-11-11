@@ -43,3 +43,7 @@ Make Stack deployable by its owner and understandable by everyone else. Agents o
 - **FR:docs.env** (P2): Every `STACK_*` environment variable read by the code is documented in the runbook
 - **FR:docs.runbook** (P1): `docs/runbook.md` covers deploy, token setup, owner allow-list, token rotation, backup and restore from git, and cost
 - **FR:docs.process** (P3): CONTRIBUTING points to the Catalyst process; README links bots docs
+- **FR:docs.drift** (P1): Docs MUST match the code in both directions
+  - **FR:docs.drift.flags** (P1): Each command line in `docs/cli.md` MUST list every flag that command accepts, except `asks`, whose flags live in `docs/asks.md`
+  - **FR:docs.drift.stale** (P1): `docs/cli.md` MUST NOT list a command, and `docs/mcp.md` MUST NOT list a tool, that the code lacks
+  - **FR:docs.drift.acp** (P2): `docs/acp.md` MUST state the default `--timeout` and cancel grace that `src/cli/agent.ts` uses, and only flags `stack agent` accepts
