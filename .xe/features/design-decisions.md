@@ -262,3 +262,15 @@
 **Trade-offs**: Electron adds ~100 MB and its own release cadence (pinned, bumped by renovate). Build scripts for `electron` stay blocked in pnpm so CI never downloads the binary; the smoke script downloads it on demand. Signing and notarization are human steps and wait for a later slice.
 
 **Rejected**: Tauri (Rust toolchain, sidecar stdio plumbing for no size win); native Swift (second UI); PWA alone (cannot own the host process).
+
+## Make Now the one start screen; fold Brief into it
+
+**Decision**: Now (`#/now`) is the start screen and the first tab. It shows one task, then the next 2 meetings and the top 3 asks. The Brief view is gone (`#/brief` opens Now). Home leaves the nav and stays at `g h` as `Top asks`. `GET /brief/summary` stays on the server.
+
+**Date**: 2026-11-10
+
+**Why**: `.xe/features/stack-app/ux-review.md`: four views (Now, Home, Brief, My day) showed the same task, and the phone tab bar could not reach Now. `design-principles.md` P1 (one thing). Spec: `.xe/features/ux-consolidation/spec.md`.
+
+**Trade-offs**: The web AI summary section went with the Brief page (`FR:cos-view/brief.ai.web` deprecated). Keep, fold into Now, or remove the server route is an open owner call (`.xe/features/stack-app/architecture-review.md` #3).
+
+**Rejected**: Keep Brief as a second dashboard (two places to look); keep Home in the nav (same task twice).
