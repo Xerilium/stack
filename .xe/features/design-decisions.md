@@ -263,6 +263,18 @@
 
 **Rejected**: Tauri (Rust toolchain, sidecar stdio plumbing for no size win); native Swift (second UI); PWA alone (cannot own the host process).
 
+## Ship an unsigned Mac build with @electron/packager
+
+**Decision**: `pnpm desktop:package` stages the built shell, installs production dependencies flat, runs `@electron/packager`, ad-hoc signs, and writes a `zip` and a `dmg`. Spec: `FR:desktop-app/package`.
+
+**Date**: 2026-11-11
+
+**Why**: The owner wants a real Mac app now without the $99/yr Apple account. Ad-hoc signing runs on Apple silicon; Gatekeeper asks once (right-click, Open). Packager is one function call; the rest is macOS tools (`codesign`, `ditto`, `hdiutil`) with no extra dependencies.
+
+**Trade-offs**: First launch needs right-click, Open (or `xattr -dr com.apple.quarantine`). No auto-update. `asar` is off so the host reads `web/dist` and spawns agent binaries from plain files.
+
+**Rejected**: electron-builder (large dependency tree, pnpm workspace dependency collection, config surface for features not used); bundling with esbuild (the Agent SDK resolves its own binary by path).
+
 ## Make Now the one start screen; fold Brief into it
 
 **Decision**: Now (`#/now`) is the start screen and the first tab. It shows one task, then the next 2 meetings and the top 3 asks. The Brief view is gone (`#/brief` opens Now). Home leaves the nav and stays at `g h` as `Top asks`. `GET /brief/summary` stays on the server.

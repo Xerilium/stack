@@ -23,6 +23,9 @@ build/
 coverage/
 .nyc_output/
 
+# desktop packaging output
+desktop/out/
+
 # web
 web/dist
 web/test-results

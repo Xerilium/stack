@@ -22,6 +22,10 @@ Notifications: already built (`FR:pwa/notify.*`). No change.
 
 Tauri 2 shell, tray, global hotkey, `pkg` Node sidecar, updater. About 80-150k tokens. Blocked on human steps below.
 
+## Slice 4 (P2): unsigned Mac build
+
+`FR:package.*`. `@electron/packager` (one call, no config file) on a staged folder, then `codesign --sign -`, `ditto`, `hdiutil`. Pure plan in `desktop/src/pack.ts` (tested in `desktop/tests/pack.test.ts`); side effects in `desktop/scripts/package.mjs`. Doc: `docs/desktop-install.md`. No Apple account.
+
 ## Human-only
 
 - Enroll in Apple Developer Program ($99/yr)

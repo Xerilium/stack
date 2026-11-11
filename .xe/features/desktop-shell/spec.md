@@ -16,8 +16,8 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 
 ## Scope
 
-- In (slice 1): `desktop/` package with the Electron main process: start the host on a loopback port, one window that loads the host, tray icon with a menu, global hotkey to show or hide, single-instance lock, clean host stop on quit, renderer hardening, a smoke script for a local run.
-- Out: code signing, notarization, auto-update, installers (`dmg`, `pkg`), login item, Windows and Linux, a preload bridge or IPC, notifications from the shell (the page does them, `FR:pwa/notify.*`), Tailscale.
+- In (slice 1): `desktop/` package with the Electron main process: start the host on a loopback port, one window that loads the host, tray icon with a menu, global hotkey to show or hide, single-instance lock, clean host stop on quit, renderer hardening, a smoke script for a local run. The unsigned `.app`, `zip`, and `dmg` build is `FR:desktop-app/package`.
+- Out: Developer ID signing, notarization, auto-update, login item, Windows and Linux, a preload bridge or IPC, notifications from the shell (the page does them, `FR:pwa/notify.*`), Tailscale.
 - Human-only: Apple Developer Program enrollment, the Developer ID certificate, notarization secrets in CI (`FR:desktop-app/native.human`).
 
 ## Architecture
