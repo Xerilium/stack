@@ -3,7 +3,7 @@ import type { AuxFiles, Storage } from '../core/storage';
 import { ACTION_IDS, type InboxItem } from './types';
 
 export const INBOX_PATH = '.stack/inbox-items.json';
-const SOURCES = ['email', 'teams', 'slack'];
+const SOURCES = ['email', 'teams', 'slack', 'github'];
 const s = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 
 /** Keeps only well formed items; a bad file reads as empty rather than failing the page. */
@@ -11,7 +11,7 @@ export function parseItems(raw: unknown): InboxItem[] {
   if (!Array.isArray(raw)) return [];
   const out: InboxItem[] = [];
   for (const r of raw as Record<string, unknown>[]) {
-    if (!r || typeof r !== 'object' || !SOURCES.includes(r.source as string) || !ACTION_IDS.includes(r.suggested as never) || !/^(mail|chat)-[0-9a-f]{12}$/.test(s(r.id, 40))) continue;
+    if (!r || typeof r !== 'object' || !SOURCES.includes(r.source as string) || !ACTION_IDS.includes(r.suggested as never) || !/^(mail|chat|gh)-[0-9a-f]{12}$/.test(s(r.id, 40))) continue;
     const link = s(r.link, 2000);
     out.push({
       id: s(r.id, 40), source: r.source as InboxItem['source'], account: s(r.account, 200), from: s(r.from, 120), subject: s(r.subject, 300), receivedAt: s(r.receivedAt, 40),
