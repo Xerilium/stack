@@ -2,7 +2,7 @@
 id: status-ingest
 title: Status Ingest
 author: flanakin
-description: "Agents send a structured status report (top 3, asks on the owner, blockers, progress) by CLI or API. Stack validates it and keeps the latest per agent and project in a local live store under ~/.stack (never git). Its asks show in Needs you. No LLM call."
+description: "Agents send token-free status reports by CLI or API; Stack keeps the latest per pair and shows asks in Needs you."
 dependencies: [ask-queue, api, auth-security, cli, desktop-shell]
 ---
 
@@ -94,6 +94,15 @@ The owner needs report asks in **Needs you** so that there is one list, read fro
   - `blockers` (Item[]) — at most 10
   - `progress` (Item[]) — at most 10
   - `Item` — `{ text, link? }`
+
+## Architecture Constraints
+
+- Reports are live state in the local store, never in the content repo or git
+- Ingest makes no LLM call
+
+## External Dependencies
+
+None
 
 ## Dependencies
 
