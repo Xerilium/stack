@@ -10,7 +10,7 @@ stack report --agent <name> --project <p> [--file report.json] [--json] < report
 
 - Reads JSON from `--file`, else from stdin. Needs no content repo.
 - Posts to the running desktop host (url and pid in `~/.stack/host.json`); if no live Stack host answers, writes the store directly under a lock. A demo host uses its own store and is never posted to.
-- Exit `0` stored, `2` bad input (every issue is named; nothing is written).
+- Exit `0` stored, `2` bad input (every issue is named; nothing is written), `1` the host refused it or the store stayed locked (`busy`); retry.
 
 ## API
 

@@ -6,6 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb } from '../../src/cli/web';
 import { BatchedGitStorage } from '../../src/core/storage-batch';
+import { ReportStore } from '../../src/core/reports';
 
 const ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 Object.assign(process.env, ENV);
@@ -241,5 +242,30 @@ describe('resolveRepo', () => {
     const c = resolveRepo(`file://${repo}`, cache);
     expect(existsSync(join(c, 'tasks/alpha.md'))).toBe(true);
     expect(c.startsWith(cache)).toBe(true);
+  });
+});
+
+describe('startWeb reports', () => {
+  // @req FR:status-ingest/store.live @req FR:status-ingest/api.put @req FR:status-ingest/needs.list
+  it('a report POSTed to the host lands in the live store, shows in Needs you, and pushes a change to open pages', async () => {
+    const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
+    const web = tmp(); writeFileSync(join(web, 'index.html'), '<html>app</html>');
+    const reports = new ReportStore(tmp());
+    const s = await startWeb({ ...quiet, dir: dest, port: 0, webDir: web, reports, agents: false });
+    try {
+      let seen = '';
+      let wake: () => void = () => {};
+      const until = (re: RegExp) => new Promise<void>((ok) => { wake = () => { if (re.test(seen)) ok(); }; wake(); });
+      const req = http.get(`${s.url}/events`, (r) => { r.on('data', (c) => { seen += String(c); wake(); }); });
+      await until(/event: hello/);
+      const body = { agent: 'xe-cos', project: 'stack', asks: [{ id: 'pr-1', ask: 'Approve PR 1', link: 'https://x.test/1', by: '2026-11-12' }] };
+      const res = await fetch(`${s.url}/api/reports`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      expect(res.status).toBe(200);
+      const needs = await (await fetch(`${s.url}/api/needs-you`)).json() as { items: { id: string }[] };
+      expect(needs.items.map((i) => i.id)).toContain('rp.xe-cos.stack.pr-1');
+      await until(/event: change\ndata: \{"rev":\d+,"kinds":\["tasks"\]\}/);
+      req.destroy();
+      expect(existsSync(join(dest, '.stack/reports.json'))).toBe(false);
+    } finally { await s.close(); }
   });
 });

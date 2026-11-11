@@ -90,7 +90,8 @@ describe('ReportStore', () => {
     await s.put({ agent: 'xe-cos', project: 'stack', asks: [ASK, other] });
     await s.put({ agent: 'allyte-cos', project: 'allyte', top: [{ text: 'Keep me' }] });
     await s.answer('rp.xe-cos.stack.pr-12', { choice: 'reply', text: 'Wait for CI' });
-    await s.answer('rp.xe-cos.stack.other', { choice: 'go' });
+    await s.answer('rp.xe-cos.stack.other', { choice: 'go', text: 'ignored', until: '2026-11-20' });
+    expect(s.list().find((x) => x.agent === 'xe-cos')!.asks[1].answer).toEqual({ choice: 'go', at: NOW.toISOString() });
     const r = await s.put({ agent: 'xe-cos', project: 'stack', top: [{ text: 'New top' }], asks: [{ ...ASK, ask: 'Approve PR 12 now' }] });
     expect(r).toEqual({ agent: 'xe-cos', project: 'stack', created: false, asks: { put: ['rp.xe-cos.stack.pr-12'], dropped: ['rp.xe-cos.stack.other'], answers: { 'rp.xe-cos.stack.pr-12': { choice: 'reply', text: 'Wait for CI', at: NOW.toISOString() } } } });
     const all = s.list();
@@ -157,7 +158,7 @@ describe('ReportStore', () => {
     const old = new Date(Date.now() - 60_000);
     writeFileSync(join(dir, 'reports.lock'), String(process.pid)); utimesSync(join(dir, 'reports.lock'), old, old);
     await expect(new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' })).rejects.toBeInstanceOf(ReportBusy); // old but its writer lives
-    writeFileSync(join(dir, 'reports.lock'), '999999999'); utimesSync(join(dir, 'reports.lock'), old, old);
+    writeFileSync(join(dir, 'reports.lock'), '999999999'); // fresh, but its writer is gone: freed at once
     await new ReportStore(dir, { lockWaitMs: 50 }).put({ agent: 'a', project: 'p' });
     const s = new ReportStore(dir);
     await Promise.all(['b', 'c', 'd', 'e'].map((agent) => s.put({ agent, project: 'p' })));

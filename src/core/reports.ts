@@ -136,6 +136,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class ReportStore {
   readonly file: string;
   private readonly lockFile: string;
+  private readonly listeners = new Set<() => void>();
   constructor(readonly dir: string, private readonly o: { now?: () => Date; lockWaitMs?: number; staleMs?: number } = {}) {
     this.file = join(dir, 'reports.json');
     this.lockFile = join(dir, 'reports.lock');
@@ -165,7 +166,14 @@ export class ReportStore {
     const tmp = `${this.file}.${process.pid}.${Date.now()}.tmp`;
     writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
     renameSync(tmp, this.file);
+    for (const fn of this.listeners) { try { fn(); } catch { /* a listener never fails a write */ } }
   }
+
+  /**
+   * Calls `fn` after each write through this store (the host pushes a live change to open pages).
+   * @req FR:status-ingest/store.live
+   */
+  onWrite(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
 
   /** Runs `fn` while holding the lock file (it holds the writer's pid). A lock older than `staleMs` whose writer is gone is taken over. */
   private async locked<T>(fn: () => T): Promise<T> {
@@ -175,8 +183,10 @@ export class ReportStore {
       try { const fd = openSync(this.lockFile, 'wx'); try { writeSync(fd, String(process.pid)); } finally { closeSync(fd); } break; } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
         try {
-          // A live writer's lock is never taken, however old, so two writers cannot both hold it.
-          if (Date.now() - statSync(this.lockFile).mtimeMs > (this.o.staleMs ?? 30_000) && !pidAlive(Number(readFileSync(this.lockFile, 'utf8')))) { unlinkSync(this.lockFile); continue; }
+          // A live writer's lock is never taken. A named writer that is gone frees it at once; a lock with no pid yet (being written) only after staleMs.
+          const pid = Number(readFileSync(this.lockFile, 'utf8'));
+          const old = Date.now() - statSync(this.lockFile).mtimeMs > (this.o.staleMs ?? 30_000);
+          if (pid > 0 ? !pidAlive(pid) : old) { unlinkSync(this.lockFile); continue; }
         } catch (err) { if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue; throw err; }
         if (Date.now() > deadline) throw new ReportBusy('Report store is busy (reports.lock); try again');
         await sleep(25);
@@ -231,7 +241,8 @@ export class ReportStore {
       const ask = Object.values(data.reports).flatMap((r) => (isObj(r) && Array.isArray(r.asks) ? r.asks : [])).find((a) => a?.key === key);
       if (!ask) throw new NotFoundError(`Unknown report ask: ${key}`);
       if (input.choice === 'undo') delete ask.answer;
-      else ask.answer = { choice: input.choice, at: (this.o.now ?? (() => new Date()))().toISOString(), ...(input.text ? { text: input.text } : {}), ...(input.until ? { until: input.until } : {}) };
+      // Same shape as CoS answers: text only for reply, until only for defer.
+      else ask.answer = { choice: input.choice, at: (this.o.now ?? (() => new Date()))().toISOString(), ...(input.choice === 'reply' && input.text ? { text: input.text } : {}), ...(input.choice === 'defer' && input.until ? { until: input.until } : {}) };
       this.write(data);
     });
   }

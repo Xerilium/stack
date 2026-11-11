@@ -42,7 +42,8 @@ The owner needs only the latest status from each agent, kept off git, so that ol
 
 - **FR:store.path** (P1): Reports live in `<home>/reports.json`, where `<home>` is `STACK_HOME` or `~/.stack`, as `{ "reports": { "<agent>/<project>": Report } }`. Each stored report adds `agent`, `project`, `at` (ISO time Stack wrote it) and, for a token caller, `writer`, and each ask its `key`. Nothing is written to the content repo
 - **FR:store.atomic** (P1): Every write goes to a temp file in the same folder, then is renamed over `reports.json`, so a reader never sees a partial file
-- **FR:store.lock** (P1): One writer at a time holds `<home>/reports.lock` (created exclusively, holding the writer's pid). Another writer waits up to 5 s, then fails `busy` (API `409`). A lock older than 30 s whose pid is not running (a crashed writer) is taken over; a live writer's lock is never taken
+- **FR:store.lock** (P1): One writer at a time holds `<home>/reports.lock` (created exclusively, holding the writer's pid). Another writer waits up to 5 s, then fails `busy` (API `409`). A lock whose pid is not running (a crashed writer) is taken over at once; a lock with no pid yet only after 30 s; a live writer's lock is never taken
+- **FR:store.live** (P1): A write through the host store sends a `change` event (`kinds: ["tasks"]`) to open pages on `/events`, so Needs you reloads without a repo change
 - **FR:store.broken** (P2): A write that finds `reports.json` broken moves it aside as `reports.json.broken-<ms>` before writing, so nothing is lost silently
 - **FR:store.replace** (P1): A new report for the same agent and project replaces the prior one completely. Reports for other pairs stay as written
 - **FR:store.read** (P1): `ReportStore.list()` MUST return every stored report, newest `at` first, and none for a missing or broken file
@@ -58,7 +59,7 @@ The owner needs only the latest status from each agent, kept off git, so that ol
 The owner needs report asks in **Needs you** so that there is one list, read from the live store, not git.
 
 - **FR:needs.list** (P1): `GET /needs-you` returns the CoS items (`FR:ask-queue/needs.read`) then one item per report ask (newest report first): `id` = ask key, `title` = `ask`, `recommendation` = `recommend` or `Open the link and decide`, `link`, `project`, `by`, `default` and `answer` when set (@req FR:ask-queue/$need)
-- **FR:needs.answer** (P1): `POST /needs-you/{id}/answer` with a report ask key records the owner's answer (`go`, `defer`, `reply`, stamped) on that ask in the live store, and `undo` clears it. An unknown key is `404`
+- **FR:needs.answer** (P1): `POST /needs-you/{id}/answer` with a report ask key records the owner's answer (`go`, `defer` with `until`, `reply` with `text`, stamped; same shape as CoS answers) on that ask in the live store, and `undo` clears it. An unknown key is `404`
 
 ### FR:auth: Who may write
 

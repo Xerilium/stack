@@ -12,7 +12,7 @@
 
 ## One JSON file, atomic rename, lock file
 
-**Decision**: One file for all pairs. Writes go to a temp file, then rename. One writer at a time holds `reports.lock` (exclusive create, holding its pid); a lock older than 30 s is taken over only when its pid is not running.
+**Decision**: One file for all pairs. Writes go to a temp file, then rename. One writer at a time holds `reports.lock` (exclusive create, holding its pid); a lock whose pid is not running is taken over at once; a lock with no pid yet after 30 s.
 
 **Why**: Host and CLI may both write. A rename is atomic on one file system, so readers need no lock. The stale-lock rule keeps a crashed writer from blocking forever.
 
