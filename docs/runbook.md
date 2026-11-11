@@ -46,7 +46,8 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 | `STACK_GITHUB_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_ALLOW` | GitHub comment bot secret and allowed logins |
 | `GITHUB_TOKEN` | `stack web` and the Azure host: read-only GitHub token for pull request state and checks on the AI team panel. Sent only to `api.github.com` |
 | `STACK_GITHUB_REPOS` | Optional comma list of `owner` or `owner/repo`. When set, only PRs in these repos get status, so an agent token cannot read other PRs through `GET /agents`. Unset: every repo the token can see |
-| `STACK_VAPID_PUBLIC_KEY` | Optional Web Push VAPID public key (base64url) served to devices at `GET /api/auth/devices/me/push-key`. Generate with `npx web-push generate-vapid-keys`. Never set the private key here. Unset: push is off |
+| `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY`, `STACK_VAPID_SUBJECT` | Optional Web Push VAPID keys (base64url) and contact (`mailto:you@example.com` or an `https:` URL); see [iPhone push](#iphone-push). The public key is served to devices at `GET /api/auth/devices/me/push-key`. The private key is a host secret only: never in a repo, never logged. Push is off unless all three are set and valid |
+| `STACK_PUSH_QUIET` | Optional quiet hours `<start>-<end>` in the config `timezone`, default `21-8`; only `crit` asks push inside them. `off` turns them off |
 | `STACK_REPO`, `STACK_DIR` | Local content repo for the CLI, `stack web`, and `stack-mcp` (when none is found by walking up from the current folder). Content never lives in the Stack repo; see the README "Two repos" |
 | `STACK_MCP_SCOPES` | Scopes for `stack-mcp` (stdio only), default `read,write` |
 | `STACK_DATA_DIR` | Owner-only local data (email voice profile and mail state), default `~/Library/Application Support/stack`. Never inside a repo: it holds learned writing samples |
@@ -63,6 +64,17 @@ Create, list, and revoke as the owner (signed in) through `POST /api/auth/tokens
 Rotate: create a new token, update the client, revoke the old one. Rotate the pepper only if the token store leaks: set a new `STACK_TOKEN_PEPPER`, then recreate every token. Rotate `AZURE_STATIC_WEB_APPS_API_TOKEN` with `az staticwebapp secrets reset-api-key -n <name>` and update the GitHub secret.
 
 The token store holds only hashes (never secrets) plus scopes and expiry. By default it is committed to the private data repo as `.stack/tokens.json`, so tokens survive restarts; keep that repo private (see the [threat model](security/threat-model.md)). Revoking on one instance reaches others within about a minute.
+
+## iPhone push
+
+The host pushes an ask to each paired phone when the ask is due within 1 hour. Human-only steps:
+
+1. Make VAPID keys once: `npx web-push generate-vapid-keys --json`. Set `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY` and `STACK_VAPID_SUBJECT` as host secrets (`az staticwebapp appsettings set`). Keep the private key in a password manager.
+2. Add a cron caller. Something must call `POST /api/push/check` (body `{}`) every 5 minutes with a `tasks:write` token, for example a GitHub Actions `schedule` workflow in the data repo with the token in a repo secret. Without it, only ask writes (`POST /api/asks/{key}`) start a check.
+3. Pair the phone (iOS 16.4 or later): create a device as the owner (`POST /api/auth/devices`), open `/#/install?device=<token>` in Safari, Add to Home Screen, open Stack from the Home Screen, then tap `Turn on notifications`.
+4. Optional, for the live Mac view only: use Tailscale Serve (tailnet only). Phone push uses the Azure host and needs no tunnel. Cloudflare Tunnel is not recommended (public hostname, extra account).
+
+`.stack/push-sent.json` in the data repo keeps one push per device, ask and deadline. A `404` or `410` from the push service removes that phone's subscription; pair again to restore it.
 
 ## Backup and restore
 
