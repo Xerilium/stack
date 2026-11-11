@@ -1,12 +1,12 @@
 /** Inbox page types and helpers. @req FR:inbox-page/web.view */
 export interface InboxRow {
-  id: string; source: 'email' | 'teams' | 'slack'; account: string; from: string; subject: string; receivedAt: string; unread: boolean; urgency?: number;
+  id: string; source: 'email' | 'teams' | 'slack' | 'github'; account: string; from: string; subject: string; receivedAt: string; unread: boolean; urgency?: number;
   summary: string; suggested: string; actions: string[]; link?: string; kind?: string;
 }
 export interface ActionInfo { id: string; label: string; ready: boolean }
 export type ActResult = { ok: true; link?: string } | { ok: false; missing: true } | { via: 'issue'; url: string } | { via: 'task' };
 
-export const SOURCE: Record<InboxRow['source'], string> = { email: 'Email', teams: 'Teams', slack: 'Slack' };
+export const SOURCE: Record<InboxRow['source'], string> = { email: 'Email', teams: 'Teams', slack: 'Slack', github: 'GitHub' };
 
 /** The actions to show: the suggested one first as the primary, then the rest in catalog order. @req FR:inbox-page/web.view */
 export function actionsFor(row: InboxRow, catalog: ActionInfo[]): { primary: ActionInfo | undefined; more: ActionInfo[] } {
