@@ -41,21 +41,21 @@ export const EXIT = { ok: 0, failure: 1, usage: 2, conflict: 3, none: 4 } as con
 const GLOBAL = ['dir', 'json', 'no-commit', 'remote', 'branch', 'now', 'help', 'version'];
 const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }> = {
   init: { flags: [], usage: 'init', help: 'create repo, tasks/, and config' },
-  'add-project': { flags: ['description', 'repo', 'alias', 'priority', 'capacity', 'weekly-capacity', 'file', 'force'], usage: 'add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force]', help: 'create a project file' },
+  'add-project': { flags: ['description', 'repo', 'alias', 'priority', 'capacity', 'weekly-capacity', 'file', 'force', 'queries', 'no-update'], usage: 'add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force] [--queries] [--no-update]', help: 'create a project file' },
   add: { flags: ['section', 'parent'], usage: 'add <project> <text...> [--section name] [--parent ref]', help: 'add a task' },
   capture: { flags: ['project', 'section', 'dry-run'], usage: 'capture <text...> [--project name] [--section name] [--dry-run]', help: 'add a task from a phrase (e.g. "call dentist tomorrow 30m #alpha")' },
   next: { flags: ['top'], usage: 'next [--top n]', help: 'print the top task, or the first n ranked tasks (1-50); the web Home and /next use the same order' },
-  start: { flags: ['expect'], usage: 'start [ref] [--expect t]', help: 'mark in progress' },
-  complete: { flags: ['summary', 'remove', 'expect'], usage: 'complete [ref] [--summary t] [--remove] [--expect t]', help: 'check off (rolls recurring rows)' },
-  skip: { flags: ['expect'], usage: 'skip [ref] [--expect t]', help: 'park a task (alias: park)' },
-  park: { flags: ['expect'], usage: 'park [ref] [--expect t]', help: 'same as skip' },
-  resume: { flags: ['expect'], usage: 'resume [ref] [--expect t]', help: 'unpark the first parked task' },
-  suspend: { flags: ['days', 'hours', 'expect'], usage: 'suspend [ref] [--days n | --hours n] [--expect t]', help: 'hide until later' },
+  start: { flags: ['expect', 'queries', 'no-update'], usage: 'start [ref] [--expect t] [--queries] [--no-update]', help: 'mark in progress' },
+  complete: { flags: ['summary', 'remove', 'expect', 'queries', 'no-update'], usage: 'complete [ref] [--summary t] [--remove] [--expect t] [--queries] [--no-update]', help: 'check off (rolls recurring rows)' },
+  skip: { flags: ['expect', 'queries', 'no-update'], usage: 'skip [ref] [--expect t] [--queries] [--no-update]', help: 'park a task (alias: park)' },
+  park: { flags: ['expect', 'queries', 'no-update'], usage: 'park [ref] [--expect t] [--queries] [--no-update]', help: 'same as skip' },
+  resume: { flags: ['expect', 'queries', 'no-update'], usage: 'resume [ref] [--expect t] [--queries] [--no-update]', help: 'unpark the first parked task' },
+  suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
   rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks; --explain (autopri) shows score parts; --truth lists ground-truth items to tag or add' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
-  'remove-completed': { flags: ['project'], usage: 'remove-completed [--project name]', help: 'delete checked rows' },
+  'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches)' },
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
@@ -329,7 +329,20 @@ function buildCtx(f: Record<string, string | true>, dir: string): LifecycleConte
   return { storage, config: loadConfig(dir), now: () => at ?? new Date() };
 }
 
+/** Commands after which legacy ran `Update-StackSummary`. @req FR:cli/cmd.refresh */
+const REFRESH = new Set(['start', 'complete', 'skip', 'resume', 'suspend', 'remove-completed', 'add-project']);
+
+/** @req FR:cli/cmd.refresh @req FR:cli/cmd.refresh.skip @req FR:cli/cmd.refresh.json */
 async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: string): Promise<Outcome> {
+  const o = await dispatchOne(cmd, p, dir);
+  if (!REFRESH.has(canon(cmd)) || o.json.changed !== true || p.flags['no-update'] === true) return o;
+  const ctx = buildCtx(p.flags, dir);
+  const u = await update(ctx, ctx.storage, { sweep: true, queries: p.flags['queries'] === true });
+  const { files, swept, queries } = u.json;
+  return { ...o, json: { ...o.json, update: { files, ...(swept ? { swept } : {}), ...(queries ? { queries } : {}) } } };
+}
+
+async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: string): Promise<Outcome> {
   const f = p.flags;
   if (cmd === 'init') return init(dir);
   const ctx = buildCtx(f, dir);

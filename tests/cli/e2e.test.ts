@@ -42,7 +42,7 @@ const file = (dir: string, p: string) => readFileSync(join(dir, p), 'utf8');
 function repo(...tasks: string[]): string {
   const d = tmp();
   expect(stack(d, 'init').code).toBe(0);
-  expect(stack(d, 'add-project', 'Alpha', '--alias', 'a', '--weekly-capacity', '20').code).toBe(0);
+  expect(stack(d, 'add-project', 'Alpha', '--alias', 'a', '--weekly-capacity', '20', '--no-update').code).toBe(0);
   for (const t of tasks) expect(stack(d, 'add', 'alpha', t).code).toBe(0);
   return d;
 }
@@ -199,7 +199,7 @@ describe('commands', () => {
     expect(s.out).toMatch(/^started tasks\/alpha\.md:\d+ /);
     expect(file(d, 'tasks/alpha.md')).toContain('- [ ] 🚨 🚧 One');
     expect(stack(d, 'start', '--now', NOW).out).toMatch(/^no change:/);
-    expect(commits(d)).toBe(before + 1);
+    expect(commits(d)).toBe(before + 2); // the start, then the summaries (FR:cli/cmd.refresh)
     const c = stack(d, 'complete', '--now', NOW, '--summary', 'done it');
     expect(c.code).toBe(0);
     expect(file(d, 'tasks/alpha.md')).toContain('- [x] 🚨 One');
@@ -426,6 +426,62 @@ describe('update lifecycle gaps', () => {
     expect(commits(d)).toBe(before);
     expect(stack(d, 'start', ref, '--expect', 'Two', '--now', NOW).code).toBe(0);
     expect(file(d, 'tasks/alpha.md')).toContain('🚧 Two');
+  });
+});
+
+// Legacy parity: every legacy mutator ran Update-StackSummary; the parity run showed Stack start/complete/skip leaving stale summaries
+// and unswept due dates (a 📅 Nov 2 row kept ‼️ where legacy wrote 🚨).
+// @req FR:cli/cmd.refresh
+describe('refresh after lifecycle commands', () => {
+  const summaries = ['README.md', 'stack.md', 'projects.md', 'my-day.md'];
+  it.each([
+    ['start', [] as string[]],
+    ['complete', []],
+    ['skip', []],
+    ['park', []],
+    ['suspend', ['--days', '2']],
+  ])('%s regenerates the summaries and runs the sweeps', (cmd, args) => {
+    const d = repo('Old 📅 Oct 15: overdue', 'Next');
+    for (const f of summaries) expect(existsSync(join(d, f))).toBe(false);
+    const next = `tasks/alpha.md:${file(d, 'tasks/alpha.md').split('\n').findIndex(l => l.includes('Next')) + 1}`;
+    const r = stack(d, cmd, next, ...args, '--now', NOW);
+    expect(r.code).toBe(0);
+    for (const f of summaries) expect(existsSync(join(d, f))).toBe(true);
+    expect(file(d, 'tasks/alpha.md')).toContain('🚨 Old 📅 Oct 15: overdue');
+    expect(git(d, 'status', '--porcelain')).toBe('');
+  });
+  it('resume, remove-completed, and add-project regenerate the summaries', () => {
+    const d = repo('Only');
+    stack(d, 'skip', '--now', NOW, '--no-update');
+    expect(existsSync(join(d, 'README.md'))).toBe(false);
+    expect(stack(d, 'resume', '--now', NOW).code).toBe(0);
+    expect(file(d, 'stack.md')).toContain('Only');
+    const line = file(d, 'tasks/alpha.md').split('\n').findIndex(l => l.includes('Only')) + 1;
+    stack(d, 'complete', `tasks/alpha.md:${line}`, '--now', NOW);
+    expect(file(d, 'stack.md')).not.toContain('Only');
+    stack(d, 'add', 'alpha', 'Fresh');
+    expect(stack(d, 'remove-completed', '--now', NOW).code).toBe(0);
+    expect(file(d, 'stack.md')).toContain('Fresh');
+    expect(stack(d, 'add-project', 'Beta', '--now', NOW).code).toBe(0);
+    expect(file(d, 'projects.md')).toContain('Beta');
+  });
+  it('json adds the update result; a no-op does not refresh', () => {
+    const d = repo('🚧 Busy');
+    const j = JSON.parse(stack(d, 'start', '--now', NOW, '--json').out);
+    expect(j.changed).toBe(false);
+    expect(j.update).toBeUndefined();
+    expect(existsSync(join(d, 'README.md'))).toBe(false);
+    const d2 = repo('Idle');
+    const j2 = JSON.parse(stack(d2, 'start', '--now', NOW, '--json').out);
+    expect(j2.update.files).toEqual(expect.arrayContaining(summaries));
+  });
+  // @req FR:cli/cmd.refresh.skip
+  it('--no-update skips the refresh', () => {
+    const d = repo('Idle');
+    const before = commits(d);
+    expect(stack(d, 'start', '--now', NOW, '--no-update').code).toBe(0);
+    expect(existsSync(join(d, 'README.md'))).toBe(false);
+    expect(commits(d)).toBe(before + 1);
   });
 });
 

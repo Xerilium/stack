@@ -115,6 +115,9 @@ Owner needs one command per core operation so that the terminal can do everythin
     > - @req FR:task-lifecycle/sweep.all
   - **FR:cmd.update.queries** (P2): `--queries` MUST first refresh `🔎` query tasks through the `gh` CLI (off by default: it uses the network; files change and commit one by one; failures are reported, not fatal)
   - my-day.md is untouched when the generator returns none
+- **FR:cmd.refresh** (P1): After `start`, `complete`, `skip`/`park`, `resume`, `suspend`, `remove-completed`, and `add-project` change a file, the CLI MUST run `update --sweep` (and `--queries` when that flag is given), so the task files and the four summaries match what the legacy command leaves (legacy runs `Update-StackSummary` after each of these). A no-op MUST NOT refresh
+  - **FR:cmd.refresh.skip** (P2): `--no-update` MUST skip the refresh
+  - **FR:cmd.refresh.json** (P2): `--json` MUST add `update: { files, swept?, queries? }` to the result; text output stays one line
 
 ### FR:out: Output and exit codes
 

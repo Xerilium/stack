@@ -137,3 +137,11 @@ None
 ## External Dependencies
 
 None
+
+## Intentional Legacy Differences
+
+Legacy behavior is the contract for the tasks-only migration. These differences are deliberate; the parity harness (flanakin/todo `npm run parity`) will show them, and they are not bugs.
+
+- **Target task**: Legacy `start`, `complete`, `skip`, and `suspend` act on the "Top of the stack" row that the last `Update-StackSummary` wrote to README.md. Stack acts on `nextTask` (`FR:next.rank`): the live `rankStack` at `--now`, with the owner overrides. Why: the README goes stale as time blocks change, and the CLI, API, `/next`, and the web Home must pick the same task. The parity run started `12 Days` (legacy, stale README) and the Amex payment row (Stack, which the refreshed legacy README also ranked first). Since `FR:cli/cmd.refresh`, the README is current after each command, so the two agree unless time passes or `.stack/priorities.json` applies.
+- **Nested due-date rows**: Legacy `Update-TaskDates` moved an escalated `‼️`/`🚨` row of any depth to the top of Active as a bare line. That orphaned the row, left a blank line, and left its subtasks behind. Stack moves only top-level rows, with their block (`FR:sweep.due-move`); a nested row escalates in place under its parent. The parity run shows this as `11 urgent` (legacy) vs `10 urgent` (Stack): a nested `🚨 📅 Nov 6` row stayed under its Up next parent.
+- **Query refresh after a command**: Legacy refreshed every `🔎` query after each command. Stack does it only with `--queries` (`FR:cli/cmd.refresh`), like `update` (`FR:cli/cmd.update.queries`). Why: it uses the network and is slow (legacy update took minutes on the real task repo). The parity harness must pass `--queries` to compare query rows.
