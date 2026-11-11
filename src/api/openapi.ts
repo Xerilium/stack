@@ -7,6 +7,7 @@ import { stringify } from 'yaml';
 import { ERROR_CODES, STATUS } from './errors';
 import { QUERY_DEFAULTS, ROUTES } from './handler';
 import { ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES } from '../core/asks';
+import { REPORT_ASK_KINDS } from '../core/reports';
 import { ANCHORS, CADENCES, WEEKDAYS } from '../core/model';
 import { MAX_STR, REF_RE, type Spec } from './validate';
 
@@ -20,6 +21,8 @@ interface RouteDoc {
   desc?: Record<string, string>;
   /** Extra schema keywords for body properties and query params, by name. */
   extra?: Record<string, J>;
+  /** Authored request body, for a route whose nested body the core validates (no flat `body` spec). */
+  requestBody?: J;
   responses: J;
 }
 
@@ -226,6 +229,17 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { reply: 'One line shown to the owner on the reopened ask' },
     responses: ok('Handled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
   },
+  'reports.put': {
+    operationId: 'putReport', summary: 'Store an agent status report in the host live store (~/.stack, never git); the latest per agent and project replaces the prior; its asks show in Needs you. 400 lists every schema issue; 404 on hosts with no store. See docs/report.md',
+    requestBody: { required: true, content: { 'application/json': { schema: ref('ReportInput') } } },
+    responses: ok('Stored', {
+      type: 'object',
+      properties: {
+        agent: { type: 'string' }, project: { type: 'string' }, created: { type: 'boolean' },
+        asks: { type: 'object', properties: { put: { type: 'array', items: { type: 'string' } }, dropped: { type: 'array', items: { type: 'string' } } } },
+      },
+    }),
+  },
   'sessions.list': {
     operationId: 'listSessions', summary: 'Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents',
     responses: ok('Sessions', { type: 'object', properties: { items: { type: 'array', items: ref('Session') }, total: { type: 'integer' }, indexing: { type: 'integer' } } }),
@@ -355,7 +369,7 @@ function operation(r: (typeof ROUTES)[number]): J {
         },
       },
     };
-  }
+  } else if (d.requestBody) op.requestBody = d.requestBody;
   op.responses = d.responses;
   return op;
 }
@@ -407,6 +421,34 @@ export function buildOpenApi(): J {
         },
       },
       schemas: {
+        ReportItem: {
+          type: 'object', additionalProperties: false, required: ['text'],
+          properties: { text: { type: 'string', minLength: 1, maxLength: 200, description: 'Single line.' }, link: { type: 'string', maxLength: 2000, pattern: '^https://' } },
+        },
+        ReportInput: {
+          type: 'object', additionalProperties: false, required: ['agent', 'project'],
+          properties: {
+            agent: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,23}$' },
+            project: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,23}$' },
+            top: { type: 'array', maxItems: 3, items: ref('ReportItem') },
+            asks: {
+              type: 'array', maxItems: 10,
+              items: {
+                type: 'object', additionalProperties: false, required: ['id', 'ask', 'link', 'by'],
+                properties: {
+                  id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,23}$', description: 'Unique in the report; the ask key is rp.<agent>.<project>.<id>' },
+                  ask: { type: 'string', minLength: 1, maxLength: 200 }, link: { type: 'string', maxLength: 2000, pattern: '^https://' },
+                  by: { type: 'string', description: 'ISO date or date-time deadline' },
+                  kind: { type: 'string', enum: [...REPORT_ASK_KINDS], default: 'answer' },
+                  recommend: { type: 'string', maxLength: 200 }, why: { type: 'string', maxLength: 500 }, default: { type: 'string', maxLength: 200 },
+                  priority: { type: 'string', enum: [...ASK_PRIORITIES] },
+                },
+              },
+            },
+            blockers: { type: 'array', maxItems: 10, items: ref('ReportItem') },
+            progress: { type: 'array', maxItems: 10, items: ref('ReportItem') },
+          },
+        },
         CaptureResult: {
           type: 'object',
           properties: {

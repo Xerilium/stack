@@ -14,6 +14,7 @@ import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, rec
 import type { AuxFiles, Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
 import type { CalendarProvider } from '../calendar';
+import { ReportInvalid, type ReportStore } from '../core/reports';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
@@ -45,6 +46,8 @@ export interface ApiDeps {
   config?: StackConfig;
   now?: () => Date;
   engine?: string;
+  /** The live report store (~/.stack); absent means POST /reports is 404 and Needs you has no report asks. @req FR:status-ingest/api.put */
+  reports?: ReportStore;
   /** Deny-by-default: when absent every request gets 401. */
   authorize?: Authorize;
   basePath?: string;
@@ -380,7 +383,8 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/needs-you', name: 'needs.list',
     async run(c) {
       noQuery(c);
-      return json(200, { items: await readNeeds(c.deps.storage) });
+      // Report asks come from the live store, never git. @req FR:status-ingest/needs.list
+      return json(200, { items: [...await readNeeds(c.deps.storage), ...(c.deps.reports?.needs() ?? [])] });
     },
   },
   {
@@ -392,7 +396,9 @@ export const ROUTES: Route[] = [
       const b = validate<{ choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }>(await readBody(c.req), NEED_ANSWER_BODY.schema, NEED_ANSWER_BODY.required);
       if (b.choice === 'defer' && (!b.until || Number.isNaN(Date.parse(b.until)))) throw invalid([{ field: 'until', message: 'Required for defer: an ISO date or time' }]);
       if (b.choice === 'reply' && !b.text?.trim()) throw invalid([{ field: 'text', message: 'Required for reply' }]);
-      await answerNeed(c.deps.storage, c.params[0], b, (c.deps.now ?? (() => new Date()))());
+      // @req FR:status-ingest/needs.answer
+      if (c.params[0].startsWith('rp.') && c.deps.reports) await c.deps.reports.answer(c.params[0], b);
+      else await answerNeed(c.deps.storage, c.params[0], b, (c.deps.now ?? (() => new Date()))());
       return json(200, { changed: true });
     },
   },
@@ -595,6 +601,24 @@ export const ROUTES: Route[] = [
       noQuery(c);
       const b = validate<HandleInput>(await readBody(c.req), ASK_HANDLE_BODY.schema, ASK_HANDLE_BODY.required);
       return json(200, await handleAsk(c.life, c.params[0], b, caller(c.req).actor));
+    },
+  },
+  {
+    // The body is nested, so the core checks it (one schema for CLI and API); the OpenAPI body is authored in openapi.ts.
+    // @req FR:status-ingest/api.put @req FR:status-ingest/api.invalid @req FR:status-ingest/auth.writer
+    method: 'POST', doc: '/reports', name: 'reports.put',
+    async run(c) {
+      noQuery(c);
+      const body = await readBody(c.req);
+      const actor = caller(c.req).actor;
+      const name = actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor;
+      try {
+        if (!c.deps.reports) throw new ApiError('not_found', 'No report store on this host');
+        return json(200, await c.deps.reports.put(body, name, actor.startsWith('token:') ? { writer: `token:${name}` } : {}));
+      } catch (e) {
+        if (e instanceof ReportInvalid) throw new ApiError('bad_request', 'Validation failed', e.issues);
+        throw e;
+      }
     },
   },
   {

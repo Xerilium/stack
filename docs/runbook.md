@@ -38,6 +38,7 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 | `STACK_CALENDAR_ICS` | Published calendar links (ICS), separated by spaces or commas; `stack web` and the Azure host. Outlook on the web: Settings, Calendar, Shared calendars, Publish a calendar, ICS link. Google: Settings, your calendar, Secret address in iCal format. Treat as a secret: anyone with the link reads the calendar. Order: `STACK_CALENDAR_FIXTURE`, then a Graph sign-in, then these feeds |
 | `STACK_TOKEN_STORE` | Optional file path for the token store (needs `STACK_TOKEN_PEPPER`). Default: the data repo (`.stack/tokens.json`) |
 | `STACK_REPO_BRANCH`, `STACK_REPO_PATH` | Branch (default `main`) and optional subfolder of the task repo |
+| `STACK_HOME` | Local live state for `stack web`, the desktop host, and `stack report` (default `~/.stack`): `reports.json`, `host.json`. Never in git. See [report.md](report.md) |
 | `STACK_CONFIG` | Optional Stack config as JSON |
 | `STACK_GIT_NAME`, `STACK_GIT_EMAIL` | Commit identity |
 | `STACK_SLACK_SIGNING_SECRET`, `STACK_SLACK_ALLOW` | Slack bot secret and allowed user ids |

@@ -13,6 +13,7 @@ import {
   explainAutopri, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
+import { readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
 import { replyFromAgent } from '../core/inbox';
 import { registerAutopriEngine } from '../core/autopri';
@@ -33,7 +34,16 @@ import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type
 import { BatchedGitStorage } from '../core/storage-batch';
 import { homedir } from 'os';
 
-export interface IO { out(s: string): void; err(s: string): void }
+/** `in` reads all of stdin; `null` means no piped input (a terminal). */
+export interface IO { out(s: string): void; err(s: string): void; in?: () => Promise<string | null> }
+
+/** All of stdin, or `null` when stdin is a terminal. */
+async function readStdin(): Promise<string | null> {
+  if (process.stdin.isTTY) return null;
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  return Buffer.concat(chunks).toString('utf8');
+}
 
 /** Exit codes. @req FR:cli/out.codes */
 export const EXIT = { ok: 0, failure: 1, usage: 2, conflict: 3, none: 4 } as const;
@@ -63,6 +73,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   inbox: { flags: ['from', 'text', 'expect'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t]', help: 'reply on a task as an agent (tasks/inbox, from: agent); the owner reads it in the task thread' },
   agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
+  report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
   update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (--engine stack: scores and order like `stack next`, with .stack/priorities.json)' },
 };
 
@@ -282,6 +293,41 @@ async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): 
     }
     default: throw new UsageError('Usage: stack asks put|list|handle|archive (see stack --help)');
   }
+}
+
+/**
+ * Sends a report to the running host (`host.json`), or writes the local store itself when no host answers. Never touches git.
+ * @req FR:status-ingest/cli.report @req FR:status-ingest/cli.errors @req FR:status-ingest/cli.host @req FR:status-ingest/cli.direct
+ */
+async function reportCmd(p: ReturnType<typeof parseArgs>, input: () => Promise<string | null>): Promise<Outcome> {
+  if (p.positionals.length) throw new UsageError(`Unexpected argument: ${p.positionals[0]}`);
+  const agent = flag(p.flags, 'agent'); const project = flag(p.flags, 'project'); const file = flag(p.flags, 'file');
+  if (!agent) throw new UsageError('report needs --agent <name>');
+  if (!project) throw new UsageError('report needs --project <p>');
+  let text: string | null;
+  if (file !== undefined) { try { text = readFileSync(resolve(file), 'utf8'); } catch { throw new UsageError(`Cannot read --file: ${file}`); } }
+  else text = await input();
+  if (text === null || text.trim() === '') throw new UsageError('report needs JSON on stdin or --file <path>');
+  let body: unknown;
+  try { body = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { throw new UsageError('report input is not valid JSON'); }
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new UsageError('report input must be a JSON object');
+  const full = { ...body, agent, project };
+  const home = stackHome();
+  const host = readHostFile(home);
+  let r: Awaited<ReturnType<ReportStore['put']>> | undefined;
+  let via: 'host' | 'store' = 'store';
+  if (host) {
+    let res: Response | undefined;
+    try { res = await fetch(`${host.url}/api/reports`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(full), signal: AbortSignal.timeout(5000) }); } catch { res = undefined; } // no host listening: write the store directly
+    if (res) {
+      const j = await res.json().catch(() => ({})) as { error?: { message?: string; details?: { field: string; message: string }[] } };
+      if (res.status === 400 && j.error?.details) throw new ReportInvalid(j.error.details);
+      if (!res.ok) throw new StorageError(`host refused the report (${res.status}): ${j.error?.message ?? 'error'}`);
+      r = j as Awaited<ReturnType<ReportStore['put']>>; via = 'host';
+    }
+  }
+  r ??= await new ReportStore(home).put(full, agent);
+  return { json: { ok: true, via, ...r }, text: `report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped (${via})` };
 }
 
 /** A core ref as the api writes it (`<project>:<line>`, 0-based). */
@@ -536,7 +582,7 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
 }
 
 function exitCodeFor(e: unknown): number {
-  if (e instanceof UsageError || e instanceof LifecycleError || e instanceof NotFoundError || e instanceof PathError) return EXIT.usage;
+  if (e instanceof UsageError || e instanceof LifecycleError || e instanceof NotFoundError || e instanceof PathError || e instanceof ReportInvalid) return EXIT.usage;
   if (e instanceof ConflictError) return EXIT.conflict;
   return EXIT.failure;
 }
@@ -565,14 +611,15 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     if (p.command === 'web') return await web(p.flags, io, explicit ?? found, home);
     if (p.command === 'graph') return await graphCmd(p.positionals[0], p.flags, io, json);
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
-    const r = await dispatch(p.command, p, dir);
+    // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report
+    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
     return r.code ?? EXIT.ok;
   } catch (e) {
     const code = exitCodeFor(e);
     const msg = e instanceof Error ? e.message : String(e);
-    if (json) io.out(`${JSON.stringify({ ok: false, ...(command ? { command } : {}), error: msg, code })}\n`);
+    if (json) io.out(`${JSON.stringify({ ok: false, ...(command ? { command } : {}), error: msg, code, ...(e instanceof ReportInvalid ? { issues: e.issues } : {}) })}\n`);
     else io.err(`error: ${msg}\n`);
     return code;
   }

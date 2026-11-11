@@ -1176,6 +1176,43 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Error"
+  /reports:
+    post:
+      summary: Store an agent status report in the host live store (~/.stack, never git); the latest per agent and project replaces the prior; its asks show in Needs you. 400 lists every schema issue; 404 on hosts with no store. See docs/report.md
+      operationId: putReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportInput"
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    type: string
+                  project:
+                    type: string
+                  created:
+                    type: boolean
+                  asks:
+                    type: object
+                    properties:
+                      put:
+                        type: array
+                        items:
+                          type: string
+                      dropped:
+                        type: array
+                        items:
+                          type: string
+        default:
+          $ref: "#/components/responses/Error"
   /inbox-items:
     get:
       summary: "All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens"
@@ -2190,6 +2227,100 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    ReportItem:
+      type: object
+      additionalProperties: false
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Single line.
+        link:
+          type: string
+          maxLength: 2000
+          pattern: ^https://
+    ReportInput:
+      type: object
+      additionalProperties: false
+      required:
+        - agent
+        - project
+      properties:
+        agent:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{0,23}$
+        project:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{0,23}$
+        top:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/ReportItem"
+        asks:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - id
+              - ask
+              - link
+              - by
+            properties:
+              id:
+                type: string
+                pattern: ^[a-z0-9][a-z0-9-]{0,23}$
+                description: Unique in the report; the ask key is rp.<agent>.<project>.<id>
+              ask:
+                type: string
+                minLength: 1
+                maxLength: 200
+              link:
+                type: string
+                maxLength: 2000
+                pattern: ^https://
+              by:
+                type: string
+                description: ISO date or date-time deadline
+              kind:
+                type: string
+                enum:
+                  - approve
+                  - review
+                  - go-do
+                  - answer
+                default: answer
+              recommend:
+                type: string
+                maxLength: 200
+              why:
+                type: string
+                maxLength: 500
+              default:
+                type: string
+                maxLength: 200
+              priority:
+                type: string
+                enum:
+                  - crit
+                  - high
+                  - normal
+                  - low
+        blockers:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/ReportItem"
+        progress:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/ReportItem"
     CaptureResult:
       type: object
       properties:
