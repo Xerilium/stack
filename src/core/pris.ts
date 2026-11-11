@@ -154,7 +154,8 @@ export class PriStore {
     try { t = readFileSync(this.file, 'utf8'); } catch { return { data: { ...EMPTY, pris: [] }, exists: false }; }
     try {
       const j = JSON.parse(t) as Partial<PrisFile>;
-      if (isObj(j) && Array.isArray(j.pris) && typeof j.rev === 'number') return { data: j as PrisFile, exists: true };
+      // A hand-edited file must still pass the schema, or it is broken.
+      if (isObj(j) && Number.isInteger(j.rev) && (j.rev as number) >= 0) return { data: { ...(j as PrisFile), pris: parsePris(j.pris) }, exists: true };
     } catch { /* broken */ }
     return { data: { ...EMPTY, pris: [] }, exists: true, broken: true };
   }

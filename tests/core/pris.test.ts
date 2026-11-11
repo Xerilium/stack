@@ -112,5 +112,10 @@ describe('PriStore', () => {
     const aside = readdirSync(dir).filter((n) => n.startsWith('pris.json.broken-'));
     expect(aside).toHaveLength(1);
     expect(readFileSync(join(dir, aside[0]), 'utf8')).toBe('{bad');
+    // a hand edit that fails the schema or has a fractional rev is broken too
+    writeFileSync(join(dir, 'pris.json'), JSON.stringify({ version: 1, rev: 3, pris: [{ id: 'p1', title: 'x' }] }));
+    expect(s.read()).toEqual({ version: 1, rev: 0, pris: [] });
+    writeFileSync(join(dir, 'pris.json'), JSON.stringify({ version: 1, rev: 1.5, pris: [] }));
+    expect(s.read().rev).toBe(0);
   });
 });

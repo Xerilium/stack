@@ -12,9 +12,9 @@
 
 ## State from app fields plus the transcript tail kind
 
-**Decision**: Classify from app fields (`postTurnSummary`, `interruptedAwaitingPerson`, `error`, `prs`, `isStarred`) and the kind of the last transcript event. Stack reads at most 64 KiB of the transcript and keeps only the event kind.
+**Decision**: Classify from app fields (`postTurnSummary`, `interruptedAwaitingPerson`, `error`, `prs`, `isStarred`) and the kind of the last transcript event. Stack reads the last 64 KiB of the transcript (up to 4 MiB when one event is longer) and keeps only the event kind. Interrupts and local commands close a turn; subagent transcript writes count as activity for a pending tool call.
 
-**Why**: A pending permission prompt or a dead scheduled run shows only in the transcript (last event is a tool call with no result). The kind alone is enough; no text leaves the reader. Real store: 635 files, 272 live; a cold scan takes about 250 ms.
+**Why**: A pending permission prompt or a dead scheduled run shows only in the transcript (last event is a tool call with no result). The kind alone is enough; no text leaves the reader. Real store: 635 files, 272 live; a cold `stack sessions` run takes about 0.75 s, a warm one 0.14 s.
 
 **Rejected**: Read the whole transcript (slow, privacy risk); LLM summary (costs tokens; the app summary already exists).
 

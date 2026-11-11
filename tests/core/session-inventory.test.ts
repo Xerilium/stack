@@ -93,6 +93,9 @@ describe('readTail', () => {
     writeFileSync(g, `${JSON.stringify(asst([{ type: 'tool_use', name: 'Write', input: { c: 'x'.repeat(300_000) } }]))}\n`);
     expect(readTail(g)).toBe('tool');
     expect(readTail(write('i.jsonl', [asst([{ type: 'tool_use', name: 'Bash' }]), { type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] } }]))).toBe('turn-end');
+    expect(readTail(write('k.jsonl', [asst([{ type: 'text' }]), { type: 'user', message: { content: '<command-name>/model</command-name>' } }, { type: 'user', message: { content: '<local-command-stdout>ok</local-command-stdout>' } }]))).toBe('turn-end');
+    expect(readTail(write('l.jsonl', [{ type: 'user', message: { content: '<bash-input>ls</bash-input>' } }]))).toBe('turn-end');
+    expect(readTail(write('m.jsonl', [asst([{ type: 'tool_use', name: 'Bash' }]), { type: 'user', isCompactSummary: true, message: { content: 'summary' } }]))).toBe('tool');
     expect(readTail(write('j.jsonl', [{ type: 'user', message: { content: '[Request interrupted by user for tool use]' } }]))).toBe('turn-end');
   });
 });
@@ -172,6 +175,18 @@ describe('runInventory', () => {
     unlinkSync(join(e.acct, 'local_s2.json'));
     e.run();
     expect(Object.keys(JSON.parse(readFileSync(file, 'utf8')).cache)).toHaveLength(1);
+  });
+
+  // @req FR:session-inventory/state.activity
+  it('a pending tool call stays running while its subagent transcript is written', () => {
+    const e = setup();
+    e.put('local_ag', { lastActivityAt: T - 40 * MIN, permissionMode: 'default' }, [{ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Agent' }] } }]);
+    const tx = join(e.projects, '-Users-u-dev-todo', 'cli-local_ag.jsonl');
+    const old = new Date(T - 40 * MIN); utimesSync(tx, old, old);
+    expect(e.run().sessions[0]).toMatchObject({ state: 'waiting', reason: 'permission' });
+    const sub = join(e.projects, '-Users-u-dev-todo', 'cli-local_ag', 'subagents'); mkdirSync(sub, { recursive: true });
+    writeFileSync(join(sub, 'agent-1.jsonl'), '{}'); const fresh = new Date(T - MIN); utimesSync(join(sub, 'agent-1.jsonl'), fresh, fresh);
+    expect(e.run().sessions[0]).toMatchObject({ state: 'running', reason: 'turn-open' });
   });
 
   it('a home that cannot be written never fails the inventory', () => {

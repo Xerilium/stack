@@ -25,6 +25,8 @@ export interface SessionFacts {
   summary?: { category: string; ask?: string };
   prs: { url: string; state: string; dismissed?: boolean }[];
   tail?: TailKind; txMtimeMs?: number;
+  /** Latest subagent transcript write while a tool call is pending (an Agent call writes there, not to the main transcript). */
+  subMtimeMs?: number;
 }
 
 /** One session as Stack shows it. @req FR:session-inventory/needs.item */
@@ -66,19 +68,21 @@ export function projectOf(cwd: string): SessionProject {
 
 const TAIL_MAX = 4 * 1024 * 1024;
 const INTERRUPTED = /^\[Request interrupted by user/;
+const LOCAL = /^<(command-name|local-command-|bash-input|bash-stdout|bash-stderr)/;
 
 /** The kind of one transcript line, or undefined when it is not a main-chain turn event. */
 function eventKind(l: string): TailKind | undefined {
-  let e: { type?: string; subtype?: string; isSidechain?: boolean; isMeta?: boolean; message?: { content?: unknown } };
+  let e: { type?: string; subtype?: string; isSidechain?: boolean; isMeta?: boolean; isCompactSummary?: boolean; isVisibleInTranscriptOnly?: boolean; message?: { content?: unknown } };
   try { e = JSON.parse(l); } catch { return undefined; }
-  if (!e || typeof e !== 'object' || e.isSidechain || e.isMeta) return undefined;
+  if (!e || typeof e !== 'object' || e.isSidechain || e.isMeta || e.isCompactSummary || e.isVisibleInTranscriptOnly) return undefined;
   if (e.type === 'system') return e.subtype === 'stop_hook_summary' || e.subtype === 'turn_duration' ? 'turn-end' : e.subtype === 'api_error' ? 'api-error' : undefined;
   const c = e.message?.content;
   if (e.type === 'user') {
     if (Array.isArray(c) && c.some((x) => (x as { type?: string })?.type === 'tool_result')) return 'tool-result';
     // The owner stopped the turn: it is closed, not dead.
     const first = typeof c === 'string' ? c : Array.isArray(c) ? (c[0] as { text?: unknown })?.text : undefined;
-    return typeof first === 'string' && INTERRUPTED.test(first) ? 'turn-end' : 'user';
+    // A local slash command or `!` shell line runs no model turn.
+    return typeof first === 'string' && (INTERRUPTED.test(first) || LOCAL.test(first)) ? 'turn-end' : 'user';
   }
   if (e.type === 'assistant') {
     const last = Array.isArray(c) ? (c.at(-1) as { type?: string; name?: string } | undefined) : undefined;
@@ -151,7 +155,7 @@ export function sessionFacts(raw: unknown): Omit<SessionFacts, 'tail' | 'txMtime
  * @req FR:session-inventory/state.done @req FR:session-inventory/state.pinned @req FR:session-inventory/state.idle @req FR:session-inventory/state.activity
  */
 export function classify(f: SessionFacts, now: number): { state: SessionState; reason: SessionReason } {
-  const activity = Math.max(f.lastActivityAt, f.txMtimeMs ?? 0);
+  const activity = Math.max(f.lastActivityAt, f.txMtimeMs ?? 0, f.subMtimeMs ?? 0);
   const quiet = now - activity;
   const open = f.tail ? f.tail === 'tool' || f.tail === 'tool-result' || f.tail === 'user' : f.lastActivityAt > (f.lastTurnEdgeAt ?? 0) + 1000;
   const scheduled = !!f.scheduledTaskId;
@@ -174,6 +178,8 @@ interface CacheEntry { mtimeMs: number; size: number; tx?: string; txMtimeMs?: n
 interface SessionsFile { version: 1; at: string; projectsDir: string; cache: Record<string, CacheEntry>; inventory: Inventory }
 
 const listDirs = (d: string): string[] => { try { return readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(d, e.name)); } catch { return []; } };
+/** The newest file mtime in a folder, or undefined. */
+const latestMtime = (d: string): number | undefined => { let m: number | undefined; try { for (const n of readdirSync(d)) { const t = statOf(join(d, n))?.mtimeMs; if (t !== undefined && (m === undefined || t > m)) m = t; } } catch { /* none */ } return m; };
 const statOf = (f: string) => { try { const s = statSync(f); return { mtimeMs: s.mtimeMs, size: s.size }; } catch { return undefined; } };
 
 /** Scheduled task names by id from every `scheduled-tasks.json`. */
@@ -232,6 +238,12 @@ export function runInventory(o: InventoryOptions): Inventory {
           const tail = readTail(entry.tx);
           entry = { ...entry, txMtimeMs: tx.mtimeMs, facts: { ...entry.facts, ...(tail ? { tail } : {}), txMtimeMs: tx.mtimeMs } };
         }
+      }
+      // A pending tool call may be a subagent that writes only its own transcript: its writes count as activity (not cached).
+      if (entry.facts) {
+        const facts: SessionFacts = { ...entry.facts }; delete facts.subMtimeMs;
+        const sub = facts.tail === 'tool' && entry.tx ? latestMtime(join(entry.tx.replace(/\.jsonl$/, ''), 'subagents')) : undefined;
+        entry = { ...entry, facts: sub ? { ...facts, subMtimeMs: sub } : facts };
       }
       cache[path] = entry;
     }
