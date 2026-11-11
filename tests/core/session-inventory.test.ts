@@ -30,7 +30,8 @@ describe('classify', () => {
   it('stuck: error, cut short, api error, dead turn, scheduled run at a prompt', () => {
     expect(classify(base({ errorAt: T - 10 * MIN }), T)).toEqual({ state: 'stuck', reason: 'error' });
     expect(classify(base({ errorAt: T - 90 * MIN, lastTurnEdgeAt: T - 60 * MIN }), T).state).toBe('idle');
-    expect(classify(base({ cutShort: true }), T).reason).toBe('cut-short');
+    expect(classify(base({ cutShort: true, tail: 'assistant-text' }), T).reason).toBe('cut-short');
+    expect(classify(base({ cutShort: true, tail: 'turn-end' }), T).state).toBe('idle');
     expect(classify(base({ tail: 'api-error' }), T).reason).toBe('api-error');
     expect(classify(base({ tail: 'user', lastActivityAt: T - 31 * MIN }), T)).toEqual({ state: 'stuck', reason: 'dead-turn' });
     expect(classify(base({ tail: 'tool', lastActivityAt: T - 6 * MIN, scheduledTaskId: 's1' }), T)).toEqual({ state: 'stuck', reason: 'dead-turn' });

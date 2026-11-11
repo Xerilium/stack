@@ -160,7 +160,8 @@ export function classify(f: SessionFacts, now: number): { state: SessionState; r
   if (!open && f.summary?.category === 'blocked') return { state: 'waiting', reason: 'blocked' };
   if (f.tail === 'tool' && quiet >= PROMPT_MS && !scheduled && f.permissionMode !== 'bypassPermissions') return { state: 'waiting', reason: 'permission' };
   if (f.errorAt !== undefined && f.errorAt > (f.lastTurnEdgeAt ?? 0)) return { state: 'stuck', reason: 'error' };
-  if (f.cutShort) return { state: 'stuck', reason: 'cut-short' };
+  // A turn the owner interrupted ends at turn-end: it is closed, not stuck.
+  if (f.cutShort && f.tail !== 'turn-end') return { state: 'stuck', reason: 'cut-short' };
   if (f.tail === 'api-error') return { state: 'stuck', reason: 'api-error' };
   if (open && (quiet >= DEAD_MS || (scheduled && f.tail === 'tool' && quiet >= PROMPT_MS))) return { state: 'stuck', reason: 'dead-turn' };
   if (open) return { state: 'running', reason: 'turn-open' };
