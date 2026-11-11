@@ -40,6 +40,8 @@ export function createShell(deps: ShellDeps): Shell {
   let tray: TrayLike | undefined;
   let stopping: Promise<void> | undefined;
   let done = false;
+  // @req FR:desktop-shell/instance.early: a show asked for before the host is up waits for it.
+  let showPending = false;
 
   /** @req FR:desktop-shell/window.load @req FR:desktop-shell/window.hide */
   const window = (): WindowLike => {
@@ -52,7 +54,7 @@ export function createShell(deps: ShellDeps): Shell {
     win = w;
     return w;
   };
-  const show = () => { const w = window(); w.show(); w.focus(); };
+  const show = () => { if (!host) { showPending = true; return; } const w = window(); w.show(); w.focus(); };
   const hide = () => { win?.hide(); };
   /** @req FR:desktop-shell/window.toggle */
   const toggle = () => { if (win && win.isVisible() && win.isFocused()) hide(); else show(); };
@@ -111,6 +113,7 @@ export function createShell(deps: ShellDeps): Shell {
     // @req FR:desktop-shell/hotkey.register
     if (!globalShortcut.register(HOTKEY, toggle)) log(`hotkey: ${HOTKEY} is taken`);
     window();
+    if (showPending) show();
   };
 
   return { start, show, hide, toggle, stopped: () => stopping ?? Promise.resolve() };

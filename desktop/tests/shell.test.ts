@@ -34,6 +34,16 @@ describe('instance', () => {
     expect(win().isFocused()).toBe(true);
     expect(e.windows).toHaveLength(1);
   });
+  // @req FR:desktop-shell/instance.early
+  it('activate or second-instance before the host starts waits, then shows the window', async () => {
+    const { e, shell, win } = setup();
+    const started = shell.start();
+    expect(() => { e.emit('activate'); e.emit('second-instance'); }).not.toThrow();
+    expect(e.windows).toHaveLength(0);
+    await started;
+    expect(e.windows).toHaveLength(1);
+    expect(win().isVisible()).toBe(true);
+  });
 });
 
 describe('window', () => {

@@ -60,6 +60,7 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 
 - **FR:instance.lock** (P1): If `app.requestSingleInstanceLock()` is false, the shell calls `app.quit()` and does nothing else: no host, no window
 - **FR:instance.second** (P1): `second-instance` shows and focuses the window of the running instance
+- **FR:instance.early** (P1): `activate` or `second-instance` before the host has started MUST NOT crash. The shell waits and shows the window once the host is up. If the host fails, nothing shows
 
 ### FR:quit: Quit stops the host
 
