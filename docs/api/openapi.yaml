@@ -951,7 +951,7 @@ paths:
           $ref: "#/components/responses/Error"
   /asks/{key}:
     post:
-      summary: Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask
+      summary: Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys
       operationId: putAsk
       parameters:
         - name: key
@@ -2456,6 +2456,9 @@ components:
           type: integer
         refText:
           type: string
+        writer:
+          type: string
+          description: Who created the ask; only that token or the owner updates it
         row:
           $ref: "#/components/schemas/Ref"
         task:

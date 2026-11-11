@@ -42,17 +42,14 @@ Counts: Critical 0 · High 3 (fixed) · Medium 4 (all fixed; M1, M2 in the follo
 # Follow-up: M1, M2 and a fresh pass over merged code (PRs 89 to 99)
 
 Scope: ACP driver (spawn, env, permission requests), iPhone auth (tokens, devices, push), Teams/Slack connectors, asks MCP and wake files, meetings API and the `.stack` path rule.
-Counts: Critical 0 · High 1 (fixed) · Medium 3 (M1, M2 fixed; M5 open) · Low 4 (open) · Info 6.
+Counts: Critical 0 · High 1 (fixed) · Medium 3 (M1, M2, M5 fixed) · Low 4 (open) · Info 6.
 
 ## Fixed in this PR (tests first)
 
 - **M1.** `src/api/brief.ts`: each line's `text` is now the ask's own text; the model sentence moves to `note`. Test: `tests/api/brief-ai.test.ts` (security). Web follow-up: show `note` as a second line (`web/src/briefAi.ts`).
 - **M2.** `src/api/brief.ts`: `?refresh=1` spends at most one model call per 60 s; inside the floor it returns the current result with `cached: true`. Test: `tests/api/brief-ai.test.ts` (security).
 - **H4. An agent token can rewrite another session's permission prompt.** `src/api/handler.ts` `asks.put` let any `tasks:write` token overwrite `perm-*` asks (title, why, detail, recommend). The owner answers `go` → the broker sends `options[0]` (allow) for the real request. A prompt-injected agent could make the owner approve a misdescribed `Bash` call of another session. Fix: `perm-*` keys are broker-only; a non-owner write is `403`. Test: `tests/security/perm-asks.test.ts`.
-
-## Medium (open)
-
-- **M5. A token can overwrite any other agent's ask.** `src/core/asks.ts` `putAsk` merges fields onto an existing ask with no owner check (`from` is free text). An agent can change another agent's ask text or options before the owner answers. Fix: store the creating actor on create; only that actor (or the owner) updates. Needs a core change, out of this PR's scope.
+- **M5. A token can overwrite any other agent's ask.** `src/core/asks.ts` `putAsk` merged fields onto an existing ask with no writer check (`from` is free text). Fix: a new ask stores `writer` (`token:<name>` or the core actor); a token that is not the writer gets `403`. The owner may update any ask. Asks written before this change have no `writer` and stay open to any writer. Residual: tokens with the same name share asks; `asks.handle` has no writer check, but a wrong handle only denies or closes. Test: `tests/security/ask-writer.test.ts`.
 
 ## Low (open)
 
