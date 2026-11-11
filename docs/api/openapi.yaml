@@ -1295,6 +1295,8 @@ paths:
                           type: string
                         text:
                           type: string
+                        note:
+                          type: string
                         action:
                           type: string
                           enum:
