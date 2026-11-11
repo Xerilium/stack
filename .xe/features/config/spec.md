@@ -2,7 +2,7 @@
 id: config
 title: Stack Configuration
 description: Load, default, and validate Stack settings and resolve the active time block
-dependencies: []
+dependencies: [recurring-rows]
 ---
 
 <!-- markdownlint-disable single-title -->

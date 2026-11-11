@@ -24,7 +24,7 @@ Owner needs one flow for all work so that every change has a spec, tests, and a 
 - **FR:flow.fix** (P1): A bug MUST use `/catalyst:fix`
   - A failing test that reproduces the bug MUST exist before the fix
 - **FR:flow.branch** (P1): Agent branches MUST be `xe/{rollout-id}`; manual branches `{user}/{rollout-id}`
-- **FR:flow.pr** (P1): Every PR MUST be a draft, titled `[Stack][Create|Change|Fix] {title}`, body prefixed `🤖 [AI]`
+- **FR:flow.pr** (P1): Every PR MUST be a draft, titled `[Stack][Create|Change|Fix|Explore] {title}`, body prefixed `🤖 [AI]`
 - **FR:flow.loop** (P2): `/catalyst:pr-loop` SHOULD run review rounds until findings are resolved or max rounds is reached
 - **FR:flow.merge** (P1): Agents MUST NOT merge. Owner or sweep manager merges after gates pass
 - **FR:flow.traceability** (P1): `catalyst.json` traceability MUST stay at `warning` until pilot passes, then move to `error` for `src/`
