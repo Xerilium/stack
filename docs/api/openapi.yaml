@@ -1231,6 +1231,63 @@ paths:
                               type: string
         default:
           $ref: "#/components/responses/Error"
+  /session-inventory:
+    get:
+      summary: "Owner only. Claude app sessions on this machine (read-only, cached by mtime in ~/.stack/sessions.json): counts per state, the ranked Needs-you list (waiting, stuck), archive candidates, and every session. No transcript text. 404 on hosts with no inventory"
+      operationId: listSessionInventory
+      responses:
+        "200":
+          description: Inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Inventory"
+        default:
+          $ref: "#/components/responses/Error"
+  /pris:
+    get:
+      summary: Owner only. The owner priorities, most important first (~/.stack/pris.json); rev 0 and an empty list when none. 404 on hosts with no store
+      operationId: getPriorities
+      responses:
+        "200":
+          description: Priorities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrisFile"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: "Owner only. Replace the priorities list. Send the rev you read: a stale rev is 409. 400 lists every issue"
+      operationId: putPriorities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - rev
+                - pris
+              properties:
+                rev:
+                  type: integer
+                  minimum: 0
+                pris:
+                  type: array
+                  maxItems: 30
+                  items:
+                    $ref: "#/components/schemas/Pri"
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrisFile"
+        default:
+          $ref: "#/components/responses/Error"
   /inbox-items:
     get:
       summary: "All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens"
@@ -2245,6 +2302,222 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    SessionItem:
+      type: object
+      required:
+        - id
+        - title
+        - project
+        - state
+        - reason
+        - pinned
+        - lastActivityAt
+        - link
+        - prs
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        project:
+          type: string
+          enum:
+            - allyte
+            - ftk
+            - focus
+            - f4
+            - xerilium
+            - other
+        state:
+          type: string
+          enum:
+            - running
+            - waiting
+            - stuck
+            - done
+            - pinned
+            - idle
+        reason:
+          type: string
+          enum:
+            - question
+            - permission
+            - needs-user
+            - blocked
+            - error
+            - cut-short
+            - api-error
+            - dead-turn
+            - pr-merged
+            - superseded
+            - turn-open
+            - idle
+        pinned:
+          type: boolean
+        lastActivityAt:
+          type: string
+          format: date-time
+        link:
+          type: string
+          description: claude://claude.ai/epitaxy/<id>
+        prs:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              state:
+                type: string
+        ask:
+          type: string
+        scheduled:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+    Inventory:
+      type: object
+      required:
+        - at
+        - total
+        - counts
+        - needsYou
+        - archive
+        - sessions
+      properties:
+        at:
+          type: string
+          format: date-time
+        total:
+          type: integer
+        counts:
+          type: object
+          properties:
+            running:
+              type: integer
+            waiting:
+              type: integer
+            stuck:
+              type: integer
+            done:
+              type: integer
+            pinned:
+              type: integer
+            idle:
+              type: integer
+        needsYou:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionItem"
+        archive:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionItem"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionItem"
+    PriItem:
+      type: object
+      additionalProperties: false
+      required:
+        - text
+        - status
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 300
+        status:
+          type: string
+          enum:
+            - todo
+            - doing
+            - blocked
+            - done
+    Pri:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - status
+        - items
+        - backlog
+        - weekly
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{0,23}$
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+            - blocked
+            - done
+        items:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/PriItem"
+        backlog:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/PriItem"
+        weekly:
+          type: array
+          maxItems: 12
+          description: Weekly progress, newest first
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - week
+              - text
+            properties:
+              week:
+                type: string
+                pattern: ^\d{4}-W\d{2}$
+              text:
+                type: string
+                minLength: 1
+                maxLength: 500
+    PrisFile:
+      type: object
+      required:
+        - version
+        - rev
+        - pris
+      properties:
+        version:
+          type: integer
+        rev:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+        seed:
+          type: object
+          properties:
+            source:
+              type: string
+            at:
+              type: string
+            sha256:
+              type: string
+        pris:
+          type: array
+          items:
+            $ref: "#/components/schemas/Pri"
     ReportItem:
       type: object
       additionalProperties: false

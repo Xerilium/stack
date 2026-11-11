@@ -8,6 +8,8 @@ import { ERROR_CODES, STATUS } from './errors';
 import { QUERY_DEFAULTS, ROUTES } from './handler';
 import { ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES } from '../core/asks';
 import { REPORT_ASK_KINDS } from '../core/reports';
+import { PROJECTS, SESSION_REASONS, SESSION_STATES } from '../core/session-inventory';
+import { PRI_ITEM_STATUSES, PRI_STATUSES } from '../core/pris';
 import { ANCHORS, CADENCES, WEEKDAYS } from '../core/model';
 import { MAX_STR, REF_RE, type Spec } from './validate';
 
@@ -240,6 +242,19 @@ const DOCS: Record<string, RouteDoc> = {
       },
     }),
   },
+  'inventory.list': {
+    operationId: 'listSessionInventory', summary: 'Owner only. Claude app sessions on this machine (read-only, cached by mtime in ~/.stack/sessions.json): counts per state, the ranked Needs-you list (waiting, stuck), archive candidates, and every session. No transcript text. 404 on hosts with no inventory',
+    responses: ok('Inventory', ref('Inventory')),
+  },
+  'pris.get': {
+    operationId: 'getPriorities', summary: 'Owner only. The owner priorities, most important first (~/.stack/pris.json); rev 0 and an empty list when none. 404 on hosts with no store',
+    responses: ok('Priorities', ref('PrisFile')),
+  },
+  'pris.put': {
+    operationId: 'putPriorities', summary: 'Owner only. Replace the priorities list. Send the rev you read: a stale rev is 409. 400 lists every issue',
+    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['rev', 'pris'], properties: { rev: { type: 'integer', minimum: 0 }, pris: { type: 'array', maxItems: 30, items: ref('Pri') } } } } } },
+    responses: ok('Stored', ref('PrisFile')),
+  },
   'sessions.list': {
     operationId: 'listSessions', summary: 'Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents',
     responses: ok('Sessions', { type: 'object', properties: { items: { type: 'array', items: ref('Session') }, total: { type: 'integer' }, indexing: { type: 'integer' } } }),
@@ -421,6 +436,44 @@ export function buildOpenApi(): J {
         },
       },
       schemas: {
+        SessionItem: {
+          type: 'object', required: ['id', 'title', 'project', 'state', 'reason', 'pinned', 'lastActivityAt', 'link', 'prs'],
+          properties: {
+            id: { type: 'string' }, title: { type: 'string' }, project: { type: 'string', enum: [...PROJECTS] },
+            state: { type: 'string', enum: [...SESSION_STATES] }, reason: { type: 'string', enum: [...SESSION_REASONS] }, pinned: { type: 'boolean' },
+            lastActivityAt: { type: 'string', format: 'date-time' }, link: { type: 'string', description: 'claude://claude.ai/epitaxy/<id>' },
+            prs: { type: 'array', items: { type: 'object', properties: { url: { type: 'string' }, state: { type: 'string' } } } },
+            ask: { type: 'string' }, scheduled: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } } },
+          },
+        },
+        Inventory: {
+          type: 'object', required: ['at', 'total', 'counts', 'needsYou', 'archive', 'sessions'],
+          properties: {
+            at: { type: 'string', format: 'date-time' }, total: { type: 'integer' },
+            counts: { type: 'object', properties: Object.fromEntries(SESSION_STATES.map((k) => [k, { type: 'integer' }])) },
+            needsYou: { type: 'array', items: ref('SessionItem') }, archive: { type: 'array', items: ref('SessionItem') }, sessions: { type: 'array', items: ref('SessionItem') },
+          },
+        },
+        PriItem: {
+          type: 'object', additionalProperties: false, required: ['text', 'status'],
+          properties: { text: { type: 'string', minLength: 1, maxLength: 300 }, status: { type: 'string', enum: [...PRI_ITEM_STATUSES] } },
+        },
+        Pri: {
+          type: 'object', additionalProperties: false, required: ['id', 'title', 'status', 'items', 'backlog', 'weekly'],
+          properties: {
+            id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,23}$' }, title: { type: 'string', minLength: 1, maxLength: 200 }, status: { type: 'string', enum: [...PRI_STATUSES] },
+            items: { type: 'array', maxItems: 20, items: ref('PriItem') }, backlog: { type: 'array', maxItems: 50, items: ref('PriItem') },
+            weekly: { type: 'array', maxItems: 12, description: 'Weekly progress, newest first', items: { type: 'object', additionalProperties: false, required: ['week', 'text'], properties: { week: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' }, text: { type: 'string', minLength: 1, maxLength: 500 } } } },
+          },
+        },
+        PrisFile: {
+          type: 'object', required: ['version', 'rev', 'pris'],
+          properties: {
+            version: { type: 'integer' }, rev: { type: 'integer' }, updatedAt: { type: 'string', format: 'date-time' },
+            seed: { type: 'object', properties: { source: { type: 'string' }, at: { type: 'string' }, sha256: { type: 'string' } } },
+            pris: { type: 'array', items: ref('Pri') },
+          },
+        },
         ReportItem: {
           type: 'object', additionalProperties: false, required: ['text'],
           properties: { text: { type: 'string', minLength: 1, maxLength: 200, description: 'Single line.' }, link: { type: 'string', maxLength: 2000, pattern: '^https://' } },

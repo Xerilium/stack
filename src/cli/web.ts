@@ -4,6 +4,8 @@
  */
 import { createHash } from 'crypto';
 import { ReportStore, stackHome } from '../core/reports';
+import { runInventory, type Inventory } from '../core/session-inventory';
+import { PriStore } from '../core/pris';
 import { execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type Server } from 'http';
@@ -62,6 +64,10 @@ export interface WebOpts {
   agents?: AgentRuns | false;
   /** The live report store; default `~/.stack` (or `STACK_HOME`). @req FR:status-ingest/api.put */
   reports?: ReportStore;
+  /** The session inventory; default reads the Claude app store into `~/.stack`; `false` means none (demo). @req FR:session-inventory/api.inventory */
+  inventory?: (() => Inventory) | false;
+  /** The priorities store; default `~/.stack/pris.json`. @req FR:session-inventory/api.pris.get */
+  pris?: PriStore;
 }
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
@@ -171,7 +177,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // reports.json is outside the watched repo: a report write tells open pages to refresh (Needs you reloads on `tasks`).
   // @req FR:status-ingest/store.live
   const offReports = reports.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks'] }); });
-  const api = createApiHandler({ storage, config, reports, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
+  const inventory = o.inventory === false ? undefined : o.inventory ?? (() => runInventory({ home: stackHome() }));
+  const pris = o.pris ?? new PriStore(stackHome());
+  const api = createApiHandler({ storage, config, reports, inventory, pris, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });

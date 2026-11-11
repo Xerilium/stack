@@ -3,12 +3,15 @@
  * store under ~/.stack (live state, never git). Their asks are shown in Needs you. No LLM call.
  * @req FR:status-ingest/$report
  */
-import { closeSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'fs';
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { AskKind, AskPriority } from './asks';
 import type { Need, NeedAnswer, NeedAnswerInput } from './needs-you';
 import { NotFoundError } from './storage';
+import { pidAlive, withFileLock, writeAtomic } from './file-lock';
+
+export { pidAlive };
 
 export const REPORT_ASK_KINDS = ['approve', 'review', 'go-do', 'answer'] as const satisfies readonly AskKind[];
 const PRIORITIES = ['crit', 'high', 'normal', 'low'] as const satisfies readonly AskPriority[];
@@ -38,8 +41,6 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const isHttps = (v: string) => { try { return new URL(v).protocol === 'https:'; } catch { return false; } };
 /** The calendar date exists (rejects 2026-02-30, which Date.parse rolls over). */
 const realDate = (v: string) => { const [y, m, d] = v.slice(0, 10).split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCMonth() === m - 1 && t.getUTCDate() === d; };
-/** A process with this id is running (EPERM still means it exists). */
-export const pidAlive = (pid: number): boolean => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; } };
 
 /**
  * Checks a report body against the schema and returns it with defaults, or throws one `ReportInvalid` with every issue.
@@ -126,8 +127,6 @@ export const stackHome = (env: NodeJS.ProcessEnv = process.env, home = homedir()
 /** The ask key of one report ask. @req FR:status-ingest/asks.key */
 export const reportAskKey = (agent: string, project: string, id: string): string => `rp.${agent}.${project}.${id}`;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 /**
  * The live report store: one JSON file (`reports.json`) in the Stack home, written atomically (temp file and rename)
  * under a single-writer lock file (`reports.lock`). Reads need no lock.
@@ -135,11 +134,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export class ReportStore {
   readonly file: string;
-  private readonly lockFile: string;
   private readonly listeners = new Set<() => void>();
   constructor(readonly dir: string, private readonly o: { now?: () => Date; lockWaitMs?: number; staleMs?: number } = {}) {
     this.file = join(dir, 'reports.json');
-    this.lockFile = join(dir, 'reports.lock');
   }
 
   /** The reports in the file; `broken` when it exists but is not a reports object. */
@@ -163,9 +160,8 @@ export class ReportStore {
   }
 
   private write(data: ReportsFile): void {
-    const tmp = `${this.file}.${process.pid}.${Date.now()}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-    renameSync(tmp, this.file);
+    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    writeAtomic(this.file, `${JSON.stringify(data, null, 2)}\n`);
     for (const fn of this.listeners) { try { fn(); } catch { /* a listener never fails a write */ } }
   }
 
@@ -175,43 +171,9 @@ export class ReportStore {
    */
   onWrite(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
 
-  /** Runs `fn` while holding the lock file (it holds the writer's pid). A stale lock is taken over (see `takeOver`). */
-  private async locked<T>(fn: () => T): Promise<T> {
-    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
-    const deadline = Date.now() + (this.o.lockWaitMs ?? 5000);
-    for (;;) {
-      try { const fd = openSync(this.lockFile, 'wx'); try { writeSync(fd, String(process.pid)); } finally { closeSync(fd); } break; } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-        try {
-          if (this.takeOver()) continue;
-        } catch (err) { if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue; throw err; }
-        if (Date.now() > deadline) throw new ReportBusy('Report store is busy (reports.lock); try again');
-        await sleep(25);
-      }
-    }
-    try { return fn(); } finally { try { unlinkSync(this.lockFile); } catch { /* already gone */ } }
-  }
-
-  /**
-   * Removes a stale lock; true when it did. A live writer's lock is never taken. A named writer that is gone frees it at once;
-   * a lock with no pid yet (being written) only after staleMs. One remover at a time holds `reports.lock.takeover`, and it
-   * checks the lock again inside, so two waiters that both saw the same stale lock never remove a fresh lock.
-   */
-  private takeOver(): boolean {
-    const guard = `${this.lockFile}.takeover`;
-    try { closeSync(openSync(guard, 'wx')); } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      // The guard is held for microseconds; one left by a crash is cleared after a second.
-      try { if (Date.now() - statSync(guard).mtimeMs > 1000) unlinkSync(guard); } catch (g) { if ((g as NodeJS.ErrnoException).code !== 'ENOENT') throw g; }
-      return false;
-    }
-    try {
-      const pid = Number(readFileSync(this.lockFile, 'utf8'));
-      const old = Date.now() - statSync(this.lockFile).mtimeMs > (this.o.staleMs ?? 30_000);
-      if (pid > 0 ? pidAlive(pid) : !old) return false;
-      unlinkSync(this.lockFile);
-      return true;
-    } finally { try { unlinkSync(guard); } catch { /* already gone */ } }
+  /** Runs `fn` while holding `reports.lock` (see `withFileLock`). */
+  private locked<T>(fn: () => T): Promise<T> {
+    return withFileLock(this.dir, 'reports.lock', fn, () => new ReportBusy('Report store is busy (reports.lock); try again'), this.o);
   }
 
   /** Every stored report, newest first; none for a missing or broken file. @req FR:status-ingest/store.read */
