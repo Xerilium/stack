@@ -36,6 +36,7 @@ test.beforeAll(async () => {
   // The agent CLI writes without committing here so its git commits never race the server's (one git index, two writers).
   cli = (...a) => execFileSync('node', [join(out, 'cli/index.js'), ...a, '--dir', repo, '--no-commit'], { env, encoding: 'utf8' });
   const { startWeb } = await import(pathToFileURL(join(out, 'cli/web.js')).href);
+  // @req FR:test-reliability/wait.os
   // macOS FSEvents drops events written before its stream is live (seconds under load), so no test may write until the watcher has reported a probe file.
   let armed = false;
   server = await startWeb({ dir: repo, port: 0, webDir: join(ROOT, 'web/dist'), watch: { debounceMs: 60, onRaw: (f: string) => { if (f.endsWith('.armed-probe')) armed = true; } } });

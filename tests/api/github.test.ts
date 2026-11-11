@@ -11,7 +11,7 @@ function fake(routes: Record<string, Reply>) {
     const url = String(input);
     seen.push({ url, auth: new Headers(init?.headers).get('authorization') });
     inFlight++; peak = Math.max(peak, inFlight);
-    await new Promise((r) => setTimeout(r, 2));
+    await new Promise((r) => setImmediate(r)); // yield, so every request a worker pool starts overlaps; no timed sleep
     inFlight--;
     const hit = routes[url.replace('https://api.github.com', '')];
     return new Response(JSON.stringify(hit?.body ?? { message: 'Not Found' }), { status: hit ? hit.status ?? 200 : 404 });
@@ -26,6 +26,7 @@ const ref = (n: number) => ({ url: `https://github.com/o/r/pull/${n}`, repo: 'o/
 
 // @req FR:github-pr-status/status.fetch
 describe('GitHub PR status provider', () => {
+  // @req FR:github-pr-status/status.@function @req FR:github-pr-status/status.input @req FR:github-pr-status/status.output @req FR:github-pr-status/$pr-status @req FR:github-pr-status/wire.token.scope
   it('maps PR state and check runs, sends the token only to api.github.com', async () => {
     const f = fake({
       '/repos/o/r/pulls/1': pull(1), '/repos/o/r/commits/sha1/check-runs?per_page=100': runs(['completed', 'success'], ['completed', 'skipped']),
@@ -43,7 +44,19 @@ describe('GitHub PR status provider', () => {
     expect(m.get(ref(5).url)).toMatchObject({ state: 'closed', checks: 'failing' });
     expect(m.has(ref(6).url)).toBe(false);
     expect(f.seen.every((s) => s.url.startsWith('https://api.github.com/') && s.auth === 'Bearer ghs_secret')).toBe(true);
-    expect(f.peak()).toBeLessThanOrEqual(6);
+  });
+  // @req FR:github-pr-status/status.fetch.limit
+  it('keeps at most 6 requests in flight, however many PRs are asked for', async () => {
+    const ns = Array.from({ length: 13 }, (_, i) => i + 1);
+    const f = fake(Object.fromEntries(ns.flatMap((n) => [[`/repos/o/r/pulls/${n}`, pull(n)], [`/repos/o/r/commits/sha${n}/check-runs?per_page=100`, runs()]])));
+    expect((await createGitHubPrs({ token: 't', fetch: f.fetch })(ns.map(ref))).size).toBe(13);
+    expect(f.peak()).toBe(6);
+  });
+  // @req FR:github-pr-status/status.failure
+  it('leaves only the failed PR without status; the others still get theirs', async () => {
+    const f = fake({ '/repos/o/r/pulls/1': pull(1), '/repos/o/r/commits/sha1/check-runs?per_page=100': runs(), '/repos/o/r/pulls/2': { status: 500, body: {} }, '/repos/o/r/pulls/3': pull(3), '/repos/o/r/commits/sha3/check-runs?per_page=100': { status: 502, body: {} } });
+    const m = await createGitHubPrs({ token: 't', fetch: f.fetch })([1, 2, 3].map(ref));
+    expect([...m.keys()]).toEqual([ref(1).url]);
   });
   it('gives every call a timeout signal, so a stalled GitHub becomes a missing status', async () => {
     const signals: (AbortSignal | null | undefined)[] = [];
@@ -57,6 +70,7 @@ describe('GitHub PR status provider', () => {
     (signals[0] as unknown as { dispatchEvent(e: Event): boolean }).dispatchEvent(new Event('abort'));
     expect((await pending).size).toBe(0);
   });
+  // @req FR:github-pr-status/status.fetch.cache
   it('caches results for ttlMs', async () => {
     const f = fake({ '/repos/o/r/pulls/1': pull(1), '/repos/o/r/commits/sha1/check-runs?per_page=100': runs() });
     let t = 0;
@@ -80,6 +94,7 @@ describe('repo allow-list', () => {
   type Agents = { items: { prs: object[] }[] };
   const at = (repo: string, n: number) => ({ url: `https://github.com/${repo}/pull/${n}`, repo, number: n });
   const routes = (...rs: [string, number][]) => Object.fromEntries(rs.flatMap(([repo, n]) => [[`/repos/${repo}/pulls/${n}`, pull(n)], [`/repos/${repo}/commits/sha${n}/check-runs?per_page=100`, runs()]]));
+  // @req FR:github-pr-status/repos.@env @req FR:github-pr-status/repos.unset
   it('parses a comma list of owner or owner/repo; unset or blank means every repo', () => {
     expect(githubRepos(undefined)).toBeUndefined();
     expect(githubRepos(' , ')).toBeUndefined();
@@ -94,6 +109,7 @@ describe('repo allow-list', () => {
     expect([...m.keys()]).toEqual([at('Xerilium/stack', 1).url, at('o/r', 2).url]);
     expect(f.seen.some((x) => /other|private/.test(x.url))).toBe(false);
   });
+  // @req FR:github-pr-status/repos.unset
   it('looks up every repo when no list is given', async () => {
     const f = fake(routes(['o/r', 1], ['private/repo', 2]));
     expect((await createGitHubPrs({ token: 't', fetch: f.fetch })([at('o/r', 1), at('private/repo', 2)])).size).toBe(2);

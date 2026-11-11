@@ -1,6 +1,7 @@
 /**
  * Unit tests drive a fake `fs.watch` by hand: nothing here waits on the OS (macOS FSEvents can take seconds to start).
  * The real OS watcher is covered end to end in web/e2e/live.spec.ts, which waits for it to be armed.
+ * @req FR:test-reliability/wait.event @req FR:test-reliability/seam.watch
  * @req FR:ask-queue/live.watch @req FR:ask-queue/live.sse
  */
 import http from 'http';

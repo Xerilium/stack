@@ -173,7 +173,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   let port = o.port;
   /** @req FR:cli/web.serve.loopback */
   const hostOk = (h?: string) => !!h && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(h);
-  /** API requests in flight, so shutdown can let a mutation land before the storage flushes. */
+  /** API requests in flight (until the reply is sent), so shutdown can let a mutation land before the storage flushes. @req FR:test-reliability/shutdown.reply */
   const inflight = new Set<Promise<unknown>>();
 
   const server: Server = createServer((req, res) => {

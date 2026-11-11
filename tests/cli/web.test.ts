@@ -202,7 +202,7 @@ describe('prepareLive', () => {
     expect(g(repo, 'log', '--format=%s').split('\n')[0]).toBe('Stack: added 1');
     expect(g(repo, 'status', '--porcelain')).toBe('');
   });
-  // @req FR:cli/web.batch.shutdown
+  // @req FR:cli/web.batch.shutdown @req FR:test-reliability/shutdown.reply
   it('shutdown lets a request already being handled land before the final flush', async () => {
     const repo = content();
     const web = tmp(); writeFileSync(join(web, 'index.html'), 'x');

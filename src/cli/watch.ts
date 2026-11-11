@@ -37,7 +37,7 @@ export interface WatchOptions {
   debounceMs?: number;
   /** Hears every raw file event before filtering; tests use it to know the OS watcher is armed. */
   onRaw?: (file: string) => void;
-  /** Test seam: replaces `fs.watch`, so unit tests drive events by hand instead of waiting for the OS. */
+  /** Test seam: replaces `fs.watch`, so unit tests drive events by hand instead of waiting for the OS. @req FR:test-reliability/seam.watch */
   watchFn?: typeof fsWatch;
 }
 
