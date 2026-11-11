@@ -4,7 +4,7 @@
  * capability, so every risky tool call comes back as `session/request_permission`, which `onPermission` (the ask queue) answers.
  * @req FR:acp-driver/conn.spawn @req FR:acp-driver/conn.init @req FR:acp-driver/conn.session @req FR:acp-driver/conn.close
  * @req FR:acp-driver/run.prompt @req FR:acp-driver/run.updates @req FR:acp-driver/run.cancel @req FR:acp-driver/run.errors
- * @req FR:acp-driver/perm.ask @req FR:acp-driver/perm.answer @req NFR:acp-driver/acp.seam @req NFR:acp-driver/acp.lazy @req NFR:acp-driver/acp.log
+ * @req FR:acp-driver/perm.ask @req FR:acp-driver/perm.answer @req FR:acp-driver/perm.risky @req FR:acp-driver/perm.flow @req NFR:acp-driver/acp.seam @req NFR:acp-driver/acp.lazy @req NFR:acp-driver/acp.log
  */
 import { spawn as nodeSpawn, type ChildProcess } from 'child_process';
 import { randomBytes, randomUUID } from 'crypto';
@@ -54,7 +54,9 @@ export const agentEnv = (extra: Record<string, string> = {}, parent: NodeJS.Proc
 
 const TOOL_KINDS = new Set<ToolKind>(['read', 'edit', 'delete', 'move', 'search', 'execute', 'think', 'fetch', 'switch_mode', 'other']);
 const TOOL_STATUS = new Set<ToolStatus>(['pending', 'in_progress', 'completed', 'failed', 'cancelled']);
-const PERM_KINDS = new Set<PermissionKind>(['allow_once', 'allow_always', 'reject_once', 'reject_always']);
+/** Tool kinds whose ask recommends Deny: they run code, remove or move files, or reach the network. @req FR:acp-driver/perm.risky */
+const RISKY = new Set<ToolKind>(['execute', 'delete', 'move', 'fetch', 'other']);
+const PERM_KINDS =new Set<PermissionKind>(['allow_once', 'allow_always', 'reject_once', 'reject_always']);
 const toolKind = (k: unknown): ToolKind => (typeof k === 'string' && TOOL_KINDS.has(k as ToolKind) ? (k as ToolKind) : 'other');
 const toolStatus = (s: unknown, dflt: ToolStatus): ToolStatus => (typeof s === 'string' && TOOL_STATUS.has(s as ToolStatus) ? (s as ToolStatus) : dflt);
 const line = (s: unknown, max: number): string => oneLine(redact(String(s ?? ''))).slice(0, max);
@@ -192,7 +194,8 @@ export function createAcpDriver(o: AcpDriverOptions): AcpDriver {
     const known = r.calls.get(callId);
     const title = line(p.toolCall.title ?? known?.title ?? 'Tool call', 200);
     const input = (p.toolCall.rawInput && typeof p.toolCall.rawInput === 'object' ? p.toolCall.rawInput : known?.input ?? {}) as Record<string, unknown>;
-    const req: PermissionRequest = { requestId: randomBytes(4).toString('hex'), callId, tool: String(p.toolCall.name ?? p.toolCall.kind ?? known?.kind ?? 'tool'), title, input, options };
+    const kind = toolKind(p.toolCall.kind ?? known?.kind);
+    const req: PermissionRequest = { requestId: randomBytes(4).toString('hex'), callId, tool: String(p.toolCall.name ?? p.toolCall.kind ?? known?.kind ?? 'tool'), title, input, options, ...(RISKY.has(kind) ? { risky: true } : {}) };
     r.q.push({ type: 'permission', requestId: req.requestId, callId, title, options });
     try {
       const answer = await Promise.race([r.onPermission(req), r.abort.then(() => null)]);
@@ -238,7 +241,11 @@ export function createAcpDriver(o: AcpDriverOptions): AcpDriver {
     if (fresh) q.push({ type: 'session', sessionId: sid });
     c.ctx.request(c.sdk.methods.agent.session.prompt, { sessionId: sid, prompt: [{ type: 'text', text: req.text }] }).then(
       (res) => run.finish(stopOf(res.stopReason, run.cancelled)),
-      (e: Error) => run.finish(run.cancelled ? { stopReason: 'cancelled' } : { stopReason: 'error', error: exited && !closing ? exited : line(e.message, 300) }),
+      async (e: Error) => {
+        // stdout often closes before the exit event: give the exit a moment so the error names the exit code (FR:cli.crash).
+        if (!run.cancelled && !exited && c.child.exitCode === null && c.child.signalCode === null) await Promise.race([exitedWaiter(c.child), new Promise<void>((r) => setTimeout(r, 500).unref?.())]);
+        run.finish(run.cancelled ? { stopReason: 'cancelled' } : { stopReason: 'error', error: exited && !closing ? exited : line(e.message, 300) });
+      },
     );
     return { id: run.id, sessionId: sid, updates: q.iterable };
   }
@@ -292,7 +299,8 @@ function pick(options: PermissionOption[], a: PermissionAnswer): string | null {
 }
 
 function stopOf(reason: string, cancelled: boolean): { stopReason: StopReason; error?: string } {
-  if (reason === 'end_turn') return { stopReason: 'end_turn' };
+  // A cancelled run is cancelled, also when the agent ignores session/cancel and ends its turn (FR:run.cancel).
   if (reason === 'cancelled' || cancelled) return { stopReason: 'cancelled' };
+  if (reason === 'end_turn') return { stopReason: 'end_turn' };
   return { stopReason: 'error', error: `Agent stopped: ${reason}` };
 }
