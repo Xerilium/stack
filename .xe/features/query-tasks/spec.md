@@ -30,7 +30,8 @@ Let a task say "list what GitHub has for this search" and keep that list current
 ### FR:expand: Expansion
 
 - **FR:expand.@function** (P1): Interface: `expandQueryTasks(content, client, opts): Promise<ExpandResult>` where `opts = { now: Date; timeZone?: string }` and `ExpandResult = { content, processed, skipped, failures }`
-- **FR:expand.block** (P1): The managed block is the run of lines right after the trigger that are indented deeper than it; it MUST be replaced in full by one `- [ ] 🌐 {title} — {url}` line per result, indented two spaces deeper than the trigger. A blank line ends the block
+- **FR:expand.block** (P1): The managed block is the run of lines right after the trigger that are indented deeper than it; it MUST be replaced in full by one `- [ ] 🌐 {title}{ tags} — {url}` line per result, indented two spaces deeper than the trigger. A blank line ends the block
+- **FR:expand.tags** (P1): A pull request result MUST carry the legacy status tags after its title, space-separated, so PRs rank in the normal scoring formula (legacy FR-11). First match wins for status: draft or `reviewDecision` `CHANGES_REQUESTED` gives `⏳`; `APPROVED` gives `⬆️`. Then, independently, a non-draft PR whose `updatedAt` is 7 or more days before `opts.now` gets `🔺`. Example: `- [ ] 🌐 Fix X ⬆️ 🔺 — {url}`. Issues and discussions get no tags
 - **FR:expand.kind** (P2): A `[Issue]`, `[PullRequest]`, or `[Discussion]` prefix is added after `🌐` only when results mix kinds
 - **FR:expand.none** (P1): With zero results the block is the single line `> None as of {MMM d} @ {H:mm}` (wall clock in `timeZone`, default UTC)
 - **FR:expand.query** (P1): The client receives `repo`, `kind` (`issues` | `discussions`) and `qualifiers` (the raw params). It is the client's job to scope the search to the repo
@@ -56,6 +57,7 @@ Let a task say "list what GitHub has for this search" and keep that list current
 ### FR:github: GitHub client
 
 - **FR:github.@function** (P1): Interface: `QueryClient { search(req: QueryRequest): Promise<QueryItem[]> }`; `createGhClient(exec?): QueryClient` implements it with the `gh` CLI
-- **FR:github.graphql** (P1): The real client MUST call `gh api graphql` with the query and variables passed as separate arguments (never interpolated into the query document) and no shell, with a 60 second timeout on the `gh` process (a timeout throws and is recorded as a failure). The search string is `repo:{repo} {qualifiers}` trimmed; type is `ISSUE` or `DISCUSSION`; first 25 results (silently truncated: more than 25 matches are not listed, and the result carries no truncation marker)
+- **FR:github.graphql** (P1): The real client MUST call `gh api graphql` with the query and variables passed as separate arguments (never interpolated into the query document) and no shell, with a 60 second timeout on the `gh` process (a timeout throws and is recorded as a failure). The search string is `repo:{repo} {qualifiers}` trimmed; type is `ISSUE` or `DISCUSSION`. It MUST read pages of 100 (`after` = the previous page's `endCursor`) until `hasNextPage` is false or 500 items are listed (legacy cap; items past 500 are not listed). Any failing page throws, so a caller never sees a partial list
+- **FR:github.pr** (P1): For `PullRequest` nodes the client MUST request and return `isDraft`, `reviewDecision`, and `updatedAt` (inputs to `FR:expand.tags`)
 - **FR:github.parse** (P1): A non-zero exit, unparsable JSON, or a response without `data.search.nodes` MUST throw. Nodes lacking a title or url are dropped only if null (GraphQL returns `{}` for unsupported types); anything else malformed throws
 - **FR:github.inject** (P1): The executor is injectable; tests MUST NOT touch the network or spawn `gh`

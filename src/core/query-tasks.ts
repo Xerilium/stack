@@ -9,7 +9,8 @@ export type QueryKind = 'issues' | 'discussions';
 
 /** @req FR:query-tasks/github.@function */
 export interface QueryRequest { repo: string; kind: QueryKind; qualifiers: string }
-export interface QueryItem { title: string; url: string; kind: string }
+/** PR review fields (`isDraft`, `reviewDecision`, `updatedAt`) are set only for pull requests. @req FR:query-tasks/github.pr */
+export interface QueryItem { title: string; url: string; kind: string; isDraft?: boolean; reviewDecision?: string | null; updatedAt?: string }
 export interface QueryClient { search(req: QueryRequest): Promise<QueryItem[]> }
 
 /** @req FR:query-tasks/trigger.@function */
@@ -74,8 +75,21 @@ function validate(items: unknown): QueryItem[] {
   return items.map((i) => {
     const o = i as Partial<QueryItem> | null;
     if (!o || typeof o.title !== 'string' || typeof o.url !== 'string' || o.url === '' || /\s/.test(o.url)) throw new Error('Query returned a malformed item');
-    return { title: o.title, url: o.url, kind: typeof o.kind === 'string' ? o.kind : '' };
+    return { ...o, title: o.title, url: o.url, kind: typeof o.kind === 'string' ? o.kind : '' };
   });
+}
+
+const AGING_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Legacy `Get-GitHubPullRequestTag`: status tag (first match wins), then the aging tag. @req FR:query-tasks/expand.tags */
+function prTags(i: QueryItem, now: Date): string {
+  if (i.kind !== 'PullRequest') return '';
+  const tags: string[] = [];
+  if (i.isDraft || i.reviewDecision === 'CHANGES_REQUESTED') tags.push('⏳');
+  else if (i.reviewDecision === 'APPROVED') tags.push('⬆️');
+  const updated = i.updatedAt ? Date.parse(i.updatedAt) : NaN;
+  if (!i.isDraft && !Number.isNaN(updated) && now.getTime() - updated >= AGING_MS) tags.push('🔺');
+  return tags.length ? ` ${tags.join(' ')}` : '';
 }
 
 /**
@@ -103,7 +117,7 @@ export async function expandQueryTasks(content: string, client: QueryClient, opt
       const mixed = new Set(items.map((i) => i.kind)).size > 1;
       const block = items.length === 0
         ? [`${pad}> None as of ${stamp(opts.now, opts.timeZone)}`]
-        : items.map((i) => `${pad}- [ ] 🌐 ${mixed ? `[${i.kind}] ` : ''}${oneLine(i.title)} — ${i.url}`);
+        : items.map((i) => `${pad}- [ ] 🌐 ${mixed ? `[${i.kind}] ` : ''}${oneLine(i.title)}${prTags(i, opts.now)} — ${i.url}`);
 
       let end = t.line + 1;
       while (end < lines.length && lines[end].trim() !== '' && /^\s*/.exec(lines[end])![0].length > t.indent) end++;
@@ -166,37 +180,62 @@ const defaultExec: Exec = (file, args) => new Promise((resolve, reject) => {
   });
 });
 
-const GRAPHQL = `query($searchQuery: String!, $searchType: SearchType!) {
-  search(query: $searchQuery, type: $searchType, first: 25) {
+const PAGE = 100;
+const MAX_ITEMS = 500;
+const GRAPHQL = `query($searchQuery: String!, $searchType: SearchType!, $after: String) {
+  search(query: $searchQuery, type: $searchType, first: ${PAGE}, after: $after) {
+    pageInfo { hasNextPage endCursor }
     nodes {
       __typename
       ... on Issue { title url }
-      ... on PullRequest { title url }
+      ... on PullRequest { title url isDraft reviewDecision updatedAt }
       ... on Discussion { title url }
     }
   }
 }`;
 
+interface GhNode { __typename?: string; title?: unknown; url?: unknown; isDraft?: unknown; reviewDecision?: unknown; updatedAt?: unknown }
+interface GhSearch { pageInfo?: { hasNextPage?: boolean; endCursor?: string | null }; nodes?: unknown }
+
+/** @req FR:query-tasks/github.pr */
+function toItem(n: GhNode): QueryItem {
+  if (!n || typeof n.title !== 'string' || typeof n.url !== 'string') throw new Error('gh returned a malformed node');
+  const item: QueryItem = { title: n.title, url: n.url, kind: String(n.__typename ?? '') };
+  if (typeof n.isDraft === 'boolean') item.isDraft = n.isDraft;
+  if (typeof n.reviewDecision === 'string' || n.reviewDecision === null) item.reviewDecision = n.reviewDecision;
+  if (typeof n.updatedAt === 'string') item.updatedAt = n.updatedAt;
+  return item;
+}
+
 /** @req FR:query-tasks/github.graphql @req FR:query-tasks/github.parse @req FR:query-tasks/github.inject */
 export function createGhClient(exec: Exec = defaultExec): QueryClient {
   return {
     async search({ repo, kind, qualifiers }) {
-      const args = ['api', 'graphql', '-f', `query=${GRAPHQL}`,
+      const base = ['api', 'graphql', '-f', `query=${GRAPHQL}`,
         '-f', `searchQuery=${`repo:${repo} ${qualifiers}`.trim()}`,
         '-f', `searchType=${kind === 'discussions' ? 'DISCUSSION' : 'ISSUE'}`];
-      let res;
-      try { res = await exec('gh', args); } catch (e) {
-        throw new Error(`gh CLI not available: ${e instanceof Error ? e.message : String(e)}`);
-      }
-      if (res.code !== 0) throw new Error(`gh api graphql failed: ${(res.stderr || res.stdout).trim()}`);
-      let json: { data?: { search?: { nodes?: unknown } } };
-      try { json = JSON.parse(res.stdout); } catch { throw new Error('gh returned invalid JSON'); }
-      const nodes = json?.data?.search?.nodes;
-      if (!Array.isArray(nodes)) throw new Error(`Unexpected response from gh for ${repo}`);
-      return nodes.filter((n) => !(n && typeof n === 'object' && Object.keys(n).length === 0)).map((n) => {
-        if (!n || typeof n.title !== 'string' || typeof n.url !== 'string') throw new Error('gh returned a malformed node');
-        return { title: n.title, url: n.url, kind: String(n.__typename ?? '') };
-      });
+      const items: QueryItem[] = [];
+      let cursor: string | null = null;
+      do {
+        const args = cursor ? [...base, '-f', `after=${cursor}`] : base;
+        let res;
+        try { res = await exec('gh', args); } catch (e) {
+          throw new Error(`gh CLI not available: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        if (res.code !== 0) throw new Error(`gh api graphql failed: ${(res.stderr || res.stdout).trim()}`);
+        let json: { data?: { search?: GhSearch } };
+        try { json = JSON.parse(res.stdout); } catch { throw new Error('gh returned invalid JSON'); }
+        const search = json?.data?.search;
+        const nodes = search?.nodes;
+        if (!Array.isArray(nodes)) throw new Error(`Unexpected response from gh for ${repo}`);
+        for (const n of nodes as GhNode[]) {
+          if (n && typeof n === 'object' && Object.keys(n).length === 0) continue;
+          if (items.length >= MAX_ITEMS) break;
+          items.push(toItem(n));
+        }
+        cursor = search?.pageInfo?.hasNextPage && search.pageInfo.endCursor ? search.pageInfo.endCursor : null;
+      } while (cursor && items.length < MAX_ITEMS);
+      return items;
     },
   };
 }

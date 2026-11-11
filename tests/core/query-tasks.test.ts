@@ -123,6 +123,27 @@ describe('expandQueryTasks', () => {
     const r = await expandQueryTasks(`${TRIG}\n`, fake([{ title: 'a\n  b\r\nc', url: 'u', kind: 'Issue' }]), opts);
     expect(r.content).toBe(`${TRIG}\n  - [ ] 🌐 a b c — u\n`);
   });
+  // @req FR:query-tasks/expand.tags
+  describe('PR status tags (legacy parity: report rows "… ⬆️ — url", "… ⏳ — url")', () => {
+    const fresh = '2026-09-16T00:00:00Z'; // 1.9 days before now
+    const old = '2026-09-10T21:05:00Z'; // exactly 7 days before now
+    const p = (extra: Partial<QueryItem>): QueryItem => ({ ...pr(1, 'T'), updatedAt: fresh, ...extra });
+    const row = async (item: QueryItem) => (await expandQueryTasks(`${TRIG}\n`, fake([item]), opts)).content.split('\n')[1];
+    it.each([
+      ['draft', { isDraft: true, reviewDecision: 'APPROVED' }, ' ⏳'],
+      ['changes requested', { reviewDecision: 'CHANGES_REQUESTED' }, ' ⏳'],
+      ['approved', { reviewDecision: 'APPROVED' }, ' ⬆️'],
+      ['review required', { reviewDecision: 'REVIEW_REQUIRED' }, ''],
+      ['approved and aging', { reviewDecision: 'APPROVED', updatedAt: old }, ' ⬆️ 🔺'],
+      ['aging, no decision', { reviewDecision: null, updatedAt: old }, ' 🔺'],
+      ['aging draft', { isDraft: true, updatedAt: old }, ' ⏳'],
+    ] as [string, Partial<QueryItem>, string][])('%s', async (_n, extra, tags) => {
+      expect(await row(p(extra))).toBe(`  - [ ] 🌐 T${tags} — https://github.com/o/r/pull/1`);
+    });
+    it('does not tag issues or discussions', async () => {
+      expect(await row({ title: 'I', url: 'u', kind: 'Issue', reviewDecision: 'APPROVED', updatedAt: old })).toBe('  - [ ] 🌐 I — u');
+    });
+  });
   it('returns content untouched when there are no triggers', async () => {
     const c = fake([]);
     const r = await expandQueryTasks('# P\n- [ ] a\n', c, opts);
@@ -272,6 +293,45 @@ describe('createGhClient', () => {
     await client.search({ repo: 'o/r', kind: 'discussions', qualifiers: '' });
     expect(calls[0].args).toContain('searchQuery=repo:o/r');
     expect(calls[0].args).toContain('searchType=DISCUSSION');
+  });
+  // @req FR:query-tasks/github.pr
+  it('returns PR review fields', async () => {
+    const { calls, client } = mk(ok([{ __typename: 'PullRequest', title: 'T', url: 'U', isDraft: false, reviewDecision: 'APPROVED', updatedAt: '2026-09-01T00:00:00Z' }]));
+    expect(await client.search({ repo: 'o/r', kind: 'issues', qualifiers: '' }))
+      .toEqual([{ title: 'T', url: 'U', kind: 'PullRequest', isDraft: false, reviewDecision: 'APPROVED', updatedAt: '2026-09-01T00:00:00Z' }]);
+    expect(calls[0].args.find((a) => a.startsWith('query='))).toMatch(/PullRequest \{[^}]*isDraft reviewDecision updatedAt/);
+  });
+  // Legacy listed up to 500 results; a 25-result cap dropped ~80 PR rows in the parity run and lowered every 🔢 placement bonus.
+  describe('pagination', () => {
+    const page = (from: number, n: number, next: boolean) => JSON.stringify({ data: { search: {
+      pageInfo: { hasNextPage: next, endCursor: next ? `c${from + n}` : null },
+      nodes: Array.from({ length: n }, (_, i) => ({ __typename: 'Issue', title: `I${from + i}`, url: `U${from + i}` })),
+    } } });
+    const paged = (pages: string[]) => {
+      const calls: string[][] = [];
+      const exec = async (_f: string, args: string[]) => { calls.push(args); return { code: 0, stdout: pages[calls.length - 1], stderr: '' }; };
+      return { calls, client: createGhClient(exec) };
+    };
+    const req = { repo: 'o/r', kind: 'issues' as const, qualifiers: '' };
+    it('reads every page, 100 at a time, passing the cursor', async () => {
+      const { calls, client } = paged([page(0, 100, true), page(100, 30, false)]);
+      const items = await client.search(req);
+      expect(items).toHaveLength(130);
+      expect(items[129].title).toBe('I129');
+      expect(calls[0].find((a) => a.startsWith('query='))).toContain('first: 100');
+      expect(calls[0].some((a) => a.startsWith('after='))).toBe(false);
+      expect(calls[1]).toContain('after=c100');
+    });
+    it('stops at 500 items', async () => {
+      const { calls, client } = paged(Array.from({ length: 6 }, (_, i) => page(i * 100, 100, true)));
+      expect(await client.search(req)).toHaveLength(500);
+      expect(calls).toHaveLength(5);
+    });
+    it('throws when a later page fails (no partial list)', async () => {
+      const calls: number[] = [];
+      const client = createGhClient(async () => { calls.push(1); return calls.length === 1 ? { code: 0, stdout: page(0, 100, true), stderr: '' } : { code: 1, stdout: '', stderr: 'rate limited' }; });
+      await expect(client.search(req)).rejects.toThrow(/rate limited/);
+    });
   });
   it('drops empty-object nodes', async () => {
     const { client } = mk(ok([{}, { __typename: 'Issue', title: 'T', url: 'U' }]));
