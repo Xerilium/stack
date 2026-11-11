@@ -16,6 +16,7 @@ describe('docs/cli.md', () => {
   // @req FR:deploy-docs/docs.drift.flags
   it("lists each command's flags on that command's own line", () => {
     const doc = read('docs/cli.md');
+    expect(commands().length).toBeGreaterThan(10);
     const missing: string[] = [];
     for (const c of commands()) {
       if (c.name === 'asks') continue;

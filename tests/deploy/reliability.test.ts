@@ -41,7 +41,7 @@ const KNOWN: Record<string, string[]> = {
 describe('test waits', () => {
   it('no new test sleeps or polls the wall clock, and KNOWN only shrinks', () => {
     const found: Record<string, string[]> = {};
-    for (const f of [...walk(join(root, 'tests')), ...walk(join(root, 'web/e2e'))]) {
+    for (const f of ['tests', 'web/tests', 'web/e2e', 'desktop/tests'].flatMap((d) => walk(join(root, d)))) {
       const src = readFileSync(f, 'utf8');
       const hit = RULES.filter(([, re]) => re.test(src)).map(([n]) => n);
       if (hit.length) found[relative(root, f)] = hit;

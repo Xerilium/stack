@@ -26,7 +26,7 @@ describe('api client', () => {
     let live = 0, peak = 0;
     const fetchFn = (async (url: string) => {
       live++; peak = Math.max(peak, live);
-      await new Promise((r) => setTimeout(r, 10));
+      await Promise.resolve();
       live--;
       const off = Number(new URL(url, 'http://x').searchParams.get('offset'));
       return res(200, { items: Array.from({ length: Math.min(200, 650 - off) }, (_, i) => ({ ref: `a:${off + i}`, text: 't', project: 'a', section: 's', done: false })), total: 650, offset: off, limit: 200 });
