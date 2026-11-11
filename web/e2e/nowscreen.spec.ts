@@ -135,13 +135,23 @@ test.describe('Now screen', () => {
     await expect(page.getByRole('status')).toContainText('Sent to email-triage');
   });
 
-  test('empty sections say so in one line; Needs you link opens Needs you', async ({ page }) => {
+  test('empty sections say so in one line', async ({ page }) => {
     await ten(page);
     await mockApi(page, { tasks: seed() });
     await page.goto('/#/now');
     await expect(page.getByText('No meetings left today.')).toBeVisible();
     await expect(page.getByText('Nothing waiting.')).toBeVisible();
     await expect(page.getByRole('button', { name: /more in Needs you/ })).toHaveCount(0);
+  });
+
+  // @req FR:ux-consolidation/one.messages
+  test('the more link opens Needs you', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.asks = ['a1', 'a2', 'a3', 'a4'].map((k, i) => ask(k, 'cos', 90 - i));
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: '1 more in Needs you' }).click();
+    await expect(page).toHaveURL(/#\/asks/);
   });
 
   // @req FR:ux-consolidation/one.clamp
