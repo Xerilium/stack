@@ -1,5 +1,5 @@
 /** Fake `electron` objects for the shell tests. No Electron, no processes. @req NFR:desktop-shell/shell.test */
-import type { AppLike, HeadersDetails, HeadersCallback, MenuItemTemplate, PermissionHandler, PreventableEvent, ShellElectron, TrayLike, WindowLike, WindowOptions } from '../src/electron-api';
+import type { AppLike, HeadersDetails, HeadersCallback, MenuItemTemplate, PermissionCheckHandler, PermissionHandler, PreventableEvent, ShellElectron, TrayLike, WindowLike, WindowOptions } from '../src/electron-api';
 
 type Fn = (...args: any[]) => void;
 
@@ -23,11 +23,16 @@ export interface FakeWindow extends WindowLike {
   open(url: string): { action: 'deny' } | { action: 'allow' };
   headers(d: HeadersDetails): Record<string, string[]> | undefined;
   permission(name: string, requestingUrl: string | undefined): boolean;
+  /** Calls the permission check handler; true when no handler is set (Electron's default). */
+  check(name: string, requestingOrigin: string): boolean;
+  /** Emits `will-redirect`; returns true when prevented. */
+  redirect(url: string): boolean;
 }
 
 export function fakeWindow(options: WindowOptions = windowDefaults()): FakeWindow {
   const em = new Emitter();
-  let navigate: ((e: PreventableEvent, url: string) => void) | undefined;
+  const nav: Record<string, (e: PreventableEvent, url: string) => void> = {};
+  let check: PermissionCheckHandler | null = null;
   let opener: ((d: { url: string }) => { action: 'deny' } | { action: 'allow' }) | undefined;
   let headers: ((d: HeadersDetails, cb: HeadersCallback) => void) | undefined;
   let perm: PermissionHandler | null = null;
@@ -42,15 +47,18 @@ export function fakeWindow(options: WindowOptions = windowDefaults()): FakeWindo
     isDestroyed: () => w.destroyed,
     on: (event, fn) => em.on(event, fn),
     webContents: {
-      on: (_event, fn) => { navigate = fn; },
+      on: (event, fn) => { nav[event] = fn; },
       setWindowOpenHandler: (fn) => { opener = fn; },
       session: {
         webRequest: { onHeadersReceived: (fn) => { headers = fn; } },
         setPermissionRequestHandler: (fn) => { perm = fn; },
+        setPermissionCheckHandler: (fn) => { check = fn; },
       },
     },
     close: () => { let prevented = false; em.emit('close', { preventDefault: () => { prevented = true; } }); if (!prevented) w.destroyed = true; return prevented; },
-    navigate: (url) => { let prevented = false; navigate?.({ preventDefault: () => { prevented = true; } }, url); return prevented; },
+    navigate: (url) => { let prevented = false; nav['will-navigate']?.({ preventDefault: () => { prevented = true; } }, url); return prevented; },
+    redirect: (url) => { let prevented = false; nav['will-redirect']?.({ preventDefault: () => { prevented = true; } }, url); return prevented; },
+    check: (name, requestingOrigin) => check ? check({}, name, requestingOrigin) : true,
     open: (url) => opener?.({ url }) ?? { action: 'allow' },
     headers: (d) => { let out: Record<string, string[]> | undefined = d.responseHeaders; headers?.(d, (r) => { out = r.responseHeaders; }); return out; },
     permission: (name, requestingUrl) => { let ok = true; perm?.({}, name, (v) => { ok = v; }, { requestingUrl }); return ok; },

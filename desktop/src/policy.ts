@@ -1,5 +1,5 @@
 /** Renderer rules: web preferences, navigation guard, new-window handler, CSP fallback, permissions. */
-import type { WebPreferences, WindowLike, WindowOptions } from './electron-api';
+import type { PreventableEvent, WebPreferences, WindowLike, WindowOptions } from './electron-api';
 
 /** The policy the host serves from `staticwebapp.config.json`; the shell adds it when a response has none. @req FR:desktop-shell/safe.csp */
 export const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
@@ -27,11 +27,13 @@ export function harden(win: WindowLike, hostOrigin: string, shell: { openExterna
     if (isHttp(url)) void shell.openExternal(url).catch((e: unknown) => log(`open: ${e instanceof Error ? e.message : 'failed'}`));
     else log(`blocked: ${origin(url) ?? 'invalid url'}`);
   };
-  win.webContents.on('will-navigate', (e, url) => {
+  const guard = (e: PreventableEvent, url: string) => {
     if (origin(url) === hostOrigin) return;
     e.preventDefault();
     outside(url);
-  });
+  };
+  win.webContents.on('will-navigate', guard);
+  win.webContents.on('will-redirect', guard);
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (origin(url) === hostOrigin) void win.loadURL(url);
     else outside(url);
@@ -45,4 +47,5 @@ export function harden(win: WindowLike, hostOrigin: string, shell: { openExterna
   win.webContents.session.setPermissionRequestHandler((_wc, permission, callback, details) => {
     callback(permission === 'notifications' && !!details.requestingUrl && origin(details.requestingUrl) === hostOrigin);
   });
+  win.webContents.session.setPermissionCheckHandler((_wc, permission, requestingOrigin) => permission === 'notifications' && origin(requestingOrigin) === hostOrigin);
 }

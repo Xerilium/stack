@@ -32,13 +32,16 @@ export interface HeadersDetails { url: string; responseHeaders?: Record<string, 
 export type HeadersCallback = (r: { responseHeaders?: Record<string, string[]> }) => void;
 export type PermissionHandler = (webContents: unknown, permission: string, callback: (ok: boolean) => void, details: { requestingUrl?: string }) => void;
 
+export type PermissionCheckHandler = (webContents: unknown, permission: string, requestingOrigin: string) => boolean;
+
 export interface SessionLike {
   webRequest: { onHeadersReceived(fn: (details: HeadersDetails, callback: HeadersCallback) => void): void };
   setPermissionRequestHandler(fn: PermissionHandler | null): void;
+  setPermissionCheckHandler(fn: PermissionCheckHandler | null): void;
 }
 
 export interface WebContentsLike {
-  on(event: 'will-navigate', fn: (e: PreventableEvent, url: string) => void): unknown;
+  on(event: 'will-navigate' | 'will-redirect', fn: (e: PreventableEvent, url: string) => void): unknown;
   setWindowOpenHandler(fn: (details: { url: string }) => { action: 'deny' } | { action: 'allow' }): void;
   session: SessionLike;
 }

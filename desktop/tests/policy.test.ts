@@ -31,6 +31,14 @@ describe('harden: navigation', () => {
     expect(win.navigate('http://localhost:4242/')).toBe(true); // a different origin string, even if it is the same machine
     expect(opened).toEqual(['https://example.com/x', 'http://localhost:4242/']);
   });
+  // @req FR:desktop-shell/safe.navigate @req FR:desktop-shell/safe.remote
+  it('blocks redirects off the host origin', () => {
+    const { win, opened } = setup();
+    expect(win.redirect(`${ORIGIN}/#/now`)).toBe(false);
+    expect(win.redirect('https://example.com/r')).toBe(true);
+    expect(win.redirect('file:///etc/passwd')).toBe(true);
+    expect(opened).toEqual(['https://example.com/r']);
+  });
   // @req FR:desktop-shell/safe.navigate
   it('drops non-http schemes and bad urls', () => {
     const { win, opened } = setup();
@@ -69,5 +77,9 @@ describe('harden: headers and permissions', () => {
     expect(win.permission('media', `${ORIGIN}/`)).toBe(false);
     expect(win.permission('geolocation', `${ORIGIN}/`)).toBe(false);
     expect(win.permission('notifications', undefined)).toBe(false);
+    expect(win.check('notifications', ORIGIN)).toBe(true);
+    expect(win.check('notifications', 'https://example.com')).toBe(false);
+    expect(win.check('media', ORIGIN)).toBe(false);
+    expect(win.check('clipboard-read', ORIGIN)).toBe(false);
   });
 });
