@@ -33,6 +33,8 @@ export interface Ask {
   flow?: string; seq?: number; ref?: string; apply?: string; applies?: string[];
   /** The row's text when the ask was put: an action never lands on a row that changed. */
   refText?: string;
+  /** Who created the ask (`token:<name>` for a token, else the core actor); only that writer or the owner updates it (security M5). */
+  writer?: string;
   /** Free markdown under `## Detail`; shown only when the owner expands the ask. */
   detail: string;
   /** Lines under `## Thread`, as written. */
@@ -67,7 +69,7 @@ const MAX_LINE = 500;
 const MAX_TEXT = 1000;
 const MAX_DETAIL = 20_000;
 const KEY = /^[a-z0-9][a-z0-9._-]{0,79}$/;
-const FIELDS = ['state', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'created', 'updated', 'answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed', 'flow', 'seq', 'ref', 'apply', 'applies', 'reftext'] as const;
+const FIELDS = ['state', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'created', 'updated', 'answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed', 'flow', 'seq', 'ref', 'apply', 'applies', 'reftext', 'writer'] as const;
 const FLOW = /^[a-z0-9][a-z0-9._-]{0,79}$/;
 const actionOk = (t: string) => { try { parseAction(t); return true; } catch { return false; } };
 const refOk = (t: string) => { try { parseTaskRef(t); return true; } catch { return false; } };
@@ -101,6 +103,7 @@ export function formatAsk(a: Ask): string {
     ['effort', a.effort], ['blocks', String(a.blocks)], ['created', a.created], ['updated', a.updated],
     ['answer', a.answer], ['text', a.text], ['answered', a.answered], ['outcome', a.outcome], ['handled', a.handled], ['note', a.note], ['snoozed', a.snoozed],
     ['flow', a.flow], ['seq', a.seq === undefined ? undefined : String(a.seq)], ['ref', a.ref], ['reftext', a.refText], ['apply', a.apply], ['applies', a.applies?.join(' | ')],
+    ['writer', a.writer],
   ];
   const lines = [`# Ask: ${a.key}`, '', HEADER, '', ...f.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `- ${k}: ${v}`), ...a.extra];
   if (a.detail.trim()) lines.push('', '## Detail', '', a.detail.trim().replace(/^## /gm, '\\## '));
@@ -244,8 +247,11 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
   return out;
 }
 
-/** Creates or updates an ask. @req FR:ask-queue/flow.put */
-export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, actor: string): Promise<{ key: string; created: boolean }> {
+/** A write the caller may not make; the message is fixed text. */
+export class AskDenied extends Error {}
+
+/** Creates or updates an ask. `opts.writer` names a token caller, which may update only asks it wrote. @req FR:ask-queue/flow.put */
+export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, actor: string, opts: { writer?: string } = {}): Promise<{ key: string; created: boolean }> {
   asksPath(key);
   const fields = checkPut(input);
   if (fields.ref !== undefined) { try { fields.refText = (await readRow(ctx, parseTaskRef(fields.ref))).row[3]; } catch (e) { if (e instanceof NotFoundError) throw e; throw new LifecycleError(`ref: ${e instanceof Error ? e.message : 'no such row'}`); } }
@@ -256,10 +262,12 @@ export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, 
       if (!fields.ask || !fields.kind || !from) throw new LifecycleError('ask, kind and from are required');
       if (fields.kind === 'decide' && !fields.options) throw new LifecycleError('options are required for kind decide');
       if (fields.applies && fields.applies.length !== (fields.options ?? []).length) throw new LifecycleError('applies must have one entry per option');
-      const next: Ask = { key, state: 'open', reversible: false, priority: 'normal', blocks: 0, detail: '', thread: [], extra: [], ...fields, ask: fields.ask, kind: fields.kind, from, created: now, updated: now };
+      const next: Ask = { key, state: 'open', reversible: false, priority: 'normal', blocks: 0, detail: '', thread: [], extra: [], ...fields, ask: fields.ask, kind: fields.kind, from, created: now, updated: now, writer: opts.writer ?? actor };
       return { next, message: `Ask: ${key}`, result: { key, created: true } };
     }
     const old = cur.ask;
+    // A token updates only its own asks; an ask written before `writer` existed stays open to any writer (security M5).
+    if (opts.writer && old.writer && old.writer !== opts.writer) throw new AskDenied('Only the agent that wrote this ask can change it');
     if (old.state === 'done' && input.reopen !== true) throw new ConflictError('Ask is done; send reopen to open it again');
     const next: Ask = { ...old, ...fields, key, updated: now };
     if (next.kind !== 'decide') delete next.options;

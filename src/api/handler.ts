@@ -570,7 +570,11 @@ export const ROUTES: Route[] = [
       const { ref, ...b } = validate<AskPut & { ref?: ReturnType<typeof parseRef> }>(await readBody(c.req), ASK_PUT_BODY.schema, ASK_PUT_BODY.required);
       // A token names its agent (the token's name); the owner session writes as `owner`.
       const actor = caller(c.req).actor;
-      return json(200, await putAsk(c.life, c.params[0], { ...b, ...(ref ? { ref: formatRef(ref) } : {}) }, actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor));
+      // `perm-*` asks belong to the permission broker: a token rewriting one could make the owner approve a misdescribed tool call.
+      if (actor !== 'owner' && c.params[0].startsWith('perm-')) throw new ApiError('forbidden', 'Permission asks are written by Stack only');
+      const name = actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor;
+      // A token updates only asks it wrote (security M5); the owner may update any ask.
+      return json(200, await putAsk(c.life, c.params[0], { ...b, ...(ref ? { ref: formatRef(ref) } : {}) }, name, actor.startsWith('token:') ? { writer: `token:${name}` } : {}));
     },
   },
   {

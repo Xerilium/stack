@@ -6,9 +6,10 @@ import type { ListedAsk } from '../core/asks';
 import type { ClaudeJson } from '../email/llm';
 
 export const BRIEF_MODEL = 'claude-sonnet-5-5';
-const TOP = 12, CLIP = 300, MAX_LINES = 5;
+const TOP = 12, CLIP = 300, MAX_LINES = 5, REFRESH_FLOOR_MS = 60_000;
 export type BriefAction = 'go' | 'no' | 'done' | 'none';
-export interface BriefLine { key: string; text: string; action: BriefAction }
+/** `text` is the ask's own text (never model text, security M1); `note` is the model's sentence, a second line only. */
+export interface BriefLine { key: string; text: string; note: string; action: BriefAction }
 export interface BriefSummary { configured: true; date: string; headline?: string; lines?: BriefLine[]; cached?: boolean; error?: string }
 
 const SCHEMA = {
@@ -27,11 +28,13 @@ const allowed = (kind: string): BriefAction[] => (kind === 'approve' ? ['go', 'n
 export const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export function createBriefCache() {
-  let day = '', hit: Promise<BriefSummary> | null = null;
+  let day = '', hit: Promise<BriefSummary> | null = null, last = -Infinity;
   return async (o: { model: ClaudeJson; asks: ListedAsk[]; now: Date; refresh?: boolean; onError?: (e: unknown) => void }): Promise<BriefSummary> => {
     const date = localDay(o.now);
     if (day !== date) { day = date; hit = null; }
-    if (hit && !o.refresh) { const r = await hit; return r.error ? r : { ...r, cached: true }; }
+    // A refresh spends a model call at most once per 60 s (security M2: a cross-site GET can reach loopback).
+    const floor = o.now.getTime() - last < REFRESH_FLOOR_MS;
+    if (hit && (!o.refresh || floor)) { const r = await hit; return r.error ? r : { ...r, cached: true }; }
     const open = o.asks.filter((a) => a.state === 'open').sort((a, b) => b.score - a.score).slice(0, TOP);
     if (!open.length) return { configured: true, date, headline: 'Nothing needs you.', lines: [] };
     const run = (async (): Promise<BriefSummary> => {
@@ -43,11 +46,12 @@ export function createBriefCache() {
         const a = l && typeof l.key === 'string' ? byKey.get(l.key) : undefined;
         if (!a || typeof l.text !== 'string' || !l.text.trim() || lines.length >= MAX_LINES) continue;
         const action = (allowed(a.kind) as string[]).includes(l.action) ? (l.action as BriefAction) : 'none';
-        lines.push({ key: a.key, text: clip(l.text), action });
+        lines.push({ key: a.key, text: clip(a.ask), note: clip(l.text), action });
       }
       return { configured: true, date, headline: typeof value.headline === 'string' ? clip(value.headline) : '', lines };
     })();
     hit = run;
+    last = o.now.getTime();
     try { return await run; } catch (e) {
       if (hit === run) hit = null; // a failure is never cached
       o.onError?.(e);
