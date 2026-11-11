@@ -1,0 +1,18 @@
+/* Install and push screen. @req FR:iphone-access/install.@ui */
+.inst {
+  box-sizing: border-box; max-width: 480px; margin: 0 auto; min-height: 100vh;
+  padding: calc(env(safe-area-inset-top) + var(--s-48)) calc(env(safe-area-inset-right) + var(--s-24)) calc(env(safe-area-inset-bottom) + var(--s-32)) calc(env(safe-area-inset-left) + var(--s-24));
+  display: flex; flex-direction: column; gap: var(--s-16);
+}
+.inst-icon { border-radius: 14px; box-shadow: var(--shadow); }
+.inst h1 { font-size: var(--fs-title); line-height: 1.15; margin: var(--s-8) 0 0; letter-spacing: -.01em; }
+.inst-lede { font-size: var(--fs-body); color: var(--ink2); margin: 0; line-height: 1.45; }
+.inst-steps { list-style: none; margin: var(--s-8) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-12); }
+.inst-steps li { display: flex; gap: var(--s-12); align-items: flex-start; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s-16); font-size: var(--fs-body); line-height: 1.45; }
+.inst-n { flex: none; width: 28px; height: 28px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 650; display: grid; place-items: center; font-size: var(--fs-secondary); }
+.inst-glyph { vertical-align: -4px; color: var(--accent); }
+.inst-cta { min-height: var(--tap); border: 0; border-radius: var(--r-row); background: var(--accent); color: var(--accent-ink); font: inherit; font-size: var(--fs-body); font-weight: 650; padding: 0 var(--s-24); margin-top: var(--s-8); }
+.inst-cta:disabled { opacity: .45; }
+.inst-note { font-size: var(--fs-secondary); color: var(--muted); margin: 0; line-height: 1.4; }
+.inst-note.err { color: var(--warn); }
+.inst-back { margin-top: auto; padding-top: var(--s-24); font-size: var(--fs-secondary); align-self: center; min-height: var(--tap); display: inline-flex; align-items: center; }

@@ -21,6 +21,8 @@ const ROUTE_SCOPE = new Map<string, string>([
   ['inbox.reply', 'tasks:write'], ['tasks.thread', 'tasks:read'], ['tasks.assign', 'tasks:write'],
   ['projects.list', 'projects:read'], ['projects.get', 'projects:read'], ['projects.add', 'projects:write'],
   ['summaries.get', 'summaries:read'],
+  // @req FR:iphone-access/check.@http
+  ['push.check', 'tasks:write'],
 ]);
 
 /** Required scope for a route name, or `null` (deny) when the route is unmapped. @req FR:auth-security/authorize.scope.table */

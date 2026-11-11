@@ -13,6 +13,9 @@ import { openGitStorage, type GitDeps } from './git-repo';
 import { GitHubStorage, parseGitHubRepo } from './github-storage';
 import { ghIssueFiler, type IssueFiler } from '../inbox';
 import { DEVICE_PATH, GitTokenStore, needAux, type HostStorage } from './token-store';
+import { createPushCheck, PUSH_LEDGER_PATH, withPush } from './push';
+import type { PushTransport } from './push-sender';
+import type { DueAsk } from '../api/push';
 import { parseSettings, SettingsError, type Env, type HostSettings } from './settings';
 
 export interface HostDeps {
@@ -31,6 +34,8 @@ export interface HostDeps {
   freshMs?: number;
   /** Files "Request this action" issues; default is the `gh` CLI. @req FR:inbox-page/wire.issue */
   issues?: IssueFiler;
+  /** Web Push transport (tests); default `fetch`. @req FR:iphone-access/send.@function */
+  pushTransport?: PushTransport;
 }
 
 /**
@@ -67,6 +72,10 @@ function lazyStorage(open: () => Promise<Storage>, now: () => number, cooldownMs
   };
   return {
     list: async () => (await get()).list(),
+    // Optional listings pass through: without them the host api lists no asks or agents.
+    listAsks: async () => (await (await get()).listAsks?.()) ?? [],
+    listAgents: async () => (await (await get()).listAgents?.()) ?? [],
+    listClaudeAgents: async () => (await (await get()).listClaudeAgents?.()) ?? [],
     read: async (path) => (await get()).read(path),
     write: async (path, content, opts) => (await get()).write(path, content, opts),
     writeMany: async (writes: FileWrite[], opts) => writeAll(await get(), writes, opts?.message),
@@ -123,7 +132,18 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
   // @req FR:schedule/ics.wire: the feed URLs are secrets; a bad value logs a URL-free reason and leaves the calendar off.
   let calendar: CalendarProvider | undefined;
   try { const urls = icsUrls(env.STACK_CALENDAR_ICS); calendar = urls.length ? createIcsCalendar({ urls }) : undefined; } catch (e) { log(`host: STACK_CALENDAR_ICS ${e instanceof IcsError ? e.message : className(e)}`); }
-  const api = auth.wrap(createApiHandler({ storage, config: settings.config, authorize: auth.authorize, onError, prs, calendar, issues: deps.issues ?? ghIssueFiler() }));
+  // @req FR:iphone-access/check.read: the check lists open asks through the api, read-only.
+  const asksApi = createApiHandler({ storage, config: settings.config, authorize: (_r, route) => route.name === 'asks.list', onError });
+  const push = createPushCheck({
+    env, timeZone: settings.config.timezone, devices, log, transport: deps.pushTransport,
+    ledgerStore: new GitTokenStore(async () => storage, { path: PUSH_LEDGER_PATH, onError: onName }),
+    asks: async () => {
+      const r = await asksApi(new Request('https://host.internal/api/asks?state=open&limit=200'));
+      if (!r.ok) throw new Error(`asks.list ${r.status}`);
+      return ((await r.json()) as { items: DueAsk[] }).items;
+    },
+  });
+  const api = withPush(auth.wrap(createApiHandler({ storage, config: settings.config, authorize: auth.authorize, onError, prs, calendar, issues: deps.issues ?? ghIssueFiler() })), { authorize: auth.authorize, check: push, onError });
   const mcp = createMcpHandler({ api, tokens, basePath: '/api/mcp', onEvent: event, onError: onName });
   const botApi = createApiHandler({ storage, config: settings.config, authorize: botGate, onError });
   const bots = createBotHandler({

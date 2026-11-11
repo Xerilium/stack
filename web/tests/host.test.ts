@@ -33,8 +33,8 @@ describe('staticwebapp.config.json', () => {
 describe('client source', () => {
   const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)]));
   const all = files(join(ROOT, 'web/src'));
-  // day.ts is the one module that may touch browser storage, for the per-day available time only.
-  const src = all.filter((f) => !f.endsWith('day.ts')).map((f) => readFileSync(f, 'utf8')).join('\n');
+  // day.ts may touch browser storage for the per-day available time only; push.ts holds the device token (FR:iphone-access/install.pair).
+  const src = all.filter((f) => !f.endsWith('/day.ts') && !f.endsWith('/push.ts')).map((f) => readFileSync(f, 'utf8')).join('\n');
   const day = readFileSync(join(ROOT, 'web/src/day.ts'), 'utf8');
   // @req NFR:live-deploy/security.text
   it('has no secrets, env inlining, tokens, or innerHTML', () => {
@@ -44,6 +44,14 @@ describe('client source', () => {
     expect(day).not.toMatch(/sessionStorage|x-stack-token|authorization|token/i);
     expect(day.match(/setItem\(/g)).toHaveLength(1);
     expect(day).toContain('const KEY = \'stack.available\';');
+  });
+  // @req FR:iphone-access/install.pair: the device token is stored under one key and sent only to the device endpoints.
+  it('push.ts keeps the device token to one key and the device endpoints', () => {
+    const push = readFileSync(join(ROOT, 'web/src/push.ts'), 'utf8');
+    expect(push).not.toMatch(/sessionStorage|x-stack-token|innerHTML/);
+    expect(push.match(/setItem\(/g)).toHaveLength(1);
+    expect(push).toContain("export const DEVICE_KEY = 'stack.device';");
+    expect(push.match(/fetch\('([^']+)'/g)).toEqual(["fetch('/api/auth/devices/me/push-key'", "fetch('/api/auth/devices/me/push'"]);
   });
   it('ships no task data in public files', () => {
     expect(existsSync(join(ROOT, 'web/public'))).toBe(true);

@@ -28,9 +28,31 @@ describe('service worker routes', () => {
     expect(route('https://evil.test/api/tasks', 'GET', o)).toBe('pass');
   });
   it('handles install, activate, fetch, message, and notification clicks', () => {
-    expect(Object.keys(handlers).sort()).toEqual(['activate', 'fetch', 'install', 'message', 'notificationclick']);
+    expect(Object.keys(handlers).sort()).toEqual(['activate', 'fetch', 'install', 'message', 'notificationclick', 'push']);
     // offline.update: a new version waits for the next launch and only then drops older stack-* caches
     expect(src).not.toMatch(/skipWaiting|clients\.claim/);
     expect(src).toMatch(/k\.startsWith\('stack-'\) && k !== SHELL && k !== DATA/);
+  });
+});
+
+// @req FR:iphone-access/install.sw
+describe('service worker push', () => {
+  const shown: { title: string; opts: Record<string, unknown> }[] = [];
+  (self as Record<string, unknown>).registration = { showNotification: async (title: string, opts: Record<string, unknown>) => { shown.push({ title, opts }); } };
+  const fire = async (data: unknown) => {
+    let p: Promise<unknown> = Promise.resolve();
+    handlers.push({ data, waitUntil: (x: Promise<unknown>) => { p = x; } });
+    await p;
+  };
+  it('shows the payload title, tagged by ask key, opening the asks view', async () => {
+    shown.length = 0;
+    await fire({ json: () => ({ key: 'deploy-ok', title: 'Approve deploy' }) });
+    expect(shown).toEqual([{ title: 'Approve deploy', opts: expect.objectContaining({ tag: 'deploy-ok', data: { url: '/#/asks' }, icon: '/icons/icon-192.png' }) }]);
+  });
+  it('never stays silent on a bad payload', async () => {
+    shown.length = 0;
+    await fire({ json: () => { throw new Error('bad'); } });
+    await fire(null);
+    expect(shown.map((s) => s.title)).toEqual(['Stack: an ask is due soon', 'Stack: an ask is due soon']);
   });
 });

@@ -1,5 +1,5 @@
 import { createDeviceService, createTokenService, MemoryTokenStore } from '../../src/api/auth';
-import { createPushNotifier, dueWithin, type PushSender } from '../../src/api/push';
+import { createPushLedger, createPushNotifier, dueWithin, type PushSender } from '../../src/api/push';
 import type { Ask } from '../../src/core/asks';
 
 const NOW = new Date('2026-11-05T18:00:00Z');
@@ -52,7 +52,7 @@ describe('push notifier', () => {
     const r = recorder();
     const n = createPushNotifier({ devices, sender: r.sender, now: () => NOW });
     const out = await n.notify([ask('k1', { ask: 'Approve\u0007 deploy', why: 'secret reason' }), ask('far', { by: min(300) })]);
-    expect(out).toEqual({ sent: 2, removed: 0, failed: 0 });
+    expect(out).toEqual({ sent: 2, removed: 0, failed: 0, skipped: 0 });
     expect(r.calls).toHaveLength(2);
     expect(JSON.parse(r.calls[0].payload)).toEqual({ key: 'k1', title: 'Approve deploy' });
     expect(r.calls[0].payload).not.toContain('secret reason');
@@ -73,7 +73,7 @@ describe('push notifier', () => {
     const { devices } = await mk(3);
     const r = recorder((e) => (e.endsWith('e0') ? 410 : e.endsWith('e1') ? 404 : 503));
     const out = await createPushNotifier({ devices, sender: r.sender, now: () => NOW }).notify([ask('k')]);
-    expect(out).toEqual({ sent: 0, removed: 2, failed: 1 });
+    expect(out).toEqual({ sent: 0, removed: 2, failed: 1, skipped: 0 });
     expect((await devices.subscriptions()).map((s) => s.sub.endpoint)).toEqual(['https://web.push.apple.com/e2']);
   });
   // @req FR:iphone-access/notify.isolate
@@ -81,7 +81,7 @@ describe('push notifier', () => {
     const { devices } = await mk(2);
     const r = recorder((e) => (e.endsWith('e0') ? new Error('net') : 201));
     const out = await createPushNotifier({ devices, sender: r.sender, now: () => NOW }).notify([ask('k')]);
-    expect(out).toEqual({ sent: 1, removed: 0, failed: 1 });
+    expect(out).toEqual({ sent: 1, removed: 0, failed: 1, skipped: 0 });
     expect(r.calls).toHaveLength(2);
   });
   // @req FR:iphone-access/notify.none @req FR:iphone-access/notify.events
@@ -90,13 +90,13 @@ describe('push notifier', () => {
     const r = recorder();
     const events: unknown[] = [];
     const n = createPushNotifier({ devices, sender: r.sender, now: () => NOW, onEvent: (e) => events.push(e) });
-    expect(await n.notify([ask('far', { by: min(200) })])).toEqual({ sent: 0, removed: 0, failed: 0 });
+    expect(await n.notify([ask('far', { by: min(200) })])).toEqual({ sent: 0, removed: 0, failed: 0, skipped: 0 });
     const empty = await mk(0);
     const n2 = createPushNotifier({ devices: empty.devices, sender: r.sender, now: () => NOW });
-    expect(await n2.notify([ask('k')])).toEqual({ sent: 0, removed: 0, failed: 0 });
+    expect(await n2.notify([ask('k')])).toEqual({ sent: 0, removed: 0, failed: 0, skipped: 0 });
     expect(r.calls).toHaveLength(0);
     await n.notify([ask('k')]);
-    expect(events).toEqual([{ sent: 1, removed: 0, failed: 0 }]);
+    expect(events).toEqual([{ sent: 1, removed: 0, failed: 0, skipped: 0 }]);
   });
   it('skips revoked devices', async () => {
     const { devices, ids } = await mk(2);
@@ -104,5 +104,89 @@ describe('push notifier', () => {
     const r = recorder();
     await createPushNotifier({ devices, sender: r.sender, now: () => NOW }).notify([ask('k')]);
     expect(r.calls).toHaveLength(1);
+  });
+});
+
+describe('quiet hours', () => {
+  // 18:00Z = 10:00 in Los Angeles; 06:00Z = 22:00 the day before.
+  const NIGHT = new Date('2026-11-06T06:00:00Z');
+  const at = (d: Date, n: number) => new Date(d.getTime() + n * 60_000).toISOString();
+  const QUIET = { start: 21, end: 8, timeZone: 'America/Los_Angeles' };
+
+  // @req FR:iphone-access/notify.quiet
+  it('sends only crit asks inside quiet hours', async () => {
+    const { devices } = await mk(1);
+    const r = recorder();
+    const n = createPushNotifier({ devices, sender: r.sender, now: () => NIGHT, quiet: QUIET });
+    const out = await n.notify([ask('norm', { by: at(NIGHT, 20) }), ask('fire', { by: at(NIGHT, 30), priority: 'crit', ask: 'Prod down' })]);
+    expect(out).toMatchObject({ sent: 1 });
+    expect(JSON.parse(r.calls[0].payload)).toEqual({ key: 'fire', title: 'Prod down' });
+  });
+  // @req FR:iphone-access/notify.quiet
+  it('sends nothing at night with no crit ask, and everything by day', async () => {
+    const { devices } = await mk(1);
+    const r = recorder();
+    expect(await createPushNotifier({ devices, sender: r.sender, now: () => NIGHT, quiet: QUIET }).notify([ask('a', { by: at(NIGHT, 20) })])).toMatchObject({ sent: 0 });
+    expect(r.calls).toHaveLength(0);
+    expect(await createPushNotifier({ devices, sender: r.sender, now: () => NOW, quiet: QUIET }).notify([ask('a')])).toMatchObject({ sent: 1 });
+  });
+  // @req FR:iphone-access/notify.quiet
+  it('handles a window that does not wrap midnight', async () => {
+    const { devices } = await mk(1);
+    const r = recorder();
+    // 10:00 local is inside 9-12.
+    expect(await createPushNotifier({ devices, sender: r.sender, now: () => NOW, quiet: { start: 9, end: 12, timeZone: 'America/Los_Angeles' } }).notify([ask('a')])).toMatchObject({ sent: 0 });
+  });
+});
+
+describe('per-device dedupe', () => {
+  const mkLedger = () => createPushLedger(new MemoryTokenStore(), () => NOW);
+
+  // @req FR:iphone-access/notify.dedupe
+  it('pushes each ask and deadline once per device', async () => {
+    const { devices } = await mk(2);
+    const ledger = mkLedger();
+    const r = recorder();
+    const n = createPushNotifier({ devices, sender: r.sender, now: () => NOW, ledger });
+    expect(await n.notify([ask('k')])).toEqual({ sent: 2, removed: 0, failed: 0, skipped: 0 });
+    expect(await n.notify([ask('k')])).toEqual({ sent: 0, removed: 0, failed: 0, skipped: 2 });
+    expect(r.calls).toHaveLength(2);
+    // A moved deadline is a new push.
+    await n.notify([ask('k', { by: min(45) })]);
+    expect(r.calls).toHaveLength(4);
+  });
+  // @req FR:iphone-access/notify.dedupe
+  it('builds each payload from that device own unsent asks', async () => {
+    const { devices } = await mk(1);
+    const ledger = mkLedger();
+    const r = recorder();
+    const n = createPushNotifier({ devices, sender: r.sender, now: () => NOW, ledger });
+    await n.notify([ask('a', { by: min(10) })]);
+    await n.notify([ask('a', { by: min(10) }), ask('b', { by: min(20), ask: 'Second' })]);
+    expect(JSON.parse(r.calls[1].payload)).toEqual({ key: 'b', title: 'Second' });
+  });
+  // @req FR:iphone-access/notify.dedupe
+  it('marks sent only on 2xx, so a failed push retries', async () => {
+    const { devices } = await mk(1);
+    const ledger = mkLedger();
+    let status = 503;
+    const r = recorder(() => status);
+    const n = createPushNotifier({ devices, sender: r.sender, now: () => NOW, ledger });
+    expect(await n.notify([ask('k')])).toMatchObject({ failed: 1 });
+    status = 201;
+    expect(await n.notify([ask('k')])).toMatchObject({ sent: 1 });
+  });
+  // @req FR:iphone-access/notify.dedupe.store
+  it('ledger stores ids, keys and times only, and drops stale pairs', async () => {
+    const store = new MemoryTokenStore();
+    let now = NOW;
+    const ledger = createPushLedger(store, () => now);
+    await ledger.mark('d1', { k: min(30) });
+    expect(await ledger.sent('d1')).toEqual({ k: min(30) });
+    const raw = JSON.parse((await store.read())!.content);
+    expect(raw).toEqual({ version: 1, sent: { d1: { k: min(30) } } });
+    now = new Date(NOW.getTime() + 3 * 3600_000);
+    await ledger.mark('d2', { j: new Date(now.getTime() + 600_000).toISOString() });
+    expect(await ledger.sent('d1')).toEqual({});
   });
 });

@@ -1,4 +1,4 @@
-/* Stack service worker: app shell + read-only data cache, and notification clicks. @req FR:pwa/offline.sw @req FR:pwa/offline.private @req FR:pwa/offline.update @req FR:pwa/notify.click */
+/* Stack service worker: app shell + read-only data cache, notification clicks, and Web Push. @req FR:pwa/offline.sw @req FR:pwa/offline.private @req FR:pwa/offline.update @req FR:pwa/notify.click */
 const VERSION = 'v2';
 const SHELL = `stack-shell-${VERSION}`;
 const DATA = `stack-data-${VERSION}`;
@@ -71,4 +71,12 @@ self.addEventListener('notificationclick', (event) => {
     if (win) return win.navigate(url).then((w) => (w || win).focus());
     return self.clients.openWindow(url);
   }));
+});
+/* Web Push: always show a notification, so iOS never sees a silent push. @req FR:iphone-access/install.sw */
+self.addEventListener('push', (event) => {
+  let p = null;
+  try { p = event.data ? event.data.json() : null; } catch { p = null; }
+  const title = p && typeof p.title === 'string' && p.title ? p.title : 'Stack: an ask is due soon';
+  const tag = p && typeof p.key === 'string' && p.key ? p.key : 'stack-asks';
+  event.waitUntil(self.registration.showNotification(title, { tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url: '/#/asks' } }));
 });
