@@ -16,14 +16,14 @@ const TRUTH = `| Rank | Project  | Work | Hard date | Why |
 `;
 
 describe('applyTags', () => {
-  // @req FR:autopri-tagging/tag.unblocker
+  // @req FR:auto-priority/tag.unblocker
   it('adds 🔓 once and removes it', () => {
     const on = applyTags('- [ ] Ship it 🟡', { unblocker: true });
     expect(on).toBe('- [ ] Ship it 🟡 🔓');
     expect(applyTags(on, { unblocker: true })).toBe(on);
     expect(applyTags(on, { unblocker: false })).toBe('- [ ] Ship it 🟡');
   });
-  // @req FR:autopri-tagging/tag.due
+  // @req FR:auto-priority/tag.due
   it('sets, replaces, and clears the due marker; rejects bad formats', () => {
     const a = applyTags('- [ ] Ship it', { due: 'Nov 12' });
     expect(a).toBe('- [ ] 📅 Nov 12: Ship it');
@@ -34,13 +34,13 @@ describe('applyTags', () => {
 });
 
 describe('truth', () => {
-  // @req FR:autopri-tagging/truth.parse
+  // @req FR:auto-priority/truth.parse
   it('parses table rows with numeric or dash rank', () => {
     const t = parseTruth(TRUTH);
     expect(t.map((r) => [r.rank, r.project])).toEqual([[1, 'catalyst'], [4, 'ftk'], [6, 'focus'], [null, 'todo']]);
     expect(t[0].why).toMatch(/unblocks/);
   });
-  // @req FR:autopri-tagging/truth.match @req FR:autopri-tagging/truth.report
+  // @req FR:auto-priority/truth.match @req FR:auto-priority/truth.report
   it('reports ranked, untagged, and missing items', () => {
     const rows = [
       { project: 'Catalyst', aliases: ['cat'], text: 'Catalyst 0.3.4 release 🟡', context: '' },
@@ -61,7 +61,7 @@ describe('truth', () => {
 });
 
 describe('autopriParts', () => {
-  // @req FR:autopri-tagging/explain.parts
+  // @req FR:auto-priority/explain.parts
   it('sums to the engine score before blockers lift', () => {
     const config = parseConfig();
     const at = new Date('2026-11-05T12:00:00Z');

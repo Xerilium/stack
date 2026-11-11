@@ -742,7 +742,6 @@ function MoreMenu({ busy, owned, onAct, onOpen }: { busy: boolean; owned: boolea
 /**
  * @req FR:web-app/home.one
  * @req FR:web-app/home.fit
- * @req FR:web-app/home.next
  * @req FR:web-app/home.projects
  * @req FR:web-app/home.quiet
  * @req FR:web-app/now.focus

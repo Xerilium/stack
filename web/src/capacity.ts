@@ -2,7 +2,7 @@ import { isActive } from './now';
 import { effortMinutes, parseRow } from './row';
 import type { Project, Task } from './types';
 
-/** @req FR:web-app/capacity.view */
+/** @req FR:web-app/projects.glance */
 export interface CapacityRow { project: string; title: string; open: number; hours: number; capacity: number | null; ratio: number | null; over: boolean }
 
 /** Weekly hours from project metadata: `Weekly capacity`, else the sum of `<Block> capacity`. */

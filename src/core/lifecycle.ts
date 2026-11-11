@@ -577,7 +577,7 @@ export async function setProperties(ctx: LifecycleContext, ref: TaskRef, props: 
 
 // ------------------------------------------------------------------ autopri tags and explain
 
-/** Sets the `🔓` / `📅` tags the autopri engine reads. @req FR:autopri-tagging/tag.@function */
+/** Sets the `🔓` / `📅` tags the autopri engine reads. @req FR:auto-priority/tag.@function */
 export async function tagTask(ctx: LifecycleContext, ref: TaskRef, tags: Tags): Promise<LifecycleResult> {
   const t = await target(ctx, ref);
   if (!t) return NONE;
@@ -588,7 +588,7 @@ export async function tagTask(ctx: LifecycleContext, ref: TaskRef, tags: Tags): 
 
 export interface Explained { items: (ExplainRow & { path: string; line: number })[]; truth?: TruthMatch[]; text: string }
 
-/** Ranked tasks with autopri score parts; optional ground-truth report. @req FR:autopri-tagging/explain.cli @req FR:autopri-tagging/truth.report */
+/** Ranked tasks with autopri score parts; optional ground-truth report. @req FR:auto-priority/explain.cli @req FR:auto-priority/truth.report */
 /** File name plus the `**Aliases:**` line of a project file. */
 const aliasesOf = (d: Doc): string[] => [d.name, ...(d.project.lines.map((l) => /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean)?.split(',').map((a) => a.trim()).filter(Boolean) ?? [])];
 const formatRef = (r: TaskRef): string => `${r.path}:${r.line + 1}`;

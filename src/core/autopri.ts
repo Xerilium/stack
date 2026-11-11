@@ -63,7 +63,7 @@ const PROJECT_VALUE_SHARE = 0.5;
 const urgency = (days: number | null): number =>
   days === null || days < -STALE_DAYS ? 0 : days <= 0 ? URGENT_SCORE : URGENT_SCORE / (1 + days) ** 2;
 
-/** Score parts per task id, before blockers lift. @req FR:autopri-tagging/explain.parts */
+/** Score parts per task id, before blockers lift. @req FR:auto-priority/explain.parts */
 export interface AutopriParts { unblock: number; urgency: number; value: number }
 export function autopriParts(all: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date): Map<string, AutopriParts> {
   const byId = new Map(all.map((s) => [s.task.id, s]));

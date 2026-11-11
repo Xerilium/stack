@@ -709,7 +709,7 @@ body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: non
 /* the offline banner is one line at the top of the content; it does not float over the stuck headers */
 .banner.offline { position: static; }
 
-/* ---- Home round 3: inline detail, 5-minute gap, folded projects, Defer, animated Done, brand. @req FR:web-app/home2.expand @req FR:web-app/home2.fold @req FR:web-app/home2.done @req FR:web-app/home2.demo */
+/* ---- Home round 3: inline detail, 5-minute gap, folded projects, Defer, animated Done, brand. @req FR:web-app/home2.expand @req FR:web-app/home2.done @req FR:web-app/home2.demo */
 .brand { display: flex; align-items: center; gap: 8px; }
 .brand .mark { flex: none; color: var(--accent); }
 .phone-brand { display: none; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; letter-spacing: -.01em; margin: 0 0 12px; }

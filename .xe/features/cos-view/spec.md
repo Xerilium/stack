@@ -16,14 +16,14 @@ The owner wants one place: next meeting(s), top messages, top actions, one task.
 
 ### FR:brief: Brief (Experimental)
 
-- ~~**FR:brief.nav**~~: [deprecated: FR:ux-consolidation/nav.brief; the Brief view folded into Now]
+- ~~**FR:brief.nav**~~: [deprecated: FR:ux-consolidation/nav.brief] The Brief view folded into Now
 - **FR:brief.meetings** (P1): Up to 2 busy meetings that have not ended: title, start time, `in 25m` or `now`, and `Join` when a join link exists and the meeting starts within 10 min or is on
 - **FR:brief.messages** (P1): Up to 3 open asks from `email-triage`, best score first. Each shows ask, why, the draft or recommendation, and one primary button (the ask's primary action). `{n} more` links to Needs you
 - **FR:brief.actions** (P1): Up to 3 open asks that are not messages, best score first, same card. `{n} more` links to Needs you
 - ~~**FR:brief.one**~~: [deprecated: FR:now-screen/now.one]
-- ~~**FR:brief.ninety**~~: [deprecated: no view draws the strip since FR:ux-consolidation/nav.brief]
+- ~~**FR:brief.ninety**~~: [deprecated: FR:ux-consolidation/nav.brief] No view draws the strip
 - **FR:brief.empty** (P2): With no meetings, messages, or actions, each empty section says so in one short line; the page never shows a blank
-- **FR:brief.phone** (P1): At 375 px: one column, no horizontal scroll, 44 px tap targets
+- ~~**FR:brief.phone**~~: [deprecated: FR:now-screen/now.layout] The Brief page is gone; Now owns the 375 px layout
 
 ## Dependencies
 
@@ -38,7 +38,7 @@ Builds on `FR:brief`. Model calls use the owner's Claude login as in `email-runn
 - **FR:brief.ai.actions** (P1): `action` is one of `go`, `no`, `done`, `none`. The server drops a line whose key is not an open ask, and sets `action` to `none` unless the ask allows it: `go` and `no` for `approve`, `done` for `go-do`. The model can never pick an action the ask does not allow. The one tap calls `POST /asks/{key}/answer` with that answer (`FR:ask-queue/api.answer`); the server summary route never answers
 - **FR:brief.ai.cache** (P1): One result per local day. Later calls that day return it with `cached: true` and start no model call; calls in flight at the same time share one model call. A failed model call is not cached: the reply is `{configured: true, error: 'Summary unavailable'}` (no model text or path). `?refresh=1` forces a new call, at most once per 60 s: a refresh within 60 s of the last model call returns the current result with `cached: true` (security M2). A new day starts a new result
 - **FR:brief.ai.empty** (P1): With no open asks the server makes no model call and returns the headline `Nothing needs you.` with no lines
-- **FR:brief.ai.web** (P1): The Brief page shows an `AI summary` section first: the headline and one row per line, with a one-tap button when the action is not `none` (`Approve`, `Reject`, `Done`). A tap answers the ask the same way as a card (with Undo). A line whose ask is no longer open is hidden. When the summary is not configured or fails, the section is hidden and the rest of the page is unchanged. At 375 px: no horizontal scroll, 44 px tap targets
+- ~~**FR:brief.ai.web**~~: [deprecated: FR:ux-consolidation/nav.brief] The web AI summary section is gone with the Brief page; `GET /brief/summary` stays
 
 ### FR:meet: Meetings source (Brief)
 
@@ -50,4 +50,4 @@ The Brief needs meetings even when no calendar is signed in. Two layers; the fir
 - **FR:meet.expand** (P1): `expandWeekly(rules, day)` returns calendar events (busy, `FR:day-inputs/cal.model`, plus `owner` and `topic`) for the local day and the spill of the day before. A `biweekly` rule runs on every second ISO week (even weeks). Local clock times; DST safe
 - **FR:meet.enrich** (P2): A live event whose title matches a rule title (case-insensitive, either contains the other) gets that rule's `owner`, `topic`, and `join` (when the event has none)
 - **FR:brief.meetings.detail** (P1): Each Brief meeting shows start time, `in 25m` or `now`, title, owner agent, topic, and `Join` when a link exists and the meeting is on or starts within 10 min
-- ~~**FR:brief.free**~~: [deprecated: no view draws `Free until` since FR:ux-consolidation/nav.brief]
+- ~~**FR:brief.free**~~: [deprecated: FR:ux-consolidation/nav.brief] No view draws `Free until`

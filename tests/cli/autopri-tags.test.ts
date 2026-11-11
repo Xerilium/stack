@@ -1,4 +1,4 @@
-/** @req FR:autopri-tagging/tag.cli @req FR:autopri-tagging/explain.cli @req FR:autopri-tagging/truth.report */
+/** @req FR:auto-priority/tag.cli @req FR:auto-priority/explain.cli @req FR:auto-priority/truth.report */
 import { execFileSync, spawnSync } from 'child_process';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';

@@ -1,6 +1,6 @@
 /**
  * Autopri tagging and explain: pure helpers. Set `🔓`/`📅` tags, parse the owner ground truth, match it to ranked rows.
- * @req FR:autopri-tagging/tag.@function @req FR:autopri-tagging/truth.parse @req FR:autopri-tagging/truth.match @req FR:autopri-tagging/truth.report
+ * @req FR:auto-priority/tag.@function @req FR:auto-priority/truth.parse @req FR:auto-priority/truth.match @req FR:auto-priority/truth.report
  */
 import { UNBLOCK, type AutopriParts } from './autopri';
 import { escapeRe } from './regex';
@@ -12,7 +12,7 @@ const DUE_FORMAT = /^[A-Za-z]{3} \d{1,2}$/;
 const ROW = /^(\s*- \[[ xX]\] )(.*)$/;
 const clean = (s: string) => s.replace(/\s{2,}/g, ' ').trim();
 
-/** @req FR:autopri-tagging/tag.unblocker @req FR:autopri-tagging/tag.due */
+/** @req FR:auto-priority/tag.unblocker @req FR:auto-priority/tag.due */
 export function applyTags(line: string, tags: Tags): string {
   const m = ROW.exec(line);
   if (!m) throw new Error(`Invalid task line: ${line}`);
@@ -30,7 +30,7 @@ export function applyTags(line: string, tags: Tags): string {
 
 export interface TruthItem { rank: number | null; project: string; work: string; date: string; why: string }
 
-/** @req FR:autopri-tagging/truth.parse */
+/** @req FR:auto-priority/truth.parse */
 export function parseTruth(text: string): TruthItem[] {
   const out: TruthItem[] = [];
   for (const line of text.split(/\r?\n/)) {
@@ -52,7 +52,7 @@ const anchors = (work: string): string[] => {
 };
 const isUnblocker = (why: string) => /unblock|enabler|speeds|slow everything/i.test(why);
 
-/** @req FR:autopri-tagging/truth.match @req FR:autopri-tagging/truth.report */
+/** @req FR:auto-priority/truth.match @req FR:auto-priority/truth.report */
 export function matchTruth(items: TruthItem[], rows: TruthRow[]): TruthMatch[] {
   return items.map((item) => {
     const p = item.project.toLowerCase();
@@ -75,7 +75,7 @@ export function matchTruth(items: TruthItem[], rows: TruthRow[]): TruthMatch[] {
 
 export interface ExplainRow { rank: number; ref: string; project: string; text: string; score: number; parts: AutopriParts; rule?: string }
 
-/** Plain-text report. @req FR:autopri-tagging/explain.cli */
+/** Plain-text report. @req FR:auto-priority/explain.cli */
 export function formatExplain(rows: ExplainRow[], truth?: TruthMatch[]): string {
   const n = (x: number) => Number(x.toFixed(1));
   const out = rows.map((r) => `${r.rank}. ${r.ref} ${n(r.score)} [unblock=${n(r.parts.unblock)} urgency=${n(r.parts.urgency)} value=${n(r.parts.value)}]${r.rule ? ` rule=${r.rule}` : ''} ${r.project} ${r.text}`);

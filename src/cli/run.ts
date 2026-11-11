@@ -409,7 +409,7 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
       if (p.positionals.length !== 1) throw new UsageError('set needs exactly one <ref>');
       return describe(cmd, await setProperties(ctx, { ...parseRef(p.positionals[0]), text: flag(f, 'expect') }, props(f)));
     }
-    // @req FR:autopri-tagging/tag.cli
+    // @req FR:auto-priority/tag.cli
     case 'tag': {
       if (p.positionals.length !== 1) throw new UsageError('tag needs exactly one <ref>');
       const u = flag(f, 'unblocker'), d = flag(f, 'due');
@@ -419,7 +419,7 @@ async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: strin
         ...(u !== undefined ? { unblocker: u === 'yes' } : {}), ...(d !== undefined ? { due: d.toLowerCase() === 'none' ? null : d } : {}),
       }));
     }
-    // @req FR:autopri-tagging/explain.cli @req FR:autopri-tagging/truth.report
+    // @req FR:auto-priority/explain.cli @req FR:auto-priority/truth.report
     case 'rank': {
       extra(0);
       const engine = flag(f, 'engine') ?? 'stack';
