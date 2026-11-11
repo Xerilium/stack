@@ -7,6 +7,7 @@ import { join } from 'path';
 import { createAcpDriver, createPermissionBroker, permKey, type AcpDriver, type PermissionBroker, type Update } from '../../src/agents';
 import { answerAsk, listAsks, readAsk, type AnswerInput } from '../../src/core/asks';
 import { MemoryStorage } from '../../src/core/storage';
+import { setup } from '../security/helpers';
 
 const FAKE = join(__dirname, '../fixtures/fake-acp-agent.js');
 const loadSdk = () => import('@agentclientprotocol/sdk') as never;
@@ -106,6 +107,33 @@ describe('permission request to ask to agent', () => {
     expect(done).toMatchObject({ stopReason: 'error', error: expect.stringContaining('code 4') });
     await wait(50);
     expect(await stateOf(m, a.key)).toMatchObject({ state: 'done', outcome: 'resolved' });
+  });
+});
+
+describe('failure never allows', () => {
+  it('an ask that cannot be written denies the request (cancelled), and the run goes on', async () => {
+    const m = mk();
+    m.ctx.storage.write = async () => { throw new Error('disk full'); };
+    const s = await start(m, 'ask');
+    const done = await s.done;
+    expect(done).toMatchObject({ stopReason: 'end_turn', text: expect.stringContaining('permission=cancelled') });
+    expect(done.text).not.toContain('opt-allow');
+  });
+});
+
+describe('owner-only perm-* writes (security review H4)', () => {
+  it('the broker writes perm-* asks as Stack; the owner answers them through the API and the agent resumes', async () => {
+    const api = setup();
+    const broker = createPermissionBroker({ storage: api.storage }, { pollMs: 20 });
+    const driver = createAcpDriver({ command: process.execPath, args: [FAKE], loadSdk, killAfterMs: 500 });
+    drivers.push(driver);
+    const m = { ctx: { storage: api.storage }, broker, driver } as unknown as ReturnType<typeof mk>;
+    const s = await start(m, 'ask');
+    const a = await theAsk(m);
+    expect(a.from).toBe('session:agent:fake');
+    const r = await api.call('POST', `/api/asks/${a.key}/answer`, { session: true, body: { answer: 'go' } });
+    expect(r.status).toBe(200);
+    expect((await s.done).text).toContain('permission=opt-allow');
   });
 });
 

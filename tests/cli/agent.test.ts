@@ -102,6 +102,14 @@ describe('stack agent run', () => {
     expect(err).toContain('agent run');
   });
 
+  it('help names the current Gemini ACP flag (--acp), not --experimental-acp', async () => {
+    let out = '';
+    expect(await run(['--help'], { out: (s) => { out += s; }, err: () => undefined })).toBe(0);
+    const line = out.split('\n').find((l) => l.includes('ACP agent')) ?? '';
+    expect(line).toMatch(/gemini (-- )?--acp/);
+    expect(out).not.toContain('--experimental-acp');
+  });
+
   it('exits 1 when the command does not exist', async () => {
     const r = await stack(dir(), [join(__dirname, 'no-such-binary'), '--prompt', 'x']);
     expect(r.code).toBe(1);

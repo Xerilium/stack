@@ -56,7 +56,7 @@ const TOOL_KINDS = new Set<ToolKind>(['read', 'edit', 'delete', 'move', 'search'
 const TOOL_STATUS = new Set<ToolStatus>(['pending', 'in_progress', 'completed', 'failed', 'cancelled']);
 /** Tool kinds whose ask recommends Deny: they run code, remove or move files, or reach the network. @req FR:acp-driver/perm.risky */
 const RISKY = new Set<ToolKind>(['execute', 'delete', 'move', 'fetch', 'other']);
-const PERM_KINDS =new Set<PermissionKind>(['allow_once', 'allow_always', 'reject_once', 'reject_always']);
+const PERM_KINDS = new Set<PermissionKind>(['allow_once', 'allow_always', 'reject_once', 'reject_always']);
 const toolKind = (k: unknown): ToolKind => (typeof k === 'string' && TOOL_KINDS.has(k as ToolKind) ? (k as ToolKind) : 'other');
 const toolStatus = (s: unknown, dflt: ToolStatus): ToolStatus => (typeof s === 'string' && TOOL_STATUS.has(s as ToolStatus) ? (s as ToolStatus) : dflt);
 const line = (s: unknown, max: number): string => oneLine(redact(String(s ?? ''))).slice(0, max);
