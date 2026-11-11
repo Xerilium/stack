@@ -72,7 +72,7 @@ const LOCAL = /^<(command-name|local-command-|bash-input|bash-stdout|bash-stderr
 
 /** The kind of one transcript line, or undefined when it is not a main-chain turn event. */
 function eventKind(l: string): TailKind | undefined {
-  let e: { type?: string; subtype?: string; isSidechain?: boolean; isMeta?: boolean; isCompactSummary?: boolean; isVisibleInTranscriptOnly?: boolean; message?: { content?: unknown } };
+  let e: { type?: string; subtype?: string; isSidechain?: boolean; isMeta?: boolean; isCompactSummary?: boolean; isVisibleInTranscriptOnly?: boolean; isApiErrorMessage?: boolean; message?: { content?: unknown } };
   try { e = JSON.parse(l); } catch { return undefined; }
   if (!e || typeof e !== 'object' || e.isSidechain || e.isMeta || e.isCompactSummary || e.isVisibleInTranscriptOnly) return undefined;
   if (e.type === 'system') return e.subtype === 'stop_hook_summary' || e.subtype === 'turn_duration' ? 'turn-end' : e.subtype === 'api_error' ? 'api-error' : undefined;
@@ -84,6 +84,8 @@ function eventKind(l: string): TailKind | undefined {
     // A local slash command or `!` shell line runs no model turn.
     return typeof first === 'string' && (INTERRUPTED.test(first) || LOCAL.test(first)) ? 'turn-end' : 'user';
   }
+  // A turn that failed on an API error ends with an assistant line marked as such.
+  if (e.type === 'assistant' && e.isApiErrorMessage) return 'api-error';
   if (e.type === 'assistant') {
     const last = Array.isArray(c) ? (c.at(-1) as { type?: string; name?: string } | undefined) : undefined;
     if (last?.type === 'tool_use') return QUESTION_TOOLS.has(String(last.name)) ? 'question' : 'tool';
@@ -166,7 +168,8 @@ export function classify(f: SessionFacts, now: number): { state: SessionState; r
   if (f.errorAt !== undefined && f.errorAt > (f.lastTurnEdgeAt ?? 0)) return { state: 'stuck', reason: 'error' };
   // A turn the owner interrupted ends at turn-end: it is closed, not stuck.
   if (f.cutShort && f.tail !== 'turn-end') return { state: 'stuck', reason: 'cut-short' };
-  if (f.tail === 'api-error') return { state: 'stuck', reason: 'api-error' };
+  // A fresh API error may still be retrying.
+  if (f.tail === 'api-error' && quiet >= PROMPT_MS) return { state: 'stuck', reason: 'api-error' };
   if (open && (quiet >= DEAD_MS || (scheduled && f.tail === 'tool' && quiet >= PROMPT_MS))) return { state: 'stuck', reason: 'dead-turn' };
   if (open) return { state: 'running', reason: 'turn-open' };
   const live = f.prs.filter((p) => !p.dismissed);
@@ -236,7 +239,8 @@ export function runInventory(o: InventoryOptions): Inventory {
         if (!tx) { const rest = { ...entry.facts }; delete rest.tail; delete rest.txMtimeMs; entry = { ...entry, facts: rest, txMtimeMs: undefined }; }
         else if (tx.mtimeMs !== entry.txMtimeMs || entry.facts.tail === undefined) {
           const tail = readTail(entry.tx);
-          entry = { ...entry, txMtimeMs: tx.mtimeMs, facts: { ...entry.facts, ...(tail ? { tail } : {}), txMtimeMs: tx.mtimeMs } };
+          // A failed read keeps no transcript time, so the next run reads the tail again.
+          entry = tail ? { ...entry, txMtimeMs: tx.mtimeMs, facts: { ...entry.facts, tail, txMtimeMs: tx.mtimeMs } } : { ...entry, txMtimeMs: undefined };
         }
       }
       // A pending tool call may be a subagent that writes only its own transcript: its writes count as activity (not cached).
@@ -260,7 +264,7 @@ export function runInventory(o: InventoryOptions): Inventory {
     const { state, reason } = classify(f, T);
     counts[state]++;
     const superseded = !!f.scheduledTaskId && (f.createdAt ?? f.lastActivityAt) < latestRun.get(f.scheduledTaskId)! && !f.pinned && state !== 'running';
-    const at = Math.max(f.lastActivityAt, f.txMtimeMs ?? 0);
+    const at = Math.max(f.lastActivityAt, f.txMtimeMs ?? 0, f.subMtimeMs ?? 0);
     return {
       // @req FR:session-inventory/needs.reason
       id: f.id, title: f.title, project: projectOf(f.cwd), state, reason: superseded ? 'superseded' : reason, pinned: f.pinned,

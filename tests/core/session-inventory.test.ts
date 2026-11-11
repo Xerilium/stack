@@ -33,6 +33,7 @@ describe('classify', () => {
     expect(classify(base({ cutShort: true, tail: 'assistant-text' }), T).reason).toBe('cut-short');
     expect(classify(base({ cutShort: true, tail: 'turn-end' }), T).state).toBe('idle');
     expect(classify(base({ tail: 'api-error' }), T).reason).toBe('api-error');
+    expect(classify(base({ tail: 'api-error', lastActivityAt: T - MIN }), T).state).not.toBe('stuck');
     expect(classify(base({ tail: 'user', lastActivityAt: T - 31 * MIN }), T)).toEqual({ state: 'stuck', reason: 'dead-turn' });
     expect(classify(base({ tail: 'tool', lastActivityAt: T - 6 * MIN, scheduledTaskId: 's1' }), T)).toEqual({ state: 'stuck', reason: 'dead-turn' });
   });
@@ -82,6 +83,7 @@ describe('readTail', () => {
     expect(readTail(write('e.jsonl', [{ type: 'user', message: { content: 'go' } }, { type: 'system', subtype: 'compact_boundary' }]))).toBe('user');
     expect(readTail(write('f.jsonl', [asst([{ type: 'text', text: 'done' }])]))).toBe('assistant-text');
     expect(readTail(write('g.jsonl', [{ type: 'system', subtype: 'api_error' }]))).toBe('api-error');
+    expect(readTail(write('g2.jsonl', [{ type: 'assistant', isApiErrorMessage: true, message: { content: [{ type: 'text' }] } }]))).toBe('api-error');
     expect(readTail(write('h.jsonl', [{ type: 'attachment' }]))).toBe('none');
     expect(readTail(join(dir, 'missing.jsonl'))).toBeUndefined();
   });
