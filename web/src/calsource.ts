@@ -45,13 +45,14 @@ export function calLine(s: CalSource | null, now: Date): { text: string; act: 'c
   if (isFresh(s, now)) return null;
   if (s.state === 'not-connected') return { text: 'Calendar not connected', act: 'connect' };
   if (s.state === 'error') return { text: 'Calendar unavailable', act: 'fix' };
-  return { text: s.lastSyncAt ? `Calendar last synced ${freshness(s.lastSyncAt, now)}` : 'Calendar out of date', act: 'check' };
+  // Stale can be a revoked link that keeps serving its last copy: offer Fix too.
+  return { text: s.lastSyncAt ? `Calendar last synced ${freshness(s.lastSyncAt, now)}` : 'Calendar out of date', act: 'fix' };
 }
 
 /** What `Check connection` found. */
 export function checkText(s: CalSource, now: Date): string {
   if (s.state === 'not-connected') return 'Not connected';
-  if (s.state === 'error') return 'Calendar unavailable. Check the link, then try again.';
+  if (s.state === 'error') return s.via === 'graph' ? 'Calendar unavailable. Sign in again with Microsoft Graph.' : 'Calendar unavailable. Check the link, then try again.';
   const synced = s.lastSyncAt ? ` · synced ${freshness(s.lastSyncAt, now)}` : '';
   return isFresh(s, now) ? `Connected${s.account ? ` to ${s.account}` : ''}${synced}` : `Out of date${synced}`;
 }

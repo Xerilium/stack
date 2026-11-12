@@ -35,8 +35,8 @@ describe('calLine', () => {
   it('says why and offers the fix; nothing when fresh', () => {
     expect(calLine({ kind: 'calendar', state: 'not-connected' }, NOW)).toEqual({ text: 'Calendar not connected', act: 'connect' });
     expect(calLine({ kind: 'calendar', state: 'error' }, NOW)).toEqual({ text: 'Calendar unavailable', act: 'fix' });
-    expect(calLine({ kind: 'calendar', state: 'stale', lastSyncAt: ago(125) }, NOW)).toEqual({ text: 'Calendar last synced 2 h ago', act: 'check' });
-    expect(calLine({ kind: 'calendar', state: 'ok', lastSyncAt: ago(90) }, NOW)).toEqual({ text: 'Calendar last synced 2 h ago', act: 'check' });
+    expect(calLine({ kind: 'calendar', state: 'stale', lastSyncAt: ago(125) }, NOW)).toEqual({ text: 'Calendar last synced 2 h ago', act: 'fix' });
+    expect(calLine({ kind: 'calendar', state: 'ok', lastSyncAt: ago(90) }, NOW)).toEqual({ text: 'Calendar last synced 2 h ago', act: 'fix' });
     expect(calLine({ kind: 'calendar', state: 'ok', lastSyncAt: ago(1) }, NOW)).toBeNull();
     expect(calLine(null, NOW)).toEqual({ text: 'Checking your calendar…', act: null });
   });
@@ -48,6 +48,7 @@ describe('checkText', () => {
     expect(checkText({ kind: 'calendar', state: 'ok', account: 'a.test', lastSyncAt: ago(5) }, NOW)).toBe('Connected to a.test · synced 5 min ago');
     expect(checkText({ kind: 'calendar', state: 'not-connected' }, NOW)).toBe('Not connected');
     expect(checkText({ kind: 'calendar', state: 'error' }, NOW)).toBe('Calendar unavailable. Check the link, then try again.');
+    expect(checkText({ kind: 'calendar', via: 'graph', state: 'error' }, NOW)).toBe('Calendar unavailable. Sign in again with Microsoft Graph.');
   });
   it('the Graph sign-in asks for the calendar only', () => expect(GRAPH_CMD).toBe('stack graph login --client-id <app id> --with calendar'));
 });

@@ -98,10 +98,11 @@ export function NowNext({ meetings, layer, cal, now }: { meetings: BriefMeeting[
             </div>
           )}
           {!open && result && <p class="now-cal-result">{result}</p>}
-          {/* Mounted before the result arrives, so screen readers announce it. */}
-          <span class="sr-only" aria-live="polite">{open ? '' : result}</span>
         </div>
       )}
+      {/* Mounted before the result arrives and after the line goes, so screen readers announce it. */}
+      <span class="sr-only" aria-live="polite">{open ? '' : result}</span>
+      {fresh && result && <p class="now-cal-result">{result}</p>}
       {line && open && <Connect cal={cal} onChecked={checked} result={result} />}
       {meetings.length > 0 ? <Meetings list={meetings} /> : fresh && <p class="now-none">No meetings left today.</p>}
     </>
