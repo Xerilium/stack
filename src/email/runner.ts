@@ -101,10 +101,10 @@ export function withDetails(provider: MailProvider, details: (id: string) => Pro
 
 /** Messages in a row whose model calls all fail: the model is down, not the message. */
 export const MODEL_FAIL_LIMIT = 3;
-/** Error text that means the `claude` login is gone; no retry helps. */
-/** Errors no retry or next message helps: the account cannot call the model now. */
-const LIMIT_ERROR = /\b(usage limit|rate limit|quota|credit balance|overloaded)\b/i;
-const AUTH_ERROR = /\b(log ?in|sign ?in|logged out|signed out|oauth|unauthori[sz]ed|authenticat\w*|401|403|api key|credentials?|token (expired|revoked)|expired token)\b/i;
+/** Usage-limit errors: no retry or next message helps until the limit resets. Rate limits and overloads are transient, so they retry. */
+const LIMIT_ERROR = /\b(usage limit|credit balance)\b/i;
+/** What a signed-out `claude` prints (stderr or JSON `result`); kept narrow so a message or model text cannot match it. */
+const AUTH_ERROR = /(please run \/login|not logged in|invalid api key|oauth token (has )?expired|authentication_error)/i;
 /** The one ask a model-down pass writes, for every mailbox (they share one `claude` login). @req FR:email-runner/model.down */
 export const CLAUDE_LOGIN_ASK = 'email-claude-login';
 export const CLAUDE_LOGIN_TEXT = 'Claude login expired: run `claude` and sign in';

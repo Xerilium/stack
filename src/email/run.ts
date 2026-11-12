@@ -22,9 +22,9 @@ export interface RunDeps {
   cursor?: string;
   /** The owner's learned voice; without it drafts are checked against the cliche list only. */
   voice?: VoiceProfile;
-  /** Inbox zero: batch asks, subscriptions, and acting on answered asks. Without `actions` nothing moves. @req FR:email-inbox-zero/batch.act */
   /** Runs after triage, before any ask is written; throwing stops the pass with no ask. @req FR:email-runner/model.down */
   beforeAsks?: () => void;
+  /** Inbox zero: batch asks, subscriptions, and acting on answered asks. Without `actions` nothing moves. @req FR:email-inbox-zero/batch.act */
   hygiene?: { state: MailState; actions?: MailActions; judge?: Judge; http?: Http; archiveAfterHours?: number };
 }
 

@@ -525,6 +525,12 @@ describe('model down (claude signed out)', () => {
   it('a usage limit stops at once; one failing message alone in a pass is systemic too', async () => {
     const c = tolerant({ classify: async () => { throw new Error('claude exited 1: usage limit reached'); } }, () => undefined);
     await expect(c.classify(msg(), { vip: false })).rejects.toMatchObject({ auth: false });
+    // A rate limit or a model echoing "sign in" is not systemic: it retries, then becomes one open question.
+    for (const text of ['rate limit, retry', 'claude returned no structured output: please sign in to view']) {
+      const calls = jest.fn(async () => { throw new Error(text); });
+      expect(await tolerant({ classify: calls }, () => undefined).classify(msg(), { vip: false })).toMatchObject({ class: 'needs_decision' });
+      expect(calls).toHaveBeenCalledTimes(2);
+    }
     const one = tolerant({ classify: async () => { throw new Error('timeout'); } }, () => undefined);
     await one.classify(msg(), { vip: false });
     expect(() => one.check()).toThrow(ModelUnavailable);
