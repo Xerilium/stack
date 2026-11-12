@@ -20,6 +20,7 @@ import { PrPriConflict, PrPriInvalid, PrPriNotFound, PrPriorityStore } from '../
 import { PR_PRI_USAGE, prPriArgv, prPriCmd } from './pr-pri';
 import { formatGaps, priGaps, registerPrisEngine, setPris, withLinks, withNote } from '../core/pris-rank';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
+import { addNote, retitleTask } from '../api/edit';
 import { currentRows, handleEntry, INBOX_STATES, listInbox, replyFromAgent } from '../core/inbox';
 import { registerAutopriEngine } from '../core/autopri';
 import { captureTask, CaptureError } from '../core/quick-capture';
@@ -82,6 +83,8 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   resume: { flags: ['expect', 'queries', 'no-update'], usage: 'resume [ref] [--expect t] [--queries] [--no-update]', help: 'unpark the first parked task' },
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
+  retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)' },
+  note: { flags: ['text', 'expect'], usage: 'note add <ref> --text t [--expect t]', help: 'append a nested note bullet under a task (children stay)' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
   rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks; pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain (autopri, pris) shows score parts and the priority served; --truth lists ground-truth items to tag or add' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
@@ -107,7 +110,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
 interface Outcome { json: Record<string, unknown>; text: string; code?: number }
 
 const VERBS: Record<string, string> = {
-  start: 'started', complete: 'completed', skip: 'skipped', park: 'skipped', resume: 'resumed', suspend: 'suspended', set: 'set', add: 'added',
+  start: 'started', complete: 'completed', skip: 'skipped', park: 'skipped', resume: 'resumed', suspend: 'suspended', set: 'set', add: 'added', retitle: 'retitled',
 };
 
 const taskText = (line: string | undefined): string => (line ?? '').replace(/^\s*- \[[ xX]\] ?/, '');
@@ -525,7 +528,7 @@ function buildCtx(f: Record<string, string | true>, dir: string): LifecycleConte
 }
 
 /** Commands after which legacy ran `Update-StackSummary`. @req FR:cli/cmd.refresh */
-const REFRESH = new Set(['start', 'complete', 'skip', 'resume', 'suspend', 'remove-completed', 'add-project']);
+const REFRESH = new Set(['start', 'complete', 'skip', 'resume', 'suspend', 'retitle', 'remove-completed', 'add-project']);
 
 /** @req FR:cli/cmd.refresh @req FR:cli/cmd.refresh.skip @req FR:cli/cmd.refresh.json */
 async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: string): Promise<Outcome> {
@@ -616,6 +619,23 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     case 'set': {
       if (p.positionals.length !== 1) throw new UsageError('set needs exactly one <ref>');
       return describe(cmd, await setProperties(ctx, { ...parseRef(p.positionals[0]), text: flag(f, 'expect') }, props(f)));
+    }
+    // @req FR:cli/cmd.retitle
+    case 'retitle': {
+      const text = flag(f, 'text');
+      if (p.positionals.length !== 1) throw new UsageError('retitle needs exactly one <ref>');
+      if (text === undefined) throw new UsageError('retitle needs --text');
+      const r = parseRef(p.positionals[0]);
+      return describe(cmd, await retitleTask(storage, r, text, flag(f, 'expect')));
+    }
+    // @req FR:cli/cmd.note
+    case 'note': {
+      const text = flag(f, 'text');
+      if (p.positionals[0] !== 'add') throw new UsageError('Usage: stack note add <ref> --text t [--expect t]');
+      if (p.positionals.length !== 2) throw new UsageError('note add needs exactly one <ref>');
+      if (text === undefined) throw new UsageError('note add needs --text');
+      const r = await addNote(storage, parseRef(p.positionals[1]), text, flag(f, 'expect'));
+      return { json: { ok: true, command: 'note', changed: true, ref: { path: r.ref.path, line: r.ref.line + 1 }, text: text.trim() }, text: `noted ${formatRef(r.ref)}` };
     }
     // @req FR:auto-priority/tag.cli
     case 'tag': {
