@@ -190,7 +190,7 @@ async function overridesOf(storage: unknown): Promise<{ value: ScheduleOverrides
   try { return { value: cleanOverrides(JSON.parse(f.content)), version: f.version }; } catch { return { value: {}, version: f.version, broken: true }; }
 }
 const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES } };
-const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true } } satisfies Record<string, Spec>, required: ['id'] };
+const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true }, withdrawn: { t: 'bool' } } satisfies Record<string, Spec>, required: ['id'] };
 const ASK_PUT_BODY = {
   schema: {
     ref: REF,
@@ -562,8 +562,10 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/inbox/handled', name: 'inbox.handle', body: HANDLED_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ id: string; note?: string }>(await readBody(c.req), HANDLED_BODY.schema, HANDLED_BODY.required);
-      return json(200, await handleEntry(c.life, b.id, caller(c.req).actor, b.note));
+      const b = validate<{ id: string; note?: string; withdrawn?: boolean }>(await readBody(c.req), HANDLED_BODY.schema, HANDLED_BODY.required);
+      // Only the owner takes back what the owner sent; an agent must never hide the owner's words. @req FR:agent-inbox/inbox.withdraw
+      if (b.withdrawn && !isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can withdraw a message');
+      return json(200, await handleEntry(c.life, b.id, caller(c.req).actor, b.note, { withdrawn: !!b.withdrawn }));
     },
   },
   {

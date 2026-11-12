@@ -896,6 +896,9 @@ paths:
                   type: string
                   maxLength: 500
                   description: Single line.
+                withdrawn:
+                  type: boolean
+                  description: "Owner only (403 for tokens): the owner took the message back (Undo); lists and the thread then hide it"
       responses:
         "200":
           description: Handled
@@ -2953,6 +2956,9 @@ components:
           type: string
         agent:
           type: string
+        withdrawn:
+          type: boolean
+          description: Owner item the owner took back (Undo); clients hide it
         ask:
           $ref: "#/components/schemas/Ask"
         verdict:

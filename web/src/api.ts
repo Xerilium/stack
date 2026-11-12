@@ -82,7 +82,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
     send: (ref: string, text: string, kind: 'reply' | 'decision' | 'instruction', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
     /** @req FR:agent-inbox/api.handle */
-    handled: (id: string, note?: string) => call<{ changed: boolean }>('/inbox/handled', { id, ...(note ? { note } : {}) }),
+    handled: (id: string, note?: string, withdrawn?: boolean) => call<{ changed: boolean }>('/inbox/handled', { id, ...(note ? { note } : {}), ...(withdrawn ? { withdrawn } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
     /** The Inbox page: all mail, unread Teams and Slack. @req FR:inbox-page/api.read */

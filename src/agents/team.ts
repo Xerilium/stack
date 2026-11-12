@@ -153,7 +153,7 @@ export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText
 }
 
 export type ThreadItem =
-  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled' }
+  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled'; withdrawn?: true }
   | { at: string; kind: 'agent'; id: string; agent: string; text: string }
   | { at: string; kind: 'ask'; ask: ListedAsk }
   | { at: string; kind: 'review'; verdict: Review['verdict']; plan: string; estimate?: string; agent: string }
@@ -167,13 +167,13 @@ export async function taskThread(ctx: LifecycleContext, runs: AgentRuns | undefi
   const c = await taskContext(ctx, ref);
   const stored = `${ref.path}:${ref.line + 1}`;
   const items: ThreadItem[] = [];
-  const inbox: ListedEntry[] = await listInbox(ctx, { project: c.project, state: 'all' }).catch(() => []);
+  const inbox: ListedEntry[] = await listInbox(ctx, { project: c.project, state: 'all', withdrawn: true }).catch(() => []);
   // An entry follows its row when rows move (same rule as the inbox list): the current row wins over the stored line.
   const rows = await currentRows(ctx, inbox.filter((e) => e.ref)).catch(() => new Map<string, string>());
   for (const e of inbox) {
     if (rows.get(e.id) !== stored) continue; // no resolved row (the task was deleted or renamed): never the one that moved into its line
     if (e.from === 'agent') items.push({ at: e.at, kind: 'agent', id: e.id, agent: e.agent ?? 'agent', text: e.text });
-    else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state });
+    else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state, ...(e.withdrawn ? { withdrawn: true as const } : {}) }); // the page hides it (Undo: never sent)
   }
   const asks = await listAsks(ctx, { state: 'all', limit: ALL }).catch(() => ({ items: [] as ListedAsk[] }));
   // An ask with a task title needs its resolved row; only a legacy ask without one falls back to its stored ref.

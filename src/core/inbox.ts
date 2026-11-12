@@ -26,6 +26,8 @@ export interface InboxEntry {
   /** Title of the row's parent when it has one, so rows with the same title under different parents stay apart. */
   parent?: string;
   handled?: string; note?: string;
+  /** The owner took it back (Undo): it counts as never sent. Kept in the file for audit; lists skip it. @req FR:agent-inbox/inbox.withdraw */
+  withdrawn?: boolean;
   /** Lines this version does not know; kept as is. */
   extra: string[];
 }
@@ -63,6 +65,7 @@ export function formatEntry(e: InboxEntry): string {
   lines.push(`- text: ${e.text}`);
   if (e.handled) lines.push(`- handled: ${e.handled}`);
   if (e.note) lines.push(`- note: ${e.note}`);
+  if (e.withdrawn) lines.push('- withdrawn: true');
   return [...lines, ...e.extra, ''].join('\n');
 }
 
@@ -83,7 +86,8 @@ function blocks(content: string): Block[] {
     } else if (cur && line !== '') {
       const m = /^- ([a-z]+): (.*)$/.exec(line);
       const k = m?.[1] as (typeof KEYS)[number] | undefined;
-      if (m && k && (KEYS as readonly string[]).includes(k)) (cur.entry as unknown as Record<string, string>)[k] = m[2];
+      if (m && m[1] === 'withdrawn') cur.entry.withdrawn = m[2] === 'true';
+      else if (m && k && (KEYS as readonly string[]).includes(k)) (cur.entry as unknown as Record<string, string>)[k] = m[2];
       else cur.entry.extra.push(line);
     }
     offset += raw.length + 1;
@@ -93,6 +97,7 @@ function blocks(content: string): Block[] {
     if (b.entry.parent === undefined) delete b.entry.parent;
     if (b.entry.handled === undefined) delete b.entry.handled;
     if (b.entry.note === undefined) delete b.entry.note;
+    if (!b.entry.withdrawn) delete b.entry.withdrawn;
     if (b.entry.from !== 'agent') { delete b.entry.from; delete b.entry.agent; }
   }
   return out;
@@ -242,8 +247,8 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
   }
 }
 
-/** Open (default), handled, or all entries across every project inbox, oldest first. @req FR:agent-inbox/inbox.list */
-export async function listInbox(ctx: LifecycleContext, o: { project?: string; state?: (typeof INBOX_STATES)[number] } = {}): Promise<ListedEntry[]> {
+/** Open (default), handled, or all entries across every project inbox, oldest first. Withdrawn entries only with `withdrawn: true`. @req FR:agent-inbox/inbox.list */
+export async function listInbox(ctx: LifecycleContext, o: { project?: string; state?: (typeof INBOX_STATES)[number]; withdrawn?: boolean } = {}): Promise<ListedEntry[]> {
   const state = o.state ?? 'open';
   const out: ListedEntry[] = [];
   for (const p of await ctx.storage.list()) {
@@ -254,14 +259,15 @@ export async function listInbox(ctx: LifecycleContext, o: { project?: string; st
     for (const full of parseInbox(f.content)) {
       const { extra, ...e } = full;
       void extra;
+      if (e.withdrawn && !o.withdrawn) continue;
       if (state === 'all' || e.state === state) out.push({ ...e, project: name });
     }
   }
   return out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
 }
 
-/** Marks one entry handled; every other byte stays. @req FR:agent-inbox/inbox.handle */
-export async function handleEntry(ctx: LifecycleContext, id: string, actor: string, note?: string): Promise<{ changed: boolean }> {
+/** Marks one entry handled; every other byte stays. `withdrawn`: the owner took it back (Undo). @req FR:agent-inbox/inbox.handle @req FR:agent-inbox/inbox.withdraw */
+export async function handleEntry(ctx: LifecycleContext, id: string, actor: string, note?: string, o: { withdrawn?: boolean } = {}): Promise<{ changed: boolean }> {
   if (note !== undefined && (typeof note !== 'string' || note.length > MAX_NOTE || CONTROL.test(note))) throw new LifecycleError('Invalid note');
   for (const p of await ctx.storage.list()) {
     const f = await readOrNull(ctx, inboxPath({ path: p }));
@@ -270,7 +276,7 @@ export async function handleEntry(ctx: LifecycleContext, id: string, actor: stri
     if (!b) continue;
     if (b.entry.state === 'handled') return { changed: false };
     const piece = f.content.slice(b.start, b.end);
-    const extra = [`- handled: ${iso(ctx).toISOString()} by ${/^[A-Za-z0-9._:-]{1,64}$/.test(actor) ? actor : 'api'}`, ...(note && note.trim() ? [`- note: ${field(note)}`] : [])].join('\n');
+    const extra = [`- handled: ${iso(ctx).toISOString()} by ${/^[A-Za-z0-9._:-]{1,64}$/.test(actor) ? actor : 'api'}`, ...(note && note.trim() ? [`- note: ${field(note)}`] : []), ...(o.withdrawn ? ['- withdrawn: true'] : [])].join('\n');
     const next = piece.replace(/^- state: open\r?$/m, '- state: handled').replace(/\n*$/, (tail) => `\n${extra}${tail || '\n'}`);
     await ctx.storage.write(inboxPath({ path: p }), f.content.slice(0, b.start) + next + f.content.slice(b.end), { expectedVersion: f.version, message: `Inbox handled: ${baseName(p)}` });
     return { changed: true };

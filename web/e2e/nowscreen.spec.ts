@@ -98,10 +98,30 @@ test.describe('Now screen', () => {
     expect(edit).toBeGreaterThanOrEqual(0); expect(edit).toBeLessThan(send);
     expect(m.inbox.at(-1)!.to).toBe('agent');
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
+    await expect(page.getByTestId('now-thread')).toContainText('Use the new logo');
     await expect(page.getByRole('status')).toContainText('Sent to Ada Lead');
     await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
-    await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner', withdrawn: true });
+    // Undo means never sent: the bubble goes at once, without waiting for the poll
+    await expect(page.getByTestId('now-thread')).not.toContainText('Use the new logo', { timeout: 3000 });
+  });
+
+  // @req FR:now-screen/now.undo: Undo after the agent handled the message keeps it and says so
+  test('Undo after the agent picked up a message keeps the bubble and says so', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [{ slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] }];
+    await page.goto('/#/now');
+    const box = page.getByTestId('now').getByRole('textbox', { name: 'Message Ada Lead' });
+    await box.fill('Use the new logo');
+    await box.press('Enter');
+    await expect(page.getByRole('status')).toContainText('Sent to Ada Lead');
+    await expect.poll(() => m.inbox.length).toBe(1);
+    m.inbox[0]!.state = 'handled'; // the agent took it inside the Undo window
+    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+    await expect(page.getByRole('status')).toContainText('Restored; the agent already picked it up');
+    await expect(page.getByTestId('now-thread')).toContainText('Use the new logo');
   });
 
   // @req FR:agent-team/web.avatar: an emoji icon shows; a missing image falls back to the monogram

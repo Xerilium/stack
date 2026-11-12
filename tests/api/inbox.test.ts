@@ -84,6 +84,16 @@ describe('inbox and agents routes', () => {
     expect((await call(ro, 'GET', '/inbox?state=maybe')).status).toBe(422);
   });
 
+  // @req FR:agent-inbox/api.handle @req FR:now-screen/now.undo
+  it('only the owner withdraws a message; the list then hides it', async () => {
+    const { call, mint } = await mk();
+    const sent = (await call('owner', 'POST', '/inbox', { ref: 'alpha:6', text: 'Oops', kind: 'instruction' })).json;
+    const rw = await mint('tasks:write');
+    expect((await call(rw, 'POST', '/inbox/handled', { id: sent.id, withdrawn: true })).status).toBe(403);
+    expect((await call('owner', 'POST', '/inbox/handled', { id: sent.id, note: 'Withdrawn by the owner', withdrawn: true })).json).toEqual({ changed: true });
+    expect((await call('owner', 'GET', '/inbox?state=all')).json.items).toEqual([]);
+  });
+
   it('GET /agents returns activity with PR status from the provider', async () => {
     const { call, mint } = await mk(async (prs) => new Map(prs.map((p) => [p.url, { state: 'open', checks: 'failing', title: 'Notes', updatedAt: '2026-10-28T12:00:00Z' } as const])));
     const ro = await mint('tasks:read');

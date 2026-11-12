@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { homeOf, type RankItem } from '../src/home';
 import { agentMark, foldLines, nowOf, tellThread, TELL_MAX, whyLine, WHY_MAX } from '../src/nowscreen';
-import type { ThreadItem } from '../src/thread';
+import { foldSubtasks, type ThreadItem } from '../src/thread';
 import type { Project, Task } from '../src/types';
 
 const at = new Date(2026, 9, 29, 15, 0);
@@ -60,6 +60,15 @@ describe('tell the agent', () => {
       { at: '2026-11-01T11:00:00Z', kind: 'subtask', ref: 'alpha:7', text: 'x', done: false },
     ];
     expect(tellThread(items).map((i) => i.kind === 'owner' || i.kind === 'agent' ? i.id : '')).toEqual(['a', 'b']);
+  });
+  // @req FR:now-screen/now.undo: Undo means never sent
+  it('hides a message the owner withdrew', () => {
+    const items: ThreadItem[] = [
+      { at: '2026-11-01T10:00:00Z', kind: 'owner', id: 'a', text: 'Keep', state: 'open' },
+      { at: '2026-11-01T11:00:00Z', kind: 'owner', id: 'w', text: 'Oops', state: 'handled', withdrawn: true },
+    ];
+    expect(tellThread(items).map((i) => i.id)).toEqual(['a']);
+    expect(foldSubtasks(items).map((i) => (i.kind === 'owner' ? i.id : ''))).toEqual(['a']);
   });
 });
 

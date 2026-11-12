@@ -48,7 +48,7 @@ Owner needs to ask an agent about a task or assign it so that the agent answers 
 
 - **FR:thread.@api** (P1): Interface: `GET /tasks/{ref}/thread` (route `tasks.thread`, scope `tasks:read`)
 - **FR:thread.read** (P1): Thread route MUST return `{items, session?, review?}` with `items` in time order and 404 for an unknown ref
-  - **FR:thread.read.items** (P1): Each item MUST carry `at` and a `kind` of `owner`, `agent`, `ask`, `review`, or `subtask`
+  - **FR:thread.read.items** (P1): Each item MUST carry `at` and a `kind` of `owner`, `agent`, `ask`, `review`, or `subtask`. An owner item the owner withdrew carries `withdrawn: true` (`FR:agent-inbox/inbox.withdraw`)
   - **FR:thread.read.subtask** (P2): Thread route MUST list a child row as `subtask` when its text carries 🤖 or 🪄
   - **FR:thread.read.session** (P2): Thread route MUST return the task's newest session with its state
   - **FR:thread.read.review** (P2): Thread route MUST return the newest review verdict

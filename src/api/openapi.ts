@@ -125,6 +125,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'inbox.handle': {
     operationId: 'handleInboxEntry', summary: 'Mark an inbox entry handled after acting on it',
+    desc: { withdrawn: 'Owner only (403 for tokens): the owner took the message back (Undo); lists and the thread then hide it' },
     responses: ok('Handled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
   },
   'calendar.list': {
@@ -578,6 +579,7 @@ export function buildOpenApi(): J {
           type: 'object',
           properties: {
             at: { type: 'string' }, kind: { type: 'string', enum: ['owner', 'agent', 'ask', 'review', 'subtask'] }, id: { type: 'string' }, text: { type: 'string' }, state: { type: 'string' }, agent: { type: 'string' },
+            withdrawn: { type: 'boolean', description: 'Owner item the owner took back (Undo); clients hide it' },
             ask: ref('Ask'), verdict: { type: 'string' }, plan: { type: 'string' }, estimate: { type: 'string' }, ref: ref('Ref'), done: { type: 'boolean' },
           },
         },

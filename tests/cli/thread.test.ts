@@ -55,4 +55,14 @@ describe('stack inbox list and handle', () => {
     expect((await stack(d, 'inbox', 'handle')).code).toBe(2);
     expect((await stack(d, 'inbox', 'list')).out).toBe('');
   });
+  // @req FR:agent-inbox/cli.list: a withdrawn entry shows only with --all
+  it('hides withdrawn entries unless --all', async () => {
+    const d = dir();
+    mkdirSync(join(d, 'tasks/inbox'));
+    writeFileSync(join(d, 'tasks/inbox/f4.md'), ['# F4 inbox', '', '## in-20261028T140311Z-3f9a', '', '- at: 2026-10-28T14:03:11.000Z', '- state: handled', '- kind: instruction', '- to: agent', '- ref: tasks/f4.md:5', '- task: Ship', '- text: Oops', '- handled: 2026-10-28T14:03:15.000Z by owner', '- withdrawn: true', ''].join('\n'));
+    expect((await stack(d, 'inbox', 'list', '--state', 'all')).out).toBe('');
+    expect((await stack(d, 'inbox', 'list', '--all')).out).toBe('in-20261028T140311Z-3f9a instruction f4 tasks/f4.md:5 Oops (withdrawn)\n');
+    expect((await stack(d, 'inbox', 'list', '--all', '--state', 'open')).out).toBe('');
+    expect((await stack(d, 'inbox', 'list', '--state', 'all', '--all')).out).toBe('in-20261028T140311Z-3f9a instruction f4 tasks/f4.md:5 Oops (withdrawn)\n');
+  });
 });
