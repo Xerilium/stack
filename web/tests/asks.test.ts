@@ -1,6 +1,6 @@
 /** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/live.quiet */
 import { describe, expect, it } from 'vitest';
-import { actionsFor, deadline, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
+import { actionsFor, approveLabel, deadline, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
 
 const at = (h: number, m = 0, d = 28) => new Date(2026, 9, d, h, m);
 const ask = (o: Partial<AskItem> = {}): AskItem => ({
@@ -114,5 +114,31 @@ describe('list helpers', () => {
     expect(freshness(new Date(now.getTime() - 3 * 3600_000).toISOString(), now)).toBe('3 h ago');
     expect(freshness(new Date(now.getTime() - 2 * 86400_000).toISOString(), now)).toBe('2 d ago');
     expect(freshness(undefined, now)).toBe('never');
+  });
+});
+
+// @req FR:product-reset/ui.askcard
+describe('approveLabel: the primary button names the action', () => {
+  it('is `Approve: {recommend}`, plain text', () => {
+    expect(approveLabel('merge f4-music#97')).toBe('Approve: merge f4-music#97');
+    expect(approveLabel('Use **Acme** via [quote](https://x.test/q)')).toBe('Approve: Use Acme via quote');
+  });
+  it('clips to 40 characters with an ellipsis', () => {
+    const l = approveLabel('Pay USAA first, then the mortgage, then the rest of the bills');
+    expect(l).toHaveLength(40);
+    expect(l.endsWith('…')).toBe(true);
+    expect(l.startsWith('Approve: Pay USAA first')).toBe(true);
+  });
+  it('falls back to Approve with no recommendation', () => {
+    expect(approveLabel(undefined)).toBe('Approve');
+    expect(approveLabel('  ')).toBe('Approve');
+  });
+  it('replaces Go with it on CoS items and 🙋 rows', () => {
+    const need = actionsFor(ask({ source: 'need', recommend: 'Pay USAA first' }));
+    expect(need[0]).toMatchObject({ label: 'Approve: Pay USAA first', primary: true, send: { answer: 'go' } });
+    const row = actionsFor(ask({ source: 'task', recommend: 'Studio Shed quote' }));
+    expect(row[0].label).toBe('Approve: Studio Shed quote');
+    expect(actionsFor(ask({ source: 'need' }))[0].label).toBe('Approve');
+    expect(JSON.stringify([need, row])).not.toMatch(/Go with it/);
   });
 });

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { ApiFailure, createClient } from './api';
 import { capacityRows } from './capacity';
 import { applyFilters, buildHash, NO_FILTERS, parseHash, type Filters } from './filters';
-import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, Toasts, type GroupName, type Toast } from './parts';
+import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, setRefProjects, Toasts, type GroupName, type Toast } from './parts';
 import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
@@ -56,7 +56,7 @@ import { HomeView, ListView, ProjectsView, TodayView, type RowProps } from './vi
 import { TaskDetail } from './TaskDetail';
 import { displayName } from './detail';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
-import { agentMark, nowOf } from './nowscreen';
+import { agentMark, DONE_MS, nowOf, type NowTask } from './nowscreen';
 import { NowScreen } from './NowView';
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
@@ -257,7 +257,12 @@ export function App() {
   const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks]);
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
-  const nowTask = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
+  const liveNow = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
+  /** A done card stays until its Done finishes: a live reload in the meantime never swaps it out early. @req FR:product-reset/ui.done */
+  const shownNow = useRef<NowTask | null>(null);
+  const held = shownNow.current;
+  const nowTask = held && justDone.has(held.task.ref) && held.task.ref !== liveNow?.task.ref ? held : liveNow;
+  shownNow.current = nowTask;
   const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
@@ -307,7 +312,7 @@ export function App() {
       // @req FR:perf/client.paint — the first screen waits for the ranking, tasks, and projects; the all-day order fills in when it arrives.
       void api.rank(1000, 'any').then((a) => setDayOrder(a.map((x) => x.ref)), () => setDayOrder(null));
       const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
-      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
+      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setRefProjects(p); setProjects(p); setPhase('ready');
       api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
@@ -564,8 +569,9 @@ export function App() {
     if (!ref) return;
     if (a === 'done') {
       markDone(ref);
-      if (await run(() => hold(api.action('complete', ref)), () => '')) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
-      else unmarkDone(ref);
+      const ok = await run(() => hold(api.action('complete', ref)), () => '');
+      unmarkDone(ref);
+      if (ok) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
       return;
     } else await run(() => api.action(a, ref));
   };
@@ -605,7 +611,7 @@ export function App() {
     await api.answerNeed(id, body);
     setNeeds(await api.needs());
     if (live) { toast(body.choice === 'go' ? 'Reopened · the agent will see it' : 'Sent to the agent', 'ok'); return; }
-    toast(body.choice === 'go' ? 'Going with it · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
+    toast(body.choice === 'go' ? 'Approved · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
   };
   const answerTask = async (a: AskItem, s: Send) => {
     if (a.source === 'need') return answerNeedItem(a, s);
@@ -653,14 +659,16 @@ export function App() {
   const rowAct = (a: RowAct, ref?: string) => (a === 'defer' ? openDefer(ref) : a === 'notnow' ? void notNow(ref) : a === 'delegate' ? void delegate(ref) : void doAct(a, ref));
 
   /** The check is drawn before the list refreshes: a write never unmounts the row under the animation. */
-  const hold = async <T,>(p: Promise<T>): Promise<T> => { const [r] = await Promise.all([p, new Promise((ok) => setTimeout(ok, 320))]); return r; };
+  const hold = async <T,>(p: Promise<T>): Promise<T> => { const [r] = await Promise.all([p, new Promise((ok) => setTimeout(ok, DONE_MS))]); return r; };
   const unmarkDone = (ref: string) => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; });
-  const markDone = (ref: string) => { setJustDone((s) => new Set(s).add(ref)); setTimeout(() => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; }), 900); };
+  /** The check stays until the save and the reload finish, so a slow save never shows the done row again. @req FR:product-reset/ui.done */
+  const markDone = (ref: string) => setJustDone((s) => new Set(s).add(ref));
   const toggleDone = async (t: Task) => {
     if (t.done) { await run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Reopened'); return; }
     markDone(t.ref);
-    if (await run(() => hold(api.action('complete', t.ref)), () => '')) toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
-    else unmarkDone(t.ref);
+    const ok = await run(() => hold(api.action('complete', t.ref)), () => '');
+    unmarkDone(t.ref);
+    if (ok) toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
   };
 
   /** A property change from the task detail: saved with `expect`, the toast offers Undo. @req FR:task-detail-design/detail.save */
@@ -971,10 +979,10 @@ export function App() {
   const inboxDot = inboxAttention ? <span class="nav-dot" role="img" aria-label="Inbox needs setup" data-testid="inbox-dot" /> : null;
   /** @req FR:inbox-page/web.dot */
   const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : null);
-  /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
+  /** Each rail item names its chord in the tooltip; no key badge shows. @req FR:web-shell/nav.keys.hint @req FR:task-detail-design/rules.nokeys */
   // The PR entry renders itself: absent only where the host has no board; the board loads at app start. @req FR:pr-page/nav.rail @req FR:pr-page/icon.absent @req FR:pr-page/nav.load
   const nav = () => RAIL.map((v) => v === 'prs' ? <PrsNavItem key={v} api={api} active={view === v} label={LABEL[v]} hint={HINT[v]} onGo={() => go(v)} /> : (
-    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
+    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} title={`${LABEL[v]} (${HINT[v]})`} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span></button>
   ));
   return (
     <div class="shell">
@@ -984,11 +992,11 @@ export function App() {
          * @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand
          */}
         <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}{/* @req FR:pr-page/icon.place */}<PrsButton api={api} where="rail" /></div>
-        <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
+        <button type="button" class="tab add" title="New task (C)" onClick={openCapture}>＋ New task</button>
         {nav()}
         <div class="spacer" />
-        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette">Commands <kbd aria-hidden="true">⌘K</kbd></button>
-        <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
+        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette" title="Commands (⌘K)">Commands</button>
+        <button type="button" class="tab" title="Shortcuts (?)" onClick={() => setHelp(true)}>Shortcuts</button>
         {/* @req FR:feedback-button/ui.icon */}
         <FeedbackButton />
         <div class="who">
@@ -1013,7 +1021,7 @@ export function App() {
             message={{ name: (t) => { const a = taskAgent(t); return a ? displayName(a) : 'the agent'; }, open: (r) => { setComposeRef(r); setFocusRef(r); } }}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
+        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} done={!!nowTask && justDone.has(nowTask.task.ref)} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
           chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} asks={nowAsks} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar, ...(local ? { api } : {}) }}
           onOpenAsks={() => go('asks')} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}

@@ -56,7 +56,7 @@ export function prsNavNow(api: Client): { on: boolean; need: number; signIn: boo
 export function PrsNavItem({ api, active, label, hint, onGo }: { api: Client; active: boolean; label: string; hint: string; onGo: () => void }) {
   const nav = usePrsNav(api);
   if (!nav.on) return null;
-  return <button type="button" class={`tab${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} onClick={onGo}><span class="tab-label">{label}<PrsNavBadge nav={nav} /></span><kbd>{hint}</kbd></button>;
+  return <button type="button" class={`tab${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} title={`${label} (${hint})`} onClick={onGo}><span class="tab-label">{label}<PrsNavBadge nav={nav} /></span></button>;
 }
 
 /** The nav badge: Blocked on me plus Waiting on me; a dot when signed out. @req FR:pr-page/nav.badge */
