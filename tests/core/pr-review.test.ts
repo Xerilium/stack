@@ -106,6 +106,13 @@ describe('facts cache', () => {
     (data['o/r#1'] as { fail?: boolean }).fail = true;
     expect((await store.fetch([parsePrRef('o/r#1')!], f.gh))[0]).toMatchObject({ headSha: SHA2, specLines: 6 });
     expect(new FactsStore(h).get(parsePrRef('O/R#1')!)?.specLines).toBe(6);
+    // A failed read never writes its stale fallback over newer facts another process stored.
+    const slowFail: Gh = async () => { await new Promise((r) => setTimeout(r, 20)); throw new Error('gh: down'); };
+    const pending = new FactsStore(h, { now: () => NOW }).fetch([parsePrRef('o/r#1')!], slowFail);
+    (data['o/r#1'] as { fail?: boolean }).fail = false; data['o/r#1'].sha = SHA;
+    await store.fetch([parsePrRef('o/r#1')!], f.gh);
+    expect((await pending)[0].headSha).toBe(SHA2);
+    expect(new FactsStore(h).get(parsePrRef('o/r#1')!)?.headSha).toBe(SHA);
     // Parallel cap.
     let live = 0; let peak = 0;
     const slow: Gh = async (args) => { live++; peak = Math.max(peak, live); await new Promise((r) => setTimeout(r, 5)); live--; return args.some((a) => a.endsWith('/files')) ? '' : JSON.stringify({ head: { sha: SHA }, body: '', labels: [], title: 't', draft: false }); };

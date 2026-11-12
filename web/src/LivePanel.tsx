@@ -5,7 +5,7 @@
  * @req FR:pr-review-lane/panel.fix @req FR:pr-review-lane/panel.add @req FR:pr-review-lane/panel.refresh @req FR:pr-review-lane/panel.a11y
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { byWord, CHIP, ITEM_WORD, liveClient, toggleOp, type Lane, type LiveItem } from './live-lane';
+import { byWord, CHIP, ITEM_WORD, liveClient, newerLane, toggleOp, type Lane, type LiveItem } from './live-lane';
 import './live-lane.css';
 
 type Client = ReturnType<typeof liveClient>;
@@ -14,6 +14,8 @@ function Item({ item, busy, run }: { item: LiveItem; busy: boolean; run: (op: Pa
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(item.comment ?? '');
   const timer = useRef<number | undefined>(undefined);
+  // A closed editor follows the stored comment, so a save never overwrites a newer one; an open draft is kept.
+  useEffect(() => { if (!open) setText(item.comment ?? ''); }, [item.comment, open]);
   // Long press (500 ms) opens the comment box. @req FR:pr-review-lane/panel.comment
   const down = (e: PointerEvent) => { if ((e.target as Element).closest('button, a, textarea, input')) return; timer.current = window.setTimeout(() => setOpen(true), 500); };
   const up = () => { if (timer.current) window.clearTimeout(timer.current); timer.current = undefined; };
@@ -60,7 +62,7 @@ export function LivePanel({ fetchFn }: { fetchFn?: typeof fetch } = {}) {
   const [add, setAdd] = useState('');
 
   const load = useCallback(async () => {
-    try { setLane(await api.lane()); setError(''); } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the live lane'); }
+    try { const next = await api.lane(); setLane((prev) => newerLane(prev, next)); setError(''); } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the live lane'); }
   }, [api]);
   // Reload every 15 s while visible. @req FR:pr-review-lane/panel.refresh
   useEffect(() => {

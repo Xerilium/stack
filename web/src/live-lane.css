@@ -6,7 +6,7 @@
 .lv-chip.c-ready-for-michael, .lv-chip.c-revalidating { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .lv-chip.c-working { color: var(--ink); border-color: var(--ink2); }
 .lv-pr { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
-.lv-link { font-weight: 600; overflow-wrap: anywhere; }
+.lv-link { font-weight: 600; overflow-wrap: anywhere; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 6px; min-height: 44px; }
 .lv-muted, .lv-empty, .lv-meta { color: var(--muted); font-size: 13px; }
 .lv-empty { font-size: 15px; }
 .lv-error { color: var(--warn); }
@@ -15,7 +15,7 @@
 .lv-item.s-needs-fix, .lv-item.s-failed, .lv-item.s-blocked { border-color: var(--warn); }
 .lv-row { display: flex; gap: 12px; align-items: flex-start; }
 .lv-check { flex: none; width: 44px; height: 44px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel); color: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.lv-check.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+.lv-check.on { background: var(--ok); border-color: var(--ok); color: var(--accent-ink); }
 .lv-check:focus-visible, .lv .btn:focus-visible, .lv-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .lv-body { min-width: 0; flex: 1; }
 .lv-text { overflow-wrap: anywhere; }
@@ -37,5 +37,6 @@
   .lv { padding: 32px 24px; }
   .lv-check { width: 32px; height: 32px; }
   .lv .btn { min-height: 32px; }
+  .lv-link { min-height: 0; }
   .lv-input { min-height: 36px; }
 }

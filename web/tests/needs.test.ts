@@ -67,4 +67,8 @@ describe('fromNeeds', () => {
     expect(plain.reversible).toBe(true);
     expect(plain.decide).toBeUndefined();
   });
+  // @req FR:pr-review-lane/lane.needs
+  it('a blocked live check is not reversible (no Undo)', () => {
+    expect(fromNeeds([n('lv.li-0000abcd')], NOW)[0].reversible).toBe(false);
+  });
 });

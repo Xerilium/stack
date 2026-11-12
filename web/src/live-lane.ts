@@ -17,6 +17,9 @@ export const ITEM_WORD: Record<ItemState, string> = { open: 'Open', passed: 'Pas
 /** A tap on the check toggles passed and open. @req FR:pr-review-lane/panel.check */
 export const toggleOp = (i: Pick<LiveItem, 'state'>): ItemOp => (i.state === 'passed' ? 'uncheck' : 'check');
 
+/** An older reload (lower rev) never replaces a newer lane. @req FR:pr-review-lane/panel.refresh */
+export const newerLane = (prev: Lane | null, next: Lane): Lane => (prev && next.rev < prev.rev ? prev : next);
+
 /** Who added an item, for the row. */
 export const byWord = (by: string): string => (by === 'owner' ? 'you' : by);
 

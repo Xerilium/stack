@@ -100,7 +100,7 @@ test('axe: no violations, 44 px targets on touch, no sideways scroll', async ({ 
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   if (isMobile) {
-    for (const b of await page.locator('.lv button, .lv a.btn, .lv input').all()) {
+    for (const b of await page.locator('.lv button, .lv a.btn, .lv a.lv-link, .lv input').all()) {
       const r = await b.boundingBox();
       if (r) expect(r.height).toBeGreaterThanOrEqual(44);
     }

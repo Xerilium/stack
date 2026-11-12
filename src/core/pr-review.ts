@@ -112,6 +112,8 @@ export class FactsStore {
     const prior = new Map(this.read().map((f) => [refKey(f), f]));
     if (opts.offline) return refs.map((r) => prior.get(refKey(r))).filter((f): f is PrFacts => !!f);
     const now = (this.o.now ?? (() => new Date()))().toISOString();
+    // A fallback to prior facts is returned but never written back: another process may have stored newer facts meanwhile.
+    const read = new Set<PrFacts>();
     const got = await mapLimit(refs, 4, async (r): Promise<PrFacts | undefined> => {
       const old = prior.get(refKey(r));
       try {
@@ -129,14 +131,17 @@ export class FactsStore {
         // Path reasons only change with a new head; label and body reasons are read each time.
         const flag = needsLiveValidation({ labels, body: pr.body ?? '', paths: paths ?? [] });
         const reasons = paths ? flag.reasons : [...flag.reasons, ...old!.reasons.filter((x) => x.startsWith('path: '))];
-        return { ...r, title: pr.title ?? '', headSha, specLines: sl, labels, live: reasons.length > 0, reasons, draft: pr.draft === true, at: now };
+        const f: PrFacts = { ...r, title: pr.title ?? '', headSha, specLines: sl, labels, live: reasons.length > 0, reasons, draft: pr.draft === true, at: now };
+        read.add(f);
+        return f;
       } catch { return old; }
     });
     const fresh = got.filter((f): f is PrFacts => !!f);
-    if (fresh.length) {
+    const store = fresh.filter((f) => read.has(f));
+    if (store.length) {
       await withFileLock(this.dir, 'pr-facts.lock', () => {
         const all = new Map(this.read().map((f) => [refKey(f), f]));
-        for (const f of fresh) { all.delete(refKey(f)); all.set(refKey(f), f); }
+        for (const f of store) { all.delete(refKey(f)); all.set(refKey(f), f); }
         writeAtomic(this.file, `${JSON.stringify({ version: 1, items: [...all.values()].slice(-500) }, null, 2)}\n`);
       }, () => new Error('PR facts store is busy (pr-facts.lock); try again'), this.o);
     }
