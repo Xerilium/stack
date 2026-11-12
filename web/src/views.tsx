@@ -234,21 +234,25 @@ export function ProjectsView({ rows, week, onOpen }: { rows: (CapacityRow & { to
     <section aria-label="Projects">
       {week && <WeekView w={week} />}
       <h1 class="h1">Projects</h1>
-      <ul class="proj-list">
-        {rows.map((r) => (
-          <li key={r.project} class={`prow${r.over ? ' over' : ''}${r.capacity === null ? ' nocap' : ''}`} data-testid={`cap-${r.project}`}>
-            <button type="button" class="proj-btn" onClick={() => onOpen(r.project)}>
-              <span class="proj-name">{r.title || r.project}</span>
-              <span class="proj-top">{r.top ? <Md text={parseRow(r.top.text).title || r.top.text} /> : <i>Nothing open</i>}</span>
-              <span class="proj-count">{r.open}</span>
-              <span class="bar" role="meter" aria-label={`${r.project} load`} aria-valuemin={0} aria-valuemax={r.capacity ?? undefined} aria-valuenow={Math.round(r.hours * 10) / 10} title={`${fmt(r.hours)}h effort${r.capacity === null ? '' : ` of ${fmt(r.capacity)}h capacity`}`}>
-                <span class="fill" style={{ width: `${Math.min(100, (r.ratio ?? (r.hours > 0 ? 1 : 0)) * 100)}%` }} />
-              </span>
-              <span class="proj-hrs">{fmt(r.hours)}h{r.capacity === null ? '' : ` / ${fmt(r.capacity)}h`}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {rows.length === 0 ? (
+        <p class="empty-note" data-testid="projects-empty">No projects yet. Add one with <code>stack add-project &lt;name&gt;</code>.</p>
+      ) : (
+        <ul class="proj-list">
+          {rows.map((r) => (
+            <li key={r.project} class={`prow${r.over ? ' over' : ''}${r.capacity === null ? ' nocap' : ''}`} data-testid={`cap-${r.project}`}>
+              <button type="button" class="proj-btn" onClick={() => onOpen(r.project)}>
+                <span class="proj-name">{r.title || r.project}</span>
+                <span class="proj-top">{r.top ? <Md text={parseRow(r.top.text).title || r.top.text} /> : <i>Nothing open</i>}</span>
+                <span class="proj-count">{r.open}</span>
+                <span class="bar" role="meter" aria-label={`${r.project} load`} aria-valuemin={0} aria-valuemax={r.capacity ?? undefined} aria-valuenow={Math.round(r.hours * 10) / 10} title={`${fmt(r.hours)}h effort${r.capacity === null ? '' : ` of ${fmt(r.capacity)}h capacity`}`}>
+                  <span class="fill" style={{ width: `${Math.min(100, (r.ratio ?? (r.hours > 0 ? 1 : 0)) * 100)}%` }} />
+                </span>
+                <span class="proj-hrs">{fmt(r.hours)}h{r.capacity === null ? '' : ` / ${fmt(r.capacity)}h`}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

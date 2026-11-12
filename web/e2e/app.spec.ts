@@ -608,6 +608,17 @@ test.describe('projects', () => {
     await expect(page).toHaveURL(/#\/list\?project=beta/);
     await expect(rows(page)).toHaveText(['Plan the trip']);
   });
+
+  // @req FR:web-app/projects.empty
+  test('with no projects it says so and names the next step', async ({ page }) => {
+    await mockApi(page, { projects: [], tasks: [] });
+    await page.goto('/#/projects');
+    const empty = page.getByTestId('projects-empty');
+    await expect(empty).toBeVisible();
+    await expect(empty).toContainText('No projects yet');
+    await expect(empty).toContainText('stack add-project');
+    await expect(page.locator('.proj-list')).toHaveCount(0);
+  });
 });
 
 test.describe('capture', () => {

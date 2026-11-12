@@ -114,6 +114,7 @@ Design: `docs/design/web-ux.md`. Journeys J1-J5.
 ### FR:projects: Projects overview
 
 - **FR:projects.glance** (P1): One row per project shows the title, its top open task (first open top-level task in Active, else in Up next, else first open), open count, and a load bar against weekly capacity (over capacity uses the warning color; no capacity shows load only). `Enter` or click opens that project's list
+- **FR:projects.empty** (P1): With zero projects the view says there are none and names the next step (`stack add-project <name>`); it never renders an empty list
 
 ### FR:list: Full list
 
