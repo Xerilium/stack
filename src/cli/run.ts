@@ -30,6 +30,8 @@ import { emailCmd } from './email';
 import { agentCmd } from './agent';
 import { graphCmd } from './graph';
 import { findStackDir, userConfig } from './discover';
+import { devicesCmd } from './devices';
+import { bindMode } from './tailnet';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
 import { BatchedGitStorage } from '../core/storage-batch';
 import { homedir } from 'os';
@@ -73,7 +75,8 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks; --explain (autopri) shows score parts; --truth lists ground-truth items to tag or add' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
-  web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches)' },
+  web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset', 'bind'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches; --bind tailnet also serves paired devices on your Tailscale addresses)' },
+  devices: { flags: [], usage: 'devices add <name> | list | revoke <id>', help: 'pair a phone with the tailnet host (docs/phone-access.md); add prints a one-time pairing code' },
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
@@ -572,6 +575,8 @@ export function webReportStore(live: boolean, home: string): ReportStore | undef
 async function web(f: Record<string, string | true>, io: IO, found: string | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
   const cfg = userConfig(home);
+  // @req FR:tailnet-access/bind.@cli
+  const bind = bindMode(f['bind'], cfg.bind);
   const spec = flag(f, 'repo') ?? found;
   if (!spec) throw new UsageError('No content repo. Use: stack web --repo <path-or-git-url> (or set STACK_REPO, or "repo" in ~/.config/stack/config.json)');
   const repo = resolveRepo(spec, join(home, '.config/stack/clones'));
@@ -599,8 +604,10 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
   // Demo never touches live state (~/.stack): its reports stay beside the demo copy. @req FR:status-ingest/host.demo
   const reports = webReportStore(live, home);
-  const s = await startWeb({ dir: target, port, webDir, label, info, storage, ...(reports ? { reports } : {}) });
+  const s = await startWeb({ dir: target, port, webDir, label, info, storage, bind, ...(reports ? { reports } : {}) });
   io.out(`Stack web: ${s.url}  (data: ${target}; Ctrl+C to stop)\n`);
+  // @req FR:tailnet-access/bind.startup
+  if (bind === 'tailnet') io.out(`Tailnet (paired devices only): ${s.urls.slice(1).join('  ')}\nHTTPS for the phone: tailscale serve --bg ${new URL(s.url).port}. Pair a phone: stack devices add <name>\n`);
   await new Promise<void>((ok) => { process.once('SIGINT', ok); process.once('SIGTERM', ok); });
   await s.close();
   return EXIT.ok;
@@ -637,6 +644,8 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     if (p.command === 'graph') return await graphCmd(p.positionals[0], p.flags, io, json);
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
     // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report
+    // Devices live in ~/.stack (STACK_HOME), not the content repo. @req FR:tailnet-access/pair.@cli
+    if (p.command === 'devices') { const d = await devicesCmd(p.positionals[0], p.positionals.slice(1), stackHome()); io.out(`${json ? JSON.stringify(d.json) : d.text}\n`); return EXIT.ok; }
     const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);

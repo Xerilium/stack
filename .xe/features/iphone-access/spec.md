@@ -18,7 +18,7 @@ Owner opens the installed Stack app on an iPhone, signed in as himself, and gets
 
 - In: device records bound to API tokens, device admin endpoints, per-device push subscription storage and endpoints, push sender interface and a due-within-1h notifier (sender injected), host wiring.
 - In (slice 2): real Web Push sender (RFC 8291 + RFC 8292 on `node:crypto`, transport injected), quiet hours, per-device dedupe, a check trigger on ask writes and on `POST /api/push/check`, the iOS install screen with a gesture-only permission request, and a service worker `push` handler.
-- Non-goals (later): passkey login, pairing UI/QR (the install screen only reads a pairing link), offline answer queue, Tailscale/Cloudflare setup, the cron caller, native iOS app.
+- Non-goals (later): passkey login, pairing UI/QR (the install screen only reads a pairing link), offline answer queue, the cron caller (Tailscale access to the Mac host: [tailnet-access](../tailnet-access/spec.md)), native iOS app.
 
 ## Scenarios
 

@@ -41,8 +41,8 @@ Owner needs one `stack` binary that finds the task repo and commits what it chan
 
 Owner needs `stack web` to serve the app over a task repo on their own machine so that they can try it on a copy, or run it for real on the files they already edit by hand.
 
-- **FR:web.@cli** (P1): Interface: `stack web [--repo path-or-git-url] [--live] [--branch name] [--batch minutes] [--port n] [--reset]`
-- **FR:web.serve** (P1): `stack web` MUST serve the web app and `/api` on `127.0.0.1` (default port 4173)
+- **FR:web.@cli** (P1): Interface: `stack web [--repo path-or-git-url] [--live] [--branch name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]` (`--bind`: [tailnet-access](../tailnet-access/spec.md))
+- **FR:web.serve** (P1): `stack web` MUST serve the web app and `/api` on `127.0.0.1` (default port 4173), plus the Tailscale addresses with `--bind tailnet` (tailnet-access `FR:bind.tailnet`)
   - The content repo comes from `--repo`, else discovery (cwd walk, `$STACK_REPO`, `$STACK_DIR`, user config `repo`); a git url is cloned once into `~/.config/stack/clones`
   - **FR:web.serve.local** (P1): The server MUST answer `/.auth/me` with a local sign-in stub (no Azure) whose single user is the owner
   - **FR:web.serve.loopback** (P1): The server MUST serve only loopback Host names and accept writes only from its own origin

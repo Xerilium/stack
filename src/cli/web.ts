@@ -20,6 +20,12 @@ import type { Storage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo, type WatchOptions } from './watch';
 import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
+import { createAuth, type DeviceService, type DeviceView, type TokenService } from '../api';
+import { fileAuth } from './devices';
+import {
+  clearCookie, cookieToken, deviceCookie, isDataPath, isLocal, listenable, NO_TAILSCALE, PAIR_HTML, PAIR_JS, PUBLIC_PATHS,
+  requestHost, requestSecure, tailnetAddresses, tailnetHostOk, type BindMode,
+} from './tailnet';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
@@ -62,6 +68,14 @@ export interface WebOpts {
   agents?: AgentRuns | false;
   /** The live report store; default `~/.stack` (or `STACK_HOME`). @req FR:status-ingest/api.put */
   reports?: ReportStore;
+  /** `loopback` (default): 127.0.0.1 only. `tailnet`: also each Tailscale address, paired devices only. @req FR:tailnet-access/bind.tailnet */
+  bind?: BindMode;
+  /** The machine's Tailscale addresses; default read from the OS interface list (tests inject). @req NFR:tailnet-access/test */
+  tailnet?: () => string[];
+  /** Token and device services for remote requests; default the file stores in `~/.stack` (`STACK_HOME`). */
+  auth?: { tokens: TokenService; devices: DeviceService };
+  /** The socket peer address (tests inject); default `req.socket.remoteAddress`. @req NFR:tailnet-access/test */
+  peer?: (req: IncomingMessage) => string | undefined;
 }
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
@@ -98,7 +112,8 @@ export function liveLine(repo: string, branch: string, minutes: number, remote?:
   const when = minutes === 0 ? 'committed on every edit' : `committed after ${minutes} min idle`;
   return `LIVE MODE: edits land in ${repo}/tasks on ${branch}; ${when}${remote ? `, then pushed to ${remote}` : ''}`;
 }
-export interface WebServer { url: string; close(): Promise<void> }
+/** `url` is the loopback URL; `urls` adds one per Tailscale address; `addresses` are the listen addresses. */
+export interface WebServer { url: string; urls: string[]; addresses: string[]; close(): Promise<void> }
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
@@ -109,12 +124,23 @@ function headersFrom(webDir: string): Record<string, string> {
   try { return (JSON.parse(readFileSync(join(webDir, 'staticwebapp.config.json'), 'utf8')) as { globalHeaders?: Record<string, string> }).globalHeaders ?? {}; } catch { return {}; }
 }
 
-async function toRequest(req: IncomingMessage, origin: string): Promise<Request> {
+/** Headers a remote caller may not pass to the api: identity and credentials are set by the gate only. */
+const REMOTE_DROP = new Set(['x-ms-client-principal', 'authorization', 'x-stack-token', 'cookie']);
+
+/**
+ * `remote`: the client's own principal, token and cookie headers are dropped. With `token` the request runs as that device token
+ * (device self endpoints); without it, as the owner. @req FR:tailnet-access/gate.scope
+ */
+async function toRequest(req: IncomingMessage, origin: string, remote?: { token?: string }): Promise<Request> {
   const method = req.method ?? 'GET';
   const chunks: Buffer[] = [];
   if (method !== 'GET' && method !== 'HEAD') { let n = 0; for await (const c of req) { n += (c as Buffer).length; if (n > 1_000_000) throw new Error('body too large'); chunks.push(c as Buffer); } }
   const headers = new Headers();
-  for (const [k, v] of Object.entries(req.headers)) if (v !== undefined) headers.set(k, Array.isArray(v) ? v.join(', ') : v);
+  for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !(remote && REMOTE_DROP.has(k))) headers.set(k, Array.isArray(v) ? v.join(', ') : v);
+  if (remote?.token !== undefined) {
+    headers.set('authorization', `Bearer ${remote.token}`);
+    return new Request(origin + (req.url ?? '/'), { method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
+  }
   // The one local user is the owner (loopback only); the api gates agent writes on this marker.
   headers.set('x-ms-client-principal', Buffer.from(JSON.stringify({ identityProvider: 'local', userId: 'local', userDetails: 'local', userRoles: ['authenticated'] })).toString('base64'));
   return new Request(origin + (req.url ?? '/'), { method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
@@ -154,6 +180,12 @@ export async function calendarSource(o: { cachePath?: string; fixture?: string; 
 }
 
 export async function startWeb(o: WebOpts): Promise<WebServer> {
+  // Refuse before anything starts: tailnet mode with no Tailscale address. Never an unspecified address. @req FR:tailnet-access/bind.refuse @req FR:tailnet-access/bind.tailnet
+  const bind: BindMode = o.bind ?? 'loopback';
+  const addrs = bind === 'tailnet' ? [...new Set((o.tailnet ?? (() => tailnetAddresses()))().filter(listenable))].filter((a) => a !== '127.0.0.1') : [];
+  if (bind === 'tailnet' && !addrs.length) throw new Error(NO_TAILSCALE);
+  const remoteAuth = bind === 'tailnet' ? (o.auth ?? fileAuth(stackHome())) : undefined;
+  const peerOf = o.peer ?? ((r: IncomingMessage) => r.socket.remoteAddress);
   const cfgPath = join(o.dir, '.xe/config/stack.json');
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
   // @req FR:github-pr-status/wire.token @req FR:github-pr-status/repos.invalid: a bad repo list leaves PR status off.
@@ -172,6 +204,18 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // @req FR:status-ingest/store.live
   const offReports = reports.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks'] }); });
   const api = createApiHandler({ storage, config, reports, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
+  // Device self endpoints (push subscription) run as the device token through the auth-security hook; no owner list, so no session ever matches. @req FR:tailnet-access/gate.scope
+  const auth = remoteAuth ? createAuth({ owners: [], tokens: remoteAuth.tokens, devices: remoteAuth.devices, vapidPublicKey: process.env.STACK_VAPID_PUBLIC_KEY?.trim() || undefined }) : undefined;
+  const remoteApi = auth ? auth.wrap(createApiHandler({ storage, config, reports, authorize: auth.authorize, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() })) : undefined;
+  /** The active device for a token: 401 when it does not verify, 403 when it is not a paired device. @req FR:tailnet-access/gate.token.deny */
+  const deviceOf = async (token: string): Promise<DeviceView | 401 | 403> => {
+    if (!remoteAuth) return 403;
+    try {
+      const v = await remoteAuth.tokens.verify(token);
+      if (!v) return 401;
+      return (await remoteAuth.devices.byTokenId(v.id)) ?? 403;
+    } catch { return 403; }
+  };
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
@@ -183,26 +227,88 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   /** API requests in flight (until the reply is sent), so shutdown can let a mutation land before the storage flushes. @req FR:test-reliability/shutdown.reply */
   const inflight = new Set<Promise<unknown>>();
 
-  const server: Server = createServer((req, res) => {
+  /**
+   * Remote gate: Tailscale host, same-origin writes, the public pairing page, then a paired device token.
+   * Answers and returns null when the request stops here.
+   * @req FR:tailnet-access/gate.loopback @req FR:tailnet-access/gate.host @req FR:tailnet-access/gate.csrf @req FR:tailnet-access/gate.public
+   * @req FR:tailnet-access/gate.token @req FR:tailnet-access/gate.token.deny @req FR:tailnet-access/gate.token.page @req FR:tailnet-access/pair.cookie
+   */
+  async function gate(req: IncomingMessage, peer: string | undefined, send: (status: number, body: string | Buffer, type: string, h?: Record<string, string>) => void): Promise<{ token: string; device: DeviceView; secure: boolean } | null> {
+    const deny = (status: number, msg = status === 401 ? 'unauthorized' : 'forbidden') => { send(status, msg, 'text/plain'); return null; };
+    if (bind !== 'tailnet') return deny(403);
+    const host = requestHost(peer, req.headers);
+    if (!tailnetHostOk(host, addrs)) return deny(403);
+    const secure = requestSecure(peer, req.headers);
+    const origin = req.headers.origin;
+    const site = req.headers['sec-fetch-site'];
+    const method = req.method ?? 'GET';
+    const unsafe = method !== 'GET' && method !== 'HEAD';
+    let originHost: string | null = null;
+    try { originHost = origin ? new URL(origin).host.toLowerCase() : null; } catch { return deny(403); }
+    if (unsafe && ((originHost !== null && originHost !== host!.toLowerCase()) || (site && site !== 'same-origin' && site !== 'none'))) return deny(403);
+    const path = (req.url ?? '/').split('?')[0];
+    // @req FR:tailnet-access/pair.page
+    if (PUBLIC_PATHS.has(path)) {
+      if (unsafe) { send(405, 'method not allowed', 'text/plain', { allow: 'GET, HEAD' }); return null; }
+      send(200, path === '/pair' ? PAIR_HTML : PAIR_JS, path === '/pair' ? TYPES['.html'] : TYPES['.js']);
+      return null;
+    }
+    if (path === '/.auth/pair') {
+      if (method !== 'POST') { send(405, 'method not allowed', 'text/plain', { allow: 'POST' }); return null; }
+      const chunks: Buffer[] = []; let n = 0;
+      for await (const c of req) { n += (c as Buffer).length; if (n > 4096) return deny(413, 'body too large'); chunks.push(c as Buffer); }
+      let token: unknown;
+      try {
+        const b = JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+        if (typeof b !== 'object' || b === null || Array.isArray(b) || Object.keys(b).some((k) => k !== 'token')) throw new Error('fields');
+        token = (b as { token?: unknown }).token;
+      } catch { return deny(400, 'expected {"token": "<pairing code>"}'); }
+      if (typeof token !== 'string' || token.length > 512) return deny(400, 'expected {"token": "<pairing code>"}');
+      const d = await deviceOf(token.trim());
+      if (typeof d === 'number') return deny(401);
+      send(204, '', 'text/plain', { 'set-cookie': deviceCookie(token.trim(), secure) });
+      return null;
+    }
+    const bearer = /^bearer[ \t]+(\S+)\s*$/i.exec(String(req.headers.authorization ?? ''))?.[1];
+    const xt = req.headers['x-stack-token'];
+    const token = bearer ?? (typeof xt === 'string' && xt.trim() ? xt.trim() : undefined) ?? cookieToken(req.headers.cookie) ?? undefined;
+    const d = token ? await deviceOf(token) : 401;
+    if (typeof d === 'number') {
+      if (d === 401 && !unsafe && !isDataPath(path)) { send(302, '', 'text/plain', { location: '/pair' }); return null; }
+      return deny(d);
+    }
+    return { token: token!, device: d, secure };
+  }
+
+  const handler = (req: IncomingMessage, res: import('http').ServerResponse) => {
     void (async () => {
       const send = (status: number, body: string | Buffer, type: string, h: Record<string, string> = {}) => {
         res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...extra, ...h });
         res.end(body);
       };
       try {
-        // DNS-rebinding guard: only loopback host names are served.
-        // @req FR:cli/web.serve.loopback
-        if (!hostOk(req.headers.host)) return send(403, 'forbidden', 'text/plain');
-        // CSRF guard: writes only from this page (a browser always sends Origin or Sec-Fetch-Site on cross-site posts).
-        const origin = req.headers.origin;
-        const site = req.headers['sec-fetch-site'];
-        const unsafe = req.method !== 'GET' && req.method !== 'HEAD';
-        // @req FR:cli/web.serve.loopback
-        if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
+        const peer = peerOf(req);
+        let remote: { token: string; device: DeviceView; secure: boolean } | null = null;
+        // @req FR:tailnet-access/gate.classify @req FR:tailnet-access/gate.local
+        if (!isLocal(peer, req.headers)) {
+          remote = await gate(req, peer, send);
+          if (!remote) return;
+        } else {
+          // DNS-rebinding guard: only loopback host names are served.
+          // @req FR:cli/web.serve.loopback
+          if (!hostOk(req.headers.host)) return send(403, 'forbidden', 'text/plain');
+          // CSRF guard: writes only from this page (a browser always sends Origin or Sec-Fetch-Site on cross-site posts).
+          const origin = req.headers.origin;
+          const site = req.headers['sec-fetch-site'];
+          const unsafe = req.method !== 'GET' && req.method !== 'HEAD';
+          // @req FR:cli/web.serve.loopback
+          if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
+        }
         const path = (req.url ?? '/').split('?')[0];
-        // @req FR:cli/web.serve.local
-        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents }), 'application/json');
-        if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
+        // @req FR:cli/web.serve.local @req FR:tailnet-access/pair.me
+        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: remote ? `device:${remote.device.name}` : who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents }), 'application/json');
+        // @req FR:tailnet-access/pair.logout
+        if (path === '/.auth/logout') return send(302, '', 'text/plain', remote ? { location: '/pair', 'set-cookie': clearCookie(remote.secure) } : { location: '/' });
         // @req FR:ask-queue/live.sse
         if (path === '/events' && req.method === 'GET') {
           // No watcher: refuse the stream so EventSource closes and the page polls, instead of a silent Live.
@@ -244,7 +350,11 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           return;
         }
         if (path === '/api' || path.startsWith('/api/')) {
-          const work = toRequest(req, `http://localhost:${port}`).then(api);
+          // @req FR:tailnet-access/gate.scope
+          // A paired device is the owner's phone: it runs as the owner, but never mints or revokes tokens or devices; its self endpoints run as its token.
+          if (remote && /^\/api\/auth\/(tokens|devices)(\/|$)/.test(path) && !path.startsWith('/api/auth/devices/me/')) return send(403, JSON.stringify({ error: { code: 'forbidden', message: 'Forbidden' } }), 'application/json');
+          const self = remote && remoteApi && path.startsWith('/api/auth/devices/me/');
+          const work = self ? toRequest(req, `http://localhost:${port}`, { token: remote!.token }).then(remoteApi) : toRequest(req, `http://localhost:${port}`, remote ? {} : undefined).then(api);
           // In flight until the reply is on the wire (res 'close'), not just until the api settles: shutdown must not cut the answer off.
           const replied = new Promise<void>((ok) => res.once('close', ok));
           inflight.add(replied); void replied.finally(() => inflight.delete(replied));
@@ -268,21 +378,34 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         if (!res.headersSent) send(500, 'internal error', 'text/plain'); else res.end();
       }
     })();
-  });
-  await new Promise<void>((ok, bad) => { server.once('error', bad); server.listen(o.port, '127.0.0.1', ok); });
-  port = (server.address() as { port: number }).port;
+  };
+  // Loopback first (it picks the port; the only listener in loopback mode), then each Tailscale address on the same port. Never 0.0.0.0 or ::. @req FR:tailnet-access/bind.tailnet @req FR:tailnet-access/bind.loopback
+  const listen = (s: Server, p: number, host: string) => new Promise<void>((ok, bad) => { s.once('error', bad); s.listen(p, host, () => { s.off('error', bad); ok(); }); });
+  const server: Server = createServer(handler);
+  const servers: Server[] = [server];
+  const stopAll = () => Promise.all(servers.map((s) => new Promise<void>((ok) => { if (!s.listening) return ok(); s.close(() => ok()); s.closeAllConnections(); })));
+  try {
+    await listen(server, o.port, '127.0.0.1');
+    port = (server.address() as { port: number }).port;
+    for (const a of addrs) { const s = createServer(handler); servers.push(s); await listen(s, port, a); }
+  } catch (e) {
+    await stopAll(); offPending?.(); offReports(); watcher.close();
+    throw e;
+  }
   // @req FR:cli/web.batch.shutdown
   const close = async () => {
     offPending?.();
     offReports();
     watcher.close();
-    const closed = new Promise<void>((ok) => server.close(() => ok())); // stop accepting; open sockets stay until below
-    server.closeIdleConnections();
+    const closed = Promise.all(servers.map((s) => new Promise<void>((ok) => s.close(() => ok())))); // stop accepting; open sockets stay until below
+    for (const s of servers) s.closeIdleConnections();
     // Let api requests already being handled finish (bounded), so their writes join the final flush.
     await Promise.race([Promise.allSettled([...inflight]), new Promise((ok) => setTimeout(ok, 10_000).unref())]);
-    server.closeAllConnections(); // ends the event streams
+    for (const s of servers) s.closeAllConnections(); // ends the event streams
     await closed;
     await storage.close?.();
   };
-  return { url: `http://localhost:${port}`, close };
+  const url = `http://localhost:${port}`;
+  // @req FR:tailnet-access/bind.startup
+  return { url, urls: [url, ...addrs.map((a) => (a.includes(':') ? `http://[${a}]:${port}` : `http://${a}:${port}`))], addresses: ['127.0.0.1', ...addrs], close };
 }
