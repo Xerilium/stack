@@ -90,7 +90,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     schedule: (at: string) => call<DaySched | null>(`/schedule?at=${encodeURIComponent(at)}`),
     scheduleDay: (body: { date: string; wake?: string; bed?: string; every?: boolean; reset?: boolean }) => call<DaySched>('/schedule/day', body),
     meetings: async () => (await call<{ items: Rule[] }>('/meetings')).items,
-    calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+    calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string; source?: unknown }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
     send: (ref: string, text: string, kind: 'reply' | 'decision' | 'instruction', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),

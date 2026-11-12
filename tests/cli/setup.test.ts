@@ -164,6 +164,21 @@ describe('applySetup', () => {
     expect(readConfig(home)).toMatchObject({ ics: 'webcal://x.test/a.ics', onboarding: { step: 'email' } });
     expect(applySetup({ home, env, body: { step: 'calendar', skip: true } })).toEqual({ ok: true, restart: false });
   });
+  // @req FR:ux-consolidation/cal.save
+  it('connect calendar: saves the link with mode 0600, keeps onboarding, restarts only on a change; env wins', () => {
+    const home = tmp();
+    writeConfig(home, { repo: '/r', onboarding: { step: 'phone', done: true } });
+    expect(applySetup({ home, env, body: { connect: 'calendar', ics: 'ftp://x.test/a.ics' } })).toMatchObject({ ok: false, error: expect.stringMatching(/https/) });
+    expect(applySetup({ home, env, body: { connect: 'mail', ics: 'https://x.test/a.ics' } })).toMatchObject({ ok: false });
+    expect(applySetup({ home, env, body: { connect: 'calendar', ics: ' https://outlook.office365.com/owa/calendar/abc/def/calendar.ics ' } })).toEqual({ ok: true, restart: true });
+    expect(readConfig(home)).toEqual({ repo: '/r', ics: 'https://outlook.office365.com/owa/calendar/abc/def/calendar.ics', onboarding: { step: 'phone', done: true } });
+    expect(statSync(join(home, '.config/stack/config.json')).mode & 0o777).toBe(0o600);
+    expect(applySetup({ home, env, body: { connect: 'calendar', ics: 'https://outlook.office365.com/owa/calendar/abc/def/calendar.ics' } })).toEqual({ ok: true, restart: false });
+    const r = applySetup({ home, env: { STACK_CALENDAR_ICS: 'https://y.test/b.ics' }, body: { connect: 'calendar', ics: 'https://x.test/a.ics' } });
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/STACK_CALENDAR_ICS/) });
+    expect(JSON.stringify(r)).not.toContain('x.test');
+    expect(readConfig(home).ics).toBe('https://outlook.office365.com/owa/calendar/abc/def/calendar.ics');
+  });
   // @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone @req FR:first-run-onboarding/state.resume
   it('email and phone move on; phone finishes; go returns to an earlier step', () => {
     const home = tmp(); applySetup({ home, env, body: { step: 'repo', repo: gitRepo() } });

@@ -14,7 +14,40 @@ export interface CalendarEvent {
   /** The online meeting's join link (Teams), when there is one. */
   joinUrl?: string;
 }
-export interface CalendarProvider { events(from: string, to: string): Promise<CalendarEvent[]> }
+/** Where a provider reads from, without secrets. @req FR:ux-consolidation/cal.status */
+export interface CalendarInfo {
+  via: 'graph' | 'ics' | 'fixture';
+  /** The account or the feed host names; never a feed path or a token. */
+  account?: string;
+  /** Epoch ms when the oldest copy served was read from the source; absent = read live on every call. */
+  syncedAt?: number;
+}
+export interface CalendarProvider { events(from: string, to: string): Promise<CalendarEvent[]>; info?(): CalendarInfo }
+
+/** A calendar source status, the shape the inbox sources share (`{kind, account, state, lastSyncAt}`). @req FR:ux-consolidation/cal.status */
+export interface CalendarSource {
+  kind: 'calendar'; via?: CalendarInfo['via'] | 'none'; account?: string;
+  state: 'not-connected' | 'ok' | 'error' | 'stale';
+  /** ISO time the data shown was last read from the source. */
+  lastSyncAt?: string;
+}
+/** A copy older than this is stale. */
+export const STALE_MS = 60 * 60_000;
+
+/** A provider with a fixed `info()`. */
+export const withInfo = (p: CalendarProvider, info: CalendarInfo): CalendarProvider => ({ events: (from, to) => p.events(from, to), info: () => ({ ...info }) });
+
+/**
+ * The source status after a read: `not-connected` without a provider, `error` when the read failed, `stale` when the
+ * copy served is over `STALE_MS` old, else `ok`. @req FR:ux-consolidation/cal.status
+ */
+export function sourceStatus(p: CalendarProvider | undefined, ok: boolean, at: number): CalendarSource {
+  if (!p) return { kind: 'calendar', via: 'none', state: 'not-connected' };
+  const i = p.info?.();
+  const synced = i?.syncedAt ?? (ok ? at : undefined);
+  const state = !ok ? 'error' : at - synced! > STALE_MS ? 'stale' : 'ok';
+  return { kind: 'calendar', ...(i ? { via: i.via } : {}), ...(i?.account ? { account: i.account } : {}), state, ...(synced !== undefined ? { lastSyncAt: new Date(synced).toISOString() } : {}) };
+}
 
 const overlaps = (e: CalendarEvent, from: number, to: number) => Date.parse(e.end) > from && Date.parse(e.start) < to;
 const byStart = (a: CalendarEvent, b: CalendarEvent) => Date.parse(a.start) - Date.parse(b.start);
@@ -22,6 +55,7 @@ const byStart = (a: CalendarEvent, b: CalendarEvent) => Date.parse(a.start) - Da
 /** A provider over a fixed list. @req FR:day-inputs/cal.fixture */
 export function fixtureCalendar(list: CalendarEvent[]): CalendarProvider {
   return {
+    info: () => ({ via: 'fixture' }),
     async events(from, to) {
       const f = Date.parse(from), t = Date.parse(to);
       return list.filter((e) => overlaps(e, f, t)).map((e) => ({ ...e })).sort(byStart);

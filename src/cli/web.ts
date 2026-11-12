@@ -16,7 +16,7 @@ import { createClaudeJson } from '../email/llm';
 import { createGitHubPrs, githubRepos } from '../api/github';
 import { createPrPage, type PrPage } from '../api/pr-page';
 import { storePrQueue } from '../api/pr-queue';
-import { createGraphCalendar, fixtureCalendar, type CalendarEvent, type CalendarProvider } from '../calendar';
+import { createGraphCalendar, fixtureCalendar, withInfo, type CalendarEvent, type CalendarProvider } from '../calendar';
 import { createIcsCalendar, icsUrls } from '../calendar/ics';
 import { defaultCachePath, FileTokenCache, graphToken, hasScope } from '../graph/auth';
 import { graphTransport } from '../graph/transport';
@@ -163,7 +163,8 @@ export async function calendarSource(o: { cachePath?: string; fixture?: string; 
   const t = await cache.read().catch(() => null);
   if (t && hasScope(t.scopes, 'Calendars.Read')) {
     o.log?.('calendar: Graph');
-    return { source: 'graph', provider: createGraphCalendar({ transport: graphTransport({ token: graphToken(cache) }) }) };
+    // @req FR:ux-consolidation/cal.status
+    return { source: 'graph', provider: withInfo(createGraphCalendar({ transport: graphTransport({ token: graphToken(cache) }) }), { via: 'graph', ...(t.account ? { account: t.account } : {}) }) };
   }
   const ics = icsCalendar(o.ics);
   if (ics) { o.log?.('calendar: ICS feeds'); return { source: 'ics', provider: ics }; }

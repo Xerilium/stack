@@ -97,6 +97,15 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
     writeConfig(o.home, { onboarding: { step: b.go } });
     return { ok: true, restart: false };
   }
+  // Connect a calendar from Now: save the link, leave onboarding alone. @req FR:ux-consolidation/cal.save
+  if (b.connect !== undefined) {
+    if (b.connect !== 'calendar') return fail('Unknown connection.');
+    if (o.env.STACK_CALENDAR_ICS) return fail('STACK_CALENDAR_ICS is set on this host and wins. Unset it to use a link saved here.');
+    const ics = typeof b.ics === 'string' ? b.ics.trim() : '';
+    if (!icsLink(ics)) return fail('Paste the https or webcal link of a published calendar.');
+    writeConfig(o.home, { ics });
+    return { ok: true, restart: ics !== cfg.ics };
+  }
   if (!isStep(b.step)) return fail('Unknown step.');
   // The host repo (flags and the current folder win over env and config), as in setupStatus.
   const spec = o.spec ?? repoSpec(cfg, o.env);
@@ -142,14 +151,18 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
     case 'calendar': {
       if (b.skip === true) return save({}, false);
       const ics = typeof b.ics === 'string' ? b.ics.trim() : '';
-      let ok = false;
-      try { const u = new URL(ics); ok = (u.protocol === 'https:' || u.protocol === 'webcal:') && !!u.hostname; } catch { /* not a url */ }
-      if (!ok || ics.length > 4096) return fail('Paste the https or webcal link of a published calendar.');
+      if (!icsLink(ics)) return fail('Paste the https or webcal link of a published calendar.');
       return save({ ics }, ics !== cfg.ics);
     }
     case 'email': return save({}, false);
     case 'phone': return save({}, false, true);
   }
+}
+
+/** A published calendar link: `https:` or `webcal:`, with a host, at most 4096 characters. */
+function icsLink(s: string): boolean {
+  if (s.length > 4096) return false;
+  try { const u = new URL(s); return (u.protocol === 'https:' || u.protocol === 'webcal:') && !!u.hostname; } catch { return false; }
 }
 
 /** The `/setup` routes, shared by the setup server and the real server. */

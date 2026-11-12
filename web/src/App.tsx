@@ -25,7 +25,9 @@ import { PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
 import { PrsButton, PrsFlyoutHost } from './PrsPanel';
-import { actionsFor, type AskItem, type Send } from './asks';
+import { actionsFor, type AskItem, type DeferChoice, type Send } from './asks';
+import { isFresh, sourceOf, type CalSource } from './calsource';
+import { postStep, waitForHost, type Fetch } from './onboarding';
 import { useAsks } from './useAsks';
 import { Drawer, SessionsView } from './SessionsView';
 import { usePins } from './pins';
@@ -147,6 +149,8 @@ export function App() {
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [calError, setCalError] = useState('');
   const [calOn, setCalOn] = useState(true);
+  /** How the calendar source is doing; null until the first read. @req FR:ux-consolidation/cal.fresh */
+  const [calSource, setCalSource] = useState<CalSource | null>(null);
   /** Weekly meetings (`.stack/meetings.md`): Brief's second layer. @req FR:cos-view/meet.layers */
   const [rules, setRules] = useState<Rule[]>([]);
   /** Tomorrow's plan in My day: its schedule and meetings. @req FR:home/day.tomorrow */
@@ -267,7 +271,7 @@ export function App() {
     const [a, i, c, w] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to), api.meetings()]);
     setRules(w.status === 'fulfilled' ? w.value : []);
     /** @req FR:web-app/today.meetings */
-    if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); setCalOn(c.value.configured); } else setCalError('Calendar unavailable');
+    if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); setCalOn(c.value.configured); setCalSource(sourceOf(c.value, new Date())); } else { setCalError('Calendar unavailable'); setCalSource({ kind: 'calendar', state: 'error' }); }
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
     if (i.status === 'fulfilled') setInbox(i.value);
   }, []);
@@ -347,8 +351,37 @@ export function App() {
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${withdrawTick}|${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
-  /** Live calendar when it works, else the weekly schedule. @req FR:cos-view/meet.layers */
-  const liveCal = calOn && !calError;
+  /** Live calendar when it works and is fresh, else the weekly schedule. @req FR:cos-view/meet.layers @req FR:ux-consolidation/cal.fresh */
+  const liveCal = calOn && !calError && isFresh(calSource, clockNow);
+  /** Check connection: read the calendar again for today's range. @req FR:ux-consolidation/cal.check */
+  const checkCalendar = useCallback(async (): Promise<CalSource | null> => {
+    const d = new Date();
+    try {
+      const range = calendarRange(sched, d);
+      const r = await api.calendar(range.from, range.to);
+      const src = sourceOf(r, new Date());
+      setEvents(r.items); setCalError(r.error ?? ''); setCalOn(r.configured); setCalSource(src); setTick((t) => t + 1);
+      return src;
+    } catch { return null; }
+  }, [sched]);
+  /** Connect: save the published link in the user config on the local host; wait for its restart. @req FR:ux-consolidation/cal.save */
+  const connectCalendar = useCallback(async (ics: string): Promise<string | null> => {
+    const f: Fetch = (u, i) => fetch(u, i);
+    const r = await postStep(f, { connect: 'calendar', ics });
+    if (!r.ok) return r.error;
+    if (r.restart && !(await waitForHost(f))) return 'Stack did not come back. Is it still running?';
+    return null;
+  }, []);
+  /** The ask cards on Now answer as Needs you does: same calls, toast, and Undo. @req FR:ux-consolidation/one.answer */
+  const nowAsks = {
+    whoOf: (from: string) => team.team.find((a) => a.slug === from || a.name === from) ?? { slug: from, name: from },
+    answer: (a: AskItem, x: Send) => void asks.answer(a, x, x.answer === 'option' ? `Sent to ${a.from}: ${x.text}` : `Sent to ${a.from}`),
+    reply: (a: AskItem, text: string) => void asks.reply(a, text),
+    defer: (a: AskItem, c: DeferChoice) => void asks.defer(a, c.at, c.label),
+    deferChoices: () => asks.deferChoices(),
+    openTask: (a: AskItem) => { if (a.ref) asks.openTask(a.ref); },
+    openInNeeds: (a: AskItem) => { asks.setCursor(a.key); asks.setPanel('none'); go('asks'); },
+  };
   const briefBusy = useMemo(() => {
     const d0 = day.origin ?? clockNow, n = day.origin ? 2 : 1;
     return liveCal ? busyTime.map((b) => ({ ...b, events: enrich(b.events, rules) })) : busyIntervals(expandWeekly(rules, d0, n), d0, n);
@@ -907,8 +940,8 @@ export function App() {
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
-          chat={nowTask ? nowChat(nowTask.task) : undefined}
-          onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onReply={(a) => { asks.setCursor(a.key); asks.setPanel('reply'); go('asks'); }} onOpenAsks={() => go('asks')} />}
+          chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} asks={nowAsks} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }}
+          onOpenAsks={() => go('asks')} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}

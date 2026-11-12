@@ -1,5 +1,12 @@
 /* Now: one focal point. Restraint is the design: type, space, three buttons. @req FR:now-screen/now.layout */
-.main > .now, .now { display: flex; flex-direction: column; gap: var(--s-32); max-width: 560px; margin-inline: auto; padding-block: var(--s-24); }
+/* @req FR:now-screen/now.layout: one column (640 px measure); two at 1100 px and wider, the focus column first. */
+.main > .now, .now { display: flex; flex-direction: column; gap: var(--s-32); max-width: 640px; margin-inline: auto; padding-block: var(--s-24); }
+.now-focus { display: flex; flex-direction: column; gap: var(--s-32); min-width: 0; }
+@media (min-width: 1100px) {
+  .main > .now, .now { display: grid; grid-template-columns: minmax(0, 640px) minmax(320px, 400px); column-gap: var(--s-48); align-items: start; justify-content: center; max-width: 1088px; }
+  .now-focus { gap: var(--s-24); }
+  .now .now-side { margin-top: 0; padding-top: var(--s-4); }
+}
 .now-stage { min-height: 0; }
 .now-card { animation: now-in var(--t-enter) var(--ease) both; }
 .now-title { margin: 0; font-size: var(--fs-title); line-height: 1.15; letter-spacing: -.022em; font-weight: 600; text-wrap: balance; overflow-wrap: anywhere;
@@ -20,14 +27,15 @@
   .now-btn.primary { grid-column: auto; min-height: 40px; }
   .now-btn kbd { display: inline-block; }
   .now-btn.primary kbd { color: inherit; background: rgb(255 255 255 / 18%); border-color: transparent; }
-  .now { gap: var(--s-24); }
+  .now, .now-focus { gap: var(--s-24); }
   .now-title { -webkit-line-clamp: 3; }
   .now-side { margin-top: var(--s-24); }
 }
 
 /* Under the task: the next meetings and the top messages, one line each. Eyebrow heads; nothing competes with the task. @req FR:ux-consolidation/one.focus */
-.now-side { display: grid; gap: var(--s-8); margin-top: var(--s-16); }
-.now-h2 { margin: var(--s-16) 0 0; font-size: var(--fs-caption); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.now-side { display: grid; gap: var(--s-8); margin-top: var(--s-16); min-width: 0; align-content: start; }
+.now-side > .now-h2:first-child { margin-top: 0; }
+.now-h2 { margin: var(--s-24) 0 var(--s-4); font-size: var(--fs-caption); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .now-layer { font-weight: 400; letter-spacing: 0; text-transform: none; }
 .now-none { margin: 0; color: var(--muted); font-size: var(--fs-secondary); }
 .now-list { list-style: none; margin: 0; padding: 0; display: grid; }
@@ -39,12 +47,14 @@
 .now-sub { font-size: var(--fs-caption); color: var(--muted); }
 .now-in { flex: none; font-size: var(--fs-caption); color: var(--muted); font-variant-numeric: tabular-nums; } .now-in.on { color: var(--ok); font-weight: 600; }
 .now-late { color: var(--warn); }
+.now-mini.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.now-mini.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
 .now-join, .now-mini { flex: none; display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); padding: 0 var(--s-16); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--panel); color: var(--accent); font-size: var(--fs-secondary); font-weight: 600; text-decoration: none; cursor: pointer;
   transition: background var(--t-feedback) var(--ease); }
 .now-join:hover, .now-mini:hover:not(:disabled) { background: var(--hover); }
 .now-mini:disabled { opacity: .5; cursor: default; }
-.now-more { justify-self: start; background: none; border: 0; padding: var(--s-8) 0; color: var(--muted); font-size: var(--fs-secondary); cursor: pointer; min-height: var(--tap); }
-.now-more:hover { color: var(--ink); }
+.now-more { justify-self: start; display: inline-flex; align-items: center; gap: var(--s-4); background: none; border: 0; padding: var(--s-8) 0; color: var(--accent); font-size: var(--fs-secondary); font-weight: 600; cursor: pointer; min-height: var(--tap); }
+.now-more:hover { text-decoration: underline; }
 @media (hover: hover) and (pointer: fine) {
   .now-row { min-height: 36px; padding: var(--s-4) 0; }
   .now-join, .now-mini { min-height: 30px; padding: 0 var(--s-12); font-size: var(--fs-caption); }
@@ -67,8 +77,6 @@
 .now-bubble.from-agent .now-bubble-body { border-bottom-left-radius: var(--r-chip); }
 .now-bubble-who { font-size: var(--fs-caption); color: var(--ink2); }
 .now-bubble-text { margin: 0; font-size: var(--fs-body); line-height: 1.4; overflow-wrap: anywhere; white-space: pre-wrap; }
-.now-compose { display: flex; align-items: flex-end; gap: var(--s-8); }
-.now-compose .avatar { flex: none; margin-bottom: 4px; }
 .now-compose textarea { flex: 1; min-width: 0; box-sizing: border-box; min-height: var(--tap); max-height: 40vh; padding: 10px var(--s-12); border-radius: 22px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-body); line-height: 1.4; resize: none; field-sizing: content; }
 .now-compose textarea::placeholder { color: var(--muted); }
 .now-send { flex: none; min-height: var(--tap); min-width: var(--tap); padding: 0 var(--s-16); border-radius: 22px; border: 0; background: var(--accent); color: var(--accent-ink); font-size: var(--fs-secondary); font-weight: 600; cursor: pointer; }
@@ -79,3 +87,76 @@
   .now-send { min-height: 40px; }
   .now-live { min-height: 0; }
 }
+
+/* Composer: who it talks to sits above the field. @req FR:now-screen/now.compose @req FR:now-screen/now.thread */
+.now-compose { display: grid; gap: var(--s-8); }
+.now-compose-row { display: flex; align-items: flex-end; gap: var(--s-8); }
+.now-to { margin: 0; display: flex; align-items: center; gap: var(--s-8); font-size: var(--fs-body); }
+.now-to .avatar { flex: none; margin: 0; }
+.now-to-name { font-weight: 600; color: var(--ink); }
+.now-awaits { margin: calc(-1 * var(--s-4)) 0 0; justify-self: end; text-align: right; font-size: var(--fs-caption); color: var(--muted); }
+
+/* Next: an honest line when the calendar is not fresh, and its fix. @req FR:ux-consolidation/cal.ui @req FR:ux-consolidation/cal.connect */
+.now-cal { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-8) var(--s-12); padding: var(--s-12) var(--s-16); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }
+.now-cal-line { margin: 0; flex: 1 1 12em; display: flex; align-items: center; gap: var(--s-8); font-size: var(--fs-secondary); color: var(--ink); }
+.now-cal-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.now-cal-dot.error, .now-cal-dot.stale { background: var(--warn); }
+.now-cal-acts { display: flex; flex-wrap: wrap; gap: var(--s-8); }
+.now-cal-result { margin: 0; flex-basis: 100%; font-size: var(--fs-caption); color: var(--ink2); }
+.now-connect { display: grid; gap: var(--s-12); padding: var(--s-16); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); font-size: var(--fs-secondary); }
+.now-connect-form { display: grid; gap: var(--s-8); }
+.now-connect-form label { font-weight: 600; }
+.now-connect-row { display: flex; gap: var(--s-8); }
+.now-connect-row input { flex: 1; min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--s-12); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: var(--fs-body); }
+.now-connect-row input[aria-invalid="true"] { border-color: var(--warn); }
+.now-cal-err { margin: 0; color: var(--warn); font-weight: 600; }
+.now-connect-note { margin: 0; color: var(--ink2); }
+.now-steps { margin: 0; padding-left: var(--s-24); display: grid; gap: var(--s-4); color: var(--ink2); }
+.now-cmd { display: flex; align-items: center; gap: var(--s-8); }
+.now-cmd code, .now-connect-note code { font-size: var(--fs-caption); overflow-wrap: anywhere; }
+.now-cmd code { flex: 1; min-width: 0; padding: var(--s-8); border-radius: var(--r-chip); background: var(--bg); border: 1px solid var(--line2); }
+.now-connect-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-12); }
+.now-connect-foot .now-cal-result { flex-basis: auto; }
+
+/* Waiting on you: cards with room to breathe; the body expands in place. @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.expand */
+.now-asks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-12); }
+.now-ask { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); transition: border-color var(--t-feedback) var(--ease), box-shadow var(--t-feedback) var(--ease); }
+.now-ask:hover { border-color: var(--line); box-shadow: var(--shadow); }
+.now-ask.open { box-shadow: var(--shadow); }
+.now-ask-head { display: flex; align-items: flex-start; gap: var(--s-12); padding: var(--s-16); }
+.now-ask-head .now-mini { margin-top: 2px; }
+.now-ask-body { flex: 1; min-width: 0; min-height: var(--tap); display: grid; gap: var(--s-8); margin: calc(-1 * var(--s-4)); padding: var(--s-4); background: none; border: 0; border-radius: var(--r-row); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.now-ask-title { font-size: var(--fs-body); line-height: 1.35; font-weight: 500; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.now-ask.open .now-ask-title { -webkit-line-clamp: unset; display: block; }
+.now-ask-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-4) var(--s-8); font-size: var(--fs-caption); color: var(--ink2); }
+.now-ask-meta .avatar { flex: none; }
+.now-ask-dl { font-variant-numeric: tabular-nums; }
+.now-ask-dl.soon, .now-ask-dl.late { color: var(--warn); font-weight: 600; }
+.now-ask-more { display: grid; gap: var(--s-12); padding: 0 var(--s-16) var(--s-16); animation: now-in var(--t-enter) var(--ease) both; }
+.now-ask-why { margin: 0; font-size: var(--fs-secondary); line-height: 1.45; color: var(--ink); }
+.now-ask-facts { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: var(--s-4) var(--s-12); font-size: var(--fs-secondary); }
+.now-ask-facts > div { display: contents; }
+.now-ask-facts dt { color: var(--muted); }
+.now-ask-facts dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.now-ask-facts .waits dd { color: var(--ink2); }
+.now-ask-who { display: inline-flex; align-items: center; gap: var(--s-8); }
+.now-ask-acts, .now-ask-defer { display: flex; flex-wrap: wrap; gap: var(--s-8); }
+.now-act { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-4); min-height: var(--tap); padding: 0 var(--s-16); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: var(--fs-secondary); font-weight: 600; text-decoration: none; cursor: pointer; transition: background var(--t-feedback) var(--ease); }
+.now-act:hover:not(:disabled) { background: var(--hover); }
+.now-act:disabled { opacity: .5; cursor: default; }
+.now-act.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.now-act.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+.now-act.quiet { background: none; color: var(--ink2); }
+.now-act[aria-expanded="true"] { background: var(--accent-soft); color: var(--ink); border-color: transparent; }
+.now-ask-reply { display: grid; grid-template-columns: 1fr auto; gap: var(--s-8); }
+.now-ask-reply input { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--s-12); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: var(--fs-body); }
+.now-ask-hint { grid-column: 1 / -1; margin: 0; font-size: var(--fs-caption); color: var(--muted); }
+.now-ask-needs { justify-self: start; min-height: var(--tap); padding: 0; background: none; border: 0; color: var(--accent); font: inherit; font-size: var(--fs-secondary); font-weight: 600; cursor: pointer; }
+.now-ask-needs:hover { text-decoration: underline; }
+@media (hover: hover) and (pointer: fine) {
+  .now-ask-body { min-height: 0; }
+  .now-act { min-height: 34px; padding: 0 var(--s-12); }
+  .now-ask-reply input, .now-connect-row input { min-height: 36px; }
+  .now-ask-needs { min-height: 0; padding: var(--s-4) 0; }
+}
+@media (prefers-reduced-motion: reduce) { .now-ask-more { animation: none; } }
