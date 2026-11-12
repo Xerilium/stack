@@ -9,7 +9,7 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 - [ ] 0c: Remove `Open {host}` button; autolink refs in `markdown.ts` (`FR:ui.reflink`, `FR:schema.refs`)
 - [ ] 0d: `ownerOf` everywhere; agent picker chip in NowChat (`FR:schema.agent`)
 - [ ] 0e: Card hover and focus background (`FR:ui.taskcard`)
-- [ ] 0f: Owner queue drops agent rows and their unmarked children; ranks the `🙋` child (`FR:rank.owner`, `FR:schema.owner`)
+- [ ] 0f: Owner queue drops agent rows and their unmarked children; ranks the `🙋` child (`FR:rank.owner`, `FR:schema.owner`); stop adding 🪄 on send (`FR:ui.thread`)
 - [ ] 0g: Stale overdue cap with a cached last-change map (`FR:rank.stale`, `FR:rank.stale.score`)
 
 ## Stage 1: agent-delivery
@@ -34,11 +34,10 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 - [ ] `src/core/verbs.ts`; checks and score (`FR:quality.rules`, `FR:quality.score`)
 - [ ] `stack task check` (`FR:cli.check`)
 - [ ] Single and bulk enrich routes and batching (`FR:api.enrich`, `FR:quality.enrich`, `FR:quality.enrich.batch`)
-- [ ] `Needs context` panel with `Ask {agent} to fill it in` (`FR:quality.ui`)
 - [ ] `docs/task-rubric.md`; link from CoS agent files (`FR:quality.rubric`)
 - [ ] Ranker: owner field, gate, blocked, `Checked:` and activity sources (`FR:rank.*`); `GET /rank` fields (`FR:api.rank`)
 - [ ] Needs-context item on an empty Now (`FR:rank.needs-context`)
-- [ ] `Still true?` actions: Keep, Update date, Drop (`FR:rank.stale.prompt`)
+- [ ] Routes for Keep, Update date, Drop (`FR:rank.stale.prompt`)
 
 ## Stage 4: components
 
@@ -47,6 +46,7 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 - [ ] Remove Composer modes, `AgentTalk`, `RowDetail`
 - [ ] Priorities on the shared components (`FR:ia.priorities`)
 - [ ] Message state in Thread (`FR:ui.thread`)
+- [ ] `Needs context` panel (`FR:quality.ui`) and `Still true?` prompt (`FR:rank.stale.prompt`)
 
 ## Stages 5-11
 

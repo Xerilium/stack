@@ -34,20 +34,23 @@ This spec sets the end state. `plan.md` sets the order of delivery.
 
 ## Changes to other specs
 
-| Spec               | Requirement                                   | Change                                                                                                      |
-| ------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `task-parser`      | `FR:task.notes`                               | Field lines leave the notes (`FR:schema.grammar`). A note tree is added (`FR:schema.notes.tree`).           |
-| `scoring-engine`   | `FR:engine.stack`                             | `FR:rank.stale.score` replaces the 30-day stale rule. The owner filter `FR:rank.owner` runs before scoring. |
-| `api`              | `FR:routes.rank`                              | Adds fields and filters (`FR:api.rank`).                                                                    |
-| `ux-consolidation` | `FR:nav.rail`, `FR:nav.tabbar`, `FR:nav.keys` | Replaced by `FR:ia.nav` and `FR:ia.keys`.                                                                   |
-| `home`, `top-asks` | Top asks page                                 | Removed (`FR:ia.removed`).                                                                                  |
-| `now-screen`       | Now layout                                    | Replaced by `FR:ia.now`.                                                                                    |
-| `agent-thread`     | `FR:web.expand` and the Composer modes        | Replaced by `FR:ui.thread` and `FR:ui.taskdetail`.                                                          |
-| `ask-queue`        | `FR:ask.card` and the Needs you page          | Replaced by `FR:ui.askcard` and `FR:ia.notifications`.                                                      |
-| `inbox-page`       | The Inbox page                                | Removed. Mail items go to Notifications (`FR:connect.mail`).                                                |
-| `cos-view`         | The CoS view                                  | Replaced by `FR:ia.cos`.                                                                                    |
-| `graph-signin`     | The CLI sign-in for the owner                 | The owner signs in from the app (`FR:connect.calendar`). The CLI stays for agents.                          |
-| `pr-page`          | `FR:icon.open`                                | No change. `g r` stays the PR flyout.                                                                       |
+| Spec                 | Requirement                                   | Change                                                                                                      |
+| -------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `task-parser`        | `FR:task.notes`                               | Field lines leave the notes (`FR:schema.grammar`). A note tree is added (`FR:schema.notes.tree`).           |
+| `scoring-engine`     | `FR:engine.stack`                             | `FR:rank.stale.score` replaces the 30-day stale rule. The owner filter `FR:rank.owner` runs before scoring. |
+| `api`                | `FR:routes.rank`                              | Adds fields and filters (`FR:api.rank`).                                                                    |
+| `ux-consolidation`   | `FR:nav.rail`, `FR:nav.tabbar`, `FR:nav.keys` | Replaced by `FR:ia.nav` and `FR:ia.keys`.                                                                   |
+| `home`, `top-asks`   | Top asks page                                 | Removed (`FR:ia.removed`).                                                                                  |
+| `now-screen`         | Now layout                                    | Replaced by `FR:ia.now`.                                                                                    |
+| `agent-thread`       | `FR:web.expand` and the Composer modes        | Replaced by `FR:ui.thread` and `FR:ui.taskdetail`.                                                          |
+| `ask-queue`          | `FR:ask.card` and the Needs you page          | Replaced by `FR:ui.askcard` and `FR:ia.notifications`.                                                      |
+| `inbox-page`         | The Inbox page                                | Removed. Mail items go to Notifications (`FR:connect.mail`).                                                |
+| `cos-view`           | The CoS view                                  | Replaced by `FR:ia.cos`.                                                                                    |
+| `graph-signin`       | The CLI sign-in for the owner                 | The owner signs in from the app (`FR:connect.calendar`). The CLI stays for agents.                          |
+| `pr-page`            | `FR:icon.open`                                | No change. `g r` stays the PR flyout.                                                                       |
+| `now-screen`         | `FR:now.compose`                              | A sent message never adds 🪄 or writes the task file (`FR:ui.thread`).                                      |
+| `task-detail-design` | `FR:detail.*`                                 | Replaced by `FR:ui.taskdetail`. Start leaves TaskDetail; Now is where work starts.                          |
+| `web-app`            | `FR:today.plan`                               | Replaced by `FR:ia.myday`. 🙋 rows plan like any owner row.                                                 |
 
 ## Principles
 
@@ -127,7 +130,7 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
 - **FR:quality.score** (P1): `score` is the count of checks that pass (0-4). `actionable` is `score === 4`. `missing` lists the failed checks in table order.
 - **FR:quality.ui** (P1): A task that is not actionable shows `Needs context` and the names of the missing checks. Its main action is `Ask {agent} to fill it in`. Start and Done are not main actions on it.
 - **FR:quality.enrich** (P1): `Ask {agent} to fill it in` sends one thread message of kind `enrich` to the task's agent. The message names the missing checks. The agent edits the row fields per `FR:quality.rubric` and replies in the thread. The card updates when the file changes.
-- **FR:quality.enrich.batch** (P1): A bulk enrich sends one `enrich` message per agent, with up to 20 rows each. The host runs the agents one at a time. A second bulk enrich within 1 hour sends only rows that got no reply.
+- **FR:quality.enrich.batch** (P1): A bulk enrich sends one `enrich` message per agent, with up to 20 rows each. The host runs the agents one at a time. Rows past 20 go in the next message to that agent, after it replies to the last one. A second bulk enrich within 1 hour sends only rows that are still not actionable.
 - **FR:quality.rubric** (P1): Every agent that creates or edits a task applies this rubric. CoS agents must apply it. The text lives in `docs/task-rubric.md`. Agent files link to it:
 
   ```text
@@ -265,7 +268,7 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
 
 Every page uses only these components for these entities.
 
-- **FR:ui.test** (P1): Each component sets `data-c` on its root (`TaskCard`, `TaskDetail`, `Thread`, `AgentChip`, `AskCard`, `RefLink`). An e2e test opens every destination with mock data. It fails when an element with `data-ref`, `data-ask`, `data-agent` or a GitHub `href` is not inside an element with the matching `data-c`.
+- **FR:ui.test** (P1): Each component sets `data-c` on its root (`TaskCard`, `TaskDetail`, `Thread`, `AgentChip`, `AskCard`, `RefLink`). An e2e test opens every destination with mock data. It fails when an element is not inside its matching component: `data-ref` in `TaskCard` or `TaskDetail`, `data-ask` in `AskCard`, `data-agent` in `AgentChip`, `data-msg` in `Thread`, a GitHub `href` in `RefLink`.
 - **FR:ui.taskcard** (P1): `TaskCard`.
   - Line 1: tick, title (with `RefLink`s inline), `AgentChip` when the owner is an agent, due, effort, `n/m` children.
   - Line 2, muted: the direct parent title.
@@ -282,7 +285,7 @@ Every page uses only these components for these entities.
   8. Actions: Done, Defer, Drop. Markers (priority, effort, due) are in a `More` menu.
 - **FR:ui.thread** (P1): `Thread`. Chat bubbles with `AgentChip`. One text box and Send. No modes, no quick buttons.
   - The `AgentChip` above the box is the recipient. Tap it to send the next messages to another agent.
-  - The picker never writes the task file. Only an agent changes `Owner:`, per the rubric.
+  - Sending and the picker never write the task file and never add 🪄. Only an agent changes `Owner:`, per the rubric.
   - Each sent message shows its state: `Sent`, `Delivered`, `Agent is working`, `Replied`.
   - The agent's reply shows in the thread (`FR:connect.agents`).
 - **FR:ui.agentchip** (P1): `AgentChip`. Fluent emoji avatar plus `agent.name`. No other name source exists. States: idle, working (spinner), needs you (dot).
@@ -292,7 +295,7 @@ Every page uses only these components for these entities.
   - An ask or PR escalation with no brief shows `No brief` and `Ask {agent} for a brief`.
   - A summary item shows its count and one action, for example `Ask agents to fill them in`.
 - **FR:ui.reflink** (P1): `RefLink` draws each ref from `FR:schema.refs` as an inline link. The label is short (`f4-music#97`). A state dot shows when the state is known. All refs in one text are links. No "Open {host}" button exists anywhere.
-- **FR:ui.done** (P1): Done on a `TaskCard` or TaskDetail plays a 400 ms check and collapse. With reduced motion, there is no animation. A toast offers Undo for 5 s.
+- **FR:ui.done** (P1): Done on a `TaskCard` or TaskDetail plays a 400 ms check and collapse. With reduced motion, there is no animation. A toast offers Undo for 8 s, as in `now-screen`.
 
 ### FR:ia: Destinations and navigation
 
@@ -325,14 +328,14 @@ Every page uses only these components for these entities.
 
 - **FR:ia.myday** (P1): My day is a calendar grid of equal 30-minute slots from wake to bed, with a now line. Meetings are blocks at their real times. The planner fills free slots with these blocks:
 
-  | Block      | Size         | Holds                                                                                                                                                      | Placement                                                                                        |
-  | ---------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-  | `Respond`  | 30 min       | Open asks and agent replies, best score first                                                                                                              | After each meeting when 3+ asks are open. Also when 2 hours pass since the last `Respond` start. |
-  | `Validate` | 30 min       | PRs in the live validation lane (`FR:pr-review-lane/lane`)                                                                                                 | The next free slot after a `Respond` block                                                       |
-  | `Do`       | 30 or 60 min | Owner queue tasks with effort under 60 min or no effort (no effort counts as 30 min), in queue order. 30 min, or 60 min when the next task is over 30 min. | Free slots, in queue order                                                                       |
-  | `Focus`    | Task effort  | One owner queue task with effort of 60 min or more                                                                                                         | Free slots, in queue order                                                                       |
+  | Block      | Size                | Holds                                                                                                                                                      | Placement                                                                                        |
+  | ---------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+  | `Respond`  | 30 min              | Open asks and agent replies, best score first                                                                                                              | After each meeting when 3+ asks are open. Also when 2 hours pass since the last `Respond` start. |
+  | `Validate` | 30 min              | PRs in the live validation lane (`FR:pr-review-lane/lane`)                                                                                                 | The next free slot after a `Respond` block                                                       |
+  | `Do`       | 30 or 60 min        | Owner queue tasks with effort under 60 min or no effort (no effort counts as 30 min), in queue order. 30 min, or 60 min when the next task is over 30 min. | Free slots, in queue order                                                                       |
+  | `Focus`    | Effort, at most 2 h | One owner queue task with effort of 60 min or more                                                                                                         | Free slots, in queue order                                                                       |
 
-  Each block lists its items as `TaskCard`s or `AskCard`s.
+  Each block lists its items as `TaskCard`s or `AskCard`s. Work-project tasks fill only `work` schedule blocks; other tasks fill only `personal` blocks (`FR:schedule/profile.kind`).
 
 - **FR:ia.tasks** (P1): Tasks is one tree list of `TaskCard`s.
   - Filters: `project`, `owner` (`me`, an agent id, `any`), `quality` (`actionable`, `needs-context`, `stale`), `status`. `group=project` puts a header row above each project.
