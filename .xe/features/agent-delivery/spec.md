@@ -2,7 +2,7 @@
 id: agent-delivery
 title: Agent Delivery
 author: flanakin
-description: "Deliver the owner's messages to agents: run the agent headlessly, post its reply in the thread, and say when delivery is down"
+description: "Run the agent headlessly on owner messages, post its reply in the thread, and show when delivery is down"
 dependencies: [agent-inbox, agent-thread, agent-team, acp-driver, ask-queue, session-inventory, email-runner, config, cli, now-screen]
 ---
 
@@ -92,6 +92,20 @@ The owner needs delivery to happen while the app is open so that a reply shows u
 
 - **NFR:delivery.seam** (P1): All process starts (`claude -p`, `claude auth status`, `claude auth login`) go through injected functions; tests start no process and make no model call
 - **NFR:delivery.lazy** (P1): Importing `src/agents` starts no loop and no process
+
+## Data Model
+
+- **FR:$delivery-record** (P1): **Delivery record**: State of one inbox entry in `~/.stack/delivery.json`.
+  - `state` (string): Allowed: working, delivered, failed, not-delivered
+  - `at` (string): ISO timestamp of the last change
+  - `agent` (string): Agent name
+  - `reason` (string?): Why the entry was not delivered or failed
+- **FR:$delivery-file** (P1): **Delivery file**: `~/.stack/delivery.json`.
+  - `version` (number): Always 1
+  - `login` (object): `{state: ok|expired|unknown, at}`
+  - `items` (object): Delivery record per entry id
+  - `spend` (object?): `{day, usd}` for the daily cap
+  - `perms` (object?): Denied tool calls waiting on their ask: `{entry, agent, rule, tool}` per ask id
 
 ## Architecture Constraints
 
