@@ -282,7 +282,7 @@ export class PrPriorityStore {
         const e = EMPTY_STATE();
         // Drop malformed recommendations instead of failing later reads.
         const recs = (j.recs as unknown[]).filter((r): r is PrRec => isObj(r) && typeof r.id === 'string' && typeof r.repo === 'string' && Number.isInteger(r.number) && typeof r.reason === 'string' && typeof r.at === 'string' && (r.state === 'open' || (isObj(r.decision) && typeof r.decision.at === 'string')));
-        return { data: { ...e, recs, deps: isObj(j.deps) ? j.deps as PrPriState['deps'] : {}, acks: isObj(j.acks) ? j.acks as PrPriState['acks'] : {}, records: isObj(j.records) ? j.records as PrPriState['records'] : {}, facts: isObj(j.facts) ? j.facts as PrPriState['facts'] : {}, history: Array.isArray(j.history) ? j.history : [], ...(isObj(j.escalations) ? { escalations: j.escalations as Escalations } : {}) } };
+        return { data: { ...e, recs, deps: isObj(j.deps) ? j.deps as PrPriState['deps'] : {}, acks: isObj(j.acks) ? j.acks as PrPriState['acks'] : {}, records: isObj(j.records) ? j.records as PrPriState['records'] : {}, facts: isObj(j.facts) ? j.facts as PrPriState['facts'] : {}, history: Array.isArray(j.history) ? j.history.flatMap((h) => { const items = isObj(h) ? validItems(h.items) : undefined; return items && typeof h.at === 'string' ? [{ items, at: h.at }] : []; }) : [], ...(isObj(j.escalations) ? { escalations: j.escalations as Escalations } : {}) } };
       }
     } catch { /* broken */ }
     return { data: EMPTY_STATE(), broken: true };
@@ -573,9 +573,11 @@ export class PrPriorityStore {
         const note = input.decision === 'edit' && input.note !== undefined ? line(input.note, 300)! : `${rec.agent}: ${rec.reason}`.slice(0, 300);
         const before = q.items.map((i) => ({ ...i }));
         const ref = { repo: rec.repo, number: rec.number };
-        const queued = q.items.some((i) => keyOf(i.repo, i.number) === keyOf(rec.repo, rec.number));
-        const changed = queued
-          ? this.apply(q, rank === undefined ? { op: 'add', ref: `${rec.repo}#${rec.number}`, note } : { op: 'move', ref: `${rec.repo}#${rec.number}`, to: rank, note }, ref, rec.agent, excluded)
+        const cur = q.items.find((i) => keyOf(i.repo, i.number) === keyOf(rec.repo, rec.number));
+        // Accept never moves a PR down: the owner may have raised it since the agent asked. Edit uses the owner's rank as given.
+        const keep = input.decision === 'accept' && cur && rank !== undefined && cur.rank <= rank;
+        const changed = cur
+          ? this.apply(q, rank === undefined || keep ? { op: 'add', ref: `${rec.repo}#${rec.number}`, note } : { op: 'move', ref: `${rec.repo}#${rec.number}`, to: rank, note }, ref, rec.agent, excluded)
           : this.apply(q, { op: 'add', ref: `${rec.repo}#${rec.number}`, rank: rank ?? PR_PRI_LIMITS.items, note }, ref, rec.agent, excluded);
         if (changed) { s.history = [{ items: before, at: this.now() }, ...s.history].slice(0, PR_PRI_LIMITS.history); mark.queue = true; }
         decision.rank = q.items.find((i) => keyOf(i.repo, i.number) === keyOf(rec.repo, rec.number))!.rank;

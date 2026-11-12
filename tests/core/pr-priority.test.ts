@@ -178,6 +178,26 @@ describe('recommendations', () => {
     await expect(s.decide('pp-00000000', { decision: 'accept' })).rejects.toThrow(PrPriNotFound);
   });
 
+  // @req FR:pr-priority/rec.decide
+  it('accept never moves a PR down', async () => {
+    const s = mk();
+    for (const n of [3, 2, 1]) await s.edit({ op: 'add', ref: `o/r#${n}` });
+    const r = await s.recommend({ repo: 'o/r', number: 3, agent: 'cos', reason: 'Hot', toRank: 2 });
+    if (!('rec' in r)) throw new Error('no rec');
+    await s.edit({ op: 'move', ref: 'o/r#3', to: 'top' });
+    const d = await s.decide(r.rec.id, { decision: 'accept' });
+    expect(d.queue.items.map((i) => i.number)).toEqual([3, 1, 2]);
+    expect(d.rec.decision).toMatchObject({ rank: 1, note: 'cos: Hot' });
+  });
+
+  // @req FR:pr-priority/queue.write
+  it('keeps every write when two stores write at once', async () => {
+    const dir = home(); const a = mk(dir); const b = mk(dir);
+    await Promise.all(Array.from({ length: 10 }, (_, i) => (i % 2 ? a : b).edit({ op: 'add', ref: `o/r#${i + 1}` })));
+    expect(a.read().items).toHaveLength(10);
+    expect(a.read().rev).toBe(10);
+  });
+
   // @req FR:pr-priority/rec.decide @req FR:pr-priority/rec.reason
   it('edit applies the owner rank and note and needs a reason; a queued PR moves', async () => {
     const s = mk();

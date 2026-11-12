@@ -26,8 +26,8 @@ The owner orders the PRs the Sweep Manager (SM) works. Live state in `~/.stack`,
 PR priority (Stack). Each sweep, run `stack pr-pri list --json --refresh` and read `items`.
 Work PRs in this order; skip none; report progress per PR.
 - Rank 1 first, down to the last rank. At most 3 workers at a time.
-- Never merge or Autopilot a PR while any `baseStack` PR is still open (its `state`). Add edges with `stack pr-pri depends <pr> --on <pr>`.
-- Agents never merge. Michael applies Autopilot. Never un-draft a PR.
+- Merge only Autopilot PRs whose gates all pass, and never while any `baseStack` PR is still open (its `state`). Add edges with `stack pr-pri depends <pr> --on <pr>`.
+- Never add the Autopilot label (Michael applies it). Never un-draft a PR.
 - Use `acks[]` (Michael's thread acks) to resolve hold threads.
 - After each PR, run `stack pr-pri record <pr> --file rec.json` (shape above). If `report.stale` is true, re-check the PR.
 - Keep the escalation set current: `stack pr-pri escalate --file set.json` (≤3 blocked, ≤3 enable, ≤1 live validation).
