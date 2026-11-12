@@ -28,7 +28,7 @@ Plan, research, and cost model: `plan.md`. Source design: [todo PR 93](https://g
 Owner needs every inbox triaged all day without running a command, so that mail never waits for him to start a tool.
 
 - **FR:auto.@cli** (P1): Interface: `stack email run --all`, `stack email status --all [--json]`, `stack email schedule --install | --uninstall | --print`
-- **FR:auto.schedule** (P1): Email assistant MUST run one pass for every inbox (`FR:inbox.list`) every 15 minutes from one LaunchAgent, with no owner step after install
+- **FR:auto.schedule** (P1): Email assistant MUST run one pass for every inbox every 15 minutes from one LaunchAgent, with no owner step after install
   - **FR:auto.schedule.install** (P1): `stack email schedule --install` MUST write the plist and load it with `launchctl bootstrap`; a second run MUST replace it and leave exactly one loaded job
   - **FR:auto.schedule.uninstall** (P2): `stack email schedule --uninstall` MUST unload and delete the plist; with no plist it MUST exit 0
 - **FR:auto.nobrowser** (P1): Email assistant MUST NOT drive a browser or the screen in a pass; a test MUST fail when `src/email/` or its imports reach `playwright`, `puppeteer`, or a computer-use client
@@ -42,15 +42,16 @@ Owner needs every inbox triaged all day without running a command, so that mail 
   - **FR:auto.modeldown.clear** (P1): The first pass with a good model call MUST handle `mail-model-down` as `resolved`
 - **FR:auto.voice** (P2): The first `drafts` pass of an inbox with no voice profile MUST learn the profile from Sent items before it drafts
   > - @req FR:email-voice/learn.profile
-- **FR:auto.heartbeat** (P1): Each pass MUST set `lastOk` for each inbox that passed in the status file (`FR:$email-status`), but only when the stored value is 4 hours old or older, or when the file changes for another reason, so idle passes make no commits
-- **FR:auto.stale** (P1): Stack System MUST list one Needs you item `mail-stale-<inbox>` when an inbox's `lastOk` is more than 12 hours old at read time: "Email assistant has not run for <inbox> since <time>"; recommendation "Wake the Mac, then run `stack email status --all`"
-  - **FR:auto.stale.host** (P1): Stack System MUST compute the item when it reads the status file, with no timer, so the hosted app shows it while the Mac sleeps
+- **FR:auto.heartbeat** (P1): Each pass MUST set `lastOk` for each inbox that passed in the status file, but only when the stored value is 4 hours old or older, or when the file changes for another reason, so idle passes make no commits
+- **FR:auto.stale** (P1): The Stack host MUST list one Needs you item `mail-stale-<inbox>` when an inbox's `lastOk` is more than 12 hours old at read time: "Email assistant has not run for <inbox> since <time>"; recommendation "Wake the Mac, then run `stack email status --all`"
+  - **FR:auto.stale.host** (P1): The Stack host MUST compute the item when it reads the status file, with no timer, so the hosted app shows it while the Mac sleeps
 
 ### FR:inbox: All inboxes
 
 Owner needs every inbox he owns in one assistant, so that personal mail gets the same triage as work mail.
 
-- **FR:inbox.list** (P1): `listInboxes()` MUST return one `$inbox` for each saved credential: Graph token caches with a mail scope (`FR:graph-signin/cache.accounts`), Gmail token caches (`FR:gmail.cache`), and IMAP configs (`FR:imap.config`)
+- **FR:inbox.list** (P1): `listInboxes()` MUST return one `$inbox` for each saved credential: Graph token caches with a mail scope, Gmail token caches, and IMAP configs
+  > - @req FR:graph-signin/cache.accounts
 - **FR:inbox.route** (P1): The login commands MUST pick the provider by address: Microsoft personal domains (`outlook.com`, `hotmail.com`, `live.com`, `msn.com`) and Microsoft 365 tenants use Graph; `gmail.com`, `googlemail.com`, and `--provider gmail` use Gmail; every other address uses IMAP unless `--provider` says otherwise
 - **FR:inbox.id** (P1): An inbox id MUST be the first label of the address domain (`allyte.com` gives `allyte`), with the local part added on a clash (`michael-outlook`); `--id` overrides it
 - **FR:inbox.project** (P1): Asks from an inbox MUST use the inbox `project` (default: the inbox id), never the address
@@ -58,7 +59,7 @@ Owner needs every inbox he owns in one assistant, so that personal mail gets the
 
 ### FR:provider: Provider contract
 
-Stack System needs one contract for every mail provider, so that triage, voice, inbox zero, and the meter work the same for each.
+The mail runner needs one contract for every mail provider, so that triage, voice, inbox zero, and the meter work the same for each.
 
 - **FR:provider.contract** (P1): Each provider MUST implement `MailProvider` (`delta`, `createDraft`) plus `details(id)`, `sentDelta(cursor)`, `move(id, folder)`, and `link(kind, id)`
   > - @req FR:email-triage/safe.allowlist
@@ -77,7 +78,7 @@ Owner needs his Gmail inboxes triaged with the narrowest Google access, so that 
   > - @req FR:graph-signin/cache.file
 - **FR:gmail.delta** (P1): `delta` MUST read `users.history.list` from the saved `historyId` for `messageAdded` in `INBOX`; the first pass MUST list `in:inbox newer_than:14d`
 - **FR:gmail.details** (P1): `details` MUST read `users.messages.get` with `format=full` and a field mask, use the `text/plain` part (else HTML stripped), keep the headers, and set `isRead` from the absence of `UNREAD`
-- **FR:gmail.draft** (P1): `createDraft` MUST call `users.drafts.create` with the thread id and a MIME reply built by `FR:provider.reply`, body starting with the draft marker
+- **FR:gmail.draft** (P1): `createDraft` MUST call `users.drafts.create` with the thread id and a MIME reply built to the reply-header rule, body starting with the draft marker
   > - @req FR:email-triage/safe.draft-marker
 - **FR:gmail.guard** (P1): The Gmail guard MUST allow only, on `https://gmail.googleapis.com/gmail/v1/users/me`: `GET /history`, `GET /messages`, `GET /messages/{id}`, `GET /labels`, `POST /drafts`, `POST /messages/{id}/modify`; every path with `send`, `trash`, `import`, `insert`, `settings`, `batchDelete`, and every `DELETE` MUST be denied
   - **FR:gmail.guard.modify** (P1): `modify` MUST be allowed only with `addLabelIds` from the `AI/*` labels and `SPAM`, and `removeLabelIds` of `INBOX` only for ids in `approvedMoves`
@@ -93,7 +94,7 @@ Owner needs any other inbox (iCloud, Fastmail, Yahoo, a custom domain) triaged o
 - **FR:imap.tls** (P1): The provider MUST connect with TLS on port 993 with certificate checks on; `STARTTLS` downgrade and plain ports MUST be refused
 - **FR:imap.read** (P1): In `observe` mode the provider MUST open folders with `EXAMINE`; in every mode it MUST fetch with `BODY.PEEK` only, so triage never marks mail read
 - **FR:imap.delta** (P1): The cursor MUST be `UIDVALIDITY` plus the last seen UID per folder; with `CONDSTORE` the provider MUST also track `HIGHESTMODSEQ` for read state
-- **FR:imap.draft** (P1): `createDraft` MUST `APPEND` the reply (`FR:provider.reply`) to the `\Drafts` special-use folder with the `\Draft` flag
+- **FR:imap.draft** (P1): `createDraft` MUST `APPEND` the reply to the `\Drafts` special-use folder with the `\Draft` flag
 - **FR:imap.guard** (P1): The IMAP guard MUST allow only `CAPABILITY`, `LOGIN`, `LIST`, `EXAMINE`, `SELECT`, `STATUS`, `SEARCH`, `UID SEARCH`, `FETCH`/`UID FETCH` with `PEEK`, `APPEND` to `\Drafts`, `UID MOVE` for ids in `approvedMoves` to `\Archive` or `\Junk`, `LOGOUT`; `STORE`, `EXPUNGE`, `COPY`, `DELETE`, `RENAME`, and fetches without `PEEK` MUST be denied
 - **FR:imap.nosmtp** (P1): `src/email/` MUST NOT import an SMTP client; a test MUST fail when `src/email/` names `nodemailer`, `smtp`, or port `25`, `465`, `587`, or when `package.json` lists an SMTP client directly
 - **FR:imap.nomove** (P2): A server without `MOVE` MUST get no archive or spam batch; it gets one `go-do` ask per batch instead
@@ -102,7 +103,7 @@ Owner needs any other inbox (iCloud, Fastmail, Yahoo, a custom domain) triaged o
 
 Owner needs only the mail that needs his call, as ranked asks, so that he never reads a recap.
 
-- **FR:surface.asks** (P1): Email assistant MUST reach the owner only through asks (`FR:ask-queue`); it MUST NOT write a digest, a recap, an email, or a notification of its own
+- **FR:surface.asks** (P1): Email assistant MUST reach the owner only through asks; it MUST NOT write a digest, a recap, an email, or a notification of its own
 - **FR:surface.cap** (P1): Email assistant MUST keep at most `maxOpenAsks` (default 5) open individual mail asks per inbox
   - **FR:surface.cap.pick** (P1): A `needs_decision`, a `sensitive` item, a VIP sender, or urgency 2 or more MUST get its own ask, most urgent first, up to the cap
   - **FR:surface.cap.rollup** (P1): Every other drafted reply MUST go into one `review` ask per inbox `mail-drafts-<inbox>`: "<N> reply drafts ready in <inbox>", link to the provider's Drafts, detail up to 20 lines `sender · subject` (no body)
