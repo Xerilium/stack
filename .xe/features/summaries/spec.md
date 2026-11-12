@@ -41,7 +41,7 @@ Owner needs stack.md, README.md, my-day.md, and `stack next` to agree, so that t
   > - @req FR:scoring-engine/engine.stack
 - **FR:engine.order** (P1): With `stack`, every list MUST order by the engine score and then by the owner's overrides (`top` rows first, in the order of their rules, `down` rows last), so the first row of stack.md and the README top task are the first rows of `stack next`
   > - @req FR:scoring-engine/overrides.tiers
-  - **FR:engine.order.hide** (P2): A row matching a `hide` rule MUST sink to the end of every list instead of disappearing (the files list all the work)
+  - **FR:engine.order.hide** (P2): A row matching a `hide` rule MUST sink to the end of every list instead of disappearing (the files list all the work); the README top and Up next lists MUST drop it, as `stack next` does
 - **FR:engine.top.blocks** (P1): With `stack`, the README top list MUST keep a row matching a `top` rule even when the current time block would hide it
   > - @req FR:scoring-engine/overrides.top.blocks
 - **FR:engine.breakdown** (P1): With `stack`, the breakdown under a leaf MUST stay arithmetically honest: when the engine score differs from the formula, a line says why (`📅 + N due-date lens`, or `↪ inherits N from <task>`), and the `does not match` warning appears only for a real mismatch

@@ -462,6 +462,16 @@ describe('README top is the no-ref target', () => {
     expect(r.code).toBe(0);
     expect(JSON.parse(r.out).before).toContain(top);
   });
+  it('a hide rule on every row empties the README top, as `stack next` and no-ref start do', () => {
+    const d = repo('Only');
+    mkdirSync(join(d, '.stack'), { recursive: true });
+    writeFileSync(join(d, '.stack/priorities.json'), JSON.stringify({ rules: [{ match: 'Only', effect: 'hide' }] }));
+    expect(stack(d, 'update', '--now', NOW).code).toBe(0);
+    expect(file(d, 'README.md')).toMatch(/## 🎯 Top of the stack\n\nNo active tasks available/);
+    expect(file(d, 'stack.md')).toContain('Only'); // the full lists keep a hidden row, at the end
+    expect(stack(d, 'next', '--now', NOW).out).toBe('');
+    expect(JSON.parse(stack(d, 'start', '--now', NOW, '--no-update', '--json').out).changed).toBe(false);
+  });
 });
 
 // Legacy parity: every legacy mutator ran Update-StackSummary; the parity run showed Stack start/complete/skip leaving stale summaries
