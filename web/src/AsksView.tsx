@@ -119,15 +119,15 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
           <DeadlineChip by={a.by} now={asks.now} long />
         </div>
         {flow && <div class="flow-bar" role="progressbar" aria-label="Triage progress" aria-valuemin={0} aria-valuemax={flow.total} aria-valuenow={flow.done}><span style={{ width: `${(flow.done / Math.max(1, flow.total)) * 100}%` }} /></div>}
-        <h2 class="ask-title">{a.ask}</h2>
+        <h2 class="ask-title"><Md text={a.ask} project={a.project} /></h2>
         {/* The task the ask belongs to: opens it (focus mode carries the thread). @req FR:agent-thread/ask.cli */}
         {a.row && a.source !== 'task' && <a class="ask-task" href={`#/list?project=${encodeURIComponent(a.row.slice(0, a.row.lastIndexOf(':')))}`} onClick={(e) => { e.preventDefault(); asks.openTask(a.row!); }} title="Open the task">↗ {a.task ? <Md text={parseRow(a.task).title || a.task} /> : a.row}</a>}
-        {a.why && <p class="ask-why">{a.why}</p>}
+        {a.why && <p class="ask-why"><Md text={a.why} project={a.project} /></p>}
         {a.refText && <p class="ask-row-target" title="The task this answer changes">on <span>{a.refText}</span></p>}
         {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
         {talk?.render(a)}
         <dl class="ask-facts">
-          {showRec && <div><dt>Recommend</dt><dd>{a.recommend}</dd></div>}
+          {showRec && <div><dt>Recommend</dt><dd><Md text={a.recommend!} project={a.project} /></dd></div>}
           <div class={silent.waits ? 'waits' : ''}><dt class="sr-only">Default</dt><dd class="silent">{Icon.hourglass}<span>{silent.text}</span></dd></div>
         </dl>
         {asks.panel === 'defer' ? (

@@ -128,7 +128,7 @@
 .now-ask { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--card-bg); transition: background var(--t-feedback) var(--ease), border-color var(--t-feedback) var(--ease), box-shadow var(--t-feedback) var(--ease); }
 .now-ask:hover { border-color: var(--line); box-shadow: var(--shadow); }
 /* Hover and focus change the card background. @req FR:product-reset/ui.taskcard */
-.now-ask:hover, .now-ask:focus-within { background: var(--card-hover); }
+.now-ask:not(.open):hover, .now-ask:not(.open):focus-within { background: var(--card-hover); }
 .now-ask.open { box-shadow: var(--shadow); }
 .now-ask-head { display: flex; align-items: flex-start; gap: var(--s-12); padding: var(--s-16); }
 .now-ask-head .now-mini { margin-top: 2px; }

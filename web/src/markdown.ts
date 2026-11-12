@@ -49,28 +49,33 @@ const name = (slug: string) => slug.slice(slug.indexOf('/') + 1);
 function linkRefs(src: string, ctx: RefCtx): Node[] {
   const pre = Object.keys(ctx.prefixes).map((k) => k.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')).join('|');
   const re = new RegExp([
-    /(https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"])/.source,
-    /(?<![\w/.-])([\w.-]+)\/([\w.-]+)#(\d+)\b/.source,
-    /(?<![\w/#.-])([A-Za-z][\w.-]*)#(\d+)\b/.source,
-    /\bPR ?#?(\d+)\b/.source,
-    /(?<![\w&/#])#(\d+)\b/.source,
-    pre ? `\\b(${pre}) #?(\\d+)\\b` : '(?!)()()',
+    /(?<url>https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"])/.source,
+    /(?<![\w/.-])(?<owner>[\w.-]+)\/(?<repo>[\w.-]+)#(?<on>\d+)\b/.source,
+    /\bPR ?#?(?<pr>\d+)\b/.source,
+    /(?<![\w/#.-])(?<short>[A-Za-z][\w.-]*)#(?<sn>\d+)\b/.source,
+    /(?<![\w&/#])#(?<hn>\d+)\b/.source,
+    pre ? `\\b(?<px>${pre}) #?(?<pn>\\d+)\\b` : '(?!)',
   ].join('|'), 'g');
   const out: Node[] = [];
   let last = 0;
   const push = (s: string) => { if (!s) return; if (typeof out[out.length - 1] === 'string') out[out.length - 1] += s; else out.push(s); };
+  const known = (slug: string) => ctx.repos.find((r) => r.toLowerCase() === slug.toLowerCase());
   for (const m of src.matchAll(re)) {
+    const g = m.groups!;
     let link: { href: string; c: string } | null = null;
-    if (m[1]) {
-      const g = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/(?:pull|issues)\/(\d+)\/?$/.exec(m[1]);
-      link = { href: m[1], c: g ? `${g[2]}#${g[3]}` : m[1] };
-    } else if (m[2]) link = { href: gh(`${m[2]}/${m[3]}`, m[4]), c: `${m[3]}#${m[4]}` };
-    else if (m[5]) {
-      const slug = ctx.repo && name(ctx.repo).toLowerCase() === m[5].toLowerCase() ? ctx.repo : ctx.repos.find((r) => name(r).toLowerCase() === m[5].toLowerCase());
-      if (slug) link = { href: gh(slug, m[6]), c: m[0] };
-    } else if (m[7]) { if (ctx.repo) link = { href: gh(ctx.repo, m[7], true), c: m[0] }; }
-    else if (m[8]) { if (ctx.repo) link = { href: gh(ctx.repo, m[8]), c: m[0] }; }
-    else if (m[9]) link = { href: gh(ctx.prefixes[m[9]], m[10]), c: m[0] };
+    if (g.url) {
+      const u = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/(?:pull|issues)\/(\d+)\/?$/.exec(g.url);
+      link = { href: g.url, c: u ? `${u[2]}#${u[3]}` : g.url };
+    } else if (g.on) {
+      // A dot in the name could be a file path (`src/a.ts#12`): link only a known repo then.
+      const slug = g.repo.includes('.') ? known(`${g.owner}/${g.repo}`) : `${g.owner}/${g.repo}`;
+      if (slug) link = { href: gh(slug, g.on), c: `${name(slug)}#${g.on}` };
+    } else if (g.pr) { if (ctx.repo) link = { href: gh(ctx.repo, g.pr, true), c: m[0] }; }
+    else if (g.sn) {
+      const slug = ctx.repo && name(ctx.repo).toLowerCase() === g.short.toLowerCase() ? ctx.repo : ctx.repos.find((r) => name(r).toLowerCase() === g.short.toLowerCase());
+      if (slug) link = { href: gh(slug, g.sn), c: m[0] };
+    } else if (g.hn) { if (ctx.repo) link = { href: gh(ctx.repo, g.hn), c: m[0] }; }
+    else if (g.pn) link = { href: gh(ctx.prefixes[g.px], g.pn), c: m[0] };
     if (!link) continue;
     push(src.slice(last, m.index));
     out.push({ t: 'a', ...link });

@@ -57,6 +57,12 @@ describe('refs autolink', () => {
   it('links every ref in one text, never inside code or an existing link', () => {
     expect(links('#1, #2 and `#3` [x](https://x.test/#4)', 'stack').map((l) => l.label)).toEqual(['#1', '#2', 'x']);
   });
+  it('links PR#N; a file path or an unknown dotted repo stays text; a known one links', () => {
+    expect(links('see PR#12', 'stack')).toEqual([{ href: 'https://github.com/Xerilium/stack/pull/12', label: 'PR#12' }]);
+    expect(links('line in src/a.ts#12 and vercel/next.js#5', 'stack')).toEqual([]);
+    const dotted = refCtxOf([{ name: 'n', metadata: { Repository: 'vercel/next.js' } }]);
+    expect(mdLinks('vercel/next.js#5', dotted('n'))).toEqual([{ href: 'https://github.com/vercel/next.js/issues/5', label: 'next.js#5' }]);
+  });
   it('opens refs in a new tab and escapes them', () => {
     expect(toHtml('PR 5', ctx('stack'))).toBe('<a href="https://github.com/Xerilium/stack/pull/5" rel="noopener noreferrer" target="_blank">PR 5</a>');
   });

@@ -8,7 +8,7 @@ const token = (src: string, name: string, dark: boolean) => { const part = dark 
 
 describe('card hover and focus', () => {
   it('each card style changes the background on hover and on focus', () => {
-    expect(css('nowscreen.css')).toMatch(/\.now-ask:hover, \.now-ask:focus-within \{ background: var\(--card-hover\); \}/);
+    expect(css('nowscreen.css')).toMatch(/\.now-ask:not\(\.open\):hover, \.now-ask:not\(\.open\):focus-within \{ background: var\(--card-hover\); \}/);
     expect(css('asks.css')).toMatch(/\.ask-card:hover, \.ask-card:focus-within \{ background: var\(--card-hover\); \}/);
     expect(css('myday.css')).toMatch(/\.today \.what:hover \{ background: var\(--card-hover\); \}/);
     expect(css('myday.css')).toMatch(/\.today \.block:focus-within \.what \{ background: var\(--card-hover\); \}/);

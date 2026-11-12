@@ -25,7 +25,8 @@ export interface AskCtl {
 
 type Panel = 'none' | 'reply' | 'defer';
 /** The ask's refs and link as inline links; no "Open {host}" button. @req FR:product-reset/ui.reflink */
-const refsOf = (a: AskItem) => [...mdLinks(a.ask, a.project), ...(a.link ? mdLinks(a.link, a.project) : [])].filter((l, i, all) => all.findIndex((x) => x.href === l.href) === i);
+const same = (h: string) => h.replace(/\/(?:issues|pull)\/(\d+)\/?$/, '/#$1');
+const refsOf = (a: AskItem) => [...mdLinks(a.ask, a.project), ...(a.link ? mdLinks(a.link, a.project) : [])].filter((l, i, all) => all.findIndex((x) => same(x.href) === same(l.href)) === i);
 
 function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: number; open: boolean; panel: Panel; ctl: AskCtl; onToggle: () => void; onPanel: (p: Panel) => void }) {
   const who = ctl.whoOf(a.from);
