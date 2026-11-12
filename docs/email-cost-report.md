@@ -22,8 +22,8 @@
 
 ## Blockers and guard
 
-1. `--offline` and `--all` are missing from `BOOLEAN_FLAGS` (`src/cli/args.ts`). `email run --dry-run --offline --fixture f.json` and `email run --all` exit 2. The launchd plist runs `email run --all`, so the schedule never runs.
-2. A model login failure makes asks, not an error. Each message whose calls fail becomes a "Could not classify" ask, exit 0. Pass B made 24 such asks; at 150 messages per day, about 60 per inbox. Asks are written inside the loop, so stop the pass before it writes asks (keep the old cursor) when the model fails.
+1. `--offline` and `--all` are missing from `BOOLEAN_FLAGS` (`src/cli/args.ts`). `email run --dry-run --offline --fixture f.json` and `email run --all` exit 2. The launchd plist runs `email run --all`, so every scheduled pass exits 2.
+2. A model login failure makes asks, not an error. Each message whose calls fail becomes a "Could not classify" ask, exit 0. Pass B made 24 such asks; at 150 messages per day, about 60 per inbox. Asks are written inside the loop, so stop the pass before it writes asks (keep the old cursor) when the model fails. This changes `FR:email-runner/cli.run`.
 3. Privacy: the sensitive rule reads only the sender address (`src/email/rules.ts`). Medical, legal or payroll mail from a plain address goes to the model.
 
 - Guard denies: send, sendMail, reply, replyAll, forward, createForward, createReplyAll, copy, DELETE, `%73end`, body PATCH, other hosts, and a move not approved in an answered ask (drafts mode, Archive or Junk only). Guard allows: GET of messages, `createReply` (drafts mode, comment only), `categories` PATCH (not in observe mode). The offline transport refuses every POST.
