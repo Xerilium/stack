@@ -87,7 +87,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
   sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
   pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
-  update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (--engine stack: scores and order like `stack next`, with .stack/priorities.json)' },
+  update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (default stack: scores and order like `stack next`, with .stack/priorities.json; --engine legacy: the PowerShell output)' },
 };
 
 interface Outcome { json: Record<string, unknown>; text: string; code?: number }
@@ -226,9 +226,11 @@ async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: bo
   for (const p of await storage.list()) projects.push({ fileName: p.replace(/^tasks\//, ''), content: (await storage.read(p)).content });
   const strip = (s?: string | null) => s?.replace(/^﻿/, '');
   // @req FR:cli/cmd.update.engine
-  const priorities = opts.engine === 'stack' ? (await (storage as Partial<AuxFiles>).readAux?.(PRIORITIES_PATH))?.content : undefined;
+  // The default is the engine `nextTask` uses, so the README top is the row a no-ref start/complete/skip acts on.
+  const engine = opts.engine ?? 'stack';
+  const priorities = engine === 'stack' ? (await (storage as Partial<AuxFiles>).readAux?.(PRIORITIES_PATH))?.content : undefined;
   const files = generateSummaries({
-    projects, config, now, ...(opts.engine ? { engine: opts.engine } : {}), ...(priorities ? { priorities } : {}),
+    projects, config, now, engine, ...(priorities ? { priorities } : {}),
     previousReadme: strip((await readOpt('README.md'))?.content), previousProjects: strip((await readOpt('projects.md'))?.content),
   });
   const changed: { path: string; content: string; expectedVersion: string | null }[] = [];
@@ -642,7 +644,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     case 'email': return emailCmd(ctx, p.positionals[0], p.flags, { repo: dir });
     case 'update': {
       extra(0);
-      const engine = f['engine'] === true ? '' : flag(f, 'engine'); // a bare --engine is an error, not legacy
+      const engine = f['engine'] === true ? '' : flag(f, 'engine'); // a bare --engine is an error, not the default
       if (engine !== undefined && engine !== 'legacy' && engine !== 'stack') throw new UsageError('--engine must be legacy or stack');
       return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true, engine: engine as 'legacy' | 'stack' | undefined });
     }

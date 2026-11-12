@@ -259,6 +259,8 @@ interface STask {
   lens?: { legacy: number; from?: string };
   /** A `top` rule matches this row (it stays in the README top list even outside the time block). */
   top?: boolean;
+  /** A `hide` rule matches this row: the full lists keep it at the end; the README top list drops it, as `stack next` does. */
+  hidden?: boolean;
   breakdown: ScoreBreakdown;
   scored: ScoredTask;
 }
@@ -408,7 +410,7 @@ function applyStackEngine(list: STask[], scoring: ScoringProject[], config: Stac
     if (!m) continue;
     // tiers far beyond any score: top (in rule order, own matches before parent matches), unmatched, down, hide
     if (m.rule.effect === 'top') { t.key = 1e12 - m.index * 1e9 - (m.via === 'parent' ? 1e8 : 0) + t.score; t.top = true; }
-    else t.key = (m.rule.effect === 'down' ? -1e12 : -2e12) + t.score;
+    else { t.key = (m.rule.effect === 'down' ? -1e12 : -2e12) + t.score; if (m.rule.effect === 'hide') t.hidden = true; }
   }
 }
 
@@ -490,7 +492,8 @@ function firstActionable(parent: STask, w: World): STask | null {
   return find(parent.id);
 }
 
-function uniqueOutcomeTasks(tasks: STask[], w: World): STask[] {
+/** One task per outcome. Legacy shows the outcome's first actionable step; `stack` keeps the ranked task, the one `stack next` picks. */
+function uniqueOutcomeTasks(tasks: STask[], w: World, firstStep: boolean): STask[] {
   const seen = new Set<string>();
   const out: STask[] = [];
   for (const task of tasks) {
@@ -498,7 +501,7 @@ function uniqueOutcomeTasks(tasks: STask[], w: World): STask[] {
     const key = (parent?.id ?? task.id).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    if (parent) out.push(firstActionable(parent, w) ?? task);
+    if (parent && firstStep) out.push(firstActionable(parent, w) ?? task);
     else out.push(task);
   }
   return out;
@@ -778,7 +781,8 @@ function buildReadme(
   }
 
   const parkedAtLevel = w.list.filter(t => t.emojis.Special.includes('🅿️') || t.emojis.Special.includes('💤'));
-  const unique = uniqueOutcomeTasks(filtered, w);
+  // @req FR:summaries/engine.order: with `stack`, the README top is the first row of `stack next`
+  const unique = uniqueOutcomeTasks(filtered.filter(t => !t.hidden), w, input.engine !== 'stack');
   const top = unique[0];
   const topHierarchy = top ? hierarchy(top, w, { removeStatus: true, includeScore: true }) : 'No active tasks available';
   const upNext = unique.slice(1, 4);

@@ -31,7 +31,7 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `inbox`: reply on a task as an agent. `inbox reply <ref> --from <agent> --text t [--expect t]`
 - `agent`: run one prompt on an ACP agent over stdio (e.g. `gemini -- --acp`). Each permission request becomes an ask (`tasks/asks/perm-*.md`); nothing is auto-allowed. The agent gets an allow-listed environment, never Stack tokens. `agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]` (default 600 s; put `--` before an agent argument that starts with `--`)
 - `agents`: agents per project folder. `agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]`
-- `update`: regenerate README, stack, projects, my-day (legacy scorer by default; `--engine stack` scores and orders like `stack next`, see [ranking.md](ranking.md)). `update [--sweep] [--queries] [--engine legacy|stack]`
+- `update`: regenerate README, stack, projects, my-day (scores and orders like `stack next` by default; `--engine legacy` writes the PowerShell output, see [ranking.md](ranking.md)). `update [--sweep] [--queries] [--engine legacy|stack]`
 
 After `start`, `complete`, `skip`/`park`, `resume`, `suspend`, `remove-completed`, and `add-project` change a file, the CLI runs `update --sweep` (like the legacy scripts). `--queries` also refreshes GitHub query rows; `--no-update` skips the refresh.
 

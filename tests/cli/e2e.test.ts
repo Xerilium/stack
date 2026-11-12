@@ -350,23 +350,22 @@ describe('update', () => {
 
 describe('update lifecycle gaps', () => {
   // @req FR:cli/cmd.update.engine
-  it('update --engine stack writes the files in the order of `stack next`, with the owner overrides; the default stays legacy', () => {
+  it('update writes the files in the order of `stack next`, with the owner overrides; --engine legacy keeps the PowerShell order', () => {
     const d = repo();
     stack(d, 'add', 'alpha', 'Low 🔻');
     stack(d, 'add', 'alpha', 'High 🚨 ⬆️');
     stack(d, 'add', 'alpha', 'Mid 🔺');
     expect(stack(d, 'update', '--engine', 'nope').code).toBe(2);
-    const legacy = stack(d, 'update', '--now', NOW);
-    expect(legacy.code).toBe(0);
-    const first = (s: string) => /^ {2}- (.*) 🟰 [-\d.]+$/m.exec(s)![1];
-    expect(first(file(d, 'stack.md'))).toMatch(/High/);
     mkdirSync(join(d, '.stack'), { recursive: true });
     writeFileSync(join(d, '.stack/priorities.json'), JSON.stringify({ rules: [{ match: 'Low', effect: 'top' }] }));
-    expect(stack(d, 'update', '--engine', 'stack', '--now', NOW).code).toBe(0);
+    const first = (s: string) => /^ {2}- (.*) 🟰 [-\d.]+$/m.exec(s)![1];
+    expect(stack(d, 'update', '--now', NOW).code).toBe(0); // default: stack
     expect(first(file(d, 'stack.md'))).toMatch(/Low/); // the same first row as `stack next`
     expect(stack(d, 'next', '--now', NOW).out).toMatch(/Alpha Low/);
-    expect(stack(d, 'update', '--now', NOW).code).toBe(0); // back to legacy: High first again
+    expect(stack(d, 'update', '--engine', 'legacy', '--now', NOW).code).toBe(0); // legacy ignores the overrides
     expect(first(file(d, 'stack.md'))).toMatch(/High/);
+    expect(stack(d, 'update', '--engine', 'stack', '--now', NOW).code).toBe(0);
+    expect(first(file(d, 'stack.md'))).toMatch(/Low/);
   });
 
   // @req FR:cli/cmd.update @req FR:cli/cmd.update.commit
@@ -426,6 +425,52 @@ describe('update lifecycle gaps', () => {
     expect(commits(d)).toBe(before);
     expect(stack(d, 'start', ref, '--expect', 'Two', '--now', NOW).code).toBe(0);
     expect(file(d, 'tasks/alpha.md')).toContain('🚧 Two');
+  });
+});
+
+// @req FR:cli/cmd.update.engine @req FR:cli/ref.default @req FR:task-lifecycle/next.rank
+describe('README top is the no-ref target', () => {
+  /** The task text of the README "Top of the stack" row, without its score. */
+  const readmeTop = (d: string) => {
+    const block = /## 🎯 Top of the stack\n\n([\s\S]*?)\n\n/.exec(file(d, 'README.md'))![1].split('\n');
+    return /^\s*- (.*?) 🟰 [-\d.]+$/.exec(block[block.length - 1])![1];
+  };
+  /** An owner override puts Low first; legacy ignores the overrides. */
+  const overrides = () => {
+    const d = repo();
+    stack(d, 'add', 'alpha', 'Low 🔻');
+    stack(d, 'add', 'alpha', 'High 🚨 ⬆️');
+    mkdirSync(join(d, '.stack'), { recursive: true });
+    writeFileSync(join(d, '.stack/priorities.json'), JSON.stringify({ rules: [{ match: 'Low', effect: 'top' }] }));
+    return d;
+  };
+  /** The urgent second step of an outcome ranks first; legacy shows the outcome's first step. */
+  const outcome = () => {
+    const d = repo('Ship 🎯');
+    writeFileSync(join(d, 'tasks/alpha.md'), file(d, 'tasks/alpha.md').replace('- [ ] Ship 🎯\n', '- [ ] Ship 🎯\n  - [ ] First step\n  - [ ] Second step 🚨\n'));
+    return d;
+  };
+  it.each([
+    ['start', overrides], ['complete', overrides], ['skip', overrides],
+    ['start', outcome], ['complete', outcome], ['skip', outcome],
+  ])('update then %s with no ref acts on the README top row (%p)', (cmd, setup) => {
+    const d = setup();
+    expect(stack(d, 'update', '--now', NOW).code).toBe(0);
+    const top = readmeTop(d);
+    expect(stack(d, 'next', '--now', NOW).out).toContain(top);
+    const r = stack(d, cmd, '--now', NOW, '--no-update', '--json');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out).before).toContain(top);
+  });
+  it('a hide rule on every row empties the README top, as `stack next` and no-ref start do', () => {
+    const d = repo('Only');
+    mkdirSync(join(d, '.stack'), { recursive: true });
+    writeFileSync(join(d, '.stack/priorities.json'), JSON.stringify({ rules: [{ match: 'Only', effect: 'hide' }] }));
+    expect(stack(d, 'update', '--now', NOW).code).toBe(0);
+    expect(file(d, 'README.md')).toMatch(/## 🎯 Top of the stack\n\nNo active tasks available/);
+    expect(file(d, 'stack.md')).toContain('Only'); // the full lists keep a hidden row, at the end
+    expect(stack(d, 'next', '--now', NOW).out).toBe('');
+    expect(JSON.parse(stack(d, 'start', '--now', NOW, '--no-update', '--json').out).changed).toBe(false);
   });
 });
 

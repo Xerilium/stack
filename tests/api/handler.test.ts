@@ -345,6 +345,16 @@ describe('summaries', () => {
     const f = await m.call('GET', '/api/summaries?fields=stack');
     expect(Object.keys(f.json)).toEqual(['stack']);
   });
+  // @req FR:summaries/engine.order
+  it('the README top is the task GET /next returns, with the owner overrides', async () => {
+    const m = mk();
+    await seed(m.call);
+    await m.storage.writeAux('.stack/priorities.json', JSON.stringify({ rules: [{ match: 'Second task', effect: 'top' }] }), { expectedVersion: null });
+    const next = (await m.call('GET', '/api/next')).json.task.text;
+    expect(next).toContain('Second task');
+    const readme: string = (await m.call('GET', '/api/summaries?fields=readme')).json.readme;
+    expect(/## 🎯 Top of the stack\n\n[\s\S]*?\n\n/.exec(readme)![0]).toContain(next);
+  });
   it('myDay is null with no tasks', async () => {
     const r = await mk().call('GET', '/api/summaries?fields=myDay');
     expect(r.json).toEqual({ myDay: null });

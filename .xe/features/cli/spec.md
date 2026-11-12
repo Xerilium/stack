@@ -107,7 +107,7 @@ Owner needs one command per core operation so that the terminal can do everythin
   > - @req FR:task-lifecycle/remove.blocks
 - **FR:cmd.update** (P1): `stack update [--sweep] [--engine legacy|stack]` MUST regenerate README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writing only files whose text changed
   > - @req FR:summaries/generate.@function
-  - **FR:cmd.update.engine** (P1): `--engine stack` MUST generate the files with the `stack` engine and the overrides in `.stack/priorities.json`, so their scores and order match `stack next`; the default is `legacy` (PowerShell parity)
+  - **FR:cmd.update.engine** (P1): `--engine stack` MUST generate the files with the `stack` engine and the overrides in `.stack/priorities.json`, so their scores and order match `stack next`; the default is `stack`, so the README top is the row a no-ref `start`, `complete`, or `skip` acts on (`FR:ref.default`); `--engine legacy` MUST write the PowerShell output byte-for-byte (parity)
     > - @req FR:summaries/engine.@option
   - **FR:cmd.update.commit** (P1): `update` MUST make ONE commit for all changed summary files
     > - @req FR:storage-git/write.many.commit
@@ -115,7 +115,7 @@ Owner needs one command per core operation so that the terminal can do everythin
     > - @req FR:task-lifecycle/sweep.all
   - **FR:cmd.update.queries** (P2): `--queries` MUST first refresh `🔎` query tasks through the `gh` CLI (off by default: it uses the network; files change and commit one by one; failures are reported, not fatal)
   - my-day.md is untouched when the generator returns none
-- **FR:cmd.refresh** (P1): After `start`, `complete`, `skip`/`park`, `resume`, `suspend`, `remove-completed`, and `add-project` change a file, the CLI MUST run `update --sweep` (and `--queries` when that flag is given), so the task files and the four summaries match what the legacy command leaves (legacy runs `Update-StackSummary` after each of these). A no-op MUST NOT refresh
+- **FR:cmd.refresh** (P1): After `start`, `complete`, `skip`/`park`, `resume`, `suspend`, `remove-completed`, and `add-project` change a file, the CLI MUST run `update --sweep` (and `--queries` when that flag is given), so the task files and the four summaries are current, as legacy left them (legacy runs `Update-StackSummary` after each of these). The summaries use the `update` default engine (`FR:cmd.update.engine`). A no-op MUST NOT refresh
   - **FR:cmd.refresh.skip** (P2): `--no-update` MUST skip the refresh
   - **FR:cmd.refresh.json** (P2): `--json` MUST add `update: { files, swept?, queries? }` to the result; text output stays one line
 
