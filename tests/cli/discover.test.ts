@@ -2,7 +2,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { findStackDir } from '../../src/cli/discover';
+import { findStackDir, walkStackDir } from '../../src/cli/discover';
 
 const tmp = () => realpathSync(mkdtempSync(join(tmpdir(), 'stack-disc-')));
 const mk = (root: string) => { mkdirSync(join(root, '.xe/config'), { recursive: true }); writeFileSync(join(root, '.xe/config/stack.json'), '{}'); };
@@ -38,5 +38,15 @@ describe('findStackDir', () => {
   });
   it('returns null when nothing is found', () => {
     expect(findStackDir({ cwd: tmp(), env: {}, home: tmp() })).toBeNull();
+  });
+});
+
+describe('walkStackDir', () => {
+  // @req FR:first-run-onboarding/step.repo (the current folder locks the repo step; env and config never count here)
+  it('walks up only: no env, no user config', () => {
+    const root = tmp(); mk(root);
+    const sub = join(root, 'a'); mkdirSync(sub);
+    expect(walkStackDir(sub)).toBe(root);
+    expect(walkStackDir(tmp())).toBeNull();
   });
 });

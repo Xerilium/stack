@@ -18,11 +18,17 @@ export function userConfig(home: string): { repo?: string; dir?: string; mode?: 
   try { return JSON.parse(readFileSync(join(home, '.config/stack/config.json'), 'utf8')); } catch { return {}; }
 }
 
-export function findStackDir({ cwd, env, home }: DiscoverOpts): string | null {
+/** The first Stack repo at or above `cwd` (the walk-up part of discovery only). */
+export function walkStackDir(cwd: string): string | null {
   for (let d = resolve(cwd); ; d = dirname(d)) {
     if (isStackDir(d)) return d;
-    if (dirname(d) === d) break;
+    if (dirname(d) === d) return null;
   }
+}
+
+export function findStackDir({ cwd, env, home }: DiscoverOpts): string | null {
+  const up = walkStackDir(cwd);
+  if (up) return up;
   const c = env.STACK_REPO || env.STACK_DIR || userConfig(home).repo || userConfig(home).dir;
   return c && existsSync(resolve(c)) ? resolve(c) : null;
 }

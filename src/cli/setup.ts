@@ -120,14 +120,15 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
       }
       const changed = value !== cfg.repo;
       // A folder with no tasks/ cannot serve yet (demo copies tasks/): wait for the mode step.
-      const ready = isUrl(value) || existsSync(join(value, 'tasks')) || cfg.mode === 'live';
+      const ready = isUrl(value) || existsSync(join(value, 'tasks')) || cfg.mode === 'live' || !!o.locks?.mode;
       return save({ repo: value }, changed && ready);
     }
     case 'mode': {
-      if (o.locks?.mode) return save({}, false); // --live sets the mode
-      if (b.mode !== 'demo' && b.mode !== 'live') return fail('Pick Demo or Live.');
+      if (b.mode !== 'demo' && b.mode !== 'live' && !o.locks?.mode) return fail('Pick Demo or Live.');
       const local = localPath(spec);
       const noTasks = !!local && !existsSync(join(local, 'tasks'));
+      // --live sets the mode: save nothing, but start the list it will serve. @req FR:first-run-onboarding/step.mode.tasks
+      if (o.locks?.mode) { if (noTasks) mkdirSync(join(local, 'tasks')); return save({}, noTasks); }
       const was = cfg.mode === 'live' ? 'live' : 'demo';
       if (b.mode === 'demo') {
         if (noTasks) return fail('This repo has no tasks/ folder, so there is nothing to copy. Pick Live to start a new list here.');
@@ -275,7 +276,7 @@ export async function runLocal(o: RunLocalOpts): Promise<LocalHost> {
     const spec = o.spec();
     const local = localPath(spec);
     // A folder with no tasks/ waits in setup for the Live choice (FR:step.mode.tasks); that is not an error.
-    const waiting = !!local && existsSync(local) && !existsSync(join(local, 'tasks')) && readConfig(o.home).mode !== 'live';
+    const waiting = !!local && existsSync(local) && !existsSync(join(local, 'tasks')) && readConfig(o.home).mode !== 'live' && !o.locks?.().mode;
     if (spec && !waiting) {
       try { const r = await o.startReal(port, setup); cur = r.server; dir = r.dir; }
       catch (e) { error = redact(e instanceof Error ? e.message : String(e)); o.log(`setup: host did not start (${error})`); }

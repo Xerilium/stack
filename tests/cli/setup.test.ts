@@ -112,6 +112,14 @@ describe('applySetup', () => {
     expect(readConfig(home)).not.toHaveProperty('mode');
     expect(readConfig(home).onboarding).toEqual({ step: 'calendar' });
   });
+  // @req FR:first-run-onboarding/step.mode.tasks
+  it('--live on a repo with no tasks/: the repo restarts, the locked mode step starts the list', () => {
+    const home = tmp(); const repo = gitRepo(null); const locks = { mode: '--live' };
+    expect(applySetup({ home, env, body: { step: 'repo', repo }, locks })).toEqual({ ok: true, restart: true });
+    expect(applySetup({ home, env, body: { step: 'mode' }, locks })).toEqual({ ok: true, restart: true });
+    expect(existsSync(join(repo, 'tasks'))).toBe(true);
+    expect(readConfig(home)).not.toHaveProperty('mode');
+  });
   // @req FR:first-run-onboarding/step.repo
   it('repo: expands ~ to the home folder', () => {
     const home = tmp(); const r = join(home, 'tasks-repo'); mkdirSync(r); git(r, 'init', '-q');
@@ -239,6 +247,14 @@ describe('runLocal', () => {
     try {
       expect(await (await fetch(`${h.url}/setup`)).json()).toMatchObject({ needed: true, reason: 'broken', step: 'repo', error: '/gone is not a git repo' });
     } finally { await h.close(); }
+  });
+
+  // @req FR:first-run-onboarding/step.mode.tasks
+  it('--live with a saved repo that has no tasks/ starts the real server', async () => {
+    const home = tmp(); const repo = gitRepo(null); writeConfig(home, { repo });
+    let calls = 0;
+    const h = await runLocal({ port: 0, home, env: {}, webDir: webDir(), log: () => undefined, spec: () => repo, locks: () => ({ mode: '--live' }), startReal: async () => { calls++; throw new Error('x'); } });
+    try { expect(calls).toBe(1); } finally { await h.close(); }
   });
 
   // @req FR:first-run-onboarding/step.mode.tasks
