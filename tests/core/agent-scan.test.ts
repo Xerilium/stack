@@ -69,3 +69,33 @@ describe('listTeam with scanned agents', () => {
     expect(team[0].name).toBe('Chief of Staff');
   });
 });
+
+describe('scanAgents limits', () => {
+  it('skips a clone of a repo already read (same origin), and a file whose frontmatter does not close in 8 KB', async () => {
+    const { home, dev, put } = tree();
+    const git = (dir: string, url: string) => put(`dev/${dir}/.git/config`, `[core]\n\tbare = false\n[remote "origin"]\n\turl = ${url}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`);
+    git('finops-hubs', 'https://github.com/x/finops-hubs.git');
+    git('finops-hubs-1020', 'https://github.com/x/finops-hubs');
+    put('dev/finops-hubs-1020/.claude/agents/stale.md', md('name: stale'));
+    put('dev/finops-hubs/.claude/agents/big.md', `---\nname: big\ndescription: ${'x'.repeat(9000)}\n---\n`);
+    git('todo', 'git@github.com:x/todo.git');
+    put('dev/todo-live/.git/config', '[remote "origin"]\n\turl = git@github.com:x/todo.git\n');
+    put('dev/todo-live/.claude/agents/live-only.md', md('name: live-only'));
+    const slugs = (await scanAgents({ home, roots: [dev], repos, skip: [join(dev, 'todo')] })).map((g) => g.def.slug);
+    expect(slugs).toContain('sre');
+    expect(slugs).not.toContain('stale');
+    expect(slugs).not.toContain('live-only');
+    expect(slugs).not.toContain('big');
+  });
+  it('reads at most 50 files a folder', async () => {
+    const { home, dev, put } = tree();
+    for (let i = 0; i < 60; i++) put(`dev/many/.claude/agents/a${String(i).padStart(2, '0')}.md`, md(`name: a${i}`));
+    expect((await scanAgents({ home, roots: [dev], repos })).filter((g) => g.home === 'many')).toHaveLength(50);
+  });
+  it('a scanned cos never becomes the roll-up', async () => {
+    const storage = new MemoryStorage();
+    await storage.write('tasks/allyte.md', '# Allyte\n\n## Active\n\n- [ ] x\n');
+    const team = await listTeam({ storage }, [{ def: { slug: 'cos', name: 'Cos', scope: [], mode: 'ad-hoc', prompt: '', extra: [] }, home: 'user' }]);
+    expect(team[0].scope).toEqual([]);
+  });
+});

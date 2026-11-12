@@ -55,11 +55,23 @@ async function agentsIn(dir: string, home: string, out: ScannedAgent[]): Promise
   }
 }
 
-/** User-level agents first, then each repo one level under each root (sorted); hidden and worktree folders are skipped. */
+/** A repo folder's origin url, from its git config (a worktree reads its main repo's); null when none. */
+async function remoteOf(dir: string): Promise<string | null> {
+  try {
+    let git = join(dir, '.git');
+    if ((await fs.lstat(git)).isFile()) { const m = /^gitdir:\s*(.+?)\s*$/m.exec(await fs.readFile(git, 'utf8')); if (!m) return null; git = resolve(dir, m[1].replace(/[/\\]worktrees[/\\][^/\\]+$/, '')); }
+    const m = /\[remote "origin"\][^[]*?\burl\s*=\s*(\S+)/.exec(await fs.readFile(join(git, 'config'), 'utf8'));
+    return m ? m[1].replace(/\.git$/, '').replace(/\/+$/, '').toLowerCase() : null;
+  } catch { return null; }
+}
+
+/** User-level agents first, then each repo one level under each root (known repos first, then by name). Hidden and worktree folders, and clones of a repo already read (same origin), are skipped. */
 export async function scanAgents(o: ScanOptions): Promise<ScannedAgent[]> {
   const out: ScannedAgent[] = [];
   await agentsIn(join(o.home, '.claude/agents'), 'user', out);
   const skip = new Set((o.skip ?? []).map((p) => resolve(p)));
+  const remotes = new Set<string>();
+  for (const p of skip) { const r = await remoteOf(p); if (r) remotes.add(r); }
   const roots = (o.roots ?? [join(o.home, 'dev')]).map((r) => resolve(r.startsWith('~/') ? join(o.home, r.slice(2)) : r));
   const known = new Set((o.repos ?? []).flatMap((e) => e.names.map((n) => n.toLowerCase())));
   let seen = 0;
@@ -69,8 +81,14 @@ export async function scanAgents(o: ScanOptions): Promise<ScannedAgent[]> {
       .sort((x, y) => Number(!known.has(x)) - Number(!known.has(y)) || x.localeCompare(y));
     for (const name of kids) {
       if (seen++ >= MAX_FOLDERS) return out;
-      if (skip.has(join(root, name))) continue;
-      await agentsIn(join(root, name, '.claude/agents'), (o.repos && ownerOf(name, o.repos)) || name, out);
+      const dir = join(root, name);
+      if (skip.has(dir)) continue;
+      if (!(await dirents(join(dir, '.claude/agents'))).length) continue;
+      // A clone (`todo-live`, `finops-hubs-1020`) of a repo already read would bring back stale agents.
+      const remote = await remoteOf(dir);
+      if (remote && remotes.has(remote)) continue;
+      if (remote) remotes.add(remote);
+      await agentsIn(join(dir, '.claude/agents'), (o.repos && ownerOf(name, o.repos)) || name, out);
     }
   }
   return out;

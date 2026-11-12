@@ -208,7 +208,12 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const offReports = reports.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks'] }); });
   const inventory = o.inventory === false ? undefined : o.inventory ?? (() => runInventory({ home: stackHome() }));
   // The whole team: agents in every repo under the scan roots and at user level (not in the demo). @req FR:agent-team/agent.team.scan
-  const agentScan = o.inventory === false ? undefined : async () => scanAgents({ home: homedir(), roots: config.agents?.scanRoots, skip: [o.dir], repos: await projectRepos({ storage }) });
+  // One scan serves every /team read for 15 s (files are mtime-cached too); a failed scan is logged, never fatal.
+  let scanned: { at: number; p: ReturnType<typeof scanAgents> } | undefined;
+  const agentScan = o.inventory === false ? undefined : () => {
+    if (!scanned || Date.now() - scanned.at > 15_000) scanned = { at: Date.now(), p: projectRepos({ storage }).then((repos) => scanAgents({ home: homedir(), roots: config.agents?.scanRoots, skip: [o.dir], repos })).catch((e: unknown) => { console.error(`agents: scan failed (${e instanceof Error ? e.message : 'error'})`); scanned = undefined; return []; }) };
+    return scanned.p;
+  };
   const pris = o.pris ?? new PriStore(stackHome());
   // pris.json is outside the repo too: a write tells open pages to re-read it. @req FR:pris-sessions-ui/live.event
   const offPris = pris.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['pris'] }); });

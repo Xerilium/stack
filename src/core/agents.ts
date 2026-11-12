@@ -150,7 +150,7 @@ export function parseClaudeAgent(slug: string, content: string): AgentDef {
   const h1 = /^#[ \t]+(.+?)[ \t]*(?:\n|$)/.exec(body.trimStart())?.[1]; // only a title that opens the body, never a `#` inside a code block
   // `CoS: Chief of Staff` shows `Chief of Staff`; a name that is just the slug reads as words (`cid-divine-manager` → `Cid Divine Manager`).
   if (h1) { const n = oneLine(h1.includes(':') ? h1.slice(h1.indexOf(':') + 1) : h1); if (n && n.length <= MAX_NAME) a.name = n; }
-  else if (a.name === slug) a.name = slug.split(/[-_.]+/).filter(Boolean).map((w) => (w.length <= 2 || !/[aeiouy]/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' '); // `fh`, `ftk` read as acronyms
+  else if (a.name === slug) a.name = slug.split(/[-_.]+/).filter(Boolean).map((w) => (!/[aeiouy]/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' '); // `fh`, `ftk` read as acronyms
   a.prompt = body.trim().slice(0, MAX_PROMPT);
   return a;
 }
@@ -225,10 +225,12 @@ export async function listTeam(ctx: LifecycleContext, scanned: ScannedAgent[] = 
   const all = projects.map((p) => p.name);
   const team: TeamAgent[] = [];
   const addFile = (a: AgentDef, source: AgentSource, home?: string) => {
+    // A scanned agent never takes the roll-up place: only the content repo's `cos` is everyone's manager.
+    if (home !== undefined && !a.scope.length && a.slug === ROLLUP_SLUG) a = { ...a, scope: all.includes(home) ? [home] : [] };
     if (team.some((t) => t.slug === a.slug)) return;
     const named = projects.filter((p) => p.agents.some((x) => slugOf(x.name) === a.slug || x.name === a.name)).map((p) => p.name);
     // `cos` with no scope line is the roll-up even when a project line names a `CoS` of its own (that line then merges into the roll-up).
-    const scope = a.scope.length ? a.scope : a.slug === ROLLUP_SLUG ? ['*'] : named;
+    const scope = a.scope.length ? a.scope : a.slug === ROLLUP_SLUG && home === undefined ? ['*'] : named;
     const { extra, ...rest } = a; void extra;
     team.push({ ...rest, scope, defined: true, source, projects: resolveProjects(scope, all), ...(home ? { home } : {}) });
   };

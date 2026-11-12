@@ -4133,6 +4133,9 @@ components:
             - claude
             - metadata
           description: tasks/agents file, .claude/agents file, or a project Agents line
+        home:
+          type: string
+          description: "Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents"
     ThreadItem:
       type: object
       properties:
