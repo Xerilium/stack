@@ -166,6 +166,20 @@ test.describe('Now: calendar connect, more', () => {
     await page.clock.runFor(61_000);
     await expect(page.getByText('No meetings left today.')).toBeVisible(); // still fresh after an hour open
   });
+
+  // @req FR:ux-consolidation/cal.check: a refresh that cannot reach the host is not an empty day
+  test('a failed refresh shows Calendar unavailable, not No meetings', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.events = [];
+    await page.goto('/#/now');
+    await expect(page.getByText('No meetings left today.')).toBeVisible();
+    await page.route('**/api/calendar**', (r) => r.abort());
+    await page.clock.fastForward('16:00');
+    await page.clock.runFor(61_000);
+    await expect(page.getByText('Calendar unavailable')).toBeVisible();
+    await expect(page.getByText('No meetings left today.')).toHaveCount(0);
+  });
 });
 
 test.describe('Now: Waiting on you cards', () => {
@@ -176,7 +190,7 @@ test.describe('Now: Waiting on you cards', () => {
     m.team = [{ slug: 'cos', name: 'Allyte CoS', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] }];
     m.asks = [
       ask('a1', 'cos', 90, { ask: 'Approve the FH 1105 spec thread', why: 'The spec thread is held for your ack', recommend: 'Approve', default: 'Approve on Friday', by: at(d, 17), link: 'https://github.com/x/y/pull/1105' }),
-      ask('a2', 'cos', 80, { ask: 'Pick a venue', kind: 'decide', options: ['Seattle', 'Remote'], recommend: 'Remote' }),
+      ask('a2', 'cos', 80, { ask: 'Pick a venue', kind: 'decide', options: ['Seattle', 'Remote'], recommend: 'Remote', link: 'https://github.com/x/y/issues/7' }),
       ask('a3', 'cos', 70, { ask: 'Answer the budget question', kind: 'answer', recommend: undefined }),
       ask('a4', 'cos', 60),
     ];
@@ -206,6 +220,8 @@ test.describe('Now: Waiting on you cards', () => {
     // only one card is open at a time
     await waiting.getByRole('button', { name: /Pick a venue/ }).click();
     await expect(body).toHaveAttribute('aria-expanded', 'false');
+    // a decision with a link still offers Open
+    await expect(waiting.getByTestId('now-ask-more').getByRole('link', { name: /Open github\.com/ })).toHaveAttribute('href', 'https://github.com/x/y/issues/7');
     // choose an option: the same answer API
     await waiting.getByTestId('now-ask-more').getByRole('button', { name: 'Remote' }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/a2/answer')?.body).toEqual({ answer: 'option', text: 'Remote' });
@@ -239,6 +255,21 @@ test.describe('Now: Waiting on you cards', () => {
     await waiting.getByRole('group', { name: 'Defer until' }).getByRole('button', { name: '1 hour' }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/q2/answer')?.body?.answer).toBe('defer');
     await expect(waiting).toHaveCount(0);
+  });
+
+  // @req FR:ux-consolidation/one.answer @req FR:quick-triage/web.undo: an answer that changes a task has no Undo, as in Needs you
+  test('an option that applies a task change offers no Undo', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.asks = [ask('t1', 'cos', 90, { ask: 'Triage: Fix the build', kind: 'decide', options: ['Now', 'Later'], applies: ['start', '-'], recommend: 'Now' })];
+    await page.goto('/#/now');
+    await page.clock.resume();
+    const waiting = page.getByTestId('now-asks');
+    await waiting.getByRole('button', { name: /Triage: Fix the build/ }).click();
+    await waiting.getByTestId('now-ask-more').getByRole('button', { name: 'Now', exact: true }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/asks/t1/answer')?.body).toEqual({ answer: 'option', text: 'Now' });
+    await expect(page.getByRole('status')).toBeVisible();
+    await expect(page.getByRole('status').getByRole('button', { name: 'Undo' })).toHaveCount(0);
   });
 
   test('Open in Needs you opens that ask there', async ({ page }) => {

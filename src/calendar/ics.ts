@@ -285,14 +285,17 @@ export function createIcsCalendar(o: IcsOptions): CalendarProvider {
   };
   // Host names only: the path holds the secret. @req FR:ux-consolidation/cal.status
   const account = [...new Set(urls.map((u) => new URL(u).hostname))].join(', ');
+  // A feed left out of the last read (no usable copy, or it did not parse): the source is `error`, events still show.
+  let partial = false;
   return {
     info() {
       const ok = [...cache.values()].flatMap((c) => (c.okAt !== undefined ? [c.okAt] : []));
-      return { via: 'ics', account, ...(ok.length ? { syncedAt: Math.min(...ok) } : {}) };
+      return { via: 'ics', account, ...(ok.length ? { syncedAt: Math.min(...ok) } : {}), ...(partial ? { partial } : {}) };
     },
     async events(from, to) {
       const results = await Promise.allSettled(urls.map(async (u) => parseIcs(await read(u), from, to)));
       const ok = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+      partial = ok.length < results.length;
       if (ok.length === 0) {
         const why = results.map((r, i) => `feed ${i + 1}: ${r.status === 'rejected' && r.reason instanceof IcsError ? r.reason.message : 'error'}`);
         throw new IcsError(`All calendar feeds failed (${why.join('; ')})`);

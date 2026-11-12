@@ -28,6 +28,7 @@ import { PrsButton, PrsFlyoutHost } from './PrsPanel';
 import { actionsFor, type AskItem, type DeferChoice, type Send } from './asks';
 import { isFresh, sourceOf, type CalSource } from './calsource';
 import { postStep, waitForHost, type Fetch } from './onboarding';
+import { changeText } from './triage';
 import { useAsks } from './useAsks';
 import { Drawer, SessionsView } from './SessionsView';
 import { usePins } from './pins';
@@ -366,7 +367,12 @@ export function App() {
       const src = sourceOf(r, new Date());
       setEvents(r.items); setCalError(r.error ?? ''); setCalOn(r.configured); setCalSource(src); setTick((t) => t + 1);
       return src;
-    } catch { return null; }
+    } catch {
+      // A failed read is not a fresh empty day: show the unavailable line and keep via/account for Fix.
+      setCalError('Calendar unavailable');
+      setCalSource((s) => ({ ...(s ?? { kind: 'calendar' }), state: 'error' }));
+      return null;
+    }
   }, [sched]);
   useEffect(() => { if (calSource && Date.now() - calReadAt.current >= 15 * 60_000) void checkCalendar(); }, [tick, calSource, checkCalendar]);
   /** Connect: save the published link in the user config on the local host; wait for its restart. @req FR:ux-consolidation/cal.save */
@@ -380,7 +386,12 @@ export function App() {
   /** The ask cards on Now answer as Needs you does: same calls, toast, and Undo. @req FR:ux-consolidation/one.answer */
   const nowAsks = {
     whoOf: (from: string) => team.team.find((a) => a.slug === from || a.name === from) ?? { slug: from, name: from },
-    answer: (a: AskItem, x: Send) => void asks.answer(a, x, x.answer === 'option' ? `Sent to ${a.from}: ${x.text}` : `Sent to ${a.from}`),
+    answer: (a: AskItem, x: Send) => {
+      // Same guard as Needs you: an answer that changes a task (apply/applies) has no Undo. @req FR:quick-triage/web.undo
+      const will = x.answer === 'go' && a.apply ? a.apply : x.answer === 'option' && a.applies && a.options ? a.applies[a.options.indexOf(x.text ?? '')] : undefined;
+      const changes = !!will && will !== '-';
+      void asks.answer(a, x, changes ? changeText(will!, a.ask) : x.answer === 'option' ? `Sent to ${a.from}: ${x.text}` : `Sent to ${a.from}`, !changes);
+    },
     reply: (a: AskItem, text: string) => void asks.reply(a, text),
     defer: (a: AskItem, c: DeferChoice) => void asks.defer(a, c.at, c.label),
     deferChoices: () => asks.deferChoices(),

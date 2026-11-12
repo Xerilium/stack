@@ -21,6 +21,8 @@ export interface CalendarInfo {
   account?: string;
   /** Epoch ms when the oldest copy served was read from the source; absent = read live on every call. */
   syncedAt?: number;
+  /** True when the last read left out a configured feed (no usable copy, or it did not parse). */
+  partial?: boolean;
 }
 export interface CalendarProvider { events(from: string, to: string): Promise<CalendarEvent[]>; info?(): CalendarInfo }
 
@@ -38,14 +40,14 @@ export const STALE_MS = 60 * 60_000;
 export const withInfo = (p: CalendarProvider, info: CalendarInfo): CalendarProvider => ({ events: (from, to) => p.events(from, to), info: () => ({ ...info }) });
 
 /**
- * The source status after a read: `not-connected` without a provider, `error` when the read failed, `stale` when the
+ * The source status after a read: `not-connected` without a provider, `error` when the read failed or left a feed out, `stale` when the
  * copy served is over `STALE_MS` old, else `ok`. @req FR:ux-consolidation/cal.status
  */
 export function sourceStatus(p: CalendarProvider | undefined, ok: boolean, at: number): CalendarSource {
   if (!p) return { kind: 'calendar', via: 'none', state: 'not-connected' };
   const i = p.info?.();
   const synced = i?.syncedAt ?? (ok ? at : undefined);
-  const state = !ok ? 'error' : at - synced! > STALE_MS ? 'stale' : 'ok';
+  const state = !ok || i?.partial ? 'error' : at - synced! > STALE_MS ? 'stale' : 'ok';
   return { kind: 'calendar', ...(i ? { via: i.via } : {}), ...(i?.account ? { account: i.account } : {}), state, ...(synced !== undefined ? { lastSyncAt: new Date(synced).toISOString() } : {}) };
 }
 
