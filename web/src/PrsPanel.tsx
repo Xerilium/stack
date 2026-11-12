@@ -339,6 +339,8 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
         }}>
         <header class="prs-head">
           <h2 id="prs-h">Pull requests</h2>
+          {/* The live validation checklist. @req FR:pr-review-lane/panel.view */}
+          <a class="btn prs-live" href="#/live">Live check</a>
           <span class="prs-age" role="status" aria-live="off" data-testid="prs-age">{updatedText(board, now)}</span>
           <button type="button" class="btn prs-close" onClick={onClose} aria-label="Close pull requests">Close</button>
         </header>

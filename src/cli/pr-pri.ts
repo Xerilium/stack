@@ -9,11 +9,12 @@ import { resolve } from 'path';
 import { blockedText, parsePrRef, PrPriorityStore, prUrl, type Decision, type PrPriView, type QueueOp } from '../core/pr-priority';
 import { stackHome } from '../core/reports';
 import { BOOLEAN_FLAGS, UsageError } from './args';
+import { briefCmd } from './pr-review';
 
 export interface PrPriOutcome { json: Record<string, unknown>; text: string; code?: number }
 type Flags = Record<string, string | true>;
 
-export const PR_PRI_USAGE = 'pr-pri list [--refresh] | add <ref> [--rank n] [--note t] | move <ref> --top|--up|--down|--to <n> | pin|unpin|remove <ref> | undo | recommend <ref> --agent a --reason t [--to-rank n] | accept <id> | edit <id> --reason t [--rank n] [--note t] | reject <id> --reason t | decisions [--agent a] | depends <ref> --on <ref> [--remove] | depends --file edges.json [--remove] | record <ref> [--file rec.json] | ack <ref> --thread url --note t | escalate --file set.json';
+export const PR_PRI_USAGE = 'pr-pri brief <ref> [--file brief.json --agent a] [--refresh] | list [--refresh] | add <ref> [--rank n] [--note t] | move <ref> --top|--up|--down|--to <n> | pin|unpin|remove <ref> | undo | recommend <ref> --agent a --reason t [--to-rank n] | accept <id> | edit <id> --reason t [--rank n] [--note t] | reject <id> --reason t | decisions [--agent a] | depends <ref> --on <ref> [--remove] | depends --file edges.json [--remove] | record <ref> [--file rec.json] | ack <ref> --thread url --note t | escalate --file set.json';
 
 /**
  * `--top`, `--up` and `--down` are spelled `--to=<target>` before parsing (`--top` takes a value for other commands).
@@ -72,6 +73,8 @@ export async function prPriCmd(positionals: string[], f: Flags, input: () => Pro
   const home = stackHome();
   const store = new PrPriorityStore(home);
   const [sub = 'list', arg, extra] = positionals;
+  // Agent briefs live in the PR review lane. @req FR:pr-review-lane/brief.cli
+  if (sub === 'brief') return briefCmd({ command: 'pr-pri', positionals, flags: f });
   if (extra !== undefined) throw new UsageError(`Unexpected argument: ${extra}`);
   const view = (more: Record<string, unknown> = {}): PrPriOutcome => {
     const q = store.read();

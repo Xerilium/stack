@@ -69,7 +69,7 @@ export async function startHost(plan: HostPlan, deps: HostDeps = {}): Promise<Ho
   const state = plan.live ? deps.stateDir ?? stackHome(process.env, plan.home) : join(plan.home, '.config/stack/demo-state');
   // Demo reads no session store. @req FR:session-inventory/api.inventory
   const inventory = plan.live ? () => runInventory({ home: state }) : (false as const);
-  const s = await (deps.startWeb ?? startWeb)({ dir, port: 0, webDir, label, info, storage, reports: new ReportStore(state), inventory, pris: new PriStore(state), prPriority: new PrPriorityStore(state) });
+  const s = await (deps.startWeb ?? startWeb)({ dir, port: 0, webDir, label, info, storage, reports: new ReportStore(state), inventory, pris: new PriStore(state), prPriority: new PrPriorityStore(state), laneHome: state });
   const url = `http://127.0.0.1:${new URL(s.url).port}`;
   // The port is random: `stack report` finds the host here. Best effort: a host that cannot write it still serves.
   // @req FR:status-ingest/host.file

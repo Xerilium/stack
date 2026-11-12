@@ -581,11 +581,15 @@ export function App() {
       toast(accept ? 'Accepted · PR priority changed' : 'Rejected · the agent will see the reason', 'ok');
       return;
     }
+    // A blocked live check: Go or a reply reopens it for the agent; it has no defer and no undo. @req FR:pr-review-lane/lane.needs
+    const live = id.startsWith('lv.');
+    if (live && s.answer === 'defer') throw new Error('A blocked live check cannot be deferred: answer it or reply');
     const body = s.answer === 'defer' && s.until ? { choice: 'defer' as const, until: s.until }
       : s.answer === 'go' || s.answer === 'done' ? { choice: 'go' as const }
         : { choice: 'reply' as const, text: s.text || (s.answer === 'no' ? 'No' : 'Noted') };
     await api.answerNeed(id, body);
     setNeeds(await api.needs());
+    if (live) { toast(body.choice === 'go' ? 'Reopened · the agent will see it' : 'Sent to the agent', 'ok'); return; }
     toast(body.choice === 'go' ? 'Going with it · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
   };
   const answerTask = async (a: AskItem, s: Send) => {
