@@ -29,7 +29,7 @@ Owner needs each build to say what it is, so the app and the CLI can tell an old
 - **FR:stamp.write** (P1): The package step MUST write `stackBuild` into the app manifest (`Stack.app/Contents/Resources/app/package.json`) as a build stamp (@req FR:$build-stamp)
   > - @req FR:desktop-app/package.stage
 - **FR:stamp.read** (P1): The installer MUST read a stamp from a bundle path; a missing or broken manifest, or one with no `stackBuild`, reads as no stamp
-- **FR:stamp.newer** (P1): A build is newer when it has a stamp and the other has none, or the shas differ and its `builtAt` is later. Same sha is never newer
+- **FR:stamp.newer** (P1): A build is newer when it has a stamp and the other has none, or its `builtAt` is later and the shas differ or either build is dirty. The same clean sha is never newer
 
 ### FR:source: Where a build comes from
 
@@ -77,14 +77,15 @@ Owner (or an agent that just merged a change) needs one command that builds and 
 Owner needs the bundle replaced only after the app has exited, with the old one back if anything fails, so an update can never leave him without a working app.
 
 - **FR:swap.@script** (P1): Interface: a fixed bash script the installer writes to `~/.stack/app/update.sh` and runs with `/bin/bash`. It takes every input from environment variables, never from its own text
-- **FR:swap.wait** (P1): The helper MUST wait for the app to exit before it changes anything: for the given pid, else for any process running the target bundle (it asks a running app to quit first when told to). After 60 s it gives up, changes nothing, and records step `wait`
+- **FR:swap.wait** (P1): The helper MUST wait for the app to exit before it changes anything: for the given pid and for any process running the target bundle (it asks a running app to quit first when told to; `STACK_UPDATE_QUITTER` replaces the quit call in tests). After 60 s it gives up, changes nothing, and records step `wait`. When Stack opens again while the copy runs, it MUST NOT swap (step `wait`)
 - **FR:swap.stage** (P1): The helper MUST copy the new bundle next to the target (same volume) with `ditto` (else `cp -R`), then clear `com.apple.quarantine` on the copy
-- **FR:swap.verify** (P1): A staged copy with no executable `Contents/MacOS/Stack` MUST be removed; the target is unchanged (step `verify`)
+- **FR:swap.verify** (P1): A staged copy with no executable `Contents/MacOS/Stack`, or whose manifest does not carry the chosen build sha, MUST be removed; the target is unchanged (step `verify`)
 - **FR:swap.atomic** (P1): The helper MUST move the target aside to `.Stack.app.previous` and rename the staged copy into place. When the rename fails, it MUST move the previous bundle back (step `swap`)
-- **FR:swap.launch** (P1): When told to relaunch, the helper MUST open the target. When that fails, it MUST put the previous bundle back, open it, and record step `launch`
+- **FR:swap.launch** (P1): When told to relaunch, the helper MUST open the target. When that fails, it MUST put the previous bundle back, open it, and record step `launch`. A build that opens and then crashes is `FR:crash`
 - **FR:swap.keep** (P2): After a good swap the previous bundle MUST stay at `.Stack.app.previous` until the next swap (rollback by hand: quit, swap the two names back)
+- **FR:swap.lock** (P1): One helper MUST run at a time (`.Stack.app.updating` with its pid). A lock whose owner is dead MUST be taken over. When no target exists but `.Stack.app.previous` does (a helper killed between the renames), the helper MUST put the previous app back first
 - **FR:swap.log** (P1): Every step MUST append one timestamped line to `~/.stack/update.log`
-- **FR:swap.result** (P1): The helper MUST write the update result (@req FR:$update-result) to `~/.stack/update-result.json` and exit 0 on success, 1 on failure
+- **FR:swap.result** (P1): The helper MUST write the update result (@req FR:$update-result) to `~/.stack/update-result.json` and exit 0 on success, 1 on failure. The CLI MUST remove the old result first and treat a non-zero exit with no new result as a failure
 - **FR:swap.detached** (P1): From the app the helper MUST run detached (own process group, no stdio), so it outlives the app
 
 ### FR:mode: Choose when updates install

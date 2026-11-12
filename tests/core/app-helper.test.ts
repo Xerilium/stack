@@ -11,8 +11,9 @@ import { HELPER_SCRIPT, helperEnv, spawnHelperDetached, writeHelper, type Helper
 const posix = process.platform !== 'win32';
 const d = posix ? describe : describe.skip;
 
-function bundle(at: string, tag: string, exec = true) {
+function bundle(at: string, tag: string, exec = true, sha?: string) {
   mkdirSync(join(at, 'Contents/MacOS'), { recursive: true });
+  if (sha) { mkdirSync(join(at, 'Contents/Resources/app'), { recursive: true }); writeFileSync(join(at, 'Contents/Resources/app/package.json'), JSON.stringify({ stackBuild: { sha } }, null, 2)); }
   writeFileSync(join(at, 'Contents/MacOS/Stack'), `#!/bin/sh\necho ${tag}\n`);
   if (exec) chmodSync(join(at, 'Contents/MacOS/Stack'), 0o755);
   writeFileSync(join(at, 'tag'), tag);
@@ -40,6 +41,59 @@ function world() {
 }
 
 d('swap helper', () => {
+  // @req FR:devops-installer/swap.verify
+  it('refuses a copy that is not the chosen build', () => {
+    const w = world();
+    bundle(w.target, 'old'); bundle(w.source, 'new', true, 'cccccccccccc');
+    expect(w.run({ sha: 'bbbbbbbbbbbb' }).status).toBe(1);
+    expect(w.tag(w.target)).toBe('old');
+    expect(w.result()).toMatchObject({ ok: false, step: 'verify' });
+    bundle(w.source, 'new', true, 'bbbbbbbbbbbb');
+    expect(w.run({ sha: 'bbbbbbbbbbbb' }).status).toBe(0);
+    expect(w.tag(w.target)).toBe('new');
+  });
+
+  // @req FR:devops-installer/swap.lock
+  it('takes over a lock whose owner died, and stops when a live helper holds it', () => {
+    const w = world();
+    bundle(w.target, 'old'); bundle(w.source, 'new');
+    const lock = join(w.apps, '.Stack.app.updating');
+    mkdirSync(lock); writeFileSync(join(lock, 'pid'), String(process.pid));
+    expect(w.run().status).toBe(1);
+    expect(w.tag(w.target)).toBe('old');
+    expect(w.log()).toMatch(/busy: another update is running/);
+    writeFileSync(join(lock, 'pid'), '999999');
+    expect(w.run().status).toBe(0);
+    expect(w.tag(w.target)).toBe('new');
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  // @req FR:devops-installer/swap.lock
+  it('puts the previous app back first when a killed helper left none', () => {
+    const w = world();
+    bundle(join(w.apps, '.Stack.app.previous'), 'old');
+    const r = w.run({}, { STACK_UPDATE_SOURCE: join(w.root, 'missing.app') });
+    expect(r.status).toBe(1);
+    expect(w.tag(w.target)).toBe('old');
+    expect(w.log()).toMatch(/recover: put the previous app back/);
+  });
+
+  // @req FR:devops-installer/swap.wait @req FR:devops-installer/update.install
+  it('asks a running app to quit, waits for it, then swaps', async () => {
+    const w = world();
+    bundle(w.target, 'old'); bundle(w.source, 'new');
+    writeFileSync(join(w.target, 'Contents/MacOS/Stack'), '#!/bin/sh\nsleep 30\n');
+    const app = spawn(join(w.target, 'Contents/MacOS/Stack'), [], { stdio: 'ignore' });
+    const quitter = join(w.root, 'quitter');
+    writeFileSync(quitter, '#!/bin/sh\npkill -f "$1/Contents/MacOS/"\nexit 0\n'); chmodSync(quitter, 0o755);
+    const env = { PATH: process.env.PATH ?? '', ...helperEnv({ source: w.source, target: w.target, stateDir: w.state, relaunch: false, quit: true }), STACK_UPDATE_QUITTER: quitter, STACK_UPDATE_WAIT_S: '10' };
+    const code = await new Promise<number | null>((ok) => spawn('/bin/bash', [w.script], { env }).on('exit', ok));
+    app.kill();
+    expect(code).toBe(0);
+    expect(w.tag(w.target)).toBe('new');
+    expect(w.log()).toMatch(/quit: asking Stack to quit/);
+  });
+
   // @req FR:devops-installer/swap.@script
   it('is a fixed script: no input is in its text', () => {
     expect(HELPER_SCRIPT).toMatch(/^#!\/bin\/bash/);

@@ -9,7 +9,7 @@ const BUILD = `${SRC}/desktop/out/Stack-darwin-arm64/Stack.app`;
 const APP = '/Applications/Stack.app';
 const OK: UpdateResult = { ok: true, step: 'done', at: '2026-11-12T11:00:00Z' };
 
-function fake(o: { installed?: BuildStamp | null; available?: BuildStamp | null; builtBecomes?: BuildStamp; running?: boolean; platform?: string; failStep?: number; result?: UpdateResult; cfg?: Record<string, unknown> } = {}) {
+function fake(o: { installed?: BuildStamp | null; available?: BuildStamp | null; builtBecomes?: BuildStamp; running?: boolean; platform?: string; failStep?: number; result?: UpdateResult; cfg?: Record<string, unknown>; last?: string } = {}) {
   const ran: [string, string[], string][] = []; const jobs: HelperJob[] = [];
   let available = o.available === undefined ? NEW : o.available;
   const deps: AppCliDeps = {
@@ -18,6 +18,7 @@ function fake(o: { installed?: BuildStamp | null; available?: BuildStamp | null;
     readText: (p) => {
       if (p === manifestPath(APP)) return o.installed === null ? null : JSON.stringify({ stackBuild: o.installed ?? OLD });
       if (p === manifestPath(BUILD)) return available ? JSON.stringify({ stackBuild: available }) : null;
+      if (p === '/h/.stack/update-result.json') return o.last ?? null;
       return null;
     },
     exists: (p) => (p === BUILD ? available !== null : false),
@@ -31,10 +32,11 @@ function fake(o: { installed?: BuildStamp | null; available?: BuildStamp | null;
 describe('stack app status', () => {
   // @req FR:devops-installer/status.@cli @req FR:devops-installer/status.show @req FR:devops-installer/$install-result @req FR:devops-installer/install.output @req FR:devops-installer/update.output
   it('shows installed, available, ready, and mode; changes nothing', async () => {
-    const f = fake();
+    const f = fake({ last: '{"ok":false,"step":"launch","at":"2026-11-12T09:00:00Z"}' });
     const r = await appCmd('status', {}, f.deps);
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ ok: true, action: 'status', installed: OLD, available: NEW, ready: true, mode: 'on-quit', outcome: 'checked' });
+    expect(r.json).toMatchObject({ ok: true, action: 'status', installed: OLD, available: NEW, ready: true, mode: 'on-quit', outcome: 'checked', last: { ok: false, step: 'launch' } });
+    expect(r.text).toContain('last update: failed at launch (2026-11-12T09:00:00Z)');
     expect(r.text).toContain('installed: aaaaaaaaaaaa');
     expect(r.text).toContain('available: bbbbbbbbbbbb');
     expect(f.ran).toEqual([]); expect(f.jobs).toEqual([]);
@@ -56,7 +58,7 @@ describe('stack app update', () => {
     expect(f.ran).toEqual([
       ['git', ['pull', '--ff-only'], SRC], ['pnpm', ['install', '--frozen-lockfile'], SRC], ['pnpm', ['build'], SRC], ['pnpm', ['desktop:package'], SRC],
     ]);
-    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: false, quit: false }]);
+    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: false, quit: false, sha: 'bbbbbbbbbbbb' }]);
     expect(r).toMatchObject({ code: 0, json: { outcome: 'installed', result: OK } });
   });
   // @req FR:devops-installer/build.steps
@@ -91,7 +93,7 @@ describe('stack app update', () => {
   it('--install quits a running app, swaps, and relaunches', async () => {
     const f = fake({ running: true });
     const r = await appCmd('update', { install: true, 'no-build': true }, f.deps);
-    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: true, quit: true }]);
+    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: true, quit: true, sha: 'bbbbbbbbbbbb' }]);
     expect(r).toMatchObject({ code: 0, json: { outcome: 'installed' } });
   });
   // @req FR:devops-installer/swap.result
@@ -112,7 +114,7 @@ describe('stack app install', () => {
     const f = fake({ available: OLD });
     const r = await appCmd('install', {}, f.deps);
     expect(f.ran).toHaveLength(4);
-    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: true, quit: true }]);
+    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: true, quit: true, sha: 'aaaaaaaaaaaa' }]);
     expect(r).toMatchObject({ code: 0, json: { action: 'install', outcome: 'installed' } });
   });
   // @req FR:devops-installer/install.nobuild

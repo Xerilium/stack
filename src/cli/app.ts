@@ -6,7 +6,7 @@ import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import {
-  APP_TARGET, buildPath, isNewer, manifestPath, parseStamp, readSettings, readText, runHelperSync, sourceDir,
+  APP_TARGET, buildPath, isNewer, manifestPath, parseResult, parseStamp, readSettings, readText, runHelperSync, sourceDir,
   type BuildStamp, type HelperJob, type UpdateMode, type UpdateResult,
 } from '../core/app-update';
 import { stackHome } from '../core/reports';
@@ -70,8 +70,10 @@ export async function appCmd(action: string | undefined, f: Record<string, strin
 
   // @req FR:devops-installer/status.show
   if (action === 'status' || f.check) {
-    const j = base('checked');
-    const text = [`installed: ${short(j.installed)}`, `available: ${short(j.available)}`, `ready: ${j.ready ? 'yes' : 'no'}`, `mode: ${settings.mode}`].join('\n');
+    const last = parseResult(d.readText(join(stateDir, 'update-result.json')));
+    const j = base('checked', { last });
+    const lastText = last ? `${last.ok ? 'done' : `failed at ${last.step}`} (${last.at})` : 'none';
+    const text = [`installed: ${short(j.installed)}`, `available: ${short(j.available)}`, `ready: ${j.ready ? 'yes' : 'no'}`, `mode: ${settings.mode}`, `last update: ${lastText}`].join('\n');
     // @req FR:devops-installer/update.check
     return { json: j, text, code: action === 'update' && !j.ready ? 4 : 0 };
   }
@@ -97,7 +99,8 @@ export async function appCmd(action: string | undefined, f: Record<string, strin
     else if (d.isRunning(APP_TARGET)) return { json: base('staged'), text: LANDS[settings.mode], code: 0 }; // @req FR:devops-installer/update.running
     else { relaunch = false; quit = false; } // @req FR:devops-installer/update.closed
   }
-  const result = d.runHelper({ source: build, target: APP_TARGET, stateDir, relaunch, quit });
+  const sha = available()?.sha;
+  const result = d.runHelper({ source: build, target: APP_TARGET, stateDir, relaunch, quit, ...(sha ? { sha } : {}) });
   // @req FR:devops-installer/swap.result
   if (!result?.ok) {
     const msg = `Update failed at ${result?.step ?? 'start'}; rolled back. Log: ${join(stateDir, 'update.log')}`;

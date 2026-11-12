@@ -4,7 +4,7 @@
  * @req FR:devops-installer/arch.no-apple
  */
 import { spawn, spawnSync } from 'child_process';
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 
 /** @req FR:devops-installer/$update-mode */
@@ -25,7 +25,7 @@ export interface VersionState {
   mode: UpdateMode; idleMinutes: number; canRestart: boolean; last: UpdateResult | null;
 }
 /** One helper run. `pid`: wait for this process; `quit`: ask a running app to quit first; `relaunch`: open the app after the swap. */
-export interface HelperJob { source: string; target: string; stateDir: string; pid?: number; relaunch: boolean; quit: boolean }
+export interface HelperJob { source: string; target: string; stateDir: string; pid?: number; relaunch: boolean; quit: boolean; /** The build sha the copy must carry. */ sha?: string }
 
 export class UpdateRefused extends Error {}
 
@@ -57,7 +57,7 @@ export function parseStamp(text: string | null): BuildStamp | null {
 export function isNewer(a: BuildStamp | null, b: BuildStamp | null): boolean {
   if (!a) return false;
   if (!b) return true;
-  return a.sha !== b.sha && Date.parse(a.builtAt) > Date.parse(b.builtAt);
+  return (a.sha !== b.sha || a.dirty || b.dirty) && Date.parse(a.builtAt) > Date.parse(b.builtAt);
 }
 
 /** @req FR:devops-installer/mode.setting @req FR:devops-installer/mode.idle-minutes */
@@ -85,14 +85,14 @@ export const helperPaths = (stateDir: string) => ({
 /**
  * The swap helper. Fixed text: every input comes from the environment, so no path can inject shell code.
  * @req FR:devops-installer/swap.@script @req FR:devops-installer/swap.wait @req FR:devops-installer/swap.stage @req FR:devops-installer/swap.verify
- * @req FR:devops-installer/swap.atomic @req FR:devops-installer/swap.launch @req FR:devops-installer/swap.keep @req FR:devops-installer/swap.log @req FR:devops-installer/swap.result
+ * @req FR:devops-installer/swap.lock @req FR:devops-installer/swap.atomic @req FR:devops-installer/swap.launch @req FR:devops-installer/swap.keep @req FR:devops-installer/swap.log @req FR:devops-installer/swap.result
  */
 export const HELPER_SCRIPT = `#!/bin/bash
 # Stack.app swap helper (devops-installer FR:swap). Inputs come from the environment only.
 set -u
 SRC="$STACK_UPDATE_SOURCE"; DST="$STACK_UPDATE_TARGET"; LOG="$STACK_UPDATE_LOG"; RES="$STACK_UPDATE_RESULT"
-PID="\${STACK_UPDATE_PID:-}"; QUIT="\${STACK_UPDATE_QUIT:-0}"; RELAUNCH="\${STACK_UPDATE_RELAUNCH:-0}"
-OPEN="\${STACK_UPDATE_OPEN:-open}"; WAIT="\${STACK_UPDATE_WAIT_S:-60}"
+PID="\${STACK_UPDATE_PID:-}"; QUIT="\${STACK_UPDATE_QUIT:-0}"; RELAUNCH="\${STACK_UPDATE_RELAUNCH:-0}"; SHA="\${STACK_UPDATE_SHA:-}"
+OPEN="\${STACK_UPDATE_OPEN:-open}"; QUITTER="\${STACK_UPDATE_QUITTER:-}"; WAIT="\${STACK_UPDATE_WAIT_S:-60}"
 DIR="$(dirname "$DST")"; NAME="$(basename "$DST")"; EXE="\${NAME%.app}"
 STAGE="$DIR/.$NAME.staging"; PREV="$DIR/.$NAME.previous"; LOCK="$DIR/.$NAME.updating"
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -100,28 +100,50 @@ mkdir -p "$(dirname "$LOG")" "$(dirname "$RES")"
 log() { printf '%s %s\\n' "$(now)" "$1" >> "$LOG"; }
 finish() {
   printf '{"ok":%s,"step":"%s","at":"%s"}\\n' "$1" "$2" "$(now)" > "$RES.tmp" && mv -f "$RES.tmp" "$RES"
-  log "result: $2"; rmdir "$LOCK" 2>/dev/null
+  log "result: $2"; rm -rf "$LOCK"
   if [ "$1" = true ]; then exit 0; else exit 1; fi
 }
-running() { if [ -n "$PID" ]; then kill -0 "$PID" 2>/dev/null; else pgrep -f "$DST/Contents/MacOS/" >/dev/null 2>&1; fi; }
+# The app runs while its pid lives or any process runs from the target bundle (a copy opened by hand counts).
+running() {
+  if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then return 0; fi
+  pgrep -f "$DST/Contents/MacOS/" >/dev/null 2>&1
+}
+quit_app() {
+  if [ -n "$QUITTER" ]; then "$QUITTER" "$DST" >/dev/null 2>&1 || true
+  else osascript -e 'tell application id "com.xerilium.stack" to quit' >/dev/null 2>&1 || true; fi
+}
 copy() { if command -v ditto >/dev/null 2>&1; then ditto "$1" "$2"; else cp -R "$1" "$2"; fi; }
 log "start: $SRC -> $DST"
-mkdir "$LOCK" 2>/dev/null || { log "busy: another update is running"; exit 1; }
-if [ "$QUIT" = 1 ] && [ -z "$PID" ] && running; then
-  log "quit: asking Stack to quit"
-  osascript -e 'tell application id "com.xerilium.stack" to quit' >/dev/null 2>&1 || true
+# One helper at a time. A lock whose owner died (killed at logout) is taken over.
+if ! mkdir "$LOCK" 2>/dev/null; then
+  owner="$(cat "$LOCK/pid" 2>/dev/null || true)"
+  if [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null; then log "busy: another update is running"; exit 1; fi
+  log "lock: taking over a stale lock"; rm -rf "$LOCK"; mkdir "$LOCK" || { log "busy: cannot take the lock"; exit 1; }
 fi
-n=0
-while running; do
-  if [ "$n" -ge "$((WAIT * 5))" ]; then log "wait: app still running after \${WAIT}s"; finish false wait; fi
-  sleep 0.2; n=$((n + 1))
-done
+echo $$ > "$LOCK/pid"
+# A helper killed between the two renames left no app: put the previous one back first.
+if [ ! -e "$DST" ] && [ -d "$PREV" ]; then mv "$PREV" "$DST" && log "recover: put the previous app back"; fi
+if [ "$QUIT" = 1 ] && running; then log "quit: asking Stack to quit"; quit_app; fi
+waitgone() {
+  n=0
+  while running; do
+    if [ "$n" -ge "$((WAIT * 5))" ]; then log "wait: app still running after \${WAIT}s"; finish false wait; fi
+    sleep 0.2; n=$((n + 1))
+  done
+}
+waitgone
 log "wait: app is not running"
 rm -rf "$STAGE"
 if [ ! -d "$SRC" ] || ! copy "$SRC" "$STAGE"; then log "stage: cannot copy $SRC"; rm -rf "$STAGE"; finish false stage; fi
 xattr -dr com.apple.quarantine "$STAGE" 2>/dev/null || true
 log "stage: copied"
 if [ ! -x "$STAGE/Contents/MacOS/$EXE" ]; then log "verify: no executable Contents/MacOS/$EXE"; rm -rf "$STAGE"; finish false verify; fi
+# The copy must be the build that was chosen, not one a rebuild changed meanwhile.
+if [ -n "$SHA" ] && ! grep -qF '"sha": "'"$SHA"'"' "$STAGE/Contents/Resources/app/package.json" 2>/dev/null; then
+  log "verify: the copy is not build $SHA"; rm -rf "$STAGE"; finish false verify
+fi
+# Stack may have opened again while we copied: never move a running app.
+if running; then log "wait: Stack opened again; not swapping"; rm -rf "$STAGE"; finish false wait; fi
 had=0
 if [ -e "$DST" ]; then
   rm -rf "$PREV"
@@ -154,6 +176,7 @@ export function helperEnv(j: HelperJob): Record<string, string> {
   return {
     STACK_UPDATE_SOURCE: j.source, STACK_UPDATE_TARGET: j.target, STACK_UPDATE_LOG: p.log, STACK_UPDATE_RESULT: p.result,
     STACK_UPDATE_PID: j.pid === undefined ? '' : String(j.pid), STACK_UPDATE_RELAUNCH: j.relaunch ? '1' : '0', STACK_UPDATE_QUIT: j.quit ? '1' : '0',
+    STACK_UPDATE_SHA: j.sha ?? '',
   };
 }
 
@@ -175,9 +198,14 @@ export function spawnHelperDetached(j: HelperJob, spawnFn: typeof spawn = spawn)
 }
 
 /** Runs the helper and waits (the CLI); answers what it recorded. */
-export function runHelperSync(j: HelperJob): UpdateResult | null {
-  spawnSync('/bin/bash', [writeHelper(j.stateDir)], { stdio: 'ignore', env: helperProcessEnv(j) });
-  return parseResult(readText(helperPaths(j.stateDir).result));
+export function runHelperSync(j: HelperJob): UpdateResult {
+  const { result } = helperPaths(j.stateDir);
+  // A stale result from an earlier run must never read as this run's. @req FR:devops-installer/swap.result
+  rmSync(result, { force: true });
+  const r = spawnSync('/bin/bash', [writeHelper(j.stateDir)], { stdio: 'ignore', env: helperProcessEnv(j) });
+  const got = parseResult(readText(result));
+  if (r.status === 0 && got?.ok) return got;
+  return got && !got.ok ? got : { ok: false, step: 'start', at: new Date().toISOString() };
 }
 
 /** A file's text, or null when it cannot be read. */
@@ -225,13 +253,13 @@ export function createAppUpdater(d: UpdaterDeps): AppUpdater {
       canRestart: d.target !== null, last: parseResult(d.readText(helperPaths(d.stateDir).result)),
     };
   };
-  const job = (relaunch: boolean): HelperJob => ({ source: d.source, target: d.target!, stateDir: d.stateDir, pid: d.pid, relaunch, quit: false });
+  const job = (relaunch: boolean, sha: string | undefined): HelperJob => ({ source: d.source, target: d.target!, stateDir: d.stateDir, pid: d.pid, relaunch, quit: false, ...(sha ? { sha } : {}) });
   /** @req FR:devops-installer/restart.ready @req FR:devops-installer/restart.spawn */
   const restart = () => {
     const s = state();
     if (!s.ready) throw new UpdateRefused('No update ready');
     if (!s.canRestart) throw new UpdateRefused('Restart is not available on this host');
-    if (!started) { d.spawnHelper(job(true)); started = true; }
+    if (!started) { d.spawnHelper(job(true, s.available?.sha)); started = true; }
     d.quit();
   };
   return {
@@ -245,7 +273,7 @@ export function createAppUpdater(d: UpdaterDeps): AppUpdater {
         if (started || d.target === null) return false;
         const s = state();
         if (s.mode !== 'on-quit' || !s.ready) return false;
-        d.spawnHelper(job(false));
+        d.spawnHelper(job(false, s.available?.sha));
         started = true;
         log('update: installs after quit');
         return true;

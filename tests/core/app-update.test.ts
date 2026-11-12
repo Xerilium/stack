@@ -29,6 +29,9 @@ describe('build stamp', () => {
     expect(isNewer({ ...NEW, builtAt: '2026-11-13T00:00:00.000Z' }, NEW)).toBe(false);
     expect(isNewer(NEW, null)).toBe(true);
     expect(isNewer(null, OLD)).toBe(false);
+    // A rebuild with uncommitted changes on the same commit is newer.
+    expect(isNewer({ ...OLD, dirty: true, builtAt: NEW.builtAt }, OLD)).toBe(true);
+    expect(isNewer({ ...OLD, builtAt: NEW.builtAt }, { ...OLD, dirty: true })).toBe(true);
   });
 });
 
@@ -67,6 +70,7 @@ describe('helper env', () => {
   // @req FR:devops-installer/swap.@script
   it('passes every input as an environment variable', () => {
     const env = helperEnv({ source: '/s/Stack.app', target: '/A/Stack.app', stateDir: '/h/.stack', pid: 42, relaunch: true, quit: false });
+    expect(helperEnv({ source: 's', target: 't', stateDir: '/x', relaunch: false, quit: false, sha: 'abc' }).STACK_UPDATE_SHA).toBe('abc');
     expect(env).toMatchObject({
       STACK_UPDATE_SOURCE: '/s/Stack.app', STACK_UPDATE_TARGET: '/A/Stack.app', STACK_UPDATE_PID: '42', STACK_UPDATE_RELAUNCH: '1', STACK_UPDATE_QUIT: '0',
       STACK_UPDATE_LOG: '/h/.stack/update.log', STACK_UPDATE_RESULT: '/h/.stack/update-result.json',
@@ -121,7 +125,7 @@ describe('restart now', () => {
   it('starts the helper with its pid and relaunch on, then quits', () => {
     const t = updater({ settings: { mode: 'ask' } });
     t.u.restart();
-    expect(t.spawned).toEqual([{ source: '/src/desktop/out/Stack-darwin-arm64/Stack.app', target: '/Applications/Stack.app', stateDir: '/h/.stack', pid: 4242, relaunch: true, quit: false }]);
+    expect(t.spawned).toEqual([{ source: '/src/desktop/out/Stack-darwin-arm64/Stack.app', target: '/Applications/Stack.app', stateDir: '/h/.stack', pid: 4242, relaunch: true, quit: false, sha: 'bbbbbbbbbbbb' }]);
     expect(t.quits()).toBe(1);
   });
   // @req FR:devops-installer/restart.ready
