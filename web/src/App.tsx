@@ -564,8 +564,9 @@ export function App() {
     if (!ref) return;
     if (a === 'done') {
       markDone(ref);
-      if (await run(() => hold(api.action('complete', ref)), () => '')) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
-      else unmarkDone(ref);
+      const ok = await run(() => hold(api.action('complete', ref)), () => '');
+      unmarkDone(ref);
+      if (ok) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
       return;
     } else await run(() => api.action(a, ref));
   };
@@ -655,12 +656,14 @@ export function App() {
   /** The check is drawn before the list refreshes: a write never unmounts the row under the animation. */
   const hold = async <T,>(p: Promise<T>): Promise<T> => { const [r] = await Promise.all([p, new Promise((ok) => setTimeout(ok, DONE_MS))]); return r; };
   const unmarkDone = (ref: string) => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; });
-  const markDone = (ref: string) => { setJustDone((s) => new Set(s).add(ref)); setTimeout(() => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; }), 900); };
+  /** The check stays until the save and the reload finish, so a slow save never shows the done row again. @req FR:product-reset/ui.done */
+  const markDone = (ref: string) => setJustDone((s) => new Set(s).add(ref));
   const toggleDone = async (t: Task) => {
     if (t.done) { await run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Reopened'); return; }
     markDone(t.ref);
-    if (await run(() => hold(api.action('complete', t.ref)), () => '')) toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
-    else unmarkDone(t.ref);
+    const ok = await run(() => hold(api.action('complete', t.ref)), () => '');
+    unmarkDone(t.ref);
+    if (ok) toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
   };
 
   /** A property change from the task detail: saved with `expect`, the toast offers Undo. @req FR:task-detail-design/detail.save */

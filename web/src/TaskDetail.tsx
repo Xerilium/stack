@@ -188,7 +188,7 @@ export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, 
           <ul class="checklist" aria-label="Subtasks">
             {subs.map((s) => <li key={s.ref} class={s.done ? 'done' : ''} style={{ '--depth': s.depth - task.depth - 1 }}>
               <button type="button" class="tick" aria-label={s.done ? 'Mark not done' : 'Mark done'} disabled={busy} onClick={() => onToggle(s)}><span class="box">{s.done ? '✓' : ''}</span></button>
-              <span><Md text={parseRow(s.text).title || s.text} /></span>
+              <span><Md text={parseRow(s.text).title || s.text} project={s.project} /></span>
             </li>)}
           </ul>
         )}

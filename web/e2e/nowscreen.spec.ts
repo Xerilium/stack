@@ -55,6 +55,20 @@ test.describe('Now screen', () => {
     expect(axe.violations).toEqual([]);
   });
 
+  test('a slow save never shows the done task again: the check holds until the next task loads', async ({ page }) => {
+    await ten(page);
+    await mockApi(page, { tasks: seed() });
+    await page.route('**/api/tasks/complete', async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.fallback(); });
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: /^Done/ }).click();
+    const old = page.locator('.now-card[data-ref="alpha:6"]');
+    await expect(old).toHaveClass(/done-anim/);
+    await page.waitForTimeout(1100); // past the old 900 ms clear, before the save returns
+    await expect(old).toHaveClass(/done-anim/);
+    await expect(old).toHaveCount(0, { timeout: 5000 });
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Ship the web app');
+  });
+
   test('Done with reduced motion: no animation, still advances', async ({ page }) => {
     await ten(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });

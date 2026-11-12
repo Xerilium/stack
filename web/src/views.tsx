@@ -61,12 +61,12 @@ export function RowDetail({ t, all, busy, onAct, onToggle, onOpen, extra }: {
   const subs = children(all, t.ref).filter((s) => !/^\s*💬/u.test(s.text));
   return (
     <div class="row-detail" data-testid="row-detail" onClick={(e) => e.stopPropagation()}>
-      {t.notes.length > 0 && <div class="body">{t.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
+      {t.notes.length > 0 && <div class="body">{t.notes.map((n, i) => <p key={i}><Md text={n.trim()} project={t.project} /></p>)}</div>}
       {subs.length > 0 && (
         <ul class="checklist" aria-label="Subtasks">
           {subs.map((s) => <li key={s.ref} class={s.done ? 'done' : ''} style={{ '--depth': s.depth - t.depth - 1 }}>
             <button type="button" class="tick" aria-label={s.done ? 'Mark not done' : 'Mark done'} disabled={busy} onClick={(e) => { e.stopPropagation(); onToggle(s); }}><span class="box">{s.done ? '✓' : ''}</span></button>
-            <span><Md text={parseRow(s.text).title || s.text} /></span>
+            <span><Md text={parseRow(s.text).title || s.text} project={s.project} /></span>
           </li>)}
         </ul>
       )}
@@ -396,7 +396,7 @@ export function TodayView(t: TodayProps) {
       <li key={key} class={`agent ${a.state}`}>
         <span class="pulse" aria-hidden="true" />
         <div class="agent-body">
-          <p class="agent-title"><Md text={agentTitle(r.title || a.title)} /></p>
+          <p class="agent-title"><Md text={agentTitle(r.title || a.title)} project={a.project} /></p>
           <p class="agent-meta">
             <span class="agent-state">{AGENT_LABEL[a.state]}</span>
             <span><Titled text={owner} /></span>
@@ -481,7 +481,7 @@ export function TodayView(t: TodayProps) {
                     <li key={o.ref} class={t.plan.atRisk.includes(o) ? 'risk' : undefined} onClick={() => t.p.onOpen(o.ref)}>
                       <span class="nofit-est">{e.assumed ? '~' : ''}{span(e.minutes)}{e.partial ? '+' : ''}</span>
                       <button type="button" class="nofit-title row-open" onClick={(e) => { e.stopPropagation(); t.p.onOpen(o.ref); }}><Md text={parseRow(o.text).title || o.text} links={false} /></button>
-                      <TitleLinks text={parseRow(o.text).title || o.text} />
+                      <TitleLinks text={parseRow(o.text).title || o.text} project={o.project} />
                       <span class="nofit-proj"><DueNote due={parseRow(o.text).due} />{t.p.titles.get(o.project) ?? o.project}</span>
                     </li>
                   );
@@ -746,7 +746,7 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
       {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd class="always">c</kbd></p></div>}
       {one && hero && (
         <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${p.justDone.has(one.task.ref) ? ' done-anim' : ''}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
-          <h1 data-testid="next-title"><span class="h1-toggle" {...toggleOn<HTMLSpanElement>(one.task.ref, p)}><Md text={hero.title || one.task.text} /></span></h1>
+          <h1 data-testid="next-title"><span class="h1-toggle" {...toggleOn<HTMLSpanElement>(one.task.ref, p)}><Md text={hero.title || one.task.text} project={one.task.project} /></span></h1>
           <p class="context" data-testid="now-context">{p.titles.get(one.task.project) ?? one.task.project}{one.due?.tone === 'late' && <> · <span class="late">late</span></>}{p.agent?.owned?.(one.task) && <> · <span class="owned">agent has it</span></>}</p>
           {!h.fits && !demoted && (
             <p class="nofit-line" data-testid="nofit">{win.allow && !win.have && !one.task.text.replace(/\uFE0F/g, '').includes(win.allow.emoji.replace(/\uFE0F/g, '')) && !win.allow.projects?.includes(one.task.project) ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : win.allow && !win.have ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${win.until && win.until.at < win.inside!.until ? win.until.label : `${win.inside!.label} ends`}` : win.inside && !win.have ? `${win.inside.label} now: back at ${clock(win.inside.until)}` : minutesLeft > 0 ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${until}` : 'No time left today'}</p>
@@ -764,7 +764,7 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
       )}
       {demoted && (
         <div class={`unfit${p.cursor === demoted.task.ref ? ' cursor' : ''}`} data-testid="unfit" data-ref={demoted.task.ref} onClick={() => p.onCursor(demoted.task.ref)}>
-          <span class="unfit-title"><Md text={parseRow(demoted.task.text).title || demoted.task.text} /></span>
+          <span class="unfit-title"><Md text={parseRow(demoted.task.text).title || demoted.task.text} project={demoted.task.project} /></span>
           <span class="unfit-why">{win.allow && !win.have ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : `doesn't fit now: needs ${span(demoted.minutes)}, ${span(minutesLeft)}${until ? ` until ${until}` : ' left'}`}</span>
           <span class="grow" />
           <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>
@@ -811,7 +811,7 @@ function TopRow({ x, p, detail, onProject, armed }: { armed: boolean; x: HomePro
   return (
     <li class={`${p.cursor === ref ? 'cursor' : ''}${p.open === ref ? ' open' : ''}${fresh ? ' fresh' : ''}`} data-ref={ref} onClick={() => { p.onCursor(ref); p.onToggleOpen(ref); }}>
       <button type="button" class="proj-link" onClick={(e) => { e.stopPropagation(); onProject(x.project); }}>{x.title}</button>
-      <span class="proj-top" {...toggleOn<HTMLSpanElement>(ref, p)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
+      <span class="proj-top" {...toggleOn<HTMLSpanElement>(ref, p)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} project={x.top.task.project} /></span>
       <span class="top-meta">
         <span class="top-time" data-testid="top-time">{x.top.assumed ? '~' : ''}{span(x.top.minutes)}</span>
         {x.top.due ? <span class={`top-due ${late ? x.top.due.tone : ''}`} data-testid="countdown">{x.top.due.text}</span> : <span class="top-due" aria-hidden="true" />}
