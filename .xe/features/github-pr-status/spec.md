@@ -45,11 +45,11 @@ The owner needs to limit status to named repos so that a token cannot read a pri
 The owner needs the hosts to enable status from one setting so that no extra setup is needed.
 
 - **FR:wire.token** (P2): The Azure host and `stack web` MUST pass the provider when `GITHUB_TOKEN` is set
-  - **FR:wire.token.scope** (P1): The host MUST send the token only to `https://api.github.com` and MUST NOT log or return it
+  - **FR:wire.token.scope** (P1): The host MUST keep the token out of logs and responses and send it only to `https://api.github.com`
 
 ### FR:board: Read the owner's PR board
 
-The PR page needs every open PR the owner reviews or moves, with enough detail to group it, in few calls.
+The PR page needs every open PR the owner reviews or moves, with enough detail to group it, so that it can show who must act in few calls.
 
 - **FR:board.@function** (P1): Interface: `createGitHubBoard({token, fetch?, user?, repos?, now?})` returns `{user(), fetch()}`. `fetch()` returns raw PR facts for `FR:pr-page/group.*`
 - **FR:board.search** (P1): One GraphQL call runs three searches (`is:pr is:open archived:false`): `involves:<user>`, `review-requested:<user>`, and, for my repos, `draft:false -author:<user>` with `repo:`/`user:` from `repos` (else `user:<user>`). 50 PRs each, merged by url. Each PR has labels, author, assignees, review requests, latest reviews, mergeable, head oid, body, check rollup with each check's name, state and start time

@@ -2,7 +2,7 @@
 id: pr-page
 title: PR Page
 author: flanakin
-description: "One flyout for every PR the owner reviews or moves. A top bar icon counts active agents. Tabs group PRs by who must act. One-tap actions unblock a PR or move it up the queue. It updates by itself."
+description: "One live flyout for every PR the owner reviews or moves: who must act, with one-tap actions."
 dependencies: [github-pr-status, connector-github, session-inventory, pr-priority, web-shell, ask-queue, cli, auth-security]
 ---
 
@@ -99,6 +99,8 @@ The owner needs a glance count so that he knows agents are moving.
 
 ### FR:flyout: Flyout
 
+The owner needs the PR list one keystroke away on any screen so that he can act without leaving his work.
+
 - **FR:flyout.shape** (P1): Desktop: a panel on the right, 480 px wide, over the page. Phone (below 720 px, the app phone layout): full screen. It is a dialog: focus moves in, `Escape` closes, focus returns to the icon
 - **FR:flyout.tabs** (P1): Tabs, in order: `Escalation set` (only when present), `Blocked on me`, `Waiting on me`, `Processing`, `Pending`, `Paused`. Each tab shows its count. Arrow keys move between tabs. The last tab is remembered
 - **FR:flyout.row** (P1): A row shows at most 20 words: title (cut to 80 characters), `repo#n`, age, CI glyph and word, unresolved thread count, up to 3 labels, the state chip and badge, the blocker, `after` chips, and the rank slot. The title opens the PR on GitHub in a new tab; the desktop app opens it in the browser
@@ -121,6 +123,8 @@ The owner needs one tap to unblock a PR or move it up so that PR progress never 
 
 ### FR:api: API
 
+The web page and agents need one owner-only route for the board so that every client shows the same state.
+
 - **FR:api.get** (P1): `GET /prs` (route `prs.get`, scope `tasks:read`) returns the board to the owner only. `stack web` and the Azure host serve it when `GITHUB_TOKEN` is set; the Azure host has no session inventory, so the WIP label counts agents. A host with no board returns `200` `{off: true}`
 - **FR:api.queue** (P1): `POST /prs/queue` (route `prs.queue`, scope `tasks:write`) takes `{repo, number, op, rank?}`. `op` is `top`, `up`, `down`, `move` (to `rank`), `add`, `pin`, `unpin`, `remove`, or `undo`. Returns `{rank, was, pinned}`
 - **FR:api.label** (P1): `POST /prs/label` (route `prs.label`) takes `{repo, number, op}`, `op` `add` or `remove`. The label is always Autopilot; no other label can be set
@@ -130,6 +134,8 @@ The owner needs one tap to unblock a PR or move it up so that PR progress never 
 - **FR:api.repos** (P1): Every GitHub write checks the repo against `STACK_GITHUB_REPOS` when set (`FR:github-pr-status/repos.allow`), and the PR must be on the owner board. Others get `403`
 
 ### FR:cli: CLI
+
+The owner needs the board in a terminal so that he can check it without the web app.
 
 - **FR:cli.prs** (P1): `stack prs [--group g] [--project p] [--json]` prints the counts, then one line per row: `<group> [<project>] <repo>#<n> <title> · <owner>: <blocker> <url>`. `--project` takes a project or a repo. `--json` prints `{ok: true, ...board}`. No `GITHUB_TOKEN` exits `1` with `GITHUB_TOKEN is not set`. Never prints the token
 
@@ -145,6 +151,6 @@ The owner needs one tap to unblock a PR or move it up so that PR progress never 
 - All GitHub writes go through one module with an injected fetch (`FR:github-pr-status/write.*`).
 - The flyout does not edit Now or Needs you beyond one import each.
 
-## Dependencies
+## External Dependencies
 
 - github-pr-status (board read, writes), session-inventory (active agents, project rules), pr-priority (queue file, reports, escalations, the `pr-pri` CLI), web-shell (rail, live), cli, auth-security (scope table).
