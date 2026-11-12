@@ -11,6 +11,8 @@ export interface AppLike {
   requestSingleInstanceLock(): boolean;
   quit(): void;
   whenReady(): Promise<void>;
+  /** Dock badge (macOS) and launcher count (Linux). @req FR:pris-sessions-ui/tray.badge */
+  setBadgeCount?(count: number): boolean;
   on(event: string, fn: (...args: any[]) => void): unknown; // eslint-disable-line @typescript-eslint/no-explicit-any -- Electron's own listener shape
 }
 
@@ -60,6 +62,8 @@ export interface WindowLike {
 
 export interface TrayLike {
   setToolTip(text: string): void;
+  /** Text beside the icon (macOS). @req FR:pris-sessions-ui/tray.badge */
+  setTitle?(title: string): void;
   setContextMenu(menu: unknown): void;
   on(event: string, fn: () => void): unknown;
   destroy(): void;

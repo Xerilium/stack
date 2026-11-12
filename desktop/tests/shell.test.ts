@@ -10,7 +10,7 @@ function setup(o: { locked?: boolean; shortcutsFree?: boolean; startHost?: Shell
   const log: string[] = [];
   let closes = 0;
   const startHost: ShellDeps['startHost'] = o.startHost ?? (async () => ({ url: URL_, close: async () => { closes++; } }));
-  const shell = createShell({ electron: e, startHost, assetsDir: '/assets', log: (l) => log.push(l), closeTimeoutMs: o.closeTimeoutMs ?? 50 });
+  const shell = createShell({ electron: e, startHost, assetsDir: '/assets', log: (l) => log.push(l), closeTimeoutMs: o.closeTimeoutMs ?? 50, needsCount: async () => 0 });
   return { e, log, shell, closes: () => closes, win: () => e.windows[0], tray: () => e.trays[0] };
 }
 

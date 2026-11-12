@@ -16,15 +16,18 @@ export function windowOptions(): WindowOptions {
 
 const origin = (url: string): string | undefined => { try { return new URL(url).origin; } catch { return undefined; } };
 const isHttp = (url: string): boolean => /^https?:$/.test((() => { try { return new URL(url).protocol; } catch { return ''; } })());
+/** A Claude app session link, exactly: no other host, path, query, or scheme launches an app. @req FR:pris-sessions-ui/tray.link */
+export const isSessionLink = (url: string): boolean => /^claude:\/\/claude\.ai\/epitaxy\/[A-Za-z0-9_-]{1,128}$/.test(url);
+const CAN_ASK = new Set(['notifications', 'clipboard-sanitized-write']);
 
 /**
- * Applies the rules to one window: only `hostOrigin` loads inside it; `http(s)` targets elsewhere open in the default browser;
+ * Applies the rules to one window: only `hostOrigin` loads inside it; `http(s)` targets elsewhere open in the default browser and a Claude session link opens in the Claude app;
  * every other target is dropped. New windows are always denied.
  * @req FR:desktop-shell/safe.navigate @req FR:desktop-shell/safe.csp @req FR:desktop-shell/safe.permissions @req FR:desktop-shell/safe.remote
  */
 export function harden(win: WindowLike, hostOrigin: string, shell: { openExternal(url: string): Promise<void> }, log: (line: string) => void = () => { /* quiet */ }): void {
   const outside = (url: string) => {
-    if (isHttp(url)) void shell.openExternal(url).catch((e: unknown) => log(`open: ${e instanceof Error ? e.message : 'failed'}`));
+    if (isHttp(url) || isSessionLink(url)) void shell.openExternal(url).catch((e: unknown) => log(`open: ${e instanceof Error ? e.message : 'failed'}`));
     else log(`blocked: ${origin(url) ?? 'invalid url'}`);
   };
   const guard = (e: PreventableEvent, url: string) => {
@@ -45,7 +48,7 @@ export function harden(win: WindowLike, hostOrigin: string, shell: { openExterna
     callback({ responseHeaders: has ? headers : { ...headers, 'Content-Security-Policy': [CSP] } });
   });
   win.webContents.session.setPermissionRequestHandler((_wc, permission, callback, details) => {
-    callback(permission === 'notifications' && !!details.requestingUrl && origin(details.requestingUrl) === hostOrigin);
+    callback(CAN_ASK.has(permission) && !!details.requestingUrl && origin(details.requestingUrl) === hostOrigin);
   });
-  win.webContents.session.setPermissionCheckHandler((_wc, permission, requestingOrigin) => permission === 'notifications' && origin(requestingOrigin) === hostOrigin);
+  win.webContents.session.setPermissionCheckHandler((_wc, permission, requestingOrigin) => CAN_ASK.has(permission) && origin(requestingOrigin) === hostOrigin);
 }

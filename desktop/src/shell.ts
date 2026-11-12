@@ -5,6 +5,7 @@
  */
 import { join } from 'path';
 import type { MenuItemTemplate, PreventableEvent, ShellElectron, TrayLike, WindowLike } from './electron-api';
+import { badgeTip, needsYouCount } from './badge';
 import type { HostHandle } from './host';
 import { harden, windowOptions } from './policy';
 
@@ -19,6 +20,10 @@ export interface ShellDeps {
   log?: (line: string) => void;
   /** How long quit waits for the host to flush. Default 15 s. */
   closeTimeoutMs?: number;
+  /** Reads the Needs-you count from the host; default: its session inventory over loopback. @req FR:pris-sessions-ui/tray.badge */
+  needsCount?: (hostUrl: string) => Promise<number>;
+  /** How often the badge re-reads. Default 15 s. */
+  badgeMs?: number;
 }
 
 export interface Shell {
@@ -42,6 +47,29 @@ export function createShell(deps: ShellDeps): Shell {
   let done = false;
   // @req FR:desktop-shell/instance.early: a show asked for before the host is up waits for it.
   let showPending = false;
+  let badgeTimer: ReturnType<typeof setInterval> | undefined;
+  let badgeFailed = false;
+  let badgeBusy = false;
+
+  /**
+   * Dock badge, tray title and tooltip from one count; a failed read keeps the last count and logs once.
+   * @req FR:pris-sessions-ui/tray.badge @req FR:pris-sessions-ui/tray.fail
+   */
+  const badge = async (): Promise<void> => {
+    if (!host || stopping || badgeBusy) return;
+    badgeBusy = true;
+    try {
+      const n = await (deps.needsCount ?? ((u: string) => needsYouCount(u)))(host.url);
+      if (stopping) return;
+      badgeFailed = false;
+      app.setBadgeCount?.(n);
+      tray?.setTitle?.(n > 0 ? String(n) : '');
+      tray?.setToolTip(badgeTip(n));
+    } catch (e) {
+      if (!badgeFailed) log(`badge: ${e instanceof Error ? e.message : String(e)}`);
+      badgeFailed = true;
+    } finally { badgeBusy = false; }
+  };
 
   /** @req FR:desktop-shell/window.load @req FR:desktop-shell/window.hide */
   const window = (): WindowLike => {
@@ -63,6 +91,7 @@ export function createShell(deps: ShellDeps): Shell {
   const stop = (): Promise<void> => {
     if (stopping) return stopping;
     stopping = (async () => {
+      if (badgeTimer) clearInterval(badgeTimer);
       globalShortcut.unregisterAll();
       tray?.destroy();
       if (host) {
@@ -114,6 +143,9 @@ export function createShell(deps: ShellDeps): Shell {
     if (!globalShortcut.register(HOTKEY, toggle)) log(`hotkey: ${HOTKEY} is taken`);
     window();
     if (showPending) show();
+    void badge();
+    badgeTimer = setInterval(() => void badge(), deps.badgeMs ?? 15_000);
+    badgeTimer.unref?.();
   };
 
   return { start, show, hide, toggle, stopped: () => stopping ?? Promise.resolve() };

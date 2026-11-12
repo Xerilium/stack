@@ -71,9 +71,9 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 ### FR:safe: Renderer hardening
 
 - **FR:safe.prefs** (P1): Every window has `contextIsolation: true`, `nodeIntegration: false`, `nodeIntegrationInWorker: false`, `sandbox: true`, `webSecurity: true`, `allowRunningInsecureContent: false`, `webviewTag: false`, and no `preload`
-- **FR:safe.navigate** (P1): `will-navigate` or `will-redirect` to an origin other than the host origin is prevented. An `http:` or `https:` target opens in the default browser with `shell.openExternal`; any other scheme is dropped. `setWindowOpenHandler` denies every new window and opens `http(s)` targets the same way
+- **FR:safe.navigate** (P1): `will-navigate` or `will-redirect` to an origin other than the host origin is prevented. An `http:` or `https:` target opens in the default browser with `shell.openExternal`; a Claude session link (`FR:pris-sessions-ui/tray.link`) opens in the Claude app the same way; any other scheme is dropped. `setWindowOpenHandler` denies every new window and opens those targets the same way
 - **FR:safe.csp** (P1): Responses to the window without a `Content-Security-Policy` header get `default-src 'self'; img-src 'self' data:; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'` (the same policy the host serves from `staticwebapp.config.json`). A header the host sent is kept
-- **FR:safe.permissions** (P1): Permission requests and permission checks are denied except `notifications` from the host origin
+- **FR:safe.permissions** (P1): Permission requests and permission checks are denied except `notifications` and `clipboard-sanitized-write` (Copy ids, `FR:pris-sessions-ui/sessions.archive`) from the host origin
 - **FR:safe.remote** (P1): The shell never loads remote content: no `loadURL` to a non-loopback origin, no `webview`, no `<iframe>` from another origin (blocked by `default-src 'self'`), no auto-update feed
 
 ### FR:dev: Local run

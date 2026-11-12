@@ -70,7 +70,7 @@ export function windowDefaults(): WindowOptions {
   return { width: 1, height: 1, minWidth: 1, minHeight: 1, show: false, title: 't', webPreferences: { contextIsolation: true, nodeIntegration: false, nodeIntegrationInWorker: false, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, webviewTag: false } };
 }
 
-export interface FakeTray extends TrayLike { tooltip?: string; menu?: MenuItemTemplate[]; destroyed: boolean; click(): void }
+export interface FakeTray extends TrayLike { tooltip?: string; title?: string; menu?: MenuItemTemplate[]; destroyed: boolean; click(): void }
 
 export interface FakeElectron extends ShellElectron {
   /** Emits an app event. */
@@ -83,6 +83,8 @@ export interface FakeElectron extends ShellElectron {
   shortcuts: Map<string, () => void>;
   shortcutsFree: boolean;
   appMenu?: MenuItemTemplate[];
+  /** Last dock badge count. */
+  badge?: number;
   opened: string[];
   images: string[];
 }
@@ -93,6 +95,7 @@ export function fakeElectron(o: { locked?: boolean; shortcutsFree?: boolean } = 
     requestSingleInstanceLock: () => e.locked,
     quit: () => { let prevented = false; em.emit('before-quit', { preventDefault: () => { prevented = true; } }); if (!prevented) { e.quitCount++; em.emit('will-quit', { preventDefault: () => { /* too late */ } }); } },
     whenReady: async () => { /* ready at once */ },
+    setBadgeCount: (n) => { e.badge = n; return true; },
     on: (event, fn) => em.on(event, fn),
   };
   const e: FakeElectron = {
@@ -113,6 +116,7 @@ export function fakeElectron(o: { locked?: boolean; shortcutsFree?: boolean } = 
         const t: FakeTray = {
           destroyed: false,
           setToolTip: (text) => { t.tooltip = text; },
+          setTitle: (text) => { t.title = text; },
           setContextMenu: (menu) => { t.menu = menu as MenuItemTemplate[]; },
           on: (event, fn) => tem.on(event, fn),
           destroy: () => { t.destroyed = true; },

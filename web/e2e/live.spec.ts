@@ -29,6 +29,9 @@ test.beforeAll(async () => {
   writeFileSync(join(repo, 'tasks/alpha.md'), '# Alpha\n\n## 🔄 Active\n\n- [ ] Write the plan 🟢\n');
   // The in-process server commits answers through GitStorage with process.env, so CI runners (no git identity) need these too.
   Object.assign(process.env, { GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
+  // The owner's live state stays out: no real ~/.stack, Claude session store, or transcripts. @req FR:session-inventory/read.files
+  const state = mkdtempSync(join(tmpdir(), 'stack-live-state-'));
+  Object.assign(process.env, { STACK_HOME: state, STACK_SESSIONS_DIR: join(state, 'sessions'), STACK_TRANSCRIPTS_DIR: join(state, 'projects') });
   const env = { ...process.env };
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo, env });
   execFileSync('git', ['add', '-A'], { cwd: repo, env });
