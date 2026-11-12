@@ -34,6 +34,11 @@ export interface Storage {
   write(path: string, content: string, opts?: WriteOptions): Promise<WriteResult>;
   /** Write several files as one operation (one commit in git). @req FR:storage-git/write.many */
   writeMany?(writes: FileWrite[], opts?: { message?: string }): Promise<void>;
+  /**
+   * Per 0-based line, the time (epoch ms) of the last commit that changed it; `Infinity` for a line not yet committed.
+   * Adapters without history leave it out. @req FR:storage-git/git.activity
+   */
+  lineActivity?(path: string): Promise<number[]>;
 }
 
 /**

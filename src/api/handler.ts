@@ -503,7 +503,7 @@ export const ROUTES: Route[] = [
       const blocks = q.get('blocks') ?? 'now';
       // readQuery checks names only, not enum values: this check is the only one for `blocks`.
       if (blocks !== 'now' && blocks !== 'any') throw invalid([{ field: 'blocks', message: 'Must be now or any' }]);
-      const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}) }));
+      const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}), ...(t.stale ? { stale: true } : {}) }));
       return json(200, { items });
     },
   },

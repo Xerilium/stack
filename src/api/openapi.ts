@@ -236,7 +236,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Written', { type: 'object', properties: { key: { type: 'string' }, created: { type: 'boolean' } } }),
   },
   rank: {
-    operationId: 'rank', summary: 'The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. `blocks=any` keeps tasks the current time block would hide',
+    operationId: 'rank', summary: 'The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. Only rows the owner must do: agent rows (🤖, 🪄, and unmarked rows under them) are left out. `stale: true` marks a row overdue 3+ days with no commit to it in 3+ days (score at most 500). `blocks=any` keeps tasks the current time block would hide',
     responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref') } } } } }),
   },
   'inboxItems.list': {

@@ -624,23 +624,26 @@ export function App() {
     // @req FR:now-screen/now.undo: Undo resumes the row
     if (await run(() => api.action('suspend', ref, { hours: 2 }), () => '')) toast(`Deferred 2h: back at ${back}`, 'ok', () => { void run(() => api.action('resume', ref), () => 'Restored'); });
   };
-  /** `note`: a message to the agent, written to the inbox as an instruction in the same step (the Now composer). @req FR:now-screen/now.compose */
+  /**
+   * `note`: a message to the agent, written to the inbox as an instruction (the Now composer). A message never adds 🪄 and never
+   * edits the row: only Delegate hands the row over. @req FR:now-screen/now.compose @req FR:task-lifecycle/rank.owner
+   */
   const delegate = async (ref = refNow(), note = ''): Promise<boolean> => {
     const t = ref ? tasks.find((x) => x.ref === ref) : undefined;
     if (!t) return false;
     const has = parseRow(t.text).who === 'agent';
     if (has && !note) { toast('Already with an agent'); return true; }
-    const text = agentMark(t.text);
+    const mark = !note; // Delegate marks the row; a message does not
+    const text = mark ? agentMark(t.text) : t.text;
     let id = '';
-    // 🪄 first, so the entry stores `to: agent`; a failed inbox write takes the mark back off.
     const ok = await run(async () => {
-      if (!has) await api.edit(t.ref, text, t.text);
-      if (note) { try { id = (await api.send(t.ref, note, 'instruction', has ? t.text : text)).id; } catch (e) { if (!has) await api.edit(t.ref, t.text, text).catch(() => undefined); throw e; } }
+      if (mark) await api.edit(t.ref, text, t.text);
+      else id = (await api.send(t.ref, note, 'instruction', t.text)).id;
       return true;
     }, () => '');
     if (!ok) return false;
     const who = titles.get(t.project) ?? t.project;
-    toast(note ? `🪄 Sent to ${taskAgent(t)?.name ?? `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { let taken = false; if (id) { taken = !(await api.handled(id, 'Withdrawn by the owner', true)).changed; setWithdrawTick((n) => n + 1); } if (!has) await api.edit(t.ref, t.text, text); return taken; }, (taken) => (taken ? 'Restored; the agent already picked it up' : 'Restored')); });
+    toast(note ? `Sent to ${taskAgent(t)?.name ?? `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { let taken = false; if (id) { taken = !(await api.handled(id, 'Withdrawn by the owner', true)).changed; setWithdrawTick((n) => n + 1); } if (mark) await api.edit(t.ref, t.text, text); return taken; }, (taken) => (taken ? 'Restored; the agent already picked it up' : 'Restored')); });
     return true;
   };
   type RowAct = 'start' | 'done' | 'defer' | 'notnow' | 'delegate';

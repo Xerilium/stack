@@ -51,6 +51,9 @@ export interface ScoreBreakdown {
   inheritedFrom?: string;
 }
 
+/** A stale row: overdue for days, with no change to it for days. @req FR:task-lifecycle/rank.stale */
+export interface StaleInfo { overdueDays: number; /** ISO time of the last commit that changed the row. */ lastActivity: string }
+
 /** @req FR:scoring-engine/$scored-task */
 export interface ScoredTask {
   task: ScoringTask;
@@ -58,12 +61,23 @@ export interface ScoredTask {
   parked: boolean;
   score: number;
   breakdown: ScoreBreakdown;
+  /** Set by the stack engine: the due tier it used (0-3). */
+  dueTier?: number;
+  /** Set by the stack engine when the row is stale. @req FR:task-lifecycle/rank.stale */
+  stale?: StaleInfo;
 }
 
 export interface ProjectWeight { name: string; valueScore: number; calculatedPriority: number; weight: number }
 
 /** `ignoreBlocks`: keep the due-date lens but do not drop tasks the current time block would hide. @req FR:scoring-engine/overrides.top.blocks */
-export interface RankOptions { ignoreBlocks?: boolean }
+export interface RankOptions {
+  ignoreBlocks?: boolean;
+  /**
+   * Last activity per task id (epoch ms; `Infinity` is now), for rows the caller could read it for. A row with an entry is judged
+   * stale or not by it; a row without one keeps the 30-day fallback. @req FR:task-lifecycle/rank.stale
+   */
+  activity?: Map<string, number>;
+}
 
 /** @req FR:scoring-engine/engine.interface */
 export interface ScoringEngine {
@@ -446,9 +460,27 @@ export function daysUntilDue(text: string, config: StackConfig, at: Date): numbe
   return near.find((d) => d >= -OVERDUE_WINDOW_DAYS)!;
 }
 
-/** Due-soon tier: 3 overdue/today, 2 within 3 days, 1 within a week or overdue more than 30 days (stale: no longer jumps the queue), 0 undated or later. */
-const STALE_DAYS = 30;
-const dueTier = (days: number | null): number => (days === null ? 0 : days < -STALE_DAYS ? 1 : days <= 0 ? 3 : days <= 3 ? 2 : days <= 7 ? 1 : 0);
+/** Without known activity, a row overdue more than this many days no longer jumps the queue (tier 1). */
+const UNTRACKED_STALE_DAYS = 30;
+/** A row this many days overdue, with no activity for this many days, is stale. @req FR:task-lifecycle/rank.stale */
+export const STALE_DAYS = 3;
+/** The most a stale row can score, after every boost. @req FR:task-lifecycle/rank.stale */
+export const STALE_CAP = 500;
+const DAY_MS = 86_400_000;
+
+/** Stale when overdue `STALE_DAYS`+ days and the last activity is `STALE_DAYS`+ days old; undefined otherwise. @req FR:task-lifecycle/rank.stale */
+export function staleOf(days: number | null, lastActivity: number | undefined, at: Date | undefined): StaleInfo | undefined {
+  if (days === null || days > -STALE_DAYS || lastActivity === undefined || !at || !Number.isFinite(lastActivity)) return undefined;
+  if (at.getTime() - lastActivity < STALE_DAYS * DAY_MS) return undefined;
+  return { overdueDays: -days, lastActivity: new Date(lastActivity).toISOString() };
+}
+
+/**
+ * Due-soon tier: 3 overdue/today, 2 within 3 days, 1 within a week, 0 undated or later. A stale row is 0. A row with no known
+ * activity overdue more than 30 days is 1 (it no longer jumps the queue); known activity replaces that rule.
+ */
+const dueTier = (days: number | null, tracked = false, stale = false): number =>
+  (days === null || stale ? 0 : !tracked && days < -UNTRACKED_STALE_DAYS ? 1 : days <= 0 ? 3 : days <= 3 ? 2 : days <= 7 ? 1 : 0);
 
 // ---- blockers
 
@@ -522,9 +554,12 @@ export function resolveBlockers(projects: ScoringProject[]): Map<string, string[
  * least as high as the most urgent task it blocks, transitively, never summed.
  * @req FR:scoring-engine/engine.stack @req FR:scoring-engine/blockers.inherit @req FR:scoring-engine/blockers.eligible @req FR:scoring-engine/blockers.cycle @req FR:scoring-engine/blockers.unchanged
  */
-function lens(s: ScoredTask, config: StackConfig, at: Date | undefined): { drop: boolean; adj: number } {
+function lens(s: ScoredTask, config: StackConfig, at: Date | undefined, activity?: Map<string, number>): { drop: boolean; adj: number; tier: number; stale?: StaleInfo } {
   const days = at ? daysUntilDue(s.task.text, config, at) : null;
-  return { drop: days !== null && days > NOW_HORIZON_DAYS, adj: s.score + dueTier(days) * 1000 };
+  const last = activity?.get(s.task.id);
+  const stale = staleOf(days, last, at);
+  const tier = dueTier(days, last !== undefined, stale !== undefined);
+  return { drop: days !== null && days > NOW_HORIZON_DAYS, adj: s.score + tier * 1000, tier, ...(stale ? { stale } : {}) };
 }
 
 function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date, opts: RankOptions = {}): ScoredTask[] {
@@ -544,7 +579,7 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
     return r;
   };
   for (const s of all) {
-    const l = lens(s, config, at);
+    const l = lens(s, config, at, opts.activity);
     adj.set(s.task.id, l.adj);
     // Could be worked on once unblocked: not parked for any reason but ⛔️, and not due beyond the horizon.
     const parked = softParked(s.task);
@@ -593,14 +628,17 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
   const out: ScoredTask[] = [];
   for (const s of kept) {
     if (isMessage(s.task.text)) continue;
-    const l = lens(s, config, at);
+    const l = lens(s, config, at, opts.activity);
     if (l.drop) continue;
     let score = l.adj;
     let from: string | undefined;
     const chain = [s.task.id];
     for (let cur = s.task.parent ? byId.get(s.task.parent) : undefined; cur && !chain.includes(cur.task.id); cur = cur.task.parent ? byId.get(cur.task.parent) : undefined) chain.push(cur.task.id);
     for (const id of chain) { const inh = inherited(id); if (inh.value > score) { score = inh.value; from = inh.from; } }
-    out.push(from === undefined ? { ...s, score } : { ...s, score, breakdown: { ...s.breakdown, inheritedFrom: from } });
+    // A stale row's cap holds after every boost, the inherited score too. @req FR:task-lifecycle/rank.stale
+    const extra = l.stale ? { dueTier: l.tier, stale: l.stale } : { dueTier: l.tier };
+    if (l.stale) score = Math.min(score, STALE_CAP);
+    out.push(from === undefined ? { ...s, score, ...extra } : { ...s, score, ...extra, breakdown: { ...s.breakdown, inheritedFrom: from } });
   }
   return byScore(out);
 }

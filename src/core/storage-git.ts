@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { existsSync } from 'fs';
 import { isAbsolute, join } from 'path';
-import { FsStorage, FileWrite, WriteOptions, WriteResult, ConflictError, StorageError, checkExpected, versionOf } from './storage';
+import { FsStorage, FileWrite, WriteOptions, WriteResult, ConflictError, StorageError, checkExpected, validatePath, versionOf } from './storage';
 
 export interface GitStorageOptions {
   /** Remote name; when set, writes sync before and push after. */
@@ -12,6 +12,22 @@ export interface GitStorageOptions {
 }
 
 const MAX_PUSH_ATTEMPTS = 3;
+
+const NOT_COMMITTED = /^0{40}$/;
+/** `git blame --porcelain` output to commit time (ms) per 0-based line; `Infinity` for a line not yet committed. */
+function parseBlame(out: string): number[] {
+  const times: number[] = [];
+  const when = new Map<string, number>();
+  let sha = '', line = -1;
+  for (const l of out.split('\n')) {
+    const h = /^([0-9a-f]{40}) \d+ (\d+)/.exec(l);
+    if (h) { sha = h[1]; line = Number(h[2]) - 1; continue; }
+    const t = /^committer-time (\d+)$/.exec(l);
+    if (t) { when.set(sha, Number(t[1]) * 1000); continue; }
+    if (l.startsWith('\t') && line >= 0) times[line] = NOT_COMMITTED.test(sha) ? Infinity : when.get(sha) ?? Infinity;
+  }
+  return times;
+}
 
 /**
  * Work-tree adapter: every write is a direct commit (no PRs).
@@ -54,6 +70,26 @@ export class GitStorage extends FsStorage {
   }
 
   protected get ref() { return `${this.remote}/${this.branch}`; }
+
+  private activity = new Map<string, { key: string; times: number[] }>();
+
+  /**
+   * Per 0-based line, the time of the last commit that changed it (`git blame`); `Infinity` for a line not yet committed.
+   * Cached per HEAD revision and file version. A file git does not track gives an empty list.
+   * @req FR:storage-git/git.activity
+   */
+  async lineActivity(path: string): Promise<number[]> {
+    validatePath(path);
+    const head = (await this.tryGit('rev-parse', '-q', '--verify', 'HEAD'))?.trim();
+    const content = await this.readRaw(path);
+    if (!head || content === null) return [];
+    const key = `${head}:${versionOf(content)}`;
+    const hit = this.activity.get(path);
+    if (hit && hit.key === key) return hit.times;
+    const times = parseBlame((await this.tryGit('blame', '--porcelain', '--', path)) ?? '');
+    this.activity.set(path, { key, times });
+    return times;
+  }
 
   protected async fetch(): Promise<boolean> {
     // Explicit destination so the tracking ref exists regardless of refspec config.

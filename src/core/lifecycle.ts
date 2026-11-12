@@ -6,7 +6,8 @@
 import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { rollRecurring } from './recurring';
-import { DEFAULT_ENGINE, getEngine, parseAliases, rankTasks, type RankOptions, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
+import { DEFAULT_ENGINE, daysUntilDue, getEngine, parseAliases, rankTasks, STALE_CAP, STALE_DAYS, type RankOptions, type ScoredTask, ScoringTask, type ScoringProject, type StaleInfo, toScoringProject } from './scoring';
+import { rowOwner } from './owner';
 import { applyTags, formatExplain, matchTruth, parseTruth, type ExplainRow, type Tags, type TruthMatch } from './autopri-tags';
 import { autopriEngine, autopriParts, registerAutopriEngine } from './autopri';
 import type { Pri } from './pris';
@@ -305,13 +306,18 @@ export interface RankedTask extends NextTask {
   /** The override that applied (its `match`). */ rule?: string;
   /** The top-level row this task sits under; absent for a top-level row. @req FR:task-lifecycle/rank.root */
   root?: TaskRef;
+  /** Set when the row is stale. @req FR:task-lifecycle/rank.stale */
+  stale?: StaleInfo;
 }
 
-type Ranked = { next: RankedTask; doc: Doc; task: ScoringTask; context: string }[];
+/** `owner: 'any'` keeps rows of every owner; the default is the owner queue. @req FR:task-lifecycle/rank.owner */
+export interface StackRankOptions extends Omit<RankOptions, 'activity'> { owner?: 'me' | 'any' }
+
+type Ranked = { next: RankedTask; doc: Doc; task: ScoringTask; context: string; dueTier?: number }[];
 /** The last ranking per storage. Read-only: callers copy what they hand out. @req FR:perf/rank.cache */
 const rankMemo = new WeakMap<object, Map<string, { key: string; config: StackConfig | undefined; engine: string | undefined; value: Ranked }>>();
 
-async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {}): Promise<Ranked> {
+async function rankAll(ctx: LifecycleContext, at?: Date, opts: StackRankOptions = {}): Promise<Ranked> {
   const docs = await loadDocs(ctx.storage);
   // The ranking is a function of the file versions, the owner's rules, the options, and the clock (to the minute unless the caller pins it).
   const aux0 = ctx.storage as Partial<AuxFiles>;
@@ -320,7 +326,7 @@ async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {})
   // An engine that reads other inputs (the pris engine) adds its version. @req FR:pris-aware-ranking/engine.memo
   const ev = getEngine(ctx.engine ?? DEFAULT_ENGINE).version?.() ?? null;
   const key = JSON.stringify([docs.map((d) => [d.path, d.version]), rules0?.version ?? null, at ? when0.getTime() : Math.floor(when0.getTime() / 60_000), ev]);
-  const slot = opts.ignoreBlocks ? 'any' : 'now'; // the page asks for both
+  const slot = `${opts.ignoreBlocks ? 'any' : 'now'}:${opts.owner ?? 'me'}`; // the page asks for both
   let mine = rankMemo.get(ctx.storage);
   if (!mine) rankMemo.set(ctx.storage, (mine = new Map()));
   const memo = mine.get(slot);
@@ -330,7 +336,34 @@ async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {})
   return value;
 }
 
-async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: string } | null, when: Date, opts: RankOptions): Promise<Ranked> {
+/** Owner of each task, from its marks and its ancestors' marks. @req FR:task-lifecycle/rank.owner */
+function ownersOf(projects: ScoringProject[]): Map<ScoringTask, ReturnType<typeof rowOwner>> {
+  const out = new Map<ScoringTask, ReturnType<typeof rowOwner>>();
+  for (const p of projects) {
+    const byId = new Map(p.tasks.map((t) => [t.id, t]));
+    for (const t of p.tasks) {
+      const up: string[] = [];
+      for (let a = t.parent ? byId.get(t.parent) : undefined; a && up.length < 64; a = a.parent ? byId.get(a.parent) : undefined) up.push(a.text);
+      out.set(t, rowOwner(t.text, up));
+    }
+  }
+  return out;
+}
+
+/** Last commit time of each row overdue `STALE_DAYS`+ days, when the storage keeps history. @req FR:task-lifecycle/rank.stale */
+async function activityOf(ctx: LifecycleContext, projects: ScoringProject[], docs: Doc[], where: Map<ScoringTask, { line: number }>, when: Date): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (typeof ctx.storage.lineActivity !== 'function') return out;
+  for (let i = 0; i < projects.length; i++) {
+    const late = projects[i].tasks.filter((t) => { const d = daysUntilDue(t.text, cfg(ctx), when); return d !== null && d <= -STALE_DAYS; });
+    if (!late.length) continue;
+    const times = await ctx.storage.lineActivity(docs[i].path);
+    for (const t of late) { const v = times[where.get(t)!.line]; if (v !== undefined) out.set(t.id, v); }
+  }
+  return out;
+}
+
+async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: string } | null, when: Date, opts: StackRankOptions): Promise<Ranked> {
   const projects = docs.map((d) => toScoringProject(d.project, d.name));
   const where = new Map<ScoringTask, { doc: Doc; line: number }>();
   projects.forEach((p, i) => {
@@ -345,16 +378,20 @@ async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: str
   const above = new Map(docs.map((d) => [d, parentTexts(d)] as const));
   const rowOf = (s: ScoredTask) => {
     const loc = where.get(s.task)!;
-    const next: RankedTask = { ref: { path: loc.doc.path, line: loc.line, text: rowText(loc.doc, loc.line) }, text: s.task.text, project: s.task.project, score: s.score };
-    return { doc: loc.doc, next, text: s.task.text, project: s.task.project, context: above.get(loc.doc)?.get(loc.line)?.text ?? '', task: s.task };
+    const next: RankedTask = { ref: { path: loc.doc.path, line: loc.line, text: rowText(loc.doc, loc.line) }, text: s.task.text, project: s.task.project, score: s.score, ...(s.stale ? { stale: s.stale } : {}) };
+    return { doc: loc.doc, next, text: s.task.text, project: s.task.project, context: above.get(loc.doc)?.get(loc.line)?.text ?? '', task: s.task, dueTier: s.dueTier };
   };
-  let rows = rankTasks(engine, projects, cfg(ctx), when, opts).map(rowOf);
+  // The owner queue: rows the owner must do, never agent work. @req FR:task-lifecycle/rank.owner
+  const owners = ownersOf(projects);
+  const mine = (s: ScoredTask) => opts.owner === 'any' || owners.get(s.task) === 'me';
+  const ropts: RankOptions = { ignoreBlocks: opts.ignoreBlocks, activity: await activityOf(ctx, projects, docs, where, when) };
+  let rows = rankTasks(engine, projects, cfg(ctx), when, ropts).filter(mine).map(rowOf);
   const names = projects.map((p) => p.name);
   const match = matcherFor(rules, when, names, cfg(ctx).timezone);
   // A top rule is the owner saying "this, now": its rows stay even when the time block would hide them. @req FR:scoring-engine/overrides.top.blocks
   if (rules.some((r) => r.effect === 'top')) {
     const have = new Set(rows.map((r) => r.task));
-    const extra = rankTasks(engine, projects, cfg(ctx), when, { ignoreBlocks: true }).map(rowOf).filter((r) => !have.has(r.task) && match(r)?.rule.effect === 'top');
+    const extra = rankTasks(engine, projects, cfg(ctx), when, { ...ropts, ignoreBlocks: true }).filter(mine).map(rowOf).filter((r) => !have.has(r.task) && match(r)?.rule.effect === 'top');
     rows = [...rows, ...extra].sort((a, b) => b.next.score - a.next.score);
   }
   const ordered = applyOverrides(rows, rules, when, names, cfg(ctx).timezone);
@@ -364,7 +401,7 @@ async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: str
     const m = match(o);
     if (m) o.next.rule = m.rule.match;
   }
-  return ordered.map(({ doc, next, task, context }) => ({ doc, next, task, context }));
+  return ordered.map(({ doc, next, task, context, dueTier }) => ({ doc, next, task, context, dueTier }));
 }
 
 async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextTask; doc: Doc } | null> {
@@ -375,7 +412,7 @@ async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextT
  * The ranked tasks: engine order, then the owner's overrides; `nextTask` is the first.
  * @req FR:task-lifecycle/rank.@function @req FR:task-lifecycle/rank.order @req FR:task-lifecycle/rank.limit @req FR:task-lifecycle/rank.output @req FR:task-lifecycle/rank.blocks
  */
-export async function rankStack(ctx: LifecycleContext, at?: Date, limit?: number, opts: RankOptions = {}): Promise<RankedTask[]> {
+export async function rankStack(ctx: LifecycleContext, at?: Date, limit?: number, opts: StackRankOptions = {}): Promise<RankedTask[]> {
   const all = (await rankAll(ctx, at, opts)).map((r) => r.next);
   return limit !== undefined ? all.slice(0, limit) : all;
 }
@@ -619,6 +656,37 @@ export async function explainAutopri(ctx: LifecycleContext, at?: Date, opts: { t
   const truth = opts.truth === undefined ? undefined : matchTruth(parseTruth(opts.truth), ranked.map((r, i) => ({ project: r.next.project, aliases: aliasesOf(r.doc), text: r.next.text, context: r.context, ref: all[i].ref })));
   const items = opts.top === undefined ? all : all.slice(0, opts.top);
   return { items, truth, text: formatExplain(items, truth) };
+}
+
+export interface StackExplainItem { rank: number; ref: string; path: string; line: number; project: string; text: string; score: number; why: string; stale?: true; rule?: string }
+export interface StackExplained { items: StackExplainItem[]; /** Rows the owner filter dropped. */ dropped: number; text: string }
+
+/** Why a row has its due tier: the tier and the days, or the stale reason. */
+function whyOf(r: Ranked[number], ctx: LifecycleContext, at: Date): string {
+  const s = r.next.stale;
+  if (s) return `stale: ${s.overdueDays}d overdue, last commit ${s.lastActivity.slice(0, 10)}; tier 0, cap ${STALE_CAP}`;
+  const d = daysUntilDue(r.task.text, cfg(ctx), at);
+  const when = d === null ? 'no due date' : d < 0 ? `${-d}d overdue` : d === 0 ? 'due today' : `due in ${d}d`;
+  return `tier ${r.dueTier ?? 0} (${when})`;
+}
+
+/**
+ * The stack ranking with the reason for each place: due tier and days, stale details, the override rule; and how many rows the owner filter dropped.
+ * @req FR:task-lifecycle/rank.explain
+ */
+export async function explainStack(ctx: LifecycleContext, at?: Date, opts: StackRankOptions & { top?: number } = {}): Promise<StackExplained> {
+  const c = { ...ctx, engine: DEFAULT_ENGINE };
+  const when = at ?? clock(ctx);
+  const ranked = await rankAll(c, when, { ignoreBlocks: opts.ignoreBlocks, owner: opts.owner });
+  const dropped = opts.owner === 'any' ? 0 : (await rankAll(c, when, { ignoreBlocks: opts.ignoreBlocks, owner: 'any' })).length - ranked.length;
+  const all: StackExplainItem[] = ranked.map((r, i) => ({
+    rank: i + 1, ref: formatRef(r.next.ref), path: r.next.ref.path, line: r.next.ref.line + 1, project: r.next.project, text: r.next.text,
+    score: r.next.score, why: whyOf(r, ctx, when), ...(r.next.stale ? { stale: true as const } : {}), ...(r.next.rule ? { rule: r.next.rule } : {}),
+  }));
+  const items = opts.top === undefined ? all : all.slice(0, opts.top);
+  const lines = items.map((x) => `${x.rank}. ${x.ref} ${Number(x.score.toFixed(1))} ${x.project}: ${x.text} | ${x.why}${x.rule ? `; rule ${x.rule}` : ''}`);
+  if (dropped > 0) lines.push(`${dropped} ${dropped === 1 ? 'row' : 'rows'} dropped: not the owner's (agent or mixed)`);
+  return { items, dropped, text: lines.join('\n') };
 }
 
 /** Open tasks linked per priority id, for `stack pris gaps`. @req FR:pris-aware-ranking/cos.gaps.cli */

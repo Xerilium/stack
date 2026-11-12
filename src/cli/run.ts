@@ -10,7 +10,7 @@ import { basename, dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
-  explainAutopri, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
+  explainAutopri, explainStack, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
@@ -83,7 +83,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
-  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks; pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain (autopri, pris) shows score parts and the priority served; --truth lists ground-truth items to tag or add' },
+  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches)' },
@@ -593,7 +593,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         const ranked = await rankStack(ctx, at, top);
         if (!ranked.length) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
         return {
-          json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}) })) },
+          json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}), ...(n.stale ? { stale: true } : {}) })) },
           text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'),
         };
       }
@@ -633,10 +633,15 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       const engine = flag(f, 'engine') ?? 'stack';
       if (engine !== 'autopri' && engine !== 'pris' && engine !== 'stack') throw new UsageError('--engine must be autopri, pris or stack');
       const explain = f['explain'] === true;
-      if (explain && engine === 'stack') throw new UsageError('--explain needs --engine autopri or pris');
       if (flag(f, 'truth') !== undefined && !explain) throw new UsageError('--truth needs --explain');
+      if (flag(f, 'truth') !== undefined && engine === 'stack') throw new UsageError('--truth needs --engine autopri or pris');
       const top = num(flag(f, 'top'), 'top');
       if (top !== undefined && (!Number.isInteger(top) || top < 1 || top > 50)) throw new UsageError('--top must be a whole number from 1 to 50');
+      // @req FR:task-lifecycle/rank.explain
+      if (explain && engine === 'stack') {
+        const r = await explainStack(ctx, at, { top });
+        return { json: { ok: true, items: r.items, dropped: r.dropped }, text: r.text, code: r.items.length ? EXIT.ok : EXIT.none };
+      }
       registerAutopriEngine();
       // @req FR:pris-aware-ranking/explain.cli @req FR:pris-aware-ranking/explain.json
       const pris = engine === 'pris' ? new PriStore(stackHome()).read().pris : undefined;
@@ -651,7 +656,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       }
       const ranked = await rankStack(rctx, at, top);
       return {
-        json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text })) },
+        json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.stale ? { stale: true } : {}) })) },
         text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'), code: ranked.length ? EXIT.ok : EXIT.none,
       };
     }

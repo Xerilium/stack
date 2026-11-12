@@ -49,6 +49,9 @@ Owner needs one ranked list of what to do next so that the CLI, the API, the `/n
 - **FR:rank.blocks** (P2): With `opts.ignoreBlocks`, `rankStack` MUST NOT drop tasks the current time block would hide (a surface that places tasks across the whole day), keeping the due-date lens, the overrides, and the order otherwise
 - **FR:rank.limit** (P2): `rankStack` MUST return at most `limit` tasks when given
 - **FR:rank.root** (P1): `rankStack` MUST give each task under a parent its top-level row (`root`), so a surface that shows top-level rows groups the leaves without parsing the files itself
+- **FR:rank.owner** (P1): `rankStack` MUST return only rows the owner must do: the owner queue that Now, My day, `stack next` and `stack rank` show. The owner of a row, first match wins: its own mark (`🙋` is the owner; `🤖` or `🪄` is an agent; the `🤖:level` autonomy marker is not a mark), else the nearest ancestor with exactly one kind of mark (an ancestor with both is skipped), else the owner. A row with both marks is mixed and is not the owner's. So an agent row and the unmarked rows under it never rank, and an open `🙋` row under an agent row does. `opts.owner: 'any'` keeps rows of every owner
+- **FR:rank.stale** (P1): A row is stale when its `📅` date is 3 or more days past and no commit changed the row in the last 3 days (`FR:storage-git/git.activity`). A stale row gets due tier 0, a final score of at most 500 (`STALE_CAP`) after inherited scores and every other boost, and carries `stale`. When the storage gives no line activity for the row, the row is never stale
+- **FR:rank.explain** (P2): `explainStack(ctx, at?, opts?)` MUST give, per ranked task, its rank, ref, score, and why it has that place: the due tier and days, and for a stale row the overdue days, the last commit date, tier 0 and the cap. It also counts the rows the owner filter dropped (`FR:rank.owner`). `stack rank --explain` prints it for the `stack` engine
 - **FR:rank.output** (P1): List of ranked tasks (@req FR:$ranked-task)
 
 ### FR:start: Start
@@ -129,6 +132,7 @@ Owner needs one ranked list of what to do next so that the CLI, the API, the `/n
   - `score` (number) — the engine score
   - `rule` (string?) — the matching override's `match`, when one applied
   - `root` (TaskRef?) — the top-level row it sits under
+  - `stale` ({ overdueDays, lastActivity }?) — set when the row is stale (`FR:rank.stale`); `lastActivity` is the ISO time of the last commit that changed the row. CLI and API rank items show it as `stale: true`
 
 ## Architecture Constraints
 
