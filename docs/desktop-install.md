@@ -56,7 +56,7 @@ After this, Stack opens like any app (Dock, Spotlight, Launchpad).
 - Use an absolute path or a git URL. `~` is not expanded.
 - `mode: "live"` edits the repo and commits in batches (`batch` minutes). Without it, the app uses a demo copy in `~/.config/stack/demo`.
 - No repo: the app logs `No content repo` and quits.
-- `PATH`: at start the app reads your login-shell `PATH` (`$SHELL -ilc`, 5 s timeout), so agents and `gh` find tools in Homebrew, nvm, and `~/.local/bin`. If the shell fails, the app adds `/opt/homebrew/bin`, `/usr/local/bin`, and `~/.local/bin`. The log shows `path: login shell` or `path: fallback (<reason>)`.
+- `PATH`: at start the app reads your login-shell `PATH` (`$SHELL -ilc`, 5 s timeout), so agents and `gh` find tools in Homebrew, nvm, and `~/.local/bin`. If the shell fails, the app adds `/opt/homebrew/bin`, `/usr/local/bin`, and `~/.local/bin`. A terminal launch keeps its own `PATH`. The log shows `path: login shell`, `path: fallback (<reason>)`, or `path: unchanged (<reason>)`.
 
 ## Use
 

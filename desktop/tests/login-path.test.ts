@@ -37,8 +37,15 @@ describe('resolveLoginPath', () => {
 
   it('keeps current entries the shell lacks at the end, with no repeats', async () => {
     const { exec } = fakeExec(marked('/opt/homebrew/bin:/usr/bin:/usr/bin::/bin'));
-    const r = await resolveLoginPath({ env: { PATH: '/custom/bin:/usr/bin' }, home: HOME, exec, platform: 'darwin' });
-    expect(r.path).toBe('/opt/homebrew/bin:/usr/bin:/bin:/custom/bin');
+    const r = await resolveLoginPath({ env: { PATH: '/sbin:/usr/bin' }, home: HOME, exec, platform: 'darwin' });
+    expect(r.path).toBe('/opt/homebrew/bin:/usr/bin:/bin:/sbin');
+  });
+
+  it('keeps a terminal launch PATH as is and runs no shell', async () => {
+    const { exec, calls } = fakeExec(marked('/x'));
+    const r = await resolveLoginPath({ env: { PATH: '/repo/node_modules/.bin:/Users/me/.nvm/v22/bin:/usr/bin' }, home: HOME, exec, platform: 'darwin' });
+    expect(calls).toHaveLength(0);
+    expect(r).toEqual({ path: '/repo/node_modules/.bin:/Users/me/.nvm/v22/bin:/usr/bin', source: 'unchanged (not a bare system PATH)' });
   });
 
   it.each([
@@ -48,9 +55,9 @@ describe('resolveLoginPath', () => {
     ['prints an empty PATH', marked(''), 'no PATH in shell output'],
   ])('falls back when the shell %s', async (_name, out, reason) => {
     const { exec } = fakeExec(out as string | Error);
-    const r = await resolveLoginPath({ env: { PATH: '/usr/bin:/opt/homebrew/bin:/bin' }, home: HOME, exec, platform: 'darwin' });
+    const r = await resolveLoginPath({ env: { PATH: BARE }, home: HOME, exec, platform: 'darwin' });
     expect(r.source).toBe(`fallback (${reason})`);
-    expect(r.path).toBe('/opt/homebrew/bin:/usr/local/bin:/Users/me/.local/bin:/usr/bin:/bin');
+    expect(r.path).toBe(`/opt/homebrew/bin:/usr/local/bin:/Users/me/.local/bin:${BARE}`);
   });
 
   it('falls back with no current PATH', async () => {
@@ -105,6 +112,10 @@ describe('spawnExec', () => {
     const t = Date.now();
     await expect(node(`process.stdout.write('${PATH_MARK}/a:/b${PATH_MARK}'); setInterval(() => {}, 1000)`, 3000)).resolves.toContain('/a:/b');
     expect(Date.now() - t).toBeLessThan(2000);
+  });
+
+  it('kills a child whose output passes the cap', async () => {
+    await expect(node("const s = 'x'.repeat(65536); setInterval(() => process.stdout.write(s), 1)", 3000)).rejects.toThrow('shell output too large');
   });
 
   it('rejects on a non-zero exit and on a missing program', async () => {

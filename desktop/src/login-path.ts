@@ -22,6 +22,8 @@ export interface LoginPath { path: string; source: string }
 /** Wraps the `PATH` in shell output so rc-file noise (banners, prompts) is ignored. */
 export const PATH_MARK = '__STACK_PATH__';
 const TIMEOUT_MS = 5000;
+/** What launchd gives a Finder launch. */
+const SYSTEM_PATH = ['/usr/bin', '/bin', '/usr/sbin', '/sbin'];
 
 const MAX_OUT = 1024 * 1024;
 
@@ -52,6 +54,8 @@ export async function resolveLoginPath(o: LoginPathDeps & { env: NodeJS.ProcessE
   const platform = o.platform ?? process.platform;
   if (platform === 'win32') return { path: o.env.PATH ?? '', source: 'unchanged (win32)' };
   const current = split(o.env.PATH);
+  // A terminal launch (`pnpm desktop`, the binary from a shell) already has the owner's PATH: keep its order, skip the shell.
+  if (current.some((p) => !SYSTEM_PATH.includes(p))) return { path: o.env.PATH!, source: 'unchanged (not a bare system PATH)' };
   const home = o.home ?? homedir();
   const shell = o.env.SHELL || '/bin/zsh';
   try {
