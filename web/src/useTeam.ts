@@ -81,10 +81,10 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   }, [api, enabled, sessions, noteStarted]);
 
   /** Assign: the row is claimed for the agent and its session starts with the assign prompt; the chip follows it. @req FR:agent-thread/thread.assign */
-  const assign = useCallback(async (ref: string, agent?: string, keepOpen = false): Promise<boolean> => {
+  const assign = useCallback(async (ref: string, agent?: string, keepOpen = false, note?: string): Promise<boolean> => {
     if (enabled !== true) { toastRef.current('Runs in stack web on your machine', 'err'); return false; }
     try {
-      const r = await api.assign(ref, agent);
+      const r = await api.assign(ref, agent, note);
       if (r.sessionId) noteStarted(ref, r.sessionId);
       toastRef.current(`Assigned to ${r.agent}`);
       if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);

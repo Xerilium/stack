@@ -98,6 +98,15 @@ describe('expected row text (stale line numbers)', () => {
     expect((await rows()).join('|')).not.toContain('- [ ] X');
     expect((await call('/tasks/edit', { ref: 'alpha:6', text: 'First 🟡', expect: 'First 🟢' })).status).toBe(200);
   });
+  // @req FR:task-detail-design/detail.save
+  it('set writes when expect matches and 409s when another row is at the line', async () => {
+    const { call, rows } = await mk();
+    expect((await call('/tasks/set', { ref: 'alpha:9', priority: '🚨', expect: 'First 🟢' })).status).toBe(409);
+    expect((await rows()).join('|')).not.toContain('🚨');
+    const ok = await call('/tasks/set', { ref: 'alpha:6', priority: '🚨', expect: 'First 🟢' });
+    expect(ok.status).toBe(200);
+    expect((await rows()).join('|')).toContain('🚨');
+  });
   it('move 409s on a stale ref or target and leaves the file alone', async () => {
     const { call, rows, storage } = await mk();
     const before = (await storage.read('tasks/alpha.md')).content;

@@ -87,7 +87,7 @@ Owner needs one ranked list of what to do next so that the CLI, the API, the `/n
 
 ### FR:set: Set properties
 
-- **FR:set.props** (P1): `setProperties(ctx, ref, props)` supports `status`, `priority`, `effort`, `impact` (an emoji from that category or `'None'` to clear), `checkbox` (`'Complete' | 'Incomplete'`), `suspend` (`''` clears), and `removeAllEmojis`, with legacy `Set-Task` placement rules
+- **FR:set.props** (P1): `setProperties(ctx, ref, props)` supports `status`, `priority`, `effort`, `impact` (an emoji from that category or `'None'` to clear), `checkbox` (`'Complete' | 'Incomplete'`), `suspend` (`''` clears), and `removeAllEmojis`, with legacy `Set-Task` placement rules. Setting `effort` also replaces or clears the `🔹` (12 min) mark quick capture writes
 - **FR:set.placement** (P1): Priority goes first; status goes after a leading priority emoji; effort goes before a trailing impact emoji, else last; impact goes last. Emojis of the same category are replaced
 - **FR:set.invalid** (P1): Unknown emojis for a category MUST throw `LifecycleError`
 

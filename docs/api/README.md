@@ -24,6 +24,9 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/prs/ack` | POST (owner only) record an answer on a thread (`thread`, `note`); `post: true` first posts the `🤖 [AI]` text on GitHub |
 | `/prs/recs/{id}` | POST (owner only) accept, edit, or reject a PR priority recommendation |
 | `/pris` | GET or POST (owner only) the owner priorities with sub-items, backlog and weekly progress; POST sends `{rev, pris}`, a stale rev is 409 |
+| `/pr-review` | GET cached PR facts (`specLines`, `live`, head SHA) and agent briefs with `stale`. No GitHub call |
+| `/live` | GET the live validation lane: state, the one live PR, its checklist, done PRs |
+| `/live/items` | POST change one checklist item (`add`, `check`, `uncheck`, `fail`, `needs-fix`, `fixed`, `block`, `comment`, `edit`); owner calls are by owner, token calls by the token name. See [live-validation-agent.md](../live-validation-agent.md) |
 | `/feedback` | POST (owner only) one feedback line to `~/.stack/feedback.jsonl` `{text, route?, viewport?, theme?, capture?, png?}`; see [feedback.md](../feedback.md) |
 | `/tasks` | GET list tasks; POST add a task |
 | `/tasks/{ref}` | GET one task |

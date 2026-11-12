@@ -20,9 +20,31 @@ const renderNode = (n: Node, i: number): ComponentChildren => {
   return n.t === 'b' ? <b key={i}>{kids}</b> : <i key={i}>{kids}</i>;
 };
 
-/** Markdown subset as elements. @req FR:web-app/edit.preview */
-export function Md({ text }: { text: string }) {
-  return <>{parseInline(text).map(renderNode)}</>;
+/** A link as its text: inside a button (a row's open control) an anchor would nest one control in another. */
+const plainNode = (n: Node, i: number): ComponentChildren => {
+  if (typeof n === 'string') return n;
+  if (n.t === 'code') return <code key={i}>{n.c}</code>;
+  if (n.t === 'a') return n.c;
+  const kids = n.c.map(plainNode);
+  return n.t === 'b' ? <b key={i}>{kids}</b> : <i key={i}>{kids}</i>;
+};
+
+/** Markdown subset as elements. `links={false}`: links as text (pair with `TitleLinks` outside the control). @req FR:web-app/edit.preview */
+export function Md({ text, links = true }: { text: string; links?: boolean }) {
+  return <>{parseInline(text).map(links ? renderNode : plainNode)}</>;
+}
+
+/** The markdown links in a text, in order. */
+export function mdLinks(text: string): { href: string; label: string }[] {
+  const out: { href: string; label: string }[] = [];
+  const walk = (ns: Node[]) => { for (const n of ns) { if (typeof n === 'string' || n.t === 'code') continue; if (n.t === 'a') out.push({ href: n.href, label: n.c }); else walk(n.c); } };
+  walk(parseInline(text));
+  return out;
+}
+
+/** A title's markdown links as their own anchors, beside (never inside) the row's open button; a click never opens the row. @req FR:task-detail-design/detail.open */
+export function TitleLinks({ text }: { text: string }) {
+  return <>{mdLinks(text).map((l, i) => <a key={`${i}-${l.href}`} class="tag link" href={l.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{l.label} ↗</a>)}</>;
 }
 
 const vsel = (s: string) => s.replace(/\uFE0F/g, '');
@@ -136,9 +158,9 @@ export function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: num
 }
 
 export const SHORTCUTS: [string, string][] = [
-  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g h / g d / g k / g s / g p / g a', 'Go to Home / My day / Needs you / Agents / Projects / Full stack'], ['Agents: Enter, f, t, p, A, s, c, n, m', 'Open (a session) or talk (an agent), pin, team tree, by project, all repos, stop a run, usage, new, show more'], ['Asks: Enter, n, o, r, z, e, u, 1-4, m', 'Primary action, reject, open link, reply, defer, details, undo, pick option, show more'], ['a / A / R', 'Ask the task agent (opens its thread) / assign the task to its agent (Home and My day: delegate 🪄) / review the task'], ['[ / ]', 'Less / more time today'], ['h then 1-4, 0', 'Home: I have 15m / 30m / 1h / 2h, reset'],
+  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g h / g d / g k / g s / g p / g a', 'Go to Home / My day / Needs you / Agents / Projects / Full stack'], ['Agents: Enter, f, t, p, A, s, c, n, m', 'Open (a session) or talk (an agent), pin, team tree, by project, all repos, stop a run, usage, new, show more'], ['Asks: Enter, n, o, r, z, e, u, 1-4, m', 'Primary action, reject, open link, reply, defer, details, undo, pick option, show more'], ['a / A / R', 'Ask the task agent (opens its thread) / assign the task to its agent (Home: delegate 🪄) / review the task'], ['[ / ]', 'Less / more time today'], ['h then 1-4, 0', 'Home: I have 15m / 30m / 1h / 2h, reset'],
   ['j k or arrows', 'Move cursor'], ['Space', 'Expand in place'], ['Enter', 'Open full screen'], ['e', 'Edit row'], ['x', 'Select row'], ['Esc', 'Collapse, then clear selection'],
-  ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['n', 'Defer 2 hours'], ['Shift+A', 'Home and My day: delegate to an agent (🪄); elsewhere: assign the task to its agent'], ['z', 'Defer…'], ['Shift+S', 'Skip'],
+  ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['n', 'Defer 2 hours'], ['Shift+A', 'Home: delegate to an agent (🪄); list rows: assign the task to its agent; My day: none (use Message)'], ['z', 'Defer…'], ['Shift+S', 'Skip'],
   ['Shift+J / Shift+K', 'Move row down / up'], ['Shift+F', 'Send feedback'], ['?', 'This sheet'],
 ];
 export function Help({ onClose }: { onClose: () => void }) {

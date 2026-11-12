@@ -10,10 +10,11 @@ import { countdown, HAVE, topAsksOf, type Home, type HomeProject, type Window } 
 import type { LiveStatus } from './live';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Titled } from './AgentAvatar';
-import { Chip, EmptyState, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
+import { Chip, EmptyState, GROUPS, GROUP_NAMES, Md, TitleLinks, type GroupName } from './parts';
 import { parseRow } from './row';
 import type { Agent, InboxItem, Task } from './types';
 import type { ComponentChildren, JSX } from 'preact';
+import { DetailActions } from './TaskDetail';
 
 export const chipsOf = (text: string) => {
   const r = parseRow(text);
@@ -68,13 +69,8 @@ export function RowDetail({ t, all, busy, onAct, onToggle, onOpen, extra }: {
           </li>)}
         </ul>
       )}
-      <div class="actions small">
-        <button type="button" class="btn primary" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('start', t.ref); }}>Start <kbd>s</kbd></button>
-        <button type="button" class="btn" disabled={busy} onClick={(e) => { e.stopPropagation(); onToggle(t); }}>{t.done ? 'Reopen' : 'Done'} <kbd>d</kbd></button>
-        <button type="button" class="btn quiet" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('defer', t.ref); }}>Defer <kbd>z</kbd></button>
-        <span class="grow" />
-        <button type="button" class="btn quiet" aria-label="Open" title="Open full screen (Enter)" onClick={(e) => { e.stopPropagation(); onOpen(t.ref); }}>⤢ <kbd>⏎</kbd></button>
-      </div>
+      {/* @req FR:task-detail-design/detail.actions */}
+      <DetailActions t={t} busy={busy} onStart={() => onAct('start', t.ref)} onDone={() => onToggle(t)} onDefer={() => onAct('defer', t.ref)} onOpen={() => onOpen(t.ref)} />
       {extra && <div class="row-extra">{extra(t)}</div>}
     </div>
   );
@@ -232,59 +228,6 @@ function Editor({ text, onSave, onCancel }: { text: string; onSave: (t: string) 
   );
 }
 
-/** @req FR:web-app/now.focusmode */
-export function FocusMode({ task, all, busy, onToggle, onAct, onBack, extra }: {
-  task: Task; all: Task[]; busy: boolean; onToggle: (t: Task) => void; onAct: (a: 'start' | 'defer') => void; onBack: () => void;
-  /** Rendered under the actions (the task's agent thread). @req FR:agent-thread/web.hero */
-  extra?: ComponentChildren;
-}) {
-  const r = parseRow(task.text);
-  const subs = children(all, task.ref);
-  const box = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const prev = document.activeElement as HTMLElement | null;
-    box.current?.focus();
-    return () => prev?.focus?.();
-  }, []);
-  return (
-    <div ref={box} tabIndex={-1} class="focus-mode" role="dialog" aria-modal="true" aria-label="Focus"
-      onKeyDown={(e) => {
-        if (e.key !== 'Tab') return;
-        const els = [...box.current!.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((x) => !(x as HTMLButtonElement).disabled && x.getAttribute('type') !== 'hidden');
-        if (!els.length) return;
-        const i = els.indexOf(document.activeElement as HTMLElement);
-        e.preventDefault();
-        els[e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length].focus();
-      }}>
-      <button type="button" class="close" aria-label="Close" title="Close (Esc)" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></button>
-      <div class="focus-inner">
-        <p class="eyebrow">{task.project} · {task.section}</p>
-        <h1><Md text={r.title || task.text} /></h1>
-        <div class="chips">
-          {chipsOf(task.text).map((c) => <span key={c.group} class={`chip ${glyphOf(c.group, c.value).tone}`}>{GROUPS[c.group].set.find((x) => x.e.replace(/\uFE0F/g, '') === c.value.replace(/\uFE0F/g, ''))?.name}</span>)}
-          <Tags r={r} />
-          {r.due && <span class={`meta${dueClass(r.due)}`}>{r.due}</span>}
-        </div>
-        {task.notes.length > 0 && <div class="notes big">{task.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
-        {subs.length > 0 && (
-          <ul class="checklist" aria-label="Subtasks">
-            {subs.map((s) => <li key={s.ref} class={s.done ? 'done' : ''} style={{ '--depth': s.depth - task.depth - 1 }}>
-              <button type="button" class="tick" aria-label={s.done ? 'Mark not done' : 'Mark done'} disabled={busy} onClick={() => onToggle(s)}><span class="box">{s.done ? '✓' : ''}</span></button>
-              <span><Md text={parseRow(s.text).title || s.text} /></span>
-            </li>)}
-          </ul>
-        )}
-        <div class="actions">
-          <button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start')}>Start <kbd>s</kbd></button>
-          <button type="button" class="btn" disabled={busy} onClick={() => onToggle(task)}>Done <kbd>d</kbd></button>
-          <button type="button" class="btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>z</kbd></button>
-        </div>
-        {extra}
-      </div>
-    </div>
-  );
-}
-
 /** @req FR:web-app/projects.glance */
 export function ProjectsView({ rows, week, onOpen }: { rows: (CapacityRow & { top?: Task })[]; week?: Week; onOpen: (p: string) => void }) {
   return (
@@ -369,6 +312,8 @@ export interface TodayProps {
   /** Change wake/bed for this day or its weekday. @req FR:home/day.override */ onTimes?: (c: DayChange) => Promise<boolean>;
   /** False when no calendar is connected. @req FR:home/day.nocal */ calendar?: boolean;
   /** Tomorrow's plan: offered late in the day, on when shown. @req FR:home/day.tomorrow */ tomorrow?: { offer: boolean; on: boolean; toggle: () => void };
+  /** The row message button: the owning agent's name, and open the detail with the composer focused. @req FR:task-detail-design/myday.message */
+  message?: { name: (t: Task) => string; open: (ref: string) => void };
 }
 export interface DayChange { wake?: string; bed?: string; every?: boolean; reset?: boolean }
 
@@ -513,7 +458,7 @@ export function TodayView(t: TodayProps) {
           {earlier && <p class="earlier" data-testid="earlier">Earlier · {clock(earlier.from)}–{clock(earlier.to)}</p>}
           <ol class="plan" data-testid="plan">
             {timeline.map((r) => r.kind === 'block'
-              ? <PlanBlock key={r.b.task.ref} b={r.b} p={t.p} busy={t.busy} onAct={t.onAct} />
+              ? <PlanBlock key={r.b.task.ref} b={r.b} p={t.p} busy={t.busy} onAct={t.onAct} message={t.message} />
               : r.kind === 'meeting' ? <MeetingRow key={`m${r.m.start}`} m={r.m} />
                 : r.kind === 'band' ? <li key={`band${r.at}`} class={`band${r.personal ? ' personal' : ''}`} data-testid="band"><span><i class="band-glyph" aria-hidden="true">{r.emoji}</i>{r.name}</span><span class="band-time">{clock(r.from)}–{clock(r.to)}</span></li>
                   : r.kind === 'gap' ? <li key={`gap${r.at}`} class="gap"><time class="when">{clock(r.at)}</time><span>{span(r.min)} free</span></li>
@@ -532,9 +477,10 @@ export function TodayView(t: TodayProps) {
                 {shownOver.map((o) => {
                   const e = estimate(o);
                   return (
-                    <li key={o.ref} class={t.plan.atRisk.includes(o) ? 'risk' : undefined} onDblClick={() => t.p.onOpen(o.ref)}>
+                    <li key={o.ref} class={t.plan.atRisk.includes(o) ? 'risk' : undefined} onClick={() => t.p.onOpen(o.ref)}>
                       <span class="nofit-est">{e.assumed ? '~' : ''}{span(e.minutes)}{e.partial ? '+' : ''}</span>
-                      <span class="nofit-title"><Md text={parseRow(o.text).title || o.text} /></span>
+                      <button type="button" class="nofit-title row-open" onClick={(e) => { e.stopPropagation(); t.p.onOpen(o.ref); }}><Md text={parseRow(o.text).title || o.text} links={false} /></button>
+                      <TitleLinks text={parseRow(o.text).title || o.text} />
                       <span class="nofit-proj"><DueNote due={parseRow(o.text).due} />{t.p.titles.get(o.project) ?? o.project}</span>
                     </li>
                   );
@@ -630,28 +576,38 @@ function MeetingRow({ m }: { m: Busy }) {
   );
 }
 
-function PlanBlock({ b, p, busy, onAct }: { b: Block; p: RowProps; busy: boolean; onAct: TodayProps['onAct'] }) {
+const MSG_ICON = <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5.5h16v10H9l-5 4v-14Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" /></svg>;
+
+/**
+ * A My day row: one click or tap (or Enter, or double-click) opens the detail; pointer, hover, focus, and a chevron say so. Done, Start, Defer 2h, Message.
+ * @req FR:task-detail-design/detail.open @req FR:task-detail-design/myday.message @req FR:task-detail-design/myday.nodelegate @req FR:home/myday.actions
+ */
+function PlanBlock({ b, p, busy, onAct, message }: { b: Block; p: RowProps; busy: boolean; onAct: TodayProps['onAct']; message?: TodayProps['message'] }) {
   const r = parseRow(b.task.text);
-  const isCursor = p.cursor === b.task.ref;
+  const ref = b.task.ref;
+  const isCursor = p.cursor === ref;
+  const open = () => { p.onCursor(ref); p.onOpen(ref); };
+  const who = message?.name(b.task) ?? 'the agent';
   return (
-    <li class={`block${isCursor ? ' cursor' : ''}`} data-ref={b.task.ref} style={{ '--min': b.end - b.start }} onClick={() => p.onCursor(b.task.ref)}>
+    <li class={`block${isCursor ? ' cursor' : ''}`} data-ref={ref} style={{ '--min': b.end - b.start }}>
       <time class="when">{clock(b.start)}<small title={b.assumed ? 'No effort set; 30 min assumed' : undefined}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</small></time>
-      <div class="what">
-        <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', b.task.ref); }}><span class="box" /></button>
+      <div class="what" onClick={(e) => { if ((e.target as HTMLElement).closest('a')) return; open(); }} onDblClick={open}>
+        <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', ref); }}><span class="box" /></button>
         <div class="what-body">
-          <p class="what-title" onDblClick={() => p.onOpen(b.task.ref)}><Md text={r.title || b.task.text} /></p>
+          <p class="what-title"><button type="button" class="row-open" aria-label={`Open ${r.title || b.task.text}`} onClick={(e) => { e.stopPropagation(); open(); }} onFocus={() => p.onCursor(ref)}><Md text={r.title || b.task.text} links={false} /></button><TitleLinks text={r.title || b.task.text} /></p>
           <p class="what-meta">
             <span>{p.titles.get(b.task.project) ?? b.task.project}</span>
             <DueNote due={r.due} />
-            {chipsOf(b.task.text).filter((c) => c.group === 'status').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([b.task.ref], g)} />)}
+            {chipsOf(b.task.text).filter((c) => c.group === 'status').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([ref], g)} />)}
             <Tags r={r} />
           </p>
         </div>
         <span class="row-acts">
-            <button type="button" class="ic" title="Start (s)" aria-label="Start" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('start', b.task.ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor" /></svg></button>
-            <button type="button" class="ic" title="Defer 2 hours (n)" aria-label="Defer 2h" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('notnow', b.task.ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v4.5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></button>
-            <button type="button" class="ic" title="Delegate to an agent (Shift+A)" aria-label="Delegate" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('delegate', b.task.ref); }}>🪄</button>
+            <button type="button" class="ic" title="Start: marks it in progress" aria-label="Start" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('start', ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor" /></svg></button>
+            <button type="button" class="ic" title="Defer 2h: back in 2 hours" aria-label="Defer 2h" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('notnow', ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v4.5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></button>
+            {message && <button type="button" class="ic" title={`Message ${who}`} aria-label={`Message ${who}`} onClick={(e) => { e.stopPropagation(); message.open(ref); }}>{MSG_ICON}</button>}
         </span>
+        <span class="chev" aria-hidden="true">›</span>
       </div>
     </li>
   );

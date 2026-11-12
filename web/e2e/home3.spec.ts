@@ -45,7 +45,7 @@ test.describe('Home round 3', () => {
       await expect(detail).toHaveCount(0);
       await page.keyboard.press('Enter');
     } else await detail.getByRole('button', { name: 'Open' }).click();
-    const full = page.getByRole('dialog', { name: 'Focus' });
+    const full = page.getByRole('dialog', { name: 'Task detail' });
     await expect(full).toBeVisible();
     await expect(full).toContainText('Draft is in Outlook.');
     await expect(full.getByRole('button', { name: /^Back/ })).toHaveCount(0);
@@ -86,7 +86,7 @@ test.describe('Home round 3', () => {
     await expect(row.locator('.row-detail')).toBeVisible();
     await title.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('dialog', { name: 'Focus' })).toContainText('Reply to Dana');
+    await expect(page.getByRole('dialog', { name: 'Task detail' })).toContainText('Reply to Dana');
   });
 
   // @req FR:web-app/home2.done

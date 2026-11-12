@@ -80,7 +80,7 @@
 .prs-sheet-actions .btn { min-height: 36px; }
 
 @media (pointer: coarse) {
-  .prs-chip, .prs-tab, .pr-actions .btn, .prs-bulk .btn, .prs-fly .prs-close, .prs-sheet-actions .btn, .prs-toggle, .pr-answer input { min-height: var(--tap); }
+  .prs-chip, .prs-tab, .pr-actions .btn, .prs-bulk .btn, .prs-fly .prs-close, .prs-fly .prs-live, .prs-sheet-actions .btn, .prs-toggle, .pr-answer input { min-height: var(--tap); }
   .pr-title, .pr-blocker, .prs-sheet-body a, .prs-sheet-list a { display: inline-flex; align-items: center; min-height: var(--tap); }
   .pr-check { width: 28px; height: 28px; }
 }

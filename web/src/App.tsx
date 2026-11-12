@@ -16,7 +16,7 @@ import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { DEFER, progress, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, clock, decisions as decisionsOf, DEFAULT_DAY, nowMinutes, planCandidates, span, type Decision } from './plan';
-import { parseRow } from './row';
+import { parseRow, taskText } from './row';
 import { calendarRange, dayFrame, needsRefresh, wallMinutes, withProjects, type DaySched } from './schedule';
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
@@ -47,9 +47,11 @@ import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
 import { ThreadView } from './ThreadView';
 import { useThread } from './useThread';
-import { agentForAsk, rollupOf } from './team';
+import { agentForAsk, ownerOf } from './team';
 import { planWeek } from './week';
-import { FocusMode, HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
+import { HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
+import { TaskDetail } from './TaskDetail';
+import { displayName } from './detail';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
 import { agentMark, nowOf } from './nowscreen';
 import { NowScreen } from './NowView';
@@ -99,6 +101,8 @@ export function App() {
   }, []);
   const [info, setInfo] = useState<{ mode: string; repo: string; branch: string } | null>(null);
   const [focusRef, setFocusRef] = useState<string | null>(null);
+  /** The detail opened from a row message button: its composer takes focus. @req FR:task-detail-design/myday.message */
+  const [composeRef, setComposeRef] = useState<string | null>(null);
   const [deferRefs, setDeferRefs] = useState<string[] | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -322,7 +326,7 @@ export function App() {
   /** Open a task on its thread with the composer focused (the chip, `a`, the palette); Today keeps the floating composer. @req FR:agent-thread/web.keys */
   const viewRef = useRef(view); viewRef.current = view;
   /** The Now composer: to the task's most specific agent, else the roll-up; a live session offers its chat. @req FR:now-screen/now.compose */
-  const taskAgent = (t: Task) => { const roll = rollupOf(team.team); return team.agentsOf(t).find((a) => a !== roll) ?? roll ?? null; };
+  const taskAgent = (t: Task) => ownerOf(team.agentsOf(t), t) ?? null;
   const nowChat = (t: Task) => ({
     agent: taskAgent(t),
     agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
@@ -466,6 +470,7 @@ export function App() {
     setCursor(rows[0]?.ref ?? null);
   }, [rows, view, cursor]);
   useEffect(() => { if (focusRef && !tasks.some((t) => t.ref === focusRef)) setFocusRef(null); }, [tasks, focusRef]);
+  useEffect(() => { if (focusRef !== composeRef) setComposeRef(null); }, [focusRef]); // only when the detail changes
   useEffect(() => { setSelected((s) => { const live = new Set(tasks.map((t) => t.ref)); const n = new Set([...s].filter((r) => live.has(r))); return n.size === s.size ? s : n; }); }, [tasks]);
 
   // ---- navigation (hash)
@@ -582,11 +587,15 @@ export function App() {
       toast(accept ? 'Accepted · PR priority changed' : 'Rejected · the agent will see the reason', 'ok');
       return;
     }
+    // A blocked live check: Go or a reply reopens it for the agent; it has no defer and no undo. @req FR:pr-review-lane/lane.needs
+    const live = id.startsWith('lv.');
+    if (live && s.answer === 'defer') throw new Error('A blocked live check cannot be deferred: answer it or reply');
     const body = s.answer === 'defer' && s.until ? { choice: 'defer' as const, until: s.until }
       : s.answer === 'go' || s.answer === 'done' ? { choice: 'go' as const }
         : { choice: 'reply' as const, text: s.text || (s.answer === 'no' ? 'No' : 'Noted') };
     await api.answerNeed(id, body);
     setNeeds(await api.needs());
+    if (live) { toast(body.choice === 'go' ? 'Reopened · the agent will see it' : 'Sent to the agent', 'ok'); return; }
     toast(body.choice === 'go' ? 'Going with it · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
   };
   const answerTask = async (a: AskItem, s: Send) => {
@@ -642,6 +651,25 @@ export function App() {
     else unmarkDone(t.ref);
   };
 
+  /** A property change from the task detail: saved with `expect`, the toast offers Undo. @req FR:task-detail-design/detail.save */
+  const saveText = async (ref: string, next: string, prev: string, label: string): Promise<boolean> => {
+    const ok = await run(() => api.edit(ref, next, prev), () => '');
+    if (!ok) return false;
+    toast(label, 'ok', () => { void run(() => api.edit(ref, prev, next), () => 'Restored'); });
+    return true;
+  };
+  /**
+   * Priority or effort from the task detail, through `/tasks/set` (the server places the marker); Undo sets the old value back.
+   * Both are pinned to the row text they expect (`cur`, then what the set wrote), so a moved row or a later change is a conflict, never overwritten.
+   * @req FR:task-detail-design/detail.save
+   */
+  const setProps = async (ref: string, cur: string, props: SetProps, prev: SetProps | { text: string }, label: string): Promise<boolean> => {
+    const r = await run(() => api.set(ref, props, cur), () => '');
+    if (!r) return false;
+    const after = taskText(r.after); // `after` is the whole line; `expect` is the task text
+    toast(label, 'ok', after === undefined ? undefined : () => { void run(() => ('text' in prev ? api.edit(ref, prev.text, after) : api.set(ref, prev, after)), () => 'Restored'); });
+    return true;
+  };
   const save = async (ref: string, text: string) => {
     const cur = tasks.find((t) => t.ref === ref);
     setEditing(null);
@@ -751,7 +779,7 @@ export function App() {
       { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
       // @req FR:agent-team/web.keys
       { id: 'talk', label: 'Ask the task agent', hint: 'a', run: () => { const t = taskAt(refNow()); if (t) openThread(t); } },
-      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const t = taskAt(refNow()); if (t) void team.assign(t.ref, team.agentsOf(t)[0]?.slug); } },
+      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const t = taskAt(refNow()); if (t) void team.assign(t.ref, ownerOf(team.agentsOf(t), t)?.slug); } },
       { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ] : []),
     ...(view === 'home' ? HAVE.map((m, i) => ({ id: `have-${m}`, label: `I have ${span(m)}`, hint: `h ${i + 1}`, run: () => setHave(m) })) : []),
@@ -794,6 +822,7 @@ export function App() {
       if (haveChord.current && !/^[0-4h]$/.test(e.key)) haveChord.current = 0; // any other key disarms h
       const L = latest.current, A = act.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); return; }
+      if (e.target instanceof Element && e.target.closest('.fl-popover, .fl-seg')) return; // a popover or segmented control owns its keys (Esc closes it, arrows move)
       if (e.key === 'Escape' && (L.palette || L.help || L.picker || L.deferRefs || L.captureOpen)) { e.preventDefault(); setPalette(false); setHelp(false); setPicker(null); setDeferRefs(null); setCaptureOpen(false); return; }
       if (e.key === 'Escape' && teamRef.current.talk && !isTyping(e.target)) { e.preventDefault(); teamRef.current.setTalk(null); return; }
       if (e.key === 'Escape' && L.focusRef && !isTyping(e.target)) { e.preventDefault(); setFocusRef(null); return; }
@@ -842,9 +871,9 @@ export function App() {
       if (L.view === 'home' && k === 'h') { haveChord.current = now; return; }
       // On My day these act only on the row you are on (never on a hidden parent).
       if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'n') { e.preventDefault(); void A.notNow(); return; }
-      if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'A') { e.preventDefault(); void A.delegate(); return; }
+      if (L.view === 'home' && k === 'A') { e.preventDefault(); void A.delegate(); return; } // My day has no delegate: its rows message the agent @req FR:task-detail-design/myday.nodelegate
       // @req FR:agent-thread/web.keys: on a list row A assigns the task to its agent (inside the composer the same key does the same)
-      if (k === 'A' && L.cursor && L.view !== 'home' && L.view !== 'today') { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) void teamRef.current.assign(t.ref, teamRef.current.agentsOf(t)[0]?.slug); return; }
+      if (k === 'A' && L.cursor && L.view !== 'home' && L.view !== 'today') { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) void teamRef.current.assign(t.ref, ownerOf(teamRef.current.agentsOf(t), t)?.slug); return; }
       // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
       if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
       if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); if (!L.tomorrowOn) A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; } // tomorrow's Available is read-only
@@ -962,6 +991,7 @@ export function App() {
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
+            message={{ name: (t) => { const a = taskAgent(t); return a ? displayName(a) : 'the agent'; }, open: (r) => { setComposeRef(r); setFocusRef(r); } }}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
@@ -996,7 +1026,7 @@ export function App() {
             ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label={`More: open command palette${inboxAttention ? '. Inbox needs setup' : ''}`}><TabIcon v="more" /><span>More</span>{inboxDot}</button>
             : <button type="button" key={slot} class={`tab${view === slot ? ' on' : ''}`} aria-current={view === slot ? 'page' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
       </nav>
-      {focusTask && <FocusMode task={focusTask} all={tasks} busy={busy} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onBack={() => setFocusRef(null)} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} />} />}
+      {focusTask && <TaskDetail task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, focusTask.text, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
       {deferRefs && (
         <Dialog title="Defer until" onClose={() => setDeferRefs(null)}>

@@ -57,7 +57,7 @@ Owner needs to ask an agent about a task or assign it so that the agent answers 
   - **FR:thread.ask.inbox** (P1): Composer Ask MUST also write the text to the inbox as `kind: reply` so the thread shows it at once
     > - @req FR:agent-inbox/api.send
   - **FR:thread.ask.persona** (P2): Resumed-session prompt MUST include the persona again
-- **FR:thread.assign** (P1): Composer Assign MUST claim the row for the chosen agent and start a session with the assign prompt
+- **FR:thread.assign** (P1): Composer `Do it` (`FR:task-detail-design/compose.doit`; `Shift+A` on a list row) MUST claim the row for the chosen agent and start a session with the assign prompt
   - **FR:thread.assign.refuse** (P1): Composer Assign MUST refuse a 🙋 row
   - **FR:thread.assign.order** (P1): Assign MUST start the run before claiming so a failed start leaves no 🚧
   - **FR:thread.assign.claimed** (P2): Assign on a claimed row MUST start a new session for the chosen agent and keep the claim
@@ -68,7 +68,7 @@ Owner needs to ask an agent about a task or assign it so that the agent answers 
 
 Owner needs to read and drive the thread where the task is shown so that they never leave the list to talk to an agent.
 
-- **FR:web.expand** (P1): Expanded task MUST show the thread below notes and subtasks, newest last, with the composer's `Ask` (`Enter`) and `Assign` (`A`) below it
+- **FR:web.expand** (P1): Expanded task MUST show the thread below notes and subtasks, newest last, with the shared composer below it (`FR:task-detail-design/compose.*`: agent chips, `Ask` | `Do it`, `Enter` sends)
 - **FR:web.hero** (P1): Home hero and Focus mode MUST show the same thread under the actions
 - **FR:web.live** (P1): Thread MUST refresh on `asks`, `tasks`, and `sessions` changes from `/events`
   - **FR:web.live.working** (P2): Composer MUST show `Working…` with a link to the drawer while the task's session runs

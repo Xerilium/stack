@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { effortMinutes, parseRow, PRIORITY } from '../src/row';
+import { effortMinutes, parseRow, PRIORITY, taskText } from '../src/row';
 
 // @req FR:web-app/row.parse
 describe('parseRow', () => {
@@ -65,5 +65,14 @@ describe('parseRow cleanup', () => {
 describe('saved queries', () => {
   it('drops a trailing GitHub query from the title', () => {
     expect(parseRow('Open PRs @GitHub/x/y (is:open is:pr label:"a b")').title).toBe('Open PRs @GitHub/x/y');
+  });
+});
+
+// @req FR:task-detail-design/detail.save
+describe('taskText', () => {
+  it('is the text after the checkbox, what expect compares', () => {
+    expect(taskText('- [ ] Ship it 🟡')).toBe('Ship it 🟡');
+    expect(taskText('  - [x] Done one')).toBe('Done one');
+    expect(taskText(undefined)).toBeUndefined();
   });
 });

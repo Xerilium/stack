@@ -448,6 +448,8 @@ describe('setProperties', () => {
     expect(applyTaskProps('- [ ] Task 🟢', { effort: '🔴' })).toBe('- [ ] Task 🔴');
     expect(applyTaskProps('- [ ] Task', { impact: '⬇️' })).toBe('- [ ] Task ⬇️');
     expect(applyTaskProps('- [ ] Task ⬆️ 🟢', { impact: 'None', effort: 'None' })).toBe('- [ ] Task');
+    expect(applyTaskProps('- [ ] Task 🔹', { effort: '🔴' })).toBe('- [ ] Task 🔴'); // the 12-minute mark is an effort too
+    expect(applyTaskProps('- [ ] Task 🔹', { effort: 'None' })).toBe('- [ ] Task');
     expect(applyTaskProps('- [ ] 🚨 Task', { status: '👀' })).toBe('- [ ] 🚨 👀 Task');
   });
 
