@@ -61,6 +61,20 @@ describe('retitle', () => {
     await stack(d, 'retitle', 'tasks/alpha.md:5', '--text', 'Newer 🔴', '--no-update');
     expect(lines(d)[4]).toBe('- [ ] 🔻 Newer 🔴');
   });
+  it('keeps marks attached to the title without spaces', async () => {
+    const d = mk();
+    writeFileSync(join(d, 'tasks/alpha.md'), '# A\n\n## 🔄 Active\n\n- [ ] 🚨Old🟢\n');
+    await stack(d, 'retitle', 'tasks/alpha.md:5', '--text', 'New', '--no-update');
+    expect(lines(d)[4]).toBe('- [ ] 🚨 New 🟢');
+    await stack(d, 'retitle', 'tasks/alpha.md:5', '--text', '🔻Newer🔴', '--no-update');
+    expect(lines(d)[4]).toBe('- [ ] 🔻Newer🔴');
+  });
+  it('new mark runs replace every same-kind old mark at that end', async () => {
+    const d = mk();
+    writeFileSync(join(d, 'tasks/alpha.md'), '# A\n\n## 🔄 Active\n\n- [ ] 🚨 🚧 Old 🟢 ⬆️\n');
+    await stack(d, 'retitle', 'tasks/alpha.md:5', '--text', '🔻 ⏸️ New 🔴 ⬇️', '--no-update');
+    expect(lines(d)[4]).toBe('- [ ] 🔻 ⏸️ New 🔴 ⬇️');
+  });
   it('--json reports before and after', async () => {
     const d = mk();
     const r = await stack(d, 'retitle', 'tasks/alpha.md:9', '--text', 'Last', '--json', '--no-update');
@@ -110,6 +124,12 @@ describe('note add', () => {
     writeFileSync(join(d, 'tasks/alpha.md'), '# A\n\n## 🔄 Active\n\n- [ ] Top\n    - [ ] Deep child\n');
     await stack(d, 'note', 'add', 'tasks/alpha.md:5', '--text', 'n');
     expect(lines(d)[6]).toBe('    - n');
+  });
+  it('uses child-row indent, not a deeper note indent', async () => {
+    const d = mk();
+    writeFileSync(join(d, 'tasks/alpha.md'), '# A\n\n## 🔄 Active\n\n- [ ] Top\n    - deep note\n  - [ ] Child\n');
+    await stack(d, 'note', 'add', 'tasks/alpha.md:5', '--text', 'n');
+    expect(lines(d).slice(4, 8)).toEqual(['- [ ] Top', '    - deep note', '  - [ ] Child', '  - n']);
   });
   it('--expect mismatch is exit 3', async () => {
     const d = mk();

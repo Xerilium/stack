@@ -72,22 +72,41 @@ export async function editTask(storage: Storage, ref: TaskRef, text: string, exp
 const strip = (t: string) => t.replace(/\uFE0F/g, '');
 const CATS = [STATUS, PRIORITY, [...EFFORT, '🔹'], IMPACT].map((l) => l.map(strip));
 const catOf = (t: string) => CATS.findIndex((l) => l.includes(strip(t)));
-const isMark = (t: string) => catOf(t) !== -1;
+const GLYPHS = [...new Set(CATS.flat())].sort((x, y) => y.length - x.length);
+
+/** Leading and trailing mark runs of a row text; marks may touch the title or each other. */
+function markRuns(s: string): { lead: string[]; trail: string[] } {
+  const lead: string[] = [];
+  let i = 0;
+  for (;;) {
+    while (/\s/.test(s[i] ?? '')) i++;
+    const g = GLYPHS.find((m) => s.startsWith(m, i));
+    if (!g) break;
+    const j = i + g.length + (s[i + g.length] === '️' ? 1 : 0);
+    lead.push(s.slice(i, j));
+    i = j;
+  }
+  const trail: string[] = [];
+  let j = s.length;
+  for (;;) {
+    while (j > i && /\s/.test(s[j - 1])) j--;
+    const k = s[j - 1] === '️' ? j - 1 : j;
+    const g = GLYPHS.find((m) => k - m.length >= i && s.slice(0, k).endsWith(m));
+    if (!g) break;
+    trail.unshift(s.slice(k - g.length, j));
+    j = k - g.length;
+  }
+  return { lead, trail };
+}
 
 /** New row text. Old status, priority, effort, and impact marks at the start or end of the row stay unless the new text has a mark of the same kind at that end. */
 export function keepMarks(old: string, text: string): string {
   const neu = text.trim();
-  const ot = old.trim().split(/\s+/).filter(Boolean);
-  let a = 0;
-  while (a < ot.length && isMark(ot[a])) a++;
-  let b = ot.length;
-  while (b > a && isMark(ot[b - 1])) b--;
-  const nt = neu.split(/\s+/);
-  // Per end, an old mark stays unless the new text has a mark of the same kind at that end.
-  const kept = (old: string[], at: string) => (isMark(at) ? old.filter((t) => catOf(t) !== catOf(at)) : old);
-  const lead = kept(ot.slice(0, a), nt[0]);
-  const trail = kept(ot.slice(b), nt[nt.length - 1]);
-  return [...lead, neu, ...trail].join(' ');
+  const o = markRuns(old.trim());
+  const n = markRuns(neu);
+  // Per end, an old mark stays unless the new text's mark run at that end has a mark of the same kind.
+  const kept = (old: string[], at: string[]) => old.filter((t) => !at.some((a) => catOf(a) === catOf(t)));
+  return [...kept(o.lead, n.lead), neu, ...kept(o.trail, n.trail)].join(' ');
 }
 
 const oneLine = (t: string, what: string): string => {
@@ -114,10 +133,16 @@ export async function addNote(storage: Storage, ref: TaskRef, text: string, expe
   const m = rowAt(lines, ref.line, expect);
   const ws = (l: string) => /^[ \t]*/.exec(unbom(bare(l)))![0];
   const own = ws(lines[ref.line]);
-  const next = lines[ref.line + 1] === undefined ? '' : ws(lines[ref.line + 1]);
-  const pad = next.length > own.length && !/^\s*$/.test(bare(lines[ref.line + 1])) ? next : `${own}  `;
-  const cr = lines[ref.line].endsWith('\r') ? '\r' : '';
   const end = blockEnd(lines, ref.line);
+  // Indent of the shallowest child row in the block; notes and blanks don't count.
+  let pad = '';
+  for (let i = ref.line + 1; i < end; i++) {
+    if (!ROW.test(unbom(bare(lines[i])))) continue;
+    const w = ws(lines[i]);
+    if (w.length > own.length && (!pad || w.length < pad.length)) pad = w;
+  }
+  if (!pad) pad = `${own}  `;
+  const cr = lines[ref.line].endsWith('\r') ? '\r' : '';
   lines.splice(end, 0, `${pad}- ${text.trim()}${cr}`);
   await storage.write(ref.path, lines.join('\n'), { expectedVersion: f.version, message: `Note: ${brief(text.trim())}` });
   return { changed: true, ref, before: m[2], after: m[2], message: 'Saved' };
