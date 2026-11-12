@@ -124,6 +124,19 @@ describe('in-app sign-in through gh', () => {
     expect(s3.runs[0].killed).toBe(true);
     expect(b.session()).toEqual({ state: 'error', error: 'expired' });
   });
+  it('two fast starts run one gh; a missing gh is checked again after a minute', async () => {
+    const s = fakeSpawn();
+    let t = 0;
+    let has = false;
+    const a = createGitHubAuth({ env: {}, spawn: s.spawn, now: () => t, codeWaitMs: 0, exec: async (args) => { if (args[0] === '--version' && has) return 'gh'; throw new Error('no'); } });
+    expect((await a.status()).method).toBe('none');
+    has = true;
+    t += 30_000; expect((await a.status()).method).toBe('none');
+    t += 31_000; expect((await a.status()).method).toBe('gh');
+    const [x, y] = await Promise.all([a.start(), a.start()]);
+    expect(x).toEqual(y);
+    expect(s.runs).toHaveLength(1);
+  });
   it('no gh CLI: start says gh-missing and runs nothing', async () => {
     const s = fakeSpawn();
     const a = createGitHubAuth({ env: {}, spawn: s.spawn, exec: fakeExec({}).exec });
@@ -237,13 +250,42 @@ describe('my repos with zero setup', () => {
     const none = createPrBoardService({ source: { user: async () => 'flanakin', fetch: async () => ({ user: 'flanakin', facts: [fact] }) }, timers: { set: () => 0, clear: () => undefined } });
     expect((await none.get()).rows).toEqual([]);
   });
-  it('a failed org read uses the owner only', async () => {
+  it('detail reads run at most 3 at a time, keep answer order, and keep the lowest rate', async () => {
+    const pr = (n: number) => ({ url: `https://github.com/o/r/pull/${n}`, number: n, title: `PR ${n}`, isDraft: false, createdAt: '2026-11-10T00:00:00Z', updatedAt: '2026-11-11T00:00:00Z', body: '', mergeable: 'MERGEABLE', repository: { nameWithOwner: 'o/r' }, author: { login: 'me', __typename: 'User' }, labels: { nodes: [] }, assignees: { nodes: [] }, reviewRequests: { nodes: [] }, latestOpinionatedReviews: { nodes: [] }, commits: { nodes: [] } });
+    let live = 0; let peak = 0; let calls = 0;
+    const fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith('/user')) return new Response(JSON.stringify({ login: 'me' }), { status: 200 });
+      const q = JSON.parse(String(init?.body)).query as string;
+      if (q.includes('search(')) return new Response(JSON.stringify({ data: { rateLimit: { remaining: 4000, resetAt: 'r0' }, a: { nodes: Array.from({ length: 45 }, (_, i) => pr(i + 1)) }, b: { nodes: [] }, c: { nodes: [] } } }), { status: 200 });
+      const k = ++calls;
+      live++; peak = Math.max(peak, live);
+      await new Promise((r) => setTimeout(r, 30 - k * 5));
+      live--;
+      const n = (q.match(/pullRequest\(number: (\d+)\)/g) ?? []).map((m) => Number(/\d+/.exec(m)![0]));
+      const data: Record<string, unknown> = { rateLimit: { remaining: 4000 - k * 10, resetAt: `r${k}` } };
+      n.forEach((num, j) => { data[`p${j}`] = { pullRequest: { reviewThreads: { nodes: [] }, comments: { nodes: [{ url: `c${num}`, body: String(num), author: { login: 'x', __typename: 'User' } }] }, commits: { nodes: [] } } }; });
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    const r = await createGitHubBoard({ token: TOKEN, fetch }).fetch();
+    expect(calls).toBe(5);
+    expect(peak).toBe(3);
+    expect(r.facts.every((f) => f.comments?.[0]?.body === String(f.number))).toBe(true);
+    expect(r.rate).toEqual({ remaining: 3950, resetAt: 'r5' });
+  });
+  it('a failed org read uses the owner only and is read again after 5 minutes', async () => {
+    let t = 0;
+    let n = 0;
     const fetch = (async (input: string | URL | Request) => {
       const u = String(input);
       if (u.endsWith('/user')) return new Response(JSON.stringify({ login: 'me' }), { status: 200 });
-      if (u.includes('memberships')) return new Response('{}', { status: 403 });
+      if (u.includes('memberships')) { n++; return new Response('{}', { status: 403 }); }
       return new Response(JSON.stringify({ data: { a: { nodes: [] }, b: { nodes: [] }, c: { nodes: [] } } }), { status: 200 });
     }) as typeof globalThis.fetch;
-    expect((await createGitHubBoard({ token: TOKEN, fetch, adminOrgs: true }).fetch()).myRepos).toEqual(['me']);
+    const g = createGitHubBoard({ token: TOKEN, fetch, adminOrgs: true, now: () => t });
+    expect((await g.fetch()).myRepos).toEqual(['me']);
+    t += 4 * 60_000; await g.fetch();
+    expect(n).toBe(1);
+    t += 2 * 60_000; await g.fetch();
+    expect(n).toBe(2);
   });
 });

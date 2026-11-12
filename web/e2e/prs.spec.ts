@@ -194,6 +194,10 @@ test('no icon and no nav entry on a host with no board ({off: true}) or an older
   await page.waitForTimeout(300);
   await expect(icon(page, info.project.name === 'mobile')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Pull requests/ })).toHaveCount(0);
+  // A direct #/prs (or g r) says so instead of loading forever.
+  await page.goto('/#/prs');
+  await expect(page.getByTestId('prs-off')).toContainText('This host has no PR board.');
+  await expect(page.getByTestId('prs-skeleton')).toHaveCount(0);
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   await setup(page, { status: 404 });
   await page.goto('/#/now');

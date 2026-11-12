@@ -398,6 +398,7 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
         </header>
         {/* Signed out, loading, or a failed first load: one state, never a zero board. @req FR:pr-page/auth.state @req FR:pr-page/nav.load */}
         {!board ? (phase === 'signin' && auth ? <SignIn api={api} auth={auth} onDone={reload} />
+          : phase === 'off' ? <div class="prs-signin" data-testid="prs-off"><p class="prs-signin-title">This host has no PR board.</p><p class="prs-note">Set GITHUB_TOKEN on the host to turn it on.</p></div>
           : phase === 'error' ? <div class="prs-signin" role="alert"><p class="prs-signin-title">Could not load your PRs.</p><button type="button" class="btn primary" onClick={reload}>Retry</button></div>
           : <div class="skeleton prs-sk" role="status" aria-busy="true" aria-label="Loading pull requests" data-testid="prs-skeleton"><div class="sk" /><div class="sk" /><div class="sk" /><div class="sk" /></div>) : <>
         {board?.error && board.at && <p class="prs-note" role="status">{board.error}. Showing the last good copy.</p>}

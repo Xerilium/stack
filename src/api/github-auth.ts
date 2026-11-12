@@ -57,13 +57,19 @@ export function createGitHubAuth(o: {
   const ghOff = () => o.env.STACK_GH_AUTH === 'off';
   let cached: { value: string | null; at: number } | null = null;
   let reading: Promise<string | null> | null = null;
-  let hasGh: Promise<boolean> | null = null;
+  let hasGh: { p: Promise<boolean>; at: number } | null = null;
+  let starting: Promise<GitHubSignIn> | null = null;
   let sess: GitHubSignIn | null = null;
 
   const fromGh = async (): Promise<string | null> => {
     try { const t = (await exec(TOKEN_ARGS, 5000)).trim(); return TOKEN_RE.test(t) ? t : null; } catch { return null; }
   };
-  const ghRuns = () => (hasGh ??= ghOff() ? Promise.resolve(false) : exec(['--version'], 5000).then(() => true, () => false));
+  /** Whether `gh` runs; a miss is checked again after a minute (a later install shows without a restart). */
+  const ghRuns = async (): Promise<boolean> => {
+    if (ghOff()) return false;
+    if (!hasGh || (now() - hasGh.at > 60_000 && !(await hasGh.p))) hasGh = { p: exec(['--version'], 5000).then(() => true, () => false), at: now() };
+    return hasGh.p;
+  };
 
   return {
     async token() {
@@ -78,38 +84,44 @@ export function createGitHubAuth(o: {
       return { state: 'signed-out', method: (await ghRuns()) ? 'gh' : 'none', ...(sess ? { session: { ...sess } } : {}) };
     },
     session: () => (sess ? { ...sess } : null),
-    async start() {
-      if (sess?.state === 'waiting') return { ...sess };
-      if (!(await ghRuns())) { sess = { state: 'error', error: 'gh-missing' }; return { ...sess }; }
-      const s: GitHubSignIn = { state: 'waiting' };
-      sess = s;
-      let text = '';
-      let ready: () => void = () => {};
-      const shown = new Promise<void>((ok) => { ready = ok; });
-      const child = spawn(GH_LOGIN_ARGS);
-      const end = (p: Partial<GitHubSignIn> & { state: GitHubSignIn['state'] }) => {
-        if (s.state !== 'waiting') return;
-        timers.clear(expiry);
-        delete s.userCode; delete s.verificationUri;
-        Object.assign(s, p);
-        // A new sign-in: read the token again now, not after the cached miss runs out.
-        if (p.state === 'done') cached = null;
-        ready();
-      };
-      const expiry = timers.set(() => { child.kill(); end({ state: 'error', error: 'expired' }); }, SIGNIN_MS);
-      child.onText((chunk) => {
-        // Keep only enough output to find the code; nothing is logged.
-        text = (text + chunk).slice(-4096);
-        const p = parseGhLogin(text);
-        if (p.userCode) s.userCode = p.userCode;
-        if (p.verificationUri) s.verificationUri = p.verificationUri;
-        if (s.userCode && s.verificationUri) ready();
-      });
-      child.onExit((code, err) => end(code === 0 ? { state: 'done' } : { state: 'error', error: err?.code === 'ENOENT' ? 'gh-missing' : 'failed' }));
-      const wait = o.codeWaitMs ?? CODE_WAIT_MS;
-      await Promise.race([shown, new Promise<void>((ok) => { const t = setTimeout(ok, wait); t.unref?.(); })]);
-      if (s.state === 'waiting' && s.userCode && !s.verificationUri) s.verificationUri = DEVICE;
-      return { ...s };
+    start() {
+      // Two fast taps start one sign-in.
+      starting ??= begin().finally(() => { starting = null; });
+      return starting;
     },
   };
+
+  async function begin(): Promise<GitHubSignIn> {
+    if (sess?.state === 'waiting') return { ...sess };
+    if (!(await ghRuns())) { sess = { state: 'error', error: 'gh-missing' }; return { ...sess }; }
+    const s: GitHubSignIn = { state: 'waiting' };
+    sess = s;
+    let text = '';
+    let ready: () => void = () => {};
+    const shown = new Promise<void>((ok) => { ready = ok; });
+    const child = spawn(GH_LOGIN_ARGS);
+    const end = (p: Partial<GitHubSignIn> & { state: GitHubSignIn['state'] }) => {
+      if (s.state !== 'waiting') return;
+      timers.clear(expiry);
+      delete s.userCode; delete s.verificationUri;
+      Object.assign(s, p);
+      // A new sign-in: read the token again now, not after the cached miss runs out.
+      if (p.state === 'done') cached = null;
+      ready();
+    };
+    const expiry = timers.set(() => { child.kill(); end({ state: 'error', error: 'expired' }); }, SIGNIN_MS);
+    child.onText((chunk) => {
+      // Keep only enough output to find the code; nothing is logged.
+      text = (text + chunk).slice(-4096);
+      const p = parseGhLogin(text);
+      if (p.userCode) s.userCode = p.userCode;
+      if (p.verificationUri) s.verificationUri = p.verificationUri;
+      if (s.userCode && s.verificationUri) ready();
+    });
+    child.onExit((code, err) => end(code === 0 ? { state: 'done' } : { state: 'error', error: err?.code === 'ENOENT' ? 'gh-missing' : 'failed' }));
+    const wait = o.codeWaitMs ?? CODE_WAIT_MS;
+    await Promise.race([shown, new Promise<void>((ok) => { const t = setTimeout(ok, wait); t.unref?.(); })]);
+    if (s.state === 'waiting' && s.userCode && !s.verificationUri) s.verificationUri = DEVICE;
+    return { ...s };
+  }
 }

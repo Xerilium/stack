@@ -135,16 +135,17 @@ export function createGitHubBoard(o: GitHubBoardOptions): GitHubBoard {
     return me;
   };
 
-  /** The orgs the owner admins, read once an hour; a failed read is none. @req FR:pr-page/auth.repos */
+  /** The orgs the owner admins, read once an hour; a failed read is none and is tried again after 5 minutes. @req FR:pr-page/auth.repos */
   let orgs: { at: number; list: string[] } | null = null;
   const adminOrgs = async (): Promise<string[]> => {
     if (orgs && now() - orgs.at < 3600_000) return orgs.list;
     let list: string[] = [];
+    let ok = false;
     try {
       const res = await get(`${API}/user/memberships/orgs?state=active&per_page=100`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (res.ok) list = ((await res.json()) as { role?: string; organization?: { login?: string } }[]).filter((m) => m?.role === 'admin').map((m) => String(m.organization?.login ?? '')).filter((l) => LOGIN.test(l));
+      if (res.ok) { ok = true; list = ((await res.json()) as { role?: string; organization?: { login?: string } }[]).filter((m) => m?.role === 'admin').map((m) => String(m.organization?.login ?? '')).filter((l) => LOGIN.test(l)); }
     } catch { list = []; }
-    orgs = { at: now(), list };
+    orgs = { at: ok ? now() : now() - 55 * 60_000, list };
     return list;
   };
 
@@ -190,7 +191,7 @@ ${FRAGMENT}`, { a, b, c });
           for (const n of p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []) required.set(String(n.name ?? n.context), !!n.isRequired);
           detail.set(f.url.toLowerCase(), { key: keyOf(f), at: now(), threads, comments, required });
         });
-      }
+      });
       for (const f of facts) {
         const d = detail.get(f.url.toLowerCase());
         if (!d) continue;
