@@ -1,6 +1,4 @@
-import { mkdtempSync, readFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { createServer, type AddressInfo, type Socket } from 'net';
 import { applyLoginPath, PATH_MARK, resolveLoginPath, spawnExec, type ExecFn } from '../src/login-path';
 
 const HOME = '/Users/me';
@@ -102,15 +100,22 @@ describe('spawnExec', () => {
   const node = (script: string, timeoutMs = 400) => spawnExec(process.execPath, ['-e', script], { timeoutMs });
 
   it('SIGKILLs the whole group on timeout: a child that ignores SIGTERM and a grandchild that holds stdout', async () => {
-    const pids = join(mkdtempSync(join(tmpdir(), 'stack-path-')), 'pids');
-    const script = `const c = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: ['ignore', 'inherit', 'ignore'] });
-      process.on('SIGTERM', () => {}); require('fs').writeFileSync(${JSON.stringify(pids)}, process.pid + ',' + c.pid); setInterval(() => {}, 1000)`;
-    const t = Date.now();
-    await expect(spawnExec(process.execPath, ['-e', script], { timeoutMs: 400 })).rejects.toThrow('timed out');
-    expect(Date.now() - t).toBeLessThan(2000);
-    await new Promise((r) => setTimeout(r, 100));
-    const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-    for (const pid of readFileSync(pids, 'utf8').split(',').map(Number)) expect(alive(pid)).toBe(false);
+    // Child and grandchild each hold a socket to this server; a socket closes only when its process dies.
+    const sockets: Socket[] = [];
+    const server = createServer();
+    const bothConnected = new Promise<void>((ok) => { server.on('connection', (s) => { sockets.push(s); if (sockets.length === 2) ok(); }); });
+    await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+    const port = (server.address() as AddressInfo).port;
+    const hold = `require('net').connect(${port}, '127.0.0.1'); setInterval(() => {}, 1000)`;
+    const script = `require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(hold)}], { stdio: ['ignore', 'inherit', 'ignore'] });
+      process.on('SIGTERM', () => {}); ${hold}`;
+    try {
+      const run = spawnExec(process.execPath, ['-e', script], { timeoutMs: 1500 });
+      await bothConnected;
+      const closed = Promise.all(sockets.map((s) => new Promise((ok) => s.on('close', ok))));
+      await expect(run).rejects.toThrow('timed out');
+      await closed;
+    } finally { server.close(); }
   });
 
   it('closes stdin, so a child that reads input gets EOF', async () => {
