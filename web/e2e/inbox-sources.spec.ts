@@ -138,7 +138,7 @@ test('the dot shows on the Inbox rail item (desktop) or the More tab (phone) fro
   const m = await mockApi(page);
   m.inboxSources = nothing();
   await page.goto('/#/today');
-  if (info.project.name === 'mobile') await expect(page.getByRole('button', { name: /More: open command palette\. Inbox needs setup/ })).toBeVisible();
+  if (info.project.name === 'mobile') await expect(page.getByRole('button', { name: /More\. Inbox needs setup/ })).toBeVisible();
   else await expect(page.locator('.rail').getByRole('img', { name: 'Inbox needs setup' })).toBeVisible();
 });
 

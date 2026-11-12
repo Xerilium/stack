@@ -1,5 +1,6 @@
 /**
- * Needs you: Priorities on top, then asks, then Claude sessions and archive candidates.
+ * Priorities on its own page; Claude sessions and archive candidates on the Sessions page (in More). Neither is in Notifications.
+ * @req FR:notifications/pris.route @req FR:notifications/sessions.route
  * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.expand @req FR:pris-sessions-ui/pris.edit @req FR:pris-sessions-ui/pris.save
  * @req FR:pris-sessions-ui/pris.conflict @req FR:pris-sessions-ui/pris.invalid @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row
  * @req FR:pris-sessions-ui/sessions.empty @req FR:pris-sessions-ui/sessions.archive @req FR:pris-sessions-ui/live.inventory @req FR:pris-sessions-ui/live.pris
@@ -26,13 +27,14 @@ const pris = (): MockPri[] => [
 const inventory = (needsYou: MockSessionItem[], archive: MockSessionItem[] = []) => ({ at: new Date().toISOString(), total: needsYou.length + archive.length, counts: {}, needsYou, archive, sessions: [...needsYou, ...archive] });
 const ask = (key: string, text: string): MockAsk => ({ key, state: 'open', ask: text, kind: 'go-do', from: 'cos', reversible: true, priority: 'normal', blocks: 0, created: iso(60), updated: iso(30), score: 50, overdue: false });
 
-async function open(page: Page, o: { pris?: MockPri[] | null; needs?: MockSessionItem[]; archive?: MockSessionItem[]; inventory?: boolean; asks?: MockAsk[] } = {}): Promise<Mock> {
+async function open(page: Page, o: { pris?: MockPri[] | null; needs?: MockSessionItem[]; archive?: MockSessionItem[]; inventory?: boolean; asks?: MockAsk[]; at?: 'priorities' | 'sessions' } = {}): Promise<Mock> {
   const m = await mockApi(page);
   m.pris = o.pris === null ? null : { version: 1, rev: 4, pris: o.pris ?? pris() };
   m.inventory = o.inventory === false ? null : inventory(o.needs ?? [S('a1', 'allyte'), S('a2', 'allyte', { state: 'stuck', reason: 'dead-turn' }), S('x1', 'xerilium', { reason: 'permission', ask: 'Approve the push' })], o.archive ?? [S('d1', 'ftk', { state: 'done', reason: 'pr-merged' }), S('d2', 'other', { state: 'done', reason: 'superseded' })]);
   m.asks = o.asks ?? [ask('k1', 'Register the npm trusted publisher')];
-  await page.goto('/#/asks');
-  await expect(page.getByRole('heading', { name: /^Needs you/ })).toBeVisible();
+  const at = o.at ?? 'priorities';
+  await page.goto(`/#/${at}`);
+  await expect(page.getByRole('heading', { name: at === 'sessions' ? 'Sessions' : 'Priorities', level: 1 })).toBeVisible();
   return m;
 }
 const block = (p: Page) => p.getByTestId('pris');
@@ -40,12 +42,10 @@ const row = (p: Page, id: string) => p.locator(`.pri[data-id="${id}"]`);
 const lastPut = (m: Mock) => m.calls.filter((c) => c.path === '/pris').at(-1);
 
 test.describe('Priorities', () => {
-  test('sit above Needs you: number, title, status word, progress, next item; first 5 open, the rest behind a count', async ({ page }) => {
+  test('own page: number, title, status word, progress, next item; first 5 open, the rest behind a count', async ({ page }) => {
     await open(page);
-    await expect(block(page).getByRole('heading', { name: 'Priorities' })).toBeVisible();
-    const top = await block(page).boundingBox();
-    const needs = await page.getByRole('heading', { name: /^Needs you/ }).boundingBox();
-    expect(top!.y).toBeLessThan(needs!.y);
+    await expect(block(page)).toBeVisible();
+    await expect(page.locator('.ask-li')).toHaveCount(0);
     await expect(page.locator('.pri')).toHaveCount(5);
     await expect(row(page, 'p4')).toHaveCount(0); // done: behind the count
     const r1 = row(page, 'p1');
@@ -168,17 +168,19 @@ test.describe('Priorities', () => {
 
   test('a host with no store shows no Priorities and no Sessions', async ({ page }) => {
     await open(page, { pris: null, inventory: false });
-    await expect(page.locator('.ask-card')).toBeVisible();
     await expect(block(page)).toHaveCount(0);
+    await expect(page.locator('.page-empty')).toBeVisible();
+    await page.goto('/#/sessions');
+    await expect(page.locator('.page-empty')).toHaveText('No sessions wait on you.');
     await expect(page.getByTestId('sessions')).toHaveCount(0);
   });
 });
 
 test.describe('Sessions', () => {
-  test('waiting and stuck sessions under the asks, by project, each a deep link with state word, reason, and time', async ({ page }) => {
-    await open(page);
+  test('waiting and stuck sessions on the Sessions page, by project, each a deep link with state word, reason, and time', async ({ page }) => {
+    await open(page, { at: 'sessions' });
     const s = page.getByTestId('sessions');
-    await expect(s.getByRole('heading', { name: /Sessions/ })).toContainText('3');
+    await expect(s.getByRole('heading', { name: /Waiting on you/ })).toContainText('3');
     await expect(s.locator('h3')).toHaveText(['Allyte', 'Xerilium']);
     const links = s.locator('a.session-row');
     await expect(links).toHaveCount(3);
@@ -189,32 +191,32 @@ test.describe('Sessions', () => {
     await expect(links.nth(1)).toContainText('No activity for 30 min');
     await expect(links.nth(2)).toContainText('Approve the push');
     await expect(links.nth(0)).toHaveAccessibleName(/^Session a1, Waiting, Asked a question, 12m ago$/);
-    const askBox = await page.locator('.asks').boundingBox();
-    const sBox = await s.boundingBox();
-    expect(askBox!.y).toBeLessThan(sBox!.y);
+    await expect(page.locator('.asks')).toHaveCount(0);
   });
 
   test('a session link that is not an epitaxy link is plain text', async ({ page }) => {
-    await open(page, { needs: [S('bad', 'other', { link: 'javascript:alert(1)' })] });
+    await open(page, { at: 'sessions', needs: [S('bad', 'other', { link: 'javascript:alert(1)' })] });
     await expect(page.getByTestId('sessions').locator('a')).toHaveCount(0);
     await expect(page.getByTestId('sessions')).toContainText('Session bad');
   });
 
-  test('Nothing needs you only when there are no asks and no sessions', async ({ page }) => {
-    await open(page, { asks: [] });
-    await expect(page.getByTestId('asks-empty')).toHaveCount(0);
+  test('sessions never count in Notifications', async ({ page }) => {
+    await open(page, { at: 'sessions', asks: [] });
     await expect(page.getByTestId('sessions')).toBeVisible();
-  });
-  test('with no asks and no sessions, the win state shows', async ({ page }) => {
-    await open(page, { asks: [], needs: [], archive: [] });
+    await page.goto('/#/notifications');
     await expect(page.getByTestId('asks-empty')).toBeVisible();
+    await expect(page.getByTestId('sessions')).toHaveCount(0);
+  });
+  test('with no sessions, the Sessions page says so', async ({ page }) => {
+    await open(page, { at: 'sessions', asks: [], needs: [], archive: [] });
+    await expect(page.locator('.page-empty')).toHaveText('No sessions wait on you.');
     await expect(page.getByTestId('sessions')).toHaveCount(0);
   });
 
   test('archive candidates are collapsed; open, they list each one and Copy ids copies one id per line', async ({ page, context, browserName }) => {
     test.skip(browserName !== 'chromium', 'clipboard permissions are chromium only');
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    const m = await open(page);
+    const m = await open(page, { at: 'sessions' });
     const btn = page.getByRole('button', { name: /Archive candidates · 2/ });
     await expect(btn).toHaveAttribute('aria-expanded', 'false');
     await expect(page.locator('.archive-list')).toHaveCount(0);
@@ -235,11 +237,13 @@ test.describe('Sessions', () => {
     m.inventory = inventory([S('n1', 'ftk', { title: 'Fresh one' })]);
     m.pris = { version: 1, rev: 5, pris: [P('p1', 'Quota-maxxing renamed'), ...m.pris!.pris.slice(1)] };
     await page.clock.fastForward(16_000);
-    await expect(page.getByTestId('sessions').locator('a.session-row')).toHaveCount(1);
-    await expect(page.getByTestId('sessions')).toContainText('Fresh one');
     await expect(row(page, 'p1')).toContainText('Quota-maxxing renamed');
     await expect(row(page, 'p1').locator('.pri-toggle')).toBeFocused();
     await expect(page.locator('.toast')).toHaveCount(0);
+    await page.evaluate(() => { location.hash = '#/sessions'; });
+    await page.clock.fastForward(16_000);
+    await expect(page.getByTestId('sessions').locator('a.session-row')).toHaveCount(1);
+    await expect(page.getByTestId('sessions')).toContainText('Fresh one');
     await expect(page.locator('[data-testid="sessions-announce"]')).toHaveText('1 session needs you');
   });
 });
@@ -250,9 +254,11 @@ test.describe('Design', () => {
       await page.emulateMedia({ colorScheme: scheme });
       await open(page);
       await row(page, 'p1').locator('.pri-toggle').click();
+      const axe = async () => (await new AxeBuilder({ page }).include('.page-view').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+      expect(await axe()).toEqual([]);
+      await page.goto('/#/sessions');
       await page.getByRole('button', { name: /Archive candidates/ }).click();
-      const r = await new AxeBuilder({ page }).include('.asks-view').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
-      expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+      expect(await axe()).toEqual([]);
     });
   }
 
@@ -261,20 +267,26 @@ test.describe('Design', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await open(page);
     const warn = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--warn').trim());
-    const hot = await page.locator('[data-testid="pris"] *, [data-testid="sessions"] *').evaluateAll((els) => els.filter((e) => e.children.length === 0 && getComputedStyle(e).color === getComputedStyle(document.querySelector('.pri-status.warn')!).color).map((e) => e.closest('.pri, li')?.textContent?.slice(0, 20)));
+    const warnColor = await page.locator('.pri-status.warn').first().evaluate((e) => getComputedStyle(e).color);
+    const hotIn = (sel: string) => page.locator(sel).evaluateAll((els, c) => els.filter((e) => e.children.length === 0 && getComputedStyle(e).color === c).map((e) => e.closest('.pri, li')?.textContent?.slice(0, 20)), warnColor);
     expect(warn).toBeTruthy();
-    expect(new Set(hot)).toEqual(new Set([await row(page, 'p2').textContent().then((t) => t!.slice(0, 20)), await page.locator('a.session-row').nth(1).textContent().then((t) => t!.slice(0, 20))]));
+    expect(new Set(await hotIn('[data-testid="pris"] *'))).toEqual(new Set([await row(page, 'p2').textContent().then((t) => t!.slice(0, 20))]));
     expect(await row(page, 'p1').locator('.pri-toggle').evaluate((e) => getComputedStyle(e).transitionDuration)).toBe('0s');
+    await page.goto('/#/sessions');
+    await expect(page.locator('a.session-row')).toHaveCount(3);
+    expect(new Set(await hotIn('[data-testid="sessions"] *'))).toEqual(new Set([await page.locator('a.session-row').nth(1).textContent().then((t) => t!.slice(0, 20))]));
   });
 
   test('targets: 44 px on touch, 24 px on desktop; no horizontal scroll', async ({ page, isMobile }) => {
     await open(page);
     await row(page, 'p1').locator('.pri-toggle').click();
-    await page.getByRole('button', { name: /Archive candidates/ }).click();
     const min = isMobile ? 44 : 24;
-    const sel = '[data-testid="pris"] button, [data-testid="pris"] select, [data-testid="pris"] input, [data-testid="sessions"] a, .archive button, .archive a';
-    const small = await page.locator(sel).evaluateAll((els, m) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height < m; }).map((e) => `${e.tagName} ${e.getAttribute('aria-label') ?? e.textContent}`), min);
-    expect(small).toEqual([]);
+    const small = (sel: string) => page.locator(sel).evaluateAll((els, m) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height < m; }).map((e) => `${e.tagName} ${e.getAttribute('aria-label') ?? e.textContent}`), min);
+    expect(await small('[data-testid="pris"] button, [data-testid="pris"] select, [data-testid="pris"] input')).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.goto('/#/sessions');
+    await page.getByRole('button', { name: /Archive candidates/ }).click();
+    expect(await small('[data-testid="sessions"] a, .archive button, .archive a')).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 });

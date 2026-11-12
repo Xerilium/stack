@@ -88,8 +88,8 @@ test.describe('Quiet Home', () => {
     await mockApi(page);
     await page.goto('/#/home');
     const focus = page.locator('.focus-block');
-    await expect(focus.getByRole('button', { name: /^Start/ })).toHaveAttribute('title', /\(s\)/);
-    await expect(focus.getByRole('button', { name: /^Done/ })).toHaveAttribute('title', /\(d\)/);
+    await expect(focus.getByRole('button', { name: /^Start/ })).toHaveAttribute('title', /\(S\)/);
+    await expect(focus.getByRole('button', { name: /^Done/ })).toHaveAttribute('title', /\(D\)/);
     await expect(focus.locator('kbd:visible')).toHaveCount(0);
     await page.keyboard.press('j');
     await expect(focus.locator('button kbd:visible, [role="menuitem"] kbd:visible')).toHaveCount(0);

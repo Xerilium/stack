@@ -45,7 +45,7 @@ export function PrsButton({ api, compact = false }: { api: Client; compact?: boo
     <button type="button" class={`prs-btn${compact ? ' compact' : ' tab'}`} data-testid={compact ? 'prs-btn-phone' : 'prs-btn'} aria-haspopup="dialog" aria-expanded={open}
       aria-label={`Pull requests: ${n} ${n === 1 ? 'agent' : 'agents'} active`} title={`Pull requests (g r) · ${n} active ${n === 1 ? 'agent' : 'agents'}`}
       onClick={(e) => { opener = e.currentTarget as HTMLElement; s.setOpen(true); }}>
-      {compact ? <><PrIcon />{n > 0 && <span class="badge" aria-hidden="true">{n}</span>}</> : <><span class="tab-label"><PrIcon />Pull requests{n > 0 && <span class="badge" aria-hidden="true">{n}</span>}</span><kbd>g r</kbd></>}
+      {compact ? <><PrIcon />{n > 0 && <span class="badge" aria-hidden="true">{n}</span>}</> : <><span class="tab-label"><PrIcon />Pull requests{n > 0 && <span class="badge" aria-hidden="true">{n}</span>}</span></>}
     </button>
   );
 }

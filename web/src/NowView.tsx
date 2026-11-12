@@ -26,7 +26,7 @@ export function waitingOf(b: Pick<Brief, 'messages' | 'actions' | 'moreMessages'
 export function NowScreen({ n, b, layer, busy, onAct, asks, cal, now, onOpenAsks, chat }: {
   n: NowTask | null; b: Brief; layer: Layer; busy: boolean; onAct: (a: NowAct) => void;
   /** The message composer under the task. */ chat?: Omit<NowChatProps, 'taskRef' | 'busy'>;
-  /** Answers on the ask cards, as Needs you answers them. */ asks: Omit<AskCtl, 'busy' | 'now'>;
+  /** Answers on the ask cards, as Notifications answers them. */ asks: Omit<AskCtl, 'busy' | 'now'>;
   /** The calendar source and its fixes. */ cal: CalCtl;
   now: Date;
   onOpenAsks: () => void;
@@ -52,8 +52,8 @@ export function NowScreen({ n, b, layer, busy, onAct, asks, cal, now, onOpenAsks
         </div>
         {n && (
           <div class="now-actions" role="group" aria-label="Actions">
-            <button type="button" class="now-btn primary" disabled={busy} onClick={() => onAct('done')}>Done <kbd>d</kbd></button>
-            <button type="button" class="now-btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>n</kbd></button>
+            <button type="button" class="now-btn primary" title="Done (D)" disabled={busy} onClick={() => onAct('done')}>Done</button>
+            <button type="button" class="now-btn" title="Defer (N)" disabled={busy} onClick={() => onAct('defer')}>Defer</button>
           </div>
         )}
         {n && chat && <NowChat key={n.task.ref} taskRef={n.task.ref} busy={busy} {...chat} />}

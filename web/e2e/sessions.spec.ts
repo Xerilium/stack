@@ -50,7 +50,7 @@ async function open(page: Page, sessions = seed(), withTeam = false): Promise<Mo
     { type: 'tool_update', callId: 'tu2', status: 'completed' },
     { type: 'done', stopReason: 'end_turn', cost: { usd: 0.12, tokens: 300 }, turns: 3, durationMs: 900 },
   ]) }));
-  await page.goto('/#/sessions');
+  await page.goto('/#/agents');
   await expect(page.locator('.sess-row, .agent-card').first()).toBeVisible();
   if (sessions.length) await expect(withTeam ? page.locator('.agent-card.on') : page.locator('.sess-li.cursor')).toHaveCount(1);
   return m;
@@ -161,7 +161,7 @@ test.describe('Sessions', () => {
 
   test('states: not available on this host, empty, error with Retry', async ({ page }) => {
     const m = await mockApi(page);
-    await page.goto('/#/sessions');
+    await page.goto('/#/agents');
     await expect(page.getByTestId('sessions-unavailable')).toContainText('Not available on this host');
     m.sessions = [];
     await page.reload();

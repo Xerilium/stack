@@ -706,11 +706,13 @@ test.describe('palette', () => {
     await expect(page.getByText('No matching command')).toBeVisible();
   });
 
-  test('mobile: More opens the palette', async ({ page }, info) => {
+  // @req FR:notifications/nav.tabbar
+  test('mobile: More opens a menu whose Commands opens the palette', async ({ page }, info) => {
     test.skip(info.project.name !== 'mobile', 'mobile only');
     await mockApi(page);
     await page.goto('/#/home');
-    await page.getByRole('button', { name: 'Open command palette' }).click();
+    await page.locator('.tabbar').getByRole('button', { name: 'More' }).click();
+    await page.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: 'Commands' }).click();
     await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   });
 });
@@ -742,9 +744,8 @@ test.describe('feedback and mobile', () => {
       expect((await page.locator('.btn.primary').first().boundingBox())!.height).toBeGreaterThanOrEqual(44);
       // Full stack and Projects live behind More on a phone
       await expect(page.locator('.tabbar').getByRole('button', { name: /Full stack|Projects/ })).toHaveCount(0);
-      await page.locator('.tabbar').getByRole('button', { name: 'Open command palette' }).click();
-      await page.getByRole('combobox', { name: 'Command' }).fill('full stack');
-      await page.keyboard.press('Enter');
+      await page.locator('.tabbar').getByRole('button', { name: 'More' }).click();
+      await page.getByRole('menuitem', { name: 'Full stack' }).click();
       await expect(page).toHaveURL(/#\/list/);
       await page.locator('.tabbar').getByRole('button', { name: /My day/ }).click();
       await expect(page).toHaveURL(/#\/today/);
@@ -752,7 +753,7 @@ test.describe('feedback and mobile', () => {
     } else {
       await expect(page.locator('.rail')).toBeVisible();
       await expect(page.locator('.tabbar')).toBeHidden();
-      for (const name of ['Now', 'My day', 'Needs you', 'Projects', 'Full stack']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible(); // @req FR:ux-consolidation/nav.rail
+      for (const name of ['Now', 'My day', 'Priorities', 'Projects', 'Full stack']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible(); // @req FR:ux-consolidation/nav.rail
     }
   });
 
@@ -1144,7 +1145,7 @@ test.describe('today view', () => {
     await expect(email.locator('.when')).toContainText('20m');
     await expect(page.locator('[data-testid="plan"] .block').first().locator('.when')).toContainText('10:20a');
     await email.getByRole('button', { name: /Email · 4 asks/ }).click();
-    await expect(page).toHaveURL(/#\/asks/);
+    await expect(page).toHaveURL(/#\/notifications/);
   });
 
   test('g t / g h / g p / g a move between views', async ({ page }, info) => {

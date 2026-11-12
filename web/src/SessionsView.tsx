@@ -168,7 +168,7 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent, 
     <aside ref={ref} class={`sess-drawer${isNew ? ' new' : ''}${inline ? ' inline' : ''}`} role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : 'true'} aria-label={title} onKeyDown={inline ? undefined : trap}>
       <header class="drawer-head">
         <div class="drawer-titles"><h2>{title}</h2>{facts && <p class="facts">{facts}</p>}</div>
-        {!inline && <button type="button" class="btn quiet" onClick={onClose} aria-label="Close">Close<kbd aria-hidden="true">Esc</kbd></button>}
+        {!inline && <button type="button" class="btn quiet" title="Close (Esc)" onClick={onClose} aria-label="Close">Close</button>}
       </header>
       {isNew ? (
         // Prompt first, the agent above it, the folder as a fact under it. @req FR:agent-sessions/web.new @req FR:agent-team/compose.prompt
@@ -187,7 +187,7 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent, 
           )}
           {s.sendError && <p class="drawer-note err" role="alert">{s.sendError}</p>}
           <div class="compose-actions">
-            <button type="submit" class="btn primary" disabled={!canStart}>Start<kbd aria-hidden="true">{mac ? '⌘⏎' : 'Ctrl+⏎'}</kbd></button>
+            <button type="submit" class="btn primary" title={mac ? 'Start (⌘⏎)' : 'Start (Ctrl+⏎)'} disabled={!canStart}>Start</button>
           </div>
         </form>
       ) : (
@@ -215,8 +215,8 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent, 
                 onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } else if (e.key === 'Escape') { e.stopPropagation(); if (inline) (e.target as HTMLElement).blur(); else onClose(); } }} />
               <div class="compose-actions">
-                {running && !s.transcript.done ? <button type="button" class="btn" onClick={() => void s.stop()}>Stop<kbd aria-hidden="true">s</kbd></button> : null}
-                <button type="submit" class="btn primary" disabled={!text.trim() || (running && !s.transcript.done)}>Send<kbd aria-hidden="true">⏎</kbd></button>
+                {running && !s.transcript.done ? <button type="button" class="btn" title="Stop (S)" onClick={() => void s.stop()}>Stop</button> : null}
+                <button type="submit" class="btn primary" disabled={!text.trim() || (running && !s.transcript.done)}>Send</button>
               </div>
             </form>
           </footer>
@@ -335,8 +335,8 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
               <button type="button" class={`seg-btn${!chartMode ? ' on' : ''}`} onClick={() => setMode('project')} aria-pressed={!chartMode}>Other sessions</button>
             </div>
           )}
-          <button type="button" class="btn quiet" onClick={() => s.setShowCosts(!s.showCosts)} aria-expanded={s.showCosts}>Usage<kbd aria-hidden="true">c</kbd></button>
-          <button type="button" class="btn" onClick={() => compose()}>New<kbd aria-hidden="true">n</kbd></button>
+          <button type="button" class="btn quiet" onClick={() => s.setShowCosts(!s.showCosts)} aria-expanded={s.showCosts} title="Usage (C)">Usage</button>
+          <button type="button" class="btn" title="New (N)" onClick={() => compose()}>New</button>
         </div>
       </header>
       {s.showCosts && s.cost && (
@@ -381,7 +381,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
       {empty && !chartMode && (
         <div class="sess-empty" data-testid="sessions-empty">
           <p class="big">{hidden > 0 ? 'No sessions for your projects yet.' : hasTeam ? 'No other sessions.' : 'No sessions on this machine yet.'}</p>
-          <p class="sub">{hidden > 0 ? <Fragment><button type="button" class="link" onClick={() => s.setShowAll(true)}>Show all</button> · {hidden} from other repos, or start one with <kbd aria-hidden="true">n</kbd> New.</Fragment> : <Fragment>Start one with <kbd aria-hidden="true">n</kbd> New.</Fragment>}</p>
+          <p class="sub">{hidden > 0 ? <Fragment><button type="button" class="link" onClick={() => s.setShowAll(true)}>Show all</button> · {hidden} from other repos, or start one with New.</Fragment> : <Fragment>Start one with New.</Fragment>}</p>
         </div>
       )}
       {!chartMode && count > 0 && (
@@ -394,8 +394,8 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
           ))}
         </ol>
       )}
-      {!chartMode && split.more > 0 && <button type="button" class="more-btn" onClick={() => s.setShowAll(true)}>Show {split.more} more <kbd aria-hidden="true">m</kbd></button>}
-      {!chartMode && hiddenNote && ready && <p class="scope-note" data-testid="scope-note">{hiddenNote} · <button type="button" class="link" onClick={() => s.setShowAll(!s.showAll)}>{s.showAll ? 'Only my projects' : 'Show all'}<kbd aria-hidden="true">A</kbd></button></p>}
+      {!chartMode && split.more > 0 && <button type="button" class="more-btn" onClick={() => s.setShowAll(true)}>Show {split.more} more</button>}
+      {!chartMode && hiddenNote && ready && <p class="scope-note" data-testid="scope-note">{hiddenNote} · <button type="button" class="link" onClick={() => s.setShowAll(!s.showAll)}>{s.showAll ? 'Only my projects' : 'Show all'}</button></p>}
       {!chartMode && count > 0 && <p class="keys-hint" aria-hidden="true">j k move · Enter open · f pin{hasTeam ? ' · t my team' : ''} · A all repos · s stop · c usage · n new</p>}
       {chartMode && count > 0 && <p class="keys-hint" aria-hidden="true">j k pick an agent · n new · c usage · p other sessions</p>}
       {modal && <div class="sess-scrim" onClick={close} />}

@@ -6,9 +6,9 @@ Applies to every view. Audit and follow-ups: `.xe/features/task-detail-design/au
 
 ## Global rules
 
-1. Clickable looks clickable: pointer cursor, hover state, focus ring; a row or card that opens something ends in a chevron (`›`).
+1. Clickable looks clickable: pointer cursor, hover state, focus ring; a row or card that opens something ends in a chevron (`›`). Cards use `--card-bg` and change to `--card-bg-hover` on hover (dark mode: shadows do not show, the background does).
 2. Looks like a button, acts like one. A fact that cannot change is plain text, never chip or button styling.
-3. No shortcut-key badges on buttons, links, or menu items. Chords live in `?` help and the palette.
+3. No shortcut-key badges on buttons, links, menu items, or the rail. A key shows only in the tooltip, as `Done (D)`. Chords live in `?` help and the palette.
 4. Every control has a plain verb label (`Start`, `Defer`, `Ask`) and a one-line outcome hint on hover/focus or under its group.
 5. No unexplained controls. If the outcome needs a sentence, write the sentence next to it.
 6. Dropdowns only for long lists (8+). Short choices are chips or a segmented control.

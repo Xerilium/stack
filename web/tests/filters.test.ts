@@ -40,7 +40,7 @@ describe('hash state', () => {
     expect(buildHash('home', F())).toBe('#/home');
     expect(parseHash('')).toEqual({ view: 'now', filters: F() });
     expect(parseHash('#/today')).toEqual({ view: 'today', filters: F() });
-    expect(parseHash('#/sessions')).toEqual({ view: 'sessions', filters: F() });
+    expect(parseHash('#/sessions')).toEqual({ view: 'inventory', filters: F() }); // @req FR:notifications/sessions.route
     expect(parseHash('#/agents').view).toBe('sessions');
     expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'now', filters: F() });
     expect(parseHash('#/list?state=done').filters.state).toBe('done');
@@ -55,5 +55,14 @@ describe('hash state', () => {
     expect(parseHash('#/capacity').view).toBe('projects');
     for (const old of ['all', 'stack']) expect(parseHash(`#/${old}`).view).toBe('list');
     expect(parseHash('#/asks').view).toBe('asks');
+  });
+  // @req FR:notifications/list.route @req FR:notifications/pris.route @req FR:notifications/sessions.route
+  it("Notifications, Priorities, Sessions: own routes; old Needs you routes open Notifications", () => {
+    for (const h of ["#/notifications", "#/asks", "#/needs"]) expect(parseHash(h).view).toBe("asks");
+    expect(buildHash("asks", F())).toBe("#/notifications");
+    expect(parseHash("#/priorities").view).toBe("priorities");
+    expect(buildHash("priorities", F())).toBe("#/priorities");
+    expect(buildHash("inventory", F())).toBe("#/sessions");
+    expect(buildHash("sessions", F())).toBe("#/agents");
   });
 });

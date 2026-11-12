@@ -21,7 +21,7 @@ Owner feedback (Nov 11): My day feels like a mess. Rows do not look clickable (o
 - **FR:rules.doc** (P1): `docs/design-system.md` (at most 60 lines) states the global rules, the tokens, the control styles, and the choice of hand-written CSS on Fluent 2 tokens
 - **FR:rules.tokens** (P1): Fluent 2 tokens (`--fl-*`: color, type ramp, radius, spacing, elevation, motion) live in one stylesheet (`web/src/fluent2.css`), imported once by the app entry, with light and dark values. Any page opts in with the class `fl`. No network at runtime; no new runtime dependency
 - **FR:rules.clickable** (P1): Every clickable row and card shows a pointer cursor, a hover state, and a visible focus ring
-- **FR:rules.nokeys** (P1): No button shows a shortcut-key badge. Chords live only in the `?` help and the command palette. The rail keeps its hover hint (a nav, not a button action)
+- **FR:rules.nokeys** (P1): No button shows a shortcut-key badge. Chords live only in the `?` help and the command palette. No `kbd` element renders inside a button, link, or menu item, the rail included; a key shows only in the tooltip (`FR:notifications/keys.none`)
 - **FR:rules.facts** (P1): A fact that cannot be changed renders as plain text, never with chip or button styling
 
 ### FR:detail: The task detail

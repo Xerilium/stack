@@ -279,7 +279,7 @@ function Reply({ onSend, onClose, to, placeholder }: { onSend: (text: string) =>
       <p class="reply-to">To <b>{to}</b> · lands in its inbox</p>
       <div class="reply-row">
         <input ref={ref} type="text" aria-label="Reply" placeholder={placeholder} value={text} maxLength={1000} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }} />
-        <button type="submit" class="btn primary" disabled={!text.trim() || sending}>Send <kbd>↵</kbd></button>
+        <button type="submit" class="btn primary" disabled={!text.trim() || sending}>Send</button>
       </div>
     </form>
   );
@@ -338,10 +338,10 @@ function DayTimes({ day, weekday, onSave }: { day: Day; weekday: string; onSave?
     <span class="day-times-edit" role="group" aria-label="Wake and bed" data-testid="day-times-edit" onKeyDown={onKey}>
       <label>Up <input type="time" value={wake} ref={(el) => { if (el && !el.dataset.seen) { el.dataset.seen = '1'; el.focus(); } }} onInput={(e) => setWake((e.target as HTMLInputElement).value)} /></label>
       <label>Bed <input type="time" value={bed} onInput={(e) => setBed((e.target as HTMLInputElement).value)} /></label>
-      <button type="button" class="link-btn strong" onClick={() => void save(changed())}>Only {weekday} <kbd>⏎</kbd></button>
-      <button type="button" class="link-btn" onClick={() => void save({ wake, bed, every: true })}>Every {weekday} <kbd>⇧⏎</kbd></button>
+      <button type="button" class="link-btn strong" onClick={() => void save(changed())}>Only {weekday}</button>
+      <button type="button" class="link-btn" onClick={() => void save({ wake, bed, every: true })}>Every {weekday}</button>
       <button type="button" class="link-btn" onClick={() => void save({ reset: true })}>Reset</button>
-      <button type="button" class="link-btn" onClick={() => setOpen(false)}>Cancel <kbd>Esc</kbd></button>
+      <button type="button" class="link-btn" onClick={() => setOpen(false)}>Cancel</button>
     </span>
   );
 }
@@ -435,7 +435,7 @@ export function TodayView(t: TodayProps) {
           {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
           {meetingMin > 0 && <span>{span(meetingMin)} in meetings</span>}
           {t.calendar === false && <span class="quiet" data-testid="nocal">No calendar · <a class="quiet-link" href="https://github.com/Xerilium/stack/blob/main/docs/runbook.md" target="_blank" rel="noopener noreferrer">Connect</a></span>}
-          {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join{joinable(nextMeeting.events, t.now) && <kbd>J</kbd>}</a></>}</span>}
+          {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer" title={joinable(nextMeeting.events, t.now) ? "Join (J)" : undefined}>Join</a></>}</span>}
           {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
           {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
           {heads.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{heads.join(' · ')}</button>}
@@ -463,12 +463,12 @@ export function TodayView(t: TodayProps) {
                 : r.kind === 'band' ? <li key={`band${r.at}`} class={`band${r.personal ? ' personal' : ''}`} data-testid="band"><span><i class="band-glyph" aria-hidden="true">{r.emoji}</i>{r.name}</span><span class="band-time">{clock(r.from)}–{clock(r.to)}</span></li>
                   : r.kind === 'gap' ? <li key={`gap${r.at}`} class="gap"><time class="when">{clock(r.at)}</time><span>{span(r.min)} free</span></li>
                     : r.kind === 'now' ? <li key="now" class="now-line" aria-label={`Now ${clock(r.at)}`}><time>{clock(r.at)}</time></li>
-                      : <li key="email" class="email-block"><time class="when">{clock(r.e.start)}<small>{span(r.e.end - r.e.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {r.e.count} ask{r.e.count === 1 ? '' : 's'}</button><kbd>g k</kbd></div></li>)}
+                      : <li key="email" class="email-block"><time class="when">{clock(r.e.start)}<small>{span(r.e.end - r.e.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {r.e.count} ask{r.e.count === 1 ? '' : 's'}</button></div></li>)}
           </ol>
           {over && (
             // The +30m button sits beside the summary, not in it: no button inside a button (axe nested-interactive).
             <div class="nofit-wrap" data-testid="nofit">
-            {t.onBudget && <button type="button" class="btn quiet nofit-more" title="More time (])" onClick={() => t.onBudget?.(t.budget.minutes + 30)}>+30m <kbd>]</kbd></button>}
+            {t.onBudget && <button type="button" class="btn quiet nofit-more" title="More time (])" onClick={() => t.onBudget?.(t.budget.minutes + 30)}>+30m</button>}
             <details class="nofit">
               <summary class="nofit-head">
                 <h3>{t.plan.overflow.length} don't fit{t.plan.atRisk.length > 0 && <span class="warn"> · {t.plan.atRisk.length} due soon</span>}</h3>
@@ -689,10 +689,10 @@ function MoreMenu({ busy, owned, onAct, onOpen }: { busy: boolean; owned: boolea
       <button type="button" ref={btn} class="btn more-btn" aria-haspopup="menu" aria-expanded={open} aria-label="More actions" title="More actions" data-testid="more" onClick={() => setOpen((o) => !o)}>…</button>
       {open && (
         <div class="menu" role="menu" aria-label="More actions" data-testid="more-menu">
-          <button type="button" role="menuitem" class="menu-item" title="Back in 2 hours (n)" disabled={busy} onClick={pick(() => onAct('notnow'))}>Defer 2h <kbd>n</kbd></button>
-          <button type="button" role="menuitem" class="menu-item" title="Pick when (z)" disabled={busy} onClick={pick(() => onAct('defer'))}>Defer… <kbd>z</kbd></button>
-          {!owned && <button type="button" role="menuitem" class="menu-item" title="An agent takes it (A)" disabled={busy} onClick={pick(() => onAct('delegate'))}>Delegate <kbd>A</kbd></button>}
-          <button type="button" role="menuitem" class="menu-item" title="Open full screen (Enter)" onClick={pick(onOpen)}>Open <kbd>↵</kbd></button>
+          <button type="button" role="menuitem" class="menu-item" title="Back in 2 hours (N)" disabled={busy} onClick={pick(() => onAct('notnow'))}>Defer 2h</button>
+          <button type="button" role="menuitem" class="menu-item" title="Pick when (Z)" disabled={busy} onClick={pick(() => onAct('defer'))}>Defer…</button>
+          {!owned && <button type="button" role="menuitem" class="menu-item" title="An agent takes it (A)" disabled={busy} onClick={pick(() => onAct('delegate'))}>Delegate</button>}
+          <button type="button" role="menuitem" class="menu-item" title="Open full screen (Enter)" onClick={pick(onOpen)}>Open</button>
         </div>
       )}
     </div>
@@ -738,7 +738,7 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
         <p class="window" data-testid="window">{windowLine}</p>
         <div class="have" role="group" aria-label="I have" data-testid="have">
           <span class="have-label">I have</span>
-          {HAVE.map((m, i) => <button type="button" key={m} class={`chip${have === m ? ' on' : ''}`} aria-pressed={have === m} onClick={() => onHave(have === m ? null : m)}>{span(m)}<kbd>{i + 1}</kbd></button>)}
+          {HAVE.map((m, i) => <button type="button" key={m} class={`chip${have === m ? ' on' : ''}`} aria-pressed={have === m} title={`${span(m)} (H then ${i + 1})`} onClick={() => onHave(have === m ? null : m)}>{span(m)}</button>)}
           <kbd class="have-key" title="h then 1-4; 0 resets">h</kbd>
         </div>
       </div>
@@ -752,9 +752,9 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
           )}
           {p.open === one.task.ref ? <RowDetail t={one.task} all={p.all} busy={busy} onAct={p.onAct} onToggle={p.onToggle} onOpen={p.onOpen} extra={p.detail} /> : (
             <div class="actions">
-              <button type="button" class={`btn${h.fits || demoted ? ' primary' : ''}`} title="Start (s)" disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start <kbd>s</kbd></button>
-              <button type="button" class="btn" title="Done (d)" disabled={busy} onClick={() => onAct('done', one.task.ref)}>Done <kbd>d</kbd></button>
-              {!h.fits && !demoted && <button type="button" class="btn quiet" title="More time (])" onClick={onMoreTime}>More time <kbd>]</kbd></button>}
+              <button type="button" class={`btn${h.fits || demoted ? ' primary' : ''}`} title="Start (S)" disabled={busy} onClick={() => onAct('start', one.task.ref)}>Start</button>
+              <button type="button" class="btn" title="Done (D)" disabled={busy} onClick={() => onAct('done', one.task.ref)}>Done</button>
+              {!h.fits && !demoted && <button type="button" class="btn quiet" title="More time (])" onClick={onMoreTime}>More time</button>}
               <MoreMenu busy={busy} owned={!!p.agent?.owned?.(one.task)} onAct={(a) => onAct(a, one.task.ref)} onOpen={() => p.onOpen(one.task.ref)} />
             </div>
           )}
@@ -766,7 +766,7 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
           <span class="unfit-title"><Md text={parseRow(demoted.task.text).title || demoted.task.text} /></span>
           <span class="unfit-why">{win.allow && !win.have ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : `doesn't fit now: needs ${span(demoted.minutes)}, ${span(minutesLeft)}${until ? ` until ${until}` : ' left'}`}</span>
           <span class="grow" />
-          <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>
+          <button type="button" class="btn quiet" onClick={onMoreTime}>More time</button>
           <button type="button" class="btn quiet" disabled={busy} onClick={() => onAct('start', demoted.task.ref)}>Start anyway</button>
           {detail(demoted.task)}
         </div>

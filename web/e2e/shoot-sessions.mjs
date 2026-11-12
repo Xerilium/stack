@@ -20,7 +20,7 @@ for (const [name, [w, h]] of Object.entries(sizes)) {
     if (mode !== 'base' && scheme === 'dark' && name !== 'desktop') continue;
     const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, deviceScaleFactor: name === 'mobile' ? 2 : 1, hasTouch: name === 'mobile' });
     const p = await ctx.newPage();
-    await p.goto(`${base}/#/sessions`);
+    await p.goto(`${base}/#/agents`);
     await p.locator('.sess-row, .org-row, .sess-empty, .sess-error').first().waitFor();
     await p.locator('.org-row, .sess-empty, .sess-error').first().waitFor({ timeout: 4000 }).catch(() => undefined); // the team arrives a beat after the sessions
     await p.waitForTimeout(500);

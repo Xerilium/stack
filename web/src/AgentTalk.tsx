@@ -62,7 +62,7 @@ export function AgentTalk({ team, talk, agents, float = false }: { team: Team; t
       <form class="talk-row" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <input ref={box} type="text" value={text} maxLength={4000} aria-label={`Message ${chosen?.name ?? 'the agent'}`} placeholder={none ? 'No agent covers this task' : offline ? 'Runs in stack web on your machine' : 'Ask anything…'} disabled={none || offline}
           onInput={(e) => setText((e.target as HTMLInputElement).value)} />
-        <button type="submit" class={`btn${text.trim() ? ' primary' : ''}`} disabled={none || offline || busy || !text.trim()}>Send<kbd aria-hidden="true">⏎</kbd></button>
+        <button type="submit" class={`btn${text.trim() ? ' primary' : ''}`} disabled={none || offline || busy || !text.trim()}>Send</button>
       </form>
       {(talk.ref || offline) && <div class="talk-row quick">
         {QUICK.filter(() => !!talk.ref).map((q) => (

@@ -2,6 +2,7 @@
  * Fluent 2 tokens and controls, plus the global design rules. Imported once by main.tsx; a page opts in to the look with class `fl`.
  * Values: Fluent 2 web light/dark themes. Rules: docs/design-system.md.
  * @req FR:task-detail-design/rules.tokens @req FR:task-detail-design/rules.clickable @req FR:task-detail-design/rules.nokeys @req FR:task-detail-design/rules.facts
+ * @req FR:notifications/cards.hover @req FR:notifications/cards.focus @req FR:notifications/keys.none
  */
 :root {
   --fl-bg1: #ffffff; --fl-bg1-hover: #f5f5f5; --fl-bg1-pressed: #e0e0e0; --fl-bg2: #fafafa; --fl-bg3: #f5f5f5;
@@ -69,13 +70,19 @@
 .fl-saved { color: var(--fl-success); font-size: var(--fl-caption); }
 
 /* ---- Global rules: every view, no opt-in ---- */
-/* No key badges on buttons, link buttons, or menu items; chords live in ? help and the palette. The rail keeps its nav hint. */
-body :is(button, a.btn, [role="menuitem"]) kbd { display: none !important; }
-.rail .tab kbd { display: inline-block !important; }
-@media (max-width: 719px) { .rail .tab kbd { display: none !important; } }
+/* No key badges on buttons, link buttons, menu items, or the rail; a key shows only in the tooltip. Chords live in ? help and the palette. */
+body :is(button, a, [role="menuitem"]) kbd { display: none !important; }
+/* Cards: a background that moves on hover, so the state shows in dark mode where shadows do not. */
+:root { --card-bg: var(--panel, #ffffff); --card-bg-hover: var(--hover, #f3f3f1); }
+@media (prefers-color-scheme: dark) { :root { --card-bg: #161619; --card-bg-hover: #222227; } }
+body :is(.ask-card, .now-ask, .tile, .agent-card, .fl-card, .focus-block, .notice-signin) { background: var(--card-bg); transition: background-color var(--fl-fast) var(--fl-ease); }
+@media (hover: hover) {
+  body :is(.ask-card, .now-ask, .tile, .agent-card, .fl-card, .focus-block):hover, body :is(.ask-row, .pri-toggle, .session-row):hover { background: var(--card-bg-hover); }
+}
+body :is(.ask-row, .pri-toggle, .session-row, .now-ask-body, .tile, .agent-card):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Clickable rows and cards: pointer, hover, focus. */
 [role="button"]:not([aria-disabled="true"]), summary, .top-rows > li, .nofit li, .proj-btn, .tile, .unfit, .ask-row { cursor: pointer; }
-@media (hover: hover) { .top-rows > li:hover, .nofit li:hover, .proj-btn:hover, .tile:hover { background: var(--hover); } }
+@media (hover: hover) { .top-rows > li:hover, .nofit li:hover, .proj-btn:hover { background: var(--hover); } }
 :is(.top-rows > li, .nofit li, .tile, .proj-btn):focus-within { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* Facts are text, not chips. */
 span.chip:not(.removable) { background: none !important; border: 0 !important; padding: 0 !important; min-height: 0 !important; color: var(--muted); }

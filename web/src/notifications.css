@@ -1,0 +1,36 @@
+/* Bell, flyout, More menu, and the Priorities and Sessions pages. @req FR:notifications/bell.place @req NFR:notifications/a11y.targets @req NFR:notifications/calm */
+.rail-top { display: flex; align-items: center; gap: 4px; padding-bottom: 14px; }
+.rail-top .brand { flex: 1; min-width: 0; padding-bottom: 0; }
+.bell { position: relative; flex: none; display: inline-grid; place-items: center; min-width: 36px; min-height: 36px; padding: 0; border: 0; border-radius: var(--r-row, 8px); background: transparent; color: var(--ink2); cursor: pointer; }
+.bell:hover, .bell[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
+.bell:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.bell .badge { position: absolute; top: 0; right: -2px; padding: 2px 5px; min-width: 16px; font-size: 10.5px; }
+.bell.compact { min-width: var(--tap); min-height: var(--tap); color: var(--ink); }
+.bell.compact .badge { top: 4px; right: 2px; }
+@media (hover: none), (max-width: 719px) { .bell { min-width: var(--tap); min-height: var(--tap); } }
+
+.notice-fly { position: fixed; z-index: 30; top: 12px; left: calc(var(--railw) + 8px); width: min(420px, calc(100vw - var(--railw) - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain;
+  padding: 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow, 0 8px 24px rgb(0 0 0 / 18%)); }
+.notice-fly:focus { outline: none; }
+.notice-fly:focus-visible { outline: 2px solid var(--focus); }
+.notice-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 10px; }
+.notice-h { margin: 0; font-size: 15px; font-weight: 650; }
+.notice-all { color: var(--accent); font-size: 13px; font-weight: 600; text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; }
+.notice-all:hover { text-decoration: underline; }
+.notice-signin { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card-bg); }
+.notice-empty { margin: 8px 2px 4px; color: var(--muted); }
+.notice-fly .now-asks { margin: 0; }
+
+.more-wrap { position: relative; }
+.more-menu { position: absolute; z-index: 25; display: grid; gap: 2px; min-width: 200px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow, 0 8px 24px rgb(0 0 0 / 18%)); }
+.more-menu.rail-menu { left: 0; top: calc(100% + 4px); }
+.more-menu.tab-menu { position: fixed; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom)); }
+.more-item { min-height: 36px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.more-item:hover, .more-item:focus-visible { background: var(--hover); outline: none; }
+.more-item:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+@media (hover: none), (max-width: 719px) { .more-item { min-height: var(--tap); } }
+
+.page-view { display: grid; gap: 12px; }
+.page-view > .h1 { margin: 0; }
+.page-empty { color: var(--muted); }
+.tabbar .more-wrap.tab-slot { display: contents; }
