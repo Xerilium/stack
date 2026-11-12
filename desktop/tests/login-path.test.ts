@@ -1,4 +1,4 @@
-import { applyLoginPath, PATH_MARK, resolveLoginPath, type ExecFn } from '../src/login-path';
+import { applyLoginPath, PATH_MARK, resolveLoginPath, spawnExec, type ExecFn } from '../src/login-path';
 
 const HOME = '/Users/me';
 const BARE = '/usr/bin:/bin:/usr/sbin:/sbin';
@@ -18,7 +18,7 @@ describe('resolveLoginPath', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].file).toBe('/bin/bash');
     expect(calls[0].args[0]).toBe('-ilc');
-    expect(calls[0].args[1]).toContain('$PATH');
+    expect(calls[0].args[1]).toContain('/usr/bin/printenv PATH');
     expect(calls[0].timeoutMs).toBe(5000);
   });
 
@@ -42,8 +42,8 @@ describe('resolveLoginPath', () => {
   });
 
   it.each([
-    ['fails', new Error('exit 1'), 'exit 1'],
-    ['times out', Object.assign(new Error('Command failed'), { killed: true, signal: 'SIGTERM' }), 'timed out'],
+    ['fails', new Error('shell exited 1\nstderr detail'), 'shell exited 1'],
+    ['times out', new Error('timed out'), 'timed out'],
     ['prints no markers', 'oh-my-zsh says hi', 'no PATH in shell output'],
     ['prints an empty PATH', marked(''), 'no PATH in shell output'],
   ])('falls back when the shell %s', async (_name, out, reason) => {
@@ -84,5 +84,31 @@ describe('applyLoginPath', () => {
     await applyLoginPath(env, { home: HOME, exec: fakeExec(new Error('boom')).exec, platform: 'darwin', log: (l) => log.push(l) });
     expect(env.PATH?.startsWith('/opt/homebrew/bin:')).toBe(true);
     expect(log).toEqual(['path: fallback (boom)']);
+  });
+});
+
+// The real spawner, driven with Node scripts (not a shell): timeout, stdin, early resolve. @req FR:desktop-shell/host.path
+describe('spawnExec', () => {
+  const node = (script: string, timeoutMs = 400) => spawnExec(process.execPath, ['-e', script], { timeoutMs });
+
+  it('kills a child that ignores SIGTERM when the timeout passes', async () => {
+    const t = Date.now();
+    await expect(node("process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)")).rejects.toThrow('timed out');
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
+
+  it('closes stdin, so a child that reads input gets EOF', async () => {
+    await expect(node("process.stdin.resume(); process.stdin.on('end', () => process.stdout.write('eof'))", 3000)).resolves.toBe('eof');
+  });
+
+  it('resolves once both markers arrive, even if the child keeps running', async () => {
+    const t = Date.now();
+    await expect(node(`process.stdout.write('${PATH_MARK}/a:/b${PATH_MARK}'); setInterval(() => {}, 1000)`, 3000)).resolves.toContain('/a:/b');
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
+
+  it('rejects on a non-zero exit and on a missing program', async () => {
+    await expect(node('process.exit(3)')).rejects.toThrow('shell exited 3');
+    await expect(spawnExec('/no/such/shell', [], { timeoutMs: 400 })).rejects.toThrow('cannot start shell (ENOENT)');
   });
 });

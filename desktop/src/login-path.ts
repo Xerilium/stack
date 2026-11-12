@@ -3,7 +3,7 @@
  * `gh`, `claude`, `gemini`, and Node tools. Logs say where the `PATH` came from, never its value.
  * @req FR:desktop-shell/host.path @req NFR:desktop-shell/shell.log
  */
-import { execFile } from 'child_process';
+import { spawn } from 'child_process';
 import { homedir } from 'os';
 import { delimiter, join } from 'path';
 
@@ -23,18 +23,30 @@ export interface LoginPath { path: string; source: string }
 export const PATH_MARK = '__STACK_PATH__';
 const TIMEOUT_MS = 5000;
 
-const defaultExec: ExecFn = (file, args, o) => new Promise((ok, fail) => {
-  execFile(file, args, { timeout: o.timeoutMs, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (e, stdout) => (e ? fail(e) : ok(stdout)));
+const MAX_OUT = 1024 * 1024;
+
+/**
+ * Spawns with stdin closed (a start-up file that reads input gets EOF) in its own process group, and SIGKILLs the
+ * group once the `PATH` is read or on timeout: an interactive shell ignores SIGTERM, and rc files may start children
+ * that hold stdout open.
+ */
+export const spawnExec: ExecFn = (file, args, o) => new Promise((ok, fail) => {
+  const child = spawn(file, args, { stdio: ['ignore', 'pipe', 'ignore'], detached: process.platform !== 'win32' });
+  let out = '';
+  let settled = false;
+  const kill = () => { try { if (child.pid && process.platform !== 'win32') process.kill(-child.pid, 'SIGKILL'); else child.kill('SIGKILL'); } catch { /* already gone */ } };
+  const end = (e?: Error) => { if (settled) return; settled = true; clearTimeout(timer); kill(); if (e) fail(e); else ok(out); };
+  const timer = setTimeout(() => end(new Error('timed out')), o.timeoutMs);
+  child.stdout!.setEncoding('utf8');
+  child.stdout!.on('data', (d: string) => { out += d; if (out.split(PATH_MARK).length > 2) end(); else if (out.length > MAX_OUT) end(new Error('shell output too large')); });
+  child.on('error', (e) => end(new Error(`cannot start shell (${(e as NodeJS.ErrnoException).code ?? 'error'})`)));
+  child.on('close', (code) => end(code === 0 ? undefined : new Error(`shell exited ${code ?? 'by signal'}`)));
 });
 
 const split = (p: string | undefined) => (p ?? '').split(delimiter).filter(Boolean);
 const join_ = (...parts: string[][]) => [...new Set(parts.flat())].join(delimiter);
 
-function reason(e: unknown): string {
-  const err = e as { killed?: boolean; signal?: string; message?: string };
-  if (err?.killed || err?.signal === 'SIGTERM') return 'timed out';
-  return String(err?.message ?? e).split('\n')[0].slice(0, 120);
-}
+const reason = (e: unknown) => String((e as Error)?.message ?? e).split('\n')[0].slice(0, 120);
 
 export async function resolveLoginPath(o: LoginPathDeps & { env: NodeJS.ProcessEnv }): Promise<LoginPath> {
   const platform = o.platform ?? process.platform;
@@ -43,9 +55,10 @@ export async function resolveLoginPath(o: LoginPathDeps & { env: NodeJS.ProcessE
   const home = o.home ?? homedir();
   const shell = o.env.SHELL || '/bin/zsh';
   try {
-    const out = await (o.exec ?? defaultExec)(shell, ['-ilc', `printf '${PATH_MARK}%s${PATH_MARK}' "$PATH"`], { timeoutMs: o.timeoutMs ?? TIMEOUT_MS });
+    // printenv, not "$PATH": fish expands $PATH to a space-joined list. Works the same in sh, bash, zsh, and fish.
+    const out = await (o.exec ?? spawnExec)(shell, ['-ilc', `printf ${PATH_MARK}; /usr/bin/printenv PATH; printf ${PATH_MARK}`], { timeoutMs: o.timeoutMs ?? TIMEOUT_MS });
     const m = out.match(new RegExp(`${PATH_MARK}([^]*?)${PATH_MARK}`));
-    const found = split(m?.[1]);
+    const found = split(m?.[1].trim());
     if (!found.length) throw new Error('no PATH in shell output');
     return { path: join_(found, current), source: 'login shell' };
   } catch (e) {
