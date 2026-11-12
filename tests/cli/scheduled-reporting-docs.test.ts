@@ -31,6 +31,7 @@ describe('docs/scheduled-reporting.md', () => {
     expect(fences.filter((f) => f.body.startsWith('FINAL STEP'))).toHaveLength(1);
     expect(block!.body).toMatch(/^stack report --agent <agent> --project <project> --json <<'JSON'$/m);
     expect(block!.body).toMatch(/^JSON$/m);
+    for (const f of ['{text, link?}', 'id', 'ask', 'link (https)', 'by (ISO date)', 'kind?', 'recommend?', 'why?', 'default?', 'priority?', 'No other keys']) expect(block!.body).toContain(f);
   });
 
   // @req FR:scheduled-task-reporting/step.last @req FR:scheduled-task-reporting/step.always @req FR:scheduled-task-reporting/step.ids
@@ -43,6 +44,7 @@ describe('docs/scheduled-reporting.md', () => {
     expect(b).toContain('`blockers`');
     expect(b).toMatch(/same every run/i);
     expect(b).toMatch(/never a date or run number/i);
+    expect(b).toMatch(/add the repo when the project has more than one/);
   });
 
   // @req FR:scheduled-task-reporting/tokens.none @req FR:scheduled-task-reporting/tokens.lines
@@ -71,7 +73,7 @@ describe('docs/scheduled-reporting.md', () => {
 
   // @req FR:scheduled-task-reporting/answers.save
   it('saves owner answers for the next run, not this one', () => {
-    expect(block!.body).toMatch(/`asks\.answers`.*state file.*Do not act on it now/);
+    expect(block!.body).toMatch(/`asks\.answers`.*state file \(create `state\.md` beside this prompt if none\)\. Do not act on it now\. The next run reads it before its main work/);
   });
 
   // @req FR:scheduled-task-reporting/secrets.none
@@ -81,6 +83,7 @@ describe('docs/scheduled-reporting.md', () => {
     const section = doc.slice(doc.indexOf('## No secrets'), doc.indexOf('## Samples'));
     expect(section).toMatch(/No personal data beyond names already public/);
     expect(section).toMatch(/Links point at the item itself/);
+    expect(block!.body).toMatch(/with an https link/);
   });
 
   // @req FR:scheduled-task-reporting/samples.types @req FR:scheduled-task-reporting/samples.tasks

@@ -13,12 +13,13 @@ FINAL STEP (always the last step): send the Stack status report. No LLM call: us
 - Send a report on every run. If the main work failed, put the cause in `blockers`.
 - One short line of fact per item, with an https link when one exists. No prose, no greeting, no recap.
 - Never a secret: no token, key, password, webhook url, signed url, or url with a token in its query.
-- Asks: only items that need the owner. List every open ask again each run; a dropped ask leaves Needs you. `id` = the real item (`pr-130`, `issue-42`), same every run. New item, new `id`. Never a date or run number.
+- Asks: only items that need the owner. List every open ask again each run; a dropped ask leaves Needs you. `id` = the real item (`pr-130`, `issue-42`; add the repo when the project has more than one: `toolkit-pr-130`), same every run. New item, new `id`. Never a date or run number.
+- Fields: `top`, `blockers`, `progress` items are {text, link?}. `asks` items are {id, ask, link (https), by (ISO date), kind? (approve|review|go-do|answer), recommend?, why?, default?, priority? (crit|high|normal|low)}. No other keys.
 - Run this. Keep the quotes on 'JSON'. Replace the middle line with the JSON:
 stack report --agent <agent> --project <project> --json <<'JSON'
 <this run's report JSON: top (max 3), asks (max 10; id max 24 chars), blockers, progress (max 10 each)>
 JSON
-- Exit 0: stored. If `asks.answers` is not empty and this task has a state file, save it there for the next run. Do not act on it now.
+- Exit 0: stored. If `asks.answers` is not empty, save it to this task's state file (create `state.md` beside this prompt if none). Do not act on it now. The next run reads it before its main work.
 - Exit 2: fix only what `error` and `issues` name; send once more. Exit 1: send once more.
 - Still failing, or `stack` not found: print `report failed: <error>` and stop. Never loop. No step after this one.
 ```
