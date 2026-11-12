@@ -452,7 +452,7 @@ export function TodayView(t: TodayProps) {
         </header>
         {t.calError && <p class="cal-note">{t.calError}; meetings are not counted.</p>}
         <DayGrid now={t.now} plan={t.plan} day={t.day} events={t.events ?? []} today={offset === 0} past={offset < 0} selected={t.selected} titles={t.p.titles}
-          onOpen={(r) => t.p.onOpen(r)} onPlace={offset < 0 ? undefined : t.onPlace} onCloseTask={t.onCloseTask} />
+          onOpen={(r) => t.p.onOpen(r)} onPlace={offset < 0 ? undefined : t.onPlace} onCloseTask={t.onCloseTask} onEmail={t.onEmail} />
       </section>
     );
   }
