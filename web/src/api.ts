@@ -10,6 +10,7 @@ import type { Inventory } from './inventory';
 import type { PrBoard } from './prs';
 import type { ReviewItem, TeamAgent } from './team';
 import type { Thread } from './thread';
+import type { UpdateMode, VersionState } from './update';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
 
 /** @req FR:web-app/api.client */
@@ -127,6 +128,12 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     /** Commit and push pending edits now; `keepalive` when the page is going away. @req FR:live-deploy/web.unsaved.hide @req FR:live-deploy/$flush-result */
     flush: (keepalive = false) => call<FlushResult>('/sync', {}, keepalive ? { keepalive: true } : {}),
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
+    /** Desktop app builds and update mode; 404 on hosts with no installer. @req FR:devops-installer/version.get */
+    version: () => call<VersionState>('/version'),
+    /** @req FR:devops-installer/version.mode */
+    setUpdateMode: (mode: UpdateMode, idleMinutes?: number) => call<VersionState>('/version/mode', { mode, ...(idleMinutes !== undefined ? { idleMinutes } : {}) }),
+    /** @req FR:devops-installer/notice.restart */
+    restartForUpdate: () => call<{ restarting: boolean }>('/version/restart', {}),
   };
 }
 export type Client = ReturnType<typeof createClient>;

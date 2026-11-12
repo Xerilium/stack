@@ -17,7 +17,7 @@ Stack opens like a Mac app: own window, Dock icon, starts at login, taps you for
 ## Scope
 
 - In: install button, manifest shortcuts, login start for the local host (P2), the criteria to revisit a native shell, an unsigned Mac build of the Electron shell (P2).
-- Non-goals: Tauri, Developer ID signing and notarization, auto-update, Mac App Store, Intel Mac builds, Windows or Linux installers, offline writes.
+- Non-goals: Tauri, Developer ID signing and notarization, Electron auto-update (install and update: [devops-installer](../devops-installer/spec.md)), Mac App Store, Intel Mac builds, Windows or Linux installers, offline writes.
 
 ## Scenarios
 

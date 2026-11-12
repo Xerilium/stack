@@ -19,6 +19,14 @@ Output in `desktop/out/`:
 
 ## Install
 
+One command builds Stack from the source checkout and puts it in `/Applications` (`FR:devops-installer/install`):
+
+```sh
+stack app install
+```
+
+The source checkout is `STACK_SOURCE`, else `~/.local/share/stack`. `--no-build` installs the build that is there. By hand:
+
 1. Open the `dmg`.
 2. Drag `Stack` onto `Applications`.
 3. Eject the `dmg`.
@@ -66,10 +74,26 @@ After this, Stack opens like any app (Dock, Spotlight, Launchpad).
 
 ## Update
 
-Pull, run `pnpm desktop:package` again, and replace `/Applications/Stack.app`. A copied build needs the first-launch step again.
+```sh
+stack app update            # pull, build, then install when Stack is closed
+stack app update --check    # show installed and ready builds; change nothing
+stack app update --install  # install now: quit Stack, swap, reopen
+stack app status
+```
+
+- Stack never prompts or restarts at launch or while you work. A ready update shows as a small `Update ready` chip in the nav footer. `Later` hides it until a newer build.
+- `Stack > Updates…` (or the chip) sets when updates install:
+  - `When I quit Stack (recommended)`: the default. Quit commits pending edits, then a helper swaps the app after it exits. The next launch runs the new build.
+  - `Only when I select Restart`: the dialog shows `Restart now`.
+  - `When I'm away for <n> minutes`: restarts when the Mac is idle and the Stack window is closed (hidden in the menu bar).
+  - `Never`.
+- The app looks for builds in `update.source` (config), else `~/.local/share/stack`; a Finder launch does not see `STACK_SOURCE`.
+- The setting is `update.mode` (`on-quit`, `ask`, `auto-idle`, `off`) and `update.idleMinutes` in `~/.config/stack/config.json`.
+- The helper keeps the old app as `/Applications/.Stack.app.previous`. If the new app does not open, it puts the old one back and opens it. Every step goes to `~/.stack/update.log`; the result goes to `~/.stack/update-result.json`. A failed update shows in Needs you at the next launch.
+- Roll back by hand: quit Stack, then `mv /Applications/Stack.app /tmp/Stack.bad.app && mv /Applications/.Stack.app.previous /Applications/Stack.app`.
 
 ## Limits
 
-- Apple silicon only. No auto-update.
+- Apple silicon only. Updates come from the local source checkout; no download from GitHub yet.
 - Logs: run `/Applications/Stack.app/Contents/MacOS/Stack` from a terminal to see host lines.
 - To see the `PATH` a Finder launch gets: `env -i HOME="$HOME" SHELL="$SHELL" PATH=/usr/bin:/bin:/usr/sbin:/sbin /Applications/Stack.app/Contents/MacOS/Stack`.

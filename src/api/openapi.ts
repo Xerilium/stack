@@ -32,6 +32,15 @@ interface RouteDoc {
 }
 
 const mutation = (status: string): J => ({ [status]: ref('Mutation', 'responses'), default: ref('Error', 'responses') });
+const BUILD_STAMP: J = { type: 'object', nullable: true, properties: { version: { type: 'string' }, sha: { type: 'string' }, dirty: { type: 'boolean' }, builtAt: { type: 'string', format: 'date-time' } } };
+/** @req FR:devops-installer/$version-state */
+const VERSION_STATE: J = {
+  type: 'object', properties: {
+    running: BUILD_STAMP, available: BUILD_STAMP, ready: { type: 'boolean' }, mode: { type: 'string', enum: ['on-quit', 'ask', 'auto-idle', 'off'] },
+    idleMinutes: { type: 'integer' }, canRestart: { type: 'boolean' },
+    last: { type: 'object', nullable: true, properties: { ok: { type: 'boolean' }, step: { type: 'string' }, at: { type: 'string' } } },
+  },
+};
 const ok = (description: string, schema: J, status = '200'): J => ({
   [status]: { description, content: { 'application/json': { schema } } },
   default: ref('Error', 'responses'),
@@ -200,6 +209,18 @@ const DOCS: Record<string, RouteDoc> = {
   sync: {
     operationId: 'sync', summary: 'Change probe: the head revision of the task repo (null when the storage has none), plus pending/since when the storage batches commits. Poll it and reload only when rev changes',
     responses: ok('Sync state', { type: 'object', properties: { rev: { type: 'string', nullable: true }, pending: { type: 'integer', description: 'Writes not yet committed (batching storage only)' }, since: { type: 'string', format: 'date-time', nullable: true, description: 'First pending write (batching storage only)' }, live: { type: 'string', description: 'Changes when live state outside the repo (PR priorities) changes; present only when the host has it' } } }),
+  },
+  version: {
+    operationId: 'getVersion', summary: 'Desktop app only: the running and available builds, whether an update is ready, the update mode, and the last helper result. 404 on hosts with no installer. Reads only local files',
+    responses: ok('Version state', VERSION_STATE),
+  },
+  'version.mode': {
+    operationId: 'setUpdateMode', summary: 'Set when updates install: on-quit (default), ask, auto-idle, or off (owner only). Saved in ~/.config/stack/config.json',
+    responses: ok('Version state', VERSION_STATE),
+  },
+  'version.restart': {
+    operationId: 'restartForUpdate', summary: 'Commit pending edits, then quit, swap in the ready build, and relaunch (owner only). 409 when no update is ready or the host cannot restart',
+    responses: ok('Restarting', { type: 'object', properties: { restarting: { type: 'boolean' } } }),
   },
   'sync.flush': {
     operationId: 'flushSync', summary: 'Commit and push pending edits now (owner only). flushed is 0 when nothing was pending or the storage does not batch',

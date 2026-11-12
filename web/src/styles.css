@@ -803,3 +803,12 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
 @media (prefers-reduced-motion: reduce) { .top-rows li.fresh { animation: none; } }
 .top-rows li > .agent-talk { grid-column: 1 / -1; }
 
+
+/* Desktop updates: a quiet chip and the Updates dialog. @req FR:devops-installer/notice.chip */
+.update-chip { display: inline-flex; gap: 4px; align-items: center; }
+.update-modes { border: 0; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; }
+.update-modes legend { font-weight: 600; margin-bottom: 6px; }
+.update-modes label { display: flex; gap: 8px; align-items: center; }
+.update-builds { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 14px; font-size: 12.5px; color: var(--ink2); }
+.update-builds dd { margin: 0; overflow-wrap: anywhere; }
+.update-actions { display: flex; gap: 8px; justify-content: flex-end; }

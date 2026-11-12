@@ -17,7 +17,7 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 ## Scope
 
 - In (slice 1): `desktop/` package with the Electron main process: start the host on a loopback port, one window that loads the host, tray icon with a menu, global hotkey to show or hide, single-instance lock, clean host stop on quit, renderer hardening, a smoke script for a local run. The unsigned `.app`, `zip`, and `dmg` build is `FR:desktop-app/package`.
-- Out: Developer ID signing, notarization, auto-update, login item, Windows and Linux, a preload bridge or IPC, notifications from the shell (the page does them, `FR:pwa/notify.*`), Tailscale.
+- Out: Developer ID signing, notarization, Electron auto-update (updates: [devops-installer](../devops-installer/spec.md)), login item, Windows and Linux, a preload bridge or IPC, notifications from the shell (the page does them, `FR:pwa/notify.*`), Tailscale.
 - Human-only: Apple Developer Program enrollment, the Developer ID certificate, notarization secrets in CI (`FR:desktop-app/native.human`).
 
 ## Architecture
@@ -42,7 +42,7 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 
 ### FR:window: One window shows the web UI
 
-- **FR:window.load** (P1): After the host starts, the shell creates one `BrowserWindow` and calls `loadURL` with the host url. It never calls `loadURL` or `loadFile` with any other url
+- **FR:window.load** (P1): After the host starts, the shell creates one `BrowserWindow` and calls `loadURL` with the host url. It never calls `loadURL` or `loadFile` with any other url, except `<host url>/#/updates` from `Stack > Updates…` (`FR:devops-installer/notice.menu`)
 - **FR:window.hide** (P1): Closing the window hides it; the host keeps running. The window shows again from the tray, the hotkey, the Dock, or a second launch
 - **FR:window.toggle** (P1): `toggle()` hides the window when it is visible and focused; otherwise it shows and focuses it. A window that was never created is created first
 

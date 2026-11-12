@@ -7,6 +7,7 @@ import { join } from 'path';
 import type { MenuItemTemplate, PreventableEvent, ShellElectron, TrayLike, WindowLike } from './electron-api';
 import { badgeTip, needsYouCount } from './badge';
 import type { HostHandle } from './host';
+import type { AppUpdater } from '../../src/core/app-update';
 import { harden, windowOptions } from './policy';
 import { setPageCapture } from '../../src/core/feedback';
 
@@ -25,6 +26,10 @@ export interface ShellDeps {
   needsCount?: (hostUrl: string) => Promise<number>;
   /** How often the badge re-reads. Default 15 s. */
   badgeMs?: number;
+  /** The installer hooks: install on quit and restart when idle. @req FR:devops-installer/quit.spawn @req FR:devops-installer/idle.check */
+  update?: Pick<AppUpdater, 'onQuit' | 'idleCheck'>;
+  /** How often the idle check runs. Default 60 s. */
+  idleMs?: number;
 }
 
 export interface Shell {
@@ -38,7 +43,7 @@ export interface Shell {
 }
 
 export function createShell(deps: ShellDeps): Shell {
-  const { app, BrowserWindow, Tray, Menu, globalShortcut, nativeImage, shell } = deps.electron;
+  const { app, BrowserWindow, Tray, Menu, globalShortcut, nativeImage, shell, powerMonitor } = deps.electron;
   const log = deps.log ?? ((l: string) => console.log(l));
   const closeTimeoutMs = deps.closeTimeoutMs ?? 15_000;
   let host: HostHandle | undefined;
@@ -49,6 +54,7 @@ export function createShell(deps: ShellDeps): Shell {
   // @req FR:desktop-shell/instance.early: a show asked for before the host is up waits for it.
   let showPending = false;
   let badgeTimer: ReturnType<typeof setInterval> | undefined;
+  let idleTimer: ReturnType<typeof setInterval> | undefined;
   let badgeFailed = false;
   let badgeBusy = false;
 
@@ -95,6 +101,7 @@ export function createShell(deps: ShellDeps): Shell {
     if (stopping) return stopping;
     stopping = (async () => {
       if (badgeTimer) clearInterval(badgeTimer);
+      if (idleTimer) clearInterval(idleTimer);
       globalShortcut.unregisterAll();
       tray?.destroy();
       if (host) {
@@ -102,6 +109,9 @@ export function createShell(deps: ShellDeps): Shell {
         const timeout = new Promise<void>((ok) => setTimeout(() => { log('host: close timed out'); ok(); }, closeTimeoutMs).unref?.());
         await Promise.race([h.close().catch((e: unknown) => log(`host: close failed: ${e instanceof Error ? e.message : String(e)}`)), timeout]);
       }
+      // The host has stopped (its batch is committed); starting the helper is the only added work, and it never blocks quit.
+      // @req FR:devops-installer/quit.flush @req FR:devops-installer/quit.spawn @req FR:devops-installer/quit.fast
+      try { deps.update?.onQuit(); } catch (e) { log(`update: ${e instanceof Error ? e.message : String(e)}`); }
       done = true;
     })();
     return stopping;
@@ -115,9 +125,12 @@ export function createShell(deps: ShellDeps): Shell {
     { label: 'Quit Stack', click: () => app.quit() },
   ];
 
+  /** `Stack > Updates…`: the window on the updates page (same origin). @req FR:devops-installer/notice.menu */
+  const openUpdates = () => { if (!host) return; show(); void window().loadURL(`${host.url}/#/updates`); };
+
   /** @req FR:desktop-shell/tray.appmenu */
   const appMenu = (): MenuItemTemplate[] => [
-    { label: 'Stack', submenu: [{ label: 'Show Stack', click: show }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
+    { label: 'Stack', submenu: [{ label: 'Show Stack', click: show }, { label: 'Updates…', click: openUpdates }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
     { role: 'editMenu' },
     { label: 'View', submenu: [{ role: 'reload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
     { role: 'windowMenu' },
@@ -149,6 +162,12 @@ export function createShell(deps: ShellDeps): Shell {
     void badge();
     badgeTimer = setInterval(() => void badge(), deps.badgeMs ?? 15_000);
     badgeTimer.unref?.();
+    // @req FR:devops-installer/idle.check
+    if (deps.update) {
+      const u = deps.update;
+      idleTimer = setInterval(() => { if (!stopping) u.idleCheck(powerMonitor?.getSystemIdleTime() ?? 0, !!win && !win.isDestroyed() && win.isVisible()); }, deps.idleMs ?? 60_000);
+      idleTimer.unref?.();
+    }
   };
 
   return { start, show, hide, toggle, stopped: () => stopping ?? Promise.resolve() };

@@ -34,6 +34,8 @@ import { useAsks } from './useAsks';
 import { Drawer, SessionsView } from './SessionsView';
 import { usePins } from './pins';
 import { useUnsaved } from './unsaved';
+import { useUpdates } from './update';
+import { UpdatesDialog } from './UpdatesView';
 import type { RankItem } from './home';
 import { useSessions } from './useSessions';
 import { createInstall, isStandalone, type InstallEvent } from './install';
@@ -288,6 +290,10 @@ export function App() {
   }, []);
   /** Live mode: what the server has not committed yet. @req FR:web-shell/state.unsaved */
   const unsaved = useUnsaved(api, (m) => toast(m, 'err'), local);
+  /** Desktop updates: a quiet chip, never a prompt. @req FR:devops-installer/notice.chip @req FR:devops-installer/notice.dismiss @req FR:devops-installer/mode.never-launch */
+  const updates = useUpdates(api, (m) => toast(m, 'err'), local);
+  const updatesOpen = useRef(false); updatesOpen.current = updates.open && !!updates.state;
+  const updateChip = updates.chip ? <span class="update-chip"><button type="button" class="chip accent" data-testid="update-chip" title="Updates" onClick={() => updates.setOpen(true)}>{updates.chip}</button>{updates.chip === 'Update ready' && <button type="button" class="chip dim" aria-label="Later: hide until a newer build" onClick={updates.dismiss}>Later</button>}</span> : null;
   const unsavedChip = unsaved.label ? <button type="button" class="chip unsaved" data-testid="unsaved" title={unsaved.title} aria-live="polite" disabled={unsaved.state.saving} onClick={() => void unsaved.flush()}>{unsaved.label}</button> : null;
   /**
    * Live mode on the owner's checkout: the rail footer names the branch.
@@ -819,6 +825,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.prs-scrim')) return; // the PR flyout owns the keys while open @req FR:pr-page/flyout.shape
+      if (updatesOpen.current) return; // so does the Updates dialog @req FR:devops-installer/notice.dialog
       if (feedbackActive()) return; // so does the feedback flow, also while hidden for capture @req FR:feedback-button/ui.a11y
       if (haveChord.current && !/^[0-4h]$/.test(e.key)) haveChord.current = 0; // any other key disarms h
       const L = latest.current, A = act.current;
@@ -980,11 +987,12 @@ export function App() {
           {!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}
           {livePill}
           {unsavedChip}
+          {updateChip}
         </div>
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}<FeedbackButton compact /><PrsButton api={api} compact /></div>
+        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} compact /></div>
         {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} top={<PrisBlock ctl={prisSessions.pris} />} after={<SessionsBlock ctl={prisSessions.sessions} toast={toast} />} extraCount={prisSessions.sessions.inv?.needsYou.length ?? 0} />}
         {view === 'inbox' && <InboxView api={api} toast={toast} refresh={`${tick}|${asks.liveTick}`} onStatus={(r) => setInboxAttention(r.summary.attention)} />}
@@ -1047,6 +1055,7 @@ export function App() {
       )}
       {palette && <PaletteDialog commands={allCommands} onClose={() => setPalette(false)} />}
       {help && <Help onClose={() => setHelp(false)} />}
+      {updates.open && updates.state && <UpdatesDialog state={updates.state} onClose={() => updates.setOpen(false)} onMode={(m) => void updates.setMode(m)} onRestart={() => void updates.restart()} restarting={updates.restarting} />}
       <PrsFlyoutHost api={api} toast={toast} />
       <FeedbackHost api={api} />
       <Toasts toasts={toasts} dismiss={dismiss} />

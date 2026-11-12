@@ -15,6 +15,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, stat
 import { createServer, type IncomingMessage, type Server } from 'http';
 import { extname, join, normalize, relative, resolve, sep } from 'path';
 import { createApiHandler } from '../api/handler';
+import type { AppUpdater } from '../core/app-update';
 import { createClaudeJson } from '../email/llm';
 import { createGitHubPrs, githubRepos } from '../api/github';
 import { createPrPage, type PrPage } from '../api/pr-page';
@@ -85,6 +86,8 @@ export interface WebOpts {
   pris?: PriStore;
   /** The PR priority store; default `~/.stack/pr-priority.json`. @req FR:pr-priority/api.get */
   prPriority?: PrPriorityStore;
+  /** The desktop installer for `/api/version`; absent (plain `stack web`) means 404. @req FR:devops-installer/version.get */
+  app?: AppUpdater;
   /** Home of the live lane, briefs and PR facts; default `~/.stack`. @req FR:pr-review-lane/lane.api */
   laneHome?: string;
   /** The owner feedback store; default `~/.stack/feedback.jsonl` (or `STACK_HOME`), in demo mode too. @req FR:feedback-button/store.path */
@@ -220,7 +223,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const laneHome = o.laneHome ?? stackHome();
   const live = new LiveStore(laneHome);
   const offLive = live.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'live'] }); });
-  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe() });
+  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe(), ...(o.app ? { app: o.app } : {}) });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });

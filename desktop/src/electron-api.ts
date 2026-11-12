@@ -81,4 +81,6 @@ export interface ShellElectron {
   globalShortcut: { register(accelerator: string, fn: () => void): boolean; unregisterAll(): void };
   nativeImage: { createFromPath(path: string): unknown };
   shell: { openExternal(url: string): Promise<void> };
+  /** System idle seconds for the idle restart. @req FR:devops-installer/idle.check */
+  powerMonitor?: { getSystemIdleTime(): number };
 }
