@@ -1,6 +1,6 @@
 /**
  * Now: message the task's agent. A chat thread (your messages and the agent's replies) over one composer; Enter sends.
- * @req FR:now-screen/now.compose @req FR:now-screen/now.thread @req FR:agent-team/web.avatar
+ * @req FR:now-screen/now.compose @req FR:now-screen/now.thread @req FR:agent-team/web.avatar @req FR:agent-delivery/state.bubble @req FR:agent-delivery/live.offer
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
@@ -9,6 +9,7 @@ import type { AvatarWho } from './avatar';
 import { foldLines, tellThread, TELL_MAX } from './nowscreen';
 import { unescapeMd } from './agents';
 import { ago, type Thread } from './thread';
+import { deliveryNote, liveLink, type DeliveryInfo } from './delivery';
 
 const POLL_MS = 10_000;
 
@@ -19,17 +20,22 @@ export interface NowChatProps {
   onSend: (text: string) => Promise<boolean>; loadThread: (ref: string) => Promise<Thread>;
   /** Open a live agent session by id: the thread names the task's own session (never a review). */ onOpenSession?: (id: string) => void;
   /** Bump when tasks, asks, or sessions change so the thread re-reads. */ tick?: string;
+  /** Delivery state of the row's messages (local host); absent or failing: no note. */ loadDelivery?: (ref: string) => Promise<DeliveryInfo>;
+  /** Starts the Claude sign-in; resolves to the step to run when it cannot start. */ onSignIn?: () => Promise<string | null>;
 }
 
-export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onOpenSession, tick }: NowChatProps) {
+export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onOpenSession, tick, loadDelivery, onSignIn }: NowChatProps) {
   const [text, setText] = useState('');
   const [items, setItems] = useState<ReturnType<typeof tellThread>>([]);
   const [session, setSession] = useState<Thread['session']>();
+  const [delivery, setDelivery] = useState<DeliveryInfo | null>(null);
+  const [signInStep, setSignInStep] = useState<string | null>(null);
   const seq = useRef(0); // only the latest load replaces the thread
   const load = useCallback(async () => {
     const mine = ++seq.current;
     try { const t = await loadThread(taskRef); if (mine === seq.current) { setItems(tellThread(t.items)); setSession(t.session); } } catch { /* keep what shows */ }
-  }, [taskRef, loadThread]);
+    if (loadDelivery) { try { const d = await loadDelivery(taskRef); if (mine === seq.current) setDelivery(d); } catch { if (mine === seq.current) setDelivery(null); } }
+  }, [taskRef, loadThread, loadDelivery]);
   useEffect(() => { void load(); }, [load, tick]);
   // A scheduled agent's reply shows up while Now stays open.
   useEffect(() => {
@@ -55,6 +61,8 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
   /** Grows with the text where `field-sizing` is missing (Safari, Firefox). */
   const grow = (el: HTMLTextAreaElement) => { if (CSS.supports?.('field-sizing', 'content')) return; el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px`; };
   const now = new Date();
+  const note = deliveryNote(delivery, items[items.length - 1]);
+  const live = liveLink(delivery);
   return (
     <section class="now-chat" aria-label={`Messages with ${label}`} data-testid="now-chat">
       {items.length > 0 && (
@@ -73,7 +81,17 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
           })}
         </ol>
       )}
-      {items.length > 0 && items[items.length - 1].kind === 'owner' && (
+      {note?.kind === 'working' && agent && (
+        <p class="now-bubble from-agent now-working" data-testid="now-working" aria-live="polite"><Avatar who={agent} size={28} /><span class="now-bubble-body"><span class="now-bubble-who">{nameBeside(agent)}</span><span class="now-bubble-text">working…</span></span></p>
+      )}
+      {note?.kind === 'failed' && (
+        <p class="now-undelivered" data-testid="now-undelivered" role="status">{note.text}
+          {note.signIn && onSignIn && <> <button type="button" class="now-live" onClick={() => { void onSignIn().then((step) => setSignInStep(step)); }}>Sign in</button></>}
+          {signInStep && <> Run <code>{signInStep}</code> in Terminal.</>}
+        </p>
+      )}
+      {note?.kind === 'off' && <p class="now-undelivered" data-testid="now-undelivered" role="status">Not delivered: agent delivery is off (set inbox.delivery to "claude")</p>}
+      {!note && items.length > 0 && items[items.length - 1].kind === 'owner' && (
         <p class="now-awaits" data-testid="now-awaits">{name === 'the agent' ? 'The agent' : name} replies here</p>
       )}
       <form class="now-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
@@ -90,6 +108,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
         </div>
       </form>
       {onOpenSession && session && session.state !== 'stale' && <button type="button" class="now-live" onClick={() => onOpenSession(session.id)}>Open live chat</button>}
+      {live && !(session && session.state !== 'stale') && <a class="now-live" href={live} data-testid="now-live-session">Send to live session</a>}
     </section>
   );
 }

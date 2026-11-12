@@ -97,6 +97,10 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
     send: (ref: string, text: string, kind: 'reply' | 'decision' | 'instruction', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
+    /** Delivery state of the row's messages; 404 on hosts that do not deliver. @req FR:agent-delivery/state.api */
+    delivery: (ref: string) => call<import('./delivery').DeliveryInfo>(`/inbox/delivery?ref=${encodeURIComponent(ref)}`),
+    /** Starts the Claude sign-in on the host. @req FR:agent-delivery/login.signin */
+    deliveryLogin: () => call<{ started: boolean; step?: string }>('/inbox/delivery/login', {}),
     /** @req FR:agent-inbox/api.handle */
     handled: (id: string, note?: string, withdrawn?: boolean) => call<{ changed: boolean }>('/inbox/handled', { id, ...(note ? { note } : {}), ...(withdrawn ? { withdrawn } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),

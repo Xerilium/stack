@@ -160,3 +160,7 @@
   .now-ask-needs { min-height: 0; padding: var(--s-4) 0; }
 }
 @media (prefers-reduced-motion: reduce) { .now-ask-more { animation: none; } }
+
+/* Agent delivery: working and not-delivered notes under the newest message. @req FR:agent-delivery/state.bubble */
+.now-working .now-bubble-text { color: var(--muted); font-style: italic; }
+.now-undelivered { margin: calc(-1 * var(--s-4)) 0 0; justify-self: end; text-align: right; font-size: var(--fs-caption); color: var(--danger, var(--muted)); }

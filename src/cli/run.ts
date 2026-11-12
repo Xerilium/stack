@@ -33,6 +33,7 @@ import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { inboxSourcesCmd } from './inbox-sources';
+import { inboxRunCmd } from './delivery';
 import { emailCmd } from './email';
 import { agentCmd } from './agent';
 import { graphCmd } from './graph';
@@ -90,7 +91,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
-  inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | sources [--json]', help: 'reply on a task as an agent (tasks/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), or show each inbox source and how to connect it' },
+  inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all', 'once', 'watch'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | run [--project p] [--once|--watch] [--json] | sources [--json]', help: 'reply on a task as an agent (tasks/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), deliver open messages to their agents (claude -p), or show each inbox source and how to connect it' },
   agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
@@ -688,6 +689,8 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       }
       // @req FR:inbox-page/cli.sources
       if (p.positionals[0] === 'sources') { extra(1); return inboxSourcesCmd(ctx); }
+      // @req FR:agent-delivery/cli.run
+      if (p.positionals[0] === 'run') { extra(1); return inboxRunCmd(ctx, f, { repo: dir, config: loadConfig(dir), out: (l) => process.stdout.write(`${l}\n`) }); }
       // @req FR:agent-inbox/cli.handle
       if (p.positionals[0] === 'handle') {
         if (!p.positionals[1]) throw new UsageError('inbox handle needs an id');
@@ -696,7 +699,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         return { json: { ok: true, ...r }, text: r.changed ? 'handled' : 'unchanged' };
       }
       // @req FR:agent-thread/reply.entry
-      if (p.positionals[0] !== 'reply') throw new UsageError('Usage: stack inbox reply <ref> --from <agent> --text t | list | handle <id> | sources');
+      if (p.positionals[0] !== 'reply') throw new UsageError('Usage: stack inbox reply <ref> --from <agent> --text t | list | handle <id> | run | sources');
       if (!p.positionals[1]) throw new UsageError('inbox reply needs a ref');
       extra(2);
       const from = flag(f, 'from'); const text = flag(f, 'text');

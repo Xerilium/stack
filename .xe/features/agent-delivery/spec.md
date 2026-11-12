@@ -26,7 +26,7 @@ A message to an agent (Now's composer, `FR:now-screen/now.compose`) lands in `ta
 The owner needs every message to an agent read by that agent so that a message never sits unanswered.
 
 - **FR:pick.entries** (P1): `pendingDeliveries(ctx, {project?})` returns open inbox entries (`FR:agent-inbox/inbox.list`) with `to: agent`, `kind` `instruction` or `reply`, not written by an agent, not withdrawn, oldest first. `decision` entries and entries for 🙋 rows are never delivered
-- **FR:pick.agent** (P1): The agent is the task's agent (`FR:agent-team/agent.resolve`) found from the entry's current row (`FR:agent-inbox/inbox.rows`). An entry whose row is gone, or that no agent covers, is `failed` with reason `No agent for this task` and is not retried
+- **FR:pick.agent** (P1): The agent is the one Now's composer names (`FR:now-screen/now.compose`): the most specific agent on the task, else the roll-up (`FR:agent-team/agent.resolve`), found from the entry's current row (`FR:agent-inbox/inbox.rows`). An entry whose row is gone, or that no agent covers, is `failed` with reason `No agent for this task` and is not retried
 - **FR:pick.serial** (P1): One message at a time per agent: an agent with a run in flight (in this process, or a `working` state younger than the timeout plus 60 s in the state file) is skipped this pass. Messages to one agent are delivered oldest first
 - **FR:pick.once** (P1): An entry is attempted once. `failed` entries stay failed until the owner sends again. `not-delivered` entries (signed out) are retried on the next pass after the login check passes
 
@@ -53,7 +53,7 @@ The owner needs to see what happened to each message so that a message is never 
 
 The owner needs one clear signal when the `claude` login has expired so that they fix it once instead of wondering why agents are silent.
 
-- **FR:login.check** (P1): Before each pass the host runs `claude auth status --json` (injected runner, 15 s timeout). `loggedIn: true` is `ok`; `loggedIn: false` or exit code 1 is `expired`; anything else is `unknown` and the pass still runs. A run whose result says it is not signed in (`/login`, `OAuth`, `authentication`, `401`) also sets `expired`
+- **FR:login.check** (P1): Before each pass that has messages to deliver, the host runs `claude auth status --json` (injected runner, 15 s timeout). `loggedIn: true` is `ok`; `loggedIn: false` or exit code 1 is `expired`; anything else is `unknown` and the pass still runs. A run whose result says it is not signed in (`/login`, `OAuth`, `authentication`, `401`) also sets `expired`
 - **FR:login.notice** (P1): While the login is `expired`, open entries get `not-delivered` (`Claude login expired`) and one ask `delivery-login` exists: `Claude login expired: Sign in`, `kind: go-do`, `why` naming the single step (`claude auth login`), priority `high`. It is written once (no duplicates per pass). When the login is `ok` again the ask is handled (`resolved`, `Signed in`)
 - **FR:login.signin** (P1): `POST /inbox/delivery/login` (route `inbox.deliveryLogin`, owner only) starts `claude auth login` detached (injected spawner) so the browser sign-in opens, and answers `{started: true}`; when it cannot start it answers `{started: false, step: "claude auth login"}`. The next pass re-checks the login
 
@@ -61,14 +61,14 @@ The owner needs one clear signal when the `claude` login has expired so that the
 
 The owner needs a quicker path when the agent already runs in a live session so that the owner can talk there instead of waiting for a headless run.
 
-- **FR:live.find** (P2): `liveSessionFor(inventory, agent, ref)` returns the newest inventory session that is not stale or archived and whose title names the task (`· <ref>`) or starts with the agent's name; `{id, title, link}` with the session link (`FR:session-inventory/needs.item`)
+- **FR:live.find** (P2): `liveSessionFor(inventory, agent, ref)` returns the newest inventory session that is not done or archived and whose title names the task (`· <ref>`) or starts with the agent's name; `{id, title, link}` with the session link (`FR:session-inventory/needs.item`)
 - **FR:live.offer** (P2): `GET /inbox/delivery` includes it as `live`. Now shows `Send to live session` as a link to it. Stack never sends to, or controls, another session
 
 ### FR:safe: Safety
 
 The owner needs delivery runs to stay within the repo rules so that an unattended agent never takes an action only the owner may take.
 
-- **FR:safe.never** (P1): Delivery runs never merge, never apply labels, and never send mail: `--disallowedTools` lists `Bash(gh pr merge:*)`, `Bash(gh pr edit:*)`, `Bash(gh issue edit:*)`, `Bash(gh label:*)`, `Bash(gh api:*)`, `Bash(git push:*)`, `Bash(stack email:*)`, and every `mcp__` mail and send tool by name pattern
+- **FR:safe.never** (P1): Delivery runs never merge, never apply labels, and never send mail: `--disallowedTools` lists `Bash(gh pr merge:*)`, `Bash(gh pr edit:*)`, `Bash(gh issue edit:*)`, `Bash(gh label:*)`, `Bash(gh api:*)`, `Bash(git push:*)`, and `Bash(stack email:*)`. No MCP server loads (`--strict-mcp-config` with none given), so no mail or chat tool exists in the run
 - **FR:safe.prefix** (P1): The system prompt starts with the repo-rules prefix: follow the repo's `CLAUDE.md` and `.xe/process`, never merge, never add or remove labels, never send mail or messages, raise anything that needs the owner as an ask, answer in plain text in at most 1000 characters
 - **FR:safe.log** (P1): Each run appends one JSON line to `~/.stack/delivery.log`: `{at, entry, agent, project, state, ms, usd, reason?}`. Never the message, the reply, the prompt, or tool input
 - **FR:safe.optin** (P1): Config `inbox.delivery` is `claude` or `off`; default `off`. The host starts the loop only when it is `claude`

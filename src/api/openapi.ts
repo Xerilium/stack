@@ -385,6 +385,15 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { cwd: 'Absolute path to an existing folder; default: the served folder (also with agent, ref, or project: an agent can be started in its project repo)', text: 'The prompt', agent: 'Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task (404 when it has no file)' },
     responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string', description: 'Set for a task or project session' }, title: { type: 'string', description: 'Set for a task or project session: `<agent> · <task> · <ref>`' } } }, '202'),
   },
+  'inbox.delivery': {
+    operationId: 'getInboxDelivery', summary: 'Delivery state of the owner messages on one row (working, delivered, failed, not-delivered), the delivery mode, the Claude login state, and a live session for the agent when there is one (link only). Owner session only: 403 for tokens; 404 where the host does not deliver',
+    desc: { ref: 'The row (project:line)' },
+    responses: ok('Delivery', { type: 'object', properties: { mode: { type: 'string', enum: ['claude', 'off'] }, login: { type: 'string', enum: ['ok', 'expired', 'unknown'] }, items: { type: 'object', additionalProperties: { type: 'object', properties: { state: { type: 'string', enum: ['working', 'delivered', 'failed', 'not-delivered'] }, agent: { type: 'string' }, reason: { type: 'string' } } } }, live: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, link: { type: 'string' } } } } }),
+  },
+  'inbox.deliveryLogin': {
+    operationId: 'startDeliveryLogin', summary: 'Start the Claude sign-in (claude auth login) on this machine; when it cannot start, the answer names the one step. Owner session only: 403 for tokens',
+    responses: ok('Started', { type: 'object', properties: { started: { type: 'boolean' }, step: { type: 'string' } } }),
+  },
   'inbox.reply': {
     operationId: 'replyFromAgent', summary: "An agent's reply on a task (tasks/inbox, from: agent, named by the token). Tokens only: the owner session gets 403",
     desc: { text: 'One line to the owner; secrets are redacted', expect: 'Expected current row text; 409 when the row differs' },

@@ -32,6 +32,7 @@ import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo, type WatchOptions } from './watch';
 import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
 import { serveSetup, withSetupMeta, type SetupHandler } from './setup';
+import { deliverySettings, deliveryStatus, DeliveryStore, startDeliveryLoop, startLogin, type DeliveryDeps } from '../agents/delivery';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
@@ -76,6 +77,8 @@ export interface WebOpts {
   storage?: Storage & { close?(): Promise<void> };
   /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
   agents?: AgentRuns | false;
+  /** Agent delivery: overrides for tests (runner, home); `false` turns it off (demo). The loop runs only when `inbox.delivery` is `claude`. @req FR:agent-delivery/host.loop */
+  delivery?: Partial<Pick<DeliveryDeps, 'run' | 'isRepo' | 'store'>> & { intervalMs?: number; login?: () => { started: boolean; step?: string } } | false;
   /** This machine's inbox sign-ins for `GET /inbox-sources`; default the cached local probe. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
   /** The live report store; default `~/.stack` (or `STACK_HOME`). @req FR:status-ingest/api.put */
@@ -223,10 +226,16 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const laneHome = o.laneHome ?? stackHome();
   const live = new LiveStore(laneHome);
   const offLive = live.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'live'] }); });
-  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe(), ...(o.app ? { app: o.app } : {}) });
+  // @req FR:agent-delivery/host.loop @req FR:agent-delivery/state.api: state is always readable here; the loop starts only when the config opts in.
+  const dd: DeliveryDeps | undefined = o.delivery === false ? undefined : { ctx: { storage, config }, settings: deliverySettings(config, o.dir), store: o.delivery?.store ?? new DeliveryStore(stackHome()), repoDir: o.dir, ...(o.delivery?.run ? { run: o.delivery.run } : {}), ...(o.delivery?.isRepo ? { isRepo: o.delivery.isRepo } : {}) };
+  const deliveryLoop = dd && dd.settings.mode === 'claude' ? startDeliveryLoop(dd, { intervalMs: o.delivery ? o.delivery.intervalMs : undefined, onError: (e) => console.error(`delivery: ${e instanceof Error ? e.message : 'error'}`) }) : undefined;
+  const delivery = dd ? { status: (ref: string) => deliveryStatus(dd, ref, inventory), login: () => (o.delivery && o.delivery.login ? o.delivery.login() : startLogin()) } : undefined;
+  const api = createApiHandler({ storage, config, reports, inventory, delivery, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe(), ...(o.app ? { app: o.app } : {}) });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
+  // A new message is a task file change (tasks/inbox): deliver it now instead of at the next tick.
+  const offDelivery = deliveryLoop ? watcher.on((c) => { if (c.kinds.includes('tasks')) deliveryLoop.kick(); }) : undefined;
   const beat = o.watch?.heartbeatMs ?? 20_000;
   const who = o.label ?? 'local';
   let port = o.port;
@@ -334,7 +343,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     offPris();
     prPage?.prBoard.stop();
     offLive();
+    offDelivery?.();
     watcher.close();
+    await deliveryLoop?.close();
     const closed = new Promise<void>((ok) => server.close(() => ok())); // stop accepting; open sockets stay until below
     server.closeIdleConnections();
     // Let api requests already being handled finish (bounded), so their writes join the final flush.

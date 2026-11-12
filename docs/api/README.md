@@ -39,6 +39,8 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/tasks/result` | POST log an agent result (autonomy-gated) |
 | `/inbox` | GET inbox entries for agents; POST send a reply or decision to the task project agent inbox (owner session only) |
 | `/inbox/handled` | POST mark an inbox entry handled |
+| `/inbox/delivery` | GET (owner only) delivery state of the row's messages (`working`, `delivered`, `failed`, `not-delivered`), the mode, the Claude login, and a live session link; 404 where the host does not deliver. See [agent-instructions.md](../agent-instructions.md) |
+| `/inbox/delivery/login` | POST (owner only) start the Claude sign-in (`claude auth login`) on this machine |
 | `/inbox-items` | GET all mail, unread Teams, Slack and GitHub items with summaries and suggested actions, plus source status (Inbox page; owner session only) |
 | `/inbox-sources` | GET each inbox source (every email account, GitHub, planned Teams and Slack): state, last sync, the exact step to connect it, and N of M connected. `fresh=1` re-probes the local host. Never a token (owner session only) |
 | `/inbox-items/{id}/action` | POST run an inbox action; reply-draft makes a draft and never sends (owner session only) |

@@ -82,6 +82,8 @@ export interface ApiDeps {
   mail?: Pick<MailProvider, 'createDraft'>;
   /** This machine's inbox sign-ins (Graph caches, GitHub); absent on the hosted app, which uses sync records only. `fresh` skips any cache. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
+  /** Agent delivery on this machine: per-message state for a row and the Claude sign-in; absent means /inbox/delivery is 404. @req FR:agent-delivery/state.api */
+  delivery?: { status(ref: string): Promise<unknown>; login(): { started: boolean; step?: string } };
   /** Files "Request this action" issues; absent means a Stack task instead. @req FR:inbox-page/action.request */
   issues?: IssueFiler;
   /** Today's meetings for the day plan; absent means no calendar. @req FR:day-inputs/api.calendar */
@@ -434,6 +436,7 @@ async function ghCall(fn: () => Promise<void>): Promise<void> {
   }
 }
 
+const DELIVERY_Q: Record<string, Spec> = { ref: { t: 'ref', required: true } };
 const SOURCES_Q: Record<string, Spec> = { fresh: { t: 'enum', values: ['1', 'true'] } };
 /** Sources from the sync records, the config and (local host) this machine's probe. A failing probe reads as none. @req FR:inbox-page/api.sources @req FR:inbox-page/src.fresh */
 async function inboxSources(c: Ctx, fresh: boolean) {
@@ -1166,6 +1169,28 @@ export const ROUTES: Route[] = [
       if (isOwner(c.req)) throw new ApiError('forbidden', 'Only an agent replies as an agent');
       const who = c.token?.name ?? caller(c.req).actor;
       return json(201, await replyFromAgent(c.life, b.ref, b.text, who, b.expect));
+    },
+  },
+  {
+    // @req FR:agent-delivery/state.api: owner only; 404 where this host does not deliver.
+    method: 'GET', doc: '/inbox/delivery', name: 'inbox.delivery', query: DELIVERY_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(DELIVERY_Q));
+      ownerOnly(c, 'Only the owner can read delivery state');
+      if (!c.deps.delivery) throw new ApiError('not_found', 'Delivery is not available on this host');
+      const ref = parseRef(q.get('ref'));
+      if (!ref) throw invalid([{ field: 'ref', message: 'Must be project:line' }]);
+      return json(200, await c.deps.delivery.status(formatRef(ref)));
+    },
+  },
+  {
+    // @req FR:agent-delivery/login.signin: starts `claude auth login` on this machine; owner only.
+    method: 'POST', doc: '/inbox/delivery/login', name: 'inbox.deliveryLogin',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can sign in');
+      if (!c.deps.delivery) throw new ApiError('not_found', 'Delivery is not available on this host');
+      return json(200, c.deps.delivery.login());
     },
   },
   {
