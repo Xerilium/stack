@@ -2,7 +2,7 @@
 id: pr-priority
 title: PR Priority
 author: flanakin
-description: "The owner orders the PRs the Sweep Manager works. Agents recommend changes; the owner accepts, edits, or rejects them with a reason. One read gives the SM the queue, PR facts, its per-PR records, acks and escalations. No LLM call."
+description: "The owner orders the PRs the Sweep Manager works; agents recommend changes; one read gives the SM all it needs."
 dependencies: [status-ingest, session-inventory, api, auth-security, cli, ask-queue, agent-inbox]
 ---
 
@@ -126,3 +126,7 @@ The PR page and agents need the queue over the API so that the owner can act fro
 ## Dependencies
 
 - status-ingest (`~/.stack` home, lock rules), session-inventory (store pattern), api (routes, errors), auth-security (scope table), cli (exit codes), ask-queue (Needs you), agent-inbox (`GET /agents` PR shape)
+
+## External Dependencies
+
+- GitHub CLI (`gh`): the only GitHub read, on `pr-pri list --refresh`
