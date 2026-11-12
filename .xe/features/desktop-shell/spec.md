@@ -33,7 +33,7 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 
 ### FR:host: The shell runs the Stack host
 
-- **FR:host.plan** (P1): `hostPlan({cfg, env, home, cwd})` resolves the content repo like `stack web`: `STACK_REPO`, then `STACK_DIR`, then user config `repo` or `dir`. `live` is user config `mode: 'live'`; `batch` is user config `batch` (minutes, default 5, must be a number 0 or more). No repo is an error with the text `No content repo. Set "repo" in ~/.config/stack/config.json`
+- **FR:host.plan** (P1): `hostPlan({cfg, env, home, cwd})` resolves the content repo like `stack web`: `STACK_REPO`, then `STACK_DIR`, then user config `repo` or `dir`. `live` is user config `mode: 'live'`; `batch` is user config `batch` (minutes, default 5, must be a number 0 or more). No repo is an error with the text `No content repo. Set "repo" in ~/.config/stack/config.json`; the desktop entry catches it first and opens the first-run setup flow (`FR:first-run-onboarding/host.setup`)
 - **FR:host.start** (P1): `startHost(plan, deps)` prepares the repo (live: `prepareLive` with `BatchedGitStorage`; demo: `prepareDemo` into `~/.config/stack/demo`), then calls `startWeb` with `port: 0` so the OS picks a free loopback port. It returns `{url, close}` where `url` is `http://127.0.0.1:<port>` (never `localhost`, never another host)
 - **FR:host.webdir** (P1): The web app comes from `web/dist` next to the repo root. A missing `web/dist/index.html` fails with `Web app not built. Run: pnpm build`
 - **FR:host.stop** (P1): `close()` calls the host's `close()` once, which flushes batched edits (`FR:cli/web.batch.shutdown`). A second `close()` is a no-op

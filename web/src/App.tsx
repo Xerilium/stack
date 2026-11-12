@@ -848,7 +848,7 @@ export function App() {
         <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
         {nav()}
         <div class="spacer" />
-        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette">Commands <kbd>⌘K</kbd></button>
+        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette">Commands <kbd aria-hidden="true">⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
         <div class="who">
           {!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}
@@ -896,7 +896,7 @@ export function App() {
         {TABBAR.map((slot) => slot === 'new'
           ? <button type="button" key="new" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg></span></button>
           : slot === 'more'
-            ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label="Open command palette"><TabIcon v="more" /><span>More</span></button>
+            ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label="More: open command palette"><TabIcon v="more" /><span>More</span></button>
             : <button type="button" key={slot} class={`tab${view === slot ? ' on' : ''}`} aria-current={view === slot ? 'page' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
       </nav>
       {focusTask && <FocusMode task={focusTask} all={tasks} busy={busy} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onBack={() => setFocusRef(null)} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} />} />}

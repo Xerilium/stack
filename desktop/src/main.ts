@@ -2,9 +2,8 @@
 import * as electron from 'electron';
 import { homedir } from 'os';
 import { join } from 'path';
-import { userConfig } from '../../src/cli/discover';
 import type { ShellElectron } from './electron-api';
-import { hostPlan, startHost } from './host';
+import { startLocalHost } from './local';
 import { applyLoginPath } from './login-path';
 import { createShell } from './shell';
 
@@ -14,7 +13,8 @@ const shell = createShell({
   // The real module is wider than the shell's structural type; the shapes agree at runtime.
   electron: electron as unknown as ShellElectron,
   // A Finder launch has the bare system PATH: fix it first so the host and its agents inherit it. @req FR:desktop-shell/host.path
-  startHost: async () => { await applyLoginPath(process.env, { home, log }); return startHost(hostPlan({ cfg: userConfig(home), env: process.env, home }), { log }); },
+  // @req FR:first-run-onboarding/host.setup: no repo opens the setup flow instead of quitting.
+  startHost: async () => { await applyLoginPath(process.env, { home, log }); return startLocalHost({ home, env: process.env, deps: { log } }); },
   assetsDir: join(__dirname, '../../../assets'),
   log,
 });

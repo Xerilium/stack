@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { CapacityRow } from './capacity';
-import type { Filters } from './filters';
+import { NO_FILTERS, type Filters } from './filters';
 import { children, dueDays } from './now';
 import type { Week } from './week';
 import { clock, estimate, nowMinutes, span, type Block, type Day, type Decision, type Plan } from './plan';
@@ -9,7 +9,7 @@ import { timelineOf } from './timeline';
 import { countdown, HAVE, topAsksOf, type Home, type HomeProject, type Window } from './home';
 import type { LiveStatus } from './live';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
-import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
+import { Chip, EmptyState, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
 import type { Agent, InboxItem, Task } from './types';
 import type { ComponentChildren, JSX } from 'preact';
@@ -135,19 +135,19 @@ export function ListView(p: ListProps) {
         </div>
       )}
       <p class="count" aria-live="polite">{p.total} task{p.total === 1 ? '' : 's'}</p>
-      {p.total === 0 && <p class="empty-note">No tasks match.</p>}
+      {p.total === 0 && <EmptyState what="No tasks match." next={<button type="button" class="btn" onClick={() => p.onFilters({ ...NO_FILTERS })}>Clear filters</button>} />}
       <ul class="rows" data-testid="rows">
         {p.rows.map((t) => {
           const key = `${t.project}/${t.section}`;
           const head = key !== lastKey; lastKey = key;
           const phead = t.project !== lastProject; lastProject = t.project;
           return <>
-            {phead && <li class="group" key={`p-${t.project}`} role="presentation"><span>{p.titles.get(t.project) ?? t.project}</span></li>}
-            {head && <li class="section" key={`h-${key}`} role="presentation"><button type="button" aria-expanded="true" onClick={() => p.onSection(key)}>▾ {plainSection(t.section)}</button></li>}
+            {phead && <li class="group" key={`p-${t.project}`}><span>{p.titles.get(t.project) ?? t.project}</span></li>}
+            {head && <li class="section" key={`h-${key}`}><button type="button" aria-expanded="true" onClick={() => p.onSection(key)}>▾ {plainSection(t.section)}</button></li>}
             <TaskRow key={t.ref} t={t} p={p} />
           </>;
         })}
-        {[...p.collapsed].filter((k) => p.all.some((t) => `${t.project}/${t.section}` === k)).map((k) => <li class="section" key={`c-${k}`} role="presentation"><button type="button" aria-expanded="false" onClick={() => p.onSection(k)}>▸ {plainSection(k.replace('/', ' · '))}</button></li>)}
+        {[...p.collapsed].filter((k) => p.all.some((t) => `${t.project}/${t.section}` === k)).map((k) => <li class="section" key={`c-${k}`}><button type="button" aria-expanded="false" onClick={() => p.onSection(k)}>▸ {plainSection(k.replace('/', ' · '))}</button></li>)}
       </ul>
     </section>
   );
@@ -196,7 +196,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
               {p.agent?.chip(t)}
               <span class={`meta due${r.due ? dueClass(r.due) : ''}`}>{r.suspend ? `💤 ${r.suspend}` : r.due ?? ''}{r.recurrence ? ' ↻' : ''}</span>
               {(pr && pr.total > 0) || t.notes.length > 0 ? (
-                <button type="button" class="more" aria-expanded={open} aria-label={open ? 'Collapse details' : 'Expand details'} onClick={(e) => { e.stopPropagation(); p.onExpand(t.ref); }}>
+                <button type="button" class="more" aria-expanded={open} aria-label={`${open ? 'Collapse details' : 'Expand details'}${pr && pr.total > 0 ? ` ${pr.done}/${pr.total}` : ''}`} onClick={(e) => { e.stopPropagation(); p.onExpand(t.ref); }}>
                   {open ? '▾' : '▸'}{pr && pr.total > 0 ? ` ${pr.done}/${pr.total}` : ''}
                 </button>
               ) : <span class="more-slot" />}
@@ -508,7 +508,7 @@ export function TodayView(t: TodayProps) {
       <div class="t-cols one">
         <div class="t-plan">
           {t.calError && <p class="cal-note">{t.calError}; meetings are not counted.</p>}
-          {t.plan.blocks.length === 0 && <p class="empty-note">{t.budget.minutes === 0 ? 'No time set for today. Add some with + or ].' : <>Nothing left that fits. Add something with <kbd>c</kbd>.</>}</p>}
+          {t.plan.blocks.length === 0 && (t.budget.minutes === 0 ? <EmptyState what="No time set for today." next={<>Add some with <kbd>+</kbd> or <kbd>]</kbd>.</>} /> : <EmptyState what="Nothing left that fits." next={<>Add something with <kbd>c</kbd>.</>} />)}
           {earlier && <p class="earlier" data-testid="earlier">Earlier · {clock(earlier.from)}–{clock(earlier.to)}</p>}
           <ol class="plan" data-testid="plan">
             {timeline.map((r) => r.kind === 'block'
@@ -520,10 +520,12 @@ export function TodayView(t: TodayProps) {
                       : <li key="email" class="email-block"><time class="when">{clock(r.e.start)}<small>{span(r.e.end - r.e.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {r.e.count} ask{r.e.count === 1 ? '' : 's'}</button><kbd>g k</kbd></div></li>)}
           </ol>
           {over && (
-            <details class="nofit" data-testid="nofit">
+            // The +30m button sits beside the summary, not in it: no button inside a button (axe nested-interactive).
+            <div class="nofit-wrap" data-testid="nofit">
+            {t.onBudget && <button type="button" class="btn quiet nofit-more" title="More time (])" onClick={() => t.onBudget?.(t.budget.minutes + 30)}>+30m <kbd>]</kbd></button>}
+            <details class="nofit">
               <summary class="nofit-head">
                 <h3>{t.plan.overflow.length} don't fit{t.plan.atRisk.length > 0 && <span class="warn"> · {t.plan.atRisk.length} due soon</span>}</h3>
-                {t.onBudget && <button type="button" class="btn quiet" title="More time (])" onClick={(e) => { e.preventDefault(); t.onBudget?.(t.budget.minutes + 30); }}>+30m <kbd>]</kbd></button>}
               </summary>
               <ul>
                 {shownOver.map((o) => {
@@ -539,6 +541,7 @@ export function TodayView(t: TodayProps) {
               </ul>
               {t.plan.overflow.length > shownOver.length && <p class="nofit-later">{t.plan.overflow.length - shownOver.length} later</p>}
             </details>
+            </div>
           )}
         </div>
 

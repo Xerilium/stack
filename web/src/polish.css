@@ -1,0 +1,39 @@
+/*
+ * Phone and desktop polish: one empty-state shape, text on the soft accent at 4.5:1, and touch targets at 44 px.
+ * @req FR:first-run-onboarding/polish.empty @req FR:first-run-onboarding/polish.contrast @req FR:first-run-onboarding/polish.tap @req FR:first-run-onboarding/polish.overflow
+ */
+.empty-state { padding: var(--s-24) 0; color: var(--muted); display: flex; flex-direction: column; gap: var(--s-8); align-items: flex-start; }
+.empty-state p { margin: 0; }
+.empty-what { color: var(--ink2); font-size: var(--fs-body); }
+.empty-next { font-size: var(--fs-secondary); }
+
+/* +30m sits beside the "don't fit" summary, not inside it. */
+.nofit-wrap { position: relative; }
+.nofit-more { position: absolute; right: 0; top: 22px; z-index: 1; }
+.nofit-wrap .nofit-head { padding-right: 96px; } /* the summary never runs under the button */
+
+/* Muted text and the active tab on the soft accent (cursor row, active tab) clear 4.5:1. */
+:root { --muted-on-soft: #5d5d65; --accent-on-soft: #4a4ed6; }
+.tab.on, .row.cursor { --muted: var(--muted-on-soft); }
+.tab.on { color: var(--accent-on-soft); }
+.tab.on kbd { color: inherit; }
+@media (prefers-color-scheme: dark) {
+  :root { --muted-on-soft: #a0a0a8; --accent-on-soft: var(--accent); }
+}
+
+/* Touch: every control a finger must hit is at least 44 px tall. Text controls in rows grow their hit area, not the row. */
+@media (pointer: coarse) {
+  .step, .tick, .main .chip, .more, .quiet-toggle, .main .btn, .section > button, .ob-btn { min-height: var(--tap); min-width: var(--tap); }
+  .tick { display: inline-grid; place-items: center; }
+  .main .chip, .more, .section > button, .main .btn { display: inline-flex; align-items: center; justify-content: center; }
+  .proj-link, .quiet-link { display: inline-block; padding-block: 12px; margin-block: -12px; min-height: var(--tap); }
+}
+
+/* Desktop: 24 px minimum (WCAG 2.2 2.5.8). Small controls grow their box, not the row. */
+@media (pointer: fine) {
+  .tick, .main .chip, .more, .handle { min-height: 24px; min-width: 24px; }
+  .handle { display: inline-flex; align-items: center; justify-content: center; }
+  .quiet-link { display: inline-block; padding-block: 4px; margin-block: -4px; min-height: 24px; }
+}
+.empty-next a { display: inline-flex; align-items: center; min-height: 24px; }
+@media (pointer: coarse) { .empty-next a { min-height: var(--tap); } }

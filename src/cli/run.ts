@@ -32,8 +32,9 @@ import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { emailCmd } from './email';
 import { agentCmd } from './agent';
 import { graphCmd } from './graph';
-import { findStackDir, userConfig } from './discover';
+import { findStackDir, userConfig, walkStackDir } from './discover';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
+import { runLocal, type Locks, type SetupHandler } from './setup';
 import { BatchedGitStorage } from '../core/storage-batch';
 import { homedir } from 'os';
 
@@ -657,41 +658,53 @@ export function webReportStore(live: boolean, home: string): ReportStore | undef
   return live ? undefined : new ReportStore(join(home, '.config/stack/demo-state'));
 }
 
-/** @req FR:cli/web.@cli @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live */
-async function web(f: Record<string, string | true>, io: IO, found: string | null, home: string): Promise<number> {
+/**
+ * `stack web`: the real server when a repo is known, else the first-run setup server; setup restarts it on the same port.
+ * @req FR:cli/web.@cli @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live @req FR:first-run-onboarding/host.setup
+ */
+async function web(f: Record<string, string | true>, io: IO, here: { dir: string; by: string } | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
-  const cfg = userConfig(home);
-  const spec = flag(f, 'repo') ?? found;
-  if (!spec) throw new UsageError('No content repo. Use: stack web --repo <path-or-git-url> (or set STACK_REPO, or "repo" in ~/.config/stack/config.json)');
-  const repo = resolveRepo(spec, join(home, '.config/stack/clones'));
-  const live = f['live'] === true || cfg.mode === 'live';
-  let target: string; let info: RepoInfo; let label: string; let storage: BatchedGitStorage | undefined;
-  if (live) {
-    // @req FR:cli/web.live @req FR:cli/web.batch @req FR:cli/web.batch.idle @req FR:cli/web.batch.zero
-    if (cfg.batch !== undefined && (typeof cfg.batch !== 'number' || !Number.isFinite(cfg.batch) || cfg.batch < 0)) throw new UsageError('user config "batch" must be a number of minutes, 0 or more');
-    const minutes = num(flag(f, 'batch'), 'batch') ?? cfg.batch ?? 5;
-    if (minutes < 0) throw new UsageError('--batch must be 0 or more minutes');
-    const l = prepareLive(repo, flag(f, 'branch') ?? cfg.branch, flag(f, 'remote') ?? cfg.remote); // flags win over user config, as for branch and batch
-    target = l.dir;
-    info = { mode: 'live', repo: redact(repo), branch: l.branch };
-    label = `LIVE - ${repo} on ${l.branch}`;
-    storage = new BatchedGitStorage(target, { idleMs: minutes * 60_000, remote: l.remote, branch: l.branch, onError: (e) => io.err(`error: commit failed, edits kept and retried: ${e instanceof Error ? e.message : String(e)}\n`) });
-    io.out(`${liveLine(repo, l.branch, minutes, l.remote)}\n`);
-  } else {
-    target = join(home, '.config/stack/demo');
-    prepareDemo(repo, target, f['reset'] === true);
-    info = { mode: 'demo', repo: redact(repo), branch: 'main' };
-    label = `DEMO COPY of ${repo} - edits stay in the copy`;
-    io.out(`DEMO MODE: serving a COPY of ${repo}\nEdits stay in ${target}; the real repo is never touched. Reset: stack web --reset. Real data: stack web --live\n`);
-  }
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
-  // Demo never touches live state (~/.stack): its reports stay beside the demo copy. @req FR:status-ingest/host.demo
-  const reports = webReportStore(live, home);
-  // Demo reads no session store and keeps priorities beside the demo copy. @req FR:status-ingest/host.demo
-  const demoLive = live ? {} : { inventory: false as const, pris: new PriStore(join(home, '.config/stack/demo-state')) };
-  const s = await startWeb({ dir: target, port, webDir, label, info, storage, ...(reports ? { reports } : {}), ...demoLive });
-  io.out(`Stack web: ${s.url}  (data: ${target}; Ctrl+C to stop)\n`);
+  // --repo, then --dir or the current folder, then env, then user config; config is read again on every restart (setup writes it).
+  const spec = () => { const c = userConfig(home); return flag(f, 'repo') ?? here?.dir ?? process.env.STACK_REPO ?? process.env.STACK_DIR ?? c.repo ?? c.dir; };
+  // What wins over setup: the flow shows these as fixed instead of saving a choice that would not apply. @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.mode
+  const locks = (): Locks => ({ repo: flag(f, 'repo') ? '--repo' : here?.by, mode: f['live'] === true ? '--live' : undefined });
+  let reset = f['reset'] === true;
+  const startReal = async (p: number, setup: SetupHandler) => {
+    const cfg = userConfig(home);
+    const repo = resolveRepo(spec()!, join(home, '.config/stack/clones'));
+    const live = f['live'] === true || cfg.mode === 'live';
+    let target: string; let info: RepoInfo; let label: string; let storage: BatchedGitStorage | undefined;
+    if (live) {
+      // @req FR:cli/web.live @req FR:cli/web.batch @req FR:cli/web.batch.idle @req FR:cli/web.batch.zero
+      if (cfg.batch !== undefined && (typeof cfg.batch !== 'number' || !Number.isFinite(cfg.batch) || cfg.batch < 0)) throw new UsageError('user config "batch" must be a number of minutes, 0 or more');
+      const minutes = num(flag(f, 'batch'), 'batch') ?? cfg.batch ?? 5;
+      if (minutes < 0) throw new UsageError('--batch must be 0 or more minutes');
+      const l = prepareLive(repo, flag(f, 'branch') ?? cfg.branch, flag(f, 'remote') ?? cfg.remote); // flags win over user config, as for branch and batch
+      target = l.dir;
+      info = { mode: 'live', repo: redact(repo), branch: l.branch };
+      label = `LIVE - ${repo} on ${l.branch}`;
+      storage = new BatchedGitStorage(target, { idleMs: minutes * 60_000, remote: l.remote, branch: l.branch, onError: (e) => io.err(`error: commit failed, edits kept and retried: ${e instanceof Error ? e.message : String(e)}\n`) });
+      io.out(`${liveLine(repo, l.branch, minutes, l.remote)}\n`);
+    } else {
+      target = join(home, '.config/stack/demo');
+      prepareDemo(repo, target, reset);
+      reset = false; // --reset once, not on every setup restart
+      info = { mode: 'demo', repo: redact(repo), branch: 'main' };
+      label = `DEMO COPY of ${repo} - edits stay in the copy`;
+      io.out(`DEMO MODE: serving a COPY of ${repo}\nEdits stay in ${target}; the real repo is never touched. Reset: stack web --reset. Real data: stack web --live\n`);
+    }
+    // Demo never touches live state (~/.stack): its reports stay beside the demo copy. @req FR:status-ingest/host.demo
+    const reports = webReportStore(live, home);
+    const ics = (cfg as { ics?: unknown }).ics; // @req FR:first-run-onboarding/step.calendar
+    // Demo reads no session store and keeps priorities beside the demo copy. @req FR:status-ingest/host.demo
+    const demoLive = live ? {} : { inventory: false as const, pris: new PriStore(join(home, '.config/stack/demo-state')) };
+    const server = await startWeb({ dir: target, port: p, webDir, label, info, storage, setup, ...(typeof ics === 'string' ? { ics } : {}), ...(reports ? { reports } : {}), ...demoLive });
+    return { server, dir: target };
+  };
+  const s = await runLocal({ port, home, env: process.env, webDir, spec, locks, startReal, log: (l) => io.out(`${l}\n`) });
+  io.out(`Stack web: ${s.url}  (${spec() ? 'Ctrl+C to stop' : 'first run: finish setup in the browser; Ctrl+C to stop'})\n`);
   await new Promise<void>((ok) => { process.once('SIGINT', ok); process.once('SIGTERM', ok); });
   await s.close();
   return EXIT.ok;
@@ -724,7 +737,8 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     const explicit = flag(p.flags, 'dir');
     const found = explicit ? null : findStackDir({ cwd: process.cwd(), env: process.env, home });
     const dir = resolve(explicit ?? found ?? process.cwd());
-    if (p.command === 'web') return await web(p.flags, io, explicit ?? found, home);
+    // Only --dir or the current folder is fixed at startup; env and user config are read on every setup restart.
+    if (p.command === 'web') { const up = walkStackDir(process.cwd()); return await web(p.flags, io, explicit ? { dir: explicit, by: '--dir' } : up ? { dir: up, by: 'the current folder' } : null, home); }
     if (p.command === 'graph') return await graphCmd(p.positionals[0], p.flags, io, json);
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
     // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report
