@@ -4,7 +4,10 @@
  * @req FR:inbox-page/src.shape @req FR:inbox-page/src.record @req FR:inbox-page/src.state @req FR:inbox-page/src.fresh @req FR:inbox-page/src.planned
  * @req FR:inbox-page/src.multi @req FR:inbox-page/src.summary @req FR:inbox-page/src.help @req FR:inbox-page/src.safe
  */
+import { MAILBOX } from '../core/config';
 import { ConflictError, type AuxFiles, type Storage } from '../core/storage';
+
+export { MAILBOX };
 import type { Source } from './types';
 
 export const SOURCE_STATES = ['not-connected', 'connecting', 'ok', 'error', 'stale'] as const;
@@ -59,8 +62,6 @@ const NEVER_SENDS = 'Stack never sends.';
 
 const isTime = (s: unknown): s is string => typeof s === 'string' && s.length <= 40 && !Number.isNaN(Date.parse(s));
 const acct = (s: unknown) => (typeof s === 'string' ? s.trim().toLowerCase().slice(0, 200) : '');
-/** A mailbox address safe to put in a copyable command: no spaces, quotes or shell characters. @req FR:inbox-page/src.safe */
-export const MAILBOX = /^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
 /** Email needs a mailbox address; every other kind has one account, named by an empty string. */
 const accountOk = (kind: Source, a: string) => (kind === 'email' ? MAILBOX.test(a) : a === '');
 const same = (a: SyncRecord, b: SyncRecord) => a.kind === b.kind && a.account === b.account;
@@ -207,6 +208,7 @@ export function summarize(sources: InboxSource[], now: Date): SourcesSummary {
     const newest = stale.map((s) => s.lastSyncAt!).sort().at(-1);
     headline = newest ? `Last synced ${agoText(newest, now)}` : 'Waiting for the first sync';
   } else if (stale.length) headline = `${fresh} of ${fresh + stale.length} inboxes up to date`;
+  else if (fresh < connected) headline = `${fresh} of ${connected} inboxes synced; waiting for the first sync`;
   else if (connected < total) headline = `${connected} of ${total} sources connected`;
   // Zero is a claim about every inbox: one missing, broken, behind or unsynced source makes it untrue.
   return { connected, total, fresh, attention, canClaimZero: fresh >= 1 && fresh === total, headline };

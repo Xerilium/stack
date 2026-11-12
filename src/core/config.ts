@@ -190,6 +190,9 @@ export function parseConfig(input?: unknown): StackConfig {
   return cfg;
 }
 
+/** A mailbox address safe to put in a copyable command: no spaces, quotes or shell characters. Shared with the Inbox source list. @req FR:config/load.validate.inbox @req FR:inbox-page/src.safe */
+export const MAILBOX = /^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
+
 /** @req FR:config/load.validate.inbox */
 function parseInbox(v: unknown): NonNullable<StackConfig['inbox']> {
   if (!isObj(v)) throw new ConfigError('inbox: expected object');
@@ -202,8 +205,8 @@ function parseInbox(v: unknown): NonNullable<StackConfig['inbox']> {
     if (!Array.isArray(v.accounts)) throw new ConfigError('inbox.accounts: expected array');
     out.accounts = v.accounts.map((a, i) => {
       const v = typeof a === 'string' ? a.trim().toLowerCase() : '';
-      // Same rule as the Inbox source list (FR:inbox-page/src.safe), so a bad address fails here, not silently later.
-      if (!/^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(v)) throw new ConfigError(`inbox.accounts[${i}]: expected a mailbox address`);
+      // Same rule as the Inbox source list, so a bad address fails here, not silently later.
+      if (!MAILBOX.test(v)) throw new ConfigError(`inbox.accounts[${i}]: expected a mailbox address`);
       return v;
     });
   }

@@ -121,7 +121,7 @@ export function InboxView({ api, toast, onStatus }: { api: Client; toast: ToastF
       {phase === 'ready' && src?.summary.headline && items.length > 0 && <p class="in-banner" role="status" data-testid="inbox-headline">{src.summary.headline}</p>}
       {phase === 'ready' && items.length === 0 && (empty.zero
         ? <EmptyState what={empty.what} next={src?.summary.headline ? <>{src.summary.headline}. See Inbox sources below.</> : <a href="#/now">Back to Now</a>} />
-        : <EmptyState what={empty.what} next="Connect an inbox below. Stack never sends." />)}
+        : <EmptyState what={empty.what} next={src?.summary.attention ? 'Connect an inbox below. Stack never sends.' : 'See Inbox sources below.'} />)}
       {phase === 'ready' && src && <InboxSources sources={src.sources} summary={src.summary} checking={checking} onCheck={() => void check()} />}
       <ul class="in-list">{items.map((r) => <Row key={r.id} row={r} catalog={catalog} api={api} toast={toast} done={(id) => setItems((xs) => xs.filter((x) => x.id !== id))} />)}</ul>
     </section>
