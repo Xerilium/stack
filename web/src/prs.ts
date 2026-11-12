@@ -12,7 +12,7 @@ export interface PrRow {
   createdAt: string; updatedAt: string; ci: 'passing' | 'failing' | 'pending' | 'none'; unresolved: number; labels: string[]; state: PrState; bucket?: Bucket;
   healthy: boolean; agent: boolean; after: string[]; rank: number | null; pinned: boolean; rec?: { id: string; agent: string; reason: string; toRank?: number }; autopilot: boolean;
 }
-export interface EscEntry { repo: string; number: number; url: string; title?: string; blocker?: string; context?: string; recommend?: string; link?: string }
+export interface EscEntry { repo: string; number: number; url: string; title?: string; blocker?: string; context?: string; recommend?: string; link?: string; project?: string }
 export interface PrBoard {
   at: string | null; user: string; agents: { count: number; source: 'sessions' | 'wip-label' }; counts: Record<PrGroup, number>;
   footer: { running: number; waiting: number; parked: number }; rows: PrRow[]; escalations?: { at?: string; blocked: EscEntry[]; enable: EscEntry[]; live: EscEntry[] };
@@ -38,8 +38,11 @@ export function tabsOf(b: PrBoard | null): Tab[] {
   return b?.escalations ? ['escalations', ...groups] : groups;
 }
 const inProjects = (p: string, sel: string[]) => sel.length === 0 || sel.includes(p);
-/** Projects present on the board, in project order. */
-export const projectsOf = (b: PrBoard | null): string[] => PROJECT_ORDER.filter((p) => b?.rows.some((r) => r.project === p));
+const escAll = (b: PrBoard | null): EscEntry[] => (b?.escalations ? [...b.escalations.blocked, ...b.escalations.enable, ...b.escalations.live] : []);
+/** Projects present on the board or the Escalation set, in project order. */
+export const projectsOf = (b: PrBoard | null): string[] => PROJECT_ORDER.filter((p) => b?.rows.some((r) => r.project === p) || escAll(b).some((e) => (e.project ?? 'other') === p));
+/** Escalation entries under the project filter. @req FR:pr-page/flyout.filter */
+export const escIn = (list: EscEntry[], sel: string[]) => list.filter((e) => inProjects(e.project ?? 'other', sel));
 
 /** Rows of one tab under the project filter; Processing hides healthy rows unless asked. @req FR:pr-page/flyout.filter @req FR:pr-page/group.healthy */
 export function rowsOf(b: PrBoard | null, tab: Tab, sel: string[], showHealthy = false): PrRow[] {
@@ -49,7 +52,7 @@ export function rowsOf(b: PrBoard | null, tab: Tab, sel: string[], showHealthy =
 /** Counts that follow the filter. Processing counts what it shows by default (stuck rows). */
 export function countOf(b: PrBoard | null, tab: Tab, sel: string[]): number {
   if (!b) return 0;
-  if (tab === 'escalations') { const e = b.escalations; return e ? e.blocked.length + e.enable.length + e.live.length : 0; }
+  if (tab === 'escalations') return escIn(escAll(b), sel).length;
   return rowsOf(b, tab, sel).length;
 }
 export const healthyCount = (b: PrBoard | null, sel: string[]) => (b ? b.rows.filter((r) => r.group === 'processing' && r.healthy && inProjects(r.project, sel)).length : 0);
@@ -118,7 +121,9 @@ export function createPrStore(load: () => Promise<PrBoard>, o: { visible?: () =>
   let busy = false;
   let stop: (() => void) | null = null;
   const reload = async () => {
-    if (busy || st.phase === 'off' || (gate && !(await gate))) return;
+    if (gate && !(await gate)) return;
+    // Check after the gate: two reloads that wait on it together must not both load.
+    if (busy || st.phase === 'off') return;
     busy = true;
     try { const b = await load(); if ((b as { off?: boolean }).off) set({ phase: 'off' }); else set({ board: b, phase: 'ready' }); } catch (e) {
       const status = o.status?.(e) ?? (e as { status?: number })?.status;

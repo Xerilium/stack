@@ -12,6 +12,8 @@ const TIMEOUT_MS = 15_000;
 const DETAIL_TTL_MS = 5 * 60_000;
 const BATCH = 10;
 const PER_SEARCH = 50;
+/** Thread replies read per thread: enough to see a 🧭 ask and any later human answer. */
+const THREAD_TAIL = 10;
 
 /** GitHub said slow down. `until` is when to try again (ms since epoch). */
 export class GitHubRateLimit extends Error {
@@ -82,7 +84,7 @@ export function detailQuery(prs: { repo: string; number: number }[]): string {
     const [owner, name] = p.repo.split('/');
     const n = Math.trunc(p.number);
     return `p${i}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequest(number: ${n}) {
-  reviewThreads(first: 50) { nodes { isResolved root: comments(first: 1) { nodes { databaseId } } comments(last: 1) { nodes { url body author { login __typename } } } } }
+  reviewThreads(first: 50) { nodes { isResolved root: comments(first: 1) { nodes { databaseId } } comments(last: ${THREAD_TAIL}) { nodes { url body author { login __typename } } } } }
   comments(last: 10) { nodes { url body author { login __typename } } }
   commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 50) { nodes { __typename
     ... on CheckRun { name isRequired(pullRequestNumber: ${n}) } ... on StatusContext { context isRequired(pullRequestNumber: ${n}) } } } } } } } } }`;
@@ -113,7 +115,8 @@ export function createGitHubBoard(o: GitHubBoardOptions): GitHubBoard {
     if (!res.ok) throw new Error(`GitHub ${res.status}`);
     const body = (await res.json()) as { data?: Obj; errors?: { type?: string }[] };
     if (body.errors?.some((e) => e.type === 'RATE_LIMITED')) throw new GitHubRateLimit(Date.parse(body.data?.rateLimit?.resetAt ?? '') || now() + 60_000);
-    if (!body.data) throw new Error('GitHub graphql error');
+    // Partial data is not a good board: a failed alias would read as no PRs or no threads.
+    if (!body.data || body.errors?.length) throw new Error('GitHub graphql error');
     return body.data;
   };
 
@@ -159,8 +162,9 @@ ${FRAGMENT}`, { a, b, c });
           const p = d[`p${j}`]?.pullRequest;
           if (!p) return;
           const threads: PrThread[] = (p.reviewThreads?.nodes ?? []).map((t: Obj) => {
-            const last = t.comments?.nodes?.[0] ?? {};
-            return { resolved: !!t.isResolved, lastAuthor: login(last.author), lastBody: String(last.body ?? '').slice(0, 2000), ...(last.url ? { url: String(last.url) } : {}), ...(Number.isInteger(t.root?.nodes?.[0]?.databaseId) ? { id: t.root.nodes[0].databaseId } : {}) };
+            const tail: PrComment[] = (t.comments?.nodes ?? []).map((c: Obj) => ({ author: login(c.author), body: String(c.body ?? '').slice(0, 2000), ...(c.url ? { url: String(c.url) } : {}) }));
+            const last = tail[tail.length - 1];
+            return { resolved: !!t.isResolved, lastAuthor: last?.author ?? 'ghost', lastBody: last?.body ?? '', ...(last?.url ? { url: last.url } : {}), ...(Number.isInteger(t.root?.nodes?.[0]?.databaseId) ? { id: t.root.nodes[0].databaseId } : {}), comments: tail };
           });
           const comments: PrComment[] = (p.comments?.nodes ?? []).map((c: Obj) => ({ author: login(c.author), body: String(c.body ?? '').slice(0, 2000), ...(c.url ? { url: String(c.url) } : {}) }));
           const required = new Map<string, boolean>();

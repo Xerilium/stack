@@ -83,7 +83,7 @@ describe('GitHub board read', () => {
     const g = createGitHubBoard({ token: TOKEN, fetch: f.fetch, now: () => NOW });
     const r = await g.fetch();
     expect(r.facts.map((x) => x.number)).toEqual([1, 2]);
-    expect(r.facts[0].threads).toEqual([{ resolved: false, lastAuthor: 'me', lastBody: '🤖 [AI] 🧭 Pick one', url: 'https://github.com/o/r/pull/1#discussion_r9', id: 9 }]);
+    expect(r.facts[0].threads).toEqual([{ resolved: false, lastAuthor: 'me', lastBody: '🤖 [AI] 🧭 Pick one', url: 'https://github.com/o/r/pull/1#discussion_r9', id: 9, comments: [{ author: 'me', body: '🤖 [AI] 🧭 Pick one', url: 'https://github.com/o/r/pull/1#discussion_r9' }] }]);
     expect(r.facts[0].checks.find((c) => c.name === 'build')?.required).toBe(true);
     expect(r.facts[1].comments).toEqual([{ author: 'x', body: 'hi', url: 'u' }]);
     expect(r.rate).toEqual({ remaining: 4000, resetAt: '2026-11-11T13:00:00Z' });
@@ -111,6 +111,10 @@ describe('GitHub board read', () => {
     const boom = fakeFetch(() => ({ status: 502, body: { message: TOKEN } }));
     await expect(createGitHubBoard({ token: TOKEN, fetch: boom.fetch, user: 'me' }).fetch()).rejects.toThrow(/^GitHub 502$/);
   });
+  it('partial data with errors is a failed poll, not an empty board', async () => {
+    const part = fakeFetch(() => ({ body: { errors: [{ type: 'NOT_FOUND', message: 'x' }], data: { a: { nodes: [] }, b: null, c: { nodes: [] } } } }));
+    await expect(createGitHubBoard({ token: TOKEN, fetch: part.fetch, user: 'me' }).fetch()).rejects.toThrow('GitHub graphql error');
+  });
 });
 
 // @req FR:github-pr-status/write.@function @req FR:github-pr-status/write.label @req FR:github-pr-status/write.comment @req FR:github-pr-status/write.never @req FR:github-pr-status/write.errors @req FR:github-pr-status/write.scopes
@@ -126,7 +130,7 @@ describe('GitHub writes', () => {
     await w.reply(pr, 77, `${AI_PREFIX}Yes`);
     expect(f.calls.map((c) => `${c.method} ${c.url.replace('https://api.github.com', '')}`)).toEqual([
       'GET /repos/o/r/labels?per_page=100', 'POST /repos/o/r/issues/4/labels', `DELETE /repos/o/r/issues/4/labels/${encodeURIComponent('Status: 🤖 Autopilot')}`,
-      'POST /repos/o/r/issues/4/comments', 'POST /repos/o/r/pulls/4/comments/77/replies',
+      'POST /repos/o/r/issues/4/comments', 'GET /repos/o/r/pulls/comments/77', 'POST /repos/o/r/pulls/4/comments/77/replies',
     ]);
     expect(JSON.parse(f.calls[1].body!)).toEqual({ labels: ['Status: 🤖 Autopilot'] });
     await expect(w.addLabel(pr, 'Status: ✅ Ready')).rejects.toBeInstanceOf(GitHubWriteDenied);
@@ -134,7 +138,7 @@ describe('GitHub writes', () => {
     await expect(w.comment(pr, `${AI_PREFIX}${'x'.repeat(4000)}`)).rejects.toBeInstanceOf(GitHubWriteDenied);
     await expect(w.addLabel({ repo: 'bad', number: 1 }, 'Status: 🤖 Autopilot')).rejects.toBeInstanceOf(GitHubWriteDenied);
     expect(Object.keys(w).sort()).toEqual(['addLabel', 'comment', 'removeLabel', 'reply']);
-    expect(f.calls).toHaveLength(5);
+    expect(f.calls).toHaveLength(6);
   });
   it('add uses the repo spelling of the label', async () => {
     const f = fakeFetch((c) => (c.url.endsWith('/labels?per_page=100') ? { body: [{ name: 'Status: 🤖️ Autopilot' }] } : { status: 200, body: {} }));
@@ -147,6 +151,10 @@ describe('GitHub writes', () => {
   it('repos allow-list, 404 on remove is done, failures carry only the status', async () => {
     const w = createGitHubWrites({ token: TOKEN, fetch: ok().fetch, repos: ['x'] });
     await expect(w.addLabel(pr, 'Status: 🤖 Autopilot')).rejects.toThrow('STACK_GITHUB_REPOS');
+    // A link to a later reply still posts on the thread's root comment.
+    const deep = fakeFetch((c) => ({ body: c.method === 'GET' ? { id: 78, in_reply_to_id: 70 } : {} }));
+    await createGitHubWrites({ token: TOKEN, fetch: deep.fetch }).reply(pr, 78, `${AI_PREFIX}Yes`);
+    expect(deep.calls.map((c) => `${c.method} ${c.url.replace('https://api.github.com', '')}`)).toEqual(['GET /repos/o/r/pulls/comments/78', 'POST /repos/o/r/pulls/4/comments/70/replies']);
     const gone = createGitHubWrites({ token: TOKEN, fetch: fakeFetch(() => ({ status: 404 })).fetch });
     await expect(gone.removeLabel(pr, 'Status: 🤖 Autopilot')).resolves.toBeUndefined();
     const bad = createGitHubWrites({ token: TOKEN, fetch: fakeFetch(() => ({ status: 403, body: { message: TOKEN } })).fetch });
@@ -218,6 +226,22 @@ describe('board service', () => {
     expect((await svc.get()).error).toBe('GitHub unavailable');
     svc.stop();
   });
+  it('a timer set before a refresh hit the rate limit waits out the backoff', async () => {
+    let next: PrFacts[] | Error = [facts(1)];
+    const src = fakeSource(() => next);
+    const c = clock();
+    const svc = createPrBoardService({ source: src, now: c.now, timers: c.timers, leaseMs: 3_600_000 });
+    await svc.get(); // the timer is set for +45 s
+    next = new GitHubRateLimit(NOW + 600_000);
+    await svc.refresh();
+    const n = src.n;
+    await c.advance(45_000);
+    expect(src.n).toBe(n); // the old timer did not poll during the pause
+    next = [facts(1)];
+    await c.advance(600_000);
+    expect(src.n).toBe(n + 1);
+    svc.stop();
+  });
   it('a board older than two intervals (lapsed lease) polls before answering', async () => {
     const src = fakeSource(() => [facts(1)]);
     const c = clock();
@@ -237,8 +261,10 @@ describe('board service', () => {
     expect((await off.get()).queue).toBe(false);
   });
   it('WIP label stands in for agents without an inventory; interval clamps to 30-60 s', async () => {
-    const svc = createPrBoardService({ source: fakeSource(() => [facts(1, { labels: ['Status: 🚧 WIP', 'Status: 🤖 Autopilot'] })]), now: () => NOW, timers: clock().timers });
-    expect((await svc.get()).agents).toEqual({ count: 1, source: 'wip-label' });
+    const svc = createPrBoardService({ source: fakeSource(() => [facts(1, { labels: ['Status: 🚧 WIP', 'Status: 🤖 Autopilot'], mergeable: 'CONFLICTING' })]), now: () => NOW, timers: clock().timers });
+    const b = await svc.get();
+    expect(b.agents).toEqual({ count: 1, source: 'wip-label' });
+    expect(b.rows[0]).toMatchObject({ agent: true, state: { blocker: 'Agent on it: Merge conflict', stalled: false } });
     expect([clampInterval(), clampInterval(5_000), clampInterval(90_000)]).toEqual([45_000, 30_000, 60_000]);
   });
 });
@@ -352,7 +378,7 @@ describe('PR routes', () => {
     expect(m.ghCalls).toEqual([]);
     expect((await m.call('owner', 'POST', '/prs/ack', { repo: 'o/r', number: 1, thread: 'https://github.com/o/r/pull/1#discussion_r9', note: 'Use A', post: true, text: 'Use A' })).status).toBe(422);
     expect((await m.call('owner', 'POST', '/prs/ack', { repo: 'o/r', number: 1, thread: 'https://github.com/o/r/pull/1#discussion_r9', note: 'Use A', post: true, text: '🤖 [AI] Use A', replyTo: 9 })).json).toEqual({ ok: true, posted: true, recorded: true });
-    expect(m.ghCalls).toEqual(['POST https://api.github.com/repos/o/r/pulls/1/comments/9/replies']);
+    expect(m.ghCalls).toEqual(['GET https://api.github.com/repos/o/r/pulls/comments/9', 'POST https://api.github.com/repos/o/r/pulls/1/comments/9/replies']);
     expect(m.qCalls).toEqual(['ack o/r#1 https://github.com/o/r/pull/1#discussion_r9 Use A', 'ack o/r#1 https://github.com/o/r/pull/1#discussion_r9 Use A']);
     expect((await m.call('owner', 'POST', '/prs/ack', { repo: 'o/r', number: 1, thread: 'not-a-url', note: 'A' })).status).toBe(422);
   });

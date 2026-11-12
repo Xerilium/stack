@@ -68,7 +68,8 @@
 .prs-foot { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .prs-sheet-scrim { position: absolute; inset: 0; z-index: 2; background: rgb(0 0 0 / 30%); display: flex; align-items: flex-end; }
-.prs-sheet { width: 100%; box-sizing: border-box; background: var(--panel); border-top: 1px solid var(--line); border-radius: var(--r-card) var(--r-card) 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow); }
+.prs-sheet { width: 100%; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; background: var(--panel); border-top: 1px solid var(--line); border-radius: var(--r-card) var(--r-card) 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow); }
+.prs-sheet > * { flex-shrink: 0; }
 .prs-sheet-title { margin: 0; font-size: 16px; }
 .prs-sheet-body { margin: 0; font-size: 13px; color: var(--ink2); overflow-wrap: anywhere; }
 .prs-sheet-body a, .prs-sheet-list a { color: var(--ink); }

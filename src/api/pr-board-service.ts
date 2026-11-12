@@ -63,7 +63,7 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
     let inv: ReturnType<NonNullable<typeof o.inventory>> | null = null;
     try { inv = o.inventory?.() ?? null; } catch { inv = null; }
     if (inv) { const a = activeAgents(inv); agentPrs = a.prs; agents = { count: a.count, source: 'sessions' }; }
-    else agents = { count: (facts ?? []).filter(isWip).length, source: 'wip-label' };
+    else { const wip = (facts ?? []).filter(isWip); agentPrs = new Set(wip.map((f) => f.url.toLowerCase())); agents = { count: wip.length, source: 'wip-label' }; }
     let files: { queue?: unknown; state?: unknown; config?: unknown } = {};
     try { files = o.files?.() ?? {}; } catch { files = {}; }
     const q = parseQueue(files);
@@ -103,6 +103,7 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
     timer = timers.set(() => {
       timer = null;
       if (stopped || now() >= lease) return; // no page holds a lease: stop until the next get()
+      if (pausedUntil > now()) { schedule(); return; } // a refresh set a backoff after this timer was set
       void poll().finally(schedule);
     }, wait);
   };

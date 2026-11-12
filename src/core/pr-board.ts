@@ -13,8 +13,8 @@ export type Bucket = 'approve' | 'review' | 'decide' | 'unblock';
 
 export interface PrCheck { name: string; state: 'pass' | 'fail' | 'pending' | 'action' | 'skip'; startedAt?: string; required?: boolean }
 /** `id` is the thread's first review comment: GitHub takes replies to it only. */
-export interface PrThread { resolved: boolean; lastAuthor: string; lastBody: string; url?: string; id?: number }
 export interface PrComment { author: string; body: string; url?: string }
+export interface PrThread { resolved: boolean; lastAuthor: string; lastBody: string; url?: string; id?: number; /** The newest replies, oldest first; absent means only the last is known. */ comments?: PrComment[] }
 /** What GitHub says about one open PR, normalized. */
 export interface PrFacts {
   url: string; repo: string; number: number; title: string; author: string; draft: boolean;
@@ -25,7 +25,7 @@ export interface PrFacts {
   threads?: PrThread[]; comments?: PrComment[];
 }
 export interface PrReport { state?: string; worker?: string; blocker?: string; nextAction?: string; owner: string; headSha?: string; ts?: string; link?: string; bucket?: Bucket }
-export interface EscEntry { repo: string; number: number; url: string; title?: string; blocker?: string; context?: string; recommend?: string; link?: string }
+export interface EscEntry { repo: string; number: number; url: string; title?: string; blocker?: string; context?: string; recommend?: string; link?: string; /** For the project chips. */ project?: SessionProject }
 export interface Escalations { at?: string; blocked: EscEntry[]; enable: EscEntry[]; live: EscEntry[] }
 export interface PrRec { id: string; agent: string; reason: string; toRank?: number }
 export interface PrState { owner: Owner; login?: string; bucket?: Bucket; blocker: string; link: string; stalled: boolean; source: 'report' | 'rule'; key?: string; recommend?: string; replyTo?: number; /** The owner already answered this blocker (`stack pr-pri ack`). */ answered?: string }
@@ -119,8 +119,14 @@ function rawState(pr: PrFacts, ctx: BoardCtx): PrState {
   const asks = (body: string) => unquoted(body).includes('🧭');
   const lastCompass = comments.map((c, i) => ({ c, i })).filter(({ c }) => asks(c.body)).pop();
   if (lastCompass && !comments.slice(lastCompass.i + 1).some((c) => isHuman(c.author, c.body, ctx.user))) { const t = firstLine(lastCompass.c.body.replace(/^\s*(🤖\uFE0F? \[AI\]|⚛\uFE0F? \[Catalyst\])\s*/u, '')); return me(t, lastCompass.c.url ?? pr.url, bucketOf(t), { key: `c:${lastCompass.c.url ?? lastCompass.i}` }); }
-  const compassThread = unresolvedOf(pr).find((t) => asks(t.lastBody));
-  if (compassThread) { const t = firstLine(compassThread.lastBody.replace(/^\s*(🤖\uFE0F? \[AI\]|⚛\uFE0F? \[Catalyst\])\s*/u, '')); return me(t, compassThread.url ?? pr.url, bucketOf(t), { key: `t:${compassThread.id ?? compassThread.url}`, ...(compassThread.id ? { replyTo: compassThread.id } : {}) }); }
+  // In a thread, an agent note after the ask does not answer it; only a later human reply does.
+  const openAsk = (t: PrThread): PrComment | undefined => {
+    const list = t.comments?.length ? t.comments : [{ author: t.lastAuthor, body: t.lastBody, url: t.url }];
+    const i = list.map((c) => asks(c.body)).lastIndexOf(true);
+    return i >= 0 && !list.slice(i + 1).some((c) => isHuman(c.author, c.body, ctx.user)) ? list[i] : undefined;
+  };
+  const compassThread = unresolvedOf(pr).map((t) => ({ ...t, ask: openAsk(t) })).find((x) => x.ask);
+  if (compassThread) { const t = firstLine(compassThread.ask!.body.replace(/^\s*(🤖\uFE0F? \[AI\]|⚛\uFE0F? \[Catalyst\])\s*/u, '')); return me(t, compassThread.ask!.url ?? compassThread.url ?? pr.url, bucketOf(t), { key: `t:${compassThread.id ?? compassThread.url}`, ...(compassThread.id ? { replyTo: compassThread.id } : {}) }); }
   // 3. An owner hold on an open thread.
   const hold = unresolvedOf(pr).find((t) => isHuman(t.lastAuthor, t.lastBody, ctx.user) && /\b(hold|wait for (my )?ack)\b/i.test(t.lastBody));
   if (hold) return me(`Hold: ${firstLine(hold.lastBody, 100)}`, hold.url ?? pr.url, 'decide', { key: `t:${hold.id ?? hold.url}`, ...(hold.id ? { replyTo: hold.id } : {}) });
@@ -306,7 +312,7 @@ function parseEntry(v: unknown, fields: Partial<Record<'blocker' | 'context' | '
   const o = obj(v);
   const m = typeof o?.pr === 'string' ? PR_URL.exec(o.pr) : null;
   if (!o || !m) return undefined;
-  const e: EscEntry = { repo: m[1], number: Number(m[2]), url: o.pr as string };
+  const e: EscEntry = { repo: m[1], number: Number(m[2]), url: o.pr as string, project: projectOfRepo(m[1]) };
   for (const [to, from] of Object.entries(fields)) { const t = line(o[from]); if (t) e[to as 'blocker'] = t; }
   const l = records.get(e.url.toLowerCase())?.link; if (l) e.link = l;
   return e;

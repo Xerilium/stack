@@ -9,7 +9,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
 import {
-  threadOf, ageText, replyToOf, BUCKET, CI, clip, countOf, createPrStore, EMPTY, escFor, healthyCount, loadPrefs, ownerOf, PROJECT_LABEL, projectsOf, refOf, replyText, rowsOf,
+  threadOf, ageText, replyToOf, BUCKET, CI, clip, countOf, createPrStore, EMPTY, escFor, escIn, healthyCount, loadPrefs, ownerOf, PROJECT_LABEL, projectsOf, refOf, replyText, rowsOf,
   savePrefs, shortLabels, TAB_LABEL, tabsOf, updatedText, type EscEntry, type Prefs, type PrRow, type PrStore, type Tab,
 } from './prs';
 import type { Toast } from './parts';
@@ -53,7 +53,15 @@ export function PrsButton({ api, compact = false }: { api: Client; compact?: boo
 /** One sheet over the flyout: confirm or cancel. Focus stays inside. */
 function Sheet({ title, onClose, onConfirm, confirm, busy, children, ok = true }: { title: string; onClose: () => void; onConfirm: () => void; confirm: string; busy: boolean; children: ComponentChildren; ok?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => { ref.current?.querySelector<HTMLElement>('textarea, input, button')?.focus(); }, []);
+  useLayoutEffect(() => {
+    const from = document.activeElement as HTMLElement | null;
+    ref.current?.querySelector<HTMLElement>('textarea, input, button')?.focus();
+    // On close, focus goes back to the control that opened the sheet, else the flyout's tab, so the flyout trap still holds.
+    return () => setTimeout(() => {
+      const ok = from && from.isConnected && !(from as HTMLButtonElement).disabled && from.offsetParent !== null;
+      (ok ? from : document.querySelector<HTMLElement>('.prs-fly [role="tab"][aria-selected="true"]'))?.focus();
+    }, 0);
+  }, []);
   return (
     <div class="prs-sheet-scrim" onClick={onClose}>
       <div ref={ref} class="prs-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}
@@ -123,6 +131,32 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
   useLayoutEffect(() => { ref.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus(); }, []);
+  /** The focus trap: the flyout plus the toasts, whose Undo must stay in reach by keyboard. A sheet runs its own trap. */
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const fly = ref.current;
+      if (!fly || fly.querySelector('.prs-sheet-scrim')) return;
+      const a = document.activeElement as HTMLElement | null;
+      const inToasts = !!a?.closest('.toasts');
+      if (a && a !== document.body && !inToasts && !fly.contains(a)) return;
+      if (inToasts) e.stopPropagation(); // the app shortcuts stay out, as in the flyout
+      if (e.key === 'Escape' && inToasts) { e.preventDefault(); closeRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const els = [
+        ...fly.querySelectorAll<HTMLElement>('a[href]:not([tabindex="-1"]), button, input, textarea, select, [tabindex="0"]'),
+        ...document.querySelectorAll<HTMLElement>('.toasts button'),
+      ].filter((x) => !(x as HTMLButtonElement).disabled && x.offsetParent !== null);
+      if (!els.length) return;
+      const i = els.indexOf(a as HTMLElement);
+      e.preventDefault();
+      e.stopPropagation();
+      els[e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length].focus();
+    };
+    window.addEventListener('keydown', key, true);
+    return () => window.removeEventListener('keydown', key, true);
+  }, []);
 
   const reload = () => void s.reload();
   /** Bulk runs by url: a reload between select and run gives new objects. */
@@ -289,10 +323,11 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
   };
 
   const esc = board?.escalations;
-  const section = (title: string, list: EscEntry[], kind: 'blocked' | 'enable' | 'live') => list.length > 0 && (
+  const section = (title: string, all: EscEntry[], kind: 'blocked' | 'enable' | 'live') => { const list = escIn(all, sel); return list.length > 0 && (
     <section class="pr-esc-sec" aria-label={title}><h3 class="pr-sec-h">{title}</h3><ul class="pr-list">{list.map((e) => entry(e, kind))}</ul></section>
-  );
-  const bulkItems = esc ? [...esc.blocked.filter((e) => board?.queue && (answers[e.url] ?? e.recommend ?? '').trim()), ...esc.enable].filter((e) => bulk?.has(e.url)) : [];
+  ); };
+  // Bulk runs only what the project filter shows.
+  const bulkItems = esc ? escIn([...esc.blocked.filter((e) => board?.queue && (answers[e.url] ?? e.recommend ?? '').trim()), ...esc.enable], sel).filter((e) => bulk?.has(e.url)) : [];
 
   return (
     <div class="prs-scrim" onClick={onClose}>
@@ -300,14 +335,7 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
         onKeyDown={(e) => {
           // The app shortcuts stay out while the flyout is open.
           e.stopPropagation();
-          if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
-          if (e.key === 'Tab') {
-            const els = [...ref.current!.querySelectorAll<HTMLElement>('a[href]:not([tabindex="-1"]), button, input, textarea, select, [tabindex="0"]')].filter((x) => !(x as HTMLButtonElement).disabled && x.offsetParent !== null && !x.closest('.prs-sheet-scrim'));
-            if (!els.length) return;
-            const i = els.indexOf(document.activeElement as HTMLElement);
-            e.preventDefault();
-            els[e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length].focus();
-          }
+          if (e.key === 'Escape') { e.preventDefault(); onClose(); }
         }}>
         <header class="prs-head">
           <h2 id="prs-h">Pull requests</h2>

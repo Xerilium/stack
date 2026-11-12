@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { replyToOf, threadOf, ageText, countOf, createPrStore, escFor, healthyCount, loadPrefs, ownerOf, projectsOf, replyText, rowsOf, savePrefs, shortLabels, tabsOf, updatedText, type PrBoard, type PrRow } from '../src/prs';
+import { replyToOf, threadOf, ageText, countOf, createPrStore, escFor, escIn, healthyCount, loadPrefs, ownerOf, projectsOf, replyText, rowsOf, savePrefs, shortLabels, tabsOf, updatedText, type PrBoard, type PrRow } from '../src/prs';
 import { connectLive, onLiveChange, type EventSourceLike } from '../src/live';
 
 const row = (o: Partial<PrRow>): PrRow => ({
@@ -26,6 +26,13 @@ describe('tabs and filters', () => {
     expect(countOf(b, 'blocked', ['ftk', 'xerilium'])).toBe(1);
     expect(projectsOf(b)).toEqual(['allyte', 'ftk', 'xerilium']);
     expect(countOf({ ...b, escalations: { blocked: [{ repo: 'o/r', number: 1, url: 'u' }], enable: [], live: [] } }, 'escalations', [])).toBe(1);
+  });
+  it('the project filter covers the Escalation set, including PRs with no board row', () => {
+    const e = { blocked: [{ repo: 'allytehq/x', number: 1, url: 'e1', project: 'allyte' }], enable: [{ repo: 'Xerilium/stack', number: 2, url: 'e2', project: 'xerilium' }], live: [{ repo: 'o/r', number: 3, url: 'e3', project: 'other' }] };
+    const eb = board([], { escalations: e });
+    expect(projectsOf(eb)).toEqual(['allyte', 'xerilium', 'other']);
+    expect(countOf(eb, 'escalations', ['allyte'])).toBe(1);
+    expect(escIn([...e.blocked, ...e.enable], ['allyte']).map((x) => x.url)).toEqual(['e1']);
   });
   it('prefs survive a reload and a broken store', () => {
     const m = new Map<string, string>();
@@ -79,6 +86,18 @@ describe('store', () => {
     const gone = createPrStore(async () => { throw Object.assign(new Error('nf'), { status: 404 }); }, { listen: () => () => undefined, every: 10_000_000 });
     gone.subscribe(() => undefined);
     await vi.waitFor(() => expect(gone.get().phase).toBe('off'));
+  });
+  it('two reloads that wait on the gate together load once', async () => {
+    let n = 0;
+    let open: (v: boolean) => void = () => undefined;
+    const gate = new Promise<boolean>((r) => { open = r; });
+    const s = createPrStore(async () => { n++; await new Promise((r) => setTimeout(r, 5)); return board([]); }, { enabled: () => gate, visible: () => true, every: 10_000_000, listen: () => () => undefined });
+    s.subscribe(() => undefined);
+    const a = s.reload(); const b = s.reload();
+    open(true);
+    await Promise.all([a, b]);
+    await vi.waitFor(() => expect(s.get().phase).toBe('ready'));
+    expect(n).toBe(1);
   });
   it('the live stream tells every listener its kinds', () => {
     const heard: string[][] = [];

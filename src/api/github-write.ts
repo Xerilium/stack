@@ -61,7 +61,11 @@ export function createGitHubWrites(o: { token: string; fetch?: typeof fetch; rep
     async reply(pr, commentId, body) {
       text(body);
       if (!Number.isInteger(commentId) || commentId < 1) throw new GitHubWriteDenied('Bad comment id');
-      await send('POST', `${path(pr)}/pulls/${pr.number}/comments/${commentId}/replies`, { body });
+      // GitHub takes replies to a thread's first comment only; a link may name a later reply, so reply to its root.
+      const res = await get(`${API}${path(pr)}/pulls/comments/${commentId}`, { headers, signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) throw new Error(`GitHub ${res.status}`);
+      const root = Number(((await res.json().catch(() => null)) as { in_reply_to_id?: unknown } | null)?.in_reply_to_id);
+      await send('POST', `${path(pr)}/pulls/${pr.number}/comments/${Number.isInteger(root) && root > 0 ? root : commentId}/replies`, { body });
     },
   };
 }

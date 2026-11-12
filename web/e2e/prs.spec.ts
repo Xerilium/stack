@@ -187,6 +187,28 @@ test('Apply Autopilot needs a confirm that shows the PR link and the label', asy
   await expect.poll(() => posts.at(-1)).toEqual({ path: '/prs/label', body: { repo: 'Xerilium/stack', number: 106, op: 'add' } });
 });
 
+test('a cancelled sheet gives focus back; Tab reaches the toast Undo while the flyout is open', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'keyboard');
+  await setup(page);
+  const fly = await openFly(page, false);
+  await fly.getByRole('tab', { name: /Pending/ }).click();
+  const apply = fly.locator('.pr-row', { hasText: 'Ready for your review' }).getByRole('button', { name: 'Apply Autopilot' });
+  await apply.click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Apply Autopilot?' })).toHaveCount(0);
+  await expect(apply).toBeFocused();
+  await expect(fly).toBeVisible();
+  await fly.getByRole('tab', { name: /Processing/ }).click();
+  await fly.getByLabel(/Show healthy/).check();
+  await fly.locator('.pr-row', { hasText: 'Healthy agent work' }).getByRole('button', { name: 'Top', exact: true }).click();
+  const undo = page.getByRole('button', { name: 'Undo' });
+  await expect(undo).toBeVisible();
+  let reached = false;
+  for (let i = 0; i < 80 && !reached; i++) { await page.keyboard.press('Tab'); reached = await undo.evaluate((el) => el === document.activeElement); }
+  expect(reached).toBe(true);
+  await expect(fly).toBeVisible();
+});
+
 test('Escalation set: one tap Accept; reply shows the exact AI text; bulk runs selected', async ({ page }, info) => {
   const { posts } = await setup(page);
   const fly = await openFly(page, info.project.name === 'mobile');

@@ -27,6 +27,13 @@ describe('stateOf: the BLOCKED rule (owner me only for Michael-only gates)', () 
     const s = stateOf(pr({ threads: [{ resolved: false, lastAuthor: 'flanakin', lastBody: '🤖 [AI] 🧭 Which name?', url: 'https://github.com/x/y/pull/1#discussion_r5', id: 5 }] }), ctx());
     expect(s).toMatchObject({ owner: 'me', bucket: 'decide', replyTo: 5, link: 'https://github.com/x/y/pull/1#discussion_r5' });
   });
+  it('2. a thread ask stays open after a later agent note; a later human reply clears it', () => {
+    const ask = { author: 'flanakin', body: '🤖 [AI] 🧭 Which name?', url: 'https://github.com/x/y/pull/1#discussion_r6' };
+    const note = { author: 'flanakin', body: '🤖 [AI] still waiting', url: 'https://github.com/x/y/pull/1#discussion_r7' };
+    const t = (comments: { author: string; body: string; url?: string }[]) => pr({ threads: [{ resolved: false, lastAuthor: 'flanakin', lastBody: comments[comments.length - 1].body, url: comments[comments.length - 1].url, id: 5, comments }] });
+    expect(stateOf(t([ask, note]), ctx())).toMatchObject({ owner: 'me', blocker: '🧭 Which name?', replyTo: 5, link: ask.url });
+    expect(stateOf(t([ask, note, { author: 'flanakin', body: 'Use B' }]), ctx()).owner).not.toBe('me');
+  });
   it('3. my own hold on an open thread blocks on me', () => {
     const s = stateOf(pr({ threads: [{ resolved: false, lastAuthor: 'flanakin', lastBody: 'Hold until I test it live', url: 'u' }] }), ctx());
     expect(s).toMatchObject({ owner: 'me', blocker: 'Hold: Hold until I test it live' });
@@ -209,7 +216,7 @@ describe('the pr-priority store files', () => {
     expect(q.reports.get(U(3))).toMatchObject({ owner: 'Roland', nextAction: 'Re-review' });
     expect(q.acks.get(U(1))).toEqual([{ thread: `${U(1)}#discussion_r5`, note: 'Keep it', at: 't' }]);
     expect([...q.recs.values()]).toEqual([{ id: 'pp-0000000a', agent: 'xe-cos', reason: 'Blocks release', toRank: 1 }]);
-    expect(q.escalations!.blocked).toEqual([{ repo: 'o/r', number: 1, url: U(1), blocker: 'Keep or break?', context: 'Two callers', recommend: 'Keep', link: `${U(1)}#discussion_r5` }]);
+    expect(q.escalations!.blocked).toEqual([{ repo: 'o/r', number: 1, url: U(1), blocker: 'Keep or break?', context: 'Two callers', recommend: 'Keep', link: `${U(1)}#discussion_r5`, project: 'other' }]);
     expect(q.escalations!.enable).toHaveLength(3);
     expect(q.escalations!.enable[0].context).toBe('Small');
     expect(q.exclude).toEqual(['o/r#918']);
