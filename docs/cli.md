@@ -17,6 +17,8 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `start`: mark in progress. `start [ref] [--expect t] [--queries] [--no-update]`
 - `complete`: check off (rolls recurring rows). `complete [ref] [--summary t] [--remove] [--expect t] [--queries] [--no-update]`
 - `skip`: park a task (alias: park). `skip [ref] [--expect t] [--queries] [--no-update]`
+- `retitle`: edit a task row text in place; checkbox, indent, children, notes, history, and the old status/priority/effort/impact marks stay unless the new text has its own. Agents use it instead of add + `complete --remove`. Exit 3 when `--expect` differs. `retitle <ref> --text t [--expect t] [--no-update]`
+- `note`: append a nested note bullet under a task; children stay. `note add <ref> --text t [--expect t]`
 - `triage`: show/set autonomy, add 🪄/🙋 subtasks. `triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]`
 - `park`: same as skip. `park [ref] [--expect t] [--queries] [--no-update]`
 - `resume`: unpark the first parked task. `resume [ref] [--expect t] [--queries] [--no-update]`
@@ -38,7 +40,7 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `live`: the live validation lane: one PR at a time, its checklist, and the shared server lock (`/tmp/fh-server.lock`). See [live-validation-agent.md](live-validation-agent.md). `live [next [ref] [--agent a --worktree p --offline] | ready <ref> --url u --pid n [--port n --worktree p] | state <ref> preparing|working | checklist <ref> --file items.json [--agent a] | item add|check|uncheck|fail|needs-fix|fixed|block|comment|edit <ref> [id] [--text t --reason r --by b] | resolve <ref> [--reason merged|closed|done]]`
 - `update`: regenerate README, stack, projects, my-day (scores and orders like `stack next` by default; `--engine legacy` writes the PowerShell output, see [ranking.md](ranking.md)). `update [--sweep] [--queries] [--engine legacy|stack]`
 
-After `start`, `complete`, `skip`/`park`, `resume`, `suspend`, `remove-completed`, and `add-project` change a file, the CLI runs `update --sweep` (like the legacy scripts). `--queries` also refreshes GitHub query rows; `--no-update` skips the refresh.
+After `start`, `complete`, `skip`/`park`, `resume`, `suspend`, `retitle`, `remove-completed`, and `add-project` change a file, the CLI runs `update --sweep` (like the legacy scripts). `--queries` also refreshes GitHub query rows; `--no-update` skips the refresh.
 
 ## Agents
 
