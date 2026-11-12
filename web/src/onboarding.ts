@@ -7,7 +7,7 @@ export const STEP_IDS = ['repo', 'mode', 'calendar', 'email', 'phone'] as const;
 export type StepId = (typeof STEP_IDS)[number];
 export interface SetupStatus {
   needed: boolean; reason: 'no-repo' | 'empty' | 'resume' | 'broken' | null; step: StepId; steps: StepId[];
-  repo: string | null; repoEnv: boolean; mode: 'demo' | 'live'; calendar: boolean; email: boolean; signIn: string; error?: string;
+  repo: string | null; repoLock: string | null; modeLock: string | null; mode: 'demo' | 'live'; calendar: boolean; email: boolean; signIn: string; error?: string;
 }
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -33,7 +33,7 @@ export function parseSetup(j: unknown): SetupStatus | null {
   return {
     needed: o.needed, reason: (['no-repo', 'empty', 'resume', 'broken'] as const).find((r) => r === o.reason) ?? null, step: o.step,
     steps: Array.isArray(o.steps) && o.steps.every(isStep) ? o.steps : [...STEP_IDS],
-    repo: typeof o.repo === 'string' ? o.repo : null, repoEnv: o.repoEnv === true, mode: o.mode === 'live' ? 'live' : 'demo',
+    repo: typeof o.repo === 'string' ? o.repo : null, repoLock: typeof o.repoLock === 'string' ? o.repoLock : null, modeLock: typeof o.modeLock === 'string' ? o.modeLock : null, mode: o.mode === 'live' ? 'live' : 'demo',
     calendar: o.calendar === true, email: o.email === true, signIn: typeof o.signIn === 'string' ? o.signIn : '',
     ...(typeof o.error === 'string' && o.error ? { error: o.error } : {}),
   };

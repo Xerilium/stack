@@ -20,7 +20,9 @@ export type UserCfg = Record<string, unknown> & { repo?: string; dir?: string; m
 export type Reason = 'no-repo' | 'empty' | 'resume' | 'broken' | null;
 export interface SetupStatus {
   needed: boolean; reason: Reason; step: StepId; steps: readonly StepId[];
-  repo: string | null; /** The repo comes from STACK_REPO or STACK_DIR, which win over what setup saves. */ repoEnv: boolean; mode: 'demo' | 'live'; calendar: boolean; email: boolean; signIn: string; error?: string;
+  repo: string | null; mode: 'demo' | 'live';
+  /** What sets the repo or the mode outside setup (a flag, the current folder, an env var); setup cannot change it then. */
+  repoLock: string | null; modeLock: string | null; calendar: boolean; email: boolean; signIn: string; error?: string;
 }
 
 const cfgPath = (home: string) => join(home, '.config/stack/config.json');
@@ -55,16 +57,20 @@ export function hasTaskRows(dir: string | null): boolean {
 }
 
 const repoSpec = (cfg: UserCfg, env: NodeJS.ProcessEnv): string | undefined => env.STACK_REPO || env.STACK_DIR || cfg.repo || cfg.dir || undefined;
+/** Sources that win over the user config. Hosts pass their own (flags, the current folder); env vars always count. */
+export interface Locks { repo?: string; mode?: string }
+const envLock = (env: NodeJS.ProcessEnv): string | undefined => (env.STACK_REPO ? 'STACK_REPO' : env.STACK_DIR ? 'STACK_DIR' : undefined);
 
 /** @req FR:first-run-onboarding/state.needed @req FR:first-run-onboarding/state.status @req FR:first-run-onboarding/host.broken */
-export function setupStatus(o: { cfg: UserCfg; env: NodeJS.ProcessEnv; dir: string | null; email: boolean; spec?: string; error?: string }): SetupStatus {
+export function setupStatus(o: { cfg: UserCfg; env: NodeJS.ProcessEnv; dir: string | null; email: boolean; spec?: string; error?: string; locks?: Locks }): SetupStatus {
   const spec = o.spec ?? repoSpec(o.cfg, o.env);
   const ob = o.cfg.onboarding;
   const reason: Reason = o.error ? 'broken' : !spec ? 'no-repo' : ob?.done ? null : o.dir && !hasTaskRows(o.dir) ? 'empty' : ob ? 'resume' : null;
   const step: StepId = reason === 'broken' || reason === 'no-repo' ? 'repo' : isStep(ob?.step) ? ob.step : 'repo';
   return {
     needed: reason !== null, reason, step, steps: STEPS,
-    repo: spec ? redact(spec) : null, repoEnv: !!(o.env.STACK_REPO || o.env.STACK_DIR), mode: o.cfg.mode === 'live' ? 'live' : 'demo',
+    repo: spec ? redact(spec) : null, mode: o.locks?.mode ? 'live' : o.cfg.mode === 'live' ? 'live' : 'demo',
+    repoLock: o.locks?.repo ?? envLock(o.env) ?? null, modeLock: o.locks?.mode ?? null,
     calendar: !!(o.env.STACK_CALENDAR_ICS || o.cfg.ics || o.env.STACK_CALENDAR_FIXTURE), email: o.email, signIn: SIGN_IN,
     ...(o.error ? { error: o.error } : {}),
   };
@@ -81,7 +87,7 @@ const localPath = (spec: string | undefined) => (spec && !isUrl(spec) ? resolve(
  * @req FR:first-run-onboarding/host.apply @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.mode
  * @req FR:first-run-onboarding/step.mode.tasks @req FR:first-run-onboarding/step.calendar @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone
  */
-export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unknown }): ApplyResult {
+export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unknown; locks?: Locks }): ApplyResult {
   const b = (o.body && typeof o.body === 'object' ? o.body : null) as Record<string, unknown> | null;
   if (!b) return fail('Send a step.');
   const cfg = readConfig(o.home);
@@ -100,6 +106,8 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
   };
   switch (b.step) {
     case 'repo': {
+      // A flag, the current folder, or an env var sets the repo: confirm and move on, save nothing.
+      if (o.locks?.repo ?? envLock(o.env)) return save({}, false);
       const raw = typeof b.repo === 'string' ? b.repo.trim() : '';
       if (!raw || raw.length > 2048) return fail('Type a folder path or a git url.');
       if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !isUrl(raw)) return fail('Use an https, ssh, file, or git@ url.');
@@ -116,6 +124,7 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
       return save({ repo: value }, changed && ready);
     }
     case 'mode': {
+      if (o.locks?.mode) return save({}, false); // --live sets the mode
       if (b.mode !== 'demo' && b.mode !== 'live') return fail('Pick Demo or Live.');
       const local = localPath(spec);
       const noTasks = !!local && !existsSync(join(local, 'tasks'));
@@ -151,14 +160,14 @@ export interface SetupHandler {
 
 export function createSetup(o: {
   home: string; env: NodeJS.ProcessEnv; spec: () => string | undefined; dir: () => string | null; restart: () => void;
-  error?: () => string | undefined; email?: () => boolean;
+  error?: () => string | undefined; email?: () => boolean; locks?: () => Locks;
 }): SetupHandler {
   const email = o.email ?? (() => existsSync(o.env.STACK_GRAPH_CACHE ?? defaultCachePath(o.home)));
-  const status = () => setupStatus({ cfg: readConfig(o.home), env: o.env, dir: o.dir(), email: email(), spec: o.spec(), error: o.error?.() });
+  const status = () => setupStatus({ cfg: readConfig(o.home), env: o.env, dir: o.dir(), email: email(), spec: o.spec(), error: o.error?.(), locks: o.locks?.() });
   return {
     status,
     post(body) {
-      const r = applySetup({ home: o.home, env: o.env, body });
+      const r = applySetup({ home: o.home, env: o.env, body, locks: o.locks?.() });
       if (!r.ok) return { code: 400, body: { error: { code: 'invalid', message: r.error } }, restart: false };
       return { code: 200, body: { restart: r.restart, status: status() }, restart: r.restart };
     },
@@ -245,6 +254,8 @@ export interface RunLocalOpts {
   port: number; home: string; env: NodeJS.ProcessEnv; webDir: string; log: (line: string) => void;
   /** The repo spec the real server would use (flags, discovery, env, config); undefined = none. */
   spec: () => string | undefined;
+  /** Sources that win over setup (flags, the current folder). */
+  locks?: () => Locks;
   /** Starts the real server on `port` with the `/setup` routes; `dir` is the folder it serves (for the empty check). */
   startReal: (port: number, setup: SetupHandler) => Promise<{ server: LocalServer; dir: string }>;
 }
@@ -258,7 +269,7 @@ export interface LocalHost extends LocalServer { /** Resolves when restarts aske
 export async function runLocal(o: RunLocalOpts): Promise<LocalHost> {
   let cur: LocalServer | undefined; let port = o.port; let dir: string | null = null; let error: string | undefined;
   let chain: Promise<void> = Promise.resolve(); let closed = false;
-  const setup = createSetup({ home: o.home, env: o.env, spec: o.spec, dir: () => dir, error: () => error, restart: () => { chain = chain.then(reboot).catch((e: unknown) => o.log(`setup: restart failed (${redact(e instanceof Error ? e.message : String(e))})`)); } });
+  const setup = createSetup({ home: o.home, env: o.env, spec: o.spec, locks: o.locks, dir: () => dir, error: () => error, restart: () => { chain = chain.then(reboot).catch((e: unknown) => o.log(`setup: restart failed (${redact(e instanceof Error ? e.message : String(e))})`)); } });
   const boot = async () => {
     error = undefined; dir = null; cur = undefined;
     const spec = o.spec();

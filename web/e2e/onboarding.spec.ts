@@ -10,13 +10,13 @@ import { mockApi } from './mock';
 
 const STEPS = ['repo', 'mode', 'calendar', 'email', 'phone'] as const;
 type Step = (typeof STEPS)[number];
-interface Fake { step: Step; done: boolean; repo: string | null; mode: 'demo' | 'live'; posts: Record<string, unknown>[]; fail?: string; restartOnce?: boolean; error?: string }
+interface Fake { modeLock?: string; repoLock?: string; step: Step; done: boolean; repo: string | null; mode: 'demo' | 'live'; posts: Record<string, unknown>[]; fail?: string; restartOnce?: boolean; error?: string }
 
 /** A fake host: `/setup` GET and POST, with the same step order as the server. */
 async function fakeSetup(page: Page, start: Partial<Fake> = {}): Promise<Fake> {
   const f: Fake = { step: 'repo', done: false, repo: null, mode: 'demo', posts: [], ...start };
   let down = 0;
-  const status = () => ({ needed: !f.done, reason: f.error ? 'broken' : f.repo ? 'resume' : 'no-repo', step: f.step, steps: STEPS, repo: f.repo, mode: f.mode, calendar: false, email: false, signIn: 'stack graph login --client-id <app id> --with calendar,mail,drafts', ...(f.error ? { error: f.error } : {}) });
+  const status = () => ({ needed: !f.done, reason: f.error ? 'broken' : f.repo ? 'resume' : 'no-repo', step: f.step, steps: STEPS, repo: f.repo, repoLock: f.repoLock ?? null, modeLock: f.modeLock ?? null, mode: f.mode, calendar: false, email: false, signIn: 'stack graph login --client-id <app id> --with calendar,mail,drafts', ...(f.error ? { error: f.error } : {}) });
   // The host marks the page: the built index.html gets the meta tag, as the local server adds it.
   await page.route(/\/(index\.html)?(#.*)?$/, async (route) => {
     const r = await route.fetch();
@@ -95,6 +95,18 @@ test.describe('first-run onboarding', () => {
     await page.getByRole('button', { name: 'Back' }).click();
     await expect(page.getByText('Step 2 of 5')).toBeVisible();
     expect(f.posts.at(-1)).toEqual({ go: 'mode' });
+  });
+
+  test('a mode set by --live shows the warning, no choice; a repo set by a flag is read only', async ({ page }) => {
+    await mockApi(page);
+    const f = await fakeSetup(page, { step: 'mode', repo: '/r', mode: 'live', modeLock: '--live', repoLock: '--repo' });
+    await page.goto('/');
+    await expect(page.getByTestId('live-warning')).toContainText('Live is on: set by --live.');
+    await expect(page.getByRole('radio')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.getByLabel('Folder path or git url')).toHaveAttribute('readonly', '');
+    await expect(page.getByText('Set by --repo. Change it there.')).toBeVisible();
+    expect(f.posts.at(-1)).toEqual({ go: 'repo' });
   });
 
   test('a bad value shows one plain error line and stays on the step', async ({ page }) => {

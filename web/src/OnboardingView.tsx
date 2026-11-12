@@ -50,14 +50,27 @@ export function Onboarding({ initial, fetch: f = (u, i) => fetch(u, i), onDone }
         <form class="ob-form" onSubmit={(e) => { e.preventDefault(); void send({ step: 'repo', repo }); }}>
           <p class="ob-lede">Stack keeps tasks as markdown files in a git repo. Point it at yours.</p>
           <label class="ob-label" for="ob-repo">Folder path or git url</label>
-          <input id="ob-repo" class="ob-input" type="text" readOnly={s.repoEnv} autoComplete="off" spellcheck={false} autoCapitalize="off" placeholder="~/tasks or https://github.com/you/tasks.git" value={repo} onInput={(e) => setRepo((e.target as HTMLInputElement).value)} aria-describedby="ob-repo-hint" aria-invalid={!!error} />
-          <p class="ob-hint" id="ob-repo-hint">{s.repoEnv ? <>Set by <code>STACK_REPO</code> or <code>STACK_DIR</code>. Change it there.</> : s.repo ? <>Now set to <code>{s.repo}</code>. Continue to keep it.</> : 'A folder on this computer that is a git repo, or a url to clone.'}</p>
+          <input id="ob-repo" class="ob-input" type="text" readOnly={!!s.repoLock} autoComplete="off" spellcheck={false} autoCapitalize="off" placeholder="~/tasks or https://github.com/you/tasks.git" value={repo} onInput={(e) => setRepo((e.target as HTMLInputElement).value)} aria-describedby="ob-repo-hint" aria-invalid={!!error} />
+          <p class="ob-hint" id="ob-repo-hint">{s.repoLock ? <>Set by <code>{s.repoLock}</code>. Change it there.</> : s.repo ? <>Now set to <code>{s.repo}</code>. Continue to keep it.</> : 'A folder on this computer that is a git repo, or a url to clone.'}</p>
           {errLine}
           <div class="ob-actions">{backBtn}<button type="submit" class="ob-btn primary" disabled={working || !repo.trim()}>Continue</button></div>
         </form>
       );
       break;
     case 'mode':
+      if (s.modeLock) {
+        body = (
+          <form class="ob-form" onSubmit={(e) => { e.preventDefault(); void send({ step: 'mode', mode: 'live' }); }}>
+            <div class="ob-note" data-testid="live-warning">
+              <p><span aria-hidden="true">⚠︎ </span>Live is on: set by <code>{s.modeLock}</code>. Stack writes task files in <code>tasks/</code>, commits them, and pushes to your remote.</p>
+              <p>For a demo copy, start Stack without <code>{s.modeLock}</code>.</p>
+            </div>
+            {errLine}
+            <div class="ob-actions">{backBtn}<button type="submit" class="ob-btn primary" disabled={working}>Continue</button></div>
+          </form>
+        );
+        break;
+      }
       body = (
         <form class="ob-form" onSubmit={(e) => { e.preventDefault(); void send({ step: 'mode', mode, ...(mode === 'live' ? { ack } : {}) }); }}>
           <fieldset class="ob-choices">

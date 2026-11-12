@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { authSaysSetup, icsOk, wantsSetup, isLocalHost, loadSetup, parseSetup, postStep, prevStep, STEP_IDS, stepLine, TITLES, waitForHost, type Fetch } from '../src/onboarding';
 
-const status = { needed: true, reason: 'no-repo', step: 'repo', steps: STEP_IDS, repo: null, mode: 'demo', calendar: false, email: false, signIn: 'stack graph login', repoEnv: false };
+const status = { needed: true, reason: 'no-repo', step: 'repo', steps: STEP_IDS, repo: null, mode: 'demo', calendar: false, email: false, signIn: 'stack graph login', repoLock: null, modeLock: null };
 const reply = (body: unknown, init: { status?: number; type?: string } = {}) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status: init.status ?? 200, headers: { 'content-type': init.type ?? 'application/json' } });
 
 describe('onboarding', () => {

@@ -72,8 +72,9 @@ describe('setupStatus', () => {
   // @req FR:first-run-onboarding/state.status
   it('redacts credentials in the repo url and reports calendar and email', () => {
     const s = setupStatus({ env: { STACK_CALENDAR_ICS: 'https://x.test/a.ics' }, email: true, cfg: { repo: 'https://me:tok@github.com/o/r.git', mode: 'live' }, dir: null });
-    expect(s).toMatchObject({ repo: 'https://github.com/o/r.git', repoEnv: false, mode: 'live', calendar: true, email: true });
-    expect(setupStatus({ ...base, env: { STACK_REPO: '/r' }, cfg: {}, dir: null }).repoEnv).toBe(true);
+    expect(s).toMatchObject({ repo: 'https://github.com/o/r.git', repoLock: null, modeLock: null, mode: 'live', calendar: true, email: true });
+    expect(setupStatus({ ...base, env: { STACK_REPO: '/r' }, cfg: {}, dir: null }).repoLock).toBe('STACK_REPO');
+    expect(setupStatus({ ...base, cfg: { repo: '/r' }, dir: null, locks: { repo: '--repo', mode: '--live' } })).toMatchObject({ repoLock: '--repo', modeLock: '--live', mode: 'live' });
     expect(setupStatus({ ...base, cfg: { ics: 'https://x.test/a.ics' }, dir: null }).calendar).toBe(true);
   });
 });
@@ -98,6 +99,18 @@ describe('applySetup', () => {
     const home = tmp(); writeConfig(home, { repo: 'https://me:tok@github.com/o/r.git' });
     expect(applySetup({ home, env, body: { step: 'repo', repo: 'https://github.com/o/r.git' } })).toEqual({ ok: true, restart: false });
     expect(readConfig(home).repo).toBe('https://me:tok@github.com/o/r.git');
+  });
+  // @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.mode
+  it('a flag, the current folder, or an env var fixes repo or mode: the step moves on and saves nothing', () => {
+    const home = tmp(); const repo = gitRepo();
+    writeConfig(home, { repo });
+    expect(applySetup({ home, env, body: { step: 'repo', repo: '/elsewhere' }, locks: { repo: '--repo' } })).toEqual({ ok: true, restart: false });
+    expect(readConfig(home)).toMatchObject({ repo, onboarding: { step: 'mode' } });
+    expect(applySetup({ home, env: { STACK_REPO: repo }, body: { step: 'repo', repo: '/elsewhere' } })).toEqual({ ok: true, restart: false });
+    expect(readConfig(home).repo).toBe(repo);
+    expect(applySetup({ home, env, body: { step: 'mode', mode: 'demo' }, locks: { mode: '--live' } })).toEqual({ ok: true, restart: false });
+    expect(readConfig(home)).not.toHaveProperty('mode');
+    expect(readConfig(home).onboarding).toEqual({ step: 'calendar' });
   });
   // @req FR:first-run-onboarding/step.repo
   it('repo: expands ~ to the home folder', () => {
