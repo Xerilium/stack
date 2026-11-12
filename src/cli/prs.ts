@@ -9,6 +9,7 @@ import type { StackConfig } from '../core/config';
 import { PR_GROUPS, type PrGroup, type PrRow } from '../core/pr-board';
 import { runInventory } from '../core/session-inventory';
 import { UsageError } from './args';
+import { specSort } from './pr-review';
 
 const OWNER: Record<string, string> = { me: 'you', ci: 'CI', runner: 'runner', none: '-' };
 const ownerWord = (r: PrRow) => (r.state.owner === 'reviewer' ? r.state.login ?? 'reviewer' : OWNER[r.state.owner]);
@@ -32,6 +33,8 @@ export async function prsCmd(flags: Record<string, string | true>, positionals: 
   const group = typeof flags.group === 'string' ? flags.group : flags.group === true ? '' : undefined;
   const project = typeof flags.project === 'string' ? flags.project : undefined;
   if (group === '') throw new UsageError('--group needs a value');
+  const sort = typeof flags.sort === 'string' ? flags.sort : undefined;
+  if (flags.sort !== undefined && sort !== 'spec-lines') throw new UsageError('--sort must be spec-lines');
   const token = env.GITHUB_TOKEN?.trim();
   if (!token) return { json: { ok: false, error: 'GITHUB_TOKEN is not set' }, text: 'error: GITHUB_TOKEN is not set', code: 1 };
   let cfg: StackConfig | undefined;
@@ -39,7 +42,10 @@ export async function prsCmd(flags: Record<string, string | true>, positionals: 
   const page = createPrPage({ token, repos: githubRepos(env.STACK_GITHUB_REPOS), config: cfg, home, inventory: () => runInventory({ home }) });
   try {
     const b = await page.prBoard.get();
-    const rows = filterBoard(b, group, project);
-    return { json: { ok: true, ...b, rows }, text: formatBoard(b, rows), ...(b.at === null ? { code: 1 } : {}) };
+    const all = filterBoard(b, group, project);
+    // Fewest spec lines first, Autopilot rows dropped. @req FR:pr-review-lane/sort.cli
+    const rows = sort ? await specSort(all, undefined, home) : all;
+    const text = sort ? (rows as Awaited<ReturnType<typeof specSort<PrRow>>>).map((r) => `${r.specLines ?? '?'} ${r.url}${r.live ? ' 🔬' : ''} - ${r.title}`).join('\n') || 'no PRs' : formatBoard(b, rows);
+    return { json: { ok: true, ...b, rows }, text, ...(b.at === null ? { code: 1 } : {}) };
   } finally { page.prBoard.stop(); }
 }

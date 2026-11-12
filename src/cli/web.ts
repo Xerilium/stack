@@ -7,6 +7,8 @@ import { ReportStore, stackHome } from '../core/reports';
 import { runInventory, type Inventory } from '../core/session-inventory';
 import { PriStore } from '../core/pris';
 import { PrPriorityStore } from '../core/pr-priority';
+import { LiveStore } from '../core/live-lane';
+import { BriefStore, FactsStore } from '../core/pr-review';
 import { execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type Server } from 'http';
@@ -82,6 +84,8 @@ export interface WebOpts {
   pris?: PriStore;
   /** The PR priority store; default `~/.stack/pr-priority.json`. @req FR:pr-priority/api.get */
   prPriority?: PrPriorityStore;
+  /** Home of the live lane, briefs and PR facts; default `~/.stack`. @req FR:pr-review-lane/lane.api */
+  laneHome?: string;
 }
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
@@ -208,7 +212,11 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // The PR page polls GitHub only while a page holds a lease; a changed board tells open pages. @req FR:pr-page/live.event
   let prPage: PrPage | undefined;
   try { prPage = ghToken ? createPrPage({ token: ghToken, repos: githubRepos(process.env.STACK_GITHUB_REPOS), config, home: stackHome(), inventory, queue: storePrQueue(prPriority), onChange: () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['prs'] }); } }) : undefined; } catch { prPage = undefined; }
-  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, ...(prPage ?? {}), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe() });
+  // The live lane, briefs and PR facts live outside the repo too; a lane write tells open pages. @req FR:pr-review-lane/lane.api
+  const laneHome = o.laneHome ?? stackHome();
+  const live = new LiveStore(laneHome);
+  const offLive = live.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['live'] }); });
+  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
@@ -318,6 +326,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     offReports(); offPrPri(); unwatchPrPri();
     offPris();
     prPage?.prBoard.stop();
+    offLive();
     watcher.close();
     const closed = new Promise<void>((ok) => server.close(() => ok())); // stop accepting; open sockets stay until below
     server.closeIdleConnections();

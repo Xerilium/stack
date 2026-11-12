@@ -22,6 +22,8 @@ import { LABELS, sameLabel, type PrRow } from '../core/pr-board';
 import type { PrBoardService } from './pr-board-service';
 import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write';
 import { QueueRefused, QueueUnavailable, type PrQueue } from './pr-queue';
+import { ITEM_OPS, LiveError, type ItemOp, type LiveStore } from '../core/live-lane';
+import { briefViews, type BriefStore, type FactsStore } from '../core/pr-review';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
@@ -62,6 +64,11 @@ export interface ApiDeps {
   pris?: PriStore;
   /** The PR priority store (~/.stack/pr-priority.json); absent means /pr-priority is 404 and GET /agents PRs have priority null. @req FR:pr-priority/api.get */
   prPriority?: PrPriorityStore;
+  /** The live validation lane (~/.stack/live-lane.json); absent means /live is 404. @req FR:pr-review-lane/lane.api */
+  live?: LiveStore;
+  /** Agent briefs (~/.stack/pr-briefs.json) and PR facts (~/.stack/pr-facts.json); absent means /pr-review is 404. @req FR:pr-review-lane/sort.api */
+  briefs?: BriefStore;
+  facts?: FactsStore;
   /** Deny-by-default: when absent every request gets 401. */
   authorize?: Authorize;
   basePath?: string;
@@ -361,6 +368,25 @@ const noQuery = (c: Ctx) => { readQuery(c.url, []); };
 /** The agent runs for this host, or 404 (the route does not exist where no agent can run). @req FR:agent-sessions/driver.interface */
 const agentsOf = (c: Ctx): AgentRuns => { if (!c.deps.agents) throw new ApiError('not_found', 'Not found'); return c.deps.agents; };
 const sessionId = (c: Ctx): string => { const id = c.params[0]; const bad = validate<{ id: string }>({ id }, { id: UUID }, ['id']); return bad.id; };
+/** @req FR:pr-review-lane/lane.api */
+const LIVE_ITEM_BODY = {
+  schema: {
+    op: { t: 'enum', values: ITEM_OPS }, repo: { t: 'str', max: 140, line: true, pattern: /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/ },
+    number: { t: 'int', min: 1, max: 9999999 }, id: { t: 'str', max: 11, line: true, pattern: /^li-[0-9a-f]{8}$/ },
+    text: { t: 'str', max: 300, line: true }, reason: { t: 'str', max: 300, line: true },
+  } satisfies Record<string, Spec>,
+  required: ['op', 'repo', 'number'],
+};
+/** Lane errors as API errors with the core's fixed text. */
+async function liveCall<T>(fn: () => Promise<T>): Promise<T> {
+  try { return await fn(); } catch (e) {
+    if (!(e instanceof LiveError)) throw e;
+    if (e.code === 'notfound') throw new ApiError('not_found', e.message);
+    if (e.code === 'conflict') throw new ApiError('conflict', e.message);
+    throw invalid([{ field: 'body', message: e.message }]);
+  }
+}
+
 const ownerOnly = (c: Ctx, why: string) => { if (!isOwner(c.req)) throw new ApiError('forbidden', why); };
 const prStore = (c: Ctx): PrPriorityStore => { if (!c.deps.prPriority) throw new ApiError('not_found', 'No PR priority store on this host'); return c.deps.prPriority; };
 /** The list view (cached facts only) plus open recommendations. @req FR:pr-priority/view.item */
@@ -469,8 +495,8 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/needs-you', name: 'needs.list',
     async run(c) {
       noQuery(c);
-      // Report asks come from the live store, never git. @req FR:status-ingest/needs.list
-      return json(200, { items: [...await readNeeds(c.deps.storage), ...(c.deps.reports?.needs() ?? []), ...(c.deps.prPriority?.needs() ?? [])] });
+      // Report asks, PR priority recommendations and blocked live checks come from the live store. @req FR:status-ingest/needs.list @req FR:pr-review-lane/lane.needs
+      return json(200, { items: [...await readNeeds(c.deps.storage), ...(c.deps.reports?.needs() ?? []), ...(c.deps.prPriority?.needs() ?? []), ...(c.deps.live?.needs() ?? [])] });
     },
   },
   {
@@ -488,7 +514,8 @@ export const ROUTES: Route[] = [
         const id = c.params[0].slice(3);
         if (b.choice !== 'go') throw new ApiError('bad_request', `Use POST /api/pr-priority/recommendations/${id} with decision accept, edit or reject`);
         await c.deps.prPriority.decide(id, { decision: 'accept' });
-      } else if (c.params[0].startsWith('rp.') && c.deps.reports) await c.deps.reports.answer(c.params[0], b);
+      } else if (c.params[0].startsWith('rp.') && c.deps.reports) { await c.deps.reports.answer(c.params[0], b);
+      } else if (c.params[0].startsWith('lv.') && c.deps.live) return json(200, { changed: await liveCall(() => c.deps.live!.answerNeed(c.params[0], b)) });
       else await answerNeed(c.deps.storage, c.params[0], b, (c.deps.now ?? (() => new Date()))());
       return json(200, { changed: true });
     },
@@ -912,6 +939,37 @@ export const ROUTES: Route[] = [
       // `accept`, `edit`, `reject` are the `stack pr-pri` decisions. @req FR:pr-page/api.queue-client
       await prQueueCall(() => (b.decision === 'accept' ? q.accept(id) : b.decision === 'edit' ? q.edit(id, { reason: b.reason!, ...(b.rank ? { rank: b.rank } : {}), ...(b.note ? { note: b.note } : {}) }) : q.reject(id, b.reason!)));
       return json(200, { ok: true });
+    },
+  },
+  {
+    // Cached facts and briefs only: no GitHub call, no token in the browser. @req FR:pr-review-lane/sort.api @req FR:pr-review-lane/brief.api
+    method: 'GET', doc: '/pr-review', name: 'prReview.get',
+    async run(c) {
+      noQuery(c);
+      if (!c.deps.briefs || !c.deps.facts) throw new ApiError('not_found', 'No PR review store on this host');
+      const facts = c.deps.facts.read();
+      return json(200, { facts, briefs: briefViews(c.deps.briefs.read(), facts) });
+    },
+  },
+  {
+    // @req FR:pr-review-lane/lane.api
+    method: 'GET', doc: '/live', name: 'live.get',
+    async run(c) {
+      noQuery(c);
+      if (!c.deps.live) throw new ApiError('not_found', 'No live lane on this host');
+      return json(200, c.deps.live.view());
+    },
+  },
+  {
+    // An owner call is by owner; a token call is by the token name. Never touches GitHub. @req FR:pr-review-lane/lane.api @req FR:pr-review-lane/lane.guard
+    method: 'POST', doc: '/live/items', name: 'live.item', body: LIVE_ITEM_BODY,
+    async run(c) {
+      noQuery(c);
+      if (!c.deps.live) throw new ApiError('not_found', 'No live lane on this host');
+      const b = validate<{ op: ItemOp; repo: string; number: number; id?: string; text?: string; reason?: string }>(await readBody(c.req), LIVE_ITEM_BODY.schema, LIVE_ITEM_BODY.required);
+      const by = isOwner(c.req) ? 'owner' : (c.token?.name ?? 'agent').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+/, '').slice(0, 40) || 'agent';
+      const r = { repo: b.repo, number: b.number, url: `https://github.com/${b.repo}/pull/${b.number}` };
+      return json(200, await liveCall(() => c.deps.live!.item(r, b.op, { id: b.id, text: b.text, reason: b.reason, by })));
     },
   },
   {

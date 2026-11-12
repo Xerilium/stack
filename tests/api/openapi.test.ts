@@ -11,6 +11,8 @@ import { MemoryStorage } from '../../src/core/storage';
 import { ReportStore } from '../../src/core/reports';
 import { PriStore } from '../../src/core/pris';
 import { PrPriorityStore } from '../../src/core/pr-priority';
+import { LiveStore } from '../../src/core/live-lane';
+import { BriefStore, FactsStore } from '../../src/core/pr-review';
 import { runInventory } from '../../src/core/session-inventory';
 import { tmpdir } from 'os';
 import { createAuth, createTokenService, MemoryTokenStore } from '../../src/api';
@@ -227,9 +229,12 @@ describe('response parity (real handler output vs documented schemas)', () => {
   const NOW = new Date('2026-10-22T18:00:00Z');
   const storage = new MemoryStorage();
   // A calendar with an online meeting, so the documented event shape (joinUrl included) is checked against real output.
+  const laneHome = mkdtempSync(join(tmpdir(), 'stack-oa-'));
+  writeFileSync(join(laneHome, 'live.config.json'), JSON.stringify({ lockPath: join(laneHome, 'fh.lock') }));
+  const laneStore = new LiveStore(laneHome, { now: () => NOW });
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
   const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))),
-    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }) });
+    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), live: laneStore, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome) });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
@@ -352,6 +357,14 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('prs.label', 'POST', '/prs/label', { repo: 'o/r', number: 1, op: 'add' }, 404);
     await go('prs.ack', 'POST', '/prs/ack', { repo: 'o/r', number: 1, thread: 'https://github.com/o/r/pull/1', note: 'a' }, 409);
     await go('prs.rec', 'POST', '/prs/recs/pp-0000000a', { decision: 'accept' }, 409);
+    // @req FR:pr-review-lane/sort.api @req FR:pr-review-lane/lane.api
+    await go('prReview.get', 'GET', '/pr-review', undefined, 200);
+    await go('live.get', 'GET', '/live', undefined, 200);
+    await go('live.item', 'POST', '/live/items', { op: 'add', repo: 'o/r', number: 1, text: 'x' }, 404);
+    await laneStore.next({ ref: { repo: 'o/r', number: 1, url: 'https://github.com/o/r/pull/1' }, agent: 'live-1' }, async () => null);
+    await go('live.item', 'POST', '/live/items', { op: 'add', repo: 'o/r', number: 1, text: 'Sign in works' }, 200);
+    await go('live.get', 'GET', '/live', undefined, 200);
+    await go('live.item', 'POST', '/live/items', { op: 'zap', repo: 'o/r', number: 1 }, 422);
     // @req FR:agent-sessions/driver.interface (no driver here: every sessions route is 404 and the error shape still conforms)
     await go('sessions.list', 'GET', '/sessions', undefined, 404);
     await go('sessions.cost', 'GET', '/sessions/cost', undefined, 404);
