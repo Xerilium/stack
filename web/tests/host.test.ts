@@ -83,7 +83,7 @@ describe('tsconfig', () => {
     const ts = JSON.parse(readFileSync(join(ROOT, 'web/tsconfig.json'), 'utf8'));
     expect(ts.extends).toBeUndefined();
     expect(ts.include).not.toContain('../src');
-    const files = readdirSync(join(ROOT, 'web/src')).map((f) => readFileSync(join(ROOT, 'web/src', f), 'utf8')).join('\n');
+    const files = readdirSync(join(ROOT, 'web/src'), { withFileTypes: true }).filter((d) => d.isFile()).map((d) => readFileSync(join(ROOT, 'web/src', d.name), 'utf8')).join('\n');
     expect(files).not.toMatch(/from '\.\.\/(\.\.\/)?src|from '\.\.\//);
   });
 });

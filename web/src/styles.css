@@ -89,6 +89,9 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
 /* Agent avatar: emoji, image, or monogram; decorative. @req FR:agent-team/web.avatar */
 .avatar { flex: none; display: inline-grid; place-items: center; border-radius: 50%; overflow: hidden; vertical-align: middle; line-height: 1; object-fit: cover; }
 .avatar.emoji { background: var(--chip); }
+/* Fluent Emoji: the art is its own shape, so no circle crop. @req FR:agent-team/web.avatar.fluent @req FR:agent-team/web.avatar.project */
+.avatar.fluent { border-radius: 0; overflow: visible; object-fit: contain; }
+.emo { width: 1.15em; height: 1.15em; vertical-align: -0.2em; }
 .from:has(.avatar), .ac-head:has(.avatar) { display: inline-flex; align-items: center; gap: 6px; }
 .chip-name { display: none; }
 .focus-block .chip-name, .focus-inner .chip-name { display: inline; }

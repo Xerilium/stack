@@ -9,6 +9,7 @@ import { timelineOf } from './timeline';
 import { countdown, HAVE, topAsksOf, type Home, type HomeProject, type Window } from './home';
 import type { LiveStatus } from './live';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
+import { Titled } from './AgentAvatar';
 import { Chip, EmptyState, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
 import { parseRow } from './row';
 import type { Agent, InboxItem, Task } from './types';
@@ -142,7 +143,7 @@ export function ListView(p: ListProps) {
           const head = key !== lastKey; lastKey = key;
           const phead = t.project !== lastProject; lastProject = t.project;
           return <>
-            {phead && <li class="group" key={`p-${t.project}`}><span>{p.titles.get(t.project) ?? t.project}</span></li>}
+            {phead && <li class="group" key={`p-${t.project}`}><span><Titled text={p.titles.get(t.project) ?? t.project} /></span></li>}
             {head && <li class="section" key={`h-${key}`}><button type="button" aria-expanded="true" onClick={() => p.onSection(key)}>▾ {plainSection(t.section)}</button></li>}
             <TaskRow key={t.ref} t={t} p={p} />
           </>;
@@ -192,7 +193,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
             <div class="chips">
               {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
               <button type="button" class="chip ghost" aria-label="Set properties" onClick={(e) => { e.stopPropagation(); p.onPick([t.ref], GROUP_NAMES); }}>＋</button>
-              {p.showProject && <span class="proj-tag">{p.titles.get(t.project) ?? t.project}</span>}
+              {p.showProject && <span class="proj-tag"><Titled text={p.titles.get(t.project) ?? t.project} /></span>}
               {p.agent?.chip(t)}
               <span class={`meta due${r.due ? dueClass(r.due) : ''}`}>{r.suspend ? `💤 ${r.suspend}` : r.due ?? ''}{r.recurrence ? ' ↻' : ''}</span>
               {(pr && pr.total > 0) || t.notes.length > 0 ? (
@@ -452,7 +453,7 @@ export function TodayView(t: TodayProps) {
           <p class="agent-title"><Md text={agentTitle(r.title || a.title)} /></p>
           <p class="agent-meta">
             <span class="agent-state">{AGENT_LABEL[a.state]}</span>
-            <span>{owner}</span>
+            <span><Titled text={owner} /></span>
             {a.prs.map((pr) => (
               <a key={pr.url} class={`pr ${pr.checks ?? ''} ${pr.state ?? ''}`} href={pr.url} target="_blank" rel="noopener noreferrer" title={pr.title ? `${pr.title}${pr.checks ? ` · checks ${pr.checks}` : ''}` : undefined}>
                 {pr.repo.split('/')[1]}#{pr.number}{pr.state === 'merged' ? ' merged' : pr.checks && CHECK[pr.checks] ? ` ${CHECK[pr.checks]}` : ''}
@@ -560,7 +561,7 @@ export function TodayView(t: TodayProps) {
               const rec = d.recommendation && !/:$/.test(d.recommendation) ? d.recommendation : undefined;
               return (
                 <li class={`card need${sent.length ? ' decided' : ''}`} key={key}>
-                  <p class="card-eyebrow">{owner}{d.context ? ` · ${parseRow(d.context.text).title.replace(/\s--\s/g, ' — ')}` : ''}</p>
+                  <p class="card-eyebrow"><Titled text={owner} />{d.context ? ` · ${parseRow(d.context.text).title.replace(/\s--\s/g, ' — ')}` : ''}</p>
                   <p class="card-title"><Md text={r.title || d.task.text} /></p>
                   {rec && sent.length === 0 && <p class="rec"><span>Recommended</span><Md text={rec} /></p>}
                   {sent.length > 0 && <p class="waiting-agent">Sent, waiting on the agent</p>}
@@ -595,7 +596,7 @@ export function TodayView(t: TodayProps) {
             {t.tops.filter((x) => x.task).map((x) => (
               <li key={x.project}>
                 <button type="button" class="tile" onClick={() => t.onProject(x.project)}>
-                  <span class="tile-name">{x.title}</span>
+                  <span class="tile-name"><Titled text={x.title} /></span>
                   <span class="tile-top"><Md text={parseRow(x.task!.text).title || x.task!.text} /></span>
                   {t.tileAgent?.chip(x.project, x.title)}
                 </button>

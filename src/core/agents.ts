@@ -18,7 +18,7 @@ export interface AgentDef {
   slug: string; name: string; role?: string; scope: string[]; model?: string; tools?: string[]; mode: AgentMode;
   /** Slug of the agent this one reports to (`reports-to`). @req FR:agent-team/agent.team.reports */
   reportsTo?: string;
-  /** Avatar: an emoji, or an image path on the Stack web origin (`/agents/cid.png`). Absent: a monogram. @req FR:agent-team/agent.icon */
+  /** Avatar: an emoji, `fluent:<name>`, or an image path on the Stack web origin (`/agents/cid.png`). Absent: a monogram. @req FR:agent-team/agent.icon */
   icon?: string;
   /** System prompt addition (`## Prompt`). */
   prompt: string;
@@ -38,9 +38,9 @@ export interface TeamAgent extends Omit<AgentDef, 'extra'> {
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 const HEADER = '<!-- stack-agent v1. Scope is a list of project or project/section prefixes; `*` is everything. -->';
 const FIELDS = ['name', 'role', 'scope', 'reports-to', 'model', 'tools', 'mode', 'icon'] as const;
-/** An emoji (at most 16 code units, no letters, digits, spaces, or slashes) or a same-origin image path; anything else is dropped. @req FR:agent-team/agent.icon */
+/** An emoji (at most 16 code units, no letters, digits, spaces, or slashes), a Fluent Emoji name (`fluent:headphone`), or a same-origin image path; anything else is dropped. @req FR:agent-team/agent.icon */
 export const iconOk = (v: string): boolean =>
-  (v.length > 0 && v.length <= 16 && !/[\s\p{L}\p{N}/\\<>"'`]/u.test(v) && /[^\x20-\x7e]/.test(v)) || (/^\/(?!\/)[A-Za-z0-9._/-]{1,200}\.(?:png|jpe?g|gif|webp|svg)$/i.test(v) && !v.includes('..'));
+  /^fluent:[a-z0-9_]{1,60}$/.test(v) || (v.length > 0 && v.length <= 16 && !/[\s\p{L}\p{N}/\\<>"'`]/u.test(v) && /[^\x20-\x7e]/.test(v)) || (/^\/(?!\/)[A-Za-z0-9._/-]{1,200}\.(?:png|jpe?g|gif|webp|svg)$/i.test(v) && !v.includes('..'));
 /** Every agent named `cos` is the roll-up unless it says otherwise. @req FR:agent-team/agent.team.rollup */
 const ROLLUP_SLUG = 'cos';
 const MAX_ROLE = 80;
