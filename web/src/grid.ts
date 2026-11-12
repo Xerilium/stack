@@ -4,6 +4,9 @@
  */
 import { busyIntervals, type CalEvent } from './meetings';
 import type { Block, Day, Plan } from './plan';
+import { parseRow } from './row';
+
+const titleOf = (t: { text: string }) => parseRow(t.text).title || t.text;
 
 export const SLOT = 30;
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -40,11 +43,13 @@ export function gridOf(plan: Plan, day: Day, events: CalEvent[]): Grid {
   const close = () => { for (const i of cluster) i.lanes = lanesEnd.length; cluster = []; lanesEnd = []; };
   for (const it of raw) {
     if (it.start >= clusterEnd) close();
+    // An item is drawn at least one slot tall, so it holds its lane that long.
+    const end = Math.max(it.end, it.start + SLOT);
     let lane = lanesEnd.findIndex((e) => e <= it.start);
-    if (lane < 0) { lane = lanesEnd.length; lanesEnd.push(it.end); } else lanesEnd[lane] = it.end;
+    if (lane < 0) { lane = lanesEnd.length; lanesEnd.push(end); } else lanesEnd[lane] = end;
     it.lane = lane;
     cluster.push(it);
-    clusterEnd = Math.max(clusterEnd, it.end);
+    clusterEnd = Math.max(clusterEnd, end);
   }
   close();
   return { from, to, items: raw };
@@ -63,22 +68,34 @@ export function freeSlots(g: Grid, now: number | null): number[] {
 /* ---- Per-device storage: placements by date, and the Grid/Agenda choice. @req FR:my-day-grid/grid.place @req FR:my-day-grid/view.default ---- */
 const PLACED = 'stack.placed';
 const VIEW = 'stack.myday.view';
-type Placed = Record<string, Record<string, number>>;
+/** A placement keeps the task title too: a ref is a line number, which moves when rows are added above. */
+export interface Spot { at: number; title: string }
+type Placed = Record<string, Record<string, Spot>>;
 const readAll = (s: Store | undefined): Placed => {
   try { const v = JSON.parse(s?.getItem(PLACED) ?? '{}') as unknown; return v && typeof v === 'object' && !Array.isArray(v) ? v as Placed : {}; } catch { return {}; }
 };
 
-/** The placements for `date` (ref to start minute). */
-export function loadPlaced(s: Store | undefined, date: string): Record<string, number> {
+/** The placements saved for `date` (ref to spot). */
+export function loadPlaced(s: Store | undefined, date: string): Record<string, Spot> {
   const d = readAll(s)[date];
-  return d && typeof d === 'object' ? Object.fromEntries(Object.entries(d).filter(([, v]) => typeof v === 'number')) : {};
+  return d && typeof d === 'object' ? Object.fromEntries(Object.entries(d).filter(([, v]) => typeof v?.at === 'number' && typeof v?.title === 'string')) : {};
 }
 
-/** Places `ref` at `at` on `date` (null removes it); dates before `today` are dropped. Returns that date's placements. Never throws. */
-export function savePlaced(s: Store | undefined, date: string, ref: string, at: number | null, today: string): Record<string, number> {
+/** Placements as the planner wants them (ref to start): the saved ref when its title still matches, else the open task with that title; else dropped. */
+export function resolvePlaced(saved: Record<string, Spot>, tasks: { ref: string; text: string }[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [ref, v] of Object.entries(saved)) {
+    const t = tasks.find((x) => x.ref === ref && titleOf(x) === v.title) ?? tasks.find((x) => titleOf(x) === v.title);
+    if (t) out[t.ref] = v.at;
+  }
+  return out;
+}
+
+/** Places `ref` at `spot` on `date` (null removes it); dates before `today` are dropped. Returns that date's placements. Never throws. */
+export function savePlaced(s: Store | undefined, date: string, ref: string, spot: Spot | null, today: string): Record<string, Spot> {
   const all = readAll(s);
   const day = { ...loadPlaced(s, date) };
-  if (at === null) delete day[ref]; else day[ref] = at;
+  if (spot === null) delete day[ref]; else day[ref] = spot;
   const next: Placed = Object.fromEntries(Object.entries({ ...all, [date]: day }).filter(([k, v]) => k >= today && Object.keys(v ?? {}).length));
   try { if (Object.keys(next).length) s?.setItem(PLACED, JSON.stringify(next)); else s?.removeItem(PLACED); } catch { /* storage is a convenience */ }
   return day;

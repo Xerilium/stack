@@ -12,7 +12,7 @@ dependencies: [home, schedule, day-inputs, task-detail-design]
 
 ## Purpose
 
-The owner: "My day is overwhelming; too much on screen. It is like Agenda view in Outlook/GCal, which I hate." He wants real 30-minute slots, all the same size, so the day is a clean picture. It can scroll. Details open to the right when there is room, else full page with Back.
+The owner: "My day is overwhelming; too much on screen. It is like Agenda view in Outlook/GCal, which I hate." He wants real 30-minute slots, all the same size, so the day is a clean picture. It can scroll. Details open to the right when there is room, else full page with Close.
 
 ## Scope
 

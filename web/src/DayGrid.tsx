@@ -21,7 +21,7 @@ export interface DayGridProps {
   /** Today (now line, past slots closed); false on another day. */ today: boolean;
   /** A past day: meetings only, nothing to place. */ past: boolean;
   selected?: string | null; titles: Map<string, string>;
-  onOpen: (ref: string) => void; onPlace?: (ref: string, at: number) => void; /** Close the task detail (a meeting detail is opening). */ onCloseTask?: () => void;
+  onOpen: (ref: string) => void; onPlace?: (ref: string, at: number) => void; /** Open the asks behind the email block. */ onEmail?: () => void; /** Close the task detail (a meeting detail is opening). */ onCloseTask?: () => void;
 }
 
 const titleOf = (t: Task) => parseRow(t.text).title || t.text;
@@ -33,6 +33,19 @@ function MeetingDetail({ e, start, end, onClose }: { e: CalEvent; start: number;
   const [opener] = useState(() => document.activeElement as HTMLElement | null);
   useLayoutEffect(() => { box.current?.focus(); return () => { if (opener?.isConnected) opener.focus(); }; }, []);
   const wide = matchMedia(SIDE).matches;
+  // Full page: a modal, so Tab stays inside. Beside the grid: Tab moves on to the page.
+  useEffect(() => {
+    const key = (k: KeyboardEvent) => {
+      const b = box.current;
+      if (k.key !== 'Tab' || !b || matchMedia(SIDE).matches) return;
+      const els = [...b.querySelectorAll<HTMLElement>('button, a[href]')];
+      const i = els.indexOf(document.activeElement as HTMLElement);
+      k.preventDefault();
+      els[k.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length]?.focus();
+    };
+    window.addEventListener('keydown', key, true);
+    return () => window.removeEventListener('keydown', key, true);
+  }, []);
   return (
     <div ref={box} tabIndex={-1} class="focus-mode fl side" role="dialog" aria-modal={!wide} aria-label="Meeting detail" data-testid="meeting-detail">
       <button type="button" class="close" aria-label="Close" title="Close" onClick={onClose}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></button>
@@ -77,7 +90,7 @@ export function DayGrid(g: DayGridProps) {
   // Esc closes the meeting detail or the place list.
   useEffect(() => {
     if (!meeting && placing === null) return;
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setMeeting(null); setPlacing(null); } };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (placing !== null) closePlace(placing); else setMeeting(null); } };
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   }, [meeting, placing]);
@@ -87,7 +100,10 @@ export function DayGrid(g: DayGridProps) {
     ...g.plan.overflow.map((t) => ({ t, planned: false })),
     ...g.plan.blocks.filter((b) => b.start !== at).map((b) => ({ t: b.task, planned: true })),
   ].slice(0, 12);
-  const place = (ref: string, at: number) => { setPlacing(null); g.onPlace?.(ref, at); };
+  // Focus goes back to the slot, or on to the placed block once it is drawn there.
+  const focusLater = (sel: string) => setTimeout(() => body.current?.querySelector<HTMLElement>(sel)?.focus(), 60);
+  const closePlace = (at: number) => { setPlacing(null); focusLater(`[data-at="${at}"]`); };
+  const place = (ref: string, at: number) => { setPlacing(null); g.onPlace?.(ref, at); focusLater(`[data-ref="${CSS.escape(ref)}"] .dg-open`); };
 
   const item = (i: GridItem) => {
     const h = Math.max(ROW, top(i.end) - top(i.start)) - 2;
@@ -107,7 +123,7 @@ export function DayGrid(g: DayGridProps) {
     if (i.kind === 'email') {
       return (
         <div key="email" class="dg-item email" style={style} data-testid="dg-email">
-          <span class="dg-open static"><span class="dg-title">Email · {i.count} ask{i.count === 1 ? '' : 's'}</span><span class="dg-time">{time}</span></span>
+          <button type="button" class="dg-open" onClick={g.onEmail} disabled={!g.onEmail}><span class="dg-title">Email · {i.count} ask{i.count === 1 ? '' : 's'}</span><span class="dg-time">{time}</span></button>
         </div>
       );
     }
@@ -117,7 +133,7 @@ export function DayGrid(g: DayGridProps) {
       <div key={`t${t.ref}`} class={`dg-item task${g.selected === t.ref ? ' on' : ''}`} style={style} data-testid="dg-task" data-ref={t.ref}
         draggable={!!g.onPlace && !g.past} onDragStart={(e) => { e.dataTransfer?.setData(DRAG, t.ref); e.dataTransfer?.setData('text/plain', t.ref); }}>
         <button type="button" class="dg-open row-open" onClick={() => { setMeeting(null); g.onOpen(t.ref); }}>
-          <span class="dg-title">{i.b.placed && <span class="dg-pin" aria-hidden="true">📌 </span>}{titleOf(t)}</span>
+          <span class="dg-title">{i.b.placed && <span class="dg-pin"><span aria-hidden="true">📌 </span><span class="sr-only">Placed: </span></span>}{titleOf(t)}</span>
           <span class="dg-time">{time} · {proj}</span>
           <span class="chev" aria-hidden="true">›</span>
         </button>
@@ -135,9 +151,9 @@ export function DayGrid(g: DayGridProps) {
             <div key={s} class={`dg-slot${s % 60 === 0 ? ' hour' : ''}`} style={{ top: `${top(s)}px` }}>
               {label}
               <button type="button" class={`dg-free${over === s ? ' over' : ''}`} data-testid="dg-free" data-at={s} aria-label={`Place a task at ${clock(s)}`} aria-expanded={placing === s}
-                onClick={() => setPlacing(placing === s ? null : s)}
+                onClick={() => (placing === s ? closePlace(s) : setPlacing(s))}
                 onDragOver={(e) => { e.preventDefault(); setOver(s); }} onDragLeave={() => setOver(null)}
-                onDrop={(e) => { e.preventDefault(); setOver(null); const ref = e.dataTransfer?.getData(DRAG) || e.dataTransfer?.getData('text/plain'); if (ref) place(ref, s); }}>
+                onDrop={(e) => { e.preventDefault(); setOver(null); const ref = e.dataTransfer?.getData(DRAG); if (ref) place(ref, s); }}>
                 <span class="dg-plus" aria-hidden="true">+</span>
               </button>
             </div>
@@ -157,7 +173,7 @@ export function DayGrid(g: DayGridProps) {
                 <span class="dg-place-t">{titleOf(t)}</span><span class="dg-place-m">{span(estimate(t).minutes)}{planned ? ' · planned' : " · doesn't fit"}</span>
               </button>
             ))}
-            <div class="fl-pop-row"><button type="button" class="fl-btn subtle" onClick={() => setPlacing(null)}>Cancel</button></div>
+            <div class="fl-pop-row"><button type="button" class="fl-btn subtle" onClick={() => closePlace(placing)}>Cancel</button></div>
           </div>
         )}
       </div>

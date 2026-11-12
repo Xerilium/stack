@@ -1,6 +1,6 @@
 /** My day grid: slots, blocks, lanes, free slots, placements, view pref. */
 import { describe, expect, it } from 'vitest';
-import { freeSlots, gridOf, labelOf, loadPlaced, loadView, savePlaced, saveView, slotRange, SLOT } from '../src/grid';
+import { freeSlots, gridOf, labelOf, loadPlaced, loadView, resolvePlaced, savePlaced, saveView, slotRange, SLOT } from '../src/grid';
 import { buildPlan, type Day } from '../src/plan';
 import type { CalEvent } from '../src/meetings';
 import type { Task } from '../src/types';
@@ -75,14 +75,16 @@ describe('placements', () => {
   });
   it('saves per date, drops older dates, survives broken storage', () => {
     const s = mem();
-    expect(savePlaced(s, '2026-11-11', 'p:1', 600, '2026-11-11')).toEqual({ 'p:1': 600 });
-    savePlaced(s, '2026-11-12', 'p:2', 840, '2026-11-12');
-    expect(loadPlaced(s, '2026-11-12')).toEqual({ 'p:2': 840 });
+    expect(savePlaced(s, '2026-11-11', 'p:1', { at: 600, title: 'A' }, '2026-11-11')).toEqual({ 'p:1': { at: 600, title: 'A' } });
+    savePlaced(s, '2026-11-12', 'p:2', { at: 840, title: 'B' }, '2026-11-12');
+    expect(loadPlaced(s, '2026-11-12')).toEqual({ 'p:2': { at: 840, title: 'B' } });
+    expect(resolvePlaced(loadPlaced(s, '2026-11-12'), [{ ref: 'p:3', text: 'B' }])).toEqual({ 'p:3': 840 }); // the row moved
+    expect(resolvePlaced(loadPlaced(s, '2026-11-12'), [{ ref: 'p:2', text: 'C' }])).toEqual({}); // another task took the line
     expect(loadPlaced(s, '2026-11-11')).toEqual({}); // pruned
     expect(savePlaced(s, '2026-11-12', 'p:2', null, '2026-11-12')).toEqual({});
     const broken = { getItem: () => { throw new Error('x'); }, setItem: () => { throw new Error('x'); }, removeItem: () => { throw new Error('x'); } };
     expect(loadPlaced(broken, '2026-11-12')).toEqual({});
-    expect(() => savePlaced(broken, '2026-11-12', 'p:1', 600, '2026-11-12')).not.toThrow();
+    expect(() => savePlaced(broken, '2026-11-12', 'p:1', { at: 600, title: 'A' }, '2026-11-12')).not.toThrow();
     s.m.set('stack.placed', '{bad');
     expect(loadPlaced(s, '2026-11-12')).toEqual({});
   });
@@ -98,5 +100,13 @@ describe('view pref', () => {
     expect(loadView(undefined)).toBe('grid');
     s.m.set('stack.myday.view', 'weird');
     expect(loadView(s)).toBe('grid');
+  });
+});
+
+describe('short items', () => {
+  it('a 15-minute item holds its lane for a whole slot, so the next one sits beside it', () => {
+    const p = buildPlan([], new Date(2026, 10, 12, 10), day, 0, { busy: [] });
+    const g = gridOf(p, day, [ev('a', 9, 0, 9, 15), ev('b', 9, 15, 9, 30)]);
+    expect(g.items.map((i) => [i.id, i.lane, i.lanes])).toEqual([['a', 0, 2], ['b', 1, 2]]);
   });
 });
