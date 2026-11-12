@@ -94,8 +94,10 @@ describe('queue', () => {
     const s = mk();
     for (const n of [3, 2, 1]) await s.edit({ op: 'add', ref: `o/r#${n}` });
     await s.depends('o/r#1', 'o/r#2');
+    await s.ack('o/r#2', `${U(2)}#r1`, 'ok'); await s.record('o/r#2', { state: 'paused', ts: '2026-11-11T10:00:00Z' });
     await s.edit({ op: 'remove', ref: 'o/r#2' });
     expect(order(s)).toEqual(['1:1', '2:3']);
+    expect([s.state().acks, s.state().records]).toEqual([{}, {}]);
     expect(s.view().find((i) => i.number === 1)!.baseStack).toEqual([]);
   });
 
@@ -322,7 +324,7 @@ describe('view', () => {
     expect(parseFacts({ statusCheckRollup: [{ status: 'IN_PROGRESS' }, { status: 'COMPLETED', conclusion: 'FAILURE' }] }).checks).toBe('red');
     expect(parseFacts({ statusCheckRollup: [{ state: 'ERROR' }] }).checks).toBe('red');
     expect(parseFacts({ statusCheckRollup: [] }).checks).toBe('green');
-    expect(parseFacts({ assignees: [{ login: 'rk' }], reviewDecision: '' })).toMatchObject({ assignee: 'rk', reviewDecision: null });
+    expect(parseFacts({ assignees: [{ login: 'rk' }], reviewDecision: '', state: 'MERGED' })).toMatchObject({ assignee: 'rk', reviewDecision: null, state: 'merged' });
   });
 
   // @req FR:pr-priority/api.pr
@@ -338,6 +340,7 @@ describe('SM records', () => {
   // @req FR:pr-priority/record.model @req FR:pr-priority/record.latest
   it('validates records and keeps the newest', async () => {
     const s = mk();
+    await expect(s.record('o/r#1', { state: 'paused', ts: '2999-01-01T00:00:00Z' })).rejects.toThrow(PrPriInvalid);
     const rec = { state: 'paused', ts: '2026-11-11T10:00:00Z', worker: 'w1' };
     expect(await s.record('o/r#1', rec)).toEqual({ changed: true, record: rec });
     expect((await s.record(U(1), rec)).changed).toBe(false);

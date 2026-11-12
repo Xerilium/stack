@@ -15,7 +15,7 @@ The owner orders the PRs the Sweep Manager (SM) works. Live state in `~/.stack`,
 ## Shapes
 
 - `~/.stack/pr-priority.json` (lean, stable): `{version: 1, rev, updatedAt, items: [{rank, repo, number, url, pinned, note?, by, at}]}`
-- `list --json` items add: `pr, title, author, isDraft, assignee, labels, reviewDecision, checks (green|red|pending), mergeable, lastPushAt, headSha, baseStack [urls], why, michaelDecision {state, reason, at}, report, acks [], status (approve|review|decide|unblock)`; top level adds `escalations`
+- `list --json` items add: `pr, title, author, isDraft, assignee, labels, reviewDecision, checks (green|red|pending), mergeable, lastPushAt, headSha, state (open|merged|closed), baseStack [urls], why, michaelDecision {state, reason, at}, report, acks [], status (approve|review|decide|unblock)`; top level adds `escalations`
 - Record (`report`; newest `ts` wins; `stale` when the head moved): `{state: processing|waiting-on-me|blocked-on-me|pending|paused, ts, owner?: Michael|Roland|CI|runner|none, worker?, blocker?: {text, threadUrl?}, nextAction?, headSha?, humanOnly?: bool, bucket?: approve|review|decide|unblock}`
 - Edges file: `[{"pr": "owner/repo#715", "on": "owner/repo#718"}]` = 715 merges after 718; all or none
 - Escalation set: `{blockedAutopilot: [≤3 {pr, status, exactBlocker, context, recommendedAnswer}], enableAutopilot: [≤3 {pr, whyEasy}], liveValidation: [≤1 {pr, why}]}`; each `escalate` replaces the whole set
@@ -26,7 +26,7 @@ The owner orders the PRs the Sweep Manager (SM) works. Live state in `~/.stack`,
 PR priority (Stack). Each sweep, run `stack pr-pri list --json --refresh` and read `items`.
 Work PRs in this order; skip none; report progress per PR.
 - Rank 1 first, down to the last rank. At most 3 workers at a time.
-- Never merge or Autopilot a PR while any `baseStack` PR is still open. Add edges with `stack pr-pri depends <pr> --on <pr>`.
+- Never merge or Autopilot a PR while any `baseStack` PR is still open (its `state`). Add edges with `stack pr-pri depends <pr> --on <pr>`.
 - Agents never merge. Michael applies Autopilot. Never un-draft a PR.
 - Use `acks[]` (Michael's thread acks) to resolve hold threads.
 - After each PR, run `stack pr-pri record <pr> --file rec.json` (shape above). If `report.stale` is true, re-check the PR.

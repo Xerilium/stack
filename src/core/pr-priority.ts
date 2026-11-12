@@ -38,7 +38,7 @@ export interface PrRec {
 export interface PrAck { thread: string; note: string; at: string }
 export interface PrFacts {
   title?: string; author?: string; isDraft?: boolean; assignee?: string | null; labels?: string[]; reviewDecision?: string | null;
-  checks?: 'green' | 'red' | 'pending'; mergeable?: string; lastPushAt?: string; headSha?: string; factsAt?: string;
+  checks?: 'green' | 'red' | 'pending'; mergeable?: string; state?: 'open' | 'merged' | 'closed'; lastPushAt?: string; headSha?: string; factsAt?: string;
 }
 /** The SM's record for one PR. @req FR:pr-priority/record.model */
 export interface PrRecord {
@@ -146,6 +146,8 @@ export function parseFacts(raw: unknown): PrFacts {
   }
   if (s(r.mergeable)) out.mergeable = s(r.mergeable);
   if (s(r.headRefOid)) out.headSha = s(r.headRefOid);
+  const st = s(r.state)?.toLowerCase();
+  if (st === 'open' || st === 'merged' || st === 'closed') out.state = st;
   if (Array.isArray(r.commits)) {
     const d = r.commits.map((c) => (isObj(c) ? s(c.committedDate) : undefined)).filter((x): x is string => !!x).sort();
     if (d.length) out.lastPushAt = d[d.length - 1];
@@ -205,7 +207,9 @@ export function parseRecord(body: unknown): PrRecord {
     if (!values.includes(v as string)) bad(k, `Must be one of ${values.join(', ')}`);
   };
   oneOf('state', RECORD_STATES, true); oneOf('owner', RECORD_OWNERS); oneOf('bucket', ESC_STATUSES);
-  if (typeof body.ts !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(body.ts) || Number.isNaN(Date.parse(body.ts))) bad('ts', 'Must be an ISO date-time');
+  // A future ts would win over every later record. @req FR:pr-priority/record.latest
+  if (typeof body.ts === 'string' && Date.parse(body.ts) > Date.now() + 5 * 60_000) bad('ts', 'Must not be in the future');
+  else if (typeof body.ts !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(body.ts) || Number.isNaN(Date.parse(body.ts))) bad('ts', 'Must be an ISO date-time');
   if (body.worker !== undefined && (typeof body.worker !== 'string' || !AGENT.test(body.worker))) bad('worker', 'Must match [a-z0-9][a-z0-9-]{0,39}');
   if (body.nextAction !== undefined && !line(body.nextAction, 200)) bad('nextAction', 'Must be one line of 1-200 characters');
   if (body.headSha !== undefined && (typeof body.headSha !== 'string' || !/^[0-9a-f]{7,40}$/i.test(body.headSha))) bad('headSha', 'Must be 7-40 hex characters');
@@ -276,7 +280,9 @@ export class PrPriorityStore {
       const j = JSON.parse(t) as Partial<PrPriState>;
       if (isObj(j) && Array.isArray(j.recs)) {
         const e = EMPTY_STATE();
-        return { data: { ...e, recs: j.recs, deps: isObj(j.deps) ? j.deps as PrPriState['deps'] : {}, acks: isObj(j.acks) ? j.acks as PrPriState['acks'] : {}, records: isObj(j.records) ? j.records as PrPriState['records'] : {}, facts: isObj(j.facts) ? j.facts as PrPriState['facts'] : {}, history: Array.isArray(j.history) ? j.history : [], ...(isObj(j.escalations) ? { escalations: j.escalations as Escalations } : {}) } };
+        // Drop malformed recommendations instead of failing later reads.
+        const recs = (j.recs as unknown[]).filter((r): r is PrRec => isObj(r) && typeof r.id === 'string' && typeof r.repo === 'string' && Number.isInteger(r.number) && typeof r.reason === 'string' && typeof r.at === 'string' && (r.state === 'open' || (isObj(r.decision) && typeof r.decision.at === 'string')));
+        return { data: { ...e, recs, deps: isObj(j.deps) ? j.deps as PrPriState['deps'] : {}, acks: isObj(j.acks) ? j.acks as PrPriState['acks'] : {}, records: isObj(j.records) ? j.records as PrPriState['records'] : {}, facts: isObj(j.facts) ? j.facts as PrPriState['facts'] : {}, history: Array.isArray(j.history) ? j.history : [], ...(isObj(j.escalations) ? { escalations: j.escalations as Escalations } : {}) } };
       }
     } catch { /* broken */ }
     return { data: EMPTY_STATE(), broken: true };
@@ -292,6 +298,12 @@ export class PrPriorityStore {
       const j = JSON.parse(readFileSync(this.configFile, 'utf8')) as { exclude?: unknown };
       return new Set((Array.isArray(j.exclude) ? j.exclude : []).flatMap((r) => { try { const p = parsePrRef(String(r)); return [keyOf(p.repo, p.number)]; } catch { return []; } }));
     } catch { return new Set(); }
+  }
+  /** Rank by PR key for many lookups (one read; excluded PRs left out). @req FR:pr-priority/api.pr */
+  ranks(): (repo: string, n: number) => number | null {
+    const ex = this.excluded();
+    const m = new Map(this.read().items.filter((i) => !ex.has(keyOf(i.repo, i.number))).map((i) => [keyOf(i.repo, i.number), i.rank]));
+    return (repo, n) => m.get(keyOf(repo, n)) ?? null;
   }
   /** The queue rank of a PR, or null. @req FR:pr-priority/api.pr */
   rankOf(repo: string, n: number): number | null { return this.read().items.find((i) => keyOf(i.repo, i.number) === keyOf(repo, n))?.rank ?? null; }
@@ -354,7 +366,7 @@ export class PrPriorityStore {
         changed = true;
       } else {
         changed = this.apply(q, op, ref!, 'owner', excluded);
-        if (op.op === 'remove' && changed) { const k = keyOf(ref!.repo, ref!.number); delete s.deps[k]; for (const [a, list] of Object.entries(s.deps)) s.deps[a] = list.filter((x) => x !== k); }
+        if (op.op === 'remove' && changed) { const k = keyOf(ref!.repo, ref!.number); delete s.deps[k]; delete s.facts[k]; delete s.records[k]; delete s.acks[k]; for (const [a, list] of Object.entries(s.deps)) s.deps[a] = list.filter((x) => x !== k); }
         if (changed) s.history = [{ items: before, at: this.now() }, ...s.history].slice(0, PR_PRI_LIMITS.history);
       }
       if (changed) { mark.queue = true; mark.state = true; }

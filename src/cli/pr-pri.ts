@@ -36,12 +36,12 @@ const int = (f: Flags, n: string): number | undefined => {
 
 /** One row per PR, under 20 words. @req FR:pr-priority/view.text */
 const rows = (items: PrPriView[]): string => (items.length
-  ? items.map((i) => `${i.rank}. ${i.url}${i.pinned ? ' 📌' : ''}${i.status ? ` ${i.status}` : ''}${i.note ? ` - ${i.note}` : ''}`).join('\n')
+  ? items.map((i) => `${i.rank}. ${i.url}${i.pinned ? ' 📌' : ''}${i.status ? ` ${i.status}` : ''}${i.note ? ` - ${i.note.length > 60 ? `${i.note.slice(0, 59)}…` : i.note}` : ''}`).join('\n')
   : 'no PR priorities (run: stack pr-pri add <repo>#<n>)');
 
 /** Reads one PR through `gh` (STACK_GH or gh); null when gh fails. */
 const ghRead = (repo: string, n: number): Promise<unknown> => new Promise((ok) => {
-  execFile(process.env.STACK_GH || 'gh', ['pr', 'view', String(n), '-R', repo, '--json', 'title,author,isDraft,assignees,labels,reviewDecision,statusCheckRollup,mergeable,commits,headRefOid'], { timeout: 20_000, maxBuffer: 4 << 20 }, (err, out) => {
+  execFile(process.env.STACK_GH || 'gh', ['pr', 'view', String(n), '-R', repo, '--json', 'title,author,isDraft,assignees,labels,reviewDecision,statusCheckRollup,mergeable,commits,headRefOid,state'], { timeout: 20_000, maxBuffer: 4 << 20 }, (err, out) => {
     if (err) return ok(null);
     try { ok(JSON.parse(out)); } catch { ok(null); }
   });
@@ -78,7 +78,7 @@ export async function prPriCmd(positionals: string[], f: Flags, input: () => Pro
     return view({ changed: r.changed, rec: r.rec });
   };
   switch (sub) {
-    // @req FR:pr-priority/sm.cli @req FR:pr-priority/view.item @req FR:pr-priority/view.refresh
+    // @req FR:pr-priority/view.item @req FR:pr-priority/view.refresh
     case 'list': {
       noArg();
       if (f.refresh === true) await store.refresh(ghRead);

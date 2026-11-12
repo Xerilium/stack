@@ -2826,6 +2826,14 @@ components:
                 type: string
               lastPushAt:
                 type: string
+              headSha:
+                type: string
+              state:
+                type: string
+                enum:
+                  - open
+                  - merged
+                  - closed
               factsAt:
                 type: string
               baseStack:

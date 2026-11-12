@@ -24,7 +24,7 @@ function mk(withStore = true) {
     const t = await res.text();
     return { status: res.status, json: t ? JSON.parse(t) : undefined };
   };
-  const agentToken = async () => (await tokens.create({ name: 'cos', scopes: ['tasks:read', 'tasks:write'] as never })).token;
+  const agentToken = async () => (await tokens.create({ name: 'xe-cos', scopes: ['tasks:read', 'tasks:write'] as never })).token;
   return { call, store: store!, agentToken, storage };
 }
 
@@ -85,7 +85,8 @@ it('an agent token recommends and reads decisions; only the owner decides and re
   expect(again.json.error.details).toEqual([{ field: 'reason', message: `rejected ${NOW.toISOString()} by owner: Not this week (${id})` }]);
   expect((await call(t, 'GET', '/pr-priority/recommendations?agent=xe-cos')).json.items.map((x: { id: string }) => x.id)).toEqual([id]);
   expect((await call(t, 'GET', '/pr-priority/recommendations?agent=zz')).json.items).toEqual([]);
-  expect((await call(t, 'POST', '/pr-priority/recommendations', { repo: 'o/r', number: 3, agent: 'Bad', reason: 'x' })).status).toBe(422);
+  expect((await call(t, 'POST', '/pr-priority/recommendations', { repo: 'o/r', number: 3, agent: 'other', reason: 'x' })).status).toBe(403);
+  expect((await call('owner', 'POST', '/pr-priority/recommendations', { repo: 'o/r', number: 3, agent: 'Bad', reason: 'x' })).status).toBe(422);
 });
 
 // @req FR:pr-priority/needs.list @req FR:pr-priority/needs.actions

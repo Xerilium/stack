@@ -722,7 +722,6 @@ export const ROUTES: Route[] = [
       let changed: boolean;
       if (b.op === 'ack') {
         if (!b.thread || !b.note) throw invalid([{ field: b.thread ? 'note' : 'thread', message: 'Required for ack' }]);
-        if (b.rev !== s.read().rev) throw new ApiError('conflict', 'PR priorities changed; reload and try again');
         changed = (await s.ack(b.ref!, b.thread, b.note)).changed;
       } else {
         if (b.op === 'move' && b.to === undefined && b.rank === undefined) throw invalid([{ field: 'to', message: 'Required for move: top, up, down, or rank' }]);
@@ -741,6 +740,11 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       const b = validate<{ repo: string; number: number; agent: string; reason: string; toRank?: number }>(await readBody(c.req), PR_REC_BODY.schema, PR_REC_BODY.required);
+      // A token speaks only for itself: `agent` must be the token name (as a slug). @req FR:pr-priority/api.recommend
+      if (caller(c.req).actor.startsWith('token:')) {
+        const own = (c.token?.name ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+        if (b.agent !== own) throw new ApiError('forbidden', 'agent must be the token name');
+      }
       const r = await prStore(c).recommend(b);
       if ('blocked' in r) { const t = blockedText(r.blocked); throw new ApiError('conflict', `Blocked: ${t}`, [{ field: r.blocked.kind === 'rejected' ? 'reason' : 'number', message: t }]); }
       return json(200, r);
@@ -1000,7 +1004,8 @@ export const ROUTES: Route[] = [
       readQuery(c.url, []);
       // Each PR carries its queue rank for the PR page. @req FR:pr-priority/api.pr
       const q = c.deps.prPriority;
-      const items = (await agentActivity({ ...c.life, prs: c.deps.prs })).map((i) => ({ ...i, prs: i.prs.map((p) => ({ ...p, priority: q ? q.rankOf(p.repo, p.number) : null })) }));
+      const rank = q ? q.ranks() : () => null;
+      const items = (await agentActivity({ ...c.life, prs: c.deps.prs })).map((i) => ({ ...i, prs: i.prs.map((p) => ({ ...p, priority: rank(p.repo, p.number) })) }));
       return json(200, { items });
     },
   },
