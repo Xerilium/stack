@@ -83,3 +83,22 @@ describe('harden: headers and permissions', () => {
     expect(win.check('clipboard-read', ORIGIN)).toBe(false);
   });
 });
+
+describe('harden: Claude session links and clipboard', () => {
+  // @req FR:pris-sessions-ui/tray.link @req FR:desktop-shell/safe.navigate
+  it('opens a Claude session link in the Claude app; every other custom link stays blocked', () => {
+    const { win, opened } = setup();
+    expect(win.navigate('claude://claude.ai/epitaxy/local_ab-12_CD')).toBe(true);
+    expect(win.open('claude://claude.ai/epitaxy/local_x')).toEqual({ action: 'deny' });
+    for (const bad of ['claude://evil.example/epitaxy/x', 'claude://claude.ai/settings', 'claude://claude.ai/epitaxy/a/b', 'claude://claude.ai/epitaxy/x?y=1', `claude://claude.ai/epitaxy/${'a'.repeat(129)}`, 'zoommtg://x']) win.navigate(bad);
+    expect(opened).toEqual(['claude://claude.ai/epitaxy/local_ab-12_CD', 'claude://claude.ai/epitaxy/local_x']);
+  });
+  // @req FR:desktop-shell/safe.permissions @req FR:pris-sessions-ui/sessions.archive
+  it('allows clipboard writes from the host only', () => {
+    const { win } = setup();
+    expect(win.permission('clipboard-sanitized-write', `${ORIGIN}/`)).toBe(true);
+    expect(win.check('clipboard-sanitized-write', ORIGIN)).toBe(true);
+    expect(win.permission('clipboard-sanitized-write', 'https://example.com/')).toBe(false);
+    expect(win.check('clipboard-read', ORIGIN)).toBe(false);
+  });
+});

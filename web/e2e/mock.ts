@@ -15,7 +15,11 @@ export interface MockSession { id: string; title: string; project: string; owner
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
 export interface MockTeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: string; prompt: string; defined: boolean; source?: string; projects: string[]; reportsTo?: string }
 export interface MockReview { ref: string; at: string; verdict: string; plan: string; estimate?: string; agent: string; needs: string[] }
-export interface Mock { /** AI daily brief reply; unset = not configured. */ brief?: unknown; team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; /** Weekly meetings (`GET /meetings`). */ meetings: unknown[]; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; /** Query strings of the GET /rank calls. */ rankQueries: string[]; fail: Map<string, { status: number; code: string; message: string }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; /** Pending (uncommitted) writes a batching server reports on `/api/sync`; undefined = the server does not batch. */ pending?: number; since?: string | null; /** CoS escalations (`.stack/needs-you.json`). */ needs: MockNeed[]; /** Inbox page items. */ inboxItems: Record<string, unknown>[]; /** Rank override (refs in order); default: the first open task, then the old client order. */ ranked?: { ref: string; root?: string }[]; insertAbove: (project: string, text: string) => void }
+export interface Mock { /** `GET /pris`; null = no store (404). */ pris: MockPrisFile | null; /** `GET /session-inventory`; null = no inventory (404). */ inventory: MockInventory | null; /** AI daily brief reply; unset = not configured. */ brief?: unknown; team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; /** Weekly meetings (`GET /meetings`). */ meetings: unknown[]; calendarFail: boolean; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; /** Query strings of the GET /rank calls. */ rankQueries: string[]; fail: Map<string, { status: number; code: string; message: string; details?: { field: string; message: string }[] }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; /** Pending (uncommitted) writes a batching server reports on `/api/sync`; undefined = the server does not batch. */ pending?: number; since?: string | null; /** CoS escalations (`.stack/needs-you.json`). */ needs: MockNeed[]; /** Inbox page items. */ inboxItems: Record<string, unknown>[]; /** Rank override (refs in order); default: the first open task, then the old client order. */ ranked?: { ref: string; root?: string }[]; insertAbove: (project: string, text: string) => void }
+export interface MockPri { id: string; title: string; status: string; items: { text: string; status: string }[]; backlog: { text: string; status: string }[]; weekly: { week: string; text: string }[] }
+export interface MockPrisFile { version: 1; rev: number; updatedAt?: string; pris: MockPri[] }
+export interface MockSessionItem { id: string; title: string; project: string; state: string; reason: string; pinned: boolean; lastActivityAt: string; link: string; prs: { url: string; state: string }[]; ask?: string; scheduled?: { id: string; name: string } }
+export interface MockInventory { at: string; total: number; counts: Record<string, number>; needsYou: MockSessionItem[]; archive: MockSessionItem[]; sessions: MockSessionItem[] }
 export interface MockNeed { id: string; title: string; recommendation: string; default?: string; link: string; project?: string; ref?: string; answer?: { choice: string; text?: string; until?: string; at: string } }
 
 const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
@@ -39,7 +43,7 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 /** `context: true` routes at the browser context, so requests a service worker makes are mocked too. */
 export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean; projects?: { name: string; title: string; metadata?: Record<string, string> }[] } = {}): Promise<Mock> {
   const router = opts.context ? page.context() : page;
-  const m: Mock = { team: [], reviews: [], schedule: null, events: null, meetings: [], calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], rankQueries: [], fail: new Map(), anonymous: false, forbidden: false, needs: [], inboxItems: [], insertAbove: () => undefined };
+  const m: Mock = { pris: null, inventory: null, team: [], reviews: [], schedule: null, events: null, meetings: [], calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], rankQueries: [], fail: new Map(), anonymous: false, forbidden: false, needs: [], inboxItems: [], insertAbove: () => undefined };
   const proj = opts.projects?.map((p) => ({ metadata: {}, ...p })) ?? [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
@@ -70,7 +74,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     if (m.forbidden) return json(route, 403, { error: { code: 'forbidden', message: 'Forbidden' } });
     const fk = m.fail.has(`${req.method()} ${path}`) ? `${req.method()} ${path}` : path;
     const f = m.fail.get(fk);
-    if (f) { m.fail.delete(fk); return json(route, f.status, { error: { code: f.code, message: f.message } }); }
+    if (f) { m.fail.delete(fk); return json(route, f.status, { error: { code: f.code, message: f.message, ...(f.details ? { details: f.details } : {}) } }); }
     const open = m.tasks.filter((t) => !t.done);
     // The server's ranking, doubled: the first open task, then what the page used to rank itself (the real engine is tested in core).
     const ranking = (): { ref: string; text: string; project: string; score: number; root?: string }[] => {
@@ -98,6 +102,17 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       return json(route, 200, { ok: true });
     }
     if (path === '/needs-you') return json(route, 200, { items: m.needs });
+    // Priorities and the session inventory: null = a host without them (404). @req FR:session-inventory/api.pris.put
+    if (path === '/session-inventory') return m.inventory ? json(route, 200, m.inventory) : json(route, 404, { error: { code: 'not_found', message: 'No session inventory on this host' } });
+    if (path === '/pris' && req.method() === 'POST') {
+      if (!m.pris) return json(route, 404, { error: { code: 'not_found', message: 'No priorities store on this host' } });
+      if (body.rev !== m.pris.rev) return json(route, 409, { error: { code: 'conflict', message: 'Priorities changed; reload and try again' } });
+      const bad = (body.pris as { title: string }[]).findIndex((p) => !p.title.trim());
+      if (bad >= 0) return json(route, 400, { error: { code: 'bad_request', message: 'Validation failed', details: [{ field: `pris[${bad}].title`, message: 'Required' }] } });
+      m.pris = { version: 1, rev: m.pris.rev + 1, updatedAt: new Date().toISOString(), pris: body.pris };
+      return json(route, 200, m.pris);
+    }
+    if (path === '/pris') return m.pris ? json(route, 200, m.pris) : json(route, 404, { error: { code: 'not_found', message: 'No priorities store on this host' } });
     const nm = /^\/needs-you\/([^/]+)\/answer$/.exec(path);
     if (nm && req.method() === 'POST') {
       const n = m.needs.find((x) => x.id === nm[1]);

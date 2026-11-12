@@ -7,6 +7,7 @@ import { join } from 'path';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb } from '../../src/cli/web';
 import { BatchedGitStorage } from '../../src/core/storage-batch';
 import { ReportStore } from '../../src/core/reports';
+import { PriStore } from '../../src/core/pris';
 
 const ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 Object.assign(process.env, ENV);
@@ -266,6 +267,27 @@ describe('startWeb reports', () => {
       await until(/event: change\ndata: \{"rev":\d+,"kinds":\["tasks"\]\}/);
       req.destroy();
       expect(existsSync(join(dest, '.stack/reports.json'))).toBe(false);
+    } finally { await s.close(); }
+  });
+});
+
+describe('startWeb priorities', () => {
+  // @req FR:pris-sessions-ui/live.event
+  it('a priorities write pushes a pris change to open pages', async () => {
+    const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
+    const web = tmp(); writeFileSync(join(web, 'index.html'), '<html>app</html>');
+    const s = await startWeb({ ...quiet, dir: dest, port: 0, webDir: web, reports: new ReportStore(tmp()), pris: new PriStore(tmp()), inventory: false, agents: false });
+    try {
+      let seen = '';
+      let wake: () => void = () => {};
+      const until = (re: RegExp) => new Promise<void>((ok) => { wake = () => { if (re.test(seen)) ok(); }; wake(); });
+      const req = http.get(`${s.url}/events`, (r) => { r.on('data', (c) => { seen += String(c); wake(); }); });
+      await until(/event: hello/);
+      const pris = [{ id: 'p1', title: 'Ship', status: 'active', items: [], backlog: [], weekly: [] }];
+      const res = await fetch(`${s.url}/api/pris`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rev: 0, pris }) });
+      expect(res.status).toBe(200);
+      await until(/event: change\ndata: \{"rev":\d+,"kinds":\["pris"\]\}/);
+      req.destroy();
     } finally { await s.close(); }
   });
 });

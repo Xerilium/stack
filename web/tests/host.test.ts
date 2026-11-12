@@ -65,7 +65,7 @@ describe('dependencies', () => {
   it('has preact as the only runtime dependency and exact versions', () => {
     expect(Object.keys(pkg.dependencies)).toEqual(['preact']);
     for (const v of [...Object.values(pkg.dependencies), ...Object.values(pkg.devDependencies)]) expect(v).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(Object.keys(pkg.devDependencies).sort()).toEqual(['@playwright/test', '@types/node', 'jsdom', 'typescript', 'vite', 'vitest']);
+    expect(Object.keys(pkg.devDependencies).sort()).toEqual(['@axe-core/playwright', '@playwright/test', '@types/node', 'jsdom', 'typescript', 'vite', 'vitest']);
   });
 });
 

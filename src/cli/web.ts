@@ -179,6 +179,8 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const offReports = reports.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks'] }); });
   const inventory = o.inventory === false ? undefined : o.inventory ?? (() => runInventory({ home: stackHome() }));
   const pris = o.pris ?? new PriStore(stackHome());
+  // pris.json is outside the repo too: a write tells open pages to re-read it. @req FR:pris-sessions-ui/live.event
+  const offPris = pris.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['pris'] }); });
   const api = createApiHandler({ storage, config, reports, inventory, pris, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
@@ -283,6 +285,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const close = async () => {
     offPending?.();
     offReports();
+    offPris();
     watcher.close();
     const closed = new Promise<void>((ok) => server.close(() => ok())); // stop accepting; open sockets stay until below
     server.closeIdleConnections();

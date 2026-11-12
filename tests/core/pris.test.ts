@@ -72,6 +72,22 @@ describe('parsePris', () => {
 describe('PriStore', () => {
   const store = () => { const dir = mkdtempSync(join(tmpdir(), 'stack-pris-')); return { dir, s: new PriStore(dir, { now: () => NOW }) }; };
 
+  // @req FR:pris-sessions-ui/live.event
+  it('tells listeners after each write, never after a failed one; a throwing listener never fails the write', async () => {
+    const { s } = store();
+    let n = 0;
+    s.onWrite(() => { throw new Error('listener'); });
+    const off = s.onWrite(() => { n++; });
+    const pris = [{ id: 'p1', title: 'Ship', status: 'active', items: [], backlog: [], weekly: [] }];
+    await s.put(0, pris);
+    expect(n).toBe(1);
+    await expect(s.put(0, pris)).rejects.toBeInstanceOf(PrisConflict);
+    expect(n).toBe(1);
+    off();
+    await s.put(1, pris);
+    expect(n).toBe(1);
+  });
+
   // @req FR:session-inventory/pris.seed.once
   it('seeds once from markdown; a second seed changes nothing', async () => {
     const { dir, s } = store();

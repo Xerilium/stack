@@ -164,6 +164,7 @@ const EMPTY: PrisFile = { version: 1, rev: 0, pris: [] };
  */
 export class PriStore {
   readonly file: string;
+  private readonly listeners = new Set<() => void>();
   constructor(readonly dir: string, private readonly o: LockOptions & { now?: () => Date } = {}) { this.file = join(dir, 'pris.json'); }
 
   private load(): { data: PrisFile; exists: boolean; broken?: boolean } {
@@ -190,6 +191,10 @@ export class PriStore {
     return withFileLock(this.dir, 'pris.lock', fn, () => new PrisBusy('Priorities store is busy (pris.lock); try again'), this.o);
   }
 
+  /** Hears each successful write (the host tells open pages). @req FR:pris-sessions-ui/live.event */
+  onWrite(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
+  private told(): void { for (const fn of this.listeners) { try { fn(); } catch { /* a listener never fails a write */ } } }
+
   /** Replaces the list when `rev` is current. @req FR:session-inventory/pris.write @req FR:session-inventory/api.pris.put */
   async put(rev: number, body: unknown): Promise<PrisFile> {
     const pris = parsePris(body);
@@ -199,7 +204,7 @@ export class PriStore {
       // A broken file is moved aside, never silently overwritten. @req FR:session-inventory/pris.broken
       if (broken) renameSync(this.file, `${this.file}.broken-${Date.now()}`);
       return this.save({ ...cur, pris });
-    });
+    }).then((f) => { this.told(); return f; });
   }
 
   /** Seeds from markdown only when no `pris.json` exists. @req FR:session-inventory/pris.seed.once */

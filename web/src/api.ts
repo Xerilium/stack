@@ -5,13 +5,15 @@ import type { AskList, Send } from './asks';
 import type { CostReport, SessionList, Turn } from './sessions';
 import type { RankItem } from './home';
 import type { NeedItem } from './needs';
+import type { Pri, PrisFile } from './pris';
+import type { Inventory } from './inventory';
 import type { ReviewItem, TeamAgent } from './team';
 import type { Thread } from './thread';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
 
 /** @req FR:web-app/api.client */
 export class ApiFailure extends Error {
-  constructor(public status: number, public code: string, message: string) { super(message); }
+  constructor(public status: number, public code: string, message: string, public details?: { field: string; message: string }[]) { super(message); }
 }
 
 const TASK_FIELDS = 'ref,text,project,section,done,depth,notes';
@@ -38,8 +40,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     let data: unknown;
     try { data = text ? JSON.parse(text) : undefined; } catch { data = undefined; }
     if (!res.ok) {
-      const e = (data as { error?: { code?: string; message?: string } } | undefined)?.error;
-      throw new ApiFailure(res.status, e?.code ?? `http_${res.status}`, e?.message ?? `Request failed (${res.status})`);
+      const e = (data as { error?: { code?: string; message?: string; details?: { field: string; message: string }[] } } | undefined)?.error;
+      throw new ApiFailure(res.status, e?.code ?? `http_${res.status}`, e?.message ?? `Request failed (${res.status})`, Array.isArray(e?.details) ? e.details : undefined);
     }
     if (body === undefined) onRead?.(res.headers?.get?.('x-stack-cache') === 'offline' ? res.headers.get('x-stack-saved-at') ?? '' : null);
     return data as T;
@@ -48,6 +50,12 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     next: async () => (await call<{ task: NextTask | null }>('/next')).task,
     /** The one ranking (engine order plus the owner's overrides); Home draws only this. @req FR:api/routes.rank */
     rank: async (limit = 100, blocks: 'now' | 'any' = 'now') => (await call<{ items: RankItem[] }>(`/rank?limit=${limit}${blocks === 'any' ? '&blocks=any' : ''}`)).items,
+    /** The owner's priorities. @req FR:pris-sessions-ui/pris.block */
+    pris: () => call<PrisFile>('/pris'),
+    /** Replaces the priorities when `rev` is current; 409 when not. @req FR:pris-sessions-ui/pris.save */
+    putPris: (rev: number, pris: Pri[]) => call<PrisFile>('/pris', { rev, pris }),
+    /** The Claude app session inventory. @req FR:pris-sessions-ui/sessions.list */
+    inventory: () => call<Inventory>('/session-inventory'),
     /** The Chief of Staff's escalations. @req FR:ask-queue/needs.api */
     needs: async () => (await call<{ items: NeedItem[] }>('/needs-you')).items,
     answerNeed: (id: string, body: { choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }) => call<{ changed: boolean }>(`/needs-you/${encodeURIComponent(id)}/answer`, body),

@@ -171,7 +171,11 @@ export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; 
 /** AI on the ask card: the agent chip in the eyebrow, the composer under the ask, `a` to open it. @req FR:agent-team/web.anything */
 export interface TalkSlot { chip: (a: AskItem) => ComponentChildren; render: (a: AskItem) => ComponentChildren; open: (a: AskItem) => void; isOpen: () => boolean; close: () => void }
 
-export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void; talk?: TalkSlot }) {
+/**
+ * `top` draws above the heading (Priorities); `after` under the asks (Sessions); `extraCount` items there keep the empty state away.
+ * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.empty
+ */
+export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, after, extraCount = 0 }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void; talk?: TalkSlot; top?: ComponentChildren; after?: ComponentChildren; extraCount?: number }) {
   const { items, cursor } = asks;
   const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
   const [openSent, setOpenSent] = useState(false);
@@ -248,6 +252,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
 
   return (
     <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Asks">
+      {top}
       <header class="asks-head">
         <h1 class="h1">Needs you{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
         <LiveBadge a={asks} unreachable={unreachable} onSignIn={onSignIn} />
@@ -268,7 +273,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
        * The empty state says what was checked.
        * @req FR:web-shell/state.needs.empty
        */}
-      {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && (
+      {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && extraCount === 0 && (
         <div class="asks-empty" data-testid="asks-empty">
           <div class="tick-art">{Icon.check}</div>
           <p class="big">Nothing needs you.</p>
@@ -282,6 +287,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
         </ol>
       )}
       {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more <kbd aria-hidden="true">m</kbd></button>}
+      {after}
       {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · a agent · u undo</p>}
       {(asks.sent.length > 0 || asks.snoozed.length > 0) && (
         <footer class="asks-foot">
