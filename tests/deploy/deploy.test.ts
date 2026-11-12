@@ -27,8 +27,16 @@ describe('bicep', () => {
     expect(bicep).toMatch(/name:\s*'Free'/);
     expect(bicep).not.toMatch(/KeyVault/i);
     const resources = [...bicep.matchAll(/^resource \w+ '([^']+)'/gm)].map((m) => m[1].split('@')[0]);
-    expect(resources).toHaveLength(2); // site + appsettings
+    expect(resources).toHaveLength(3); // site + appsettings + optional custom domain
     expect(resources.every((r) => r.startsWith('Microsoft.Web/staticSites'))).toBe(true);
+  });
+  // @req FR:deploy-stack-xerilium-com/branch.default @req FR:deploy-stack-xerilium-com/domain.bicep
+  it('defaults the live branch to stack/live and adds the custom domain only when set', () => {
+    expect(bicep).toMatch(/param repoBranch string = 'stack\/live'/);
+    expect(bicep).toMatch(/STACK_REPO_BRANCH: repoBranch/);
+    expect(bicep).toMatch(/param customDomain string = ''/);
+    expect(bicep).toMatch(/resource \w+ 'Microsoft\.Web\/staticSites\/customDomains@[^']+' = if \(!empty\(customDomain\)\)/);
+    expect(bicep).toMatch(/validationMethod: 'cname-delegation'/);
   });
   it('marks secrets @secure()', () => {
     for (const p of ['owners', 'tokenPepper', 'repoToken']) {

@@ -19,7 +19,7 @@ Set as SWA app settings. Missing or invalid required settings make everything ex
 | --- | --- | --- |
 | `STACK_REPO_URL` | yes | `https://` URL of the private task repo, no credentials in it. The token is sent to this origin, so use only a host you trust |
 | `STACK_REPO_TOKEN` | yes | GitHub token with contents write on that repo (sent only to the repo's origin, via env) |
-| `STACK_REPO_BRANCH` | no | Branch to read and commit to, default `main` |
+| `STACK_REPO_BRANCH` | no | Branch to read and commit to. Host default `main`; setup and `infra/main.bicep` set `stack/live` so live data stays off `main` |
 | `STACK_REPO_PATH` | no | Relative subfolder holding the tasks, default repo root |
 | `STACK_OWNERS` | yes for browser access | `provider:userId` list, for example `github:1a2b3c…`. The id is SWA's per-app user id (shown on the "Not on the allow-list" page), not the GitHub id. Empty denies all sessions |
 | `STACK_TOKEN_STORE` | no | Absolute path of a token file. Default: tokens live in the data repo at `.stack/tokens.json`. Requires `STACK_TOKEN_PEPPER` |

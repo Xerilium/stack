@@ -27,6 +27,14 @@ describe('staticwebapp.config.json', () => {
     expect(h['X-Content-Type-Options']).toBe('nosniff');
     expect(h['Referrer-Policy']).toBe('same-origin');
   });
+  // @req FR:deploy-stack-xerilium-com/auth.headers
+  it('sends HSTS, a locked Permissions-Policy, and COOP for the public domain', () => {
+    const h = web.globalHeaders;
+    const age = Number(/max-age=(\d+)/.exec(h['Strict-Transport-Security'] ?? '')?.[1]);
+    expect(age).toBeGreaterThanOrEqual(31536000);
+    for (const f of ['camera=()', 'microphone=()', 'geolocation=()']) expect(h['Permissions-Policy']).toContain(f);
+    expect(h['Cross-Origin-Opener-Policy']).toBe('same-origin');
+  });
 });
 
 // @req FR:web-app/host.static @req FR:web-app/host.nosecrets
