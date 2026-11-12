@@ -12,16 +12,16 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 ## Prerequisites
 
 - Azure subscription and a resource group
-- `az` CLI and `bicep`
+- PowerShell 7 with Az PowerShell (`Install-Module Az`), `bicep`, and `gh`. Never the `az` CLI
 - A private GitHub repo for task data (the Function reads and writes it)
 - The Functions host in `host/` ships with this repo ([Azure host](azure-host.md))
 
 ## Deploy
 
 1. Check the template offline: `bicep build infra/main.bicep` (lint only, no Azure calls).
-2. Preview: `az deployment group what-if -g <rg> -f infra/main.bicep -p infra/main.parameters.json -p owners=... tokenPepper=... repoToken=... repoUrl=https://github.com/<you>/<tasks>.git`
-3. Create: same command with `create` instead of `what-if`. Secrets come from the command line or your shell, never from a file in git.
-4. Get the deployment token: `az staticwebapp secrets list -n <name> --query properties.apiKey -o tsv`.
+2. Preview: `New-AzResourceGroupDeployment -WhatIf -ResourceGroupName <rg> -TemplateFile infra/main.bicep -TemplateParameterFile infra/main.parameters.json -owners ... -tokenPepper ... -repoToken ... -repoUrl https://github.com/<you>/<tasks>` (`repoBranch` defaults to `stack/live`; `customDomain` only after its CNAME exists)
+3. Create: same command without `-WhatIf`. Secrets come from the command line or your shell, never from a file in git.
+4. Get the deployment token: `(Invoke-AzRestMethod -Method POST -Path "$((Get-AzStaticWebApp -ResourceGroupName <rg> -Name <name>).Id)/listSecrets?api-version=2023-12-01").Content | ConvertFrom-Json | % { $_.properties.apiKey }`.
 5. Add it to GitHub: repo Settings, Secrets and variables, Actions, new secret `AZURE_STATIC_WEB_APPS_API_TOKEN`.
 6. Push to `main`. `.github/workflows/deploy.yml` builds and uploads. With no secret it logs a skip and passes.
 
@@ -58,13 +58,13 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 
 ## Owner allow-list
 
-Sign-in is GitHub through SWA built-in auth. SWA's `userId` is generated per app, not your GitHub id ([user information](https://learn.microsoft.com/azure/static-web-apps/user-information)): sign in once, and the "Not on the allow-list" page shows your `github:<id>` and the command `scripts/setup-azure.sh --owner github:<id>`. Or set `STACK_OWNERS=github:<id>` yourself. Update with `az staticwebapp appsettings set -n <name> --setting-names STACK_OWNERS=github:<id>`. Only people on the list get owner access; everyone else is denied.
+Sign-in is GitHub through SWA built-in auth. SWA's `userId` is generated per app, not your GitHub id ([user information](https://learn.microsoft.com/azure/static-web-apps/user-information)): sign in once, and the "Not on the allow-list" page shows your `github:<id>` and the command `scripts/setup-azure.ps1 -Owner github:<id>`. Run that; it merges the change and keeps every other setting. Only people on the list get owner access; everyone else is denied.
 
 ## Tokens
 
 Create, list, and revoke as the owner (signed in) through `POST /api/auth/tokens`, `GET /api/auth/tokens`, `POST /api/auth/tokens/{id}/revoke`. A secret (`stk_...`) is shown once. Default expiry 90 days, max 365, 50 active at most. Give each agent the narrowest scopes ([API](api/README.md), [MCP](mcp.md)).
 
-Rotate: create a new token, update the client, revoke the old one. Rotate the pepper only if the token store leaks: set a new `STACK_TOKEN_PEPPER`, then recreate every token. Rotate `AZURE_STATIC_WEB_APPS_API_TOKEN` with `az staticwebapp secrets reset-api-key -n <name>` and update the GitHub secret.
+Rotate: create a new token, update the client, revoke the old one. Rotate the pepper only if the token store leaks: set a new `STACK_TOKEN_PEPPER`, then recreate every token. Rotate `AZURE_STATIC_WEB_APPS_API_TOKEN` in the portal (Static Web App, Overview, Manage deployment token, Reset), then re-run `scripts/setup-azure.ps1`.
 
 The token store holds only hashes (never secrets) plus scopes and expiry. By default it is committed to the private data repo as `.stack/tokens.json`, so tokens survive restarts; keep that repo private (see the [threat model](security/threat-model.md)). Revoking on one instance reaches others within about a minute.
 
@@ -72,7 +72,7 @@ The token store holds only hashes (never secrets) plus scopes and expiry. By def
 
 The host pushes an ask to each paired phone when the ask is due within 1 hour. Human-only steps:
 
-1. Make VAPID keys once: `npx web-push generate-vapid-keys --json`. Set `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY` and `STACK_VAPID_SUBJECT` as host secrets (`az staticwebapp appsettings set`). Keep the private key in a password manager.
+1. Make VAPID keys once: `npx web-push generate-vapid-keys --json`. Set `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY` and `STACK_VAPID_SUBJECT` as host secrets (portal: Static Web App, Environment variables; the setup script keeps them on re-run). Keep the private key in a password manager.
 2. Add a cron caller. Something must call `POST /api/push/check` (body `{}`) every 5 minutes with a `tasks:write` token, for example a GitHub Actions `schedule` workflow in the data repo with the token in a repo secret. Without it, only ask writes (`POST /api/asks/{key}`) start a check.
 3. Pair the phone (iOS 16.4 or later): create a device as the owner (`POST /api/auth/devices`), open `/#/install?device=<token>` in Safari, Add to Home Screen, open Stack from the Home Screen, then tap `Turn on notifications`.
 4. Optional, for the live Mac view only: use Tailscale Serve (tailnet only). Phone push uses the Azure host and needs no tunnel. Cloudflare Tunnel is not recommended (public hostname, extra account).

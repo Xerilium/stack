@@ -88,7 +88,7 @@ Owner needs the page to stay current and to say plainly whether it is live, stal
 
 Owner needs one script and one short doc to put Stack online so that hosting is a ten-minute job with nothing to remember.
 
-- **FR:setup.script** (P1): `scripts/setup-azure.sh` MUST set up hosting from the owner's signed-in `az` and `gh` CLIs: on the first run it creates the resource group and the Free Static Web App from `infra/main.bicep` with the app settings, stores the deployment token as the `AZURE_STATIC_WEB_APPS_API_TOKEN` Actions secret of the Stack repo, triggers the deploy workflow, and prints the site URL
+- **FR:setup.script** (P1): `scripts/setup-azure.ps1` MUST set up hosting from the owner's signed-in Az PowerShell and `gh` (see FR:deploy-stack-xerilium-com/setup.ps): on the first run it creates the resource group and the Free Static Web App from `infra/main.bicep` with the app settings, stores the deployment token as the `AZURE_STATIC_WEB_APPS_API_TOKEN` Actions secret of the Stack repo, triggers the deploy workflow, and prints the site URL
   > - @req FR:deploy-docs/infra.swa
   > - @req FR:deploy-docs/ci.deploy
   - **FR:setup.script.rerun** (P1): Re-running MUST be safe: it never re-applies the template to an existing site; it merges only the changed settings into the current list (other settings such as bot or mail secrets are kept) and keeps the pepper
@@ -96,7 +96,7 @@ Owner needs one script and one short doc to put Stack online so that hosting is 
 - **FR:setup.secrets** (P1): The script MUST read the repo token from a hidden prompt (or `STACK_REPO_TOKEN` in its env), check it can read the repo's contents, generate the pepper, and pass secrets only through child-process environments, mode-600 temp files it deletes on exit, and stdin to `gh secret set`; never on a command line
   - **FR:setup.secrets.json** (P1): JSON MUST be built by `node` from the environment, never by shell interpolation
   - **FR:setup.secrets.quiet** (P1): The script MUST never print a secret or write one inside a git work tree
-- **FR:setup.owner** (P1): The "Not on the allow-list" page MUST show the signed-in `provider:userId` and the exact command `scripts/setup-azure.sh --owner <it>`; that command only updates `STACK_OWNERS` on the existing site (no redeploy)
+- **FR:setup.owner** (P1): The "Not on the allow-list" page MUST show the signed-in `provider:userId` and the exact command `scripts/setup-azure.ps1 -Owner <it>`; that command only updates `STACK_OWNERS` on the existing site (no redeploy)
   > - @req FR:azure-host/auth.swa
   - SWA's `userId` is generated per app, not the GitHub id, so the owner cannot be known before the first sign-in
 - **FR:setup.doc** (P1): `docs/setup-live.md` MUST list the human-only steps as go-do items with exact clicks (fine-grained token on the task repo with Contents read and write; run the script; sign in; install as an Edge app) and how to undo each
@@ -127,4 +127,4 @@ Owner needs one script and one short doc to put Stack online so that hosting is 
 
 ## External Dependencies
 
-Azure Static Web Apps (Free), GitHub REST API, `az` and `gh` CLIs (setup script only)
+Azure Static Web Apps (Free), GitHub REST API, Az PowerShell and `gh` (setup script only)
