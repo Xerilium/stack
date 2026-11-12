@@ -54,14 +54,13 @@ export function prsNavNow(api: Client): { on: boolean; need: number; signIn: boo
 
 /** The rail entry. It owns its subscription, so a board change re-renders this button, not the app shell. @req FR:pr-page/nav.rail @req FR:pr-page/nav.badge */
 export function PrsNavItem({ api, active, label, hint, onGo }: { api: Client; active: boolean; label: string; hint: string; onGo: () => void }) {
-  const { on } = usePrsNav(api);
-  if (!on) return null;
-  return <button type="button" class={`tab${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} onClick={onGo}><span class="tab-label">{label}<PrsNavBadge api={api} /></span><kbd>{hint}</kbd></button>;
+  const nav = usePrsNav(api);
+  if (!nav.on) return null;
+  return <button type="button" class={`tab${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} onClick={onGo}><span class="tab-label">{label}<PrsNavBadge nav={nav} /></span><kbd>{hint}</kbd></button>;
 }
 
 /** The nav badge: Blocked on me plus Waiting on me; a dot when signed out. @req FR:pr-page/nav.badge */
-export function PrsNavBadge({ api }: { api: Client }) {
-  const { need, signIn } = usePrsNav(api);
+export function PrsNavBadge({ nav: { need, signIn } }: { nav: { need: number; signIn: boolean } }) {
   if (signIn) return <span class="nav-dot" role="img" aria-label="Sign in to GitHub" data-testid="prs-nav-dot" />;
   return need > 0 ? <span class="badge" aria-label={`${need} need you`} data-testid="prs-nav-badge">{need}</span> : null;
 }

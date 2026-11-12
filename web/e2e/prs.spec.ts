@@ -149,6 +149,10 @@ test('first open shows a skeleton, never zero counts, until the board answers', 
   await expect(sk).toBeVisible();
   await expect(sk).toHaveAttribute('aria-busy', 'true');
   await expect(page.getByTestId('prs-page').getByRole('tab')).toHaveCount(0);
+  // The icon and the nav entry show while the first poll runs, with no count.
+  await expect(icon(page, mobile)).toHaveAccessibleName('Pull requests: loading');
+  await expect(icon(page, mobile).locator('.badge')).toHaveCount(0);
+  if (!mobile) await expect(page.getByRole('navigation', { name: 'Views' }).locator('button.tab', { hasText: 'Pull requests' })).toBeVisible();
   await expect(page.getByTestId('prs-page').getByRole('tab', { name: /Blocked on me/ })).toBeVisible({ timeout: 5000 });
   await expect(page.getByTestId('prs-age')).toHaveText(/Updated \d+ s ago/);
   await expect(icon(page, mobile)).toBeVisible();
