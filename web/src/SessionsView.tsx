@@ -11,7 +11,7 @@ import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { Fragment } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { chartOrder, chatsFor, orgChart, otherSessions, type ChartNode } from './chart';
+import { agentStatus, chartOrder, chatsFor, orgChart, otherSessions, type ChartNode } from './chart';
 import { composeDefault, folderFor, orderAgents, repoRoot } from './org';
 import { groupByProject, orderWithPins, type Pins } from './pins';
 import { barWidths, dayLabel, fmtTokens, groupTurns, localDay, orderSessions, priceLine, rowOf, scopeSessions, splitSessions, usageStrip, type Line, type SessionItem } from './sessions';
@@ -42,18 +42,21 @@ function Row({ s, now, cursor, pinned, level = 0, onOpen, onCursor, onPin }: { s
   );
 }
 
-/** One agent card in the chart: name, role, projects, state dot, chat count. The whole card selects it. @req FR:agents-team/chart.card */
+/** One agent card in the chart: avatar, name, role, projects (else its home), status, chat count. The whole card selects it. @req FR:agents-team/chart.card */
 function AgentCard({ agent, chats, on, onPick }: { agent: TeamAgent; chats: SessionItem[]; on: boolean; onPick: () => void }) {
-  const state = chats.some((c) => c.state === 'needs-you') ? 'needs-you' : chats.some((c) => c.state === 'running') ? 'running' : '';
-  const label = state === 'needs-you' ? 'needs you' : state === 'running' ? 'working' : '';
+  const status = agentStatus(chats);
+  const state = status === 'needs-you' || status === 'running' ? status : '';
+  const label = status === 'needs-you' ? 'needs you' : status === 'running' ? 'working' : status === 'idle' ? 'idle' : 'no session';
+  const role = agent.role && agent.role.toLowerCase() !== agent.name.toLowerCase() ? agent.role : '';
+  const where = agent.projects.length ? agent.projects : agent.home ? [agent.home] : [];
   return (
     <button type="button" class={`agent-card${on ? ' on' : ''}`} data-agent={agent.slug} data-state={state || undefined} aria-pressed={on} onClick={onPick}
-      aria-label={`${agent.name}${agent.role ? `, ${agent.role}` : ''}, ${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}${label ? `, ${label}` : ''}`}>
+      data-status={status} aria-label={`${agent.name}${role ? `, ${role}` : ''}${where.length ? `, ${where.join(', ')}` : ''}, ${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}, ${label}`}>
       <span class="ac-head"><Avatar who={agent} size={22} /><span class="ac-name">{nameBeside(agent)}</span>{state && <span class={`ac-dot ${state}`} title={label} aria-hidden="true" />}</span>
-      {agent.role && <span class="ac-role">{agent.role}</span>}
+      {role && <span class="ac-role">{role}</span>}
       <span class="ac-foot">
-        <span class="ac-projects" aria-hidden="true">{agent.scope.includes('*') ? <span class="chip">all projects</span> : agent.projects.slice(0, 2).map((p) => <span class="chip" key={p}>{p}</span>)}{agent.projects.length > 2 && !agent.scope.includes('*') && <span class="chip">+{agent.projects.length - 2}</span>}</span>
-        <span class="ac-chats" aria-hidden="true">{chats.length ? chats.length : 'no chat'}</span>
+        <span class="ac-projects" aria-hidden="true">{agent.scope.includes('*') ? <span class="chip">all projects</span> : where.slice(0, 2).map((p) => <span class="chip" key={p}>{p}</span>)}{where.length > 2 && !agent.scope.includes('*') && <span class="chip">+{where.length - 2}</span>}</span>
+        <span class="ac-chats" aria-hidden="true"><span class={`ac-status ${status}`}>{label}</span>{chats.length > 0 && ` · ${chats.length}`}</span>
       </span>
     </button>
   );
@@ -356,7 +359,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
       {enabled !== false && s.phase === 'error' && <div class="sess-error" role="alert"><p>Cannot load agents: {s.error}</p><button type="button" class="btn primary" onClick={() => void s.reload()}>Retry</button></div>}
       {ready && chartMode && (
         <Fragment>
-          <nav class="chart-wrap" aria-label="My team: primary agents by who they report to"><Chart nodes={chart} sel={sel} chatsOf={chatsOf} onPick={pick} /></nav>
+          <nav class="chart-wrap" aria-label="My team: every agent by who they report to"><Chart nodes={chart} sel={sel} chatsOf={chatsOf} onPick={pick} /></nav>
           <section class="chat-pane" aria-label={selAgent ? `${selAgent.name} chat` : 'Chat'} data-testid="chat-pane">
             {chats.length > 1 && (
               <div class="chat-tabs" role="tablist" aria-label={`${selAgent?.name ?? 'Agent'} chats, newest first`}>

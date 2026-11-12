@@ -1,26 +1,19 @@
 /**
- * The My team chart: primary agents as an org chart, an agent's chats, and the sessions that belong to no primary agent.
- * @req FR:agents-team/chart.primary @req FR:agents-team/chart.tree @req FR:agents-team/chat.list @req FR:agents-team/other.hidden
+ * The My team chart: the whole team as an org chart, an agent's chats and status, and the sessions that belong to no agent.
+ * @req FR:agents-team/chart.primary @req FR:agents-team/chart.tree @req FR:agents-team/chart.card @req FR:agents-team/chat.list @req FR:agents-team/other.hidden
  */
 import type { SessionItem } from './sessions';
 import { matchAgent, rollupOf, type TeamAgent } from './team';
 
 export interface ChartNode { agent: TeamAgent; children: ChartNode[] }
 
-/** The roll-up, or an agent with a definition file that covers a project or has a report. @req FR:agents-team/chart.primary */
-export function isPrimary(a: TeamAgent, team: TeamAgent[]): boolean {
-  if (a === rollupOf(team)) return true;
-  return a.defined && (a.projects.length > 0 || team.some((t) => t !== a && t.reportsTo === a.slug && t.defined));
-}
-export const primaryTeam = (team: TeamAgent[]): TeamAgent[] => team.filter((a) => isPrimary(a, team));
-
-/** Primary agents as a forest: the roll-up first; siblings by project priority, then team order. @req FR:agents-team/chart.tree */
+/** Every agent as a forest: the roll-up first; siblings by project priority, then team order. @req FR:agents-team/chart.primary @req FR:agents-team/chart.tree */
 export function orgChart(team: TeamAgent[], rank: Map<string, number>): ChartNode[] {
-  const prim = primaryTeam(team);
+  const prim = team;
   const bySlug = new Map(team.map((a) => [a.slug, a]));
   const r = (a: TeamAgent) => { const rs = a.projects.map((p) => rank.get(p) ?? rank.size); return rs.length ? Math.min(...rs) : Infinity; };
   const order = (xs: TeamAgent[]) => xs.map((a, i) => ({ a, i })).sort((x, y) => r(x.a) - r(y.a) || x.i - y.i).map((x) => x.a);
-  /** Nearest primary ancestor, or undefined; a cycle ends the walk. */
+  /** The manager when it is on the team, or undefined; a cycle ends the walk. */
   const parent = (a: TeamAgent): TeamAgent | undefined => {
     const seen = new Set([a.slug]);
     let m = a.reportsTo ? bySlug.get(a.reportsTo) : undefined;
@@ -48,7 +41,12 @@ export function chatsFor(agent: TeamAgent, items: SessionItem[], team: TeamAgent
   return items.filter((s) => matchAgent(s, team) === agent).sort((a, b) => b.lastActive.localeCompare(a.lastActive));
 }
 
-/** Every session not matched to a primary agent. @req FR:agents-team/other.hidden */
+/** Every session matched to no agent. @req FR:agents-team/other.hidden */
 export function otherSessions(items: SessionItem[], team: TeamAgent[]): SessionItem[] {
-  return items.filter((s) => { const a = matchAgent(s, team); return !a || !isPrimary(a, team); });
+  return items.filter((s) => !matchAgent(s, team));
 }
+
+export type AgentStatus = 'needs-you' | 'running' | 'idle' | 'none';
+/** An agent's status from its chats: needs you, running, idle (has chats), none. @req FR:agents-team/chart.card */
+export const agentStatus = (chats: Pick<SessionItem, 'state'>[]): AgentStatus =>
+  chats.some((c) => c.state === 'needs-you') ? 'needs-you' : chats.some((c) => c.state === 'running') ? 'running' : chats.length ? 'idle' : 'none';

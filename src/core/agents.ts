@@ -33,7 +33,11 @@ export interface TeamAgent extends Omit<AgentDef, 'extra'> {
   source: AgentSource;
   /** Projects the scope resolves to (`*` lists every project). */
   projects: string[];
+  /** Where a scanned agent lives: the Stack project that owns its repo, else the folder name; `user` for `~/.claude/agents`. @req FR:agent-team/agent.team.scan */
+  home?: string;
 }
+/** An agent found outside the content repo (`scanAgents`). @req FR:agent-team/agent.team.scan */
+export interface ScannedAgent { def: AgentDef; home: string }
 
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 const HEADER = '<!-- stack-agent v1. Scope is a list of project or project/section prefixes; `*` is everything. -->';
@@ -144,7 +148,9 @@ export function parseClaudeAgent(slug: string, content: string): AgentDef {
     }
   }
   const h1 = /^#[ \t]+(.+?)[ \t]*(?:\n|$)/.exec(body.trimStart())?.[1]; // only a title that opens the body, never a `#` inside a code block
-  if (h1) { const n = oneLine(h1.split(':')[0]); if (n && n.length <= MAX_NAME) a.name = n; }
+  // `CoS: Chief of Staff` shows `Chief of Staff`; a name that is just the slug reads as words (`cid-divine-manager` → `Cid Divine Manager`).
+  if (h1) { const n = oneLine(h1.includes(':') ? h1.slice(h1.indexOf(':') + 1) : h1); if (n && n.length <= MAX_NAME) a.name = n; }
+  else if (a.name === slug) a.name = slug.split(/[-_.]+/).filter(Boolean).map((w) => (w.length <= 2 || !/[aeiouy]/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' '); // `fh`, `ftk` read as acronyms
   a.prompt = body.trim().slice(0, MAX_PROMPT);
   return a;
 }
@@ -202,7 +208,7 @@ const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1).replace(/\.md$/,
  * project metadata (project order). `cos` with no scope is `*`. Then the reporting line.
  * @req FR:agent-team/agent.team @req FR:agent-team/agent.team.order @req FR:agent-team/agent.team.rollup @req FR:agent-team/agent.team.reports
  */
-export async function listTeam(ctx: LifecycleContext): Promise<TeamAgent[]> {
+export async function listTeam(ctx: LifecycleContext, scanned: ScannedAgent[] = []): Promise<TeamAgent[]> {
   const projects: { name: string; agents: { name: string; role?: string }[] }[] = [];
   for (const path of await ctx.storage.list()) {
     const name = baseName(path);
@@ -218,16 +224,18 @@ export async function listTeam(ctx: LifecycleContext): Promise<TeamAgent[]> {
   }
   const all = projects.map((p) => p.name);
   const team: TeamAgent[] = [];
-  const addFile = (a: AgentDef, source: AgentSource) => {
+  const addFile = (a: AgentDef, source: AgentSource, home?: string) => {
     if (team.some((t) => t.slug === a.slug)) return;
     const named = projects.filter((p) => p.agents.some((x) => slugOf(x.name) === a.slug || x.name === a.name)).map((p) => p.name);
     // `cos` with no scope line is the roll-up even when a project line names a `CoS` of its own (that line then merges into the roll-up).
     const scope = a.scope.length ? a.scope : a.slug === ROLLUP_SLUG ? ['*'] : named;
     const { extra, ...rest } = a; void extra;
-    team.push({ ...rest, scope, defined: true, source, projects: resolveProjects(scope, all) });
+    team.push({ ...rest, scope, defined: true, source, projects: resolveProjects(scope, all), ...(home ? { home } : {}) });
   };
   for (const path of ctx.storage.listAgents ? await ctx.storage.listAgents() : []) addFile(parseAgent(baseName(path), (await ctx.storage.read(path)).content), 'stack');
   for (const path of ctx.storage.listClaudeAgents ? await ctx.storage.listClaudeAgents() : []) addFile(parseClaudeAgent(baseName(path), (await ctx.storage.read(path)).content), 'claude');
+  // Agents in other repos and at user level: a scopeless one covers its home project. @req FR:agent-team/agent.team.scan
+  for (const x of scanned) addFile(x.def.scope.length || !all.includes(x.home) ? x.def : { ...x.def, scope: [x.home] }, 'claude', x.home);
   for (const p of projects) {
     for (const x of p.agents) {
       const slug = slugOf(x.name);

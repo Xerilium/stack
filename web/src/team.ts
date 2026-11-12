@@ -5,7 +5,7 @@
  */
 import type { SessionItem } from './sessions';
 
-export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** The manager's slug; absent on the roll-up. */ reportsTo?: string; /** Emoji or same-origin image path. @req FR:agent-team/agent.icon */ icon?: string }
+export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** Where a scanned agent lives (project, folder, or `user`). @req FR:agent-team/agent.team.scan */ home?: string; /** The manager's slug; absent on the roll-up. */ reportsTo?: string; /** Emoji or same-origin image path. @req FR:agent-team/agent.icon */ icon?: string }
 /** The first agent whose scope is `*`. */
 export const rollupOf = (team: TeamAgent[]): TeamAgent | undefined => team.find((a) => a.scope.includes('*'));
 /** How long a metadata-only agent stays on tasks after its last session. @req FR:agent-team/web.chip.live */
