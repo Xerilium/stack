@@ -35,7 +35,7 @@ export interface OwnerTask { project: string; section?: string; notes?: string[]
 
 /** The `Owner:` value in a task's notes (`Owner: x` or `**Owner:** x`), if any. */
 export function ownerNote(notes: string[] = []): string | undefined {
-  for (const n of notes) { const m = /^\s*(?:[-*]\s+)?\**Owner:?\**:?\s*(.+?)\s*$/i.exec(n); if (m && m[1]) return m[1].replace(/^`|`$/g, ''); }
+  for (const n of notes) { const m = /^\s*(?:[-*]\s+)?\**Owner(?::\**|\**:)\s*(.+?)\s*$/i.exec(n); if (m && m[1]) return m[1].replace(/^`|`$/g, ''); }
   return undefined;
 }
 
@@ -68,9 +68,9 @@ export function ownerOf(team: TeamAgent[], task?: OwnerTask, ancestors: OwnerTas
   return best ?? rollup ?? (task ? undefined : team.find(runnable));
 }
 
-/** The task's ancestors, nearest first: earlier rows of the same project with a smaller depth (the list is in file order). */
-export function ancestorsOf<T extends { ref: string; project: string; depth: number }>(tasks: T[], ref: string): T[] {
-  const i = tasks.findIndex((t) => t.ref === ref);
+/** The task's ancestors, nearest first: earlier rows of the same project with a smaller depth (the list is in file order). `index`: ref → position, to skip the scan. */
+export function ancestorsOf<T extends { ref: string; project: string; depth: number }>(tasks: T[], ref: string, index?: Map<string, number>): T[] {
+  const i = index ? (index.get(ref) ?? -1) : tasks.findIndex((t) => t.ref === ref);
   if (i < 0) return [];
   const out: T[] = [];
   let depth = tasks[i].depth;

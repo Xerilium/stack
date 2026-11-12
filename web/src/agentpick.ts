@@ -17,6 +17,9 @@ const read = <T,>(s: Store | undefined, key: string, ok: (v: unknown) => v is T,
 const isMap = (v: unknown): v is Record<string, string> => !!v && typeof v === 'object' && !Array.isArray(v);
 const isList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string');
 
+/** The key a pick is kept under: project and title without marks, so it follows the row when lines move or 🪄 is added. */
+export const pickKeyOf = (t: { project: string; text: string }): string => `${t.project}␟${t.text.replace(/[🤖🪄🙋🚧]\uFE0F?/gu, '').replace(/\s+/g, ' ').trim()}`;
+
 /** The agent picked for this task, if any. */
 export const loadPick = (s: Store | undefined, ref: string): string | undefined => {
   const v = read(s, PICK_KEY, isMap, {})[ref];

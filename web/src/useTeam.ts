@@ -49,7 +49,8 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
    * Not filtered by recent sessions: an agent that owns the task by its files owns it whether or not it ran lately.
    * @req FR:product-reset/schema.agent
    */
-  const ownerOf = useCallback((t: Pick<Task, 'project'> & Partial<Pick<Task, 'ref' | 'section' | 'notes'>>): TeamAgent | undefined => ownerFor(team, t, t.ref ? ancestorsOf(tasks, t.ref) : []), [team, tasks]);
+  const index = useMemo(() => new Map(tasks.map((t, i) => [t.ref, i])), [tasks]);
+  const ownerOf = useCallback((t: Pick<Task, 'project'> & Partial<Pick<Task, 'ref' | 'section' | 'notes'>>): TeamAgent | undefined => ownerFor(team, t, t.ref ? ancestorsOf(tasks, t.ref, index) : []), [team, tasks, index]);
   /** The task's agents for a picker: the owner first, then the rest that cover it (roll-up, then most specific). */
   const agentsOf = useCallback((t: Pick<Task, 'project' | 'section'> & Partial<Pick<Task, 'ref' | 'notes'>>) => {
     const owner = ownerOf(t);

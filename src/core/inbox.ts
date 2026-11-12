@@ -254,19 +254,25 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
   }
 }
 
-/** Open (default), handled, or all entries across every project inbox, oldest first. Withdrawn entries only with `withdrawn: true`. @req FR:agent-inbox/inbox.list */
-export async function listInbox(ctx: LifecycleContext, o: { project?: string; state?: (typeof INBOX_STATES)[number]; withdrawn?: boolean } = {}): Promise<ListedEntry[]> {
+/**
+ * Open (default), handled, or all entries across every project inbox, oldest first. Withdrawn entries only with `withdrawn: true`.
+ * `agent`: owner messages picked for that agent in any project, plus the unaddressed ones in `project` (never one picked for another agent).
+ * @req FR:agent-inbox/inbox.list @req FR:product-reset/ui.thread
+ */
+export async function listInbox(ctx: LifecycleContext, o: { project?: string; state?: (typeof INBOX_STATES)[number]; withdrawn?: boolean; agent?: string } = {}): Promise<ListedEntry[]> {
   const state = o.state ?? 'open';
   const out: ListedEntry[] = [];
   for (const p of await ctx.storage.list()) {
     const name = baseName(p);
-    if (/^readme$/i.test(name) || (o.project && o.project.toLowerCase() !== name.toLowerCase())) continue;
+    const inProject = !o.project || o.project.toLowerCase() === name.toLowerCase();
+    if (/^readme$/i.test(name) || (!inProject && !o.agent)) continue;
     const f = await readOrNull(ctx, inboxPath({ path: p }));
     if (!f) continue;
     for (const full of parseInbox(f.content)) {
       const { extra, ...e } = full;
       void extra;
       if (e.withdrawn && !o.withdrawn) continue;
+      if (o.agent) { const picked = !e.from && e.agent; if (picked ? e.agent !== o.agent : !o.project || !inProject) continue; }
       if (state === 'all' || e.state === state) out.push({ ...e, project: name });
     }
   }

@@ -947,6 +947,11 @@ paths:
               - open
               - handled
               - all
+        - name: agent
+          in: query
+          schema:
+            type: string
+          description: "Agent slug: messages picked for it in any project, plus the unaddressed ones in project"
       responses:
         "200":
           description: Entries

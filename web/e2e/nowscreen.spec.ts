@@ -127,6 +127,7 @@ test.describe('Now screen', () => {
       { slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] },
       { slug: 'beta-dev', name: '🎧 Bea Dev', scope: ['beta'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['beta'], role: 'Builds beta' },
     ];
+    m.inbox.push({ id: 'in-20261101T100000Z-aaaa', at: '2026-11-01T10:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'instruction', to: 'agent', text: 'Earlier note', state: 'handled', row: 'alpha:6' });
     await page.goto('/#/now');
     const chip = page.getByTestId('now-to');
     await expect(chip.locator('.now-to-name')).toHaveText('Ada Lead');
@@ -150,7 +151,9 @@ test.describe('Now screen', () => {
     await box.press('Enter');
     await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', agent: 'beta-dev', text: 'Can you take the beta part?' });
     await expect(page.getByRole('status')).toContainText('Sent to 🎧 Bea Dev');
-    await expect(page.getByTestId('now-thread').locator('li.from-me')).toContainText('You to Bea Dev');
+    await expect(page.getByTestId('now-thread').locator('li.from-me')).toHaveCount(2);
+    await expect(page.getByTestId('now-thread').locator('li.from-me').first()).toContainText('You to Ada Lead'); // sent before the pick
+    await expect(page.getByTestId('now-thread').locator('li.from-me').last()).toContainText('You to Bea Dev');
     // Kept for this task; recent first next time.
     await page.reload();
     await expect(page.getByTestId('now-to').locator('.now-to-name')).toHaveText('Bea Dev');
@@ -162,7 +165,7 @@ test.describe('Now screen', () => {
     await page.getByTestId('now-to').click();
     await page.getByRole('option', { name: /Ada Lead/ }).click();
     await expect(page.getByTestId('now-to').locator('.now-to-name')).toHaveText('Ada Lead');
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('stack.now.pick') ?? '{}')['alpha:6'])).toBeUndefined();
+    expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('stack.now.pick') ?? '{}')))).toEqual([]);
   });
 
   // @req FR:now-screen/now.undo: Undo after the agent handled the message keeps it and says so

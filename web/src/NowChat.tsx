@@ -19,6 +19,7 @@ const POLL_MS = 10_000;
 
 export interface NowChatProps {
   taskRef: string; busy: boolean;
+  /** Where the pick is kept (`pickKeyOf`); default the ref. */ pickKey?: string;
   /** The task's owning agent (`ownerOf`); null: no agent covers it. */ agent: (AvatarWho & { slug?: string }) | null;
   /** The whole team, for the picker. */ team?: TeamAgent[];
   /** The agent a reply came from (slug or name), for its name and avatar. */ agentOf: (who: string) => AvatarWho;
@@ -29,13 +30,13 @@ export interface NowChatProps {
   /** Starts the Claude sign-in; resolves to the step to run when it cannot start. */ onSignIn?: () => Promise<string | null>;
 }
 
-export function NowChat({ taskRef, busy, agent: owner, team = [], agentOf, onSend, loadThread, onOpenSession, tick, loadDelivery, onSignIn }: NowChatProps) {
+export function NowChat({ taskRef, pickKey = taskRef, busy, agent: owner, team = [], agentOf, onSend, loadThread, onOpenSession, tick, loadDelivery, onSignIn }: NowChatProps) {
   const [text, setText] = useState('');
-  const [picked, setPicked] = useState<string | undefined>(() => loadPick(store(), taskRef));
+  const [picked, setPicked] = useState<string | undefined>(() => loadPick(store(), pickKey));
   const pick = team.find((a) => a.slug === picked && a.slug !== owner?.slug);
   const agent: (AvatarWho & { slug?: string }) | null = pick ?? owner;
   /** Picking the owner again clears the pick. */
-  const choose = (slug: string) => { const v = slug === owner?.slug ? undefined : slug; savePick(store(), taskRef, v); setPicked(v); };
+  const choose = (slug: string) => { const v = slug === owner?.slug ? undefined : slug; savePick(store(), pickKey, v); setPicked(v); };
   const [items, setItems] = useState<ReturnType<typeof tellThread>>([]);
   const [session, setSession] = useState<Thread['session']>();
   const [delivery, setDelivery] = useState<DeliveryInfo | null>(null);
@@ -79,7 +80,8 @@ export function NowChat({ taskRef, busy, agent: owner, team = [], agentOf, onSen
         <ol class="now-thread" data-testid="now-thread">
           {items.map((i) => {
             const who = i.kind === 'agent' ? agentOf(i.agent) : null;
-            const to = i.kind === 'owner' && i.agent ? nameBeside(agentOf(i.agent)) : name;
+            // An older message went to the owner, whatever is picked now.
+            const to = i.kind === 'owner' && i.agent ? nameBeside(agentOf(i.agent)) : owner ? nameBeside(owner) : 'the agent';
             return (
               <li key={i.id} class={`now-bubble ${who ? 'from-agent' : 'from-me'}`}>
                 {who && <Avatar who={who} size={28} />}
@@ -138,7 +140,7 @@ function AgentPicker({ agent, owner, team, onPick }: { agent: (AvatarWho & { slu
   useLayoutEffect(() => {
     if (!open) return;
     search.current?.focus();
-    const out = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    const out = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node)) { setOpen(false); setQuery(''); } };
     document.addEventListener('mousedown', out);
     return () => document.removeEventListener('mousedown', out);
   }, [open]);

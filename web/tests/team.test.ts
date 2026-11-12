@@ -156,6 +156,11 @@ describe('ownerOf: the owning agent', () => {
     // An unknown name does not stop the walk.
     expect(ownerOf(crew, f4, [{ ...f4, notes: ['Owner: nobody-here'] }, { ...f4, notes: ['Owner: allyte-cos'] }])?.slug).toBe('allyte-cos');
   });
+  it('reads Owner only with its colon', () => {
+    const f4 = { project: 'f4' };
+    expect(ownerOf(crew, { ...f4, notes: ['Ownership moved to allyte-cos'] })?.slug).toBe('cid-manager');
+    expect(ownerOf(crew, f4, [{ ...f4, notes: ['Owner me'] }, { ...f4, notes: ['Owner: allyte-cos'] }])?.slug).toBe('allyte-cos');
+  });
   it('never picks a view-only agent from Owner:', () => {
     expect(ownerOf([...crew, ag('away', ['x'], { home: 'other' })], { project: 'f4', notes: ['Owner: away'] })?.slug).toBe('cid-manager');
   });
@@ -170,5 +175,7 @@ describe('ancestorsOf', () => {
     expect(ancestorsOf(list, 'b:2').map((x) => x.ref)).toEqual(['b:1']);
     expect(ancestorsOf(list, 'a:1')).toEqual([]);
     expect(ancestorsOf(list, 'zz:1')).toEqual([]);
+    const index = new Map(list.map((x, i) => [x.ref, i]));
+    expect(ancestorsOf(list, 'a:3', index).map((x) => x.ref)).toEqual(['a:2', 'a:1']); // the same with a ref index
   });
 });

@@ -1,6 +1,7 @@
 import { createApiHandler, ROUTES } from '../../src/api/handler';
 import { createAuth, createTokenService, MemoryTokenStore, routeScope } from '../../src/api';
 import { MemoryStorage } from '../../src/core/storage';
+import { putAgent } from '../../src/core/agents';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -50,9 +51,12 @@ describe('inbox and agents routes', () => {
   // @req FR:product-reset/ui.thread
   it('owner sends to a picked agent', async () => {
     const { call, storage } = await mk();
+    await putAgent({ storage }, 'cid-manager', { name: 'Cid', scope: ['beta'] });
     expect((await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'You take it', kind: 'instruction', agent: 'cid-manager' })).status).toBe(201);
     expect((await storage.read('tasks/inbox/alpha.md')).content).toContain('- agent: cid-manager');
     expect((await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'x', agent: 'no spaces' })).status).toBe(422);
+    expect((await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'x', agent: 'not-on-team' })).status).toBe(422); // only a team member
+    expect((await call('owner', 'GET', '/inbox?agent=cid-manager')).json.items.map((e: { text: string }) => e.text)).toEqual(['You take it']);
   });
 
   it('owner sends; tokens cannot write in the owner voice', async () => {

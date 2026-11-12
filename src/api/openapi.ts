@@ -147,6 +147,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'inbox.list': {
     operationId: 'listInbox', summary: 'Inbox entries for agents to act on (open by default)',
+    desc: { agent: 'Agent slug: messages picked for it in any project, plus the unaddressed ones in project' },
     responses: ok('Entries', { type: 'object', properties: { items: { type: 'array', items: ref('InboxEntry') } } }),
   },
   'inbox.handle': {

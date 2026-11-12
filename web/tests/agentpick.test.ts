@@ -1,6 +1,6 @@
 /** @req FR:product-reset/ui.thread @req FR:product-reset/ui.agentchip */
 import { describe, expect, it } from 'vitest';
-import { pickerList, loadPick, savePick, loadRecent, PICK_KEY, RECENT_KEY } from '../src/agentpick';
+import { pickerList, pickKeyOf, loadPick, savePick, loadRecent, PICK_KEY, RECENT_KEY } from '../src/agentpick';
 import type { TeamAgent } from '../src/team';
 
 const ag = (slug: string, name: string, o: Partial<TeamAgent> = {}): TeamAgent => ({ slug, name, scope: [], mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: [], ...o });
@@ -20,6 +20,14 @@ describe('pickerList', () => {
     expect(pickerList(team, { recent: [], query: 'LABEL' }).map((a) => a.slug)).toEqual(['cid-manager']);
     expect(pickerList(team, { recent: [], query: 'cos' }).map((a) => a.slug)).toEqual(['allyte-cos', 'cos']);
     expect(pickerList(team, { recent: [], query: 'nobody' })).toEqual([]);
+  });
+});
+
+describe('pickKeyOf', () => {
+  it('follows the task by project and title, not by line, and ignores marks', () => {
+    expect(pickKeyOf({ project: 'f4', text: 'Ship the single 🟡' })).toBe(pickKeyOf({ project: 'f4', text: '🪄 🚧 Ship the single 🟡' }));
+    expect(pickKeyOf({ project: 'f4', text: 'Ship' })).not.toBe(pickKeyOf({ project: 'f5', text: 'Ship' }));
+    expect(pickKeyOf({ project: 'f4', text: '🙋 Ship' })).toBe('f4␟Ship');
   });
 });
 

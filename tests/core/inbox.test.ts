@@ -179,6 +179,18 @@ describe('list', () => {
     expect((await listInbox(ctx, { state: 'all' })).map((e) => [e.project, e.text, e.state])).toEqual([['alpha', 'one', 'handled'], ['beta', 'two', 'open']]);
     expect((await listInbox(ctx, { project: 'alpha', state: 'all' })).map((e) => e.text)).toEqual(['one']);
   });
+  // @req FR:product-reset/ui.thread: a picked agent finds the message wherever the task is
+  it('with agent: messages addressed to it in any project, plus its project\'s unaddressed ones', async () => {
+    const { storage, ctx } = await mk();
+    await storage.write('tasks/beta.md', '# Beta\n\n## Active\n\n- [ ] 🤖 Fix build\n');
+    await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'to cid', 'instruction', undefined, undefined, 'cid');
+    await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'alpha plain', 'instruction');
+    await sendToInbox(ctx, { path: 'tasks/beta.md', line: 4 }, 'to bea', 'instruction', undefined, undefined, 'bea');
+    await sendToInbox(ctx, { path: 'tasks/beta.md', line: 4 }, 'beta plain', 'instruction');
+    expect((await listInbox(ctx, { agent: 'cid' })).map((e) => e.text)).toEqual(['to cid']);
+    expect((await listInbox(ctx, { agent: 'bea', project: 'beta' })).map((e) => e.text)).toEqual(['to bea', 'beta plain']);
+    expect((await listInbox(ctx, { agent: 'cid', project: 'beta' })).map((e) => e.text)).toEqual(['to cid', 'beta plain']); // never beta's message to bea
+  });
 });
 
 // @req FR:agent-inbox/inbox.handle
