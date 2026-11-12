@@ -1,11 +1,13 @@
 /**
  * The Inbox page: all mail, unread Teams and Slack. Each row has a summary, one suggested action, and a menu of the rest.
  * A reply opens an editable draft first; the page can only create a draft, never send.
- * @req FR:inbox-page/web.view @req FR:inbox-page/web.draft @req FR:inbox-page/web.phone
+ * Never says Inbox zero unless a source synced recently; the sources panel shows what is connected and how to connect the rest.
+ * @req FR:inbox-page/web.view @req FR:inbox-page/web.draft @req FR:inbox-page/web.phone @req FR:inbox-page/web.empty @req FR:inbox-page/web.check
  */
 import { useEffect, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
-import { actionsFor, SOURCE, tomorrow, type ActionInfo, type InboxRow } from './inbox';
+import { actionsFor, emptyText, SOURCE, tomorrow, type ActionInfo, type InboxRow, type SourcesReply } from './inbox';
+import { InboxSources } from './InboxSources';
 import { EmptyState, type Toast } from './parts';
 import './inbox.css';
 
@@ -88,22 +90,39 @@ function Row({ row, catalog, api, toast, done }: { row: InboxRow; catalog: Actio
   );
 }
 
-export function InboxView({ api, toast }: { api: Client; toast: ToastFn }) {
+export function InboxView({ api, toast, onStatus }: { api: Client; toast: ToastFn; onStatus?: (r: SourcesReply) => void }) {
   const [items, setItems] = useState<InboxRow[]>([]);
   const [catalog, setCatalog] = useState<ActionInfo[]>([]);
+  const [src, setSrc] = useState<SourcesReply | null>(null);
+  const [checking, setChecking] = useState(false);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   useEffect(() => {
     let live = true;
-    api.inboxItems().then((r) => { if (live) { setItems(r.items); setCatalog(r.actions); setPhase('ready'); } }).catch(() => { if (live) setPhase('error'); });
+    api.inboxItems().then((r) => {
+      if (!live) return;
+      setItems(r.items); setCatalog(r.actions); setPhase('ready');
+      if (r.sources && r.summary) { const s = { sources: r.sources, summary: r.summary }; setSrc(s); onStatus?.(s); }
+    }).catch(() => { if (live) setPhase('error'); });
     return () => { live = false; };
   }, [api]);
+  /** Re-reads every source, asking a local host to probe again. @req FR:inbox-page/web.check */
+  async function check() {
+    setChecking(true);
+    try { const r = await api.inboxSources(true); setSrc(r); onStatus?.(r); } catch (e) { toast(e instanceof ApiFailure ? e.message : 'Could not check the connection', 'err'); }
+    setChecking(false);
+  }
   const unread = items.filter((i) => i.unread).length;
+  const empty = emptyText(src?.summary);
   return (
     <section class="inbox-view" aria-labelledby="inbox-h">
       <div class="in-head"><h1 class="h1" id="inbox-h">Inbox{unread > 0 && <span class="count">{unread}</span>}</h1></div>
       {phase === 'loading' && <p class="in-empty" role="status">Loading</p>}
       {phase === 'error' && <p class="in-empty" role="alert">Could not load the inbox.</p>}
-      {phase === 'ready' && items.length === 0 && <EmptyState what="Inbox zero. Nothing needs you." next={<a href="#/now">Back to Now</a>} />}
+      {phase === 'ready' && src?.summary.headline && items.length > 0 && <p class="in-banner" role="status" data-testid="inbox-headline">{src.summary.headline}</p>}
+      {phase === 'ready' && items.length === 0 && (empty.zero
+        ? <EmptyState what={empty.what} next={src?.summary.headline ? <>{src.summary.headline}. See Inbox sources below.</> : <a href="#/now">Back to Now</a>} />
+        : <EmptyState what={empty.what} next="Connect an inbox below. Stack never sends." />)}
+      {phase === 'ready' && src && <InboxSources sources={src.sources} summary={src.summary} checking={checking} onCheck={() => void check()} />}
       <ul class="in-list">{items.map((r) => <Row key={r.id} row={r} catalog={catalog} api={api} toast={toast} done={(id) => setItems((xs) => xs.filter((x) => x.id !== id))} />)}</ul>
     </section>
   );

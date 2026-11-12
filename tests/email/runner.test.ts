@@ -10,7 +10,8 @@ import { claudeArgs, createClaudeJson, MODELS, type ClaudeJson, type JsonCall } 
 import { createClassifier, createDrafter, createJudge, emailBlock, newUsage } from '../../src/email/models';
 import { CLAUDE_LOGIN_ASK, lockPath, MODEL_FAIL_LIMIT, ModelUnavailable, readState, rulesFor, rulesPath, runPass, statePath, takeLock, tolerant, withDetails } from '../../src/email/runner';
 import { emailCmd, launchdPlist, offlineTransport } from '../../src/cli/email';
-import { FileTokenCache } from '../../src/graph/auth';
+import { FileTokenCache, GraphSignInRequired } from '../../src/graph/auth';
+import { readRecords } from '../../src/inbox/sources';
 import { mkCtx, msg, NOW } from './fixtures';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'email-runner-'));
@@ -604,5 +605,38 @@ describe('sensitive mail never reaches a model', () => {
     const r = rulesFor('sam@example.test', d);
     expect(r.sensitiveKeywords).toEqual(expect.arrayContaining(['lab results', 'adoption']));
     expect(r.sensitive).toContain('agency.example.test');
+  });
+});
+
+/** @req FR:inbox-page/src.record @req FR:inbox-page/src.safe */
+describe('stack email run writes a sync record', () => {
+  const cacheWith = async (scopes: string[]) => {
+    const c = new FileTokenCache(join(tmp(), 'graph-token.json'));
+    await c.write({ version: 1, tenant: 't', clientId: 'id', scopes, refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, account: 'sam@example.test' });
+    return c;
+  };
+  const empty = { '/messages/delta': { value: [], '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t` } };
+
+  it('ok after a real pass; none for a dry run', async () => {
+    const { storage, ctx } = mkCtx();
+    await emailCmd(ctx, 'run', { 'dry-run': true }, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport: fakeGraph(empty).transport, llm: fakeLlm(() => ({})).llm });
+    expect(await readRecords(storage)).toEqual([]);
+    await emailCmd({ ...ctx, now: () => NOW }, 'run', {}, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport: fakeGraph(empty).transport, llm: fakeLlm(() => ({})).llm });
+    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: true }]);
+  });
+
+  it('an expired sign-in records signin-expired and still fails the pass; no error text is kept', async () => {
+    const { storage, ctx } = mkCtx();
+    const transport = async () => { throw new GraphSignInRequired(); };
+    await expect(emailCmd({ ...ctx, now: () => NOW }, 'run', {}, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport, llm: fakeLlm(() => ({})).llm })).rejects.toThrow(GraphSignInRequired);
+    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: false, error: 'signin-expired' }]);
+  });
+
+  it('other failures record sync-failed; too many messages too', async () => {
+    const { storage, ctx } = mkCtx();
+    const transport = async () => { throw new Error('boom Bearer eyJ'); };
+    await expect(emailCmd({ ...ctx, now: () => NOW }, 'run', {}, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport, llm: fakeLlm(() => ({})).llm })).rejects.toThrow(/boom/);
+    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: false, error: 'sync-failed' }]);
+    expect(JSON.stringify(await storage.readAux('.stack/inbox-sources.json'))).not.toMatch(/boom|Bearer/);
   });
 });

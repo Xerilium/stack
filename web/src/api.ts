@@ -99,7 +99,9 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
     /** The Inbox page: all mail, unread Teams and Slack. @req FR:inbox-page/api.read */
-    inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] }>('/inbox-items'),
+    inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] } & Partial<import('./inbox').SourcesReply>>('/inbox-items'),
+    /** Each inbox source and the summary; `fresh` asks a local host to probe again. @req FR:inbox-page/api.sources */
+    inboxSources: (fresh = false) => call<import('./inbox').SourcesReply>(`/inbox-sources${fresh ? '?fresh=1' : ''}`),
     /** Runs one action; never sends. @req FR:inbox-page/api.act */
     inboxAct: (id: string, body: { action: string; text?: string; until?: string; request?: boolean }) => call<import('./inbox').ActResult>(`/inbox-items/${encodeURIComponent(id)}/action`, body),
     sessions: () => call<SessionList>('/sessions?limit=200'),

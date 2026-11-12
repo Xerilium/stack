@@ -144,6 +144,8 @@ export function App() {
   const [agentItems, setAgentItems] = useState<Agent[] | null>(null);
   const [agentsError, setAgentsError] = useState('');
   const [inbox, setInbox] = useState<InboxItem[]>([]);
+  /** Any inbox source not connected or broken: the Inbox nav dot. @req FR:inbox-page/web.dot */
+  const [inboxAttention, setInboxAttention] = useState(false);
   const [saved, setSaved] = useState<{ date: string; minutes: number } | null>(() => loadSaved(store()));
   /** @req FR:home/day.frame */
   const [sched, setSched] = useState<DaySched | null>(null);
@@ -269,6 +271,7 @@ export function App() {
     const s = await api.schedule(d.toISOString()).catch(() => null);
     setSched(s);
     const range = calendarRange(s, d);
+    void api.inboxSources().then((r) => setInboxAttention(r.summary.attention), () => undefined);
     const [a, i, c, w] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to), api.meetings()]);
     setRules(w.status === 'fulfilled' ? w.value : []);
     /** @req FR:web-app/today.meetings */
@@ -917,7 +920,9 @@ export function App() {
   };
   const focusTask = focusRef ? tasks.find((t) => t.ref === focusRef) : undefined;
   // @req FR:web-shell/nav.rail
-  const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : null);
+  const inboxDot = inboxAttention ? <span class="nav-dot" role="img" aria-label="Inbox needs setup" data-testid="inbox-dot" /> : null;
+  /** @req FR:inbox-page/web.dot */
+  const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : null);
   /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
   const nav = () => RAIL.map((v) => (
     <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
@@ -948,7 +953,7 @@ export function App() {
         <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}<PrsButton api={api} compact /></div>
         {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} top={<PrisBlock ctl={prisSessions.pris} />} after={<SessionsBlock ctl={prisSessions.sessions} toast={toast} />} extraCount={prisSessions.sessions.inv?.needsYou.length ?? 0} />}
-        {view === 'inbox' && <InboxView api={api} toast={toast} />}
+        {view === 'inbox' && <InboxView api={api} toast={toast} onStatus={(r) => setInboxAttention(r.summary.attention)} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} team={team.team} projectRank={projectRank} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
@@ -984,7 +989,7 @@ export function App() {
         {TABBAR.map((slot) => slot === 'new'
           ? <button type="button" key="new" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg></span></button>
           : slot === 'more'
-            ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label="More: open command palette"><TabIcon v="more" /><span>More</span></button>
+            ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label={`More: open command palette${inboxAttention ? '. Inbox needs setup' : ''}`}><TabIcon v="more" /><span>More</span>{inboxDot}</button>
             : <button type="button" key={slot} class={`tab${view === slot ? ' on' : ''}`} aria-current={view === slot ? 'page' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
       </nav>
       {focusTask && <FocusMode task={focusTask} all={tasks} busy={busy} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onBack={() => setFocusRef(null)} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} />} />}

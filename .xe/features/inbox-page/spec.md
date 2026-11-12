@@ -60,20 +60,44 @@ Triage must be part of normal Stack work. One page lists all mail, unread Teams 
 
 - **FR:wire.issue** (P1): The host passes an `IssueFiler` to the API. The default is `ghIssueFiler()` (the `gh` CLI). `HostDeps.issues` replaces it. "Request this action" then files a `help wanted` issue in `Xerilium/stack`, or adds a task if filing fails.
 
+### FR:src: Source status
+
+The page must never say "Inbox zero" when nothing is connected or nothing synced. Each inbox source reports its real state.
+
+- **FR:src.shape** (P1): An `InboxSource` has `kind` (`email`, `teams`, `slack`, `github`), `account`, `state` (`not-connected`, `connecting`, `ok`, `error`, `stale`), and optional `lastSyncAt`, `error`, `needs`, `command`, `doc`, `mode` (`read-only`, `drafts`; email only) and `planned`.
+- **FR:src.record** (P1): After each real (not dry run) email pass, `stack email run` writes one sync record `{ kind, account, at, ok, error? }` to `.stack/inbox-sources.json` in the data repo. `error` is a code only: `signin-expired`, `model-down`, `sync-failed`. Never a token, message text or raw error. A record replaces the older one for the same kind and account.
+- **FR:src.probe** (P1): A local host also probes this machine. Email: every Graph token cache with `Mail.Read` or `Mail.ReadWrite` is one account. `Mail.ReadWrite` is `drafts` mode, else `read-only`. A cache that cannot be read is `error` (`token-unreadable`). GitHub: signed in when `GITHUB_TOKEN` is set or `gh auth status` succeeds. The probe reads no token value and makes no network call.
+- **FR:src.state** (P1): Email state: a failed latest record is `error`; an ok record within the freshness window is `ok`, older is `stale`; signed in with no record is `connecting`; a configured account (`inbox.accounts`) with no sign-in and no record is `not-connected`. When no email account is known, one `email` row with an empty account is `not-connected`. GitHub: not signed in is `not-connected`; signed in with no record is `connecting`; records apply as for email.
+- **FR:src.fresh** (P1): The freshness window is `inbox.freshMinutes` in `.xe/config/stack.json`, default 30.
+- **FR:src.planned** (P1): Teams and Slack are listed as `not-connected` with `planned: true` until their connectors ship. A planned source is never counted, never sets the dot, and never changes the headline.
+- **FR:src.multi** (P1): Each email account is its own source with its own state. Sources sort email (by account), then GitHub, Teams, Slack.
+- **FR:src.summary** (P1): The summary has `connected` (counted sources in `ok`, `stale` or `connecting`), `total` (counted sources), `fresh` (counted sources `ok`), `attention` (any counted source `not-connected` or `error`), `canClaimZero` (`fresh >= 1`), and `headline`. Headline, first match wins: no counted source connected is "No inboxes connected"; one error is its message ("Email sign-in expired: a@x.com"); more errors is "N inboxes need attention"; no fresh source is "Last synced 3h ago" (newest sync) or "Waiting for the first sync"; some stale is "N of M inboxes up to date"; some not connected is "N of M sources connected"; else none.
+- **FR:src.help** (P1): Each non-`ok` source has `needs`, one plain sentence with the exact human step, and `command` when a terminal step exists. Email sign-in: `stack graph login --client-id <id> --account <addr> --with mail` (the client id from an existing sign-in, else `<app id>`); `needs` says read-only by default, `--with mail,drafts` for reply drafts, and "Stack never sends". An expired drafts account keeps `--with mail,drafts`. Connecting: `stack email run --account <addr>`. Stale: `stack email run --all`. Model down: `claude`. GitHub: `gh auth login`. Teams and Slack: what token or app they need, and `doc` links to `docs/inbox-sources.md`.
+- **FR:src.safe** (P1): No token, secret, token file content or message text appears in a source, a record, a log or the UI.
+
+### FR:cli: CLI
+
+- **FR:cli.sources** (P1): `stack inbox sources [--json]` prints each source (kind, account, state, last sync, needs, command) and the summary line `N of M sources connected`. `--json` prints `{ sources, summary }`. Exit 0 when nothing needs attention, else 4.
+
 ### FR:web: Page
 
 - **FR:web.view** (P1): `#/inbox` lists items. Each row: source, sender, subject, summary, one primary button for the suggested action, a menu of other actions. Missing actions show "Request this action".
 - **FR:web.draft** (P1): `reply-draft` opens an editable text area first. Confirming creates the draft and shows an "Open in Outlook" link. The page has no send button.
-- **FR:web.phone** (P1): At 375 px width rows stack and nothing scrolls sideways.
+- **FR:web.phone** (P1): At 375 px width rows stack and nothing scrolls sideways. Every control is at least 44 px tall on a phone.
+- **FR:web.empty** (P1): With no items, the page says "Inbox zero. Nothing needs you." only when `canClaimZero`. Otherwise the empty state is the headline ("No inboxes connected", "Last synced 3h ago", "Email sign-in expired: a@x.com") and points to the sources panel.
+- **FR:web.sources** (P1): A sources panel inside Inbox lists every source with its state and last sync, and a progress line `N of M sources connected`. Each source that is not `ok` has a Connect (or Fix) button that shows `needs`, the `command` with a Copy button, and the `doc` link. Email shows its mode. The panel says "Stack never sends." The panel is open when `attention` or `headline` is set, else collapsed to one line.
+- **FR:web.check** (P1): "Check connection" re-reads `GET /inbox-sources` and redraws the panel and the dot. It announces the new progress line to a screen reader.
+- **FR:web.dot** (P1): The Inbox rail item, and on a phone the More tab, carry a dot when `attention` is true. The dot has an accessible name ("Inbox needs setup").
 
 ### FR:api: API
 
-- **FR:api.read** (P1): `GET /inbox-items` returns `{ items, actions }`.
+- **FR:api.read** (P1): `GET /inbox-items` returns `{ items, actions, sources, summary }`.
+- **FR:api.sources** (P1): `GET /inbox-sources` returns `{ sources, summary }`. Owner only. A host without a local probe builds sources from the sync records and the config alone.
 - **FR:api.act** (P1): `POST /inbox-items/{id}/action` takes `{ action, text?, until? }`. Owner only.
 
 ## Interfaces
 
-`InboxStore { read(): Promise<InboxItem[]>; write(items): Promise<void> }`, `ChatConnector`, `IssueFiler { file(issue): Promise<{ url }> }`.
+`InboxStore { read(): Promise<InboxItem[]>; write(items): Promise<void> }`, `ChatConnector`, `IssueFiler { file(issue): Promise<{ url }> }`, `InboxSource`, `SyncRecord`, `SourcesSummary`, `SourceProbe { emails, github, clientId? }`.
 
 ## Dependencies
 

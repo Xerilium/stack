@@ -15,8 +15,9 @@ import { createSafeHttp } from '../email/http';
 import type { ClaudeJson } from '../email/llm';
 import { CLAUDE_DOWN_TEXT, CLAUDE_LOGIN_ASK, CLAUDE_LOGIN_TEXT, lockPath, MaxExceeded, ModelUnavailable, readState, rulesFor, runPass, statePath, takeLock } from '../email/runner';
 import { learnVoice, loadVoice, renderStyleGuide, saveVoice, voicePath, type SentMessage } from '../email/voice';
-import { defaultCachePath, FileTokenCache, graphToken, hasScope, listCachePaths } from '../graph/auth';
-import { graphTransport } from '../graph/transport';
+import { defaultCachePath, FileTokenCache, GraphSignInError, GraphSignInRequired, graphToken, hasScope, listCachePaths } from '../graph/auth';
+import { recordSync, type SyncError } from '../inbox/sources';
+import { GraphHttpError, graphTransport } from '../graph/transport';
 import { UsageError } from './args';
 
 /** `--extra`: a JSON array of `{subject?, body, sentAt?}` objects; anything else is refused. */
@@ -122,6 +123,19 @@ async function loginAsk(ctx: LifecycleContext, e: ModelUnavailable): Promise<voi
   await putAsk(ctx, CLAUDE_LOGIN_ASK, { kind: 'go-do', from: 'email-triage', ask: e.auth ? CLAUDE_LOGIN_TEXT : CLAUDE_DOWN_TEXT, why: `Email triage stopped before writing any ask: ${redact(oneLine(e.detail)).slice(0, 300)}`, priority: 'high', reversible: true, reopen: true }, 'email-triage');
 }
 
+/** The failure as a code only; the error text never leaves this process. @req FR:inbox-page/src.record @req FR:inbox-page/src.safe */
+export function syncErrorOf(e: unknown): SyncError {
+  if (e instanceof GraphSignInRequired || (e instanceof GraphSignInError && /invalid_grant|interaction_required/.test(e.code)) || (e instanceof GraphHttpError && e.status === 401)) return 'signin-expired';
+  if (e instanceof ModelUnavailable) return 'model-down';
+  return 'sync-failed';
+}
+
+/** One sync record per real pass, for the Inbox source status. A failed write never hides the pass result. @req FR:inbox-page/src.record */
+async function syncRecord(ctx: LifecycleContext, account: string, e: unknown | null): Promise<void> {
+  const at = (ctx.now ?? (() => new Date()))().toISOString();
+  await recordSync(ctx.storage, e === null ? { kind: 'email', account, at, ok: true } : { kind: 'email', account, at, ok: false, error: syncErrorOf(e) }).catch(() => undefined);
+}
+
 export async function emailCmd(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps = {}): Promise<EmailOutcome> {
   return f.all === true ? emailAll(ctx, action, f, d) : emailOne(ctx, action, f, d);
 }
@@ -167,9 +181,11 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
       const max = flag(f, 'max') ? Number(flag(f, 'max')) : undefined;
       if (max !== undefined && (!Number.isInteger(max) || max < 1)) throw new UsageError('--max must be a positive integer');
       const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), onResults: async (r) => { await syncInbox(ctx, { account, results: r }); }, project: flag(f, 'project') });
+      if (!dry) await syncRecord(ctx, account, null);
       if (!dry && s.modelCalls > 0 && s.modelErrors === 0) await handleAsk(ctx, CLAUDE_LOGIN_ASK, { outcome: 'resolved', note: 'claude works again' }, 'email-triage').catch((e) => { if (!(e instanceof NotFoundError)) throw e; });
       return { json: { ok: true, account, mode, dryRun: dry, ...s }, text: `${mode}${dry ? ' (dry run)' : ''}: ${s!.messages} messages, ${s!.rules} by rules, ${s!.model} by model, ${s!.asks} asks, ${s!.drafts} drafts, archive ${s!.archivePending}, spam ${s!.spamPending}, ${s!.modelCalls} model calls` };
     } catch (e) {
+      if (!dry) await syncRecord(ctx, account, e);
       if (e instanceof MaxExceeded) return { json: { ok: false, found: e.found, max: e.max }, text: e.message, code: 4 };
       if (e instanceof ModelUnavailable) {
         await loginAsk(passCtx, e);

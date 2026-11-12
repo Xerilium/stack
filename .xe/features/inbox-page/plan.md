@@ -15,3 +15,8 @@
 
 - Teams: Entra app permission `Chat.Read` (delegated, work account), sign in with `stack graph login`.
 - Slack: create a Slack app, add user scopes, install to the workspace, store the `xoxp-` token in the local secret store.
+
+8. Source status (`src/inbox/sources.ts` pure, `src/inbox/probe.ts` local): records, probe, state, summary, help. `stack email run` writes records.
+9. API: `sources` and `summary` on `GET /inbox-items`, `GET /inbox-sources`. Local host passes the probe.
+10. CLI: `stack inbox sources [--json]`.
+11. Web: sources panel, empty state from the headline, Check connection, rail and More dot. e2e and axe at 1280 and 375 px.

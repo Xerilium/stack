@@ -36,6 +36,8 @@ const ok = (description: string, schema: J, status = '200'): J => ({
   default: ref('Error', 'responses'),
 });
 
+/** Inbox source status, shared by GET /inbox-sources and GET /inbox-items. @req FR:inbox-page/api.sources */
+const SOURCES_PROPS = { sources: { type: 'array', items: { type: 'object', properties: { kind: { type: 'string', enum: ['email', 'github', 'teams', 'slack'] }, account: { type: 'string' }, state: { type: 'string', enum: ['not-connected', 'connecting', 'ok', 'error', 'stale'] }, lastSyncAt: { type: 'string', format: 'date-time' }, error: { type: 'string' }, needs: { type: 'string' }, command: { type: 'string' }, doc: { type: 'string' }, mode: { type: 'string', enum: ['read-only', 'drafts'] }, planned: { type: 'boolean' } } } }, summary: { type: 'object', properties: { connected: { type: 'integer' }, total: { type: 'integer' }, fresh: { type: 'integer' }, attention: { type: 'boolean' }, canClaimZero: { type: 'boolean' }, headline: { type: 'string', nullable: true } } } };
 const DOCS: Record<string, RouteDoc> = {
   next: {
     operationId: 'next', summary: 'Top-ranked task',
@@ -205,8 +207,12 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref') } } } } }),
   },
   'inboxItems.list': {
-    operationId: 'listInboxItems', summary: 'All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens',
-    responses: ok('Inbox', { type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, actions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, ready: { type: 'boolean' } } } } } }),
+    operationId: 'listInboxItems', summary: 'All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog and the source status (as GET /inbox-sources). Owner session only: 403 for tokens',
+    responses: ok('Inbox', { type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, actions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, ready: { type: 'boolean' } } } }, ...SOURCES_PROPS } }),
+  },
+  'inboxSources.list': {
+    operationId: 'listInboxSources', summary: 'Each inbox source (every email account, GitHub, and planned Teams and Slack) with its state, last sync and the exact step to connect it, plus a summary (N of M connected, whether Inbox zero may be claimed, a headline). fresh=1 re-probes this machine. Never a token. Owner session only: 403 for tokens',
+    responses: ok('Sources', { type: 'object', properties: SOURCES_PROPS }),
   },
   'inboxItems.action': {
     operationId: 'inboxAction', summary: 'Run an inbox action (reply-draft makes a draft and never sends), or with request true file a request for a missing action. Owner session only: 403 for tokens',

@@ -151,4 +151,14 @@ describe('range and overlap', () => {
   it('merges effortHours', () => {
     expect(parseConfig({ taskScoring: { effortHours: { '🟢': 0.75 } } }).taskScoring.effortHours['🟢']).toBe(0.75);
   });
+
+  // @req FR:config/load.validate.inbox @req FR:inbox-page/src.fresh
+  it('reads the inbox block: fresh minutes and expected accounts', () => {
+    expect(parseConfig().inbox).toBeUndefined();
+    expect(parseConfig({ inbox: { freshMinutes: 45, accounts: ['A@Outlook.com'] } }).inbox).toEqual({ freshMinutes: 45, accounts: ['a@outlook.com'] });
+    expect(() => parseConfig({ inbox: 5 })).toThrow(/inbox: expected object/);
+    expect(() => parseConfig({ inbox: { freshMinutes: 0 } })).toThrow(/inbox.freshMinutes/);
+    expect(() => parseConfig({ inbox: { freshMinutes: 1.5 } })).toThrow(/inbox.freshMinutes/);
+    expect(() => parseConfig({ inbox: { accounts: ['not an address'] } })).toThrow(/inbox.accounts\[0\]/);
+  });
 });

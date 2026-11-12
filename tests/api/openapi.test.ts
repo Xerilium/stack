@@ -276,6 +276,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('needs.answer', 'POST', '/needs-you/none/answer', { choice: 'go' }, 404);
     // @req FR:inbox-page/api.read @req FR:inbox-page/api.act
     await go('inboxItems.list', 'GET', '/inbox-items', undefined, 200);
+    await go('inboxSources.list', 'GET', '/inbox-sources', undefined, 200);
     await go('inboxItems.action', 'POST', '/inbox-items/mail-000000000000/action', { action: 'mark-done' }, 404);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha', dryRun: true }, 200);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha' }, 201);
