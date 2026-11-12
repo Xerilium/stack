@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { approveLabel } from './asks';
 import type { CapacityRow } from './capacity';
 import { NO_FILTERS, type Filters } from './filters';
 import { children, dueDays } from './now';
@@ -513,7 +514,7 @@ export function TodayView(t: TodayProps) {
                   {sent.length > 0 && <p class="waiting-agent">Sent, waiting on the agent</p>}
                   <Sent items={sent} now={t.now} />
                   <div class="card-actions">
-                    {rec && sent.length === 0 && <button type="button" class="btn primary" disabled={t.busy} onClick={() => t.onAccept(d)}>Go with it</button>}
+                    {rec && sent.length === 0 && <button type="button" class="btn primary" disabled={t.busy} onClick={() => t.onAccept(d)}>{approveLabel(rec)}</button>}
                     <button type="button" class="btn" aria-expanded={replying === key} onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
                     <button type="button" class="btn quiet" onClick={() => t.p.onOpen(d.task.ref)}>Details</button>
                   </div>

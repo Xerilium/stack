@@ -943,19 +943,19 @@ test.describe('today view', () => {
   });
 
   // @req FR:web-app/today.needs @req FR:web-app/today.reply
-  test('Needs you: Go with it and Reply go to the agent inbox; the card shows it was sent', async ({ page }) => {
+  test('Needs you: Approve and Reply go to the agent inbox; the card shows it was sent', async ({ page }) => {
     const m = await setup(page, day());
     await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const card = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a vendor' });
     await expect(card.locator('.rec')).toContainText('Use Acme for now');
-    await card.getByRole('button', { name: 'Go with it' }).click();
+    await card.getByRole('button', { name: 'Approve: Use Acme for now' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'gamma:10', kind: 'decision', expect: '🙋 Pick a vendor' } });
     expect(m.calls.at(-1)!.body.text).toMatch(/^Go with the recommendation: Use Acme for now/);
     await expect(page.locator('[data-testid="needs"] .card', { hasText: 'Pick a vendor' })).toContainText('Sent, waiting on the agent');
     await expect(page.locator('[data-testid="needs"] .card').last()).toContainText('Pick a vendor');
     expect(m.calls.some((c) => c.path === '/tasks')).toBe(false);
     const plain = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' });
-    await expect(plain.getByRole('button', { name: 'Go with it' })).toHaveCount(0);
+    await expect(plain.getByRole('button', { name: /^Approve/ })).toHaveCount(0);
     await plain.getByRole('button', { name: 'Reply' }).click();
     await plain.getByLabel('Reply').fill('Blue');
     await plain.getByRole('button', { name: 'Send' }).click();

@@ -97,7 +97,7 @@ test.describe('layout and nav', () => {
 
 test.describe('honest states', () => {
   // @req FR:web-shell/state.needs @req FR:web-shell/state.needs.row @req FR:web-shell/state.needs.empty
-  test('open 🙋 rows show on Needs you when no agent wrote an ask; Go with it sends the decision', async ({ page }) => {
+  test('open 🙋 rows show on Needs you when no agent wrote an ask; Approve: {recommend} sends the decision', async ({ page }) => {
     const tasks = seed();
     tasks.push({ ref: 'alpha:20', text: '🙋 Pick the ADU path', project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: ['> **Recommendation:** Studio Shed quote'] });
     tasks.push({ ref: 'alpha:21', text: '🙋 Pick a color', project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: ['Blue or green'] });
@@ -108,7 +108,7 @@ test.describe('honest states', () => {
     await expect(card).toContainText('Studio Shed quote');
     await expect(page.getByTestId('asks-empty')).toHaveCount(0);
     await expect(page.locator('.rail, .tabbar').getByRole('button', { name: /Needs you/ }).first()).toContainText('2');
-    await card.getByRole('button', { name: /Go with it/ }).click();
+    await card.getByRole('button', { name: 'Approve: Studio Shed quote' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'alpha:20', kind: 'decision', expect: '🙋 Pick the ADU path' } });
     // a 🙋 row with no recommendation wants an answer; Details opens the row itself
     await expect(card.locator('.ask-title')).toHaveText('Pick a color');

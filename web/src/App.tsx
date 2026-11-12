@@ -605,7 +605,7 @@ export function App() {
     await api.answerNeed(id, body);
     setNeeds(await api.needs());
     if (live) { toast(body.choice === 'go' ? 'Reopened · the agent will see it' : 'Sent to the agent', 'ok'); return; }
-    toast(body.choice === 'go' ? 'Going with it · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
+    toast(body.choice === 'go' ? 'Approved · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
   };
   const answerTask = async (a: AskItem, s: Send) => {
     if (a.source === 'need') return answerNeedItem(a, s);
