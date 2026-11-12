@@ -338,6 +338,8 @@ export function App() {
     agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
     onSend: (text: string) => delegate(t.ref, text), loadThread: api.thread,
     onOpenSession: team.openSessionId, tick: threadTick,
+    // @req FR:agent-delivery/state.bubble: the local host reports delivery; the hosted app answers 404 and Now shows no note.
+    ...(local ? { loadDelivery: api.delivery, onSignIn: async () => { try { const r = await api.deliveryLogin(); return r.started ? null : (r.step ?? 'claude auth login'); } catch { return 'claude auth login'; } } } : {}),
   });
   const openThread = useCallback((t: Task) => {
     if (viewRef.current === 'today') { team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); return; }

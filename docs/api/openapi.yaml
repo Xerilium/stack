@@ -2730,6 +2730,80 @@ paths:
                     type: string
         default:
           $ref: "#/components/responses/Error"
+  /inbox/delivery:
+    get:
+      summary: "Delivery state of the owner messages on one row (working, delivered, failed, not-delivered), the delivery mode, the Claude login state, and a live session for the agent when there is one (link only). Owner session only: 403 for tokens; 404 where the host does not deliver"
+      operationId: getInboxDelivery
+      parameters:
+        - name: ref
+          in: query
+          schema:
+            $ref: "#/components/schemas/Ref"
+          description: The row (project:line)
+      responses:
+        "200":
+          description: Delivery
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - claude
+                      - off
+                  login:
+                    type: string
+                    enum:
+                      - ok
+                      - expired
+                      - unknown
+                  items:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        state:
+                          type: string
+                          enum:
+                            - working
+                            - delivered
+                            - failed
+                            - not-delivered
+                        agent:
+                          type: string
+                        reason:
+                          type: string
+                  live:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      link:
+                        type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /inbox/delivery/login:
+    post:
+      summary: "Start the Claude sign-in (claude auth login) on this machine; when it cannot start, the answer names the one step. Owner session only: 403 for tokens"
+      operationId: startDeliveryLogin
+      responses:
+        "200":
+          description: Started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  started:
+                    type: boolean
+                  step:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
   /tasks/{ref}/thread:
     get:
       summary: "One task's thread in time order: the owner's messages, the agent's replies, its asks, the review verdict, agent-owned subtasks; plus the task's newest session when a runner exists"

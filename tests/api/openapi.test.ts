@@ -408,6 +408,8 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('reviews.list', 'GET', '/reviews?project=alpha', undefined, 200);
     await go('tasks.review', 'POST', '/tasks/review', { ref: 'alpha:4' }, 404);
     // @req FR:agent-thread/thread.read
+    await go('inbox.delivery', 'GET', '/inbox/delivery?ref=alpha:4', undefined, 404);
+    await go('inbox.deliveryLogin', 'POST', '/inbox/delivery/login', undefined, 404);
     await go('inbox.reply', 'POST', '/inbox/reply', { ref: 'alpha:4', text: 'x' }, 403);
     await go('tasks.thread', 'GET', `/tasks/${encodeURIComponent(ref)}/thread`, undefined, 200);
     await go('tasks.assign', 'POST', `/tasks/${encodeURIComponent(ref)}/assign`, {}, 404);

@@ -39,6 +39,8 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/tasks/result` | POST log an agent result (autonomy-gated) |
 | `/inbox` | GET inbox entries for agents; POST send a reply or decision to the task project agent inbox (owner session only) |
 | `/inbox/handled` | POST mark an inbox entry handled |
+| `/inbox/delivery` | GET (owner only) delivery state of the row's messages (`working`, `delivered`, `failed`, `not-delivered`), the mode, the Claude login, and a live session link; 404 where the host does not deliver. See [agent-instructions.md](../agent-instructions.md) |
+| `/inbox/delivery/login` | POST (owner only) start the Claude sign-in (`claude auth login`) on this machine |
 | `/inbox-items` | GET all mail, unread Teams, Slack and GitHub items with summaries and suggested actions, plus source status (Inbox page; owner session only) |
 | `/connect` | GET whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Local host only; never a token (owner session only) |
 | `/connect/setup` | POST run the one-time app registration (Az PowerShell); returns a state code (owner session only) |

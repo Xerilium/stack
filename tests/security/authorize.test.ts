@@ -124,7 +124,7 @@ describe('token auth', () => {
         const [area, kind] = need.split(':');
         const ok = scopes.includes(need) || scopes.includes(kind);
         const res = await s.call(r.method, pathOf(r.doc), { headers: bearer(t), ...(r.method === 'POST' ? { body: {} } : {}) });
-        if (ok && ['tasks.removeCompleted', 'tasks.skip', 'tasks.resume', 'tasks.suspend', 'schedule.get', 'schedule.day', 'sync.flush', 'needs.answer', 'inboxItems.action', 'meetings.list', 'brief.summary', 'inboxItems.list', 'inboxSources.list', 'inventory.list', 'pris.get', 'pris.put', 'feedback', 'prPriority.get', 'prPriority.put', 'prPriority.decide', 'prs.get', 'prs.queue', 'prs.label', 'prs.ack', 'prs.rec'].includes(r.name)) expect(res.status).toBe(403); // owner-only
+        if (ok && ['tasks.removeCompleted', 'tasks.skip', 'tasks.resume', 'tasks.suspend', 'schedule.get', 'schedule.day', 'sync.flush', 'needs.answer', 'inboxItems.action', 'meetings.list', 'brief.summary', 'inboxItems.list', 'inboxSources.list', 'inventory.list', 'pris.get', 'pris.put', 'feedback', 'prPriority.get', 'prPriority.put', 'prPriority.decide', 'prs.get', 'prs.queue', 'prs.label', 'prs.ack', 'prs.rec', 'inbox.delivery', 'inbox.deliveryLogin'].includes(r.name)) expect(res.status).toBe(403); // owner-only
         else if (ok) expect([401, 403]).not.toContain(res.status);
         else expect({ label, route: r.name, area, status: res.status }).toEqual({ label, route: r.name, area, status: 403 });
       }

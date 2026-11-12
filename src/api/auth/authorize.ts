@@ -23,7 +23,7 @@ const ROUTE_SCOPE = new Map<string, string>([
   ['prReview.get', 'tasks:read'], ['live.get', 'tasks:read'], ['live.item', 'tasks:write'],
   ['sessions.list', 'tasks:read'], ['sessions.messages', 'tasks:read'], ['sessions.cost', 'tasks:read'], ['sessions.prompt', 'tasks:write'], ['sessions.new', 'tasks:write'], ['sessions.cancel', 'tasks:write'],
   ['team.list', 'tasks:read'], ['reviews.list', 'tasks:read'], ['tasks.review', 'tasks:write'],
-  ['inbox.reply', 'tasks:write'], ['tasks.thread', 'tasks:read'], ['tasks.assign', 'tasks:write'],
+  ['inbox.reply', 'tasks:write'], ['inbox.delivery', 'tasks:read'], ['inbox.deliveryLogin', 'tasks:write'], ['tasks.thread', 'tasks:read'], ['tasks.assign', 'tasks:write'],
   ['projects.list', 'projects:read'], ['projects.get', 'projects:read'], ['projects.add', 'projects:write'],
   ['summaries.get', 'summaries:read'],
   // @req FR:iphone-access/check.@http
