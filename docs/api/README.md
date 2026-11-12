@@ -24,6 +24,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/prs/ack` | POST (owner only) record an answer on a thread (`thread`, `note`); `post: true` first posts the `🤖 [AI]` text on GitHub |
 | `/prs/recs/{id}` | POST (owner only) accept, edit, or reject a PR priority recommendation |
 | `/pris` | GET or POST (owner only) the owner priorities with sub-items, backlog and weekly progress; POST sends `{rev, pris}`, a stale rev is 409 |
+| `/feedback` | POST (owner only) one feedback line to `~/.stack/feedback.jsonl` `{text, route?, viewport?, theme?, capture?, png?}`; see [feedback.md](../feedback.md) |
 | `/tasks` | GET list tasks; POST add a task |
 | `/tasks/{ref}` | GET one task |
 | `/capture` | POST add a task from a phrase |

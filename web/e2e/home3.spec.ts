@@ -107,7 +107,7 @@ test.describe('Home round 3', () => {
     await page.goto('/#/home');
     const brand = info.project.name === 'mobile' ? page.locator('.phone-brand') : page.locator('.rail .brand');
     await expect(brand).toHaveText('Stack [DEMO]');
-    await expect(brand.locator('svg')).toHaveCount(1);
+    await expect(brand.locator('svg.mark')).toHaveCount(1);
     await expect(page.getByTestId('repo-banner')).toHaveCount(0);
     await expect(page.getByTestId('repo-pill')).toHaveCount(0);
     await expect(page.getByText('/Users/me/todo')).toHaveCount(0);

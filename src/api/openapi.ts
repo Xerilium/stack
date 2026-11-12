@@ -57,6 +57,17 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { project: 'File base name, title, or alias', section: 'Default Active', text: 'One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy)', expect: 'Expected current parent row text; 409 conflict when the parent row differs (stale line number)' },
     responses: mutation('201'),
   },
+  feedback: {
+    operationId: 'sendFeedback', summary: 'Owner only. Append one feedback line to ~/.stack/feedback.jsonl (docs/feedback.md) for an agent to tail. Tokens in text and the route query are removed. 404 on hosts with no store',
+    desc: {
+      text: 'The feedback', route: 'The app route (query string dropped)', viewport: 'Width x height, such as 1280x800', theme: 'The app theme',
+      capture: 'Ask the desktop host to capture the window as the screenshot', png: 'A base64 PNG screenshot (browser), at most 700 KB decoded',
+    },
+    responses: {
+      '201': { description: 'Stored', content: { 'application/json': { schema: { type: 'object', required: ['id', 'at', 'screenshot'], properties: { id: { type: 'string' }, at: { type: 'string', format: 'date-time' }, screenshot: { type: 'boolean' } } } } } },
+      default: ref('Error', 'responses'),
+    },
+  },
   capture: {
     operationId: 'captureTask', summary: 'Add a task from a natural-language or speech phrase',
     desc: {

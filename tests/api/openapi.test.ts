@@ -11,6 +11,7 @@ import { MemoryStorage } from '../../src/core/storage';
 import { ReportStore } from '../../src/core/reports';
 import { PriStore } from '../../src/core/pris';
 import { PrPriorityStore } from '../../src/core/pr-priority';
+import { FeedbackStore } from '../../src/core/feedback';
 import { runInventory } from '../../src/core/session-inventory';
 import { tmpdir } from 'os';
 import { createAuth, createTokenService, MemoryTokenStore } from '../../src/api';
@@ -229,7 +230,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
   // A calendar with an online meeting, so the documented event shape (joinUrl included) is checked against real output.
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
   const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))),
-    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }) });
+    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), feedback: new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }) });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
@@ -280,6 +281,8 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('inboxItems.action', 'POST', '/inbox-items/mail-000000000000/action', { action: 'mark-done' }, 404);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha', dryRun: true }, 200);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha' }, 201);
+    await go('feedback', 'POST', '/feedback', { text: 'Rail too wide', route: '/#list', viewport: '1280x800', theme: 'dark' }, 201);
+    await go('feedback', 'POST', '/feedback', { text: '' }, 422);
     await go('tasks.start', 'POST', '/tasks/start', { ref }, 200);
     await go('tasks.suspend', 'POST', '/tasks/suspend', { ref, days: 1 }, 200);
     await go('tasks.resume', 'POST', '/tasks/resume', { ref }, 200);

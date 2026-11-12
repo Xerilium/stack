@@ -25,6 +25,7 @@ import { PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
 import { PrsButton, PrsFlyoutHost } from './PrsPanel';
+import { FeedbackButton, FeedbackHost } from './FeedbackPanel';
 import { actionsFor, type AskItem, type DeferChoice, type Send } from './asks';
 import { isFresh, sourceOf, type CalSource } from './calsource';
 import { postStep, waitForHost, type Fetch } from './onboarding';
@@ -943,6 +944,8 @@ export function App() {
         <div class="spacer" />
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette">Commands <kbd aria-hidden="true">⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
+        {/* @req FR:feedback-button/ui.icon */}
+        <FeedbackButton />
         <div class="who">
           {!local && me && <span>{me} · <a href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></span>}
           {livePill}
@@ -951,7 +954,7 @@ export function App() {
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}<PrsButton api={api} compact /></div>
+        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}<FeedbackButton compact /><PrsButton api={api} compact /></div>
         {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} top={<PrisBlock ctl={prisSessions.pris} />} after={<SessionsBlock ctl={prisSessions.sessions} toast={toast} />} extraCount={prisSessions.sessions.inv?.needsYou.length ?? 0} />}
         {view === 'inbox' && <InboxView api={api} toast={toast} refresh={`${tick}|${asks.liveTick}`} onStatus={(r) => setInboxAttention(r.summary.attention)} />}
@@ -1014,6 +1017,7 @@ export function App() {
       {palette && <PaletteDialog commands={allCommands} onClose={() => setPalette(false)} />}
       {help && <Help onClose={() => setHelp(false)} />}
       <PrsFlyoutHost api={api} toast={toast} />
+      <FeedbackHost api={api} />
       <Toasts toasts={toasts} dismiss={dismiss} />
     </div>
   );
