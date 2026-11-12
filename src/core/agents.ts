@@ -40,7 +40,7 @@ const HEADER = '<!-- stack-agent v1. Scope is a list of project or project/secti
 const FIELDS = ['name', 'role', 'scope', 'reports-to', 'model', 'tools', 'mode', 'icon'] as const;
 /** An emoji (at most 16 code units, no letters, digits, spaces, or slashes) or a same-origin image path; anything else is dropped. @req FR:agent-team/agent.icon */
 export const iconOk = (v: string): boolean =>
-  (v.length > 0 && v.length <= 16 && !/[\s\p{L}\p{N}/\\<>"'`]/u.test(v)) || (/^\/(?!\/)[A-Za-z0-9._/-]{1,200}\.(?:png|jpe?g|gif|webp|svg)$/i.test(v) && !v.includes('..'));
+  (v.length > 0 && v.length <= 16 && !/[\s\p{L}\p{N}/\\<>"'`]/u.test(v) && /[^\x20-\x7e]/.test(v)) || (/^\/(?!\/)[A-Za-z0-9._/-]{1,200}\.(?:png|jpe?g|gif|webp|svg)$/i.test(v) && !v.includes('..'));
 /** Every agent named `cos` is the roll-up unless it says otherwise. @req FR:agent-team/agent.team.rollup */
 const ROLLUP_SLUG = 'cos';
 const MAX_ROLE = 80;

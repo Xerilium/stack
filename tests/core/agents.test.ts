@@ -70,7 +70,7 @@ describe('agent format', () => {
     expect(formatAgent(a)).toContain('- icon: 🎧');
     expect(parseAgent('cid-manager', formatAgent(a))).toEqual(a);
     expect(parseAgent('x', '- icon: /agents/cid.png\n').icon).toBe('/agents/cid.png');
-    for (const bad of ['https://evil.test/x.png', '//evil.test/x.png', '/a/../b.png', 'cid', '/x.exe', '<img>', 'Жук', '张']) expect(parseAgent('x', `- icon: ${bad}\n`).icon).toBeUndefined();
+    for (const bad of ['https://evil.test/x.png', '//evil.test/x.png', '/a/../b.png', 'cid', '/x.exe', '<img>', 'Жук', '张', '#', '*!']) expect(parseAgent('x', `- icon: ${bad}\n`).icon).toBeUndefined();
     expect(parseClaudeAgent('x', '---\nname: x\nicon: 🧭\n---\n# X\n').icon).toBe('🧭');
   });
   it('putAgent validates and updates in place', async () => {

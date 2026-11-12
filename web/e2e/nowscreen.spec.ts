@@ -104,6 +104,15 @@ test.describe('Now screen', () => {
     await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner' });
   });
 
+  // @req FR:agent-team/web.avatar: an emoji icon shows; a missing image falls back to the monogram
+  test('the composer avatar uses the agent icon, and a missing image falls back to the monogram', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [{ slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'], icon: '/agents/missing.png' } as never];
+    await page.goto('/#/now');
+    await expect(page.getByTestId('now-chat').locator('form svg.avatar')).toContainText('AL');
+  });
+
   // @req FR:now-screen/now.compose: a live session offers its chat
   test('a task with a live agent session offers Open live chat', async ({ page }) => {
     await ten(page);

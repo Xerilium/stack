@@ -23,5 +23,6 @@ describe('avatar', () => {
     expect(avatarOf({ slug: 'cid', name: 'Cid', icon: '🎧' })).toEqual({ kind: 'emoji', text: '🎧' });
     expect(avatarOf({ slug: 'cid', name: 'Cid', icon: '/agents/cid.png' })).toEqual({ kind: 'img', src: '/agents/cid.png' });
     expect(avatarOf({ slug: 'cid', name: 'Cid', icon: 'https://x.test/a.png' })).toMatchObject({ kind: 'mono', text: 'C' });
+    expect(avatarOf({ slug: 'cid', name: 'Cid', icon: '#' })).toMatchObject({ kind: 'mono' });
   });
 });
