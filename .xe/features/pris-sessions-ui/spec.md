@@ -25,7 +25,7 @@ The owner has ordered priorities and hundreds of Claude sessions. He needs one s
 
 The owner needs his priorities above everything else so that each ask is read against them.
 
-- **FR:pris.block** (P1): Needs you starts with a **Priorities** section, above the Needs you heading. It lists the priorities in stored order, each with its number, title, status, item progress (`2/5`), and its first open item (`doing` before `todo`, else `blocked`). The first 5 priorities that are not `done` show; a `Show n more` button shows the rest. The section is absent when `GET /pris` returns `404`
+- **FR:pris.block** (P1): The Priorities page (`#/priorities`, `FR:notifications/pris.route`) shows the **Priorities** section. It lists the priorities in stored order, each with its number, title, status, item progress (`2/5`), and its first open item (`doing` before `todo`, else `blocked`). The first 5 priorities that are not `done` show; a `Show n more` button shows the rest. The section is absent when `GET /pris` returns `404`
 - **FR:pris.status** (P1): Status is a glyph plus a word, never color alone: active `●`, paused `‖`, blocked `⛔`, done `✓` for a priority; todo `○`, doing `◐`, blocked `⛔`, done `✓` for an item. Only `blocked` uses the warning color
 - **FR:pris.expand** (P1): A tap on a priority opens it in place to show every item and the edit controls. One priority is open at a time; a second tap closes it. The toggle has `aria-expanded`
 - **FR:pris.edit** (P1): In an open priority the owner can edit the title, set the priority status, edit item text, set item status, add an item, remove an item, and move the priority up or down. Text edits start on a tap of the text, save on `Enter` or blur, and cancel on `Escape`. An add field also adds its text on blur. After Remove, focus goes to the add field of that priority. An empty or unchanged text saves nothing. With no priorities, the section shows `No priorities yet` and `Add priority`; `Add priority` is also at the end of the list
@@ -38,10 +38,10 @@ The owner needs his priorities above everything else so that each ask is read ag
 
 The owner needs the sessions that wait on him in one place, with a way to open each one.
 
-- **FR:sessions.list** (P1): Needs you shows a **Sessions** section under the asks with the inventory `needsYou` items, in server order, grouped under one heading per project (`Allyte`, `FTK`, `FOCUS`, `F4`, `Xerilium`, `Other`). The section heading shows the count. The section is absent when `GET /session-inventory` returns `404`
+- **FR:sessions.list** (P1): The Sessions page (`#/sessions`, in More, `FR:notifications/sessions.route`) shows a **Waiting on you** section with the inventory `needsYou` items, in server order, grouped under one heading per project (`Allyte`, `FTK`, `FOCUS`, `F4`, `Xerilium`, `Other`). The section heading shows the count. The section is absent when `GET /session-inventory` returns `404`
 - **FR:sessions.row** (P1): Each row is a link to `item.link` (`claude://claude.ai/epitaxy/<id>`) that shows the state as glyph plus word (`? Waiting`, `! Stuck`), the title, one line with the `ask` or the reason text, and the time since last activity. Its accessible name reads title, state, reason, then time. A link that does not start with `claude://claude.ai/epitaxy/` is shown as text only
 - **FR:sessions.reason** (P1): Reason text: question `Asked a question`, permission `Waiting for permission`, needs-user `Needs you`, blocked `Blocked`, error `Error`, cut-short `Cut short`, api-error `API error`, dead-turn `No activity for 30 min`, pr-merged `PR merged`, superseded `Newer run exists`, others the reason id
-- **FR:sessions.empty** (P1): The `Nothing needs you.` state shows only when there are no asks and no sessions in Needs you
+- **FR:sessions.empty** (P1): The Sessions page says `No sessions wait on you.` when both lists are empty. Sessions never count toward Notifications
 - **FR:sessions.archive** (P1): When the inventory has archive candidates, a collapsed `Archive candidates · n` button follows the Sessions section. Open, it lists each candidate (title as a link, project, reason) and a `Copy ids` button. `Copy ids` copies the session ids, one per line, and toasts `Copied n ids`. Nothing calls an archive action
 
 ### FR:live: Live updates

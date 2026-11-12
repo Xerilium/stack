@@ -198,7 +198,7 @@ test.describe('Now: Waiting on you cards', () => {
     await page.clock.resume();
     const waiting = page.getByTestId('now-asks');
     await expect(waiting.locator(':scope > li')).toHaveCount(3);
-    await expect(page.getByRole('link', { name: /1 more in Needs you/ }).or(page.getByRole('button', { name: /1 more in Needs you/ }))).toBeVisible();
+    await expect(page.getByRole('link', { name: /1 more in Notifications/ }).or(page.getByRole('button', { name: /1 more in Notifications/ }))).toBeVisible();
     const card = waiting.locator(':scope > li').first();
     await expect(card).toContainText('Allyte CoS'); // the source agent by name, with its avatar
     await expect(card.locator('.avatar')).toHaveCount(1);
@@ -212,7 +212,7 @@ test.describe('Now: Waiting on you cards', () => {
     await expect(more).toContainText('If silent: Approve on Friday');
     await expect(more).toContainText(/Today 5:00/);
     await expect(more.getByRole('link', { name: /Open/ })).toHaveAttribute('href', 'https://github.com/x/y/pull/1105');
-    for (const name of ['Approve', 'Reject', 'Reply', 'Defer', 'Open in Needs you']) await expect(more.getByRole('button', { name, exact: true })).toBeVisible();
+    for (const name of ['Approve', 'Reject', 'Reply', 'Defer', 'Open in Notifications']) await expect(more.getByRole('button', { name, exact: true })).toBeVisible();
     expect(await noScrollX(page)).toBe(true);
     expect(await axe(page)).toEqual([]);
     if (info.project.name === 'mobile') await tall(page, '[data-testid="now-asks"]');
@@ -272,14 +272,14 @@ test.describe('Now: Waiting on you cards', () => {
     await expect(page.getByRole('status').getByRole('button', { name: 'Undo' })).toHaveCount(0);
   });
 
-  test('Open in Needs you opens that ask there', async ({ page }) => {
+  test('Open in Notifications opens that ask there', async ({ page }) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
     m.asks = [ask('a1', 'cos', 90, { ask: 'Approve the plan' })];
     await page.goto('/#/now');
     await page.getByRole('button', { name: /Approve the plan/ }).click();
-    await page.getByRole('button', { name: 'Open in Needs you' }).click();
-    await expect(page).toHaveURL(/#\/asks/);
+    await page.getByRole('button', { name: 'Open in Notifications' }).click();
+    await expect(page).toHaveURL(/#\/notifications/);
   });
 });
 

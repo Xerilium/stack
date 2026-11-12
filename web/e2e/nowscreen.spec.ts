@@ -290,7 +290,7 @@ test.describe('Now screen', () => {
     await expect(waiting.locator('li').first()).toContainText('Reply to Dana'); // messages first
     await expect(waiting).toContainText('Approve the budget');
     await expect(waiting).not.toContainText('Fourth ask');
-    await expect(page.getByRole('button', { name: '1 more in Needs you' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '1 more in Notifications' })).toBeVisible();
     // only the task, the reason, and the actions sit above the first section head
     const sections = await now.locator('h2').count();
     expect(sections).toBe(2);
@@ -313,7 +313,7 @@ test.describe('Now screen', () => {
     await page.goto('/#/now');
     await expect(page.getByText('No meetings left today.')).toBeVisible();
     await expect(page.getByText('Nothing waiting.')).toBeVisible();
-    await expect(page.getByRole('button', { name: /more in Needs you/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /more in Notifications/ })).toHaveCount(0);
   });
 
   // @req FR:ux-consolidation/one.messages
@@ -322,8 +322,8 @@ test.describe('Now screen', () => {
     const m = await mockApi(page, { tasks: seed() });
     m.asks = ['a1', 'a2', 'a3', 'a4'].map((k, i) => ask(k, 'cos', 90 - i));
     await page.goto('/#/now');
-    await page.getByRole('button', { name: '1 more in Needs you' }).click();
-    await expect(page).toHaveURL(/#\/asks/);
+    await page.getByRole('button', { name: '1 more in Notifications' }).click();
+    await expect(page).toHaveURL(/#\/notifications/);
   });
 
   // @req FR:ux-consolidation/one.clamp

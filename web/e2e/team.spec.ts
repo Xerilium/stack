@@ -98,7 +98,7 @@ test.describe('Agent team', () => {
     await expect(target.locator('.agent-chip')).toHaveClass(/warn/);
     await expect(target.locator('.agent-chip')).toHaveAttribute('title', 'alpha-lead: Read the PRs, then ask about the release gate (1h)');
     await target.locator('.agent-chip').click({ force: true });
-    await expect(page).toHaveURL(/#\/asks/);
+    await expect(page).toHaveURL(/#\/notifications/);
   });
 
   test('a verdict from an earlier review shows on load; Can reads green, Cannot reads warm', async ({ page }) => {

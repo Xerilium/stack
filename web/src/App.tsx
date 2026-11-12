@@ -42,7 +42,8 @@ import { createInstall, isStandalone, type InstallEvent } from './install';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
 import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
-import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
+import { CHORDS, HINT, LABEL, MORE_PHONE, MORE_RAIL, RAIL, TABBAR, tip } from './nav';
+import { Bell, flyoutFits, MoreMenu, NoticeFlyout } from './Notifications';
 import { briefOf } from './brief';
 import { enrich, expandWeekly, type Rule } from './weekly';
 import { useTeam } from './useTeam';
@@ -128,6 +129,9 @@ export function App() {
   const [editing, setEditing] = useState<string | null>(null);
   const [picker, setPicker] = useState<{ refs: string[]; groups: GroupName[] } | null>(null);
   const [palette, setPalette] = useState(false);
+  /** The bell flyout and the More menus, each with the control that opened it (focus goes back there). @req FR:notifications/bell.flyout @req FR:notifications/sessions.more */
+  const [bellAt, setBellAt] = useState<HTMLElement | null>(null);
+  const [moreAt, setMoreAt] = useState<{ el: HTMLElement; where: 'rail' | 'tab' } | null>(null);
   const [help, setHelp] = useState(false);
   /** @req FR:desktop-app/install.prompt */
   const install = useRef(createInstall(isStandalone())).current;
@@ -257,7 +261,7 @@ export function App() {
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
   const nowTask = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
-  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' || view === 'priorities' || view === 'inventory' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
@@ -363,8 +367,11 @@ export function App() {
     onOpenTask: (ref) => { setFocusRef(ref); },
     onSync: () => void unsaved.check(),
   });
-  /** Priorities above Needs you, sessions under it; both re-read on live changes and every 15 s. @req FR:pris-sessions-ui/live.inventory @req FR:pris-sessions-ui/live.pris */
-  const prisSessions = usePrisSessions(api, toast, asks.liveTick, view === 'asks');
+  /** The bell counts what needs action: open asks plus an expired sign-in. @req FR:notifications/bell.count @req FR:notifications/list.what */
+  const signinExpired = asks.status === 'signin';
+  const noticeCount = asks.total + (signinExpired ? 1 : 0);
+  /** Priorities and Sessions, each on its own page; both re-read on live changes and every 15 s. @req FR:pris-sessions-ui/live.inventory @req FR:pris-sessions-ui/live.pris */
+  const prisSessions = usePrisSessions(api, toast, asks.liveTick, view === 'priorities' || view === 'inventory'); // @req FR:notifications/pris.route @req FR:notifications/sessions.route
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${withdrawTick}|${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
@@ -411,7 +418,7 @@ export function App() {
     defer: (a: AskItem, c: DeferChoice) => void asks.defer(a, c.at, c.label),
     deferChoices: () => asks.deferChoices(),
     openTask: (a: AskItem) => { if (a.ref) asks.openTask(a.ref); },
-    openInNeeds: (a: AskItem) => { asks.setCursor(a.key); asks.setPanel('none'); go('asks'); },
+    openInNeeds: (a: AskItem) => { setBellAt(null); asks.setCursor(a.key); asks.setPanel('none'); go('asks'); },
   };
   const briefBusy = useMemo(() => {
     const d0 = day.origin ?? clockNow, n = day.origin ? 2 : 1;
@@ -486,7 +493,10 @@ export function App() {
     const h = buildHash(v, f);
     if (location.hash !== h) history.replaceState(null, '', h);
   }, [filters]);
-  useEffect(() => { const on = () => setNav(parseHash(location.hash)); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
+  /** Old Needs you addresses become `#/notifications`. @req FR:notifications/list.route */
+  const canon = (n: { view: View; filters: Filters }) => { if (n.view === 'asks' && location.hash !== buildHash('asks', n.filters)) history.replaceState(null, '', buildHash('asks', n.filters)); return n; };
+  useEffect(() => { canon({ view, filters }); }, []);
+  useEffect(() => { const on = () => setNav(canon(parseHash(location.hash))); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
   const setFilters = (patch: Partial<Filters>) => go('list', { ...filters, ...patch });
 
   // ---- writes
@@ -805,7 +815,9 @@ export function App() {
     { id: 'go-home', label: `Go to ${LABEL.home}`, hint: HINT.home, group: 'Go to', run: () => go('home') }, // @req FR:ux-consolidation/nav.home
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
-    { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
+    { id: 'go-asks', label: `Go to Notifications${noticeCount ? ` (${noticeCount})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
+    { id: 'go-priorities', label: 'Go to Priorities', hint: HINT.priorities, group: 'Go to', run: () => go('priorities') },
+    { id: 'go-inventory', label: 'Go to Sessions', group: 'Go to', run: () => go('inventory') },
     { id: 'go-inbox', label: 'Go to Inbox', hint: HINT.inbox, group: 'Go to', run: () => go('inbox') },
     { id: 'go-sessions', label: 'Go to Agents', hint: HINT.sessions, group: 'Go to', run: () => go('sessions') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
@@ -825,6 +837,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.prs-scrim')) return; // the PR flyout owns the keys while open @req FR:pr-page/flyout.shape
+      if (document.querySelector('.notice-fly')) return; // so does the Notifications flyout @req FR:notifications/bell.flyout
       if (updatesOpen.current) return; // so does the Updates dialog @req FR:devops-installer/notice.dialog
       if (feedbackActive()) return; // so does the feedback flow, also while hidden for capture @req FR:feedback-button/ui.a11y
       if (haveChord.current && !/^[0-4h]$/.test(e.key)) haveChord.current = 0; // any other key disarms h
@@ -868,7 +881,7 @@ export function App() {
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
       if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } else if (k === 'm') { e.preventDefault(); document.getElementById('now-msg')?.focus(); } } return; }
-      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox') return; // these views own their keys
+      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox' || L.view === 'priorities' || L.view === 'inventory') return; // these views own their keys
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
@@ -961,11 +974,23 @@ export function App() {
   // @req FR:web-shell/nav.rail
   const inboxDot = inboxAttention ? <span class="nav-dot" role="img" aria-label="Inbox needs setup" data-testid="inbox-dot" /> : null;
   /** @req FR:inbox-page/web.dot */
-  const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : null);
-  /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
+  const badge = (v: View) => (v === 'inbox' ? inboxDot : null);
+  /** Each rail item shows its chord only in the tooltip. @req FR:web-shell/nav.keys.hint @req FR:notifications/keys.tip */
   const nav = () => RAIL.map((v) => (
-    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
+    <button type="button" key={v} class={`tab view${view === v ? ' on' : ''}`} title={tip(LABEL[v], HINT[v])} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span></button>
   ));
+  const onBell = (el: HTMLElement) => { if (!flyoutFits()) { setBellAt(null); go('asks'); return; } setBellAt(bellAt ? null : el); };
+  const moreItems = (views: View[]) => [...views.map((v) => ({ id: v, label: LABEL[v], run: () => { setFocusRef(null); go(v); } })), { id: 'commands', label: 'Commands', run: () => setPalette(true) }];
+  const moreBtn = (where: 'rail' | 'tab') => {
+    const open = moreAt?.where === where;
+    const on = where === 'rail' ? MORE_RAIL.includes(view) : MORE_PHONE.includes(view);
+    return (
+      <button type="button" class={`tab more-btn-nav${on ? ' on' : ''}`} aria-haspopup="menu" aria-expanded={open} aria-label={where === 'tab' && inboxAttention ? 'More. Inbox needs setup' : undefined} onClick={(e) => { const el = e.currentTarget as HTMLElement; setMoreAt(open ? null : { el, where }); }}>
+        {where === 'tab' ? <><TabIcon v="more" /><span>More</span>{inboxDot}</> : <span class="tab-label">More</span>}
+      </button>
+    );
+  };
+  const moreMenu = (where: 'rail' | 'tab') => moreAt?.where === where && <MoreMenu cls={where === 'rail' ? 'rail-menu' : 'tab-menu'} items={moreItems(where === 'rail' ? MORE_RAIL : MORE_PHONE)} opener={moreAt.el} onClose={() => setMoreAt(null)} />;
   return (
     <div class="shell">
       <nav class="rail" aria-label="Views">
@@ -973,14 +998,20 @@ export function App() {
          * The brand is the mark plus Stack; the mode shows in it (`Stack [DEMO]` for a demo copy), the repo path only in its tooltip.
          * @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand
          */}
-        <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
-        <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
+        <div class="rail-top">
+          <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
+          {/* @req FR:notifications/bell.place */}
+          <Bell count={noticeCount} open={!!bellAt} onClick={onBell} />
+        </div>
+        <button type="button" class="tab add" title="New task (C)" onClick={openCapture}>＋ New task</button>
         {nav()}
+        {/* @req FR:notifications/nav.rail */}
+        <div class="more-wrap">{moreBtn('rail')}{moreMenu('rail')}</div>
         {/* @req FR:pr-page/icon.place */}
         <PrsButton api={api} />
         <div class="spacer" />
-        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette">Commands <kbd aria-hidden="true">⌘K</kbd></button>
-        <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
+        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette" title="Commands (⌘K)">Commands</button>
+        <button type="button" class="tab" title="Shortcuts (?)" onClick={() => setHelp(true)}>Shortcuts</button>
         {/* @req FR:feedback-button/ui.icon */}
         <FeedbackButton />
         <div class="who">
@@ -992,9 +1023,25 @@ export function App() {
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} compact /></div>
-        {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
-        {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} top={<PrisBlock ctl={prisSessions.pris} />} after={<SessionsBlock ctl={prisSessions.sessions} toast={toast} />} extraCount={prisSessions.sessions.inv?.needsYou.length ?? 0} />}
+        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} compact /><Bell count={noticeCount} open={false} onClick={onBell} compact /></div>
+        {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && view !== 'priorities' && view !== 'inventory' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
+        {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
+        {/* @req FR:notifications/pris.route */}
+        {view === 'priorities' && (
+          <section class="page-view" aria-labelledby="page-h">
+            <h1 class="h1" id="page-h">Priorities</h1>
+            <PrisBlock ctl={prisSessions.pris} bare />
+            {prisSessions.pris.phase === 'absent' && <p class="page-empty">No priorities yet. Agents and the CLI write them to the priorities file.</p>}
+          </section>
+        )}
+        {/* @req FR:notifications/sessions.route */}
+        {view === 'inventory' && (
+          <section class="page-view" aria-labelledby="page-h">
+            <h1 class="h1" id="page-h">Sessions</h1>
+            <SessionsBlock ctl={prisSessions.sessions} toast={toast} label="Waiting on you" />
+            {(prisSessions.sessions.phase === 'absent' || (prisSessions.sessions.inv && !prisSessions.sessions.inv.needsYou.length && !prisSessions.sessions.inv.archive.length)) && <p class="page-empty">No sessions wait on you.</p>}
+          </section>
+        )}
         {view === 'inbox' && <InboxView api={api} toast={toast} refresh={`${tick}|${asks.liveTick}`} onStatus={(r) => setInboxAttention(r.summary.attention)} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} team={team.team} projectRank={projectRank} />}
         {phase === 'ready' && view === 'today' && (
@@ -1032,14 +1079,16 @@ export function App() {
         {TABBAR.map((slot) => slot === 'new'
           ? <button type="button" key="new" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg></span></button>
           : slot === 'more'
-            ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label={`More: open command palette${inboxAttention ? '. Inbox needs setup' : ''}`}><TabIcon v="more" /><span>More</span>{inboxDot}</button>
+            ? <span key="more" class="more-wrap tab-slot">{moreBtn('tab')}{moreMenu('tab')}</span>
             : <button type="button" key={slot} class={`tab${view === slot ? ' on' : ''}`} aria-current={view === slot ? 'page' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
       </nav>
+      {bellAt && <NoticeFlyout rows={asks.items.slice(0, 5)} more={Math.max(0, asks.items.length - 5)} ctl={{ ...nowAsks, busy, now: clockNow }} signin={signinExpired} onSignIn={toLogin} opener={bellAt}
+        onSeeAll={() => { setBellAt(null); setFocusRef(null); go('asks'); }} onClose={() => setBellAt(null)} />}
       {focusTask && <TaskDetail task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, focusTask.text, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
       {deferRefs && (
         <Dialog title="Defer until" onClose={() => setDeferRefs(null)}>
-          <div class="picker-opts">{DEFER.map((d) => <button type="button" class="opt" key={d.key} onClick={() => void applyDefer(deferRefs, d)}><kbd>{d.key}</kbd> {d.label}</button>)}</div>
+          <div class="picker-opts">{DEFER.map((d) => <button type="button" class="opt" key={d.key} title={tip(d.label, d.key)} onClick={() => void applyDefer(deferRefs, d)}>{d.label}</button>)}</div>
         </Dialog>
       )}
       {captureOpen && (
@@ -1103,6 +1152,7 @@ function Mark() {
 /** Line icons for the phone tab bar. @req FR:pwa/install.standalone */
 function TabIcon({ v }: { v: View | 'more' }) {
   const d: Record<string, string> = {
+    priorities: 'M5 6h2m-2 6h2m-2 6h2M10 6h9M10 12h9M10 18h9',
     asks: 'M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z',
     today: 'M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 5h16M8 3v4m8-4v4',
     now: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z',

@@ -1,5 +1,6 @@
 /**
- * The Asks view: the few things that need the owner, ranked, one exact ask each.
+ * Notifications: the few things that need the owner to act, ranked, one exact ask each.
+ * @req FR:notifications/list.what @req FR:notifications/list.not @req FR:notifications/list.actions @req FR:notifications/list.empty @req FR:notifications/keys.none @req FR:notifications/keys.tip
  * @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.keys @req FR:ask-queue/web.empty
  * @req FR:ask-queue/web.a11y @req FR:ask-queue/web.responsive @req FR:ask-queue/web.live @req FR:ask-queue/web.optimistic
  */
@@ -8,6 +9,7 @@ import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { actionsFor, deadline, freshness, ifSilent, splitTop, type Action, type AskItem } from './asks';
 import { blockedHelp } from './notify';
+import { tip } from './nav';
 import { Md } from './parts';
 import { parseRow } from './row';
 import { changeText, flowOf } from './triage';
@@ -81,17 +83,17 @@ function Row({ a, n, now, fresh, leaving, onPick }: { a: AskItem; n: number; now
   );
 }
 
-function Btn({ a, act, run, panel }: { a: Action; act: AskItem; run: (x: Action) => void; panel: string }) {
+function Btn({ a, act, run }: { a: Action; act: AskItem; run: (x: Action) => void }) {
   const cls = `btn${a.primary ? ' primary' : ''}`;
   const key = a.key === 'Enter' ? '⏎' : a.key;
   const tag = a.primary && act.kind === 'decide' && act.recommend ? <span class="rec-tag">recommended</span> : null;
   // what the answer will do to the row, from the ask's apply / applies. @req FR:quick-triage/web.stepper
   const will = a.send?.answer === 'go' && act.apply ? act.apply : a.send?.answer === 'option' && act.applies && act.options ? act.applies[act.options.indexOf(a.send.text ?? '')] : undefined;
   const willText = will && will !== '-' ? changeText(will) : undefined;
-  if (willText && !a.open) return <button type="button" class={`${cls} will`} onClick={() => run(a)} aria-keyshortcuts={a.key}><span>{a.label}{tag}<kbd aria-hidden="true">{key}</kbd></span><small>{willText}</small></button>;
-  if (a.open && act.source !== 'task') return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer" aria-keyshortcuts="o">{a.label} {Icon.out}<kbd aria-hidden="true">{a.key}</kbd></a>;
-  if (a.open) return <button type="button" class="btn quiet" onClick={() => run(a)} aria-keyshortcuts="o">{a.label}<kbd aria-hidden="true">{a.key}</kbd></button>;
-  return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd aria-hidden="true">{key}</kbd>}</button>;
+  if (willText && !a.open) return <button type="button" class={`${cls} will`} title={tip(a.label, key)} onClick={() => run(a)} aria-keyshortcuts={a.key}><span>{a.label}{tag}</span><small>{willText}</small></button>;
+  if (a.open && act.source !== 'task') return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer" title={tip(a.label, a.key)} aria-keyshortcuts="o">{a.label} {Icon.out}</a>;
+  if (a.open) return <button type="button" class="btn quiet" title={tip(a.label, a.key)} onClick={() => run(a)} aria-keyshortcuts="o">{a.label}</button>;
+  return <button type="button" class={cls} title={tip(a.label, key)} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}</button>;
 }
 
 function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: number; asks: Asks; run: (x: Action) => void; talk?: TalkSlot }) {
@@ -133,16 +135,16 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
         {asks.panel === 'defer' ? (
           <div class="ask-defer" role="group" aria-label="Defer until">
             <span class="lbl">Defer until</span>
-            {choices.map((c) => <button type="button" class="btn" key={c.key} onClick={() => void asks.defer(a, c.at, c.label)}>{c.label}<kbd aria-hidden="true">{c.key}</kbd></button>)}
-            <button type="button" class="btn quiet cancel" onClick={() => asks.setPanel('none')}>Cancel<kbd aria-hidden="true">Esc</kbd></button>
+            {choices.map((c) => <button type="button" class="btn" key={c.key} title={tip(c.label, c.key)} onClick={() => void asks.defer(a, c.at, c.label)}>{c.label}</button>)}
+            <button type="button" class="btn quiet cancel" title="Cancel (Esc)" onClick={() => asks.setPanel('none')}>Cancel</button>
           </div>
         ) : (
           !isAnswer && (
             <div class="ask-actions">
-              {actions.map((x) => <Btn key={x.id} a={x} act={a} run={run} panel={asks.panel} />)}
+              {actions.map((x) => <Btn key={x.id} a={x} act={a} run={run} />)}
               <span class="grow" />
-              <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>
-              <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply<kbd aria-hidden="true">r</kbd></button>
+              <button type="button" class="btn quiet" title="Defer (Z)" onClick={() => asks.setPanel('defer')}>Defer</button>
+              <button type="button" class="btn quiet" title="Reply (R)" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply</button>
             </div>
           )
         )}
@@ -152,14 +154,14 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
               <input ref={(el) => { replyRef.current = el; if (el && asks.panel === 'reply' && document.activeElement !== el) el.focus(); }} type="text" value={text} maxLength={1000} aria-label={isAnswer ? `Answer ${a.from}` : `Reply to ${a.from}`} placeholder={isAnswer ? `Answer ${a.from}` : `Reply to ${a.from}`}
                 onInput={(e) => setText((e.target as HTMLInputElement).value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); (e.target as HTMLElement).blur(); asks.setPanel('none'); } }} />
-              <button type="submit" class="btn primary send" disabled={!text.trim()}>Send<kbd aria-hidden="true">⏎</kbd></button>
-              {isAnswer && <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>}
-              {isAnswer && a.source === 'task' && <button type="button" class="btn quiet" onClick={() => run({ id: 'open', label: 'Details', key: 'o', open: true })} aria-keyshortcuts="o">Details<kbd aria-hidden="true">o</kbd></button>}
+              <button type="submit" class="btn primary send" title="Send (⏎)" disabled={!text.trim()}>Send</button>
+              {isAnswer && <button type="button" class="btn quiet" title="Defer (Z)" onClick={() => asks.setPanel('defer')}>Defer</button>}
+              {isAnswer && a.source === 'task' && <button type="button" class="btn quiet" onClick={() => run({ id: 'open', label: 'Details', key: 'o', open: true })} aria-keyshortcuts="o">Details</button>}
             </form>
             <p class="hint">End with ? to ask a question; anything else is an instruction</p>
           </>
         )}
-        {a.detail && <button type="button" class="more-link" onClick={() => asks.setDetail(!asks.detail)} aria-expanded={asks.detail}>{asks.detail ? 'Hide details' : 'Show details'}<kbd aria-hidden="true">e</kbd></button>}
+        {a.detail && <button type="button" class="more-link" onClick={() => asks.setDetail(!asks.detail)} aria-expanded={asks.detail}>{asks.detail ? 'Hide details' : 'Show details'}</button>}
         {asks.detail && a.detail && <pre class="ask-detail">{a.detail}</pre>}
       </article>
     </li>
@@ -174,11 +176,21 @@ export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; 
 /** AI on the ask card: the agent chip in the eyebrow, the composer under the ask, `a` to open it. @req FR:agent-team/web.anything */
 export interface TalkSlot { chip: (a: AskItem) => ComponentChildren; render: (a: AskItem) => ComponentChildren; open: (a: AskItem) => void; isOpen: () => boolean; close: () => void }
 
-/**
- * `top` draws above the heading (Priorities); `after` under the asks (Sessions); `extraCount` items there keep the empty state away.
- * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.empty
- */
-export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, after, extraCount = 0 }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void; talk?: TalkSlot; top?: ComponentChildren; after?: ComponentChildren; extraCount?: number }) {
+/** An expired sign-in is a notification of its own, first in the list. @req FR:notifications/list.what */
+function SignInNotice({ onSignIn }: { onSignIn?: () => void }) {
+  return (
+    <li class="ask-li" data-key="signin" data-testid="signin-notice">
+      <article class="ask-card" aria-label="Sign-in expired">
+        <h2 class="ask-title">Sign-in expired</h2>
+        <p class="ask-why">Stack cannot read new asks until you sign in again.</p>
+        <div class="ask-actions"><button type="button" class="btn primary" onClick={onSignIn ?? (() => location.assign('/.auth/login/github'))}>Sign in</button></div>
+      </article>
+    </li>
+  );
+}
+
+export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void; talk?: TalkSlot }) {
+  const signin = asks.status === 'signin';
   const { items, cursor } = asks;
   const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
   const [openSent, setOpenSent] = useState(false);
@@ -254,10 +266,9 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, a
   const ghosts = asks.leaving.filter((g) => !leavingKeys.has(g.key));
 
   return (
-    <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Asks">
-      {top}
+    <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Notifications">
       <header class="asks-head">
-        <h1 class="h1">Needs you{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
+        <h1 class="h1">Notifications{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
         <LiveBadge a={asks} unreachable={unreachable} onSignIn={onSignIn} />
         {notify?.supported && (
           <button type="button" class={`notify-btn${notify.on ? ' on' : ''}${notify.blocked && !notify.on ? ' blocked' : ''}`} aria-pressed={notify.on} aria-label={notify.blocked && !notify.on ? 'Notifications blocked' : notify.on ? 'Notifications on' : 'Notify me'} title={notify.blocked && !notify.on ? blockedHelp() : notify.on ? 'Notifications are on: tap to turn off' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>
@@ -276,10 +287,11 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, a
        * The empty state says what was checked.
        * @req FR:web-shell/state.needs.empty
        */}
-      {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && extraCount === 0 && (
+      {signin && <ol class="asks" aria-label="Sign-in"><SignInNotice onSignIn={onSignIn} /></ol>}
+      {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && !signin && (
         <div class="asks-empty" data-testid="asks-empty">
           <div class="tick-art">{Icon.check}</div>
-          <p class="big">Nothing needs you.</p>
+          <p class="big">You're all caught up.</p>
           <p class="sub">No open asks, decisions, or replies · {asks.latest ? `last agent update ${freshness(asks.latest, asks.now)}` : 'no agent has written an ask yet'}</p>
         </div>
       )}
@@ -289,8 +301,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, a
           {ghosts.map((g) => <Row key={`gone-${g.key}`} a={g} n={g.rank ?? 0} now={asks.now} fresh={false} leaving onPick={() => undefined} />)}
         </ol>
       )}
-      {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more <kbd aria-hidden="true">m</kbd></button>}
-      {after}
+      {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more</button>}
       {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · a agent · u undo</p>}
       {(asks.sent.length > 0 || asks.snoozed.length > 0) && (
         <footer class="asks-foot">

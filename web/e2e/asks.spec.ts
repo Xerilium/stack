@@ -199,7 +199,7 @@ test.describe('Asks', () => {
 
   test('empty state', async ({ page }) => {
     await open(page, []);
-    await expect(page.getByTestId('asks-empty')).toContainText('Nothing needs you.');
+    await expect(page.getByTestId('asks-empty')).toContainText("You're all caught up.");
     await expect(page.getByTestId('asks-empty')).toContainText('No open asks, decisions, or replies · no agent has written an ask yet');
     await expect(page).toHaveTitle('Stack');
   });

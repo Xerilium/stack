@@ -7,13 +7,13 @@ const sess = (id: string, title: string, project: string, state: MockSession['st
 async function open(page: Page) {
   const m = await mockApi(page);
   m.sessions = [sess('s1', 'Fix the build', 'alpha', 'running'), sess('s2', 'Write the blog post', 'beta'), sess('s3', 'Tidy the backlog', 'alpha'), sess('s4', 'Plan the launch', 'gamma')];
-  await page.goto('/#/sessions');
+  await page.goto('/#/agents');
   await expect(page.locator('.sess-li')).toHaveCount(4);
   return m;
 }
 
 test.describe('Agents', () => {
-  test('is called Agents everywhere; #/sessions still opens it', async ({ page }, info) => {
+  test('is called Agents everywhere; #/agents opens it', async ({ page }, info) => {
     await open(page);
     await expect(page).toHaveURL(/#\/sessions|#\/agents/);
     await expect(page.getByRole('region', { name: 'Agents' })).toBeVisible();

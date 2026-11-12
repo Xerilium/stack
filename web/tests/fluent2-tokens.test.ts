@@ -31,9 +31,17 @@ it('is loaded once by the app entry, with no network', () => {
   expect(readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')).toMatch(/import '\.\/fluent2\.css';/);
   expect(css).not.toMatch(/@import|url\(\s*['"]?https?:/);
 });
-it('hides key badges on every button, link button, and menu item; keeps the rail hint', () => {
-  expect(css).toMatch(/body :is\(button, a\.btn, \[role="menuitem"\]\) kbd \{ display: none !important; \}/);
-  expect(css).toMatch(/\.rail \.tab kbd \{ display: inline-block !important; \}/);
+// @req FR:notifications/keys.none
+it('hides key badges on every button, link, and menu item, the rail included', () => {
+  expect(css).toMatch(/body :is\(button, a, \[role="menuitem"\]\) kbd \{ display: none !important; \}/);
+  expect(css).not.toMatch(/\.rail \.tab kbd/);
+});
+// @req FR:notifications/cards.hover @req FR:notifications/cards.focus
+it('cards: a background token that moves on hover, darker by default in dark mode; focus ring', () => {
+  expect(css).toMatch(/--card-bg: var\(--panel/);
+  expect(css).toMatch(/prefers-color-scheme: dark\) \{ :root \{ --card-bg: #161619; --card-bg-hover: #222227; \} \}/);
+  expect(css).toMatch(/\.ask-card, \.now-ask[^{]*\):hover[^{]*\{ background: var\(--card-bg-hover\); \}/);
+  expect(css).toMatch(/:focus-visible \{ outline: 2px solid var\(--focus\)/);
 });
 it('gives clickable rows a pointer and draws facts as text', () => {
   expect(css).toMatch(/\.top-rows > li[^{]*\{ cursor: pointer; \}/);

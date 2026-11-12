@@ -130,8 +130,7 @@ export function Picker({ groups, count, onChoose, onClose }: { groups: GroupName
           <legend>{GROUPS[g].label}</legend>
           <div class="picker-opts">
             {[...GROUPS[g].set, { e: 'None', name: 'None' } as Choice].map((c, i) => (
-              <button type="button" class="opt" key={c.e} onClick={() => onChoose(g, c.e)}>
-                {single && <kbd>{i < GROUPS[g].set.length ? i + 1 : 0}</kbd>}
+              <button type="button" class="opt" key={c.e} title={single ? `${c.name} (${i < GROUPS[g].set.length ? i + 1 : 0})` : undefined} onClick={() => onChoose(g, c.e)}>
                 <span aria-hidden="true">{c.e === 'None' ? '∅' : c.e}</span> {c.name}
               </button>
             ))}

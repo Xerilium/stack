@@ -1,7 +1,7 @@
 /**
  * Now's `Waiting on you`: the top asks as cards. The body expands the card in place with the ask's context and every
- * response it supports; answers go through the same calls as Needs you (toast and Undo).
- * @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.expand @req FR:ux-consolidation/one.answer
+ * response it supports; answers go through the same calls as Notifications (toast and Undo). The bell flyout reuses the cards.
+ * @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.expand @req FR:ux-consolidation/one.answer @req FR:notifications/bell.flyout @req FR:notifications/list.words
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
@@ -18,7 +18,7 @@ export interface AskCtl {
   deferChoices: () => DeferChoice[];
   /** A task row's Details. */
   openTask: (a: AskItem) => void;
-  /** The ask in Needs you. */
+  /** The ask in Notifications. */
   openInNeeds: (a: AskItem) => void;
 }
 
@@ -90,31 +90,35 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
               <p class="now-ask-hint" id={`${id}-hint`}>End with ? to ask a question; anything else is an instruction.</p>
             </form>
           )}
-          <button type="button" class="now-ask-needs" onClick={() => ctl.openInNeeds(a)}>Open in Needs you</button>
+          <button type="button" class="now-ask-needs" onClick={() => ctl.openInNeeds(a)}>Open in Notifications</button>
         </div>
       )}
     </li>
   );
 }
 
-export function NowAsks({ rows, more, ctl, onOpenAsks }: { rows: AskItem[]; more: number; ctl: AskCtl; onOpenAsks: () => void }) {
+/** The ask cards: one open at a time; an answered card leaves and nothing stays open in its place. */
+export function AskCards({ rows, ctl, testId = 'now-asks' }: { rows: AskItem[]; ctl: AskCtl; testId?: string }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>('none');
-  // An answered card leaves; nothing stays open in its place.
   const openRow = rows.find((r) => r.key === openKey) ?? null;
   return (
-    <>
-      <h2 class="now-h2">Waiting on you</h2>
-      {rows.length === 0 ? <p class="now-none">Nothing waiting.</p> : (
-        <ul class="now-asks" data-testid="now-asks">
+        <ul class="now-asks" data-testid={testId}>
           {rows.map((a, i) => (
             <Card key={a.key} a={a} i={i} open={openRow?.key === a.key} panel={openRow?.key === a.key ? panel : 'none'} ctl={ctl}
               onToggle={() => { setOpenKey(openRow?.key === a.key ? null : a.key); setPanel('none'); }}
               onPanel={(p) => { setOpenKey(a.key); setPanel(p); }} />
           ))}
         </ul>
-      )}
-      {more > 0 && <button type="button" class="now-more" onClick={onOpenAsks}>{more} more in Needs you <span aria-hidden="true">→</span></button>}
+  );
+}
+
+export function NowAsks({ rows, more, ctl, onOpenAsks }: { rows: AskItem[]; more: number; ctl: AskCtl; onOpenAsks: () => void }) {
+  return (
+    <>
+      <h2 class="now-h2">Waiting on you</h2>
+      {rows.length === 0 ? <p class="now-none">Nothing waiting.</p> : <AskCards rows={rows} ctl={ctl} />}
+      {more > 0 && <button type="button" class="now-more" onClick={onOpenAsks}>{more} more in Notifications <span aria-hidden="true">→</span></button>}
     </>
   );
 }
