@@ -22,7 +22,7 @@ function rowAt(lines: string[], line: number, expect?: string): RegExpExecArray 
 
 /** End (exclusive) of a row's block: following deeper-indented or blank lines, minus trailing blanks. */
 function blockEnd(lines: string[], i: number): number {
-  const indent = /^\s*/.exec(bare(lines[i]))![0].length;
+  const indent = /^\s*/.exec(unbom(bare(lines[i])))![0].length;
   let j = i + 1;
   while (j < lines.length) {
     const l = bare(lines[j]);
@@ -70,10 +70,11 @@ export async function editTask(storage: Storage, ref: TaskRef, text: string, exp
 }
 
 const strip = (t: string) => t.replace(/\uFE0F/g, '');
-const MARKS = new Set([...STATUS, ...PRIORITY, ...EFFORT, ...IMPACT, '🔹'].map(strip));
-const isMark = (t: string) => MARKS.has(strip(t));
+const CATS = [STATUS, PRIORITY, [...EFFORT, '🔹'], IMPACT].map((l) => l.map(strip));
+const catOf = (t: string) => CATS.findIndex((l) => l.includes(strip(t)));
+const isMark = (t: string) => catOf(t) !== -1;
 
-/** New row text; the old text's leading and trailing status, priority, effort, and impact marks stay unless the new text has its own at that end. */
+/** New row text. Old status, priority, effort, and impact marks at the start or end of the row stay unless the new text has a mark of the same kind at that end. */
 export function keepMarks(old: string, text: string): string {
   const neu = text.trim();
   const ot = old.trim().split(/\s+/).filter(Boolean);
@@ -82,8 +83,10 @@ export function keepMarks(old: string, text: string): string {
   let b = ot.length;
   while (b > a && isMark(ot[b - 1])) b--;
   const nt = neu.split(/\s+/);
-  const lead = isMark(nt[0]) ? [] : ot.slice(0, a);
-  const trail = isMark(nt[nt.length - 1]) ? [] : ot.slice(b);
+  // Per end, an old mark stays unless the new text has a mark of the same kind at that end.
+  const kept = (old: string[], at: string) => (isMark(at) ? old.filter((t) => catOf(t) !== catOf(at)) : old);
+  const lead = kept(ot.slice(0, a), nt[0]);
+  const trail = kept(ot.slice(b), nt[nt.length - 1]);
   return [...lead, neu, ...trail].join(' ');
 }
 
@@ -96,6 +99,7 @@ const oneLine = (t: string, what: string): string => {
 /** Edit a row's text in place through `editTask`, keeping the old marks (see `keepMarks`). */
 export async function retitleTask(storage: Storage, ref: TaskRef, text: string, expect?: string): Promise<EditResult> {
   oneLine(text, 'retitle');
+  if (/^\[[ xX]\]/.test(text.trim())) throw new LifecycleError('retitle must not start with a checkbox');
   const cur = await rowText(storage, ref);
   if (expect !== undefined && cur !== expect) throw new ConflictError('Row changed since it was read');
   return editTask(storage, ref, keepMarks(cur, text), cur);
@@ -108,10 +112,13 @@ export async function addNote(storage: Storage, ref: TaskRef, text: string, expe
   const f = await storage.read(ref.path);
   const lines = f.content.split('\n');
   const m = rowAt(lines, ref.line, expect);
-  const indent = /^\s*/.exec(bare(unbom(lines[ref.line])))![0].length + 2;
+  const ws = (l: string) => /^[ \t]*/.exec(unbom(bare(l)))![0];
+  const own = ws(lines[ref.line]);
+  const next = lines[ref.line + 1] === undefined ? '' : ws(lines[ref.line + 1]);
+  const pad = next.length > own.length && !/^\s*$/.test(bare(lines[ref.line + 1])) ? next : `${own}  `;
   const cr = lines[ref.line].endsWith('\r') ? '\r' : '';
   const end = blockEnd(lines, ref.line);
-  lines.splice(end, 0, `${' '.repeat(indent)}- ${text.trim()}${cr}`);
+  lines.splice(end, 0, `${pad}- ${text.trim()}${cr}`);
   await storage.write(ref.path, lines.join('\n'), { expectedVersion: f.version, message: `Note: ${brief(text.trim())}` });
   return { changed: true, ref, before: m[2], after: m[2], message: 'Saved' };
 }

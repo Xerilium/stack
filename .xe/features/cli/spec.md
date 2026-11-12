@@ -103,9 +103,9 @@ Owner needs one command per core operation so that the terminal can do everythin
 - **FR:cmd.set** (P1): `stack set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis]` MUST call `setProperties`
   > - @req FR:task-lifecycle/set.props
   - An emoji flag takes an emoji or `none`
-- **FR:cmd.retitle** (P1): `stack retitle <ref> --text t [--expect t] [--no-update]` MUST replace the row text in place through the web edit path (`editTask`): checkbox, indent, children, notes, and history stay. Leading and trailing status, priority, effort, and impact marks of the old text stay unless the new text has its own at that end. Missing ref or `--text` is exit 2; a changed row (`--expect`) is exit 3
+- **FR:cmd.retitle** (P1): `stack retitle <ref> --text t [--expect t] [--no-update]` MUST replace the row text in place through the web edit path (`editTask`): checkbox, indent, children, notes, and history stay. Old status, priority, effort, and impact marks at the start or end of the row stay unless the new text has a mark of the same kind at that end (tags after the marks, such as `📅 Nov 5`, are part of the text: pass them in `--text`). Summaries refresh like `FR:cmd.refresh`. Missing ref or `--text` is exit 2; a changed row (`--expect`) is exit 3
   > - @req FR:web-app/api.edit
-- **FR:cmd.note** (P1): `stack note add <ref> --text t [--expect t]` MUST append `- <t>` as a nested bullet at the end of the task block, children and older notes kept. Empty, multi-line, or checkbox-like text is exit 2
+- **FR:cmd.note** (P1): `stack note add <ref> --text t [--expect t]` MUST append `- <t>` as a nested bullet at the end of the task block, children and older notes kept; it copies a child's indent when there is one and never refreshes summaries. A changed row (`--expect`) is exit 3. Empty, multi-line, or checkbox-like text is exit 2
 - **FR:cmd.remove-completed** (P1): `stack remove-completed [--project name]` MUST call `removeCompleted` and print the removed count
   > - @req FR:task-lifecycle/remove.blocks
 - **FR:cmd.update** (P1): `stack update [--sweep] [--engine legacy|stack]` MUST regenerate README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writing only files whose text changed

@@ -54,6 +54,13 @@ describe('retitle', () => {
     await stack(d, 'retitle', 'tasks/alpha.md:5', '--text', '🔻 New 🔴', '--no-update');
     expect(lines(d)[4]).toBe('- [ ] 🔻 New 🔴');
   });
+  it('a new mark replaces only the same kind at that end', async () => {
+    const d = mk();
+    await stack(d, 'retitle', 'tasks/alpha.md:5', '--text', '🔻 New', '--no-update');
+    expect(lines(d)[4]).toBe('- [ ] 🔻 New 🟢');
+    await stack(d, 'retitle', 'tasks/alpha.md:5', '--text', 'Newer 🔴', '--no-update');
+    expect(lines(d)[4]).toBe('- [ ] 🔻 Newer 🔴');
+  });
   it('--json reports before and after', async () => {
     const d = mk();
     const r = await stack(d, 'retitle', 'tasks/alpha.md:9', '--text', 'Last', '--json', '--no-update');
@@ -78,6 +85,7 @@ describe('retitle', () => {
     expect((await stack(d, 'retitle', 'tasks/alpha.md:5')).code).toBe(2);
     expect((await stack(d, 'retitle', 'bad', '--text', 'X')).code).toBe(2);
     expect((await stack(d, 'retitle', 'tasks/alpha.md:5', '--text', 'a\nb')).code).toBe(2);
+    expect((await stack(d, 'retitle', 'tasks/alpha.md:5', '--text', '[ ] x')).code).toBe(2);
     expect((await stack(d, 'retitle', 'tasks/alpha.md:2', '--text', 'X')).code).toBe(2);
   });
   it('is listed in --help', async () => {
@@ -96,6 +104,12 @@ describe('note add', () => {
     const d = mk();
     await stack(d, 'note', 'add', 'tasks/alpha.md:6', '--text', 'kid note');
     expect(lines(d)[6]).toBe('    - kid note');
+  });
+  it('copies the indent of existing children', async () => {
+    const d = mk();
+    writeFileSync(join(d, 'tasks/alpha.md'), '# A\n\n## 🔄 Active\n\n- [ ] Top\n    - [ ] Deep child\n');
+    await stack(d, 'note', 'add', 'tasks/alpha.md:5', '--text', 'n');
+    expect(lines(d)[6]).toBe('    - n');
   });
   it('--expect mismatch is exit 3', async () => {
     const d = mk();
