@@ -8,9 +8,10 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
+import { prsTab } from './cos';
 import {
   threadOf, ageText, replyToOf, BUCKET, CI, clip, countOf, createPrStore, EMPTY, escFor, escIn, healthyCount, loadPrefs, ownerOf, PROJECT_LABEL, projectsOf, refOf, replyText, rowsOf,
-  savePrefs, shortLabels, TAB_LABEL, tabsOf, updatedText, type EscEntry, type Prefs, type PrRow, type PrStore, type Tab,
+  savePrefs, shortLabels, TAB_LABEL, tabsOf, updatedText, type EscEntry, type Phase, type PrBoard, type Prefs, type PrRow, type PrStore, type Tab,
 } from './prs';
 import type { Toast } from './parts';
 import { store } from './day';
@@ -33,6 +34,12 @@ const errText = (e: unknown, fallback: string) => (e instanceof ApiFailure ? e.m
 
 function PrIcon() {
   return <svg class="prs-ic" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 4v10m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 0V9a3 3 0 0 0-3-3h-4m0 0 2.5-2.5M11 6l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>;
+}
+
+/** The one PR store, for other views that summarize it (the CoS view). @req FR:cos-base-of-ops/compose.prs */
+export function usePrBoard(api: Client): { board: PrBoard | null; phase: Phase } {
+  const { board, phase } = useStore(api).get();
+  return { board, phase };
 }
 
 /** The icon. Absent until the host answers, and on a host with no GitHub token. @req FR:pr-page/icon.place @req FR:pr-page/icon.absent */
@@ -108,8 +115,22 @@ export function PrsFlyoutHost({ api, toast }: { api: Client; toast: ToastFn }) {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [s, phase]);
+  // `#/prs?tab=…` opens the flyout on that tab, over the CoS view. @req FR:cos-base-of-ops/route.view
+  useEffect(() => {
+    if (phase === 'off') return;
+    const on = () => {
+      const t = prsTab(location.hash);
+      if (!t) return;
+      if (t !== 'default') savePrefs(local(), { ...loadPrefs(local()), tab: t });
+      opener = document.activeElement as HTMLElement;
+      s.setOpen(true);
+    };
+    on();
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, [s, phase]);
   if (!open) return null;
-  return <Flyout api={api} s={s} toast={toast} onClose={() => { s.setOpen(false); const o = opener && opener.isConnected && opener.offsetParent !== null ? opener : document.querySelector<HTMLElement>('[data-testid="prs-btn"], [data-testid="prs-btn-phone"]'); setTimeout(() => o?.focus(), 0); }} />;
+  return <Flyout api={api} s={s} toast={toast} onClose={() => { s.setOpen(false); if (prsTab(location.hash)) location.hash = '#/cos'; const o = opener && opener.isConnected && opener.offsetParent !== null ? opener : document.querySelector<HTMLElement>('[data-testid="prs-btn"], [data-testid="prs-btn-phone"]'); setTimeout(() => o?.focus(), 0); }} />;
 }
 
 function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: ToastFn; onClose: () => void }) {

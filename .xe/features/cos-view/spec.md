@@ -25,6 +25,10 @@ The owner wants one place: next meeting(s), top messages, top actions, one task.
 - **FR:brief.empty** (P2): With no meetings, messages, or actions, each empty section says so in one short line; the page never shows a blank
 - ~~**FR:brief.phone**~~: [deprecated: FR:now-screen/now.layout] The Brief page is gone; Now owns the 375 px layout
 
+### FR:base: Base of ops
+
+- **FR:base.view** (P1): The daily Chief of Staff page is `cos-base-of-ops` (`#/cos`). It composes Now, Needs you, the PR flyout, and Agents; it adds only the CoS brief and the message box
+
 ## Dependencies
 
 web-app (rows, Start/Done/Delegate), ask-queue (asks, answers), home (rank, window), day-inputs (calendar).

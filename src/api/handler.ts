@@ -784,6 +784,16 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    // The Chief of Staff view reads the latest reports; owner only. @req FR:cos-base-of-ops/api.list
+    method: 'GET', doc: '/reports', name: 'reports.list',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can read reports');
+      if (!c.deps.reports) throw new ApiError('not_found', 'No report store on this host');
+      return json(200, { items: c.deps.reports.list() });
+    },
+  },
+  {
     // Session titles are the owner's: owner only. @req FR:session-inventory/api.inventory
     method: 'GET', doc: '/session-inventory', name: 'inventory.list',
     async run(c) {

@@ -58,6 +58,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     pris: () => call<PrisFile>('/pris'),
     /** Replaces the priorities when `rev` is current; 409 when not. @req FR:pris-sessions-ui/pris.save */
     putPris: (rev: number, pris: Pri[]) => call<PrisFile>('/pris', { rev, pris }),
+    /** Every stored agent status report; the CoS view picks the CoS one. @req FR:cos-base-of-ops/api.list */
+    reports: async () => (await call<{ items: import('./cos').CosReport[] }>('/reports')).items,
     /** The Claude app session inventory. @req FR:pris-sessions-ui/sessions.list */
     inventory: () => call<Inventory>('/session-inventory'),
     /** The PR board; 404 where the host has no GitHub token. @req FR:pr-page/api.get */

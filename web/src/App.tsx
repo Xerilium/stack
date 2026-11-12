@@ -44,6 +44,9 @@ import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
 import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { briefOf } from './brief';
+import { CosView } from './CosView';
+import { cosName } from './cos';
+import { rollupOf } from './team';
 import { enrich, expandWeekly, type Rule } from './weekly';
 import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
@@ -56,7 +59,7 @@ import { TaskDetail } from './TaskDetail';
 import { displayName } from './detail';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
 import { agentMark, nowOf } from './nowscreen';
-import { NowScreen } from './NowView';
+import { NowScreen, waitingOf } from './NowView';
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import './myday.css';
@@ -257,7 +260,7 @@ export function App() {
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
   const nowTask = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
-  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' || view === 'cos' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
@@ -364,7 +367,7 @@ export function App() {
     onSync: () => void unsaved.check(),
   });
   /** Priorities above Needs you, sessions under it; both re-read on live changes and every 15 s. @req FR:pris-sessions-ui/live.inventory @req FR:pris-sessions-ui/live.pris */
-  const prisSessions = usePrisSessions(api, toast, asks.liveTick, view === 'asks');
+  const prisSessions = usePrisSessions(api, toast, asks.liveTick, view === 'asks' || view === 'cos'); // the CoS view draws the same blocks @req FR:cos-base-of-ops/compose.pris
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${withdrawTick}|${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
@@ -801,6 +804,7 @@ export function App() {
   ].map((c) => ({ group: 'Actions' as Group, ...c }));
   // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump @req FR:web-shell/palette.jump.groups
   const goTo: Command[] = [
+    { id: 'go-cos', label: 'Go to Chief of Staff', hint: HINT.cos, group: 'Go to', run: () => go('cos') },
     { id: 'go-now', label: 'Go to Now', hint: HINT.now, group: 'Go to', run: () => go('now') },
     { id: 'go-home', label: `Go to ${LABEL.home}`, hint: HINT.home, group: 'Go to', run: () => go('home') }, // @req FR:ux-consolidation/nav.home
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
@@ -868,7 +872,7 @@ export function App() {
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
       if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } else if (k === 'm') { e.preventDefault(); document.getElementById('now-msg')?.focus(); } } return; }
-      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox') return; // these views own their keys
+      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox' || L.view === 'cos') return; // these views own their keys
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
@@ -963,8 +967,11 @@ export function App() {
   /** @req FR:inbox-page/web.dot */
   const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : null);
   /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
+  /** The CoS rail item: its real name and avatar. @req FR:cos-base-of-ops/route.nav */
+  const cosAgent = rollupOf(team.team);
+  const cosLabel = <>{cosAgent && <Avatar who={cosAgent} size={18} />}{cosName(team.team)}</>;
   const nav = () => RAIL.map((v) => (
-    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
+    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{v === 'cos' ? cosLabel : LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
   ));
   return (
     <div class="shell">
@@ -1006,6 +1013,8 @@ export function App() {
         {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
           chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} asks={nowAsks} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }}
           onOpenAsks={() => go('asks')} />}
+        {phase === 'ready' && view === 'cos' && <CosView api={api} team={team.team} tasks={tasks} now={clockNow} busy={busy} liveTick={asks.liveTick} open={asks.total} waiting={waitingOf(brief)} asks={nowAsks}
+          pris={prisSessions.pris} sessions={prisSessions.sessions} meetings={brief.meetings} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }} toast={toast} go={go} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
