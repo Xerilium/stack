@@ -183,4 +183,4 @@ Owner needs to start a session by picking one of his agents and writing the brie
 
 ## External Dependencies
 
-- Microsoft Fluent Emoji (`github.com/microsoft/fluentui-emoji`, MIT): bundled SVGs from a pinned commit (`FR:web.avatar.fluent`); notice in `THIRD_PARTY_NOTICES.md`
+- Microsoft Fluent Emoji (`github.com/microsoft/fluentui-emoji`, MIT): bundled SVGs from a pinned commit (`FR:web.avatar.fluent`); notice in `THIRD_PARTY_NOTICES.md`, also copied into `web/dist` so the web and desktop builds ship it

@@ -5,6 +5,7 @@
  * @req FR:agent-team/web.avatar.fetch
  */
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 
 const REPO = 'microsoft/fluentui-emoji';
 /** Pinned: bump on purpose, then re-run and review the diff. */
@@ -43,7 +44,8 @@ const short = (n: string): string => {
 /** Shorter numbers, then whitespace and comments; the drawing is unchanged at avatar size. Rejects anything that can run or reach out. */
 export function minify(svg: string): string {
   const s = svg.replace(/<\?xml[^>]*>/g, '').replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/-?\d*\.\d+(?:e-?\d+)?/gi, short)
+    // A number that loses its point before one that starts with `.` (`1.96.5`) gets a space, or the two would merge.
+    .replace(/-?\d*\.\d+(?:e-?\d+)?/gi, (n: string, at: number, all: string) => { const r = short(n); return !r.includes('.') && all[at + n.length] === '.' ? `${r} ` : r; })
     .replace(/ (?=-)/g, '')
     .replace(/>\s+</g, '><').replace(/\s{2,}/g, ' ').trim();
   if (/<script|\son\w+\s*=|href\s*=\s*"(?!#)/i.test(s)) throw new Error('Unsafe SVG content');
@@ -97,4 +99,4 @@ async function main(): Promise<void> {
   console.log(`${want.length} emoji, ${(bytes / 1024).toFixed(1)} KB`);
 }
 
-if (import.meta.url === new URL(`file://${process.argv[1]}`).href) main().catch((e: unknown) => { console.error(e instanceof Error ? e.message : e); process.exit(1); });
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((e: unknown) => { console.error(e instanceof Error ? e.message : e); process.exit(1); });

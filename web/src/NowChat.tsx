@@ -37,6 +37,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
     return () => clearInterval(h);
   }, [load]);
   const name = agent ? nameBeside(agent) : 'the agent';
+  const label = agent ? agent.name : 'the agent'; // accessible names keep the emoji: the avatar is aria-hidden
   const sending = useRef(false); // two fast Enters send once
   const send = async () => {
     const t = foldLines(text);
@@ -55,7 +56,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
   const grow = (el: HTMLTextAreaElement) => { if (CSS.supports?.('field-sizing', 'content')) return; el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px`; };
   const now = new Date();
   return (
-    <section class="now-chat" aria-label={`Messages with ${name}`} data-testid="now-chat">
+    <section class="now-chat" aria-label={`Messages with ${label}`} data-testid="now-chat">
       {items.length > 0 && (
         <ol class="now-thread" data-testid="now-thread">
           {items.map((i) => {
@@ -77,9 +78,9 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
       )}
       <form class="now-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         {/* Who the box talks to, above the field. @req FR:now-screen/now.compose */}
-        <p class="now-to" data-testid="now-to">{agent && <Avatar who={agent} size={28} />}<span class="now-to-name">{agent ? agent.name : 'The agent'}</span></p>
+        <p class="now-to" data-testid="now-to">{agent && <Avatar who={agent} size={28} />}<span class="now-to-name">{agent ? nameBeside(agent) : 'The agent'}</span></p>
         <div class="now-compose-row">
-        <textarea id="now-msg" rows={1} maxLength={TELL_MAX} value={text} aria-label={`Message ${name}`} placeholder={`Message ${name}…`}
+        <textarea id="now-msg" rows={1} maxLength={TELL_MAX} value={text} aria-label={`Message ${label}`} placeholder={`Message ${name}…`}
           onInput={(e) => { const el = e.target as HTMLTextAreaElement; setText(el.value); grow(el); }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); (e.target as HTMLTextAreaElement).blur(); }

@@ -1,6 +1,6 @@
 // @req FR:agent-team/web.avatar
 import { describe, expect, it } from 'vitest';
-import { AVATAR_COLORS, avatarOf, initials, nameBeside } from '../src/avatar';
+import { AVATAR_COLORS, avatarChain, avatarOf, initials, nameBeside } from '../src/avatar';
 import { fluentSrc } from '../src/fluent';
 
 const lum = (hex: string) => {
@@ -41,5 +41,12 @@ describe('avatar', () => {
     expect(nameBeside({ name: '🎧 Cid Manager', icon: '/agents/cid.png' })).toBe('🎧 Cid Manager');
     expect(nameBeside({ name: 'Ada Lead' })).toBe('Ada Lead');
     expect(nameBeside({ name: '🎧' })).toBe('🎧');
+  });
+  // @req FR:agent-team/web.avatar.fluent: each image that fails steps to the next, ending in native text or the monogram
+  it('steps past each image that fails to load', () => {
+    const fl = fluentSrc('🎧')!;
+    expect(avatarChain({ name: '🎧 Ada', icon: '/agents/ada.png' })).toEqual([{ kind: 'img', src: '/agents/ada.png' }, { kind: 'fluent', src: fl, text: '🎧' }, { kind: 'emoji', text: '🎧' }]);
+    expect(avatarChain({ name: '🎧 Ada' })).toEqual([{ kind: 'fluent', src: fl, text: '🎧' }, { kind: 'emoji', text: '🎧' }]);
+    expect(avatarChain({ slug: 'ada', name: 'Ada', icon: '/agents/ada.png' }).map((v) => v.kind)).toEqual(['img', 'mono']);
   });
 });

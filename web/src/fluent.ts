@@ -23,8 +23,8 @@ export function fluentNamed(name: string): { src: string; text: string } | undef
   return k && src ? { src, text: fromKey(k) } : undefined;
 }
 
-/** One emoji: a pictograph (or a flag) with its modifiers, variation selectors, and ZWJ parts. */
-const LEAD = /^(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}(?:️|\p{Emoji_Modifier})?(?:‍\p{Extended_Pictographic}(?:️|\p{Emoji_Modifier})?)*)/u;
+/** One emoji: a pictograph (or a flag), each part with an optional variation selector then skin tone, joined by ZWJ. */
+const LEAD = /^(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}]?\p{Emoji_Modifier}?(?:\u{200D}\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}]?\p{Emoji_Modifier}?)*)/u;
 
 /** The emoji that starts a title, and the rest: `🎧 Flantastic 4` → `{ emoji: '🎧', rest: 'Flantastic 4' }`. */
 export function leadEmoji(text: string): { emoji: string; rest: string } | undefined {

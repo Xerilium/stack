@@ -4,17 +4,18 @@
  * @req FR:agent-team/web.avatar @req FR:agent-team/web.avatar.fluent @req FR:agent-team/web.avatar.project
  */
 import { useEffect, useState } from 'preact/hooks';
-import { avatarOf, emojiView, type AvatarView, type AvatarWho } from './avatar';
+import { avatarChain, emojiView, type AvatarWho } from './avatar';
 import { leadEmoji } from './fluent';
 
 export function Avatar({ who, size = 28 }: { who: AvatarWho; size?: number }) {
-  const [broken, setBroken] = useState(false); // a missing Fluent image falls back to native text; a missing icon image to the name's emoji or monogram
-  useEffect(() => setBroken(false), [who.icon, who.name]); // a new agent gets a fresh try
-  const first = avatarOf(who);
-  const v: AvatarView = !broken ? first : first.kind === 'fluent' ? { kind: 'emoji', text: first.text } : avatarOf({ ...who, icon: undefined });
+  const [fails, setFails] = useState(0);
+  useEffect(() => setFails(0), [who.icon, who.name]); // a new agent gets a fresh try
+  const chain = avatarChain(who);
+  const v = chain[Math.min(fails, chain.length - 1)]!;
+  const failed = () => setFails((n) => n + 1);
   const style = { width: `${size}px`, height: `${size}px` };
-  if (v.kind === 'fluent') return <img class="avatar fluent" src={v.src} alt="" aria-hidden="true" width={size} height={size} style={style} onError={() => setBroken(true)} />;
-  if (v.kind === 'img') return <img class="avatar" src={v.src} alt="" aria-hidden="true" width={size} height={size} style={style} onError={() => setBroken(true)} />;
+  if (v.kind === 'fluent') return <img key={v.src} class="avatar fluent" src={v.src} alt="" aria-hidden="true" width={size} height={size} style={style} onError={failed} />;
+  if (v.kind === 'img') return <img key={v.src} class="avatar" src={v.src} alt="" aria-hidden="true" width={size} height={size} style={style} onError={failed} />;
   if (v.kind === 'emoji') return <span class="avatar emoji" aria-hidden="true" style={{ ...style, fontSize: `${Math.round(size * 0.6)}px` }}>{v.text}</span>;
   return (
     <svg class="avatar" aria-hidden="true" viewBox="0 0 32 32" width={size} height={size} style={style}>

@@ -19,7 +19,9 @@ test.describe('Fluent emoji', () => {
     await expect(face).toHaveAttribute('alt', '');
     await expect.poll(() => loaded(face)).toBe(true);
     const box = (await face.boundingBox())!;
-    expect([Math.round(box.width), Math.round(box.height)]).toEqual([36, 36]);
+    expect([Math.round(box.width), Math.round(box.height)]).toEqual([28, 28]);
+    await expect(page.getByTestId('now-to')).toHaveText('Ada Lead'); // the avatar draws the emoji
+    await expect(page.getByRole('textbox', { name: 'Message 🎧 Ada Lead' })).toBeVisible(); // the accessible name keeps it
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const axe = await new AxeBuilder({ page }).include('[data-testid="now"]').analyze();
     expect(axe.violations).toEqual([]);

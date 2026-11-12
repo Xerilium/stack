@@ -49,3 +49,13 @@ export function avatarOf(who: AvatarWho): AvatarView {
   const key = (who.slug || who.name).toLowerCase();
   return { kind: 'mono', text: initials(who.name), color: AVATAR_COLORS[hash(key) % AVATAR_COLORS.length] };
 }
+
+/** What to draw, best first: an image that fails to load steps to the next (icon image, the name's emoji as Fluent, native text, monogram). */
+export function avatarChain(who: AvatarWho): AvatarView[] {
+  const out: AvatarView[] = [];
+  const add = (v: AvatarView) => { out.push(v); if (v.kind === 'fluent') out.push({ kind: 'emoji', text: v.text }); };
+  const first = avatarOf(who);
+  add(first);
+  if (first.kind === 'img') add(avatarOf({ ...who, icon: undefined }));
+  return out;
+}
