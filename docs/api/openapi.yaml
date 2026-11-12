@@ -4136,6 +4136,11 @@ components:
         home:
           type: string
           description: "Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents"
+        aliases:
+          type: array
+          items:
+            type: string
+          description: "Older display names a session title may start with: the H1 text before its colon"
     ThreadItem:
       type: object
       properties:

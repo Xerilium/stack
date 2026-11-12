@@ -5,7 +5,7 @@
  */
 import type { SessionItem } from './sessions';
 
-export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** Where a scanned agent lives (project, folder, or `user`). @req FR:agent-team/agent.team.scan */ home?: string; /** The manager's slug; absent on the roll-up. */ reportsTo?: string; /** Emoji or same-origin image path. @req FR:agent-team/agent.icon */ icon?: string }
+export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** Where a scanned agent lives (project, folder, or `user`). @req FR:agent-team/agent.team.scan */ home?: string; /** The manager's slug; absent on the roll-up. */ reportsTo?: string; /** Emoji or same-origin image path. @req FR:agent-team/agent.icon */ icon?: string; /** Older names a session title may start with. @req FR:agent-team/org.match */ aliases?: string[] }
 /** The first agent whose scope is `*`. */
 export const rollupOf = (team: TeamAgent[]): TeamAgent | undefined => team.find((a) => a.scope.includes('*'));
 /** How long a metadata-only agent stays on tasks after its last session. @req FR:agent-team/web.chip.live */
@@ -61,7 +61,7 @@ export function matchAgent(s: Pick<SessionItem, 'title'>, team: TeamAgent[]): Te
   let best: { a: TeamAgent; len: number } | undefined;
   for (const a of team) {
     const role = a.role && a.role.replace(/[.!?]$/, '').trim().split(/\s+/).length <= 4 ? nameKey(a.role) : '';
-    for (const k of [nameKey(a.name), a.slug, role]) {
+    for (const k of [nameKey(a.name), a.slug, role, ...(a.aliases ?? []).map(nameKey)]) {
       if (!k || !(t === k || t.startsWith(`${k}-`))) continue;
       if (!best || k.length > best.len) best = { a, len: k.length };
     }

@@ -138,7 +138,7 @@ Owner needs the Agents page to show his agents as the reporting structure they h
   > - @req FR:agent-sessions/web.order
   - **FR:org.order.scope** (P1): Agents view MUST show by default only agents that cover at least one project, or that have a pinned or attention-state (`needs-you`, `running`) session; `Show all` (`A`) reveals the rest
     > - @req FR:agent-sessions/web.scope
-- **FR:org.match** (P1): Page MUST tie a session to an agent when its title starts with the agent's name, slug, or short role (at most four words, so `Chief of Staff` claims `👩 💼 Chief of Staff`; emoji and case ignored) or ends with the ` · <ref>` / ` · <project>` suffix of a session started for that agent; a session tied to an agent counts as owned, whatever its repo
+- **FR:org.match** (P1): Page MUST tie a session to an agent when its title starts with the agent's name, slug, or short role (at most four words, so `Chief of Staff` claims `👩 💼 Chief of Staff`; emoji and case ignored) or an alias (the H1 text before its `:`, the name older sessions carry), or ends with the ` · <ref>` / ` · <project>` suffix of a session started for that agent; a session tied to an agent counts as owned, whatever its repo
   > - @req FR:agent-sessions/web.scope
 - **FR:org.keys** (P1): `t` Team grouping, `p` by project, pressing the active one again returns to the flat list; `Enter` on an agent row opens the new-session composer with that agent chosen; every action is in the palette and `?` help
 - **FR:org.a11y** (P1): The tree MUST be a `tree` with `treeitem` rows and `aria-level`, the agent rows buttons with full labels (`👔 CoS, Chief of Staff, 4 sessions, 1.2M tokens`), 44 px targets on touch, contrast at least 4.5:1, light and dark designed

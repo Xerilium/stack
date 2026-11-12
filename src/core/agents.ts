@@ -20,6 +20,8 @@ export interface AgentDef {
   reportsTo?: string;
   /** Avatar: an emoji, `fluent:<name>`, or an image path on the Stack web origin (`/agents/cid.png`). Absent: a monogram. @req FR:agent-team/agent.icon */
   icon?: string;
+  /** Older display names a session title may still start with: the H1 text before its `:` (`CoS` of `CoS: Chief of Staff`). @req FR:agent-team/org.match */
+  aliases?: string[];
   /** System prompt addition (`## Prompt`). */
   prompt: string;
   /** Lines this version does not know; kept as is. */
@@ -151,7 +153,13 @@ export function parseClaudeAgent(slug: string, content: string): AgentDef {
   }
   const h1 = /^#[ \t]+(.+?)[ \t]*(?:\n|$)/.exec(body.trimStart())?.[1]; // only a title that opens the body, never a `#` inside a code block
   // `CoS: Chief of Staff` shows `Chief of Staff`; a name that is just the slug reads as words (`cid-divine-manager` → `Cid Divine Manager`).
-  if (h1) { const n = oneLine(h1.includes(':') ? h1.slice(h1.indexOf(':') + 1) : h1); if (n && n.length <= MAX_NAME) a.name = n; }
+  if (h1) {
+    const n = oneLine(h1.includes(':') ? h1.slice(h1.indexOf(':') + 1) : h1);
+    if (n && n.length <= MAX_NAME) a.name = n;
+    // Sessions started before the name moved past the `:` carry the prefix in their title.
+    const pre = h1.includes(':') ? oneLine(h1.slice(0, h1.indexOf(':'))) : '';
+    if (pre && pre.length <= MAX_NAME && pre !== a.name) a.aliases = [pre];
+  }
   else if (a.name === slug) a.name = slug.split(/[-_.]+/).filter(Boolean).map((w) => ACRONYMS.get(w) ?? (!/[aeiouy]/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' '); // `fh`, `ftk`, `sre`, `cos` read as acronyms
   a.prompt = body.trim().slice(0, MAX_PROMPT);
   return a;

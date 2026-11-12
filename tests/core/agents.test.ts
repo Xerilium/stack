@@ -211,6 +211,9 @@ describe('parseClaudeAgent', () => {
     const a = parseClaudeAgent('cos', COS_CLAUDE);
     expect(a).toMatchObject({ slug: 'cos', name: 'Chief of Staff', role: 'Chief of Staff', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash'], scope: [], mode: 'ad-hoc' });
     expect(a.prompt).toBe("# CoS: Chief of Staff\n\nYou are Michael's Chief of Staff.");
+    expect(a.aliases).toEqual(['CoS']);
+    expect(parseClaudeAgent('lead', '# Team Captain: Project Coordinator\n')).toMatchObject({ name: 'Project Coordinator', aliases: ['Team Captain'] });
+    expect(parseClaudeAgent('lead', '# Project Coordinator\n').aliases).toBeUndefined();
     const b = parseClaudeAgent('allyte-cos', ALLYTE_CLAUDE);
     expect(b).toMatchObject({ name: 'Allyte CoS', role: 'Allyte sub-CoS (solo)', reportsTo: 'cos', scope: ['allyte'], mode: 'long-running' });
     const c = parseClaudeAgent('plain', 'Just a prompt.\n');
