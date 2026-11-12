@@ -2,7 +2,7 @@
 id: pr-review-lane
 title: PR Review Lane
 author: flanakin
-description: "Three tools for the owner's PR reviews: sort pending PRs by spec lines, store a short agent brief for Autopilot PRs blocked on him, and keep exactly one PR in a live validation lane with a checklist he taps through. No LLM call. Stack never starts a server or an agent in this feature."
+description: "PR review aids: spec-line sort, agent briefs for Autopilot PRs, and a one-PR live validation checklist."
 dependencies: [pr-priority, pr-page, status-ingest, ask-queue, api, auth-security, cli, web-shell]
 ---
 
@@ -105,6 +105,13 @@ A host controller will later run the loop for the agent: on `resolve`, start the
 - `pr-priority`: its `pr-pri` command sends `brief` to `briefCmd` in `src/cli/pr-review.ts`.
 - `pr-page`: its `prs` command sends `--sort spec-lines` to `specSort` in `src/cli/pr-review.ts`.
 
+## Data Model
+
+- **PR facts**: `<home>/pr-facts.json`, see `FR:pr-review-lane/sort.cache`
+- **Brief**: `<home>/pr-briefs.json`, see `FR:pr-review-lane/brief.model`
+- **Lane**: `<home>/live-lane.json`, see `FR:pr-review-lane/lane.model`; checklist item, see `FR:pr-review-lane/lane.item`
+- **Lane config**: `<home>/live.config.json`, see `FR:pr-review-lane/lane.config`
+
 ## Architecture Constraints
 
 - Live state is under Home, never in the content repo or git
@@ -114,3 +121,8 @@ A host controller will later run the loop for the agent: on `resolve`, start the
 ## Dependencies
 
 - pr-priority (the queue file, read-only), pr-page (sort consumer), status-ingest (Home, lock rules), ask-queue (Needs you), api, auth-security (scope table), cli (exit codes), web-shell (hash routes)
+
+## External Dependencies
+
+- GitHub CLI (`gh`): PR, PR files, and search reads only
+- The shared server lock file (default `/tmp/fh-server.lock`), also written by the Sweep Manager
