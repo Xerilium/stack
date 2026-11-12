@@ -63,6 +63,11 @@ describe('refs autolink', () => {
     const dotted = refCtxOf([{ name: 'n', metadata: { Repository: 'vercel/next.js' } }]);
     expect(mdLinks('vercel/next.js#5', dotted('n'))).toEqual([{ href: 'https://github.com/vercel/next.js/issues/5', label: 'next.js#5' }]);
   });
+  it('keeps balanced parens in a URL; a hex color stays text', () => {
+    expect(links('see https://en.wikipedia.org/wiki/Foo_(bar).')).toEqual([{ href: 'https://en.wikipedia.org/wiki/Foo_(bar)', label: 'https://en.wikipedia.org/wiki/Foo_(bar)' }]);
+    expect(links('(see https://x.test/a)')).toEqual([{ href: 'https://x.test/a', label: 'https://x.test/a' }]);
+    expect(links('color #333333 and #12', 'stack')).toEqual([{ href: 'https://github.com/Xerilium/stack/issues/12', label: '#12' }]);
+  });
   it('opens refs in a new tab and escapes them', () => {
     expect(toHtml('PR 5', ctx('stack'))).toBe('<a href="https://github.com/Xerilium/stack/pull/5" rel="noopener noreferrer" target="_blank">PR 5</a>');
   });

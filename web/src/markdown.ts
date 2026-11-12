@@ -49,11 +49,13 @@ const name = (slug: string) => slug.slice(slug.indexOf('/') + 1);
 function linkRefs(src: string, ctx: RefCtx): Node[] {
   const pre = Object.keys(ctx.prefixes).map((k) => k.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')).join('|');
   const re = new RegExp([
-    /(?<url>https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"])/.source,
+    // Balanced parens stay in the path (`wiki/Foo_(bar)`); trailing punctuation does not.
+    /(?<url>https?:\/\/(?:[^\s<>()[\]]|\([^\s<>()[\]]*\))*(?:[^\s<>()[\].,;:!?'"]|\([^\s<>()[\]]*\)))/.source,
     /(?<![\w/.-])(?<owner>[\w.-]+)\/(?<repo>[\w.-]+)#(?<on>\d+)\b/.source,
     /\bPR ?#?(?<pr>\d+)\b/.source,
     /(?<![\w/#.-])(?<short>[A-Za-z][\w.-]*)#(?<sn>\d+)\b/.source,
-    /(?<![\w&/#])#(?<hn>\d+)\b/.source,
+    // 6+ digits is a hex color (`#333333`), not an issue.
+    /(?<![\w&/#])#(?<hn>\d{1,5})\b/.source,
     pre ? `\\b(?<px>${pre}) #?(?<pn>\\d+)\\b` : '(?!)',
   ].join('|'), 'g');
   const out: Node[] = [];
