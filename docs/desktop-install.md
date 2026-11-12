@@ -72,3 +72,4 @@ Pull, run `pnpm desktop:package` again, and replace `/Applications/Stack.app`. A
 
 - Apple silicon only. No auto-update.
 - Logs: run `/Applications/Stack.app/Contents/MacOS/Stack` from a terminal to see host lines.
+- To see the `PATH` a Finder launch gets: `env -i HOME="$HOME" SHELL="$SHELL" PATH=/usr/bin:/bin:/usr/sbin:/sbin /Applications/Stack.app/Contents/MacOS/Stack`.

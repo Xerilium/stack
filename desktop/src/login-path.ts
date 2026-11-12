@@ -37,7 +37,9 @@ export const spawnExec: ExecFn = (file, args, o) => new Promise((ok, fail) => {
   let out = '';
   let settled = false;
   const kill = () => { try { if (child.pid && process.platform !== 'win32') process.kill(-child.pid, 'SIGKILL'); else child.kill('SIGKILL'); } catch { /* already gone */ } };
-  const end = (e?: Error) => { if (settled) return; settled = true; clearTimeout(timer); kill(); if (e) fail(e); else ok(out); };
+  // The group outlives the app: kill it if the app exits mid-read.
+  process.once('exit', kill);
+  const end = (e?: Error) => { if (settled) return; settled = true; clearTimeout(timer); process.off('exit', kill); kill(); if (e) fail(e); else ok(out); };
   const timer = setTimeout(() => end(new Error('timed out')), o.timeoutMs);
   child.stdout!.setEncoding('utf8');
   child.stdout!.on('data', (d: string) => { out += d; if (out.split(PATH_MARK).length > 2) end(); else if (out.length > MAX_OUT) end(new Error('shell output too large')); });
