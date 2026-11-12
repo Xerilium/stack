@@ -87,7 +87,7 @@ const localPath = (spec: string | undefined) => (spec && !isUrl(spec) ? resolve(
  * @req FR:first-run-onboarding/host.apply @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.mode
  * @req FR:first-run-onboarding/step.mode.tasks @req FR:first-run-onboarding/step.calendar @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone
  */
-export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unknown; locks?: Locks }): ApplyResult {
+export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unknown; locks?: Locks; spec?: string }): ApplyResult {
   const b = (o.body && typeof o.body === 'object' ? o.body : null) as Record<string, unknown> | null;
   if (!b) return fail('Send a step.');
   const cfg = readConfig(o.home);
@@ -98,7 +98,8 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
     return { ok: true, restart: false };
   }
   if (!isStep(b.step)) return fail('Unknown step.');
-  const spec = repoSpec(cfg, o.env);
+  // The host repo (flags and the current folder win over env and config), as in setupStatus.
+  const spec = o.spec ?? repoSpec(cfg, o.env);
   if (b.step !== 'repo' && !spec) return fail('Pick a repo first.');
   const save = (patch: Partial<UserCfg>, restart: boolean, done = false): ApplyResult => {
     writeConfig(o.home, { ...patch, onboarding: done ? { step: 'phone', done: true } : { step: nextOf(b.step as StepId) } });
@@ -168,7 +169,7 @@ export function createSetup(o: {
   return {
     status,
     post(body) {
-      const r = applySetup({ home: o.home, env: o.env, body, locks: o.locks?.() });
+      const r = applySetup({ home: o.home, env: o.env, body, locks: o.locks?.(), spec: o.spec() });
       if (!r.ok) return { code: 400, body: { error: { code: 'invalid', message: r.error } }, restart: false };
       return { code: 200, body: { restart: r.restart, status: status() }, restart: r.restart };
     },

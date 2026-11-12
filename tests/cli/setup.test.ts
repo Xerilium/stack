@@ -120,6 +120,15 @@ describe('applySetup', () => {
     expect(existsSync(join(repo, 'tasks'))).toBe(true);
     expect(readConfig(home)).not.toHaveProperty('mode');
   });
+  // @req FR:first-run-onboarding/step.mode.tasks @req FR:first-run-onboarding/step.repo
+  it('--live --repo on a repo with no tasks/: the steps use the host repo, not the user config', () => {
+    const home = tmp(); const repo = gitRepo(null); const locks = { repo: '--repo', mode: '--live' };
+    expect(applySetup({ home, env, body: { step: 'repo' }, locks, spec: repo })).toEqual({ ok: true, restart: false });
+    expect(applySetup({ home, env, body: { step: 'mode' }, locks, spec: repo })).toEqual({ ok: true, restart: true });
+    expect(existsSync(join(repo, 'tasks'))).toBe(true);
+    expect(readConfig(home)).not.toHaveProperty('repo');
+    expect(applySetup({ home, env, body: { step: 'calendar', skip: true }, locks, spec: repo })).toEqual({ ok: true, restart: false });
+  });
   // @req FR:first-run-onboarding/step.repo
   it('repo: expands ~ to the home folder', () => {
     const home = tmp(); const r = join(home, 'tasks-repo'); mkdirSync(r); git(r, 'init', '-q');
