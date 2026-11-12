@@ -1,5 +1,5 @@
 import { fixtureCalendar } from '../../src/calendar';
-import { mkdtempSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { parseDocument } from 'yaml';
 import { createApiHandler, QUERY_DEFAULTS, ROUTES } from '../../src/api/handler';
@@ -9,6 +9,8 @@ import { parseRef } from '../../src/api/validate';
 import { ENUMS, MAX_STR, type Spec } from '../../src/api/validate';
 import { MemoryStorage } from '../../src/core/storage';
 import { ReportStore } from '../../src/core/reports';
+import { PriStore } from '../../src/core/pris';
+import { runInventory } from '../../src/core/session-inventory';
 import { tmpdir } from 'os';
 import { createAuth, createTokenService, MemoryTokenStore } from '../../src/api';
 import { createRunManager, type AgentDriver, type Run, type Update } from '../../src/agents';
@@ -169,8 +171,8 @@ describe('route parity', () => {
   // @req FR:api/docs.openapi.parity
   it('matches request bodies: properties, required, bounds, enums, strictness', () => {
     for (const { route, op } of ops) {
-      // reports.put has a nested body the core validates; its schema is authored (FR:status-ingest/api.put).
-      if (!route.body) { if (route.name === 'reports.put') expect(resolve(op.requestBody).required).toBe(true); else expect(op.requestBody).toBeUndefined(); continue; }
+      // reports.put and pris.put have nested bodies the core validates; their schemas are authored (FR:status-ingest/api.put, FR:session-inventory/api.pris.put).
+      if (!route.body) { if (route.name === 'reports.put' || route.name === 'pris.put') expect(resolve(op.requestBody).required).toBe(true); else expect(op.requestBody).toBeUndefined(); continue; }
       const rb = resolve(op.requestBody);
       expect(!!rb.required).toBe(route.body.required.length > 0);
       const s = resolve(rb.content['application/json'].schema);
@@ -212,12 +214,21 @@ describe('security parity', () => {
   });
 });
 
+/** One waiting scheduled session with a PR, so every documented SessionItem field is checked against real output. */
+function sessionFixture(): string {
+  const d = mkdtempSync(join(tmpdir(), 'stack-oa-sess-')); const f = join(d, 'a', 'b'); mkdirSync(f, { recursive: true });
+  writeFileSync(join(f, 'local_1.json'), JSON.stringify({ sessionId: 'local_1', cwd: '/u/dev/todo', title: 'T', lastActivityAt: 1, lastTurnEdgeAt: 1, scheduledTaskId: 's', interruptedAwaitingPerson: true, lastAssistantUuid: 'u', postTurnSummary: { status_category: 'blocked', needs_action: 'Approve', summarizes_uuid: 'u' }, prs: [{ url: 'https://x.test/pull/1', state: 'OPEN' }] }));
+  writeFileSync(join(f, 'scheduled-tasks.json'), JSON.stringify({ scheduledTasks: [{ id: 's', displayName: 'Daily' }] }));
+  return d;
+}
+
 describe('response parity (real handler output vs documented schemas)', () => {
   const NOW = new Date('2026-10-22T18:00:00Z');
   const storage = new MemoryStorage();
   // A calendar with an online meeting, so the documented event shape (joinUrl included) is checked against real output.
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
-  const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))) });
+  const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))),
+    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }) });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
@@ -319,6 +330,12 @@ describe('response parity (real handler output vs documented schemas)', () => {
     // @req FR:status-ingest/api.put @req FR:status-ingest/api.invalid
     await go('reports.put', 'POST', '/reports', { agent: 'xe-cos', project: 'stack', top: [{ text: 'Ship' }], asks: [{ id: 'a', ask: 'Approve', link: 'https://x.test/1', by: '2026-10-23' }] }, 200);
     await go('reports.put', 'POST', '/reports', { agent: 'Bad' }, 400);
+    // @req FR:session-inventory/api.inventory @req FR:session-inventory/api.pris.get @req FR:session-inventory/api.pris.put
+    await go('inventory.list', 'GET', '/session-inventory', undefined, 200);
+    await go('pris.get', 'GET', '/pris', undefined, 200);
+    await go('pris.put', 'POST', '/pris', { rev: 0, pris: [{ id: 'p1', title: 'One', status: 'active', items: [], backlog: [], weekly: [{ week: '2026-W46', text: 'Done' }] }] }, 200);
+    await go('pris.put', 'POST', '/pris', { rev: 0, pris: [] }, 409);
+    await go('pris.put', 'POST', '/pris', { rev: 1, pris: [{ id: 'X' }] }, 400);
     // @req FR:agent-sessions/driver.interface (no driver here: every sessions route is 404 and the error shape still conforms)
     await go('sessions.list', 'GET', '/sessions', undefined, 404);
     await go('sessions.cost', 'GET', '/sessions/cost', undefined, 404);

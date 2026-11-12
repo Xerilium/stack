@@ -14,6 +14,8 @@ import {
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
+import { runInventory } from '../core/session-inventory';
+import { PrisInvalid, PriStore } from '../core/pris';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
 import { replyFromAgent } from '../core/inbox';
 import { registerAutopriEngine } from '../core/autopri';
@@ -81,6 +83,8 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
+  sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
+  pris: { flags: ['file'], usage: 'pris [--json] | pris seed --file <md>', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once from a numbered markdown list' },
   update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (--engine stack: scores and order like `stack next`, with .stack/priorities.json)' },
 };
 
@@ -345,6 +349,45 @@ async function reportCmd(p: ReturnType<typeof parseArgs>, input: () => Promise<s
   return { json: { ok: true, via, ...r }, text: `report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped${answered ? `, ${answered} answered (see --json)` : ''} (${via})` };
 }
 
+/**
+ * The session inventory, read-only on the app store. @req FR:session-inventory/cli.sessions
+ */
+function sessionsCmd(p: ReturnType<typeof parseArgs>): Outcome {
+  if (p.positionals.length) throw new UsageError(`Unexpected argument: ${p.positionals[0]}`);
+  const inv = runInventory({ home: stackHome() });
+  const c = inv.counts;
+  const lines = [`sessions: ${inv.total} (running ${c.running}, waiting ${c.waiting}, stuck ${c.stuck}, done ${c.done}, pinned ${c.pinned}, idle ${c.idle})`];
+  if (inv.needsYou.length) lines.push('needs you:');
+  inv.needsYou.forEach((s, i) => lines.push(`${i + 1}. [${s.project}] ${s.state} ${s.title} - ${s.ask ?? s.reason} ${s.link}`));
+  lines.push(`archive candidates: ${inv.archive.length}`);
+  return { json: { ok: true, ...inv }, text: lines.join('\n') };
+}
+
+/**
+ * The owner priorities, or a one-time seed from markdown. @req FR:session-inventory/cli.pris @req FR:session-inventory/pris.seed.once
+ */
+async function prisCmd(p: ReturnType<typeof parseArgs>): Promise<Outcome> {
+  const store = new PriStore(stackHome());
+  const [sub, extra] = p.positionals;
+  if (extra !== undefined || (sub !== undefined && sub !== 'seed')) throw new UsageError(`Unexpected argument: ${extra ?? sub}`);
+  if (sub === 'seed') {
+    const file = flag(p.flags, 'file');
+    if (!file) throw new UsageError('pris seed needs --file <md>');
+    let r: { seeded: boolean; count: number };
+    try { r = await store.seed(resolve(file)); } catch (e) {
+      if (e instanceof PrisInvalid) throw e;
+      // Any file-system error opening or reading --file is a usage error. @req FR:session-inventory/cli.pris
+      if (['open', 'read'].includes(String((e as NodeJS.ErrnoException).syscall))) throw new UsageError(`Cannot read --file: ${file}`);
+      throw e;
+    }
+    return { json: { ok: true, ...r }, text: r.seeded ? `seeded ${r.count} priorities` : `already seeded (${r.count} priorities)` };
+  }
+  const d = store.read();
+  if (!d.pris.length) return { json: { ok: true, ...d }, text: 'no priorities (run: stack pris seed --file <md>)' };
+  const lines = d.pris.flatMap((x, i) => [`${i + 1}. ${x.title} [${x.status}]`, ...x.items.map((it) => `   - ${it.text}${it.status === 'todo' ? '' : ` [${it.status}]`}`), ...(x.weekly[0] ? [`   week ${x.weekly[0].week}: ${x.weekly[0].text}`] : [])]);
+  return { json: { ok: true, ...d }, text: lines.join('\n') };
+}
+
 /** A core ref as the api writes it (`<project>:<line>`, 0-based). */
 const apiRef = (r: { path: string; line: number }) => `${basename(r.path).replace(/\.md$/, '')}:${r.line}`;
 
@@ -599,7 +642,9 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
   // Demo never touches live state (~/.stack): its reports stay beside the demo copy. @req FR:status-ingest/host.demo
   const reports = webReportStore(live, home);
-  const s = await startWeb({ dir: target, port, webDir, label, info, storage, ...(reports ? { reports } : {}) });
+  // Demo reads no session store and keeps priorities beside the demo copy. @req FR:status-ingest/host.demo
+  const demoLive = live ? {} : { inventory: false as const, pris: new PriStore(join(home, '.config/stack/demo-state')) };
+  const s = await startWeb({ dir: target, port, webDir, label, info, storage, ...(reports ? { reports } : {}), ...demoLive });
   io.out(`Stack web: ${s.url}  (data: ${target}; Ctrl+C to stop)\n`);
   await new Promise<void>((ok) => { process.once('SIGINT', ok); process.once('SIGTERM', ok); });
   await s.close();
@@ -607,7 +652,7 @@ async function web(f: Record<string, string | true>, io: IO, found: string | nul
 }
 
 function exitCodeFor(e: unknown): number {
-  if (e instanceof UsageError || e instanceof LifecycleError || e instanceof NotFoundError || e instanceof PathError || e instanceof ReportInvalid) return EXIT.usage;
+  if (e instanceof UsageError || e instanceof LifecycleError || e instanceof NotFoundError || e instanceof PathError || e instanceof ReportInvalid || e instanceof PrisInvalid) return EXIT.usage;
   if (e instanceof ConflictError) return EXIT.conflict;
   return EXIT.failure;
 }
@@ -637,7 +682,8 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     if (p.command === 'graph') return await graphCmd(p.positionals[0], p.flags, io, json);
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
     // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report
-    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : await dispatch(p.command, p, dir);
+    // Live state under ~/.stack needs no content repo. @req FR:session-inventory/cli.sessions @req FR:session-inventory/cli.pris
+    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'pris' ? await prisCmd(p) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
     return r.code ?? EXIT.ok;
