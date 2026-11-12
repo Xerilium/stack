@@ -41,3 +41,21 @@ describe('fluent emoji', () => {
     for (const f of files) expect(readFileSync(new URL(f, dir), 'utf8'), f).not.toMatch(/<script|on\w+=|href="http/i);
   });
 });
+
+// @req FR:agent-team/web.avatar.fetch
+describe('fetch-fluent-emoji', () => {
+  it('shortens numbers and whitespace, and rejects anything that runs or reaches out', async () => {
+    const { minify } = await import('../../scripts/fetch-fluent-emoji');
+    expect(minify('<?xml version="1.0"?>\n<svg>\n  <!-- c -->\n  <path d="M8.97123 7.24512 C 0.123456 -0.000123 1 2"/>\n</svg>')).toBe('<svg><path d="M9 7.2 C .123-.000123 1 2"/></svg>');
+    for (const bad of ['<svg><script>x()</script></svg>', '<svg onload="x()"/>', '<svg><use href="https://x.test/a.svg#b"/></svg>']) expect(() => minify(bad)).toThrow(/Unsafe/);
+    expect(minify('<svg><use href="#a"/></svg>')).toBe('<svg><use href="#a"/></svg>');
+  });
+  it('keeps emoji an earlier run added unless --reset, and caps the bundle at 400 KB', async () => {
+    const { wanted, MAX_BYTES } = await import('../../scripts/fetch-fluent-emoji');
+    expect(wanted([], ['1f989'])).toContain('1f989');
+    expect(wanted(['🦉'], [])).toContain('1f989');
+    expect(wanted(['--reset'], ['1f989'])).not.toContain('1f989');
+    expect(wanted([], [])).toContain('1f3a7');
+    expect(MAX_BYTES).toBe(400 * 1024);
+  });
+});

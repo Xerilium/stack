@@ -36,5 +36,5 @@ export function Emoji({ text }: { text: string }) {
 /** A project title with its leading emoji drawn by the same renderer: `🎧 Flantastic 4`. */
 export function Titled({ text }: { text: string }) {
   const lead = leadEmoji(text);
-  return lead ? <><Emoji text={lead.emoji} /> {lead.rest}</> : <>{text}</>;
+  return lead && lead.rest ? <><Emoji text={lead.emoji} /> {lead.rest}</> : <>{text}</>; // an emoji-only title stays text so it has a name
 }

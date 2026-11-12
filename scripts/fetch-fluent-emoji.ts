@@ -50,11 +50,18 @@ export function minify(svg: string): string {
   return s;
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+/** The bundle cap (FR:agent-team/web.avatar.fluent). */
+export const MAX_BYTES = 400 * 1024;
+
+/** Keys to bundle: defaults, arguments, and (unless `--reset`) every key already in the index. */
+export function wanted(args: string[], had: string[]): string[] {
   const reset = args.includes('--reset');
-  const had = reset ? [] : await readFile(new URL('index.json', OUT), 'utf8').then((t) => Object.keys((JSON.parse(t) as { emoji: Record<string, string> }).emoji), () => [] as string[]);
-  let want = [...new Set([...[...USED, ...COMMON, ...args.filter((a) => a !== '--reset')].map(emojiKey), ...had])];
+  return [...new Set([...[...USED, ...COMMON, ...args.filter((a) => a !== '--reset')].map(emojiKey), ...(reset ? [] : had)])];
+}
+
+async function main(): Promise<void> {
+  const had = await readFile(new URL('index.json', OUT), 'utf8').then((t) => Object.keys((JSON.parse(t) as { emoji: Record<string, string> }).emoji), () => [] as string[]);
+  let want = wanted(process.argv.slice(2), had);
   const tree = (await get(`https://api.github.com/repos/${REPO}/git/trees/${COMMIT}?recursive=1`, 'json')) as { truncated: boolean; tree: { path: string }[] };
   if (tree.truncated) throw new Error('Tree listing truncated');
   const paths = tree.tree.map((t) => t.path);
@@ -69,19 +76,23 @@ async function main(): Promise<void> {
   // Fluent has no art for some sequences (family ZWJ): those stay native text on the page.
   if (missing.length) console.warn(`Not in Fluent Emoji (stays native): ${missing.map((k) => String.fromCodePoint(...k.split('-').map((h) => parseInt(h, 16)))).join(' ')}`);
   want = want.filter((k) => byKey.has(k));
-  await mkdir(OUT, { recursive: true });
-  for (const f of await readdir(OUT)) if (f.endsWith('.svg')) await rm(new URL(f, OUT));
+  // Download everything first: a failed fetch or an over-cap bundle leaves the committed files as they were.
   const index: Record<string, string> = {};
+  const bodies = new Map<string, string>();
   let bytes = 0;
   for (const key of want.sort()) {
     const dir = byKey.get(key)!;
     const svg = paths.find((p) => p.startsWith(`${dir}/Color/`) && p.endsWith('.svg')) ?? paths.find((p) => p.startsWith(`${dir}/Default/Color/`) && p.endsWith('.svg'));
     if (!svg) throw new Error(`No Color SVG in ${dir}`);
     const body = minify((await get(raw(svg), 'text')) as string);
-    await writeFile(new URL(`${key}.svg`, OUT), body);
+    bodies.set(key, body);
     index[key] = svg.slice(svg.lastIndexOf('/') + 1).replace(/_color(?:_default)?\.svg$/, '');
     bytes += Buffer.byteLength(body);
   }
+  if (bytes > MAX_BYTES) throw new Error(`Bundle ${(bytes / 1024).toFixed(1)} KB is over ${MAX_BYTES / 1024} KB: pick lighter emoji or use --reset`);
+  await mkdir(OUT, { recursive: true });
+  for (const f of await readdir(OUT)) if (f.endsWith('.svg')) await rm(new URL(f, OUT));
+  for (const [key, body] of bodies) await writeFile(new URL(`${key}.svg`, OUT), body);
   await writeFile(new URL('index.json', OUT), `${JSON.stringify({ source: `https://github.com/${REPO}`, license: 'MIT', commit: COMMIT, emoji: index }, null, 2)}\n`);
   console.log(`${want.length} emoji, ${(bytes / 1024).toFixed(1)} KB`);
 }
