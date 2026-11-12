@@ -51,7 +51,7 @@ describe('setup-azure.ps1', () => {
   });
   // @req FR:deploy-stack-xerilium-com/setup.args
   itPwsh('rejects a bad argument before any Azure call', () => {
-    for (const args of [['-Repo', 'not a repo'], ['-Branch', '--upload-pack=x'], ['-Owner', 'github:a b'], ['-Domain', 'http://x']]) {
+    for (const args of [['-Repo', 'not a repo'], ['-Branch', '--upload-pack=x'], ['-Owner', 'github:a b'], ['-Domain', 'http://x'], ['-Domain', 'xerilium.com']]) {
       const r = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', path, ...args], { encoding: 'utf8' });
       expect(r.status).not.toBe(0);
       expect(r.stdout + r.stderr).toMatch(/Cannot validate argument/);
@@ -62,6 +62,22 @@ describe('setup-azure.ps1', () => {
   itPwsh('re-run merges only the changed settings and keeps the rest', () => {
     const out = ps(`$c = @{ STACK_OWNERS = ''; STACK_SLACK_SIGNING_SECRET = 'keep'; STACK_REPO_TOKEN = 'old'; STACK_TOKEN_PEPPER = 'pep' }; Merge-StackSettings -Current $c -Changes @{ STACK_OWNERS = 'github:abc'; STACK_REPO_URL = ''; STACK_REPO_TOKEN = '' } | ConvertTo-Json -Compress`);
     expect(JSON.parse(out)).toEqual({ STACK_OWNERS: 'github:abc', STACK_SLACK_SIGNING_SECRET: 'keep', STACK_REPO_TOKEN: 'old', STACK_TOKEN_PEPPER: 'pep' });
+  });
+  // @req FR:deploy-stack-xerilium-com/branch.rerun
+  itPwsh('re-run fills a missing branch, repo URL, or pepper and never overwrites a set one', () => {
+    const out = ps(`$c = @{ STACK_REPO_URL = 'https://github.com/a/b' }; Merge-StackSettings -Current $c -Changes @{} -Defaults @{ STACK_REPO_BRANCH = 'stack/live'; STACK_REPO_URL = 'https://github.com/x/y'; STACK_TOKEN_PEPPER = 'p' } | ConvertTo-Json -Compress`);
+    expect(JSON.parse(out)).toEqual({ STACK_REPO_URL: 'https://github.com/a/b', STACK_REPO_BRANCH: 'stack/live', STACK_TOKEN_PEPPER: 'p' });
+  });
+  it('treats only a missing group or site as new; any other Azure error stops the script', () => {
+    expect(script).not.toMatch(/Get-AzResourceGroup[^\n]*SilentlyContinue/);
+    expect(script).not.toMatch(/Get-AzStaticWebApp[^\n]*SilentlyContinue/);
+  });
+  it('checks the branch exists even when the token is kept, and that the deploy started', () => {
+    expect(script).toMatch(/Test-StackBranch/);
+    expect(script).toMatch(/gh workflow run deploy\.yml[^\n]*\n\s*if \(\$LASTEXITCODE -ne 0\)/);
+  });
+  it('refuses -Debug, which would log secrets', () => {
+    expect(script).toMatch(/\$DebugPreference -ne 'SilentlyContinue'/);
   });
   // @req FR:deploy-stack-xerilium-com/setup.merge
   itPwsh('builds the first-run parameters with every bicep parameter', () => {
@@ -112,6 +128,8 @@ describe('custom domain', () => {
     expect(script).toMatch(/Get-AzStaticWebAppCustomDomain/);
     expect(script).toMatch(/New-AzStaticWebAppCustomDomain[^\n]*-ValidationMethod cname-delegation/);
     expect(script).toMatch(/catch \{[^}]*re-run/s);
+    expect(script).toMatch(/Exception\.Message/);
+    expect(script).toMatch(/Status -ne 'Ready'|Status -eq 'Ready'/);
   });
 });
 

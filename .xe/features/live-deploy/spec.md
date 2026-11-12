@@ -93,8 +93,8 @@ Owner needs one script and one short doc to put Stack online so that hosting is 
   > - @req FR:deploy-docs/ci.deploy
   - **FR:setup.script.rerun** (P1): Re-running MUST be safe: it never re-applies the template to an existing site; it merges only the changed settings into the current list (other settings such as bot or mail secrets are kept) and keeps the pepper
   - **FR:setup.script.args** (P1): Every argument MUST be validated before use
-- **FR:setup.secrets** (P1): The script MUST read the repo token from a hidden prompt (or `STACK_REPO_TOKEN` in its env), check it can read the repo's contents, generate the pepper, and pass secrets only through child-process environments, mode-600 temp files it deletes on exit, and stdin to `gh secret set`; never on a command line
-  - **FR:setup.secrets.json** (P1): JSON MUST be built by `node` from the environment, never by shell interpolation
+- **FR:setup.secrets** (P1): The script MUST read the repo token from a hidden prompt (or `STACK_REPO_TOKEN` in its env), check it can read the repo's contents, generate the pepper, and pass secrets only in process memory, child-process environments, and stdin to `gh secret set`; never on a command line or in a file
+  - **FR:setup.secrets.json** (P1): JSON MUST be built from objects (`ConvertTo-Json`, a parameter hashtable), never by string interpolation
   - **FR:setup.secrets.quiet** (P1): The script MUST never print a secret or write one inside a git work tree
 - **FR:setup.owner** (P1): The "Not on the allow-list" page MUST show the signed-in `provider:userId` and the exact command `scripts/setup-azure.ps1 -Owner <it>`; that command only updates `STACK_OWNERS` on the existing site (no redeploy)
   > - @req FR:azure-host/auth.swa

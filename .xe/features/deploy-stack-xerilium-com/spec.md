@@ -61,7 +61,7 @@ Owner needs to know what protects the public URL so that he can trust it.
 
 Owner needs the phone to show the same Needs-you as the Mac so that the deployed app is not missing agent state.
 
-- **FR:hybrid.design** (P2): `docs/hybrid-state.md` (25 lines at most) MUST state the design: the Mac host pushes a compact state snapshot to the deployed API with a device token, with no LLM call, and list the follow-up chunk with acceptance criteria. Build is out of scope
+- **FR:hybrid.design** (P2): `docs/hybrid-state.md` (25 lines at most) MUST state the design: the Mac host pushes a compact state snapshot to the deployed API with an owner-minted token (scope `state:write`), with no LLM call, and list the follow-up chunk with acceptance criteria. Build is out of scope
 
 ## Non-functional Requirements
 
