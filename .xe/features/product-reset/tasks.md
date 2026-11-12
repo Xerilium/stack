@@ -9,8 +9,8 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 - [ ] 0c: Remove `Open {host}` button; autolink refs in `markdown.ts` (`FR:ui.reflink`, `FR:schema.refs`)
 - [ ] 0d: `ownerOf` everywhere; agent picker chip in NowChat (`FR:schema.agent`)
 - [ ] 0e: Card hover and focus background (`FR:ui.taskcard`)
-- [ ] 0f: Owner queue drops agent rows; ranks the `🙋` child (`FR:rank.owner`)
-- [ ] 0g: Stale overdue cap (`FR:rank.stale`, `FR:rank.stale.score`)
+- [ ] 0f: Owner queue drops agent rows and their unmarked children; ranks the `🙋` child (`FR:rank.owner`, `FR:schema.owner`)
+- [ ] 0g: Stale overdue cap with a cached last-change map (`FR:rank.stale`, `FR:rank.stale.score`)
 
 ## Stage 1: agent-delivery
 
@@ -19,18 +19,23 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 
 ## Stage 2: task-schema
 
-- [ ] Fixture from the live sample shape (anonymized) with fields, note trees, column-0 notes, mixed markers
-- [ ] Parser: fields, note tree, owner, refs (`FR:schema.*`)
+- [ ] Fixture from the live sample shape (anonymized): fields, note trees, mixed markers, owner inheritance
+- [ ] Parser: fields, note tree, owner, refs, blocked (`FR:schema.*`)
 - [ ] Round-trip test on all fixtures (`FR:schema.compat`)
 - [ ] Field writes (`FR:schema.write`)
-- [ ] `GET /tasks` summary fields; `GET /tasks/{ref}?view=full` (`FR:api.summary`, `FR:api.full`); openapi
+- [ ] Move `ownerOf` to `src/core/agents.ts` (`FR:schema.agent`)
+- [ ] `GET /tasks` summary fields; `GET /tasks/{ref}?view=full`; openapi (`FR:api.summary`, `FR:api.full`)
+- [ ] Agent delivery sends `TaskFull` (`FR:connect.agents`)
 
 ## Stage 3: quality-gate
 
-- [ ] `fixtures/verbs.txt`; checks and score (`FR:quality.rules`, `FR:quality.score`)
-- [ ] `stack task check` (`FR:api.check`); `POST /tasks/{ref}/enrich` (`FR:api.enrich`)
+- [ ] `src/core/verbs.ts`; checks and score (`FR:quality.rules`, `FR:quality.score`)
+- [ ] `stack task check` (`FR:cli.check`)
+- [ ] Single and bulk enrich routes and batching (`FR:api.enrich`, `FR:quality.enrich`, `FR:quality.enrich.batch`)
+- [ ] `Needs context` panel with `Ask {agent} to fill it in` (`FR:quality.ui`)
 - [ ] `docs/task-rubric.md`; link from CoS agent files (`FR:quality.rubric`)
-- [ ] Ranker: owner field, gate, blocked, stale activity sources (`FR:rank.*`); `GET /rank` fields (`FR:api.rank`)
+- [ ] Ranker: owner field, gate, blocked, `Checked:` and activity sources (`FR:rank.*`); `GET /rank` fields (`FR:api.rank`)
+- [ ] Needs-context item on an empty Now (`FR:rank.needs-context`)
 - [ ] `Still true?` actions: Keep, Update date, Drop (`FR:rank.stale.prompt`)
 
 ## Stage 4: components
@@ -42,9 +47,10 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 ## Stages 5-11
 
 - [ ] 5: Now surface (`FR:ia.now`)
-- [ ] 6: Nav, URLs, Back, breadcrumb, pane, Tasks filters, redirects (`FR:ia.nav`, `FR:ia.removed`, `FR:ia.back`, `FR:ia.pane`, `FR:ia.tasks`)
-- [ ] 7: Microsoft sign-in for calendar and mail; no-command string test (`FR:connect.rule`, `FR:connect.calendar`, `FR:connect.mail`)
-- [ ] 8: My day grid with Respond, Validate, Focus blocks (`FR:ia.myday`)
-- [ ] 9: Notifications (`FR:ia.notifications`)
+- [ ] 6: Nav, keys, URLs, Back, breadcrumb, pane, Tasks filters, redirects for home, projects, list (`FR:ia.nav`, `FR:ia.keys`, `FR:ia.removed`, `FR:ia.back`, `FR:ia.pane`, `FR:ia.tasks`)
+- [ ] 7: Microsoft sign-in for calendar and mail; GitHub device flow; no-command string test (`FR:connect.rule`, `FR:connect.rule.test`, `FR:connect.flow`, `FR:connect.calendar`, `FR:connect.mail`, `FR:connect.github`)
+- [ ] 8: My day grid with Respond, Validate, Do, Focus blocks (`FR:ia.myday`)
+- [ ] 9: Notifications; redirects for asks and inbox (`FR:ia.notifications`, `FR:ia.removed`)
 - [ ] 10: Agents org tree (`FR:ia.agents`)
 - [ ] 11: CoS wide layout (`FR:ia.cos`)
+- [ ] Priorities on the shared components (`FR:ia.priorities`), in Stage 4

@@ -6,14 +6,14 @@ Owner feedback, 2026-11-12: the app is not usable. This audit finds the causes i
 
 Sample: `~/dev/todo-live/tasks` (read-only), 2026-11-12.
 
-| Measure                                                                              | Value     |
-| ------------------------------------------------------------------------------------ | --------- |
-| Open rows                                                                            | 1093      |
-| Open rows that are nested under a parent                                             | 789 (72%) |
-| Open rows with any nested note line                                                  | 102 (9%)  |
-| Open rows with a typed field (`Next:`, `Done when:`, `Context:`, `Owner:`, `Links:`) | 1 (0.1%)  |
-| Open rows marked agent (`🤖`/`🪄`)                                                   | 59        |
-| Open rows marked human (`🙋`)                                                        | 14        |
+| Measure                                                    | Value     |
+| ---------------------------------------------------------- | --------- |
+| Open rows                                                  | 1093      |
+| Open rows that are nested under a parent                   | 789 (72%) |
+| Open rows with any nested note line                        | 102 (9%)  |
+| Open rows with a typed field (`Next:`, `Owner:` and so on) | 1 (0.1%)  |
+| Open rows marked agent (`🤖`/`🪄`)                         | 59        |
+| Open rows marked human (`🙋`)                              | 14        |
 
 Result: 91% of open rows have no context in the file. The app cannot show context that does not exist. The data problem and the display problem both need a fix.
 
@@ -93,7 +93,7 @@ Example from the sample: `flantastic-4.md:99` `Answer the acks in PR #97` sits u
 | 9   | Four thread displays                        | NowChat bubbles, ThreadView meta lines, Sent lines, Drawer                                                                                                         | Inconsistent experience                                |
 | 10  | Calendar connect differs                    | My day links to `docs/runbook.md` (`views.tsx:437`); Now shows a form and a CLI command (`NowNext.tsx:67-73`)                                                      | "doesn't connect to my calendar automatically"         |
 | 11  | My day is a list                            | `myday.css:38` resets `min-height`, so every block is one row high                                                                                                 | "doesn't look like a calendar"                         |
-| 12  | Done on Now swaps silently                  | `doAct('done')` refreshes; no animation, no open of the next task (`NowView.tsx:39`)                                                                               | "needs an animation and to auto-open the next item"    |
+| 12  | Done on Now swaps silently                  | `doAct` (`App.tsx:560`) refreshes; no animation, no open of the next task                                                                                          | "needs an animation and to auto-open the next item"    |
 | 13  | Leaf rows shown with no parent              | `RankItem` has `root` only; Now shows the title only                                                                                                               | "Stack seems to show only the leaf node"               |
 
 ## 4. Strings that tell the owner to run a command or read docs
