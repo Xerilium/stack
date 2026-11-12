@@ -7,6 +7,7 @@ import type { RankItem } from './home';
 import type { NeedItem } from './needs';
 import type { Pri, PrisFile } from './pris';
 import type { Inventory } from './inventory';
+import type { PrBoard } from './prs';
 import type { ReviewItem, TeamAgent } from './team';
 import type { Thread } from './thread';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
@@ -56,6 +57,16 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     putPris: (rev: number, pris: Pri[]) => call<PrisFile>('/pris', { rev, pris }),
     /** The Claude app session inventory. @req FR:pris-sessions-ui/sessions.list */
     inventory: () => call<Inventory>('/session-inventory'),
+    /** The PR board; 404 where the host has no GitHub token. @req FR:pr-page/api.get */
+    prs: () => call<PrBoard>('/prs'),
+    /** @req FR:pr-page/api.queue */
+    prQueue: (repo: string, number: number, op: 'top' | 'up' | 'down' | 'move' | 'add' | 'pin' | 'unpin' | 'remove' | 'undo', rank?: number) => call<{ rank: number | null; was: number | null; pinned: boolean }>('/prs/queue', { repo, number, op, ...(rank ? { rank } : {}) }),
+    /** @req FR:pr-page/api.label */
+    prLabel: (repo: string, number: number, op: 'add' | 'remove') => call<{ ok: true }>('/prs/label', { repo, number, op }),
+    /** @req FR:pr-page/api.ack */
+    prAck: (b: { repo: string; number: number; thread: string; note: string; post?: boolean; text?: string; replyTo?: number }) => call<{ ok: true; posted: boolean; recorded: boolean; message?: string }>('/prs/ack', b),
+    /** @req FR:pr-page/api.rec */
+    prRec: (id: string, b: { decision: 'accept' | 'edit' | 'reject'; rank?: number; note?: string; reason?: string }) => call<{ ok: true }>(`/prs/recs/${encodeURIComponent(id)}`, b),
     /** The Chief of Staff's escalations. @req FR:ask-queue/needs.api */
     needs: async () => (await call<{ items: NeedItem[] }>('/needs-you')).items,
     answerNeed: (id: string, body: { choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }) => call<{ changed: boolean }>(`/needs-you/${encodeURIComponent(id)}/answer`, body),

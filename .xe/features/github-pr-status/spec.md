@@ -47,6 +47,29 @@ The owner needs the hosts to enable status from one setting so that no extra set
 - **FR:wire.token** (P2): The Azure host and `stack web` MUST pass the provider when `GITHUB_TOKEN` is set
   - **FR:wire.token.scope** (P1): The host MUST send the token only to `https://api.github.com` and MUST NOT log or return it
 
+### FR:board: Read the owner's PR board
+
+The PR page needs every open PR the owner reviews or moves, with enough detail to group it, in few calls.
+
+- **FR:board.@function** (P1): Interface: `createGitHubBoard({token, fetch?, user?, repos?, now?})` returns `{user(), fetch()}`. `fetch()` returns raw PR facts for `FR:pr-page/group.*`
+- **FR:board.search** (P1): One GraphQL call runs three searches (`is:pr is:open archived:false`): `involves:<user>`, `review-requested:<user>`, and, for my repos, `draft:false -author:<user>` with `repo:`/`user:` from `repos` (else `user:<user>`). 50 PRs each, merged by url. Each PR has labels, author, assignees, review requests, latest reviews, mergeable, head oid, body, check rollup with each check's name, state and start time
+- **FR:board.detail** (P1): A second GraphQL call reads, for up to 10 PRs per call, the review threads (resolved, last comment author, body, url, id), the last 10 comments, and which checks are required (`isRequired`). It is cached per PR by `updatedAt`, head oid, and rollup state, and read again after 5 minutes
+- **FR:board.user** (P1): Without `user`, each poll reads `GET /user` with `If-None-Match` and the last ETag. A `304` (free against the rate limit) keeps the cached login
+- **FR:board.etag** (P1): Choice: GraphQL is a POST and has no ETag, and REST cannot read thread resolution. One poll costs about 10 points of 5000 an hour, so polls every 45 s use under 20%. ETags apply to the REST calls (`board.user`)
+- **FR:board.rate** (P1): The result carries `rate: {remaining, resetAt}` from GraphQL `rateLimit`. A rate-limit answer throws `GitHubRateLimit` with the reset time
+- **FR:board.scopes** (P1): Read needs a fine-grained token with Pull requests, Issues, Checks, Commit statuses, and Metadata read (or a classic `repo` token)
+
+### FR:write: Owner writes
+
+The PR page needs a few writes so that the owner can unblock a PR with one tap.
+
+- **FR:write.@function** (P1): Interface: `createGitHubWrites({token, fetch?, repos?})` returns `addLabel`, `removeLabel`, `comment`, `reply`. This is the only module that writes to GitHub for the PR page
+- **FR:write.label** (P1): `addLabel` and `removeLabel` accept only the Autopilot label (`Status: 🤖 Autopilot`, matched without case or emoji variation selectors; add uses the repo's own spelling from `GET /repos/{o}/{r}/labels`, read once per repo; remove uses the name as the PR carries it). They call `POST /repos/{o}/{r}/issues/{n}/labels` and `DELETE /repos/{o}/{r}/issues/{n}/labels/{name}`
+- **FR:write.comment** (P1): `comment` calls `POST /repos/{o}/{r}/issues/{n}/comments`; `reply` calls `POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies`, where `id` is the thread's first comment (GitHub does not take replies to replies). The body must start with `🤖 [AI] ` and be at most 4000 characters
+- **FR:write.never** (P1): No write merges, closes, un-drafts, or reviews a PR. There is no other method
+- **FR:write.errors** (P1): A failed write throws `GitHub <status>` with no body text and no token
+- **FR:write.scopes** (P1): Writes need Pull requests write (thread replies) and Issues write (labels, PR comments)
+
 ## Data Model
 
 - **FR:$pr-status** (P1): **`PrStatus`** — State and checks of one pull request.

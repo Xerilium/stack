@@ -103,6 +103,8 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     }
     if (path === '/needs-you') return json(route, 200, { items: m.needs });
     // Priorities and the session inventory: null = a host without them (404). @req FR:session-inventory/api.pris.put
+    // @req FR:pr-page/icon.absent: a host with no GitHub token.
+    if (path === '/prs') return json(route, 200, { off: true });
     if (path === '/session-inventory') return m.inventory ? json(route, 200, m.inventory) : json(route, 404, { error: { code: 'not_found', message: 'No session inventory on this host' } });
     if (path === '/pris' && req.method() === 'POST') {
       if (!m.pris) return json(route, 404, { error: { code: 'not_found', message: 'No priorities store on this host' } });

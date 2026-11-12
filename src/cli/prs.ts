@@ -1,0 +1,45 @@
+/**
+ * `stack prs`: the PR page board in the terminal. Read only. Never prints the token.
+ * @req FR:pr-page/cli.prs
+ */
+import { githubRepos } from '../api/github';
+import { createPrPage } from '../api/pr-page';
+import type { PrBoard } from '../api/pr-board-service';
+import type { StackConfig } from '../core/config';
+import { PR_GROUPS, type PrGroup, type PrRow } from '../core/pr-board';
+import { runInventory } from '../core/session-inventory';
+import { UsageError } from './args';
+
+const OWNER: Record<string, string> = { me: 'you', ci: 'CI', runner: 'runner', none: '-' };
+const ownerWord = (r: PrRow) => (r.state.owner === 'reviewer' ? r.state.login ?? 'reviewer' : OWNER[r.state.owner]);
+
+/** Filters a board by group and project (a project name or a repo). */
+export function filterBoard(b: PrBoard, group?: string, project?: string): PrRow[] {
+  if (group !== undefined && !PR_GROUPS.includes(group as PrGroup)) throw new UsageError(`--group must be one of ${PR_GROUPS.join(', ')}`);
+  const p = project?.toLowerCase();
+  return b.rows.filter((r) => (!group || r.group === group) && (!p || r.project === p || r.repo.toLowerCase() === p || r.repo.split('/')[1]?.toLowerCase() === p));
+}
+
+/** The text form: counts, then one line per row. */
+export function formatBoard(b: PrBoard, rows: PrRow[]): string {
+  const lines = [`prs: ${PR_GROUPS.map((g) => `${g} ${b.counts[g]}`).join(', ')}; agents ${b.agents.count} (${b.agents.source})${b.at ? `; updated ${b.at}` : ''}${b.error ? `; ${b.error}` : ''}`];
+  for (const r of rows) lines.push(`${r.group} [${r.project}] ${r.repo}#${r.number} ${r.title} · ${ownerWord(r)}${r.state.blocker ? `: ${r.state.blocker}` : ''} ${r.state.link}`);
+  return lines.join('\n');
+}
+
+export async function prsCmd(flags: Record<string, string | true>, positionals: string[], config: () => StackConfig, home: string, env: NodeJS.ProcessEnv = process.env): Promise<{ json: unknown; text: string; code?: number }> {
+  if (positionals.length) throw new UsageError(`Unexpected argument: ${positionals[0]}`);
+  const group = typeof flags.group === 'string' ? flags.group : flags.group === true ? '' : undefined;
+  const project = typeof flags.project === 'string' ? flags.project : undefined;
+  if (group === '') throw new UsageError('--group needs a value');
+  const token = env.GITHUB_TOKEN?.trim();
+  if (!token) return { json: { ok: false, error: 'GITHUB_TOKEN is not set' }, text: 'error: GITHUB_TOKEN is not set', code: 1 };
+  let cfg: StackConfig | undefined;
+  try { cfg = config(); } catch { cfg = undefined; }
+  const page = createPrPage({ token, repos: githubRepos(env.STACK_GITHUB_REPOS), config: cfg, home, inventory: () => runInventory({ home }) });
+  try {
+    const b = await page.prBoard.get();
+    const rows = filterBoard(b, group, project);
+    return { json: { ok: true, ...b, rows }, text: formatBoard(b, rows), ...(b.at === null ? { code: 1 } : {}) };
+  } finally { page.prBoard.stop(); }
+}

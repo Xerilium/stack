@@ -18,6 +18,11 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/reports` | POST an agent status report into the desktop host's live store (`~/.stack`, never git); 400 lists every issue. See [report.md](../report.md) |
 | `/session-inventory` | GET (owner only) Claude app sessions: counts, ranked Needs you, archive candidates; read-only on the app store, cached in `~/.stack` |
 | `/pr-priority` | GET (owner) the PR priority list view and open recommendations; POST (owner) one idempotent action `{rev, op, ref?, rank?, to?, note?, thread?}`. `/pr-priority/recommendations`: POST (agent token ok) recommend, GET decisions. `/pr-priority/recommendations/{id}`: POST (owner) accept, edit or reject. See [pr-priority.md](../pr-priority.md) |
+| `/prs` | GET (owner only) the PR board: open PRs grouped by who must act, with CI, threads, queue rank, and the escalation set; renews a 3-minute poll lease; `{off: true}` without `GITHUB_TOKEN` |
+| `/prs/queue` | POST (owner only) change the priority queue through `stack pr-pri`: `top`, `up`, `down`, `move`, `add`, `pin`, `unpin`, `remove`, `undo` |
+| `/prs/label` | POST (owner only) add or remove the Autopilot label (no other label) |
+| `/prs/ack` | POST (owner only) record an answer on a thread (`thread`, `note`); `post: true` first posts the `🤖 [AI]` text on GitHub |
+| `/prs/recs/{id}` | POST (owner only) accept, edit, or reject a PR priority recommendation |
 | `/pris` | GET or POST (owner only) the owner priorities with sub-items, backlog and weekly progress; POST sends `{rev, pris}`, a stale rev is 409 |
 | `/tasks` | GET list tasks; POST add a task |
 | `/tasks/{ref}` | GET one task |

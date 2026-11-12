@@ -280,6 +280,29 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { rank: 'For edit: the rank to use', note: 'For edit: the item note', reason: 'Required for edit and reject' },
     responses: ok('Decided', { type: 'object', properties: { changed: { type: 'boolean' }, rec: ref('PrRec'), queue: { type: 'object' } } }),
   },
+  // @req FR:pr-page/api.get @req FR:pr-page/api.queue @req FR:pr-page/api.label @req FR:pr-page/api.ack @req FR:pr-page/api.rec
+  'prs.get': {
+    operationId: 'getPrBoard', summary: 'Owner only. Open PRs the owner reviews or moves, grouped (blocked, waiting, processing, pending, paused), with who must act, CI, unresolved threads, queue rank, and the escalation set. Taking it renews a 3-minute poll lease. `{off: true}` on hosts with no GitHub token',
+    responses: ok('Board', { type: 'object', properties: { at: { type: 'string', nullable: true }, user: { type: 'string' }, agents: { type: 'object' }, counts: { type: 'object' }, footer: { type: 'object' }, rows: { type: 'array', items: { type: 'object' } }, escalations: { type: 'object' }, queue: { type: 'boolean' }, rate: { type: 'object' }, error: { type: 'string' }, off: { type: 'boolean' } } }),
+  },
+  'prs.queue': {
+    operationId: 'movePrInQueue', summary: 'Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin, unpin, remove, undo. 409 when the queue is not installed or refuses',
+    desc: { op: 'top, up, down, move, add, pin, unpin, remove, or undo', rank: 'Target rank for move' },
+    responses: ok('New rank', { type: 'object', properties: { rank: { type: 'integer', nullable: true }, was: { type: 'integer', nullable: true }, pinned: { type: 'boolean' } } }),
+  },
+  'prs.label': {
+    operationId: 'labelPr', summary: 'Owner only. Add or remove the Autopilot label (no other label). 403 for repos outside STACK_GITHUB_REPOS',
+    responses: ok('Done', { type: 'object' }),
+  },
+  'prs.ack': {
+    operationId: 'ackPr', summary: 'Owner only. Record the owner answer on a thread (stack pr-pri ack --thread --note). With post true, first post text (must start with the AI prefix) as a thread reply (replyTo) or a PR comment',
+    desc: { thread: 'Thread or PR url the answer is for', note: 'The answer' },
+    responses: ok('Done', { type: 'object' }),
+  },
+  'prs.rec': {
+    operationId: 'decidePrRec', summary: 'Owner only. Accept, edit, or reject a PR priority recommendation; edit and reject need a reason',
+    responses: ok('Done', { type: 'object' }),
+  },
   'sessions.list': {
     operationId: 'listSessions', summary: 'Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents',
     responses: ok('Sessions', { type: 'object', properties: { items: { type: 'array', items: ref('Session') }, total: { type: 'integer' }, indexing: { type: 'integer' } } }),

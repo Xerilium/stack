@@ -345,6 +345,12 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('prPriority.decide', 'POST', `/pr-priority/recommendations/${rec.rec.id}`, { decision: 'reject', reason: 'No' }, 200);
     await go('prPriority.recommend', 'POST', '/pr-priority/recommendations', { repo: 'o/r', number: 2, agent: 'cos', reason: 'Hot' }, 409);
     await go('prPriority.decisions', 'GET', '/pr-priority/recommendations', undefined, 200);
+    // @req FR:pr-page/api.get @req FR:pr-page/api.queue-client (no board, writes, or queue here: the error shapes still conform)
+    await go('prs.get', 'GET', '/prs', undefined, 200);
+    await go('prs.queue', 'POST', '/prs/queue', { repo: 'o/r', number: 1, op: 'pin' }, 404);
+    await go('prs.label', 'POST', '/prs/label', { repo: 'o/r', number: 1, op: 'add' }, 404);
+    await go('prs.ack', 'POST', '/prs/ack', { repo: 'o/r', number: 1, thread: 'https://github.com/o/r/pull/1', note: 'a' }, 409);
+    await go('prs.rec', 'POST', '/prs/recs/pp-0000000a', { decision: 'accept' }, 409);
     // @req FR:agent-sessions/driver.interface (no driver here: every sessions route is 404 and the error shape still conforms)
     await go('sessions.list', 'GET', '/sessions', undefined, 404);
     await go('sessions.cost', 'GET', '/sessions/cost', undefined, 404);

@@ -52,7 +52,8 @@ export const defaultSessionsDir = (env: NodeJS.ProcessEnv = process.env, home = 
 export const defaultProjectsDir = (env: NodeJS.ProcessEnv = process.env, home = homedir()): string => env.STACK_TRANSCRIPTS_DIR || join(home, '.claude/projects');
 export const sessionLink = (id: string): string => `claude://claude.ai/epitaxy/${id}`;
 
-const RULES: [RegExp, SessionProject][] = [
+/** Folder or repo name to project. Shared with the PR page. */
+export const RULES: [RegExp, SessionProject][] = [
   [/^(finops-hubs|allyte)/i, 'allyte'], [/^finops-toolkit/i, 'ftk'], [/^focus/i, 'focus'], [/^f4/i, 'f4'],
   [/^(todo|stack|catalyst|printer|prime|pr-sweep)/i, 'xerilium'],
 ];

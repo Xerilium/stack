@@ -1509,6 +1509,242 @@ paths:
                     type: object
         default:
           $ref: "#/components/responses/Error"
+  /prs:
+    get:
+      summary: "Owner only. Open PRs the owner reviews or moves, grouped (blocked, waiting, processing, pending, paused), with who must act, CI, unresolved threads, queue rank, and the escalation set. Taking it renews a 3-minute poll lease. `{off: true}` on hosts with no GitHub token"
+      operationId: getPrBoard
+      responses:
+        "200":
+          description: Board
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  at:
+                    type: string
+                    nullable: true
+                  user:
+                    type: string
+                  agents:
+                    type: object
+                  counts:
+                    type: object
+                  footer:
+                    type: object
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                  escalations:
+                    type: object
+                  queue:
+                    type: boolean
+                  rate:
+                    type: object
+                  error:
+                    type: string
+                  off:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/queue:
+    post:
+      summary: "Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin, unpin, remove, undo. 409 when the queue is not installed or refuses"
+      operationId: movePrInQueue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - op
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                op:
+                  type: string
+                  enum:
+                    - top
+                    - up
+                    - down
+                    - move
+                    - add
+                    - pin
+                    - unpin
+                    - remove
+                    - undo
+                  description: top, up, down, move, add, pin, unpin, remove, or undo
+                rank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  description: Target rank for move
+      responses:
+        "200":
+          description: New rank
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rank:
+                    type: integer
+                    nullable: true
+                  was:
+                    type: integer
+                    nullable: true
+                  pinned:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/label:
+    post:
+      summary: Owner only. Add or remove the Autopilot label (no other label). 403 for repos outside STACK_GITHUB_REPOS
+      operationId: labelPr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - op
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                op:
+                  type: string
+                  enum:
+                    - add
+                    - remove
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/ack:
+    post:
+      summary: Owner only. Record the owner answer on a thread (stack pr-pri ack --thread --note). With post true, first post text (must start with the AI prefix) as a thread reply (replyTo) or a PR comment
+      operationId: ackPr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - thread
+                - note
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                thread:
+                  type: string
+                  maxLength: 500
+                  pattern: ^https:\/\/github\.com\/\S+$
+                  description: Thread or PR url the answer is for Single line.
+                note:
+                  type: string
+                  maxLength: 300
+                  description: The answer Single line.
+                post:
+                  type: boolean
+                text:
+                  type: string
+                  maxLength: 4000
+                replyTo:
+                  type: integer
+                  minimum: 1
+                  maximum: 9007199254740991
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/recs/{id}:
+    post:
+      summary: Owner only. Accept, edit, or reject a PR priority recommendation; edit and reject need a reason
+      operationId: decidePrRec
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum:
+                    - accept
+                    - edit
+                    - reject
+                rank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                note:
+                  type: string
+                  maxLength: 300
+                  description: Single line.
+                reason:
+                  type: string
+                  maxLength: 300
+                  description: Single line.
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
   /inbox-items:
     get:
       summary: "All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens"

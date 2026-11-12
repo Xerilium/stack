@@ -24,6 +24,7 @@ import { AsksView } from './AsksView';
 import { PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
+import { PrsButton, PrsFlyoutHost } from './PrsPanel';
 import { actionsFor, type AskItem, type Send } from './asks';
 import { useAsks } from './useAsks';
 import { Drawer, SessionsView } from './SessionsView';
@@ -735,6 +736,7 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('.prs-scrim')) return; // the PR flyout owns the keys while open @req FR:pr-page/flyout.shape
       if (haveChord.current && !/^[0-4h]$/.test(e.key)) haveChord.current = 0; // any other key disarms h
       const L = latest.current, A = act.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); return; }
@@ -881,6 +883,8 @@ export function App() {
         <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
         <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
         {nav()}
+        {/* @req FR:pr-page/icon.place */}
+        <PrsButton api={api} />
         <div class="spacer" />
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette">Commands <kbd aria-hidden="true">⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
@@ -892,7 +896,7 @@ export function App() {
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}</div>
+        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}<PrsButton api={api} compact /></div>
         {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} top={<PrisBlock ctl={prisSessions.pris} />} after={<SessionsBlock ctl={prisSessions.sessions} toast={toast} />} extraCount={prisSessions.sessions.inv?.needsYou.length ?? 0} />}
         {view === 'inbox' && <InboxView api={api} toast={toast} />}
@@ -954,6 +958,7 @@ export function App() {
       )}
       {palette && <PaletteDialog commands={allCommands} onClose={() => setPalette(false)} />}
       {help && <Help onClose={() => setHelp(false)} />}
+      <PrsFlyoutHost api={api} toast={toast} />
       <Toasts toasts={toasts} dismiss={dismiss} />
     </div>
   );

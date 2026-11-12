@@ -35,6 +35,8 @@ export interface StackConfig {
   format: FormatId;
   /** Extra formats written alongside the primary. @req FR:formatter-clean/select.also */
   alsoWrite: FormatId[];
+  /** The PR page: the signed-in GitHub login, PRs to leave out, poll seconds (30-60). @req FR:pr-page/group.@function @req FR:pr-page/live.poll */
+  github?: { user?: string; exclude?: string[]; pollSeconds?: number };
 }
 
 const ALL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -156,6 +158,15 @@ export function parseConfig(input?: unknown): StackConfig {
     if (new Set(extra).size !== extra.length) throw new ConfigError('alsoWrite: duplicate format');
     cfg.alsoWrite = extra;
   } else if (cfg.alsoWrite.includes(cfg.format)) cfg.alsoWrite = [];
+  if (input.github !== undefined) {
+    if (!isObj(input.github)) throw new ConfigError('github: expected object');
+    const g = input.github;
+    const out: NonNullable<StackConfig['github']> = {};
+    if (g.user !== undefined) { out.user = str(g.user, 'github.user'); if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(out.user)) throw new ConfigError('github.user: expected a GitHub login'); }
+    if (g.exclude !== undefined) { if (!Array.isArray(g.exclude)) throw new ConfigError('github.exclude: expected array'); out.exclude = g.exclude.map((e, i) => str(e, `github.exclude[${i}]`)); }
+    if (g.pollSeconds !== undefined) { if (typeof g.pollSeconds !== 'number' || g.pollSeconds < 30 || g.pollSeconds > 60) throw new ConfigError('github.pollSeconds: expected 30-60'); out.pollSeconds = g.pollSeconds; }
+    cfg.github = out;
+  }
   if (input.taskScoring !== undefined) {
     if (!isObj(input.taskScoring)) throw new ConfigError('taskScoring: expected object');
     const ts = input.taskScoring;
