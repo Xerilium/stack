@@ -1,4 +1,5 @@
 /** Guards docs/scheduled-reporting.md: the final-step block runs as written and every sample passes the schema. */
+import { execFileSync } from 'child_process';
 import { mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -55,8 +56,8 @@ describe('docs/scheduled-reporting.md', () => {
   it('maps each exit code to one fixed action and never loops', () => {
     const b = block!.body;
     expect(b).toMatch(/Exit 0: stored/);
-    expect(b).toMatch(/Exit 2: fix only the fields in `issues`; send once more/);
-    expect(b).toMatch(/Exit 1: wait 5 s; send once more/);
+    expect(b).toMatch(/Exit 2: fix only what `error` and `issues` name; send once more/);
+    expect(b).toMatch(/Exit 1: send once more/);
     expect(b).toContain('report failed: <error>');
     expect(b).toMatch(/never loop/i);
   });
@@ -75,8 +76,10 @@ describe('docs/scheduled-reporting.md', () => {
   // @req FR:scheduled-task-reporting/secrets.none
   it('forbids secrets in a report', () => {
     expect(block!.body).toMatch(/Never a secret/);
-    for (const w of ['token', 'webhook url', 'signed url']) expect(block!.body).toContain(w);
-    expect(doc).toMatch(/^## No secrets$/m);
+    for (const w of ['token', 'key', 'password', 'webhook url', 'signed url', 'url with a token in its query']) expect(block!.body).toContain(w);
+    const section = doc.slice(doc.indexOf('## No secrets'), doc.indexOf('## Samples'));
+    expect(section).toMatch(/No personal data beyond names already public/);
+    expect(section).toMatch(/Links point at the item itself/);
   });
 
   // @req FR:scheduled-task-reporting/samples.types @req FR:scheduled-task-reporting/samples.tasks
@@ -85,15 +88,40 @@ describe('docs/scheduled-reporting.md', () => {
     expect(() => parseReport({ ...sample(type), agent, project })).not.toThrow();
   });
 
-  // @req FR:scheduled-task-reporting/samples.run
-  it.each(TASKS)('the block runs as written for %s and exits 0', async (_task, agent, project, type) => {
-    const cmd = block!.body.split('\n').find((l) => l.startsWith('stack report '))!.replace('<agent>', agent).replace('<project>', project);
-    const args = cmd.replace(/ <<'JSON'$/, '').split(' ').slice(1);
-    process.env.STACK_HOME = mkdtempSync(join(tmpdir(), 'stack-sched-'));
+  /** The block's command lines (`stack report ...` through the closing `JSON`), for one task, with `body` in the heredoc. */
+  const command = (agent: string, project: string, body: string | null) => {
+    const lines = block!.body.split('\n');
+    const start = lines.findIndex((l) => l.startsWith('stack report '));
+    const end = lines.indexOf('JSON', start);
+    const cmd = lines.slice(start, end + 1).map((l) => l.replace('<agent>', agent).replace('<project>', project));
+    if (body !== null) cmd.splice(1, end - start - 1, body);
+    return cmd.join('\n');
+  };
+  /** Runs the command in bash with `stack` stubbed to record its argv and stdin, then runs those through the real CLI. */
+  async function viaShell(script: string) {
+    const dir = mkdtempSync(join(tmpdir(), 'stack-sched-'));
+    execFileSync('bash', ['-c', `stack() { printf '%s\\n' "$@" > "${dir}/argv"; cat > "${dir}/stdin"; }\n${script}\n`]);
+    const argv = readFileSync(join(dir, 'argv'), 'utf8').split('\n').slice(0, -1);
+    const stdin = readFileSync(join(dir, 'stdin'), 'utf8');
+    process.env.STACK_HOME = dir;
     let out = '';
     try {
-      const code = await run([...args, '--dir', tmpdir()], { out: (s) => { out += s; }, err: (s) => { out += s; }, in: async () => JSON.stringify(sample(type)) });
-      expect({ code, out: JSON.parse(out) }).toMatchObject({ code: 0, out: { ok: true, via: 'store', agent, project } });
+      const code = await run([...argv, '--dir', tmpdir()], { out: (s) => { out += s; }, err: (s) => { out += s; }, in: async () => stdin });
+      return { code, out: JSON.parse(out), stdin };
     } finally { delete process.env.STACK_HOME; }
+  }
+
+  // @req FR:scheduled-task-reporting/samples.run
+  it.each(TASKS)('the block runs as written in bash for %s and exits 0', async (_task, agent, project, type) => {
+    const body = JSON.stringify(sample(type), null, 2).replace('Draft', 'Draft $HOME `x`'); // a quoted heredoc keeps $ and backticks
+    const r = await viaShell(command(agent, project, body));
+    expect(r).toMatchObject({ code: 0, out: { ok: true, via: 'store', agent, project } });
+    expect(r.stdin).toBe(`${body}\n`);
+  });
+
+  // @req FR:scheduled-task-reporting/step.block
+  it('the unchanged placeholder is exit 2 and stores nothing', async () => {
+    const r = await viaShell(command('f4-cos', 'f4', null));
+    expect(r).toMatchObject({ code: 2, out: { ok: false } });
   });
 });

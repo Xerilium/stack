@@ -27,8 +27,8 @@ Agent guide: `docs/scheduled-reporting.md`.
 
 A scheduled task needs one standard step so that every CoS task reports the same way and a fix lands in one place.
 
-- **FR:step.block** (P1): `docs/scheduled-reporting.md` MUST have one copy-paste block for task prompts. Its first line starts with `FINAL STEP`. It runs `stack report --agent <agent> --project <project> --json` with the report JSON in a quoted heredoc (`<<'JSON'`), so the shell does not expand `$` or backticks
-- **FR:step.last** (P1): The block MUST say that the report is the last step of the run. No tool call and no other work comes after it, except the retry and the answer save in `FR:step.exit` and `FR:step.answers`
+- **FR:step.block** (P1): `docs/scheduled-reporting.md` MUST have one copy-paste block for task prompts. Its first line starts with `FINAL STEP`. It runs `stack report --agent <agent> --project <project> --json` with the report JSON in a quoted heredoc (`<<'JSON'`), so the shell does not expand `$` or backticks. The heredoc body is a placeholder that is not valid JSON, so a task that sends it unchanged gets exit `2` and clears nothing
+- **FR:step.last** (P1): The block MUST say that the report is the last step of the run. No tool call and no other work comes after it, except the retry in `FR:exit.codes` and the answer save in `FR:answers.save`
 - **FR:step.always** (P1): The block MUST say that the task sends a report on every run. A run that cannot do its main work still sends one, with the cause in `blockers`
 - **FR:step.ids** (P1): The block MUST say that each ask `id` names one real item (for example `pr-130`) and stays the same across runs. A new item gets a new `id`. A date or run number is never an `id`
 
@@ -37,13 +37,13 @@ A scheduled task needs one standard step so that every CoS task reports the same
 The owner needs the report to cost no extra tokens so that reporting does not grow the cost of each run.
 
 - **FR:tokens.none** (P1): The guide MUST say that the report step calls no LLM. The task builds the JSON only from facts it already has in this run. It starts no subagent, no extra search, and no summary pass for the report. `stack report` makes no model call (`FR:status-ingest/cli.report`)
-- **FR:tokens.lines** (P1): Each item is one short line of fact with a link when one exists. No prose, no greeting, no recap
+- **FR:tokens.lines** (P1): The block MUST say that each item is one short line of fact with a link when one exists. No prose, no greeting, no recap
 
 ### FR:exit: Exit codes and failures
 
 A task needs a fixed response to each result so that a failed report does not start a long LLM loop.
 
-- **FR:exit.codes** (P1): The block MUST map the exit codes of `FR:status-ingest/cli.errors`: `0` stored, stop; `2` bad input, fix only the fields named in `issues` and send once more; `1` busy or the host refused it, wait 5 s and send once more
+- **FR:exit.codes** (P1): The block MUST map the exit codes of `FR:status-ingest/cli.errors`: `0` stored, stop; `2` bad input (not JSON, a flag mismatch, or schema `issues`), fix only what `error` and `issues` name and send once more; `1` busy or the host refused it, send once more at once (the CLI already waits 5 s for the lock)
 - **FR:exit.stop** (P1): After one retry, or when `stack` is not found, the task prints one line `report failed: <error>` and stops. It never loops. The next run sends a new report
 - **FR:exit.host** (P1): The guide MUST say that a host that is down needs no action. `stack report` then writes `~/.stack/reports.json` itself (`FR:status-ingest/cli.direct`), and the host shows it when it starts
 
@@ -61,7 +61,7 @@ The owner needs a valid sample per task type so that a new task starts from a re
 
 - **FR:samples.types** (P1): The guide MUST have one sample report per task type: CoS daily check-in, and support report. Each sample MUST pass `parseReport` (`FR:status-ingest/schema.errors`)
 - **FR:samples.tasks** (P1): The guide MUST list the agent and project of each current scheduled task: `f4-daily-checkin` (`f4-cos`, `f4`), `ftk-cos-daily-checkin` (`ftk-cos`, `ftk`), `ftk-support-report` (`ftk-support`, `ftk`)
-- **FR:samples.run** (P1): The block, with a sample in its heredoc, MUST run as written and exit `0`
+- **FR:samples.run** (P1): The block, with a sample in its heredoc, MUST run as written in a real shell and exit `0`
 
 ## Architecture Constraints
 

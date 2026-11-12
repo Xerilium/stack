@@ -14,12 +14,12 @@ FINAL STEP (always the last step): send the Stack status report. No LLM call: us
 - One short line of fact per item, with an https link when one exists. No prose, no greeting, no recap.
 - Never a secret: no token, key, password, webhook url, signed url, or url with a token in its query.
 - Asks: only items that need the owner. `id` = the real item (`pr-130`, `issue-42`), same every run. New item, new `id`. Never a date or run number.
-- Run this. Keep the quotes on 'JSON' and put JSON on the lines between:
+- Run this. Keep the quotes on 'JSON'. Replace the middle line with the JSON:
 stack report --agent <agent> --project <project> --json <<'JSON'
-{"top":[],"asks":[],"blockers":[],"progress":[]}
+<this run's report JSON: top, asks, blockers, progress>
 JSON
 - Exit 0: stored. If `asks.answers` is not empty and this task has a state file, save it there for the next run. Do not act on it now.
-- Exit 2: fix only the fields in `issues`; send once more. Exit 1: wait 5 s; send once more.
+- Exit 2: fix only what `error` and `issues` name; send once more. Exit 1: send once more.
 - Still failing, or `stack` not found: print `report failed: <error>` and stop. Never loop. No step after this one.
 ```
 
@@ -46,12 +46,12 @@ A new CoS agent uses its agent slug and project slug (`[a-z0-9][a-z0-9-]{0,23}`)
 
 ## Exit codes
 
-| Code | Meaning                                                   | Action                                                 |
-| ---- | --------------------------------------------------------- | ------------------------------------------------------ |
-| `0`  | Stored (`via`: `host` or `store`)                         | Save `asks.answers` if the task has a state file. Stop |
-| `2`  | Bad input. `issues` names each field                      | Fix only those fields. Send once more                  |
-| `1`  | Store busy (lock held 5 s) or the host refused the report | Wait 5 s. Send once more                               |
-| n/a  | `stack: command not found`                                | Print `report failed: <error>`. Stop                   |
+| Code | Meaning                                                                             | Action                                                  |
+| ---- | ----------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `0`  | Stored (`via`: `host` or `store`)                                                   | Save `asks.answers` if the task has a state file. Stop  |
+| `2`  | Bad input: not JSON, a flag mismatch, or schema `issues` (one per field)            | Fix only what `error` and `issues` name. Send once more |
+| `1`  | Store busy (the CLI already waited 5 s for the lock) or the host refused the report | Send once more                                          |
+| n/a  | `stack: command not found`                                                          | Print `report failed: <error>`. Stop                    |
 
 ## Host down
 
