@@ -53,3 +53,13 @@
 **Why**: A first prompt is a brief, usually several lines; the owner asked for the chord so a stray Enter never sends half of it. A reply to a running session is chat, where Enter-to-send is the habit and the existing tests and spec cover it.
 
 **Rejected**: Changing both to the chord (chat replies would feel broken); keeping Enter on both (the owner's ask).
+
+## Emoji render as bundled Fluent Emoji
+
+**Decision**: Agent and project emoji render as Microsoft Fluent Emoji `Color` SVGs, bundled for only the emoji in use plus a small common set. Native text and then the monogram are the fallbacks.
+
+**Date**: 2026-11-11
+
+**Why**: Native emoji differ by OS and the macOS set looks dated; the owner accepts Fluent. Bundling keeps the page offline-safe and private (no third-party fetch). A per-emoji file keeps the bundle small; the browser loads only what shows.
+
+**Rejected**: A CDN (third-party network at runtime); the full Fluent set (tens of MB); the `Flat` style (the owner picked `Color`); an emoji web font (one large file, no per-glyph fallback).

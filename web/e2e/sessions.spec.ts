@@ -188,9 +188,9 @@ test.describe('Sessions', () => {
   // @req FR:agents-team/chart.primary @req FR:agents-team/chart.tree @req FR:agents-team/chart.card @req FR:agents-team/chat.show @req FR:agents-team/other.hidden
   test('with a team the page opens on the my-team chart of primary agents only, the roll-up selected, its chat inline under the chart', async ({ page }) => {
     await open(page, teamSeed(), true);
-    await expect(page.locator('.agent-card .ac-name')).toHaveText(['👔 CoS', '🅰️ Alpha Lead', 'Beta CoS']); // Lonely (no project) and the metadata worker are not primary
+    await expect(page.locator('.agent-card .ac-name')).toHaveText(['CoS', 'Alpha Lead', 'Beta CoS']); // the avatar shows the name's emoji (FR:agent-team/web.avatar); Lonely (no project) and the metadata worker are not primary
     await expect(page.locator('.agent-card.on')).toHaveCount(1);
-    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('👔 CoS');
+    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('CoS');
     const pane = page.getByTestId('chat-pane');
     await expect(pane.getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief');
     await expect(page.getByRole('dialog')).toHaveCount(0); // inline, not an overlay
@@ -246,11 +246,11 @@ test.describe('Sessions', () => {
     test.skip(info.project.name === 'mobile', 'keyboard flow');
     await open(page, teamSeed(), true);
     await page.keyboard.press('j');
-    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('🅰️ Alpha Lead');
+    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Alpha Lead');
     await page.keyboard.press('j'); await page.keyboard.press('j');
     await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Beta CoS');
     await page.keyboard.press('k');
-    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('🅰️ Alpha Lead');
+    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Alpha Lead');
   });
 
   // @req FR:agents-team/chart.layout

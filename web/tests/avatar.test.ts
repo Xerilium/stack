@@ -1,6 +1,7 @@
 // @req FR:agent-team/web.avatar
 import { describe, expect, it } from 'vitest';
-import { AVATAR_COLORS, avatarOf, initials } from '../src/avatar';
+import { AVATAR_COLORS, avatarChain, avatarOf, initials, nameBeside } from '../src/avatar';
+import { fluentSrc } from '../src/fluent';
 
 const lum = (hex: string) => {
   const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -20,9 +21,32 @@ describe('avatar', () => {
     for (const c of AVATAR_COLORS) expect((1.05) / (lum(c) + 0.05)).toBeGreaterThanOrEqual(4.5);
   });
   it('shows the icon when set: emoji or a same-origin image; anything else falls back to the monogram', () => {
-    expect(avatarOf({ slug: 'cid', name: 'Cid', icon: '🎧' })).toEqual({ kind: 'emoji', text: '🎧' });
+    expect(avatarOf({ slug: 'cid', name: 'Cid', icon: '🧌' })).toEqual({ kind: 'emoji', text: '🧌' });
     expect(avatarOf({ slug: 'cid', name: 'Cid', icon: '/agents/cid.png' })).toEqual({ kind: 'img', src: '/agents/cid.png' });
     expect(avatarOf({ slug: 'cid', name: 'Cid', icon: 'https://x.test/a.png' })).toMatchObject({ kind: 'mono', text: 'C' });
     expect(avatarOf({ slug: 'cid', name: 'Cid', icon: '#' })).toMatchObject({ kind: 'mono' });
+  });
+  // @req FR:agent-team/web.avatar.fluent
+  it('renders a bundled emoji as Fluent, a fluent: name by file name, and the emoji that starts the name', () => {
+    expect(avatarOf({ slug: 'cid', name: 'Cid', icon: '🎧' })).toEqual({ kind: 'fluent', src: fluentSrc('🎧'), text: '🎧' });
+    expect(avatarOf({ slug: 'cid', name: 'Cid', icon: 'fluent:headphone' })).toEqual({ kind: 'fluent', src: fluentSrc('🎧'), text: '🎧' });
+    expect(avatarOf({ slug: 'cid', name: 'Cid', icon: 'fluent:nope' })).toMatchObject({ kind: 'mono', text: 'C' });
+    expect(avatarOf({ slug: 'cid-manager', name: '🎧 Cid Manager' })).toEqual({ kind: 'fluent', src: fluentSrc('🎧'), text: '🎧' });
+    expect(avatarOf({ slug: 'troll', name: '🧌 Troll' })).toEqual({ kind: 'emoji', text: '🧌' });
+    expect(avatarOf({ slug: 'x', name: '🎧 Cid', icon: '/agents/cid.png' })).toEqual({ kind: 'img', src: '/agents/cid.png' });
+    // the name beside the avatar drops its emoji only when the avatar draws that same emoji
+    expect(nameBeside({ name: '🎧 Cid Manager' })).toBe('Cid Manager');
+    expect(nameBeside({ name: '🎧 Cid Manager', icon: '🎧️' })).toBe('Cid Manager');
+    expect(nameBeside({ name: '🎧 Cid Manager', icon: '🦉' })).toBe('🎧 Cid Manager');
+    expect(nameBeside({ name: '🎧 Cid Manager', icon: '/agents/cid.png' })).toBe('🎧 Cid Manager');
+    expect(nameBeside({ name: 'Ada Lead' })).toBe('Ada Lead');
+    expect(nameBeside({ name: '🎧' })).toBe('🎧');
+  });
+  // @req FR:agent-team/web.avatar.fluent: each image that fails steps to the next, ending in native text or the monogram
+  it('steps past each image that fails to load', () => {
+    const fl = fluentSrc('🎧')!;
+    expect(avatarChain({ name: '🎧 Ada', icon: '/agents/ada.png' })).toEqual([{ kind: 'img', src: '/agents/ada.png' }, { kind: 'fluent', src: fl, text: '🎧' }, { kind: 'emoji', text: '🎧' }]);
+    expect(avatarChain({ name: '🎧 Ada' })).toEqual([{ kind: 'fluent', src: fl, text: '🎧' }, { kind: 'emoji', text: '🎧' }]);
+    expect(avatarChain({ slug: 'ada', name: 'Ada', icon: '/agents/ada.png' }).map((v) => v.kind)).toEqual(['img', 'mono']);
   });
 });
