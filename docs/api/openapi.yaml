@@ -2332,6 +2332,9 @@ paths:
                     format: date-time
                     nullable: true
                     description: First pending write (batching storage only)
+                  live:
+                    type: string
+                    description: Changes when live state outside the repo (PR priorities) changes; present only when the host has it
         default:
           $ref: "#/components/responses/Error"
     post:

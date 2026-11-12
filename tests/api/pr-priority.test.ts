@@ -115,3 +115,13 @@ it('GET /agents carries each PR priority rank or null', async () => {
   none.storage.seed('tasks/alpha.md', `# Alpha\n\n## Active\n\n- [ ] 🤖 Ship ${U(1)}\n`);
   expect((await none.call('owner', 'GET', '/agents')).json.items[0].prs[0].priority).toBeNull();
 });
+
+// @req FR:pr-priority/needs.poll
+it('GET /sync adds a live token that changes on a store write from another process; none without a store', async () => {
+  const { call, store } = mk();
+  const a = (await call('owner', 'GET', '/sync')).json.live as string;
+  expect(typeof a).toBe('string');
+  await new PrPriorityStore(store.dir, { now: () => NOW }).edit({ op: 'add', ref: 'o/r#1' }); // a second store: the CLI
+  expect((await call('owner', 'GET', '/sync')).json.live).not.toBe(a);
+  expect((await mk(false).call('owner', 'GET', '/sync')).json.live).toBeUndefined();
+});

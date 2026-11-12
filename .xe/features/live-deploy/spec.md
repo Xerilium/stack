@@ -116,6 +116,7 @@ Owner needs one script and one short doc to put Stack online so that hosting is 
   - `rev` (string | null) — head commit sha; `null` when the storage has no revision
   - `pending` (number?) — writes not yet committed; present only for a batching storage
   - `since` (string | null?) — ISO time of the first pending write; present only for a batching storage
+  - `live` (string?) — changes when live state outside the repo (PR priorities) changes; present only when the host has that store (`FR:pr-priority/needs.poll`)
 - **FR:$flush-result** (P1): **`FlushResult`** — Answer of `POST /api/sync`.
   - `flushed` (number) — writes committed by this call
   - `rev` (string | null) — the commit made by this flush, else the storage's revision (`null` when it has none)

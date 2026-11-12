@@ -1015,8 +1015,9 @@ export const ROUTES: Route[] = [
     async run(c) {
       readQuery(c.url, []);
       const b = batchOf(c.deps.storage);
+      // `live` changes when live state outside the repo (the PR priority store) changes, so a poller reloads Needs you. @req FR:pr-priority/needs.poll
       const p = b?.pending();
-      return json(200, { rev: await revOf(c.deps.storage), ...(p ? { pending: p.count, since: p.since?.toISOString() ?? null } : {}) });
+      return json(200, { rev: await revOf(c.deps.storage), ...(p ? { pending: p.count, since: p.since?.toISOString() ?? null } : {}), ...(c.deps.prPriority ? { live: c.deps.prPriority.stamp() } : {}) });
     },
   },
   {

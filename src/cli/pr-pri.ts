@@ -8,18 +8,29 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { blockedText, parsePrRef, PrPriorityStore, prUrl, type Decision, type PrPriView, type QueueOp } from '../core/pr-priority';
 import { stackHome } from '../core/reports';
-import { UsageError } from './args';
+import { BOOLEAN_FLAGS, UsageError } from './args';
 
 export interface PrPriOutcome { json: Record<string, unknown>; text: string; code?: number }
 type Flags = Record<string, string | true>;
 
 export const PR_PRI_USAGE = 'pr-pri list [--refresh] | add <ref> [--rank n] [--note t] | move <ref> --top|--up|--down|--to <n> | pin|unpin|remove <ref> | undo | recommend <ref> --agent a --reason t [--to-rank n] | accept <id> | edit <id> --reason t [--rank n] [--note t] | reject <id> --reason t | decisions [--agent a] | depends <ref> --on <ref> [--remove] | depends --file edges.json [--remove] | record <ref> [--file rec.json] | ack <ref> --thread url --note t | escalate --file set.json';
 
-/** `--top`, `--up` and `--down` are spelled `--to=<target>` before parsing (`--top` takes a value for other commands). */
+/**
+ * `--top`, `--up` and `--down` are spelled `--to=<target>` before parsing (`--top` takes a value for other commands).
+ * The command is found with the shared parser's flag/value boundaries; nothing after `--` is rewritten.
+ */
 export function prPriArgv(argv: string[]): string[] {
-  const i = argv.findIndex((a) => !a.startsWith('--'));
-  if (argv[i] !== 'pr-pri') return argv;
-  return argv.map((a) => (a === '--top' ? '--to=top' : a === '--up' ? '--to=up' : a === '--down' ? '--to=down' : a));
+  const end = argv.indexOf('--');
+  const stop = end === -1 ? argv.length : end;
+  let cmd = -1;
+  for (let i = 0; i < stop; i++) {
+    const a = argv[i];
+    if (!a.startsWith('--')) { cmd = i; break; }
+    if (!a.includes('=') && !BOOLEAN_FLAGS.has(a.slice(2))) i++; // a value-taking flag: skip its value
+  }
+  if (cmd === -1 || argv[cmd] !== 'pr-pri') return argv;
+  const TO: Record<string, string> = { '--top': '--to=top', '--up': '--to=up', '--down': '--to=down' };
+  return argv.map((a, i) => (i > cmd && i < stop && TO[a] ? TO[a] : a));
 }
 
 const str = (f: Flags, n: string): string | undefined => {

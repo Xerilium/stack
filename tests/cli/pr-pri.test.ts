@@ -1,6 +1,7 @@
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { prPriArgv } from '../../src/cli/pr-pri';
 import { run } from '../../src/cli/run';
 
 const tmp = (p: string) => mkdtempSync(join(tmpdir(), p));
@@ -140,5 +141,21 @@ describe('SM contract', () => {
     expect(doc.trimEnd().split('\n').length).toBeLessThanOrEqual(40);
     expect(doc).toContain('Work PRs in this order; skip none; report progress per PR.');
     expect(doc).toContain('stack pr-pri list --json --refresh');
+  });
+});
+
+describe('prPriArgv', () => {
+  // @req FR:pr-priority/cli.edit
+  it('finds the command past a flag value and leaves positionals after -- alone', () => {
+    expect(prPriArgv(['--dir', '/checkout', 'pr-pri', 'move', 'o/r#1', '--top'])).toEqual(['--dir', '/checkout', 'pr-pri', 'move', 'o/r#1', '--to=top']);
+    expect(prPriArgv(['--json', 'pr-pri', 'move', 'o/r#1', '--up'])).toEqual(['--json', 'pr-pri', 'move', 'o/r#1', '--to=up']);
+    expect(prPriArgv(['pr-pri', 'add', 'o/r#1', '--', '--down'])).toEqual(['pr-pri', 'add', 'o/r#1', '--', '--down']);
+    expect(prPriArgv(['--dir', 'pr-pri', 'list', '--top', '3'])).toEqual(['--dir', 'pr-pri', 'list', '--top', '3']);
+  });
+  it('moves to the top with --dir before the command', async () => {
+    await stack('pr-pri', 'add', 'o/r#1'); await stack('pr-pri', 'add', 'o/r#2');
+    let out = '';
+    expect(await run(['--dir', cwd, 'pr-pri', 'move', 'o/r#1', '--top'], { out: (s) => { out += s; }, err: () => undefined })).toBe(0);
+    expect(out.split('\n')[0]).toBe(`1. ${U(1)}`);
   });
 });

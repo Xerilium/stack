@@ -178,7 +178,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   sync: {
     operationId: 'sync', summary: 'Change probe: the head revision of the task repo (null when the storage has none), plus pending/since when the storage batches commits. Poll it and reload only when rev changes',
-    responses: ok('Sync state', { type: 'object', properties: { rev: { type: 'string', nullable: true }, pending: { type: 'integer', description: 'Writes not yet committed (batching storage only)' }, since: { type: 'string', format: 'date-time', nullable: true, description: 'First pending write (batching storage only)' } } }),
+    responses: ok('Sync state', { type: 'object', properties: { rev: { type: 'string', nullable: true }, pending: { type: 'integer', description: 'Writes not yet committed (batching storage only)' }, since: { type: 'string', format: 'date-time', nullable: true, description: 'First pending write (batching storage only)' }, live: { type: 'string', description: 'Changes when live state outside the repo (PR priorities) changes; present only when the host has it' } } }),
   },
   'sync.flush': {
     operationId: 'flushSync', summary: 'Commit and push pending edits now (owner only). flushed is 0 when nothing was pending or the storage does not batch',

@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, statSync, writeFileSync } from 'fs';
+import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -139,6 +139,42 @@ describe('queue', () => {
     expect(names.some((n) => n.startsWith('pr-priority.json.broken-'))).toBe(true);
     expect(names.some((n) => n.startsWith('pr-priority-state.json.broken-'))).toBe(true);
     expect(order(s)).toEqual(['1:1']);
+  });
+  // @req FR:pr-priority/queue.write
+  it('a write cut short between the two files is read from the journal and finished by the next write', async () => {
+    const dir = home(); const s = mk(dir);
+    await s.edit({ op: 'add', ref: 'o/r#1' });
+    // Simulate a crash after the journal and the queue file, before the state file.
+    const queue = `${JSON.stringify({ ...s.read(), rev: 9, items: [] }, null, 2)}\n`;
+    const state = `${JSON.stringify({ ...s.state(), acks: { 'o/r#7': [] } }, null, 2)}\n`;
+    writeFileSync(join(dir, 'pr-priority.journal.json'), JSON.stringify({ queue, state }));
+    writeFileSync(join(dir, 'pr-priority.json'), queue);
+    expect(s.read().rev).toBe(9);
+    expect(s.state().acks).toEqual({ 'o/r#7': [] });
+    await s.edit({ op: 'add', ref: 'o/r#2' });
+    expect(readdirSync(dir)).not.toContain('pr-priority.journal.json');
+    expect(s.read().rev).toBe(10);
+    expect(JSON.parse(readFileSync(join(dir, 'pr-priority-state.json'), 'utf8')).acks).toEqual({ 'o/r#7': [] });
+  });
+  it('a grouped write leaves no journal', async () => {
+    const dir = home(); const s = mk(dir);
+    await s.edit({ op: 'add', ref: 'o/r#1' });
+    await s.edit({ op: 'move', ref: 'o/r#1', to: 1 } as never);
+    await s.edit({ op: 'undo' });
+    expect(readdirSync(dir).filter((n) => n.includes('journal'))).toEqual([]);
+  });
+  // @req FR:pr-priority/queue.broken @req FR:pr-priority/edge.escalate
+  it('fills missing escalation lists; treats a bad escalation set as broken, never failing the view', async () => {
+    const dir = home(); const s = mk(dir);
+    await s.edit({ op: 'add', ref: 'o/r#1' });
+    writeFileSync(join(dir, 'pr-priority-state.json'), '{"recs":[],"escalations":{}}');
+    expect(s.state().escalations).toEqual({ blockedAutopilot: [], enableAutopilot: [], liveValidation: [] });
+    expect(s.view().map((v) => v.rank)).toEqual([1]);
+    writeFileSync(join(dir, 'pr-priority-state.json'), '{"recs":[],"escalations":{"blockedAutopilot":[{"pr":"nope"}]}}');
+    expect(s.state().escalations).toBeUndefined();
+    expect(s.view().map((v) => v.rank)).toEqual([1]);
+    await s.edit({ op: 'add', ref: 'o/r#2' });
+    expect(readdirSync(dir).some((n) => n.startsWith('pr-priority-state.json.broken-'))).toBe(true);
   });
 });
 

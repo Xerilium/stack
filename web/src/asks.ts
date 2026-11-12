@@ -14,6 +14,8 @@ export interface AskItem {
   task?: string; row?: string;
   /** `task`: an open 🙋 row from a task file (`ref`), answered through the agent inbox. @req FR:web-shell/state.needs */
   source?: 'task' | 'need'; ref?: string;
+  /** A PR priority recommendation's decide route (a `need` only). @req FR:pr-priority/needs.actions */
+  decide?: string;
   /** Quick triage: the flow and its progress; what Stack applies on the answer. @req FR:quick-triage/web.stepper */
   flow?: string; seq?: number; flowTotal?: number; flowDone?: number; apply?: string; applies?: string[]; refText?: string;
 }

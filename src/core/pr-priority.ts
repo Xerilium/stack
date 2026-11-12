@@ -4,7 +4,7 @@
  * @req FR:pr-priority/$item @req FR:pr-priority/$rec @req FR:pr-priority/queue.model @req FR:pr-priority/rec.model
  */
 import { randomBytes } from 'crypto';
-import { mkdirSync, readFileSync, renameSync, unwatchFile, watchFile } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, unwatchFile, watchFile } from 'fs';
 import { join } from 'path';
 import { withFileLock, writeAtomic, type LockOptions } from './file-lock';
 import type { Issue } from './reports';
@@ -257,15 +257,17 @@ export class PrPriorityStore {
   readonly file: string;
   readonly stateFile: string;
   readonly configFile: string;
+  /** Both files' next text, written before either file when one action changes both, so a crash between them is replayed. */
+  readonly journal: string;
   private readonly listeners = new Set<() => void>();
   constructor(readonly dir: string, private readonly o: LockOptions & { now?: () => Date } = {}) {
-    this.file = join(dir, 'pr-priority.json'); this.stateFile = join(dir, 'pr-priority-state.json'); this.configFile = join(dir, 'pr-priority.config.json');
+    this.file = join(dir, 'pr-priority.json'); this.stateFile = join(dir, 'pr-priority-state.json'); this.configFile = join(dir, 'pr-priority.config.json'); this.journal = join(dir, 'pr-priority.journal.json');
   }
   private now(): string { return (this.o.now ?? (() => new Date()))().toISOString(); }
 
   private loadQueue(): { data: PrPriFile; broken?: boolean } {
     let t: string;
-    try { t = readFileSync(this.file, 'utf8'); } catch { return { data: { version: 1, rev: 0, items: [] } }; }
+    try { t = this.journaled()?.queue ?? readFileSync(this.file, 'utf8'); } catch { return { data: { version: 1, rev: 0, items: [] } }; }
     try {
       const j = JSON.parse(t) as Record<string, unknown>;
       const items = isObj(j) && Number.isInteger(j.rev) && (j.rev as number) >= 0 ? validItems(j.items) : undefined;
@@ -275,14 +277,22 @@ export class PrPriorityStore {
   }
   private loadState(): { data: PrPriState; broken?: boolean } {
     let t: string;
-    try { t = readFileSync(this.stateFile, 'utf8'); } catch { return { data: EMPTY_STATE() }; }
+    try { t = this.journaled()?.state ?? readFileSync(this.stateFile, 'utf8'); } catch { return { data: EMPTY_STATE() }; }
     try {
       const j = JSON.parse(t) as Partial<PrPriState>;
+      // Escalations are checked like a new set; a bad set marks the file broken so it is moved aside on the next write.
+      let esc: Escalations | undefined;
+      if (isObj(j) && j.escalations !== undefined) {
+        if (!isObj(j.escalations)) throw new Error('bad escalations');
+        const { at, ...set } = j.escalations as unknown as Record<string, unknown>;
+        if (at !== undefined && typeof at !== 'string') throw new Error('bad escalations');
+        esc = { ...parseEscalations(set), ...(at ? { at: at as string } : {}) };
+      }
       if (isObj(j) && Array.isArray(j.recs)) {
         const e = EMPTY_STATE();
         // Drop malformed recommendations instead of failing later reads.
         const recs = (j.recs as unknown[]).filter((r): r is PrRec => isObj(r) && typeof r.id === 'string' && typeof r.repo === 'string' && Number.isInteger(r.number) && typeof r.reason === 'string' && typeof r.at === 'string' && (r.state === 'open' || (isObj(r.decision) && typeof r.decision.at === 'string')));
-        return { data: { ...e, recs, deps: isObj(j.deps) ? Object.fromEntries(Object.entries(j.deps).filter((e): e is [string, string[]] => Array.isArray(e[1]) && e[1].every((x) => typeof x === 'string'))) : {}, acks: isObj(j.acks) ? j.acks as PrPriState['acks'] : {}, records: isObj(j.records) ? j.records as PrPriState['records'] : {}, facts: isObj(j.facts) ? j.facts as PrPriState['facts'] : {}, history: Array.isArray(j.history) ? j.history.flatMap((h) => { const items = isObj(h) ? validItems(h.items) : undefined; return items && typeof h.at === 'string' ? [{ items, at: h.at }] : []; }) : [], ...(isObj(j.escalations) ? { escalations: j.escalations as Escalations } : {}) } };
+        return { data: { ...e, recs, deps: isObj(j.deps) ? Object.fromEntries(Object.entries(j.deps).filter((e): e is [string, string[]] => Array.isArray(e[1]) && e[1].every((x) => typeof x === 'string'))) : {}, acks: isObj(j.acks) ? j.acks as PrPriState['acks'] : {}, records: isObj(j.records) ? j.records as PrPriState['records'] : {}, facts: isObj(j.facts) ? j.facts as PrPriState['facts'] : {}, history: Array.isArray(j.history) ? j.history.flatMap((h) => { const items = isObj(h) ? validItems(h.items) : undefined; return items && typeof h.at === 'string' ? [{ items, at: h.at }] : []; }) : [], ...(esc ? { escalations: esc } : {}) } };
       }
     } catch { /* broken */ }
     return { data: EMPTY_STATE(), broken: true };
@@ -308,6 +318,11 @@ export class PrPriorityStore {
   /** The queue rank of a PR, or null. @req FR:pr-priority/api.pr */
   rankOf(repo: string, n: number): number | null { return this.ranks()(repo, n); }
 
+  /** A change token for pollers: both files' mtimes (0 when missing). Any write, from any process, changes it. @req FR:pr-priority/needs.poll */
+  stamp(): string {
+    const m = (f: string) => { try { return statSync(f).mtimeMs; } catch { return 0; } };
+    return `${m(this.file)}.${m(this.stateFile)}`;
+  }
   /** Hears each successful write in this process. */
   onWrite(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
   /** Hears writes by other processes (the CLI) by polling both files; returns a stop function. */
@@ -317,21 +332,41 @@ export class PrPriorityStore {
   }
   private told(): void { for (const fn of this.listeners) { try { fn(); } catch { /* a listener never fails a write */ } } }
 
+  /** The journal's two texts, or undefined when there is none or it is unreadable (a journal is written atomically, so a bad one was never committed). */
+  private journaled(): { queue: string; state: string } | undefined {
+    try {
+      const j = JSON.parse(readFileSync(this.journal, 'utf8')) as unknown;
+      return isObj(j) && typeof j.queue === 'string' && typeof j.state === 'string' ? { queue: j.queue, state: j.state } : undefined;
+    } catch { return undefined; }
+  }
+  /** Under the lock: finishes a grouped write a crash cut short (both files from the journal), then drops the journal. True when it wrote. */
+  private replay(): boolean {
+    if (!existsSync(this.journal)) return false;
+    const j = this.journaled();
+    if (j) { writeAtomic(this.file, j.queue); writeAtomic(this.stateFile, j.state); }
+    unlinkSync(this.journal);
+    return !!j;
+  }
+
   /** Runs `fn` under the lock with fresh data; writes what `fn` marks changed. Broken files are moved aside first. */
   private async tx<T>(fn: (q: PrPriFile, s: PrPriState, mark: { queue: boolean; state: boolean }) => T): Promise<T> {
     const out = await withFileLock(this.dir, 'pr-priority.lock', () => {
+      const replayed = this.replay();
       const q = this.loadQueue(); const s = this.loadState();
       const mark = { queue: false, state: false };
       const r = fn(q.data, s.data, mark);
-      if (!mark.queue && !mark.state) return { r, wrote: false };
+      if (!mark.queue && !mark.state) return { r, wrote: replayed };
       mkdirSync(this.dir, { recursive: true, mode: 0o700 });
-      if (q.broken) renameSync(this.file, `${this.file}.broken-${Date.now()}`);
-      if (s.broken) renameSync(this.stateFile, `${this.stateFile}.broken-${Date.now()}`);
-      if (mark.queue) {
-        q.data.rev += 1; q.data.updatedAt = this.now();
-        writeAtomic(this.file, `${JSON.stringify(q.data, null, 2)}\n`);
-      }
-      if (mark.state || s.broken) { this.prune(s.data); writeAtomic(this.stateFile, `${JSON.stringify(s.data, null, 2)}\n`); }
+      if (q.broken && existsSync(this.file)) renameSync(this.file, `${this.file}.broken-${Date.now()}`);
+      if (s.broken && existsSync(this.stateFile)) renameSync(this.stateFile, `${this.stateFile}.broken-${Date.now()}`);
+      let queue: string | undefined; let state: string | undefined;
+      if (mark.queue) { q.data.rev += 1; q.data.updatedAt = this.now(); queue = `${JSON.stringify(q.data, null, 2)}\n`; }
+      if (mark.state || s.broken) { this.prune(s.data); state = `${JSON.stringify(s.data, null, 2)}\n`; }
+      // Both files change together: journal first, so a crash after one file is finished by the next write. @req FR:pr-priority/queue.write
+      if (queue !== undefined && state !== undefined) writeAtomic(this.journal, JSON.stringify({ queue, state }));
+      if (queue !== undefined) writeAtomic(this.file, queue);
+      if (state !== undefined) writeAtomic(this.stateFile, state);
+      if (queue !== undefined && state !== undefined) unlinkSync(this.journal);
       return { r, wrote: true };
     }, () => new PrPriBusy('PR priority store is busy (pr-priority.lock); try again'), this.o);
     if (out.wrote) this.told();
