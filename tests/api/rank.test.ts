@@ -40,6 +40,21 @@ describe('GET /api/rank', () => {
     expect(items.at(-1)!.text).toMatch(/FOCUS issues/);
     expect(items.every((i) => typeof i.score === 'number')).toBe(true);
   });
+  // @req FR:api/routes.rank @req FR:task-lifecycle/rank.owner @req FR:task-lifecycle/rank.stale
+  it('lists only owner rows and flags a stale row (storage with line history)', async () => {
+    const storage = await seed();
+    await storage.write('tasks/allyte.md', '# Allyte\n\n## 🔄 Active\n\n- [ ] 🤖 📅 Nov 1: Accept all FOCUS meeting invites 🟢\n- [ ] 🙋 📅 Oct 20: Send the CIO Review decline 🟢\n');
+    const old = new Date('2026-10-15T12:00:00Z').getTime();
+    const withHistory = Object.assign(storage, { lineActivity: async (p: string) => (p === 'tasks/allyte.md' ? Array<number>(8).fill(old) : []) });
+    const h = createApiHandler({ storage: withHistory, authorize: () => true, now: () => NOW });
+    const res = await h(new Request('https://x.test/api/rank?blocks=any', { headers: { 'x-ms-client-principal': OWNER } }));
+    const items = ((await res.json()) as { items: { text: string; score: number; stale?: boolean }[] }).items;
+    expect(items.some((i) => /FOCUS meeting/.test(i.text))).toBe(false);
+    const cio = items.find((i) => /CIO Review/.test(i.text))!;
+    expect(cio.stale).toBe(true);
+    expect(cio.score).toBeLessThanOrEqual(500);
+    expect(items.filter((i) => i.stale)).toHaveLength(1); // rows without history are never stale
+  });
   // @req FR:api/routes.rank @req FR:task-lifecycle/rank.limit
   it('limit caps the list and is validated', async () => {
     const { call } = await mk();

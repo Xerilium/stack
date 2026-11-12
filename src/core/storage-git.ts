@@ -13,14 +13,14 @@ export interface GitStorageOptions {
 
 const MAX_PUSH_ATTEMPTS = 3;
 
-const NOT_COMMITTED = /^0{40}$/;
+const NOT_COMMITTED = /^0+$/;
 /** `git blame --porcelain` output to commit time (ms) per 0-based line; `Infinity` for a line not yet committed. */
 function parseBlame(out: string): number[] {
   const times: number[] = [];
   const when = new Map<string, number>();
   let sha = '', line = -1;
   for (const l of out.split('\n')) {
-    const h = /^([0-9a-f]{40}) \d+ (\d+)/.exec(l);
+    const h = /^([0-9a-f]{40}|[0-9a-f]{64}) \d+ (\d+)/.exec(l);
     if (h) { sha = h[1]; line = Number(h[2]) - 1; continue; }
     const t = /^committer-time (\d+)$/.exec(l);
     if (t) { when.set(sha, Number(t[1]) * 1000); continue; }
