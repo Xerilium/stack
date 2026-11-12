@@ -6,9 +6,11 @@
 import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { rollRecurring } from './recurring';
-import { DEFAULT_ENGINE, getEngine, rankTasks, type RankOptions, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
+import { DEFAULT_ENGINE, getEngine, parseAliases, rankTasks, type RankOptions, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
 import { applyTags, formatExplain, matchTruth, parseTruth, type ExplainRow, type Tags, type TruthMatch } from './autopri-tags';
 import { autopriEngine, autopriParts, registerAutopriEngine } from './autopri';
+import type { Pri } from './pris';
+import { linkCounts, prisEngine, prisParts, registerPrisEngine, setPris } from './pris-rank';
 import { applyOverrides, matcherFor, parsePriorities, PRIORITIES_PATH } from './priorities';
 import { ConflictError, NotFoundError, Storage, writeAll, type AuxFiles } from './storage';
 
@@ -311,7 +313,9 @@ async function rankAll(ctx: LifecycleContext, at?: Date, opts: RankOptions = {})
   const aux0 = ctx.storage as Partial<AuxFiles>;
   const rules0 = typeof aux0.readAux === 'function' ? await aux0.readAux(PRIORITIES_PATH) : null;
   const when0 = at ?? clock(ctx);
-  const key = JSON.stringify([docs.map((d) => [d.path, d.version]), rules0?.version ?? null, at ? when0.getTime() : Math.floor(when0.getTime() / 60_000)]);
+  // An engine that reads other inputs (the pris engine) adds its version. @req FR:pris-aware-ranking/engine.memo
+  const ev = getEngine(ctx.engine ?? DEFAULT_ENGINE).version?.() ?? null;
+  const key = JSON.stringify([docs.map((d) => [d.path, d.version]), rules0?.version ?? null, at ? when0.getTime() : Math.floor(when0.getTime() / 60_000), ev]);
   const slot = opts.ignoreBlocks ? 'any' : 'now'; // the page asks for both
   let mine = rankMemo.get(ctx.storage);
   if (!mine) rankMemo.set(ctx.storage, (mine = new Map()));
@@ -590,17 +594,20 @@ export interface Explained { items: (ExplainRow & { path: string; line: number }
 
 /** Ranked tasks with autopri score parts; optional ground-truth report. @req FR:auto-priority/explain.cli @req FR:auto-priority/truth.report */
 /** File name plus the `**Aliases:**` line of a project file. */
-const aliasesOf = (d: Doc): string[] => [d.name, ...(d.project.lines.map((l) => /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean)?.split(',').map((a) => a.trim()).filter(Boolean) ?? [])];
+const aliasesOf = (d: Doc): string[] => [d.name, ...parseAliases(d.project.lines)];
 const formatRef = (r: TaskRef): string => `${r.path}:${r.line + 1}`;
 
-export async function explainAutopri(ctx: LifecycleContext, at?: Date, opts: { top?: number; truth?: string } = {}): Promise<Explained> {
+/** With `pris`, ranks with the `pris` engine over those priorities and adds the `pri` part and link. @req FR:pris-aware-ranking/explain.cli */
+export async function explainAutopri(ctx: LifecycleContext, at?: Date, opts: { top?: number; truth?: string; pris?: Pri[] } = {}): Promise<Explained> {
   registerAutopriEngine();
-  const c = { ...ctx, engine: autopriEngine.id };
+  if (opts.pris) { registerPrisEngine(); setPris(opts.pris); }
+  const c = { ...ctx, engine: opts.pris ? prisEngine.id : autopriEngine.id };
   const ranked = await rankAll(c, at);
   const docs = await loadDocs(ctx.storage);
   const projects = docs.map((d) => toScoringProject(d.project, d.name));
-  const parts = autopriParts(autopriEngine.score(projects, cfg(ctx)), projects, cfg(ctx), at ?? clock(ctx));
-  const zero = { unblock: 0, urgency: 0, value: 0 };
+  const scored = autopriEngine.score(projects, cfg(ctx));
+  const parts = opts.pris ? prisParts(scored, projects, cfg(ctx), opts.pris, at ?? clock(ctx)) : autopriParts(scored, projects, cfg(ctx), at ?? clock(ctx));
+  const zero = { unblock: 0, urgency: 0, value: 0, ...(opts.pris ? { pri: 0 } : {}) };
   const all = ranked.map((r, i) => ({
     rank: i + 1, ref: formatRef(r.next.ref), path: r.next.ref.path, line: r.next.ref.line + 1, project: r.next.project, text: r.next.text, score: r.next.score,
     parts: parts.get(r.task.id) ?? zero, ...(r.next.rule ? { rule: r.next.rule } : {}),
@@ -608,6 +615,13 @@ export async function explainAutopri(ctx: LifecycleContext, at?: Date, opts: { t
   const truth = opts.truth === undefined ? undefined : matchTruth(parseTruth(opts.truth), ranked.map((r, i) => ({ project: r.next.project, aliases: aliasesOf(r.doc), text: r.next.text, context: r.context, ref: all[i].ref })));
   const items = opts.top === undefined ? all : all.slice(0, opts.top);
   return { items, truth, text: formatExplain(items, truth) };
+}
+
+/** Open tasks linked per priority id, for `stack pris gaps`. @req FR:pris-aware-ranking/cos.gaps.cli */
+export async function priLinkCounts(ctx: LifecycleContext, pris: Pri[]): Promise<Map<string, number>> {
+  const docs = await loadDocs(ctx.storage);
+  const projects = docs.map((d) => toScoringProject(d.project, d.name));
+  return linkCounts(autopriEngine.score(projects, cfg(ctx)), projects, pris);
 }
 
 // ------------------------------------------------------------------ remove completed

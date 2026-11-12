@@ -10,12 +10,13 @@ import { basename, dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
-  explainAutopri, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
+  explainAutopri, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { runInventory } from '../core/session-inventory';
-import { PrisInvalid, PriStore } from '../core/pris';
+import { PRI_LINKS, PrisInvalid, PriStore, type Pri } from '../core/pris';
+import { formatGaps, priGaps, registerPrisEngine, setPris, withLinks, withNote } from '../core/pris-rank';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
 import { replyFromAgent } from '../core/inbox';
 import { registerAutopriEngine } from '../core/autopri';
@@ -72,7 +73,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
-  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks; --explain (autopri) shows score parts; --truth lists ground-truth items to tag or add' },
+  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks; pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain (autopri, pris) shows score parts and the priority served; --truth lists ground-truth items to tag or add' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches)' },
@@ -84,7 +85,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
   sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
-  pris: { flags: ['file'], usage: 'pris [--json] | pris seed --file <md>', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once from a numbered markdown list' },
+  pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
   update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (--engine stack: scores and order like `stack next`, with .stack/priorities.json)' },
 };
 
@@ -366,10 +367,12 @@ function sessionsCmd(p: ReturnType<typeof parseArgs>): Outcome {
 /**
  * The owner priorities, or a one-time seed from markdown. @req FR:session-inventory/cli.pris @req FR:session-inventory/pris.seed.once
  */
-async function prisCmd(p: ReturnType<typeof parseArgs>): Promise<Outcome> {
+async function prisCmd(p: ReturnType<typeof parseArgs>, ctxOf: () => LifecycleContext): Promise<Outcome> {
   const store = new PriStore(stackHome());
   const [sub, extra] = p.positionals;
+  if (sub === 'link' || sub === 'note' || sub === 'gaps') return prisCos(store, sub, p, ctxOf);
   if (extra !== undefined || (sub !== undefined && sub !== 'seed')) throw new UsageError(`Unexpected argument: ${extra ?? sub}`);
+  for (const k of ['projects', 'keywords', 'refs']) if (p.flags[k] !== undefined) throw new UsageError(`--${k} needs pris link`);
   if (sub === 'seed') {
     const file = flag(p.flags, 'file');
     if (!file) throw new UsageError('pris seed needs --file <md>');
@@ -386,6 +389,46 @@ async function prisCmd(p: ReturnType<typeof parseArgs>): Promise<Outcome> {
   if (!d.pris.length) return { json: { ok: true, ...d }, text: 'no priorities (run: stack pris seed --file <md>)' };
   const lines = d.pris.flatMap((x, i) => [`${i + 1}. ${x.title} [${x.status}]`, ...x.items.map((it) => `   - ${it.text}${it.status === 'todo' ? '' : ` [${it.status}]`}`), ...(x.weekly[0] ? [`   week ${x.weekly[0].week}: ${x.weekly[0].text}`] : [])]);
   return { json: { ok: true, ...d }, text: lines.join('\n') };
+}
+
+/**
+ * CoS commands: link terms, status notes, and gaps.
+ * @req FR:pris-aware-ranking/cos.link @req FR:pris-aware-ranking/cos.note @req FR:pris-aware-ranking/cos.gaps.cli
+ */
+async function prisCos(store: PriStore, sub: 'link' | 'note' | 'gaps', p: ReturnType<typeof parseArgs>, ctxOf: () => LifecycleContext): Promise<Outcome> {
+  const args = p.positionals.slice(1);
+  const d = store.read();
+  if (sub === 'gaps') {
+    if (args.length) throw new UsageError(`Unexpected argument: ${args[0]}`);
+    const ctx = ctxOf();
+    const gaps = priGaps(d.pris, await priLinkCounts(ctx, d.pris), ctx.now?.() ?? new Date());
+    return { json: { ok: true, gaps }, text: formatGaps(gaps) };
+  }
+  const [id, ...rest] = args;
+  if (!id) throw new UsageError(`pris ${sub} needs <id>`);
+  if (!d.pris.some((x) => x.id === id)) throw new UsageError(`Unknown priority: ${id}`);
+  let next: Pri[];
+  if (sub === 'link') {
+    if (rest.length) throw new UsageError(`Unexpected argument: ${rest[0]}`);
+    const lists: Partial<Record<(typeof PRI_LINKS)[number], string[]>> = {};
+    for (const k of PRI_LINKS) {
+      const v = p.flags[k];
+      if (v === true) throw new UsageError(`--${k} needs a value (use "" to clear)`);
+      if (v !== undefined) lists[k] = v.split(',').map((x) => x.trim()).filter(Boolean);
+    }
+    if (!Object.keys(lists).length) throw new UsageError('pris link needs --projects, --keywords or --refs');
+    next = withLinks(d.pris, id, lists);
+  } else {
+    const text = rest.join(' ').trim();
+    if (!text) throw new UsageError('pris note needs <text>');
+    const nowFlag = flag(p.flags, 'now');
+    const at = nowFlag ? new Date(nowFlag) : new Date();
+    if (Number.isNaN(at.getTime())) throw new UsageError(`--now must be an ISO date: ${nowFlag}`);
+    next = withNote(d.pris, id, text, at);
+  }
+  const w = await store.put(d.rev, next);
+  const x = w.pris.find((y) => y.id === id)!;
+  return { json: { ok: true, changed: true, rev: w.rev, pri: x }, text: sub === 'link' ? `${id} linked: ${PRI_LINKS.map((k) => `${k}=${(x[k] ?? []).join(',') || '-'}`).join(' ')}${PRI_LINKS.some((k) => x[k]?.length) ? '' : ' (no terms: automatic terms from the title apply)'}` : `${id} noted (${x.weekly[0].week})` };
 }
 
 /** A core ref as the api writes it (`<project>:<line>`, 0-based). */
@@ -540,19 +583,22 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     case 'rank': {
       extra(0);
       const engine = flag(f, 'engine') ?? 'stack';
-      if (engine !== 'autopri' && engine !== 'stack') throw new UsageError('--engine must be autopri or stack');
+      if (engine !== 'autopri' && engine !== 'pris' && engine !== 'stack') throw new UsageError('--engine must be autopri, pris or stack');
       const explain = f['explain'] === true;
-      if (explain && engine !== 'autopri') throw new UsageError('--explain needs --engine autopri');
+      if (explain && engine === 'stack') throw new UsageError('--explain needs --engine autopri or pris');
       if (flag(f, 'truth') !== undefined && !explain) throw new UsageError('--truth needs --explain');
       const top = num(flag(f, 'top'), 'top');
       if (top !== undefined && (!Number.isInteger(top) || top < 1 || top > 50)) throw new UsageError('--top must be a whole number from 1 to 50');
       registerAutopriEngine();
+      // @req FR:pris-aware-ranking/explain.cli @req FR:pris-aware-ranking/explain.json
+      const pris = engine === 'pris' ? new PriStore(stackHome()).read().pris : undefined;
+      if (pris) { registerPrisEngine(); setPris(pris); }
       const rctx = { ...ctx, engine };
       if (explain) {
         const tf = flag(f, 'truth');
         let truth: string | undefined;
         if (tf !== undefined) { try { truth = readFileSync(resolve(tf), 'utf8'); } catch { throw new UsageError(`Cannot read --truth file: ${tf}`); } }
-        const r = await explainAutopri(rctx, at, { top, truth });
+        const r = await explainAutopri(rctx, at, { top, truth, ...(pris ? { pris } : {}) });
         return { json: { ok: true, items: r.items, ...(r.truth ? { truth: r.truth } : {}) }, text: r.text, code: r.items.length ? EXIT.ok : EXIT.none };
       }
       const ranked = await rankStack(rctx, at, top);
@@ -683,7 +729,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
     // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report
     // Live state under ~/.stack needs no content repo. @req FR:session-inventory/cli.sessions @req FR:session-inventory/cli.pris
-    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'pris' ? await prisCmd(p) : await dispatch(p.command, p, dir);
+    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
     return r.code ?? EXIT.ok;

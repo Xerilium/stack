@@ -3,7 +3,7 @@
  * @req FR:auto-priority/tags.@function @req FR:auto-priority/picks.@function @req FR:auto-priority/misses.@function
  */
 import type { StackConfig } from './config';
-import type { ScoredTask, ScoringEngine, ScoringProject } from './scoring';
+import type { RankOptions, ScoredTask, ScoringEngine, ScoringProject } from './scoring';
 import { wordsRe } from './regex';
 import { byScore, daysUntilDue, filterByTimeBlock, isMessage, legacyEngine, listEngines, registerEngine, resolveBlockers, weighProjects } from './scoring';
 
@@ -91,32 +91,43 @@ export const autopriEngine: ScoringEngine = {
   id: 'autopri',
   score: legacyEngine.score,
   filter: legacyEngine.filter,
-  rank(all, projects, config, at, opts = {}) {
-    const byId = new Map(all.map((s) => [s.task.id, s]));
-    const parts = autopriParts(all, projects, config, at);
-    const raw = new Map([...parts].map(([id, p]) => [id, p.unblock + p.urgency + p.value]));
-    const blocks = new Map<string, string[]>();
-    for (const [blocked, blockers] of resolveBlockers(projects)) for (const b of blockers) blocks.set(b, [...(blocks.get(b) ?? []), blocked]);
-    const live = (s: ScoredTask) => !s.parked && !isMessage(s.task.text);
-    const score = (id: string): number => {
-      let best = raw.get(id)!;
-      const seen = new Set<string>([id]);
-      const queue = [...(blocks.get(id) ?? [])];
-      while (queue.length) {
-        const next = queue.pop()!;
-        const n = byId.get(next);
-        if (seen.has(next) || !n) continue;
-        seen.add(next);
-        if (live(n)) best = Math.max(best, raw.get(next)!);
-        queue.push(...(blocks.get(next) ?? []));
-      }
-      return best;
-    };
-    const candidates = all.filter((s) => s.leaf && live(s));
-    const kept = at && !opts.ignoreBlocks ? filterByTimeBlock(candidates, projects, config, at) : candidates;
-    return byScore(kept.map((s) => ({ ...s, score: score(s.task.id) })));
-  },
+  rank: (all, projects, config, at, opts = {}) => autopriRank(all, projects, config, at, opts),
 };
+
+/**
+ * The `autopri` ranking, with an optional extra score term per task id (added before blockers lift).
+ * With `extra`, unblockers (and the tasks that block them) rank first, whatever the extra term adds.
+ * @req FR:pris-aware-ranking/engine.score @req FR:pris-aware-ranking/engine.unblock
+ */
+export function autopriRank(all: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date, opts: RankOptions = {}, extra?: Map<string, number>): ScoredTask[] {
+  const byId = new Map(all.map((s) => [s.task.id, s]));
+  const parts = autopriParts(all, projects, config, at);
+  const raw = new Map([...parts].map(([id, p]) => [id, p.unblock + p.urgency + p.value + (extra?.get(id) ?? 0)]));
+  const blocks = new Map<string, string[]>();
+  for (const [blocked, blockers] of resolveBlockers(projects)) for (const b of blockers) blocks.set(b, [...(blocks.get(b) ?? []), blocked]);
+  const live = (s: ScoredTask) => !s.parked && !isMessage(s.task.text);
+  const tier = new Set<string>();
+  const score = (id: string): number => {
+    let best = raw.get(id)!;
+    if (parts.get(id)!.unblock > 0) tier.add(id);
+    const seen = new Set<string>([id]);
+    const queue = [...(blocks.get(id) ?? [])];
+    while (queue.length) {
+      const next = queue.pop()!;
+      const n = byId.get(next);
+      if (seen.has(next) || !n) continue;
+      seen.add(next);
+      if (live(n)) { best = Math.max(best, raw.get(next)!); if (parts.get(next)!.unblock > 0) tier.add(id); }
+      queue.push(...(blocks.get(next) ?? []));
+    }
+    return best;
+  };
+  const candidates = all.filter((s) => s.leaf && live(s));
+  const kept = at && !opts.ignoreBlocks ? filterByTimeBlock(candidates, projects, config, at) : candidates;
+  const scored = byScore(kept.map((s) => ({ ...s, score: score(s.task.id) })));
+  if (!extra) return scored;
+  return [...scored.filter((s) => tier.has(s.task.id)), ...scored.filter((s) => !tier.has(s.task.id))];
+}
 
 /** Registers `autopri` once. Never changes the default engine. @req FR:auto-priority/engine.@function */
 export function registerAutopriEngine(): void {
