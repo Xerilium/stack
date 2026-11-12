@@ -238,7 +238,8 @@ test.describe('Now: Waiting on you cards', () => {
     await expect(more).toContainText('The spec thread is held for your ack');
     await expect(more).toContainText('If silent: Approve on Friday');
     await expect(more).toContainText(/Today 5:00/);
-    await expect(more.getByRole('link', { name: /Open/ })).toHaveAttribute('href', 'https://github.com/x/y/pull/1105');
+    await expect(more.getByRole('link', { name: 'y#1105' })).toHaveAttribute('href', 'https://github.com/x/y/pull/1105'); // @req FR:product-reset/ui.reflink
+    await expect(more.getByRole('link', { name: /^Open/ })).toHaveCount(0);
     for (const name of ['Approve', 'Reject', 'Reply', 'Defer', 'Open in Needs you']) await expect(more.getByRole('button', { name, exact: true })).toBeVisible();
     expect(await noScrollX(page)).toBe(true);
     expect(await axe(page)).toEqual([]);
@@ -247,8 +248,8 @@ test.describe('Now: Waiting on you cards', () => {
     // only one card is open at a time
     await waiting.getByRole('button', { name: /Pick a venue/ }).click();
     await expect(body).toHaveAttribute('aria-expanded', 'false');
-    // a decision with a link still offers Open
-    await expect(waiting.getByTestId('now-ask-more').getByRole('link', { name: /Open github\.com/ })).toHaveAttribute('href', 'https://github.com/x/y/issues/7');
+    // a decision with a link shows it as a ref link
+    await expect(waiting.getByTestId('now-ask-more').getByRole('link', { name: 'y#7' })).toHaveAttribute('href', 'https://github.com/x/y/issues/7');
     // choose an option: the same answer API
     await waiting.getByTestId('now-ask-more').getByRole('button', { name: 'Remote' }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/a2/answer')?.body).toEqual({ answer: 'option', text: 'Remote' });
