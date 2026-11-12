@@ -1,8 +1,6 @@
 # Email triage cost report
 
-Build `8d51a83` (main), 60 synthetic messages (`tests/fixtures/email-cost/`). No mailbox, no Graph sign-in, no secrets.
-
-- Do not connect inboxes yet: fix the 2 blockers below first.
+- Build `8d51a83` (main), 60 synthetic messages (`tests/fixtures/email-cost/`), no mailbox, sign-in or secrets. Do not connect inboxes yet: fix the 2 blockers first.
 - Estimated cost: $0.10 to $0.46 per inbox per day; 6 inboxes: $0.60 to $2.80 per day. Not measured: `claude` is signed out, so every live call failed.
 
 | Pass                                       | modelCalls      | costUsd | Rules / model | Asks | Drafts      |
