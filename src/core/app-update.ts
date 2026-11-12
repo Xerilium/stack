@@ -32,7 +32,10 @@ export class UpdateRefused extends Error {}
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** @req FR:devops-installer/source.local */
-export const sourceDir = (env: NodeJS.ProcessEnv, home: string): string => env.STACK_SOURCE || join(home, '.local/share/stack');
+export const sourceDir = (env: NodeJS.ProcessEnv, home: string, cfg: unknown = {}): string => {
+  const u = isObj(cfg) && isObj(cfg.update) ? cfg.update : {};
+  return env.STACK_SOURCE || (typeof u.source === 'string' && u.source ? u.source : join(home, '.local/share/stack'));
+};
 /** @req FR:devops-installer/source.local */
 export const buildPath = (source: string): string => join(source, BUILD_REL);
 /** The app manifest inside a bundle. @req FR:devops-installer/stamp.read */

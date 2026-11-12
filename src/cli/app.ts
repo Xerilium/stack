@@ -57,10 +57,13 @@ export async function appCmd(action: string | undefined, f: Record<string, strin
   if (f.check && f.install) throw new UsageError('Use --check or --install, not both');
   if (action !== 'update' && (f.check || f.install)) throw new UsageError(`--check and --install are for stack app update`);
   if (f.source === true) throw new UsageError('--source needs a folder');
-  const source = typeof f.source === 'string' ? f.source : sourceDir(d.env, d.home);
+  const cfg = d.readConfig();
+  const source = typeof f.source === 'string' ? f.source : sourceDir(d.env, d.home, cfg);
+  /** Where the app looks for builds: no shell env on a Finder launch. */
+  const appSource = sourceDir({}, d.home, cfg);
   const build = buildPath(source);
   const stateDir = stackHome(d.env, d.home);
-  const settings = readSettings(d.readConfig());
+  const settings = readSettings(cfg);
   const installed = () => parseStamp(d.readText(manifestPath(APP_TARGET)));
   const available = () => parseStamp(d.readText(manifestPath(build)));
   const base = (outcome: string, extra: Record<string, unknown> = {}) => {
@@ -96,7 +99,11 @@ export async function appCmd(action: string | undefined, f: Record<string, strin
     // @req FR:devops-installer/update.current
     if (!isNewer(available(), i)) return { json: base('current'), text: `Up to date (${i?.sha ?? 'none'})`, code: 4 };
     if (f.install) { relaunch = true; quit = true; } // @req FR:devops-installer/update.install
-    else if (d.isRunning(APP_TARGET)) return { json: base('staged'), text: LANDS[settings.mode], code: 0 }; // @req FR:devops-installer/update.running
+    else if (d.isRunning(APP_TARGET)) {
+      // @req FR:devops-installer/update.running @req FR:devops-installer/source.local: the running app must see this build.
+      if (appSource !== source) return { json: { ...base('elsewhere'), appSource }, text: `Stack reads builds from ${appSource}, not ${source}. Set "update.source" in ~/.config/stack/config.json, or run: stack app update --install`, code: 0 };
+      return { json: base('staged'), text: LANDS[settings.mode], code: 0 };
+    }
     else { relaunch = false; quit = false; } // @req FR:devops-installer/update.closed
   }
   const sha = available()?.sha;
@@ -109,7 +116,6 @@ export async function appCmd(action: string | undefined, f: Record<string, strin
   const j = base('installed', { result });
   const lines = [`Installed ${short(j.installed)}${relaunch ? ' and opened it' : ''}`];
   // @req FR:devops-installer/install.config
-  const cfg = d.readConfig();
   if (action === 'install' && !d.env.STACK_REPO && !d.env.STACK_DIR && !cfg.repo && !cfg.dir) lines.push('First launch opens setup');
   return { json: j, text: lines.join('\n'), code: 0 };
 }

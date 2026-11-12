@@ -33,7 +33,7 @@ Owner needs each build to say what it is, so the app and the CLI can tell an old
 
 ### FR:source: Where a build comes from
 
-- **FR:source.local** (P1): The source checkout MUST be `STACK_SOURCE`, else `~/.local/share/stack`. Its build is `<source>/desktop/out/Stack-darwin-arm64/Stack.app`
+- **FR:source.local** (P1): The source checkout MUST be `STACK_SOURCE`, else `update.source` in `~/.config/stack/config.json`, else `~/.local/share/stack`. Its build is `<source>/desktop/out/Stack-darwin-arm64/Stack.app`. The app reads no shell environment on a Finder launch, so when Stack runs and the CLI built elsewhere (`--source` or `STACK_SOURCE`), the CLI MUST say where the app looks and how to fix it, and stage nothing
 - **FR:source.release** (P3, follow-up): The installer MAY fetch the `Stack-<version>-arm64.zip` asset of the newest GitHub Release of `Xerilium/stack`, check its sha256 against the release notes, and unzip it with `ditto -x -k` into a scratch folder. The quarantine flag is cleared after the check passes
 
 ### FR:install: First install

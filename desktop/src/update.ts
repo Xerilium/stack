@@ -24,7 +24,8 @@ export function desktopUpdater(o: DesktopUpdaterOpts): AppUpdater {
     running,
     // Only a stamped Stack bundle swaps itself: a dev run (the Electron.app in node_modules) never does.
     target: running ? bundleOf(o.execPath) : null,
-    source: buildPath(sourceDir(o.env, o.home)),
+    // A Finder launch has no STACK_SOURCE: user config `update.source` is what the CLI and the app share.
+    source: buildPath(sourceDir(o.env, o.home, readConfig(o.home))),
     stateDir: stackHome(o.env, o.home),
     pid: o.pid,
     readText,

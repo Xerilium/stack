@@ -87,6 +87,7 @@ stack app status
   - `Only when I select Restart`: the dialog shows `Restart now`.
   - `When I'm away for <n> minutes`: restarts when the Mac is idle and the Stack window is closed (hidden in the menu bar).
   - `Never`.
+- The app looks for builds in `update.source` (config), else `~/.local/share/stack`; a Finder launch does not see `STACK_SOURCE`.
 - The setting is `update.mode` (`on-quit`, `ask`, `auto-idle`, `off`) and `update.idleMinutes` in `~/.config/stack/config.json`.
 - The helper keeps the old app as `/Applications/.Stack.app.previous`. If the new app does not open, it puts the old one back and opens it. Every step goes to `~/.stack/update.log`; the result goes to `~/.stack/update-result.json`. A failed update shows in Needs you at the next launch.
 - Roll back by hand: quit Stack, then `mv /Applications/Stack.app /tmp/Stack.bad.app && mv /Applications/.Stack.app.previous /Applications/Stack.app`.

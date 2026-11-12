@@ -40,6 +40,8 @@ describe('source', () => {
   it('is STACK_SOURCE, else ~/.local/share/stack; its build is under desktop/out', () => {
     expect(sourceDir({}, '/h')).toBe('/h/.local/share/stack');
     expect(sourceDir({ STACK_SOURCE: '/src' }, '/h')).toBe('/src');
+    expect(sourceDir({}, '/h', { update: { source: '/cfg' } })).toBe('/cfg');
+    expect(sourceDir({ STACK_SOURCE: '/src' }, '/h', { update: { source: '/cfg' } })).toBe('/src');
     expect(buildPath('/src')).toBe('/src/desktop/out/Stack-darwin-arm64/Stack.app');
   });
   // @req FR:devops-installer/quit.spawn

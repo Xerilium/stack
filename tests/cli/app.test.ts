@@ -89,6 +89,16 @@ describe('stack app update', () => {
       expect(f.jobs).toEqual([]);
     }
   });
+  // @req FR:devops-installer/source.local @req FR:devops-installer/update.running
+  it('when Stack runs and the build is elsewhere, says where the app looks and stages nothing', async () => {
+    const f = fake({ running: true });
+    f.deps.readText = ((orig) => (p: string) => (p === manifestPath('/elsewhere/desktop/out/Stack-darwin-arm64/Stack.app') ? JSON.stringify({ stackBuild: NEW }) : orig(p)))(f.deps.readText);
+    f.deps.exists = () => true;
+    const r = await appCmd('update', { 'no-build': true, source: '/elsewhere' }, f.deps);
+    expect(r.text).toBe('Stack reads builds from /h/.local/share/stack, not /elsewhere. Set "update.source" in ~/.config/stack/config.json, or run: stack app update --install');
+    expect(r.json).toMatchObject({ outcome: 'elsewhere' });
+    expect(f.jobs).toEqual([]);
+  });
   // @req FR:devops-installer/update.install
   it('--install quits a running app, swaps, and relaunches', async () => {
     const f = fake({ running: true });
