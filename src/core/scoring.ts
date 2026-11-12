@@ -31,6 +31,8 @@ export interface ScoringProject {
   value: string[];
   weeklyCapacity: number;
   explicitPriority?: number;
+  /** Other names from the `**Aliases:**` line, and the file base name when it differs from `name`. */
+  aliases?: string[];
   /** Time block name -> hours, from `- **<Block> capacity:** <n>h` lines. */
   capacity: Record<string, number>;
   tasks: ScoringTask[];
@@ -70,6 +72,8 @@ export interface ScoringEngine {
   filter(tasks: ScoredTask[], projects: ScoringProject[], config: StackConfig, at: Date): ScoredTask[];
   /** Optional: replaces candidate selection and filtering in `rankTasks` (sees every scored task, parked ones too). */
   rank?(scored: ScoredTask[], projects: ScoringProject[], config: StackConfig, at?: Date, opts?: RankOptions): ScoredTask[];
+  /** Optional: changes when inputs outside the task files change (a ranking cache keys on it). */
+  version?(): string;
 }
 
 // ---------------------------------------------------------------- emojis
@@ -670,6 +674,8 @@ export function toScoringProject(project: Project, fallbackName = ''): ScoringPr
   if (valueLine) for (const e of VALUE) value.push(...Array<string>(valueLine.split(e).length - 1).fill(e));
   const weekly = /\*\*Weekly capacity:\*\*\s*(\d+)/i.exec(content)?.[1];
   const prio = /\*\*Project priority:\*\*\s*(\d+)/i.exec(content)?.[1];
+  const aliasLine = /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/im.exec(content)?.[1];
+  const aliases = [...new Set([...(fallbackName && fallbackName !== name ? [fallbackName] : []), ...(aliasLine?.split(",").map(a => a.trim()).filter(Boolean) ?? [])])];
   const capacity: Record<string, number> = {};
   for (const l of lines) {
     const m = CAPACITY_LINE.exec(l);
@@ -695,6 +701,6 @@ export function toScoringProject(project: Project, fallbackName = ''): ScoringPr
 
   return {
     name, value, weeklyCapacity: weekly !== undefined ? Number(weekly) : 40,
-    ...(prio !== undefined ? { explicitPriority: Number(prio) } : {}), capacity, tasks,
+    ...(prio !== undefined ? { explicitPriority: Number(prio) } : {}), ...(aliases.length ? { aliases } : {}), capacity, tasks,
   };
 }

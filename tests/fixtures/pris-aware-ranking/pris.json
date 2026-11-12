@@ -1,0 +1,253 @@
+{
+  "version": 1,
+  "rev": 1,
+  "pris": [
+    {
+      "id": "p1",
+      "title": "Quota-maxxing (window ends Thu 10am PT)",
+      "status": "active",
+      "items": [
+        {
+          "text": "FH+Catalyst PR quality pass (security, reliability, UX, spec quality/STE writing, pr-loop questionable PRs)",
+          "status": "todo"
+        },
+        {
+          "text": "Stack v2",
+          "status": "todo"
+        },
+        {
+          "text": "anything below that agents can progress alone",
+          "status": "todo"
+        }
+      ],
+      "backlog": [],
+      "weekly": [],
+      "keywords": [
+        "PR quality pass"
+      ]
+    },
+    {
+      "id": "p2",
+      "title": "Autopilot PR progress",
+      "status": "active",
+      "items": [
+        {
+          "text": "scheduled SM nags",
+          "status": "todo"
+        },
+        {
+          "text": "escalations as ONE task per set: top 3 blocked Autopilot threads (with context), top 3 non-Autopilot PRs to enable Autopilot (easiest to review, fewest spec lines, no live validation), top 1 live-validation PR (quick + high pri)",
+          "status": "todo"
+        },
+        {
+          "text": "Prep next set while he reviews",
+          "status": "todo"
+        },
+        {
+          "text": "No escalations = sweep+CoS fail",
+          "status": "todo"
+        }
+      ],
+      "backlog": [],
+      "weekly": [],
+      "keywords": [
+        "Autopilot"
+      ]
+    },
+    {
+      "id": "p3",
+      "title": "Allyte marketplace (+ is FH personal account sign-in required? work around limits)",
+      "status": "active",
+      "items": [],
+      "backlog": [],
+      "weekly": [],
+      "keywords": [
+        "Allyte marketplace"
+      ]
+    },
+    {
+      "id": "p4",
+      "title": "FH 0.11",
+      "status": "active",
+      "items": [
+        {
+          "text": "marketplace",
+          "status": "todo"
+        },
+        {
+          "text": "FH backend",
+          "status": "todo"
+        },
+        {
+          "text": "1 UX improvement from non-Autopilot PRs",
+          "status": "todo"
+        },
+        {
+          "text": "1 hub management improvement (deployment?)",
+          "status": "todo"
+        },
+        {
+          "text": "maybe 1 extensibility step (customer extensions loaded into FH.com, e.g. hub.allyte.com with the clients/log-analytics PR changes)",
+          "status": "todo"
+        }
+      ],
+      "backlog": [],
+      "weekly": [],
+      "keywords": [
+        "finops-hubs 0.11",
+        "FH 0.11"
+      ]
+    },
+    {
+      "id": "p5",
+      "title": "FTK 16",
+      "status": "active",
+      "items": [
+        {
+          "text": "RM validates authored PRs (he reviews + Autopilot)",
+          "status": "todo"
+        },
+        {
+          "text": "RM reviews non-authored PRs + surfaces approval candidates",
+          "status": "todo"
+        },
+        {
+          "text": "Support reviews non-PRed v16 issues and recommends v17 pushes",
+          "status": "todo"
+        },
+        {
+          "text": "Support passes unanswered discussions",
+          "status": "todo"
+        }
+      ],
+      "backlog": [],
+      "weekly": [],
+      "keywords": [
+        "v16"
+      ]
+    },
+    {
+      "id": "p6",
+      "title": "FOCUS",
+      "status": "active",
+      "items": [
+        {
+          "text": "1 draft PR to publish",
+          "status": "todo"
+        },
+        {
+          "text": "propose what else to target",
+          "status": "todo"
+        }
+      ],
+      "backlog": [],
+      "weekly": [],
+      "projects": [
+        "focus"
+      ],
+      "refs": [
+        "draft PR"
+      ]
+    },
+    {
+      "id": "p7",
+      "title": "Personal",
+      "status": "active",
+      "items": [
+        {
+          "text": "Clyde's patch",
+          "status": "todo"
+        },
+        {
+          "text": "Clyde's Xbox gift card",
+          "status": "todo"
+        }
+      ],
+      "backlog": [],
+      "weekly": [],
+      "refs": [
+        "Clyde's patch",
+        "Clyde's Xbox gift card"
+      ]
+    },
+    {
+      "id": "p8",
+      "title": "Stack v2 as central tracker/hub for this list",
+      "status": "active",
+      "items": [
+        {
+          "text": "backlog items tracked, progressed weekly in quota-maxxing time",
+          "status": "todo"
+        }
+      ],
+      "backlog": [],
+      "weekly": [],
+      "keywords": [
+        "Stack v2"
+      ]
+    },
+    {
+      "id": "p9",
+      "title": "Catalyst 0.3.4 / 0.4",
+      "status": "active",
+      "items": [
+        {
+          "text": "status",
+          "status": "todo"
+        },
+        {
+          "text": "target",
+          "status": "todo"
+        },
+        {
+          "text": "what needs him",
+          "status": "todo"
+        },
+        {
+          "text": "accelerate with quality (no PR has come in clean without human correction; predict human corrections)",
+          "status": "todo"
+        }
+      ],
+      "backlog": [],
+      "weekly": []
+    },
+    {
+      "id": "p10",
+      "title": "Allyte blog for office hours today",
+      "status": "active",
+      "items": [],
+      "backlog": [],
+      "weekly": [],
+      "keywords": [
+        "office hours"
+      ]
+    },
+    {
+      "id": "p11",
+      "title": "Printer meeting transcript ingestion (yesterday)",
+      "status": "active",
+      "items": [],
+      "backlog": [],
+      "weekly": [],
+      "keywords": [
+        "transcript ingestion"
+      ]
+    },
+    {
+      "id": "p12",
+      "title": "FTK 15",
+      "status": "active",
+      "items": [
+        {
+          "text": "confirm AQT PR updates + update checklist issue",
+          "status": "todo"
+        }
+      ],
+      "backlog": [],
+      "weekly": [],
+      "keywords": [
+        "AQT"
+      ]
+    }
+  ]
+}

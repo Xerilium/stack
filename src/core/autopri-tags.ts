@@ -3,6 +3,7 @@
  * @req FR:auto-priority/tag.@function @req FR:auto-priority/truth.parse @req FR:auto-priority/truth.match @req FR:auto-priority/truth.report
  */
 import { UNBLOCK, type AutopriParts } from './autopri';
+import type { PriLink } from './pris-rank';
 import { escapeRe } from './regex';
 
 export interface Tags { unblocker?: boolean; due?: string | null }
@@ -73,12 +74,15 @@ export function matchTruth(items: TruthItem[], rows: TruthRow[]): TruthMatch[] {
   });
 }
 
-export interface ExplainRow { rank: number; ref: string; project: string; text: string; score: number; parts: AutopriParts; rule?: string }
+export interface ExplainRow { rank: number; ref: string; project: string; text: string; score: number; parts: AutopriParts & { pri?: number; link?: PriLink }; rule?: string }
 
 /** Plain-text report. @req FR:auto-priority/explain.cli */
 export function formatExplain(rows: ExplainRow[], truth?: TruthMatch[]): string {
   const n = (x: number) => Number(x.toFixed(1));
-  const out = rows.map((r) => `${r.rank}. ${r.ref} ${n(r.score)} [unblock=${n(r.parts.unblock)} urgency=${n(r.parts.urgency)} value=${n(r.parts.value)}]${r.rule ? ` rule=${r.rule}` : ''} ${r.project} ${r.text}`);
+  // @req FR:pris-aware-ranking/explain.cli
+  const serves = (l?: PriLink) => (l ? ` serves=${l.rank}:${l.id} "${l.title}" via ${l.via} "${l.term}"` : '');
+  const pri = (p: ExplainRow['parts']) => (p.pri === undefined ? '' : ` pri=${n(p.pri)}`);
+  const out = rows.map((r) => `${r.rank}. ${r.ref} ${n(r.score)} [unblock=${n(r.parts.unblock)} urgency=${n(r.parts.urgency)} value=${n(r.parts.value)}${pri(r.parts)}]${serves(r.parts.link)}${r.rule ? ` rule=${r.rule}` : ''} ${r.project} ${r.text}`);
   if (truth) {
     out.push('', 'Ground truth:');
     for (const t of truth) {

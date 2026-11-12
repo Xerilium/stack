@@ -10,15 +10,21 @@ import type { Issue } from './reports';
 
 export const PRI_STATUSES = ['active', 'paused', 'blocked', 'done'] as const;
 export const PRI_ITEM_STATUSES = ['todo', 'doing', 'blocked', 'done'] as const;
-const LIMITS = { pris: 30, items: 20, backlog: 50, weekly: 12 } as const;
+const LIMITS = { pris: 30, items: 20, backlog: 50, weekly: 12, links: 20 } as const;
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,23}$/;
 const WEEK = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
 const BAD_CHARS = new RegExp('[\\p{Cc}\\u0085\\u2028\\u2029]|(?!\\u200d)\\p{Cf}', 'u');
 
 export interface PriItem { text: string; status: (typeof PRI_ITEM_STATUSES)[number] }
+/** Link terms: tasks link to a priority from `pris.json`, never from task files. @req FR:pris-aware-ranking/link.model */
+export const PRI_LINKS = ['projects', 'keywords', 'refs'] as const;
 export interface Pri {
   id: string; title: string; status: (typeof PRI_STATUSES)[number];
   items: PriItem[]; backlog: PriItem[]; weekly: { week: string; text: string }[];
+  projects?: string[]; keywords?: string[]; refs?: string[];
+  /** ISO date-time of the last status note. */
+  statusAt?: string;
 }
 export interface PrisFile { version: 1; rev: number; updatedAt?: string; seed?: { source: string; at: string; sha256: string }; pris: Pri[] }
 
@@ -72,7 +78,7 @@ export function parsePris(body: unknown): Pri[] {
   const out = body.flatMap((raw, i): Pri[] => {
     const f = `[${i}]`;
     if (!isObj(raw)) { bad(f, 'Must be an object'); return []; }
-    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly']);
+    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly', ...PRI_LINKS, 'statusAt']);
     let id: string | undefined;
     if (typeof raw.id !== 'string' || !SLUG.test(raw.id)) bad(`${f}.id`, 'Must match [a-z0-9][a-z0-9-]{0,23}');
     else if (ids.has(raw.id)) bad(`${f}.id`, 'Must be unique');
@@ -90,7 +96,18 @@ export function parsePris(body: unknown): Pri[] {
       return week && t ? [{ week, text: t }] : [];
     });
     for (let j = 1; j < weekly.length; j++) if (weekly[j].week >= weekly[j - 1].week) { bad(`${f}.weekly`, 'Must be newest first, one entry per week'); break; }
-    return id && title && status ? [{ id, title, status, items: its, backlog, weekly }] : [];
+    // @req FR:pris-aware-ranking/link.model
+    const links: Partial<Pick<Pri, (typeof PRI_LINKS)[number]>> = {};
+    for (const k of PRI_LINKS) {
+      if (raw[k] === undefined) continue;
+      links[k] = list(`${f}.${k}`, raw[k], LIMITS.links).flatMap((v, j) => { const t = text(`${f}.${k}[${j}]`, v, 100); return t ? [t] : []; });
+    }
+    let statusAt: string | undefined;
+    if (raw.statusAt !== undefined) {
+      if (typeof raw.statusAt === 'string' && ISO.test(raw.statusAt) && !Number.isNaN(Date.parse(raw.statusAt))) statusAt = raw.statusAt;
+      else bad(`${f}.statusAt`, 'Must be an ISO date-time');
+    }
+    return id && title && status ? [{ id, title, status, items: its, backlog, weekly, ...links, ...(statusAt ? { statusAt } : {}) }] : [];
   });
   if (issues.length) throw new PrisInvalid(issues);
   return out;
