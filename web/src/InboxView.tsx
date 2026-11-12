@@ -4,7 +4,7 @@
  * Never says Inbox zero unless a source synced recently; the sources panel shows what is connected and how to connect the rest.
  * @req FR:inbox-page/web.view @req FR:inbox-page/web.draft @req FR:inbox-page/web.phone @req FR:inbox-page/web.empty @req FR:inbox-page/web.check
  */
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
 import { actionsFor, emptyText, SOURCE, tomorrow, type ActionInfo, type InboxRow, type SourcesReply } from './inbox';
 import { InboxSources } from './InboxSources';
@@ -90,25 +90,36 @@ function Row({ row, catalog, api, toast, done }: { row: InboxRow; catalog: Actio
   );
 }
 
-export function InboxView({ api, toast, onStatus }: { api: Client; toast: ToastFn; onStatus?: (r: SourcesReply) => void }) {
+/**
+ * `refresh` changes on the page's minute timer, when the tab comes back, and on live changes: the items and the summary
+ * are read again together, so an open tab never keeps an old `Inbox zero`. @req FR:inbox-page/web.empty @req FR:inbox-page/web.check
+ */
+export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toast: ToastFn; onStatus?: (r: SourcesReply) => void; refresh?: string | number }) {
   const [items, setItems] = useState<InboxRow[]>([]);
   const [catalog, setCatalog] = useState<ActionInfo[]>([]);
   const [src, setSrc] = useState<SourcesReply | null>(null);
   const [checking, setChecking] = useState(false);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
+  const seq = useRef(0);
+  /** Items, catalog and summary from one reply; an older reply that lands late is dropped. A reply without a summary clears it, so zero is never claimed off old data. */
+  const load = async (): Promise<boolean> => {
+    const n = ++seq.current;
+    const r = await api.inboxItems();
+    if (n !== seq.current) return true;
+    setItems(r.items); setCatalog(r.actions); setPhase('ready');
+    if (r.sources && r.summary) { const s = { sources: r.sources, summary: r.summary }; setSrc(s); onStatus?.(s); } else setSrc(null);
+    return true;
+  };
+  /** A read that failed cannot back a zero claim: keep the panel, drop the claim. */
+  const unverified = () => setSrc((s) => (s ? { ...s, summary: { ...s.summary, canClaimZero: false } } : s));
   useEffect(() => {
-    let live = true;
-    api.inboxItems().then((r) => {
-      if (!live) return;
-      setItems(r.items); setCatalog(r.actions); setPhase('ready');
-      if (r.sources && r.summary) { const s = { sources: r.sources, summary: r.summary }; setSrc(s); onStatus?.(s); }
-    }).catch(() => { if (live) setPhase('error'); });
-    return () => { live = false; };
-  }, [api]);
-  /** Re-reads every source, asking a local host to probe again. @req FR:inbox-page/web.check */
+    void load().catch(() => { setPhase((p) => (p === 'ready' ? p : 'error')); unverified(); });
+    return () => { seq.current++; };
+  }, [api, refresh]);
+  /** Re-reads every source (a local host probes again), then the items with it. @req FR:inbox-page/web.check */
   async function check() {
     setChecking(true);
-    try { const r = await api.inboxSources(true); setSrc(r); onStatus?.(r); } catch (e) { toast(e instanceof ApiFailure ? e.message : 'Could not check the connection', 'err'); }
+    try { await api.inboxSources(true); await load(); } catch (e) { unverified(); toast(e instanceof ApiFailure ? e.message : 'Could not check the connection', 'err'); }
     setChecking(false);
   }
   const unread = items.filter((i) => i.unread).length;

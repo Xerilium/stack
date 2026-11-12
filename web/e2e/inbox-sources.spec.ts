@@ -102,6 +102,29 @@ test('Check connection re-reads fresh status, redraws, and clears the dot', asyn
   await expect(page.getByTestId('empty-state')).toContainText('Inbox zero. Nothing needs you.');
 });
 
+const fresh2 = () => ({ sources: [{ kind: 'email', account: 'a@outlook.com', state: 'ok', mode: 'read-only', lastSyncAt: ago(1) }, { kind: 'github', account: '', state: 'ok', lastSyncAt: ago(1) }, ...planned], summary: { connected: 2, total: 2, fresh: 2, attention: false, canClaimZero: true, headline: null } });
+const mail = { id: 'mail-bbbbbbbbbbbb', source: 'email', account: 'a@outlook.com', from: 'Alex', subject: 'Budget', receivedAt: ago(2), unread: true, urgency: 1, summary: 'Approve the budget.', suggested: 'mark-done', actions: ['mark-done'] };
+
+// @req FR:inbox-page/web.check: the check reads the items with the status, so a first sync's mail is never hidden behind Inbox zero
+test('Check connection reloads the items with the status', async ({ page }) => {
+  const m = await open(page, nothing());
+  m.inboxSources = fresh2();
+  m.inboxItems = [mail];
+  await page.getByRole('button', { name: 'Check connection' }).click();
+  await expect(page.locator('.in-row')).toHaveCount(1);
+  await expect(page.getByText('Inbox zero')).toHaveCount(0);
+});
+
+// @req FR:inbox-page/web.empty: an open tab reads the status again, so Inbox zero ends when the window does
+test('an open tab drops Inbox zero once the sync goes stale', async ({ page }) => {
+  const m = await open(page, fresh2());
+  await expect(page.getByTestId('empty-state')).toContainText('Inbox zero. Nothing needs you.');
+  m.inboxSources = { sources: [{ kind: 'email', account: 'a@outlook.com', state: 'stale', mode: 'read-only', lastSyncAt: ago(45), needs: 'Sync is behind.', command: 'stack email run --all' }, { kind: 'github', account: '', state: 'ok', lastSyncAt: ago(1) }, ...planned], summary: { connected: 2, total: 2, fresh: 1, attention: false, canClaimZero: false, headline: '1 of 2 inboxes up to date' } };
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.getByText('Inbox zero')).toHaveCount(0);
+  await expect(page.getByTestId('empty-state')).toBeVisible();
+});
+
 test('all fresh: no dot; the panel folds to one line', async ({ page }) => {
   const m = await mockApi(page);
   await page.goto('/#/inbox');

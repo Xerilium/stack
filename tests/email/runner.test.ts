@@ -479,6 +479,26 @@ describe('stack email --all', () => {
     const none = await emailCmd(ctx, 'run', { all: true }, { cacheDir: tmp(), dataDir: tmp() });
     expect(none.code).toBe(4);
   });
+  // @req FR:graph-signin/cache.accounts: the first-sync and retry commands work for a per-mailbox sign-in
+  it('--account uses that mailbox\'s own sign-in', async () => {
+    const { ctx } = mkCtx();
+    const dir = tmp();
+    await cacheAt(dir, 'sam@outlook.com', ['Mail.Read']);
+    const r = await emailCmd(ctx, 'status', { account: 'sam@outlook.com' }, { cacheDir: dir, dataDir: tmp() });
+    expect(r.json).toMatchObject({ ok: true, account: 'sam@outlook.com', mode: 'observe' });
+  });
+  // @req FR:inbox-page/src.probe: an onboarding sign-in (no mailbox name) takes the address of its first real pass
+  it('a pass names an unnamed sign-in, so --all finds it next time', async () => {
+    const { ctx } = mkCtx();
+    const dir = tmp();
+    const c = await cacheAt(dir, undefined, ['Mail.Read'], 'graph-token.json');
+    const dry = await emailCmd(ctx, 'run', { all: true, 'dry-run': true }, { cacheDir: dir, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    expect(dry.code).toBe(4); // unnamed: --all cannot run it yet
+    await emailCmd(ctx, 'run', { account: 'Sam@Outlook.com' }, { cache: c, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    expect((await c.read())?.account).toBe('sam@outlook.com');
+    const all = await emailCmd(ctx, 'run', { all: true, 'dry-run': true }, { cacheDir: dir, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    expect((all.json.accounts as { account: string }[]).map((a) => a.account)).toEqual(['sam@outlook.com']);
+  });
   it('schedules --all', () => {
     expect(launchdPlist({ node: '/n', cli: '/c', claudeDir: '/b', repo: '/r', logDir: '/l' })).toContain('<string>--all</string>');
   });

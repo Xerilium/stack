@@ -22,9 +22,19 @@ describe('probeLocal', () => {
     await put(d, 'graph-token.json', ['Mail.Read']);
     const p = await probeLocal({ cacheDir: d, env: {}, gh: async () => false });
     expect(p.emails).toEqual([{ account: 'a@outlook.com', mode: 'read-only' }, { account: 'b@contoso.test', mode: 'drafts' }]);
+    expect(p.unnamedMail).toEqual({ mode: 'read-only' }); // the onboarding sign-in: mail, no mailbox name
     expect(p.clientId).toBe(CLIENT);
     expect(p.github).toBe(false);
     expect(JSON.stringify(p)).not.toMatch(/SECRET/);
+  });
+
+  // @req FR:inbox-page/src.safe: the id goes into a copyable command, so only a GUID passes
+  it('a client id that is not a GUID is dropped', async () => {
+    const d = dir();
+    await new FileTokenCache(join(d, 'graph-token-a@outlook.com.json')).write({ version: 1, tenant: 'consumers', clientId: '$(touch /tmp/pwn)', scopes: ['Mail.Read'], refreshToken: 'r', account: 'a@outlook.com' });
+    const p = await probeLocal({ cacheDir: d, env: {}, gh: async () => false });
+    expect(p.clientId).toBeUndefined();
+    expect(p.emails).toHaveLength(1);
   });
 
   it('a cache with loose permissions is an error, named by its file', async () => {

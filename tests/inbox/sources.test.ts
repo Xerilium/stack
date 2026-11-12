@@ -94,6 +94,15 @@ describe('buildSources', () => {
     expect(by(s, 'teams').doc).toMatch(/#teams$/);
     expect(by(s, 'slack').doc).toMatch(/#slack$/);
   });
+  it('a client id that is not a GUID never reaches the sign-in command', () => {
+    const s = build({ probe: probe({ emails: [{ account: 'a@outlook.com', mode: 'read-only', error: 'token-unreadable' }], clientId: '$(id)' }) });
+    expect(by(s, 'email', 'a@outlook.com').command).toBe('stack graph login --client-id <app id> --account a@outlook.com --with mail');
+  });
+  it('an onboarding mail sign-in with no mailbox name is connected, waiting for its first sync', () => {
+    const s = build({ probe: probe({ unnamedMail: { mode: 'drafts' } }) });
+    expect(by(s, 'email')).toMatchObject({ state: 'connecting', mode: 'drafts', command: 'stack email run --account <address>' });
+    expect(summarize(s, NOW)).toMatchObject({ connected: 1, canClaimZero: false, headline: 'Waiting for the first sync' });
+  });
   it('records with an unsafe account are dropped, so no shell text reaches a command', () => {
     expect(parseRecords({ records: [{ kind: 'email', account: 'a@x.com; rm -rf ~', at: ago(1), ok: false, error: 'signin-expired' }, { kind: 'github', account: '$(id)', at: ago(1), ok: true }] })).toEqual([]);
     const s = build({ records: [{ kind: 'email', account: 'a@x.com`id`', at: ago(1), ok: false, error: 'signin-expired' }], accounts: ['b@x.com'] });

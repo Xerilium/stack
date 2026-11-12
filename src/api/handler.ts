@@ -36,7 +36,7 @@ import { editTask, moveTask } from './edit';
 import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
-import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, loadSources, readInbox, requestAction, runAction, type ActionId, type IssueFiler, type SourceProbe } from '../inbox';
+import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type SourceProbe } from '../inbox';
 import { createBriefCache } from './brief';
 import type { ClaudeJson } from '../email/llm';
 import { ApiError, errorResponse, flushError, invalid, json, toApiError } from './errors';
@@ -920,7 +920,10 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       ownerOnly(c, 'Only the owner can read the inbox');
-      return json(200, { items: await readInbox(c.deps.storage), actions: INBOX_ACTIONS, ...(await inboxSources(c, false)) });
+      const { items, verified } = await readInboxChecked(c.deps.storage);
+      const src = await inboxSources(c, false);
+      // Fresh syncs say nothing about an item file that is missing or unreadable: no zero claim off that. @req FR:inbox-page/src.summary
+      return json(200, { items, actions: INBOX_ACTIONS, ...src, summary: { ...src.summary, canClaimZero: src.summary.canClaimZero && verified } });
     },
   },
   {

@@ -77,6 +77,21 @@ describe('GET /inbox-sources and sources on /inbox-items', () => {
     expect((await broken.get('/inbox-sources')).status).toBe(200);
   });
 
+  // @req FR:inbox-page/src.summary: fresh syncs never back a zero claim off a missing or unreadable item file
+  it('the page read claims zero only when the item file reads cleanly', async () => {
+    const { storage, get } = await mk({ inboxProbe: async () => ({ emails: [{ account: 'a@outlook.com', mode: 'read-only' }], github: true }) });
+    await recordSync(storage, { kind: 'email', account: 'a@outlook.com', at: ago(5), ok: true });
+    await recordSync(storage, { kind: 'github', account: '', at: ago(5), ok: true });
+    expect((await get('/inbox-sources')).json.summary.canClaimZero).toBe(true);
+    const page = async () => (await get('/inbox-items')).json;
+    expect(await page()).toMatchObject({ items: [], summary: { canClaimZero: false } }); // no item file
+    await storage.writeAux('.stack/inbox-items.json', '{not json', { expectedVersion: null });
+    expect(await page()).toMatchObject({ items: [], summary: { canClaimZero: false } }); // malformed
+    const f = await storage.readAux('.stack/inbox-items.json');
+    await storage.writeAux('.stack/inbox-items.json', '[]\n', { expectedVersion: f!.version });
+    expect(await page()).toMatchObject({ items: [], summary: { canClaimZero: true } });
+  });
+
   it('owner only', async () => {
     const { get, mint } = await mk();
     expect((await get('/inbox-sources', await mint())).status).toBe(403);

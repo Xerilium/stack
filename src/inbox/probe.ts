@@ -6,7 +6,7 @@
 import { execFile } from 'child_process';
 import { basename } from 'path';
 import { cacheDir as graphCacheDir, FileTokenCache, hasScope, listCachePaths } from '../graph/auth';
-import type { SourceProbe } from './sources';
+import { safeClientId, type SourceProbe } from './sources';
 
 /** True when `gh auth status` exits 0. Fixed args, no shell, 5 second cap; output is ignored. */
 export const ghSignedIn = (): Promise<boolean> => new Promise((ok) => {
@@ -20,15 +20,18 @@ export async function probeLocal(o: ProbeOptions = {}): Promise<SourceProbe> {
   const env = o.env ?? process.env;
   const emails: SourceProbe['emails'] = [];
   let clientId: string | undefined;
+  let unnamedMail: SourceProbe['unnamedMail'];
   for (const path of listCachePaths(o.cacheDir ?? graphCacheDir())) {
     const named = /^graph-token-(.+)\.json$/.exec(basename(path))?.[1]?.toLowerCase();
     try {
       const t = await new FileTokenCache(path).read();
       if (!t) continue;
-      clientId ??= t.clientId;
+      // The id reaches a copyable command: a GUID only. @req FR:inbox-page/src.safe
+      clientId ??= safeClientId(t.clientId);
       const drafts = hasScope(t.scopes, 'Mail.ReadWrite');
+      if (!(drafts || hasScope(t.scopes, 'Mail.Read'))) continue;
       const account = (t.account ?? named)?.toLowerCase();
-      if (!account || !(drafts || hasScope(t.scopes, 'Mail.Read'))) continue;
+      if (!account) { unnamedMail = { mode: drafts ? 'drafts' : 'read-only' }; continue; }
       emails.push({ account, mode: drafts ? 'drafts' : 'read-only' });
     } catch {
       // Loose permissions or a bad file: say so by account; the error text could quote the file, so it is dropped.
@@ -37,7 +40,7 @@ export async function probeLocal(o: ProbeOptions = {}): Promise<SourceProbe> {
   }
   let github = !!env.GITHUB_TOKEN?.trim();
   if (!github) github = await (o.gh ?? ghSignedIn)().catch(() => false);
-  return { emails, github, ...(clientId ? { clientId } : {}) };
+  return { emails, github, ...(unnamedMail ? { unnamedMail } : {}), ...(clientId ? { clientId } : {}) };
 }
 
 /** A probe for the API: re-runs at most once per `ttlMs` so a page refresh never spawns `gh` each time. */

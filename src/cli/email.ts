@@ -3,6 +3,7 @@
  * @req FR:email-runner/cli.run @req FR:email-runner/cli.offline @req FR:email-runner/cli.voice @req FR:email-runner/cli.status @req FR:email-runner/cli.lock
  */
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { MAILBOX } from '../core/config';
 import { dirname, join } from 'path';
 import { handleAsk, oneLine, putAsk, readAsk } from '../core/asks';
 import { redact } from '../core/triage';
@@ -15,7 +16,7 @@ import { createSafeHttp } from '../email/http';
 import type { ClaudeJson } from '../email/llm';
 import { CLAUDE_DOWN_TEXT, CLAUDE_LOGIN_ASK, CLAUDE_LOGIN_TEXT, lockPath, MaxExceeded, ModelUnavailable, readState, rulesFor, runPass, statePath, takeLock } from '../email/runner';
 import { learnVoice, loadVoice, renderStyleGuide, saveVoice, voicePath, type SentMessage } from '../email/voice';
-import { defaultCachePath, FileTokenCache, GraphSignInError, GraphSignInRequired, graphToken, hasScope, listCachePaths } from '../graph/auth';
+import { accountCachePath, cacheDir as graphCacheDir, defaultCachePath, FileTokenCache, GraphSignInError, GraphSignInRequired, graphToken, hasScope, listCachePaths } from '../graph/auth';
 import { recordSync, type SyncError } from '../inbox/sources';
 import { GraphHttpError, graphTransport } from '../graph/transport';
 import { UsageError } from './args';
@@ -139,13 +140,29 @@ async function syncRecord(ctx: LifecycleContext, account: string, mode: string, 
   await recordSync(ctx.storage, e === null ? { kind: 'email', account, at, ok: true, mode: m } : { kind: 'email', account, at, ok: false, error: syncErrorOf(e), mode: m }).catch(() => undefined);
 }
 
+/** The per-mailbox cache for `account`, when that file exists. @req FR:graph-signin/cache.accounts */
+function accountCache(account: string | undefined, dir?: string): FileTokenCache | undefined {
+  if (!account) return undefined;
+  try {
+    const path = accountCachePath(account, dir ?? graphCacheDir());
+    return existsSync(path) ? new FileTokenCache(path) : undefined;
+  } catch { return undefined; }
+}
+
+/** Writes the mailbox into a cache that names none; re-reads first, since the pass may have refreshed the token. */
+async function nameCache(cache: FileTokenCache, account: string): Promise<void> {
+  const cur = await cache.read().catch(() => null);
+  if (cur && !cur.account && MAILBOX.test(account)) await cache.write({ ...cur, account }).catch(() => undefined);
+}
+
 export async function emailCmd(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps = {}): Promise<EmailOutcome> {
   return f.all === true ? emailAll(ctx, action, f, d) : emailOne(ctx, action, f, d);
 }
 
 async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps): Promise<EmailOutcome> {
   if (f.offline !== undefined || f.fixture !== undefined) return emailOffline(ctx, action, f, d);
-  const cache = d.cache ?? new FileTokenCache(process.env.STACK_GRAPH_CACHE ?? defaultCachePath());
+  // `--account` uses that mailbox's own sign-in (`graph login --account`) when it has one, else the default cache.
+  const cache = d.cache ?? accountCache(flag(f, 'account'), d.cacheDir) ?? new FileTokenCache(process.env.STACK_GRAPH_CACHE ?? defaultCachePath());
   const t = await cache.read();
   if (!t) return { json: { ok: false, signedIn: false }, text: 'not signed in (run: stack graph login --with mail,drafts)', code: 4 };
   const account = (flag(f, 'account') ?? t.account)?.toLowerCase();
@@ -188,6 +205,8 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
       const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), onResults: async (r) => { await syncInbox(ctx, { account, results: r }); }, project: flag(f, 'project') });
       if (!dry && s.modelCalls > 0 && s.modelErrors === 0) await handleAsk(ctx, CLAUDE_LOGIN_ASK, { outcome: 'resolved', note: 'claude works again' }, 'email-triage').catch((e) => { if (!(e instanceof NotFoundError)) throw e; });
       if (!dry) await syncRecord(ctx, account, signIn, null);
+      // A sign-in without a mailbox name (first-run onboarding) takes the one this pass worked on, so --all and the Inbox find it.
+      if (!dry && !t.account) await nameCache(cache, account);
       return { json: { ok: true, account, mode, dryRun: dry, ...s }, text: `${mode}${dry ? ' (dry run)' : ''}: ${s!.messages} messages, ${s!.rules} by rules, ${s!.model} by model, ${s!.asks} asks, ${s!.drafts} drafts, archive ${s!.archivePending}, spam ${s!.spamPending}, ${s!.modelCalls} model calls` };
     } catch (e) {
       if (!dry) await syncRecord(ctx, account, signIn, e);
