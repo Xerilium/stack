@@ -1,11 +1,13 @@
 /**
  * Now's `Next`: the next 2 meetings, and an honest line when the calendar is not connected, failing, or out of date.
- * Connect pastes a published ICS link (local host) or names the other ways in.
- * @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/cal.ui @req FR:ux-consolidation/cal.connect @req FR:ux-consolidation/cal.check
+ * Connect signs in a Microsoft account in the app (live calendar); a published ICS link stays as the fallback.
+ * @req FR:connect-accounts/web.where @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/cal.ui @req FR:ux-consolidation/cal.connect @req FR:ux-consolidation/cal.check
  */
 import { useState } from 'preact/hooks';
 import type { BriefMeeting } from './brief';
-import { calLine, checkText, GRAPH_CMD, isFresh, type CalSource } from './calsource';
+import { calLine, checkText, isFresh, type CalSource } from './calsource';
+import { ConnectAccounts } from './ConnectAccounts';
+import type { ConnectApi } from './connect';
 import { icsOk } from './onboarding';
 import { clock, span } from './plan';
 
@@ -18,6 +20,8 @@ export interface CalCtl {
   onCheck: () => Promise<CalSource | null>;
   /** Saves the link; resolves to an error message, or null when saved. */
   onConnect: (ics: string) => Promise<string | null>;
+  /** In-app Connect on a local host. */
+  api?: ConnectApi;
 }
 
 function Meetings({ list }: { list: BriefMeeting[] }) {
@@ -39,7 +43,6 @@ function Connect({ cal, onChecked, result }: { cal: CalCtl; onChecked: (s: CalSo
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [copied, setCopied] = useState(false);
   const save = async () => {
     if (saving) return;
     if (!icsOk(link)) { setError('Paste the https or webcal link of a published calendar.'); return; }
@@ -51,12 +54,12 @@ function Connect({ cal, onChecked, result }: { cal: CalCtl; onChecked: (s: CalSo
       onChecked(await cal.onCheck());
     } finally { setSaving(false); }
   };
-  const copy = async () => { try { await navigator.clipboard.writeText(GRAPH_CMD); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the command stays selectable */ } };
   return (
     <div class="now-connect" id="now-connect" data-testid="now-connect">
-      {cal.source?.via === 'graph' ? <p class="now-connect-note">Your calendar comes from a Microsoft Graph sign-in, which wins over a link. Sign in again:</p> : cal.canConnect ? (
+      {cal.api && <ConnectAccounts api={cal.api} onChange={() => void cal.onCheck().then(onChecked)} />}
+      {cal.source?.via === 'graph' ? null : cal.canConnect ? (
         <form class="now-connect-form" noValidate onSubmit={(e) => { e.preventDefault(); void save(); }}>
-          <label for="now-ics">Published calendar link (ICS)</label>
+          <label for="now-ics">{cal.api ? 'Or use a published calendar link (ICS)' : 'Published calendar link (ICS)'}</label>
           <div class="now-connect-row">
             <input id="now-ics" type="text" inputMode="url" autoComplete="off" spellcheck={false} placeholder="https://…/calendar.ics" value={link} aria-invalid={error ? true : undefined} aria-describedby={error ? 'now-ics-err' : undefined}
               onInput={(e) => { setLink((e.target as HTMLInputElement).value); setError(''); }} />
@@ -69,8 +72,6 @@ function Connect({ cal, onChecked, result }: { cal: CalCtl; onChecked: (s: CalSo
         <li><strong>Outlook:</strong> Settings › Calendar › Shared calendars › Publish a calendar › copy the ICS link.</li>
         <li><strong>Google:</strong> Settings › your calendar › Secret address in iCal format.</li>
       </ol>}
-      {cal.source?.via !== 'graph' && <p class="now-connect-note">Or sign in with Microsoft Graph in a terminal:</p>}
-      <div class="now-cmd"><code>{GRAPH_CMD}</code><button type="button" class="now-mini" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button></div>
       <div class="now-connect-foot">
         <button type="button" class="now-mini" onClick={async () => onChecked(await cal.onCheck())}>Check connection</button>
         <span class="now-cal-result" aria-live="polite">{result}</span>

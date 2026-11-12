@@ -35,7 +35,7 @@ test.describe('Now: the calendar line is honest', () => {
     await expect(panel).toContainText('Google');
     await expect(panel).toContainText('STACK_CALENDAR_ICS');
     await expect(panel.getByRole('textbox')).toHaveCount(0);
-    await expect(panel.locator('.now-cmd code')).toHaveText('stack graph login --client-id <app id> --with calendar');
+    await expect(panel.locator('.now-cmd')).toHaveCount(0); // @req FR:connect-accounts/web.nocmd
     await expect(panel.getByRole('button', { name: 'Check connection' })).toBeVisible();
     expect(await noScrollX(page)).toBe(true);
     expect(await axe(page)).toEqual([]);
@@ -136,22 +136,49 @@ test.describe('Now: calendar connect, more', () => {
     await expect(page.getByTestId('now-meetings')).toContainText('After restart');
   });
 
-  // @req FR:ux-consolidation/cal.connect: a failing Graph sign-in wins over a link, so Fix offers the sign-in, not a field
-  test('a failing Graph sign-in: Fix shows the sign-in command and no field', async ({ page }) => {
+  // @req FR:ux-consolidation/cal.connect @req FR:connect-accounts/web.where: a failing Graph sign-in wins over a link, so Fix offers Sign in again, not a field
+  test('a failing Graph sign-in: Fix shows the account with Sign in again, no field, no command', async ({ page }) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
     await local(page);
     m.calendarFail = true; m.calSource = { kind: 'calendar', via: 'graph', account: 'me@x.test', state: 'error' };
+    m.connect = { info: { setup: { clientId: true }, accounts: [{ account: 'me@x.test', type: 'work', mail: true, calendar: true, drafts: false, state: 'expired' }] } };
     await page.goto('/#/now');
     await page.getByTestId('now-cal').getByRole('button', { name: 'Fix' }).click();
     const panel = page.getByTestId('now-connect');
-    await expect(panel).toContainText('Microsoft Graph sign-in');
+    await expect(panel.locator('[data-account="me@x.test"]')).toContainText('Sign-in expired');
+    await panel.getByRole('button', { name: 'Sign in again' }).click();
+    await expect(panel.getByTestId('connect-session')).toContainText('Finish signing in in your browser.');
+    expect(m.calls.find((c) => c.path === '/connect/sign-in')?.body).toEqual({ account: 'me@x.test' });
     await expect(panel.getByRole('textbox')).toHaveCount(0);
-    await expect(panel.locator('.now-cmd code')).toBeVisible();
+    await expect(panel.locator('.now-cmd')).toHaveCount(0);
+  });
+
+  // @req FR:connect-accounts/web.panel @req FR:connect-accounts/web.setup @req FR:connect-accounts/web.signin @req FR:connect-accounts/web.where
+  test('calendar Connect: one-time setup, then Connect a Microsoft account with a device code; ICS stays as the fallback', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    await local(page);
+    m.connect = { info: { setup: { clientId: false }, accounts: [] }, setup: 'needs-azure-signin', session: { id: 's1', method: 'device', state: 'waiting', userCode: 'ABCD-1234', verificationUri: 'https://microsoft.com/devicelogin' }, polls: [{ id: 's1', method: 'device', state: 'done', account: 'me@outlook.com' }] };
+    await page.goto('/#/now');
+    await page.getByTestId('now-cal').getByRole('button', { name: 'Connect' }).click();
+    const panel = page.getByTestId('now-connect');
+    await panel.getByRole('button', { name: 'Run setup' }).click();
+    await expect(panel).toContainText('Sign in to Azure once: open PowerShell, run Connect-AzAccount, then click Run setup again.');
+    m.connect.setup = 'done';
+    await panel.getByRole('button', { name: 'Run setup' }).click();
+    await panel.getByRole('button', { name: 'Connect a Microsoft account' }).click();
+    await expect(panel.getByTestId('connect-code')).toHaveText('ABCD-1234');
+    await page.clock.runFor(2500);
+    await expect(panel.locator('[data-account="me@outlook.com"]')).toContainText('Connected');
+    await expect(panel.getByRole('button', { name: 'Add another account' })).toBeVisible();
+    await expect(panel.getByLabel('Or use a published calendar link (ICS)')).toBeVisible();
+    expect(await axe(page)).toEqual([]);
   });
 
   // @req FR:ux-consolidation/cal.check: an open page reads the calendar again, so a working calendar never goes stale
-  test('the page reads the calendar again after 15 minutes', async ({ page }) => {
+  // @req FR:connect-accounts/cal.page
+  test('the page reads the calendar again after 5 minutes', async ({ page }) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
     m.events = [];
@@ -159,7 +186,7 @@ test.describe('Now: calendar connect, more', () => {
     await expect(page.getByText('No meetings left today.')).toBeVisible();
     let n = 0;
     await page.route('**/api/calendar**', async (r) => { n++; await r.fallback(); });
-    await page.clock.fastForward('16:00');
+    await page.clock.fastForward('06:00');
     await page.clock.runFor(61_000);
     await expect.poll(() => n).toBeGreaterThan(0);
     await page.clock.fastForward('50:00');

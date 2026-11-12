@@ -12,8 +12,6 @@ export interface CalSource extends SourceStatus { kind: 'calendar'; via?: 'graph
 
 /** A copy older than this is not fresh. */
 export const FRESH_MS = 60 * 60_000;
-/** The Graph sign-in for the calendar only (read scope). */
-export const GRAPH_CMD = 'stack graph login --client-id <app id> --with calendar';
 
 const STATES: readonly SourceState[] = ['not-connected', 'ok', 'error', 'stale'];
 const VIA = ['graph', 'ics', 'fixture', 'none'] as const;
@@ -52,7 +50,7 @@ export function calLine(s: CalSource | null, now: Date): { text: string; act: 'c
 /** What `Check connection` found. */
 export function checkText(s: CalSource, now: Date): string {
   if (s.state === 'not-connected') return 'Not connected';
-  if (s.state === 'error') return s.via === 'graph' ? 'Calendar unavailable. Sign in again with Microsoft Graph.' : 'Calendar unavailable. Check the link, then try again.';
+  if (s.state === 'error') return s.via === 'graph' ? 'Calendar unavailable. Click Fix and sign in again.' : 'Calendar unavailable. Check the link, then try again.';
   const synced = s.lastSyncAt ? ` · synced ${freshness(s.lastSyncAt, now)}` : '';
   return isFresh(s, now) ? `Connected${s.account ? ` to ${s.account}` : ''}${synced}` : `Out of date${synced}`;
 }

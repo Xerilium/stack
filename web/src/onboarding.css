@@ -40,3 +40,14 @@
 .ob-btn:disabled { opacity: .55; cursor: default; }
 .ob-status { margin: 0; min-height: 1.4em; font-size: var(--fs-secondary); color: var(--muted); }
 @media (min-width: 768px) { .ob { padding-top: max(var(--s-48), 12vh); } }
+
+/* Connect accounts (FR:connect-accounts/web.panel) */
+.cx-panel { display: grid; gap: 8px; margin-top: 8px; }
+.cx-session, .cx-setup { display: grid; gap: 6px; padding: 8px 0; }
+.cx-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cx-code code { font-size: 1.25rem; letter-spacing: 0.08em; padding: 4px 8px; border-radius: 6px; background: var(--surface-2, rgba(127,127,127,0.12)); }
+.cx-link { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; min-height: 44px; }
+.cx-switch { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; }
+.cx-switch .src-note { grid-column: 2; margin: 0; }
+.cx-switch input { width: 20px; height: 20px; }
+.cx-links { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

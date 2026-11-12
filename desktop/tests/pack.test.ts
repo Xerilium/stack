@@ -34,6 +34,7 @@ describe('desktop packaging plan', () => {
       [join(root, 'desktop/dist'), join(p.stageDir, 'desktop/dist')],
       [join(root, 'desktop/assets'), join(p.stageDir, 'desktop/assets')],
       [join(root, 'web/dist'), join(p.stageDir, 'web/dist')],
+      [join(root, 'scripts/register-stack-app.ps1'), join(p.stageDir, 'scripts/register-stack-app.ps1')],
       [join(root, 'pnpm-lock.yaml'), join(p.stageDir, 'pnpm-lock.yaml')],
     ]);
     expect(p.manifest).toEqual({

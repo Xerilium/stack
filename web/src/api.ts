@@ -107,6 +107,13 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
     /** The Inbox page: all mail, unread Teams and Slack. @req FR:inbox-page/api.read */
     inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] } & Partial<import('./inbox').SourcesReply>>('/inbox-items'),
+    /** In-app Connect for Microsoft accounts; the server runs every step. @req FR:connect-accounts/api.get */
+    connect: () => call<import('./connect').ConnectInfo>('/connect'),
+    connectSetup: () => call<{ state: import('./connect').SetupState }>('/connect/setup', {}),
+    connectStart: (body: { account?: string; drafts?: boolean; method?: 'browser' | 'device' }) => call<import('./connect').ConnectSession>('/connect/sign-in', body),
+    connectPoll: (id: string) => call<import('./connect').ConnectSession>(`/connect/sign-in/${encodeURIComponent(id)}`),
+    connectDrafts: (account: string, on: boolean) => call<import('./connect').ConnectSession | { ok: true }>('/connect/drafts', { account, on }),
+    connectRemove: (account: string) => call<{ ok: true }>('/connect/remove', { account }),
     /** Each inbox source and the summary; `fresh` asks a local host to probe again. @req FR:inbox-page/api.sources */
     inboxSources: (fresh = false) => call<import('./inbox').SourcesReply>(`/inbox-sources${fresh ? '?fresh=1' : ''}`),
     /** Runs one action; never sends. @req FR:inbox-page/api.act */

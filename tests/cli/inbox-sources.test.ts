@@ -34,7 +34,7 @@ describe('stack inbox sources', () => {
     expect(t.out).toContain('1 of 2 sources connected');
     expect(t.out).toMatch(/email\s+a@outlook\.com\s+connecting/);
     expect(t.out).toMatch(/email\s+b@outlook\.com\s+not-connected/);
-    expect(t.out).toContain('stack graph login --client-id 11111111-2222-3333-4444-555555555555 --account b@outlook.com --with mail');
+    expect(t.out).toContain('Click Connect and sign in with Microsoft'); // @req FR:connect-accounts/web.nocmd
     expect(t.out).toMatch(/teams .*planned/);
     const j = JSON.parse((await stack(d, 'inbox', 'sources', '--json')).out);
     expect(j.summary).toMatchObject({ connected: 1, total: 2, attention: true });

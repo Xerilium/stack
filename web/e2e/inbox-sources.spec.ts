@@ -9,15 +9,14 @@ import { mockApi, type Mock } from './mock';
 
 const DOC = 'https://github.com/Xerilium/stack/blob/main/docs/inbox-sources.md';
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
-const login = (a: string, w = 'mail') => `stack graph login --client-id 11111111-2222-3333-4444-555555555555 --account ${a} --with ${w}`;
-const SIGN_IN = 'Sign in from a terminal. Read-only by default: Stack reads mail. Use --with mail,drafts to let Stack write reply drafts. Stack never sends.';
+const SIGN_IN = 'Click Connect and sign in with Microsoft. Read-only by default: Stack reads mail and your calendar. Turn on drafts per account to let Stack save reply drafts. Stack never sends.';
 const planned = [
   { kind: 'teams', account: '', state: 'not-connected', planned: true, needs: 'Needs a work or school account and delegated Chat.Read on the Stack app registration. The Teams connector is not wired yet. Read only.', doc: `${DOC}#teams` },
   { kind: 'slack', account: '', state: 'not-connected', planned: true, needs: 'Needs a Slack app with a user token (xoxp-) and read scopes. The Slack connector is not wired yet. Read only.', doc: `${DOC}#slack` },
 ];
 const nothing = () => ({
   sources: [
-    { kind: 'email', account: '', state: 'not-connected', needs: SIGN_IN, command: 'stack graph login --client-id <app id> --account <address> --with mail', doc: `${DOC}#email` },
+    { kind: 'email', account: '', state: 'not-connected', needs: SIGN_IN, connect: true, doc: `${DOC}#email` },
     { kind: 'github', account: '', state: 'not-connected', planned: true, needs: 'Sign in to the GitHub CLI, or set GITHUB_TOKEN for the Stack host. Read only: Stack never posts.', command: 'gh auth login', doc: `${DOC}#github` },
     ...planned,
   ],
@@ -29,8 +28,8 @@ const six = () => ({
     { kind: 'email', account: 'a@outlook.com', state: 'ok', mode: 'drafts', lastSyncAt: ago(4) },
     { kind: 'email', account: 'b@outlook.com', state: 'stale', mode: 'read-only', lastSyncAt: ago(180), needs: 'Sync is behind. Run every mailbox now and check the schedule (stack email schedule).', command: 'stack email run --all', doc: `${DOC}#email` },
     { kind: 'email', account: 'c@outlook.com', state: 'connecting', mode: 'read-only', needs: 'Signed in. Run the first sync, then schedule it with stack email schedule. Stack never sends.', command: 'stack email run --account c@outlook.com', doc: `${DOC}#email` },
-    { kind: 'email', account: 'd@outlook.com', state: 'not-connected', needs: SIGN_IN, command: login('d@outlook.com'), doc: `${DOC}#email` },
-    { kind: 'email', account: 'me@contoso.test', state: 'error', mode: 'drafts', lastSyncAt: ago(20), error: 'Email sign-in expired: me@contoso.test', needs: SIGN_IN, command: login('me@contoso.test', 'mail,drafts'), doc: `${DOC}#email` },
+    { kind: 'email', account: 'd@outlook.com', state: 'not-connected', needs: SIGN_IN, connect: true, doc: `${DOC}#email` },
+    { kind: 'email', account: 'me@contoso.test', state: 'error', mode: 'drafts', lastSyncAt: ago(20), error: 'Email sign-in expired: me@contoso.test', needs: SIGN_IN, connect: true, doc: `${DOC}#email` },
     { kind: 'email', account: 'ops@contoso.test', state: 'ok', mode: 'read-only', lastSyncAt: ago(2) },
     { kind: 'github', account: '', state: 'connecting', planned: true, needs: 'GitHub is signed in. The GitHub inbox sync is not scheduled yet, so GitHub items do not show here.', doc: `${DOC}#github` },
     ...planned,
@@ -56,7 +55,9 @@ test('nothing connected: never says Inbox zero; says No inboxes connected and sh
   await page.getByRole('button', { name: 'Connect: Email' }).click();
   const step = page.locator('.src-row[data-kind="email"] .src-step');
   await expect(step).toContainText('Read-only by default');
-  await expect(step.locator('code')).toHaveText('stack graph login --client-id <app id> --account <address> --with mail');
+  // The sign-in runs in the app: a Connect button, no command. @req FR:connect-accounts/web.nocmd @req FR:connect-accounts/web.where
+  await expect(step.locator('code')).toHaveCount(0);
+  await expect(step.getByTestId('connect-accounts')).toBeVisible();
   await expect(step.getByRole('link', { name: 'How to connect Email' })).toHaveAttribute('href', `${DOC}#email`);
   await page.getByRole('button', { name: 'Connect: GitHub' }).click();
   await expect(page.locator('.src-row[data-kind="github"] code')).toHaveText('gh auth login');
@@ -77,7 +78,16 @@ test('six mailboxes: each with its own state; an expired sign-in is the headline
   await expect(page.getByText('Inbox zero')).toHaveCount(0);
   await expect(page.getByTestId('empty-state')).toContainText('Email sign-in expired: me@contoso.test');
   await page.getByRole('button', { name: 'Fix: Email me@contoso.test' }).click();
-  await expect(state('me@contoso.test').locator('code')).toHaveText(login('me@contoso.test', 'mail,drafts'));
+  // Fix opens the Connect panel, which signs the account in again with one click. @req FR:connect-accounts/web.where
+  await expect(state('me@contoso.test').getByTestId('connect-accounts')).toBeVisible();
+  await expect(state('me@contoso.test').locator('code')).toHaveCount(0);
+});
+
+test('a healthy mailbox keeps a way to manage accounts', async ({ page }) => {
+  await open(page, six());
+  // Add another account, drafts and disconnect stay reachable once mail works. @req FR:connect-accounts/web.where
+  await page.getByRole('button', { name: 'Manage accounts: Email a@outlook.com' }).click();
+  await expect(page.locator('.src-row[data-account="a@outlook.com"]').getByTestId('connect-accounts')).toBeVisible();
 });
 
 test('stale only: says when it last synced, not Inbox zero', async ({ page }) => {

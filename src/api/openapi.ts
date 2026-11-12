@@ -18,6 +18,8 @@ import { MAX_STR, REF_RE, type Spec } from './validate';
 
 type J = Record<string, unknown>;
 const ref = (name: string, kind = 'schemas'): J => ({ $ref: `#/components/${kind}/${name}` });
+/** A Connect sign-in session. Never a token or code. @req FR:connect-accounts/flow.session */
+const SESSION: J = { type: 'object', properties: { id: { type: 'string' }, method: { type: 'string', enum: ['browser', 'device'] }, state: { type: 'string', enum: ['waiting', 'done', 'error'] }, url: { type: 'string' }, userCode: { type: 'string' }, verificationUri: { type: 'string' }, expiresAt: { type: 'string' }, account: { type: 'string' }, error: { type: 'string' } } };
 
 interface RouteDoc {
   operationId: string;
@@ -47,7 +49,7 @@ const ok = (description: string, schema: J, status = '200'): J => ({
 });
 
 /** Inbox source status, shared by GET /inbox-sources and GET /inbox-items. @req FR:inbox-page/api.sources */
-const SOURCES_PROPS = { sources: { type: 'array', items: { type: 'object', properties: { kind: { type: 'string', enum: ['email', 'github', 'teams', 'slack'] }, account: { type: 'string' }, state: { type: 'string', enum: ['not-connected', 'connecting', 'ok', 'error', 'stale'] }, lastSyncAt: { type: 'string', format: 'date-time' }, error: { type: 'string' }, needs: { type: 'string' }, command: { type: 'string' }, doc: { type: 'string' }, mode: { type: 'string', enum: ['read-only', 'drafts'] }, planned: { type: 'boolean' } } } }, summary: { type: 'object', properties: { connected: { type: 'integer' }, total: { type: 'integer' }, fresh: { type: 'integer' }, attention: { type: 'boolean' }, canClaimZero: { type: 'boolean' }, headline: { type: 'string', nullable: true } } } };
+const SOURCES_PROPS = { sources: { type: 'array', items: { type: 'object', properties: { kind: { type: 'string', enum: ['email', 'github', 'teams', 'slack'] }, account: { type: 'string' }, state: { type: 'string', enum: ['not-connected', 'connecting', 'ok', 'error', 'stale'] }, lastSyncAt: { type: 'string', format: 'date-time' }, error: { type: 'string' }, needs: { type: 'string' }, command: { type: 'string' }, connect: { type: 'boolean', description: 'The step is the in-app Connect panel, not a command' }, doc: { type: 'string' }, mode: { type: 'string', enum: ['read-only', 'drafts'] }, planned: { type: 'boolean' } } } }, summary: { type: 'object', properties: { connected: { type: 'integer' }, total: { type: 'integer' }, fresh: { type: 'integer' }, attention: { type: 'boolean' }, canClaimZero: { type: 'boolean' }, headline: { type: 'string', nullable: true } } } };
 const DOCS: Record<string, RouteDoc> = {
   next: {
     operationId: 'next', summary: 'Top-ranked task',
@@ -151,6 +153,33 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'handleInboxEntry', summary: 'Mark an inbox entry handled after acting on it',
     desc: { withdrawn: 'Owner only (403 for tokens): the owner took the message back (Undo); lists and the thread then hide it' },
     responses: ok('Handled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
+  },
+  'connect.get': {
+    operationId: 'getConnect', summary: 'Whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Never a token. Owner session only: 403 for tokens; 404 on a host without Connect',
+    responses: ok('Accounts', { type: 'object', properties: { setup: { type: 'object', properties: { clientId: { type: 'boolean' } } }, accounts: { type: 'array', items: { type: 'object', properties: { account: { type: 'string' }, type: { type: 'string', enum: ['personal', 'work'] }, mail: { type: 'boolean' }, calendar: { type: 'boolean' }, drafts: { type: 'boolean' }, state: { type: 'string', enum: ['connected', 'expired', 'error'] } } } } } }),
+  },
+  'connect.setup': {
+    operationId: 'runConnectSetup', summary: 'Run the one-time app registration (scripts/register-stack-app.ps1, Az PowerShell). Returns a state code only: done, needs-azure-signin, needs-pwsh, failed. Owner session only',
+    responses: ok('Setup state', { type: 'object', properties: { state: { type: 'string', enum: ['done', 'needs-azure-signin', 'needs-pwsh', 'failed'] } } }),
+  },
+  'connect.start': {
+    operationId: 'startConnect', summary: 'Start a Microsoft sign-in: the browser opens the sign-in page (PKCE, loopback), or a device code shows in the page. Read-only scopes; drafts opt-in; never send. 409 until setup has run. Owner session only',
+    desc: { account: 'Mailbox address to sign in (login hint)', drafts: 'Also ask for Mail.ReadWrite (reply drafts)', method: 'browser (default) or device' },
+    responses: ok('Sign-in session', SESSION, '201'),
+  },
+  'connect.poll': {
+    operationId: 'getConnectSession', summary: 'A sign-in session: waiting, done (with the account) or error (an OAuth code). Owner session only',
+    responses: ok('Sign-in session', SESSION),
+  },
+  'connect.drafts': {
+    operationId: 'setConnectDrafts', summary: 'Turn reply drafts on (starts a sign-in that asks for Mail.ReadWrite) or off (read scopes only from the next refresh). Owner session only',
+    desc: { account: 'Mailbox address', on: 'Drafts on or off' },
+    responses: ok('Session or ok', { type: 'object' }),
+  },
+  'connect.remove': {
+    operationId: 'removeConnect', summary: 'Disconnect an account: deletes its token cache. Owner session only',
+    desc: { account: 'Mailbox address' },
+    responses: ok('Removed', { type: 'object', properties: { ok: { type: 'boolean' } } }),
   },
   'calendar.list': {
     operationId: 'listCalendar', summary: 'Calendar events overlapping a range (at most 7 days), read-only. Owner session only: 403 for tokens',

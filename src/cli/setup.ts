@@ -6,14 +6,14 @@
 import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'http';
-import { extname, join, normalize, resolve, sep } from 'path';
-import { defaultCachePath } from '../graph/auth';
+import { dirname, extname, join, normalize, resolve, sep } from 'path';
+import { cachePathsWith, defaultCachePath } from '../graph/auth';
 
 /** The steps, in order. @req FR:first-run-onboarding/step.max */
 export const STEPS = ['repo', 'mode', 'calendar', 'email', 'phone'] as const;
 export type StepId = (typeof STEPS)[number];
 /** What the email step shows; Stack never asks for a send scope (`FR:graph-signin/scope.never`). @req FR:first-run-onboarding/step.email */
-export const SIGN_IN = 'stack graph login --client-id <app id> --with calendar,mail,drafts';
+export const SIGN_IN = 'Connect a Microsoft account. Stack opens the Microsoft sign-in page.';
 
 export interface Onboarding { step: StepId; done?: boolean }
 export type UserCfg = Record<string, unknown> & { repo?: string; dir?: string; mode?: string; ics?: string; onboarding?: Onboarding };
@@ -177,7 +177,8 @@ export function createSetup(o: {
   home: string; env: NodeJS.ProcessEnv; spec: () => string | undefined; dir: () => string | null; restart: () => void;
   error?: () => string | undefined; email?: () => boolean; locks?: () => Locks;
 }): SetupHandler {
-  const email = o.email ?? (() => existsSync(o.env.STACK_GRAPH_CACHE ?? defaultCachePath(o.home)));
+  // Any sign-in file counts: Connect writes one per account. @req FR:connect-accounts/web.where
+  const email = o.email ?? (() => cachePathsWith(dirname(o.env.STACK_GRAPH_CACHE ?? defaultCachePath(o.home)), o.env.STACK_GRAPH_CACHE).length > 0);
   const status = () => setupStatus({ cfg: readConfig(o.home), env: o.env, dir: o.dir(), email: email(), spec: o.spec(), error: o.error?.(), locks: o.locks?.() });
   return {
     status,
@@ -238,6 +239,8 @@ export interface LocalServer { url: string; close(): Promise<void> }
 export async function startSetupServer(o: { port: number; webDir: string; setup: SetupHandler; headers?: Record<string, string> }): Promise<LocalServer> {
   const extra = o.headers ?? (() => { try { return (JSON.parse(readFileSync(join(o.webDir, 'staticwebapp.config.json'), 'utf8')) as { globalHeaders?: Record<string, string> }).globalHeaders ?? {}; } catch { return {}; } })();
   const server = createServer((req, res) => {
+    // This server restarts into the real one on the same port: no kept-alive socket, so a client never reuses a dead one.
+    res.shouldKeepAlive = false;
     void (async () => {
       const send = (status: number, body: string | Buffer, type: string) => { res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...extra }); res.end(body); };
       try {

@@ -6,6 +6,7 @@
 import { execFile } from 'child_process';
 import { basename } from 'path';
 import { cacheDir as graphCacheDir, FileTokenCache, hasScope, listCachePaths } from '../graph/auth';
+import type { AccountHealth } from '../graph/connect';
 import { safeClientId, type SourceProbe } from './sources';
 
 /** True when `gh auth status` exits 0. Fixed args, no shell, 5 second cap; output is ignored. */
@@ -13,7 +14,8 @@ export const ghSignedIn = (): Promise<boolean> => new Promise((ok) => {
   execFile('gh', ['auth', 'status', '--hostname', 'github.com'], { timeout: 5000, windowsHide: true }, (e) => ok(!e));
 });
 
-export interface ProbeOptions { cacheDir?: string; env?: NodeJS.ProcessEnv; gh?: () => Promise<boolean> }
+/** `health`: marks from live reads; an expired account is `signin-expired`. @req FR:connect-accounts/acct.sources */
+export interface ProbeOptions { cacheDir?: string; env?: NodeJS.ProcessEnv; gh?: () => Promise<boolean>; health?: AccountHealth }
 
 /** @req FR:inbox-page/src.probe */
 export async function probeLocal(o: ProbeOptions = {}): Promise<SourceProbe> {
@@ -32,7 +34,7 @@ export async function probeLocal(o: ProbeOptions = {}): Promise<SourceProbe> {
       if (!(drafts || hasScope(t.scopes, 'Mail.Read'))) continue;
       const account = (t.account ?? named)?.toLowerCase();
       if (!account) { unnamedMail = { mode: drafts ? 'drafts' : 'read-only' }; continue; }
-      emails.push({ account, mode: drafts ? 'drafts' : 'read-only' });
+      emails.push({ account, mode: drafts ? 'drafts' : 'read-only', ...(o.health?.get(account) === 'expired' ? { error: 'signin-expired' as const } : {}) });
     } catch {
       // Loose permissions or a bad file: say so by account; the error text could quote the file, so it is dropped.
       if (named) emails.push({ account: named, mode: 'read-only', error: 'token-unreadable' });
