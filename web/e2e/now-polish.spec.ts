@@ -112,6 +112,62 @@ test.describe('Now: the calendar line is honest', () => {
   });
 });
 
+test.describe('Now: calendar connect, more', () => {
+  // @req FR:ux-consolidation/cal.save: a first connect restarts the host; the page waits for it, then checks
+  test('a restart reply waits for the host, then shows the meetings', async ({ page }) => {
+    const d = await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    await local(page);
+    let back = false;
+    await page.route('**/setup', async (r) => {
+      if (r.request().method() === 'POST') {
+        m.events = [{ id: 'e1', subject: 'After restart', start: at(d, 10, 30), end: at(d, 11), allDay: false, showAs: 'busy', cancelled: false, online: false }];
+        setTimeout(() => { back = true; }, 300);
+        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ restart: true, status: null }) });
+      }
+      if (!back) return r.abort();
+      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ needed: false, reason: null, step: 'phone', steps: ['repo', 'mode', 'calendar', 'email', 'phone'], repo: '/r', mode: 'demo', calendar: true, email: false, signIn: '' }) });
+    });
+    await page.goto('/#/now');
+    await page.clock.resume();
+    await page.getByTestId('now-cal').getByRole('button', { name: 'Connect' }).click();
+    await page.getByRole('textbox', { name: 'Published calendar link (ICS)' }).fill('https://calendar.google.com/calendar/ical/x/private-y/basic.ics');
+    await page.getByTestId('now-connect').getByRole('button', { name: 'Connect', exact: true }).click();
+    await expect(page.getByTestId('now-meetings')).toContainText('After restart');
+  });
+
+  // @req FR:ux-consolidation/cal.connect: a failing Graph sign-in wins over a link, so Fix offers the sign-in, not a field
+  test('a failing Graph sign-in: Fix shows the sign-in command and no field', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    await local(page);
+    m.calendarFail = true; m.calSource = { kind: 'calendar', via: 'graph', account: 'me@x.test', state: 'error' };
+    await page.goto('/#/now');
+    await page.getByTestId('now-cal').getByRole('button', { name: 'Fix' }).click();
+    const panel = page.getByTestId('now-connect');
+    await expect(panel).toContainText('Microsoft Graph sign-in');
+    await expect(panel.getByRole('textbox')).toHaveCount(0);
+    await expect(panel.locator('.now-cmd code')).toBeVisible();
+  });
+
+  // @req FR:ux-consolidation/cal.check: an open page reads the calendar again, so a working calendar never goes stale
+  test('the page reads the calendar again after 15 minutes', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.events = [];
+    await page.goto('/#/now');
+    await expect(page.getByText('No meetings left today.')).toBeVisible();
+    let n = 0;
+    await page.route('**/api/calendar**', async (r) => { n++; await r.fallback(); });
+    await page.clock.fastForward('16:00');
+    await page.clock.runFor(61_000);
+    await expect.poll(() => n).toBeGreaterThan(0);
+    await page.clock.fastForward('50:00');
+    await page.clock.runFor(61_000);
+    await expect(page.getByText('No meetings left today.')).toBeVisible(); // still fresh after an hour open
+  });
+});
+
 test.describe('Now: Waiting on you cards', () => {
   // @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.expand @req FR:ux-consolidation/one.answer @req FR:ux-consolidation/one.layout
   test('tap the body expands in place with the context and every response; answers use the Needs you API with Undo', async ({ page }, info) => {

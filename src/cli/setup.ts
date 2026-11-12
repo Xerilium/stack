@@ -100,7 +100,7 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
   // Connect a calendar from Now: save the link, leave onboarding alone. @req FR:ux-consolidation/cal.save
   if (b.connect !== undefined) {
     if (b.connect !== 'calendar') return fail('Unknown connection.');
-    if (o.env.STACK_CALENDAR_ICS) return fail('STACK_CALENDAR_ICS is set on this host and wins. Unset it to use a link saved here.');
+    for (const k of ['STACK_CALENDAR_ICS', 'STACK_CALENDAR_FIXTURE'] as const) if (o.env[k]) return fail(`${k} is set on this host and wins. Unset it to use a link saved here.`);
     const ics = typeof b.ics === 'string' ? b.ics.trim() : '';
     if (!icsLink(ics)) return fail('Paste the https or webcal link of a published calendar.');
     writeConfig(o.home, { ics });

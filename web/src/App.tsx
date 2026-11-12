@@ -271,6 +271,7 @@ export function App() {
     const [a, i, c, w] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to), api.meetings()]);
     setRules(w.status === 'fulfilled' ? w.value : []);
     /** @req FR:web-app/today.meetings */
+    calReadAt.current = Date.now();
     if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); setCalOn(c.value.configured); setCalSource(sourceOf(c.value, new Date())); } else { setCalError('Calendar unavailable'); setCalSource({ kind: 'calendar', state: 'error' }); }
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
     if (i.status === 'fulfilled') setInbox(i.value);
@@ -353,9 +354,12 @@ export function App() {
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
   /** Live calendar when it works and is fresh, else the weekly schedule. @req FR:cos-view/meet.layers @req FR:ux-consolidation/cal.fresh */
   const liveCal = calOn && !calError && isFresh(calSource, clockNow);
+  /** When the page last read the calendar: the minute timer reads it again after 15 min. @req FR:ux-consolidation/cal.check */
+  const calReadAt = useRef(Date.now());
   /** Check connection: read the calendar again for today's range. @req FR:ux-consolidation/cal.check */
   const checkCalendar = useCallback(async (): Promise<CalSource | null> => {
     const d = new Date();
+    calReadAt.current = d.getTime();
     try {
       const range = calendarRange(sched, d);
       const r = await api.calendar(range.from, range.to);
@@ -364,6 +368,7 @@ export function App() {
       return src;
     } catch { return null; }
   }, [sched]);
+  useEffect(() => { if (calSource && Date.now() - calReadAt.current >= 15 * 60_000) void checkCalendar(); }, [tick, calSource, checkCalendar]);
   /** Connect: save the published link in the user config on the local host; wait for its restart. @req FR:ux-consolidation/cal.save */
   const connectCalendar = useCallback(async (ics: string): Promise<string | null> => {
     const f: Fetch = (u, i) => fetch(u, i);

@@ -54,7 +54,7 @@ function Connect({ cal, onChecked, result }: { cal: CalCtl; onChecked: (s: CalSo
   const copy = async () => { try { await navigator.clipboard.writeText(GRAPH_CMD); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the command stays selectable */ } };
   return (
     <div class="now-connect" id="now-connect" data-testid="now-connect">
-      {cal.canConnect ? (
+      {cal.source?.via === 'graph' ? <p class="now-connect-note">Your calendar comes from a Microsoft Graph sign-in, which wins over a link. Sign in again:</p> : cal.canConnect ? (
         <form class="now-connect-form" noValidate onSubmit={(e) => { e.preventDefault(); void save(); }}>
           <label for="now-ics">Published calendar link (ICS)</label>
           <div class="now-connect-row">
@@ -65,11 +65,11 @@ function Connect({ cal, onChecked, result }: { cal: CalCtl; onChecked: (s: CalSo
           {error && <p class="now-cal-err" id="now-ics-err" role="alert">{error}</p>}
         </form>
       ) : <p class="now-connect-note">Connect from <code>stack web</code> on your computer, or set <code>STACK_CALENDAR_ICS</code> on this host.</p>}
-      <ol class="now-steps">
+      {cal.source?.via !== 'graph' && <ol class="now-steps">
         <li><strong>Outlook:</strong> Settings › Calendar › Shared calendars › Publish a calendar › copy the ICS link.</li>
         <li><strong>Google:</strong> Settings › your calendar › Secret address in iCal format.</li>
-      </ol>
-      <p class="now-connect-note">Or sign in with Microsoft Graph in a terminal:</p>
+      </ol>}
+      {cal.source?.via !== 'graph' && <p class="now-connect-note">Or sign in with Microsoft Graph in a terminal:</p>}
       <div class="now-cmd"><code>{GRAPH_CMD}</code><button type="button" class="now-mini" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button></div>
       <div class="now-connect-foot">
         <button type="button" class="now-mini" onClick={async () => onChecked(await cal.onCheck())}>Check connection</button>
@@ -97,7 +97,9 @@ export function NowNext({ meetings, layer, cal, now }: { meetings: BriefMeeting[
               {line.act !== 'connect' && <button type="button" class="now-mini" onClick={async () => checked(await cal.onCheck())}>Check connection</button>}
             </div>
           )}
-          {!open && result && <p class="now-cal-result" aria-live="polite">{result}</p>}
+          {!open && result && <p class="now-cal-result">{result}</p>}
+          {/* Mounted before the result arrives, so screen readers announce it. */}
+          <span class="sr-only" aria-live="polite">{open ? '' : result}</span>
         </div>
       )}
       {line && open && <Connect cal={cal} onChecked={checked} result={result} />}

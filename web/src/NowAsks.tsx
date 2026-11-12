@@ -72,7 +72,7 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
             {actions.map((x) => (x.open && a.source !== 'task'
               ? a.link && <a key={x.id} class="now-act" href={a.link} target="_blank" rel="noopener noreferrer">Open {host(a.link)} <span aria-hidden="true">↗</span></a>
               : <button key={x.id} type="button" class={`now-act${x.primary ? ' primary' : ''}`} disabled={ctl.busy && !!x.send} onClick={() => run(x)}>{x.label}</button>))}
-            {!isAnswer && <button type="button" class="now-act quiet" aria-expanded={panel === 'reply'} onClick={() => onPanel(panel === 'reply' ? 'none' : 'reply')}>Reply</button>}
+            {!isAnswer && !actions.some((x) => x.reply) && <button type="button" class="now-act quiet" aria-expanded={panel === 'reply'} onClick={() => onPanel(panel === 'reply' ? 'none' : 'reply')}>Reply</button>}
             <button type="button" class="now-act quiet" aria-expanded={panel === 'defer'} onClick={() => onPanel(panel === 'defer' ? 'none' : 'defer')}>Defer</button>
           </div>
           {panel === 'defer' && (

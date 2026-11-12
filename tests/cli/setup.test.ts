@@ -177,6 +177,7 @@ describe('applySetup', () => {
     const r = applySetup({ home, env: { STACK_CALENDAR_ICS: 'https://y.test/b.ics' }, body: { connect: 'calendar', ics: 'https://x.test/a.ics' } });
     expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/STACK_CALENDAR_ICS/) });
     expect(JSON.stringify(r)).not.toContain('x.test');
+    expect(applySetup({ home, env: { STACK_CALENDAR_FIXTURE: '/f.json' }, body: { connect: 'calendar', ics: 'https://x.test/a.ics' } })).toMatchObject({ ok: false, error: expect.stringMatching(/STACK_CALENDAR_FIXTURE/) });
     expect(readConfig(home).ics).toBe('https://outlook.office365.com/owa/calendar/abc/def/calendar.ics');
   });
   // @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone @req FR:first-run-onboarding/state.resume
