@@ -66,6 +66,12 @@ describe('owner queue', () => {
     const r = titles(await rankStack(mem({ 'tasks/x.md': f }), AT, undefined, ANY));
     expect(r).toEqual(['Unmarked under mixed only']);
   });
+  // @req FR:task-lifecycle/rank.owner
+  it('ownership follows the parsed tree: a checked agent ancestor still owns, and 4-space or tab indents nest', async () => {
+    const f = `# X\n\n## 🔄 Active\n\n- [ ] 🤖 Agent epic\n  - [x] Done step\n    - [ ] Unmarked under a checked row\n- [ ] 🤖 Four-space epic\n    - [ ] Four-space child\n- [ ] 🤖 Tab epic\n\t- [ ] Tab child\n- [ ] Mine\n`;
+    const r = titles(await rankStack(mem({ 'tasks/x.md': f }), AT, undefined, ANY));
+    expect(r).toEqual(['Mine']);
+  });
   // @req FR:task-lifecycle/rank.owner @req FR:task-lifecycle/next.rank
   it('next never gives an agent row, even when it scores highest', async () => {
     const n = await nextTask(mem({ 'tasks/allyte.md': ALLYTE }), AT);

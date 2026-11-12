@@ -121,7 +121,7 @@ export function App() {
   /** The server's ranking: Home draws this and nothing else. @req FR:web-app/now.active */
   const [ranked, setRanked] = useState<RankItem[]>([]);
   /** The same ranking across the whole day's time blocks, for My day and the week. @req FR:web-app/today.plan */
-  const [dayOrder, setDayOrder] = useState<string[]>([]);
+  const [dayOrder, setDayOrder] = useState<string[] | null>(null);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -304,7 +304,7 @@ export function App() {
     void loadSide();
     try {
       // @req FR:perf/client.paint — the first screen waits for the ranking, tasks, and projects; the all-day order fills in when it arrives.
-      void api.rank(1000, 'any').catch(() => [] as RankItem[]).then((a) => setDayOrder(a.map((x) => x.ref)));
+      void api.rank(1000, 'any').then((a) => setDayOrder(a.map((x) => x.ref)), () => setDayOrder(null));
       const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
       setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
       api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page

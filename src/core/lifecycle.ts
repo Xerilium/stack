@@ -336,16 +336,23 @@ async function rankAll(ctx: LifecycleContext, at?: Date, opts: StackRankOptions 
   return value;
 }
 
-/** Owner of each task, from its marks and its ancestors' marks. @req FR:task-lifecycle/rank.owner */
-function ownersOf(projects: ScoringProject[]): Map<ScoringTask, ReturnType<typeof rowOwner>> {
+/** Ancestor row texts of every row in the Active section, nearest first, from the parsed tree (checked rows included). */
+function ancestorsByLine(doc: Doc): Map<number, string[]> {
+  const active = doc.project.sections.find((s) => ACTIVE.test(s.heading));
+  const out = new Map<number, string[]>();
+  const walk = (ts: Project['sections'][number]['tasks'], up: string[]) => { for (const t of ts) { out.set(t.line, up); walk(t.children, [t.text, ...up]); } };
+  if (active) walk(active.tasks, []);
+  return out;
+}
+
+/** Owner of each task, from its marks and its ancestors' marks in the parsed tree. @req FR:task-lifecycle/rank.owner */
+function ownersOf(where: Map<ScoringTask, { doc: Doc; line: number }>): Map<ScoringTask, ReturnType<typeof rowOwner>> {
   const out = new Map<ScoringTask, ReturnType<typeof rowOwner>>();
-  for (const p of projects) {
-    const byId = new Map(p.tasks.map((t) => [t.id, t]));
-    for (const t of p.tasks) {
-      const up: string[] = [];
-      for (let a = t.parent ? byId.get(t.parent) : undefined; a && up.length < 64; a = a.parent ? byId.get(a.parent) : undefined) up.push(a.text);
-      out.set(t, rowOwner(t.text, up));
-    }
+  const trees = new Map<Doc, Map<number, string[]>>();
+  for (const [t, { doc, line }] of where) {
+    let up = trees.get(doc);
+    if (!up) trees.set(doc, (up = ancestorsByLine(doc)));
+    out.set(t, rowOwner(t.text, up.get(line) ?? []));
   }
   return out;
 }
@@ -382,7 +389,7 @@ async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: str
     return { doc: loc.doc, next, text: s.task.text, project: s.task.project, context: above.get(loc.doc)?.get(loc.line)?.text ?? '', task: s.task, dueTier: s.dueTier };
   };
   // The owner queue: rows the owner must do, never agent work. @req FR:task-lifecycle/rank.owner
-  const owners = ownersOf(projects);
+  const owners = ownersOf(where);
   const mine = (s: ScoredTask) => opts.owner === 'any' || owners.get(s.task) === 'me';
   const ropts: RankOptions = { ignoreBlocks: opts.ignoreBlocks, activity: await activityOf(ctx, projects, docs, where, when) };
   let rows = rankTasks(engine, projects, cfg(ctx), when, ropts).filter(mine).map(rowOf);

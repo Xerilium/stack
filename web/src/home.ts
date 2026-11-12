@@ -30,6 +30,8 @@ export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem |
 /** Expected time is the full effort (30 min assumed when unset), never capped: a 3 h task must not "fit" 2 h. */
 const item = (t: Task, now: Date): HomeItem => { const r = parseRow(t.text); const est = effortMinutes(r.effort); return { task: t, minutes: est || DEFAULT_MIN, assumed: !est, due: countdown(r.due, now) }; };
 const doing = (t: Task) => /🚧/u.test(t.text);
+/** An agent mark (🪄, or 🤖 that is not the `🤖:level` autonomy marker): the row is an agent's or mixed. @req FR:task-lifecycle/rank.owner */
+const agentRow = (t: Task) => /🪄|🤖(?!:)/u.test(t.text);
 
 /** One ranked task from `GET /rank`: a leaf names the top-level row it sits under. @req FR:task-lifecycle/rank.output */
 export interface RankItem { ref: string; text: string; project: string; score: number; rule?: string; root?: string }
@@ -59,7 +61,9 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
   const seen = new Set<string>();
   const rows: Task[] = [];
   for (const r of o.ranked) {
-    const t = byRef.get(r.root ?? r.ref);
+    // A leaf shows as its top-level row, unless that row is an agent's or mixed: then the owner's leaf shows.
+    const root = r.root ? byRef.get(r.root) : undefined;
+    const t = root && !agentRow(root) ? root : byRef.get(r.ref);
     if (!t || t.done || seen.has(t.ref) || hidden.has(t.ref) || hidden.has(r.ref)) continue;
     seen.add(t.ref); rows.push(t);
   }
