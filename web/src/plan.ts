@@ -10,7 +10,7 @@ export interface DayBlock { name: string; label?: string; emoji: string; kind: '
 /** Minutes after local midnight of `origin` (today when unset); a schedule day can run past 24:00. @req FR:home/day.frame */
 export interface Day { start: number; end: number; origin?: Date; blocks?: DayBlock[]; asleep?: boolean; /** Projects that belong to some block (any day): never planned outside their blocks. @req FR:home/day.blocks */ bound?: string[] }
 export const DEFAULT_DAY: Day = { start: 9 * 60, end: 18 * 60 };
-export interface Block { task: Task; start: number; end: number; partial: boolean; assumed: boolean }
+export interface Block { task: Task; start: number; end: number; partial: boolean; assumed: boolean; /** Booked at a time the owner picked. @req FR:my-day-grid/grid.place */ placed?: boolean }
 /** `left`: work day left; `budget`: minutes you have; `free`: budget not booked; `short`: minutes the left-out tasks need; `assumed`: blocks using the default estimate. */
 /** `atRisk`: left-out tasks due today, late by 30 days or less, or in progress (listed first in `overflow`); `riskShort`: minutes they need. */
 export interface Plan { meetings: Busy[]; email?: { start: number; end: number; count: number }; blocks: Block[]; overflow: Task[]; atRisk: Task[]; left: number; busy: number; budget: number; free: number; short: number; riskShort: number; assumed: number }
@@ -106,7 +106,7 @@ export function closedTo(day: Day, t?: Who): [number, number][] {
  * Packs candidates in rank order into `budget` minutes from the plan start (default: what is left of the work day).
  * A task that does not fit is skipped and later, smaller ones may still fit.
  */
-export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY, budget?: number, opts: { busy?: Busy[]; email?: number } = {}): Plan {
+export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY, budget?: number, opts: { busy?: Busy[]; email?: number; /** Placed tasks: ref to start minute, booked first. @req FR:my-day-grid/grid.place */ fixed?: Record<string, number> } = {}): Plan {
   const start = planStart(now, day);
   const left = Math.max(0, day.end - start);
   const cap = Math.max(0, budget ?? left);
@@ -136,16 +136,28 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
     return null;
   };
   let booked = 0;
+  const blocks: Block[] = [];
+  const overflow: Task[] = [];
+  let short = 0;
+  // Placed tasks first, at the time the owner picked (even over Available); a placement before the plan start is stale.
+  const pinned = new Set<string>();
+  for (const t of candidates) {
+    const at = opts.fixed?.[t.ref];
+    if (at === undefined || at < start || at >= windowEnd) continue;
+    const e = estimate(t);
+    blocks.push({ task: t, start: at, end: at + e.minutes, partial: e.partial, assumed: e.assumed, placed: true });
+    taken.push([at, at + e.minutes]);
+    booked += e.minutes;
+    pinned.add(t.ref);
+  }
   let email: Plan['email'];
   const em = emailMinutes(opts.email ?? 0);
   if (em > 0 && em <= cap) {
     const t = slot(em);
     if (t !== null) { email = { start: t, end: t + em, count: opts.email! }; taken.push([t, t + em]); booked += em; }
   }
-  const blocks: Block[] = [];
-  const overflow: Task[] = [];
-  let short = 0;
   for (const t of candidates) {
+    if (pinned.has(t.ref)) continue;
     const e = estimate(t);
     // A task tagged for a personal block goes there first, outside the focus budget; else it competes for focus time.
     const own = ownSlot(e.minutes, t);

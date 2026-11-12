@@ -139,7 +139,11 @@ export function PropertyBar({ t, onSave, onSet }: { t: Task; onSave: SaveText; o
 const plainSection = (name: string) => name.replace(/[\p{Extended_Pictographic}️‍]/gu, '').trim();
 
 /** The full-screen detail (focus mode): one task, its properties, actions, subtasks, then the thread. */
-export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, onSet, onBack, extra }: {
+/** Wide enough for the detail beside My day. */
+export const SIDE = '(min-width: 1100px)';
+export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, onSet, onBack, extra, side }: {
+  /** My day: a right-hand panel at 1100 px or more (not modal), else the full page. @req FR:my-day-grid/detail.side */
+  side?: boolean;
   task: Task; all: Task[]; busy: boolean; project?: string; onToggle: (t: Task) => void; onAct: (a: 'start' | 'defer') => void; onSave: SaveText; onSet: SetPropsFn; onBack: () => void;
   /** Rendered under the actions (the task's agent thread). @req FR:agent-thread/web.hero */
   extra?: ComponentChildren;
@@ -158,6 +162,7 @@ export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, 
     const key = (e: KeyboardEvent) => {
       const b = box.current;
       if (e.key !== 'Tab' || !b) return;
+      if (side && matchMedia(SIDE).matches) return; // beside the grid, Tab moves on to the page
       const a = document.activeElement as HTMLElement | null;
       if (a && a !== document.body && !a.closest('.toasts') && !b.contains(a)) return;
       const els = [
@@ -175,7 +180,7 @@ export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, 
   }, []);
   const status = r.status ? { '🚧': 'In progress', '⏸': 'Paused', '👀': 'In review', '⏳': 'Waiting', '⛔': 'Blocked' }[r.status.replace(/️/g, '')] : undefined;
   return (
-    <div ref={box} tabIndex={-1} class="focus-mode fl" role="dialog" aria-modal="true" aria-label="Task detail">
+    <div ref={box} tabIndex={-1} class={`focus-mode fl${side ? ' side' : ''}`} role="dialog" aria-modal={!(side && matchMedia(SIDE).matches)} aria-label="Task detail">
       <button type="button" class="close" aria-label="Close" title="Close" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></button>
       <div class="focus-inner">
         <p class="fl-facts">{project ?? task.project} · {plainSection(task.section)}{status ? ` · ${status}` : ''}</p>

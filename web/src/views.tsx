@@ -15,6 +15,9 @@ import { parseRow } from './row';
 import type { Agent, InboxItem, Task } from './types';
 import type { ComponentChildren, JSX } from 'preact';
 import { DetailActions } from './TaskDetail';
+import { DayGrid } from './DayGrid';
+import { loadView, saveView, type DayView } from './grid';
+import { store } from './day';
 
 export const chipsOf = (text: string) => {
   const r = parseRow(text);
@@ -314,6 +317,8 @@ export interface TodayProps {
   /** Tomorrow's plan: offered late in the day, on when shown. @req FR:home/day.tomorrow */ tomorrow?: { offer: boolean; on: boolean; toggle: () => void };
   /** The row message button: the owning agent's name, and open the detail with the composer focused. @req FR:task-detail-design/myday.message */
   message?: { name: (t: Task) => string; open: (ref: string) => void };
+  /** The grid: every calendar event of the shown day, day navigation, the open task, placing, closing the task detail. @req FR:my-day-grid/view.nav */
+  events?: CalEvent[]; nav?: { offset: number; go: (n: number) => void }; selected?: string | null; onPlace?: (ref: string, at: number) => void; onCloseTask?: () => void;
 }
 export interface DayChange { wake?: string; bed?: string; every?: boolean; reset?: boolean }
 
@@ -352,6 +357,7 @@ function DayTimes({ day, weekday, onSave }: { day: Day; weekday: string; onSave?
  */
 export function TodayView(t: TodayProps) {
   const [replying, setReplying] = useState<string | null>(null);
+  const [mode, setMode] = useState<DayView>(() => loadView(store()));
   const [moreNeeds, setMoreNeeds] = useState(false);
   const [queuedOpen, setQueuedOpen] = useState(false);
   const nowMin = nowMinutes(t.now, t.day); // @req FR:home/day.frame
@@ -413,6 +419,43 @@ export function TodayView(t: TodayProps) {
       </li>
     );
   };
+  // @req FR:my-day-grid/view.default: Grid by default, Agenda on request, kept per device.
+  const pick = (v: DayView) => { setMode(v); saveView(store(), v); };
+  const switcher = (
+    <div class="fl-seg dg-switch" role="radiogroup" aria-label="Day view" data-testid="day-view">
+      {(['grid', 'agenda'] as const).map((v) => <button type="button" key={v} role="radio" aria-checked={mode === v} onClick={() => pick(v)}>{v === 'grid' ? 'Grid' : 'Agenda'}</button>)}
+    </div>
+  );
+  const offset = t.nav?.offset ?? 0;
+  if (mode === 'grid') {
+    // @req FR:my-day-grid/view.header: one quiet header, then the grid; nothing else.
+    const label = offset === 1 ? `Tomorrow · ${date}` : offset === 0 && t.day.asleep ? date : (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    return (
+      <section class="today dg-page fl" aria-label="My day" data-split={!!t.selected || undefined}>
+        <header class="dg-head">
+          <div class="dg-head-l">
+            <h1 class="dg-date">{label}</h1>
+            <p class="dg-sub">{clock(t.day.start)}–{clock(t.day.end)}{t.allDay.length > 0 && <> · {t.allDay.map((e) => e.subject).join(' · ')}</>}
+              {t.calendar === false && <> · <span data-testid="nocal">No calendar · <a class="quiet-link" href="https://github.com/Xerilium/stack/blob/main/docs/runbook.md" target="_blank" rel="noopener noreferrer">Connect</a></span></>}
+            </p>
+          </div>
+          <div class="dg-head-r">
+            {t.nav && (
+              <div class="dg-nav" role="group" aria-label="Day">
+                <button type="button" class="fl-btn subtle dg-arrow" aria-label="Previous day" title="Previous day" onClick={() => t.nav!.go(offset - 1)}>‹</button>
+                <button type="button" class="fl-btn subtle" disabled={offset === 0} onClick={() => t.nav!.go(0)}>Today</button>
+                <button type="button" class="fl-btn subtle dg-arrow" aria-label="Next day" title="Next day" onClick={() => t.nav!.go(offset + 1)}>›</button>
+              </div>
+            )}
+            {switcher}
+          </div>
+        </header>
+        {t.calError && <p class="cal-note">{t.calError}; meetings are not counted.</p>}
+        <DayGrid now={t.now} plan={t.plan} day={t.day} events={t.events ?? []} today={offset === 0} past={offset < 0} selected={t.selected} titles={t.p.titles}
+          onOpen={(r) => t.p.onOpen(r)} onPlace={offset < 0 ? undefined : t.onPlace} onCloseTask={t.onCloseTask} />
+      </section>
+    );
+  }
   return (
     <section class="today" aria-label="Today">
       <header class="t-head">
@@ -430,6 +473,7 @@ export function TodayView(t: TodayProps) {
             <button type="button" class="step" aria-label="More time" title="More time (])" disabled={!t.onBudget || t.budget.minutes >= 960} onClick={() => t.onBudget?.(t.budget.minutes + 30)}>+</button>
             {!t.budget.isDefault && t.onBudget && <button type="button" class="link-btn" onClick={() => t.onBudget?.(null)}>Reset</button>}
           </div>
+          {switcher}
         </div>
         <p class="t-sub">
           {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}

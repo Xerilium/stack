@@ -52,8 +52,9 @@ export const freshSources = () => ({
   summary: { connected: 2, total: 2, fresh: 2, attention: false, canClaimZero: true, headline: null },
 });
 
-export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean; projects?: { name: string; title: string; metadata?: Record<string, string> }[] } = {}): Promise<Mock> {
+export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean; /** Keep My day on its default Grid view; other specs pin Agenda (FR:my-day-grid/view.default). */ grid?: boolean; projects?: { name: string; title: string; metadata?: Record<string, string> }[] } = {}): Promise<Mock> {
   const router = opts.context ? page.context() : page;
+  if (!opts.grid) await page.addInitScript(() => { try { localStorage.setItem('stack.myday.view', 'agenda'); } catch { /* blocked */ } });
   const m: Mock = { pris: null, inventory: null, team: [], reviews: [], schedule: null, events: null, meetings: [], calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], rankQueries: [], fail: new Map(), anonymous: false, forbidden: false, needs: [], inboxItems: [], inboxSources: freshSources(), sourceQueries: [], insertAbove: () => undefined };
   const proj = opts.projects?.map((p) => ({ metadata: {}, ...p })) ?? [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
