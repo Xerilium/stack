@@ -9,7 +9,7 @@ const dueTier = (d: number | null): number => (d === null ? 0 : d < -STALE_DAYS 
 
 export interface MockTask { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
 export interface MockAgent { ref: string; project: string; title: string; text: string; state: string; prs: { url: string; repo: string; number: number; state?: string; checks?: string; title?: string; updatedAt?: string }[]; last?: { at: string; action: string; outcome?: string; summary?: string }; waitingOn?: string; replies: number; since?: string }
-export interface MockInbox { id: string; at: string; project: string; ref: string; task: string; kind: string; to: string; text: string; state: string; row?: string; from?: 'owner' | 'agent'; agent?: string }
+export interface MockInbox { id: string; at: string; project: string; ref: string; task: string; kind: string; to: string; text: string; state: string; row?: string; from?: 'owner' | 'agent'; agent?: string; withdrawn?: true }
 export interface MockAsk { key: string; state: string; ask: string; kind: string; from: string; row?: string; task?: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string; reversible: boolean; link?: string; priority: string; blocks: number; created: string; updated: string; answer?: string; text?: string; answered?: string; snoozedUntil?: string; detail?: string; score: number; rank?: number; overdue: boolean; agentReply?: string; flow?: string; seq?: number; flowTotal?: number; flowDone?: number; ref?: string; apply?: string; applies?: string[] }
 export interface MockSession { id: string; title: string; project: string; owner?: string | null; cwd: string; branch?: string; lastActive: string; state: string; cost: { usd: number; tokens: number }; prs: string[] }
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
@@ -159,7 +159,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
         return json(route, 202, { runId: 'run-assign', sessionId: id, agent: ag?.slug ?? 'cos', title, claimed: true });
       }
       const items: unknown[] = [];
-      for (const e of m.inbox) if (e.row === t.ref || e.ref === t.ref) items.push(e.from === 'agent' ? { at: e.at, kind: 'agent', id: e.id, agent: e.agent, text: e.text } : { at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state });
+      for (const e of m.inbox) if (e.row === t.ref || e.ref === t.ref) items.push(e.from === 'agent' ? { at: e.at, kind: 'agent', id: e.id, agent: e.agent, text: e.text } : { at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state, ...(e.withdrawn ? { withdrawn: true } : {}) });
       for (const a of m.asks) if ((a.row ?? a.ref) === t.ref) items.push({ at: a.created, kind: 'ask', ask: a });
       const review = m.reviews.find((r) => r.ref === t.ref);
       if (review) items.push({ at: review.at, kind: 'review', verdict: review.verdict, plan: review.plan, estimate: review.estimate, agent: review.agent });
@@ -231,7 +231,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       m.inbox.push({ id, at: new Date().toISOString(), project: t.project, ref: t.ref, task: t.text.replace(/[🤖🪄🙋]/gu, '').trim(), kind: body.kind ?? 'reply', to: /🙋/u.test(t.text) ? 'human' : /🤖|🪄/u.test(t.text) ? 'agent' : 'none', text: body.text, state: 'open', row: t.ref });
       return json(route, 201, { id, path: `tasks/inbox/${t.project}.md` });
     }
-    if (path === '/inbox/handled') { const e = m.inbox.find((x) => x.id === body.id); if (!e) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }); const changed = e.state !== 'handled'; e.state = 'handled'; return json(route, 200, { changed }); }
+    if (path === '/inbox/handled') { const e = m.inbox.find((x) => x.id === body.id); if (!e) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }); const changed = e.state !== 'handled'; e.state = 'handled'; if (changed && body.withdrawn === true) e.withdrawn = true; return json(route, 200, { changed }); }
     if (path === '/sync' && req.method() === 'POST') { const n = m.pending ?? 0; if (m.pending !== undefined) { m.pending = 0; m.since = null; } return json(route, 200, { flushed: n, rev: m.rev ?? null }); }
     if (path === '/sync') return json(route, 200, { rev: m.rev ?? null, ...(m.pending !== undefined ? { pending: m.pending, since: m.since ?? null } : {}) });
     if (path === '/inbox') return json(route, 200, { items: m.inbox.filter((e) => e.state === 'open') });

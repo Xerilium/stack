@@ -636,7 +636,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         extra(1);
         const state = flag(f, 'state');
         if (state !== undefined && !(INBOX_STATES as readonly string[]).includes(state)) throw new UsageError(`--state must be one of ${INBOX_STATES.join(', ')}`);
-        const items = await listInbox(ctx, { project: flag(f, 'project'), state: state as (typeof INBOX_STATES)[number] | undefined, withdrawn: f.all === true }); // --all: withdrawn entries too
+        const items = await listInbox(ctx, { project: flag(f, 'project'), state: (state ?? (f.all === true ? 'all' : undefined)) as (typeof INBOX_STATES)[number] | undefined, withdrawn: f.all === true }); // --all: every entry, withdrawn too; --state still narrows
         const rows = await currentRows(ctx, items);
         const out = items.map((e) => ({ ...e, ...(rows.has(e.id) ? { row: rows.get(e.id)! } : {}) }));
         return { json: { ok: true, items: out }, text: out.map((e) => `${e.id} ${e.kind} ${e.project} ${e.row ?? e.ref} ${e.text}`).join('\n') };

@@ -98,10 +98,13 @@ test.describe('Now screen', () => {
     expect(edit).toBeGreaterThanOrEqual(0); expect(edit).toBeLessThan(send);
     expect(m.inbox.at(-1)!.to).toBe('agent');
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
+    await expect(page.getByTestId('now-thread')).toContainText('Use the new logo');
     await expect(page.getByRole('status')).toContainText('Sent to Ada Lead');
     await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
-    await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner', withdrawn: true });
+    // Undo means never sent: the bubble goes at once, without waiting for the poll
+    await expect(page.getByTestId('now-thread')).not.toContainText('Use the new logo', { timeout: 3000 });
   });
 
   // @req FR:agent-team/web.avatar: an emoji icon shows; a missing image falls back to the monogram
