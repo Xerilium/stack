@@ -22,6 +22,8 @@ export interface RunDeps {
   cursor?: string;
   /** The owner's learned voice; without it drafts are checked against the cliche list only. */
   voice?: VoiceProfile;
+  /** Runs after triage, before any ask is written; throwing stops the pass with no ask. @req FR:email-runner/model.down */
+  beforeAsks?: () => void;
   /** Inbox zero: batch asks, subscriptions, and acting on answered asks. Without `actions` nothing moves. @req FR:email-inbox-zero/batch.act */
   hygiene?: { state: MailState; actions?: MailActions; judge?: Judge; http?: Http; archiveAfterHours?: number };
 }
@@ -87,9 +89,16 @@ export async function runTriage(d: RunDeps): Promise<{ cursor: string; summary: 
   const now = (d.ctx.now ?? (() => new Date()))();
   const h = d.hygiene;
   const s = h ? await h.state.get() : undefined;
-  for (const m of newest.values()) {
-    const r = await triage(d, m, summary);
-    results.push(r);
+  // Asks are written after every message is triaged, so a pass the model stops (signed out) writes none.
+  // Only a draft already made in the mailbox keeps its ask, so the next pass reuses it. @req FR:email-runner/model.down
+  try {
+    for (const m of newest.values()) results.push(await triage(d, m, summary));
+    d.beforeAsks?.();
+  } catch (e) {
+    for (const r of results) if (r.draft && !r.draft.reused) await recordResult(d.ctx, r, { project: d.project });
+    throw e;
+  }
+  for (const r of results) {
     await recordResult(d.ctx, r, { project: d.project });
     // Only the message that was triaged: a class never spreads to the rest of its thread.
     if (s) observe(s, r, { now });

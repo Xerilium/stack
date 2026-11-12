@@ -4,14 +4,16 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
+import { handleAsk, oneLine, putAsk, readAsk } from '../core/asks';
+import { redact } from '../core/triage';
 import type { LifecycleContext } from '../core/lifecycle';
-import { MemoryStorage } from '../core/storage';
+import { MemoryStorage, NotFoundError } from '../core/storage';
 import { syncInbox } from '../inbox/runner';
 import { sentItems } from '../email/graph-mail';
 import { GRAPH_BASE, type GraphRequest, type Transport } from '../email/guard';
 import { createSafeHttp } from '../email/http';
 import type { ClaudeJson } from '../email/llm';
-import { lockPath, MaxExceeded, readState, rulesFor, runPass, statePath, takeLock } from '../email/runner';
+import { CLAUDE_DOWN_TEXT, CLAUDE_LOGIN_ASK, CLAUDE_LOGIN_TEXT, lockPath, MaxExceeded, ModelUnavailable, readState, rulesFor, runPass, statePath, takeLock } from '../email/runner';
 import { learnVoice, loadVoice, renderStyleGuide, saveVoice, voicePath, type SentMessage } from '../email/voice';
 import { defaultCachePath, FileTokenCache, graphToken, hasScope, listCachePaths } from '../graph/auth';
 import { graphTransport } from '../graph/transport';
@@ -72,11 +74,12 @@ function whichSync(cmd: string): string | undefined {
 }
 const flag = (f: Record<string, string | true>, n: string): string | undefined => (typeof f[n] === 'string' ? (f[n] as string) : undefined);
 
-/** Every signed-in mailbox, one after another; a failure in one never stops the rest. @req FR:email-runner/cli.all */
+/** Every signed-in mailbox, one after another; a failure in one never stops the rest, except a model that is down (they share one `claude` login). @req FR:email-runner/cli.all @req FR:email-runner/model.down */
 async function emailAll(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps): Promise<EmailOutcome> {
   if (action !== 'run' && action !== 'status') throw new UsageError('--all works with run and status');
   const rest = { ...f }; delete rest.all; delete rest.account;
   const accounts: Record<string, unknown>[] = [];
+  let down: string | undefined;
   for (const path of listCachePaths(d.cacheDir)) {
     const cache = new FileTokenCache(path);
     let account: string;
@@ -85,9 +88,11 @@ async function emailAll(ctx: LifecycleContext, action: string | undefined, f: Re
       if (!t || !t.account || !(hasScope(t.scopes, 'Mail.Read') || hasScope(t.scopes, 'Mail.ReadWrite'))) continue;
       account = t.account.toLowerCase();
     } catch (e) { accounts.push({ ok: false, cache: path, error: e instanceof Error ? e.message : String(e) }); continue; }
+    if (down) { accounts.push({ account, ok: false, skipped: true, error: down }); continue; }
     try {
       const r = await emailOne(ctx, action, { ...rest, project: flag(f, 'project') ?? account }, { ...d, cache });
       accounts.push({ ...r.json, account, ok: r.json.ok !== false && !r.code, ...(r.code ? { text: r.text } : {}) });
+      if (r.json.modelDown) down = `skipped: ${r.text}`;
     } catch (e) { accounts.push({ account, ok: false, error: e instanceof Error ? e.message : String(e) }); }
   }
   if (!accounts.length) return { json: { ok: false, accounts }, text: 'no signed-in mailbox (run: stack graph login --account <address> --with drafts)', code: 4 };
@@ -104,6 +109,17 @@ async function emailOffline(ctx: LifecycleContext, action: string | undefined, f
   const transport = offlineTransport(fixture ? readFixture(fixture) : []);
   const s = await runPass({ ctx: { ...ctx, storage: new MemoryStorage() }, account, transport, mode: 'drafts', dryRun: true, dataDir: d.dataDir, llm: offlineLlm, project: flag(f, 'project') });
   return { json: { ok: true, account, mode: 'drafts', dryRun: true, offline: true, ...s }, text: `offline dry run: ${s.messages} messages, ${s.rules} by rules, ${s.model} by model, ${s.asks} asks, no network` };
+}
+
+/**
+ * One ask for every mailbox and pass (same key): written when missing, left alone while open, reopened when done,
+ * and closed by the next pass whose model calls all work.
+ * @req FR:email-runner/model.down
+ */
+async function loginAsk(ctx: LifecycleContext, e: ModelUnavailable): Promise<void> {
+  const cur = (await readAsk(ctx, CLAUDE_LOGIN_ASK))?.ask;
+  if (cur && cur.state !== 'done') return;
+  await putAsk(ctx, CLAUDE_LOGIN_ASK, { kind: 'go-do', from: 'email-triage', ask: e.auth ? CLAUDE_LOGIN_TEXT : CLAUDE_DOWN_TEXT, why: `Email triage stopped before writing any ask: ${redact(oneLine(e.detail)).slice(0, 300)}`, priority: 'high', reversible: true, reopen: true }, 'email-triage');
 }
 
 export async function emailCmd(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps = {}): Promise<EmailOutcome> {
@@ -145,15 +161,20 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
   if (action === 'run') {
     const release = takeLock(lockPath(account, d.dataDir));
     if (!release) return { json: { ok: false, busy: true }, text: 'a pass is already running', code: 4 };
+    const dry = f['dry-run'] === true;
+    const passCtx: LifecycleContext = dry ? { ...ctx, storage: new MemoryStorage() } : ctx;
     try {
       const max = flag(f, 'max') ? Number(flag(f, 'max')) : undefined;
       if (max !== undefined && (!Number.isInteger(max) || max < 1)) throw new UsageError('--max must be a positive integer');
-      const dry = f['dry-run'] === true;
-      const passCtx: LifecycleContext = dry ? { ...ctx, storage: new MemoryStorage() } : ctx;
       const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), onResults: async (r) => { await syncInbox(ctx, { account, results: r }); }, project: flag(f, 'project') });
+      if (!dry && s.modelCalls > 0 && s.modelErrors === 0) await handleAsk(ctx, CLAUDE_LOGIN_ASK, { outcome: 'resolved', note: 'claude works again' }, 'email-triage').catch((e) => { if (!(e instanceof NotFoundError)) throw e; });
       return { json: { ok: true, account, mode, dryRun: dry, ...s }, text: `${mode}${dry ? ' (dry run)' : ''}: ${s!.messages} messages, ${s!.rules} by rules, ${s!.model} by model, ${s!.asks} asks, ${s!.drafts} drafts, archive ${s!.archivePending}, spam ${s!.spamPending}, ${s!.modelCalls} model calls` };
     } catch (e) {
       if (e instanceof MaxExceeded) return { json: { ok: false, found: e.found, max: e.max }, text: e.message, code: 4 };
+      if (e instanceof ModelUnavailable) {
+        await loginAsk(passCtx, e);
+        return { json: { ok: false, modelDown: true, auth: e.auth }, text: e.message, code: 4 };
+      }
       throw e;
     } finally { release(); }
   }

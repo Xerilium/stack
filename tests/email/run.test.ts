@@ -134,3 +134,25 @@ describe('runTriage drafts once per conversation', () => {
   });
 });
 
+
+// @req FR:email-runner/model.down
+describe('runTriage when the model stops mid-pass', () => {
+  it('writes no ask except the one for a draft already in the mailbox', async () => {
+    const { storage, ctx } = mkCtx();
+    let n = 0;
+    const s = setup([msg({ id: 'm1', conversationId: 'c1' }), msg({ id: 'm2', conversationId: 'c2', receivedAt: '2026-10-28T13:05:00Z' }), msg({ id: 'm3', conversationId: 'c3', from: { address: 'counsel@example.test' }, receivedAt: '2026-10-28T13:10:00Z' })], (m) => {
+      if (m.id === 'm1') return needsReply;
+      n++; throw new Error('down');
+    });
+    await expect(runTriage({ ctx, provider: s.provider, classifier: s.classifier, drafter: s.drafter, rules })).rejects.toThrow('down');
+    expect(n).toBe(1);
+    expect(s.created).toHaveLength(1);
+    expect(await storage.listAsks!()).toEqual([asksPath(keyOf('c1'))]);
+  });
+  it('beforeAsks can stop the pass after triage, before any ask', async () => {
+    const { storage, ctx } = mkCtx();
+    const s = setup([msg({ id: 'm1', conversationId: 'c1', from: { address: 'counsel@example.test' } })], () => needsReply);
+    await expect(runTriage({ ctx, provider: s.provider, classifier: s.classifier, rules, beforeAsks: () => { throw new Error('stop'); } })).rejects.toThrow('stop');
+    expect(await storage.listAsks!()).toEqual([]);
+  });
+});

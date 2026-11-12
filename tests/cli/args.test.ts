@@ -35,3 +35,12 @@ describe('cli args: flag values', () => {
     expect(parseArgs(['add', '--section=--x']).flags.section).toBe('--x');
   });
 });
+
+/** @req FR:email-runner/cli.offline @req FR:email-runner/cli.all */
+describe('cli args: email boolean flags', () => {
+  it('--offline and --all take no value (the 15-minute schedule runs email run --all)', () => {
+    expect(parseArgs(['email', 'run', '--dry-run', '--offline', '--fixture', 'f.json']).flags).toEqual({ 'dry-run': true, offline: true, fixture: 'f.json' });
+    expect(parseArgs(['email', 'run', '--all']).flags).toEqual({ all: true });
+    expect(parseArgs(['email', 'run', '--all', '--dir', '/r']).flags).toEqual({ all: true, dir: '/r' });
+  });
+});

@@ -45,6 +45,11 @@ export function claudeArgs(c: JsonCall, systemFile: string): string[] {
   return ['-p', '--safe-mode', '--model', c.model, '--tools', '', '--strict-mcp-config', '--no-session-persistence', '--output-format', 'json', '--json-schema', JSON.stringify(c.schema), '--system-prompt-file', systemFile];
 }
 
+/** The `result` text of a JSON reply, or ''. */
+function resultText(stdout: string): string {
+  try { const v = (JSON.parse(stdout) as { result?: unknown }).result; return typeof v === 'string' ? v.trim() : ''; } catch { return ''; }
+}
+
 export function createClaudeJson(o: { bin?: string; run?: Runner; timeoutMs?: number } = {}): ClaudeJson {
   const bin = o.bin ?? process.env.STACK_CLAUDE_BIN ?? 'claude';
   const run = o.run ?? spawnRunner;
@@ -55,10 +60,11 @@ export function createClaudeJson(o: { bin?: string; run?: Runner; timeoutMs?: nu
     try {
       writeFileSync(systemFile, c.system, { mode: 0o600 });
       const r = await run(bin, claudeArgs(c, systemFile), c.user, { timeoutMs: o.timeoutMs ?? TIMEOUT_MS, cwd: dir });
-      if (r.code !== 0) throw new Error(`claude exited ${r.code}: ${r.stderr.trim().slice(0, 200)}`);
+      // A signed-out claude says so in the JSON result on stdout, not stderr: keep both so the runner can tell. @req FR:email-runner/model.down
+      if (r.code !== 0) throw new Error(`claude exited ${r.code}: ${[r.stderr.trim(), resultText(r.stdout)].filter(Boolean).join(' ').slice(0, 300)}`);
       let out: { structured_output?: unknown; total_cost_usd?: unknown; is_error?: unknown };
       try { out = JSON.parse(r.stdout); } catch { throw new Error('claude returned no JSON'); }
-      if (out.is_error === true || out.structured_output === undefined || out.structured_output === null) throw new Error('claude returned no structured output');
+      if (out.is_error === true || out.structured_output === undefined || out.structured_output === null) throw new Error(`claude returned no structured output${out.is_error === true && resultText(r.stdout) ? `: ${resultText(r.stdout).slice(0, 300)}` : ''}`);
       return { value: out.structured_output as T, costUsd: typeof out.total_cost_usd === 'number' ? out.total_cost_usd : 0 };
     } finally { rmSync(dir, { recursive: true, force: true }); }
   };
