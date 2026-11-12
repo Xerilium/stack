@@ -61,7 +61,7 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 - **FR:routes.remove** (P1): `POST /tasks/remove-completed` `{project?}` returns `{removed,files}`
 - **FR:routes.tasks** (P1): `GET /tasks` lists tasks (children included) with `project`, `section`, `state` (`open` default, `done`, `all`), `q` (case-insensitive text), `limit` (1-200, default 50), `offset`; returns `{items,total,offset,limit}`. `GET /tasks/{ref}` returns one item (404 if the line is not a task)
 - **FR:routes.projects** (P1): `GET /projects` lists projects; `GET /projects/{name}` returns one (404 when absent); `name` matches the file base name
-- **FR:routes.summaries** (P1): `GET /summaries` returns `{readme,stack,projects,myDay}` generated from storage (`myDay` is `null` when no tasks); `fields` selects which
+- **FR:routes.summaries** (P1): `GET /summaries` returns `{readme,stack,projects,myDay}` generated from storage with the `stack` engine and `.stack/priorities.json`, so the README top is the `GET /next` task (`myDay` is `null` when no tasks); `fields` selects which
 
 ### FR:compact: Token-efficient responses
 

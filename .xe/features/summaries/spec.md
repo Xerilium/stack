@@ -55,7 +55,7 @@ Owner needs stack.md, README.md, my-day.md, and `stack next` to agree, so that t
 ### FR:readme: README.md
 
 - **FR:readme.banner** (P1): The banner MUST show the weekday and time in the configured zone, each active time block, urgent-task count, ready AI-task count, and waiting-checkpoint count
-- **FR:readme.top** (P1): The top task MUST be the first outcome-deduplicated, time-filtered leaf; the next three follow as Up next
+- **FR:readme.top** (P1): The top task MUST be the first outcome-deduplicated, time-filtered leaf; the next three follow as Up next. With `stack`, the row of an outcome MUST be its highest-ranked task, not its first actionable step, so the top is the first row of `stack next`
 - **FR:readme.other** (P1): Other priorities MUST list the first actionable task of every project not shown above, sorted by score
 - **FR:readme.parking** (P1): The parking lot MUST list tasks carrying `🅿️` or `💤`, or a congratulation line when none
 - **FR:readme.footer** (P1): The footer MUST be preserved from the previous README (text after its last `---`)

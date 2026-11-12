@@ -490,7 +490,8 @@ function firstActionable(parent: STask, w: World): STask | null {
   return find(parent.id);
 }
 
-function uniqueOutcomeTasks(tasks: STask[], w: World): STask[] {
+/** One task per outcome. Legacy shows the outcome's first actionable step; `stack` keeps the ranked task, the one `stack next` picks. */
+function uniqueOutcomeTasks(tasks: STask[], w: World, firstStep: boolean): STask[] {
   const seen = new Set<string>();
   const out: STask[] = [];
   for (const task of tasks) {
@@ -498,7 +499,7 @@ function uniqueOutcomeTasks(tasks: STask[], w: World): STask[] {
     const key = (parent?.id ?? task.id).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    if (parent) out.push(firstActionable(parent, w) ?? task);
+    if (parent && firstStep) out.push(firstActionable(parent, w) ?? task);
     else out.push(task);
   }
   return out;
@@ -778,7 +779,8 @@ function buildReadme(
   }
 
   const parkedAtLevel = w.list.filter(t => t.emojis.Special.includes('🅿️') || t.emojis.Special.includes('💤'));
-  const unique = uniqueOutcomeTasks(filtered, w);
+  // @req FR:summaries/engine.order: with `stack`, the README top is the first row of `stack next`
+  const unique = uniqueOutcomeTasks(filtered, w, input.engine !== 'stack');
   const top = unique[0];
   const topHierarchy = top ? hierarchy(top, w, { removeStatus: true, includeScore: true }) : 'No active tasks available';
   const upNext = unique.slice(1, 4);

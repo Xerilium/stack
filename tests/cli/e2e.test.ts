@@ -435,19 +435,27 @@ describe('README top is the no-ref target', () => {
     const block = /## 🎯 Top of the stack\n\n([\s\S]*?)\n\n/.exec(file(d, 'README.md'))![1].split('\n');
     return /^\s*- (.*?) 🟰 [-\d.]+$/.exec(block[block.length - 1])![1];
   };
-  const ranks = () => {
+  /** An owner override puts Low first; legacy ignores the overrides. */
+  const overrides = () => {
     const d = repo();
     stack(d, 'add', 'alpha', 'Low 🔻');
     stack(d, 'add', 'alpha', 'High 🚨 ⬆️');
     mkdirSync(join(d, '.stack'), { recursive: true });
     writeFileSync(join(d, '.stack/priorities.json'), JSON.stringify({ rules: [{ match: 'Low', effect: 'top' }] }));
-    expect(stack(d, 'update', '--now', NOW).code).toBe(0);
+    return d;
+  };
+  /** The urgent second step of an outcome ranks first; legacy shows the outcome's first step. */
+  const outcome = () => {
+    const d = repo('Ship 🎯');
+    writeFileSync(join(d, 'tasks/alpha.md'), file(d, 'tasks/alpha.md').replace('- [ ] Ship 🎯\n', '- [ ] Ship 🎯\n  - [ ] First step\n  - [ ] Second step 🚨\n'));
     return d;
   };
   it.each([
-    ['start'], ['complete'], ['skip'],
-  ])('update then %s with no ref acts on the README top row', (cmd) => {
-    const d = ranks();
+    ['start', overrides], ['complete', overrides], ['skip', overrides],
+    ['start', outcome], ['complete', outcome], ['skip', outcome],
+  ])('update then %s with no ref acts on the README top row (%p)', (cmd, setup) => {
+    const d = setup();
+    expect(stack(d, 'update', '--now', NOW).code).toBe(0);
     const top = readmeTop(d);
     expect(stack(d, 'next', '--now', NOW).out).toContain(top);
     const r = stack(d, cmd, '--now', NOW, '--no-update', '--json');

@@ -26,6 +26,7 @@ import { agentPromptOptions, assignTask, listReviews, reviewTask, startAgentRun,
 import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 import { generateSummaries } from '../core/summaries';
+import { PRIORITIES_PATH } from '../core/priorities';
 import { editTask, moveTask } from './edit';
 import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
@@ -965,9 +966,12 @@ export const ROUTES: Route[] = [
       const q = readQuery(c.url, Object.keys(FIELDS_Q));
       const fields = parseFields(q.get('fields'), ['readme', 'stack', 'projects', 'myDay']) ?? ['readme', 'stack', 'projects', 'myDay'];
       const docs = await loadDocs(c.deps.storage);
+      // The `stack` engine and the overrides, so the README top is the task GET /next returns (FR:summaries/engine.order).
+      const priorities = (await auxOf(c.deps.storage)?.readAux(PRIORITIES_PATH))?.content;
       const s = generateSummaries({
         projects: docs.map((d) => ({ fileName: `${d.name}.md`, content: d.content })),
         config: c.deps.config ?? getDefaults(), now: (c.deps.now ?? (() => new Date()))(),
+        engine: 'stack', ...(priorities ? { priorities } : {}),
       });
       return json(200, pick(s, fields));
     },
