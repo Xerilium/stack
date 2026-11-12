@@ -61,7 +61,8 @@ async function remoteOf(dir: string): Promise<string | null> {
     let git = join(dir, '.git');
     if ((await fs.lstat(git)).isFile()) { const m = /^gitdir:\s*(.+?)\s*$/m.exec(await fs.readFile(git, 'utf8')); if (!m) return null; git = resolve(dir, m[1].replace(/[/\\]worktrees[/\\][^/\\]+$/, '')); }
     const m = /\[remote "origin"\][^[]*?\burl\s*=\s*(\S+)/.exec(await fs.readFile(join(git, 'config'), 'utf8'));
-    return m ? m[1].replace(/\.git$/, '').replace(/\/+$/, '').toLowerCase() : null;
+    // `git@github.com:x/todo.git` and `https://github.com/x/todo` are one repo: host/path, lower case.
+    return m ? m[1].replace(/^[a-z+]+:\/\//i, '').replace(/^[^@/]*@/, '').replace(/^([^/:]+):(?!\d)/, '$1/').replace(/\/+$/, '').replace(/\.git$/, '').toLowerCase() : null;
   } catch { return null; }
 }
 

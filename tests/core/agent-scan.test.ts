@@ -79,7 +79,7 @@ describe('scanAgents limits', () => {
     put('dev/finops-hubs-1020/.claude/agents/stale.md', md('name: stale'));
     put('dev/finops-hubs/.claude/agents/big.md', `---\nname: big\ndescription: ${'x'.repeat(9000)}\n---\n`);
     git('todo', 'git@github.com:x/todo.git');
-    put('dev/todo-live/.git/config', '[remote "origin"]\n\turl = git@github.com:x/todo.git\n');
+    put('dev/todo-live/.git/config', '[remote "origin"]\n\turl = https://github.com/x/todo\n'); // the other url form of the same repo
     put('dev/todo-live/.claude/agents/live-only.md', md('name: live-only'));
     const slugs = (await scanAgents({ home, roots: [dev], repos, skip: [join(dev, 'todo')] })).map((g) => g.def.slug);
     expect(slugs).toContain('sre');
