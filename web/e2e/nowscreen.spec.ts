@@ -47,7 +47,7 @@ test.describe('Now screen', () => {
     const card = page.locator('.now-card.done-anim[data-ref="alpha:6"]');
     await expect(card).toBeVisible();
     await expect(card.locator('.now-done-check')).toBeVisible();
-    expect(await card.evaluate((el) => getComputedStyle(el).animationName)).not.toBe('none');
+    expect(await card.locator('h1').evaluate((el) => getComputedStyle(el).animationName)).toBe('now-done');
     await expect(page.locator('.now-card[data-ref="alpha:6"]')).toHaveCount(0); // the next task replaced it
     await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Nothing now');
     await expect(page.getByRole('status').getByRole('button', { name: 'Undo' })).toBeVisible();
@@ -65,8 +65,25 @@ test.describe('Now screen', () => {
     await expect(old).toHaveClass(/done-anim/);
     await page.waitForTimeout(1100); // past the old 900 ms clear, before the save returns
     await expect(old).toHaveClass(/done-anim/);
+    expect(await old.locator('.now-done-check').evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1); // the check stays in view while the save runs
+    expect(await old.locator('h1').evaluate((el) => Number(getComputedStyle(el).opacity))).toBeGreaterThan(0);
     await expect(old).toHaveCount(0, { timeout: 5000 });
     await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Ship the web app');
+  });
+
+  test('a live reload during Done keeps the done card until the save lands', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    await page.route('**/api/tasks/complete', async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.fallback(); });
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: /^Done/ }).click();
+    const old = page.locator('.now-card[data-ref="alpha:6"]');
+    await expect(old).toHaveClass(/done-anim/);
+    m.tasks.find((t) => t.ref === 'alpha:6')!.done = true; // the file changed on disk before the save returns
+    await page.evaluate(() => window.dispatchEvent(new Event('online'))); // a live reload, as the watcher sends
+    await page.waitForTimeout(600);
+    await expect(old).toHaveClass(/done-anim/);
+    await expect(old).toHaveCount(0, { timeout: 5000 });
   });
 
   test('Done with reduced motion: no animation, still advances', async ({ page }) => {
@@ -77,7 +94,7 @@ test.describe('Now screen', () => {
     await page.getByRole('button', { name: /^Done/ }).click();
     const card = page.locator('.now-card.done-anim');
     await expect(card).toBeVisible();
-    expect(await card.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+    expect(await card.locator('h1').evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
     await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Ship the web app');
   });
 

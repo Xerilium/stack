@@ -56,7 +56,7 @@ import { HomeView, ListView, ProjectsView, TodayView, type RowProps } from './vi
 import { TaskDetail } from './TaskDetail';
 import { displayName } from './detail';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
-import { agentMark, DONE_MS, nowOf } from './nowscreen';
+import { agentMark, DONE_MS, nowOf, type NowTask } from './nowscreen';
 import { NowScreen } from './NowView';
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
@@ -257,7 +257,12 @@ export function App() {
   const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks]);
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
-  const nowTask = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
+  const liveNow = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
+  /** A done card stays until its Done finishes: a live reload in the meantime never swaps it out early. @req FR:product-reset/ui.done */
+  const shownNow = useRef<NowTask | null>(null);
+  const held = shownNow.current;
+  const nowTask = held && justDone.has(held.task.ref) && held.task.ref !== liveNow?.task.ref ? held : liveNow;
+  shownNow.current = nowTask;
   const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
