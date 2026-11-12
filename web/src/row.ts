@@ -18,6 +18,9 @@ const MINUTES: Record<string, number> = { '🔹': 12, '🟢': 30, '🟡': 60, '�
 const vs = (s: string) => s.replace(/️/g, '');
 const MIN_BY_KEY = new Map(Object.entries(MINUTES).map(([k, v]) => [vs(k), v]));
 
+/** The task text of a whole `- [ ] …` line (what `expect` compares); undefined when there is no line. */
+export const taskText = (line: string | undefined): string | undefined => (line === undefined ? undefined : line.replace(/^\s*- \[[ xX]\] ?/, ''));
+
 /** Minutes for an effort emoji; 0 when unknown. */
 export const effortMinutes = (e: string | undefined): number => (e ? MIN_BY_KEY.get(vs(e)) ?? 0 : 0);
 

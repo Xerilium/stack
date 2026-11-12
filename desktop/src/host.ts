@@ -75,7 +75,7 @@ export async function startHost(plan: HostPlan, deps: HostDeps = {}): Promise<Ho
   const reports = new ReportStore(state);
   // @req FR:devops-installer/fail.note @req FR:devops-installer/fail.clear: best effort, never blocks the host.
   if (plan.live && deps.app) await noteUpdateResult(deps.app.state().last, reports).catch((e: unknown) => log(`update: cannot note the last result (${e instanceof Error ? e.message : String(e)})`));
-  const s = await (deps.startWeb ?? startWeb)({ dir, port: 0, webDir, label, info, storage, reports, inventory, pris: new PriStore(state), prPriority: new PrPriorityStore(state), ...(deps.app ? { app: deps.app } : {}) });
+  const s = await (deps.startWeb ?? startWeb)({ dir, port: 0, webDir, label, info, storage, reports, inventory, pris: new PriStore(state), prPriority: new PrPriorityStore(state), laneHome: state, ...(deps.app ? { app: deps.app } : {}) });
   const url = `http://127.0.0.1:${new URL(s.url).port}`;
   // The port is random: `stack report` finds the host here. Best effort: a host that cannot write it still serves.
   // @req FR:status-ingest/host.file

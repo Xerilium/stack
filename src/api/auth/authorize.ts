@@ -20,6 +20,7 @@ const ROUTE_SCOPE = new Map<string, string>([
   ['prPriority.get', 'tasks:read'], ['prPriority.put', 'tasks:write'], ['prPriority.recommend', 'tasks:write'], ['prPriority.decisions', 'tasks:read'], ['prPriority.decide', 'tasks:write'],
   // @req FR:pr-page/api.get @req FR:pr-page/act.owner
   ['prs.get', 'tasks:read'], ['prs.queue', 'tasks:write'], ['prs.label', 'tasks:write'], ['prs.ack', 'tasks:write'], ['prs.rec', 'tasks:write'],
+  ['prReview.get', 'tasks:read'], ['live.get', 'tasks:read'], ['live.item', 'tasks:write'],
   ['sessions.list', 'tasks:read'], ['sessions.messages', 'tasks:read'], ['sessions.cost', 'tasks:read'], ['sessions.prompt', 'tasks:write'], ['sessions.new', 'tasks:write'], ['sessions.cancel', 'tasks:write'],
   ['team.list', 'tasks:read'], ['reviews.list', 'tasks:read'], ['tasks.review', 'tasks:write'],
   ['inbox.reply', 'tasks:write'], ['tasks.thread', 'tasks:read'], ['tasks.assign', 'tasks:write'],

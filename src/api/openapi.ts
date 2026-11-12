@@ -10,6 +10,7 @@ import { ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES } from '../core/as
 import { REPORT_ASK_KINDS } from '../core/reports';
 import { PROJECTS, SESSION_REASONS, SESSION_STATES } from '../core/session-inventory';
 import { PRI_ITEM_STATUSES, PRI_STATUSES } from '../core/pris';
+import { ITEM_STATES, LIVE_STATES } from '../core/live-lane';
 import { INBOX_KINDS } from '../core/inbox';
 import { ESC_STATUSES, REC_STATES } from '../core/pr-priority';
 import { ANCHORS, CADENCES, WEEKDAYS } from '../core/model';
@@ -86,7 +87,7 @@ const DOCS: Record<string, RouteDoc> = {
   'tasks.suspend': { operationId: 'suspendTask', summary: 'Suspend a task for days or hours. Owner session only (403 for tokens)', responses: mutation('200') },
   'tasks.set': {
     operationId: 'setTask', summary: 'Set task properties. Tokens: ref required; autonomy triage (priority, effort, impact), assist (status), fills missing priority/effort/impact only; checkbox, clearEmojis, and gate marks are owner-only (403)',
-    desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears' },
+    desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears', expect: 'Expected current task text; 409 conflict when the row differs (stale line number)' },
     responses: mutation('200'),
   },
   'tasks.triage': {
@@ -337,6 +338,19 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'decidePrRec', summary: 'Owner only. Accept, edit, or reject a PR priority recommendation; edit and reject need a reason',
     responses: ok('Done', { type: 'object' }),
   },
+  'prReview.get': {
+    operationId: 'getPrReview', summary: 'Cached PR facts (specLines, live flag, head SHA) and agent briefs with stale. No GitHub call. 404 on hosts with no store',
+    responses: ok('PR review', { type: 'object', required: ['facts', 'briefs'], properties: { facts: { type: 'array', items: ref('PrFacts') }, briefs: { type: 'array', items: ref('PrBrief') } } }),
+  },
+  'live.get': {
+    operationId: 'getLiveLane', summary: 'The live validation lane: state (idle when no PR), the active PR, its checklist, and done PRs. 404 on hosts with no lane',
+    responses: ok('Lane', ref('LiveLane')),
+  },
+  'live.item': {
+    operationId: 'changeLiveItem', summary: 'Change one checklist item of the live PR: add, check, uncheck, fail, needs-fix, fixed, block, comment, edit. Owner calls are by owner; token calls are by the token name. 404 when the PR is not live or the id is unknown',
+    desc: { text: 'Required for add, comment, edit; the comment for needs-fix', reason: 'Required for block', id: 'Required for every op except add' },
+    responses: ok('Changed', { type: 'object', required: ['changed', 'item'], properties: { changed: { type: 'boolean' }, item: ref('LiveItem') } }),
+  },
   'sessions.list': {
     operationId: 'listSessions', summary: 'Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents',
     responses: ok('Sessions', { type: 'object', properties: { items: { type: 'array', items: ref('Session') }, total: { type: 'integer' }, indexing: { type: 'integer' } } }),
@@ -371,7 +385,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'tasks.assign': {
     operationId: 'assignTask', summary: 'Hand the task to its agent: claims the row (log + in progress) and starts a session with the assign prompt. Owner session only; 404 without a runner; 403 for a 🙋 row',
-    desc: { agent: 'Agent slug; default: the active agent' },
+    desc: { agent: 'Agent slug; default: the active agent', note: 'The owner\'s note, added to the assign prompt (at most 1000 characters)' },
     responses: ok('Assigned', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string' }, title: { type: 'string' }, claimed: { type: 'boolean' } } }, '202'),
   },
   'team.list': {
@@ -584,6 +598,37 @@ export function buildOpenApi(): J {
             version: { type: 'integer' }, rev: { type: 'integer' }, updatedAt: { type: 'string', format: 'date-time' },
             seed: { type: 'object', properties: { source: { type: 'string' }, at: { type: 'string' }, sha256: { type: 'string' } } },
             pris: { type: 'array', items: ref('Pri') },
+          },
+        },
+        PrFacts: {
+          type: 'object', required: ['repo', 'number', 'url', 'headSha', 'specLines', 'live', 'at'],
+          properties: {
+            repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, title: { type: 'string' }, headSha: { type: 'string' },
+            specLines: { type: 'integer', description: 'Lines changed in spec files (.xe/, spec.md, docs/*.md)' }, labels: { type: 'array', items: { type: 'string' } },
+            live: { type: 'boolean', description: 'Needs live validation' }, reasons: { type: 'array', items: { type: 'string' } }, draft: { type: 'boolean' }, at: { type: 'string', format: 'date-time' },
+          },
+        },
+        PrBrief: {
+          type: 'object', required: ['repo', 'number', 'url', 'problem', 'solution', 'recommendation', 'evidence', 'askedAt', 'headSha', 'stale'],
+          properties: {
+            repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, problem: { type: 'string' }, solution: { type: 'string' }, recommendation: { type: 'string' },
+            evidence: { type: 'array', items: { type: 'string' } }, askedAt: { type: 'string' }, headSha: { type: 'string' }, by: { type: 'string' }, stale: { type: 'boolean' },
+          },
+        },
+        LiveItem: {
+          type: 'object', required: ['id', 'text', 'by', 'state', 'createdAt', 'updatedAt'],
+          properties: {
+            id: { type: 'string' }, text: { type: 'string' }, by: { type: 'string' }, state: { type: 'string', enum: [...ITEM_STATES] },
+            comment: { type: 'string' }, reason: { type: 'string' }, createdAt: { type: 'string' }, updatedAt: { type: 'string' }, updatedBy: { type: 'string', description: 'Who made the last change: owner or an agent' },
+          },
+        },
+        LiveLane: {
+          type: 'object', required: ['state', 'rev', 'items', 'done'],
+          properties: {
+            state: { type: 'string', enum: ['idle', ...LIVE_STATES] }, rev: { type: 'integer' },
+            active: { type: 'object', properties: { repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, title: { type: 'string' }, state: { type: 'string', enum: [...LIVE_STATES] }, by: { type: 'string' }, claimedAt: { type: 'string' }, worktree: { type: 'string' }, serverUrl: { type: 'string' }, port: { type: 'integer' }, pid: { type: 'integer' }, headSha: { type: 'string' }, waitingOnLock: { type: 'string' } } },
+            items: { type: 'array', items: ref('LiveItem') },
+            done: { type: 'array', items: { type: 'object', properties: { repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, at: { type: 'string' }, reason: { type: 'string' } } } },
           },
         },
         ReportItem: {

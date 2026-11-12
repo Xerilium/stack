@@ -1,0 +1,81 @@
+/*
+ * Fluent 2 tokens and controls, plus the global design rules. Imported once by main.tsx; a page opts in to the look with class `fl`.
+ * Values: Fluent 2 web light/dark themes. Rules: docs/design-system.md.
+ * @req FR:task-detail-design/rules.tokens @req FR:task-detail-design/rules.clickable @req FR:task-detail-design/rules.nokeys @req FR:task-detail-design/rules.facts
+ */
+:root {
+  --fl-bg1: #ffffff; --fl-bg1-hover: #f5f5f5; --fl-bg1-pressed: #e0e0e0; --fl-bg2: #fafafa; --fl-bg3: #f5f5f5;
+  --fl-fg1: #242424; --fl-fg2: #424242; --fl-fg3: #616161; --fl-stroke1: #d1d1d1; --fl-stroke2: #e0e0e0; --fl-stroke-access: #616161;
+  --fl-brand: #0f6cbd; --fl-brand-hover: #115ea3; --fl-brand-pressed: #0c3b5e; --fl-on-brand: #ffffff; --fl-brand-fg: #0f6cbd; --fl-brand2: #ebf3fc;
+  --fl-subtle-hover: #f5f5f5; --fl-subtle-pressed: #e0e0e0; --fl-danger: #b10e1c; --fl-success: #0e700e; --fl-focus: #000000;
+  --fl-font: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+  --fl-caption: 12px; --fl-caption-lh: 16px; --fl-body: 14px; --fl-body-lh: 20px; --fl-sub2: 16px; --fl-sub2-lh: 22px; --fl-sub1: 20px; --fl-sub1-lh: 28px; --fl-title: 28px; --fl-title-lh: 36px;
+  --fl-r-sm: 2px; --fl-r-md: 4px; --fl-r-lg: 6px; --fl-r-xl: 8px; --fl-r-pill: 999px;
+  --fl-s-xs: 4px; --fl-s-s: 8px; --fl-s-m: 12px; --fl-s-l: 16px; --fl-s-xl: 20px; --fl-s-xxl: 24px; --fl-s-xxxl: 32px;
+  --fl-shadow4: 0 0 2px rgb(0 0 0 / 12%), 0 2px 4px rgb(0 0 0 / 14%); --fl-shadow16: 0 0 2px rgb(0 0 0 / 12%), 0 8px 16px rgb(0 0 0 / 14%);
+  --fl-fast: 100ms; --fl-normal: 200ms; --fl-ease: cubic-bezier(.33, 0, .67, 1); --fl-target: 32px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fl-bg1: #292929; --fl-bg1-hover: #3d3d3d; --fl-bg1-pressed: #1f1f1f; --fl-bg2: #1f1f1f; --fl-bg3: #141414;
+    --fl-fg1: #ffffff; --fl-fg2: #d6d6d6; --fl-fg3: #adadad; --fl-stroke1: #666666; --fl-stroke2: #525252; --fl-stroke-access: #adadad;
+    --fl-brand: #115ea3; --fl-brand-hover: #0f6cbd; --fl-brand-pressed: #0c3b5e; --fl-on-brand: #ffffff; --fl-brand-fg: #479ef5; --fl-brand2: #082338;
+    --fl-subtle-hover: #383838; --fl-subtle-pressed: #2e2e2e; --fl-danger: #e37d80; --fl-success: #54b054; --fl-focus: #ffffff;
+    --fl-shadow4: 0 0 2px rgb(0 0 0 / 24%), 0 2px 4px rgb(0 0 0 / 28%); --fl-shadow16: 0 0 2px rgb(0 0 0 / 24%), 0 8px 16px rgb(0 0 0 / 28%);
+  }
+}
+@media (prefers-reduced-motion: reduce) { :root { --fl-fast: 0ms; --fl-normal: 0ms; } }
+@media (max-width: 719px), (hover: none) { :root { --fl-target: 44px; } }
+
+/* ---- Opt-in look: everything under .fl ---- */
+.fl { font-family: var(--fl-font); font-size: var(--fl-body); line-height: var(--fl-body-lh); color: var(--fl-fg1); }
+.fl :focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; border-radius: var(--fl-r-md); }
+.fl-btn { min-height: var(--fl-target); padding: 0 var(--fl-s-m); border-radius: var(--fl-r-md); border: 1px solid var(--fl-stroke1); background: var(--fl-bg1); color: var(--fl-fg1);
+  font: 600 var(--fl-body)/var(--fl-body-lh) var(--fl-font); display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: background var(--fl-fast) var(--fl-ease), border-color var(--fl-fast); }
+.fl-btn:hover:not(:disabled) { background: var(--fl-bg1-hover); border-color: var(--fl-stroke-access); }
+.fl-btn:active:not(:disabled) { background: var(--fl-bg1-pressed); }
+.fl-btn.primary { background: var(--fl-brand); border-color: transparent; color: var(--fl-on-brand); }
+.fl-btn.primary:hover:not(:disabled) { background: var(--fl-brand-hover); }
+.fl-btn.primary:active:not(:disabled) { background: var(--fl-brand-pressed); }
+.fl-btn.subtle { background: transparent; border-color: transparent; color: var(--fl-fg2); }
+.fl-btn.subtle:hover:not(:disabled) { background: var(--fl-subtle-hover); color: var(--fl-fg1); }
+.fl-btn:disabled { cursor: not-allowed; opacity: .55; }
+.fl-input { min-height: var(--fl-target); padding: 0 10px; border-radius: var(--fl-r-md); border: 1px solid var(--fl-stroke1); border-bottom-color: var(--fl-stroke-access); background: var(--fl-bg1); color: var(--fl-fg1); font: var(--fl-body)/var(--fl-body-lh) var(--fl-font); min-width: 0; }
+.fl-input:focus { outline: none; border-bottom: 2px solid var(--fl-brand-fg); }
+.fl-input::placeholder { color: var(--fl-fg3); }
+.fl-pop-wrap { position: relative; display: inline-block; }
+.fl-popover { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; min-width: 200px; padding: var(--fl-s-xs); background: var(--fl-bg1); border: 1px solid var(--fl-stroke2); border-radius: var(--fl-r-xl); box-shadow: var(--fl-shadow16); display: grid; gap: 2px; }
+.fl-option { min-height: var(--fl-target); width: 100%; padding: 0 var(--fl-s-s); border: 0; border-radius: var(--fl-r-md); background: none; color: var(--fl-fg1); text-align: left; display: flex; align-items: center; gap: var(--fl-s-s); cursor: pointer; font: inherit; }
+.fl-option:hover, .fl-option:focus-visible { background: var(--fl-subtle-hover); }
+.fl-option[aria-selected="true"] { font-weight: 600; }
+.fl-option[aria-selected="true"]::after { content: '✓'; margin-left: auto; color: var(--fl-brand-fg); }
+.fl-pop-row { display: flex; gap: var(--fl-s-s); align-items: center; padding: var(--fl-s-xs); border-top: 1px solid var(--fl-stroke2); margin-top: 2px; }
+.fl-chip { min-height: var(--fl-target); padding: 0 var(--fl-s-m) 0 var(--fl-s-xs); border-radius: var(--fl-r-pill); border: 1px solid var(--fl-stroke1); background: var(--fl-bg1); color: var(--fl-fg1); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font: inherit; }
+.fl-chip:hover { background: var(--fl-bg1-hover); }
+.fl-chip[aria-pressed="true"] { background: var(--fl-brand2); border-color: var(--fl-brand-fg); color: var(--fl-brand-fg); font-weight: 600; }
+.fl-chip.add { padding: 0 var(--fl-s-m); border-style: dashed; color: var(--fl-fg2); }
+.fl-seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--fl-r-lg); background: var(--fl-bg3); border: 1px solid var(--fl-stroke2); }
+.fl-seg [role="radio"] { min-height: calc(var(--fl-target) - 6px); padding: 0 var(--fl-s-l); border: 0; border-radius: var(--fl-r-md); background: none; color: var(--fl-fg2); cursor: pointer; font: inherit; }
+.fl-seg [role="radio"][aria-checked="true"] { background: var(--fl-bg1); color: var(--fl-fg1); font-weight: 600; box-shadow: var(--fl-shadow4); }
+@media (max-width: 719px), (hover: none) { .fl-seg [role="radio"] { min-height: 44px; } }
+.fl-card { background: var(--fl-bg1); border-radius: var(--fl-r-xl); box-shadow: var(--fl-shadow4); padding: var(--fl-s-l); }
+.fl-prop { min-height: var(--fl-target); padding: 0 var(--fl-s-s) 0 var(--fl-s-m); border-radius: var(--fl-r-md); border: 1px solid var(--fl-stroke1); background: var(--fl-bg1); color: var(--fl-fg1); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font: inherit; }
+.fl-prop:hover { background: var(--fl-bg1-hover); border-color: var(--fl-stroke-access); }
+.fl-prop .k { color: var(--fl-fg3); }
+.fl-prop .v { font-weight: 600; }
+.fl-prop .v.hot { color: var(--fl-danger); }
+.fl-prop::after { content: ''; width: 6px; height: 6px; margin: 0 4px 3px 4px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); opacity: .7; }
+.fl-hint { margin: var(--fl-s-xs) 0 0; color: var(--fl-fg3); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); min-height: var(--fl-caption-lh); }
+.fl-saved { color: var(--fl-success); font-size: var(--fl-caption); }
+
+/* ---- Global rules: every view, no opt-in ---- */
+/* No key badges on buttons, link buttons, or menu items; chords live in ? help and the palette. The rail keeps its nav hint. */
+body :is(button, a.btn, [role="menuitem"]) kbd { display: none !important; }
+.rail .tab kbd { display: inline-block !important; }
+@media (max-width: 719px) { .rail .tab kbd { display: none !important; } }
+/* Clickable rows and cards: pointer, hover, focus. */
+[role="button"]:not([aria-disabled="true"]), summary, .top-rows > li, .nofit li, .proj-btn, .tile, .unfit, .ask-row { cursor: pointer; }
+@media (hover: hover) { .top-rows > li:hover, .nofit li:hover, .proj-btn:hover, .tile:hover { background: var(--hover); } }
+:is(.top-rows > li, .nofit li, .tile, .proj-btn):focus-within { outline: 2px solid var(--focus); outline-offset: -2px; }
+/* Facts are text, not chips. */
+span.chip:not(.removable) { background: none !important; border: 0 !important; padding: 0 !important; min-height: 0 !important; color: var(--muted); }

@@ -83,7 +83,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     },
     projects: async () => (await call<{ items: Project[] }>('/projects?fields=name,title,open,done,metadata')).items,
     action: (name: ActionName, ref?: string, extra: Record<string, unknown> = {}) => call<Mutation>(`/tasks/${name}`, { ...(ref ? { ref } : {}), ...extra }),
-    set: (ref: string, props: SetProps) => call<Mutation>('/tasks/set', { ref, ...props }),
+    set: (ref: string, props: SetProps, expect?: string) => call<Mutation>('/tasks/set', { ref, ...props, ...(expect !== undefined ? { expect } : {}) }),
     edit: (ref: string, text: string, expect?: string) => call<Mutation>('/tasks/edit', { ref, text, ...(expect !== undefined ? { expect } : {}) }),
     move: (ref: string, target: string, position: Position, expect?: { ref?: string; target?: string }) =>
       call<Mutation>('/tasks/move', { ref, target, position, ...(expect?.ref !== undefined ? { expect: expect.ref } : {}), ...(expect?.target !== undefined ? { expectTarget: expect.target } : {}) }),
@@ -115,7 +115,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     reviews: async (project: string) => (await call<{ items: ReviewItem[] }>(`/reviews?project=${encodeURIComponent(project)}`)).items,
     /** @req FR:agent-thread/thread.read @req FR:agent-thread/thread.assign */
     thread: (ref: string) => call<Thread>(`/tasks/${encodeURIComponent(ref)}/thread`),
-    assign: (ref: string, agent?: string) => call<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }>(`/tasks/${encodeURIComponent(ref)}/assign`, { ...(agent ? { agent } : {}) }),
+    assign: (ref: string, agent?: string, note?: string) => call<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }>(`/tasks/${encodeURIComponent(ref)}/assign`, { ...(agent ? { agent } : {}), ...(note ? { note } : {}) }),
     review: (ref: string, agent?: string) => call<{ runId: string; sessionId: string | null; agent: string }>('/tasks/review', { ref, ...(agent ? { agent } : {}) }),
     cancelSession: (id: string) => call<{ changed: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, {}),
     /** Repo revision for change-driven polling (null: the host has none). @req FR:live-deploy/web.poll */

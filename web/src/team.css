@@ -76,5 +76,4 @@
 .th-note.live { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); }
 .th-note.live .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.8s ease-in-out infinite; }
 .th-note .link, .th-note.err .link { background: none; border: 0; padding: 0; color: var(--accent); font-size: inherit; }
-.agent-talk.in-thread { margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); }
 @media (prefers-reduced-motion: reduce) { .th-note.live .dot, .th-item { animation: none; } }

@@ -76,11 +76,16 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
     } finally { setBusy(false); }
   }, [api, ref, busy, thread, team, sessions, load]);
 
-  /** @req FR:agent-thread/thread.assign */
-  const assign = useCallback(async (agent?: string, keepOpen = false): Promise<boolean> => {
+  /** `note`: goes in the assign prompt; the server records it on the task as handled (the composer's Do it). @req FR:agent-thread/thread.assign @req FR:task-detail-design/compose.doit */
+  const assign = useCallback(async (agent?: string, keepOpen = false, note = ''): Promise<boolean> => {
     if (!ref || busy) return false;
     setBusy(true);
-    try { const ok = await team.assign(ref, agent, keepOpen); if (ok) void load(ref, true); return ok; } finally { setBusy(false); }
+    try {
+      // The note rides in the assign prompt; the server records it on the thread as handled. A refused or failed assign writes nothing.
+      const ok = await team.assign(ref, agent, keepOpen, note || undefined);
+      if (ok) void load(ref, true);
+      return ok;
+    } finally { setBusy(false); }
   }, [ref, busy, team, load]);
 
   /** Answer one of the task's asks from the thread. */
