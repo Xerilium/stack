@@ -61,7 +61,7 @@ if ($Owner -and ($PSBoundParameters.ContainsKey('Repo') -or $PSBoundParameters.C
 # -Debug and -Verbose log request bodies, which hold the repo token, the pepper, and the deploy key.
 if ($DebugPreference -ne 'SilentlyContinue' -or $VerbosePreference -ne 'SilentlyContinue') { throw 'Run without -Debug or -Verbose: they log secrets.' }
 $root = Split-Path -Parent $PSScriptRoot
-foreach ($cmd in 'gh', 'bicep') { if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { throw "Missing $cmd. Install it and re-run." } }
+foreach ($cmd in 'gh') { if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { throw "Missing $cmd. Install it and re-run." } }
 foreach ($m in 'Az.Accounts', 'Az.Resources', 'Az.Websites') { if (-not (Get-Module -ListAvailable $m)) { throw "Missing $m. Run: Install-Module Az -Scope CurrentUser" } }
 if (-not (Get-AzContext)) { throw "Run 'Connect-AzAccount' first." }
 & gh auth status *> $null
@@ -75,7 +75,8 @@ if (-not $Subscription) {
   $Subscription = if ($pick -match '^\d{1,3}$' -and [int]$pick -ge 1 -and [int]$pick -le $subs.Count) { $subs[[int]$pick - 1].Id } else { $pick }
   if (-not $Subscription) { throw 'No subscription chosen.' }
 }
-$ctx = Set-AzContext -Subscription $Subscription
+# Process scope: this run only, so other sessions keep their own default context.
+$ctx = Set-AzContext -Subscription $Subscription -Scope Process
 Say "Subscription: $($ctx.Subscription.Name)"
 
 # Only "not there" means a new site; any other failure stops the script.
@@ -133,13 +134,16 @@ if (-not $onlyOwner) {
     } finally { if ($prevGh) { $env:GH_TOKEN = $prevGh } else { Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue } }
   } elseif (-not $exists) {
     throw 'No token given. See docs/setup-live.md step 1.'
-  } elseif (-not (Test-StackBranch $Repo $Branch)) {
-    # Token kept: check with your own gh sign-in, so the site never points at a missing branch.
-    throw "Branch $Branch is missing on $Repo. Re-run and paste the repo token to create it."
+  } else {
+    # Token kept: check with your own gh sign-in, so the site never points at a missing or default branch.
+    if (-not (Test-StackBranch $Repo $Branch)) { throw "Branch $Branch is missing on $Repo. Re-run and paste the repo token to create it." }
+    $default = & gh api "repos/$Repo" -q .default_branch 2>$null
+    if ($Branch -eq $default) { throw "Branch $Branch is the default branch of $Repo. Live data must stay off it; pick another -Branch." }
   }
 }
 
 if (-not $exists) {
+  if (-not (Get-Command bicep -ErrorAction SilentlyContinue)) { throw 'Missing bicep (needed for the first run). Install it and re-run.' }
   Say "Resource group $Group ($Location)"
   New-AzResourceGroup -Name $Group -Location $Location -Force | Out-Null
   # First run only: the template writes the whole settings list, so it never runs against a live site.

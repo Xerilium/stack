@@ -21,8 +21,8 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 1. Check the template offline: `bicep build infra/main.bicep` (lint only, no Azure calls).
 2. Preview: `$p = @{ owners = ''; tokenPepper = '<random hex>'; repoToken = '<token>'; repoUrl = 'https://github.com/<you>/<tasks>' }`, then `New-AzResourceGroupDeployment -WhatIf -ResourceGroupName <rg> -TemplateFile infra/main.bicep -TemplateParameterObject $p` (`repoBranch` defaults to `stack/live`; set `customDomain` only after its CNAME exists). Type the values in your shell, never in a file in git.
 3. Create: same command without `-WhatIf`. **First run only:** the template replaces every app setting, so never run it against a live site. Re-runs go through `scripts/setup-azure.ps1`, which merges.
-4. Get the deployment token: `(Invoke-AzRestMethod -Method POST -Path "$((Get-AzStaticWebApp -ResourceGroupName <rg> -Name <name>).Id)/listSecrets?api-version=2023-12-01").Content | ConvertFrom-Json | % { $_.properties.apiKey }`.
-5. Add it to GitHub: repo Settings, Secrets and variables, Actions, new secret `AZURE_STATIC_WEB_APPS_API_TOKEN`.
+4. Store the deployment token without printing it: `(Invoke-AzRestMethod -Method POST -Path "$((Get-AzStaticWebApp -ResourceGroupName <rg> -Name <name>).Id)/listSecrets?api-version=2023-12-01").Content | ConvertFrom-Json | % { $_.properties.apiKey } | gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN -R Xerilium/stack`.
+5. Check it exists: `gh secret list -R Xerilium/stack`.
 6. Push to `main`. `.github/workflows/deploy.yml` builds and uploads. With no secret it logs a skip and passes.
 
 ## Settings

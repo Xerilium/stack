@@ -38,7 +38,7 @@ Owner needs app writes off `main` so that Stack never commits to `main` of the t
 
 - **FR:branch.default** (P1): Setup MUST default `STACK_REPO_BRANCH` to `stack/live`, in the script and in `infra/main.bicep`
 - **FR:branch.create** (P1): When the branch does not exist, setup MUST create it from the head of the repo's default branch with the repo token
-- **FR:branch.rerun** (P1): A re-run MUST change `STACK_REPO_BRANCH` only when `-Branch` is given
+- **FR:branch.rerun** (P1): A re-run MUST keep the site's `STACK_REPO_BRANCH` unless `-Branch` is given. A site with no branch, `main`, or `master` MUST move to `-Branch` (default `stack/live`)
 - **FR:branch.doc** (P1): Docs MUST say live data is the `stack/live` branch
 
 ### FR:domain: Custom domain
@@ -46,7 +46,7 @@ Owner needs app writes off `main` so that Stack never commits to `main` of the t
 Owner needs `stack.xerilium.com` with a free managed certificate so that he uses one stable URL.
 
 - **FR:domain.bicep** (P1): `infra/main.bicep` MUST take `customDomain` (default empty) and add a `staticSites/customDomains` child with `cname-delegation` validation only when it is set
-- **FR:domain.script** (P1): The script MUST take `-Domain` (default `stack.xerilium.com`; empty skips), print the exact CNAME record, and add the domain with `New-AzStaticWebAppCustomDomain` when it is not on the site yet. A failed add MUST tell the owner to add the CNAME and re-run, not stop the rest
+- **FR:domain.script** (P1): The script MUST take `-Domain` (default `stack.xerilium.com`; empty skips), print the exact CNAME record. The first run only prints it (the CNAME cannot point at a new site yet). A re-run MUST add the domain with `New-AzStaticWebAppCustomDomain` when it is missing or `Failed`, and count it only when `Ready`. A failed add MUST tell the owner to add the CNAME and re-run, not stop the rest
 - **FR:domain.doc** (P1): `docs/setup-live.md` MUST list the DNS step as a short human step with the exact record
 
 ### FR:auth: Auth for a public domain

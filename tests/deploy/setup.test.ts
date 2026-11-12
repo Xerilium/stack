@@ -28,7 +28,7 @@ describe('setup-azure.ps1', () => {
   // @req FR:deploy-stack-xerilium-com/setup.sub
   it('selects the subscription it is given, else prompts; never the default context', () => {
     expect(script).toMatch(/\[string\]\$Subscription = ''/);
-    expect(script).toMatch(/Set-AzContext -Subscription \$Subscription/);
+    expect(script).toMatch(/Set-AzContext -Subscription \$Subscription -Scope Process/);
     expect(script).toMatch(/Get-AzSubscription/);
     expect(script).toMatch(/Read-Host 'Subscription/);
   });
