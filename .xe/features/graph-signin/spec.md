@@ -51,6 +51,8 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 
 ### FR:web: Live calendar
 
+The owner needs the live calendar from every signed-in account in Now, so the day plan matches his real meetings.
+
 - **FR:web.calendar** (P1): `stack web` uses the accounts calendar (`FR:connect-accounts/cal.live`) over every token cache with `Calendars.Read` (any case, with or without the Graph prefix), with the ICS feeds as its fallback, unless `STACK_CALENDAR_FIXTURE` is set (fixture wins). It logs one line naming the source at start (`calendar: Graph`, `calendar: ICS feeds`, `calendar: fixture` or `calendar: none yet`), never a token. A sign-in failure surfaces through `GET /calendar` as `Calendar unavailable`
 
 ## Dependencies
