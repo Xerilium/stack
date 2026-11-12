@@ -181,8 +181,13 @@ export function createConnect(d: ConnectDeps): Connect {
     const code = await startDeviceCode({ tenant, clientId, scopes, ...(d.fetch ? { fetch: d.fetch } : {}) });
     Object.assign(s, { method: 'device', userCode: code.userCode, verificationUri: code.verificationUri, expiresAt: new Date(now() + code.expiresIn * 1000).toISOString() });
     delete s.url;
-    void pollDeviceCode({ tenant, clientId, code, ...(d.fetch ? { fetch: d.fetch } : {}), ...(d.sleep ? { sleep: d.sleep } : {}), now })
-      .then((g) => finish(s, g, clientId, scopes)).catch((e: unknown) => fail(s, e));
+    // A newer sign-in stops this poll at its next wait.
+    let stopped = false;
+    listeners.set(s.id, () => { stopped = true; listeners.delete(s.id); });
+    const base = d.sleep ?? ((sec: number) => new Promise<void>((r) => setTimeout(r, sec * 1000)));
+    const sleep = async (sec: number) => { await base(sec); if (stopped) throw new GraphSignInError('replaced'); };
+    void pollDeviceCode({ tenant, clientId, code, ...(d.fetch ? { fetch: d.fetch } : {}), sleep, now })
+      .then((g) => finish(s, g, clientId, scopes)).catch((e: unknown) => fail(s, e)).finally(() => listeners.delete(s.id));
     return s;
   }
 

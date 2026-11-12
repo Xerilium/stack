@@ -16,7 +16,7 @@ interface Fake { modeLock?: string; repoLock?: string; step: Step; done: boolean
 async function fakeSetup(page: Page, start: Partial<Fake> = {}): Promise<Fake> {
   const f: Fake = { step: 'repo', done: false, repo: null, mode: 'demo', posts: [], ...start };
   let down = 0;
-  const status = () => ({ needed: !f.done, reason: f.error ? 'broken' : f.repo ? 'resume' : 'no-repo', step: f.step, steps: STEPS, repo: f.repo, repoLock: f.repoLock ?? null, modeLock: f.modeLock ?? null, mode: f.mode, calendar: false, email: false, signIn: 'stack graph login --client-id <app id> --with calendar,mail,drafts', ...(f.error ? { error: f.error } : {}) });
+  const status = () => ({ needed: !f.done, reason: f.error ? 'broken' : f.repo ? 'resume' : 'no-repo', step: f.step, steps: STEPS, repo: f.repo, repoLock: f.repoLock ?? null, modeLock: f.modeLock ?? null, mode: f.mode, calendar: false, email: false, signIn: 'Connect a Microsoft account. Stack opens the Microsoft sign-in page.', ...(f.error ? { error: f.error } : {}) });
   // The host marks the page: the built index.html gets the meta tag, as the local server adds it.
   await page.route(/\/(index\.html)?(#.*)?$/, async (route) => {
     const r = await route.fetch();
@@ -74,7 +74,8 @@ test.describe('first-run onboarding', () => {
     await page.getByRole('button', { name: 'Skip' }).click();
 
     await expect(page.getByText('Step 4 of 5')).toBeVisible();
-    await expect(page.getByTestId('sign-in')).toHaveText('stack graph login --client-id <app id> --with calendar,mail,drafts');
+    await expect(page.getByTestId('connect-accounts')).toBeVisible(); // in-app Connect, no command
+    await expect(page.locator('code')).toHaveCount(0);
     await expect(page.getByText('It never sends mail.')).toBeVisible();
     await page.getByRole('button', { name: 'Skip' }).click();
 

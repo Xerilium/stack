@@ -279,6 +279,8 @@ it('a new sign-in closes a waiting browser listener', async () => {
   await c.start({ method: 'device' });
   expect(l.box.closed).toBe(true);
   expect(c.get(first.id)).toMatchObject({ state: 'error', error: 'replaced' });
+  // Stop the second poll too, so nothing keeps running after the test.
+  await c.start({});
 });
 
 // @req FR:connect-accounts/setup.script
@@ -304,4 +306,23 @@ describe('register-stack-app.ps1', () => {
     expect(src).not.toMatch(/\baz (ad|login|account)\b/); // Az PowerShell only
     expect(src).toMatch(/exit 3/);
   });
+});
+
+// @req FR:connect-accounts/flow.session
+it('a new sign-in also stops a waiting device code poll', async () => {
+  const dc = { device_code: 'D', user_code: 'U', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 0 };
+  let polls = 0;
+  const fetch = (async (url: string | URL | Request) => {
+    if (String(url).endsWith('/devicecode')) return new Response(JSON.stringify(dc));
+    polls++;
+    return new Response(JSON.stringify({ error: 'authorization_pending' }), { status: 400 });
+  }) as typeof globalThis.fetch;
+  const c = createConnect({ clientId: () => CLIENT, fetch, cacheDir: tmp(), sleep: () => new Promise((r) => setTimeout(r, 0)), openUrl: async () => undefined, listen: async () => ({ port: 1, close: () => undefined }) });
+  const first = await c.start({ method: 'device' });
+  await until(() => polls > 0);
+  await c.start({ method: 'device' });
+  await until(() => c.get(first.id)?.state !== 'waiting');
+  expect(c.get(first.id)).toMatchObject({ state: 'error', error: 'replaced' });
+  // Stop the second poll too, so nothing keeps running after the test.
+  await c.start({});
 });

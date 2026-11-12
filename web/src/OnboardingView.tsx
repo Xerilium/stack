@@ -5,9 +5,13 @@
  * @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone @req FR:first-run-onboarding/state.resume
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { CopyCommand } from './parts';
+import { createClient } from './api';
+import { ConnectAccounts } from './ConnectAccounts';
 import { icsOk, postStep, prevStep, stepLine, TITLES, waitForHost, type Fetch, type SetupStatus } from './onboarding';
 import './onboarding.css';
+
+/** The app API for in-app Connect on the email step. */
+const connectApi = createClient();
 
 export interface OnboardingProps { initial: SetupStatus; fetch?: Fetch; onDone: (hash: string) => void }
 
@@ -111,8 +115,8 @@ export function Onboarding({ initial, fetch: f = (u, i) => fetch(u, i), onDone }
       body = (
         <div class="ob-form">
           <p class="ob-lede">Optional. Stack reads mail and writes reply drafts. It never sends mail.</p>
-          <p class="ob-hint">Run this in a terminal, then follow the code it prints:</p>
-          <CopyCommand cmd={s.signIn} testId="sign-in" />
+          {/* The sign-in runs in the app; no command. @req FR:connect-accounts/web.where @req FR:connect-accounts/web.nocmd */}
+          <ConnectAccounts api={connectApi} />
           {s.email && <p class="ob-ok" role="status"><span aria-hidden="true">✓ </span>Signed in</p>}
           {errLine}
           <div class="ob-actions">{backBtn}<span class="ob-pair"><button type="button" class="ob-btn quiet" disabled={working} onClick={() => void send({ step: 'email', skip: true })}>Skip</button><button type="button" class="ob-btn primary" disabled={working} onClick={() => void send({ step: 'email' })}>Continue</button></span></div>

@@ -72,10 +72,14 @@ export function ConnectAccounts({ api, onChange }: { api: ConnectApi; onChange?:
   };
   useEffect(() => { void load(); }, []);
 
+  const current = useRef('');
   const follow = async (s: ConnectSession) => {
+    current.current = s.id;
     setSession(s);
-    const end = await waitFor(api, s, { onUpdate: (x) => { if (!gone.current) setSession(x); }, stop: () => gone.current });
-    if (gone.current) return;
+    // A replaced sign-in stops polling and never paints over the new one.
+    const mine = () => current.current === s.id && !gone.current;
+    const end = await waitFor(api, s, { onUpdate: (x) => { if (mine()) setSession(x); }, stop: () => !mine() });
+    if (!mine()) return;
     if (end.state === 'done') { await load(); onChange?.(); }
   };
   const run = async (f: () => Promise<ConnectSession | { ok: true } | void>) => {
