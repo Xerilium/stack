@@ -245,3 +245,63 @@ describe('one-time setup', () => {
     expect(await runSetup({ exec: exec(1), script: '/s/x.ps1', clientId: () => undefined })).toEqual({ state: 'failed' });
   });
 });
+
+// @req FR:connect-accounts/acct.remove @req FR:connect-accounts/flow.save
+describe('older default sign-in file', () => {
+  const writeDefault = (dir: string, account?: string) => new FileTokenCache(join(dir, 'graph-token.json')).write({ version: 1, tenant: 'consumers', clientId: CLIENT, scopes: ['Calendars.Read'], refreshToken: 'RT', ...(account ? { account } : {}) });
+  it('a default file with no account lists as empty and disconnects', async () => {
+    const { c, dir } = mk();
+    await writeDefault(dir);
+    expect((await c.accounts()).map((a) => a.account)).toEqual(['']);
+    await c.remove('');
+    expect(await c.accounts()).toEqual([]);
+  });
+  it('a default file that names an account disconnects by that account', async () => {
+    const { c, dir } = mk();
+    await writeDefault(dir, 'me@outlook.com');
+    await c.remove('me@outlook.com');
+    expect(await c.accounts()).toEqual([]);
+  });
+  it('signing in again replaces the default file, so the account lists once', async () => {
+    const { c, dir, l } = mk({ replies: [tokenReply({ preferred_username: 'me@outlook.com', tid: MSA_TENANT })] });
+    await writeDefault(dir, 'me@outlook.com');
+    const s = await c.start({ account: 'me@outlook.com' });
+    await l.box.handler!(new URL(`http://localhost:53682/?code=C&state=${new URL(s.url!).searchParams.get('state')}`));
+    expect((await c.accounts()).map((a) => a.account)).toEqual(['me@outlook.com']);
+  });
+});
+
+// @req FR:connect-accounts/flow.session
+it('a new sign-in closes a waiting browser listener', async () => {
+  const { c, l } = mk({ replies: [{ device_code: 'D', user_code: 'U', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 0 }] });
+  const first = await c.start({});
+  expect(l.box.closed).toBe(false);
+  await c.start({ method: 'device' });
+  expect(l.box.closed).toBe(true);
+  expect(c.get(first.id)).toMatchObject({ state: 'error', error: 'replaced' });
+});
+
+// @req FR:connect-accounts/setup.script
+describe('register-stack-app.ps1', () => {
+  const src = readFileSync(join(__dirname, '../../scripts/register-stack-app.ps1'), 'utf8');
+  // Microsoft Graph delegated permission ids (Graph permissions reference).
+  const ALLOWED: Record<string, string> = {
+    'Mail.Read': '570282fd-fa5c-430d-a7fd-fc8dc98a9dca', 'Calendars.Read': '465a38f9-76ea-45b9-9f34-9e8b0d4b0b42', 'Mail.ReadWrite': '024d486e-b451-40bb-833d-3e66d98c5c73',
+    offline_access: '7427e0e9-2fba-42fe-b0c0-848c9e6a8182', openid: '37f7f235-527c-4136-accd-4a02d197296e', profile: '14dad69e-099b-42c9-810b-d002981feec1',
+  };
+  it('asks only for the allowed delegated scopes, by their real ids', () => {
+    const pairs = [...src.matchAll(/'([A-Za-z_.]+)'\s*=\s*'([0-9a-f-]{36})'/g)].map((m) => [m[1], m[2]]);
+    expect(Object.fromEntries(pairs)).toEqual(ALLOWED);
+    expect(src).not.toMatch(/e383f46e-2787-4529-855e-0e479a3ffac0/); // Mail.Send
+    expect(src).toMatch(/Type = 'Scope'/);
+    expect(src).not.toMatch(/Type = 'Role'/);
+  });
+  it('public client, personal and work accounts, loopback redirect, no secret, no credential taken', () => {
+    expect(src).toMatch(/-SignInAudience 'AzureADandPersonalMicrosoftAccount'/);
+    expect(src).toMatch(/-IsFallbackPublicClient/);
+    expect(src).toMatch(/\$RedirectUri = 'http:\/\/localhost'/);
+    expect(src).not.toMatch(/New-AzADAppCredential|Get-Credential|-Password|Connect-AzAccount\s+-/);
+    expect(src).not.toMatch(/\baz (ad|login|account)\b/); // Az PowerShell only
+    expect(src).toMatch(/exit 3/);
+  });
+});

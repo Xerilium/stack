@@ -2183,19 +2183,16 @@ paths:
       summary: "Disconnect an account: deletes its token cache. Owner session only"
       operationId: removeConnect
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
               additionalProperties: false
-              required:
-                - account
               properties:
                 account:
                   type: string
                   maxLength: 200
-                  pattern: ^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$
+                  pattern: ^(?:|[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+)$
                   description: Mailbox address Single line.
       responses:
         "200":

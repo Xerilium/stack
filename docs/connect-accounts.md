@@ -35,7 +35,7 @@ Repeat for each account. Outlook.com, Hotmail and Live accounts are personal; Mi
 
 ## Reply drafts
 
-Each account is read-only by default. Turn on **Reply drafts** to let Stack save reply drafts in that mailbox. Microsoft asks you to accept once. Stack never sends: you send each draft yourself from Outlook. Turn it off to go back to read scopes.
+Each account is read-only by default. Turn on **Reply drafts** to let Stack save reply drafts in that mailbox. Microsoft asks you to accept once. Stack never sends: you send each draft yourself from Outlook. Turn it off to go back to read scopes. Turning it off does not remove the consent you gave Microsoft: to remove it, see account.live.com/consent/Manage (personal) or myapps.microsoft.com (work or school).
 
 ## Live calendar
 

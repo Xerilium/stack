@@ -148,6 +148,8 @@ export const connectScopes = (drafts: boolean): string[] => ['Calendars.Read', d
 
 export function createConnect(d: ConnectDeps): Connect {
   const sessions = new Map<string, { s: ConnectSession; at: number }>();
+  /** Open browser listeners by session: a new sign-in closes them, so only one waits at a time. */
+  const listeners = new Map<string, () => void>();
   const now = d.now ?? (() => Date.now());
   const dir = () => d.cacheDir ?? defaultCacheDir();
   const health = d.health ?? new AccountHealth();
@@ -164,6 +166,10 @@ export function createConnect(d: ConnectDeps): Connect {
     if (!c.account || !MAILBOX.test(c.account)) throw new GraphSignInError('no_account');
     const tenant = c.tid === MSA_TENANT ? 'consumers' : c.tid && GUID.test(c.tid) ? c.tid : tenantFor(c.account);
     await new FileTokenCache(accountCachePath(c.account, dir())).write({ version: 1, tenant, clientId, scopes: g.scopes.length ? g.scopes : scopes, refreshToken: g.refreshToken, accessToken: g.accessToken, expiresAt: g.expiresAt, account: c.account });
+    // An older default file for this account would list it twice: the new file replaces it.
+    const old = join(dir(), 'graph-token.json');
+    const prev = await new FileTokenCache(old).read().catch(() => null);
+    if (prev?.account?.toLowerCase() === c.account) await new FileTokenCache(old).clear();
     health.clear(c.account);
     s.state = 'done';
     s.account = c.account;
@@ -204,7 +210,8 @@ export function createConnect(d: ConnectDeps): Connect {
         } catch (e) { fail(s, e); return { status: 200, body: FAIL_HTML }; }
       });
     } catch { return null; }
-    h.stop = l.close;
+    h.stop = () => { listeners.delete(s.id); l.close(); };
+    listeners.set(s.id, close);
     redirectUri = `http://localhost:${l.port}`;
     s.url = authorizeUrl({ tenant: 'common', clientId, scopes, redirectUri, challenge, state, ...(account ? { loginHint: account } : {}) });
     try { await (d.openUrl ?? osOpen)(s.url); } catch { close(); return null; }
@@ -219,6 +226,7 @@ export function createConnect(d: ConnectDeps): Connect {
     const account = o.account?.trim().toLowerCase();
     if (account !== undefined && !MAILBOX.test(account)) throw new Error('Invalid account address');
     const scopes = connectScopes(!!o.drafts);
+    for (const [id, stop] of [...listeners]) { stop(); const old = sessions.get(id)?.s; if (old?.state === 'waiting') { old.state = 'error'; old.error = 'replaced'; } }
     const s = put({ id: randomBytes(12).toString('hex'), method: 'browser', state: 'waiting' });
     if (o.method !== 'device' && (await browser(s, clientId, scopes, account))) return s;
     return device(s, clientId, scopes, account);
@@ -242,7 +250,15 @@ export function createConnect(d: ConnectDeps): Connect {
     return out.sort((a, b) => a.account.localeCompare(b.account));
   }
 
-  const cacheFor = (account: string) => new FileTokenCache(account ? accountCachePath(account, dir()) : join(dir(), 'graph-token.json'));
+  /** The cache file that holds `account`: its own file, or an older default file that names it (or names no one, for ''). */
+  async function cacheFor(account: string): Promise<FileTokenCache> {
+    for (const p of listCachePaths(dir())) {
+      const named = /^graph-token-(.+)\.json$/.exec(basename(p))?.[1]?.toLowerCase() ?? '';
+      const t = await new FileTokenCache(p).read().catch(() => null);
+      if (((t?.account ?? named).toLowerCase()) === account) return new FileTokenCache(p);
+    }
+    return new FileTokenCache(account ? accountCachePath(account, dir()) : join(dir(), 'graph-token.json'));
+  }
 
   return {
     hasClientId: () => !!d.clientId(),
@@ -252,7 +268,7 @@ export function createConnect(d: ConnectDeps): Connect {
     /** @req FR:connect-accounts/scope.drafts */
     async setDrafts(account, on) {
       if (on) return start({ account, drafts: true });
-      const c = cacheFor(account);
+      const c = await cacheFor(account);
       const t = await c.read();
       if (!t) throw new Error('Account not connected');
       const had = hasScope(t.scopes, 'Mail.ReadWrite');
@@ -264,7 +280,7 @@ export function createConnect(d: ConnectDeps): Connect {
       return { ok: true };
     },
     /** @req FR:connect-accounts/acct.remove */
-    async remove(account) { await cacheFor(account).clear(); health.clear(account); },
+    async remove(account) { await (await cacheFor(account)).clear(); health.clear(account); },
     setup: d.setup ?? (() => runSetup()),
   };
 }

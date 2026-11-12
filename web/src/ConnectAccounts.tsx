@@ -63,6 +63,8 @@ export function ConnectAccounts({ api, onChange }: { api: ConnectApi; onChange?:
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const gone = useRef(false);
+  /** The last sign-in asked for, so "Use a code instead" keeps its account. */
+  const last = useRef<{ account?: string }>({});
   useEffect(() => () => { gone.current = true; }, []);
 
   const load = async () => {
@@ -85,7 +87,7 @@ export function ConnectAccounts({ api, onChange }: { api: ConnectApi; onChange?:
       else { await load(); onChange?.(); }
     } catch (e) { setMsg(e instanceof Error && e.message ? e.message : 'That did not work. Try again.'); } finally { setBusy(false); }
   };
-  const start = (o: { account?: string; method?: 'browser' | 'device' } = {}) => run(() => api.connectStart(o));
+  const start = (o: { account?: string; method?: 'browser' | 'device' } = {}) => { last.current = o.account ? { account: o.account } : {}; return run(() => api.connectStart(o)); };
   const runSetup = async () => {
     setSetup('running');
     try { const r = await api.connectSetup(); setSetup(r.state); if (r.state === 'done') await load(); } catch { setSetup('failed'); }
@@ -116,7 +118,7 @@ export function ConnectAccounts({ api, onChange }: { api: ConnectApi; onChange?:
               ))}
             </ul>
           )}
-          {session && <Session s={session} onCode={() => void start({ ...(session.account ? { account: session.account } : {}), method: 'device' })} />}
+          {session && <Session s={session} onCode={() => void start({ ...last.current, method: 'device' })} />}
           <div class="src-actions">
             <button type="button" class="btn primary" disabled={busy || waiting} onClick={() => void start()}>{info.accounts.length ? 'Add another account' : 'Connect a Microsoft account'}</button>
           </div>

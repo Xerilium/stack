@@ -441,7 +441,8 @@ async function ghCall(fn: () => Promise<void>): Promise<void> {
 const ACCOUNT: Spec = { t: 'str', max: 200, line: true, pattern: new RegExp(MAILBOX.source, 'i') };
 const CONNECT_START_BODY = { schema: { account: ACCOUNT, drafts: { t: 'bool' }, method: { t: 'enum', values: ['browser', 'device'] } } satisfies Record<string, Spec>, required: [] as string[] };
 const CONNECT_DRAFTS_BODY = { schema: { account: { ...ACCOUNT, required: true }, on: { t: 'bool' } } satisfies Record<string, Spec>, required: ['account', 'on'] };
-const CONNECT_REMOVE_BODY = { schema: { account: { ...ACCOUNT, required: true } } satisfies Record<string, Spec>, required: ['account'] };
+/** Remove also takes no account (or ''): an older sign-in file that names no account. */
+const CONNECT_REMOVE_BODY = { schema: { account: { t: 'str', max: 200, line: true, pattern: new RegExp('^(?:|' + MAILBOX.source.slice(1, -1) + ')$', 'i') } } satisfies Record<string, Spec>, required: [] as string[] };
 /** The connect service, owner only; 404 on a host without one. @req FR:connect-accounts/api.get */
 const connectOf = (c: Ctx): Connect => {
   if (!c.deps.connect) throw new ApiError('not_found', 'Connect is not available on this host');
@@ -1097,8 +1098,8 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       const k = connectOf(c);
-      const b = validate<{ account: string }>(await readBody(c.req), CONNECT_REMOVE_BODY.schema, CONNECT_REMOVE_BODY.required);
-      await k.remove(lower(b.account)!);
+      const b = validate<{ account?: string }>(await readBody(c.req), CONNECT_REMOVE_BODY.schema, CONNECT_REMOVE_BODY.required);
+      await k.remove(lower(b.account) ?? '');
       return json(200, { ok: true });
     },
   },

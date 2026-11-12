@@ -35,7 +35,7 @@ $RedirectUri = 'http://localhost'
 $GraphAppId = '00000003-0000-0000-c000-000000000000'
 # Delegated Microsoft Graph permission ids (Scope). No send, no write beyond drafts, no application roles.
 $Scopes = [ordered]@{
-  'Mail.Read'       = 'e383f46e-2787-4529-855e-0e479a3ffac0'
+  'Mail.Read'       = '570282fd-fa5c-430d-a7fd-fc8dc98a9dca'
   'Calendars.Read'  = '465a38f9-76ea-45b9-9f34-9e8b0d4b0b42'
   'Mail.ReadWrite'  = '024d486e-b451-40bb-833d-3e66d98c5c73'
   'offline_access'  = '7427e0e9-2fba-42fe-b0c0-848c9e6a8182'
@@ -51,7 +51,12 @@ foreach ($m in 'Az.Accounts', 'Az.Resources') {
 }
 Import-Module Az.Accounts, Az.Resources -ErrorAction Stop | Out-Null
 
-if (-not (Get-AzContext -ErrorAction SilentlyContinue)) {
+# A context can outlive its sign-in: ask for a Graph token to be sure it still works.
+$signedIn = $false
+if (Get-AzContext -ErrorAction SilentlyContinue) {
+  try { $null = Get-AzAccessToken -ResourceTypeName MSGraph -ErrorAction Stop; $signedIn = $true } catch { $signedIn = $false }
+}
+if (-not $signedIn) {
   Write-Host 'Sign in to Azure once: run Connect-AzAccount, then run setup again.'
   exit 3
 }
@@ -61,7 +66,12 @@ $access = @{
   ResourceAccess = @($Scopes.Values | ForEach-Object { @{ Id = $_; Type = 'Scope' } })
 }
 
-$app = @(Get-AzADApplication -DisplayName $DisplayName -ErrorAction SilentlyContinue) | Select-Object -First 1
+# The app this config already names wins; else the one with the Stack name.
+$saved = $null
+if (Test-Path $ConfigPath) { try { $saved = (Get-Content -Raw -Path $ConfigPath | ConvertFrom-Json -AsHashtable)['graph']['clientId'] } catch { $saved = $null } }
+$app = $null
+if ($saved) { $app = Get-AzADApplication -ApplicationId $saved -ErrorAction SilentlyContinue }
+if (-not $app) { $app = @(Get-AzADApplication -DisplayName $DisplayName -ErrorAction SilentlyContinue) | Select-Object -First 1 }
 if (-not $app) {
   if ($PSCmdlet.ShouldProcess($DisplayName, 'Create app registration')) {
     $app = New-AzADApplication -DisplayName $DisplayName `
