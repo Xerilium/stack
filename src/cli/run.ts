@@ -23,6 +23,7 @@ import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../co
 import { currentRows, handleEntry, INBOX_STATES, listInbox, replyFromAgent } from '../core/inbox';
 import { registerAutopriEngine } from '../core/autopri';
 import { captureTask, CaptureError } from '../core/quick-capture';
+import { FeedbackError, FeedbackStore } from '../core/feedback';
 import { AUTONOMY_LEVELS, type Autonomy } from '../core/model';
 import { applyTriage, effectiveAutonomy, setAutonomy } from '../core/triage';
 import { createGhClient, refreshQueryTasks } from '../core/query-tasks';
@@ -93,6 +94,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
   prs: { flags: ['group', 'project', 'sort'], usage: 'prs [--group g] [--project p] [--sort spec-lines] [--json]', help: 'open PRs you review or move (--sort spec-lines: no Autopilot rows, fewest spec lines first, 🔬 = needs live validation), by group (blocked, waiting, processing, pending, paused) with who must act; needs GITHUB_TOKEN' },
+  feedback: { flags: ['route', 'since'], usage: 'feedback add "<text>" [--route r] | list [--since id] | done <id>', help: 'owner feedback on the app (~/.stack/feedback.jsonl, one JSON line each; docs/feedback.md); done writes feedback.done.jsonl' },
   sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
   pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
   'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md' },
@@ -361,6 +363,37 @@ async function reportCmd(p: ReturnType<typeof parseArgs>, input: () => Promise<s
   r ??= await new ReportStore(home).put(full);
   const answered = Object.keys(r.asks.answers ?? {}).length;
   return { json: { ok: true, via, ...r }, text: `report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped${answered ? `, ${answered} answered (see --json)` : ''} (${via})` };
+}
+
+/** Owner feedback in the local store; no repo. @req FR:feedback-button/cli.add @req FR:feedback-button/cli.list @req FR:feedback-button/cli.done */
+async function feedbackCmd(p: ReturnType<typeof parseArgs>): Promise<Outcome> {
+  const store = new FeedbackStore(stackHome());
+  const [sub, ...rest] = p.positionals;
+  if (sub === 'add') {
+    const text = rest.join(' ').trim();
+    if (!text) throw new UsageError('feedback add needs "<text>"');
+    try {
+      const item = await store.add({ text, route: flag(p.flags, 'route') });
+      return { json: { ok: true, changed: true, item }, text: item.id };
+    } catch (e) { if (e instanceof FeedbackError && e.code === 'invalid') throw new UsageError(e.message); throw e; }
+  }
+  if (sub === 'list') {
+    if (rest.length) throw new UsageError(`Unexpected argument: ${rest[0]}`);
+    const items = store.list({ since: flag(p.flags, 'since') });
+    const line = (x: (typeof items)[number]) => `${x.id}${x.done ? ' done' : ''}  ${x.text.replace(/\s+/g, ' ')}${x.screenshotPath ? ` [${x.screenshotPath}]` : ''}`;
+    return { json: { ok: true, items }, text: items.map(line).join('\n') || 'no feedback' };
+  }
+  if (sub === 'done') {
+    if (rest.length !== 1) throw new UsageError('feedback done needs exactly one <id>');
+    try {
+      const r = await store.done(rest[0]);
+      return { json: { ok: true, ...r }, text: `${r.id} ${r.changed ? 'done' : 'already done'}` };
+    } catch (e) {
+      if (e instanceof FeedbackError && e.code === 'not_found') return { json: { ok: false, error: e.message, code: EXIT.none }, text: `error: ${e.message}`, code: EXIT.none };
+      throw e;
+    }
+  }
+  throw new UsageError('feedback needs add, list or done');
 }
 
 /**
@@ -786,7 +819,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
       if (json) io.out(`${JSON.stringify(o.json)}\n`); else if (o.text) (o.code ? io.err : io.out)(`${o.text}\n`);
       return o.code ?? EXIT.ok;
     }
-    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
+    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'feedback' ? await feedbackCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
     return r.code ?? EXIT.ok;

@@ -4,8 +4,8 @@ import { ApiError, invalid, type Issue } from './errors';
 export const MAX_BODY_BYTES = 64 * 1024;
 export const MAX_STR = 2000;
 
-/** Reads at most MAX_BODY_BYTES from the stream; stops pulling as soon as the cap is passed. */
-async function readCapped(req: Request): Promise<string> {
+/** Reads at most `max` bytes (default MAX_BODY_BYTES) from the stream; stops pulling as soon as the cap is passed. */
+async function readCapped(req: Request, max = MAX_BODY_BYTES): Promise<string> {
   if (!req.body) return '';
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -14,7 +14,7 @@ async function readCapped(req: Request): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > MAX_BODY_BYTES) {
+    if (size > max) {
       // Not awaited: the authorize clone is a tee branch, and cancel settles only when both branches cancel.
       void reader.cancel().catch(() => undefined);
       throw new ApiError('payload_too_large', 'Body too large');
@@ -25,10 +25,10 @@ async function readCapped(req: Request): Promise<string> {
 }
 
 /** @req FR:api/input.json */
-export async function readBody(req: Request): Promise<Record<string, unknown>> {
+export async function readBody(req: Request, max = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
   const len = Number(req.headers.get('content-length'));
-  if (Number.isFinite(len) && len > MAX_BODY_BYTES) throw new ApiError('payload_too_large', 'Body too large');
-  const text = await readCapped(req);
+  if (Number.isFinite(len) && len > max) throw new ApiError('payload_too_large', 'Body too large');
+  const text = await readCapped(req, max);
   if (text === '') return {};
   if (!/^application\/json\s*(;|$)/i.test(req.headers.get('content-type') ?? '')) {
     throw new ApiError('unsupported_media_type', 'Content-Type must be application/json');

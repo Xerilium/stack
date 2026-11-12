@@ -7,6 +7,7 @@ import { ReportStore, stackHome } from '../core/reports';
 import { runInventory, type Inventory } from '../core/session-inventory';
 import { PriStore } from '../core/pris';
 import { PrPriorityStore } from '../core/pr-priority';
+import { FeedbackStore } from '../core/feedback';
 import { LiveStore } from '../core/live-lane';
 import { BriefStore, FactsStore } from '../core/pr-review';
 import { execFileSync } from 'child_process';
@@ -86,6 +87,8 @@ export interface WebOpts {
   prPriority?: PrPriorityStore;
   /** Home of the live lane, briefs and PR facts; default `~/.stack`. @req FR:pr-review-lane/lane.api */
   laneHome?: string;
+  /** The owner feedback store; default `~/.stack/feedback.jsonl` (or `STACK_HOME`), in demo mode too. @req FR:feedback-button/store.path */
+  feedback?: FeedbackStore;
 }
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
@@ -202,6 +205,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // pris.json is outside the repo too: a write tells open pages to re-read it. @req FR:pris-sessions-ui/live.event
   const offPris = pris.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['pris'] }); });
   const prPriority = o.prPriority ?? new PrPriorityStore(stackHome());
+  const feedback = o.feedback ?? new FeedbackStore(stackHome(), { app: appInfo() });
   // The queue and recommendations change from the CLI too (agents): a write tells open pages to reload Needs you and the PR page.
   const tellPr = () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'pr-priority'] }); };
   // The file poll also sees this host's own writes: skip a file whose mtime is the one this host wrote, so a page gets one event per write.
@@ -216,7 +220,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const laneHome = o.laneHome ?? stackHome();
   const live = new LiveStore(laneHome);
   const offLive = live.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'live'] }); });
-  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe() });
+  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
@@ -337,4 +341,22 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     await storage.close?.();
   };
   return { url: `http://localhost:${port}`, close };
+}
+
+/** The running code's version and short sha, read once at start; never from the client. @req FR:feedback-button/store.line */
+export function appInfo(from = __dirname): { appVersion?: string; sha?: string } {
+  for (let d = from; ; d = join(d, '..')) {
+    const p = join(d, 'package.json');
+    if (existsSync(p)) {
+      try {
+        const j = JSON.parse(readFileSync(p, 'utf8')) as { name?: string; version?: string };
+        if (j.name === 'stack') {
+          let sha: string | undefined;
+          try { sha = execFileSync('git', ['-C', d, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }).trim() || undefined; } catch { sha = undefined; }
+          return { appVersion: j.version, ...(sha ? { sha } : {}) };
+        }
+      } catch { /* not ours */ }
+    }
+    if (resolve(d, '..') === resolve(d)) return {};
+  }
 }

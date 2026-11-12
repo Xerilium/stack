@@ -235,3 +235,21 @@ describe('test seam', () => {
     expect(imports(__dirname)).toEqual([]);
   });
 });
+
+describe('feedback capture', () => {
+  // @req FR:feedback-button/store.capture
+  it('registers a page capture for the feedback store; a destroyed window gives none', async () => {
+    const { mkdtempSync } = await import('fs');
+    const { tmpdir } = await import('os');
+    const { FeedbackStore, setPageCapture } = await import('../../src/core/feedback');
+    const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(8)]);
+    const { shell, win } = setup();
+    await shell.start();
+    (win().webContents as unknown as { capturePage: () => Promise<{ toPNG(): Buffer }> }).capturePage = async () => ({ toPNG: () => PNG });
+    const store = new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-fbsh-')));
+    expect((await store.add({ text: 'x' }, { capture: true })).screenshotPath).toBeDefined();
+    win().destroyed = true;
+    expect((await store.add({ text: 'y' }, { capture: true })).screenshotPath).toBeUndefined();
+    setPageCapture(undefined);
+  });
+});

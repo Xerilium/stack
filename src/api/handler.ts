@@ -10,6 +10,7 @@ import {
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
+import { FeedbackError, MAX_TEXT as FEEDBACK_MAX_TEXT, type FeedbackStore } from '../core/feedback';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { AuxFiles, Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
@@ -92,6 +93,8 @@ export interface ApiDeps {
   prWrites?: GitHubWrites;
   /** Changes the PR priority queue. @req FR:pr-page/api.queue-client */
   prQueue?: PrQueue;
+  /** The owner feedback store (~/.stack/feedback.jsonl); absent means POST /feedback is 404. @req FR:feedback-button/api.route */
+  feedback?: FeedbackStore;
   /** Called with unexpected errors (they are never sent to the caller). */
   onError?: (e: unknown) => void;
 }
@@ -148,6 +151,15 @@ const ADD_BODY = {
     section: { t: 'str', max: 200, line: true }, parent: REF, expect: EXPECT,
   } satisfies Record<string, Spec>,
   required: ['project', 'text'],
+};
+/** @req FR:feedback-button/api.route */
+const FEEDBACK_BODY = {
+  schema: {
+    text: { t: 'str', required: true, max: FEEDBACK_MAX_TEXT }, route: { t: 'str', max: 500, line: true },
+    viewport: { t: 'str', max: 11, pattern: /^\d{2,5}x\d{2,5}$/ }, theme: { t: 'enum', values: ['light', 'dark'] },
+    capture: { t: 'bool' }, png: { t: 'str', max: 1_000_000, pattern: /^[A-Za-z0-9+/]+={0,2}$/ },
+  } satisfies Record<string, Spec>,
+  required: ['text'],
 };
 const CAPTURE_BODY = {
   schema: {
@@ -581,6 +593,24 @@ export const ROUTES: Route[] = [
         return json(b.dryRun ? 200 : 201, { changed: r.changed, ref: r.ref ? formatRef(r.ref) : undefined, after: r.after, spec });
       } catch (e) {
         if (e instanceof CaptureError) throw invalid([{ field: 'text', message: e.message }]);
+        throw e;
+      }
+    },
+  },
+  {
+    // The owner's words about the app, for an agent tailing ~/.stack/feedback.jsonl. @req FR:feedback-button/api.route
+    method: 'POST', doc: '/feedback', name: 'feedback', body: FEEDBACK_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can send feedback');
+      if (!c.deps.feedback) throw new ApiError('not_found', 'No feedback store on this host');
+      const b = validate<{ text: string; route?: string; viewport?: string; theme?: 'light' | 'dark'; capture?: boolean; png?: string }>(await readBody(c.req, 1_000_000), FEEDBACK_BODY.schema, FEEDBACK_BODY.required);
+      try {
+        const it = await c.deps.feedback.add({ text: b.text, route: b.route, viewport: b.viewport, theme: b.theme }, { png: b.png ? Buffer.from(b.png, 'base64') : undefined, capture: b.capture });
+        return json(201, { id: it.id, at: it.at, screenshot: !!it.screenshotPath });
+      } catch (e) {
+        if (e instanceof FeedbackError && e.code === 'invalid') throw invalid([{ field: /screenshot/.test(e.message) ? 'png' : 'text', message: e.message }]);
+        if (e instanceof FeedbackError && e.code === 'busy') throw new ApiError('conflict', e.message);
         throw e;
       }
     },

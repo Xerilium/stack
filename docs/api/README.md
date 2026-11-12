@@ -27,6 +27,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/pr-review` | GET cached PR facts (`specLines`, `live`, head SHA) and agent briefs with `stale`. No GitHub call |
 | `/live` | GET the live validation lane: state, the one live PR, its checklist, done PRs |
 | `/live/items` | POST change one checklist item (`add`, `check`, `uncheck`, `fail`, `needs-fix`, `fixed`, `block`, `comment`, `edit`); owner calls are by owner, token calls by the token name. See [live-validation-agent.md](../live-validation-agent.md) |
+| `/feedback` | POST (owner only) one feedback line to `~/.stack/feedback.jsonl` `{text, route?, viewport?, theme?, capture?, png?}`; see [feedback.md](../feedback.md) |
 | `/tasks` | GET list tasks; POST add a task |
 | `/tasks/{ref}` | GET one task |
 | `/capture` | POST add a task from a phrase |
