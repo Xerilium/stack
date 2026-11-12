@@ -667,7 +667,6 @@ export function parseAliases(lines: string[]): string[] {
  * @req FR:scoring-engine/load.@function @req FR:scoring-engine/load.name @req FR:scoring-engine/load.metadata
  * @req FR:scoring-engine/load.tasks @req FR:scoring-engine/filter.capacity
  */
-
 export function toScoringProject(project: Project, fallbackName = ''): ScoringProject {
   // Legacy: H1 on the first line only; otherwise the file base name with '-' as ' '.
   const first = project.lines[0]?.replace(/^﻿/, '').replace(/\r$/, '').trim() ?? '';

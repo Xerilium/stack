@@ -69,7 +69,7 @@ describe('linkTask', () => {
     expect(linkTask(pris, row('Nov 16 review', { project: 'FinOps toolkit', aliases: ['ftk'] }))).toMatchObject({ id: 'p5', via: 'project' }); // `16` is not a token
     expect(linkTask([pri('x', { title: 'FTK 16', keywords: ['blog'] })], row('Chore', { project: 'ftk' }))).toBeUndefined(); // explicit terms turn auto off
     // Only capitalized names outside parentheses; version tokens stay in the named project.
-    const live = [pri('p3', { title: 'Allyte marketplace (+ is FH personal account sign-in required?)' }), pri('p7', { title: 'Personal' }), pri('p8', { title: 'Stack v2 as central tracker' })];
+    const live = [pri('p3', { title: 'Allyte marketplace (+ is a personal sign-in required?)' }), pri('p7', { title: 'Personal' }), pri('p8', { title: 'Stack v2 as central tracker' })];
     const link = linker(live, ['Allyte', 'Personal', 'personal', 'Stack', 'FOCUS']);
     expect(link(row('Chore', { project: 'Personal', aliases: ['personal'] }))).toMatchObject({ id: 'p7', via: 'project' });
     expect(link(row('FOCUS v2 draft', { project: 'FOCUS' }))).toBeUndefined();
