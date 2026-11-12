@@ -640,3 +640,15 @@ describe('stack email run writes a sync record', () => {
     expect(JSON.stringify(await storage.readAux('.stack/inbox-sources.json'))).not.toMatch(/boom|Bearer/);
   });
 });
+
+/** @req FR:inbox-page/src.help */
+describe('sync record mode', () => {
+  it('keeps the sign-in mode (drafts) even when the pass runs --mode observe', async () => {
+    const { storage, ctx } = mkCtx();
+    const c = new FileTokenCache(join(tmp(), 'graph-token.json'));
+    await c.write({ version: 1, tenant: 't', clientId: 'id', scopes: ['Mail.ReadWrite'], refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, account: 'sam@example.test' });
+    const transport = async () => { throw new GraphSignInRequired(); };
+    await expect(emailCmd(ctx, 'run', { mode: 'observe' }, { cache: c, dataDir: tmp(), transport, llm: fakeLlm(() => ({})).llm })).rejects.toThrow();
+    expect((await readRecords(storage))[0]).toMatchObject({ error: 'signin-expired', mode: 'drafts' });
+  });
+});

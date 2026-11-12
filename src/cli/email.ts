@@ -179,16 +179,18 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
     const release = takeLock(lockPath(account, d.dataDir));
     if (!release) return { json: { ok: false, busy: true }, text: 'a pass is already running', code: 4 };
     const dry = f['dry-run'] === true;
+    // The record keeps the sign-in mode (what a fresh sign-in must ask for), not this pass's --mode.
+    const signIn = hasScope(t.scopes, 'Mail.ReadWrite') ? 'drafts' : 'read-only';
     const passCtx: LifecycleContext = dry ? { ...ctx, storage: new MemoryStorage() } : ctx;
     try {
       const max = flag(f, 'max') ? Number(flag(f, 'max')) : undefined;
       if (max !== undefined && (!Number.isInteger(max) || max < 1)) throw new UsageError('--max must be a positive integer');
       const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), onResults: async (r) => { await syncInbox(ctx, { account, results: r }); }, project: flag(f, 'project') });
-      if (!dry) await syncRecord(ctx, account, mode, null);
       if (!dry && s.modelCalls > 0 && s.modelErrors === 0) await handleAsk(ctx, CLAUDE_LOGIN_ASK, { outcome: 'resolved', note: 'claude works again' }, 'email-triage').catch((e) => { if (!(e instanceof NotFoundError)) throw e; });
+      if (!dry) await syncRecord(ctx, account, signIn, null);
       return { json: { ok: true, account, mode, dryRun: dry, ...s }, text: `${mode}${dry ? ' (dry run)' : ''}: ${s!.messages} messages, ${s!.rules} by rules, ${s!.model} by model, ${s!.asks} asks, ${s!.drafts} drafts, archive ${s!.archivePending}, spam ${s!.spamPending}, ${s!.modelCalls} model calls` };
     } catch (e) {
-      if (!dry) await syncRecord(ctx, account, mode, e);
+      if (!dry) await syncRecord(ctx, account, signIn, e);
       if (e instanceof MaxExceeded) return { json: { ok: false, found: e.found, max: e.max }, text: e.message, code: 4 };
       if (e instanceof ModelUnavailable) {
         await loginAsk(passCtx, e);

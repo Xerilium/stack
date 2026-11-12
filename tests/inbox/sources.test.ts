@@ -132,7 +132,7 @@ describe('summarize', () => {
   });
   it('some stale: N of M up to date; some missing: N of M connected', () => {
     expect(summarize(build({ probe: p(2), records: [ok(0), ok(1, 90), gh] }), NOW)).toMatchObject({ headline: '2 of 3 inboxes up to date', canClaimZero: false });
-    expect(summarize(build({ probe: p(2), records: [ok(0), ok(1), gh], accounts: ['x@outlook.com'] }), NOW)).toMatchObject({ headline: '3 of 4 sources connected', attention: true, canClaimZero: true });
+    expect(summarize(build({ probe: p(2), records: [ok(0), ok(1), gh], accounts: ['x@outlook.com'] }), NOW)).toMatchObject({ headline: '3 of 4 sources connected', attention: true, canClaimZero: false });
   });
   it('planned sources never count, never set the dot', () => {
     const m = summarize(build({ probe: p(1), records: [ok(0), gh] }), NOW);

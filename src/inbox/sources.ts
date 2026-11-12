@@ -208,6 +208,13 @@ export function summarize(sources: InboxSource[], now: Date): SourcesSummary {
     headline = newest ? `Last synced ${agoText(newest, now)}` : 'Waiting for the first sync';
   } else if (stale.length) headline = `${fresh} of ${fresh + stale.length} inboxes up to date`;
   else if (connected < total) headline = `${connected} of ${total} sources connected`;
-  // Zero is a claim about every connected inbox: one broken or behind source makes it untrue.
-  return { connected, total, fresh, attention, canClaimZero: fresh >= 1 && !errors.length && !stale.length, headline };
+  // Zero is a claim about every inbox: one missing, broken, behind or unsynced source makes it untrue.
+  return { connected, total, fresh, attention, canClaimZero: fresh >= 1 && fresh === total, headline };
+}
+
+/** Sources and summary from the stored records, the config and an optional probe (a failing probe reads as none). Shared by the API and the CLI. @req FR:inbox-page/api.sources @req FR:inbox-page/cli.sources */
+export async function loadSources(o: { storage: Storage; now: Date; probe?: () => Promise<SourceProbe>; inbox?: { accounts?: string[]; freshMinutes?: number } }): Promise<{ sources: InboxSource[]; summary: SourcesSummary }> {
+  const probe = o.probe ? await o.probe().catch(() => undefined) : undefined;
+  const sources = buildSources({ now: o.now, records: await readRecords(o.storage), ...(probe ? { probe } : {}), ...(o.inbox?.accounts ? { accounts: o.inbox.accounts } : {}), ...(o.inbox?.freshMinutes ? { freshMinutes: o.inbox.freshMinutes } : {}) });
+  return { sources, summary: summarize(sources, o.now) };
 }

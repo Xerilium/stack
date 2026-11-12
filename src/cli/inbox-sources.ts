@@ -4,14 +4,11 @@
  */
 import type { LifecycleContext } from '../core/lifecycle';
 import { probeLocal } from '../inbox/probe';
-import { agoText, buildSources, readRecords, summarize, type SourceProbe } from '../inbox/sources';
+import { agoText, loadSources, type SourceProbe } from '../inbox/sources';
 
 export async function inboxSourcesCmd(ctx: LifecycleContext, o: { probe?: () => Promise<SourceProbe> } = {}): Promise<{ json: Record<string, unknown>; text: string; code?: number }> {
   const now = (ctx.now ?? (() => new Date()))();
-  const probe = await (o.probe ?? (() => probeLocal()))().catch(() => undefined);
-  const inbox = ctx.config?.inbox;
-  const sources = buildSources({ now, records: await readRecords(ctx.storage), ...(probe ? { probe } : {}), ...(inbox?.accounts ? { accounts: inbox.accounts } : {}), ...(inbox?.freshMinutes ? { freshMinutes: inbox.freshMinutes } : {}) });
-  const summary = summarize(sources, now);
+  const { sources, summary } = await loadSources({ storage: ctx.storage, now, probe: o.probe ?? (() => probeLocal()), ...(ctx.config?.inbox ? { inbox: ctx.config.inbox } : {}) });
   const lines = [`${summary.connected} of ${summary.total} sources connected${summary.headline ? ` · ${summary.headline}` : ''}`];
   for (const s of sources) {
     const when = s.lastSyncAt ? `synced ${agoText(s.lastSyncAt, now)}` : 'never synced';

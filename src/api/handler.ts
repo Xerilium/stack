@@ -36,7 +36,7 @@ import { editTask, moveTask } from './edit';
 import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
-import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, buildSources, readInbox, readRecords, requestAction, runAction, summarize, type ActionId, type IssueFiler, type SourceProbe } from '../inbox';
+import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, loadSources, readInbox, requestAction, runAction, type ActionId, type IssueFiler, type SourceProbe } from '../inbox';
 import { createBriefCache } from './brief';
 import type { ClaudeJson } from '../email/llm';
 import { ApiError, errorResponse, flushError, invalid, json, toApiError } from './errors';
@@ -391,11 +391,8 @@ async function ghCall(fn: () => Promise<void>): Promise<void> {
 const SOURCES_Q: Record<string, Spec> = { fresh: { t: 'enum', values: ['1', 'true'] } };
 /** Sources from the sync records, the config and (local host) this machine's probe. A failing probe reads as none. @req FR:inbox-page/api.sources @req FR:inbox-page/src.fresh */
 async function inboxSources(c: Ctx, fresh: boolean) {
-  const now = c.deps.now?.() ?? new Date();
-  const probe = c.deps.inboxProbe ? await c.deps.inboxProbe(fresh ? { fresh: true } : undefined).catch(() => undefined) : undefined;
-  const inbox = c.deps.config?.inbox;
-  const sources = buildSources({ now, records: await readRecords(c.deps.storage), ...(probe ? { probe } : {}), ...(inbox?.accounts ? { accounts: inbox.accounts } : {}), ...(inbox?.freshMinutes ? { freshMinutes: inbox.freshMinutes } : {}) });
-  return { sources, summary: summarize(sources, now) };
+  const probe = c.deps.inboxProbe;
+  return loadSources({ storage: c.deps.storage, now: c.deps.now?.() ?? new Date(), ...(probe ? { probe: () => probe(fresh ? { fresh: true } : undefined) } : {}), ...(c.deps.config?.inbox ? { inbox: c.deps.config.inbox } : {}) });
 }
 
 /** `ref` is optional for actions that fall back to the core's own target choice. */

@@ -201,8 +201,10 @@ function parseInbox(v: unknown): NonNullable<StackConfig['inbox']> {
   if (v.accounts !== undefined) {
     if (!Array.isArray(v.accounts)) throw new ConfigError('inbox.accounts: expected array');
     out.accounts = v.accounts.map((a, i) => {
-      if (typeof a !== 'string' || !/^[^\s@/\\]+@[A-Za-z0-9.-]+$/.test(a.trim())) throw new ConfigError(`inbox.accounts[${i}]: expected a mailbox address`);
-      return a.trim().toLowerCase();
+      const v = typeof a === 'string' ? a.trim().toLowerCase() : '';
+      // Same rule as the Inbox source list (FR:inbox-page/src.safe), so a bad address fails here, not silently later.
+      if (!/^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(v)) throw new ConfigError(`inbox.accounts[${i}]: expected a mailbox address`);
+      return v;
     });
   }
   return out;

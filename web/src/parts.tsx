@@ -63,7 +63,7 @@ export function CopyCommand({ cmd, testId, label = 'Copy' }: { cmd: string; test
   return (
     <div class="ob-cmd">
       <code data-testid={testId}>{cmd}</code>
-      <button type="button" class="ob-btn" aria-label={label === 'Copy' ? undefined : label} onClick={() => { void navigator.clipboard?.writeText(cmd).then(() => setCopied(true), () => undefined); }}>{copied ? 'Copied' : 'Copy'}</button>
+      <button type="button" class="ob-btn" aria-label={label === 'Copy' ? undefined : label} onClick={() => { void navigator.clipboard?.writeText(cmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }, () => undefined); }}>{copied ? 'Copied' : 'Copy'}</button>
     </div>
   );
 }

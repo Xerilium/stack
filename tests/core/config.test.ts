@@ -160,5 +160,6 @@ describe('range and overlap', () => {
     expect(() => parseConfig({ inbox: { freshMinutes: 0 } })).toThrow(/inbox.freshMinutes/);
     expect(() => parseConfig({ inbox: { freshMinutes: 1.5 } })).toThrow(/inbox.freshMinutes/);
     expect(() => parseConfig({ inbox: { accounts: ['not an address'] } })).toThrow(/inbox.accounts\[0\]/);
+    expect(() => parseConfig({ inbox: { accounts: ['a@b.com', 'x@y`id`.com'] } })).toThrow(/inbox.accounts\[1\]/);
   });
 });
