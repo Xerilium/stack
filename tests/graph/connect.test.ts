@@ -14,6 +14,7 @@ import { join } from 'path';
 import { accountCachePath, authorizeUrl, FileTokenCache, idClaims, MSA_TENANT, pkcePair, redeemAuthCode, GraphSignInError } from '../../src/graph/auth';
 import { AccountHealth, createConnect, loopbackListen, readClientId, runSetup, type ConnectSession, type Listen } from '../../src/graph/connect';
 import { probeLocal } from '../../src/inbox/probe';
+import { GraphHttpError } from '../../src/graph/transport';
 
 const CLIENT = '11111111-2222-3333-4444-555555555555';
 const TID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -187,6 +188,17 @@ describe('accounts', () => {
       { account: 'bad@x.com', type: 'work', mail: false, calendar: false, drafts: false, state: 'error' },
       { account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, state: 'connected' },
       { account: 'w@contoso.test', type: 'work', mail: true, calendar: false, drafts: true, state: 'expired' },
+    ]);
+  });
+  // @req FR:connect-accounts/acct.list @req FR:connect-accounts/acct.retry
+  it('a row carries down, the last good read and the next retry', async () => {
+    const { c, dir, health } = mk();
+    await seed(dir, 'me@outlook.com', ['Mail.Read', 'Calendars.Read', 'offline_access']);
+    const t0 = Date.parse('2026-11-12T12:00:00Z');
+    health.ok('me@outlook.com', t0);
+    health.fail('me@outlook.com', new GraphHttpError(502, 'UnknownError'), t0 + 60_000);
+    expect(await c.accounts()).toEqual([
+      { account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, state: 'down', lastOkAt: new Date(t0).toISOString(), retryAt: new Date(t0 + 90_000).toISOString() },
     ]);
   });
   it('the inbox probe reports an expired mark as signin-expired', async () => {

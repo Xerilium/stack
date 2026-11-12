@@ -97,26 +97,13 @@
 .now-awaits { margin: calc(-1 * var(--s-4)) 0 0; justify-self: end; text-align: right; font-size: var(--fs-caption); color: var(--muted); }
 
 /* Next: an honest line when the calendar is not fresh, and its fix. @req FR:ux-consolidation/cal.ui @req FR:ux-consolidation/cal.connect */
-.now-cal { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-8) var(--s-12); padding: var(--s-12) var(--s-16); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }
-.now-cal-line { margin: 0; flex: 1 1 12em; display: flex; align-items: center; gap: var(--s-8); font-size: var(--fs-secondary); color: var(--ink); }
+.now-cal { margin: 0; }
+
 .now-cal-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .now-cal-dot.error, .now-cal-dot.stale { background: var(--warn); }
-.now-cal-acts { display: flex; flex-wrap: wrap; gap: var(--s-8); }
-.now-cal-result { margin: 0; flex-basis: 100%; font-size: var(--fs-caption); color: var(--ink2); }
-.now-connect { display: grid; gap: var(--s-12); padding: var(--s-16); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); font-size: var(--fs-secondary); }
-.now-connect-form { display: grid; gap: var(--s-8); }
-.now-connect-form label { font-weight: 600; }
-.now-connect-row { display: flex; gap: var(--s-8); }
-.now-connect-row input { flex: 1; min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--s-12); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: var(--fs-body); }
-.now-connect-row input[aria-invalid="true"] { border-color: var(--warn); }
-.now-cal-err { margin: 0; color: var(--warn); font-weight: 600; }
-.now-connect-note { margin: 0; color: var(--ink2); }
-.now-steps { margin: 0; padding-left: var(--s-24); display: grid; gap: var(--s-4); color: var(--ink2); }
 .now-cmd { display: flex; align-items: center; gap: var(--s-8); }
 .now-cmd code, .now-connect-note code { font-size: var(--fs-caption); overflow-wrap: anywhere; }
 .now-cmd code { flex: 1; min-width: 0; padding: var(--s-8); border-radius: var(--r-chip); background: var(--bg); border: 1px solid var(--line2); }
-.now-connect-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-12); }
-.now-connect-foot .now-cal-result { flex-basis: auto; }
 
 /* Waiting on you: cards with room to breathe; the body expands in place. @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.expand */
 .now-asks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-12); }

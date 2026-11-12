@@ -27,7 +27,7 @@ export function NowScreen({ n, b, layer, busy, onAct, asks, cal, now, onOpenAsks
   n: NowTask | null; b: Brief; layer: Layer; busy: boolean; onAct: (a: NowAct) => void;
   /** The message composer under the task. */ chat?: Omit<NowChatProps, 'taskRef' | 'busy'>;
   /** Answers on the ask cards, as Needs you answers them. */ asks: Omit<AskCtl, 'busy' | 'now'>;
-  /** The calendar source and its fixes. */ cal: CalCtl;
+  /** The calendar source; fixes live in Settings. */ cal: Pick<CalCtl, 'source'>;
   now: Date;
   onOpenAsks: () => void;
 }) {

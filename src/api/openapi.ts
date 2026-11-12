@@ -157,7 +157,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'connect.get': {
     operationId: 'getConnect', summary: 'Whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Never a token. Owner session only: 403 for tokens; 404 on a host without Connect',
-    responses: ok('Accounts', { type: 'object', properties: { setup: { type: 'object', properties: { clientId: { type: 'boolean' } } }, accounts: { type: 'array', items: { type: 'object', properties: { account: { type: 'string' }, type: { type: 'string', enum: ['personal', 'work'] }, mail: { type: 'boolean' }, calendar: { type: 'boolean' }, drafts: { type: 'boolean' }, state: { type: 'string', enum: ['connected', 'expired', 'error'] } } } } } }),
+    responses: ok('Accounts', { type: 'object', properties: { setup: { type: 'object', properties: { clientId: { type: 'boolean' } } }, accounts: { type: 'array', items: { type: 'object', properties: { account: { type: 'string' }, type: { type: 'string', enum: ['personal', 'work'] }, mail: { type: 'boolean' }, calendar: { type: 'boolean' }, drafts: { type: 'boolean' }, state: { type: 'string', enum: ['connected', 'expired', 'down', 'error'], description: 'expired: needs sign-in; down: Microsoft not responding (retries on its own)' }, lastOkAt: { type: 'string', format: 'date-time', description: 'The last good live read' }, retryAt: { type: 'string', format: 'date-time', description: 'The next automatic try, while the account is not connected' } } } } } }),
   },
   'connect.setup': {
     operationId: 'runConnectSetup', summary: 'Run the one-time app registration (scripts/register-stack-app.ps1, Az PowerShell). Returns a state code only: done, needs-azure-signin, needs-pwsh, failed. Owner session only',
@@ -194,6 +194,7 @@ const DOCS: Record<string, RouteDoc> = {
           properties: {
             kind: { type: 'string', enum: ['calendar'] }, via: { type: 'string', enum: ['graph', 'ics', 'fixture', 'none'] }, account: { type: 'string', description: 'Sign-in address or feed host names' },
             state: { type: 'string', enum: ['not-connected', 'ok', 'error', 'stale'] }, lastSyncAt: { type: 'string', format: 'date-time', description: 'When the data shown was last read from the source' },
+            reason: { type: 'string', enum: ['signin', 'down', 'error'], description: 'Graph only, when state is error: an account needs sign-in, Microsoft is not responding, or another error' },
           },
         },
         items: {
@@ -416,8 +417,8 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string', description: 'Set for a task or project session' }, title: { type: 'string', description: 'Set for a task or project session: `<agent> · <task> · <ref>`' } } }, '202'),
   },
   'inbox.delivery': {
-    operationId: 'getInboxDelivery', summary: 'Delivery state of the owner messages on one row (working, delivered, failed, not-delivered), the delivery mode, the Claude login state, and a live session for the agent when there is one (link only). Owner session only: 403 for tokens; 404 where the host does not deliver',
-    desc: { ref: 'The row (project:line)' },
+    operationId: 'getInboxDelivery', summary: 'Delivery state of the owner messages on one row (working, delivered, failed, not-delivered), the delivery mode, the Claude login state, and a live session for the agent when there is one (link only). Without ref: only the mode and the login state. Owner session only: 403 for tokens; 404 where the host does not deliver',
+    desc: { ref: 'The row (project:line); omit for the mode and login only' },
     responses: ok('Delivery', { type: 'object', properties: { mode: { type: 'string', enum: ['claude', 'off'] }, login: { type: 'string', enum: ['ok', 'expired', 'unknown'] }, items: { type: 'object', additionalProperties: { type: 'object', properties: { state: { type: 'string', enum: ['working', 'delivered', 'failed', 'not-delivered'] }, agent: { type: 'string' }, reason: { type: 'string' } } } }, live: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, link: { type: 'string' } } } } }),
   },
   'inbox.deliveryLogin': {

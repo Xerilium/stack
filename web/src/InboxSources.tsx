@@ -6,16 +6,15 @@
 import { useEffect, useState } from 'preact/hooks';
 import { lastSync, MODE_TEXT, panelOpen, progressLine, SOURCE, STATE_TEXT, stepLabel, type SourceRow, type SourcesSummary } from './inbox';
 import { CopyCommand } from './parts';
-import { ConnectAccounts } from './ConnectAccounts';
 import type { ConnectApi } from './connect';
 import './onboarding.css';
 
 const key = (s: SourceRow) => `${s.kind}:${s.account}`;
 const name = (s: SourceRow) => `${SOURCE[s.kind]}${s.account ? ` ${s.account}` : ''}`;
 
-function Source({ s, open, toggle, api, onConnected }: { s: SourceRow; open: boolean; toggle: () => void; api?: ConnectApi; onConnected?: () => void }) {
+function Source({ s, open, toggle, api }: { s: SourceRow; open: boolean; toggle: () => void; api?: ConnectApi }) {
   const id = `src-${key(s).replace(/[^a-z0-9]/gi, '-')}`;
-  // A healthy mail account keeps a way in to the accounts panel: add another, drafts, disconnect. @req FR:connect-accounts/web.where
+  // A healthy mail account keeps a way in to Settings > Accounts: add another, drafts, disconnect. @req FR:connect-accounts/web.where
   const manage = !!api && s.kind === 'email' && s.state === 'ok' && !s.planned;
   return (
     <li class={`src-row ${s.state}${s.planned ? ' planned' : ''}`} data-kind={s.kind} data-state={s.state} data-account={s.account}>
@@ -29,13 +28,12 @@ function Source({ s, open, toggle, api, onConnected }: { s: SourceRow; open: boo
       {s.state !== 'ok' && s.needs && (
         <button type="button" class="btn src-go" aria-expanded={open} aria-controls={id} aria-label={`${stepLabel(s)}: ${name(s)}`} onClick={toggle}>{stepLabel(s)}</button>
       )}
-      {manage && <button type="button" class="btn src-go" aria-expanded={open} aria-controls={id} aria-label={`Manage accounts: ${name(s)}`} onClick={toggle}>Manage accounts</button>}
-      {open && manage && api && <div class="src-step" id={id}><ConnectAccounts api={api} {...(onConnected ? { onChange: onConnected } : {})} /></div>}
+      {manage && <a class="btn src-go" href="#/settings/accounts" aria-label={`Manage accounts in Settings: ${name(s)}`}>Manage accounts</a>}
       {open && s.needs && (
         <div class="src-step" id={id}>
           <p>{s.needs}</p>
-          {/* Email sign-in runs in the app: no command. @req FR:connect-accounts/web.where */}
-          {s.connect && api ? <ConnectAccounts api={api} {...(onConnected ? { onChange: onConnected } : {})} /> : s.command && <CopyCommand cmd={s.command} label={`Copy command for ${name(s)}`} />}
+          {/* Email sign-in runs in Settings > Accounts: no command. @req FR:connect-accounts/web.where */}
+          {s.connect && api ? <a class="btn" href="#/settings/accounts" data-testid="src-settings">Open Settings › Accounts</a> : s.command && <CopyCommand cmd={s.command} label={`Copy command for ${name(s)}`} />}
           {s.doc && <p class="src-doc"><a href={s.doc} target="_blank" rel="noopener noreferrer">How to connect {SOURCE[s.kind]}</a></p>}
         </div>
       )}
@@ -50,7 +48,7 @@ export function InboxSources({ sources, summary, checking, onCheck, api }: { sou
   useEffect(() => { if (panelOpen(summary)) setOpen(true); }, [summary]);
   const counted = sources.filter((s) => !s.planned);
   const planned = sources.filter((s) => s.planned);
-  const row = (s: SourceRow) => <Source key={key(s)} s={s} open={shown === key(s)} toggle={() => setShown(shown === key(s) ? null : key(s))} {...(api ? { api } : {})} onConnected={onCheck} />;
+  const row = (s: SourceRow) => <Source key={key(s)} s={s} open={shown === key(s)} toggle={() => setShown(shown === key(s) ? null : key(s))} {...(api ? { api } : {})} />;
   return (
     <section class="src-panel" aria-labelledby="src-h" data-testid="inbox-sources">
       <div class="src-head">

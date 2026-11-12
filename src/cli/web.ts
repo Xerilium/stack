@@ -249,7 +249,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // A demo copy never runs agents on copied messages or writes the live delivery state.
   const dd: DeliveryDeps | undefined = o.delivery === false || o.info?.mode === 'demo' ? undefined : { ctx: { storage, config }, settings: deliverySettings(config, o.dir), store: o.delivery?.store ?? new DeliveryStore(stackHome()), repoDir: o.dir, ...(o.delivery?.run ? { run: o.delivery.run } : {}), ...(o.delivery?.isRepo ? { isRepo: o.delivery.isRepo } : {}) };
   const deliveryLoop = dd && dd.settings.mode === 'claude' ? startDeliveryLoop(dd, { intervalMs: o.delivery ? o.delivery.intervalMs : undefined, onError: (e) => console.error(`delivery: ${e instanceof Error ? e.message : 'error'}`) }) : undefined;
-  const delivery = dd ? { status: (ref: string) => deliveryStatus(dd, ref, inventory), login: () => (o.delivery && o.delivery.login ? o.delivery.login() : startLogin()) } : undefined;
+  const delivery = dd ? { status: (ref: string) => deliveryStatus(dd, ref, inventory), summary: () => ({ mode: dd.settings.mode, login: dd.store.read().login.state }), login: () => (o.delivery && o.delivery.login ? o.delivery.login() : startLogin()) } : undefined;
   const api = createApiHandler({ storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch

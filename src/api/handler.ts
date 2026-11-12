@@ -87,7 +87,7 @@ export interface ApiDeps {
   /** This machine's inbox sign-ins (Graph caches, GitHub); absent on the hosted app, which uses sync records only. `fresh` skips any cache. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
   /** Agent delivery on this machine: per-message state for a row and the Claude sign-in; absent means /inbox/delivery is 404. @req FR:agent-delivery/state.api */
-  delivery?: { status(ref: string): Promise<unknown>; login(): Promise<{ started: boolean; step?: string }> | { started: boolean; step?: string } };
+  delivery?: { status(ref: string): Promise<unknown>; /** `{mode, login}` for Settings. @req FR:settings/agents.api */ summary?(): Promise<unknown> | unknown; login(): Promise<{ started: boolean; step?: string }> | { started: boolean; step?: string } };
   /** Files "Request this action" issues; absent means a Stack task instead. @req FR:inbox-page/action.request */
   issues?: IssueFiler;
   /** Today's meetings for the day plan; absent means no calendar. @req FR:day-inputs/api.calendar */
@@ -442,7 +442,7 @@ async function ghCall(fn: () => Promise<void>): Promise<void> {
   }
 }
 
-const DELIVERY_Q: Record<string, Spec> = { ref: { t: 'ref', required: true } };
+const DELIVERY_Q: Record<string, Spec> = { ref: { t: 'ref' } };
 const ACCOUNT: Spec = { t: 'str', max: 200, line: true, pattern: new RegExp(MAILBOX.source, 'i') };
 const CONNECT_START_BODY = { schema: { account: ACCOUNT, drafts: { t: 'bool' }, method: { t: 'enum', values: ['browser', 'device'] } } satisfies Record<string, Spec>, required: [] as string[] };
 const CONNECT_DRAFTS_BODY = { schema: { account: { ...ACCOUNT, required: true }, on: { t: 'bool' } } satisfies Record<string, Spec>, required: ['account', 'on'] };
@@ -1261,6 +1261,11 @@ export const ROUTES: Route[] = [
       const q = readQuery(c.url, Object.keys(DELIVERY_Q));
       ownerOnly(c, 'Only the owner can read delivery state');
       if (!c.deps.delivery) throw new ApiError('not_found', 'Delivery is not available on this host');
+      // No ref: the summary Settings shows. @req FR:settings/agents.api
+      if (q.get('ref') === null) {
+        if (!c.deps.delivery.summary) throw new ApiError('not_found', 'Delivery summary is not available on this host');
+        return json(200, await c.deps.delivery.summary());
+      }
       const ref = parseRef(q.get('ref'));
       if (!ref) throw invalid([{ field: 'ref', message: 'Must be project:line' }]);
       return json(200, await c.deps.delivery.status(formatRef(ref)));

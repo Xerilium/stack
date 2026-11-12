@@ -102,6 +102,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     delivery: (ref: string) => call<import('./delivery').DeliveryInfo>(`/inbox/delivery?ref=${encodeURIComponent(ref)}`),
     /** Starts the Claude sign-in on the host. @req FR:agent-delivery/login.signin */
     deliveryLogin: () => call<{ started: boolean; step?: string }>('/inbox/delivery/login', {}),
+    /** Delivery mode and Claude sign-in for Settings; 404 on hosts that do not deliver. @req FR:settings/agents.api */
+    deliverySummary: () => call<import('./settings').DeliverySummary>('/inbox/delivery'),
     /** @req FR:agent-inbox/api.handle */
     handled: (id: string, note?: string, withdrawn?: boolean) => call<{ changed: boolean }>('/inbox/handled', { id, ...(note ? { note } : {}), ...(withdrawn ? { withdrawn } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),

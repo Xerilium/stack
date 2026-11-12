@@ -15,19 +15,74 @@ import { homedir } from 'os';
 import { basename, join, resolve } from 'path';
 import { MAILBOX } from '../core/config';
 import {
-  accountCachePath, authorizeUrl, cacheDir as defaultCacheDir, FileTokenCache, GraphSignInError, hasScope, idClaims, listCachePaths, MSA_TENANT,
+  accountCachePath, authorizeUrl, cacheDir as defaultCacheDir, FileTokenCache, GraphSignInError, GraphSignInRequired, hasScope, idClaims, listCachePaths, MSA_TENANT,
   pkcePair, pollDeviceCode, redeemAuthCode, startDeviceCode, tenantFor, type Granted,
 } from './auth';
+import { GraphHttpError } from './transport';
 
 // ------------------------------------------------------------------ health
 
-export type AccountMark = 'expired' | 'error';
-/** In-memory marks from live reads, shared by the calendar, the accounts list and the inbox probe. @req FR:connect-accounts/acct.health */
+export type AccountMark = 'expired' | 'down' | 'error';
+export type GraphFailure = 'signin' | 'down' | 'throttled' | 'other';
+
+/** What a failed live read means: sign in again, Microsoft is not responding, slow down, or something else. @req FR:connect-accounts/acct.health */
+export function classifyGraphError(e: unknown): GraphFailure {
+  if (e instanceof GraphSignInRequired) return 'signin';
+  if (e instanceof GraphSignInError) {
+    if (/^(invalid_grant|interaction_required|consent_required|login_required)$/.test(e.code)) return 'signin';
+    if (/^(server_error|temporarily_unavailable)$/.test(e.code)) return 'down';
+    return 'other';
+  }
+  if (e instanceof GraphHttpError) {
+    if (e.status === 401 || e.status === 403) return 'signin';
+    if (e.status === 429) return 'throttled';
+    if (e.status >= 500 || (e.status === 0 && (e.code === 'Timeout' || e.code === 'Network'))) return 'down';
+    return 'other';
+  }
+  const name = (e as { name?: string } | null)?.name;
+  if (e instanceof TypeError || name === 'AbortError' || name === 'TimeoutError') return 'down';
+  return 'other';
+}
+
+/** Waits after 1, 2, then 3+ failures in a row. @req FR:connect-accounts/acct.retry */
+export const BACKOFF_MS = [30_000, 120_000, 600_000] as const;
+const THROTTLE_MS = 30_000;
+interface Health { mark?: AccountMark; fails: number; retryAt?: number; lastOk?: number }
+
+/**
+ * In-memory health per account from live reads, shared by the calendar, the accounts list and the inbox probe:
+ * the mark, failures in a row, when to try again, and the last good read. Never touches the token cache.
+ * @req FR:connect-accounts/acct.health @req FR:connect-accounts/acct.retry
+ */
 export class AccountHealth {
-  private marks = new Map<string, AccountMark>();
-  mark(account: string, m: AccountMark): void { this.marks.set(account.toLowerCase(), m); }
-  clear(account: string): void { this.marks.delete(account.toLowerCase()); }
-  get(account: string): AccountMark | undefined { return this.marks.get(account.toLowerCase()); }
+  private by = new Map<string, Health>();
+  private at(account: string): Health {
+    const k = account.toLowerCase();
+    let h = this.by.get(k);
+    if (!h) { h = { fails: 0 }; this.by.set(k, h); }
+    return h;
+  }
+  private peek(account: string): Health | undefined { return this.by.get(account.toLowerCase()); }
+  /** Sets a mark by hand (no backoff). */
+  mark(account: string, m: AccountMark): void { this.at(account).mark = m; }
+  /** A sign-in or a disconnect: forget the mark, the count and the wait; keep the last good read. */
+  clear(account: string): void { const h = this.peek(account); if (h) { delete h.mark; delete h.retryAt; h.fails = 0; } }
+  get(account: string): AccountMark | undefined { return this.peek(account)?.mark; }
+  /** A good read. */
+  ok(account: string, now = Date.now()): void { const h = this.at(account); delete h.mark; delete h.retryAt; h.fails = 0; h.lastOk = now; }
+  /** A failed read: mark it and wait before the next try. A 429 waits but keeps the mark and the count. */
+  fail(account: string, e: unknown, now = Date.now()): GraphFailure {
+    const kind = classifyGraphError(e);
+    const h = this.at(account);
+    if (kind === 'throttled') { h.retryAt = now + ((e as GraphHttpError).retryAfterMs ?? THROTTLE_MS); return kind; }
+    h.mark = kind === 'signin' ? 'expired' : kind === 'down' ? 'down' : 'error';
+    h.fails += 1;
+    h.retryAt = now + BACKOFF_MS[Math.min(h.fails, BACKOFF_MS.length) - 1];
+    return kind;
+  }
+  canTry(account: string, now = Date.now()): boolean { const r = this.peek(account)?.retryAt; return r === undefined || now >= r; }
+  retryAt(account: string): number | undefined { return this.peek(account)?.retryAt; }
+  lastOk(account: string): number | undefined { return this.peek(account)?.lastOk; }
 }
 
 // ------------------------------------------------------------------ client id and setup
@@ -86,7 +141,8 @@ export interface ConnectSession {
   id: string; method: 'browser' | 'device'; state: 'waiting' | 'done' | 'error';
   url?: string; userCode?: string; verificationUri?: string; expiresAt?: string; account?: string; error?: string;
 }
-export interface AccountRow { account: string; type: 'personal' | 'work'; mail: boolean; calendar: boolean; drafts: boolean; state: 'connected' | AccountMark }
+/** `lastOkAt`: the last good live read; `retryAt`: the next automatic try (ISO). @req FR:connect-accounts/acct.list */
+export interface AccountRow { account: string; type: 'personal' | 'work'; mail: boolean; calendar: boolean; drafts: boolean; state: 'connected' | AccountMark; lastOkAt?: string; retryAt?: string }
 export interface StartOptions { account?: string; drafts?: boolean; method?: 'browser' | 'device' }
 
 /** The connect service the API calls. */
@@ -254,6 +310,12 @@ export function createConnect(d: ConnectDeps): Connect {
     return device(s, clientId, scopes, account);
   }
 
+  const iso = (n: number | undefined) => (n === undefined ? {} : { v: new Date(n).toISOString() });
+  /** The last good read and, while a mark stands, the next try. */
+  const times = (account: string): Pick<AccountRow, 'lastOkAt' | 'retryAt'> => {
+    const ok = iso(health.lastOk(account)), retry = health.get(account) ? iso(health.retryAt(account)) : {};
+    return { ...('v' in ok ? { lastOkAt: ok.v } : {}), ...('v' in retry ? { retryAt: retry.v } : {}) };
+  };
   /** @req FR:connect-accounts/acct.list */
   async function accounts(): Promise<AccountRow[]> {
     const out: AccountRow[] = [];
@@ -264,7 +326,7 @@ export function createConnect(d: ConnectDeps): Connect {
         if (!t) continue;
         const account = (t.account ?? named).toLowerCase();
         const drafts = hasScope(t.scopes, 'Mail.ReadWrite');
-        out.push({ account, type: t.tenant === 'consumers' ? 'personal' : 'work', mail: drafts || hasScope(t.scopes, 'Mail.Read'), calendar: hasScope(t.scopes, 'Calendars.Read'), drafts, state: health.get(account) ?? 'connected' });
+        out.push({ account, type: t.tenant === 'consumers' ? 'personal' : 'work', mail: drafts || hasScope(t.scopes, 'Mail.Read'), calendar: hasScope(t.scopes, 'Calendars.Read'), drafts, state: health.get(account) ?? 'connected', ...times(account) });
       } catch {
         out.push({ account: named, type: tenantFor(named) === 'consumers' ? 'personal' : 'work', mail: false, calendar: false, drafts: false, state: 'error' });
       }

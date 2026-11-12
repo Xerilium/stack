@@ -55,9 +55,10 @@ test('nothing connected: never says Inbox zero; says No inboxes connected and sh
   await page.getByRole('button', { name: 'Connect: Email' }).click();
   const step = page.locator('.src-row[data-kind="email"] .src-step');
   await expect(step).toContainText('Read-only by default');
-  // The sign-in runs in the app: a Connect button, no command. @req FR:connect-accounts/web.nocmd @req FR:connect-accounts/web.where
+  // The sign-in runs in Settings > Accounts: a link there, no command. @req FR:connect-accounts/web.nocmd @req FR:connect-accounts/web.where
   await expect(step.locator('code')).toHaveCount(0);
-  await expect(step.getByTestId('connect-accounts')).toBeVisible();
+  await expect(step.getByTestId('src-settings')).toHaveAttribute('href', '#/settings/accounts');
+  await expect(step.getByTestId('connect-accounts')).toHaveCount(0);
   await expect(step.getByRole('link', { name: 'How to connect Email' })).toHaveAttribute('href', `${DOC}#email`);
   await page.getByRole('button', { name: 'Connect: GitHub' }).click();
   await expect(page.locator('.src-row[data-kind="github"] code')).toHaveText('gh auth login');
@@ -78,16 +79,17 @@ test('six mailboxes: each with its own state; an expired sign-in is the headline
   await expect(page.getByText('Inbox zero')).toHaveCount(0);
   await expect(page.getByTestId('empty-state')).toContainText('Email sign-in expired: me@contoso.test');
   await page.getByRole('button', { name: 'Fix: Email me@contoso.test' }).click();
-  // Fix opens the Connect panel, which signs the account in again with one click. @req FR:connect-accounts/web.where
-  await expect(state('me@contoso.test').getByTestId('connect-accounts')).toBeVisible();
+  // Fix points to Settings > Accounts, where one click signs the account in again. @req FR:connect-accounts/web.where
+  await expect(state('me@contoso.test').getByTestId('src-settings')).toHaveAttribute('href', '#/settings/accounts');
   await expect(state('me@contoso.test').locator('code')).toHaveCount(0);
 });
 
 test('a healthy mailbox keeps a way to manage accounts', async ({ page }) => {
   await open(page, six());
   // Add another account, drafts and disconnect stay reachable once mail works. @req FR:connect-accounts/web.where
-  await page.getByRole('button', { name: 'Manage accounts: Email a@outlook.com' }).click();
-  await expect(page.locator('.src-row[data-account="a@outlook.com"]').getByTestId('connect-accounts')).toBeVisible();
+  await page.getByRole('link', { name: 'Manage accounts in Settings: Email a@outlook.com' }).click();
+  await expect(page).toHaveURL(/#\/settings\/accounts$/);
+  await expect(page.getByTestId('settings')).toBeVisible();
 });
 
 test('stale only: says when it last synced, not Inbox zero', async ({ page }) => {
