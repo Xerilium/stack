@@ -4,6 +4,7 @@
  * @req FR:pr-page/group.@function @req FR:pr-page/state.@function @req FR:pr-page/state.why
  */
 import { PROJECTS, RULES, type SessionProject } from './session-inventory';
+import { checkBrief, type AskBrief } from './ask-brief';
 
 export const PR_GROUPS = ['blocked', 'waiting', 'processing', 'pending', 'paused'] as const;
 export type PrGroup = (typeof PR_GROUPS)[number];
@@ -25,7 +26,7 @@ export interface PrFacts {
   threads?: PrThread[]; comments?: PrComment[];
 }
 export interface PrReport { state?: string; worker?: string; blocker?: string; nextAction?: string; owner: string; headSha?: string; ts?: string; link?: string; bucket?: Bucket }
-export interface EscEntry { repo: string; number: number; url: string; title?: string; blocker?: string; context?: string; recommend?: string; link?: string; /** For the project chips. */ project?: SessionProject }
+export interface EscEntry { repo: string; number: number; url: string; title?: string; blocker?: string; context?: string; recommend?: string; link?: string; /** For the project chips. */ project?: SessionProject; /** @req FR:ask-briefs/brief.pr */ brief?: AskBrief }
 export interface Escalations { at?: string; blocked: EscEntry[]; enable: EscEntry[]; live: EscEntry[] }
 export interface PrRec { id: string; agent: string; reason: string; toRank?: number }
 export interface PrState { owner: Owner; login?: string; bucket?: Bucket; blocker: string; link: string; stalled: boolean; source: 'report' | 'rule'; key?: string; recommend?: string; replyTo?: number; /** The owner already answered this blocker (`stack pr-pri ack`). */ answered?: string }
@@ -315,6 +316,8 @@ function parseEntry(v: unknown, fields: Partial<Record<'blocker' | 'context' | '
   const e: EscEntry = { repo: m[1], number: Number(m[2]), url: o.pr as string, project: projectOfRepo(m[1]) };
   for (const [to, from] of Object.entries(fields)) { const t = line(o[from]); if (t) e[to as 'blocker'] = t; }
   const l = records.get(e.url.toLowerCase())?.link; if (l) e.link = l;
+  // The Sweep Manager's brief on a decision; a bad one is left out. @req FR:ask-briefs/brief.pr
+  const b = o.brief === undefined ? undefined : checkBrief(o.brief).brief; if (b) e.brief = b;
   return e;
 }
 

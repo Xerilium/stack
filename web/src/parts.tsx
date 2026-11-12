@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { parseInline, type Node } from './markdown';
+import { Linked } from './AskBrief';
 import { EFFORT, IMPACT, PRIORITY, STATUS, type Choice } from './row';
 
 export const GROUPS = {
@@ -13,7 +14,8 @@ export type GroupName = keyof typeof GROUPS;
 export const GROUP_NAMES = Object.keys(GROUPS) as GroupName[];
 
 const renderNode = (n: Node, i: number): ComponentChildren => {
-  if (typeof n === 'string') return n;
+  // References (PR urls, owner/repo#1, FH 1105) as links. @req FR:ask-briefs/link.web
+  if (typeof n === 'string') return <Linked key={i} text={n} />;
   if (n.t === 'code') return <code key={i}>{n.c}</code>;
   if (n.t === 'a') return <a key={i} href={n.href} rel="noopener noreferrer" target="_blank">{n.c}</a>;
   const kids = n.c.map(renderNode);

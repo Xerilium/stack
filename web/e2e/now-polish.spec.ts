@@ -1,9 +1,9 @@
 /** Now polish: an honest calendar line with Connect, ask cards that expand in place, two columns on wide screens, a named composer. */
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { mockApi, seed, type MockAsk } from './mock';
+import { BRIEF, mockApi, seed, type MockAsk } from './mock';
 
-const ask = (key: string, from: string, score: number, extra: Partial<MockAsk> = {}): MockAsk => ({ key, state: 'open', ask: `Ask ${key}`, kind: 'approve', from, reversible: true, priority: 'normal', blocks: 0, created: '2026-11-05T09:00:00Z', updated: '2026-11-05T09:00:00Z', score, overdue: false, recommend: 'Approve', ...extra });
+const ask = (key: string, from: string, score: number, extra: Partial<MockAsk> = {}): MockAsk => ({ brief: BRIEF, key, state: 'open', ask: `Ask ${key}`, kind: 'approve', from, reversible: true, priority: 'normal', blocks: 0, created: '2026-11-05T09:00:00Z', updated: '2026-11-05T09:00:00Z', score, overdue: false, recommend: 'Approve', ...extra });
 const ten = async (page: Page) => { const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.install({ time: d }); return d; };
 const at = (d: Date, h: number, mi = 0) => { const x = new Date(d); x.setHours(h, mi, 0, 0); return x.toISOString(); };
 const noScrollX = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);

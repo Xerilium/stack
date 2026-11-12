@@ -194,7 +194,9 @@ describe('route parity', () => {
       const s = resolve(rb.content['application/json'].schema);
       expect(s.type).toBe('object');
       expect(s.additionalProperties).toBe(false);
-      expect(Object.keys(s.properties).sort()).toEqual(Object.keys(route.body.schema).sort());
+      // asks.put also takes brief, an object the core checks (FR:ask-briefs/brief.api).
+      const nested = route.name === 'asks.put' ? ['brief'] : [];
+      expect(Object.keys(s.properties).sort()).toEqual([...Object.keys(route.body.schema), ...nested].sort());
       expect([...(s.required ?? [])].sort()).toEqual([...route.body.required].sort());
       for (const [k, spec] of Object.entries(route.body.schema)) expectSchema(spec, s.properties[k]);
     }

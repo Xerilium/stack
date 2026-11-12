@@ -3,6 +3,7 @@
  * @req FR:agent-thread/web.expand @req FR:agent-thread/web.hero @req FR:agent-thread/web.keys @req FR:agent-thread/web.a11y
  */
 import { useRef } from 'preact/hooks';
+import { Linked } from './AskBrief';
 import { actionsFor, type AskItem } from './asks';
 import { Composer } from './Composer';
 import { displayName } from './detail';
@@ -50,8 +51,8 @@ export function ThreadView({ t, th, team, now, focus = false }: { t: Task; th: T
           {items.map((i) => (
             <li key={i.kind === 'ask' ? i.ask.key : 'id' in i ? i.id : `${i.kind}-${i.at}`} class={`th-item ${i.kind}`}>
               <p class="th-meta">{whoLine(i, now, name)}</p>
-              {i.kind === 'owner' && <p class="th-text you">{i.text}</p>}
-              {i.kind === 'agent' && <p class="th-text">{i.text}</p>}
+              {i.kind === 'owner' && <p class="th-text you"><Linked text={i.text} /></p>}
+              {i.kind === 'agent' && <p class="th-text"><Linked text={i.text} /></p>}
               {i.kind === 'review' && <p class={`th-text verdict ${i.verdict}`}>{verdictLine(i)}</p>}
               {i.kind === 'ask' && <AskEntry a={i.ask} th={th} />}
             </li>

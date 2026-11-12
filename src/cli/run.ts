@@ -12,8 +12,9 @@ import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
   explainAutopri, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
-import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
-import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
+import { needsBrief } from '../core/ask-brief';
+import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, readAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
+import { briefWarnings, parseReport, pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { runInventory } from '../core/session-inventory';
 import { PRI_LINKS, PrisInvalid, PriStore, type Pri } from '../core/pris';
 import { PrPriConflict, PrPriInvalid, PrPriNotFound, PrPriorityStore } from '../core/pr-priority';
@@ -87,7 +88,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches)' },
-  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
+  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'brief-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --brief-file brief.json --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
   inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | sources [--json]', help: 'reply on a task as an agent (tasks/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), or show each inbox source and how to connect it' },
@@ -105,6 +106,13 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
 };
 
 interface Outcome { json: Record<string, unknown>; text: string; code?: number }
+
+/** A brief as JSON from a file; the core checks its fields. @req FR:ask-briefs/brief.cli */
+function readBriefFile(path: string): AskPut['brief'] {
+  let text: string;
+  try { text = readFileSync(resolve(path), 'utf8'); } catch { throw new UsageError(`Cannot read --brief-file: ${path}`); }
+  try { return JSON.parse(text.replace(/^\uFEFF/, '')) as AskPut['brief']; } catch { throw new UsageError('--brief-file is not valid JSON'); }
+}
 
 const VERBS: Record<string, string> = {
   start: 'started', complete: 'completed', skip: 'skipped', park: 'skipped', resume: 'resumed', suspend: 'suspended', set: 'set', add: 'added',
@@ -292,11 +300,16 @@ async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): 
         ...(s('applies') !== undefined ? { applies: s('applies')!.split('|').map((o) => o.trim()) } : {}),
         ...(yn !== undefined ? { reversible: yn === 'yes' } : {}),
         ...(detailFile ? { detail: readFileSync(detailFile, 'utf8') } : {}),
+        // @req FR:ask-briefs/brief.cli
+        ...(s('brief-file') ? { brief: readBriefFile(s('brief-file')!) } : {}),
         ...(f['reopen'] ? { reopen: true } : {}),
       };
       for (const k of Object.keys(input) as (keyof AskPut)[]) if (input[k] === undefined) delete input[k];
       const r = await putAsk(ctx, key, input, actor);
-      return { json: { ok: true, ...r }, text: r.key };
+      // Lint: an approve or decide ask with no brief is stored, with a warning. @req FR:ask-briefs/brief.lint
+      const stored = (await readAsk(ctx, key))?.ask;
+      const warn = stored && needsBrief(stored.kind, stored.brief) ? [`warning: ${key} (${stored.kind}) has no brief: the owner sees "No context yet". Add --brief-file.`] : [];
+      return { json: { ok: true, ...r, ...(warn.length ? { warnings: warn } : {}) }, text: [r.key, ...warn].join('\n') };
     }
     case 'list': {
       if (key) throw new UsageError(`Unexpected argument: ${key}`);
@@ -364,7 +377,9 @@ async function reportCmd(p: ReturnType<typeof parseArgs>, input: () => Promise<s
   }
   r ??= await new ReportStore(home).put(full);
   const answered = Object.keys(r.asks.answers ?? {}).length;
-  return { json: { ok: true, via, ...r }, text: `report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped${answered ? `, ${answered} answered (see --json)` : ''} (${via})` };
+  // Lint: approve asks with no brief are stored, with a clear warning; exit stays 0. @req FR:ask-briefs/brief.lint
+  const warnings = briefWarnings(parseReport(full)).map((w) => `warning: ${w}`);
+  return { json: { ok: true, via, ...r, ...(warnings.length ? { warnings } : {}) }, text: [`report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped${answered ? `, ${answered} answered (see --json)` : ''} (${via})`, ...warnings].join('\n') };
 }
 
 /** Owner feedback in the local store; no repo. @req FR:feedback-button/cli.add @req FR:feedback-button/cli.list @req FR:feedback-button/cli.done */

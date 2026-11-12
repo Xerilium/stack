@@ -1,6 +1,6 @@
 /** @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live @req FR:agent-team/web.chip.title @req FR:agent-team/web.talk @req FR:agent-team/web.anything @req FR:agent-team/web.review @req FR:agent-team/web.norunner @req FR:agent-team/web.keys @req FR:agent-team/web.a11y */
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi, type Mock, type MockTeamAgent } from './mock';
+import { BRIEF, mockApi, type Mock, type MockTeamAgent } from './mock';
 
 const team: MockTeamAgent[] = [
   { slug: 'cos', name: 'CoS', role: 'Roll-up', scope: ['*'], mode: 'long-running', prompt: '', defined: true, source: 'claude', projects: ['alpha', 'beta'] },
@@ -129,7 +129,7 @@ test.describe('Agent team', () => {
   test('an ask card has the agent too: a opens the composer about the ask', async ({ page }) => {
     const m = await mockApi(page);
     m.team = team; m.sessions = [];
-    m.asks = [{ key: 'pr-1', state: 'open', ask: 'Approve merging PR 879', kind: 'approve', from: 'alpha-lead', project: 'alpha', reversible: false, priority: 'normal', blocks: 0, created: new Date().toISOString(), updated: new Date().toISOString(), score: 30, rank: 1, overdue: false }];
+    m.asks = [{ brief: BRIEF, key: 'pr-1', state: 'open', ask: 'Approve merging PR 879', kind: 'approve', from: 'alpha-lead', project: 'alpha', reversible: false, priority: 'normal', blocks: 0, created: new Date().toISOString(), updated: new Date().toISOString(), score: 30, rank: 1, overdue: false }];
     await page.goto('/#/asks');
     await expect(page.locator('.ask-card')).toBeVisible();
     await expect(page.locator('.ask-card .agent-chip')).toHaveText('Talk'); // the author is the agent: no repeated name

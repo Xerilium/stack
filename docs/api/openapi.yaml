@@ -161,6 +161,12 @@ paths:
                               - reject
                         decide:
                           type: string
+                        from:
+                          type: string
+                        askKind:
+                          type: string
+                        brief:
+                          $ref: "#/components/schemas/Brief"
                         answer:
                           type: object
                           properties:
@@ -170,6 +176,7 @@ paths:
                                 - go
                                 - defer
                                 - reply
+                                - context
                             text:
                               type: string
                             until:
@@ -181,7 +188,7 @@ paths:
           $ref: "#/components/responses/Error"
   /needs-you/{id}/answer:
     post:
-      summary: "Record the owner's answer on a need (go, defer, reply) or clear it (undo). Owner session only: 403 for tokens"
+      summary: "Record the owner's answer on a need (go, defer, reply, context: ask the agent for a brief) or clear it (undo). Owner session only: 403 for tokens"
       operationId: answerNeed
       parameters:
         - name: id
@@ -205,6 +212,7 @@ paths:
                     - go
                     - defer
                     - reply
+                    - context
                     - undo
                 text:
                   type: string
@@ -1036,7 +1044,7 @@ paths:
           $ref: "#/components/responses/Error"
   /asks/{key}:
     post:
-      summary: Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys
+      summary: Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys. Send brief (see Brief) with every approve or decide ask
       operationId: putAsk
       parameters:
         - name: key
@@ -1149,6 +1157,8 @@ paths:
                     type: string
                     maxLength: 200
                   description: One action per option (- for none)
+                brief:
+                  $ref: "#/components/schemas/Brief"
       responses:
         "200":
           description: Written
@@ -1308,6 +1318,7 @@ paths:
                                 - go
                                 - defer
                                 - reply
+                                - context
                             text:
                               type: string
                             until:
@@ -3720,6 +3731,38 @@ components:
                 type: string
               reason:
                 type: string
+    Brief:
+      type: object
+      additionalProperties: false
+      required:
+        - problem
+        - solution
+        - risks
+        - recommendation
+      description: 'Context for an approve or decide ask: at most 120 words in all and 25 words per sentence (Simplified Technical English). An approve or decide ask without one shows "No context yet". See docs/asks.md'
+      properties:
+        problem:
+          type: string
+          maxLength: 400
+        solution:
+          type: string
+          maxLength: 400
+        recommendation:
+          type: string
+          maxLength: 400
+        risks:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            type: string
+            maxLength: 400
+        evidence:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            pattern: ^https://
     ReportItem:
       type: object
       additionalProperties: false
@@ -3804,6 +3847,8 @@ components:
                   - high
                   - normal
                   - low
+              brief:
+                $ref: "#/components/schemas/Brief"
         blockers:
           type: array
           maxItems: 10
@@ -4088,6 +4133,8 @@ components:
           $ref: "#/components/schemas/Ref"
         task:
           type: string
+        brief:
+          $ref: "#/components/schemas/Brief"
     TeamAgent:
       type: object
       properties:

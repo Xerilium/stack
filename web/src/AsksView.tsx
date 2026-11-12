@@ -6,7 +6,9 @@
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { actionsFor, deadline, freshness, ifSilent, splitTop, type Action, type AskItem } from './asks';
+import { actionsFor, deadline, freshness, ifSilent, needsContext, splitTop, type Action, type AskItem } from './asks';
+import { BriefBlock, ConfirmAct, Linked } from './AskBrief';
+import { repoFor, repoMap } from './autolink';
 import { blockedHelp } from './notify';
 import { Md } from './parts';
 import { parseRow } from './row';
@@ -64,6 +66,7 @@ function DeadlineChip({ by, now, long }: { by?: string; now: Date; long?: boolea
 
 /** What the owner would do with this ask, so the list can be triaged without opening each row. */
 function verbOf(a: AskItem): string | undefined {
+  if (needsContext(a)) return 'No context'; // @req FR:ask-briefs/web.none
   const p = actionsFor(a).find((x) => x.primary)?.label;
   return { approve: p, decide: 'Decide', review: 'Review', 'go-do': 'Do', answer: 'Answer' }[a.kind];
 }
@@ -91,6 +94,8 @@ function Btn({ a, act, run, panel }: { a: Action; act: AskItem; run: (x: Action)
   if (willText && !a.open) return <button type="button" class={`${cls} will`} onClick={() => run(a)} aria-keyshortcuts={a.key}><span>{a.label}{tag}<kbd aria-hidden="true">{key}</kbd></span><small>{willText}</small></button>;
   if (a.open && act.source !== 'task') return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer" aria-keyshortcuts="o">{a.label} {Icon.out}<kbd aria-hidden="true">{a.key}</kbd></a>;
   if (a.open) return <button type="button" class="btn quiet" onClick={() => run(a)} aria-keyshortcuts="o">{a.label}<kbd aria-hidden="true">{a.key}</kbd></button>;
+  // Going ahead without context takes a second tap. @req FR:ask-briefs/web.anyway
+  if (a.confirm) return <ConfirmAct label={a.label} confirmLabel="Confirm: no context" cls="btn quiet" onConfirm={() => run(a)} />;
   return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd aria-hidden="true">{key}</kbd>}</button>;
 }
 
@@ -106,6 +111,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
   const isAnswer = a.kind === 'answer';
   const flow = flowOf(a);
   const replying = (asks.panel === 'reply' || isAnswer) && asks.panel !== 'defer';
+  const repo = repoFor(a.link, a.project, repoMap());
   return (
     <li class={`ask-li${asks.fresh.has(a.key) ? ' fresh' : ''}`} data-key={a.key}>
       <article class="ask-card" data-kind={a.kind} data-panel={asks.panel} aria-label={`Ask ${n} of ${total}`}>
@@ -119,15 +125,16 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
           <DeadlineChip by={a.by} now={asks.now} long />
         </div>
         {flow && <div class="flow-bar" role="progressbar" aria-label="Triage progress" aria-valuemin={0} aria-valuemax={flow.total} aria-valuenow={flow.done}><span style={{ width: `${(flow.done / Math.max(1, flow.total)) * 100}%` }} /></div>}
-        <h2 class="ask-title">{a.ask}</h2>
+        <h2 class="ask-title"><Linked text={a.ask} repo={repo} /></h2>
         {/* The task the ask belongs to: opens it (focus mode carries the thread). @req FR:agent-thread/ask.cli */}
-        {a.row && a.source !== 'task' && <a class="ask-task" href={`#/list?project=${encodeURIComponent(a.row.slice(0, a.row.lastIndexOf(':')))}`} onClick={(e) => { e.preventDefault(); asks.openTask(a.row!); }} title="Open the task">↗ {a.task ? <Md text={parseRow(a.task).title || a.task} /> : a.row}</a>}
-        {a.why && <p class="ask-why">{a.why}</p>}
+        {a.row && a.source !== 'task' && <a class="ask-task" href={`#/list?project=${encodeURIComponent(a.row.slice(0, a.row.lastIndexOf(':')))}`} onClick={(e) => { e.preventDefault(); asks.openTask(a.row!); }} title="Open the task">↗ {a.task ? <Md text={parseRow(a.task).title || a.task} links={false} /> : a.row}</a>}
+        {a.why && <p class="ask-why"><Linked text={a.why} repo={repo} /></p>}
+        <BriefBlock brief={a.brief} missing={needsContext(a)} from={a.from} repo={repo} />
         {a.refText && <p class="ask-row-target" title="The task this answer changes">on <span>{a.refText}</span></p>}
-        {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
+        {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong><Linked text={a.agentReply} repo={repo} /></p>}
         {talk?.render(a)}
         <dl class="ask-facts">
-          {showRec && <div><dt>Recommend</dt><dd>{a.recommend}</dd></div>}
+          {showRec && <div><dt>Recommend</dt><dd><Linked text={a.recommend!} repo={repo} /></dd></div>}
           <div class={silent.waits ? 'waits' : ''}><dt class="sr-only">Default</dt><dd class="silent">{Icon.hourglass}<span>{silent.text}</span></dd></div>
         </dl>
         {asks.panel === 'defer' ? (
@@ -206,7 +213,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, a
       const will = x.send.answer === 'go' && a.apply ? a.apply : x.send.answer === 'option' && a.applies && a.options ? a.applies[a.options.indexOf(x.send.text ?? '')] : undefined;
       const f = flowOf(a);
       const last = f ? asks.itemsRef.current.filter((x) => x.flow === f.flow).length <= 1 && !asks.snoozed.some((x) => x.flow === f.flow) : false; // the flow's last open question, none deferred
-      const text = will && will !== '-' ? changeText(will, a.ask) : x.send.answer === 'option' ? `Sent to ${a.from}: ${x.send.text}` : `${ANSWER_WORD[x.send.answer] ?? 'Sent'} · ${a.from} has it`;
+      const text = x.context ? `Asked ${a.from} for context` : will && will !== '-' ? changeText(will, a.ask) : x.send.answer === 'option' ? `Sent to ${a.from}: ${x.send.text}` : `${ANSWER_WORD[x.send.answer] ?? 'Sent'} · ${a.from} has it`;
       void asks.answer(a, x.send, last ? `Triage done · ${f!.total} answered` : text, !(will && will !== '-'));
     }
   };

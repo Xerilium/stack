@@ -7,6 +7,7 @@ import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from '
 import { homedir } from 'os';
 import { join } from 'path';
 import type { AskKind, AskPriority } from './asks';
+import { checkBrief, needsBrief, type AskBrief } from './ask-brief';
 import type { Need, NeedAnswer, NeedAnswerInput } from './needs-you';
 import { NotFoundError } from './storage';
 import { pidAlive, withFileLock, writeAtomic } from './file-lock';
@@ -25,6 +26,8 @@ export interface ReportItem { text: string; link?: string }
 export interface ReportAsk {
   id: string; ask: string; link: string; by: string; kind: (typeof REPORT_ASK_KINDS)[number];
   recommend?: string; why?: string; default?: string; priority?: AskPriority;
+  /** @req FR:ask-briefs/brief.report */
+  brief?: AskBrief;
 }
 export interface ReportInput { agent: string; project: string; top: ReportItem[]; asks: ReportAsk[]; blockers: ReportItem[]; progress: ReportItem[] }
 /** One stored report. @req FR:status-ingest/$report */
@@ -112,13 +115,24 @@ export function parseReport(body: unknown): ReportInput {
     const recommend = text(`${f}.recommend`, raw.recommend, 200, false);
     const why = text(`${f}.why`, raw.why, 500, false);
     const dflt = text(`${f}.default`, raw.default, 200, false);
-    unknown(f, raw, ['id', 'ask', 'link', 'by', 'kind', 'recommend', 'why', 'default', 'priority']);
+    // @req FR:ask-briefs/brief.report @req FR:ask-briefs/brief.validate
+    let brief: AskBrief | undefined;
+    if (raw.brief !== undefined) { const b = checkBrief(raw.brief, `${f}.brief`); issues.push(...b.issues); brief = b.brief; }
+    unknown(f, raw, ['id', 'ask', 'link', 'by', 'kind', 'recommend', 'why', 'default', 'priority', 'brief']);
     if (!id || !ask || !l || !by) return [];
-    return [{ id, ask, link: l, by, kind, ...(recommend ? { recommend } : {}), ...(why ? { why } : {}), ...(dflt ? { default: dflt } : {}), ...(priority ? { priority } : {}) }];
+    return [{ id, ask, link: l, by, kind, ...(recommend ? { recommend } : {}), ...(why ? { why } : {}), ...(dflt ? { default: dflt } : {}), ...(priority ? { priority } : {}), ...(brief ? { brief } : {}) }];
   });
   const blockers = items('blockers'); const progress = items('progress');
   if (issues.length || !agent || !project) throw new ReportInvalid(issues);
   return { agent, project, top, asks, blockers, progress };
+}
+
+/**
+ * Lint: approve asks sent with no brief. Never an error: the report is stored; the owner sees "No context yet".
+ * @req FR:ask-briefs/brief.lint
+ */
+export function briefWarnings(r: Pick<ReportInput, 'asks'>): string[] {
+  return r.asks.filter((a) => needsBrief(a.kind, a.brief)).map((a) => `asks ${a.id} (${a.kind}) has no brief: the owner sees "No context yet" and cannot go with it. Add brief {problem, solution, risks, recommendation, evidence}.`);
 }
 
 /** `~/.stack`, or `STACK_HOME` when set: live state owned by the desktop host, never in git. @req FR:status-ingest/store.path */
@@ -212,6 +226,8 @@ export class ReportStore {
     return this.list().flatMap((r) => r.asks.filter((a) => typeof a?.key === 'string').map((a): Need => ({
       id: a.key, title: a.ask, recommendation: a.recommend ?? 'Open the link and decide', link: a.link, project: r.project,
       ...(a.default ? { default: a.default } : {}), ...(a.by ? { by: a.by } : {}), ...(a.answer ? { answer: a.answer } : {}),
+      // Who asks, what kind, and the brief, so the page can ask that agent for context. @req FR:ask-briefs/brief.needs
+      from: r.agent, askKind: a.kind, ...(a.brief ? { brief: a.brief } : {}),
     })));
   }
 

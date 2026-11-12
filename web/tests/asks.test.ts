@@ -1,10 +1,10 @@
 /** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/live.quiet */
 import { describe, expect, it } from 'vitest';
-import { actionsFor, deadline, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
+import { actionsFor, CONTEXT_ASK, needsContext, deadline, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
 
 const at = (h: number, m = 0, d = 28) => new Date(2026, 9, d, h, m);
 const ask = (o: Partial<AskItem> = {}): AskItem => ({
-  key: 'a', state: 'open', ask: 'Approve merging PR 879', kind: 'approve', from: 'allyte-cos', reversible: false, priority: 'normal', blocks: 0,
+  brief: { problem: 'p', solution: 's', risks: ['r'], recommendation: 'go' }, key: 'a', state: 'open', ask: 'Approve merging PR 879', kind: 'approve', from: 'allyte-cos', reversible: false, priority: 'normal', blocks: 0,
   created: '2026-10-28T10:00:00Z', updated: '2026-10-28T10:00:00Z', score: 30, overdue: false, ...o,
 });
 
@@ -114,5 +114,45 @@ describe('list helpers', () => {
     expect(freshness(new Date(now.getTime() - 3 * 3600_000).toISOString(), now)).toBe('3 h ago');
     expect(freshness(new Date(now.getTime() - 2 * 86400_000).toISOString(), now)).toBe('2 d ago');
     expect(freshness(undefined, now)).toBe('never');
+  });
+});
+
+// @req FR:ask-briefs/web.none @req FR:ask-briefs/web.context @req FR:ask-briefs/web.anyway
+describe('asks without a brief', () => {
+  const bare = (o: Partial<AskItem> = {}) => ask({ brief: undefined, ...o });
+  it('needsContext: agent approve and decide asks with no brief; never task rows, PR recs, live checks, or other kinds', () => {
+    expect(needsContext(bare())).toBe(true);
+    expect(needsContext(bare({ kind: 'decide', options: ['A', 'B'] }))).toBe(true);
+    expect(needsContext(ask())).toBe(false);
+    expect(needsContext(bare({ kind: 'review' }))).toBe(false);
+    expect(needsContext(bare({ source: 'task' }))).toBe(false);
+    expect(needsContext(bare({ source: 'need', key: 'need:x' }))).toBe(true);
+    expect(needsContext(bare({ source: 'need', key: 'need:rp.a.p.x', askKind: 'review' }))).toBe(false);
+    expect(needsContext(bare({ source: 'need', key: 'need:pp.x', decide: '/pr-priority/x' }))).toBe(false);
+    expect(needsContext(bare({ source: 'need', key: 'need:lv.x' }))).toBe(false);
+  });
+
+  it('the primary action asks the agent for context; going ahead needs a confirm and has no key', () => {
+    const a = actionsFor(bare({ link: 'https://github.com/o/r/pull/1' }));
+    expect(a.map((x) => x.id)).toEqual(['context', 'anyway', 'open']);
+    expect(a[0]).toMatchObject({ label: 'Ask allyte-cos for context', key: 'Enter', primary: true, context: true, send: { answer: 'ask', text: CONTEXT_ASK } });
+    expect(a[1]).toMatchObject({ label: 'Go with it anyway', key: '', confirm: true, send: { answer: 'go' } });
+    expect(a.some((x) => x.primary && x.id !== 'context')).toBe(false);
+  });
+
+  it('a decide ask goes with the recommended option anyway; none recommended, no anyway', () => {
+    expect(actionsFor(bare({ kind: 'decide', options: ['Friday', 'Monday'], recommend: 'monday' }))[1]).toMatchObject({ label: 'Go with "Monday" anyway', send: { answer: 'option', text: 'Monday' } });
+    expect(actionsFor(bare({ kind: 'decide', options: ['Friday', 'Monday'] })).map((x) => x.id)).toEqual(['context']);
+  });
+
+  it('a need with no brief asks its agent, by name', () => {
+    expect(actionsFor(bare({ source: 'need', key: 'need:rp.xe-cos.stack.a', from: 'xe-cos' }))[0].label).toBe('Ask xe-cos for context');
+  });
+});
+
+describe('quick triage is exempt', () => {
+  // @req FR:ask-briefs/web.none
+  it('a triage question with no brief keeps its own actions', () => {
+    expect(needsContext(ask({ brief: undefined, flow: 'triage-1', apply: 'complete' }))).toBe(false);
   });
 });

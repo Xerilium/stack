@@ -25,6 +25,7 @@ import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write'
 import { QueueRefused, QueueUnavailable, type PrQueue } from './pr-queue';
 import { ITEM_OPS, LiveError, type ItemOp, type LiveStore } from '../core/live-lane';
 import { briefViews, type BriefStore, type FactsStore } from '../core/pr-review';
+import { checkBrief } from '../core/ask-brief';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
@@ -251,7 +252,7 @@ const ASK_ANSWER_BODY = {
   required: ['answer'],
 };
 const NEED_ANSWER_BODY = {
-  schema: { choice: { t: 'enum', values: ['go', 'defer', 'reply', 'undo'] }, text: { t: 'str', max: 1000, line: true }, until: { t: 'str', max: 40, line: true } } satisfies Record<string, Spec>,
+  schema: { choice: { t: 'enum', values: ['go', 'defer', 'reply', 'context', 'undo'] }, text: { t: 'str', max: 1000, line: true }, until: { t: 'str', max: 40, line: true } } satisfies Record<string, Spec>,
   required: ['choice'],
 };
 const PR_PRI_BODY = {
@@ -529,7 +530,9 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       ownerOnly(c, 'Only the owner can answer a need');
-      const b = validate<{ choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }>(await readBody(c.req), NEED_ANSWER_BODY.schema, NEED_ANSWER_BODY.required);
+      const b = validate<{ choice: 'go' | 'defer' | 'reply' | 'context' | 'undo'; text?: string; until?: string }>(await readBody(c.req), NEED_ANSWER_BODY.schema, NEED_ANSWER_BODY.required);
+      // Ask for context: only report asks and CoS items carry a brief. @req FR:ask-briefs/context.need
+      if (b.choice === 'context' && (c.params[0].startsWith('pp.') || c.params[0].startsWith('lv.'))) throw new ApiError('bad_request', 'This item has no brief to ask for; reply instead');
       if (b.choice === 'defer' && (!b.until || Number.isNaN(Date.parse(b.until)))) throw invalid([{ field: 'until', message: 'Required for defer: an ISO date or time' }]);
       if (b.choice === 'reply' && !b.text?.trim()) throw invalid([{ field: 'text', message: 'Required for reply' }]);
       // @req FR:status-ingest/needs.answer
@@ -735,7 +738,10 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/asks/{key}', name: 'asks.put', body: ASK_PUT_BODY,
     async run(c) {
       noQuery(c);
-      const { ref, ...b } = validate<AskPut & { ref?: ReturnType<typeof parseRef> }>(await readBody(c.req), ASK_PUT_BODY.schema, ASK_PUT_BODY.required);
+      // The brief is an object: core checks it (`checkBrief`), the flat schema checks the rest. @req FR:ask-briefs/brief.api
+      const { brief, ...raw } = await readBody(c.req);
+      const { ref, ...b } = validate<AskPut & { ref?: ReturnType<typeof parseRef> }>(raw, ASK_PUT_BODY.schema, ASK_PUT_BODY.required);
+      if (brief !== undefined) { const r = checkBrief(brief); if (!r.brief) throw invalid(r.issues); b.brief = r.brief; }
       // A token names its agent (the token's name); the owner session writes as `owner`.
       const actor = caller(c.req).actor;
       // `perm-*` asks belong to the permission broker: a token rewriting one could make the owner approve a misdescribed tool call.

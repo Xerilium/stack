@@ -6,6 +6,8 @@
  * @req FR:pr-page/act.accept @req FR:pr-page/act.thread @req FR:pr-page/act.rec @req FR:pr-page/act.set @req FR:pr-page/act.never @req FR:pr-page/state.view
  */
 import type { ComponentChildren } from 'preact';
+import { BriefBlock, ConfirmAct, Linked } from './AskBrief';
+import { CONTEXT_ASK } from './asks';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
 import {
@@ -304,7 +306,9 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
         </div>
         <div class="pr-meta"><span>{refOf(e)}</span></div>
         {e.blocker && <div class="pr-state"><span class="pr-owner me">You</span>{e.link ? <a class="pr-blocker" href={e.link} target="_blank" rel="noopener noreferrer" aria-label={`Open thread: ${e.blocker}`}>{clip(e.blocker, 90)}</a> : <span class="pr-blocker">{clip(e.blocker, 90)}</span>}</div>}
-        {e.context && <p class="pr-context">{clip(e.context, 160)}</p>}
+        {e.context && <p class="pr-context"><Linked text={clip(e.context, 160)} repo={e.repo} /></p>}
+        {/* A decision shows its brief, or No context yet. @req FR:ask-briefs/web.pr */}
+        {kind === 'blocked' && <BriefBlock brief={e.brief} missing={!e.brief} from="The Sweep Manager" repo={e.repo} />}
         {kind === 'blocked' && (
           <label class="pr-answer" for={id}><span class="sr-only">Answer for {refOf(e)}</span>
             <input id={id} type="text" value={answer} placeholder="Your answer" onInput={(x) => setAnswers((a) => ({ ...a, [e.url]: (x.target as HTMLInputElement).value }))} />
@@ -312,7 +316,10 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
         )}
         <div class="pr-actions">
           {kind === 'blocked' && <>
-            {board?.queue && <button type="button" class="btn primary" disabled={busy || !answer.trim()} onClick={() => void accept({ ...e, thread }, answer)}>Accept</button>}
+            {board?.queue && !e.brief && <button type="button" class="btn primary" disabled={busy} onClick={() => void accept({ ...e, thread }, CONTEXT_ASK)}>Ask for context</button>}
+            {board?.queue && (e.brief
+              ? <button type="button" class="btn primary" disabled={busy || !answer.trim()} onClick={() => void accept({ ...e, thread }, answer)}>Accept</button>
+              : <ConfirmAct label="Accept anyway" confirmLabel="Confirm: no context" cls="btn" disabled={busy || !answer.trim()} onConfirm={() => void accept({ ...e, thread }, answer)} />)}
             <button type="button" class={`btn${board?.queue ? '' : ' primary'}`} disabled={busy || !answer.trim()} onClick={() => setSheet({ kind: 'reply', e: { ...e, thread, ...(replyToOf(e.link) ? { replyTo: replyToOf(e.link) } : {}) }, answer, post: true })}>{board?.queue ? 'Accept and reply…' : 'Reply on GitHub…'}</button>
           </>}
           {kind === 'enable' && <button type="button" class="btn primary" disabled={busy} onClick={() => setSheet({ kind: 'label', row: e, op: 'add' })}>Apply Autopilot</button>}

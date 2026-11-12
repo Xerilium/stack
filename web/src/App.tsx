@@ -26,7 +26,8 @@ import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
 import { PrsButton, PrsFlyoutHost } from './PrsPanel';
 import { FeedbackButton, FeedbackHost, feedbackActive } from './FeedbackPanel';
-import { actionsFor, type AskItem, type DeferChoice, type Send } from './asks';
+import { actionsFor, CONTEXT_ASK, type AskItem, type DeferChoice, type Send } from './asks';
+import { repoMapOf, setRepoMap } from './autolink';
 import { isFresh, sourceOf, type CalSource } from './calsource';
 import { postStep, waitForHost, type Fetch } from './onboarding';
 import { changeText } from './triage';
@@ -117,6 +118,8 @@ export function App() {
   const [{ view, filters }, setNav] = useState(() => parseHash(location.hash));
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  // References like "FH 1105" link through each project's Repository and aliases. @req FR:ask-briefs/link.repo
+  useMemo(() => setRepoMap(repoMapOf(projects)), [projects]);
   const [next, setNext] = useState<NextTask | null>(null);
   /** The server's ranking: Home draws this and nothing else. @req FR:web-app/now.active */
   const [ranked, setRanked] = useState<RankItem[]>([]);
@@ -405,7 +408,7 @@ export function App() {
       // Same guard as Needs you: an answer that changes a task (apply/applies) has no Undo. @req FR:quick-triage/web.undo
       const will = x.answer === 'go' && a.apply ? a.apply : x.answer === 'option' && a.applies && a.options ? a.applies[a.options.indexOf(x.text ?? '')] : undefined;
       const changes = !!will && will !== '-';
-      void asks.answer(a, x, changes ? changeText(will!, a.ask) : x.answer === 'option' ? `Sent to ${a.from}: ${x.text}` : `Sent to ${a.from}`, !changes);
+      void asks.answer(a, x, changes ? changeText(will!, a.ask) : x.text === CONTEXT_ASK ? `Asked ${a.from} for context` : x.answer === 'option' ? `Sent to ${a.from}: ${x.text}` : `Sent to ${a.from}`, !changes);
     },
     reply: (a: AskItem, text: string) => void asks.reply(a, text),
     defer: (a: AskItem, c: DeferChoice) => void asks.defer(a, c.at, c.label),
@@ -596,6 +599,13 @@ export function App() {
     // A blocked live check: Go or a reply reopens it for the agent; it has no defer and no undo. @req FR:pr-review-lane/lane.needs
     const live = id.startsWith('lv.');
     if (live && s.answer === 'defer') throw new Error('A blocked live check cannot be deferred: answer it or reply');
+    // Ask for context: the agent sees a context answer and sends a brief; the item comes back with it. @req FR:ask-briefs/context.need
+    if (s.text === CONTEXT_ASK) {
+      await api.answerNeed(id, { choice: 'context' });
+      setNeeds(await api.needs());
+      toast(`Asked ${a.from} for context`, 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
+      return;
+    }
     const body = s.answer === 'defer' && s.until ? { choice: 'defer' as const, until: s.until }
       : s.answer === 'go' || s.answer === 'done' ? { choice: 'go' as const }
         : { choice: 'reply' as const, text: s.text || (s.answer === 'no' ? 'No' : 'Noted') };

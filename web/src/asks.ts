@@ -2,6 +2,8 @@
  * Pure logic for the Asks view: deadline wording, actions per kind, defer choices, cursor and diff helpers.
  * @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/live.quiet
  */
+import type { Brief } from './AskBrief';
+
 export type AskKind = 'approve' | 'decide' | 'review' | 'go-do' | 'answer';
 export type AnswerKind = 'go' | 'no' | 'option' | 'reply' | 'ask' | 'done' | 'defer' | 'retract';
 export interface AskItem {
@@ -18,6 +20,8 @@ export interface AskItem {
   decide?: string;
   /** Quick triage: the flow and its progress; what Stack applies on the answer. @req FR:quick-triage/web.stepper */
   flow?: string; seq?: number; flowTotal?: number; flowDone?: number; apply?: string; applies?: string[]; refText?: string;
+  /** The context for the owner; the kind the agent sent (a need only). @req FR:ask-briefs/web.brief */
+  brief?: Brief; askKind?: string;
 }
 export interface AskList { items: AskItem[]; total: number; latest?: string }
 export interface Send { answer: AnswerKind; text?: string; until?: string }
@@ -45,11 +49,43 @@ export function ifSilent(a: Pick<AskItem, 'reversible' | 'default'>): { text: st
   return a.reversible && a.default ? { text: `If silent: ${a.default}`, waits: false } : { text: 'No default: waits for you', waits: true };
 }
 
-export interface Action { id: string; label: string; key: string; primary?: boolean; send?: Send; open?: boolean; reply?: boolean }
+export interface Action {
+  id: string; label: string; key: string; primary?: boolean; send?: Send; open?: boolean; reply?: boolean;
+  /** Asks the agent for a brief. @req FR:ask-briefs/web.context */
+  context?: boolean;
+  /** Needs a second tap (going ahead without context). @req FR:ask-briefs/web.anyway */
+  confirm?: boolean;
+}
+
+/** What "Ask for context" sends the agent. @req FR:ask-briefs/web.context */
+export const CONTEXT_ASK = 'Send a brief before I decide: problem, proposed solution, risks, recommendation, and evidence links.';
+
+/**
+ * An agent ask of kind approve or decide with no brief: the owner cannot see why. A 🙋 row is the owner's own task (its
+ * row is the context); PR priority recommendations and blocked live checks carry their own reason.
+ * @req FR:ask-briefs/web.none
+ */
+export function needsContext(a: Pick<AskItem, 'kind' | 'brief' | 'source' | 'askKind' | 'decide' | 'key' | 'flow'>): boolean {
+  // Quick triage questions are about the owner's own rows, shown on the card (FR:quick-triage). 
+  if (a.brief || a.source === 'task' || a.flow || a.decide || a.key.startsWith('need:lv.')) return false;
+  const kind = a.source === 'need' ? (a.askKind ?? 'approve') : a.kind;
+  return kind === 'approve' || kind === 'decide';
+}
+
+/** Without context, the primary action asks the agent for it; going ahead stays possible behind a confirm. @req FR:ask-briefs/web.context @req FR:ask-briefs/web.anyway */
+function contextActions(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'from'>, open: Action[]): Action[] {
+  const ask: Action = { id: 'context', label: `Ask ${a.from} for context`, key: 'Enter', primary: true, context: true, send: { answer: 'ask', text: CONTEXT_ASK } };
+  const rec = a.kind === 'decide' ? (a.options ?? []).find((o) => o.toLowerCase() === a.recommend?.trim().toLowerCase()) : undefined;
+  const go: Action | null = a.kind === 'decide'
+    ? (rec ? { id: 'anyway', label: `Go with "${rec}" anyway`, key: '', confirm: true, send: { answer: 'option', text: rec } } : null)
+    : { id: 'anyway', label: 'Go with it anyway', key: '', confirm: true, send: { answer: 'go' } };
+  return [ask, ...(go ? [go] : []), ...open];
+}
 
 /** Buttons for an ask by kind. `Enter` is always the primary action. */
-export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'>): Action[] {
+export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'> & Partial<Pick<AskItem, 'brief' | 'askKind' | 'decide' | 'key' | 'from' | 'flow'>>): Action[] {
   const open: Action[] = a.link ? [{ id: 'open', label: 'Open', key: 'o', open: true }] : [];
+  if (needsContext({ key: '', ...a }) && a.from) return contextActions({ ...a, from: a.from }, open);
   const rec = a.recommend?.trim().toLowerCase();
   // A CoS escalation: go with her recommendation, or open the link; Defer and Reply stay as for any ask. @req FR:ask-queue/needs.web.card
   if (a.source === 'need') return [{ id: 'go', label: 'Go with it', key: 'Enter', primary: true, send: { answer: 'go' } }, ...open];
