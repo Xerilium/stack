@@ -5,13 +5,15 @@
 
 export type RowOwner = 'me' | 'agent' | 'mixed';
 
-const HUMAN = /🙋/u;
-const AGENT = /🪄|🤖(?!:)/u;
+/** The owner's mark. */
+export const HUMAN_MARK = /🙋/u;
+/** An agent's mark: 🪄, or 🤖 that is not the `🤖:level` autonomy marker. */
+export const AGENT_MARK = /🪄|🤖(?!:)/u;
 
 /** The owner a row's own marks give; undefined when it has none. */
 export function markOf(text: string): RowOwner | undefined {
-  const me = HUMAN.test(text);
-  const agent = AGENT.test(text);
+  const me = HUMAN_MARK.test(text);
+  const agent = AGENT_MARK.test(text);
   return me && agent ? 'mixed' : me ? 'me' : agent ? 'agent' : undefined;
 }
 

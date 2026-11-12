@@ -5,6 +5,7 @@
 import { EFFORT, IMPACT, PRIORITY, SPECIAL, STATUS, type LifecycleContext } from './lifecycle';
 import { currentRows, listInbox, taskTitle, type ListedEntry } from './inbox';
 import { parseProject, type Task } from './parser';
+import { AGENT_MARK, HUMAN_MARK } from './owner';
 import { NotFoundError } from './storage';
 import { logName } from './triage';
 
@@ -41,9 +42,8 @@ export function prLinks(texts: string[]): PrRef[] {
   return out;
 }
 
-/** 🤖 as an agent mark (not the `🤖:level` autonomy marker), or 🪄. */
-const isAgent = (text: string) => has(text, '🪄') || /🤖(?!:)/u.test(text);
-const isHuman = (text: string) => has(text, '🙋');
+const isAgent = (text: string) => AGENT_MARK.test(text);
+const isHuman = (text: string) => HUMAN_MARK.test(text);
 const isActive = (section: string) => /active/i.test(section) || section.includes('🔄');
 const titleOf = (text: string) => {
   let t = taskTitle(text).replace(VS, '');

@@ -60,6 +60,12 @@ describe('owner queue', () => {
     const r = titles(await rankStack(mem({ 'tasks/allyte.md': ALLYTE }), AT, undefined, ANY));
     expect(r.some((t) => /Review and send the launch post/.test(t))).toBe(false);
   });
+  // @req FR:task-lifecycle/rank.owner
+  it('a mixed ancestor is skipped: an unmarked row takes the next marked ancestor, else the owner', async () => {
+    const f = `# X\n\n## 🔄 Active\n\n- [ ] 🤖 Agent epic\n  - [ ] 🙋 🤖 Mixed step\n    - [ ] Unmarked under mixed under agent\n- [ ] 🙋 🤖 Mixed top\n  - [ ] Unmarked under mixed only\n`;
+    const r = titles(await rankStack(mem({ 'tasks/x.md': f }), AT, undefined, ANY));
+    expect(r).toEqual(['Unmarked under mixed only']);
+  });
   // @req FR:task-lifecycle/rank.owner @req FR:task-lifecycle/next.rank
   it('next never gives an agent row, even when it scores highest', async () => {
     const n = await nextTask(mem({ 'tasks/allyte.md': ALLYTE }), AT);
@@ -179,6 +185,16 @@ describe('stale cap', () => {
 });
 
 describe('GitStorage.lineActivity', () => {
+  // @req FR:storage-git/git.activity @req FR:task-lifecycle/rank.stale
+  it('keeps commit times on the right rows in a CRLF file with a BOM', async () => {
+    const d = repo();
+    const crlf = (s: string) => '\uFEFF' + s.replace(/\n/g, '\r\n');
+    commitAt(d, '2026-11-01T09:00:00-07:00', { 'tasks/flantastic-4.md': crlf(F4(FTK_OLD)) });
+    commitAt(d, '2026-11-11T09:00:00-08:00', { 'tasks/flantastic-4.md': crlf(F4(FTK_NEW)) });
+    const r = await rankStack({ storage: new GitStorage(d), config, engine: 'stack' }, AT, undefined, ANY);
+    expect(find(r, /Cid Instagram/).stale?.overdueDays).toBe(9);
+    expect(find(r, /FTK v15/).stale).toBeUndefined();
+  });
   // @req FR:storage-git/git.activity
   it('gives the last commit time per line, cached per revision', async () => {
     const d = staleRepo();

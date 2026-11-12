@@ -237,7 +237,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   rank: {
     operationId: 'rank', summary: 'The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. Only rows the owner must do: agent rows (🤖, 🪄, and unmarked rows under them) are left out. `stale: true` marks a row overdue 3+ days with no commit to it in 3+ days (score at most 500). `blocks=any` keeps tasks the current time block would hide',
-    responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref') } } } } }),
+    responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref'), stale: { type: 'boolean', description: 'True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500' } } } } } }),
   },
   'inboxItems.list': {
     operationId: 'listInboxItems', summary: 'All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog and the source status (as GET /inbox-sources). Owner session only: 403 for tokens',

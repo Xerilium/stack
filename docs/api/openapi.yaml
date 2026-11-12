@@ -74,6 +74,9 @@ paths:
                           description: The override that applied
                         root:
                           $ref: "#/components/schemas/Ref"
+                        stale:
+                          type: boolean
+                          description: True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500
         default:
           $ref: "#/components/responses/Error"
   /meetings:
