@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { groupNeeds, idsText, PROJECT_LABEL, reasonText, rowLine, safeLink, sessionLabel, STATE_WORD, ago, type SessionItem } from './inventory';
-import { edits, ITEM_STATUS, LIMITS, nextItem, PRI_STATUS, progress, visiblePris, type ItemStatus, type Pri, type PriStatus } from './pris';
+import { edits, ITEM_STATUS, LIMITS, nextItem, priAge, PRI_STATUS, progress, visiblePris, type ItemStatus, type Pri, type PriStatus } from './pris';
 import type { InventoryCtl, PrisCtl } from './usePrisSessions';
 import './pris-sessions.css';
 
@@ -69,15 +69,17 @@ function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /**
   const pr = progress(pri);
   const next = nextItem(pri);
   const panel = `pri-panel-${pri.id}`;
+  const age = priAge(pri, new Date()); // @req FR:cos-base-of-ops/compose.pris
   return (
     <li class={`pri${open ? ' open' : ''}${st.warn ? ' warn' : ''}`} data-id={pri.id}>
-      <button type="button" class="pri-toggle" aria-expanded={open} aria-controls={panel} aria-label={[`${n}. ${pri.title}`, st.word, pr.total ? `${pr.done} of ${pr.total} done` : '', next ? `next: ${next.text}` : ''].filter(Boolean).join(', ')} onClick={onToggle}>
+      <button type="button" class="pri-toggle" aria-expanded={open} aria-controls={panel} aria-label={[`${n}. ${pri.title}`, st.word, pr.total ? `${pr.done} of ${pr.total} done` : '', next ? `next: ${next.text}` : '', age.stale ? `${age.text}, stale` : age.text].filter(Boolean).join(', ')} onClick={onToggle}>
         <span class="pri-n" aria-hidden="true">{n}</span>
         <span class="pri-main" aria-hidden="true">
           <span class="pri-title">{pri.title}</span>
           {next && !open && <span class="pri-next">{next.text}</span>}
         </span>
         <span class="pri-side" aria-hidden="true">
+          <span class={`pri-age${age.stale ? ' warn' : ''}`}>{age.text}</span>
           {pr.total > 0 && <span class="pri-progress">{pr.done}/{pr.total}</span>}
           <span class={`pri-status${st.warn ? ' warn' : ''}`}><span class="g">{st.glyph}</span> {st.word}</span>
         </span>

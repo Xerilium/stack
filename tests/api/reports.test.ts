@@ -92,3 +92,24 @@ describe('Needs you with report asks', () => {
     expect((await call('owner', { choice: 'go' }, '/needs-you/rp.nope.x.y/answer')).status).toBe(404);
   });
 });
+
+describe('GET /reports', () => {
+  // @req FR:cos-base-of-ops/api.list
+  it('is registered with tasks:read and in the OpenAPI document', () => {
+    expect(routeScope('reports.list')).toBe('tasks:read');
+    expect(ROUTES.some((r) => r.name === 'reports.list' && r.method === 'GET' && r.doc === '/reports')).toBe(true);
+    expect(readFileSync(join(__dirname, '../../docs/api/openapi.yaml'), 'utf8')).toMatch(/\/reports:\n(?:.*\n)*?\s+get:/);
+  });
+
+  // @req FR:cos-base-of-ops/api.list
+  it('returns every report, newest first, to the owner only; 404 with no store', async () => {
+    const { call, mint } = await mk();
+    expect((await call('owner', BODY)).status).toBe(200);
+    const r = await call('owner', undefined, '/reports', 'GET');
+    expect(r.status).toBe(200);
+    expect(r.json.items).toHaveLength(1);
+    expect(r.json.items[0]).toMatchObject({ agent: 'xe-cos', project: 'stack', at: NOW.toISOString(), top: [{ text: 'Ship it' }], progress: [{ text: 'Spec done' }] });
+    expect((await call(await mint('xe-cos', 'tasks:read'), undefined, '/reports', 'GET')).status).toBe(403);
+    expect((await (await mk(false)).call('owner', undefined, '/reports', 'GET')).status).toBe(404);
+  });
+});

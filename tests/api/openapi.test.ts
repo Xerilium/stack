@@ -356,6 +356,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
     // @req FR:status-ingest/api.put @req FR:status-ingest/api.invalid
     await go('reports.put', 'POST', '/reports', { agent: 'xe-cos', project: 'stack', top: [{ text: 'Ship' }], asks: [{ id: 'a', ask: 'Approve', link: 'https://x.test/1', by: '2026-10-23' }] }, 200);
     await go('reports.put', 'POST', '/reports', { agent: 'Bad' }, 400);
+    await go('reports.list', 'GET', '/reports', undefined, 200);
     // @req FR:session-inventory/api.inventory @req FR:session-inventory/api.pris.get @req FR:session-inventory/api.pris.put
     await go('inventory.list', 'GET', '/session-inventory', undefined, 200);
     await go('pris.get', 'GET', '/pris', undefined, 200);

@@ -291,6 +291,10 @@ const DOCS: Record<string, RouteDoc> = {
       },
     }),
   },
+  'reports.list': {
+    operationId: 'listReports', summary: 'Owner only. Every stored agent status report (~/.stack/reports.json), newest first; the Chief of Staff view reads it. 404 on hosts with no store',
+    responses: ok('Reports', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', description: 'A report: ReportInput plus at, writer?, and asks with key and answer?' } } } }),
+  },
   'inventory.list': {
     operationId: 'listSessionInventory', summary: 'Owner only. Claude app sessions on this machine (read-only, cached by mtime in ~/.stack/sessions.json): counts per state, the ranked Needs-you list (waiting, stuck), archive candidates, and every session. No transcript text. 404 on hosts with no inventory',
     responses: ok('Inventory', ref('Inventory')),

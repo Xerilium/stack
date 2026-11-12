@@ -5,9 +5,9 @@ import type { Task, View } from './types';
 export interface Filters { q: string; project: string; state: 'open' | 'done' | 'all'; status: string; priority: string; effort: string }
 
 export const NO_FILTERS: Filters = { q: '', project: '', state: 'open', status: '', priority: '', effort: '' };
-const VIEWS: View[] = ['now', 'home', 'asks', 'inbox', 'sessions', 'today', 'projects', 'list'];
+const VIEWS: View[] = ['cos', 'now', 'home', 'asks', 'inbox', 'sessions', 'today', 'projects', 'list'];
 /** Old view names still open their view; Brief folded into Now. @req FR:web-shell/nav.views @req FR:ux-consolidation/nav.brief */
-const ALIAS: Record<string, View> = { next: 'home', focus: 'home', brief: 'now', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions' };
+const ALIAS: Record<string, View> = { next: 'home', focus: 'home', brief: 'now', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions', prs: 'cos' }; // `#/prs` opens the PR flyout over the CoS view: FR:cos-base-of-ops/route.view
 const STATES = ['open', 'done', 'all'];
 const KEYS = ['q', 'project', 'state', 'status', 'priority', 'effort'] as const;
 

@@ -30,8 +30,8 @@ test.describe('layout and nav', () => {
       expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     } else {
-      // @req FR:ux-consolidation/nav.rail @req FR:ux-consolidation/nav.brief
-      await expect(page.locator('.rail .tab:not(.add)').filter({ hasNotText: /Commands|Shortcuts/ })).toHaveText(['Nowg n', 'My dayg d', 'Needs you2g k', 'Inboxg i', 'Agentsg s', 'Projectsg p', 'Full stackg a']);
+      // @req FR:ux-consolidation/nav.rail @req FR:ux-consolidation/nav.brief @req FR:cos-base-of-ops/route.nav
+      await expect(page.locator('.rail .tab:not(.add)').filter({ hasNotText: /Commands|Shortcuts/ })).toHaveText(['Chief of Staffg c', 'Nowg n', 'My dayg d', 'Needs you2g k', 'Inboxg i', 'Agentsg s', 'Projectsg p', 'Full stackg a']);
       await expect(page.locator('.rail .exp')).toHaveCount(0);
       await expect(page.locator('.tabbar')).toBeHidden();
       const main = (await page.locator('.main').boundingBox())!;
