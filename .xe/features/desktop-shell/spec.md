@@ -38,6 +38,7 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 - **FR:host.webdir** (P1): The web app comes from `web/dist` next to the repo root. A missing `web/dist/index.html` fails with `Web app not built. Run: pnpm build`
 - **FR:host.stop** (P1): `close()` calls the host's `close()` once, which flushes batched edits (`FR:cli/web.batch.shutdown`). A second `close()` is a no-op
 - **FR:host.fail** (P1): A host that fails to start (no repo, no web build, port error) logs `host: <message>` and the shell quits. No window and no tray are created
+- **FR:host.path** (P1): Before the host starts, the shell sets `process.env.PATH` to the owner's login-shell `PATH`, so the host and the agents it spawns find `gh`, `claude`, `gemini`, and Node tools (Homebrew, nvm, `~/.local/bin`) on a Finder launch. It runs `$SHELL -ilc` (default `/bin/zsh`) with a 5 s timeout and reads the `PATH` between markers, so shell start-up output is ignored. Entries from the current `PATH` that the shell result lacks are kept at the end. When the shell fails, times out, or prints no `PATH`, the fallback puts `/opt/homebrew/bin`, `/usr/local/bin`, and `~/.local/bin` before the current `PATH`. No entry repeats. The shell logs `path: login shell` or `path: fallback (<reason>)`, never the `PATH` value. Windows keeps its `PATH`
 
 ### FR:window: One window shows the web UI
 
