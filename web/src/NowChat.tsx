@@ -23,7 +23,7 @@ export interface NowChatProps {
   /** The task's owning agent (`ownerOf`); null: no agent covers it. */ agent: (AvatarWho & { slug?: string }) | null;
   /** The whole team, for the picker. */ team?: TeamAgent[];
   /** The agent a reply came from (slug or name), for its name and avatar. */ agentOf: (who: string) => AvatarWho;
-  /** `agent`: the picked agent's slug when it is not the owner. */ onSend: (text: string, agent?: string) => Promise<boolean>; loadThread: (ref: string) => Promise<Thread>;
+  /** `agent`: the recipient's slug (the pick, else the owner). */ onSend: (text: string, agent?: string) => Promise<boolean>; loadThread: (ref: string) => Promise<Thread>;
   /** Open a live agent session by id: the thread names the task's own session (never a review). */ onOpenSession?: (id: string) => void;
   /** Bump when tasks, asks, or sessions change so the thread re-reads. */ tick?: string;
   /** Delivery state of the row's messages (local host); absent or failing: no note. */ loadDelivery?: (ref: string) => Promise<DeliveryInfo>;
@@ -62,7 +62,7 @@ export function NowChat({ taskRef, pickKey = taskRef, busy, agent: owner, team =
     sending.current = true;
     const sent = text;
     try {
-      if (await onSend(t, pick?.slug)) {
+      if (await onSend(t, agent?.slug)) { // always names the recipient, so no other agent on the project claims it
         // Clear only what was sent: text typed while the send was in flight stays.
         setText((cur) => { if (cur !== sent) return cur; const el = document.getElementById('now-msg'); if (el) el.style.height = ''; return ''; });
         void load();

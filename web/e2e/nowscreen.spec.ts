@@ -92,7 +92,7 @@ test.describe('Now screen', () => {
     await page.waitForTimeout(400);
     await page.screenshot({ path: `e2e/screenshots/now-chat-${info.project.name}.png` });
     await box.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', kind: 'instruction', text: 'Use the new logo / then ship to staging' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', kind: 'instruction', text: 'Use the new logo / then ship to staging', agent: 'alpha-lead' }); // the owner is named, so no other agent claims it
     // a message is not a hand-off: the row is never edited, so it stays in the owner queue (FR:task-lifecycle/rank.owner)
     expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
     expect(m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);

@@ -12,6 +12,7 @@ Paste this into the scheduled agent's prompt. Replace `<project>` and `<agent>`.
 1. List open instructions for your project, and the ones the owner picked you for in any project:
    `stack inbox list --project <project> --agent <agent> --json`
 2. For each item, oldest first:
+   - Skip an item whose `agent` names another agent: the owner picked that agent.
    - The task is at `row` (where the row is now). Use `ref` only when `row` is missing (the row is gone: handle it with a note that says so).
    - Do what `text` asks (kind `instruction`; `reply` and `decision` entries are answers to your asks). Line breaks were folded to ` / `.
    - Reply on the task in one line so the owner sees it in the task thread:
