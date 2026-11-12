@@ -4,7 +4,8 @@
  */
 import { useRef } from 'preact/hooks';
 import { actionsFor, type AskItem } from './asks';
-import { AgentTalk } from './AgentTalk';
+import { Composer } from './Composer';
+import { displayName } from './detail';
 import { foldSubtasks, verdictLine, whoLine } from './thread';
 import type { ThreadCtl } from './useThread';
 import type { Team } from './useTeam';
@@ -28,8 +29,9 @@ function AskEntry({ a, th }: { a: AskItem; th: ThreadCtl }) {
   );
 }
 
-export function ThreadView({ t, th, team, now }: { t: Task; th: ThreadCtl; team: Team; now: Date }) {
-  const name = (slug: string) => team.team.find((a) => a.slug === slug || a.name === slug)?.name ?? slug;
+/** `focus`: put the cursor in the composer on mount (the row message button). */
+export function ThreadView({ t, th, team, now, focus = false }: { t: Task; th: ThreadCtl; team: Team; now: Date; focus?: boolean }) {
+  const name = (slug: string) => { const a = team.team.find((x) => x.slug === slug || x.name === slug); return a ? displayName(a) : slug; };
   const agents = team.agentsOf(t);
   const items = foldSubtasks(th.thread.items);
   const lastAgent = [...th.thread.items].reverse().find((i): i is Extract<typeof i, { kind: 'agent' }> => i.kind === 'agent');
@@ -56,12 +58,13 @@ export function ThreadView({ t, th, team, now }: { t: Task; th: ThreadCtl; team:
           ))}
         </ol>
       )}
-      {th.phase === 'ready' && items.length === 0 && <p class="th-note">No thread yet. Ask the agent anything, or assign the task.</p>}
+      {th.phase === 'ready' && items.length === 0 && <p class="th-note">No messages yet.</p>}
       {/* One live line announces the newest agent reply (not the owner's own words or state flips). @req FR:agent-thread/web.a11y */}
       <p class="sr-only" role="status" aria-live="polite">{announce ? `${name(announce.agent)}: ${announce.text}` : ''}</p>
       {running && th.thread.session && <p class="th-note live" role="status"><span class="dot" aria-hidden="true" />{th.thread.session.state === 'needs-you' ? 'Waiting for you in Asks' : 'Working…'} · <button type="button" class="link" onClick={() => team.openSessionId(th.thread.session!.id)}>Open the session</button></p>}
-      <AgentTalk team={team} talk={{ ref: t.ref, project: t.project, about: t.text }} agents={agents} mode="thread" busy={th.busy}
-        onAsk={(text, agent, keep) => th.ask(text, agent, keep)} onAssign={(agent, keep) => th.assign(agent, keep)} />
+      {/* @req FR:task-detail-design/compose.to */}
+      <Composer agents={agents} offline={team.enabled !== true} busy={th.busy} autoFocus={focus}
+        onAsk={(text, agent) => th.ask(text, agent)} onDo={(text, agent) => th.assign(agent, false, text)} />
     </section>
   );
 }

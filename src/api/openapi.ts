@@ -350,7 +350,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'tasks.assign': {
     operationId: 'assignTask', summary: 'Hand the task to its agent: claims the row (log + in progress) and starts a session with the assign prompt. Owner session only; 404 without a runner; 403 for a 🙋 row',
-    desc: { agent: 'Agent slug; default: the active agent' },
+    desc: { agent: 'Agent slug; default: the active agent', note: 'The owner\'s note, added to the assign prompt (at most 1000 characters)' },
     responses: ok('Assigned', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string' }, title: { type: 'string' }, claimed: { type: 'boolean' } } }, '202'),
   },
   'team.list': {

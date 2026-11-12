@@ -82,7 +82,8 @@ test.describe('Needs you from the Chief of Staff', () => {
 
 test.describe('Quiet Home', () => {
   // @req FR:web-app/home3.keys
-  test('key hints stay hidden until the first key press; every control carries its key in its tooltip', async ({ page }, info) => {
+  // @req FR:task-detail-design/rules.nokeys
+  test('buttons never show key badges, even after a key press; every control carries its key in its tooltip', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keyboard');
     await mockApi(page);
     await page.goto('/#/home');
@@ -91,7 +92,7 @@ test.describe('Quiet Home', () => {
     await expect(focus.getByRole('button', { name: /^Done/ })).toHaveAttribute('title', /\(d\)/);
     await expect(focus.locator('kbd:visible')).toHaveCount(0);
     await page.keyboard.press('j');
-    await expect(focus.locator('kbd:visible').first()).toBeVisible();
+    await expect(focus.locator('button kbd:visible, [role="menuitem"] kbd:visible')).toHaveCount(0);
   });
 
   // @req FR:web-app/home3.menu

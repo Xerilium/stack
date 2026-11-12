@@ -1,6 +1,6 @@
 /** @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live @req FR:agent-team/web.chip.title @req FR:agent-team/web.talk @req FR:agent-team/web.review @req FR:agent-team/web.anything @req FR:agent-team/org.match */
 import { describe, expect, it } from 'vitest';
-import { agentForAsk, agentsFor, chipFor, liveAgents, matchAgent, sessionFor, verdictLabel, type ReviewItem, type TeamAgent } from '../src/team';
+import { agentForAsk, agentsFor, chipFor, liveAgents, matchAgent, ownerOf, sessionFor, verdictLabel, type ReviewItem, type TeamAgent } from '../src/team';
 import type { SessionItem } from '../src/sessions';
 
 const ag = (slug: string, scope: string[], o: Partial<TeamAgent> = {}): TeamAgent => ({ slug, name: slug, scope, mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: [], ...o });
@@ -81,5 +81,15 @@ describe('agentForAsk', () => {
     expect(agentForAsk(team, { from: '🎧 Cid Manager' })?.slug).toBe('cid');
     expect(agentForAsk(team, { from: 'email-triage', project: 'f4' })?.slug).toBe('cos'); // the project's active agent is the roll-up
     expect(agentForAsk(team, { from: 'email-triage' })).toBeUndefined();
+  });
+});
+
+// @req FR:task-detail-design/compose.to
+describe('ownerOf', () => {
+  const ag = (slug: string, scope: string[]) => ({ slug, name: slug, scope, mode: 'ad-hoc' as const, prompt: '', defined: true, source: 'stack' as const, projects: [] });
+  it('is the first project-scoped agent, else the roll-up; a second * agent is never the owner', () => {
+    expect(ownerOf([ag('cos', ['*']), ag('lead', ['alpha']), ag('scribe', ['*'])])?.slug).toBe('lead');
+    expect(ownerOf([ag('cos', ['*']), ag('scribe', ['*'])])?.slug).toBe('cos');
+    expect(ownerOf([])).toBeUndefined();
   });
 });

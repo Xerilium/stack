@@ -150,6 +150,17 @@ describe('assignTask', () => {
     expect(prompts).toHaveLength(2);
   });
 
+  // @req FR:task-detail-design/compose.doit
+  it('carries the owner\'s Do it note in the assign prompt', async () => {
+    const { ctx, runs, prompts } = await mk();
+    await assignTask(runs, ctx, 'flantastic-4:7', undefined, '  Use the short version  ');
+    expect(prompts[0].text).toContain('This task is yours now');
+    expect(prompts[0].text).toMatch(/The owner's note: Use the short version$/);
+    // The thread keeps it, already handled: the inbox never hands it to an agent again.
+    const thread = await taskThread(ctx, runs, 'flantastic-4:7');
+    expect(thread.items.filter((i) => i.kind === 'owner')).toEqual([expect.objectContaining({ text: 'Use the short version', state: 'handled' })]);
+  });
+
   // @req FR:agent-thread/thread.assign.order
   it('refuses before any run when the claim would be refused; a start that fails leaves no 🚧', async () => {
     const { ctx, runs, prompts, storage } = await mk();

@@ -6,6 +6,7 @@ import { Onboarding } from './OnboardingView';
 import { authSaysSetup, isLocalHost, loadSetup, wantsSetup, type SetupStatus } from './onboarding';
 import './styles.css';
 import './polish.css';
+import './fluent2.css';
 
 /** `#/install` replaces the app shell. @req FR:iphone-access/install.@ui */
 const onInstall = () => location.hash.startsWith('#/install');

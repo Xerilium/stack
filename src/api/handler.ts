@@ -280,7 +280,7 @@ const TEAM_Q: Record<string, Spec> = { project: { t: 'str', max: 200, line: true
 const REVIEWS_Q: Record<string, Spec> = { project: { t: 'str', required: true, max: 200, line: true } };
 const REVIEW_BODY = { schema: { ref: { t: 'ref', required: true }, agent: SLUG } satisfies Record<string, Spec>, required: ['ref'] };
 const REPLY_BODY = { schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, expect: { t: 'str', max: 2000, line: true } } satisfies Record<string, Spec>, required: ['ref', 'text'] };
-const ASSIGN_BODY = { schema: { agent: SLUG } satisfies Record<string, Spec>, required: [] as string[] };
+const ASSIGN_BODY = { schema: { agent: SLUG, note: { t: 'str', max: 1000, line: true } } satisfies Record<string, Spec>, required: [] as string[] };
 /** The ref in a path segment (`/tasks/{ref}/...`). */
 const refParam = (c: Ctx) => { const r = parseRef(c.params[0]); if (!r) throw invalid([{ field: 'ref', message: 'Must be project:line' }]); return r; };
 const BRIEF_Q: Record<string, Spec> = { refresh: { t: 'str', max: 1 } };
@@ -1081,8 +1081,8 @@ export const ROUTES: Route[] = [
       const ref = refParam(c);
       const agents = agentsOf(c);
       ownerOnly(c, 'Only the owner assigns a task');
-      const b = validate<{ agent?: string }>(await readBody(c.req), ASSIGN_BODY.schema, ASSIGN_BODY.required);
-      return json(202, await assignTask(agents, c.life, formatRef(ref), b.agent));
+      const b = validate<{ agent?: string; note?: string }>(await readBody(c.req), ASSIGN_BODY.schema, ASSIGN_BODY.required);
+      return json(202, await assignTask(agents, c.life, formatRef(ref), b.agent, b.note));
     },
   },
   {

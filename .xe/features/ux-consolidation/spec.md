@@ -46,6 +46,10 @@ Where this spec and `web-shell` or `cos-view` disagree on the nav, this spec win
 - **FR:nav.home** (P1): Home stays at `#/home` and `g h`, named `Top asks` in the palette (`Go to Top asks`). It is not in the rail or the tab bar
 - **FR:nav.keys** (P1): Chords: `g n` Now, `g h` Top asks, `g d` or `g t` My day, `g k` Needs you, `g i` Inbox, `g s` Agents, `g p` Projects, `g a` Full stack
 
+### FR:design: One design language
+
+- **FR:design.rules** (P1): Every view follows the global rules in `docs/design-system.md` (`FR:task-detail-design/rules.*`). Views move to the Fluent 2 look one at a time from `task-detail-design/audit.md`; My day, the task detail, and the composer go first
+
 ## Dependencies
 
 now-screen (`nowOf`, `NowScreen`), cos-view (`briefOf`, meetings layers), ask-queue (answers), web-shell (rail, tab bar, palette).

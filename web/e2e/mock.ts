@@ -169,6 +169,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
         const id = `a1b2c3d4-0000-0000-0000-0000000asg${m.calls.length}`.slice(0, 36);
         const title = `${ag?.name ?? 'Agent'} · ${t.text} · ${t.ref}`; // the server titles the session before the claim
         if (!/🚧/u.test(t.text)) t.text = `🚧 ${t.text}`;
+        if (body?.note) m.inbox.push({ id: `note-${m.inbox.length}`, at: new Date().toISOString(), project: t.project, ref: t.ref, task: t.text, kind: 'instruction', to: 'agent', text: body.note, state: 'handled', row: t.ref, from: 'owner' });
         m.sessions.unshift({ id, title, project: 'stack', cwd: '/x', lastActive: new Date().toISOString(), state: 'running', cost: { usd: 0, tokens: 0 }, prs: [] });
         return json(route, 202, { runId: 'run-assign', sessionId: id, agent: ag?.slug ?? 'cos', title, claimed: true });
       }

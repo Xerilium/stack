@@ -2411,6 +2411,10 @@ paths:
                   maxLength: 40
                   pattern: ^[a-z0-9][a-z0-9._-]{0,39}$
                   description: "Agent slug; default: the active agent Single line."
+                note:
+                  type: string
+                  maxLength: 1000
+                  description: The owner's note, added to the assign prompt (at most 1000 characters) Single line.
       responses:
         "202":
           description: Assigned
