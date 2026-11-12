@@ -31,9 +31,9 @@ it('is loaded once by the app entry, with no network', () => {
   expect(readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')).toMatch(/import '\.\/fluent2\.css';/);
   expect(css).not.toMatch(/@import|url\(\s*['"]?https?:/);
 });
-it('hides key badges on every button, link button, and menu item; keeps the rail hint', () => {
+it('hides key badges on every button, link button, and menu item, the rail too; the key is in the tooltip', () => {
   expect(css).toMatch(/body :is\(button, a\.btn, \[role="menuitem"\]\) kbd \{ display: none !important; \}/);
-  expect(css).toMatch(/\.rail \.tab kbd \{ display: inline-block !important; \}/);
+  expect(css).not.toMatch(/\.rail \.tab kbd/);
 });
 it('gives clickable rows a pointer and draws facts as text', () => {
   expect(css).toMatch(/\.top-rows > li[^{]*\{ cursor: pointer; \}/);

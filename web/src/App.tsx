@@ -968,9 +968,9 @@ export function App() {
   const inboxDot = inboxAttention ? <span class="nav-dot" role="img" aria-label="Inbox needs setup" data-testid="inbox-dot" /> : null;
   /** @req FR:inbox-page/web.dot */
   const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : null);
-  /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
+  /** Each rail item names its chord in the tooltip; no key badge shows. @req FR:web-shell/nav.keys.hint @req FR:task-detail-design/rules.nokeys */
   const nav = () => RAIL.map((v) => (
-    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
+    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} title={`${LABEL[v]} (${HINT[v]})`} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span></button>
   ));
   return (
     <div class="shell">
@@ -980,13 +980,13 @@ export function App() {
          * @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand
          */}
         <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
-        <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
+        <button type="button" class="tab add" title="New task (C)" onClick={openCapture}>＋ New task</button>
         {nav()}
         {/* @req FR:pr-page/icon.place */}
         <PrsButton api={api} />
         <div class="spacer" />
-        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette">Commands <kbd aria-hidden="true">⌘K</kbd></button>
-        <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
+        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette" title="Commands (⌘K)">Commands</button>
+        <button type="button" class="tab" title="Shortcuts (?)" onClick={() => setHelp(true)}>Shortcuts</button>
         {/* @req FR:feedback-button/ui.icon */}
         <FeedbackButton />
         <div class="who">

@@ -54,8 +54,8 @@ export function NowScreen({ n, done = false, b, layer, busy, onAct, asks, cal, n
         </div>
         {n && (
           <div class="now-actions" role="group" aria-label="Actions">
-            <button type="button" class="now-btn primary" disabled={busy} onClick={() => onAct('done')}>Done <kbd>d</kbd></button>
-            <button type="button" class="now-btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>n</kbd></button>
+            <button type="button" class="now-btn primary" title="Done (D)" disabled={busy} onClick={() => onAct('done')}>Done</button>
+            <button type="button" class="now-btn" title="Defer (N)" disabled={busy} onClick={() => onAct('defer')}>Defer</button>
           </div>
         )}
         {n && chat && <NowChat key={n.task.ref} taskRef={n.task.ref} busy={busy} {...chat} />}

@@ -19,6 +19,22 @@ async function reacts(page: Page, card: Locator, focusIn: Locator) {
   return rest;
 }
 
+// @req FR:task-detail-design/rules.nokeys
+test('no button shows a key badge; the key is in the tooltip', async ({ page }, info) => {
+  await ten(page);
+  await mockApi(page);
+  await page.goto('/#/now');
+  await expect(page.getByRole('button', { name: /^Done/ })).toHaveAttribute('title', 'Done (D)');
+  await expect(page.getByRole('button', { name: /^Defer/ })).toHaveAttribute('title', 'Defer (N)');
+  if (info.project.name === 'desktop') {
+    const rail = page.locator('.rail');
+    await rail.getByRole('button', { name: /^Now/ }).hover();
+    await expect(rail.getByRole('button', { name: /^Now/ })).toHaveAttribute('title', 'Now (g n)');
+    await expect(rail.getByRole('button', { name: /New task/ })).toHaveAttribute('title', 'New task (C)');
+  }
+  await expect(page.locator('button kbd:visible, a kbd:visible')).toHaveCount(0);
+});
+
 for (const scheme of ['light', 'dark'] as const) {
   test.describe(`card hover and focus (${scheme})`, () => {
     test.skip(({ isMobile }) => isMobile, 'hover is a pointer state');
@@ -48,7 +64,9 @@ for (const scheme of ['light', 'dark'] as const) {
     test('My day: a block row', async ({ page }) => {
       await mockApi(page);
       await page.goto('/#/today');
-      const what = page.locator('.today .block:not(.meeting):not(.cursor) .what').first();
+      // pin one row: the cursor class moves, so the locator must not follow it
+      const ref = await page.locator('.today .block:not(.meeting):not(.cursor)').first().getAttribute('data-ref');
+      const what = page.locator(`.today .block[data-ref="${ref}"] .what`);
       await reacts(page, what, what.locator('.row-open'));
     });
   });
