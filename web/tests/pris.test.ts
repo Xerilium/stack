@@ -1,7 +1,7 @@
 /** @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.edit @req FR:pris-sessions-ui/pris.limits */
 import { describe, expect, it } from 'vitest';
 import { ApiFailure } from '../src/api';
-import { commitPris, edits, ITEM_STATUS, LIMITS, nextItem, oneLine, PRI_STATUS, progress, slugId, visiblePris, type Pri, type PrisFile } from '../src/pris';
+import { commitPris, edits, PrisQueue, ITEM_STATUS, LIMITS, nextItem, oneLine, PRI_STATUS, progress, slugId, visiblePris, type Pri, type PrisFile } from '../src/pris';
 
 const P = (id: string, title: string, o: Partial<Pri> = {}): Pri => ({ id, title, status: 'active', items: [], backlog: [], weekly: [], ...o });
 const file = (pris: Pri[], rev = 3): PrisFile => ({ version: 1, rev, pris });
@@ -140,5 +140,82 @@ describe('commitPris', () => {
     const f = fake({ put: [] });
     expect(await commitPris(f.api, file([P('a', 'A')]), edits.title('zz', 'B'))).toMatchObject({ outcome: 'noop' });
     expect(f.calls).toHaveLength(0);
+  });
+});
+
+describe('PrisQueue', () => {
+  const deferred = <T,>() => { let ok!: (v: T) => void; let bad!: (e: unknown) => void; const p = new Promise<T>((a, b) => { ok = a; bad = b; }); return { p, ok, bad }; };
+  const setup = (server: PrisFile) => {
+    let cur = server;
+    const puts: { rev: number; pris: Pri[] }[] = [];
+    const reads: ReturnType<typeof deferred<PrisFile>>[] = [];
+    let held: ReturnType<typeof deferred<PrisFile>> | null = null;
+    const api = {
+      pris: () => { const d = deferred<PrisFile>(); reads.push(d); return d.p; },
+      putPris: async (rev: number, pris: Pri[]) => {
+        puts.push({ rev, pris });
+        if (held) { const h = held; held = null; return h.p; }
+        if (rev !== cur.rev) throw new ApiFailure(409, 'conflict', 'conflict');
+        cur = file(pris, rev + 1); return cur;
+      },
+    };
+    const shown: Pri[][] = []; const toasts: string[] = [];
+    const q = new PrisQueue(api, { view: (l) => shown.push(l), phase: () => undefined, toast: (t) => toasts.push(t) });
+    return { q, api, puts, reads, shown, toasts, hold: () => { held = deferred<PrisFile>(); return held; }, set: (f: PrisFile) => { cur = f; } };
+  };
+  const ready = async (s: ReturnType<typeof setup>, f: PrisFile) => { const l = s.q.load(); s.reads.at(-1)!.ok(f); await l; };
+
+  // @req FR:pris-sessions-ui/live.pris
+  it('a read that started before a save never replaces the saved list', async () => {
+    const base = file([P('a', 'A')]);
+    const s = setup(base);
+    await ready(s, base);
+    const stale = s.q.load(); // in flight
+    s.q.apply(edits.title('a', 'B'));
+    await s.q.idle();
+    s.reads.at(-1)!.ok(base); // old list arrives after the save
+    await stale;
+    expect(s.shown.at(-1)![0].title).toBe('B');
+  });
+  // @req FR:pris-sessions-ui/live.pris
+  it('no read lands while a save runs or a text field is open', async () => {
+    const base = file([P('a', 'A')]);
+    const s = setup(base);
+    await ready(s, base);
+    const h = s.hold();
+    s.q.apply(edits.title('a', 'B'));
+    void s.q.load();
+    expect(s.reads).toHaveLength(1); // the load during a save did not even ask
+    h.ok(file([P('a', 'B')], 4)); await s.q.idle();
+    s.q.setEditing(true);
+    void s.q.load();
+    expect(s.reads).toHaveLength(1);
+    s.q.setEditing(false);
+  });
+  // @req FR:pris-sessions-ui/pris.save
+  it('queued edits go one by one, each on the latest rev', async () => {
+    const base = file([P('a', 'A'), P('b', 'B')]);
+    const s = setup(base);
+    await ready(s, base);
+    s.q.apply(edits.title('a', 'A2'));
+    s.q.apply(edits.status('b', 'paused'));
+    s.q.apply(edits.move('b', -1));
+    await s.q.idle();
+    expect(s.puts.map((p) => p.rev)).toEqual([3, 4, 5]);
+    expect(s.shown.at(-1)!.map((p) => [p.id, p.title, p.status])).toEqual([['b', 'B', 'paused'], ['a', 'A2', 'active']]);
+  });
+  // @req FR:pris-sessions-ui/pris.invalid
+  it('after a failure the server list shows, with edits still queued on top', async () => {
+    const base = file([P('a', 'A'), P('b', 'B')]);
+    const s = setup(base);
+    await ready(s, base);
+    const h = s.hold();
+    s.q.apply(edits.title('a', 'Bad'));
+    s.q.apply(edits.status('b', 'done'));
+    h.bad(new ApiFailure(400, 'bad_request', 'Validation failed', [{ field: 'pris[0].title', message: 'Too long' }]));
+    await s.q.idle();
+    expect(s.toasts).toEqual(['pris[0].title: Too long']);
+    expect(s.shown.at(-1)!.map((p) => [p.title, p.status])).toEqual([['A', 'active'], ['B', 'done']]);
+    expect(s.puts.at(-1)).toEqual({ rev: 3, pris: [P('a', 'A'), P('b', 'B', { status: 'done' })] });
   });
 });

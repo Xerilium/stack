@@ -129,3 +129,72 @@ export async function commitPris(api: PrisApi, base: PrisFile, edit: Edit): Prom
   }
   try { return { outcome: 'conflict', file: await api.pris() }; } catch { return { outcome: 'conflict', file: fresh }; }
 }
+
+export type PrisPhase = 'loading' | 'ready' | 'absent' | 'error';
+/** What the queue tells the page: the list to show, the phase, and toasts. */
+export interface PrisSink { view: (l: Pri[]) => void; phase: (p: PrisPhase) => void; toast: (text: string) => void }
+
+/**
+ * The page's priorities: optimistic view, one save at a time on the latest server file, and re-reads that never undo an edit.
+ * A read is dropped when a save ran, is running, or a text field was open at any point since it started.
+ * @req FR:pris-sessions-ui/pris.save @req FR:pris-sessions-ui/pris.conflict @req FR:pris-sessions-ui/pris.invalid @req FR:pris-sessions-ui/live.pris
+ */
+export class PrisQueue {
+  private server: PrisFile | null = null;
+  private shown: Pri[] = [];
+  private queue: Edit[] = [];
+  private running = false;
+  private editing = false;
+  /** Bumps on each save start and each edit-field open: a read that saw another value is stale. */
+  private gen = 0;
+  constructor(private readonly api: PrisApi, private readonly sink: PrisSink) {}
+
+  private show(l: Pri[]) { this.shown = l; this.sink.view(l); }
+
+  /** Reads the server list unless a save or a text field could be overwritten. */
+  async load(): Promise<void> {
+    if (this.running || this.editing) return;
+    const at = this.gen;
+    try {
+      const f = await this.api.pris();
+      if (this.running || this.editing || at !== this.gen) return;
+      this.server = f; this.show(f.pris); this.sink.phase('ready');
+    } catch (e) {
+      if (at !== this.gen) return;
+      this.sink.phase(e instanceof ApiFailure && e.status === 404 ? 'absent' : this.server ? 'ready' : 'error');
+    }
+  }
+
+  setEditing(on: boolean): void { if (on) this.gen++; this.editing = on; }
+
+  /** Shows the edit at once and queues its save; an edit that changes nothing is dropped. */
+  apply(edit: Edit): void {
+    const n = edit(this.shown);
+    if (!n) return;
+    this.show(n);
+    this.queue.push(edit);
+    void this.drain();
+  }
+
+  /** Resolves when no save is queued or running (tests). */
+  async idle(): Promise<void> { while (this.running) await new Promise((ok) => setTimeout(ok, 0)); }
+
+  private async drain(): Promise<void> {
+    if (this.running || !this.server) return;
+    this.running = true;
+    try {
+      while (this.queue.length && this.server) {
+        const edit = this.queue.shift()!;
+        this.gen++;
+        const r = await commitPris(this.api, this.server, edit);
+        this.server = r.file;
+        if (r.outcome === 'conflict') this.sink.toast('Priorities changed elsewhere. Reloaded.');
+        else if (r.outcome === 'invalid') this.sink.toast(r.message ?? 'Not saved');
+        else if (r.outcome === 'error') this.sink.toast(`Not saved: ${r.message ?? 'unknown error'}`);
+        // The server list wins; edits still queued show again on top of it.
+        if (r.outcome !== 'saved' && r.outcome !== 'rebased') this.show(this.queue.reduce((l, e) => e(l) ?? l, r.file.pris));
+      }
+      if (this.server) this.show(this.queue.reduce((l, e) => e(l) ?? l, this.server.pris));
+    } finally { this.running = false; }
+  }
+}

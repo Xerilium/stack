@@ -2,10 +2,10 @@
  * State for the Priorities block and the Sessions list: load, 15 s re-read, live re-read, and queued optimistic saves.
  * @req FR:pris-sessions-ui/live.inventory @req FR:pris-sessions-ui/live.pris @req FR:pris-sessions-ui/pris.save @req FR:pris-sessions-ui/pris.conflict
  */
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
 import type { Inventory } from './inventory';
-import { commitPris, type Edit, type Pri, type PrisFile } from './pris';
+import { PrisQueue, type Edit, type Pri } from './pris';
 import type { Toast } from './parts';
 
 type ToastFn = (text: string, kind?: Toast['kind']) => void;
@@ -29,72 +29,33 @@ const isAbsent = (e: unknown) => e instanceof ApiFailure && e.status === 404;
 export function usePrisSessions(api: Client, toast: ToastFn, liveTick: number, active = true): { pris: PrisCtl; sessions: InventoryCtl } {
   const toastRef = useRef(toast); toastRef.current = toast;
 
-  // --- priorities ---
+  // --- priorities: the queue holds the rules; the hook only draws ---
   const [prisPhase, setPrisPhase] = useState<Phase>('loading');
-  const [view, setViewState] = useState<Pri[]>([]);
-  const viewRef = useRef<Pri[]>([]);
-  const setView = useCallback((l: Pri[]) => { viewRef.current = l; setViewState(l); }, []);
-  const server = useRef<PrisFile | null>(null);
-  const queue = useRef<Edit[]>([]);
-  const running = useRef(false);
-  const editing = useRef(false);
-
-  const loadPris = useCallback(async () => {
-    if (running.current || editing.current) return;
-    try {
-      const f = await api.pris();
-      if (running.current || editing.current) return;
-      server.current = f; setView(f.pris); setPrisPhase('ready');
-    } catch (e) {
-      if (isAbsent(e)) setPrisPhase('absent');
-      else setPrisPhase((p) => (p === 'ready' ? p : 'error'));
-    }
-  }, [api, setView]);
-
-  /** One save at a time, each on the latest server file. @req FR:pris-sessions-ui/pris.save */
-  const drain = useCallback(async () => {
-    if (running.current) return;
-    running.current = true;
-    try {
-      while (queue.current.length && server.current) {
-        const edit = queue.current.shift()!;
-        const r = await commitPris(api, server.current, edit);
-        server.current = r.file;
-        if (r.outcome === 'conflict') toastRef.current('Priorities changed elsewhere. Reloaded.', 'err');
-        else if (r.outcome === 'invalid') toastRef.current(r.message ?? 'Not saved', 'err');
-        else if (r.outcome === 'error') toastRef.current(`Not saved: ${r.message ?? 'unknown error'}`, 'err');
-        if (r.outcome !== 'saved' && r.outcome !== 'rebased') {
-          // The server list wins; edits still queued are shown again on top of it.
-          setView(queue.current.reduce((l, e) => e(l) ?? l, r.file.pris));
-        }
-      }
-      if (server.current) setView(server.current.pris);
-    } finally { running.current = false; }
-  }, [api, setView]);
-
-  const apply = useCallback((e: Edit) => {
-    const n = e(viewRef.current);
-    if (!n) return;
-    setView(n);
-    queue.current.push(e);
-    void drain();
-  }, [drain]);
-  const setEditing = useCallback((on: boolean) => { editing.current = on; }, []);
+  const [view, setView] = useState<Pri[]>([]);
+  const q = useMemo(() => new PrisQueue(api, { view: setView, phase: setPrisPhase, toast: (t) => toastRef.current(t, 'err') }), [api]);
+  const loadPris = useCallback(() => q.load(), [q]);
+  const apply = useCallback((e: Edit) => q.apply(e), [q]);
+  const setEditing = useCallback((on: boolean) => q.setEditing(on), [q]);
 
   // --- sessions ---
   const [invPhase, setInvPhase] = useState<Phase>('loading');
   const [inv, setInv] = useState<Inventory | null>(null);
   const [announce, setAnnounce] = useState('');
   const lastCount = useRef<number | null>(null);
+  // Reads can overlap (tick, live change, page shown): only the newest one lands.
+  const invSeq = useRef(0);
   const loadInv = useCallback(async () => {
+    const mine = ++invSeq.current;
     try {
       const i = await api.inventory();
+      if (mine !== invSeq.current) return;
       setInv(i); setInvPhase('ready');
       const n = i.needsYou.length;
       // @req FR:pris-sessions-ui/live.inventory: announce a changed count, never the first load
       if (lastCount.current !== null && lastCount.current !== n) setAnnounce(`${n} ${n === 1 ? 'session needs' : 'sessions need'} you`);
       lastCount.current = n;
     } catch (e) {
+      if (mine !== invSeq.current) return;
       if (isAbsent(e)) setInvPhase('absent');
       else setInvPhase((p) => (p === 'ready' ? p : 'error'));
     }

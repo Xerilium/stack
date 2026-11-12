@@ -16,7 +16,7 @@ export function windowOptions(): WindowOptions {
 
 const origin = (url: string): string | undefined => { try { return new URL(url).origin; } catch { return undefined; } };
 const isHttp = (url: string): boolean => /^https?:$/.test((() => { try { return new URL(url).protocol; } catch { return ''; } })());
-/** A Claude app session link, exactly: no other host, path, query, or scheme launches an app. @req FR:pris-sessions-ui/tray.link */
+/** A Claude app session link, exactly: no other host, path, query, or scheme launches an app. Same pattern as `safeLink` in web/src/inventory.ts: change both. @req FR:pris-sessions-ui/tray.link */
 export const isSessionLink = (url: string): boolean => /^claude:\/\/claude\.ai\/epitaxy\/[A-Za-z0-9_-]{1,128}$/.test(url);
 const CAN_ASK = new Set(['notifications', 'clipboard-sanitized-write']);
 

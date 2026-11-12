@@ -14,6 +14,9 @@ let out: string;
 let repo: string;
 let server: { url: string; close(): Promise<void> };
 let cli: (...a: string[]) => string;
+let state: string;
+const STATE_ENV = ['STACK_HOME', 'STACK_SESSIONS_DIR', 'STACK_TRANSCRIPTS_DIR'] as const;
+const saved: Record<string, string | undefined> = {};
 
 test.describe.configure({ mode: 'serial' });
 test.skip(({ isMobile }) => isMobile, 'one run is enough; the mobile layout is covered by the mocked specs');
@@ -30,7 +33,8 @@ test.beforeAll(async () => {
   // The in-process server commits answers through GitStorage with process.env, so CI runners (no git identity) need these too.
   Object.assign(process.env, { GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
   // The owner's live state stays out: no real ~/.stack, Claude session store, or transcripts. @req FR:session-inventory/read.files
-  const state = mkdtempSync(join(tmpdir(), 'stack-live-state-'));
+  state = mkdtempSync(join(tmpdir(), 'stack-live-state-'));
+  for (const k of STATE_ENV) saved[k] = process.env[k];
   Object.assign(process.env, { STACK_HOME: state, STACK_SESSIONS_DIR: join(state, 'sessions'), STACK_TRANSCRIPTS_DIR: join(state, 'projects') });
   const env = { ...process.env };
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo, env });
@@ -46,7 +50,10 @@ test.beforeAll(async () => {
   for (let n = 0; !armed; n++) { writeFileSync(join(repo, '.armed-probe'), String(n)); await new Promise((ok) => setTimeout(ok, 10)); }
   unlinkSync(join(repo, '.armed-probe'));
 });
-test.afterAll(async () => { await server?.close(); rmSync(out, { recursive: true, force: true }); rmSync(repo, { recursive: true, force: true }); });
+test.afterAll(async () => { await server?.close(); rmSync(out, { recursive: true, force: true }); rmSync(repo, { recursive: true, force: true });
+  for (const k of STATE_ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  if (state) rmSync(state, { recursive: true, force: true });
+});
 
 test('a file written by an agent appears by itself; the answer lands back in the file; the agent handles it', async ({ page }) => {
   await page.goto(`${server.url}/#/asks`);

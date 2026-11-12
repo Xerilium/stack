@@ -49,7 +49,7 @@ export function sessionLabel(s: SessionItem, now: Date): string {
   return [s.title, STATE_WORD[s.state]?.word ?? s.state, rowLine(s), t && (t === 'now' ? 'just now' : `${t} ago`)].filter(Boolean).join(', ');
 }
 
-/** The link only when it is a Claude session link; anything else is shown as text. @req FR:pris-sessions-ui/sessions.row */
+/** The link only when it is a Claude session link; anything else is shown as text. Same pattern as `isSessionLink` in desktop/src/policy.ts: change both. @req FR:pris-sessions-ui/sessions.row */
 export const safeLink = (link: string): string | undefined => (/^claude:\/\/claude\.ai\/epitaxy\/[A-Za-z0-9_-]{1,128}$/.test(link) ? link : undefined);
 
 /** @req FR:pris-sessions-ui/sessions.archive */

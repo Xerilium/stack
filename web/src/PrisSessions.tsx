@@ -4,7 +4,7 @@
  * @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.archive
  * @req NFR:pris-sessions-ui/a11y.targets @req NFR:pris-sessions-ui/a11y.keys @req NFR:pris-sessions-ui/a11y.calm @req NFR:pris-sessions-ui/a11y.axe
  */
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { groupNeeds, idsText, PROJECT_LABEL, reasonText, rowLine, safeLink, sessionLabel, STATE_WORD, ago, type SessionItem } from './inventory';
 import { edits, ITEM_STATUS, LIMITS, nextItem, PRI_STATUS, progress, visiblePris, type ItemStatus, type Pri, type PriStatus } from './pris';
 import type { InventoryCtl, PrisCtl } from './usePrisSessions';
@@ -19,6 +19,8 @@ function InlineText({ value, label, editLabel, max, onSave, onEditing, cls, show
   const [text, setText] = useState(value);
   // Enter or Escape closes first; the blur that follows the unmount must not save again.
   const live = useRef(false);
+  // A field that unmounts while open (the list re-renders) must not leave re-reads paused.
+  useEffect(() => () => { if (live.current) { live.current = false; onEditing(false); } }, []);
   const close = (save: boolean) => { if (!live.current) return; live.current = false; setOn(false); onEditing(false); if (save) onSave(text); };
   if (!on) return <button type="button" class={`inline-text ${cls}`} aria-label={editLabel} onClick={() => { setText(value); live.current = true; setOn(true); onEditing(true); }}>{shown ?? value}</button>;
   return (
@@ -36,10 +38,12 @@ function InlineText({ value, label, editLabel, max, onSave, onEditing, cls, show
 /** A field that adds one line on Enter, then clears. */
 function AddLine({ label, placeholder, max, onAdd, onEditing, autoFocus }: { label: string; placeholder: string; max: number; onAdd: (t: string) => void; onEditing: (on: boolean) => void; autoFocus?: boolean }) {
   const [text, setText] = useState('');
+  const focused = useRef(false);
+  useEffect(() => () => { if (focused.current) onEditing(false); }, []);
   return (
     <input class="inline-input add-line" type="text" value={text} maxLength={max} aria-label={label} placeholder={placeholder}
       ref={(el) => { if (el && autoFocus && !el.dataset.f) { el.dataset.f = '1'; el.focus(); } }}
-      onFocus={() => onEditing(true)} onBlur={() => onEditing(false)}
+      onFocus={() => { focused.current = true; onEditing(true); }} onBlur={() => { focused.current = false; onEditing(false); }}
       onInput={(e) => setText((e.target as HTMLInputElement).value)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') { e.preventDefault(); if (text.trim()) { onAdd(text); setText(''); } }
