@@ -92,3 +92,25 @@ body:has(.prs-scrim) .toasts { z-index: 70; }
 .rail .prs-btn .prs-ic { width: 16px; height: 16px; }
 @media (min-width: 720px) { .prs-tabs { flex-wrap: wrap; overflow: visible; } }
 .prs-preview { margin: 0; padding: 8px; border-radius: var(--r-chip); background: var(--chip); color: var(--ink); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The top bar icon in the rail brand row (desktop). @req FR:pr-page/icon.place */
+.brand .prs-btn.compact { min-width: 32px; min-height: 32px; padding: 0 6px; }
+.brand .prs-btn.compact .badge { top: -2px; right: -4px; }
+.rail .prs-btn .prs-ic { width: 18px; height: 18px; }
+
+/* The #/prs page: the flyout content inside the main column, no scrim. @req FR:pr-page/nav.page */
+.prs-pagewrap { max-width: 760px; }
+.prs-fly.page { width: auto; height: auto; min-height: 0; box-shadow: none; border: 0; background: transparent; animation: none; padding-top: 0; }
+.prs-fly.page .prs-head { padding-left: 4px; padding-right: 4px; }
+.prs-fly.page .prs-panel { overflow: visible; padding-left: 0; padding-right: 0; }
+.prs-fly.page .prs-tabs, .prs-fly.page .prs-chips { padding-left: 0; padding-right: 0; }
+
+/* Signed out, loading, failed: one state. @req FR:pr-page/auth.state @req FR:pr-page/nav.load */
+.prs-signin { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; }
+.prs-signin .prs-note { margin: 0; }
+.prs-signin-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.prs-code-box { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.prs-code { font-size: 22px; font-weight: 700; letter-spacing: .12em; padding: 6px 12px; border-radius: var(--r-chip); background: var(--chip); color: var(--ink); user-select: all; }
+.prs-sk { padding: 8px 16px; max-width: none; }
+.prs-signin .btn, .prs-code-box .btn { min-height: 32px; }
+@media (pointer: coarse) { .prs-signin .btn, .prs-code-box .btn { min-height: var(--tap); } }

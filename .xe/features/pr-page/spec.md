@@ -16,13 +16,13 @@ The owner has many open PRs across repos. Agents move most of them. He must see,
 
 ## Scope
 
-- In: the board model and its pure rules, the host poller, `GET /prs` and the owner-only write routes, the top bar icon, the flyout, the CLI `stack prs`.
+- In: the board model and its pure rules, the host poller, the GitHub sign-in, `GET /prs` and the owner-only write routes, the nav entry and the `#/prs` page, the top bar icon, the flyout, the CLI `stack prs`.
 - Out: the GitHub read and write transport (`FR:github-pr-status/board.*`, `FR:github-pr-status/write.*`), the queue store and its CLI (`FR:pr-priority/*`), the escalation set writer (the Sweep Manager).
 - Never: merge, un-draft, or close a PR. No UI control and no route does it.
 
 ## Terms
 
-- **Owner**: the signed-in GitHub user. Config `github.user` in `.xe/config/stack.json`. Without it, the host reads `GET /user` once (`FR:github-pr-status/board.user`).
+- **Owner**: the signed-in GitHub user. Config `github.user` in `.xe/config/stack.json`. Without it, the host reads `GET /user` once (`FR:github-pr-status/board.user`). The token comes from `FR:pr-page/auth.token`.
 - **Me**: a PR author, assignee, reviewer, or comment author that equals the owner (no case).
 - **Human comment**: a comment by me that does not start with `🤖 [AI]` or `⚛️ [Catalyst]`. Agents post as the owner with that prefix.
 - **Labels** (no case, variation selectors ignored): Autopilot `Status: 🤖 Autopilot`; WIP `Status: 🚧 WIP`; Paused `Status: ⏸️ Paused`; Needs attention: any label that matches `needs:? attention`.
@@ -39,7 +39,7 @@ The owner needs each PR in exactly one group so that he knows who must act.
   2. Authored by me with the Paused label: `paused`
   3. Authored by me with the Autopilot label: `blocked` when the state owner is me (`FR:pr-page/state.*`), else `processing`
   4. Assigned to me with the Autopilot label: same as 3
-  5. Not by me, not a draft, my latest review is not `APPROVED`, and review is requested from me or the repo is one of mine: `waiting`. My repos are the `STACK_GITHUB_REPOS` entries, else repos the owner owns
+  5. Not by me, not a draft, my latest review is not `APPROVED`, and review is requested from me or the repo is one of mine: `waiting`. My repos are `FR:pr-page/auth.repos`
   6. Authored by me with no Autopilot label: `pending`
   7. Else `null`
 - **FR:group.bucket** (P1): Each row that waits on me shows one badge, a glyph plus a word: `👍 Approve` (waiting), `👀 Review` (pending, not a draft: review it, then apply Autopilot), `🧭 Decide` or `⛔ Unblock` (blocked, `FR:pr-page/state.bucket`). Other rows have no badge
@@ -80,6 +80,16 @@ The page needs one token-free shape so that the browser never holds a GitHub tok
 - **FR:data.escalations** (P1): The escalation set is `{blockedAutopilot: [≤3 {pr, status, exactBlocker, context, recommendedAnswer}], enableAutopilot: [≤3 {pr, whyEasy}], liveValidation: [≤1 {pr, why}], at?}`. `pr` is a PR url; any other entry is dropped. The thread link comes from the PR record `blocker.threadUrl`
 - **FR:data.recs** (P2): Open recommendations are the `recs` with state `open` in `pr-priority-state.json` (`FR:pr-priority/rec.model`)
 
+### FR:auth: Sign-in with zero setup
+
+The owner needs the board to work on first open so that he never sets a token or a repo list by hand.
+
+- **FR:auth.token** (P1): The local host (`stack web`, the desktop app, `stack prs`) takes the GitHub token in this order: `GITHUB_TOKEN`, then `gh auth token --hostname github.com` (fixed args, no shell, 5 s cap). A found token is read again after 10 minutes; no token is read again after 15 s, so a sign-in in a terminal shows at once. A new token rebuilds the board. `STACK_GH_AUTH=off` skips `gh` (tests). No log line, reply, or page holds the token
+- **FR:auth.repos** (P1): My repos, in this order: `STACK_GITHUB_REPOS`, then config `github.repos` (owners or `owner/repo`), else the owner plus each org where the owner is an `admin` (`GET /user/memberships/orgs`, read once an hour; a failed read uses the owner only). Choice: admin orgs are the owner's own work (Xerilium, allytehq). A repo in a project file `Repository:` line outside those orgs (microsoft/finops-toolkit, FOCUS_Spec) shows only PRs that involve the owner or request his review: those repos have many PRs that are not his. The write allow-list (`FR:pr-page/api.repos`) uses only the explicit lists
+- **FR:auth.state** (P1): With no token, `GET /prs` answers `200` `{auth: {state: 'signed-out', method, session?}}`. `method` is `gh` when the `gh` CLI runs, else `none`. The page shows one state, never an empty zero board: "Sign in to GitHub to see your PRs." with one `Sign in to GitHub` button (`gh`), or "Install the GitHub CLI, or set GITHUB_TOKEN." (`none`)
+- **FR:auth.signin** (P1): `POST /prs/sign-in` (route `prs.signin`, owner only) runs `gh auth login --web --hostname github.com --git-protocol https --skip-ssh-key` (fixed args, no shell) and returns the session `{state, userCode?, verificationUri?, error?}`. `state` is `waiting`, `done`, or `error`. The code and the `https://github.com/login/device` link come from the `gh` output; no other output is kept or logged. `gh` polls GitHub and stores the token in its own store. Exit 0 is `done`, and the next `GET /prs` reads the token. One sign-in runs at a time; a start while one waits returns it. It ends with `expired` after 15 minutes. `GET /prs/sign-in` returns the session. The page shows the code with a Copy button and an "Open github.com/login/device" link, and polls the session every 3 s
+- **FR:auth.azure** (P2): The Azure host keeps `GITHUB_TOKEN` only, and answers `{off: true}` without it
+
 ### FR:live: Live
 
 The owner needs near-real-time status so that he never reloads.
@@ -93,9 +103,20 @@ The owner needs near-real-time status so that he never reloads.
 
 The owner needs a glance count so that he knows agents are moving.
 
-- **FR:icon.place** (P1): A PR icon sits in the rail (desktop) and the phone top bar. It shows the active agent count when above 0. Its name is `Pull requests: n agents active`
-- **FR:icon.absent** (P1): The icon is absent where the host has no board: `GET /prs` answers `200` `{off: true}` (no failing request in the console). A `404` from an older host also hides it
-- **FR:icon.open** (P1): Click or tap opens the flyout. `g r` opens it too
+- **FR:icon.place** (P1): A PR icon sits in the app top bar: the rail brand row (desktop) and the phone top bar. It shows the active agent count when above 0. Its name is `Pull requests: n agents active`. Signed out, it shows no count and its name is `Pull requests: sign in to GitHub`
+- **FR:icon.absent** (P1): The icon and the nav entry are absent only where the host has no board at all: `GET /prs` answers `200` `{off: true}` (the Azure host with no token; no failing request in the console). A `404` from an older host also hides them. Signed out is not absent (`FR:pr-page/auth.state`)
+- **FR:icon.open** (P1): Click or tap opens the flyout (full screen on a phone)
+- **FR:icon.why** (P1): Choice: PR 145 hid the icon whenever `GET /prs` said `off`, and the host said `off` whenever `GITHUB_TOKEN` was not in its environment. A macOS app opened from the Dock gets no shell environment, so the installed app never had a token and never showed the icon. There was no nav entry either. The sign-in (`FR:pr-page/auth.*`) and the nav entry (`FR:pr-page/nav.*`) fix both
+
+### FR:nav: Nav entry and page
+
+The owner needs the PRs in the main nav so that he finds them without a hidden icon.
+
+- **FR:nav.rail** (P1): The rail has `Pull requests` after `Needs you`, chord `g r`. It opens the `#/prs` page
+- **FR:nav.badge** (P1): The nav entry shows a count of `Blocked on me` plus `Waiting on me` rows when above 0, name `n need you`. Signed out, it shows a dot, name `Sign in to GitHub`
+- **FR:nav.phone** (P1): The phone tab bar keeps its five slots. `More` (the command palette) lists `Go to Pull requests` with the same count. The top bar icon opens the flyout full screen
+- **FR:nav.page** (P1): `#/prs` shows the flyout content as a page: the same tabs, chips, rows, actions, and sign-in state, with no scrim and no Close
+- **FR:nav.load** (P1): The first open polls GitHub before it answers (`FR:pr-page/live.poll`). Until it answers, the page and the flyout show a skeleton (`aria-busy`), never a zero count
 
 ### FR:flyout: Flyout
 
@@ -125,7 +146,7 @@ The owner needs one tap to unblock a PR or move it up so that PR progress never 
 
 The web page and agents need one owner-only route for the board so that every client shows the same state.
 
-- **FR:api.get** (P1): `GET /prs` (route `prs.get`, scope `tasks:read`) returns the board to the owner only. `stack web` and the Azure host serve it when `GITHUB_TOKEN` is set; the Azure host has no session inventory, so the WIP label counts agents. A host with no board returns `200` `{off: true}`
+- **FR:api.get** (P1): `GET /prs` (route `prs.get`, scope `tasks:read`) returns the board to the owner only. `stack web` and the desktop app serve it with the token from `FR:pr-page/auth.token`, and answer `FR:pr-page/auth.state` without one. The Azure host serves it when `GITHUB_TOKEN` is set; it has no session inventory, so the WIP label counts agents. A host with no board returns `200` `{off: true}`
 - **FR:api.queue** (P1): `POST /prs/queue` (route `prs.queue`, scope `tasks:write`) takes `{repo, number, op, rank?}`. `op` is `top`, `up`, `down`, `move` (to `rank`), `add`, `pin`, `unpin`, `remove`, or `undo`. Returns `{rank, was, pinned}`
 - **FR:api.label** (P1): `POST /prs/label` (route `prs.label`) takes `{repo, number, op}`, `op` `add` or `remove`. The label is always Autopilot; no other label can be set
 - **FR:api.ack** (P1): `POST /prs/ack` (route `prs.ack`) takes `{repo, number, thread, note, post?, text?, replyTo?}` (`thread` is a GitHub url). `post` true also posts `text` (must start with `🤖 [AI] `) as a thread reply to `replyTo` (a review comment id), else as a PR comment. The post runs first; a failed post records nothing. After a post, a failed record answers `200` `{posted: true, recorded: false, message}`, so the page closes the sheet and never posts twice. With no post, a missing queue answers `409`. A thread link `#discussion_r<id>` gives `replyTo`
@@ -137,7 +158,7 @@ The web page and agents need one owner-only route for the board so that every cl
 
 The owner needs the board in a terminal so that he can check it without the web app.
 
-- **FR:cli.prs** (P1): `stack prs [--group g] [--project p] [--json]` prints the counts, then one line per row: `<group> [<project>] <repo>#<n> <title> · <owner>: <blocker> <url>`. `--project` takes a project or a repo. `--json` prints `{ok: true, ...board}`. No `GITHUB_TOKEN` exits `1` with `GITHUB_TOKEN is not set`. Never prints the token
+- **FR:cli.prs** (P1): `stack prs [--group g] [--project p] [--json]` prints the counts, then one line per row: `<group> [<project>] <repo>#<n> <title> · <owner>: <blocker> <url>`. `--project` takes a project or a repo. `--json` prints `{ok: true, ...board}`. The token comes from `FR:pr-page/auth.token`. With none, it exits `1` with `GitHub sign-in needed: run gh auth login or set GITHUB_TOKEN`. Never prints the token
 
 ## Data Model
 

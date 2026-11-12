@@ -56,6 +56,7 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
   let stopped = false;
   let queueOk = false;
   let truncated = false;
+  let derived: string[] | undefined;
 
   const build = (): PrBoard => {
     let agents: PrBoard['agents'];
@@ -68,7 +69,7 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
     try { files = o.files?.() ?? {}; } catch { files = {}; }
     const q = parseQueue(files);
     // Excludes: config `github.exclude` plus the store's `pr-priority.config.json`.
-    const rows = facts ? buildRows(facts, { user, now: new Date(now()), agentPrs, myRepos: o.myRepos, exclude: [...(o.exclude ?? []), ...q.exclude], reports: q.reports, ranks: q.ranks, pinned: q.pinned, recs: q.recs, acks: q.acks }) : [];
+    const rows = facts ? buildRows(facts, { user, now: new Date(now()), agentPrs, myRepos: o.myRepos ?? derived, exclude: [...(o.exclude ?? []), ...q.exclude], reports: q.reports, ranks: q.ranks, pinned: q.pinned, recs: q.recs, acks: q.acks }) : [];
     return {
       at: at === null ? null : new Date(at).toISOString(), user, agents, counts: countRows(rows), footer: footerOf(rows, agents.count), rows,
       ...(q.escalations ? { escalations: q.escalations } : {}), queue: queueOk,
@@ -85,6 +86,7 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
         if (o.queue) queueOk = await o.queue().catch(() => false);
         const r = await o.source.fetch();
         user = r.user;
+        derived = r.myRepos;
         facts = r.facts; truncated = !!r.truncated; at = now(); failures = 0; error = ''; pausedUntil = 0;
         if (r.rate && r.rate.remaining < LOW_POINTS) pausedUntil = Date.parse(r.rate.resetAt) || now() + interval;
       } catch (e) {

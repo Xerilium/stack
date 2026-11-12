@@ -7,7 +7,7 @@ import type { RankItem } from './home';
 import type { NeedItem } from './needs';
 import type { Pri, PrisFile } from './pris';
 import type { Inventory } from './inventory';
-import type { PrBoard } from './prs';
+import type { PrAuthState, PrBoard, SignInSession } from './prs';
 import type { ReviewItem, TeamAgent } from './team';
 import type { Thread } from './thread';
 import type { UpdateMode, VersionState } from './update';
@@ -61,7 +61,10 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     /** The Claude app session inventory. @req FR:pris-sessions-ui/sessions.list */
     inventory: () => call<Inventory>('/session-inventory'),
     /** The PR board; 404 where the host has no GitHub token. @req FR:pr-page/api.get */
-    prs: () => call<PrBoard>('/prs'),
+    prs: () => call<PrBoard | { off: true } | { auth: PrAuthState }>('/prs'),
+    /** @req FR:pr-page/auth.signin */
+    prSignIn: () => call<SignInSession>('/prs/sign-in', {}),
+    prSignInState: () => call<SignInSession>('/prs/sign-in'),
     /** @req FR:pr-page/api.queue */
     prQueue: (repo: string, number: number, op: 'top' | 'up' | 'down' | 'move' | 'add' | 'pin' | 'unpin' | 'remove' | 'undo', rank?: number) => call<{ rank: number | null; was: number | null; pinned: boolean }>('/prs/queue', { repo, number, op, ...(rank ? { rank } : {}) }),
     /** @req FR:pr-page/api.label */

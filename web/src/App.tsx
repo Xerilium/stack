@@ -24,7 +24,7 @@ import { AsksView } from './AsksView';
 import { PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
-import { PrsButton, PrsFlyoutHost } from './PrsPanel';
+import { PrsButton, PrsFlyoutHost, PrsNavBadge, PrsPage, usePrsNav } from './PrsPanel';
 import { FeedbackButton, FeedbackHost, feedbackActive } from './FeedbackPanel';
 import { actionsFor, type AskItem, type DeferChoice, type Send } from './asks';
 import { isFresh, sourceOf, type CalSource } from './calsource';
@@ -356,6 +356,8 @@ export function App() {
   const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : 'denied'));
   const notifyRef = useRef(false); notifyRef.current = notifyOn && perm === 'granted';
   /** Open 🙋 rows that have no reply yet, as asks. @req FR:web-shell/state.needs */
+  // The PR board loads at app start, so the nav count and the first open are ready. @req FR:pr-page/nav.badge @req FR:pr-page/nav.load
+  const prsNav = usePrsNav(api);
   const asks = useAsks(api, toast, () => void refresh(), stream, (items) => {
     if (!notifyRef.current || !document.hidden) return;
     const note = noteFor(items, new Date());
@@ -812,6 +814,8 @@ export function App() {
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
     { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
+    // @req FR:pr-page/nav.phone: the phone reaches Pull requests through More.
+    ...(prsNav.on ? [{ id: 'go-prs', label: `Go to ${LABEL.prs}${prsNav.need ? ` (${prsNav.need})` : prsNav.signIn ? ' (sign in)' : ''}`, hint: HINT.prs, group: 'Go to' as Group, run: () => go('prs') }] : []),
     { id: 'go-inbox', label: 'Go to Inbox', hint: HINT.inbox, group: 'Go to', run: () => go('inbox') },
     { id: 'go-sessions', label: 'Go to Agents', hint: HINT.sessions, group: 'Go to', run: () => go('sessions') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
@@ -967,9 +971,10 @@ export function App() {
   // @req FR:web-shell/nav.rail
   const inboxDot = inboxAttention ? <span class="nav-dot" role="img" aria-label="Inbox needs setup" data-testid="inbox-dot" /> : null;
   /** @req FR:inbox-page/web.dot */
-  const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : null);
+  const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : v === 'prs' ? <PrsNavBadge api={api} /> : null);
   /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
-  const nav = () => RAIL.map((v) => (
+  // The PR entry is absent only where the host has no board. @req FR:pr-page/nav.rail @req FR:pr-page/icon.absent
+  const nav = () => RAIL.filter((v) => v !== 'prs' || prsNav.on).map((v) => (
     <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
   ));
   return (
@@ -979,11 +984,9 @@ export function App() {
          * The brand is the mark plus Stack; the mode shows in it (`Stack [DEMO]` for a demo copy), the repo path only in its tooltip.
          * @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand
          */}
-        <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
+        <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}{/* @req FR:pr-page/icon.place */}<PrsButton api={api} where="rail" /></div>
         <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
         {nav()}
-        {/* @req FR:pr-page/icon.place */}
-        <PrsButton api={api} />
         <div class="spacer" />
         <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette">Commands <kbd aria-hidden="true">⌘K</kbd></button>
         <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
@@ -998,9 +1001,11 @@ export function App() {
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} compact /></div>
-        {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
+        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} where="phone" /></div>
+        {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && view !== 'prs' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} top={<PrisBlock ctl={prisSessions.pris} />} after={<SessionsBlock ctl={prisSessions.sessions} toast={toast} />} extraCount={prisSessions.sessions.inv?.needsYou.length ?? 0} />}
+        {/* @req FR:pr-page/nav.page */}
+        {view === 'prs' && <PrsPage api={api} toast={toast} />}
         {view === 'inbox' && <InboxView api={api} toast={toast} refresh={`${tick}|${asks.liveTick}`} onStatus={(r) => setInboxAttention(r.summary.attention)} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} team={team.team} projectRank={projectRank} />}
         {phase === 'ready' && view === 'today' && (

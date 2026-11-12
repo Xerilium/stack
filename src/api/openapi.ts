@@ -358,8 +358,8 @@ const DOCS: Record<string, RouteDoc> = {
   },
   // @req FR:pr-page/api.get @req FR:pr-page/api.queue @req FR:pr-page/api.label @req FR:pr-page/api.ack @req FR:pr-page/api.rec
   'prs.get': {
-    operationId: 'getPrBoard', summary: 'Owner only. Open PRs the owner reviews or moves, grouped (blocked, waiting, processing, pending, paused), with who must act, CI, unresolved threads, queue rank, and the escalation set. Taking it renews a 3-minute poll lease. `{off: true}` on hosts with no GitHub token',
-    responses: ok('Board', { type: 'object', properties: { at: { type: 'string', nullable: true }, user: { type: 'string' }, agents: { type: 'object' }, counts: { type: 'object' }, footer: { type: 'object' }, rows: { type: 'array', items: { type: 'object' } }, escalations: { type: 'object' }, queue: { type: 'boolean' }, rate: { type: 'object' }, error: { type: 'string' }, off: { type: 'boolean' } } }),
+    operationId: 'getPrBoard', summary: 'Owner only. Open PRs the owner reviews or moves, grouped (blocked, waiting, processing, pending, paused), with who must act, CI, unresolved threads, queue rank, and the escalation set. Taking it renews a 3-minute poll lease. `{auth: {state, method, session?}}` when signed out of GitHub; `{off: true}` on hosts with no board',
+    responses: ok('Board', { type: 'object', properties: { at: { type: 'string', nullable: true }, user: { type: 'string' }, agents: { type: 'object' }, counts: { type: 'object' }, footer: { type: 'object' }, rows: { type: 'array', items: { type: 'object' } }, escalations: { type: 'object' }, queue: { type: 'boolean' }, rate: { type: 'object' }, error: { type: 'string' }, off: { type: 'boolean' }, auth: { type: 'object' } } }),
   },
   'prs.queue': {
     operationId: 'movePrInQueue', summary: 'Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin, unpin, remove, undo. 409 when the queue is not installed or refuses',
@@ -378,6 +378,15 @@ const DOCS: Record<string, RouteDoc> = {
   'prs.rec': {
     operationId: 'decidePrRec', summary: 'Owner only. Accept, edit, or reject a PR priority recommendation; edit and reject need a reason',
     responses: ok('Done', { type: 'object' }),
+  },
+  // @req FR:pr-page/auth.signin
+  'prs.signin.get': {
+    operationId: 'getGitHubSignIn', summary: 'Owner only. The GitHub sign-in session: state (waiting, done, error, none), the one-time code, and the device link. Never a token. 404 on hosts with no sign-in',
+    responses: ok('Session', { type: 'object', properties: { state: { type: 'string', enum: ['waiting', 'done', 'error', 'none'] }, userCode: { type: 'string' }, verificationUri: { type: 'string' }, error: { type: 'string' } } }),
+  },
+  'prs.signin': {
+    operationId: 'startGitHubSignIn', summary: 'Owner only. Start the GitHub sign-in (gh auth login --web, the device flow). One at a time: a start while one waits returns it. 404 on hosts with no sign-in',
+    responses: ok('Session', { type: 'object', properties: { state: { type: 'string', enum: ['waiting', 'done', 'error'] }, userCode: { type: 'string' }, verificationUri: { type: 'string' }, error: { type: 'string' } } }),
   },
   'prReview.get': {
     operationId: 'getPrReview', summary: 'Cached PR facts (specLines, live flag, head SHA) and agent briefs with stale. No GitHub call. 404 on hosts with no store',

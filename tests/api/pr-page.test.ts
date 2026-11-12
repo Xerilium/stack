@@ -339,7 +339,7 @@ describe('PR routes', () => {
   it('routes are registered with scopes and documented', () => {
     for (const n of ['prs.get']) expect(routeScope(n)).toBe('tasks:read');
     for (const n of ['prs.queue', 'prs.label', 'prs.ack', 'prs.rec']) expect(routeScope(n)).toBe('tasks:write');
-    expect(ROUTES.filter((r) => r.name.startsWith('prs.')).map((r) => `${r.method} ${r.doc}`)).toEqual(['GET /prs', 'POST /prs/queue', 'POST /prs/label', 'POST /prs/ack', 'POST /prs/recs/{id}']);
+    expect(ROUTES.filter((r) => r.name.startsWith('prs.')).map((r) => `${r.method} ${r.doc}`)).toEqual(['GET /prs', 'POST /prs/queue', 'POST /prs/label', 'POST /prs/ack', 'POST /prs/recs/{id}', 'GET /prs/sign-in', 'POST /prs/sign-in']);
     const y = readFileSync(join(__dirname, '../../docs/api/openapi.yaml'), 'utf8');
     expect(y).toContain('/prs:');
     expect(y).toContain('/prs/recs/{id}:');

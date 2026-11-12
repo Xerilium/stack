@@ -11,6 +11,7 @@ const REPO = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
 const TIMEOUT_MS = 15_000;
 const DETAIL_TTL_MS = 5 * 60_000;
 const BATCH = 10;
+const PARALLEL = 3;
 const PER_SEARCH = 50;
 /** Thread replies read per thread: enough to see a 🧭 ask and any later human answer. */
 const THREAD_TAIL = 10;
@@ -19,9 +20,9 @@ const THREAD_TAIL = 10;
 export class GitHubRateLimit extends Error {
   constructor(public until: number) { super('GitHub rate limit'); this.name = 'GitHubRateLimit'; }
 }
-export interface BoardRead { user: string; facts: PrFacts[]; /** A search hit its 50-PR limit: some PRs may be missing. */ truncated?: boolean; rate?: { remaining: number; resetAt: string } }
+export interface BoardRead { user: string; facts: PrFacts[]; /** My repos found from the owner and the orgs the owner admins (no explicit list). */ myRepos?: string[]; /** A search hit its 50-PR limit: some PRs may be missing. */ truncated?: boolean; rate?: { remaining: number; resetAt: string } }
 export interface GitHubBoard { user(): Promise<string>; fetch(): Promise<BoardRead> }
-export interface GitHubBoardOptions { token: string; fetch?: typeof fetch; user?: string; repos?: string[]; now?: () => number }
+export interface GitHubBoardOptions { token: string; fetch?: typeof fetch; user?: string; repos?: string[]; now?: () => number; /** With no repos: my repos are the owner plus admin orgs. @req FR:pr-page/auth.repos */ adminOrgs?: boolean }
 
 type Obj = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const login = (a: Obj | null | undefined): string => (a?.login ? (a.__typename === 'Bot' && !String(a.login).endsWith('[bot]') ? `${a.login}[bot]` : String(a.login)) : 'ghost');
@@ -134,11 +135,25 @@ export function createGitHubBoard(o: GitHubBoardOptions): GitHubBoard {
     return me;
   };
 
+  /** The orgs the owner admins, read once an hour; a failed read is none. @req FR:pr-page/auth.repos */
+  let orgs: { at: number; list: string[] } | null = null;
+  const adminOrgs = async (): Promise<string[]> => {
+    if (orgs && now() - orgs.at < 3600_000) return orgs.list;
+    let list: string[] = [];
+    try {
+      const res = await get(`${API}/user/memberships/orgs?state=active&per_page=100`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      if (res.ok) list = ((await res.json()) as { role?: string; organization?: { login?: string } }[]).filter((m) => m?.role === 'admin').map((m) => String(m.organization?.login ?? '')).filter((l) => LOGIN.test(l));
+    } catch { list = []; }
+    orgs = { at: now(), list };
+    return list;
+  };
+
   return {
     user,
     async fetch() {
       const u = await user();
-      const [a, b, c] = searches(u, o.repos);
+      const mine = !o.repos?.length && o.adminOrgs ? [u, ...(await adminOrgs()).filter((x) => x.toLowerCase() !== u.toLowerCase())] : undefined;
+      const [a, b, c] = searches(u, mine ?? o.repos);
       const data = await gql(`query($a: String!, $b: String!, $c: String!) { rateLimit { remaining resetAt }
  a: search(type: ISSUE, query: $a, first: ${PER_SEARCH}) { nodes { ...P } }
  b: search(type: ISSUE, query: $b, first: ${PER_SEARCH}) { nodes { ...P } }
@@ -154,10 +169,14 @@ ${FRAGMENT}`, { a, b, c });
       // Detail: only what changed or aged out. @req FR:github-pr-status/board.detail
       const keyOf = (f: PrFacts) => `${f.updatedAt}|${f.headOid}|${f.checks.map((x) => x.state).join('')}`;
       const stale = facts.filter((f) => { const d = detail.get(f.url.toLowerCase()); return !d || d.key !== keyOf(f) || now() - d.at > DETAIL_TTL_MS; });
-      for (let i = 0; i < stale.length; i += BATCH) {
-        const part = stale.slice(i, i + BATCH);
-        const d = await gql(detailQuery(part));
-        if (d.rateLimit) rate = { remaining: Number(d.rateLimit.remaining), resetAt: String(d.rateLimit.resetAt) };
+      // Up to 3 detail calls at once: the first open of a 60-PR board takes seconds, not half a minute. @req FR:pr-page/nav.load
+      const parts: PrFacts[][] = [];
+      for (let i = 0; i < stale.length; i += BATCH) parts.push(stale.slice(i, i + BATCH));
+      const answers: Obj[] = [];
+      for (let i = 0; i < parts.length; i += PARALLEL) answers.push(...(await Promise.all(parts.slice(i, i + PARALLEL).map((p) => gql(detailQuery(p))))));
+      parts.forEach((part, k) => {
+        const d = answers[k];
+        if (d.rateLimit && (!rate || Number(d.rateLimit.remaining) < rate.remaining)) rate = { remaining: Number(d.rateLimit.remaining), resetAt: String(d.rateLimit.resetAt) };
         part.forEach((f, j) => {
           const p = d[`p${j}`]?.pullRequest;
           if (!p) return;
@@ -178,7 +197,7 @@ ${FRAGMENT}`, { a, b, c });
         f.threads = d.threads; f.comments = d.comments;
         f.checks = f.checks.map((c) => (d.required.has(c.name) ? { ...c, required: d.required.get(c.name) } : c));
       }
-      return { user: u, facts, ...(truncated ? { truncated } : {}), ...(rate ? { rate } : {}) };
+      return { user: u, facts, ...(mine ? { myRepos: mine } : {}), ...(truncated ? { truncated } : {}), ...(rate ? { rate } : {}) };
     },
   };
 }

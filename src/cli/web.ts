@@ -21,7 +21,9 @@ import { createApiHandler } from '../api/handler';
 import type { AppUpdater } from '../core/app-update';
 import { createClaudeJson } from '../email/llm';
 import { createGitHubPrs, githubRepos } from '../api/github';
-import { createPrPage, type PrPage } from '../api/pr-page';
+import { createLazyPrPage, createPrPage } from '../api/pr-page';
+import { createGitHubAuth, type GitHubAuth } from '../api/github-auth';
+import type { PrStatusProvider } from '../core/activity';
 import { storePrQueue } from '../api/pr-queue';
 import { fixtureCalendar, type CalendarEvent, type CalendarProvider } from '../calendar';
 import { createIcsCalendar, icsUrls } from '../calendar/ics';
@@ -85,6 +87,8 @@ export interface WebOpts {
   openUrl?: (url: string) => Promise<void>;
   /** In-app Connect; default the local service; `false` means none. @req FR:connect-accounts/api.get */
   connect?: Connect | false;
+  /** The GitHub token source; default `GITHUB_TOKEN`, then the `gh` sign-in. @req FR:pr-page/auth.token */
+  githubAuth?: GitHubAuth;
   /** Agent delivery: overrides for tests (runner, home); `false` turns it off. Always off in demo mode (`info.mode`). The loop runs only when `inbox.delivery` is `claude`. @req FR:agent-delivery/host.loop */
   delivery?: Partial<Pick<DeliveryDeps, 'run' | 'isRepo' | 'store'>> & { intervalMs?: number; login?: () => Promise<{ started: boolean; step?: string }> | { started: boolean; step?: string } } | false;
   /** This machine's inbox sign-ins for `GET /inbox-sources`; default the cached local probe. @req FR:inbox-page/api.sources */
@@ -199,10 +203,19 @@ export async function calendarSource(o: { cachePath?: string; fixture?: string; 
 export async function startWeb(o: WebOpts): Promise<WebServer> {
   const cfgPath = join(o.dir, '.xe/config/stack.json');
   const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
-  // @req FR:github-pr-status/wire.token @req FR:github-pr-status/repos.invalid: a bad repo list leaves PR status off.
-  const ghToken = process.env.GITHUB_TOKEN?.trim();
-  let prs: ReturnType<typeof createGitHubPrs> | undefined;
-  try { prs = ghToken ? createGitHubPrs({ token: ghToken, repos: githubRepos(process.env.STACK_GITHUB_REPOS) }) : undefined; } catch (e) { console.error(`github: STACK_GITHUB_REPOS ${e instanceof Error ? e.message : 'is invalid'}; PR status off`); }
+  // @req FR:github-pr-status/wire.token @req FR:github-pr-status/repos.invalid @req FR:pr-page/auth.token: the token is GITHUB_TOKEN, else the gh sign-in,
+  // read when needed, so a Dock-launched app (no shell environment) and a later sign-in both work. A bad repo list leaves PR status off.
+  const ghAuth = o.githubAuth ?? createGitHubAuth({ env: process.env });
+  let ghRepos: string[] | undefined;
+  let reposOk = true;
+  try { ghRepos = githubRepos(process.env.STACK_GITHUB_REPOS); } catch (e) { reposOk = false; console.error(`github: STACK_GITHUB_REPOS ${e instanceof Error ? e.message : 'is invalid'}; PR status off`); }
+  let prsFor: { token: string; p: PrStatusProvider } | null = null;
+  const prs: PrStatusProvider | undefined = reposOk ? async (refs) => {
+    const t = await ghAuth.token();
+    if (!t) return new Map();
+    if (prsFor?.token !== t) prsFor = { token: t, p: createGitHubPrs({ token: t, repos: ghRepos }) };
+    return prsFor.p(refs);
+  } : undefined;
   // Marks from live reads (expired, error), shared by the calendar, Connect and the inbox probe. @req FR:connect-accounts/acct.health
   const health = new AccountHealth();
   const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, ics: process.env.STACK_CALENDAR_ICS || o.ics, log: (l) => console.log(l), health }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
@@ -237,8 +250,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const offPrPri = prPriority.onWrite(() => { for (const f of [prPriority.file, prPriority.stateFile]) own.set(f, mtime(f)); tellPr(); });
   const unwatchPrPri = prPriority.watch((f, m) => { if (own.get(f) !== m) tellPr(); });
   // The PR page polls GitHub only while a page holds a lease; a changed board tells open pages. @req FR:pr-page/live.event
-  let prPage: PrPage | undefined;
-  try { prPage = ghToken ? createPrPage({ token: ghToken, repos: githubRepos(process.env.STACK_GITHUB_REPOS), config, home: stackHome(), inventory, queue: storePrQueue(prPriority), onChange: () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['prs'] }); } }) : undefined; } catch { prPage = undefined; }
+  // Built on the first read that finds a token; signed out, GET /prs answers the sign-in state. @req FR:pr-page/auth.state
+  const prQueue = storePrQueue(prPriority);
+  const prPage: ReturnType<typeof createLazyPrPage> | undefined = reposOk ? createLazyPrPage({ auth: ghAuth, queue: prQueue, make: (token) => createPrPage({ token, repos: ghRepos, config, home: stackHome(), inventory, queue: prQueue, adminOrgs: true, onChange: () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['prs'] }); } }) }) : undefined;
   // The live lane, briefs and PR facts live outside the repo too; a lane write tells open pages (`tasks` reloads Needs you for blocked checks). @req FR:pr-review-lane/lane.api
   const laneHome = o.laneHome ?? stackHome();
   const live = new LiveStore(laneHome);
