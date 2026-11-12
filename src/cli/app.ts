@@ -6,7 +6,7 @@ import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import {
-  APP_TARGET, buildPath, isNewer, manifestPath, parseResult, parseStamp, readSettings, readText, runHelperSync, sourceDir,
+  APP_TARGET, buildPath, isNewer, manifestPath, parseResult, parseStamp, pin, readSettings, readText, runHelperSync, sourceDir,
   type BuildStamp, type HelperJob, type UpdateMode, type UpdateResult,
 } from '../core/app-update';
 import { stackHome } from '../core/reports';
@@ -101,13 +101,14 @@ export async function appCmd(action: string | undefined, f: Record<string, strin
     if (f.install) { relaunch = true; quit = true; } // @req FR:devops-installer/update.install
     else if (d.isRunning(APP_TARGET)) {
       // @req FR:devops-installer/update.running @req FR:devops-installer/source.local: the running app must see this build.
+      // An app from before build stamps cannot install an update itself. @req FR:devops-installer/update.running
+      if (!i) return { json: base('manual'), text: 'The running Stack cannot install updates itself. Quit Stack and run: stack app update, or run: stack app update --install', code: 0 };
       if (appSource !== source) return { json: { ...base('elsewhere'), appSource }, text: `Stack reads builds from ${appSource}, not ${source}. Set "update.source" in ~/.config/stack/config.json, or run: stack app update --install`, code: 0 };
       return { json: base('staged'), text: LANDS[settings.mode], code: 0 };
     }
     else { relaunch = false; quit = false; } // @req FR:devops-installer/update.closed
   }
-  const sha = available()?.sha;
-  const result = d.runHelper({ source: build, target: APP_TARGET, stateDir, relaunch, quit, ...(sha ? { sha } : {}) });
+  const result = d.runHelper({ source: build, target: APP_TARGET, stateDir, relaunch, quit, ...pin(available()) });
   // @req FR:devops-installer/swap.result
   if (!result?.ok) {
     const msg = `Update failed at ${result?.step ?? 'start'}; rolled back. Log: ${join(stateDir, 'update.log')}`;

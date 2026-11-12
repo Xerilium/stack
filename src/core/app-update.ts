@@ -25,9 +25,12 @@ export interface VersionState {
   mode: UpdateMode; idleMinutes: number; canRestart: boolean; last: UpdateResult | null;
 }
 /** One helper run. `pid`: wait for this process; `quit`: ask a running app to quit first; `relaunch`: open the app after the swap. */
-export interface HelperJob { source: string; target: string; stateDir: string; pid?: number; relaunch: boolean; quit: boolean; /** The build sha the copy must carry. */ sha?: string }
+export interface HelperJob { source: string; target: string; stateDir: string; pid?: number; relaunch: boolean; quit: boolean; /** The build sha the copy must carry. */ sha?: string; /** The build time the copy must carry. */ builtAt?: string }
 
 export class UpdateRefused extends Error {}
+
+/** The helper job fields that pin the chosen build. @req FR:devops-installer/swap.verify */
+export const pin = (b: BuildStamp | null | undefined): Pick<HelperJob, 'sha' | 'builtAt'> => (b ? { sha: b.sha, builtAt: b.builtAt } : {});
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
@@ -94,7 +97,7 @@ export const HELPER_SCRIPT = `#!/bin/bash
 # Stack.app swap helper (devops-installer FR:swap). Inputs come from the environment only.
 set -u
 SRC="$STACK_UPDATE_SOURCE"; DST="$STACK_UPDATE_TARGET"; LOG="$STACK_UPDATE_LOG"; RES="$STACK_UPDATE_RESULT"
-PID="\${STACK_UPDATE_PID:-}"; QUIT="\${STACK_UPDATE_QUIT:-0}"; RELAUNCH="\${STACK_UPDATE_RELAUNCH:-0}"; SHA="\${STACK_UPDATE_SHA:-}"
+PID="\${STACK_UPDATE_PID:-}"; QUIT="\${STACK_UPDATE_QUIT:-0}"; RELAUNCH="\${STACK_UPDATE_RELAUNCH:-0}"; SHA="\${STACK_UPDATE_SHA:-}"; BUILT="\${STACK_UPDATE_BUILT:-}"
 OPEN="\${STACK_UPDATE_OPEN:-open}"; QUITTER="\${STACK_UPDATE_QUITTER:-}"; WAIT="\${STACK_UPDATE_WAIT_S:-60}"
 DIR="$(dirname "$DST")"; NAME="$(basename "$DST")"; EXE="\${NAME%.app}"
 STAGE="$DIR/.$NAME.staging"; PREV="$DIR/.$NAME.previous"; LOCK="$DIR/.$NAME.updating"
@@ -118,12 +121,23 @@ quit_app() {
 copy() { if command -v ditto >/dev/null 2>&1; then ditto "$1" "$2"; else cp -R "$1" "$2"; fi; }
 log "start: $SRC -> $DST"
 # One helper at a time. A lock whose owner died (killed at logout) is taken over.
+# mkdir and the pid write are two steps: an empty pid gets a second to appear before it counts as dead.
+owner_of() { o="$(cat "$1/pid" 2>/dev/null || true)"; if [ -z "$o" ]; then sleep 1; o="$(cat "$1/pid" 2>/dev/null || true)"; fi; printf '%s' "$o"; }
+alive() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null; }
+busy() { log "busy: $1"; exit 1; }
+RECLAIM="$LOCK.reclaim"
 if ! mkdir "$LOCK" 2>/dev/null; then
-  owner="$(cat "$LOCK/pid" 2>/dev/null || true)"
-  if [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null; then log "busy: another update is running"; exit 1; fi
-  log "lock: taking over a stale lock"; rm -rf "$LOCK"; mkdir "$LOCK" || { log "busy: cannot take the lock"; exit 1; }
+  alive "$(owner_of "$LOCK")" && busy "another update is running"
+  # Take over under a second lock, so two helpers never both take it. A dead reclaimer's lock is cleared for the next run.
+  if ! mkdir "$RECLAIM" 2>/dev/null; then alive "$(owner_of "$RECLAIM")" || rm -rf "$RECLAIM"; busy "another helper is taking the lock"; fi
+  echo $ > "$RECLAIM/pid"
+  if alive "$(owner_of "$LOCK")"; then rm -rf "$RECLAIM"; busy "another update is running"; fi
+  log "lock: taking over a stale lock"; rm -rf "$LOCK"
+  if ! mkdir "$LOCK" 2>/dev/null; then rm -rf "$RECLAIM"; busy "cannot take the lock"; fi
+  echo $ > "$LOCK/pid"; rm -rf "$RECLAIM"
+else
+  echo $ > "$LOCK/pid"
 fi
-echo $$ > "$LOCK/pid"
 # A helper killed between the two renames left no app: put the previous one back first.
 if [ ! -e "$DST" ] && [ -d "$PREV" ]; then mv "$PREV" "$DST" && log "recover: put the previous app back"; fi
 if [ "$QUIT" = 1 ] && running; then log "quit: asking Stack to quit"; quit_app; fi
@@ -141,9 +155,10 @@ if [ ! -d "$SRC" ] || ! copy "$SRC" "$STAGE"; then log "stage: cannot copy $SRC"
 xattr -dr com.apple.quarantine "$STAGE" 2>/dev/null || true
 log "stage: copied"
 if [ ! -x "$STAGE/Contents/MacOS/$EXE" ]; then log "verify: no executable Contents/MacOS/$EXE"; rm -rf "$STAGE"; finish false verify; fi
-# The copy must be the build that was chosen, not one a rebuild changed meanwhile.
-if [ -n "$SHA" ] && ! grep -qE '"sha": *"'"$SHA"'"' "$STAGE/Contents/Resources/app/package.json" 2>/dev/null; then
-  log "verify: the copy is not build $SHA"; rm -rf "$STAGE"; finish false verify
+# The copy must be the build that was chosen (sha and build time), not one a rebuild changed meanwhile.
+MANIFEST="$STAGE/Contents/Resources/app/package.json"
+if { [ -n "$SHA" ] && ! grep -qE '"sha": *"'"$SHA"'"' "$MANIFEST" 2>/dev/null; } || { [ -n "$BUILT" ] && ! grep -qF "$BUILT" "$MANIFEST" 2>/dev/null; }; then
+  log "verify: the copy is not build $SHA $BUILT"; rm -rf "$STAGE"; finish false verify
 fi
 # Stack may have opened again while we copied: never move a running app.
 if running; then log "wait: Stack opened again; not swapping"; rm -rf "$STAGE"; finish false wait; fi
@@ -179,7 +194,7 @@ export function helperEnv(j: HelperJob): Record<string, string> {
   return {
     STACK_UPDATE_SOURCE: j.source, STACK_UPDATE_TARGET: j.target, STACK_UPDATE_LOG: p.log, STACK_UPDATE_RESULT: p.result,
     STACK_UPDATE_PID: j.pid === undefined ? '' : String(j.pid), STACK_UPDATE_RELAUNCH: j.relaunch ? '1' : '0', STACK_UPDATE_QUIT: j.quit ? '1' : '0',
-    STACK_UPDATE_SHA: j.sha ?? '',
+    STACK_UPDATE_SHA: j.sha ?? '', STACK_UPDATE_BUILT: j.builtAt ?? '',
   };
 }
 
@@ -256,13 +271,13 @@ export function createAppUpdater(d: UpdaterDeps): AppUpdater {
       canRestart: d.target !== null, last: parseResult(d.readText(helperPaths(d.stateDir).result)),
     };
   };
-  const job = (relaunch: boolean, sha: string | undefined): HelperJob => ({ source: d.source, target: d.target!, stateDir: d.stateDir, pid: d.pid, relaunch, quit: false, ...(sha ? { sha } : {}) });
+  const job = (relaunch: boolean, b: BuildStamp | null): HelperJob => ({ source: d.source, target: d.target!, stateDir: d.stateDir, pid: d.pid, relaunch, quit: false, ...pin(b) });
   /** @req FR:devops-installer/restart.ready @req FR:devops-installer/restart.spawn */
   const restart = () => {
     const s = state();
     if (!s.ready) throw new UpdateRefused('No update ready');
     if (!s.canRestart) throw new UpdateRefused('Restart is not available on this host');
-    if (!started) { d.spawnHelper(job(true, s.available?.sha)); started = true; }
+    if (!started) { d.spawnHelper(job(true, s.available)); started = true; }
     d.quit();
   };
   return {
@@ -276,7 +291,7 @@ export function createAppUpdater(d: UpdaterDeps): AppUpdater {
         if (started || d.target === null) return false;
         const s = state();
         if (s.mode !== 'on-quit' || !s.ready) return false;
-        d.spawnHelper(job(false, s.available?.sha));
+        d.spawnHelper(job(false, s.available));
         started = true;
         log('update: installs after quit');
         return true;
@@ -292,6 +307,9 @@ export function createAppUpdater(d: UpdaterDeps): AppUpdater {
   };
 }
 
+/** A slug-safe ask id per failed run (from its time), so a new failure shows even after an older one was answered. */
+export const failId = (at: string): string => `upd-fail-${at.replace(/\D/g, '').slice(2, 14) || '0'}`;
+
 const INSTALL_DOC = 'https://github.com/Xerilium/stack/blob/main/docs/desktop-install.md#update';
 
 /**
@@ -301,7 +319,7 @@ const INSTALL_DOC = 'https://github.com/Xerilium/stack/blob/main/docs/desktop-in
 export async function noteUpdateResult(last: UpdateResult | null, reports: { put(body: unknown): Promise<unknown> }, now = new Date()): Promise<void> {
   if (!last) return;
   const asks = last.ok ? [] : [{
-    id: 'update-failed', kind: 'go-do', by: now.toISOString().slice(0, 10), link: INSTALL_DOC,
+    id: failId(last.at), kind: 'go-do', by: now.toISOString().slice(0, 10), link: INSTALL_DOC,
     ask: `Stack update failed at ${basename(last.step).replace(/[^a-z-]/g, '')} and was rolled back. See ~/.stack/update.log`,
   }];
   await reports.put({ agent: 'installer', project: 'stack', top: [], asks, blockers: [], progress: [] });

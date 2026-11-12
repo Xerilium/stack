@@ -127,7 +127,7 @@ describe('restart now', () => {
   it('starts the helper with its pid and relaunch on, then quits', () => {
     const t = updater({ settings: { mode: 'ask' } });
     t.u.restart();
-    expect(t.spawned).toEqual([{ source: '/src/desktop/out/Stack-darwin-arm64/Stack.app', target: '/Applications/Stack.app', stateDir: '/h/.stack', pid: 4242, relaunch: true, quit: false, sha: 'bbbbbbbbbbbb' }]);
+    expect(t.spawned).toEqual([{ source: '/src/desktop/out/Stack-darwin-arm64/Stack.app', target: '/Applications/Stack.app', stateDir: '/h/.stack', pid: 4242, relaunch: true, quit: false, sha: 'bbbbbbbbbbbb', builtAt: NEW.builtAt }]);
     expect(t.quits()).toBe(1);
   });
   // @req FR:devops-installer/restart.ready
@@ -192,7 +192,18 @@ describe('failure note', () => {
     await noteUpdateResult({ ok: false, step: 'launch', at: '2026-11-12T10:00:00Z' }, r);
     const rep = r.list().find((x) => x.agent === 'installer');
     expect(rep?.project).toBe('stack');
-    expect(rep?.asks).toEqual([expect.objectContaining({ id: 'update-failed', kind: 'go-do', ask: 'Stack update failed at launch and was rolled back. See ~/.stack/update.log' })]);
+    expect(rep?.asks).toEqual([expect.objectContaining({ id: 'upd-fail-261112100000', kind: 'go-do', ask: 'Stack update failed at launch and was rolled back. See ~/.stack/update.log' })]);
+  });
+  // @req FR:devops-installer/fail.note
+  it('a later failure gets a new ask id, so an answered one never hides it', async () => {
+    const r = store();
+    await noteUpdateResult({ ok: false, step: 'swap', at: '2026-11-12T10:00:00Z' }, r);
+    const a = r.list().find((x) => x.agent === 'installer')?.asks[0]?.id;
+    await noteUpdateResult({ ok: false, step: 'swap', at: '2026-11-13T09:30:05Z' }, r);
+    const b = r.list().find((x) => x.agent === 'installer')?.asks[0]?.id;
+    expect(a).toMatch(/^[a-z0-9][a-z0-9-]{0,23}$/);
+    expect(b).toMatch(/^[a-z0-9][a-z0-9-]{0,23}$/);
+    expect(a).not.toBe(b);
   });
   // @req FR:devops-installer/fail.clear
   it('clears the note after a good update, and does nothing with no result', async () => {

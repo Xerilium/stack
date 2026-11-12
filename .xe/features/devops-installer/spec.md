@@ -2,7 +2,7 @@
 id: devops-installer
 title: DevOps Installer
 author: flanakin
-description: Install, update, and roll back Stack.app on the Mac with no Apple account. Updates never interrupt work; by default they install when you quit.
+description: Install, update, and roll back Stack.app on a Mac with no Apple account; updates install when you quit.
 dependencies: [desktop-app, desktop-shell, cli, api, status-ingest, web-shell]
 ---
 
@@ -33,7 +33,9 @@ Owner needs each build to say what it is, so the app and the CLI can tell an old
 
 ### FR:source: Where a build comes from
 
-- **FR:source.local** (P1): The source checkout MUST be `STACK_SOURCE`, else `update.source` in `~/.config/stack/config.json`, else `~/.local/share/stack`. Its build is `<source>/desktop/out/Stack-darwin-arm64/Stack.app`. The app reads no shell environment on a Finder launch, so when Stack runs and the CLI built elsewhere (`--source` or `STACK_SOURCE`), the CLI MUST say where the app looks and how to fix it, and stage nothing
+Owner needs the app and the CLI to read builds from one place, so an update the CLI built is the one the app installs.
+
+- **FR:source.local** (P1): The source checkout MUST be `STACK_SOURCE`, else `update.source` in `~/.config/stack/config.json`, else `~/.local/share/stack`. Its build is `<source>/desktop/out/Stack-darwin-arm64/Stack.app`. The app reads no shell environment on a Finder launch, so when Stack runs and the CLI built elsewhere (`--source` or `STACK_SOURCE`), the CLI says where the app looks and how to fix it, and stages nothing
 - **FR:source.release** (P3, follow-up): The installer MAY fetch the `Stack-<version>-arm64.zip` asset of the newest GitHub Release of `Xerilium/stack`, check its sha256 against the release notes, and unzip it with `ditto -x -k` into a scratch folder. The quarantine flag is cleared after the check passes
 
 ### FR:install: First install
@@ -51,24 +53,28 @@ Owner needs one command that puts Stack in `/Applications` and opens it, so a ne
 
 ### FR:update: Update from the CLI
 
-Owner (or an agent that just merged a change) needs one command that builds and updates the app without breaking his flow.
+Owner (or an agent that just merged a change) needs one command that builds and updates the app, so a change reaches the app without breaking his flow.
 
 - **FR:update.@cli** (P1): Interface: `stack app update [--check | --install] [--no-build] [--source dir] [--json]`
 - **FR:update.check** (P1): `--check` MUST build nothing and change nothing. It prints the installed and available stamps and exits 0 when an update is ready, 4 when not
 - **FR:update.build** (P1): Without `--check` or `--no-build` the CLI MUST build first (`FR:build`)
 - **FR:update.current** (P1): When the build is not newer than the installed app, the CLI MUST print `Up to date (<sha>)`, change nothing, and exit 4
 - **FR:update.closed** (P1): When the app is not running, the CLI MUST swap now through the helper and not launch the app
-- **FR:update.running** (P1): When the app is running, the CLI MUST NOT quit it. It prints how the update lands for the current mode (`FR:mode`): `on-quit`: `Update ready: installs when you quit Stack`; `ask`: `Update ready: select Restart in Stack`; `auto-idle`: `Update ready: installs when Stack is idle`; `off`: `Update built; updates are off. Run: stack app update --install`
+- **FR:update.running** (P1): When the app is running, the CLI MUST NOT quit it. It prints how the update lands for the current mode (`FR:mode`): `on-quit`: `Update ready: installs when you quit Stack`; `ask`: `Update ready: select Restart in Stack`; `auto-idle`: `Update ready: installs when Stack is idle`; `off`: `Update built; updates are off. Run: stack app update --install`. When the running app has no build stamp, it cannot install on quit: the CLI says so, stages nothing, and points to `stack app update --install`
 - **FR:update.install** (P1): `--install` MUST install now: the helper quits a running app, swaps, and relaunches it
 - **FR:update.output** (P2):
   - Install result (@req FR:$install-result)
 
 ### FR:status: Show what is installed
 
+Owner needs to see the installed and available builds, so he knows whether an update waits.
+
 - **FR:status.@cli** (P1): Interface: `stack app status [--source dir] [--json]`
 - **FR:status.show** (P1): The CLI MUST print the installed stamp, the available stamp, whether an update is ready, the mode, and the last helper result. It changes nothing and exits 0
 
 ### FR:build: Build from the source checkout
+
+Owner needs every build made the same way, so an update never ships a stale or partial bundle.
 
 - **FR:build.steps** (P1): A build MUST run, in the source, `git pull --ff-only`, `pnpm install --frozen-lockfile`, `pnpm build`, then `pnpm desktop:package`, in order, and stop at the first failure with `Build failed: <step>` (exit 1). Nothing is installed after a failed build
 
@@ -77,26 +83,28 @@ Owner (or an agent that just merged a change) needs one command that builds and 
 Owner needs the bundle replaced only after the app has exited, with the old one back if anything fails, so an update can never leave him without a working app.
 
 - **FR:swap.@script** (P1): Interface: a fixed bash script the installer writes to `~/.stack/app/update.sh` and runs with `/bin/bash`. It takes every input from environment variables, never from its own text
-- **FR:swap.wait** (P1): The helper MUST wait for the app to exit before it changes anything: for the given pid and for any process running the target bundle (it asks a running app to quit first when told to; `STACK_UPDATE_QUITTER` replaces the quit call in tests). After 60 s it gives up, changes nothing, and records step `wait`. When Stack opens again while the copy runs, it MUST NOT swap (step `wait`)
+- **FR:swap.wait** (P1): The helper MUST wait for the app to exit before it changes anything: for the given pid and for any process running the target bundle (it asks a running app to quit first when told to; `STACK_UPDATE_QUITTER` replaces the quit call in tests). After 60 s it gives up, changes nothing, and records step `wait`. When Stack opens again while the copy runs, it does not swap (step `wait`)
 - **FR:swap.stage** (P1): The helper MUST copy the new bundle next to the target (same volume) with `ditto` (else `cp -R`), then clear `com.apple.quarantine` on the copy
-- **FR:swap.verify** (P1): A staged copy with no executable `Contents/MacOS/Stack`, or whose manifest does not carry the chosen build sha, MUST be removed; the target is unchanged (step `verify`)
-- **FR:swap.atomic** (P1): The helper MUST move the target aside to `.Stack.app.previous` and rename the staged copy into place. When the rename fails, it MUST move the previous bundle back (step `swap`)
-- **FR:swap.launch** (P1): When told to relaunch, the helper MUST open the target. When that fails, it MUST put the previous bundle back, open it, and record step `launch`. A build that opens and then crashes is `FR:crash`
+- **FR:swap.verify** (P1): A staged copy with no executable `Contents/MacOS/Stack`, or whose manifest does not carry the chosen build sha and build time, MUST be removed; the target is unchanged (step `verify`)
+- **FR:swap.atomic** (P1): The helper MUST move the target aside to `.Stack.app.previous` and rename the staged copy into place. When the rename fails, it moves the previous bundle back (step `swap`)
+- **FR:swap.launch** (P1): When told to relaunch, the helper MUST open the target. When that fails, it puts the previous bundle back, opens it, and records step `launch`. A build that opens and then crashes is `FR:crash`
 - **FR:swap.keep** (P2): After a good swap the previous bundle MUST stay at `.Stack.app.previous` until the next swap (rollback by hand: quit, swap the two names back)
-- **FR:swap.lock** (P1): One helper MUST run at a time (`.Stack.app.updating` with its pid). A lock whose owner is dead MUST be taken over. When no target exists but `.Stack.app.previous` does (a helper killed between the renames), the helper MUST put the previous app back first
+- **FR:swap.lock** (P1): One helper MUST run at a time (`.Stack.app.updating` with its pid). A lock whose owner is dead (or whose pid stays empty for a second) is taken over, under a second lock (`.Stack.app.updating.reclaim`) so only one helper takes it. When no target exists but `.Stack.app.previous` does (a helper killed between the renames), the helper puts the previous app back first
 - **FR:swap.log** (P1): Every step MUST append one timestamped line to `~/.stack/update.log`
-- **FR:swap.result** (P1): The helper MUST write the update result (@req FR:$update-result) to `~/.stack/update-result.json` and exit 0 on success, 1 on failure. The CLI MUST remove the old result first and treat a non-zero exit with no new result as a failure
+- **FR:swap.result** (P1): The helper MUST write the update result (@req FR:$update-result) to `~/.stack/update-result.json` and exit 0 on success, 1 on failure. The CLI removes the old result first and treats a non-zero exit with no new result as a failure
 - **FR:swap.detached** (P1): From the app the helper MUST run detached (own process group, no stdio), so it outlives the app
 
 ### FR:mode: Choose when updates install
 
-Owner needs updates to land when they do not cost him focus.
+Owner needs to choose when updates land, so they never cost him focus.
 
-- **FR:mode.setting** (P1): The mode MUST be `update.mode` in `~/.config/stack/config.json`, one of the update modes (@req FR:$update-mode). Missing or unknown reads as `on-quit`
+- **FR:mode.setting** (P1): The mode MUST be `update.mode` in `~/.config/stack/config.json`, one of the update modes (@req FR:$update-mode). Missing or unknown reads as `on-quit`. Saving the mode keeps the other `update` keys (`source`)
 - **FR:mode.idle-minutes** (P2): `update.idleMinutes` (integer 5-240, default 30) MUST set the idle wait for `auto-idle`
 - **FR:mode.never-launch** (P1): The app MUST NOT prompt, open a dialog, show a toast, or restart at launch or while the owner works, in any mode
 
 ### FR:quit: Install when the owner quits (default)
+
+Owner needs a ready update to install when he quits anyway, so he never has to stop for it.
 
 - **FR:quit.flush** (P1): Quit MUST stop the host first, which commits the live batch (`FR:desktop-shell/quit.stop`)
 - **FR:quit.spawn** (P1): Then, when the mode is `on-quit`, an update is ready, and the app runs from a bundle, the shell MUST start the helper detached with the app's pid and no relaunch, then quit
@@ -104,6 +112,8 @@ Owner needs updates to land when they do not cost him focus.
 - **FR:quit.next** (P1): The next launch runs the new build
 
 ### FR:restart: Restart now
+
+Owner needs a way to install a ready update right now, so he can get a fix at once.
 
 - **FR:restart.@api** (P1): Interface: `POST /api/version/restart`
 - **FR:restart.owner** (P1): Owner session only (403 otherwise)
@@ -113,9 +123,13 @@ Owner needs updates to land when they do not cost him focus.
 
 ### FR:idle: Restart when idle
 
+Owner needs an opt-in restart while he is away, so updates land with no action and no lost work.
+
 - **FR:idle.check** (P1): In `auto-idle` mode the shell MUST check once a minute and restart (`FR:restart.spawn`) when an update is ready, the system idle time is at least `update.idleMinutes`, and the window is hidden (closed to the menu bar). A visible window may hold an unsent draft, so it never restarts
 
 ### FR:version: Version probe
+
+The page needs a cheap probe of the update state, so it can show the indicator and the dialog.
 
 - **FR:version.@api** (P1): Interface: `GET /api/version`, `POST /api/version/mode`
 - **FR:version.get** (P1): `GET /api/version` MUST answer the version state (@req FR:$version-state) with `Cache-Control: no-store`. A host with no installer (`stack web`, the hosted app) answers 404
@@ -124,7 +138,7 @@ Owner needs updates to land when they do not cost him focus.
 
 ### FR:notice: Quiet indicator and Updates dialog
 
-Owner needs to see an update is ready without being stopped by it.
+Owner needs to see an update is ready, so he knows without being stopped by it.
 
 - **FR:notice.poll** (P1): The page MUST read `GET /api/version` once after load and then every 10 minutes while visible. A 404 stops the polling and shows nothing
 - **FR:notice.chip** (P1): When an update is ready, the nav footer (and the phone brand bar) MUST show a small `Update ready` chip; when the last helper run failed, `Update failed`. Nothing shows otherwise. No toast, no modal, no focus change
@@ -136,11 +150,15 @@ Owner needs to see an update is ready without being stopped by it.
 
 ### FR:fail: Tell the owner when an update failed
 
-- **FR:fail.note** (P1): At launch, when the last update result failed, the live host MUST put a report from agent `installer`, project `stack`, with one `go-do` ask `Stack update failed at <step> and was rolled back. See ~/.stack/update.log`, so it shows in Needs you
+Owner needs to hear about a failed update, so a rollback never goes unseen.
+
+- **FR:fail.note** (P1): At launch, when the last update result failed, the live host MUST put a report from agent `installer`, project `stack`, with one `go-do` ask `Stack update failed at <step> and was rolled back. See ~/.stack/update.log`, so it shows in Needs you. The ask id comes from the result time, so a later failure shows even after an earlier one was answered
   > - @req FR:status-ingest/store.replace
 - **FR:fail.clear** (P1): At launch, when the last result succeeded, the host MUST put the same report with no asks, which clears the note
 
 ### FR:uninstall: Remove the app (P3, follow-up)
+
+Owner needs one command to remove the app, so he can start clean.
 
 - **FR:uninstall.@cli** (P3): Interface: `stack app uninstall [--keep-data]`
 - **FR:uninstall.remove** (P3): MUST quit the app (flush first), remove `/Applications/Stack.app` and `.Stack.app.previous`, and keep `~/.config/stack` and `~/.stack` unless asked
@@ -148,9 +166,13 @@ Owner needs to see an update is ready without being stopped by it.
 
 ### FR:crash: Crash-loop guard (P3, follow-up)
 
+Owner needs a build that crashes at start rolled back, so he is never left with a broken app.
+
 - **FR:crash.guard** (P3): When a new build fails to reach a started host twice in a row, the helper MUST put the previous bundle back, relaunch it, and raise the `FR:fail.note` ask
 
 ### FR:web-only: Web-only updates (P3, follow-up)
+
+Owner needs a web-only change to land with no swap, so small fixes cost nothing.
 
 - **FR:web-only.reload** (P3): When only `web/dist` changed between two builds, the app MAY serve the new web bundle and reload the page without a swap or restart
 

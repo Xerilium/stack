@@ -291,6 +291,7 @@ export function App() {
   const unsaved = useUnsaved(api, (m) => toast(m, 'err'), local);
   /** Desktop updates: a quiet chip, never a prompt. @req FR:devops-installer/notice.chip @req FR:devops-installer/notice.dismiss @req FR:devops-installer/mode.never-launch */
   const updates = useUpdates(api, (m) => toast(m, 'err'), local);
+  const updatesOpen = useRef(false); updatesOpen.current = updates.open && !!updates.state;
   const updateChip = updates.chip ? <span class="update-chip"><button type="button" class="chip accent" data-testid="update-chip" title="Updates" onClick={() => updates.setOpen(true)}>{updates.chip}</button>{updates.chip === 'Update ready' && <button type="button" class="chip dim" aria-label="Later: hide until a newer build" onClick={updates.dismiss}>Later</button>}</span> : null;
   const unsavedChip = unsaved.label ? <button type="button" class="chip unsaved" data-testid="unsaved" title={unsaved.title} aria-live="polite" disabled={unsaved.state.saving} onClick={() => void unsaved.flush()}>{unsaved.label}</button> : null;
   /**
@@ -823,6 +824,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.prs-scrim')) return; // the PR flyout owns the keys while open @req FR:pr-page/flyout.shape
+      if (updatesOpen.current) return; // so does the Updates dialog @req FR:devops-installer/notice.dialog
       if (haveChord.current && !/^[0-4h]$/.test(e.key)) haveChord.current = 0; // any other key disarms h
       const L = latest.current, A = act.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); return; }

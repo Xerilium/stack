@@ -80,7 +80,7 @@ export function useUpdates(api: UpdateApi, onError: (m: string) => void, enabled
   const [state, setState] = useState<VersionState | null>(null);
   const [later, setLater] = useState<string | null>(loadLater);
   // Read during render, before the app rewrites the hash for its own view.
-  const [open, setOpen] = useState(() => enabled && typeof location !== 'undefined' && isUpdatesHash(location.hash));
+  const [open, setOpen] = useState(() => typeof location !== 'undefined' && isUpdatesHash(location.hash));
   const [restarting, setRestarting] = useState(false);
   useEffect(() => {
     if (!enabled) return;

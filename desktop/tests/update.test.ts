@@ -4,6 +4,7 @@ import { join } from 'path';
 import type { HelperJob } from '../../src/core/app-update';
 import { createShell } from '../src/shell';
 import { desktopUpdater } from '../src/update';
+import { writeConfig } from '../../src/cli/setup';
 import { fakeElectron, item } from './fakes';
 
 const URL_ = 'http://127.0.0.1:4242';
@@ -91,8 +92,10 @@ describe('desktop updater wiring', () => {
       quit: () => { quits++; }, spawn: (j) => { jobs.push(j); },
     });
     expect(u.state()).toMatchObject({ ready: true, canRestart: true, mode: 'on-quit', available: stamp });
+    writeConfig(w.home, { update: { source: '/my/src' } });
     u.setMode('ask');
-    expect(JSON.parse(readFileSync(join(w.home, '.config/stack/config.json'), 'utf8'))).toEqual({ update: { mode: 'ask', idleMinutes: 30 } });
+    // The mode save keeps the build source the CLI wrote. @req FR:devops-installer/source.local
+    expect(JSON.parse(readFileSync(join(w.home, '.config/stack/config.json'), 'utf8'))).toEqual({ update: { source: '/my/src', mode: 'ask', idleMinutes: 30 } });
     u.restart();
     expect(jobs).toEqual([expect.objectContaining({ target: join(w.home, 'Stack.app'), stateDir: join(w.home, '.stack'), pid: 7, relaunch: true })]);
     expect(quits).toBe(1);

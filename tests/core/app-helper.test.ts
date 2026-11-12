@@ -100,6 +100,43 @@ d('swap helper', () => {
   });
 
   // @req FR:devops-installer/swap.lock
+  it('waits for a lock owner to publish its pid; a live reclaimer stops a second takeover', () => {
+    const w = world();
+    bundle(w.target, 'old'); bundle(w.source, 'new');
+    const lock = join(w.apps, '.Stack.app.updating');
+    // A live reclaimer holds the takeover: this helper leaves the stale lock alone.
+    mkdirSync(lock); writeFileSync(join(lock, 'pid'), '999999');
+    mkdirSync(`${lock}.reclaim`); writeFileSync(join(`${lock}.reclaim`, 'pid'), String(process.pid));
+    expect(w.run().status).toBe(1);
+    expect(w.log()).toMatch(/busy: another helper is taking the lock/);
+    expect(w.tag(w.target)).toBe('old');
+    // A dead reclaimer's lock is cleared for the next run, which takes over.
+    writeFileSync(join(`${lock}.reclaim`, 'pid'), '999998');
+    expect(w.run().status).toBe(1);
+    expect(existsSync(`${lock}.reclaim`)).toBe(false);
+    expect(w.run().status).toBe(0);
+    expect(w.tag(w.target)).toBe('new');
+    // An owner whose pid is not written yet gets a second; when it stays empty the lock is stale.
+    bundle(w.source, 'newer');
+    mkdirSync(lock);
+    expect(w.run().status).toBe(0);
+    expect(w.tag(w.target)).toBe('newer');
+  });
+
+  // @req FR:devops-installer/swap.verify
+  it('refuses a copy of the same sha with another build time', () => {
+    const w = world();
+    bundle(w.target, 'old'); bundle(w.source, 'new', true, 'bbbbbbbbbbbb');
+    const p = join(w.source, 'Contents/Resources/app/package.json');
+    writeFileSync(p, JSON.stringify({ stackBuild: { sha: 'bbbbbbbbbbbb', builtAt: '2026-11-12T11:00:00.000Z' } }, null, 2));
+    expect(w.run({ sha: 'bbbbbbbbbbbb', builtAt: '2026-11-12T10:00:00.000Z' }).status).toBe(1);
+    expect(w.result()).toMatchObject({ ok: false, step: 'verify' });
+    expect(w.tag(w.target)).toBe('old');
+    expect(w.run({ sha: 'bbbbbbbbbbbb', builtAt: '2026-11-12T11:00:00.000Z' }).status).toBe(0);
+    expect(w.tag(w.target)).toBe('new');
+  });
+
+  // @req FR:devops-installer/swap.lock
   it('puts the previous app back first when a killed helper left none', () => {
     const w = world();
     bundle(join(w.apps, '.Stack.app.previous'), 'old');

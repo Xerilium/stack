@@ -58,7 +58,7 @@ describe('stack app update', () => {
     expect(f.ran).toEqual([
       ['git', ['pull', '--ff-only'], SRC], ['pnpm', ['install', '--frozen-lockfile'], SRC], ['pnpm', ['build'], SRC], ['pnpm', ['desktop:package'], SRC],
     ]);
-    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: false, quit: false, sha: 'bbbbbbbbbbbb' }]);
+    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: false, quit: false, sha: 'bbbbbbbbbbbb', builtAt: NEW.builtAt }]);
     expect(r).toMatchObject({ code: 0, json: { outcome: 'installed', result: OK } });
   });
   // @req FR:devops-installer/build.steps
@@ -89,6 +89,13 @@ describe('stack app update', () => {
       expect(f.jobs).toEqual([]);
     }
   });
+  // @req FR:devops-installer/update.running
+  it('when the running app has no stamp, says it cannot install on its own and stages nothing', async () => {
+    const f = fake({ running: true, installed: null });
+    const r = await appCmd('update', { 'no-build': true }, f.deps);
+    expect(r).toMatchObject({ code: 0, text: 'The running Stack cannot install updates itself. Quit Stack and run: stack app update, or run: stack app update --install', json: { outcome: 'manual' } });
+    expect(f.jobs).toEqual([]);
+  });
   // @req FR:devops-installer/source.local @req FR:devops-installer/update.running
   it('when Stack runs and the build is elsewhere, says where the app looks and stages nothing', async () => {
     const f = fake({ running: true });
@@ -103,7 +110,7 @@ describe('stack app update', () => {
   it('--install quits a running app, swaps, and relaunches', async () => {
     const f = fake({ running: true });
     const r = await appCmd('update', { install: true, 'no-build': true }, f.deps);
-    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: true, quit: true, sha: 'bbbbbbbbbbbb' }]);
+    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: true, quit: true, sha: 'bbbbbbbbbbbb', builtAt: NEW.builtAt }]);
     expect(r).toMatchObject({ code: 0, json: { outcome: 'installed' } });
   });
   // @req FR:devops-installer/swap.result
@@ -124,7 +131,7 @@ describe('stack app install', () => {
     const f = fake({ available: OLD });
     const r = await appCmd('install', {}, f.deps);
     expect(f.ran).toHaveLength(4);
-    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: true, quit: true, sha: 'aaaaaaaaaaaa' }]);
+    expect(f.jobs).toEqual([{ source: BUILD, target: APP, stateDir: '/h/.stack', relaunch: true, quit: true, sha: 'aaaaaaaaaaaa', builtAt: OLD.builtAt }]);
     expect(r).toMatchObject({ code: 0, json: { action: 'install', outcome: 'installed' } });
   });
   // @req FR:devops-installer/install.nobuild

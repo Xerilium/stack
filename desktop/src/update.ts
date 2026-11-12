@@ -31,7 +31,7 @@ export function desktopUpdater(o: DesktopUpdaterOpts): AppUpdater {
     readText,
     settings: () => readSettings(readConfig(o.home)),
     // @req FR:devops-installer/mode.setting
-    saveSettings: (s) => { writeConfig(o.home, { update: { mode: s.mode, idleMinutes: s.idleMinutes } }); },
+    saveSettings: (s) => { const c = readConfig(o.home); const u = c.update && typeof c.update === 'object' && !Array.isArray(c.update) ? c.update : {}; writeConfig(o.home, { update: { ...u, mode: s.mode, idleMinutes: s.idleMinutes } }); },
     spawnHelper: o.spawn ?? spawnHelperDetached,
     quit: o.quit,
     log: o.log,
