@@ -16,6 +16,7 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 
 - [ ] Headless agent run on each thread message; reply posts to the thread (`FR:connect.agents`)
 - [ ] `Sign in to Claude` flow with a step list (`FR:connect.flow`)
+- [ ] Remote message state (`FR:connect.agents.remote`)
 
 ## Stage 2: task-schema
 
@@ -26,6 +27,7 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 - [ ] Move `ownerOf` to `src/core/agents.ts` (`FR:schema.agent`)
 - [ ] `GET /tasks` summary fields; `GET /tasks/{ref}?view=full`; openapi (`FR:api.summary`, `FR:api.full`)
 - [ ] Agent delivery sends `TaskFull` (`FR:connect.agents`)
+- [ ] Moved refs (`FR:api.moved`)
 
 ## Stage 3: quality-gate
 
@@ -41,16 +43,17 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 ## Stage 4: components
 
 - [ ] `TaskCard`, `TaskDetail`, `Thread`, `AgentChip`, `AskCard`, `RefLink` (`FR:ui.*`)
-- [ ] Test: no page draws an entity outside these components
+- [ ] One-component e2e test (`FR:ui.test`)
 - [ ] Remove Composer modes, `AgentTalk`, `RowDetail`
+- [ ] Priorities on the shared components (`FR:ia.priorities`)
+- [ ] Message state in Thread (`FR:ui.thread`)
 
 ## Stages 5-11
 
 - [ ] 5: Now surface (`FR:ia.now`)
-- [ ] 6: Nav, keys, URLs, Back, breadcrumb, pane, Tasks filters, redirects for home, projects, list (`FR:ia.nav`, `FR:ia.keys`, `FR:ia.removed`, `FR:ia.back`, `FR:ia.pane`, `FR:ia.tasks`)
+- [ ] 6: Nav, keys, URLs, Back, breadcrumb, pane, Tasks filters, redirects for home, next, focus, projects, list (`FR:ia.nav`, `FR:ia.keys`, `FR:ia.removed`, `FR:ia.back`, `FR:ia.pane`, `FR:ia.tasks`)
 - [ ] 7: Microsoft sign-in for calendar and mail; GitHub device flow; no-command string test (`FR:connect.rule`, `FR:connect.rule.test`, `FR:connect.flow`, `FR:connect.calendar`, `FR:connect.mail`, `FR:connect.github`)
 - [ ] 8: My day grid with Respond, Validate, Do, Focus blocks (`FR:ia.myday`)
 - [ ] 9: Notifications; redirects for asks and inbox (`FR:ia.notifications`, `FR:ia.removed`)
 - [ ] 10: Agents org tree (`FR:ia.agents`)
 - [ ] 11: CoS wide layout (`FR:ia.cos`)
-- [ ] Priorities on the shared components (`FR:ia.priorities`), in Stage 4

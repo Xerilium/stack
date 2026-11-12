@@ -30,7 +30,7 @@ Result: 91% of open rows have no context in the file. The app cannot show contex
 | Row parse   | `row.ts` `parseRow`                           | Markers, due, `who` (agent/human), bare URLs lifted to `links`   | `#97` and `repo#97` stay plain text. `markdown.ts` links only `[text](url)`.                                                                                                                                         |
 | Now card    | `NowView.tsx:41`                              | Title and a "why" line                                           | Notes, children, parent, links, project, owner.                                                                                                                                                                      |
 
-Example from the sample: `flantastic-4.md:99` `Answer the acks in PR #97` sits under `Christmas After Dark` (`:91`). Now shows only the leaf title. The parent is lost, and `#97` is not a link.
+Example from the sample: `flantastic-4.md:91` is the parent `Christmas After Dark`. Its text names `f4-music PR #97`, which shows as plain text. Its children rank and show on Now with no parent title.
 
 ## 2. Where each entity renders
 
