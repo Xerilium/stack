@@ -43,7 +43,7 @@ Owner needs each remote request checked so that only his paired phone gets data.
 - **FR:gate.token** (P1): A remote request MUST carry a device token, from the `stack_device` cookie or from `Authorization: Bearer` / `X-Stack-Token`, that verifies (`FR:auth-security/token.verify`) and is bound to an active device (`FR:iphone-access/device.login`)
   - **FR:gate.token.deny** (P1): No token or a bad, expired or revoked token is `401`. A valid token that is not bound to an active device is `403`
   - **FR:gate.token.page** (P1): A remote `GET` for a page (not `/api/*`, `/events`, `/sessions/*` or `/.auth/*`) without a valid token MUST redirect (`302`) to `/pair`
-- **FR:gate.public** (P1): Only `GET /pair`, `GET /pair.js` and `POST /.auth/pair` MUST be served to a remote caller without a token. They hold no task data
+- **FR:gate.public** (P1): Only `GET /pair`, `GET /pair.js`, `POST /.auth/pair`, `/.auth/logout`, the manifest and the app icons MUST be served to a remote caller without a token. They hold no task data. The manifest and icons let Add to Home Screen work before pairing
 - **FR:gate.scope** (P1): A paired device is the owner's phone, so a remote `/api` request MUST run as the owner, with the caller's own principal, token and cookie headers dropped. It MUST NOT reach the token or device admin endpoints (`403`): a phone never mints or revokes tokens or devices. Device self endpoints (`FR:iphone-access/sub.@http`) run as its device token through the `auth-security` authorize hook
 - **FR:gate.csrf** (P1): A remote write MUST be refused (`403`) when its `Origin` names a host other than the request host, or its `Sec-Fetch-Site` is not `same-origin` or `none`
 
@@ -66,11 +66,11 @@ Owner needs to pair his phone once so that it signs in with no typing after that
 - **FR:pair.page** (P1): `GET /pair` serves a page with no inline script or style (CSP stays `default-src 'self'`). Its script `/pair.js` takes the code from the URL fragment or a paste field, saves it in browser storage as `stack.device` (the install screen, `FR:iphone-access/install.pair`), posts it to `/.auth/pair` and on success opens `/#/install`
 - **FR:pair.cookie** (P1): `POST /.auth/pair` with JSON `{ token }` (strict fields, at most 4 KiB) and a valid active device token MUST answer `204` with `Set-Cookie: stack_device=<token>; Path=/; HttpOnly; SameSite=Lax; Max-Age=7776000`, plus `Secure` per `FR:proxy.secure`. `Lax`, not `Strict`, so a link opened from another app still signs in; `FR:gate.csrf` guards writes. Any other token is `401` with no cookie. The `FR:gate.csrf` rule applies
 - **FR:pair.me** (P1): A remote `/.auth/me` with a valid token answers the local stub shape with `userDetails` `device:<name>`
-- **FR:pair.logout** (P2): A remote `/.auth/logout` MUST clear the cookie (`Max-Age=0`) and redirect to `/pair`
+- **FR:pair.logout** (P2): A remote `/.auth/logout` MUST clear the cookie (`Max-Age=0`) and redirect to `/pair`, also when the cookie no longer verifies
 
 ### FR:docs: Phone setup and threat notes
 
-- **FR:docs.phone** (P1): `docs/phone-access.md` MUST give the human steps as one short numbered list: install Tailscale on the Mac and the iPhone, sign in, turn on MagicDNS and HTTPS, run `tailscale serve`, open the URL, pair the device, Add to Home Screen
+- **FR:docs.phone** (P1): `docs/phone-access.md` MUST give the human steps as one short numbered list: install Tailscale on the Mac and the iPhone, sign in, turn on MagicDNS and HTTPS, run `tailscale serve`, open the URL, Add to Home Screen, then pair inside the installed app (iOS Home Screen apps do not share cookies or storage with Safari)
 - **FR:docs.threat** (P1): The doc MUST hold threat notes of 10 lines or fewer, and `docs/security/threat-model.md` MUST list the tailnet boundary
 
 ### Non-functional Requirements

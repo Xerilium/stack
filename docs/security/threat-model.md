@@ -37,7 +37,7 @@ One owner, one private task repo, hosted on Azure Static Web Apps (SWA) free tie
 | 13 | Other sign-in providers | SWA route rules return 404 for non-GitHub login (`docs/security/staticwebapp.config.json`) | `docs.test.ts` |
 | 14 | Lost or stolen phone | One token per device (3 scopes, 90 days); owner revokes the device, which revokes the token and drops its push subscription | `devices.test.ts` |
 | 15 | Host posts to an attacker URL via a saved push endpoint | Endpoint must be https on a known push-service host, no credentials or port; a device token is needed to save it | `devices.test.ts` |
-| 16 | Another tailnet member or a rebinding page reaches the Mac host | Listens on loopback and Tailscale addresses only (never `0.0.0.0`); remote Host must be a Tailscale address or `*.ts.net`; device token or cookie on every remote request; proxy headers trusted from loopback only | `tailnet.test.ts` |
+| 16 | Another tailnet member or a rebinding page reaches the Mac host | Listens on loopback and Tailscale addresses only (never `0.0.0.0`); remote Host must be a Tailscale address or `*.ts.net`; device token or cookie on every remote request; proxy headers trusted from loopback only. A paired device is the owner (it can start agent runs) but never reaches token or device admin | `tailnet.test.ts` |
 
 ## Residual risk
 

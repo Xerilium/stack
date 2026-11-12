@@ -11,6 +11,7 @@ import {
 } from '../../src/cli/tailnet';
 import { createDeviceService, createTokenService, MemoryTokenStore } from '../../src/api';
 import { UsageError } from '../../src/cli/args';
+import { run } from '../../src/cli/run';
 
 Object.assign(process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
 jest.setTimeout(30000);
@@ -307,12 +308,72 @@ describe('phone access doc', () => {
     expect(steps.length).toBeGreaterThanOrEqual(7);
     expect(steps.length).toBeLessThanOrEqual(10);
     const text = steps.join('\n');
-    for (const s of ['Tailscale', 'iPhone', 'MagicDNS', 'HTTPS', 'tailscale serve', '--bind tailnet', 'stack devices add', '/pair', 'Add to Home Screen']) expect(text).toContain(s);
+    for (const s of ['Tailscale', 'iPhone', 'MagicDNS', 'HTTPS', 'tailscale serve', '--bind tailnet', 'stack devices add', 'Pair this phone', 'Add to Home Screen']) expect(text).toContain(s);
   });
   // @req FR:tailnet-access/docs.threat
   it('keeps the threat notes to 10 lines and lists the tailnet boundary in the threat model', () => {
     const notes = read('docs/phone-access.md').split('## Threat notes')[1].trim().split('\n').filter((l) => l.trim());
     expect(notes.length).toBeLessThanOrEqual(10);
     expect(read('docs/security/threat-model.md')).toMatch(/Tailnet to Mac host/);
+  });
+});
+
+describe('remote gate, review round 1', () => {
+  const host = { host: '[::1]:4173' };
+  async function server() {
+    const f = await fixture();
+    mkdirSync(join(f.web, 'icons'));
+    writeFileSync(join(f.web, 'manifest.webmanifest'), '{"name":"Stack"}');
+    writeFileSync(join(f.web, 'icons/apple-touch-icon.png'), 'png');
+    const s = await startWeb({ ...quiet, dir: f.dir, port: 0, webDir: f.web, agents: false, bind: 'tailnet', tailnet: () => ['::1'], auth: f, peer: () => REMOTE });
+    return { f, s };
+  }
+  // @req FR:tailnet-access/gate.public
+  it('serves the manifest and icons without a token, so Add to Home Screen works before pairing', async () => {
+    const { s } = await server();
+    try {
+      const m = await call(s.url, '/manifest.webmanifest', { headers: host });
+      expect([m.status, m.headers['content-type']]).toEqual([200, 'application/manifest+json']);
+      expect((await call(s.url, '/icons/apple-touch-icon.png', { headers: host })).status).toBe(200);
+      expect((await call(s.url, '/icons/icon-192.png', { headers: host })).status).toBe(404);
+      expect((await call(s.url, '/index.html', { headers: host })).status).toBe(302);
+      expect(PAIR_HTML).toContain('<link rel="manifest" href="/manifest.webmanifest"');
+    } finally { await s.close(); }
+  });
+  // @req FR:tailnet-access/gate.scope
+  it('device self endpoints run as the device token: the phone saves its push subscription', async () => {
+    const { f, s } = await server();
+    try {
+      const sub = JSON.stringify({ endpoint: 'https://web.push.apple.com/abc', keys: { p256dh: 'BAAA', auth: 'AAAA' } });
+      const put = await call(s.url, '/api/auth/devices/me/push', { method: 'PUT', headers: { ...host, ...json, cookie: `stack_device=${f.phone.token}`, 'sec-fetch-site': 'same-origin' }, body: sub });
+      expect(put.status).toBe(200);
+      expect((await f.devices.list())[0].push).toBe(true);
+      // Dot segments cannot sneak past the admin guard.
+      expect((await call(s.url, '/api/auth/devices/me/../../tokens', { headers: { ...host, cookie: `stack_device=${f.phone.token}` } })).status).toBe(403);
+    } finally { await s.close(); }
+  });
+  // @req FR:tailnet-access/gate.csrf
+  it('refuses a same-site write (another *.ts.net node is same-site)', async () => {
+    const { f, s } = await server();
+    try {
+      expect((await call(s.url, '/api/tasks/complete', { method: 'POST', headers: { ...host, ...json, authorization: `Bearer ${f.phone.token}`, 'sec-fetch-site': 'same-site' }, body: JSON.stringify({ ref: 'alpha:4' }) })).status).toBe(403);
+    } finally { await s.close(); }
+  });
+  // @req FR:tailnet-access/pair.logout
+  it('logout clears a revoked cookie too', async () => {
+    const { f, s } = await server();
+    try {
+      await f.devices.revoke(f.phone.device.id);
+      const out = await call(s.url, '/.auth/logout', { headers: { ...host, cookie: `stack_device=${f.phone.token}` } });
+      expect(out.status).toBe(302);
+      expect(out.headers['set-cookie']?.[0]).toContain('Max-Age=0');
+    } finally { await s.close(); }
+  });
+  // @req FR:tailnet-access/bind.@cli
+  it('stack web refuses a bad --bind with exit 2', async () => {
+    let err = '';
+    const code = await run(['web', '--bind', 'lan'], { out: () => undefined, err: (x) => { err += x; } });
+    expect(code).toBe(2);
+    expect(err).toContain('--bind must be loopback or tailnet');
   });
 });

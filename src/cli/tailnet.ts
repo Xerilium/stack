@@ -108,6 +108,8 @@ export function cookieToken(header: string | string[] | undefined): string | nul
 
 /** Paths a remote caller reaches with no token; none holds task data. @req FR:tailnet-access/gate.public */
 export const PUBLIC_PATHS = new Set(['/pair', '/pair.js']);
+/** Built files a remote caller gets with no token, so Add to Home Screen works before pairing. No data. @req FR:tailnet-access/gate.public */
+export const PUBLIC_STATIC = new Set(['/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png']);
 /** Remote paths that answer 401 instead of the pairing redirect. @req FR:tailnet-access/gate.token.page */
 export const isDataPath = (p: string): boolean => p === '/api' || p.startsWith('/api/') || p === '/events' || p.startsWith('/sessions/') || p.startsWith('/.auth/');
 
@@ -118,6 +120,11 @@ export const PAIR_HTML = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pair this phone - Stack</title>
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Stack">
 <script src="/pair.js" defer></script>
 </head>
 <body>
@@ -151,7 +158,8 @@ export const PAIR_JS = `(() => {
     try { localStorage.setItem('stack.device', code); } catch { /* storage off: the cookie still signs in */ }
     location.replace('/#/install');
   };
-  const fromHash = decodeURIComponent(location.hash.slice(1));
+  let fromHash = '';
+  try { fromHash = decodeURIComponent(location.hash.slice(1)); } catch { fromHash = ''; }
   if (fromHash) { history.replaceState(null, '', '/pair'); void pair(fromHash); }
   document.getElementById('pair').addEventListener('submit', (e) => { e.preventDefault(); void pair(document.getElementById('code').value); });
 })();

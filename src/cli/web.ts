@@ -1,5 +1,5 @@
 /**
- * `stack web`: serves the web app and the api on localhost over a task repo (loopback only, no sign-in).
+ * `stack web`: serves the web app and the api on localhost over a task repo (loopback: no sign-in; `--bind tailnet`: paired devices too).
  * @req FR:cli/web.serve @req FR:cli/web.demo
  */
 import { createHash } from 'crypto';
@@ -23,7 +23,7 @@ import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
 import { createAuth, type DeviceService, type DeviceView, type TokenService } from '../api';
 import { fileAuth } from './devices';
 import {
-  clearCookie, cookieToken, deviceCookie, isDataPath, isLocal, listenable, NO_TAILSCALE, PAIR_HTML, PAIR_JS, PUBLIC_PATHS,
+  clearCookie, cookieToken, deviceCookie, isDataPath, isLocal, listenable, NO_TAILSCALE, PAIR_HTML, PAIR_JS, PUBLIC_PATHS, PUBLIC_STATIC,
   requestHost, requestSecure, tailnetAddresses, tailnetHostOk, type BindMode,
 } from './tailnet';
 
@@ -208,13 +208,17 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const auth = remoteAuth ? createAuth({ owners: [], tokens: remoteAuth.tokens, devices: remoteAuth.devices, vapidPublicKey: process.env.STACK_VAPID_PUBLIC_KEY?.trim() || undefined }) : undefined;
   const remoteApi = auth ? auth.wrap(createApiHandler({ storage, config, reports, authorize: auth.authorize, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() })) : undefined;
   /** The active device for a token: 401 when it does not verify, 403 when it is not a paired device. @req FR:tailnet-access/gate.token.deny */
-  const deviceOf = async (token: string): Promise<DeviceView | 401 | 403> => {
+  const deviceOf = async (token: string): Promise<DeviceView | 401 | 403 | 500> => {
     if (!remoteAuth) return 403;
     try {
       const v = await remoteAuth.tokens.verify(token);
       if (!v) return 401;
       return (await remoteAuth.devices.byTokenId(v.id)) ?? 403;
-    } catch { return 403; }
+    } catch (e) {
+      // A broken store fails closed; the log names the error class only, never the token.
+      console.error(`tailnet: device check failed (${e instanceof Error ? e.constructor.name : 'Error'})`);
+      return 500;
+    }
   };
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
@@ -248,11 +252,20 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     if (unsafe && ((originHost !== null && originHost !== host!.toLowerCase()) || (site && site !== 'same-origin' && site !== 'none'))) return deny(403);
     const path = (req.url ?? '/').split('?')[0];
     // @req FR:tailnet-access/pair.page
-    if (PUBLIC_PATHS.has(path)) {
+    if (PUBLIC_PATHS.has(path) || PUBLIC_STATIC.has(path)) {
       if (unsafe) { send(405, 'method not allowed', 'text/plain', { allow: 'GET, HEAD' }); return null; }
-      send(200, path === '/pair' ? PAIR_HTML : PAIR_JS, path === '/pair' ? TYPES['.html'] : TYPES['.js']);
+      if (path === '/pair') send(200, PAIR_HTML, TYPES['.html']);
+      else if (path === '/pair.js') send(200, PAIR_JS, TYPES['.js']);
+      else {
+        // Manifest and icons (no data), so Add to Home Screen works before pairing.
+        const file = join(o.webDir, path);
+        if (!existsSync(file)) return deny(404, 'not found');
+        send(200, readFileSync(file), TYPES[extname(file)] ?? 'application/octet-stream');
+      }
       return null;
     }
+    // Logout needs no valid token: a revoked or expired cookie must still be cleared. @req FR:tailnet-access/pair.logout
+    if (path === '/.auth/logout') { send(302, '', 'text/plain', { location: '/pair', 'set-cookie': clearCookie(secure) }); return null; }
     if (path === '/.auth/pair') {
       if (method !== 'POST') { send(405, 'method not allowed', 'text/plain', { allow: 'POST' }); return null; }
       const chunks: Buffer[] = []; let n = 0;
@@ -265,6 +278,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
       } catch { return deny(400, 'expected {"token": "<pairing code>"}'); }
       if (typeof token !== 'string' || token.length > 512) return deny(400, 'expected {"token": "<pairing code>"}');
       const d = await deviceOf(token.trim());
+      if (d === 500) return deny(500, 'internal error');
       if (typeof d === 'number') return deny(401);
       send(204, '', 'text/plain', { 'set-cookie': deviceCookie(token.trim(), secure) });
       return null;
@@ -275,7 +289,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     const d = token ? await deviceOf(token) : 401;
     if (typeof d === 'number') {
       if (d === 401 && !unsafe && !isDataPath(path)) { send(302, '', 'text/plain', { location: '/pair' }); return null; }
-      return deny(d);
+      return deny(d, d === 500 ? 'internal error' : undefined);
     }
     return { token: token!, device: d, secure };
   }
@@ -308,7 +322,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         // @req FR:cli/web.serve.local @req FR:tailnet-access/pair.me
         if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: remote ? `device:${remote.device.name}` : who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents }), 'application/json');
         // @req FR:tailnet-access/pair.logout
-        if (path === '/.auth/logout') return send(302, '', 'text/plain', remote ? { location: '/pair', 'set-cookie': clearCookie(remote.secure) } : { location: '/' });
+        if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
         // @req FR:ask-queue/live.sse
         if (path === '/events' && req.method === 'GET') {
           // No watcher: refuse the stream so EventSource closes and the page polls, instead of a silent Live.
@@ -352,8 +366,10 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         if (path === '/api' || path.startsWith('/api/')) {
           // @req FR:tailnet-access/gate.scope
           // A paired device is the owner's phone: it runs as the owner, but never mints or revokes tokens or devices; its self endpoints run as its token.
-          if (remote && /^\/api\/auth\/(tokens|devices)(\/|$)/.test(path) && !path.startsWith('/api/auth/devices/me/')) return send(403, JSON.stringify({ error: { code: 'forbidden', message: 'Forbidden' } }), 'application/json');
-          const self = remote && remoteApi && path.startsWith('/api/auth/devices/me/');
+          // Check the parsed path (dot segments removed), the same one the api routes on.
+          const apiPath = new URL(req.url ?? '/', 'http://localhost').pathname;
+          if (remote && /^\/api\/auth\/(tokens|devices)(\/|$)/.test(apiPath) && !apiPath.startsWith('/api/auth/devices/me/')) return send(403, JSON.stringify({ error: { code: 'forbidden', message: 'Forbidden' } }), 'application/json');
+          const self = remote && remoteApi && apiPath.startsWith('/api/auth/devices/me/');
           const work = self ? toRequest(req, `http://localhost:${port}`, { token: remote!.token }).then(remoteApi) : toRequest(req, `http://localhost:${port}`, remote ? {} : undefined).then(api);
           // In flight until the reply is on the wire (res 'close'), not just until the api settles: shutdown must not cut the answer off.
           const replied = new Promise<void>((ok) => res.once('close', ok));
