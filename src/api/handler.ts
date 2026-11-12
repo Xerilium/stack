@@ -1192,7 +1192,7 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/team', name: 'team.list', query: TEAM_Q,
     async run(c) {
       const q = validate<{ project?: string; section?: string }>(Object.fromEntries(readQuery(c.url, Object.keys(TEAM_Q)).entries()), TEAM_Q, []);
-      const team = await listTeam(c.life, c.deps.agentScan ? await c.deps.agentScan().catch(() => []) : []);
+      const team = await listTeam(c.life, c.deps.agentScan ? await c.deps.agentScan().catch((e) => { c.deps.onError?.(e); return []; }) : []);
       return json(200, { items: q.project ? agentFor(team, q.project, q.section) : team });
     },
   },

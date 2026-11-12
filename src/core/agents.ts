@@ -51,6 +51,8 @@ const MAX_ROLE = 80;
 // eslint-disable-next-line no-control-regex
 const CONTROL = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]', 'g');
 const MAX_NAME = 60;
+/** Words a slug title-cases as an acronym (a word with no vowel, like `fh`, is one too). */
+const ACRONYMS = new Map(Object.entries({ sre: 'SRE', cos: 'CoS', qa: 'QA', ui: 'UI', ai: 'AI', api: 'API', pr: 'PR', pmm: 'PMM' }));
 const MAX_PROMPT = 20_000;
 
 export function agentsPath(slug: string): string {
@@ -150,7 +152,7 @@ export function parseClaudeAgent(slug: string, content: string): AgentDef {
   const h1 = /^#[ \t]+(.+?)[ \t]*(?:\n|$)/.exec(body.trimStart())?.[1]; // only a title that opens the body, never a `#` inside a code block
   // `CoS: Chief of Staff` shows `Chief of Staff`; a name that is just the slug reads as words (`cid-divine-manager` → `Cid Divine Manager`).
   if (h1) { const n = oneLine(h1.includes(':') ? h1.slice(h1.indexOf(':') + 1) : h1); if (n && n.length <= MAX_NAME) a.name = n; }
-  else if (a.name === slug) a.name = slug.split(/[-_.]+/).filter(Boolean).map((w) => (!/[aeiouy]/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' '); // `fh`, `ftk` read as acronyms
+  else if (a.name === slug) a.name = slug.split(/[-_.]+/).filter(Boolean).map((w) => ACRONYMS.get(w) ?? (!/[aeiouy]/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' '); // `fh`, `ftk`, `sre`, `cos` read as acronyms
   a.prompt = body.trim().slice(0, MAX_PROMPT);
   return a;
 }

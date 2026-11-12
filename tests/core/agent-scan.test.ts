@@ -1,5 +1,5 @@
 /** @req FR:agent-team/agent.team.scan */
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, symlinkSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { listTeam } from '../../src/core/agents';
@@ -91,6 +91,22 @@ describe('scanAgents limits', () => {
     const { home, dev, put } = tree();
     for (let i = 0; i < 60; i++) put(`dev/many/.claude/agents/a${String(i).padStart(2, '0')}.md`, md(`name: a${i}`));
     expect((await scanAgents({ home, roots: [dev], repos })).filter((g) => g.home === 'many')).toHaveLength(50);
+  });
+  it('reads at most 400 repo folders', async () => {
+    const { home, put } = tree();
+    const root = join(home, 'many-roots');
+    for (let i = 0; i < 405; i++) put(`many-roots/r${String(i).padStart(3, '0')}/.claude/agents/a${i}.md`, md(`name: a${i}`));
+    expect((await scanAgents({ home, roots: [root], repos })).filter((g) => g.home !== 'user')).toHaveLength(400);
+  });
+  it('follows a symlinked agent file (dotfiles); skips a link to a folder or a missing file', async () => {
+    const { home, dev, put } = tree();
+    const real = put('dotfiles/agents/linked.md', md('name: linked'));
+    mkdirSync(join(home, 'dotfiles/dir.md'), { recursive: true });
+    symlinkSync(real, join(home, '.claude/agents/linked.md'));
+    symlinkSync(join(home, 'dotfiles/dir.md'), join(home, '.claude/agents/dir.md'));
+    symlinkSync(join(home, 'dotfiles/gone.md'), join(home, '.claude/agents/gone.md'));
+    const user = (await scanAgents({ home, roots: [dev], repos })).filter((g) => g.home === 'user').map((g) => g.def.slug);
+    expect(user).toEqual(['helper', 'linked']);
   });
   it('a scanned cos never becomes the roll-up', async () => {
     const storage = new MemoryStorage();

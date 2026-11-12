@@ -38,7 +38,9 @@ async function frontmatter(path: string): Promise<string | null> {
 
 async function readDef(path: string, slug: string): Promise<AgentDef | null> {
   let st;
+  // A symlink (a dotfiles repo) is followed; only a regular file is read, never a FIFO or a device.
   try { st = await fs.stat(path); } catch { return null; }
+  if (!st.isFile()) return null;
   const hit = cache.get(path);
   if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.def;
   let def: AgentDef | null = null;
@@ -48,7 +50,7 @@ async function readDef(path: string, slug: string): Promise<AgentDef | null> {
 }
 
 async function agentsIn(dir: string, home: string, out: ScannedAgent[]): Promise<void> {
-  const files = (await dirents(dir)).filter((e) => e.isFile() && FILE.test(e.name)).map((e) => e.name).sort().slice(0, MAX_FILES);
+  const files = (await dirents(dir)).filter((e) => (e.isFile() || e.isSymbolicLink()) && FILE.test(e.name)).map((e) => e.name).sort().slice(0, MAX_FILES);
   for (const f of files) {
     const def = await readDef(join(dir, f), f.slice(0, -3));
     if (def) out.push({ def, home });

@@ -216,6 +216,10 @@ describe('parseClaudeAgent', () => {
     const c = parseClaudeAgent('plain', 'Just a prompt.\n');
     expect(c).toMatchObject({ name: 'Plain', prompt: 'Just a prompt.', scope: [] });
     expect(parseClaudeAgent('fh-release-manager', '---\nname: fh-release-manager\n---\n').name).toBe('FH Release Manager');
+    expect(parseClaudeAgent('sre', '---\nname: sre\n---\n').name).toBe('SRE');
+    expect(parseClaudeAgent('focus-cos', '---\nname: focus-cos\n---\n').name).toBe('Focus CoS');
+    expect(parseClaudeAgent('ask-me', '---\nname: ask-me\n---\n').name).toBe('Ask Me');
+    expect(parseClaudeAgent('constructor', '---\nname: constructor\n---\n').name).toBe('Constructor');
     const d = parseClaudeAgent('x', '---\nname: x\ndescription: ' + 'word '.repeat(40) + '\n---\n');
     expect(d.role!.length).toBeLessThanOrEqual(80);
     expect(parseClaudeAgent('y', '---\nname: y\n---\n# Y\n').name).toBe('Y');
