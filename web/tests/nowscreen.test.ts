@@ -45,7 +45,7 @@ describe('whyLine', () => {
   });
 });
 
-// @req FR:now-screen/now.tell @req FR:now-screen/now.thread
+// @req FR:now-screen/now.compose @req FR:now-screen/now.thread
 describe('tell the agent', () => {
   it('folds lines into one inbox line', () => {
     expect(foldLines('  Use the new logo  ')).toBe('Use the new logo');

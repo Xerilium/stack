@@ -36,7 +36,7 @@ export function nowOf(h: Home, minutesLeft: number, agentHasIt: (t: Task) => boo
   return { task: item.task, title: r.title || item.task.text, why: whyLine(item, minutesLeft, agentHasIt(item.task)) };
 }
 
-/** Inbox text is one line, at most 1000 characters. @req FR:now-screen/now.tell */
+/** Inbox text is one line, at most 1000 characters. @req FR:now-screen/now.compose */
 export const TELL_MAX = 1000;
 /** The box text as one inbox line: lines trimmed, blank ones dropped, joined with ` / `. */
 export const foldLines = (text: string): string => text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(' / ').slice(0, TELL_MAX);

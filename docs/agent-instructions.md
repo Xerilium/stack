@@ -1,6 +1,6 @@
 # Agent instructions: pick up and reply
 
-The owner tells an agent what to do on a task from Now (`Delegate…`). Each instruction is an open entry in `tasks/inbox/<project>.md` (`kind: instruction`). A scheduled agent reads them with the CLI. No server and no model tokens are needed to find the work.
+The owner messages the task's agent from the composer under the task on Now. Each instruction is an open entry in `tasks/inbox/<project>.md` (`kind: instruction`). A scheduled agent reads them with the CLI. No server and no model tokens are needed to find the work.
 
 ## Prompt snippet
 
@@ -13,7 +13,7 @@ Paste this into the scheduled agent's prompt. Replace `<project>` and `<agent>`.
    `stack inbox list --project <project> --json`
 2. For each item, oldest first:
    - The task is at `row` (where the row is now). Use `ref` only when `row` is missing (the row is gone: handle it with a note that says so).
-   - Do what `text` asks. Line breaks were folded to ` / `.
+   - Do what `text` asks (kind `instruction`; `reply` and `decision` entries are answers to your asks). Line breaks were folded to ` / `.
    - Reply on the task in one line so the owner sees it in the task thread:
      `stack inbox reply <row> --from <agent> --text "<what you did, or what you need>"`
    - Close the entry:

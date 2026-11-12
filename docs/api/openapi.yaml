@@ -2922,6 +2922,9 @@ components:
         reportsTo:
           type: string
           description: Slug of the agent this one reports to; absent on the roll-up
+        icon:
+          type: string
+          description: "Avatar: an emoji or a same-origin image path; absent means a monogram"
         source:
           type: string
           enum:

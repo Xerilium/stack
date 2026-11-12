@@ -42,12 +42,13 @@ import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
 import { ThreadView } from './ThreadView';
 import { useThread } from './useThread';
-import { agentForAsk } from './team';
+import { agentForAsk, rollupOf } from './team';
 import { planWeek } from './week';
 import { FocusMode, HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
 import { nowOf } from './nowscreen';
 import { NowScreen } from './NowView';
+import { Avatar } from './AgentAvatar';
 import './myday.css';
 
 const reads = new Set<(savedAt: string | null) => void>();
@@ -238,9 +239,6 @@ export function App() {
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
   const nowTask = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
-  // @req FR:now-screen/now.tell: the Delegate… box; a new task closes it
-  const [tell, setTell] = useState(false);
-  useEffect(() => setTell(false), [nowTask?.task.ref]);
   const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
@@ -309,6 +307,17 @@ export function App() {
   const wantActive = team.active || team.talk !== null || open !== null;
   /** Open a task on its thread with the composer focused (the chip, `a`, the palette); Today keeps the floating composer. @req FR:agent-thread/web.keys */
   const viewRef = useRef(view); viewRef.current = view;
+  /** The Now composer: to the task's most specific agent, else the roll-up; a live session offers its chat. @req FR:now-screen/now.compose */
+  const nowChat = (t: Task) => {
+    const roll = rollupOf(team.team);
+    const s = team.sessionOf(t.ref);
+    return {
+      agent: team.agentsOf(t).find((a) => a !== roll) ?? roll ?? null,
+      agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
+      onSend: (text: string) => delegate(t.ref, text), loadThread: api.thread,
+      ...(s && ['running', 'idle', 'needs-you'].includes(s.state) ? { onLiveChat: () => team.openSession(t.ref) } : {}),
+    };
+  };
   const openThread = useCallback((t: Task) => {
     if (viewRef.current === 'today') { team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); return; }
     setOpen(t.ref);
@@ -535,7 +544,7 @@ export function App() {
     // @req FR:now-screen/now.undo: Undo resumes the row
     if (await run(() => api.action('suspend', ref, { hours: 2 }), () => '')) toast(`Deferred 2h: back at ${back}`, 'ok', () => { void run(() => api.action('resume', ref), () => 'Restored'); });
   };
-  /** `note`: what the agent should do, written to the inbox as an instruction in the same step (Now `Delegate…`). @req FR:now-screen/now.tell */
+  /** `note`: a message to the agent, written to the inbox as an instruction in the same step (the Now composer). @req FR:now-screen/now.compose */
   const delegate = async (ref = refNow(), note = ''): Promise<boolean> => {
     const t = ref ? tasks.find((x) => x.ref === ref) : undefined;
     if (!t) return false;
@@ -543,7 +552,12 @@ export function App() {
     if (has && !note) { toast('Already with an agent'); return true; }
     const text = `🪄 ${t.text}`;
     let id = '';
-    const ok = await run(async () => { if (note) id = (await api.send(t.ref, note, 'instruction', t.text)).id; if (!has) await api.edit(t.ref, text, t.text); return true; }, () => '');
+    // 🪄 first, so the entry stores `to: agent`; a failed inbox write takes the mark back off.
+    const ok = await run(async () => {
+      if (!has) await api.edit(t.ref, text, t.text);
+      if (note) { try { id = (await api.send(t.ref, note, 'instruction', has ? t.text : text)).id; } catch (e) { if (!has) await api.edit(t.ref, t.text, text).catch(() => undefined); throw e; } }
+      return true;
+    }, () => '');
     if (!ok) return false;
     const who = titles.get(t.project) ?? t.project;
     toast(note ? `🪄 Sent to the ${who} agent` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { if (id) await api.handled(id, 'Withdrawn by the owner'); if (!has) await api.edit(t.ref, t.text, text); return true; }, () => 'Restored'); });
@@ -750,7 +764,7 @@ export function App() {
       if (k === 'c' && L.view !== 'sessions') { e.preventDefault(); setCaptureOpen(true); return; } // Sessions uses c for costs
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
-      if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); setTell(true); } } return; }
+      if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } else if (k === 'm') { e.preventDefault(); document.getElementById('now-msg')?.focus(); } } return; }
       if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox') return; // these views own their keys
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
@@ -831,7 +845,7 @@ export function App() {
   };
   /** The composer for an ask card: the ask's agent, the ask as the context. @req FR:agent-team/web.anything */
   const askTalk = {
-    chip: (a: { key: string; from: string; project?: string }) => { const ag = agentForAsk(team.team, a); return ag ? <AgentChip view={{ text: ag.slug === a.from || ag.name === a.from ? 'Talk' : ag.name, tone: 'plain', title: `Talk to ${ag.name} (a)` }} onClick={() => team.toggleTalk({ askKey: a.key, project: a.project ?? ag.projects[0] ?? '', about: a.key })} /> : null; },
+    chip: (a: { key: string; from: string; project?: string }) => { const ag = agentForAsk(team.team, a); return ag ? <><Avatar who={ag} size={20} /><AgentChip view={{ text: ag.slug === a.from || ag.name === a.from ? 'Talk' : ag.name, tone: 'plain', title: `Talk to ${ag.name} (a)` }} onClick={() => team.toggleTalk({ askKey: a.key, project: a.project ?? ag.projects[0] ?? '', about: a.key })} /></> : null; },
     render: (a: { key: string; ask: string; from: string; project?: string }) => (team.talk?.askKey === a.key ? <AgentTalk key={a.key} team={team} talk={{ ...team.talk, about: a.ask }} agents={[...new Set([agentForAsk(team.team, a), ...(a.project ? team.agentsOf({ project: a.project, section: '' }) : [])].filter((x): x is NonNullable<typeof x> => !!x))]} /> : null),
     open: (a: { key: string; ask: string; from: string; project?: string }) => { const ag = agentForAsk(team.team, a); team.toggleTalk({ askKey: a.key, project: a.project ?? ag?.projects[0] ?? '', about: a.ask }); },
     isOpen: () => team.talk?.askKey !== undefined, close: () => team.setTalk(null),
@@ -878,8 +892,8 @@ export function App() {
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : a === 'defer' ? void notNow(nowTask?.task.ref) : setTell(true))}
-          tell={tell} onTell={setTell} onSend={async (text) => { const ok = await delegate(nowTask?.task.ref, text); if (ok) setTell(false); return ok; }} loadThread={api.thread}
+        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
+          chat={nowTask ? nowChat(nowTask.task) : undefined}
           onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onReply={(a) => { asks.setCursor(a.key); asks.setPanel('reply'); go('asks'); }} onOpenAsks={() => go('asks')} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (

@@ -17,7 +17,7 @@ test.describe('Now screen', () => {
     await expect(now.getByRole('heading', { level: 1 })).toHaveText('Ship the web app'); // the task Home shows
     await expect(page.getByTestId('now-why')).toHaveText(/^due today · high priority · fits your /);
     expect((await page.getByTestId('now-why').innerText()).length).toBeLessThanOrEqual(60);
-    await expect(now.getByRole('button')).toHaveText([/^Done/, /^Defer/, /^Delegate/]);
+    await expect(now.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText([/^Done/, /^Defer/]);
     expect(await now.locator('li, table').count()).toBe(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     // the action targets are 44 px on touch
@@ -50,45 +50,53 @@ test.describe('Now screen', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
   });
 
-  // @req FR:now-screen/now.tell: empty text is a plain delegate
-  test('Delegate… with no text adds 🪄; Undo removes it', async ({ page }) => {
+  // @req FR:now-screen/now.compose @req FR:now-screen/now.thread @req FR:now-screen/now.undo @req FR:agent-team/web.avatar @req FR:now-screen/now.a11y
+  test('the composer messages the task agent: Enter sends the instruction and 🪄 in one step; bubbles show; Undo withdraws both', async ({ page }, info) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
-    await page.goto('/#/now');
-    await page.getByRole('button', { name: /^Delegate…/ }).click();
-    await page.getByTestId('now-tell').getByRole('button', { name: /^Send/ }).click();
-    await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
-    expect(m.calls.some((c) => c.path === '/inbox')).toBe(false);
-    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
-    await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
-  });
-
-  // @req FR:now-screen/now.tell @req FR:now-screen/now.thread @req FR:now-screen/now.undo @req FR:now-screen/now.a11y
-  test('Delegate… tells the agent: one step writes the instruction and 🪄; the thread shows; Undo withdraws both', async ({ page }, info) => {
-    await ten(page);
-    const m = await mockApi(page, { tasks: seed() });
+    m.team = [
+      { slug: 'cos', name: 'Chief of Staff', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha', 'beta'] },
+      { slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'], reportsTo: 'cos' },
+    ];
     m.inbox.push(
-      { id: 'in-20261101T100000Z-aaaa', at: '2026-11-01T10:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'instruction', to: 'none', text: 'Start with the login page', state: 'handled', row: 'alpha:6' },
-      { id: 'in-20261101T110000Z-bbbb', at: '2026-11-01T11:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'reply', to: 'human', from: 'agent', agent: 'alpha', text: 'Login page is in PR 12', state: 'handled', row: 'alpha:6' },
+      { id: 'in-20261101T100000Z-aaaa', at: '2026-11-01T10:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'instruction', to: 'agent', text: 'Start with the login page', state: 'handled', row: 'alpha:6' },
+      { id: 'in-20261101T110000Z-bbbb', at: '2026-11-01T11:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'reply', to: 'human', from: 'agent', agent: 'alpha-lead', text: 'Login page is in PR 12', state: 'handled', row: 'alpha:6' },
     );
     await page.goto('/#/now');
-    await page.getByRole('button', { name: /^Delegate…/ }).click();
-    const box = page.getByTestId('now-tell');
-    const text = box.getByRole('textbox', { name: 'Tell the agent' });
-    await expect(text).toBeFocused();
+    const now = page.getByTestId('now');
+    await expect(now.getByRole('button', { name: /Delegate/ })).toHaveCount(0);
+    const box = now.getByRole('textbox', { name: 'Message Ada Lead' }); // the project's agent, not the roll-up
+    await expect(box).toHaveAttribute('placeholder', 'Message Ada Lead…');
+    const chat = page.getByTestId('now-chat');
+    await expect(chat.locator('form svg.avatar')).toContainText('AL');
     const thread = page.getByTestId('now-thread');
     await expect(thread.locator('li')).toHaveCount(2);
-    await expect(thread.locator('li').first()).toContainText('Start with the login page');
-    await expect(thread.locator('li').nth(1)).toContainText('Login page is in PR 12');
-    // targets and layout
+    await expect(thread.locator('li.from-me')).toContainText('Start with the login page');
+    await expect(thread.locator('li.from-agent')).toContainText('Ada Lead');
+    await expect(thread.locator('li.from-agent')).toContainText('Login page is in PR 12');
+    await expect(thread.locator('li.from-agent svg.avatar')).toHaveCount(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    if (info.project.name === 'mobile') for (const b of await box.getByRole('button').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    if (info.project.name === 'mobile') {
+      for (const b of await now.getByRole('button').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect((await box.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    await box.fill('x');
     const axe = await new AxeBuilder({ page }).include('[data-testid="now"]').analyze();
-    expect(axe.violations.map((v) => v.id)).toEqual([]);
-    await page.screenshot({ path: `e2e/screenshots/now-tell-${info.project.name}.png` });
-    await text.fill('Use the new logo\nthen ship to staging');
-    await box.getByRole('button', { name: /^Send/ }).click();
+    expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(' ')}`)).toEqual([]);
+    await box.fill('');
+    // Shift+Enter is a new line; Enter sends
+    await box.pressSequentially('Use the new logo');
+    await box.press('Shift+Enter');
+    await box.pressSequentially('then ship to staging');
+    await expect(box).toHaveValue('Use the new logo\nthen ship to staging');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `e2e/screenshots/now-chat-${info.project.name}.png` });
+    await box.press('Enter');
     await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', kind: 'instruction', text: 'Use the new logo / then ship to staging' });
+    // the mark goes first, so the entry is addressed to the agent
+    const edit = m.calls.findIndex((c) => c.path === '/tasks/edit'); const send = m.calls.findIndex((c) => c.path === '/inbox');
+    expect(edit).toBeGreaterThanOrEqual(0); expect(edit).toBeLessThan(send);
+    expect(m.inbox.at(-1)!.to).toBe('agent');
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
     await expect(page.getByRole('status')).toContainText('Sent to the');
     await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
@@ -96,23 +104,57 @@ test.describe('Now screen', () => {
     await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner' });
   });
 
-  // @req FR:now-screen/now.tell (keys)
-  test('Shift+A opens the box; Esc closes it; Cmd/Ctrl+Enter sends', async ({ page }, info) => {
+  // @req FR:now-screen/now.compose: a row an agent already has keeps its mark; only the text goes
+  test('a row with 🪄 keeps its mark: the message only writes the inbox; Undo only withdraws it', async ({ page }) => {
+    await ten(page);
+    const tasks = seed();
+    const t = tasks.find((x) => x.ref === 'alpha:6')!; t.text = `🪄 ${t.text}`;
+    const m = await mockApi(page, { tasks });
+    await page.goto('/#/now');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
+    const box = page.getByRole('textbox', { name: /^Message / });
+    await expect(box).toHaveAttribute('placeholder', 'Message the agent…'); // no team: a plain address
+    await box.fill('Ping me when done');
+    await box.press('Enter');
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body?.text).toBe('Ping me when done');
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
+    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body?.id).toBe(m.inbox.at(-1)!.id);
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
+    expect(m.tasks.find((x) => x.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
+  });
+
+  // @req FR:now-screen/now.compose: a failed inbox write takes the 🪄 back off
+  test('a failed send reverts the mark', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.fail.set('POST /inbox', { status: 500, code: 'internal', message: 'Disk full' });
+    await page.goto('/#/now');
+    const box = page.getByRole('textbox', { name: /^Message / });
+    await box.fill('Do it');
+    await box.press('Enter');
+    await expect(page.getByRole('status')).toContainText('Disk full');
+    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/edit').length).toBe(2);
+    expect(m.tasks.find((x) => x.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
+    await expect(box).toHaveValue('Do it'); // the text stays for a retry
+  });
+
+  // @req FR:now-screen/now.compose (keys)
+  test('m focuses the composer; Esc leaves it; Shift+A still delegates', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keys are for desktop');
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
     await page.goto('/#/now');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
-    await page.keyboard.press('Shift+A');
-    const text = page.getByRole('textbox', { name: 'Tell the agent' });
-    await expect(text).toBeFocused();
+    await page.keyboard.press('m');
+    const box = page.getByRole('textbox', { name: /^Message / });
+    await expect(box).toBeFocused();
+    await expect(box).toHaveValue('');
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('now-tell')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /^Delegate…/ })).toBeFocused();
+    await expect(box).not.toBeFocused();
     await page.keyboard.press('Shift+A');
-    await text.fill('Ping me when done');
-    await text.press('ControlOrMeta+Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body?.text).toBe('Ping me when done');
+    await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
+    expect(m.calls.some((c) => c.path === '/inbox')).toBe(false);
   });
 
   // @req FR:now-screen/now.actions (desktop keys)
