@@ -46,7 +46,7 @@ import { agentForAsk, rollupOf } from './team';
 import { planWeek } from './week';
 import { FocusMode, HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
-import { nowOf } from './nowscreen';
+import { agentMark, nowOf } from './nowscreen';
 import { NowScreen } from './NowView';
 import { Avatar } from './AgentAvatar';
 import './myday.css';
@@ -309,15 +309,12 @@ export function App() {
   const viewRef = useRef(view); viewRef.current = view;
   /** The Now composer: to the task's most specific agent, else the roll-up; a live session offers its chat. @req FR:now-screen/now.compose */
   const taskAgent = (t: Task) => { const roll = rollupOf(team.team); return team.agentsOf(t).find((a) => a !== roll) ?? roll ?? null; };
-  const nowChat = (t: Task) => {
-    const s = team.sessionOf(t.ref);
-    return {
-      agent: taskAgent(t),
-      agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
-      onSend: (text: string) => delegate(t.ref, text), loadThread: api.thread,
-      ...(s && s.state !== 'stale' ? { onLiveChat: () => team.openSession(t.ref) } : {}),
-    };
-  };
+  const nowChat = (t: Task) => ({
+    agent: taskAgent(t),
+    agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
+    onSend: (text: string) => delegate(t.ref, text), loadThread: api.thread,
+    onOpenSession: team.openSessionId, tick: threadTick,
+  });
   const openThread = useCallback((t: Task) => {
     if (viewRef.current === 'today') { team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); return; }
     setOpen(t.ref);
@@ -550,7 +547,7 @@ export function App() {
     if (!t) return false;
     const has = parseRow(t.text).who === 'agent';
     if (has && !note) { toast('Already with an agent'); return true; }
-    const text = `🪄 ${t.text}`;
+    const text = agentMark(t.text);
     let id = '';
     // 🪄 first, so the entry stores `to: agent`; a failed inbox write takes the mark back off.
     const ok = await run(async () => {

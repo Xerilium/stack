@@ -1,7 +1,7 @@
 // @req FR:now-screen/now.one @req FR:now-screen/now.why @req FR:now-screen/now.empty
 import { describe, expect, it } from 'vitest';
 import { homeOf, type RankItem } from '../src/home';
-import { foldLines, nowOf, tellThread, TELL_MAX, whyLine, WHY_MAX } from '../src/nowscreen';
+import { agentMark, foldLines, nowOf, tellThread, TELL_MAX, whyLine, WHY_MAX } from '../src/nowscreen';
 import type { ThreadItem } from '../src/thread';
 import type { Project, Task } from '../src/types';
 
@@ -60,5 +60,14 @@ describe('tell the agent', () => {
       { at: '2026-11-01T11:00:00Z', kind: 'subtask', ref: 'alpha:7', text: 'x', done: false },
     ];
     expect(tellThread(items).map((i) => i.kind === 'owner' || i.kind === 'agent' ? i.id : '')).toEqual(['a', 'b']);
+  });
+});
+
+// @req FR:now-screen/now.compose: the agent takes the row: 🪄 replaces 🙋, so the inbox entry stores `to: agent`
+describe('agentMark', () => {
+  it('adds 🪄 and drops the human mark', () => {
+    expect(agentMark('Ship it 🟠')).toBe('🪄 Ship it 🟠');
+    expect(agentMark('🙋 Ship it 🟠')).toBe('🪄 Ship it 🟠');
+    expect(agentMark('Ship 🙋 it')).toBe('🪄 Ship it');
   });
 });

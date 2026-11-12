@@ -6,28 +6,49 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
 import type { AvatarWho } from './avatar';
 import { foldLines, tellThread, TELL_MAX } from './nowscreen';
+import { unescapeMd } from './agents';
 import { ago, type Thread } from './thread';
+
+const POLL_MS = 10_000;
 
 export interface NowChatProps {
   taskRef: string; busy: boolean;
   /** The task's agent; null: no agent covers it. */ agent: AvatarWho | null;
   /** The agent a reply came from (slug or name), for its name and avatar. */ agentOf: (who: string) => AvatarWho;
   onSend: (text: string) => Promise<boolean>; loadThread: (ref: string) => Promise<Thread>;
-  /** The task has a live agent session: open it. */ onLiveChat?: () => void;
+  /** Open a live agent session by id: the thread names the task's own session (never a review). */ onOpenSession?: (id: string) => void;
+  /** Bump when tasks, asks, or sessions change so the thread re-reads. */ tick?: string;
 }
 
-export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onLiveChat }: NowChatProps) {
+export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onOpenSession, tick }: NowChatProps) {
   const [text, setText] = useState('');
   const [items, setItems] = useState<ReturnType<typeof tellThread>>([]);
-  const load = useCallback(() => loadThread(taskRef).then((t) => setItems(tellThread(t.items)), () => undefined), [taskRef, loadThread]);
-  useEffect(() => { void load(); }, [load]);
+  const [session, setSession] = useState<Thread['session']>();
+  const seq = useRef(0); // only the latest load replaces the thread
+  const load = useCallback(async () => {
+    const mine = ++seq.current;
+    try { const t = await loadThread(taskRef); if (mine === seq.current) { setItems(tellThread(t.items)); setSession(t.session); } } catch { /* keep what shows */ }
+  }, [taskRef, loadThread]);
+  useEffect(() => { void load(); }, [load, tick]);
+  // A scheduled agent's reply shows up while Now stays open.
+  useEffect(() => {
+    const h = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, POLL_MS);
+    return () => clearInterval(h);
+  }, [load]);
   const name = agent?.name ?? 'the agent';
   const sending = useRef(false); // two fast Enters send once
   const send = async () => {
     const t = foldLines(text);
     if (busy || !t || sending.current) return;
     sending.current = true;
-    try { if (await onSend(t)) { setText(''); const el = document.getElementById('now-msg'); if (el) el.style.height = ''; void load(); } } finally { sending.current = false; }
+    const sent = text;
+    try {
+      if (await onSend(t)) {
+        // Clear only what was sent: text typed while the send was in flight stays.
+        setText((cur) => { if (cur !== sent) return cur; const el = document.getElementById('now-msg'); if (el) el.style.height = ''; return ''; });
+        void load();
+      }
+    } finally { sending.current = false; }
   };
   /** Grows with the text where `field-sizing` is missing (Safari, Firefox). */
   const grow = (el: HTMLTextAreaElement) => { if (CSS.supports?.('field-sizing', 'content')) return; el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px`; };
@@ -43,7 +64,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onL
                 {who && <Avatar who={who} size={28} />}
                 <div class="now-bubble-body">
                   <span class="now-bubble-who">{who ? who.name : 'You'}{i.at && <> · <time dateTime={i.at}>{ago(i.at, now)}</time></>}</span>
-                  <p class="now-bubble-text">{i.text}</p>
+                  <p class="now-bubble-text">{unescapeMd(i.text)}</p>
                 </div>
               </li>
             );
@@ -60,7 +81,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onL
           }} />
         <button type="submit" class="now-send" disabled={busy || !foldLines(text)}>Send</button>
       </form>
-      {onLiveChat && <button type="button" class="now-live" onClick={onLiveChat}>Open live chat</button>}
+      {onOpenSession && session && session.state !== 'stale' && <button type="button" class="now-live" onClick={() => onOpenSession(session.id)}>Open live chat</button>}
     </section>
   );
 }

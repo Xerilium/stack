@@ -159,6 +159,38 @@ test.describe('Now screen', () => {
     await expect(box).toHaveValue('Do it'); // the text stays for a retry
   });
 
+  // @req FR:now-screen/now.thread: stored Markdown escapes never show; an agent reply appears without a send
+  test('the thread shows unescaped text and picks up a new reply on its own', async ({ page }) => {
+    const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.install({ time: d });
+    const m = await mockApi(page, { tasks: seed() });
+    m.inbox.push({ id: 'in-1', at: '2026-11-05T09:00:00Z', project: 'alpha', ref: 'alpha:6', row: 'alpha:6', task: 'Ship the web app', kind: 'instruction', to: 'agent', text: 'Use \\[logo\\] here', state: 'open' });
+    await page.goto('/#/now');
+    const thread = page.getByTestId('now-thread');
+    await expect(thread).toContainText('Use [logo] here');
+    await expect(thread).not.toContainText('\\[');
+    m.inbox.push({ id: 'in-2', at: '2026-11-05T09:05:00Z', project: 'alpha', ref: 'alpha:6', row: 'alpha:6', task: 'Ship the web app', kind: 'reply', to: 'human', text: 'On it', state: 'open', from: 'agent', agent: 'alpha-lead' });
+    await page.clock.runFor(11_000);
+    await expect(thread).toContainText('On it');
+  });
+
+  // @req FR:now-screen/now.compose: a draft typed while a send is in flight survives it
+  test('text typed during a send is kept', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    let release = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    await page.route('**/api/inbox', async (route) => { await gate; await route.fallback(); });
+    await page.goto('/#/now');
+    const box = page.getByRole('textbox', { name: /^Message / });
+    await box.fill('First');
+    await box.press('Enter');
+    await box.fill('Second draft');
+    release();
+    await expect.poll(() => m.calls.filter((c) => c.path === '/inbox').length).toBe(1);
+    await expect(page.getByRole('status')).toContainText('Sent to');
+    await expect(box).toHaveValue('Second draft');
+  });
+
   // @req FR:now-screen/now.compose (keys)
   test('m focuses the composer; Esc leaves it; Shift+A still delegates', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keys are for desktop');

@@ -43,3 +43,6 @@ export const foldLines = (text: string): string => text.split(/\r?\n/).map((l) =
 /** The task's earlier instructions and agent replies, oldest first. @req FR:now-screen/now.thread */
 export const tellThread = (items: ThreadItem[]): Extract<ThreadItem, { kind: 'owner' | 'agent' }>[] =>
   items.filter((i): i is Extract<ThreadItem, { kind: 'owner' | 'agent' }> => i.kind === 'owner' || i.kind === 'agent').sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+
+/** The row once an agent takes it: 🪄 in front; a 🙋 mark goes, since inbox routing reads 🙋 first. @req FR:now-screen/now.compose */
+export const agentMark = (text: string): string => `🪄 ${text.includes('🙋') ? text.replace(/\s*🙋\s*/gu, ' ').trim() : text}`;
