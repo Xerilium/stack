@@ -18,6 +18,10 @@ import { ReportInvalid, type ReportStore } from '../core/reports';
 import type { Inventory } from '../core/session-inventory';
 import { PrisInvalid, type PriStore } from '../core/pris';
 import { blockedText, DECISIONS, MOVE_TO, QUEUE_OPS, type PrPriorityStore, type QueueOp } from '../core/pr-priority';
+import { LABELS, sameLabel, type PrRow } from '../core/pr-board';
+import type { PrBoardService } from './pr-board-service';
+import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write';
+import { QueueRefused, QueueUnavailable, type PrQueue } from './pr-queue';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
@@ -73,6 +77,12 @@ export interface ApiDeps {
   calendar?: CalendarProvider;
   /** Model for the AI daily brief (`claude -p`); absent means `GET /brief/summary` says not configured. @req FR:cos-view/brief.ai.route */
   brief?: ClaudeJson;
+  /** The PR page board; absent means GET /prs is 404. @req FR:pr-page/api.get */
+  prBoard?: PrBoardService;
+  /** GitHub writes for the PR page (Autopilot label, AI comments). @req FR:github-pr-status/write.@function */
+  prWrites?: GitHubWrites;
+  /** Changes the PR priority queue. @req FR:pr-page/api.queue-client */
+  prQueue?: PrQueue;
   /** Called with unexpected errors (they are never sent to the caller). */
   onError?: (e: unknown) => void;
 }
@@ -235,6 +245,19 @@ const PR_DECIDE_BODY = {
 };
 const PR_DEC_Q: Record<string, Spec> = { agent: { t: 'str', max: 40, line: true } };
 const RANK_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 1000 }, blocks: { t: 'enum', values: ['now', 'any'] } };
+const PR_REPO: Spec = { t: 'str', required: true, max: 140, pattern: /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/ };
+const PR_NUM: Spec = { t: 'int', min: 1, max: 9_999_999 };
+export const PR_QUEUE_OPS = ['top', 'up', 'down', 'move', 'add', 'pin', 'unpin', 'remove', 'undo'] as const;
+const PR_QUEUE_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: PR_QUEUE_OPS }, rank: { t: 'int', min: 1, max: 100 } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
+const PR_LABEL_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: ['add', 'remove'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
+const PR_ACK_BODY = {
+  schema: { repo: PR_REPO, number: PR_NUM, thread: { t: 'str', required: true, max: 500, line: true, pattern: /^https:\/\/github\.com\/\S+$/ }, note: { t: 'str', required: true, max: 300, line: true }, post: { t: 'bool' }, text: { t: 'str', max: 4000 }, replyTo: { t: 'int', min: 1, max: Number.MAX_SAFE_INTEGER } } satisfies Record<string, Spec>,
+  required: ['repo', 'number', 'thread', 'note'],
+};
+const PRS_REC_BODY = {
+  schema: { decision: { t: 'enum', values: ['accept', 'edit', 'reject'] }, rank: { t: 'int', min: 1, max: 100 }, note: { t: 'str', max: 300, line: true }, reason: { t: 'str', max: 300, line: true } } satisfies Record<string, Spec>,
+  required: ['decision'],
+};
 const INBOX_ACTION_BODY = {
   schema: { action: { t: 'enum', values: ACTION_IDS }, text: { t: 'str', max: 5000 }, until: { t: 'str', max: 40, line: true }, request: { t: 'bool' } } satisfies Record<string, Spec>,
   required: ['action'],
@@ -340,6 +363,28 @@ const ownerOnly = (c: Ctx, why: string) => { if (!isOwner(c.req)) throw new ApiE
 const prStore = (c: Ctx): PrPriorityStore => { if (!c.deps.prPriority) throw new ApiError('not_found', 'No PR priority store on this host'); return c.deps.prPriority; };
 /** The list view (cached facts only) plus open recommendations. @req FR:pr-priority/view.item */
 const prView = (c: Ctx, s: PrPriorityStore) => { const q = s.read(); return { ...q, items: s.view(), escalations: s.state().escalations ?? null, recommendations: s.openRecs() }; };
+/** The PR page parts, or 404 where the host has no GitHub token. @req FR:pr-page/api.get */
+const boardOf = (c: Ctx): PrBoardService => { if (!c.deps.prBoard) throw new ApiError('not_found', 'No PR board on this host'); return c.deps.prBoard; };
+const writesOf = (c: Ctx): GitHubWrites => { if (!c.deps.prWrites) throw new ApiError('not_found', 'No GitHub writes on this host'); return c.deps.prWrites; };
+const queueOf = (c: Ctx): PrQueue => { if (!c.deps.prQueue) throw new ApiError('conflict', 'PR priority queue is not installed'); return c.deps.prQueue; };
+/** GitHub writes only reach PRs on the owner's board, even with no repo allow-list. @req FR:pr-page/api.repos */
+async function onBoard(c: Ctx, pr: { repo: string; number: number }): Promise<PrRow> {
+  const row = (await boardOf(c).get()).rows.find((r) => r.repo.toLowerCase() === pr.repo.toLowerCase() && r.number === pr.number);
+  if (!row) throw new ApiError('forbidden', 'This PR is not on your board');
+  return row;
+}
+/** Queue errors to 409 with the reason. @req FR:pr-page/api.queue-client */
+async function prQueueCall(fn: () => Promise<void>): Promise<void> {
+  try { await fn(); } catch (e) { if (e instanceof QueueUnavailable || e instanceof QueueRefused) throw new ApiError('conflict', e.message); throw e; }
+}
+/** GitHub write errors: a refused write is 403; a GitHub failure is 409 with the status only. @req FR:github-pr-status/write.errors @req FR:pr-page/api.repos */
+async function ghCall(fn: () => Promise<void>): Promise<void> {
+  try { await fn(); } catch (e) {
+    if (e instanceof GitHubWriteDenied) throw new ApiError('forbidden', e.message);
+    if (e instanceof Error && /^GitHub \d+$/.test(e.message)) throw new ApiError('conflict', e.message);
+    throw e;
+  }
+}
 
 /** `ref` is optional for actions that fall back to the core's own target choice. */
 async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response> {
@@ -766,6 +811,98 @@ export const ROUTES: Route[] = [
       ownerOnly(c, 'Only the owner can decide a recommendation');
       const b = validate<{ decision: (typeof DECISIONS)[number]; rank?: number; note?: string; reason?: string }>(await readBody(c.req), PR_DECIDE_BODY.schema, PR_DECIDE_BODY.required);
       return json(200, await prStore(c).decide(c.params[0], b));
+    },
+  },
+  {
+    // PR titles and blockers are the owner's: owner only. @req FR:pr-page/api.get @req FR:pr-page/act.owner
+    method: 'GET', doc: '/prs', name: 'prs.get',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can read the PR board');
+      // No token: say so with 200, so the page hides the icon without a failing request. @req FR:pr-page/icon.absent
+      if (!c.deps.prBoard) return json(200, { off: true });
+      return json(200, await boardOf(c).get());
+    },
+  },
+  {
+    // @req FR:pr-page/api.queue @req FR:pr-page/act.queue
+    method: 'POST', doc: '/prs/queue', name: 'prs.queue', body: PR_QUEUE_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can change the PR queue');
+      const b = validate<{ repo: string; number: number; op: (typeof PR_QUEUE_OPS)[number]; rank?: number }>(await readBody(c.req), PR_QUEUE_BODY.schema, PR_QUEUE_BODY.required);
+      const ref = `${b.repo}#${b.number}`;
+      const board = boardOf(c);
+      const find = async () => (await board.get()).rows.find((r) => r.repo.toLowerCase() === b.repo.toLowerCase() && r.number === b.number);
+      const cur = (await find())?.rank ?? null;
+      const q = queueOf(c);
+      // The ops are the `stack pr-pri` ones: add (top), move --to, pin, unpin, remove, undo. @req FR:pr-page/api.queue-client
+      await prQueueCall(() => {
+        switch (b.op) {
+          case 'top': case 'up': case 'down': return q.move(ref, b.op);
+          case 'move': return q.move(ref, b.rank ?? 1);
+          case 'add': return q.add(ref);
+          case 'pin': return q.pin(ref);
+          case 'unpin': return q.unpin(ref);
+          case 'remove': return q.remove(ref);
+          default: return q.undo();
+        }
+      });
+      // The queue file changed, not GitHub: the next board build reads it, no GitHub call.
+      const now = await find();
+      return json(200, { rank: now?.rank ?? null, was: cur, pinned: !!now?.pinned });
+    },
+  },
+  {
+    // The label is always Autopilot: the owner's click is the human act. @req FR:pr-page/api.label @req FR:pr-page/act.autopilot @req FR:pr-page/api.repos
+    method: 'POST', doc: '/prs/label', name: 'prs.label', body: PR_LABEL_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can label a PR');
+      const b = validate<{ repo: string; number: number; op: 'add' | 'remove' }>(await readBody(c.req), PR_LABEL_BODY.schema, PR_LABEL_BODY.required);
+      const w = writesOf(c);
+      const row = await onBoard(c, b);
+      // Remove the label as this repo spells it; reads match it without case or emoji variants.
+      const name = b.op === 'remove' ? row.labels.find((l) => sameLabel(l, LABELS.autopilot)) ?? LABELS.autopilot : LABELS.autopilot;
+      await ghCall(() => (b.op === 'add' ? w.addLabel(b, name) : w.removeLabel(b, name)));
+      await c.deps.prBoard?.refresh();
+      return json(200, { ok: true, label: LABELS.autopilot, op: b.op });
+    },
+  },
+  {
+    // Records the owner's ack; posting to GitHub is opt-in and AI-prefixed. @req FR:pr-page/api.ack @req FR:pr-page/act.accept
+    method: 'POST', doc: '/prs/ack', name: 'prs.ack', body: PR_ACK_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can answer for a PR');
+      const b = validate<{ repo: string; number: number; thread: string; note: string; post?: boolean; text?: string; replyTo?: number }>(await readBody(c.req), PR_ACK_BODY.schema, PR_ACK_BODY.required);
+      if (b.post && !(b.text ?? '').startsWith(AI_PREFIX)) throw invalid([{ field: 'text', message: `Must start with "${AI_PREFIX.trim()}"` }]);
+      const w = b.post ? writesOf(c) : null;
+      if (!w) queueOf(c);
+      // Post first: a failed post records nothing. After a post, a failed record answers 200 with recorded false, so no one posts twice.
+      if (w) { await onBoard(c, b); await ghCall(() => (b.replyTo ? w.reply(b, b.replyTo, b.text!) : w.comment(b, b.text!))); }
+      try { await prQueueCall(() => queueOf(c).ack(`${b.repo}#${b.number}`, b.thread, b.note)); } catch (e) {
+        if (w && e instanceof ApiError) { await c.deps.prBoard?.refresh(); return json(200, { ok: true, posted: true, recorded: false, message: e.message }); }
+        throw e;
+      }
+      if (w) await c.deps.prBoard?.refresh();
+      return json(200, { ok: true, posted: !!w, recorded: true });
+    },
+  },
+  {
+    // @req FR:pr-page/api.rec @req FR:pr-page/act.rec
+    method: 'POST', doc: '/prs/recs/{id}', name: 'prs.rec', body: PRS_REC_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can decide a recommendation');
+      if (!/^pp-[0-9a-f]{8}$/.test(c.params[0])) throw invalid([{ field: 'id', message: 'Must be pp- and 8 hex characters' }]);
+      const b = validate<{ decision: 'accept' | 'edit' | 'reject'; rank?: number; note?: string; reason?: string }>(await readBody(c.req), PRS_REC_BODY.schema, PRS_REC_BODY.required);
+      if (b.decision !== 'accept' && !b.reason?.trim()) throw invalid([{ field: 'reason', message: 'Required for edit and reject' }]);
+      const id = c.params[0];
+      const q = queueOf(c);
+      // `accept`, `edit`, `reject` are the `stack pr-pri` decisions. @req FR:pr-page/api.queue-client
+      await prQueueCall(() => (b.decision === 'accept' ? q.accept(id) : b.decision === 'edit' ? q.edit(id, { reason: b.reason!, ...(b.rank ? { rank: b.rank } : {}), ...(b.note ? { note: b.note } : {}) }) : q.reject(id, b.reason!)));
+      return json(200, { ok: true });
     },
   },
   {

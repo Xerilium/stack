@@ -34,6 +34,7 @@ import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { emailCmd } from './email';
 import { agentCmd } from './agent';
 import { graphCmd } from './graph';
+import { prsCmd } from './prs';
 import { findStackDir, userConfig, walkStackDir } from './discover';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
 import { runLocal, type Locks, type SetupHandler } from './setup';
@@ -87,6 +88,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
+  prs: { flags: ['group', 'project'], usage: 'prs [--group g] [--project p] [--json]', help: 'open PRs you review or move, by group (blocked, waiting, processing, pending, paused) with who must act; needs GITHUB_TOKEN' },
   sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
   pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
   'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md' },
@@ -769,7 +771,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
     // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report
     // Live state under ~/.stack needs no content repo. @req FR:session-inventory/cli.sessions @req FR:session-inventory/cli.pris
-    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
+    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
     return r.code ?? EXIT.ok;
