@@ -559,7 +559,7 @@ export function App() {
     }, () => '');
     if (!ok) return false;
     const who = titles.get(t.project) ?? t.project;
-    toast(note ? `🪄 Sent to ${taskAgent(t)?.name ?? `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { if (id) { await api.handled(id, 'Withdrawn by the owner', true); setWithdrawTick((n) => n + 1); } if (!has) await api.edit(t.ref, t.text, text); return true; }, () => 'Restored'); });
+    toast(note ? `🪄 Sent to ${taskAgent(t)?.name ?? `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { let taken = false; if (id) { taken = !(await api.handled(id, 'Withdrawn by the owner', true)).changed; setWithdrawTick((n) => n + 1); } if (!has) await api.edit(t.ref, t.text, text); return taken; }, (taken) => (taken ? 'Restored; the agent already picked it up' : 'Restored')); });
     return true;
   };
   type RowAct = 'start' | 'done' | 'defer' | 'notnow' | 'delegate';
