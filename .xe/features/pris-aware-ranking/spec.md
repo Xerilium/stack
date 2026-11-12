@@ -41,7 +41,7 @@ A link lives in `pris.json`, never in the task files in git.
 - **FR:engine.boost** (P1): `pri` MUST be `3000 * (N + 1 - rank) / N` for `ref` and `keyword` links and half of that for `project` links, where `N` is the count of linking priorities. An unlinked task gets `0`
 - **FR:engine.unblock** (P1): An unblocker (`🔓`), and a task that blocks one, MUST rank above every task that is neither, whatever its `pri` and urgency
 - **FR:engine.same** (P1): With no priorities, the order MUST equal the `autopri` order
-- **FR:engine.memo** (P2): A ranking cache MUST NOT return an order computed for other priorities
+- **FR:engine.memo** (P2): A ranking cache MUST NOT return an order computed for other priorities. `setPris` with the same list MUST keep the version, so the cache still hits
 
 ### FR:explain: Explain which priority a task serves
 
@@ -50,10 +50,10 @@ A link lives in `pris.json`, never in the task files in git.
 
 ### FR:cos: CoS commands
 
-- **FR:cos.link** (P1): `stack pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b]` MUST replace the given lists on that priority (an empty value clears the list) and write through `PriStore.put`. An unknown id or no flag exits `2`
+- **FR:cos.link** (P1): `stack pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b]` MUST replace the given lists on that priority (an empty value clears the list) and write through `PriStore.put`. When no list is left, the output MUST say that automatic title terms apply (`FR:link.auto`). An unknown id or no flag exits `2`
 - **FR:cos.note** (P1): `stack pris note <id> <text>` MUST set `statusAt` to now and set this ISO week's `weekly` entry to `<text>` (replacing that week's entry, newest first)
 - **FR:cos.gaps.@function** (P1): Interface: `priGaps(pris: Pri[], linked: Map<string, number>, now: Date): PriGap[]`. `PriGap` is `{ id, rank, title, gaps, lastStatus?, days?, linked }`
-- **FR:cos.gaps.kinds** (P1): For each `active` or `blocked` priority, `gaps` MUST list `no-status` when it has no `statusAt` and no `weekly` entry, `stale` when the last status is more than 7 days old, and `no-tasks` when no open task links to it. The last status is `statusAt`, else the Monday of the newest `weekly` week. Priorities with no gap are left out
+- **FR:cos.gaps.kinds** (P1): For each `active` or `blocked` priority, `gaps` MUST list `no-status` when it has no `statusAt` and no `weekly` entry, `stale` when the last status is more than 7 days old, and `no-tasks` when no open task links to it. The last status is the newer of `statusAt` and the Monday of the newest `weekly` week. Priorities with no gap are left out
 - **FR:cos.gaps.cli** (P1): `stack pris gaps` MUST print one line per gap priority, in priority order (`<rank>. <id> <title>: <gaps> [last <n>d] -> <next command>`), or `no gaps`. The next command is `stack pris note <id> "..."` for a status gap, else `stack pris link <id> --keywords "..."`. It needs the content repo to count links. `--json` prints the list
 
 ### FR:bakeoff: Prove it on the owner ground truth

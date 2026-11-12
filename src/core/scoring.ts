@@ -661,6 +661,12 @@ const CAPACITY_LINE = /^-\s+\*\*(.+?)\s+capacity:\*\*\s+(\d+(?:\.\d+)?)h\s*$/i;
  * @req FR:scoring-engine/load.@function @req FR:scoring-engine/load.name @req FR:scoring-engine/load.metadata
  * @req FR:scoring-engine/load.tasks @req FR:scoring-engine/filter.capacity
  */
+/** Names from the first `**Aliases:**` line (comma-separated). */
+export function parseAliases(lines: string[]): string[] {
+  const line = lines.map(l => /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean);
+  return line?.split(',').map(a => a.trim()).filter(Boolean) ?? [];
+}
+
 export function toScoringProject(project: Project, fallbackName = ''): ScoringProject {
   // Legacy: H1 on the first line only; otherwise the file base name with '-' as ' '.
   const first = project.lines[0]?.replace(/^﻿/, '').replace(/\r$/, '').trim() ?? '';
@@ -674,8 +680,7 @@ export function toScoringProject(project: Project, fallbackName = ''): ScoringPr
   if (valueLine) for (const e of VALUE) value.push(...Array<string>(valueLine.split(e).length - 1).fill(e));
   const weekly = /\*\*Weekly capacity:\*\*\s*(\d+)/i.exec(content)?.[1];
   const prio = /\*\*Project priority:\*\*\s*(\d+)/i.exec(content)?.[1];
-  const aliasLine = /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/im.exec(content)?.[1];
-  const aliases = [...new Set([...(fallbackName && fallbackName !== name ? [fallbackName] : []), ...(aliasLine?.split(",").map(a => a.trim()).filter(Boolean) ?? [])])];
+  const aliases = [...new Set([...(fallbackName && fallbackName !== name ? [fallbackName] : []), ...parseAliases(lines)])];
   const capacity: Record<string, number> = {};
   for (const l of lines) {
     const m = CAPACITY_LINE.exec(l);

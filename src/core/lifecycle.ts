@@ -6,7 +6,7 @@
 import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { rollRecurring } from './recurring';
-import { DEFAULT_ENGINE, getEngine, rankTasks, type RankOptions, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
+import { DEFAULT_ENGINE, getEngine, parseAliases, rankTasks, type RankOptions, type ScoredTask, ScoringTask, toScoringProject } from './scoring';
 import { applyTags, formatExplain, matchTruth, parseTruth, type ExplainRow, type Tags, type TruthMatch } from './autopri-tags';
 import { autopriEngine, autopriParts, registerAutopriEngine } from './autopri';
 import type { Pri } from './pris';
@@ -594,7 +594,7 @@ export interface Explained { items: (ExplainRow & { path: string; line: number }
 
 /** Ranked tasks with autopri score parts; optional ground-truth report. @req FR:auto-priority/explain.cli @req FR:auto-priority/truth.report */
 /** File name plus the `**Aliases:**` line of a project file. */
-const aliasesOf = (d: Doc): string[] => [d.name, ...(d.project.lines.map((l) => /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean)?.split(',').map((a) => a.trim()).filter(Boolean) ?? [])];
+const aliasesOf = (d: Doc): string[] => [d.name, ...parseAliases(d.project.lines)];
 const formatRef = (r: TaskRef): string => `${r.path}:${r.line + 1}`;
 
 /** With `pris`, ranks with the `pris` engine over those priorities and adds the `pri` part and link. @req FR:pris-aware-ranking/explain.cli */

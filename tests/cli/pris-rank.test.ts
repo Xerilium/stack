@@ -60,6 +60,10 @@ describe('stack pris link, note, gaps', () => {
     expect(file.pris[0]).toMatchObject({ keywords: ['PR quality pass'], weekly: [{ text: 'PR pass half done' }] });
     expect(file.rev).toBe(4);
   });
+  it('says when clearing every list brings back automatic title terms', async () => {
+    seed();
+    expect((await stack('pris', 'link', 'p1', '--keywords', '')).out).toBe('p1 linked: projects=- keywords=- refs=- (no terms: automatic terms from the title apply)\n');
+  });
   it('rejects unknown ids, missing flags and text', async () => {
     seed();
     expect((await stack('pris', 'link', 'zz', '--keywords', 'x')).code).toBe(2);

@@ -108,7 +108,11 @@ export function prisParts(all: ScoredTask[], projects: ScoringProject[], config:
 let current: Pri[] = [];
 let version = 0;
 /** Sets the priorities the `pris` engine reads. @req FR:pris-aware-ranking/engine.@function */
-export function setPris(pris: Pri[]): void { current = pris; version++; }
+export function setPris(pris: Pri[]): void {
+  const same = JSON.stringify(pris) === JSON.stringify(current);
+  current = pris;
+  if (!same) version++;
+}
 
 /**
  * `unblock + urgency + value + pri`, then blockers lift. Same as `autopri` with no priorities.
@@ -161,7 +165,9 @@ export function isoWeek(d: Date): string {
 /** @req FR:pris-aware-ranking/cos.gaps.kinds */
 export function priGaps(pris: Pri[], linked: Map<string, number>, now: Date): PriGap[] {
   return linkingPris(pris).flatMap(({ pri, rank }): PriGap[] => {
-    const at = pri.statusAt ? new Date(pri.statusAt) : pri.weekly[0] ? weekStart(pri.weekly[0].week) : undefined;
+    // The newer of the note time and the newest week, so a hand-added week is not stale.
+    const times = [...(pri.statusAt ? [Date.parse(pri.statusAt)] : []), ...(pri.weekly[0] ? [weekStart(pri.weekly[0].week).getTime()] : [])];
+    const at = times.length ? new Date(Math.max(...times)) : undefined;
     const gaps: PriGapKind[] = [];
     const days = at ? Math.floor((now.getTime() - at.getTime()) / DAY_MS) : undefined;
     if (!at) gaps.push('no-status');

@@ -108,9 +108,11 @@ describe('pris engine', () => {
     expect(o.indexOf('Prep 🟡')).toBeLessThan(o.indexOf('Plain ‼️ ⬆️ 💰 🟢'));
   });
   // @req FR:pris-aware-ranking/engine.memo
-  it('changes its version with each setPris', () => {
+  it('changes its version only when the priorities change', () => {
     const v = prisEngine.version!();
     setPris([]);
+    expect(prisEngine.version!()).toBe(v);
+    setPris([pri('p1')]);
     expect(prisEngine.version!()).not.toBe(v);
   });
 });
@@ -132,6 +134,8 @@ describe('gaps', () => {
       { id: 'p3', rank: 3, title: 'P3', gaps: ['stale'], lastStatus: '2026-10-26T00:00:00.000Z', days: 16, linked: 1 },
     ]);
     expect(priGaps([pri('p1', { statusAt: '2026-11-03T17:00:00Z' })], new Map([['p1', 1]]), NOW)[0].gaps).toEqual(['stale']);
+    // The newer of statusAt and the newest week counts.
+    expect(priGaps([pri('p1', { statusAt: '2026-10-01T00:00:00Z', weekly: [{ week: '2026-W46', text: 'hand edit' }] })], new Map([['p1', 1]]), NOW)).toEqual([]);
   });
   // @req FR:pris-aware-ranking/cos.gaps.cli
   it('formats one line per gap with the next command', () => {
@@ -198,5 +202,25 @@ describe('bake-off', () => {
     const doc = readFileSync(join(__dirname, '../../docs/scoring-bakeoff-pris.md'), 'utf8');
     expect(doc).toContain(`| autopri | ${a.hits.length}/10 |`);
     expect(doc).toContain(`| pris | ${p.hits.length}/10 |`);
+  });
+});
+
+describe('rank cache', () => {
+  // @req FR:pris-aware-ranking/engine.memo
+  it('never returns an order computed for other priorities', async () => {
+    const { cpSync, mkdtempSync } = await import('fs');
+    const { tmpdir } = await import('os');
+    const { FsStorage } = await import('../../src/core/storage');
+    const { rankStack } = await import('../../src/core/lifecycle');
+    const dir = mkdtempSync(join(tmpdir(), 'stack-memo-'));
+    cpSync(join(FIX, 'tasks'), join(dir, 'tasks'), { recursive: true });
+    registerPrisEngine();
+    const ctx = { storage: new FsStorage(dir), config, engine: 'pris' };
+    const at = new Date('2026-11-11T17:00:00Z');
+    const top = async () => (await rankStack(ctx, at, 2))[1].text;
+    setPris([pri('a', { keywords: ['Stack v2'] })]);
+    expect(await top()).toContain('Stack v2');
+    setPris([pri('a', { keywords: ['Clyde'] })]);
+    expect(await top()).toContain('Clyde');
   });
 });

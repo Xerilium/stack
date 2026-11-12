@@ -428,7 +428,7 @@ async function prisCos(store: PriStore, sub: 'link' | 'note' | 'gaps', p: Return
   }
   const w = await store.put(d.rev, next);
   const x = w.pris.find((y) => y.id === id)!;
-  return { json: { ok: true, changed: true, rev: w.rev, pri: x }, text: sub === 'link' ? `${id} linked: ${PRI_LINKS.map((k) => `${k}=${(x[k] ?? []).join(',') || '-'}`).join(' ')}` : `${id} noted (${x.weekly[0].week})` };
+  return { json: { ok: true, changed: true, rev: w.rev, pri: x }, text: sub === 'link' ? `${id} linked: ${PRI_LINKS.map((k) => `${k}=${(x[k] ?? []).join(',') || '-'}`).join(' ')}${PRI_LINKS.some((k) => x[k]?.length) ? '' : ' (no terms: automatic terms from the title apply)'}` : `${id} noted (${x.weekly[0].week})` };
 }
 
 /** A core ref as the api writes it (`<project>:<line>`, 0-based). */
