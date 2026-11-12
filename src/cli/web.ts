@@ -20,6 +20,7 @@ import type { Storage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo, type WatchOptions } from './watch';
 import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
+import { serveSetup, type SetupHandler } from './setup';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
@@ -56,6 +57,10 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
 export interface RepoInfo { mode: 'demo' | 'live'; repo: string; branch: string }
 export interface WebOpts {
   dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number; onRaw?: (file: string) => void; watchFn?: WatchOptions['watchFn'] };
+  /** First-run setup routes (`/setup`) on a local host. @req FR:first-run-onboarding/host.live */
+  setup?: SetupHandler;
+  /** A published calendar link from the user config; `STACK_CALENDAR_ICS` wins. @req FR:first-run-onboarding/step.calendar */
+  ics?: string;
   /** The task storage; default a direct-commit `GitStorage` on `dir`. A storage with `close()` (batched live mode) is closed, and so flushed, on shutdown. @req FR:cli/web.batch */
   storage?: Storage & { close?(): Promise<void> };
   /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
@@ -160,7 +165,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const ghToken = process.env.GITHUB_TOKEN?.trim();
   let prs: ReturnType<typeof createGitHubPrs> | undefined;
   try { prs = ghToken ? createGitHubPrs({ token: ghToken, repos: githubRepos(process.env.STACK_GITHUB_REPOS) }) : undefined; } catch (e) { console.error(`github: STACK_GITHUB_REPOS ${e instanceof Error ? e.message : 'is invalid'}; PR status off`); }
-  const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, ics: process.env.STACK_CALENDAR_ICS, log: (l) => console.log(l) }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
+  const cal = await calendarSource({ cachePath: process.env.STACK_GRAPH_CACHE, fixture: process.env.STACK_CALENDAR_FIXTURE, ics: process.env.STACK_CALENDAR_ICS || o.ics, log: (l) => console.log(l) }).catch((e: unknown) => { console.error(`calendar: unavailable (${e instanceof Error ? e.message : 'error'})`); return { source: 'none' as const, provider: undefined }; });
   const storage: Storage & { close?(): Promise<void>; onPending?(fn: (n: number) => void): () => void } = o.storage ?? new GitStorage(o.dir);
   /** Open event streams; a batched storage tells them when its pending count changes (an idle flush leaves no file change for the watcher to see). @req FR:live-deploy/web.unsaved.refresh */
   const sinks = new Set<(event: string, data: unknown) => void>();
@@ -202,6 +207,8 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         const path = (req.url ?? '/').split('?')[0];
         // @req FR:cli/web.serve.local
         if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents }), 'application/json');
+        // @req FR:first-run-onboarding/host.live
+        if (o.setup && path === '/setup') { await serveSetup(o.setup, req, res, extra); return; }
         if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });
         // @req FR:ask-queue/live.sse
         if (path === '/events' && req.method === 'GET') {
