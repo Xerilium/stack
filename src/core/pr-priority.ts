@@ -64,7 +64,7 @@ export type QueueOp =
   | { op: 'undo' };
 /** One row of the list view: the queue item plus facts, edges, decisions, the newest report record, acks and status. @req FR:pr-priority/view.item */
 export interface PrPriView extends PrPriItem, PrFacts {
-  pr: number; baseStack: string[]; why?: string; michaelDecision?: { state: RecState; reason?: string; at: string };
+  pr: number; baseStack: string[]; waitsOn: string[]; why?: string; michaelDecision?: { state: RecState; reason?: string; at: string };
   report?: PrRecord & { stale: boolean }; acks: PrAck[]; status?: (typeof ESC_STATUSES)[number];
 }
 
@@ -282,7 +282,7 @@ export class PrPriorityStore {
         const e = EMPTY_STATE();
         // Drop malformed recommendations instead of failing later reads.
         const recs = (j.recs as unknown[]).filter((r): r is PrRec => isObj(r) && typeof r.id === 'string' && typeof r.repo === 'string' && Number.isInteger(r.number) && typeof r.reason === 'string' && typeof r.at === 'string' && (r.state === 'open' || (isObj(r.decision) && typeof r.decision.at === 'string')));
-        return { data: { ...e, recs, deps: isObj(j.deps) ? j.deps as PrPriState['deps'] : {}, acks: isObj(j.acks) ? j.acks as PrPriState['acks'] : {}, records: isObj(j.records) ? j.records as PrPriState['records'] : {}, facts: isObj(j.facts) ? j.facts as PrPriState['facts'] : {}, history: Array.isArray(j.history) ? j.history.flatMap((h) => { const items = isObj(h) ? validItems(h.items) : undefined; return items && typeof h.at === 'string' ? [{ items, at: h.at }] : []; }) : [], ...(isObj(j.escalations) ? { escalations: j.escalations as Escalations } : {}) } };
+        return { data: { ...e, recs, deps: isObj(j.deps) ? Object.fromEntries(Object.entries(j.deps).filter((e): e is [string, string[]] => Array.isArray(e[1]) && e[1].every((x) => typeof x === 'string'))) : {}, acks: isObj(j.acks) ? j.acks as PrPriState['acks'] : {}, records: isObj(j.records) ? j.records as PrPriState['records'] : {}, facts: isObj(j.facts) ? j.facts as PrPriState['facts'] : {}, history: Array.isArray(j.history) ? j.history.flatMap((h) => { const items = isObj(h) ? validItems(h.items) : undefined; return items && typeof h.at === 'string' ? [{ items, at: h.at }] : []; }) : [], ...(isObj(j.escalations) ? { escalations: j.escalations as Escalations } : {}) } };
       }
     } catch { /* broken */ }
     return { data: EMPTY_STATE(), broken: true };
@@ -306,15 +306,14 @@ export class PrPriorityStore {
     return (repo, n) => m.get(keyOf(repo, n)) ?? null;
   }
   /** The queue rank of a PR, or null. @req FR:pr-priority/api.pr */
-  rankOf(repo: string, n: number): number | null { return this.read().items.find((i) => keyOf(i.repo, i.number) === keyOf(repo, n))?.rank ?? null; }
+  rankOf(repo: string, n: number): number | null { return this.ranks()(repo, n); }
 
   /** Hears each successful write in this process. */
   onWrite(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
   /** Hears writes by other processes (the CLI) by polling both files; returns a stop function. */
-  watch(fn: () => void, intervalMs = 2000): () => void {
-    const h = () => fn();
-    for (const f of [this.file, this.stateFile]) watchFile(f, { persistent: false, interval: intervalMs }, h);
-    return () => { for (const f of [this.file, this.stateFile]) unwatchFile(f, h); };
+  watch(fn: (file: string, mtimeMs: number) => void, intervalMs = 2000): () => void {
+    const hs = [this.file, this.stateFile].map((f) => { const h = (cur: { mtimeMs: number }) => fn(f, cur.mtimeMs); watchFile(f, { persistent: false, interval: intervalMs }, h); return [f, h] as const; });
+    return () => { for (const [f, h] of hs) unwatchFile(f, h); };
   }
   private told(): void { for (const fn of this.listeners) { try { fn(); } catch { /* a listener never fails a write */ } } }
 
@@ -623,7 +622,7 @@ export class PrPriorityStore {
       // @req FR:pr-priority/record.stale: the head moved since the SM wrote its record.
       const report = rec ? { ...rec, stale: !!(facts?.headSha && rec.headSha && facts.headSha.toLowerCase() !== rec.headSha.toLowerCase()) } : undefined;
       return {
-        ...i, pr: i.number, ...(facts ?? {}), baseStack: (s.deps[k] ?? []).map(urlOf),
+        ...i, pr: i.number, ...(facts ?? {}), baseStack: (s.deps[k] ?? []).map(urlOf), waitsOn: (s.deps[k] ?? []).filter((d) => s.facts[d]?.state !== 'merged').map(urlOf),
         ...(recs[0] ? { why: recs[0].reason } : {}),
         ...(dec ? { michaelDecision: { state: dec.state, ...(dec.decision!.reason ? { reason: dec.decision!.reason } : {}), at: dec.decision!.at } } : {}),
         ...(report ? { report } : {}), acks: s.acks[k] ?? [], ...(status ? { status } : {}),
@@ -633,7 +632,11 @@ export class PrPriorityStore {
 
   /** Reads facts for each queued PR (at most 4 at a time) and caches them; a PR that cannot be read keeps its prior facts. @req FR:pr-priority/view.refresh */
   async refresh(read: (repo: string, n: number) => Promise<unknown>): Promise<{ read: number; failed: number }> {
-    const items = this.read().items;
+    // Queued PRs and the PRs they merge after (so the SM can see whether a base is still open).
+    const deps = this.state().deps;
+    const keys = new Set(this.read().items.map((i) => keyOf(i.repo, i.number)));
+    for (const k of [...keys]) for (const d of deps[k] ?? []) keys.add(d);
+    const items = [...keys].map((k) => { const [repo, n] = k.split('#'); return { repo, number: Number(n) }; });
     const got = new Map<string, PrFacts>();
     let failed = 0;
     for (let i = 0; i < items.length; i += PR_PRI_LIMITS.refresh) {

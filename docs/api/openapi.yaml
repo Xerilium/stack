@@ -2841,6 +2841,11 @@ components:
                 items:
                   type: string
                 description: PR urls this PR merges after
+              waitsOn:
+                type: array
+                items:
+                  type: string
+                description: baseStack urls not merged
               why:
                 type: string
               michaelDecision:

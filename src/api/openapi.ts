@@ -511,7 +511,7 @@ export function buildOpenApi(): J {
                   rank: { type: 'integer' }, repo: { type: 'string' }, number: { type: 'integer' }, pr: { type: 'integer' }, url: { type: 'string' }, pinned: { type: 'boolean' }, note: { type: 'string' }, by: { type: 'string' }, at: { type: 'string' },
                   title: { type: 'string' }, author: { type: 'string' }, isDraft: { type: 'boolean' }, assignee: { type: 'string', nullable: true }, labels: { type: 'array', items: { type: 'string' } },
                   reviewDecision: { type: 'string', nullable: true }, checks: { type: 'string', enum: ['green', 'red', 'pending'] }, mergeable: { type: 'string' }, lastPushAt: { type: 'string' }, headSha: { type: 'string' }, state: { type: 'string', enum: ['open', 'merged', 'closed'] }, factsAt: { type: 'string' },
-                  baseStack: { type: 'array', items: { type: 'string' }, description: 'PR urls this PR merges after' }, why: { type: 'string' },
+                  baseStack: { type: 'array', items: { type: 'string' }, description: 'PR urls this PR merges after' }, waitsOn: { type: 'array', items: { type: 'string' }, description: 'baseStack urls not merged' }, why: { type: 'string' },
                   michaelDecision: { type: 'object', properties: { state: { type: 'string' }, reason: { type: 'string' }, at: { type: 'string' } } },
                   report: { type: 'object', description: 'Newest per-PR report record' }, acks: { type: 'array', items: { type: 'object', properties: { thread: { type: 'string' }, note: { type: 'string' }, at: { type: 'string' } } } },
                   status: { type: 'string', enum: [...ESC_STATUSES] },

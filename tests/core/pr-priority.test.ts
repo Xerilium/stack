@@ -325,15 +325,17 @@ describe('view', () => {
     const rr = await s.recommend({ repo: 'o/r', number: 2, agent: 'cos', reason: 'Hot', toRank: 1 });
     if (!('rec' in rr)) throw new Error('no rec');
     await s.decide(rr.rec.id, { decision: 'reject', reason: 'Wait' });
-    await s.refresh(async (_repo, n) => (n === 1 ? { title: 'One', author: { login: 'me' }, isDraft: false, assignees: [], labels: [{ name: 'Autopilot' }], reviewDecision: 'APPROVED', statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }], mergeable: 'MERGEABLE', commits: [{ committedDate: '2026-11-10T01:00:00Z' }, { committedDate: '2026-11-11T01:00:00Z' }], headRefOid: 'def5678' } : null));
+    await s.depends('o/r#1', 'o/r#9'); await s.depends('o/r#2', 'o/r#8');
+    await s.refresh(async (_repo, n) => (n === 9 ? { state: 'MERGED' } : n === 1 ? { title: 'One', author: { login: 'me' }, isDraft: false, assignees: [], labels: [{ name: 'Autopilot' }], reviewDecision: 'APPROVED', statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }], mergeable: 'MERGEABLE', commits: [{ committedDate: '2026-11-10T01:00:00Z' }, { committedDate: '2026-11-11T01:00:00Z' }], headRefOid: 'def5678' } : null));
     await s.record('o/r#1', { state: 'waiting-on-me', ts: '2026-11-11T12:00:00Z', owner: 'Michael', nextAction: 'Approve', blocker: { text: 'Needs label', threadUrl: 'https://github.com/o/r/pull/1#issuecomment-1' }, headSha: 'abc1234', humanOnly: true, bucket: 'approve' });
     const v = s.view();
     expect(v[0]).toEqual({
       rank: 1, repo: 'o/r', number: 1, pr: 1, url: U(1), pinned: false, by: 'owner', at: now().toISOString(),
       title: 'One', author: 'me', isDraft: false, assignee: null, labels: ['Autopilot'], reviewDecision: 'APPROVED', checks: 'green', mergeable: 'MERGEABLE', lastPushAt: '2026-11-11T01:00:00Z', headSha: 'def5678', factsAt: now().toISOString(),
-      baseStack: [], acks: [], status: 'approve',
+      baseStack: [U(9)], waitsOn: [], acks: [], status: 'approve',
       report: { state: 'waiting-on-me', ts: '2026-11-11T12:00:00Z', owner: 'Michael', nextAction: 'Approve', blocker: { text: 'Needs label', threadUrl: 'https://github.com/o/r/pull/1#issuecomment-1' }, headSha: 'abc1234', humanOnly: true, bucket: 'approve', stale: true },
     });
+    expect(v[1]).toMatchObject({ baseStack: [U(8)], waitsOn: [U(8)] });
     expect(v[1]).toMatchObject({ number: 2, why: 'Hot', michaelDecision: { state: 'rejected', reason: 'Wait', at: now().toISOString() } });
     expect(v[1].title).toBeUndefined();
   });

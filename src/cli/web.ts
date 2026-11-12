@@ -193,10 +193,11 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const prPriority = o.prPriority ?? new PrPriorityStore(stackHome());
   // The queue and recommendations change from the CLI too (agents): a write tells open pages to reload Needs you and the PR page.
   const tellPr = () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'pr-priority'] }); };
-  // The file poll also sees this host's own writes: skip it right after one, so a page gets one event per write.
-  let ownWriteAt = 0;
-  const offPrPri = prPriority.onWrite(() => { ownWriteAt = Date.now(); tellPr(); });
-  const unwatchPrPri = prPriority.watch(() => { if (Date.now() - ownWriteAt > 3000) tellPr(); });
+  // The file poll also sees this host's own writes: skip a file whose mtime is the one this host wrote, so a page gets one event per write.
+  const own = new Map<string, number>();
+  const mtime = (f: string) => { try { return statSync(f).mtimeMs; } catch { return 0; } };
+  const offPrPri = prPriority.onWrite(() => { for (const f of [prPriority.file, prPriority.stateFile]) own.set(f, mtime(f)); tellPr(); });
+  const unwatchPrPri = prPriority.watch((f, m) => { if (own.get(f) !== m) tellPr(); });
   const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
