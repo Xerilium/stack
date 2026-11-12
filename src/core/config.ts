@@ -38,7 +38,11 @@ export interface StackConfig {
   /** The PR page: the signed-in GitHub login, PRs to leave out, poll seconds (30-60). @req FR:pr-page/group.@function @req FR:pr-page/live.poll */
   github?: { user?: string; exclude?: string[]; pollSeconds?: number };
   /** Inbox source status: freshness window (minutes) and the mailboxes expected in the Inbox. @req FR:config/load.validate.inbox */
-  inbox?: { freshMinutes?: number; accounts?: string[] };
+  inbox?: {
+    freshMinutes?: number; accounts?: string[];
+    /** Agent delivery: `claude` runs agents on owner messages; default off. @req FR:agent-delivery/safe.optin */
+    delivery?: 'claude' | 'off'; deliveryTimeoutSeconds?: number; deliveryMaxUsd?: number; deliveryDailyCapUsd?: number; reposRoot?: string;
+  };
   /** Folders whose child repos hold `.claude/agents` (absolute or `~/`); default `~/dev`. @req FR:agent-team/agent.team.scan */
   agents?: { scanRoots?: string[] };
 }
@@ -211,6 +215,26 @@ function parseInbox(v: unknown): NonNullable<StackConfig['inbox']> {
   if (v.freshMinutes !== undefined) {
     if (!Number.isInteger(v.freshMinutes) || (v.freshMinutes as number) < 1) throw new ConfigError('inbox.freshMinutes: expected a positive integer');
     out.freshMinutes = v.freshMinutes as number;
+  }
+  if (v.delivery !== undefined) {
+    if (v.delivery !== 'claude' && v.delivery !== 'off') throw new ConfigError('inbox.delivery: expected "claude" or "off"');
+    out.delivery = v.delivery;
+  }
+  if (v.deliveryTimeoutSeconds !== undefined) {
+    if (!Number.isInteger(v.deliveryTimeoutSeconds) || (v.deliveryTimeoutSeconds as number) < 30 || (v.deliveryTimeoutSeconds as number) > 1800) throw new ConfigError('inbox.deliveryTimeoutSeconds: expected an integer 30-1800');
+    out.deliveryTimeoutSeconds = v.deliveryTimeoutSeconds as number;
+  }
+  if (v.deliveryMaxUsd !== undefined) {
+    if (typeof v.deliveryMaxUsd !== 'number' || !(v.deliveryMaxUsd >= 0.01 && v.deliveryMaxUsd <= 10)) throw new ConfigError('inbox.deliveryMaxUsd: expected a number 0.01-10');
+    out.deliveryMaxUsd = v.deliveryMaxUsd;
+  }
+  if (v.deliveryDailyCapUsd !== undefined) {
+    if (typeof v.deliveryDailyCapUsd !== 'number' || !(v.deliveryDailyCapUsd >= 0.01 && v.deliveryDailyCapUsd <= 1000)) throw new ConfigError('inbox.deliveryDailyCapUsd: expected a number 0.01-1000');
+    out.deliveryDailyCapUsd = v.deliveryDailyCapUsd;
+  }
+  if (v.reposRoot !== undefined) {
+    if (typeof v.reposRoot !== 'string' || !v.reposRoot.startsWith('/')) throw new ConfigError('inbox.reposRoot: expected an absolute path');
+    out.reposRoot = v.reposRoot.replace(/\/+$/, '') || '/';
   }
   if (v.accounts !== undefined) {
     if (!Array.isArray(v.accounts)) throw new ConfigError('inbox.accounts: expected array');
