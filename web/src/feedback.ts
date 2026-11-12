@@ -20,29 +20,31 @@ export const b64Bytes = (b64: string): number => Math.floor((b64.length * 3) / 4
 export const FIT_WIDTHS = [1280, 960, 720, 480];
 
 /**
- * One frame of this tab through the Screen Capture API, as base64 PNG under the cap; null when the API is absent,
- * the prompt is denied, or no size fits. The stream stops at once. @req FR:feedback-button/ui.shot
+ * Asks for this tab through the Screen Capture API right away (while the click still counts as a user gesture), and
+ * returns a grab that takes one frame as a base64 PNG under the cap, then stops the stream. Null when the API is absent
+ * or the prompt is denied; the grab gives null when no size fits. @req FR:feedback-button/ui.shot
  */
-export async function browserShot(): Promise<string | null> {
+export async function startShot(): Promise<(() => Promise<string | null>) | null> {
   const md = typeof navigator === 'undefined' ? undefined : navigator.mediaDevices;
   if (!md?.getDisplayMedia) return null;
-  let stream: MediaStream | undefined;
-  try {
-    stream = await md.getDisplayMedia({ video: { displaySurface: 'browser' }, audio: false, preferCurrentTab: true } as DisplayMediaStreamOptions);
-    const video = document.createElement('video');
-    video.muted = true;
-    video.srcObject = stream;
-    await video.play();
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
-    for (const max of FIT_WIDTHS) {
-      const scale = Math.min(1, max / (video.videoWidth || max));
-      const c = document.createElement('canvas');
-      c.width = Math.round((video.videoWidth || max) * scale);
-      c.height = Math.round((video.videoHeight || max) * scale);
-      c.getContext('2d')?.drawImage(video, 0, 0, c.width, c.height);
-      const b64 = c.toDataURL('image/png').split(',')[1] ?? '';
-      if (b64 && b64Bytes(b64) <= MAX_PNG_BYTES) return b64;
-    }
-    return null;
-  } catch { return null; } finally { stream?.getTracks().forEach((t) => t.stop()); }
+  let stream: MediaStream;
+  try { stream = await md.getDisplayMedia({ video: { displaySurface: 'browser' }, audio: false, preferCurrentTab: true } as DisplayMediaStreamOptions); } catch { return null; }
+  return async () => {
+    try {
+      const video = document.createElement('video');
+      video.muted = true;
+      video.srcObject = stream;
+      await video.play();
+      for (const max of FIT_WIDTHS) {
+        const scale = Math.min(1, max / (video.videoWidth || max));
+        const c = document.createElement('canvas');
+        c.width = Math.round((video.videoWidth || max) * scale);
+        c.height = Math.round((video.videoHeight || max) * scale);
+        c.getContext('2d')?.drawImage(video, 0, 0, c.width, c.height);
+        const b64 = c.toDataURL('image/png').split(',')[1] ?? '';
+        if (b64 && b64Bytes(b64) <= MAX_PNG_BYTES) return b64;
+      }
+      return null;
+    } catch { return null; } finally { stream.getTracks().forEach((t) => t.stop()); }
+  };
 }

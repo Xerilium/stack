@@ -23,10 +23,10 @@ Send feedback on the app from the app. One line lands in a local file. An agent 
 
 ### FR:ui: Icon and panel
 
-- **FR:ui.icon** (P1): A feedback icon button sits in the rail footer (desktop) and in the top bar (phone). Label and tooltip `Send feedback (F)`. No shortcut badge. `f` opens the panel when no field has focus
+- **FR:ui.icon** (P1): A feedback icon button sits in the rail footer (desktop) and in the top bar (phone). Label and tooltip `Send feedback (F)`. No shortcut badge. `Shift+F` opens the panel when no field has focus and no dialog is open (`f` alone is taken by list and Agents keys)
 - **FR:ui.panel** (P1): The panel has a multi-line text box, a checkbox `Include a screenshot of this page` (default on), and `Send`. `Send` is off while the text is blank. Escape closes it
-- **FR:ui.sent** (P1): On success the panel shows only `Sent` and closes after a short pause. On failure it keeps the text and shows the error
-- **FR:ui.shot** (P1): With the box checked, the panel hides before the capture. In the desktop app the host captures the window (`capture: true`). In a browser it uses the Screen Capture API when present (one frame, then stops); no API or a denied prompt sends without a screenshot
+- **FR:ui.sent** (P1): On success the panel shows only `Sent` and closes after a short pause. On failure it keeps the text, shows the error, and focuses the text box. Escape does nothing while sending
+- **FR:ui.shot** (P1): With the box checked, the panel hides before the capture. In the desktop app the host captures the window (`capture: true`). In a browser it uses the Screen Capture API when present (asked on the click, one frame after the panel hides, then stops); no API or a denied prompt sends without a screenshot
 - **FR:ui.a11y** (P1): No axe violations at 375 and 1280 px; focus moves to the text box on open and back to the icon on close
 
 ### FR:api: API
@@ -37,8 +37,8 @@ Send feedback on the app from the app. One line lands in a local file. An agent 
 
 - **FR:store.path** (P1): `<STACK_HOME or ~/.stack>/feedback.jsonl`; screenshots at `feedback/<id>.png`. Files 0600, folders 0700
 - **FR:store.line** (P1): One JSON object per line: `{id, at, text, route?, viewport?, theme?, appVersion?, sha?, screenshotPath?}`. Append-only. `id` sorts by time
-- **FR:store.atomic** (P1): Each append holds `feedback.lock` and writes the whole line in one `write` (O_APPEND), so a tailing reader never sees a partial line. The PNG is written (temp file and rename) before its line
-- **FR:store.redact** (P1): Token-like strings in `text` and the query string of `route` are removed before the write. No headers, cookies or tokens are stored
+- **FR:store.atomic** (P1): Each append holds `feedback.lock` and writes the whole line in one `write` (O_APPEND), so a tailing reader never sees a partial line. A short write is an error. The PNG is written (temp file and rename) before its line and removed when the line fails
+- **FR:store.redact** (P1): Token-like strings (Stack `stk_`, GitHub, Anthropic/OpenAI, Slack, AWS, JWT, bearer, `key=value` secrets) in `text` and every query string in `route` (also inside the hash) are removed before the write. No headers, cookies or tokens are stored
 - **FR:store.done** (P1): `done <id>` appends `{id, at}` to `feedback.done.jsonl` under the same lock; a second `done` is a no-op; an unknown id is an error
 - **FR:store.capture** (P2): The desktop shell registers a page capture (`webContents.capturePage`, PNG); the store calls it for `capture: true`. A failed or absent capture stores no screenshot and is not an error
 

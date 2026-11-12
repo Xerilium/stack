@@ -32,10 +32,11 @@ describe('FeedbackStore', () => {
 
   // @req FR:feedback-button/store.redact
   it('removes tokens from text and the query from route', async () => {
-    const it = await mk().add({ text: 'key ghp_abcdefghijklmnopqrstuvwxyz0123456789 and Bearer abc.def.ghi sk-ant-api03-xxxxxxxxxxxxxxxxxxxx', route: '/x?token=secret#asks' });
-    expect(it.text).not.toMatch(/ghp_|abc\.def|sk-ant/);
+    const it = await mk().add({ text: 'stk_ab12cd34.s3cretvalue key ghp_abcdefghijklmnopqrstuvwxyz0123456789 and Bearer abc.def.ghi sk-ant-api03-xxxxxxxxxxxxxxxxxxxx', route: '/x?token=secret#asks' });
+    expect(it.text).not.toMatch(/stk_|s3cret|ghp_|abc\.def|sk-ant/);
     expect(it.text).toContain('[redacted]');
     expect(it.route).toBe('/x#asks');
+    expect((await mk().add({ text: 'x', route: '/#/list?code=abc' })).route).toBe('/#/list');
     expect(redactSecrets('plain words stay')).toBe('plain words stay');
   });
 
@@ -72,6 +73,17 @@ describe('FeedbackStore', () => {
     expect(s.list().map((x) => [x.id, x.done])).toEqual([[a.id, true], [b.id, false]]);
     expect(s.list({ since: a.id }).map((x) => x.id)).toEqual([b.id]);
     expect(mk().list()).toHaveLength(2);
+  });
+
+  // @req FR:feedback-button/store.atomic
+  it('parallel writers each land one whole line, ids in file order', async () => {
+    const a = new FeedbackStore(home), b = new FeedbackStore(home);
+    await Promise.all(Array.from({ length: 40 }, (_, i) => (i % 2 ? a : b).add({ text: `n${i} ` + 'y'.repeat(2000) })));
+    const raw = readFileSync(join(home, 'feedback.jsonl'), 'utf8').split('\n').filter(Boolean);
+    expect(raw).toHaveLength(40);
+    const ids = raw.map((l) => JSON.parse(l).id as string);
+    expect([...ids].sort()).toEqual(ids);
+    expect(new Set(ids).size).toBe(40);
   });
 
   it('lists nothing when there is no file', () => { expect(mk().list()).toEqual([]); });

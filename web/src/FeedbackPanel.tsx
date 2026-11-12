@@ -1,7 +1,7 @@
 /** The feedback icon and its panel: text, optional screenshot, Send. @req FR:feedback-button/ui.icon @req FR:feedback-button/ui.panel */
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
-import { browserShot, isDesktopApp, pageContext } from './feedback';
+import { isDesktopApp, pageContext, startShot } from './feedback';
 import './feedback.css';
 
 type Phase = 'closed' | 'open' | 'sending' | 'sent';
@@ -61,8 +61,10 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
     setError(null);
     setPhase('sending');
     const desktop = isDesktopApp();
+    // The browser prompt comes first, while the click is still a user gesture; then the panel hides for the frame.
+    const grab = shot && !desktop ? await startShot() : null;
     if (shot) { setHidden(true); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))); }
-    const png = shot && !desktop ? await browserShot() : null;
+    const png = grab ? await grab() : null;
     try {
       await api.feedback({ text: text.trim(), ...pageContext(), ...(shot && desktop ? { capture: true } : {}), ...(png ? { png } : {}) });
       setHidden(false);
@@ -71,6 +73,7 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
       setHidden(false);
       setError(e instanceof Error ? e.message : 'Could not send');
       setPhase('open');
+      setTimeout(() => ref.current?.querySelector<HTMLElement>('textarea')?.focus(), 0);
     }
   };
 
@@ -79,7 +82,7 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
     <div class="scrim fb-scrim" onClick={phase === 'sending' ? undefined : onClose}>
       <div ref={ref} class="dialog fb-panel" role="dialog" aria-modal="true" aria-label="Send feedback" onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); return; }
+          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (phase !== 'sending') onClose(); return; }
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); return; }
           if (e.key === 'Tab') {
             const els = [...ref.current!.querySelectorAll<HTMLElement>('textarea, input, button')].filter((x) => !(x as HTMLButtonElement).disabled);

@@ -2,7 +2,7 @@
  * Owner feedback from the app: one JSON line per item in `<stack home>/feedback.jsonl`, append-only, for an agent session to tail.
  * See docs/feedback.md. @req FR:feedback-button/store.path
  */
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeSync, fsyncSync } from 'fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { join } from 'path';
 import { withFileLock, writeAtomic } from './file-lock';
@@ -24,8 +24,9 @@ const FILE = 'feedback.jsonl';
 const DONE = 'feedback.done.jsonl';
 const LOCK = 'feedback.lock';
 
-/** Token-like strings: GitHub, Anthropic/OpenAI, Slack, AWS keys, JWTs, bearer values, key=value secrets. @req FR:feedback-button/store.redact */
+/** Token-like strings: Stack API tokens, GitHub, Anthropic/OpenAI, Slack, AWS keys, JWTs, bearer values, key=value secrets. @req FR:feedback-button/store.redact */
 const SECRETS: RegExp[] = [
+  /\bstk_[A-Za-z0-9_.-]{8,}/g,
   /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/g,
   /\bsk-[A-Za-z0-9_-]{16,}/g,
   /\bxox[abprs]-[A-Za-z0-9-]{10,}/g,
@@ -35,8 +36,8 @@ const SECRETS: RegExp[] = [
   /\b((?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*)\S+/gi,
 ];
 export const redactSecrets = (s: string): string => SECRETS.reduce((t, re) => t.replace(re, (m, p1?: string) => (typeof p1 === 'string' && /[:=]\s*$/.test(p1) ? `${p1}[redacted]` : '[redacted]')), s);
-/** The route without its query string, which can carry tokens. */
-const cleanRoute = (r: string): string => r.replace(/\?[^#]*/, '');
+/** The route without query strings (also inside the hash), which can carry tokens. */
+const cleanRoute = (r: string): string => r.replace(/\?[^#]*/g, '');
 
 /** The host's page capture (desktop shell: `webContents.capturePage`). In-process, so no renderer bridge. @req FR:feedback-button/store.capture */
 let capturePage: (() => Promise<Buffer | null>) | undefined;
@@ -47,7 +48,9 @@ const isPng = (b: Buffer) => b.length > PNG_MAGIC.length && b.subarray(0, PNG_MA
 /** Appends `line` in one write (O_APPEND), then fsyncs: a tailing reader sees all of it or none. @req FR:feedback-button/store.atomic */
 function appendLine(file: string, obj: object): void {
   const fd = openSync(file, 'a', 0o600);
-  try { writeSync(fd, Buffer.from(JSON.stringify(obj) + '\n', 'utf8')); fsyncSync(fd); } finally { closeSync(fd); }
+  const b = Buffer.from(JSON.stringify(obj) + '\n', 'utf8');
+  // A short write would leave a partial line: fail loudly instead.
+  try { const n = writeSync(fd, b); if (n !== b.length) throw new Error(`Short write to ${file}: ${n} of ${b.length} bytes`); fsyncSync(fd); } finally { closeSync(fd); }
 }
 
 const readLines = <T>(file: string): T[] => {
@@ -111,7 +114,11 @@ export class FeedbackStore {
         item.screenshotPath = join(dir, `${item.id}.png`);
         writeAtomic(item.screenshotPath, png);
       }
-      appendLine(this.file, item);
+      try { appendLine(this.file, item); } catch (e) {
+        // No line, no orphan screenshot.
+        if (item.screenshotPath) try { unlinkSync(item.screenshotPath); } catch { /* already gone */ }
+        throw e;
+      }
     });
     return item;
   }

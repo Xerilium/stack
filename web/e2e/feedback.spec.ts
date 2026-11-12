@@ -83,6 +83,7 @@ test('a failure keeps the text and shows the error', async ({ page }, info) => {
   await page.getByRole('dialog', { name: 'Send feedback' }).getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('Disk full');
   await expect(page.getByRole('textbox', { name: 'Feedback' })).toHaveValue('keep me');
+  await expect(page.getByRole('textbox', { name: 'Feedback' })).toBeFocused();
 });
 
 test('Shift+F opens it; Escape closes it; axe clean', async ({ page }, info) => {
