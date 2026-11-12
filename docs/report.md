@@ -1,6 +1,6 @@
 # Status reports
 
-An agent sends one structured status report per project. Stack checks it with a fixed schema and keeps the latest report per agent and project in a local live store (`~/.stack/reports.json`, never git). Each ask shows in **Needs you**. No LLM call. Spec: `.xe/features/status-ingest/spec.md`.
+An agent sends one structured status report per project. Stack checks it with a fixed schema and keeps the latest report per agent and project in a local live store (`~/.stack/reports.json`, never git). Each ask shows in **Needs you**. No LLM call. Spec: `.xe/features/status-ingest/spec.md`. Scheduled tasks: [scheduled-reporting.md](scheduled-reporting.md).
 
 ## CLI
 
