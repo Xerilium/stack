@@ -80,9 +80,11 @@ export const edits = {
   itemStatus: (id: string, index: number, expect: string, status: ItemStatus): Edit => onItem(id, index, expect, (items, i) => (items[i].status === status ? null : items.map((x, j) => (j === i ? { ...x, status } : x)))),
   addItem: (id: string, text: string): Edit => onPri(id, (p) => { const t = oneLine(text, LIMITS.item); return t && p.items.length < LIMITS.items ? { ...p, items: [...p.items, { text: t, status: 'todo' }] } : null; }),
   removeItem: (id: string, index: number, expect: string): Edit => onItem(id, index, expect, (items, i) => items.filter((_, j) => j !== i)),
-  move: (id: string, delta: -1 | 1): Edit => (pris) => {
+  /** Swaps with the next priority up or down; `over` names the ones on screen, so a hidden one is passed over. */
+  move: (id: string, delta: -1 | 1, over?: string[]): Edit => (pris) => {
     const i = pris.findIndex((p) => p.id === id);
-    const j = i + delta;
+    let j = i + delta;
+    if (over) while (j >= 0 && j < pris.length && !over.includes(pris[j].id)) j += delta;
     if (i < 0 || j < 0 || j >= pris.length) return null;
     const next = [...pris];
     [next[i], next[j]] = [next[j], next[i]];

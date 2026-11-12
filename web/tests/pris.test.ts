@@ -219,3 +219,13 @@ describe('PrisQueue', () => {
     expect(s.puts.at(-1)).toEqual({ rev: 3, pris: [P('a', 'A'), P('b', 'B', { status: 'done' })] });
   });
 });
+
+describe('move among the shown', () => {
+  // @req FR:pris-sessions-ui/pris.edit
+  it('passes over a hidden priority so the row moves on screen', () => {
+    const l = [P('a', 'A'), P('d', 'D', { status: 'done' }), P('b', 'B')];
+    expect(edits.move('a', 1, ['a', 'b'])(l)!.map((p) => p.id)).toEqual(['b', 'd', 'a']);
+    expect(edits.move('b', -1, ['a', 'b'])(l)!.map((p) => p.id)).toEqual(['b', 'd', 'a']);
+    expect(edits.move('b', 1, ['a', 'b'])(l)).toBeNull();
+  });
+});

@@ -60,7 +60,7 @@ function StatusSelect<S extends string>({ value, label, words, onChange }: { val
   );
 }
 
-function PriRow({ pri, n, count, open, onToggle, ctl }: { pri: Pri; n: number; count: number; open: boolean; onToggle: () => void; ctl: PrisCtl }) {
+function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /** Ids on screen, in order: Up and Down move among these. */ ids: string[]; open: boolean; onToggle: () => void; ctl: PrisCtl }) {
   const st = PRI_STATUS[pri.status];
   const pr = progress(pri);
   const next = nextItem(pri);
@@ -96,8 +96,8 @@ function PriRow({ pri, n, count, open, onToggle, ctl }: { pri: Pri; n: number; c
           </ul>
           {pri.items.length < LIMITS.items && <AddLine label="New item" placeholder="Add item" max={LIMITS.item} onEditing={ctl.setEditing} onAdd={(t) => ctl.apply(edits.addItem(pri.id, t))} />}
           <div class="pri-move">
-            <button type="button" class="btn quiet" disabled={n === 1} aria-label={`Move ${pri.title} up`} onClick={() => ctl.apply(edits.move(pri.id, -1))}>↑ Up</button>
-            <button type="button" class="btn quiet" disabled={n === count} aria-label={`Move ${pri.title} down`} onClick={() => ctl.apply(edits.move(pri.id, 1))}>↓ Down</button>
+            <button type="button" class="btn quiet" disabled={ids[0] === pri.id} aria-label={`Move ${pri.title} up`} onClick={() => ctl.apply(edits.move(pri.id, -1, ids))}>↑ Up</button>
+            <button type="button" class="btn quiet" disabled={ids.at(-1) === pri.id} aria-label={`Move ${pri.title} down`} onClick={() => ctl.apply(edits.move(pri.id, 1, ids))}>↓ Down</button>
           </div>
         </div>
       )}
@@ -119,7 +119,7 @@ export function PrisBlock({ ctl }: { ctl: PrisCtl }) {
       {ctl.pris.length === 0 && <p class="pris-empty">No priorities yet</p>}
       {shown.length > 0 && (
         <ol class="pri-list">
-          {shown.map(({ n, pri }) => <PriRow key={pri.id} pri={pri} n={n} count={ctl.pris.length} open={openId === pri.id} onToggle={() => setOpenId(openId === pri.id ? null : pri.id)} ctl={ctl} />)}
+          {shown.map(({ n, pri }) => <PriRow key={pri.id} pri={pri} n={n} ids={shown.map((x) => x.pri.id)} open={openId === pri.id} onToggle={() => setOpenId(openId === pri.id ? null : pri.id)} ctl={ctl} />)}
         </ol>
       )}
       <div class="pris-foot">
