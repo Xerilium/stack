@@ -551,10 +551,11 @@ describe('model down (claude signed out)', () => {
     expect(await state()).toBe('done');
   });
   it('runPass writes no ask and keeps the old cursor', async () => {
-    for (const text of [AUTH, 'claude timed out after 120s']) {
+    // A timeout is not a login error: 4 messages stop at the 3rd in a row; 1 message stops at check().
+    for (const [text, routes] of [[AUTH, delta3], ['claude timed out after 120s', delta3], ['claude timed out after 120s', { ...delta3, '/messages/delta': { ...delta3['/messages/delta'], value: delta3['/messages/delta'].value.slice(0, 1) } }]] as const) {
       const dataDir = tmp();
       const { storage, ctx } = mkCtx();
-      await expect(runPass({ ctx, account: 'sam@example.test', transport: fakeGraph(delta3).transport, mode: 'drafts', llm: failing(text), dataDir })).rejects.toBeInstanceOf(ModelUnavailable);
+      await expect(runPass({ ctx, account: 'sam@example.test', transport: fakeGraph(routes).transport, mode: 'drafts', llm: failing(text), dataDir })).rejects.toBeInstanceOf(ModelUnavailable);
       expect(await storage.listAsks!()).toEqual([]);
       expect(existsSync(statePath('sam@example.test', dataDir))).toBe(false);
     }

@@ -35,7 +35,7 @@ Mail is the biggest source of interruptions. This module reads a mailbox on a sc
 
 - **FR:rules.order** (P1): `prefilter(msg, config)` returns the first match, in order: already answered by the owner (last message in thread is from the owner) `skip`; calendar item `calendar`; sensitive sender (config denylist or address pattern) or sensitive keyword (`FR:rules.sensitive`; not when sender authentication fails, which stays `spam`) `sensitive` (never sent to a model); failing sender authentication (`dmarc=fail`, or `spf=fail` and `dkim=fail`) `spam` (`FR:email-inbox-zero/batch.spam`); bulk headers (`List-Unsubscribe`, `List-Id`, `Precedence: bulk|list`, `Auto-Submitted: auto-*`) `newsletter`; receipt or notification sender or subject with no question in the preview `receipt`; otherwise `null` (needs a model)
 - **FR:rules.sensitive** (P1): Sensitive keywords match whole words, case-insensitive, in the subject and the sender display name. The built-in list is conservative (lab results, patient portal, insurance claim, tax return, payroll, subpoena, and similar); `rules.json` `sensitive.keywords` and `sensitive.domains` add to it. Sensitive mail is never classified or drafted; it gets a plain ask (`FR:ask.decide`)
-- **FR:rules.vip** (P2): A VIP sender is never settled by rules except `skip` and `calendar`; the result carries `vip: true` so the classifier floors urgency
+- **FR:rules.vip** (P2): A VIP sender is never settled by rules except `skip`, `calendar` and `sensitive` (privacy wins); the result carries `vip: true` so the classifier floors urgency
 
 ### FR:ask: Triage result to ask
 
