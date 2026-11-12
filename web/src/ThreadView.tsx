@@ -63,7 +63,7 @@ export function ThreadView({ t, th, team, now, focus = false }: { t: Task; th: T
       <p class="sr-only" role="status" aria-live="polite">{announce ? `${name(announce.agent)}: ${announce.text}` : ''}</p>
       {running && th.thread.session && <p class="th-note live" role="status"><span class="dot" aria-hidden="true" />{th.thread.session.state === 'needs-you' ? 'Waiting for you in Asks' : 'Working…'} · <button type="button" class="link" onClick={() => team.openSessionId(th.thread.session!.id)}>Open the session</button></p>}
       {/* @req FR:task-detail-design/compose.to */}
-      <Composer agents={agents} task={t} offline={team.enabled !== true} busy={th.busy} autoFocus={focus}
+      <Composer agents={agents} offline={team.enabled !== true} busy={th.busy} autoFocus={focus}
         onAsk={(text, agent) => th.ask(text, agent)} onDo={(text, agent) => th.assign(agent, false, text)} />
     </section>
   );

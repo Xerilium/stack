@@ -52,6 +52,17 @@ describe('taskThread', () => {
     expect(th.items.filter((i) => i.kind === "owner").map((i) => [(i as { id: string }).id, (i as { withdrawn?: boolean }).withdrawn ?? false])).toEqual([[a.id, false], [b.id, true]]);
   });
 
+  // @req FR:product-reset/ui.thread
+  it('names the agent an owner message went to', async () => {
+    const { ctx } = await mk();
+    const ref = { path: 'tasks/flantastic-4.md', line: 7 };
+    await sendToInbox(ctx, ref, 'Plain', 'instruction');
+    await sendToInbox(ctx, ref, 'Picked', 'instruction', undefined, undefined, 'cid-manager');
+    const owner = (await taskThread(ctx, undefined, 'flantastic-4:7')).items.filter((i) => i.kind === 'owner');
+    expect(owner[0]).not.toHaveProperty('agent');
+    expect(owner[1]).toMatchObject({ kind: 'owner', text: 'Picked', agent: 'cid-manager' });
+  });
+
   // @req FR:agent-thread/thread.read.items @req FR:agent-thread/thread.read.subtask @req FR:agent-thread/thread.read.review @req FR:agent-thread/$thread-item
   it('merges owner messages, agent replies, asks on the task, the review verdict, and agent-owned subtasks in time order', async () => {
     const { ctx, runs } = await mk();

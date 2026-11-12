@@ -158,7 +158,7 @@ export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText
 }
 
 export type ThreadItem =
-  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled'; withdrawn?: true }
+  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled'; withdrawn?: true; /** The agent it was for, when the owner picked one. */ agent?: string }
   | { at: string; kind: 'agent'; id: string; agent: string; text: string }
   | { at: string; kind: 'ask'; ask: ListedAsk }
   | { at: string; kind: 'review'; verdict: Review['verdict']; plan: string; estimate?: string; agent: string }
@@ -178,7 +178,7 @@ export async function taskThread(ctx: LifecycleContext, runs: AgentRuns | undefi
   for (const e of inbox) {
     if (rows.get(e.id) !== stored) continue; // no resolved row (the task was deleted or renamed): never the one that moved into its line
     if (e.from === 'agent') items.push({ at: e.at, kind: 'agent', id: e.id, agent: e.agent ?? 'agent', text: e.text });
-    else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state, ...(e.withdrawn ? { withdrawn: true as const } : {}) }); // the page hides it (Undo: never sent)
+    else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state, ...(e.agent ? { agent: e.agent } : {}), ...(e.withdrawn ? { withdrawn: true as const } : {}) }); // the page hides it (Undo: never sent)
   }
   const asks = await listAsks(ctx, { state: 'all', limit: ALL }).catch(() => ({ items: [] as ListedAsk[] }));
   // An ask with a task title needs its resolved row; only a legacy ask without one falls back to its stored ref.

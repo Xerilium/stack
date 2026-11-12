@@ -202,7 +202,7 @@ const RESULT_BODY = {
   required: ['ref', 'outcome', 'summary'],
 };
 const INBOX_BODY = {
-  schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: INBOX_KINDS }, expect: { t: 'str', max: 2000, line: true } } satisfies Record<string, Spec>,
+  schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: INBOX_KINDS }, expect: { t: 'str', max: 2000, line: true }, agent: { t: 'str', max: 64, line: true } } satisfies Record<string, Spec>,
   required: ['ref', 'text'],
 };
 const CAL_Q: Record<string, Spec> = { from: { t: 'str', max: 40 }, to: { t: 'str', max: 40 } };
@@ -715,10 +715,11 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/inbox', name: 'inbox.send', body: INBOX_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; kind?: InboxKind; expect?: string }>(await readBody(c.req), INBOX_BODY.schema, INBOX_BODY.required);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; kind?: InboxKind; expect?: string; agent?: string }>(await readBody(c.req), INBOX_BODY.schema, INBOX_BODY.required);
       // Only the owner speaks in the inbox; an agent token must never write words in the owner's voice.
       if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can write to an agent inbox');
-      return json(201, await sendToInbox(c.life, b.ref, b.text, b.kind ?? 'reply', b.expect));
+      // `agent`: the agent the owner picked in Now. @req FR:product-reset/ui.thread
+      return json(201, await sendToInbox(c.life, b.ref, b.text, b.kind ?? 'reply', b.expect, undefined, b.agent));
     },
   },
   {

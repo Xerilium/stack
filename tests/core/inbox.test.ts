@@ -86,6 +86,18 @@ describe('send', () => {
     expect(parseInbox(f)[0]).toMatchObject({ kind: 'instruction', state: 'open' });
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x', 'nope' as never)).rejects.toThrow(LifecycleError);
   });
+  // @req FR:product-reset/ui.thread: the picker's recipient travels with the message
+  it('stores the agent an owner message is for, and reads it back without marking it from an agent', async () => {
+    const { storage, ctx } = await mk();
+    await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'Take this one', 'instruction', undefined, undefined, 'cid-manager');
+    const f = (await storage.read('tasks/inbox/alpha.md')).content;
+    expect(f).toContain('- to: agent\n- agent: cid-manager\n- ref:');
+    const [e] = parseInbox(f);
+    expect(e).toMatchObject({ agent: 'cid-manager', to: 'agent' });
+    expect(e).not.toHaveProperty('from');
+    expect(formatEntry(e)).toBe(f.slice(f.indexOf('## ')));
+    await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x', 'instruction', undefined, undefined, 'bad slug!')).rejects.toThrow(LifecycleError);
+  });
   it('marks plain rows as to: none', async () => {
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply');

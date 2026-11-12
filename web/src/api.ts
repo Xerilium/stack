@@ -96,7 +96,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string; source?: unknown }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
-    send: (ref: string, text: string, kind: 'reply' | 'decision' | 'instruction', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
+    /** `agent`: the slug of the agent picked in Now. @req FR:product-reset/ui.thread */
+    send: (ref: string, text: string, kind: 'reply' | 'decision' | 'instruction', expect?: string, agent?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}), ...(agent ? { agent } : {}) }),
     /** Delivery state of the row's messages; 404 on hosts that do not deliver. @req FR:agent-delivery/state.api */
     delivery: (ref: string) => call<import('./delivery').DeliveryInfo>(`/inbox/delivery?ref=${encodeURIComponent(ref)}`),
     /** Starts the Claude sign-in on the host. @req FR:agent-delivery/login.signin */
