@@ -46,9 +46,9 @@ export interface DeliveryDeps {
 /** The repo rules every delivery run starts with. @req FR:agent-delivery/safe.prefix */
 export const PREFIX = [
   'You are answering the owner\'s message on a task, unattended. Rules:',
-  '- Follow this repo\'s CLAUDE.md and .xe/process.',
+  '- Read this repo\'s CLAUDE.md (and .xe/process when it exists) first and follow it; it is not loaded for you.',
   '- Never merge a pull request. Never add or remove labels. Never send mail, chat messages, or comments.',
-  '- Anything that needs the owner (a decision, an approval, a sign-in) is an ask (`stack asks put --ref ...`); never wait in chat.',
+  '- Only reading tools run without asking. Anything that needs the owner (a decision, an approval, a sign-in, a tool you were denied) goes at the end of your answer as "Needs you: ..."; never wait.',
   '- Your final answer is posted to the task thread for you: do not run `stack inbox reply`. Answer in plain text, at most 1000 characters.',
 ].join('\n');
 
@@ -115,7 +115,8 @@ export async function pendingDeliveries(ctx: LifecycleContext, o: { project?: st
 export function deliveryArgs(o: { model?: string; tools?: string[]; maxUsd: number; systemFile: string }): string[] {
   const allowed = o.tools?.length ? READ_TOOLS.filter((t) => o.tools!.includes(t)) : READ_TOOLS;
   return [
-    '-p', '--safe-mode', '--strict-mcp-config', '--no-session-persistence', '--output-format', 'json', '--permission-mode', 'default',
+    // No setting source loads: the owner's own allow rules (user, project, local) must never pre-allow a tool in an unattended run.
+    '-p', '--safe-mode', '--setting-sources', '', '--strict-mcp-config', '--no-session-persistence', '--output-format', 'json', '--permission-mode', 'default',
     '--max-budget-usd', String(o.maxUsd), '--system-prompt-file', o.systemFile,
     ...(o.model ? ['--model', o.model] : []),
     ...(o.tools?.length ? ['--tools', o.tools.join(',')] : []),
@@ -182,7 +183,8 @@ interface Target { ref: TaskRef; apiRef: string; agent: TeamAgent; context: stri
 export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } = {}): Promise<{ login: LoginState; items: DeliveryResult[] }> {
   const now = () => (d.ctx.now ?? (() => new Date()))();
   // Nothing to deliver: no process starts (the login is checked only when it matters).
-  const entries = await pendingDeliveries(d.ctx, o);
+  const done0 = d.store.read().items;
+  const entries = (await pendingDeliveries(d.ctx, o)).filter((e) => done0[e.id]?.state !== 'failed' && done0[e.id]?.state !== 'delivered');
   const out: DeliveryResult[] = [];
   if (!entries.length) return { login: d.store.read().login.state, items: out };
   let login = await checkLogin(d);
@@ -203,8 +205,12 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
     const prev = d.store.read().items[e.id];
     if (prev && (prev.state === 'failed' || prev.state === 'delivered')) continue;
     const t = await targetOf(d, e, rows.get(e.id), team);
+    if (t === 'human') continue;
     if (!t) { record(e, { state: 'failed', agent: '', reason: 'No agent for this task' }); d.store.log({ entry: e.id, agent: '', project: e.project, state: 'failed', ms: 0, usd: 0, reason: 'No agent for this task' }); continue; }
-    if (busy.has(t.agent.slug)) continue;
+    // Re-read before each run: another process (the host loop, the CLI) may have started this agent since the pass began.
+    const live = d.store.read().items;
+    if (busy.has(t.agent.slug) || Object.entries(live).some(([id, r]) => r.agent === t.agent.slug && r.state === 'working' && now().getTime() - Date.parse(r.at) < fresh && id !== e.id)) continue;
+    if (live[e.id]?.state === 'delivered' || live[e.id]?.state === 'failed') continue;
     if (login === 'expired') {
       if (prev?.state !== 'not-delivered') record(e, { state: 'not-delivered', agent: t.agent.slug, reason: 'Claude login expired' });
       else out.push({ id: e.id, state: 'not-delivered', agent: t.agent.slug, reason: 'Claude login expired' });
@@ -224,11 +230,12 @@ export function deliveryAgent(team: TeamAgent[], project: string, section?: stri
   return all.find((a, i) => !(i === 0 && a.scope.includes('*')) && fits(a)) ?? all[0];
 }
 
-async function targetOf(d: DeliveryDeps, e: ListedEntry, row: string | undefined, team: TeamAgent[]): Promise<Target | null> {
+async function targetOf(d: DeliveryDeps, e: ListedEntry, row: string | undefined, team: TeamAgent[]): Promise<Target | 'human' | null> {
   const ref = row ? toRef(row) : null;
   if (!ref) return null;
   const c = await taskContext(d.ctx, ref).catch(() => null);
-  if (!c || c.human) return null;
+  if (c?.human) return 'human'; // the owner's own row: never delivered
+  if (!c) return null;
   const agent = deliveryAgent(team, c.project, c.section);
   return agent ? { ref, apiRef: formatRef(ref), agent, context: c.text, title: c.title, project: c.project } : null;
 }
@@ -274,7 +281,7 @@ async function deliverOne(d: DeliveryDeps, e: ListedEntry, t: Target, now: () =>
   await denialAsks(d, e, t, out.permission_denials).catch(() => undefined);
   if (typeof out.subtype === 'string' && /budget/i.test(out.subtype)) return done('failed', 'Cost cap reached');
   if (failed) return done('failed', 'Agent run failed');
-  const reply = oneLine(text, REPLY_MAX);
+  const reply = oneLine(redact(text), REPLY_MAX); // the thread is committed: no secret the run read may land there
   if (!reply) return done('failed', 'Agent sent no reply');
   await replyFromAgent(d.ctx, t.ref, reply, agent);
   await handleEntry(d.ctx, e.id, agent, 'Delivered');

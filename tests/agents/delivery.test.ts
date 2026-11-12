@@ -34,7 +34,7 @@ function fakeRunner(o: { login?: boolean | 'weird'; replies?: Reply[] } = {}) {
       const ok = o.login ?? true;
       return { code: ok ? 0 : 1, stdout: JSON.stringify({ loggedIn: ok }), stderr: '' };
     }
-    const r = replies.shift() ?? { stdout: JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'On it: the single ships Friday.', total_cost_usd: 0.03 }) };
+    const r = replies.shift() ?? { stdout: JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'On it: the single ships Friday. token ghp_abcdefghijklmnopqrstuvwxyz0123456789', total_cost_usd: 0.03 }) };
     if (r instanceof Error) throw r;
     return { code: r.code ?? 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
@@ -90,7 +90,7 @@ describe('runDeliveryPass', () => {
     expect(p.system).toContain('You run the label.');
     const all = await listInbox(ctx, { state: 'all' });
     expect(all.find((x) => x.id === e.id)).toMatchObject({ state: 'handled', note: 'Delivered' });
-    expect(all.filter((x) => x.from === 'agent').map((x) => [x.agent, x.text])).toContainEqual(['cid', 'On it: the single ships Friday.']);
+    expect(all.filter((x) => x.from === 'agent').map((x) => [x.agent, x.text])).toContainEqual(['cid', 'On it: the single ships Friday. [redacted]']);
     expect(store.read().items[e.id]).toMatchObject({ state: 'delivered', agent: 'cid' });
     const log = readFileSync(join(home, 'delivery.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(log).toEqual([expect.objectContaining({ entry: e.id, agent: 'cid', project: 'flantastic-4', state: 'delivered', usd: 0.03 })]);
@@ -106,6 +106,7 @@ describe('runDeliveryPass', () => {
     await runDeliveryPass(d);
     const a = prompts()[0].args;
     for (const f of ['-p', '--safe-mode', '--strict-mcp-config', '--no-session-persistence']) expect(a).toContain(f);
+    expect(a.slice(a.indexOf('--setting-sources'), a.indexOf('--setting-sources') + 2)).toEqual(['--setting-sources', '']); // no owner allow rules
     expect(a.slice(a.indexOf('--output-format'), a.indexOf('--output-format') + 2)).toEqual(['--output-format', 'json']);
     expect(a.slice(a.indexOf('--permission-mode'), a.indexOf('--permission-mode') + 2)).toEqual(['--permission-mode', 'default']);
     expect(a.slice(a.indexOf('--max-budget-usd'), a.indexOf('--max-budget-usd') + 2)).toEqual(['--max-budget-usd', '0.5']);
