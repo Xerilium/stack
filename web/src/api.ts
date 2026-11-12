@@ -82,7 +82,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     },
     projects: async () => (await call<{ items: Project[] }>('/projects?fields=name,title,open,done,metadata')).items,
     action: (name: ActionName, ref?: string, extra: Record<string, unknown> = {}) => call<Mutation>(`/tasks/${name}`, { ...(ref ? { ref } : {}), ...extra }),
-    set: (ref: string, props: SetProps) => call<Mutation>('/tasks/set', { ref, ...props }),
+    set: (ref: string, props: SetProps, expect?: string) => call<Mutation>('/tasks/set', { ref, ...props, ...(expect !== undefined ? { expect } : {}) }),
     edit: (ref: string, text: string, expect?: string) => call<Mutation>('/tasks/edit', { ref, text, ...(expect !== undefined ? { expect } : {}) }),
     move: (ref: string, target: string, position: Position, expect?: { ref?: string; target?: string }) =>
       call<Mutation>('/tasks/move', { ref, target, position, ...(expect?.ref !== undefined ? { expect: expect.ref } : {}), ...(expect?.target !== undefined ? { expectTarget: expect.target } : {}) }),

@@ -189,7 +189,7 @@ describe('route parity', () => {
   it('declares the same enums the API enforces and no force flag', () => {
     const set = resolve(doc.paths['/tasks/set'].post.requestBody).content['application/json'].schema.properties;
     for (const [name, values] of Object.entries(ENUMS)) expect(set[name].enum).toEqual([...values]);
-    expect(Object.keys(set).sort()).toEqual(['checkbox', 'clearEmojis', 'effort', 'impact', 'priority', 'ref', 'status', 'suspend']);
+    expect(Object.keys(set).sort()).toEqual(['checkbox', 'clearEmojis', 'effort', 'expect', 'impact', 'priority', 'ref', 'status', 'suspend']);
     expect(text).not.toMatch(/force:/);
     expect(doc.components.schemas.Error.properties.error.properties.code.enum).toEqual([...ERROR_CODES]);
     expect(resolve(doc.paths['/tasks'].get.parameters.find((p: any) => p.name === 'state')).schema.enum).toEqual(['open', 'done', 'all']);

@@ -82,13 +82,13 @@ test.describe('Task detail', () => {
     await expect(pri).toHaveAttribute('aria-haspopup', 'listbox');
     await pri.click();
     await detail(page).getByRole('option', { name: 'High' }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/set')?.body).toEqual({ ref: 'alpha:1', priority: '‼️' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/set')?.body).toEqual({ ref: 'alpha:1', priority: '‼️', expect: `🚨 📅 ${DUE}: Answer the acks 🟢` });
     await expect(detail(page).getByText('Saved', { exact: true })).toBeVisible();
     await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
-    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/set').at(-1)?.body).toEqual({ ref: 'alpha:1', priority: '🚨' });
+    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/set').at(-1)?.body).toEqual({ ref: 'alpha:1', priority: '🚨', expect: `‼️ 📅 ${DUE}: Answer the acks 🟢` }); // pinned to what the set wrote
   });
 
-  // @req FR:task-detail-design/detail.save — /tasks/set does not take 🔹: Undo restores the row text, checked against what set wrote
+  // @req FR:task-detail-design/detail.save — /tasks/set does not take 🔹: Undo restores the row text, checked against the task text set wrote
   test('Undo after changing a 12-minute effort restores the row text', async ({ page }) => {
     await page.clock.install({ time: at(10) });
     const m = await mockApi(page, { tasks: [row('alpha:1', 'Quick fix 🔹')], projects: [{ name: 'alpha', title: 'Alpha' }] });
@@ -99,9 +99,10 @@ test.describe('Task detail', () => {
     await page.locator('[data-testid="plan"] .block .what-title').first().click();
     await detail(page).getByRole('button', { name: 'Effort: 12 min' }).click();
     await detail(page).getByRole('option', { name: '1 hour' }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/set')?.body).toEqual({ ref: 'alpha:1', effort: '🟡' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/set')?.body).toEqual({ ref: 'alpha:1', effort: '🟡', expect: 'Quick fix 🔹' });
     await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/edit')?.body).toMatchObject({ ref: 'alpha:1', text: 'Quick fix 🔹' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/edit')?.body).toEqual({ ref: 'alpha:1', text: 'Quick fix 🔹', expect: 'Quick fix 🟡' });
+    await expect.poll(() => m.tasks[0].text).toBe('Quick fix 🔹');
   });
 
   // @req FR:task-detail-design/detail.effort
@@ -111,7 +112,7 @@ test.describe('Task detail', () => {
     await detail(page).getByRole('button', { name: 'Effort: 30 min' }).click();
     await detail(page).getByLabel('Custom minutes').fill('45');
     await detail(page).getByRole('button', { name: 'Set', exact: true }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/set')?.body).toEqual({ ref: 'alpha:1', effort: '🟡' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/set')?.body).toMatchObject({ ref: 'alpha:1', effort: '🟡' });
     await expect(page.locator('.toast')).toContainText('Saved as 1 hour');
   });
 
@@ -133,6 +134,53 @@ test.describe('Task detail', () => {
     await expect(detail(page).getByRole('button', { name: 'No due date' })).toBeVisible();
     // Project and section are facts: plain text, not chips.
     await expect(detail(page).locator('.fl-facts .chip, .fl-facts button')).toHaveCount(0);
+  });
+
+  // @req FR:task-detail-design/detail.undo @req FR:task-detail-design/a11y.names
+  test('Tab reaches the toast Undo while the detail is open', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'keyboard');
+    const { m, first } = await open(page);
+    await first.locator('.what-title').click();
+    await detail(page).getByRole('button', { name: 'Priority: Critical' }).click();
+    await detail(page).getByRole('option', { name: 'High' }).click();
+    const undo = page.locator('.toast').getByRole('button', { name: 'Undo' });
+    await expect(undo).toBeVisible();
+    let reached = false;
+    for (let i = 0; i < 40 && !reached; i++) { await page.keyboard.press('Tab'); reached = await undo.evaluate((e) => e === document.activeElement); }
+    expect(reached).toBe(true);
+    await page.keyboard.press('Enter');
+    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/set').at(-1)?.body.priority).toBe('🚨');
+  });
+
+  // @req FR:task-detail-design/detail.facts
+  test('a bare URL lifted out of the title stays a link in the detail', async ({ page }) => {
+    await page.clock.install({ time: at(10) });
+    const m = await mockApi(page, { tasks: [row('alpha:1', 'File taxes @ https://dor.wa.gov/file-pay-taxes')], projects: [{ name: 'alpha', title: 'Alpha' }] });
+    m.team = TEAM as never; m.sessions = [];
+    m.schedule = { timezone: 'UTC', date: ymd(at(0)), wake: at(8).toISOString(), bed: at(23).toISOString(), asleep: false, blocks: [] };
+    await page.goto('/#/today');
+    await page.clock.resume();
+    await page.locator('[data-testid="plan"] .block .what-title').first().click();
+    await expect(detail(page).getByRole('link', { name: /dor\.wa\.gov/ })).toHaveAttribute('href', 'https://dor.wa.gov/file-pay-taxes');
+  });
+});
+
+test.describe('Row links', () => {
+  // @req FR:task-detail-design/detail.open
+  test('a markdown link in a title is its own control: never inside the open button, and a click does not open the detail', async ({ page }) => {
+    await page.clock.install({ time: at(10) });
+    const m = await mockApi(page, { tasks: [row('alpha:1', 'Read [the spec](https://example.com/spec) 🟠')], projects: [{ name: 'alpha', title: 'Alpha' }] });
+    m.team = TEAM as never; m.sessions = [];
+    m.schedule = { timezone: 'UTC', date: ymd(at(0)), wake: at(8).toISOString(), bed: at(23).toISOString(), asleep: false, blocks: [] };
+    await page.goto('/#/today');
+    await page.clock.resume();
+    const b = page.locator('[data-testid="plan"] .block').first();
+    await expect(b.locator('button a')).toHaveCount(0);
+    const link = b.getByRole('link', { name: /the spec/ });
+    await expect(link).toHaveAttribute('href', 'https://example.com/spec');
+    await page.context().route('https://example.com/**', (r) => r.fulfill({ status: 200, body: '' }));
+    await link.click();
+    await expect(detail(page)).toHaveCount(0);
   });
 });
 

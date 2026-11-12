@@ -16,7 +16,7 @@ import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
 import { DEFER, progress, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, clock, decisions as decisionsOf, DEFAULT_DAY, nowMinutes, planCandidates, span, type Decision } from './plan';
-import { parseRow } from './row';
+import { parseRow, taskText } from './row';
 import { calendarRange, dayFrame, needsRefresh, wallMinutes, withProjects, type DaySched } from './schedule';
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
@@ -325,7 +325,7 @@ export function App() {
   /** Open a task on its thread with the composer focused (the chip, `a`, the palette); Today keeps the floating composer. @req FR:agent-thread/web.keys */
   const viewRef = useRef(view); viewRef.current = view;
   /** The Now composer: to the task's most specific agent, else the roll-up; a live session offers its chat. @req FR:now-screen/now.compose */
-  const taskAgent = (t: Task) => ownerOf(team.agentsOf(t)) ?? null;
+  const taskAgent = (t: Task) => ownerOf(team.agentsOf(t), t) ?? null;
   const nowChat = (t: Task) => ({
     agent: taskAgent(t),
     agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
@@ -653,12 +653,16 @@ export function App() {
     toast(label, 'ok', () => { void run(() => api.edit(ref, prev, next), () => 'Restored'); });
     return true;
   };
-  /** Priority or effort from the task detail, through `/tasks/set` (the server places the marker); Undo sets the old value back. @req FR:task-detail-design/detail.save */
-  const setProps = async (ref: string, props: SetProps, prev: SetProps | { text: string }, label: string): Promise<boolean> => {
-    const r = await run(() => api.set(ref, props), () => '');
+  /**
+   * Priority or effort from the task detail, through `/tasks/set` (the server places the marker); Undo sets the old value back.
+   * Both are pinned to the row text they expect (`cur`, then what the set wrote), so a moved row or a later change is a conflict, never overwritten.
+   * @req FR:task-detail-design/detail.save
+   */
+  const setProps = async (ref: string, cur: string, props: SetProps, prev: SetProps | { text: string }, label: string): Promise<boolean> => {
+    const r = await run(() => api.set(ref, props, cur), () => '');
     if (!r) return false;
-    // A row-text Undo checks the row is still the one the set wrote (`after`), so a moved row is never overwritten.
-    toast(label, 'ok', () => { void run(() => ('text' in prev ? api.edit(ref, prev.text, r.after) : api.set(ref, prev)), () => 'Restored'); });
+    const after = taskText(r.after); // `after` is the whole line; `expect` is the task text
+    toast(label, 'ok', after === undefined ? undefined : () => { void run(() => ('text' in prev ? api.edit(ref, prev.text, after) : api.set(ref, prev, after)), () => 'Restored'); });
     return true;
   };
   const save = async (ref: string, text: string) => {
@@ -770,7 +774,7 @@ export function App() {
       { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
       // @req FR:agent-team/web.keys
       { id: 'talk', label: 'Ask the task agent', hint: 'a', run: () => { const t = taskAt(refNow()); if (t) openThread(t); } },
-      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const t = taskAt(refNow()); if (t) void team.assign(t.ref, ownerOf(team.agentsOf(t))?.slug); } },
+      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const t = taskAt(refNow()); if (t) void team.assign(t.ref, ownerOf(team.agentsOf(t), t)?.slug); } },
       { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ] : []),
     ...(view === 'home' ? HAVE.map((m, i) => ({ id: `have-${m}`, label: `I have ${span(m)}`, hint: `h ${i + 1}`, run: () => setHave(m) })) : []),
@@ -864,7 +868,7 @@ export function App() {
       if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'n') { e.preventDefault(); void A.notNow(); return; }
       if (L.view === 'home' && k === 'A') { e.preventDefault(); void A.delegate(); return; } // My day has no delegate: its rows message the agent @req FR:task-detail-design/myday.nodelegate
       // @req FR:agent-thread/web.keys: on a list row A assigns the task to its agent (inside the composer the same key does the same)
-      if (k === 'A' && L.cursor && L.view !== 'home' && L.view !== 'today') { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) void teamRef.current.assign(t.ref, ownerOf(teamRef.current.agentsOf(t))?.slug); return; }
+      if (k === 'A' && L.cursor && L.view !== 'home' && L.view !== 'today') { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) void teamRef.current.assign(t.ref, ownerOf(teamRef.current.agentsOf(t), t)?.slug); return; }
       // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
       if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
       if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); if (!L.tomorrowOn) A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; } // tomorrow's Available is read-only
@@ -1015,7 +1019,7 @@ export function App() {
             ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label={`More: open command palette${inboxAttention ? '. Inbox needs setup' : ''}`}><TabIcon v="more" /><span>More</span>{inboxDot}</button>
             : <button type="button" key={slot} class={`tab${view === slot ? ' on' : ''}`} aria-current={view === slot ? 'page' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
       </nav>
-      {focusTask && <TaskDetail task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
+      {focusTask && <TaskDetail task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, focusTask.text, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
       {deferRefs && (
         <Dialog title="Defer until" onClose={() => setDeferRefs(null)}>

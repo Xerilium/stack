@@ -2,6 +2,8 @@
 .focus-mode.fl { background: var(--fl-bg2); color: var(--fl-fg1); }
 .focus-mode.fl h1 { font: 600 var(--fl-title)/var(--fl-title-lh) var(--fl-font); letter-spacing: 0; margin: var(--fl-s-s) 0 var(--fl-s-l); }
 .fl-facts { margin: 0; color: var(--fl-fg3); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); font-weight: 600; }
+.fl-links { display: flex; flex-wrap: wrap; gap: var(--fl-s-m); margin: 0 0 var(--fl-s-l); font-size: var(--fl-body); }
+.fl-link { color: var(--fl-brand-fg); }
 .fl-props { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fl-s-s); margin-bottom: var(--fl-s-xxl); }
 .fl-prop .v.none { color: var(--fl-fg3); font-weight: 400; }
 .fl-field { display: grid; gap: var(--fl-s-xs); padding: var(--fl-s-xs); color: var(--fl-fg2); font-size: var(--fl-caption); }

@@ -92,4 +92,14 @@ describe('ownerOf', () => {
     expect(ownerOf([ag('cos', ['*']), ag('scribe', ['*'])])?.slug).toBe('cos');
     expect(ownerOf([])).toBeUndefined();
   });
+  it('with the task, picks by the scope that matched: an agent that also holds * still owns its section', () => {
+    const team = [ag('cos', ['*']), ag('section', ['*', 'alpha/Active']), ag('lead', ['alpha'])];
+    const task = { project: 'alpha', section: '🔄 Active' };
+    expect(ownerOf(agentsFor(team, task.project, task.section), task)?.slug).toBe('section');
+    // Elsewhere in alpha the section owner matches only through *: the project agent owns it.
+    expect(ownerOf(agentsFor(team, 'alpha', '📋 Backlog'), { project: 'alpha', section: '📋 Backlog' })?.slug).toBe('lead');
+    // A * agent with another project's scope is never the owner here.
+    const other = [ag('cos', ['*']), ag('beta-lead', ['*', 'beta'])];
+    expect(ownerOf(agentsFor(other, 'alpha'), { project: 'alpha' })?.slug).toBe('cos');
+  });
 });

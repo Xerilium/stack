@@ -152,8 +152,15 @@ describe('assignTask', () => {
 
   // @req FR:task-detail-design/compose.doit
   it('carries the owner\'s Do it note in the assign prompt', async () => {
-    const { ctx, runs, prompts } = await mk();
+    const { ctx, runs, prompts, storage } = await mk();
+    // One inbox write, already handled: a polling agent never sees the note open.
+    const inboxWrites: string[] = [];
+    const write = storage.write.bind(storage);
+    storage.write = (async (path: string, content: string, o?: unknown) => { if (path.startsWith('tasks/inbox/')) inboxWrites.push(content); return write(path, content, o as never); }) as typeof storage.write;
     await assignTask(runs, ctx, 'flantastic-4:7', undefined, '  Use the short version  ');
+    expect(inboxWrites).toHaveLength(1);
+    expect(inboxWrites[0]).toMatch(/- state: handled[\s\S]*- handled: \S+ by owner\n- note: Sent with Do it/);
+    expect(inboxWrites[0]).not.toContain('- state: open');
     expect(prompts[0].text).toContain('This task is yours now');
     expect(prompts[0].text).toMatch(/The owner's note: Use the short version$/);
     // The thread keeps it, already handled: the inbox never hands it to an agent again.

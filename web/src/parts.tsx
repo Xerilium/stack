@@ -20,9 +20,31 @@ const renderNode = (n: Node, i: number): ComponentChildren => {
   return n.t === 'b' ? <b key={i}>{kids}</b> : <i key={i}>{kids}</i>;
 };
 
-/** Markdown subset as elements. @req FR:web-app/edit.preview */
-export function Md({ text }: { text: string }) {
-  return <>{parseInline(text).map(renderNode)}</>;
+/** A link as its text: inside a button (a row's open control) an anchor would nest one control in another. */
+const plainNode = (n: Node, i: number): ComponentChildren => {
+  if (typeof n === 'string') return n;
+  if (n.t === 'code') return <code key={i}>{n.c}</code>;
+  if (n.t === 'a') return n.c;
+  const kids = n.c.map(plainNode);
+  return n.t === 'b' ? <b key={i}>{kids}</b> : <i key={i}>{kids}</i>;
+};
+
+/** Markdown subset as elements. `links={false}`: links as text (pair with `TitleLinks` outside the control). @req FR:web-app/edit.preview */
+export function Md({ text, links = true }: { text: string; links?: boolean }) {
+  return <>{parseInline(text).map(links ? renderNode : plainNode)}</>;
+}
+
+/** The markdown links in a text, in order. */
+export function mdLinks(text: string): { href: string; label: string }[] {
+  const out: { href: string; label: string }[] = [];
+  const walk = (ns: Node[]) => { for (const n of ns) { if (typeof n === 'string' || n.t === 'code') continue; if (n.t === 'a') out.push({ href: n.href, label: n.c }); else walk(n.c); } };
+  walk(parseInline(text));
+  return out;
+}
+
+/** A title's markdown links as their own anchors, beside (never inside) the row's open button; a click never opens the row. @req FR:task-detail-design/detail.open */
+export function TitleLinks({ text }: { text: string }) {
+  return <>{mdLinks(text).map((l, i) => <a key={`${i}-${l.href}`} class="tag link" href={l.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{l.label} ↗</a>)}</>;
 }
 
 const vsel = (s: string) => s.replace(/\uFE0F/g, '');

@@ -198,10 +198,11 @@ function makeRoom(content: string, need: number): string {
 
 /**
  * Appends one entry for the row at `ref`. `expect` is the row text the sender saw; a mismatch is a conflict.
+ * `handled`: the entry is written already handled in the same write (a record, never queue work), e.g. a note sent with Do it.
  * @req FR:agent-inbox/inbox.send @req FR:agent-inbox/inbox.id @req FR:agent-inbox/inbox.cap
  */
-export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect?: string): Promise<{ id: string; path: string }> {
-  return appendEntry(ctx, ref, text, kind, expect, {});
+export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect?: string, handled?: { actor: string; note?: string }): Promise<{ id: string; path: string }> {
+  return appendEntry(ctx, ref, text, kind, expect, {}, handled);
 }
 
 /** An agent's reply on a task: `from: agent`, to the owner, never a queue item for anyone (state handled). @req FR:agent-thread/reply.entry */
@@ -211,7 +212,7 @@ export async function replyFromAgent(ctx: LifecycleContext, ref: TaskRef, text: 
   return appendEntry(ctx, ref, text, 'reply', expect, { from: 'agent', agent: name });
 }
 
-async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect: string | undefined, who: { from?: InboxFrom; agent?: string }): Promise<{ id: string; path: string }> {
+async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect: string | undefined, who: { from?: InboxFrom; agent?: string }, handled?: { actor: string; note?: string }): Promise<{ id: string; path: string }> {
   if (typeof text !== 'string') throw new LifecycleError('text must be a string');
   const t = text.replace(INVISIBLE, '').trim();
   if (t === '' || t.length > MAX_TEXT) throw new LifecycleError(`text must be 1-${MAX_TEXT} characters`);
@@ -233,9 +234,10 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
     let id = newId(now);
     while (used.has(id)) id = newId(now);
     const agentSide = who.from === 'agent';
+    const done = handled ? { handled: `${now.toISOString()} by ${/^[A-Za-z0-9._:-]{1,64}$/.test(handled.actor) ? handled.actor : 'api'}`, ...(handled.note?.trim() ? { note: field(handled.note).slice(0, MAX_NOTE) } : {}) } : {};
     const entry = formatEntry({
-      id, at: now.toISOString(), state: agentSide ? 'handled' : 'open', kind, to: agentSide ? 'human' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
-      task: inboxTitle(row.text), ...(parent ? { parent: inboxTitle(parent.text) } : {}), text: field(t), extra: [],
+      id, at: now.toISOString(), state: agentSide || handled ? 'handled' : 'open', kind, to: agentSide ? 'human' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
+      task: inboxTitle(row.text), ...(parent ? { parent: inboxTitle(parent.text) } : {}), text: field(t), ...done, extra: [],
     });
     const head = cur ? makeRoom(cur.content, entry.length + 1).replace(/\n*$/, '\n\n') : INBOX_HEADER(field(project.title || baseName(ref.path)));
     try {

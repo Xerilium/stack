@@ -5,7 +5,7 @@
  * @req FR:web-app/now.focusmode
  */
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { children } from './now';
 import { ACTION_HINT, dueLabel, dueValue, EFFORT_OPTIONS, effortOf, nearestEffort, PRIORITY_OPTIONS, priorityOf, withDue, type Option } from './detail';
 import { Md } from './parts';
@@ -153,21 +153,35 @@ export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, 
     if (!box.current?.contains(document.activeElement)) box.current?.focus();
     return () => { const row = opener?.closest?.('[data-ref]')?.querySelector<HTMLElement>('.row-open'); (opener?.isConnected ? opener : row)?.focus?.(); };
   }, []);
+  // The focus trap: the dialog plus the toasts, whose Undo (a property change, Done) must stay in reach by keyboard while the detail is open.
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const b = box.current;
+      if (e.key !== 'Tab' || !b) return;
+      const a = document.activeElement as HTMLElement | null;
+      if (a && a !== document.body && !a.closest('.toasts') && !b.contains(a)) return;
+      const els = [
+        ...b.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'),
+        ...document.querySelectorAll<HTMLElement>('.toasts button'),
+      ].filter((x) => !(x as HTMLButtonElement).disabled && x.getAttribute('type') !== 'hidden' && x.tabIndex >= 0);
+      if (!els.length) return;
+      const i = els.indexOf(a as HTMLElement);
+      e.preventDefault();
+      e.stopPropagation();
+      els[e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length].focus();
+    };
+    window.addEventListener('keydown', key, true);
+    return () => window.removeEventListener('keydown', key, true);
+  }, []);
   const status = r.status ? { '🚧': 'In progress', '⏸': 'Paused', '👀': 'In review', '⏳': 'Waiting', '⛔': 'Blocked' }[r.status.replace(/️/g, '')] : undefined;
   return (
-    <div ref={box} tabIndex={-1} class="focus-mode fl" role="dialog" aria-modal="true" aria-label="Task detail"
-      onKeyDown={(e) => {
-        if (e.key !== 'Tab') return;
-        const els = [...box.current!.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((x) => !(x as HTMLButtonElement).disabled && x.getAttribute('type') !== 'hidden' && x.tabIndex >= 0);
-        if (!els.length) return;
-        const i = els.indexOf(document.activeElement as HTMLElement);
-        e.preventDefault();
-        els[e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length].focus();
-      }}>
+    <div ref={box} tabIndex={-1} class="focus-mode fl" role="dialog" aria-modal="true" aria-label="Task detail">
       <button type="button" class="close" aria-label="Close" title="Close" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></button>
       <div class="focus-inner">
         <p class="fl-facts">{project ?? task.project} · {plainSection(task.section)}{status ? ` · ${status}` : ''}</p>
         <h1><Md text={r.title || task.text} /></h1>
+        {/* Bare URLs parseRow lifts out of the title stay usable here. @req FR:task-detail-design/detail.facts */}
+        {r.links.length > 0 && <p class="fl-links">{r.links.map((l) => <a key={l.href} class="fl-link" href={l.href} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}</p>}
         <PropertyBar t={task} onSave={onSave} onSet={onSet} />
         {task.notes.length > 0 && <div class="notes big">{task.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
         {subs.length > 0 && (

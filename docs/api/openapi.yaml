@@ -555,6 +555,10 @@ paths:
                   description: "`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears"
                 clearEmojis:
                   type: boolean
+                expect:
+                  type: string
+                  maxLength: 2000
+                  description: Expected current task text; 409 conflict when the row differs (stale line number) Single line.
       responses:
         "200":
           $ref: "#/components/responses/Mutation"

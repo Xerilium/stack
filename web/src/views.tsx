@@ -10,7 +10,7 @@ import { countdown, HAVE, topAsksOf, type Home, type HomeProject, type Window } 
 import type { LiveStatus } from './live';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
 import { Titled } from './AgentAvatar';
-import { Chip, EmptyState, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
+import { Chip, EmptyState, GROUPS, GROUP_NAMES, Md, TitleLinks, type GroupName } from './parts';
 import { parseRow } from './row';
 import type { Agent, InboxItem, Task } from './types';
 import type { ComponentChildren, JSX } from 'preact';
@@ -479,7 +479,8 @@ export function TodayView(t: TodayProps) {
                   return (
                     <li key={o.ref} class={t.plan.atRisk.includes(o) ? 'risk' : undefined} onClick={() => t.p.onOpen(o.ref)}>
                       <span class="nofit-est">{e.assumed ? '~' : ''}{span(e.minutes)}{e.partial ? '+' : ''}</span>
-                      <button type="button" class="nofit-title row-open" onClick={(e) => { e.stopPropagation(); t.p.onOpen(o.ref); }}><Md text={parseRow(o.text).title || o.text} /></button>
+                      <button type="button" class="nofit-title row-open" onClick={(e) => { e.stopPropagation(); t.p.onOpen(o.ref); }}><Md text={parseRow(o.text).title || o.text} links={false} /></button>
+                      <TitleLinks text={parseRow(o.text).title || o.text} />
                       <span class="nofit-proj"><DueNote due={parseRow(o.text).due} />{t.p.titles.get(o.project) ?? o.project}</span>
                     </li>
                   );
@@ -593,7 +594,7 @@ function PlanBlock({ b, p, busy, onAct, message }: { b: Block; p: RowProps; busy
       <div class="what" onClick={(e) => { if ((e.target as HTMLElement).closest('a')) return; open(); }} onDblClick={open}>
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', ref); }}><span class="box" /></button>
         <div class="what-body">
-          <p class="what-title"><button type="button" class="row-open" aria-label={`Open ${r.title || b.task.text}`} onClick={(e) => { e.stopPropagation(); open(); }} onFocus={() => p.onCursor(ref)}><Md text={r.title || b.task.text} /></button></p>
+          <p class="what-title"><button type="button" class="row-open" aria-label={`Open ${r.title || b.task.text}`} onClick={(e) => { e.stopPropagation(); open(); }} onFocus={() => p.onCursor(ref)}><Md text={r.title || b.task.text} links={false} /></button><TitleLinks text={r.title || b.task.text} /></p>
           <p class="what-meta">
             <span>{p.titles.get(b.task.project) ?? b.task.project}</span>
             <DueNote due={r.due} />

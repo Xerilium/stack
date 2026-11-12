@@ -14,6 +14,8 @@ const MAX = 1000;
 export interface ComposerProps {
   /** Agents for the task, owner first. */
   agents: TeamAgent[];
+  /** The task: picks the owner by the scope that matched it (`ownerOf`). */
+  task?: { project: string; section?: string };
   /** No runner: Ask saves on the task; Do it is off. */
   offline: boolean;
   busy?: boolean;
@@ -24,13 +26,13 @@ export interface ComposerProps {
 }
 
 /** The task's owner (`ownerOf`) first, then the rest in order. */
-export function ownerFirst(agents: TeamAgent[]): TeamAgent[] {
-  const owner = ownerOf(agents);
+export function ownerFirst(agents: TeamAgent[], task?: { project: string; section?: string }): TeamAgent[] {
+  const owner = ownerOf(agents, task);
   return owner ? [owner, ...agents.filter((a) => a !== owner)] : [];
 }
 
-export function Composer({ agents: raw, offline, busy: outer = false, autoFocus = false, onAsk, onDo }: ComposerProps) {
-  const agents = ownerFirst(raw);
+export function Composer({ agents: raw, task, offline, busy: outer = false, autoFocus = false, onAsk, onDo }: ComposerProps) {
+  const agents = ownerFirst(raw, task);
   const [to, setTo] = useState(agents[0]?.slug ?? '');
   const [shown, setShown] = useState<string[]>(agents[0] ? [agents[0].slug] : []);
   const [mode, setMode] = useState<Mode>('ask');
@@ -40,7 +42,6 @@ export function Composer({ agents: raw, offline, busy: outer = false, autoFocus 
   const box = useRef<HTMLInputElement>(null);
   const pop = useRef<HTMLDivElement>(null);
   const more = useRef<HTMLButtonElement>(null);
-  useLayoutEffect(() => { if (autoFocus) box.current?.focus(); }, [autoFocus]);
   useEffect(() => { if (!agents.some((a) => a.slug === to) && agents[0]) { setTo(agents[0].slug); setShown([agents[0].slug]); } }, [agents.map((a) => a.slug).join(), to]);
   useLayoutEffect(() => {
     if (!picking) return;
@@ -53,6 +54,15 @@ export function Composer({ agents: raw, offline, busy: outer = false, autoFocus 
   const name = chosen ? displayName(chosen) : 'the agent';
   const none = agents.length === 0;
   const others = agents.filter((a) => !shown.includes(a.slug));
+  // Focus asked before the team loaded finds the box disabled: it lands once an agent arrives, unless the user has moved to another control.
+  const pending = useRef(false);
+  useLayoutEffect(() => { if (!autoFocus) return; if (none) pending.current = true; else box.current?.focus(); }, [autoFocus]);
+  useLayoutEffect(() => {
+    if (none || !pending.current) return;
+    pending.current = false;
+    const a = document.activeElement as HTMLElement | null;
+    if (!a || a === document.body || a.tabIndex < 0) box.current?.focus(); // the dialog itself (tabindex -1) is not a control the user chose
+  }, [none]);
   const canSend = !none && !busy && !outer && (mode === 'ask' ? !!text.trim() : !offline);
   const send = async () => {
     if (!canSend || !chosen) return;

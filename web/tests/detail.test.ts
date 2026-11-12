@@ -54,6 +54,23 @@ describe('due', () => {
     expect(withDue('🚨 📅 Nov 2: Ship it', null, now)).toBe('🚨 Ship it');
     expect(withDue('🚨 📅 Nov 2: Ship it', '2026-11-20', now)).toBe('🚨 📅 Nov 20: Ship it');
   });
+  it('reads a year-less date as the planner does (60-day overdue window)', () => {
+    const jan5 = new Date(2027, 0, 5);
+    expect(dueValue('📅 Dec 20: Ship it', jan5)).toBe('2026-12-20');
+    expect(dueValue('📅 Jan 2: Ship it', now)).toBe('2027-01-02');
+  });
+  it('keeps the year when the year-less tag would read as another day', () => {
+    expect(withDue('Ship it', '2026-01-05', now)).toBe('📅 Jan 5, 2026: Ship it'); // year-less Jan 5 in November is next January
+    expect(withDue('Ship it', '2026-10-01', now)).toBe('📅 Oct 1: Ship it'); // within the overdue window
+  });
+  it('replaces every due-tag form the row reads', () => {
+    expect(withDue('📅 Monday: Ship it', null, now)).toBe('Ship it');
+    expect(withDue('🚨 📅 Mondays: Ship it', '2026-11-20', now)).toBe('🚨 📅 Nov 20: Ship it');
+  });
+  it('leaves the rest of the text as written', () => {
+    expect(withDue('📅 Nov 2: Run `a  b` now', null, now)).toBe('Run `a  b` now');
+    expect(withDue('📅 Nov 2: Run `a  b` now', '2026-11-20', now)).toBe('📅 Nov 20: Run `a  b` now');
+  });
 });
 
 describe('names and hints', () => {

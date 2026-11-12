@@ -155,7 +155,7 @@ const ACTION_BODIES: Record<(typeof ACTIONS)[number], { schema: Record<string, S
   resume: { schema: { ref: REF }, required: [] },
   complete: { schema: { ref: REF, summary: { t: 'str', max: 10000, line: true }, remove: { t: 'bool' } }, required: [] },
   suspend: { schema: { ref: REF, days: { t: 'int', min: 1, max: 365 }, hours: { t: 'int', min: 1, max: 8760 } }, required: [] },
-  set: { schema: { ref: REF, ...PROPS }, required: ['ref'] },
+  set: { schema: { ref: REF, ...PROPS, expect: EXPECT }, required: ['ref'] },
 };
 const TRIAGE_BODY = {
   schema: {
@@ -407,8 +407,8 @@ async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response>
     if (name === 'skip' || name === 'resume' || name === 'suspend') throw new TriageDenied('Owner only');
     if (!ref) throw invalid([{ field: 'ref', message: 'Required' }]);
     if (name === 'complete' && b.remove) throw new TriageDenied('Owner only');
-    const { ref: _r, clearEmojis, ...rest } = b;
-    void _r;
+    const { ref: _r, clearEmojis, expect: _e, ...rest } = b;
+    void _r; void _e;
     ref = await authorizeMutation(c.life, ref, name, name === 'set' ? { ...rest, ...(clearEmojis !== undefined ? { removeAllEmojis: clearEmojis as boolean } : {}) } as TaskProps : {});
   }
   switch (name) {
@@ -418,9 +418,13 @@ async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response>
     case 'complete': return result(await completeTask(c.life, ref, { summary: b.summary as string | undefined, remove: b.remove as boolean | undefined }));
     case 'suspend': return result(await suspendTask(c.life, ref, { days: b.days as number | undefined, hours: b.hours as number | undefined }));
     case 'set': {
-      const { ref: _r, clearEmojis, ...rest } = b;
+      const { ref: _r, clearEmojis, expect, ...rest } = b;
       void _r;
-      return result(await setProperties(c.life, ref!, { ...rest, ...(clearEmojis !== undefined ? { removeAllEmojis: clearEmojis as boolean } : {}) } as TaskProps));
+      // `expect`: the task text the caller saw; another row now at this line is a 409, never a silent write to the wrong task. @req FR:task-detail-design/detail.save
+      // A token's ref is already pinned to the current row (authorizeMutation); a different expect is then a conflict too.
+      if (expect !== undefined && ref!.text !== undefined && ref!.text.trim() !== (expect as string).trim()) throw new ApiError('conflict', 'Conflict');
+      const pinned = expect !== undefined && ref!.text === undefined ? { ...ref!, text: expect as string } : ref!;
+      return result(await setProperties(c.life, pinned, { ...rest, ...(clearEmojis !== undefined ? { removeAllEmojis: clearEmojis as boolean } : {}) } as TaskProps));
     }
   }
 }

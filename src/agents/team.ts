@@ -5,7 +5,7 @@
  */
 import { agentFor, listTeam, reviewPrefix, reviewsIn, type Review, type TeamAgent } from '../core/agents';
 import { handleAsk, listAsks, putAsk, type AskKind, type ListedAsk } from '../core/asks';
-import { currentRows, handleEntry, listInbox, sendToInbox, type ListedEntry } from '../core/inbox';
+import { currentRows, listInbox, sendToInbox, type ListedEntry } from '../core/inbox';
 import { checkClaim, claimTask } from '../core/triage';
 import { LifecycleError, type LifecycleContext, type TaskRef } from '../core/lifecycle';
 import { parseProject, type Task } from '../core/parser';
@@ -151,9 +151,9 @@ export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText
     throw new LifecycleError('The task moved while the agent started; nothing was claimed. Assign again');
   }
   const claimed = (await claimTask(ctx, ref, caller)).changed;
-  // The note is on the thread as a record, already handled: the agent has it in its prompt, so the inbox never hands it out again.
+  // The note is on the thread as a record, written already handled in one write: the agent has it in its prompt, so no queue ever sees it open.
   // Best effort: the run has started and the row is claimed, so a failed record must not turn the assign into an error the owner retries (a second run).
-  if (said) { try { const { id } = await sendToInbox(ctx, ref, said, 'instruction'); await handleEntry(ctx, id, 'owner', 'Sent with Do it'); } catch { /* the agent already has the note in its prompt */ } }
+  if (said) { try { await sendToInbox(ctx, ref, said, 'instruction', undefined, { actor: 'owner', note: 'Sent with Do it' }); } catch { /* the agent already has the note in its prompt */ } }
   return { ...r, claimed };
 }
 

@@ -77,7 +77,7 @@ const DOCS: Record<string, RouteDoc> = {
   'tasks.suspend': { operationId: 'suspendTask', summary: 'Suspend a task for days or hours. Owner session only (403 for tokens)', responses: mutation('200') },
   'tasks.set': {
     operationId: 'setTask', summary: 'Set task properties. Tokens: ref required; autonomy triage (priority, effort, impact), assist (status), fills missing priority/effort/impact only; checkbox, clearEmojis, and gate marks are owner-only (403)',
-    desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears' },
+    desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears', expect: 'Expected current task text; 409 conflict when the row differs (stale line number)' },
     responses: mutation('200'),
   },
   'tasks.triage': {

@@ -22,7 +22,7 @@ export interface MockSessionItem { id: string; title: string; project: string; s
 export interface MockInventory { at: string; total: number; counts: Record<string, number>; needsYou: MockSessionItem[]; archive: MockSessionItem[]; sessions: MockSessionItem[] }
 export interface MockNeed { id: string; title: string; recommendation: string; default?: string; link: string; project?: string; ref?: string; answer?: { choice: string; text?: string; until?: string; at: string } }
 
-const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
+const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: ['🚨', '‼️', '🔺', '🔻'], effort: ['🔹', '🟢', '🟡', '🟠', '🔴', '⚫️'], impact: ['⬆️', '↔️', '⬇️'] } as Record<string, string[]>;
 /** Short date for row text, relative to today (the plan depends on the clock). */
 export const dateTag = (days = 0) => { const d = new Date(Date.now() + days * 864e5); return `${d.toLocaleString('en-US', { month: 'short' })} ${d.getDate()}`; };
 const vs = (s: string) => s.replace(/️/g, '');
@@ -270,7 +270,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     const t = body?.ref ? find(body.ref) : open[0];
     if (!t && path.startsWith('/tasks/')) return json(route, 404, { error: { code: 'not_found', message: 'Task not found' } });
     const stale = (r: string | undefined, x: MockTask) => r !== undefined && r !== x.text;
-    if (path === '/tasks/edit' && stale(body.expect, t!)) return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
+    if ((path === '/tasks/edit' || path === '/tasks/set') && stale(body.expect, t!)) return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
     if (path === '/tasks/move' && (stale(body.expect, t!) || stale(body.expectTarget, find(body.target) ?? t!))) return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
     switch (path) {
       case '/tasks/start': strip(t!, 'status'); t!.text = `🚧 ${t!.text}`; return json(route, 200, { changed: true, ref: t!.ref, message: 'Started' });
@@ -280,7 +280,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       case '/tasks/set': {
         if (body.checkbox) t!.done = body.checkbox === 'Complete';
         for (const g of Object.keys(EMOJI)) if (g in body) { strip(t!, g); if (body[g] !== 'None') t!.text = g === 'effort' ? `${t!.text} ${body[g]}` : `${body[g]} ${t!.text}`; }
-        return json(route, 200, { changed: true, ref: t!.ref, message: 'Updated' });
+        return json(route, 200, { changed: true, ref: t!.ref, after: `- [${t!.done ? 'x' : ' '}] ${t!.text}`, message: 'Updated' }); // the whole line, as the API writes it
       }
       case '/tasks/edit': t!.text = body.text; return json(route, 200, { changed: true, ref: t!.ref, message: 'Saved' });
       case '/tasks/move': {

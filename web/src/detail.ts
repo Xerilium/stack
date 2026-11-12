@@ -3,6 +3,7 @@
  * @req FR:task-detail-design/detail.priority @req FR:task-detail-design/detail.effort @req FR:task-detail-design/detail.due
  * @req FR:task-detail-design/compose.to @req FR:task-detail-design/compose.mode @req FR:task-detail-design/detail.actions
  */
+import { dueDays } from './now';
 import { effortMinutes, parseRow, PRIORITY, STATUS } from './row';
 
 export interface Option { value: string; name: string }
@@ -29,30 +30,32 @@ export function nearestEffort(minutes: number): Option {
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const DUE_MARK = /📅\s*[A-Za-z]{3}[a-z]*\s+\d{1,2}(?:,\s*\d{4})?\s*(?:-\s*\d{1,2}\s*)?(?:\([^)]*\))?\s*:\s*/u;
+/** Every due-tag form `parseRow` reads (`📅 Nov 2:`, `📅 Feb 1, 2027:`, `📅 Monday:`, `📅 Mondays:`), with the space after it. */
+const DUE_MARK = /📅\s*[^:]+?:\s*/gu;
+const ymdOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** `Due Nov 2` or `No due date`. The `📅` tag is a due date. */
 export const dueLabel = (text: string): string => { const d = parseRow(text).due; return d ? `Due ${d}` : 'No due date'; };
 
-/** The due day as `yyyy-mm-dd` for a date input; '' when absent or unreadable. */
+/** The due day as `yyyy-mm-dd` for a date input; '' when absent or unreadable. A year-less date resolves as the planner does (`dueDays`). */
 export function dueValue(text: string, now: Date): string {
-  const m = /^([A-Za-z]{3})[a-z]*\s+(\d{1,2})(?:,\s*(\d{4}))?/.exec(parseRow(text).due ?? '');
-  const mo = m ? MONTHS.indexOf(m[1].charAt(0).toUpperCase() + m[1].slice(1, 3).toLowerCase()) : -1;
-  if (!m || mo < 0) return '';
-  const y = m[3] ? Number(m[3]) : now.getFullYear();
-  return `${y}-${String(mo + 1).padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  const d = dueDays(parseRow(text).due, now);
+  return d === null ? '' : ymdOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() + d));
 }
 
-/** Writes `📅 MMM d:` (`, yyyy` when not this year) at the front, or removes the tag with `null`. */
+/** Writes `📅 MMM d:` at the front (`, yyyy` when not this year, or when the planner would read the year-less tag as another day), or removes the tag with `null`. The rest of the text stays as written. */
 export function withDue(text: string, ymd: string | null, now: Date): string {
-  const rest = text.replace(DUE_MARK, '').replace(/\s{2,}/g, ' ').trim();
+  const rest = text.replace(DUE_MARK, '').trim();
   if (!ymd) return rest;
   const [y, mo, d] = ymd.split('-').map(Number);
   // After the leading markers (priority, status), as the server writes it: `🚨 📅 Nov 2: Ship it`.
   const marks = new Set([...PRIORITY, ...STATUS].map((c) => vs(c.e)));
   let lead = '';
   for (const m of rest.match(/^(?:\S+\s+)+/u)?.[0].split(/(?<=\s)/) ?? []) { if (!marks.has(vs(m.trim()))) break; lead += m; }
-  return `${lead}📅 ${MONTHS[mo - 1]} ${d}${y !== now.getFullYear() ? `, ${y}` : ''}: ${rest.slice(lead.length)}`;
+  const short = `${MONTHS[mo - 1]} ${d}`;
+  const days = dueDays(short, now);
+  const same = y === now.getFullYear() && days !== null && ymdOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() + days)) === ymdOf(new Date(y, mo - 1, d));
+  return `${lead}📅 ${short}${same ? '' : `, ${y}`}: ${rest.slice(lead.length)}`;
 }
 
 /** The name people see: the role when the name is only the slug in another case (`CoS` for `cos`). */

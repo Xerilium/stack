@@ -32,7 +32,7 @@ Owner feedback (Nov 11): My day feels like a mess. Rows do not look clickable (o
 - **FR:detail.priority** (P1): Priority is a labelled control (`Priority: Critical`) that opens a picker: Critical, High, Normal, Low. Normal clears the marker. A row marked `Raised` shows `Raised` until changed
 - **FR:detail.effort** (P1): Effort is a labelled control (`Effort: 30 min`) that opens a picker: 30 min, 1 hour, 2 hours, 4 hours, 8+ hours, None, and `Custom` (minutes). Custom saves the nearest step and says so (`Saved as 1 hour`)
 - **FR:detail.due** (P1): The `📅` tag is a due date. The control reads `Due Nov 2` (`No due date` when absent) and opens a date picker with `No date`. Saving writes `📅 MMM d:` at the front of the row (`, yyyy` when not this year) through `POST /tasks/edit` with `expect`
-- **FR:detail.save** (P1): Each property saves at once. The control shows `Saving…`, then `Saved` for 2 s; the toast offers Undo, which restores the previous row text. A failure shows the error and keeps the old value
+- **FR:detail.save** (P1): Each property saves at once. The control shows `Saving…`, then `Saved` for 2 s; the toast offers Undo, which restores the previous row text. Each write and its Undo carry the row text they expect; a row that changed or moved is a conflict, never a write to another task. Undo is offered only when the saved text is known. A failure shows the error and keeps the old value
 - **FR:detail.facts** (P2): Project, section, and status show as plain text in the eyebrow
 
 ### FR:compose: The message composer (shared)
