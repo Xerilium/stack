@@ -29,7 +29,7 @@ export async function devicesCmd(action: string | undefined, args: string[], hom
       text: [
         `Paired device ${made.device.name} (${made.device.id}). The code shows only once.`,
         `Pairing code: ${made.token}`,
-        `Open on the phone: <tailnet URL>/pair#${made.token}  (or open <tailnet URL>/pair and paste the code)`,
+        `Paste it in Stack on the phone (open it from the Home Screen). Link form: <tailnet URL>/pair#${made.token}`,
       ].join('\n'),
     };
   }

@@ -30,5 +30,5 @@ Web Push and the service worker need a secure context. Plain `http://100.x.y.z:4
 - Proxy headers count only from loopback. A tailnet peer cannot fake `tailscale serve`.
 - The device acts as the owner (it can start agent runs on the Mac), but cannot mint or revoke tokens or devices. Revoke cuts it off on the next request.
 - The cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` on HTTPS. Cross-site writes get `403`.
-- Tokens live in `~/.stack` (mode 0600) as hashes. Logs never hold a token or a pairing code.
-- The phone also keeps its token in browser storage (for push setup), so `HttpOnly` does not hide it from script on the page.
+- Tokens live in `~/.stack` (mode 0600) as hashes; logs never hold one. A LAN host may reach the Tailscale address, so the token check is the real guard.
+- An open event stream outlives a revoke; new requests get `401`. The phone also keeps its token in browser storage (for push setup), so `HttpOnly` does not hide it from script on the page.

@@ -180,6 +180,7 @@ describe('remote gate', () => {
     expect(js.status).toBe(200);
     expect(js.headers['content-type']).toContain('javascript');
     expect((await call(s.url, '/api/tasks', { headers: { ...host, authorization: 'Bearer stk_0000000000000000.nope' } })).status).toBe(401);
+    expect((await call(s.url, '/api/tasks', { headers: { ...host, 'x-stack-token': f.phone.token } })).status).toBe(200);
   });
 
   // @req FR:tailnet-access/gate.host
