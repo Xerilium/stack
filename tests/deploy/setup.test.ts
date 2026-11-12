@@ -51,12 +51,25 @@ describe('setup-azure.ps1', () => {
   });
   // @req FR:deploy-stack-xerilium-com/setup.args
   itPwsh('rejects a bad argument before any Azure call', () => {
-    for (const args of [['-Repo', 'not a repo'], ['-Branch', '--upload-pack=x'], ['-Owner', 'github:a b'], ['-Domain', 'http://x'], ['-Domain', 'xerilium.com']]) {
+    for (const args of [['-Repo', 'not a repo'], ['-Branch', '--upload-pack=x'], ['-Owner', 'github:a b'], ['-Domain', 'http://x'], ['-Domain', 'xerilium.com'], ['-Branch', 'main'], ['-Branch', 'master']]) {
       const r = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', path, ...args], { encoding: 'utf8' });
       expect(r.status).not.toBe(0);
       expect(r.stdout + r.stderr).toMatch(/Cannot validate argument/);
       expect(r.stdout + r.stderr).not.toMatch(/Connect-AzAccount|Subscription:/);
     }
+  });
+  // @req FR:deploy-stack-xerilium-com/branch.default
+  itPwsh('refuses -Owner with -Repo or -Branch before any Azure call', () => {
+    const r = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', path, '-Owner', 'github:abc', '-Branch', 'x'], { encoding: 'utf8' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout + r.stderr).toMatch(/cannot be combined/);
+  });
+  it('a re-run checks the repo and branch the site uses, and never the default branch', () => {
+    expect(script).toMatch(/\$Branch -eq \$default/);
+    expect(script.indexOf('listAppSettings')).toBeLessThan(script.indexOf('Test-StackBranch $Repo $Branch'));
+  });
+  it('restores your own GH_TOKEN after using the repo token', () => {
+    expect(script).toMatch(/\$prevGh = \$env:GH_TOKEN/);
   });
   // @req FR:deploy-stack-xerilium-com/setup.merge @req FR:live-deploy/setup.script.rerun
   itPwsh('re-run merges only the changed settings and keeps the rest', () => {
