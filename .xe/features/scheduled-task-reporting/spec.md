@@ -29,7 +29,7 @@ A scheduled task needs one standard step so that every CoS task reports the same
 
 - **FR:step.block** (P1): `docs/scheduled-reporting.md` MUST have one copy-paste block for task prompts. Its first line starts with `FINAL STEP`. It runs `stack report --agent <agent> --project <project> --json` with the report JSON in a quoted heredoc (`<<'JSON'`), so the shell does not expand `$` or backticks. The heredoc body is a placeholder that is not valid JSON, so a task that sends it unchanged gets exit `2` and clears nothing
 - **FR:step.last** (P1): The block MUST say that the report is the last step of the run. No tool call and no other work comes after it, except the retry in `FR:exit.codes` and the answer save in `FR:answers.save`
-- **FR:step.always** (P1): The block MUST say that the task sends a report on every run. A run that cannot do its main work still sends one, with the cause in `blockers`
+- **FR:step.always** (P1): The block MUST say that the task sends a report on every run. A run that cannot do its main work still sends one, with the cause in `blockers`. Each report lists every open ask again, since an ask that a report drops leaves Needs you
 - **FR:step.ids** (P1): The block MUST say that each ask `id` names one real item (for example `pr-130`) and stays the same across runs. A new item gets a new `id`. A date or run number is never an `id`
 
 ### FR:tokens: No LLM call
@@ -44,12 +44,12 @@ The owner needs the report to cost no extra tokens so that reporting does not gr
 A task needs a fixed response to each result so that a failed report does not start a long LLM loop.
 
 - **FR:exit.codes** (P1): The block MUST map the exit codes of `FR:status-ingest/cli.errors`: `0` stored, stop; `2` bad input (not JSON, a flag mismatch, or schema `issues`), fix only what `error` and `issues` name and send once more; `1` busy or the host refused it, send once more at once (the CLI already waits 5 s for the lock)
-- **FR:exit.stop** (P1): After one retry, or when `stack` is not found, the task prints one line `report failed: <error>` and stops. It never loops. The next run sends a new report
+- **FR:exit.stop** (P1): The block MUST say that after one retry, or when `stack` is not found, the task prints one line `report failed: <error>` and stops. It never loops. The next run sends a new report
 - **FR:exit.host** (P1): The guide MUST say that a host that is down needs no action. `stack report` then writes `~/.stack/reports.json` itself (`FR:status-ingest/cli.direct`), and the host shows it when it starts
 
 ### FR:answers: Owner answers
 
-- **FR:answers.save** (P2): On exit `0`, when the result's `asks.answers` is not empty, a task with a state file saves the answers there for the next run. The task does not act on answers in the same run
+- **FR:answers.save** (P2): The block MUST say that on exit `0`, when the result's `asks.answers` is not empty, a task with a state file saves the answers there for the next run. The task does not act on answers in the same run
 
 ### FR:secrets: No secrets
 

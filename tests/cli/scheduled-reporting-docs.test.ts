@@ -1,6 +1,6 @@
 /** Guards docs/scheduled-reporting.md: the final-step block runs as written and every sample passes the schema. */
 import { execFileSync } from 'child_process';
-import { mkdtempSync, readFileSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { run } from '../../src/cli/run';
@@ -39,6 +39,7 @@ describe('docs/scheduled-reporting.md', () => {
     expect(b).toMatch(/last step/i);
     expect(b).toMatch(/no step after this one/i);
     expect(b).toMatch(/every run/i);
+    expect(b).toMatch(/List every open ask again each run/);
     expect(b).toContain('`blockers`');
     expect(b).toMatch(/same every run/i);
     expect(b).toMatch(/never a date or run number/i);
@@ -107,7 +108,7 @@ describe('docs/scheduled-reporting.md', () => {
     let out = '';
     try {
       const code = await run([...argv, '--dir', tmpdir()], { out: (s) => { out += s; }, err: (s) => { out += s; }, in: async () => stdin });
-      return { code, out: JSON.parse(out), stdin };
+      return { code, out: JSON.parse(out), stdin, dir };
     } finally { delete process.env.STACK_HOME; }
   }
 
@@ -123,5 +124,6 @@ describe('docs/scheduled-reporting.md', () => {
   it('the unchanged placeholder is exit 2 and stores nothing', async () => {
     const r = await viaShell(command('f4-cos', 'f4', null));
     expect(r).toMatchObject({ code: 2, out: { ok: false } });
+    expect(existsSync(join(r.dir, 'reports.json'))).toBe(false);
   });
 });
