@@ -27,10 +27,21 @@ const aux = (s: Storage): AuxFiles | null => (typeof (s as Partial<AuxFiles>).re
 
 /** Reads the items; a host without aux files, a missing file or a bad file reads as empty. */
 export async function readInbox(st: Storage): Promise<InboxItem[]> {
+  return (await readInboxChecked(st)).items;
+}
+/**
+ * The items, and whether the read can back an `Inbox zero` claim: `verified` is false for a host without aux files and
+ * for a missing, unreadable or malformed file (a sync always writes the file, even with no items). @req FR:inbox-page/src.summary
+ */
+export async function readInboxChecked(st: Storage): Promise<{ items: InboxItem[]; verified: boolean }> {
   const a = aux(st);
-  const f = a ? await a.readAux(INBOX_PATH).catch(() => null) : null;
-  if (!f) return [];
-  try { return parseItems(JSON.parse(f.content)); } catch { return []; }
+  if (!a) return { items: [], verified: false };
+  let f: Awaited<ReturnType<AuxFiles['readAux']>>;
+  try { f = await a.readAux(INBOX_PATH); } catch { return { items: [], verified: false }; }
+  if (!f) return { items: [], verified: false };
+  let raw: unknown;
+  try { raw = JSON.parse(f.content); } catch { return { items: [], verified: false }; }
+  return { items: parseItems(raw), verified: Array.isArray(raw) };
 }
 export async function writeInbox(st: Storage, items: InboxItem[]): Promise<void> {
   const a = aux(st);

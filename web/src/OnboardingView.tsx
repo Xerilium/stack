@@ -5,6 +5,7 @@
  * @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone @req FR:first-run-onboarding/state.resume
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { CopyCommand } from './parts';
 import { icsOk, postStep, prevStep, stepLine, TITLES, waitForHost, type Fetch, type SetupStatus } from './onboarding';
 import './onboarding.css';
 
@@ -18,7 +19,6 @@ export function Onboarding({ initial, fetch: f = (u, i) => fetch(u, i), onDone }
   const [mode, setMode] = useState<'demo' | 'live'>(initial.mode);
   const [ack, setAck] = useState(false);
   const [ics, setIcs] = useState('');
-  const [copied, setCopied] = useState(false);
   const title = useRef<HTMLHeadingElement>(null);
   // A new step moves focus to its title, so a screen reader reads the new screen.
   useEffect(() => { title.current?.focus(); }, [s.step]);
@@ -112,7 +112,7 @@ export function Onboarding({ initial, fetch: f = (u, i) => fetch(u, i), onDone }
         <div class="ob-form">
           <p class="ob-lede">Optional. Stack reads mail and writes reply drafts. It never sends mail.</p>
           <p class="ob-hint">Run this in a terminal, then follow the code it prints:</p>
-          <div class="ob-cmd"><code data-testid="sign-in">{s.signIn}</code><button type="button" class="ob-btn" onClick={() => { void navigator.clipboard?.writeText(s.signIn).then(() => setCopied(true), () => undefined); }}>{copied ? 'Copied' : 'Copy'}</button></div>
+          <CopyCommand cmd={s.signIn} testId="sign-in" />
           {s.email && <p class="ob-ok" role="status"><span aria-hidden="true">✓ </span>Signed in</p>}
           {errLine}
           <div class="ob-actions">{backBtn}<span class="ob-pair"><button type="button" class="ob-btn quiet" disabled={working} onClick={() => void send({ step: 'email', skip: true })}>Skip</button><button type="button" class="ob-btn primary" disabled={working} onClick={() => void send({ step: 'email' })}>Continue</button></span></div>

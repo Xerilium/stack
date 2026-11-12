@@ -30,6 +30,7 @@ Stack needs to turn a user's `stack.json` into a complete, validated configurati
   - **FR:load.validate.timezone** (P2): `parseConfig` MUST reject timezones unknown to the runtime
   - **FR:load.validate.range** (P2): `parseConfig` MUST reject time blocks whose startTime equals endTime, after each time is validated as `HH:mm` (a malformed time is reported as a format error, not as equality)
   - **FR:load.validate.shift-weekends** (P2): `parseConfig` MUST reject a non-boolean `shiftWeekends`
+  - **FR:load.validate.inbox** (P2): `parseConfig` MUST reject an `inbox` that is not an object, a `freshMinutes` that is not a positive integer, and `accounts` that is not an array of mailbox addresses
 - **FR:load.output** (P1): StackConfig (@req FR:config/$stack-config)
 
 ### FR:time-block: Resolve active time block
@@ -52,6 +53,7 @@ Stack needs to know which time block a moment falls in so that tasks can be filt
   - `shiftWeekends` (boolean) — Default: true. Recurring rows with weekend due dates shift to Monday (@req FR:recurring-rows/roll.weekend)
   - `timeBlocks` (TimeBlock[]) — Default: legacy Work, Family evening, Family weekend, Shichael, Project, Sleep.
   - `taskScoring` (object) — `emojiWeights` (category → emoji → number) and `effortHours` (emoji → number); defaults from legacy.
+  - `inbox` (object, optional) — `freshMinutes` (positive integer, default 30; see `FR:inbox-page/src.fresh`) and `accounts` (mailbox addresses expected in the Inbox; see `FR:inbox-page/src.state`).
 - **FR:$time-block** (P1): **`TimeBlock`**
   - `name` (string), `label` (string?), `days` (string[]), `startTime` (string), `endTime` (string), `emoji` (string), `kind` (`focus` | `personal` | `sleep`, optional; see `FR:schedule/profile.kind`)
 

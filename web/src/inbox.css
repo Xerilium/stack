@@ -27,3 +27,39 @@
   .in-row { padding: 12px; }
   .in-actions .btn, .in-draft-actions .btn { min-height: var(--tap); }
 }
+.in-banner { margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 10px; background: var(--panel); color: var(--ink); font-size: 13px; }
+
+/* Sources panel. @req FR:inbox-page/web.sources @req FR:inbox-page/web.phone */
+.src-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin: 0 0 14px; min-width: 0; }
+.src-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.src-title { font-size: 15px; font-weight: 650; margin: 0; }
+.src-progress { flex: 1; margin: 0; font-size: 13px; color: var(--ink2); min-width: 0; }
+.src-note { margin: 8px 0; font-size: 13px; color: var(--ink2); }
+.src-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.src-row { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.src-row.error, .src-row.not-connected:not(.planned) { border-left: 3px solid var(--warn); }
+.src-top { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; min-width: 0; }
+.src-acct { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-weight: 600; }
+.src-state { flex: none; font-size: 12px; font-weight: 650; color: var(--ink2); }
+.src-state.ok { color: var(--ok); }
+.src-state.error, .src-state.not-connected { color: var(--warn); }
+.src-row.planned .src-state { color: var(--ink2); }
+.src-meta { margin: 2px 0 0; font-size: 12px; color: var(--ink2); }
+.src-err { margin: 4px 0 0; font-size: 13px; color: var(--warn); font-weight: 600; overflow-wrap: anywhere; }
+.src-go { margin-top: 8px; }
+.src-step { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink); }
+.src-step p { margin: 0; overflow-wrap: anywhere; line-height: 1.45; }
+.src-step .ob-cmd code { background: var(--chip); }
+.src-doc a { color: var(--accent); display: inline-flex; align-items: center; min-height: 28px; }
+.src-sub { font-size: 13px; font-weight: 650; color: var(--ink2); margin: 14px 0 6px; }
+.src-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+/* The Inbox nav dot. @req FR:inbox-page/web.dot */
+.nav-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); margin-left: 6px; vertical-align: middle; }
+.tabbar .tab .nav-dot { position: absolute; top: 8px; left: calc(50% + 8px); margin: 0; }
+@media (max-width: 719px) {
+  .src-panel { padding: 12px; }
+  .src-panel .btn, .src-step .ob-btn { min-height: var(--tap); }
+  .src-doc a { min-height: var(--tap); }
+  .src-step .ob-cmd { flex-direction: column; }
+  .src-step .ob-cmd .ob-btn { align-self: flex-start; }
+}

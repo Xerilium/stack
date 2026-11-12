@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { parseInline, type Node } from './markdown';
 import { EFFORT, IMPACT, PRIORITY, STATUS, type Choice } from './row';
 
@@ -55,6 +55,17 @@ export function Chip({ group, value, onPick }: { group: GroupName; value: string
  */
 export function EmptyState({ what, next }: { what: ComponentChildren; next?: ComponentChildren }) {
   return <div class="empty-state" data-testid="empty-state"><p class="empty-what">{what}</p>{next && <p class="empty-next">{next}</p>}</div>;
+}
+
+/** A terminal command with a Copy button. Shared by first-run setup and the Inbox sources panel. @req FR:first-run-onboarding/step.email @req FR:inbox-page/web.sources */
+export function CopyCommand({ cmd, testId, label = 'Copy' }: { cmd: string; testId?: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div class="ob-cmd">
+      <code data-testid={testId}>{cmd}</code>
+      <button type="button" class="ob-btn" aria-label={label === 'Copy' ? undefined : label} onClick={() => { void navigator.clipboard?.writeText(cmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }, () => undefined); }}>{copied ? 'Copied' : 'Copy'}</button>
+    </div>
+  );
 }
 
 /** Dialog with focus restore. @req FR:web-app/ux.a11y */

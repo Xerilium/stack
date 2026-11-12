@@ -37,6 +37,8 @@ export interface StackConfig {
   alsoWrite: FormatId[];
   /** The PR page: the signed-in GitHub login, PRs to leave out, poll seconds (30-60). @req FR:pr-page/group.@function @req FR:pr-page/live.poll */
   github?: { user?: string; exclude?: string[]; pollSeconds?: number };
+  /** Inbox source status: freshness window (minutes) and the mailboxes expected in the Inbox. @req FR:config/load.validate.inbox */
+  inbox?: { freshMinutes?: number; accounts?: string[] };
 }
 
 const ALL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -167,6 +169,7 @@ export function parseConfig(input?: unknown): StackConfig {
     if (g.pollSeconds !== undefined) { if (typeof g.pollSeconds !== 'number' || g.pollSeconds < 30 || g.pollSeconds > 60) throw new ConfigError('github.pollSeconds: expected 30-60'); out.pollSeconds = g.pollSeconds; }
     cfg.github = out;
   }
+  if (input.inbox !== undefined) cfg.inbox = parseInbox(input.inbox);
   if (input.taskScoring !== undefined) {
     if (!isObj(input.taskScoring)) throw new ConfigError('taskScoring: expected object');
     const ts = input.taskScoring;
@@ -185,6 +188,29 @@ export function parseConfig(input?: unknown): StackConfig {
     }
   }
   return cfg;
+}
+
+/** A mailbox address safe to put in a copyable command: no spaces, quotes or shell characters. Shared with the Inbox source list. @req FR:config/load.validate.inbox @req FR:inbox-page/src.safe */
+export const MAILBOX = /^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
+
+/** @req FR:config/load.validate.inbox */
+function parseInbox(v: unknown): NonNullable<StackConfig['inbox']> {
+  if (!isObj(v)) throw new ConfigError('inbox: expected object');
+  const out: NonNullable<StackConfig['inbox']> = {};
+  if (v.freshMinutes !== undefined) {
+    if (!Number.isInteger(v.freshMinutes) || (v.freshMinutes as number) < 1) throw new ConfigError('inbox.freshMinutes: expected a positive integer');
+    out.freshMinutes = v.freshMinutes as number;
+  }
+  if (v.accounts !== undefined) {
+    if (!Array.isArray(v.accounts)) throw new ConfigError('inbox.accounts: expected array');
+    out.accounts = v.accounts.map((a, i) => {
+      const v = typeof a === 'string' ? a.trim().toLowerCase() : '';
+      // Same rule as the Inbox source list, so a bad address fails here, not silently later.
+      if (!MAILBOX.test(v)) throw new ConfigError(`inbox.accounts[${i}]: expected a mailbox address`);
+      return v;
+    });
+  }
+  return out;
 }
 
 const mins = (t: string): number => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));

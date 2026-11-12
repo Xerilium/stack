@@ -8,3 +8,4 @@ export * from './chat';
 export * from './store';
 export * from './runner';
 export * from './live';
+export * from './sources';

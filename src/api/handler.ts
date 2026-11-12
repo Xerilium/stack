@@ -36,7 +36,7 @@ import { editTask, moveTask } from './edit';
 import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
-import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, readInbox, requestAction, runAction, type ActionId, type IssueFiler } from '../inbox';
+import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type SourceProbe } from '../inbox';
 import { createBriefCache } from './brief';
 import type { ClaudeJson } from '../email/llm';
 import { ApiError, errorResponse, flushError, invalid, json, toApiError } from './errors';
@@ -71,6 +71,8 @@ export interface ApiDeps {
   agents?: AgentRuns;
   /** Mail drafts for the Inbox page; absent means reply drafts answer 409. Never sends. @req FR:inbox-page/api.act */
   mail?: Pick<MailProvider, 'createDraft'>;
+  /** This machine's inbox sign-ins (Graph caches, GitHub); absent on the hosted app, which uses sync records only. `fresh` skips any cache. @req FR:inbox-page/api.sources */
+  inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
   /** Files "Request this action" issues; absent means a Stack task instead. @req FR:inbox-page/action.request */
   issues?: IssueFiler;
   /** Today's meetings for the day plan; absent means no calendar. @req FR:day-inputs/api.calendar */
@@ -384,6 +386,13 @@ async function ghCall(fn: () => Promise<void>): Promise<void> {
     if (e instanceof Error && /^GitHub \d+$/.test(e.message)) throw new ApiError('conflict', e.message);
     throw e;
   }
+}
+
+const SOURCES_Q: Record<string, Spec> = { fresh: { t: 'enum', values: ['1', 'true'] } };
+/** Sources from the sync records, the config and (local host) this machine's probe. A failing probe reads as none. @req FR:inbox-page/api.sources @req FR:inbox-page/src.fresh */
+async function inboxSources(c: Ctx, fresh: boolean) {
+  const probe = c.deps.inboxProbe;
+  return loadSources({ storage: c.deps.storage, now: c.deps.now?.() ?? new Date(), ...(probe ? { probe: () => probe(fresh ? { fresh: true } : undefined) } : {}), ...(c.deps.config?.inbox ? { inbox: c.deps.config.inbox } : {}) });
 }
 
 /** `ref` is optional for actions that fall back to the core's own target choice. */
@@ -911,7 +920,19 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       ownerOnly(c, 'Only the owner can read the inbox');
-      return json(200, { items: await readInbox(c.deps.storage), actions: INBOX_ACTIONS });
+      const { items, verified } = await readInboxChecked(c.deps.storage);
+      const src = await inboxSources(c, false);
+      // Fresh syncs say nothing about an item file that is missing or unreadable: no zero claim off that. @req FR:inbox-page/src.summary
+      return json(200, { items, actions: INBOX_ACTIONS, ...src, summary: { ...src.summary, canClaimZero: src.summary.canClaimZero && verified } });
+    },
+  },
+  {
+    // @req FR:inbox-page/api.sources
+    method: 'GET', doc: '/inbox-sources', name: 'inboxSources.list', query: SOURCES_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(SOURCES_Q));
+      ownerOnly(c, 'Only the owner can read inbox sources');
+      return json(200, await inboxSources(c, q.get('fresh') === '1' || q.get('fresh') === 'true'));
     },
   },
   {

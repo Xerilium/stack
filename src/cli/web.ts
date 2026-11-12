@@ -20,6 +20,8 @@ import { createGraphCalendar, fixtureCalendar, withInfo, type CalendarEvent, typ
 import { createIcsCalendar, icsUrls } from '../calendar/ics';
 import { defaultCachePath, FileTokenCache, graphToken, hasScope } from '../graph/auth';
 import { graphTransport } from '../graph/transport';
+import { cachedProbe } from '../inbox/probe';
+import type { SourceProbe } from '../inbox/sources';
 import { getDefaults, parseConfig } from '../core/config';
 import type { Storage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
@@ -70,6 +72,8 @@ export interface WebOpts {
   storage?: Storage & { close?(): Promise<void> };
   /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
   agents?: AgentRuns | false;
+  /** This machine's inbox sign-ins for `GET /inbox-sources`; default the cached local probe. @req FR:inbox-page/api.sources */
+  inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
   /** The live report store; default `~/.stack` (or `STACK_HOME`). @req FR:status-ingest/api.put */
   reports?: ReportStore;
   /** The session inventory; default reads the Claude app store into `~/.stack`; `false` means none (demo). @req FR:session-inventory/api.inventory */
@@ -204,7 +208,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // The PR page polls GitHub only while a page holds a lease; a changed board tells open pages. @req FR:pr-page/live.event
   let prPage: PrPage | undefined;
   try { prPage = ghToken ? createPrPage({ token: ghToken, repos: githubRepos(process.env.STACK_GITHUB_REPOS), config, home: stackHome(), inventory, queue: storePrQueue(prPriority), onChange: () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['prs'] }); } }) : undefined; } catch { prPage = undefined; }
-  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, ...(prPage ?? {}), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
+  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, ...(prPage ?? {}), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });

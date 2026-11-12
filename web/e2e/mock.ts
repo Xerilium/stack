@@ -15,7 +15,7 @@ export interface MockSession { id: string; title: string; project: string; owner
 export interface MockEvent { id: string; subject: string; start: string; end: string; allDay: boolean; showAs: string; cancelled: boolean; online: boolean; webLink?: string; joinUrl?: string; organizer?: string }
 export interface MockTeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: string; prompt: string; defined: boolean; source?: string; projects: string[]; reportsTo?: string }
 export interface MockReview { ref: string; at: string; verdict: string; plan: string; estimate?: string; agent: string; needs: string[] }
-export interface Mock { /** `GET /pris`; null = no store (404). */ pris: MockPrisFile | null; /** `GET /session-inventory`; null = no inventory (404). */ inventory: MockInventory | null; /** AI daily brief reply; unset = not configured. */ brief?: unknown; team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; /** Weekly meetings (`GET /meetings`). */ meetings: unknown[]; calendarFail: boolean; /** `source` on `GET /calendar`; unset = derived like the host (none, error, or ok as of now). */ calSource?: unknown; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; /** Query strings of the GET /rank calls. */ rankQueries: string[]; fail: Map<string, { status: number; code: string; message: string; details?: { field: string; message: string }[] }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; /** Pending (uncommitted) writes a batching server reports on `/api/sync`; undefined = the server does not batch. */ pending?: number; since?: string | null; /** CoS escalations (`.stack/needs-you.json`). */ needs: MockNeed[]; /** Inbox page items. */ inboxItems: Record<string, unknown>[]; /** Rank override (refs in order); default: the first open task, then the old client order. */ ranked?: { ref: string; root?: string }[]; insertAbove: (project: string, text: string) => void }
+export interface Mock { /** `GET /pris`; null = no store (404). */ pris: MockPrisFile | null; /** `GET /session-inventory`; null = no inventory (404). */ inventory: MockInventory | null; /** AI daily brief reply; unset = not configured. */ brief?: unknown; team: MockTeamAgent[]; reviews: MockReview[]; schedule: unknown | null; events: MockEvent[] | null; /** Weekly meetings (`GET /meetings`). */ meetings: unknown[]; calendarFail: boolean; /** `source` on `GET /calendar`; unset = derived like the host (none, error, or ok as of now). */ calSource?: unknown; sessions: MockSession[] | null; sessionCost: unknown; sessionTurns: Record<string, { at: string; role: string; text: string }[]>; asks: MockAsk[]; agents: MockAgent[] | null; agentsFail: boolean; inbox: MockInbox[]; tasks: MockTask[]; calls: { path: string; body: any }[]; /** Query strings of the GET /rank calls. */ rankQueries: string[]; fail: Map<string, { status: number; code: string; message: string; details?: { field: string; message: string }[] }>; anonymous: boolean; forbidden: boolean; /** `/api/sync` revision; null reloads on every probe. */ rev?: string | null; /** Pending (uncommitted) writes a batching server reports on `/api/sync`; undefined = the server does not batch. */ pending?: number; since?: string | null; /** CoS escalations (`.stack/needs-you.json`). */ needs: MockNeed[]; /** Inbox page items. */ inboxItems: Record<string, unknown>[]; /** `GET /inbox-sources` (also on `/inbox-items`); default one fresh mailbox. */ inboxSources: { sources: Record<string, unknown>[]; summary: Record<string, unknown> }; /** Query strings of the GET /inbox-sources calls. */ sourceQueries: string[]; /** Rank override (refs in order); default: the first open task, then the old client order. */ ranked?: { ref: string; root?: string }[]; insertAbove: (project: string, text: string) => void }
 export interface MockPri { id: string; title: string; status: string; items: { text: string; status: string }[]; backlog: { text: string; status: string }[]; weekly: { week: string; text: string }[] }
 export interface MockPrisFile { version: 1; rev: number; updatedAt?: string; pris: MockPri[] }
 export interface MockSessionItem { id: string; title: string; project: string; state: string; reason: string; pinned: boolean; lastActivityAt: string; link: string; prs: { url: string; state: string }[]; ask?: string; scheduled?: { id: string; name: string } }
@@ -41,9 +41,20 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 
 /** In-memory fake of the Stack api plus SWA's `/.auth/me`. */
 /** `context: true` routes at the browser context, so requests a service worker makes are mocked too. */
+/** One mailbox synced a minute ago, GitHub signed in and synced, Teams and Slack planned: nothing needs the owner. */
+export const freshSources = () => ({
+  sources: [
+    { kind: 'email', account: 'me@example.test', state: 'ok', mode: 'drafts', lastSyncAt: new Date(Date.now() - 60_000).toISOString() },
+    { kind: 'github', account: '', state: 'ok', lastSyncAt: new Date(Date.now() - 60_000).toISOString() },
+    { kind: 'teams', account: '', state: 'not-connected', planned: true, needs: 'Needs a work or school account and delegated Chat.Read.', doc: 'https://github.com/Xerilium/stack/blob/main/docs/inbox-sources.md#teams' },
+    { kind: 'slack', account: '', state: 'not-connected', planned: true, needs: 'Needs a Slack app with a user token (xoxp-).', doc: 'https://github.com/Xerilium/stack/blob/main/docs/inbox-sources.md#slack' },
+  ],
+  summary: { connected: 2, total: 2, fresh: 2, attention: false, canClaimZero: true, headline: null },
+});
+
 export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: MockAgent[]; context?: boolean; projects?: { name: string; title: string; metadata?: Record<string, string> }[] } = {}): Promise<Mock> {
   const router = opts.context ? page.context() : page;
-  const m: Mock = { pris: null, inventory: null, team: [], reviews: [], schedule: null, events: null, meetings: [], calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], rankQueries: [], fail: new Map(), anonymous: false, forbidden: false, needs: [], inboxItems: [], insertAbove: () => undefined };
+  const m: Mock = { pris: null, inventory: null, team: [], reviews: [], schedule: null, events: null, meetings: [], calendarFail: false, sessions: null, sessionCost: null, sessionTurns: {}, asks: [], agents: opts.agents ?? null, agentsFail: false, inbox: [], tasks: opts.tasks ?? seed(), calls: [], rankQueries: [], fail: new Map(), anonymous: false, forbidden: false, needs: [], inboxItems: [], inboxSources: freshSources(), sourceQueries: [], insertAbove: () => undefined };
   const proj = opts.projects?.map((p) => ({ metadata: {}, ...p })) ?? [
     { name: 'alpha', title: 'Alpha', metadata: { 'Work capacity': '2h' } },
     { name: 'beta', title: 'Beta', metadata: {} },
@@ -93,7 +104,8 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     }
     if (path === '/rank') { m.rankQueries.push(new URL(req.url()).search); return json(route, 200, { items: ranking() }); }
     if (path === '/meetings') return json(route, 200, { items: m.meetings });
-    if (path === '/inbox-items') return json(route, 200, { items: m.inboxItems, actions: INBOX_CATALOG });
+    if (path === '/inbox-items') return json(route, 200, { items: m.inboxItems, actions: INBOX_CATALOG, ...m.inboxSources });
+    if (path === '/inbox-sources') { m.sourceQueries.push(new URL(req.url()).search); return json(route, 200, m.inboxSources); }
     const ia = /^\/inbox-items\/([^/]+)\/action$/.exec(path);
     if (ia && req.method() === 'POST') {
       m.calls.push({ path, body });
