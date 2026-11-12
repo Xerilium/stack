@@ -30,10 +30,10 @@ Paste this into the scheduled agent's prompt. Replace `<project>` and `<agent>`.
 
 ## Delivery
 
-The Stack host can run the agent for you on each new message. Turn it on in `.xe/config/stack.json`: `"inbox": { "delivery": "claude" }` (default `off`). Optional: `deliveryTimeoutSeconds` (default 300), `deliveryMaxUsd` (default 0.5), `reposRoot` (default the folder that holds the task repo).
+The Stack host can run the agent for you on each new message. Turn it on in `.xe/config/stack.json`: `"inbox": { "delivery": "claude" }` (default `off`). Optional: `deliveryTimeoutSeconds` (default 300), `deliveryMaxUsd` (default 0.5 per message), `deliveryDailyCapUsd` (default 5 per UTC day; at the cap, one ask says so and messages wait), `reposRoot` (default the folder that holds the task repo).
 
 - Needs `claude` signed in. When the login expires, messages show `Not delivered` with a Sign in button, and one ask says `Claude login expired: Sign in`. The one step: `claude auth login`.
-- Each run is `claude -p` in safe mode, in the project's repo, with the agent's tools. Only Read, Grep and Glob run without asking; every other tool call the agent wanted becomes an ask. A run never merges, never sets labels, and never sends mail.
+- Each run is `claude -p` in safe mode, in the project's repo, with the agent's tools minus any shell (Bash never runs here). Only Read, Grep and Glob run without asking; every other tool call the agent wanted becomes an ask. Answer `go` and the agent runs again with exactly that permission. A run never merges, never sets labels, and never sends mail.
 - `stack inbox run --once` does one pass by hand; `--watch` keeps going. Each run adds one line to `~/.stack/delivery.log` (ids, state, time, cost; never the text).
 
 Over HTTP, the same steps are `GET /inbox?project=<p>`, `POST /inbox/reply` (agent token), and `POST /inbox/handled`.

@@ -41,7 +41,7 @@ export interface StackConfig {
   inbox?: {
     freshMinutes?: number; accounts?: string[];
     /** Agent delivery: `claude` runs agents on owner messages; default off. @req FR:agent-delivery/safe.optin */
-    delivery?: 'claude' | 'off'; deliveryTimeoutSeconds?: number; deliveryMaxUsd?: number; reposRoot?: string;
+    delivery?: 'claude' | 'off'; deliveryTimeoutSeconds?: number; deliveryMaxUsd?: number; deliveryDailyCapUsd?: number; reposRoot?: string;
   };
 }
 
@@ -216,6 +216,10 @@ function parseInbox(v: unknown): NonNullable<StackConfig['inbox']> {
   if (v.deliveryMaxUsd !== undefined) {
     if (typeof v.deliveryMaxUsd !== 'number' || !(v.deliveryMaxUsd >= 0.01 && v.deliveryMaxUsd <= 10)) throw new ConfigError('inbox.deliveryMaxUsd: expected a number 0.01-10');
     out.deliveryMaxUsd = v.deliveryMaxUsd;
+  }
+  if (v.deliveryDailyCapUsd !== undefined) {
+    if (typeof v.deliveryDailyCapUsd !== 'number' || !(v.deliveryDailyCapUsd >= 0.01 && v.deliveryDailyCapUsd <= 1000)) throw new ConfigError('inbox.deliveryDailyCapUsd: expected a number 0.01-1000');
+    out.deliveryDailyCapUsd = v.deliveryDailyCapUsd;
   }
   if (v.reposRoot !== undefined) {
     if (typeof v.reposRoot !== 'string' || !v.reposRoot.startsWith('/')) throw new ConfigError('inbox.reposRoot: expected an absolute path');

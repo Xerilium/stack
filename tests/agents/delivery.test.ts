@@ -12,7 +12,7 @@ import {
 } from '../../src/agents/delivery';
 import type { Runner } from '../../src/email/llm';
 import { putAgent } from '../../src/core/agents';
-import { readAsk, listAsks } from '../../src/core/asks';
+import { answerAsk, readAsk, listAsks } from '../../src/core/asks';
 import { handleEntry, listInbox, replyFromAgent, sendToInbox } from '../../src/core/inbox';
 import { getDefaults, parseConfig } from '../../src/core/config';
 import { MemoryStorage } from '../../src/core/storage';
@@ -110,7 +110,7 @@ describe('runDeliveryPass', () => {
     expect(a.slice(a.indexOf('--output-format'), a.indexOf('--output-format') + 2)).toEqual(['--output-format', 'json']);
     expect(a.slice(a.indexOf('--permission-mode'), a.indexOf('--permission-mode') + 2)).toEqual(['--permission-mode', 'default']);
     expect(a.slice(a.indexOf('--max-budget-usd'), a.indexOf('--max-budget-usd') + 2)).toEqual(['--max-budget-usd', '0.5']);
-    expect(a.slice(a.indexOf('--tools'), a.indexOf('--tools') + 2)).toEqual(['--tools', 'Read,Grep,Bash']);
+    expect(a.slice(a.indexOf('--tools'), a.indexOf('--tools') + 2)).toEqual(['--tools', 'Read,Grep']); // Bash is never in a delivery run
     expect(a.slice(a.indexOf('--allowedTools'), a.indexOf('--allowedTools') + 2)).toEqual(['--allowedTools', 'Read,Grep']);
     expect(a.join(' ')).not.toMatch(/dangerously|bypassPermissions|acceptEdits/);
     const never = a[a.indexOf('--disallowedTools') + 1];
@@ -121,8 +121,14 @@ describe('runDeliveryPass', () => {
   it('builds args with the agent model and default tools when the file lists none', () => {
     const a = deliveryArgs({ model: 'claude-sonnet-5-5', maxUsd: 1, systemFile: '/x' });
     expect(a).toContain('claude-sonnet-5-5');
-    expect(a).not.toContain('--tools');
+    expect(a[a.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Edit,Write,WebFetch,WebSearch');
     expect(a[a.indexOf('--allowedTools') + 1]).toBe('Read,Grep,Glob');
+    // @req FR:agent-delivery/safe.noshell
+    const shell = deliveryArgs({ tools: ['Bash', 'BashOutput', 'KillShell', 'Read'], maxUsd: 1, systemFile: '/x' });
+    expect(shell[shell.indexOf('--tools') + 1]).toBe('Read');
+    // An approved ask adds exactly that rule.
+    const ok = deliveryArgs({ maxUsd: 1, systemFile: '/x', approved: ['Edit(src/a.ts)'] });
+    expect(ok[ok.indexOf('--allowedTools') + 1]).toBe('Read,Grep,Glob,Edit(src/a.ts)');
   });
 
   /** @req FR:agent-delivery/run.cwd */
@@ -198,6 +204,64 @@ describe('runDeliveryPass', () => {
   });
 });
 
+describe('daily cap', () => {
+  /** @req FR:agent-delivery/run.daily */
+  it('stops at the daily cap, raises one ask, and resumes the next day', async () => {
+    const m = await mk({ replies: [{ stdout: JSON.stringify({ subtype: 'success', is_error: false, result: 'A', total_cost_usd: 3 }) }, { stdout: JSON.stringify({ subtype: 'success', is_error: false, result: 'B', total_cost_usd: 3 }) }] });
+    m.d.settings.dailyCapUsd = 5;
+    const a = await sendToInbox(m.ctx, ref(6), 'One', 'instruction');
+    const b = await sendToInbox(m.ctx, ref(8), 'Two', 'instruction');
+    const c = await sendToInbox(m.ctx, ref(8), 'Three', 'instruction');
+    m.store.addSpend(3); // earlier today
+    let r = await runDeliveryPass(m.d);
+    expect(r.items).toEqual([{ id: a.id, state: 'delivered', agent: 'cid' }, { id: b.id, state: 'not-delivered', agent: 'cid', reason: 'Daily cap reached' }, { id: c.id, state: 'not-delivered', agent: 'cid', reason: 'Daily cap reached' }]);
+    expect(m.prompts()).toHaveLength(1);
+    await runDeliveryPass(m.d);
+    const ask = (await readAsk(m.ctx, 'delivery-cap'))!.ask;
+    expect(ask).toMatchObject({ state: 'open', kind: 'go-do', priority: 'high' });
+    expect(ask.ask).toContain('daily cap');
+    expect((await listAsks(m.ctx, { state: 'all' })).items.filter((x) => x.key === 'delivery-cap')).toHaveLength(1);
+    // Next day: spend resets, the cap ask closes, delivery resumes.
+    const later = { ...m.d, ctx: { ...m.ctx, now: () => new Date(NOW.getTime() + 864e5) }, store: new DeliveryStore(home, () => new Date(NOW.getTime() + 864e5)) };
+    r = await runDeliveryPass(later);
+    expect(r.items.map((x) => x.state)).toEqual(['delivered', 'delivered']);
+    expect((await readAsk(m.ctx, 'delivery-cap'))!.ask.state).toBe('done');
+  });
+
+  it('reads the cap from the config', () => {
+    expect(deliverySettings(getDefaults(), '/a/todo').dailyCapUsd).toBe(5);
+    expect(deliverySettings(parseConfig({ inbox: { deliveryDailyCapUsd: 12 } }), '/a/todo').dailyCapUsd).toBe(12);
+    expect(() => parseConfig({ inbox: { deliveryDailyCapUsd: 0 } })).toThrow();
+  });
+});
+
+describe('approved permission asks', () => {
+  /** @req FR:agent-delivery/run.approved */
+  it('re-runs the agent with the approved tool and posts the new reply; a denial just closes', async () => {
+    const denials = [{ tool_name: 'Edit', tool_use_id: 't1', tool_input: { file_path: 'src/a.ts' } }, { tool_name: 'WebFetch', tool_use_id: 't2', tool_input: { url: 'https://x.test' } }];
+    const m = await mk({ replies: [
+      { stdout: JSON.stringify({ subtype: 'success', is_error: false, result: 'Needs you: allow the edit.', permission_denials: denials }) },
+      { stdout: JSON.stringify({ subtype: 'success', is_error: false, result: 'Edited src/a.ts.' }) },
+    ] });
+    const e = await sendToInbox(m.ctx, ref(6), 'Fix it', 'instruction');
+    await runDeliveryPass(m.d);
+    const keys = (await listAsks(m.ctx, { state: 'open' })).items.map((x) => x.key).filter((k) => k.startsWith('perm-dl-')).sort();
+    await answerAsk(m.ctx, keys[0], { answer: 'go' });
+    await answerAsk(m.ctx, keys[1], { answer: 'no' });
+    const r = await runDeliveryPass(m.d);
+    expect(r.items).toEqual([{ id: e.id, state: 'delivered', agent: 'cid' }]);
+    const p = m.prompts()[1];
+    expect(p.args[p.args.indexOf('--allowedTools') + 1]).toBe('Read,Grep,Edit(src/a.ts)');
+    expect(p.stdin).toContain('The owner approved: Edit');
+    expect(p.stdin).toContain('Fix it');
+    const replies = (await listInbox(m.ctx, { state: 'all' })).filter((x) => x.from === 'agent').map((x) => x.text);
+    expect(replies).toEqual(['Needs you: allow the edit.', 'Edited src/a.ts.']);
+    for (const k of keys) expect((await readAsk(m.ctx, k))!.ask.state).toBe('done');
+    await runDeliveryPass(m.d);
+    expect(m.prompts()).toHaveLength(2); // never twice
+  });
+});
+
 describe('login health', () => {
   /** @req FR:agent-delivery/login.check @req FR:agent-delivery/login.notice */
   it('marks messages not delivered and raises one sign-in ask while signed out; clears it once signed in', async () => {
@@ -269,9 +333,9 @@ describe('state and status', () => {
 
   /** @req FR:agent-delivery/safe.optin */
   it('defaults delivery off and reads the config', () => {
-    expect(deliverySettings(getDefaults(), '/a/todo')).toEqual({ mode: 'off', timeoutMs: 300_000, maxUsd: 0.5, reposRoot: '/a' });
+    expect(deliverySettings(getDefaults(), '/a/todo')).toEqual({ mode: 'off', timeoutMs: 300_000, maxUsd: 0.5, dailyCapUsd: 5, reposRoot: '/a' });
     const c = parseConfig({ inbox: { delivery: 'claude', deliveryTimeoutSeconds: 60, deliveryMaxUsd: 2, reposRoot: '/src' } });
-    expect(deliverySettings(c, '/a/todo')).toEqual({ mode: 'claude', timeoutMs: 60_000, maxUsd: 2, reposRoot: '/src' });
+    expect(deliverySettings(c, '/a/todo')).toEqual({ mode: 'claude', timeoutMs: 60_000, maxUsd: 2, dailyCapUsd: 5, reposRoot: '/src' });
     for (const bad of [{ delivery: 'on' }, { deliveryTimeoutSeconds: 5 }, { deliveryMaxUsd: 50 }, { reposRoot: 'rel' }]) expect(() => parseConfig({ inbox: bad })).toThrow();
   });
 });
