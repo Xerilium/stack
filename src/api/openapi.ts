@@ -78,7 +78,7 @@ const DOCS: Record<string, RouteDoc> = {
   'tasks.suspend': { operationId: 'suspendTask', summary: 'Suspend a task for days or hours. Owner session only (403 for tokens)', responses: mutation('200') },
   'tasks.set': {
     operationId: 'setTask', summary: 'Set task properties. Tokens: ref required; autonomy triage (priority, effort, impact), assist (status), fills missing priority/effort/impact only; checkbox, clearEmojis, and gate marks are owner-only (403)',
-    desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears' },
+    desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears', expect: 'Expected current task text; 409 conflict when the row differs (stale line number)' },
     responses: mutation('200'),
   },
   'tasks.triage': {
@@ -364,7 +364,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'tasks.assign': {
     operationId: 'assignTask', summary: 'Hand the task to its agent: claims the row (log + in progress) and starts a session with the assign prompt. Owner session only; 404 without a runner; 403 for a 🙋 row',
-    desc: { agent: 'Agent slug; default: the active agent' },
+    desc: { agent: 'Agent slug; default: the active agent', note: 'The owner\'s note, added to the assign prompt (at most 1000 characters)' },
     responses: ok('Assigned', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string' }, title: { type: 'string' }, claimed: { type: 'boolean' } } }, '202'),
   },
   'team.list': {

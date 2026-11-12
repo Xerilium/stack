@@ -50,6 +50,8 @@ export interface NextTask { ref: TaskRef; text: string; project: string; score: 
 export const STATUS = ['🚧', '⏸️', '👀', '⏳', '⛔️'] as const;
 export const PRIORITY = ['🚨', '‼️', '🔺', '🔻'] as const;
 export const EFFORT = ['🟢', '🟡', '🟠', '🔴', '⚫️'] as const;
+/** The 12-minute effort quick capture writes; not settable, but a set effort replaces it. */
+const QUICK_EFFORT = '🔹';
 export const IMPACT = ['⬆️', '↔️', '⬇️'] as const;
 export const SPECIAL = ['💤', '☀️', '🅿️', '🏷️'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -145,10 +147,12 @@ function setEmojis(content: string, p: TaskProps): string {
   ];
   for (const [want, list, name] of cats) {
     if (want === undefined || want.trim() === '') continue;
+    // `🔹` (12 min, from quick capture) is an effort too: a new effort replaces it, None clears it.
+    const clear = name === 'Effort' ? [...list, QUICK_EFFORT] : list;
     if (want === 'None') {
-      for (const e of list) c = without(c, e);
+      for (const e of clear) c = without(c, e);
     } else {
-      for (const e of list) if (e !== want) c = without(c, e);
+      for (const e of clear) if (e !== want) c = without(c, e);
       if (!has(c, want)) c = addEmoji(c, want, name);
     }
   }

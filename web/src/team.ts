@@ -31,6 +31,16 @@ function specificity(scope: string, project: string, section?: string): number {
 }
 
 /**
+ * The task's owner among its agents (`agentsFor` order: roll-up first, most specific next): the first agent past the roll-up whose project or
+ * section scope matches the task (an agent may also hold `*`), else the roll-up. One rule for the row Message button, the composer, Do it, and Shift+A.
+ * @req FR:task-detail-design/compose.to
+ */
+export function ownerOf(agents: TeamAgent[], task?: { project: string; section?: string }): TeamAgent | undefined {
+  const fits = (a: TeamAgent) => a.scope.some((x) => x !== '*' && (!task || specificity(x, task.project, task.section) > 1));
+  return agents.find((a, i) => !(i === 0 && a.scope.includes('*')) && fits(a)) ?? agents[0];
+}
+
+/**
  * Agents covering a task: the roll-up first, then most specific first; the first is the active agent. With `live`, a metadata-only agent
  * (no file) stays only while a session has matched it recently. @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live
  */

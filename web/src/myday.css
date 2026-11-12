@@ -50,6 +50,7 @@ section.today { max-width: 860px; }
 .today .block.cursor .what { background: var(--hover); box-shadow: inset 2px 0 0 var(--accent); }
 .today .when { padding-top: 8px; }
 .today .what-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.what-title .tag.link { margin-left: 6px; vertical-align: 1px; } /* a title link sits beside the open button, never inside it */
 
 .row-acts { display: flex; gap: 2px; opacity: 0; transition: opacity .12s; flex: none; }
 .today .block:hover .row-acts, .today .block.cursor .row-acts, .today .block:focus-within .row-acts { opacity: 1; }

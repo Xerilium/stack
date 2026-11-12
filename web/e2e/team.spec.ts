@@ -43,25 +43,21 @@ test.describe('Agent team', () => {
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead › PR sweep worker: alpha. Talk to it (a)');
   });
 
-  test('a opens the inline composer on the cursor row: agent picker, quick actions, Send starts a session and the row follows it', async ({ page }, info) => {
+  test('a opens the thread composer on the cursor row: owner chip first, Ask starts a session and the row follows it', async ({ page }) => {
     const m = await open(page);
     await row(page, 'alpha:6').click();
     await expect(row(page, 'alpha:6')).toHaveClass(/cursor/);
     await page.keyboard.press('a');
-    const talk = row(page, 'alpha:6').locator('.thread .agent-talk');
+    const talk = row(page, 'alpha:6').locator('.thread .composer');
     await expect(talk).toBeVisible();
-    await expect(talk).toHaveAttribute('aria-label', /Talk to CoS about/);
-    await expect(talk.locator('select')).toHaveValue('cos');
-    await expect(talk.locator('select option')).toHaveCount(2);
-    await expect(talk.locator('select option').first()).toHaveAttribute('title', 'Roll-up');
-    await expect(talk.locator('select option').nth(1)).toHaveText('🅰️ Alpha Lead');
-    await expect(talk.getByRole('button', { name: /^Review/ })).toBeVisible();
+    // @req FR:task-detail-design/compose.to — the owning agent first, the roll-up behind + Other agent
+    await expect(talk.locator('select')).toHaveCount(0);
+    await expect(talk.getByRole('button', { pressed: true })).toHaveAccessibleName('🅰️ Alpha Lead');
+    await expect(talk.getByRole('button', { name: '+ Other agent' })).toBeVisible();
     await expect(talk.locator('input[type="text"]')).toBeFocused();
-    if (info.project.name !== 'mobile') { await expect(talk.getByLabel('Keep open')).toBeChecked(); await talk.getByLabel('Keep open').uncheck(); await talk.locator('input[type="text"]').focus(); } // the roll-up is long-running
     await page.keyboard.type('Check the deploy and tell me if the plan is solid');
     await page.keyboard.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Check the deploy and tell me if the plan is solid', agent: 'cos', ref: 'alpha:6' });
-    if (info.project.name === 'mobile') { await expect(page.getByRole('dialog')).toBeVisible(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); } // a phone keeps the long-running agent's drawer open
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Check the deploy and tell me if the plan is solid', agent: 'alpha-lead', ref: 'alpha:6' });
     await expect(row(page, 'alpha:6').locator('.thread .th-text.you')).toHaveText('Check the deploy and tell me if the plan is solid'); // the composer is the thread's own: it stays, the message lands above it
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('Working');
     // One open task at a time: a on another row moves the thread there.
@@ -74,20 +70,17 @@ test.describe('Agent team', () => {
     await expect(page.locator('.thread')).toHaveCount(0);
   });
 
-  test('the chip opens the thread; Keep open + Assign hands the task over and opens the drawer', async ({ page }, info) => {
+  // @req FR:task-detail-design/compose.doit
+  test('the chip opens the thread; Do it hands the task over', async ({ page }) => {
     const m = await open(page);
     await row(page, 'alpha:9').click(); // the cursor row shows its chip on every device
     await row(page, 'alpha:9').locator('.agent-chip').click();
-    const talk = row(page, 'alpha:9').locator('.thread .agent-talk');
+    const talk = row(page, 'alpha:9').locator('.thread .composer');
     await expect(talk).toBeVisible();
-    if (info.project.name === 'mobile') { await expect(talk.getByLabel('Keep open')).toBeVisible(); await talk.getByLabel('Keep open').uncheck(); await talk.getByRole('button', { name: /^Assign/ }).click(); await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'cos' }); await expect(page.locator('.toast')).toContainText('Assigned to cos'); return; }
-    await talk.getByLabel('Keep open').check();
-    await talk.getByRole('button', { name: /^Assign/ }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'cos' });
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByRole('dialog')).toContainText('CoS · Review pull requests 🟠 · alpha:9');
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await talk.getByRole('radio', { name: 'Do it' }).click();
+    await talk.getByRole('button', { name: 'Do it', exact: true }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' });
+    await expect(page.locator('.toast')).toContainText('Assigned to alpha-lead');
   });
 
   test('R reviews the cursor row; the chip shows Reviewing… then the verdict with its needs, which jumps to Asks', async ({ page }) => {
@@ -125,11 +118,12 @@ test.describe('Agent team', () => {
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('CoS');
     await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead › PR sweep worker: alpha. Talk to it (a)'); // no session data: nothing is dropped
     await row(page, 'alpha:6').locator('.agent-chip').click();
-    const talk = row(page, 'alpha:6').locator('.thread .agent-talk');
+    const talk = row(page, 'alpha:6').locator('.thread .composer');
     await expect(talk).toBeVisible();
     await expect(talk.locator('input[type="text"]')).toBeEnabled(); // a question still lands on the task
+    await talk.getByRole('radio', { name: 'Do it' }).click();
     await expect(talk).toContainText('Runs in stack web on your machine');
-    await expect(talk.getByRole('button', { name: /^Assign/ })).toBeDisabled();
+    await expect(talk.getByRole('button', { name: 'Do it', exact: true })).toBeDisabled();
   });
 
   test('an ask card has the agent too: a opens the composer about the ask', async ({ page }) => {
@@ -156,13 +150,11 @@ test.describe('Agent team', () => {
     await expect(hero.locator('.agent-chip')).toHaveCount(0); // no agent name on the NOW card (home3.context)
     await hero.click();
     await page.keyboard.press('a');
-    await expect(hero.locator('.thread .agent-talk')).toBeVisible();
-    await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
+    await expect(hero.locator('.thread .composer')).toBeVisible();
+    await expect(page.locator('.composer input[type="text"]')).toBeFocused();
     await page.keyboard.type('Go');
     await page.keyboard.press('Enter');
     await expect(hero.locator('.thread .th-text.you')).toHaveText('Go');
-    // The roll-up is long-running, so Keep open is its default and the session drawer opens; close it to get back to the card.
-    if (await page.getByRole('dialog').count()) { await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); }
     // The context line follows the session: `agent has it` while it works; once the mock flips it to idle, a 15 s poll clears it (no poll = stuck). Two cycles of slack: the flip can land right after a poll.
     // @req FR:web-app/home3.context
     await expect(hero.getByTestId('now-context')).toContainText('agent has it');
@@ -184,8 +176,8 @@ test.describe('Agent team', () => {
     await first.click();
     await expect(first.locator('.agent-chip')).toHaveCount(0);
     await page.keyboard.press('a');
-    await expect(first.locator('.thread .agent-talk')).toBeVisible();
-    await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
+    await expect(first.locator('.thread .composer')).toBeVisible();
+    await expect(page.locator('.composer input[type="text"]')).toBeFocused();
     await page.keyboard.type('Status?');
     await page.keyboard.press('Enter');
     await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toBe('Status?');
