@@ -824,6 +824,7 @@ paths:
                   enum:
                     - reply
                     - decision
+                    - instruction
                 expect:
                   type: string
                   maxLength: 2000
@@ -2736,6 +2737,7 @@ components:
           enum:
             - reply
             - decision
+            - instruction
         to:
           type: string
           enum:
@@ -2920,6 +2922,9 @@ components:
         reportsTo:
           type: string
           description: Slug of the agent this one reports to; absent on the roll-up
+        icon:
+          type: string
+          description: "Avatar: an emoji or a same-origin image path; absent means a monogram"
         source:
           type: string
           enum:

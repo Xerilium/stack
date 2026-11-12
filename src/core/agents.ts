@@ -18,6 +18,8 @@ export interface AgentDef {
   slug: string; name: string; role?: string; scope: string[]; model?: string; tools?: string[]; mode: AgentMode;
   /** Slug of the agent this one reports to (`reports-to`). @req FR:agent-team/agent.team.reports */
   reportsTo?: string;
+  /** Avatar: an emoji, or an image path on the Stack web origin (`/agents/cid.png`). Absent: a monogram. @req FR:agent-team/agent.icon */
+  icon?: string;
   /** System prompt addition (`## Prompt`). */
   prompt: string;
   /** Lines this version does not know; kept as is. */
@@ -35,7 +37,10 @@ export interface TeamAgent extends Omit<AgentDef, 'extra'> {
 
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 const HEADER = '<!-- stack-agent v1. Scope is a list of project or project/section prefixes; `*` is everything. -->';
-const FIELDS = ['name', 'role', 'scope', 'reports-to', 'model', 'tools', 'mode'] as const;
+const FIELDS = ['name', 'role', 'scope', 'reports-to', 'model', 'tools', 'mode', 'icon'] as const;
+/** An emoji (at most 16 code units, no letters, digits, spaces, or slashes) or a same-origin image path; anything else is dropped. @req FR:agent-team/agent.icon */
+export const iconOk = (v: string): boolean =>
+  (v.length > 0 && v.length <= 16 && !/[\s\p{L}\p{N}/\\<>"'`]/u.test(v) && /[^\x20-\x7e]/.test(v)) || (/^\/(?!\/)[A-Za-z0-9._/-]{1,200}\.(?:png|jpe?g|gif|webp|svg)$/i.test(v) && !v.includes('..'));
 /** Every agent named `cos` is the roll-up unless it says otherwise. @req FR:agent-team/agent.team.rollup */
 const ROLLUP_SLUG = 'cos';
 const MAX_ROLE = 80;
@@ -66,7 +71,7 @@ const scopeOk = (s: string) => s === '*' || /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[^/
 /** The agent as markdown (v1). */
 export function formatAgent(a: AgentDef): string {
   const f: [string, string | undefined][] = [
-    ['name', a.name], ['role', a.role], ['scope', a.scope.join(', ')], ['reports-to', a.reportsTo], ['model', a.model], ['tools', a.tools?.join(', ')], ['mode', a.mode],
+    ['name', a.name], ['role', a.role], ['scope', a.scope.join(', ')], ['reports-to', a.reportsTo], ['model', a.model], ['tools', a.tools?.join(', ')], ['mode', a.mode], ['icon', a.icon],
   ];
   const lines = [`# Agent: ${a.slug}`, '', HEADER, '', ...f.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `- ${k}: ${v}`), ...a.extra];
   if (a.prompt.trim()) lines.push('', '## Prompt', '', a.prompt.trim());
@@ -94,6 +99,7 @@ export function parseAgent(slug: string, content: string): AgentDef {
       case 'model': if (/^[A-Za-z0-9._-]{1,80}$/.test(v)) a.model = v; break;
       case 'tools': a.tools = v.split(',').map((s) => s.trim()).filter(Boolean); break;
       case 'mode': if ((AGENT_MODES as readonly string[]).includes(v)) a.mode = v as AgentMode; break;
+      case 'icon': if (iconOk(v)) a.icon = v; break;
     }
   }
   a.prompt = prompt.join('\n').trim().slice(0, MAX_PROMPT);
@@ -133,6 +139,7 @@ export function parseClaudeAgent(slug: string, content: string): AgentDef {
         case 'scope': a.scope = v.replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter((s) => s && scopeOk(s)); break;
         case 'reports-to': case 'reportsTo': if (SLUG.test(v)) a.reportsTo = v; break;
         case 'mode': if ((AGENT_MODES as readonly string[]).includes(v)) a.mode = v as AgentMode; break;
+        case 'icon': if (iconOk(v)) a.icon = v; break;
       }
     }
   }

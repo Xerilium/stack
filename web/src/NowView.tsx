@@ -1,6 +1,6 @@
 /**
- * Now: the one place. One task, one reason, three actions; then the next meetings and the top messages, one line each.
- * @req FR:now-screen/now.one @req FR:now-screen/now.why @req FR:now-screen/now.actions @req FR:now-screen/now.next @req FR:now-screen/now.empty @req FR:now-screen/now.a11y
+ * Now: the one place. One task, one reason, two actions, a message to its agent; then the next meetings and the top messages, one line each.
+ * @req FR:now-screen/now.one @req FR:now-screen/now.why @req FR:now-screen/now.actions @req FR:now-screen/now.compose @req FR:now-screen/now.next @req FR:now-screen/now.empty @req FR:now-screen/now.a11y
  * @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.answer @req FR:ux-consolidation/one.focus @req FR:ux-consolidation/one.clamp
  */
 import { actionsFor, type AskItem } from './asks';
@@ -8,9 +8,10 @@ import type { Brief } from './brief';
 import { Md } from './parts';
 import { clock, span } from './plan';
 import type { NowTask } from './nowscreen';
+import { NowChat, type NowChatProps } from './NowChat';
 import './nowscreen.css';
 
-export type NowAct = 'done' | 'defer' | 'delegate';
+export type NowAct = 'done' | 'defer';
 export type Layer = 'live' | 'weekly' | 'none';
 const WAITING = 3;
 
@@ -20,8 +21,9 @@ export function waitingOf(b: Pick<Brief, 'messages' | 'actions' | 'moreMessages'
   return { rows: all.slice(0, WAITING), more: Math.max(0, all.length - WAITING) + b.moreMessages + b.moreActions };
 }
 
-export function NowScreen({ n, b, layer, busy, onAct, onAnswer, onReply, onOpenAsks }: {
+export function NowScreen({ n, b, layer, busy, onAct, onAnswer, onReply, onOpenAsks, chat }: {
   n: NowTask | null; b: Brief; layer: Layer; busy: boolean; onAct: (a: NowAct) => void;
+  /** The message composer under the task. */ chat?: Omit<NowChatProps, 'taskRef' | 'busy'>;
   /** The ask's primary action, answered as Needs you would. */ onAnswer: (a: AskItem) => void;
   /** An ask with no one-tap answer: open it in Needs you with the reply box. */ onReply: (a: AskItem) => void;
   onOpenAsks: () => void;
@@ -48,9 +50,9 @@ export function NowScreen({ n, b, layer, busy, onAct, onAnswer, onReply, onOpenA
         <div class="now-actions" role="group" aria-label="Actions">
           <button type="button" class="now-btn primary" disabled={busy} onClick={() => onAct('done')}>Done <kbd>d</kbd></button>
           <button type="button" class="now-btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>n</kbd></button>
-          <button type="button" class="now-btn" disabled={busy} onClick={() => onAct('delegate')}>Delegate <kbd>⇧A</kbd></button>
         </div>
       )}
+      {n && chat && <NowChat key={n.task.ref} taskRef={n.task.ref} busy={busy} {...chat} />}
 
       <div class="now-side">
         <h2 class="now-h2">Next{layer !== 'none' && <span class="now-layer" data-testid="now-layer"> · {layer === 'live' ? 'Live calendar' : 'Weekly schedule'}</span>}</h2>

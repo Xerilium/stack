@@ -64,6 +64,15 @@ describe('agent format', () => {
     expect(p).toMatchObject({ name: 'x', mode: 'ad-hoc', scope: ['ok', '*'] });
     expect(p.model).toBeUndefined();
   });
+  // @req FR:agent-team/agent.icon
+  it('reads an optional icon: an emoji or a same-origin image path; anything else is dropped', () => {
+    const a = def({ icon: '🎧' });
+    expect(formatAgent(a)).toContain('- icon: 🎧');
+    expect(parseAgent('cid-manager', formatAgent(a))).toEqual(a);
+    expect(parseAgent('x', '- icon: /agents/cid.png\n').icon).toBe('/agents/cid.png');
+    for (const bad of ['https://evil.test/x.png', '//evil.test/x.png', '/a/../b.png', 'cid', '/x.exe', '<img>', 'Жук', '张', '#', '*!']) expect(parseAgent('x', `- icon: ${bad}\n`).icon).toBeUndefined();
+    expect(parseClaudeAgent('x', '---\nname: x\nicon: 🧭\n---\n# X\n').icon).toBe('🧭');
+  });
   it('putAgent validates and updates in place', async () => {
     const { storage, ctx } = mk();
     await expect(putAgent(ctx, 'a', {})).rejects.toThrow(/name is required/);

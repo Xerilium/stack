@@ -9,10 +9,11 @@ import { parseProject, type Task } from './parser';
 import { ConflictError, NotFoundError } from './storage';
 import { logName, md, redact } from './triage';
 
-export type InboxKind = 'reply' | 'decision';
+/** `instruction`: work the owner asks of the agent on a row. @req FR:agent-inbox/inbox.kinds */
+export type InboxKind = 'reply' | 'decision' | 'instruction';
 export type InboxTo = 'agent' | 'human' | 'none';
 export type InboxState = 'open' | 'handled';
-export const INBOX_KINDS = ['reply', 'decision'] as const;
+export const INBOX_KINDS = ['reply', 'decision', 'instruction'] as const;
 export const INBOX_STATES = ['open', 'handled', 'all'] as const;
 
 export type InboxFrom = 'owner' | 'agent';

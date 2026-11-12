@@ -5,13 +5,13 @@
 .now-title { margin: 0; font-size: var(--fs-title); line-height: 1.15; letter-spacing: -.022em; font-weight: 600; text-wrap: balance; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; } /* @req FR:ux-consolidation/one.clamp: the full text is in the tooltip */
 .now-why { margin: var(--s-12) 0 0; font-size: var(--fs-secondary); line-height: 1.4; color: var(--ink2); }
-.now-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-12); }
+.now-actions { display: grid; grid-template-columns: 2fr 1fr; gap: var(--s-12); }
 .now-btn { min-height: var(--tap); padding: 0 var(--s-16); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: var(--fs-body); font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-8);
   transition: background var(--t-feedback) var(--ease), transform var(--t-feedback) var(--ease), border-color var(--t-feedback) var(--ease); }
 .now-btn:hover:not(:disabled) { background: var(--hover); }
 .now-btn:active:not(:disabled) { transform: scale(.98); }
 .now-btn:disabled { opacity: .5; cursor: default; }
-.now-btn.primary { grid-column: 1 / -1; min-height: 52px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.now-btn.primary { min-height: 52px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .now-btn.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
 .now-btn kbd { display: none; }
 @media (hover: hover) and (pointer: fine) {
@@ -56,3 +56,26 @@
 .now-check { display: inline-grid; place-items: center; width: 44px; height: 44px; margin-bottom: var(--s-16); border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 20px; }
 @keyframes now-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .now-card { animation: none; } .now-btn:active:not(:disabled) { transform: none; } }
+
+/* Message the task agent: bubbles over one composer. @req FR:now-screen/now.compose @req FR:now-screen/now.thread */
+.now-chat { display: grid; gap: var(--s-12); }
+.now-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-12); }
+.now-bubble { display: flex; align-items: flex-end; gap: var(--s-8); max-width: 85%; }
+.now-bubble.from-me { justify-self: end; flex-direction: row-reverse; }
+.now-bubble-body { display: grid; gap: 2px; padding: var(--s-8) var(--s-12); border-radius: var(--r-card); background: var(--panel); border: 1px solid var(--line); }
+.now-bubble.from-me .now-bubble-body { background: var(--accent-soft); border-color: transparent; border-bottom-right-radius: var(--r-chip); }
+.now-bubble.from-agent .now-bubble-body { border-bottom-left-radius: var(--r-chip); }
+.now-bubble-who { font-size: var(--fs-caption); color: var(--ink2); }
+.now-bubble-text { margin: 0; font-size: var(--fs-body); line-height: 1.4; overflow-wrap: anywhere; white-space: pre-wrap; }
+.now-compose { display: flex; align-items: flex-end; gap: var(--s-8); }
+.now-compose .avatar { flex: none; margin-bottom: 4px; }
+.now-compose textarea { flex: 1; min-width: 0; box-sizing: border-box; min-height: var(--tap); max-height: 40vh; padding: 10px var(--s-12); border-radius: 22px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-body); line-height: 1.4; resize: none; field-sizing: content; }
+.now-compose textarea::placeholder { color: var(--muted); }
+.now-send { flex: none; min-height: var(--tap); min-width: var(--tap); padding: 0 var(--s-16); border-radius: 22px; border: 0; background: var(--accent); color: var(--accent-ink); font-size: var(--fs-secondary); font-weight: 600; cursor: pointer; }
+.now-send:disabled { opacity: .5; cursor: default; }
+.now-live { justify-self: start; min-height: var(--tap); padding: 0; background: none; border: 0; color: var(--accent); font-size: var(--fs-secondary); font-weight: 600; cursor: pointer; text-decoration: underline; }
+@media (hover: hover) and (pointer: fine) {
+  .now-compose textarea { min-height: 40px; padding: 9px var(--s-12); }
+  .now-send { min-height: 40px; }
+  .now-live { min-height: 0; }
+}
