@@ -33,7 +33,7 @@ d('cli parity with legacy', () => {
   it.each(['README.md', 'stack.md', 'projects.md'])('update reproduces %s', (f) => {
     const nowFile = join(LEGACY!, 'now.txt');
     const now = existsSync(nowFile) ? readFileSync(nowFile, 'utf8').trim() : new Date().toISOString();
-    const r = run('update', '--now', now);
+    const r = run('update', '--engine', 'legacy', '--now', now);
     expect(r.status).toBe(0);
     expect(readFileSync(join(work, f), 'utf8')).toBe(readFileSync(join(LEGACY!, f), 'utf8'));
   });

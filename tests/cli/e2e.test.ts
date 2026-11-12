@@ -350,23 +350,22 @@ describe('update', () => {
 
 describe('update lifecycle gaps', () => {
   // @req FR:cli/cmd.update.engine
-  it('update --engine stack writes the files in the order of `stack next`, with the owner overrides; the default stays legacy', () => {
+  it('update writes the files in the order of `stack next`, with the owner overrides; --engine legacy keeps the PowerShell order', () => {
     const d = repo();
     stack(d, 'add', 'alpha', 'Low 🔻');
     stack(d, 'add', 'alpha', 'High 🚨 ⬆️');
     stack(d, 'add', 'alpha', 'Mid 🔺');
     expect(stack(d, 'update', '--engine', 'nope').code).toBe(2);
-    const legacy = stack(d, 'update', '--now', NOW);
-    expect(legacy.code).toBe(0);
-    const first = (s: string) => /^ {2}- (.*) 🟰 [-\d.]+$/m.exec(s)![1];
-    expect(first(file(d, 'stack.md'))).toMatch(/High/);
     mkdirSync(join(d, '.stack'), { recursive: true });
     writeFileSync(join(d, '.stack/priorities.json'), JSON.stringify({ rules: [{ match: 'Low', effect: 'top' }] }));
-    expect(stack(d, 'update', '--engine', 'stack', '--now', NOW).code).toBe(0);
+    const first = (s: string) => /^ {2}- (.*) 🟰 [-\d.]+$/m.exec(s)![1];
+    expect(stack(d, 'update', '--now', NOW).code).toBe(0); // default: stack
     expect(first(file(d, 'stack.md'))).toMatch(/Low/); // the same first row as `stack next`
     expect(stack(d, 'next', '--now', NOW).out).toMatch(/Alpha Low/);
-    expect(stack(d, 'update', '--now', NOW).code).toBe(0); // back to legacy: High first again
+    expect(stack(d, 'update', '--engine', 'legacy', '--now', NOW).code).toBe(0); // legacy ignores the overrides
     expect(first(file(d, 'stack.md'))).toMatch(/High/);
+    expect(stack(d, 'update', '--engine', 'stack', '--now', NOW).code).toBe(0);
+    expect(first(file(d, 'stack.md'))).toMatch(/Low/);
   });
 
   // @req FR:cli/cmd.update @req FR:cli/cmd.update.commit
