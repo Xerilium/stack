@@ -2,7 +2,7 @@
 id: session-inventory
 title: Session Inventory
 author: flanakin
-description: "Stack reads the Claude app session store, classifies each session, and ranks one Needs-you list. It also keeps the owner's ordered priorities. Both live in ~/.stack. No LLM call."
+description: "Stack classifies each Claude app session, ranks one Needs-you list, and keeps the owner's priorities. No LLM call."
 dependencies: [status-ingest, api, auth-security, cli]
 ---
 
@@ -23,7 +23,7 @@ The owner runs hundreds of Claude sessions across projects. The app sidebar does
 
 ### FR:read: Read the session store
 
-The owner needs Stack to see every session without risk to the app's own files.
+The owner needs Stack to see every session so that no session is lost, without risk to the app's own files.
 
 - **FR:read.files** (P1): Stack reads `<sessions>/*/*/local_*.json` and `<sessions>/*/*/scheduled-tasks.json`, where `<sessions>` is `STACK_SESSIONS_DIR` or `~/Library/Application Support/Claude/claude-code-sessions`. Stack never writes, renames, or deletes a file there
 - **FR:read.tail** (P1): For a session that is not archived, Stack reads the last 64 KiB of its transcript, and more (at most 4 MiB) only when no whole event fits (`<transcripts>/<cwd with each non-alphanumeric character as "-">/<cliSessionId>.jsonl`, where `<transcripts>` is `STACK_TRANSCRIPTS_DIR` or `~/.claude/projects`). It keeps only the kind of the last main-chain event: `turn-end`, `question` (a pending `AskUserQuestion` or `ExitPlanMode`), `tool` (another pending tool call), `tool-result`, `user` (a user line that starts `[Request interrupted by user` is `turn-end`, and so is a local command or shell line that starts `<command-name>`, `<local-command-`, `<bash-input>`, `<bash-stdout>` or `<bash-stderr>`; compact summaries are skipped), `assistant-text`, `api-error` (a system `api_error` line, or an assistant line marked `isApiErrorMessage`), or `none`. No transcript text leaves the reader
@@ -56,12 +56,14 @@ The owner needs one ranked list so that he acts on the most important session fi
 
 ### FR:archive: Archive candidates
 
-The owner needs a short list of sessions to archive, and Stack must not edit the app's files.
+The owner needs a short list of sessions to archive so that the sidebar stays small, and Stack must not edit the app's files.
 
 - **FR:archive.list** (P1): Archive candidates are every `done` session and every superseded scheduled run. Stack only lists them; it never changes a session file
 - **FR:archive.superseded** (P1): A scheduled run is superseded when a newer run of the same `scheduledTaskId` exists (archived or not) and the run is not pinned and not running
 
 ### FR:store: Inventory result
+
+The owner needs one stored inventory result so that the CLI, the API and the CoS read the same data.
 
 - **FR:store.result** (P1): The inventory result is `{at, total, counts, needsYou, archive, sessions}`. `counts` has one number per state; `needsYou` and `archive` are session items; `sessions` is every item, newest activity first
 - **FR:store.write** (P1): Each inventory writes `<home>/sessions.json` (`{version, at, projectsDir, cache, inventory}`) with a temp file and a rename, mode `0600`. `<home>` is `STACK_HOME` or `~/.stack`. A failed write never fails the inventory. Nothing is written to the content repo
@@ -79,10 +81,14 @@ The owner needs his ordered priorities in Stack so that the CoS and the Needs-yo
 
 ### FR:cli: CLI
 
+The owner needs the inventory and his priorities in the terminal so that he can check them without the app.
+
 - **FR:cli.sessions** (P1): `stack sessions [--json]` runs the inventory and needs no content repo. Text output is one counts line, then one line per Needs-you item (`<n>. [<project>] <state> <title> - <ask or reason> <link>`), then `archive candidates: <n>`. `--json` prints the inventory result
 - **FR:cli.pris** (P1): `stack pris [--json]` prints the priorities in order (`<n>. <title> [<status>]`, then each item indented) and needs no content repo. With no `pris.json` it prints `no priorities (run: stack pris seed --file <md>)`. `stack pris seed --file <md>` runs `FR:session-inventory/pris.seed`. A missing `--file` or a file that cannot be read exits `2`
 
 ### FR:api: API
+
+The owner needs the inventory and his priorities over the API so that the web and desktop apps can show them.
 
 - **FR:api.inventory** (P1): `GET /session-inventory` (route `inventory.list`, scope `tasks:read`) returns the inventory result to the owner only (another caller gets `403`). A host with no inventory (demo, cloud) returns `404`
 - **FR:api.pris.get** (P1): `GET /pris` (route `pris.get`, scope `tasks:read`) returns the priorities file to the owner only, or `{version: 1, rev: 0, pris: []}` when none exists. A host with no store returns `404`
