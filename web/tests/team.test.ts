@@ -161,6 +161,11 @@ describe('ownerOf: the owning agent', () => {
     expect(ownerOf(crew, { ...f4, notes: ['Ownership moved to allyte-cos'] })?.slug).toBe('cid-manager');
     expect(ownerOf(crew, f4, [{ ...f4, notes: ['Owner me'] }, { ...f4, notes: ['Owner: allyte-cos'] }])?.slug).toBe('allyte-cos');
   });
+  it('never falls back to a view-only * agent: the runnable roll-up takes it, else no agent', () => {
+    const away = ag('away-cos', ['*'], { home: 'other' });
+    expect(ownerOf([away, ag('cos', ['*'])], { project: 'house' })?.slug).toBe('cos');
+    expect(ownerOf([away, cid], { project: 'house' })).toBeUndefined();
+  });
   it('never picks a view-only agent from Owner:', () => {
     expect(ownerOf([...crew, ag('away', ['x'], { home: 'other' })], { project: 'f4', notes: ['Owner: away'] })?.slug).toBe('cid-manager');
   });
@@ -177,5 +182,9 @@ describe('ancestorsOf', () => {
     expect(ancestorsOf(list, 'zz:1')).toEqual([]);
     const index = new Map(list.map((x, i) => [x.ref, i]));
     expect(ancestorsOf(list, 'a:3', index).map((x) => x.ref)).toEqual(['a:2', 'a:1']); // the same with a ref index
+  });
+  it('stops at a section boundary', () => {
+    const s = [{ ...t('a:1', 0), section: 'Active' }, { ...t('a:9', 1), section: 'Backlog' }];
+    expect(ancestorsOf(s, 'a:9')).toEqual([]);
   });
 });

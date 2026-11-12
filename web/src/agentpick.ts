@@ -3,7 +3,7 @@
  * The pick never writes the task file and never adds 🪄.
  * @req FR:product-reset/ui.thread @req FR:product-reset/ui.agentchip
  */
-import { nameKey, runnable, type TeamAgent } from './team';
+import { ancestorsOf, nameKey, runnable, type TeamAgent } from './team';
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export const PICK_KEY = 'stack.now.pick';
@@ -17,8 +17,22 @@ const read = <T,>(s: Store | undefined, key: string, ok: (v: unknown) => v is T,
 const isMap = (v: unknown): v is Record<string, string> => !!v && typeof v === 'object' && !Array.isArray(v);
 const isList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string');
 
-/** The key a pick is kept under: project and title without marks, so it follows the row when lines move or 🪄 is added. */
-export const pickKeyOf = (t: { project: string; text: string }): string => `${t.project}␟${t.text.replace(/[🤖🪄🙋🚧]\uFE0F?/gu, '').replace(/\s+/g, ' ').trim()}`;
+const bareTitle = (s: string) => s.replace(/[🤖🪄🙋🚧]\uFE0F?/gu, '').replace(/\s+/g, ' ').trim();
+/**
+ * The key a pick is kept under: project, parent titles (nearest last) and title, all without marks, so it follows the row when lines move or 🪄 is added.
+ * `nth`: how many earlier rows share that key, so two rows with one title under one parent keep their own picks.
+ */
+export const pickKeyOf = (t: { project: string; text: string }, parents: string[] = [], nth = 0): string =>
+  [t.project, ...parents.map(bareTitle), bareTitle(t.text)].join('␟') + (nth ? `#${nth}` : '');
+
+/** `pickKeyOf` for a row of `tasks` (file order): its parent titles and its place among rows with the same key. */
+export function pickKeyIn<T extends { ref: string; project: string; text: string; depth: number }>(tasks: T[], t: T): string {
+  const base = (x: T) => pickKeyOf(x, ancestorsOf(tasks, x.ref).map((a) => a.text).reverse());
+  const key = base(t);
+  let nth = 0;
+  for (const x of tasks) { if (x.ref === t.ref) break; if (x.project === t.project && bareTitle(x.text) === bareTitle(t.text) && base(x) === key) nth++; }
+  return pickKeyOf(t, ancestorsOf(tasks, t.ref).map((a) => a.text).reverse(), nth);
+}
 
 /** The agent picked for this task, if any. */
 export const loadPick = (s: Store | undefined, ref: string): string | undefined => {

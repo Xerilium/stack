@@ -1,6 +1,6 @@
 /** @req FR:product-reset/ui.thread @req FR:product-reset/ui.agentchip */
 import { describe, expect, it } from 'vitest';
-import { pickerList, pickKeyOf, loadPick, savePick, loadRecent, PICK_KEY, RECENT_KEY } from '../src/agentpick';
+import { pickerList, pickKeyIn, pickKeyOf, loadPick, savePick, loadRecent, PICK_KEY, RECENT_KEY } from '../src/agentpick';
 import type { TeamAgent } from '../src/team';
 
 const ag = (slug: string, name: string, o: Partial<TeamAgent> = {}): TeamAgent => ({ slug, name, scope: [], mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: [], ...o });
@@ -28,6 +28,17 @@ describe('pickKeyOf', () => {
     expect(pickKeyOf({ project: 'f4', text: 'Ship the single 🟡' })).toBe(pickKeyOf({ project: 'f4', text: '🪄 🚧 Ship the single 🟡' }));
     expect(pickKeyOf({ project: 'f4', text: 'Ship' })).not.toBe(pickKeyOf({ project: 'f5', text: 'Ship' }));
     expect(pickKeyOf({ project: 'f4', text: '🙋 Ship' })).toBe('f4␟Ship');
+  });
+  it('keeps two rows with one title apart: by parent, and by place under one parent', () => {
+    const r = (ref: string, text: string, depth = 0) => ({ ref, project: 'f4', text, depth });
+    const rows = [r('f4:1', 'Single A'), r('f4:2', 'Mix', 1), r('f4:3', 'Single B'), r('f4:4', 'Mix', 1), r('f4:5', '🪄 Mix', 1)];
+    const keys = rows.map((x) => pickKeyIn(rows, x));
+    expect(new Set(keys).size).toBe(rows.length);
+    expect(keys[1]).toBe('f4␟Single A␟Mix');
+    expect(keys[4]).toBe('f4␟Single B␟Mix#1');
+    // the key follows the row when lines above it change
+    const moved = [r('f4:0', 'New row'), ...rows.map((x, i) => r(`f4:${i + 10}`, x.text, x.depth))];
+    expect(pickKeyIn(moved, moved[2])).toBe(keys[1]);
   });
 });
 

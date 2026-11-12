@@ -59,7 +59,7 @@ export function ownerOf(team: TeamAgent[], task?: OwnerTask, ancestors: OwnerTas
       if (hit) return hit;
     }
   }
-  const rollup = rollupOf(team);
+  const rollup = rollupOf(team.filter(runnable)); // a view-only `*` agent can never take a message
   const fit = (a: TeamAgent) => Math.max(0, ...a.scope.filter((x) => x !== '*').map((x) => (task ? specificity(x, task.project, task.section) : 2)));
   const best = team
     .map((a, i) => ({ a, i, s: a === rollup || !runnable(a) ? 0 : fit(a) }))
@@ -68,15 +68,15 @@ export function ownerOf(team: TeamAgent[], task?: OwnerTask, ancestors: OwnerTas
   return best ?? rollup ?? (task ? undefined : team.find(runnable));
 }
 
-/** The task's ancestors, nearest first: earlier rows of the same project with a smaller depth (the list is in file order). `index`: ref → position, to skip the scan. */
-export function ancestorsOf<T extends { ref: string; project: string; depth: number }>(tasks: T[], ref: string, index?: Map<string, number>): T[] {
+/** The task's ancestors, nearest first: earlier rows of the same project and section with a smaller depth (the list is in file order). `index`: ref → position, to skip the scan. */
+export function ancestorsOf<T extends { ref: string; project: string; depth: number; section?: string }>(tasks: T[], ref: string, index?: Map<string, number>): T[] {
   const i = index ? (index.get(ref) ?? -1) : tasks.findIndex((t) => t.ref === ref);
   if (i < 0) return [];
   const out: T[] = [];
   let depth = tasks[i].depth;
   for (let j = i - 1; j >= 0 && depth > 0; j--) {
     const t = tasks[j];
-    if (t.project !== tasks[i].project) break;
+    if (t.project !== tasks[i].project || t.section !== tasks[i].section) break;
     if (t.depth < depth) { out.push(t); depth = t.depth; }
   }
   return out;

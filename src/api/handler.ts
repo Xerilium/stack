@@ -360,10 +360,10 @@ function flatten(doc: Doc): TaskView[] {
   const out: TaskView[] = [];
   const walk = (ts: Task[], section: string, depth: number) => {
     for (const t of ts) {
-      if (t.text.trim() !== '') {
-        out.push({ ref: formatRef({ path: doc.path, line: t.line }), text: t.text, project: doc.name, section, done: t.checked, depth, notes: t.notes });
-      }
-      walk(t.children, section, depth + 1);
+      // An empty row is not listed and is not a level: depth counts listed ancestors, so a client never reads a child as another row's.
+      const listed = t.text.trim() !== '';
+      if (listed) out.push({ ref: formatRef({ path: doc.path, line: t.line }), text: t.text, project: doc.name, section, done: t.checked, depth, notes: t.notes });
+      walk(t.children, section, listed ? depth + 1 : depth);
     }
   };
   for (const s of doc.project.sections) walk(s.tasks, s.heading, 0);

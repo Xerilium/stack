@@ -192,6 +192,14 @@ describe('runDeliveryPass', () => {
   });
 
   /** @req FR:agent-delivery/pick.agent */
+  it('delivers to the agent the message names (the Now pick); an unknown name falls back to the task agent', async () => {
+    const { ctx, d } = await mk();
+    const a = await sendToInbox(ctx, ref(6), 'CoS, take this one', 'instruction', undefined, undefined, 'cos');
+    const b = await sendToInbox(ctx, ref(8), 'For whoever', 'instruction', undefined, undefined, 'ghost');
+    const r = await runDeliveryPass(d);
+    expect(r.items).toEqual([{ id: a.id, state: 'delivered', agent: 'cos' }, { id: b.id, state: 'delivered', agent: 'cid' }]);
+  });
+  /** @req FR:agent-delivery/pick.agent */
   it('fails an entry no agent covers and does not retry it', async () => {
     const storage = new MemoryStorage();
     await storage.write('tasks/solo.md', '# Solo\n\n## Active\n\n- [ ] 🤖 Lonely task\n');

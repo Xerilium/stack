@@ -50,7 +50,7 @@ import { AgentChip, AgentTalk } from './AgentTalk';
 import { ThreadView } from './ThreadView';
 import { useThread } from './useThread';
 import { agentForAsk } from './team';
-import { pickKeyOf } from './agentpick';
+import { pickKeyIn } from './agentpick';
 import { planWeek } from './week';
 import { HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
 import { TaskDetail } from './TaskDetail';
@@ -335,7 +335,7 @@ export function App() {
   /** The Now composer: to the task's owning agent (`ownerOf`), or the agent picked for the task; a live session offers its chat. @req FR:now-screen/now.compose @req FR:product-reset/schema.agent */
   const taskAgent = (t: Task) => team.ownerOf(t) ?? null;
   const nowChat = (t: Task) => ({
-    agent: taskAgent(t), team: team.team, pickKey: pickKeyOf(t),
+    agent: taskAgent(t), team: team.team, pickKey: pickKeyIn(tasks, t),
     agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
     onSend: (text: string, agent?: string) => delegate(t.ref, text, agent), loadThread: api.thread,
     onOpenSession: team.openSessionId, tick: threadTick,
