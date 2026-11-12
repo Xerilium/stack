@@ -46,7 +46,7 @@ Agents never do these steps. They create a credential and an Azure resource.
 | --- | --- |
 | Rotate the repo token | Make a new token (step 1), re-run `scripts/setup-azure.ps1`, paste the new one, then delete the old token at [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens) |
 | Re-run setup | Safe. Press Enter at the prompt to keep the current token. Only the settings it owns change; the pepper and every other setting are kept |
-| Move the live branch | `scripts/setup-azure.ps1 -Branch <name>` (a re-run changes the branch only when you pass it) |
+| Move the live branch | `scripts/setup-azure.ps1 -Branch <new name>`. It creates the branch from the current live branch, so tokens, devices, and revocations move with it. A branch that already exists is refused |
 | Remove the domain | Delete the `stack` CNAME, then `Remove-AzStaticWebAppCustomDomain -ResourceGroupName stack-rg -Name stack-app -DomainName stack.xerilium.com` |
 | Turn it all off | `Remove-AzResourceGroup -Name stack-rg`, then delete the `stack` CNAME, delete the token and the `AZURE_STATIC_WEB_APPS_API_TOKEN` secret on Xerilium/stack |
 

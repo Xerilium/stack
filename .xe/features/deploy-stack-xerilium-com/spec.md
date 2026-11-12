@@ -31,6 +31,8 @@ Owner needs one PowerShell script so that setup follows his Az PowerShell rule a
 - **FR:setup.args** (P1): Every parameter MUST be validated at bind time, before any Azure or GitHub call
 - **FR:setup.secrets** (P1): The repo token MUST come from a hidden prompt or `STACK_REPO_TOKEN`. Secrets MUST pass only in process memory or a child-process environment, never on a command line, in a file in a git work tree, or in output
 - **FR:setup.merge** (P1): A re-run MUST merge only changed settings into the current app settings and keep all others (bot secrets, pepper, VAPID keys)
+  - **FR:setup.merge.pepper** (P1): A re-run MUST NOT add a pepper to a site that has none: the host then hashes tokens with SHA-256, and a new pepper voids every token
+- **FR:setup.check** (P1): When Enter keeps the site's token, the repo and branch checks MUST use that token, so the site can read what it points at
 
 ### FR:branch: Live data branch
 
@@ -39,6 +41,7 @@ Owner needs app writes off `main` so that Stack never commits to `main` of the t
 - **FR:branch.default** (P1): Setup MUST default `STACK_REPO_BRANCH` to `stack/live`, in the script and in `infra/main.bicep`
 - **FR:branch.create** (P1): When the branch does not exist, setup MUST create it from the head of the repo's default branch with the repo token
 - **FR:branch.rerun** (P1): A re-run MUST keep the site's `STACK_REPO_BRANCH` unless `-Branch` is given. A site with no branch, `main`, or `master` MUST move to `-Branch` (default `stack/live`)
+- **FR:branch.move** (P1): Tokens, devices, and revocations live on the site's branch. When a re-run moves an existing site to another branch or repo, the target branch MUST NOT exist yet (an older copy could make a revoked token valid again). Setup MUST create it from the site's current branch when the repo is the same
 - **FR:branch.doc** (P1): Docs MUST say live data is the `stack/live` branch
 
 ### FR:domain: Custom domain

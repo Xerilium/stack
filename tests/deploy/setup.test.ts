@@ -77,9 +77,26 @@ describe('setup-azure.ps1', () => {
     expect(JSON.parse(out)).toEqual({ STACK_OWNERS: 'github:abc', STACK_SLACK_SIGNING_SECRET: 'keep', STACK_REPO_TOKEN: 'old', STACK_TOKEN_PEPPER: 'pep' });
   });
   // @req FR:deploy-stack-xerilium-com/branch.rerun
-  itPwsh('re-run fills a missing branch, repo URL, or pepper and never overwrites a set one', () => {
-    const out = ps(`$c = @{ STACK_REPO_URL = 'https://github.com/a/b' }; Merge-StackSettings -Current $c -Changes @{} -Defaults @{ STACK_REPO_BRANCH = 'stack/live'; STACK_REPO_URL = 'https://github.com/x/y'; STACK_TOKEN_PEPPER = 'p' } | ConvertTo-Json -Compress`);
-    expect(JSON.parse(out)).toEqual({ STACK_REPO_URL: 'https://github.com/a/b', STACK_REPO_BRANCH: 'stack/live', STACK_TOKEN_PEPPER: 'p' });
+  itPwsh('re-run fills a missing setting and never overwrites a set one', () => {
+    const out = ps(`$c = @{ STACK_REPO_URL = 'https://github.com/a/b' }; Merge-StackSettings -Current $c -Changes @{} -Defaults @{ STACK_REPO_BRANCH = 'stack/live'; STACK_REPO_URL = 'https://github.com/x/y' } | ConvertTo-Json -Compress`);
+    expect(JSON.parse(out)).toEqual({ STACK_REPO_URL: 'https://github.com/a/b', STACK_REPO_BRANCH: 'stack/live' });
+  });
+  // @req FR:deploy-stack-xerilium-com/setup.merge.pepper
+  it('never adds a pepper on a re-run (that would void every token)', () => {
+    const d = code.find((l) => /\$defaults = /.test(l)) ?? '';
+    expect(d).toMatch(/STACK_REPO_URL/);
+    expect(d).not.toMatch(/PEPPER|New-StackPepper/);
+  });
+  // @req FR:deploy-stack-xerilium-com/setup.check
+  it('checks the repo and branch with the site token when Enter keeps it', () => {
+    expect(script).toMatch(/\$useToken = if \(\$plain\) \{ \$plain \} else \{ "\$\(\$current\['STACK_REPO_TOKEN'\]\)" \}/);
+    expect(script).toMatch(/\$env:GH_TOKEN = \$useToken/);
+  });
+  // @req FR:deploy-stack-xerilium-com/branch.move
+  it('a move never reuses an existing branch and starts from the current one', () => {
+    expect(script).toMatch(/\$moving = \$exists -and \(\$Repo -ne \$curRepo -or \$Branch -ne \$curBranch\)/);
+    expect(script).toMatch(/if \(Test-StackBranch \$Repo \$Branch\) \{\n\s*if \(\$moving\) \{ throw/);
+    expect(script).toMatch(/\$from = if \(\$moving -and \$curRepo -eq \$Repo\) \{ \$curBranch \} else \{ \$default \}/);
   });
   it('treats only a missing group or site as new; any other Azure error stops the script', () => {
     expect(script).not.toMatch(/Get-AzResourceGroup[^\n]*SilentlyContinue/);
@@ -125,6 +142,7 @@ describe('live branch', () => {
   it('defaults to stack/live and creates it from the default branch when missing', () => {
     expect(script).toMatch(/\[string\]\$Branch = 'stack\/live'/);
     expect(script).toMatch(/gh api "repos\/\$Repo\/git\/refs" -f "ref=refs\/heads\/\$Branch" -f "sha=\$base"/);
+    expect(script).toMatch(/Creating branch \$Branch from \$from/);
     expect(script).toMatch(/default_branch/);
   });
   it('a re-run changes the branch and repo only when given', () => {

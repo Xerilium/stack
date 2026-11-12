@@ -31,7 +31,7 @@ function Say([string]$Text) { Write-Host "`n== $Text" }
 
 # @req FR:deploy-stack-xerilium-com/setup.merge @req FR:live-deploy/setup.script.rerun
 # Merges non-empty changes into the current app settings; every other setting is kept.
-# Defaults fill only missing or empty settings, so an older site gains the live branch and a pepper.
+# Defaults fill only missing or empty settings, so an older site gains a repo URL.
 function Merge-StackSettings([hashtable]$Current, [hashtable]$Changes, [hashtable]$Defaults = @{}) {
   $out = @{}
   foreach ($k in $Current.Keys) { $out[$k] = $Current[$k] }
@@ -94,6 +94,7 @@ $onlyOwner = [bool]$Owner -and $exists
 # A re-run checks and keeps the repo and branch the site already uses, unless -Repo or -Branch is given.
 # A site still on main (or with no branch) moves to -Branch (default stack/live).
 $current = @{}
+$curRepo = ''; $curBranch = ''
 if ($exists) {
   $site = Get-AzStaticWebApp -ResourceGroupName $Group -Name $Name
   $res = Invoke-AzRestMethod -Method POST -Path "$($site.Id)/listAppSettings?$api"
@@ -101,10 +102,15 @@ if ($exists) {
   $props = ($res.Content | ConvertFrom-Json -AsHashtable).properties
   if ($props) { $current = $props }
   $res = $null; $props = $null
-  if (-not $PSBoundParameters.ContainsKey('Repo') -and "$($current['STACK_REPO_URL'])" -match '^https://github\.com/([A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+?)(\.git)?$') { $Repo = $Matches[1] }
-  $curBranch = "$($current['STACK_REPO_BRANCH'])"
-  if (-not $PSBoundParameters.ContainsKey('Branch') -and $curBranch -and $curBranch -notin 'main', 'master') { $Branch = $curBranch }
+  if ("$($current['STACK_REPO_URL'])" -match '^https://github\.com/([A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+?)(\.git)?$') { $curRepo = $Matches[1] }
+  if (-not $PSBoundParameters.ContainsKey('Repo') -and $curRepo) { $Repo = $curRepo }
+  # The host reads main when the setting is missing.
+  $curBranch = if ("$($current['STACK_REPO_BRANCH'])") { "$($current['STACK_REPO_BRANCH'])" } else { 'main' }
+  if (-not $PSBoundParameters.ContainsKey('Branch') -and $curBranch -notin 'main', 'master') { $Branch = $curBranch }
 }
+# @req FR:deploy-stack-xerilium-com/branch.move
+# Tokens, devices, and revocations live on the site's branch. A move must carry them, never pick up an older copy.
+$moving = $exists -and ($Repo -ne $curRepo -or $Branch -ne $curBranch)
 
 # @req FR:deploy-stack-xerilium-com/setup.secrets
 $plain = ''
@@ -114,31 +120,33 @@ if (-not $onlyOwner) {
     $prompt = if ($exists) { "Task repo token for $Repo (Enter keeps the current one)" } else { "Task repo token for $Repo (fine-grained, Contents read and write)" }
     $plain = ConvertFrom-SecureString -SecureString (Read-Host -AsSecureString -Prompt $prompt) -AsPlainText
   }
-  if ($plain) {
-    if ($plain -notmatch '^[A-Za-z0-9_]+$') { throw 'That does not look like a GitHub token (letters, digits, _).' }
-    # @req FR:deploy-stack-xerilium-com/branch.create
-    Say "Checking the token can read $Repo and branch $Branch"
-    $prevGh = $env:GH_TOKEN
-    $env:GH_TOKEN = $plain # child-process environment only; never printed or saved
-    try {
-      $default = & gh api "repos/$Repo" -q .default_branch 2>$null
-      if ($LASTEXITCODE -ne 0 -or -not $default) { throw "That token cannot see $Repo. Check its repository access." }
-      if ($Branch -eq $default) { throw "Branch $Branch is the default branch of $Repo. Live data must stay off it; pick another -Branch." }
-      if (-not (Test-StackBranch $Repo $Branch)) {
-        $base = & gh api "repos/$Repo/git/ref/heads/$default" -q .object.sha 2>$null
-        if ($LASTEXITCODE -ne 0 -or -not $base) { throw "That token cannot read $Repo contents. Give it Contents: Read and write." }
-        Say "Creating branch $Branch from $default"
-        & gh api "repos/$Repo/git/refs" -f "ref=refs/heads/$Branch" -f "sha=$base" *> $null
-        if ($LASTEXITCODE -ne 0) { throw "Could not create $Branch. Give the token Contents: Read and write." }
-      }
-    } finally { if ($prevGh) { $env:GH_TOKEN = $prevGh } else { Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue } }
-  } elseif (-not $exists) {
-    throw 'No token given. See docs/setup-live.md step 1.'
-  } else {
-    # Token kept: check with your own gh sign-in, so the site never points at a missing or default branch.
-    if (-not (Test-StackBranch $Repo $Branch)) { throw "Branch $Branch is missing on $Repo. Re-run and paste the repo token to create it." }
+  if ($plain -and $plain -notmatch '^[A-Za-z0-9_]+$') { throw 'That does not look like a GitHub token (letters, digits, _).' }
+  if (-not $plain -and -not $exists) { throw 'No token given. See docs/setup-live.md step 1.' }
+  # Enter keeps the site's token, so the checks use that token: the site must be able to read what it points at.
+  $useToken = if ($plain) { $plain } else { "$($current['STACK_REPO_TOKEN'])" }
+  if (-not $useToken) { throw 'The site has no repo token. Re-run and paste one (docs/setup-live.md step 1).' }
+  # @req FR:deploy-stack-xerilium-com/branch.create
+  Say "Checking the token can read $Repo and branch $Branch"
+  $prevGh = $env:GH_TOKEN
+  $env:GH_TOKEN = $useToken # child-process environment only; never printed or saved
+  try {
     $default = & gh api "repos/$Repo" -q .default_branch 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $default) { throw "The repo token cannot see $Repo. Check its repository access." }
     if ($Branch -eq $default) { throw "Branch $Branch is the default branch of $Repo. Live data must stay off it; pick another -Branch." }
+    if (Test-StackBranch $Repo $Branch) {
+      if ($moving) { throw "Branch $Branch already exists on $Repo. It may hold old tokens or devices, and a revoked token could work again. Pick a new -Branch name, or delete $Branch first." }
+    } else {
+      # A move starts from the site's current branch, so its tokens, devices, and revocations come along.
+      $from = if ($moving -and $curRepo -eq $Repo) { $curBranch } else { $default }
+      $base = & gh api "repos/$Repo/git/ref/heads/$from" -q .object.sha 2>$null
+      if ($LASTEXITCODE -ne 0 -or -not $base) { throw "The repo token cannot read $Repo branch $from. Give it Contents: Read and write." }
+      Say "Creating branch $Branch from $from"
+      & gh api "repos/$Repo/git/refs" -f "ref=refs/heads/$Branch" -f "sha=$base" *> $null
+      if ($LASTEXITCODE -ne 0) { throw "Could not create $Branch. Give the token Contents: Read and write." }
+    }
+  } finally {
+    if ($prevGh) { $env:GH_TOKEN = $prevGh } else { Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue }
+    $useToken = $null
   }
 }
 
@@ -162,8 +170,9 @@ if ($exists) {
   $changes = @{ STACK_OWNERS = $Owner; STACK_REPO_TOKEN = $plain }
   if ($PSBoundParameters.ContainsKey('Repo')) { $changes.STACK_REPO_URL = "https://github.com/$Repo" }
   if (-not $onlyOwner) { $changes.STACK_REPO_BRANCH = $Branch }
-  # An older site gains a repo URL and a pepper when missing; values already set are kept.
-  $defaults = @{ STACK_REPO_URL = "https://github.com/$Repo"; STACK_TOKEN_PEPPER = (New-StackPepper) }
+  # An older site gains a repo URL when missing; values already set are kept.
+  # Never add a pepper: a site without one hashes tokens with plain SHA-256, and a new pepper would void every token.
+  $defaults = @{ STACK_REPO_URL = "https://github.com/$Repo" }
   $body = @{ properties = (Merge-StackSettings -Current $current -Changes $changes -Defaults $defaults) } | ConvertTo-Json -Compress
   $res = Invoke-AzRestMethod -Method PUT -Path "$($site.Id)/config/appsettings?$api" -Payload $body
   $body = $null
