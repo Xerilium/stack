@@ -85,7 +85,7 @@ stack app status
 - `Stack > Updates…` (or the chip) sets when updates install:
   - `When I quit Stack (recommended)`: the default. Quit commits pending edits, then a helper swaps the app after it exits. The next launch runs the new build.
   - `Only when I select Restart`: the dialog shows `Restart now`.
-  - `When I'm away for <n> minutes`: restarts when the Mac is idle and the window is in the background.
+  - `When I'm away for <n> minutes`: restarts when the Mac is idle and the Stack window is closed (hidden in the menu bar).
   - `Never`.
 - The setting is `update.mode` (`on-quit`, `ask`, `auto-idle`, `off`) and `update.idleMinutes` in `~/.config/stack/config.json`.
 - The helper keeps the old app as `/Applications/.Stack.app.previous`. If the new app does not open, it puts the old one back and opens it. Every step goes to `~/.stack/update.log`; the result goes to `~/.stack/update-result.json`. A failed update shows in Needs you at the next launch.

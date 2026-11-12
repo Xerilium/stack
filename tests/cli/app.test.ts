@@ -134,6 +134,7 @@ describe('stack app install', () => {
     const f = fake({ platform: 'linux' });
     for (const a of ['install', 'update']) expect(await appCmd(a, {}, f.deps)).toMatchObject({ code: 1, text: 'Stack.app is macOS only' });
     expect((await appCmd('status', {}, f.deps)).code).toBe(0);
+    expect((await appCmd('update', { check: true }, f.deps)).code).toBe(0);
   });
   // @req FR:devops-installer/source.local
   it('--source picks another checkout', async () => {

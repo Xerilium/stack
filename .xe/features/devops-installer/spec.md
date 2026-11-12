@@ -41,7 +41,7 @@ Owner needs each build to say what it is, so the app and the CLI can tell an old
 Owner needs one command that puts Stack in `/Applications` and opens it, so a new Mac needs no manual steps.
 
 - **FR:install.@cli** (P1): Interface: `stack app install [--no-build] [--source dir] [--json]`
-- **FR:install.mac** (P1): Every `stack app` action except `status` MUST fail with `Stack.app is macOS only` (exit 1) on other platforms
+- **FR:install.mac** (P1): Every `stack app` action except `status` and `update --check` (both read only) MUST fail with `Stack.app is macOS only` (exit 1) on other platforms
 - **FR:install.build** (P1): Without `--no-build` the CLI MUST build in the source checkout (`FR:build`) first
 - **FR:install.nobuild** (P1): With no build in the source, the CLI MUST fail with `No build at <path>. Run: stack app install` (exit 1) and change nothing
 - **FR:install.place** (P1): The CLI MUST place the build at `/Applications/Stack.app` through the helper (`FR:swap`) and launch it, also when no app was there before, and also when the installed build is the same
@@ -113,7 +113,7 @@ Owner needs updates to land when they do not cost him focus.
 
 ### FR:idle: Restart when idle
 
-- **FR:idle.check** (P1): In `auto-idle` mode the shell MUST check once a minute and restart (`FR:restart.spawn`) when an update is ready, the system idle time is at least `update.idleMinutes`, and the window is not focused
+- **FR:idle.check** (P1): In `auto-idle` mode the shell MUST check once a minute and restart (`FR:restart.spawn`) when an update is ready, the system idle time is at least `update.idleMinutes`, and the window is hidden (closed to the menu bar). A visible window may hold an unsent draft, so it never restarts
 
 ### FR:version: Version probe
 

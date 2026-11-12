@@ -139,7 +139,7 @@ xattr -dr com.apple.quarantine "$STAGE" 2>/dev/null || true
 log "stage: copied"
 if [ ! -x "$STAGE/Contents/MacOS/$EXE" ]; then log "verify: no executable Contents/MacOS/$EXE"; rm -rf "$STAGE"; finish false verify; fi
 # The copy must be the build that was chosen, not one a rebuild changed meanwhile.
-if [ -n "$SHA" ] && ! grep -qF '"sha": "'"$SHA"'"' "$STAGE/Contents/Resources/app/package.json" 2>/dev/null; then
+if [ -n "$SHA" ] && ! grep -qE '"sha": *"'"$SHA"'"' "$STAGE/Contents/Resources/app/package.json" 2>/dev/null; then
   log "verify: the copy is not build $SHA"; rm -rf "$STAGE"; finish false verify
 fi
 # Stack may have opened again while we copied: never move a running app.
@@ -237,8 +237,8 @@ export interface AppUpdater {
   restart(): void;
   /** The quit hook: in `on-quit` mode starts the helper with no relaunch. Never throws; true when it started one. */
   onQuit(): boolean;
-  /** The idle hook: in `auto-idle` mode restarts when idle long enough and unfocused. True when it restarted. */
-  idleCheck(idleSeconds: number, focused: boolean): boolean;
+  /** The idle hook: in `auto-idle` mode restarts when idle long enough and the window is hidden (`shown` false). True when it restarted. */
+  idleCheck(idleSeconds: number, shown: boolean): boolean;
 }
 
 export function createAppUpdater(d: UpdaterDeps): AppUpdater {
@@ -280,8 +280,8 @@ export function createAppUpdater(d: UpdaterDeps): AppUpdater {
       } catch (e) { log(`update: ${e instanceof Error ? e.message : String(e)}`); return false; }
     },
     /** @req FR:devops-installer/idle.check @req FR:devops-installer/mode.never-launch */
-    idleCheck: (idleSeconds, focused) => {
-      if (started || focused) return false;
+    idleCheck: (idleSeconds, shown) => {
+      if (started || shown) return false;
       const s = state();
       if (s.mode !== 'auto-idle' || !s.ready || !s.canRestart || idleSeconds < s.idleMinutes * 60) return false;
       try { restart(); return true; } catch (e) { log(`update: ${e instanceof Error ? e.message : String(e)}`); return false; }

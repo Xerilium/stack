@@ -27,7 +27,7 @@ export const MODE_WORDS: Record<UpdateMode, (idleMinutes: number) => string> = {
 export const isUpdatesHash = (hash: string): boolean => hash === '#/updates';
 
 /** What `Later` remembers: the build it hid. @req FR:devops-installer/notice.dismiss */
-export const dismissKey = (s: VersionState): string | null => s.available?.sha ?? null;
+export const dismissKey = (s: VersionState): string | null => (s.available ? `${s.available.sha}@${s.available.builtAt}` : null);
 
 /** `Update ready`, `Update failed`, or nothing. @req FR:devops-installer/notice.chip @req FR:devops-installer/notice.dismiss */
 export function updateChip(s: VersionState | null, dismissed: string | null): string | null {

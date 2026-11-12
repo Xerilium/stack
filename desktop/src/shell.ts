@@ -162,7 +162,7 @@ export function createShell(deps: ShellDeps): Shell {
     // @req FR:devops-installer/idle.check
     if (deps.update) {
       const u = deps.update;
-      idleTimer = setInterval(() => { if (!stopping) u.idleCheck(powerMonitor?.getSystemIdleTime() ?? 0, !!win && !win.isDestroyed() && win.isFocused()); }, deps.idleMs ?? 60_000);
+      idleTimer = setInterval(() => { if (!stopping) u.idleCheck(powerMonitor?.getSystemIdleTime() ?? 0, !!win && !win.isDestroyed() && win.isVisible()); }, deps.idleMs ?? 60_000);
       idleTimer.unref?.();
     }
   };

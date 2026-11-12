@@ -44,7 +44,7 @@ describe('shell: install on quit', () => {
 
 describe('shell: idle check', () => {
   // @req FR:devops-installer/idle.check
-  it('asks the updater once per interval with the system idle seconds and window focus', async () => {
+  it('asks the updater once per interval with the system idle seconds and whether the window shows', async () => {
     let first: (v: [number, boolean]) => void = () => undefined;
     const checked = new Promise<[number, boolean]>((ok) => { first = ok; });
     const { e, shell } = setup({ idle: 1800, idleCheck: (s, f) => { first([s, f]); return false; } });

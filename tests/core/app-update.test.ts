@@ -166,7 +166,7 @@ describe('install on quit', () => {
 
 describe('restart when idle', () => {
   // @req FR:devops-installer/idle.check
-  it('restarts in auto-idle mode when idle long enough and the window is not focused', () => {
+  it('restarts in auto-idle mode when idle long enough and the window is hidden', () => {
     const t = updater({ settings: { mode: 'auto-idle', idleMinutes: 10 } });
     expect(t.u.idleCheck(599, false)).toBe(false);
     expect(t.u.idleCheck(600, true)).toBe(false);

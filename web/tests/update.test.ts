@@ -55,9 +55,11 @@ describe('update chip', () => {
   });
   // @req FR:devops-installer/notice.dismiss
   it('Later hides it until a different build is ready', () => {
-    expect(dismissKey(state())).toBe('bbbbbbbbbbbb');
-    expect(updateChip(state(), 'bbbbbbbbbbbb')).toBeNull();
-    expect(updateChip(state({ available: { ...STAMP, sha: 'cccccccccccc' } }), 'bbbbbbbbbbbb')).toBe('Update ready');
+    const key = dismissKey(state())!;
+    expect(key).toBe('bbbbbbbbbbbb@2026-11-12T10:00:00.000Z');
+    expect(updateChip(state(), key)).toBeNull();
+    expect(updateChip(state({ available: { ...STAMP, sha: 'cccccccccccc' } }), key)).toBe('Update ready');
+    expect(updateChip(state({ available: { ...STAMP, dirty: true, builtAt: '2026-11-12T11:00:00.000Z' } }), key)).toBe('Update ready');
   });
 });
 

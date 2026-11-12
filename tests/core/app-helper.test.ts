@@ -3,10 +3,10 @@
  * @req FR:devops-installer/arch.inject
  */
 import { spawn, spawnSync } from 'child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { HELPER_SCRIPT, helperEnv, spawnHelperDetached, writeHelper, type HelperJob } from '../../src/core/app-update';
+import { HELPER_SCRIPT, helperEnv, runHelperSync, spawnHelperDetached, writeHelper, type HelperJob } from '../../src/core/app-update';
 
 const posix = process.platform !== 'win32';
 const d = posix ? describe : describe.skip;
@@ -41,6 +41,37 @@ function world() {
 }
 
 d('swap helper', () => {
+  // @req FR:devops-installer/swap.result
+  it('runHelperSync never reads an old result: a busy helper is a failure', () => {
+    const w = world();
+    bundle(w.target, 'old'); bundle(w.source, 'new');
+    writeFileSync(join(w.state, 'update-result.json'), '{"ok":true,"step":"done","at":"old"}');
+    const lock = join(w.apps, '.Stack.app.updating');
+    mkdirSync(lock); writeFileSync(join(lock, 'pid'), String(process.pid));
+    const job = { source: w.source, target: w.target, stateDir: w.state, relaunch: false, quit: false };
+    expect(runHelperSync(job)).toMatchObject({ ok: false, step: 'start' });
+    expect(w.tag(w.target)).toBe('old');
+    rmSync(lock, { recursive: true });
+    expect(runHelperSync(job)).toMatchObject({ ok: true, step: 'done' });
+    expect(w.tag(w.target)).toBe('new');
+  });
+
+  // @req FR:devops-installer/swap.wait
+  it('does not swap when Stack opens again while the copy runs', () => {
+    const w = world();
+    bundle(w.target, 'old'); bundle(w.source, 'new');
+    // A copy tool that opens the app (by bundle path) as a side effect, then copies.
+    const bin = join(w.root, 'bin'); mkdirSync(bin);
+    writeFileSync(join(w.target, 'Contents/MacOS/Stack'), '#!/bin/sh\nsleep 30\n');
+    writeFileSync(join(bin, 'ditto'), `#!/bin/sh\n(exec "${w.target}/Contents/MacOS/Stack" >/dev/null 2>&1 &)\nsleep 0.3\ncp -R "$1" "$2"\n`); chmodSync(join(bin, 'ditto'), 0o755);
+    const r = w.run({}, { PATH: `${bin}:${process.env.PATH ?? ''}` });
+    spawnSync('pkill', ['-f', `${w.target}/Contents/MacOS/`]);
+    expect(r.status).toBe(1);
+    expect(w.tag(w.target)).toBe('old');
+    expect(w.result()).toMatchObject({ ok: false, step: 'wait' });
+    expect(w.log()).toMatch(/Stack opened again; not swapping/);
+  });
+
   // @req FR:devops-installer/swap.verify
   it('refuses a copy that is not the chosen build', () => {
     const w = world();
