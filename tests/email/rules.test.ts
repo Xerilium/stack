@@ -110,3 +110,10 @@ describe('sensitive subject and display name', () => {
     expect(prefilter(msg({ from: { address: 'case@agency.example.test' } }), c)?.class).toBe('sensitive');
   });
 });
+
+// @req FR:email-triage/rules.sensitive
+describe('sensitive keyword and failing authentication', () => {
+  it('a "tax return" subject that fails DMARC stays spam', () => {
+    expect(prefilter(msg({ subject: 'IRS tax return notice', headers: { 'Authentication-Results': 'dmarc=fail' } }), DEFAULT_RULES)?.class).toBe('spam');
+  });
+});

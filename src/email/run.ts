@@ -23,6 +23,8 @@ export interface RunDeps {
   /** The owner's learned voice; without it drafts are checked against the cliche list only. */
   voice?: VoiceProfile;
   /** Inbox zero: batch asks, subscriptions, and acting on answered asks. Without `actions` nothing moves. @req FR:email-inbox-zero/batch.act */
+  /** Runs after triage, before any ask is written; throwing stops the pass with no ask. @req FR:email-runner/model.down */
+  beforeAsks?: () => void;
   hygiene?: { state: MailState; actions?: MailActions; judge?: Judge; http?: Http; archiveAfterHours?: number };
 }
 
@@ -91,6 +93,7 @@ export async function runTriage(d: RunDeps): Promise<{ cursor: string; summary: 
   // Only a draft already made in the mailbox keeps its ask, so the next pass reuses it. @req FR:email-runner/model.down
   try {
     for (const m of newest.values()) results.push(await triage(d, m, summary));
+    d.beforeAsks?.();
   } catch (e) {
     for (const r of results) if (r.draft && !r.draft.reused) await recordResult(d.ctx, r, { project: d.project });
     throw e;

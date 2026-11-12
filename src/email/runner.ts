@@ -102,34 +102,39 @@ export function withDetails(provider: MailProvider, details: (id: string) => Pro
 /** Messages in a row whose model calls all fail: the model is down, not the message. */
 export const MODEL_FAIL_LIMIT = 3;
 /** Error text that means the `claude` login is gone; no retry helps. */
+/** Errors no retry or next message helps: the account cannot call the model now. */
+const LIMIT_ERROR = /\b(usage limit|rate limit|quota|credit balance|overloaded)\b/i;
 const AUTH_ERROR = /\b(log ?in|sign ?in|logged out|signed out|oauth|unauthori[sz]ed|authenticat\w*|401|403|api key|credentials?|token (expired|revoked)|expired token)\b/i;
 /** The one ask a model-down pass writes, for every mailbox (they share one `claude` login). @req FR:email-runner/model.down */
 export const CLAUDE_LOGIN_ASK = 'email-claude-login';
 export const CLAUDE_LOGIN_TEXT = 'Claude login expired: run `claude` and sign in';
+export const CLAUDE_DOWN_TEXT = 'Claude calls are failing: run `claude` to check sign-in and usage';
 
 /** The model is unusable for the whole pass (signed out, or failing on every message). @req FR:email-runner/model.down */
 export class ModelUnavailable extends Error {
-  constructor(readonly detail: string, readonly auth: boolean) { super(`${CLAUDE_LOGIN_TEXT} (${detail.slice(0, 200)})`); this.name = 'ModelUnavailable'; }
+  constructor(readonly detail: string, readonly auth: boolean) { super(`${auth ? CLAUDE_LOGIN_TEXT : CLAUDE_DOWN_TEXT} (${detail.slice(0, 200)})`); this.name = 'ModelUnavailable'; }
 }
 
 /**
  * A message whose model calls fail twice goes to the owner as an open question, so it is never lost or billed again.
- * A login error, or {@link MODEL_FAIL_LIMIT} messages failing in a row, is systemic: it throws {@link ModelUnavailable} to stop the pass.
+ * A login or usage-limit error, or {@link MODEL_FAIL_LIMIT} messages failing in a row, is systemic: it throws {@link ModelUnavailable} to stop the pass.
+ * `check()` throws too when every message in the pass failed (a small scheduled pass never reaches the limit).
  * @req FR:email-runner/model.classify @req FR:email-runner/model.down
  */
-export function tolerant(c: Classifier, onError: () => void): Classifier {
-  let inRow = 0;
+export function tolerant(c: Classifier, onError: () => void): Classifier & { check(): void } {
+  let inRow = 0; let ok = 0; let failed = 0; let last = '';
   const text = (e: unknown) => (e instanceof Error ? e.message : String(e));
   return {
+    check() { if (failed && !ok) throw new ModelUnavailable(last, false); },
     async classify(m, o) {
-      let last = '';
       for (let i = 0; i < 2; i++) {
-        try { const r = await c.classify(m, o); inRow = 0; return r; } catch (e) {
+        try { const r = await c.classify(m, o); inRow = 0; ok++; return r; } catch (e) {
           last = text(e);
           if (AUTH_ERROR.test(last)) throw new ModelUnavailable(last, true);
+          if (LIMIT_ERROR.test(last)) throw new ModelUnavailable(last, false);
         }
       }
-      onError();
+      onError(); failed++;
       if (++inRow >= MODEL_FAIL_LIMIT) throw new ModelUnavailable(last, false);
       return { class: 'needs_decision', urgency: 1, confidence: 0, reason: 'Could not classify (model error); open it to decide' };
     },
@@ -148,7 +153,7 @@ export function rulesFor(account: string, base?: string): RulesConfig {
   const s = extra.sensitive && typeof extra.sensitive === 'object' && !Array.isArray(extra.sensitive) ? (extra.sensitive as Record<string, unknown>) : undefined;
   const add = (k: keyof RulesConfig, ...more: unknown[]) => [...new Set([...DEFAULT_RULES[k], ...strings(extra[k]), ...more.flatMap(strings)])];
   return {
-    owner: [...new Set([account, ...add('owner')])], vip: add('vip'), sensitive: add('sensitive', s?.domains, s?.addresses), sensitivePatterns: add('sensitivePatterns'),
+    owner: [...new Set([account, ...add('owner')])], vip: add('vip'), sensitive: add('sensitive', s?.domains), sensitivePatterns: add('sensitivePatterns'),
     sensitiveKeywords: add('sensitiveKeywords', s?.keywords), receiptSenderPatterns: add('receiptSenderPatterns'), receiptSubjectPatterns: add('receiptSubjectPatterns'),
   };
 }
@@ -201,9 +206,10 @@ export async function runPass(o: PassOptions): Promise<PassSummary> {
   const inbox = createGraphMail({ transport: o.transport, ...(st.cursor ? {} : { since: lookback }) });
   const marked: MailProvider = { ...inbox, async delta(c) { const r = await inbox.delta(c); return { ...r, messages: r.messages.map((m) => (answered.has(m.conversationId) && answered.get(m.conversationId)! >= m.receivedAt ? { ...m, threadLastFrom: o.account } : m)) }; } };
   const provider = withDetails(marked, (id) => messageDetails({ transport: o.transport }, id), o.max ?? DEFAULT_MAX);
+  const classifier = tolerant(createClassifier(llm, usage), () => { modelErrors++; });
   const { cursor, summary, results } = await runTriage({
     ctx: o.ctx, provider, rules: o.rules ?? rulesFor(o.account, o.dataDir), project: o.project, cursor: st.cursor, voice,
-    classifier: tolerant(createClassifier(llm, usage), () => { modelErrors++; }),
+    classifier, beforeAsks: () => classifier.check(),
     ...(live ? { drafter: createDrafter(llm, voice, usage) } : {}),
     hygiene: { state, judge: createJudge(llm, usage), ...(live ? { actions: createGraphActions({ transport: o.transport, approvedMoves: moves }), ...(o.http ? { http: o.http } : {}) } : {}) },
   });

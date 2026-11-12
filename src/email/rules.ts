@@ -30,9 +30,9 @@ export const DEFAULT_RULES: RulesConfig = {
   sensitivePatterns: ['\\b(bank|payroll|legal|law|attorney|medical|clinic|health|hr)\\b'],
   // Conservative: a false match costs one plain ask; a miss sends private mail to a model.
   sensitiveKeywords: [
-    'lab results', 'patient portal', 'medical record', 'diagnosis', 'prescription', 'pharmacy', 'hipaa',
+    'lab results', 'patient portal', 'medical record', 'diagnosis', 'prescription', 'hipaa',
     'insurance claim', 'explanation of benefits', 'tax return', 'tax form', 'tax document', 'irs', 'w-2', '1099',
-    'payroll', 'pay stub', 'paystub', 'social security', 'subpoena', 'legal notice', 'court', 'background check',
+    'payroll', 'pay stub', 'paystub', 'social security', 'subpoena', 'legal notice', 'background check',
   ],
   receiptSenderPatterns: ['^(no-?reply|do-?not-?reply|notifications?|alerts?|receipts?|billing|invoices?|orders?|statements?)@'],
   receiptSubjectPatterns: ['\\b(receipt|invoice|statement|order confirmation|your order|payment (received|confirmation)|shipped|security alert)\\b'],
@@ -71,7 +71,8 @@ export function prefilter(m: Message, config: RulesConfig): PrefilterResult | nu
   if (inList(m.from.address, config.owner) || inList(m.threadLastFrom, config.owner)) return hit('skip', 'owner-answered');
   if (/eventMessage/i.test(m.odataType ?? '')) return hit('calendar', 'calendar');
   if (inList(m.from.address, config.sensitive) || anyMatch(config.sensitivePatterns, m.from.address)) return hit('sensitive', 'sensitive-sender');
-  if (hasKeyword(config.sensitiveKeywords, `${m.subject ?? ''}\n${m.from.name ?? ''}`)) return hit('sensitive', 'sensitive-keyword');
+  // Keywords are sender-controlled: mail failing authentication that claims to be sensitive ("IRS notice") stays spam.
+  if (hasKeyword(config.sensitiveKeywords, `${m.subject ?? ''}\n${m.from.name ?? ''}`) && !authFails(m)) return hit('sensitive', 'sensitive-keyword');
   if (vip) return { class: null, rule: 'vip', vip };
   if (authFails(m)) return hit('spam', 'auth-fail');
   if (bulk(m)) return hit('newsletter', 'bulk-headers');

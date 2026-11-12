@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { answerAsk, asksPath, parseAsk } from '../../src/core/asks';
+import { answerAsk, asksPath, handleAsk, parseAsk } from '../../src/core/asks';
 import { createGraphActions, createGraphMail, htmlToText, messageDetails, sentItems } from '../../src/email/graph-mail';
 import { createGraphGuard, GRAPH_BASE, GraphDenied, type GraphRequest } from '../../src/email/guard';
 import { createServer, request as httpRequest } from 'http';
@@ -522,6 +522,28 @@ describe('model down (claude signed out)', () => {
     const run = async () => ({ code: 1, stdout: JSON.stringify({ is_error: true, result: 'Invalid API key · Please run /login' }), stderr: '' });
     await expect(createClaudeJson({ run })({ model: 'm', system: 's', user: 'u', schema: {} })).rejects.toThrow(/Please run \/login/);
   });
+  it('a usage limit stops at once; one failing message alone in a pass is systemic too', async () => {
+    const c = tolerant({ classify: async () => { throw new Error('claude exited 1: usage limit reached'); } }, () => undefined);
+    await expect(c.classify(msg(), { vip: false })).rejects.toMatchObject({ auth: false });
+    const one = tolerant({ classify: async () => { throw new Error('timeout'); } }, () => undefined);
+    await one.classify(msg(), { vip: false });
+    expect(() => one.check()).toThrow(ModelUnavailable);
+  });
+  it('the login ask reopens when done and the login fails again, and closes when claude works again', async () => {
+    const { storage, ctx } = mkCtx();
+    const dataDir = tmp();
+    const c = new FileTokenCache(join(tmp(), 'graph-token.json'));
+    await c.write({ version: 1, tenant: 't', clientId: 'id', scopes: ['Mail.ReadWrite'], refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, account: 'sam@example.test' });
+    const state = async () => parseAsk(CLAUDE_LOGIN_ASK, (await storage.read(asksPath(CLAUDE_LOGIN_ASK))).content).state;
+    const run = (llm: ClaudeJson) => emailCmd(ctx, 'run', { mode: 'observe' }, { cache: c, dataDir, transport: fakeGraph(delta3).transport, llm });
+    await run(failing(AUTH));
+    await handleAsk(ctx, CLAUDE_LOGIN_ASK, { outcome: 'handled' }, 'me');
+    expect(await state()).toBe('done');
+    expect((await run(failing(AUTH))).code).toBe(4);
+    expect(await state()).toBe('open');
+    expect((await run(fakeLlm(() => ({ class: 'fyi', urgency: 0, confidence: 0.9, reason: 'r' })).llm)).code).toBeUndefined();
+    expect(await state()).toBe('done');
+  });
   it('runPass writes no ask and keeps the old cursor', async () => {
     for (const text of [AUTH, 'claude timed out after 120s']) {
       const dataDir = tmp();
@@ -544,6 +566,8 @@ describe('model down (claude signed out)', () => {
     expect(one.text).toMatch(/Claude login expired: run `claude` and sign in/);
     const all = await emailCmd(ctx, 'run', { all: true }, d);
     expect(all.code).toBe(4);
+    // The mailboxes share one claude login: after one is down the rest are skipped, not retried.
+    expect((all.json.accounts as { skipped?: boolean }[]).filter((x) => x.skipped)).toHaveLength(1);
     expect(await storage.listAsks!()).toEqual([asksPath(CLAUDE_LOGIN_ASK)]);
     expect(parseAsk(CLAUDE_LOGIN_ASK, (await storage.read(asksPath(CLAUDE_LOGIN_ASK))).content)).toMatchObject({ state: 'open', ask: expect.stringMatching(/^Claude login expired: run .claude. and sign in$/) });
   });
