@@ -1,4 +1,4 @@
-/** Now: one task, one reason, Done / Defer / Delegate with Undo, an empty state. */
+/** Now: one task, one reason, Done / Defer with Undo, a message composer to the task's agent, an empty state. */
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mockApi, seed, type MockAsk } from './mock';
@@ -98,10 +98,21 @@ test.describe('Now screen', () => {
     expect(edit).toBeGreaterThanOrEqual(0); expect(edit).toBeLessThan(send);
     expect(m.inbox.at(-1)!.to).toBe('agent');
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
-    await expect(page.getByRole('status')).toContainText('Sent to the');
+    await expect(page.getByRole('status')).toContainText('Sent to Ada Lead');
     await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
     await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner' });
+  });
+
+  // @req FR:now-screen/now.compose: a live session offers its chat
+  test('a task with a live agent session offers Open live chat', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [{ slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] }];
+    m.sessions = [{ id: 'a1b2c3d4-0000-0000-0000-000000000001', title: 'Ada Lead · alpha:6', project: 'alpha', owner: 'alpha', cwd: '/x/alpha', lastActive: new Date().toISOString(), state: 'active', cost: { usd: 0, tokens: 10 }, prs: [] }];
+    await page.goto('/#/now');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
+    await expect(page.getByRole('button', { name: 'Open live chat' })).toBeVisible();
   });
 
   // @req FR:now-screen/now.compose: a row an agent already has keeps its mark; only the text goes

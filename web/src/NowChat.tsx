@@ -2,7 +2,7 @@
  * Now: message the task's agent. A chat thread (your messages and the agent's replies) over one composer; Enter sends.
  * @req FR:now-screen/now.compose @req FR:now-screen/now.thread @req FR:agent-team/web.avatar
  */
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
 import type { AvatarWho } from './avatar';
 import { foldLines, tellThread, TELL_MAX } from './nowscreen';
@@ -22,11 +22,15 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onL
   const load = useCallback(() => loadThread(taskRef).then((t) => setItems(tellThread(t.items)), () => undefined), [taskRef, loadThread]);
   useEffect(() => { void load(); }, [load]);
   const name = agent?.name ?? 'the agent';
+  const sending = useRef(false); // two fast Enters send once
   const send = async () => {
     const t = foldLines(text);
-    if (busy || !t) return;
-    if (await onSend(t)) { setText(''); void load(); }
+    if (busy || !t || sending.current) return;
+    sending.current = true;
+    try { if (await onSend(t)) { setText(''); const el = document.getElementById('now-msg'); if (el) el.style.height = ''; void load(); } } finally { sending.current = false; }
   };
+  /** Grows with the text where `field-sizing` is missing (Safari, Firefox). */
+  const grow = (el: HTMLTextAreaElement) => { if (CSS.supports?.('field-sizing', 'content')) return; el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px`; };
   const now = new Date();
   return (
     <section class="now-chat" aria-label={`Messages with ${name}`} data-testid="now-chat">
@@ -49,7 +53,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onL
       <form class="now-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         {agent && <Avatar who={agent} size={36} />}
         <textarea id="now-msg" rows={1} maxLength={TELL_MAX} value={text} aria-label={`Message ${name}`} placeholder={`Message ${name}…`}
-          onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
+          onInput={(e) => { const el = e.target as HTMLTextAreaElement; setText(el.value); grow(el); }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); (e.target as HTMLTextAreaElement).blur(); }
             else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); void send(); }

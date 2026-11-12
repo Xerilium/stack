@@ -308,14 +308,14 @@ export function App() {
   /** Open a task on its thread with the composer focused (the chip, `a`, the palette); Today keeps the floating composer. @req FR:agent-thread/web.keys */
   const viewRef = useRef(view); viewRef.current = view;
   /** The Now composer: to the task's most specific agent, else the roll-up; a live session offers its chat. @req FR:now-screen/now.compose */
+  const taskAgent = (t: Task) => { const roll = rollupOf(team.team); return team.agentsOf(t).find((a) => a !== roll) ?? roll ?? null; };
   const nowChat = (t: Task) => {
-    const roll = rollupOf(team.team);
     const s = team.sessionOf(t.ref);
     return {
-      agent: team.agentsOf(t).find((a) => a !== roll) ?? roll ?? null,
+      agent: taskAgent(t),
       agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
       onSend: (text: string) => delegate(t.ref, text), loadThread: api.thread,
-      ...(s && ['running', 'idle', 'needs-you'].includes(s.state) ? { onLiveChat: () => team.openSession(t.ref) } : {}),
+      ...(s && s.state !== 'stale' ? { onLiveChat: () => team.openSession(t.ref) } : {}),
     };
   };
   const openThread = useCallback((t: Task) => {
@@ -560,7 +560,7 @@ export function App() {
     }, () => '');
     if (!ok) return false;
     const who = titles.get(t.project) ?? t.project;
-    toast(note ? `🪄 Sent to the ${who} agent` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { if (id) await api.handled(id, 'Withdrawn by the owner'); if (!has) await api.edit(t.ref, t.text, text); return true; }, () => 'Restored'); });
+    toast(note ? `🪄 Sent to ${taskAgent(t)?.name ?? `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { if (id) await api.handled(id, 'Withdrawn by the owner'); if (!has) await api.edit(t.ref, t.text, text); return true; }, () => 'Restored'); });
     return true;
   };
   type RowAct = 'start' | 'done' | 'defer' | 'notnow' | 'delegate';

@@ -19,7 +19,7 @@ export function initials(name: string): string {
 
 /** FNV-1a: the same key always picks the same color. */
 const hash = (s: string): number => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; };
-const EMOJI = (v: string) => v.length > 0 && v.length <= 16 && !/[\sA-Za-z0-9/\\<>"'`]/.test(v);
+const EMOJI = (v: string) => v.length > 0 && v.length <= 16 && !/[\s\p{L}\p{N}/\\<>"'`]/u.test(v);
 const IMAGE = (v: string) => /^\/(?!\/)[A-Za-z0-9._/-]{1,200}\.(?:png|jpe?g|gif|webp|svg)$/i.test(v) && !v.includes('..');
 
 export function avatarOf(who: AvatarWho): AvatarView {
