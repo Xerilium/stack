@@ -101,6 +101,20 @@ describe('startWeb', () => {
   });
 });
 
+describe('demo delivery', () => {
+  // @req FR:agent-delivery/host.loop: a demo copy never runs agents on copied messages or writes live delivery state.
+  it('has no delivery in demo mode, even when the copied config opts in', async () => {
+    const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
+    mkdirSync(join(dest, '.xe/config'), { recursive: true });
+    writeFileSync(join(dest, '.xe/config/stack.json'), JSON.stringify({ inbox: { delivery: 'claude' } }));
+    const web = tmp(); writeFileSync(join(web, 'index.html'), '<html>app</html>');
+    const s = await startWeb({ ...quiet, dir: dest, port: 0, webDir: web, info: { mode: 'demo', repo: 'x', branch: 'main' }, delivery: { run: async () => { throw new Error('no run in demo'); } } });
+    try {
+      expect((await fetch(`${s.url}/api/inbox/delivery?ref=alpha:4`)).status).toBe(404);
+    } finally { await s.close(); }
+  });
+});
+
 describe('static caching', () => {
   // @req FR:perf/serve.assets
   it('keeps hashed assets for a year and leaves the page and api uncached', async () => {

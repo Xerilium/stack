@@ -54,6 +54,16 @@ describe('stack inbox run', () => {
     expect(r.code).toBe(0);
   });
 
+  it('prints no text lines when watching with --json', async () => {
+    const { ctx } = await mk();
+    const ac = new AbortController();
+    const seen: string[] = [];
+    setTimeout(() => ac.abort(), 30);
+    const r = await inboxRunCmd(ctx, { watch: true, json: true }, { repo: '/r', run: runner(true), home, isRepo: () => false, signal: ac.signal, intervalMs: 5, out: (l) => { seen.push(l); } });
+    expect(seen).toEqual([]);
+    expect((r.json.items as unknown[]).length).toBe(1);
+  });
+
   it('refuses --once with --watch', async () => {
     const { ctx } = await mk();
     await expect(inboxRunCmd(ctx, { once: true, watch: true }, { repo: '/r', home })).rejects.toThrow('--once or --watch');

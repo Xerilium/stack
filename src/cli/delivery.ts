@@ -15,7 +15,7 @@ export interface InboxRunDeps {
   run?: Runner; home?: string; isRepo?: (dir: string) => boolean;
   /** `--watch` stops when this aborts; default `SIGINT`. */
   signal?: AbortSignal; intervalMs?: number;
-  /** Lines while watching. */
+  /** Lines while watching; none with `--json`. */
   out?: (line: string) => void;
 }
 
@@ -40,7 +40,7 @@ export async function inboxRunCmd(ctx: LifecycleContext, f: Record<string, strin
     while (!signal.aborted) {
       const r = await runDeliveryPass(deps, project ? { project } : {});
       login = r.login;
-      for (const x of r.items) { all.push(x); d.out?.(line(x)); }
+      for (const x of r.items) { all.push(x); if (f.json !== true) d.out?.(line(x)); } // --json: one JSON object at the end, no text lines
       if (signal.aborted) break;
       await new Promise<void>((ok) => { const t = setTimeout(ok, d.intervalMs ?? 30_000); signal.addEventListener('abort', () => { clearTimeout(t); ok(); }, { once: true }); });
     }

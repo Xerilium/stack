@@ -3,7 +3,7 @@
  * @req FR:agent-delivery/pick.entries @req FR:agent-delivery/pick.agent @req FR:agent-delivery/pick.serial @req FR:agent-delivery/pick.once
  * @req NFR:agent-delivery/delivery.seam
  */
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -111,7 +111,7 @@ describe('runDeliveryPass', () => {
     expect(a.slice(a.indexOf('--permission-mode'), a.indexOf('--permission-mode') + 2)).toEqual(['--permission-mode', 'default']);
     expect(a.slice(a.indexOf('--max-budget-usd'), a.indexOf('--max-budget-usd') + 2)).toEqual(['--max-budget-usd', '0.5']);
     expect(a.slice(a.indexOf('--tools'), a.indexOf('--tools') + 2)).toEqual(['--tools', 'Read,Grep']); // Bash is never in a delivery run
-    expect(a.slice(a.indexOf('--allowedTools'), a.indexOf('--allowedTools') + 2)).toEqual(['--allowedTools', 'Read,Grep']);
+    expect(a.slice(a.indexOf('--allowedTools'), a.indexOf('--allowedTools') + 2)).toEqual(['--allowedTools', 'Read(./**)']); // reads inside the working folder only
     expect(a.join(' ')).not.toMatch(/dangerously|bypassPermissions|acceptEdits/);
     const never = a[a.indexOf('--disallowedTools') + 1];
     for (const t of ['Bash(gh pr merge:*)', 'Bash(gh pr edit:*)', 'Bash(gh label:*)', 'Bash(git push:*)', 'Bash(stack email:*)']) expect(never.split(',')).toContain(t);
@@ -122,13 +122,14 @@ describe('runDeliveryPass', () => {
     const a = deliveryArgs({ model: 'claude-sonnet-5-5', maxUsd: 1, systemFile: '/x' });
     expect(a).toContain('claude-sonnet-5-5');
     expect(a[a.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Edit,Write,WebFetch,WebSearch');
-    expect(a[a.indexOf('--allowedTools') + 1]).toBe('Read,Grep,Glob');
+    expect(a[a.indexOf('--allowedTools') + 1]).toBe('Read(./**)');
+    expect(deliveryArgs({ tools: ['Edit'], maxUsd: 1, systemFile: '/x' })).not.toContain('--allowedTools');
     // @req FR:agent-delivery/safe.noshell
     const shell = deliveryArgs({ tools: ['Bash', 'BashOutput', 'KillShell', 'Read'], maxUsd: 1, systemFile: '/x' });
     expect(shell[shell.indexOf('--tools') + 1]).toBe('Read');
     // An approved ask adds exactly that rule.
     const ok = deliveryArgs({ maxUsd: 1, systemFile: '/x', approved: ['Edit(src/a.ts)'] });
-    expect(ok[ok.indexOf('--allowedTools') + 1]).toBe('Read,Grep,Glob,Edit(src/a.ts)');
+    expect(ok[ok.indexOf('--allowedTools') + 1]).toBe('Read(./**),Edit(src/a.ts)');
   });
 
   /** @req FR:agent-delivery/run.cwd */
@@ -204,6 +205,68 @@ describe('runDeliveryPass', () => {
   });
 });
 
+describe('races and changes during a run', () => {
+  /** @req FR:agent-delivery/pick.serial */
+  it('claims an agent under a lock: a fresh claim from another process, even on this entry, blocks', async () => {
+    const { ctx, d, prompts, store } = await mk();
+    const e = await sendToInbox(ctx, ref(6), 'Hi', 'instruction');
+    const other = new DeliveryStore(home, () => NOW);
+    expect(other.claim(e.id, 'cid', 60_000)).toBe(true);
+    expect(store.claim('in-x', 'cid', 60_000)).toBe(false);
+    expect((await runDeliveryPass(d)).items).toEqual([]);
+    expect(prompts()).toHaveLength(0);
+    expect(existsSync(join(home, 'delivery.lock'))).toBe(false);
+  });
+
+  /** @req FR:agent-delivery/pick.entries */
+  it('skips a message withdrawn while queued or during its own run', async () => {
+    const m = await mk();
+    const a = await sendToInbox(m.ctx, ref(6), 'First', 'instruction');
+    const b = await sendToInbox(m.ctx, ref(6), 'Second', 'instruction');
+    const run: typeof m.run = async (cmd, args, stdin, o) => { if (args[0] === '-p') await handleEntry(m.ctx, b.id, 'owner', undefined, { withdrawn: true }); return m.run(cmd, args, stdin, o); };
+    const r = await runDeliveryPass({ ...m.d, run });
+    expect(r.items.map((x) => x.id)).toEqual([a.id]);
+    expect(m.prompts()).toHaveLength(1);
+    const c = await sendToInbox(m.ctx, ref(8), 'Third', 'instruction');
+    const self: typeof m.run = async (cmd, args, stdin, o) => { if (args[0] === '-p') await handleEntry(m.ctx, c.id, 'owner', undefined, { withdrawn: true }); return m.run(cmd, args, stdin, o); };
+    expect((await runDeliveryPass({ ...m.d, run: self })).items).toEqual([{ id: c.id, state: 'failed', agent: 'cid', reason: 'Withdrawn' }]);
+    expect((await listInbox(m.ctx, { state: 'all' })).filter((x) => x.from === 'agent')).toHaveLength(1);
+  });
+
+  /** @req FR:agent-delivery/run.reply */
+  it('posts on the row where the task is when the run ends', async () => {
+    const m = await mk();
+    const e = await sendToInbox(m.ctx, ref(6), 'Ship?', 'instruction');
+    const run: typeof m.run = async (cmd, args, stdin, o) => {
+      if (args[0] === '-p') { const f = await m.storage.read('tasks/flantastic-4.md'); await m.storage.write('tasks/flantastic-4.md', f.content.replace('## 🔄 Active\n\n', '## 🔄 Active\n\n- [ ] 🤖 New on top\n'), { expectedVersion: f.version }); }
+      return m.run(cmd, args, stdin, o);
+    };
+    expect((await runDeliveryPass({ ...m.d, run })).items).toEqual([{ id: e.id, state: 'delivered', agent: 'cid' }]);
+    const reply = (await listInbox(m.ctx, { state: 'all' })).find((x) => x.from === 'agent')!;
+    expect(reply.ref).toBe('tasks/flantastic-4.md:8');
+    expect(reply.task).toContain('Release the single');
+  });
+
+  /** @req FR:agent-delivery/pick.once */
+  it('finishes a delivered entry left open without a second run', async () => {
+    const { ctx, d, prompts, store } = await mk();
+    const e = await sendToInbox(ctx, ref(6), 'Hi', 'instruction');
+    store.set(e.id, { state: 'delivered', at: NOW.toISOString(), agent: 'cid' });
+    await runDeliveryPass(d);
+    expect(prompts()).toHaveLength(0);
+    expect(await listInbox(ctx)).toEqual([]);
+  });
+
+  /** @req FR:agent-delivery/run.prompt */
+  it('gives a queued follow-up the reply to the message before it', async () => {
+    const { ctx, d, prompts } = await mk();
+    await sendToInbox(ctx, ref(6), 'First', 'instruction');
+    await sendToInbox(ctx, ref(6), 'Second', 'instruction');
+    await runDeliveryPass(d);
+    expect(prompts()[1].stdin).toContain('On it: the single ships Friday');
+  });
+});
+
 describe('daily cap', () => {
   /** @req FR:agent-delivery/run.daily */
   it('stops at the daily cap, raises one ask, and resumes the next day', async () => {
@@ -251,7 +314,7 @@ describe('approved permission asks', () => {
     const r = await runDeliveryPass(m.d);
     expect(r.items).toEqual([{ id: e.id, state: 'delivered', agent: 'cid' }]);
     const p = m.prompts()[1];
-    expect(p.args[p.args.indexOf('--allowedTools') + 1]).toBe('Read,Grep,Edit(src/a.ts)');
+    expect(p.args[p.args.indexOf('--allowedTools') + 1]).toBe('Read(./**),Edit(src/a.ts)');
     expect(p.stdin).toContain('The owner approved: Edit');
     expect(p.stdin).toContain('Fix it');
     const replies = (await listInbox(m.ctx, { state: 'all' })).filter((x) => x.from === 'agent').map((x) => x.text);
@@ -292,17 +355,26 @@ describe('login health', () => {
     expect(store.read().login.state).toBe('expired');
   });
 
+  it('does not read sign-in trouble from the agent own words', async () => {
+    const { ctx, d, store } = await mk({ replies: [{ code: 1, stdout: JSON.stringify({ is_error: true, result: 'The OAuth authentication refactor broke the build' }) }] });
+    const e = await sendToInbox(ctx, ref(6), 'Hi', 'instruction');
+    expect((await runDeliveryPass(d)).items).toEqual([{ id: e.id, state: 'failed', agent: 'cid', reason: 'Agent run failed' }]);
+    expect(store.read().login.state).toBe('ok');
+  });
+
   it('treats an unreadable status as unknown and still runs', async () => {
     const { d } = await mk({ login: 'weird' });
     expect(await checkLogin(d)).toBe('unknown');
   });
 
   /** @req FR:agent-delivery/login.signin */
-  it('starts the sign-in flow detached, or names the step', () => {
+  it('starts the sign-in flow detached, or names the step', async () => {
     const seen: string[][] = [];
-    expect(startLogin((cmd, args) => { seen.push([cmd, ...args]); })).toEqual({ started: true });
+    expect(await startLogin(async (cmd, args) => { seen.push([cmd, ...args]); })).toEqual({ started: true });
     expect(seen).toEqual([['claude', 'auth', 'login']]);
-    expect(startLogin(() => { throw new Error('ENOENT'); })).toEqual({ started: false, step: 'claude auth login' });
+    expect(await startLogin(() => { throw new Error('ENOENT'); })).toEqual({ started: false, step: 'claude auth login' });
+    // A missing binary fails after spawn returns (the child error event): still the fallback step.
+    expect(await startLogin(() => Promise.reject(new Error('spawn claude ENOENT')))).toEqual({ started: false, step: 'claude auth login' });
   });
 });
 
@@ -329,6 +401,10 @@ describe('state and status', () => {
     const s = await deliveryStatus(d, 'flantastic-4:6', () => inv);
     expect(s).toEqual({ mode: 'off', login: 'unknown', items: { [e.id]: { state: 'working', agent: 'cid' } }, live: { id: 's2', title: '🎧 Cid · flantastic-4:6', link: 'claude://claude.ai/epitaxy/s2' } });
     expect(liveSessionFor(inv, { name: 'Nobody' }, 'x:1')).toBeUndefined();
+    // The agent name must be the whole title head, not a prefix of another word or title.
+    const named = { sessions: [item('s4', 'Stack v2 roadmap'), item('s5', 'Stacked PRs')] } as unknown as Inventory;
+    expect(liveSessionFor(named, { name: 'Stack' }, 'x:1')).toBeUndefined();
+    expect(liveSessionFor({ sessions: [item('s6', 'Stack · todo')] } as unknown as Inventory, { name: 'Stack' }, 'x:1')?.id).toBe('s6');
   });
 
   /** @req FR:agent-delivery/safe.optin */

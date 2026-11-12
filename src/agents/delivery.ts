@@ -5,7 +5,7 @@
  * @req FR:agent-delivery/pick.entries @req FR:agent-delivery/run.cli @req FR:agent-delivery/state.file @req NFR:agent-delivery/delivery.seam
  */
 import { spawn } from 'child_process';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { agentFor, listTeam, type TeamAgent } from '../core/agents';
@@ -13,6 +13,7 @@ import { handleAsk, putAsk, readAsk } from '../core/asks';
 import type { StackConfig } from '../core/config';
 import { currentRows, handleEntry, listInbox, replyFromAgent, type ListedEntry } from '../core/inbox';
 import type { LifecycleContext, TaskRef } from '../core/lifecycle';
+import { pidAlive } from '../core/file-lock';
 import { projectRepos } from '../core/repos';
 import type { Inventory } from '../core/session-inventory';
 import { redact } from '../core/triage';
@@ -57,8 +58,10 @@ export const PREFIX = [
 /** Tools a delivery run may never use. No MCP server loads at all (`--strict-mcp-config`). @req FR:agent-delivery/safe.never */
 // @req FR:agent-delivery/safe.never
 export const NEVER_TOOLS = ['Bash(gh pr merge:*)', 'Bash(gh pr edit:*)', 'Bash(gh issue edit:*)', 'Bash(gh label:*)', 'Bash(gh api:*)', 'Bash(git push:*)', 'Bash(stack email:*)'];
-/** The only tools pre-allowed; everything else the agent file lists is denied in a headless run and becomes an ask. @req FR:acp-driver/perm.headless */
+/** The read tools; the only pre-allow is a read inside the working folder. Everything else the agent file lists is denied in a headless run and becomes an ask. @req FR:acp-driver/perm.headless */
 const READ_TOOLS = ['Read', 'Grep', 'Glob'];
+/** Read rules also cover Grep and Glob; `./**` is the working folder, so ~/.ssh, .env files elsewhere and token caches stay an ask. */
+const READ_HERE = 'Read(./**)';
 /** The tools a run gets when the agent file lists none. Never a shell. */
 const DEFAULT_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'WebFetch', 'WebSearch'];
 /** Shell tools never enter a delivery run, whatever the agent file says: agents that need a shell stay out of this runner. @req FR:agent-delivery/safe.noshell */
@@ -71,7 +74,10 @@ const KEEP_MS = 30 * 864e5;
 const THREAD_MAX = 20;
 const REPLY_MAX = 1000;
 const MAX_ASKS = 5;
+/** Sign-in trouble in the CLI's stderr. */
 const SIGNED_OUT = /\/login|oauth|not logged in|not signed in|authenticat|invalid api key|\b401\b/i;
+/** The CLI's own sign-in errors in the result; never the model's words about auth. */
+const CLI_SIGNED_OUT = /Please run \/login|Invalid API key|OAuth token has expired|authentication_error|API Error: 401/;
 
 /** Delivery settings from the config; delivery is off unless the config says `claude`. @req FR:agent-delivery/safe.optin @req FR:agent-delivery/run.limits */
 export function deliverySettings(config: StackConfig | undefined, repoDir: string): DeliverySettings {
@@ -103,13 +109,48 @@ export class DeliveryStore {
     writeFileSync(tmp, `${JSON.stringify({ ...f, items }, null, 2)}\n`, { mode: 0o600 });
     renameSync(tmp, this.file);
   }
-  set(id: string, r: DeliveryRecord): void { const f = this.read(); f.items[id] = r; this.write(f); }
+  /**
+   * Read-modify-write under `delivery.lock` (O_EXCL, holding the pid), so the host loop and `stack inbox run` never lose each other's writes.
+   * A lock whose writer is gone, or older than 30 s, is taken over. @req FR:agent-delivery/pick.serial
+   */
+  private update<T>(fn: (f: DeliveryFile) => T): T {
+    mkdirSync(this.home, { recursive: true });
+    const lock = join(this.home, 'delivery.lock');
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      try { const fd = openSync(lock, 'wx', 0o600); try { writeSync(fd, String(process.pid)); } finally { closeSync(fd); } break; } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+        try {
+          const pid = Number(readFileSync(lock, 'utf8'));
+          if ((pid > 0 && !pidAlive(pid)) || Date.now() - statSync(lock).mtimeMs > 30_000) { unlinkSync(lock); continue; }
+        } catch { continue; } // gone between the open and the read
+        if (Date.now() > deadline) throw new Error('Delivery state is busy');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+      }
+    }
+    try { const f = this.read(); const out = fn(f); this.write(f); return out; } finally { try { unlinkSync(lock); } catch { /* already gone */ } }
+  }
+  set(id: string, r: DeliveryRecord): void { this.update((f) => { f.items[id] = r; }); }
+  /**
+   * Atomically checks and reserves a run: false when the entry is done, or any fresh `working` record (any process, this entry too) holds the agent.
+   * @req FR:agent-delivery/pick.serial @req FR:agent-delivery/pick.once
+   */
+  claim(id: string, agent: string, freshMs: number, o: { rerun?: boolean } = {}): boolean {
+    return this.update((f) => {
+      const now = this.now();
+      const cur = f.items[id];
+      if (!o.rerun && cur && (cur.state === 'delivered' || cur.state === 'failed')) return false;
+      if (Object.values(f.items).some((r) => r.agent === agent && r.state === 'working' && now.getTime() - Date.parse(r.at) < freshMs)) return false;
+      f.items[id] = { state: 'working', at: now.toISOString(), agent };
+      return true;
+    });
+  }
   private day(): string { return this.now().toISOString().slice(0, 10); }
   /** Spend today (UTC day). @req FR:agent-delivery/run.daily */
   spentToday(): number { const s = this.read().spend; return s && s.day === this.day() ? s.usd : 0; }
-  addSpend(usd: number): void { if (!(usd > 0)) return; const f = this.read(); const day = this.day(); f.spend = { day, usd: (f.spend?.day === day ? f.spend.usd : 0) + usd }; this.write(f); }
-  setPerm(key: string, p: PendingPerm | null): void { const f = this.read(); const m = { ...(f.perms ?? {}) }; if (p) m[key] = p; else delete m[key]; f.perms = m; this.write(f); }
-  setLogin(state: LoginState): void { const f = this.read(); f.login = { state, at: this.now().toISOString() }; this.write(f); }
+  addSpend(usd: number): void { if (!(usd > 0)) return; const day = this.day(); this.update((f) => { f.spend = { day, usd: (f.spend?.day === day ? f.spend.usd : 0) + usd }; }); }
+  setPerm(key: string, p: PendingPerm | null): void { this.update((f) => { const m = { ...(f.perms ?? {}) }; if (p) m[key] = p; else delete m[key]; f.perms = m; }); }
+  setLogin(state: LoginState): void { this.update((f) => { f.login = { state, at: this.now().toISOString() }; }); }
   // @req FR:agent-delivery/safe.log: ids, states, timing and cost only; never a body.
   log(line: Record<string, unknown>): void {
     mkdirSync(this.home, { recursive: true });
@@ -126,7 +167,7 @@ export async function pendingDeliveries(ctx: LifecycleContext, o: { project?: st
 /** `claude -p` arguments: safe mode, no MCP, nothing kept, the agent's tools, only reads pre-allowed, the never-list denied. @req FR:agent-delivery/run.cli @req FR:agent-delivery/safe.never */
 export function deliveryArgs(o: { model?: string; tools?: string[]; maxUsd: number; systemFile: string; approved?: string[] }): string[] {
   const tools = (o.tools?.length ? o.tools : DEFAULT_TOOLS).filter((t) => !SHELL.test(t));
-  const allowed = [...READ_TOOLS.filter((t) => tools.includes(t)), ...(o.approved ?? [])];
+  const allowed = [...(READ_TOOLS.some((t) => tools.includes(t)) ? [READ_HERE] : []), ...(o.approved ?? [])];
   return [
     // No setting source loads: the owner's own allow rules (user, project, local) must never pre-allow a tool in an unattended run.
     '-p', '--safe-mode', '--setting-sources', '', '--strict-mcp-config', '--no-session-persistence', '--output-format', 'json', '--permission-mode', 'default',
@@ -152,13 +193,16 @@ export async function checkLogin(d: DeliveryDeps): Promise<LoginState> {
 }
 
 /** Starts the browser sign-in detached; else names the one step. @req FR:agent-delivery/login.signin */
-export function startLogin(spawnDetached: (cmd: string, args: string[]) => void = defaultDetached): { started: boolean; step?: string } {
-  try { spawnDetached(process.env.STACK_CLAUDE_BIN ?? 'claude', ['auth', 'login']); return { started: true }; } catch { return { started: false, step: SIGN_IN }; }
+export async function startLogin(spawnDetached: (cmd: string, args: string[]) => Promise<void> | void = defaultDetached): Promise<{ started: boolean; step?: string }> {
+  try { await spawnDetached(process.env.STACK_CLAUDE_BIN ?? 'claude', ['auth', 'login']); return { started: true }; } catch { return { started: false, step: SIGN_IN }; }
 }
-function defaultDetached(cmd: string, args: string[]): void {
-  const p = spawn(cmd, args, { detached: true, stdio: 'ignore', env: childEnv() });
-  p.on('error', () => undefined);
-  p.unref();
+/** Resolves once the process started; rejects on the child's `error` event (e.g. no `claude` on PATH), which fires after `spawn` returns. */
+function defaultDetached(cmd: string, args: string[]): Promise<void> {
+  return new Promise((ok, fail) => {
+    const p = spawn(cmd, args, { detached: true, stdio: 'ignore', env: childEnv() });
+    p.once('error', fail);
+    p.once('spawn', () => { p.unref(); ok(); });
+  });
 }
 
 /** One sign-in ask while signed out; closed once signed in. @req FR:agent-delivery/login.notice */
@@ -210,7 +254,10 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
   const now = () => (d.ctx.now ?? (() => new Date()))();
   // Nothing to deliver: no process starts (the login is checked only when it matters).
   const done0 = d.store.read().items;
-  const entries = (await pendingDeliveries(d.ctx, o)).filter((e) => done0[e.id]?.state !== 'failed' && done0[e.id]?.state !== 'delivered');
+  const pending = await pendingDeliveries(d.ctx, o);
+  // A reply was posted but the entry was not handled (a conflict or a crash between the two writes): finish it, never run again.
+  for (const e of pending.filter((x) => done0[x.id]?.state === 'delivered')) await handleEntry(d.ctx, e.id, done0[e.id].agent || 'stack', 'Delivered').catch(() => undefined);
+  const entries = pending.filter((e) => done0[e.id]?.state !== 'failed' && done0[e.id]?.state !== 'delivered');
   const out: DeliveryResult[] = [];
   const perms = d.store.read().perms ?? {};
   if (!entries.length && !Object.keys(perms).length) return { login: d.store.read().login.state, items: out };
@@ -246,6 +293,9 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
       continue;
     }
     if (capHit()) { record(e, { state: 'not-delivered', agent: t.agent.slug, reason: 'Daily cap reached' }); await syncCapAsk(d, true); continue; }
+    // The entries list is a snapshot: the owner may have withdrawn this one since (or another run handled it).
+    if (!(await stillOpen(d, e))) continue;
+    if (!d.store.claim(e.id, t.agent.slug, fresh)) continue;
     const r = await deliverOne(d, e, t, now);
     record(e, r);
     if (r.state === 'not-delivered') { login = 'expired'; d.store.setLogin(login); await syncLoginAsk(d.ctx, login); }
@@ -279,6 +329,7 @@ async function runApprovals(d: DeliveryDeps, perms: Record<string, PendingPerm>,
     const t = e ? await targetOf(d, e, rows.get(id), team) : null;
     if (!e || !t || t === 'human') { await close('Task gone'); continue; }
     if (capHit()) { await syncCapAsk(d, true); continue; } // waits for the next day with the asks still answered
+    if (!d.store.claim(e.id, t.agent.slug, d.settings.timeoutMs + 60_000, { rerun: true })) continue; // the agent is busy: the asks wait for the next pass
     await close('Re-run with approval');
     record(e, await deliverOne(d, e, t, now, { approved: g.rules, note: `The owner approved: ${g.tools.join(', ')} (${g.rules.join(', ')}). Do what you asked to do, then answer.` }));
   }
@@ -306,7 +357,8 @@ async function userText(d: DeliveryDeps, e: ListedEntry, t: Target, note?: strin
   const all = await listInbox(d.ctx, { project: t.project, state: 'all' }).catch(() => [] as ListedEntry[]);
   const rows = await currentRows(d.ctx, all).catch(() => new Map<string, string>());
   const here = `${t.ref.path}:${t.ref.line + 1}`;
-  const before = all.filter((x) => x.id !== e.id && x.at <= e.at && rows.get(x.id) === here).slice(-THREAD_MAX);
+  // Owner messages up to this one; agent replies already posted count even when newer (a reply to the message before this one, queued behind it).
+  const before = all.filter((x) => x.id !== e.id && (x.from === 'agent' || x.at <= e.at) && rows.get(x.id) === here).slice(-THREAD_MAX);
   const lines = before.map((x) => `- ${x.from === 'agent' ? (x.agent ?? 'agent') : 'Owner'}: ${x.text}`);
   return [`Task (${t.apiRef}):`, t.context, '', 'Thread so far (oldest first):', ...(lines.length ? lines : ['- (none)']), '', `Message to answer (from the owner, ${e.kind}):`, '', e.text, ...(note ? ['', note] : [])].join('\n');
 }
@@ -317,7 +369,6 @@ interface ClaudeOut { result?: unknown; is_error?: unknown; subtype?: unknown; t
 async function deliverOne(d: DeliveryDeps, e: ListedEntry, t: Target, now: () => Date, extra: { approved?: string[]; note?: string } = {}): Promise<Omit<DeliveryResult, 'id'>> {
   const agent = t.agent.slug;
   const t0 = Date.now();
-  d.store.set(e.id, { state: 'working', at: now().toISOString(), agent });
   let usd = 0;
   const done = (state: DeliveryState, reason?: string): Omit<DeliveryResult, 'id'> => {
     d.store.log({ entry: e.id, agent, project: t.project, state, ms: Date.now() - t0, usd, ...(reason ? { reason } : {}) });
@@ -339,15 +390,35 @@ async function deliverOne(d: DeliveryDeps, e: ListedEntry, t: Target, now: () =>
   d.store.addSpend(usd);
   const text = typeof out.result === 'string' ? out.result : '';
   const failed = r.code !== 0 || out.is_error === true;
-  if (failed && SIGNED_OUT.test(`${r.stderr} ${text}`)) return done('not-delivered', 'Claude login expired');
+  if (failed && (SIGNED_OUT.test(r.stderr) || CLI_SIGNED_OUT.test(text))) return done('not-delivered', 'Claude login expired');
   await denialAsks(d, e, t, out.permission_denials).catch(() => undefined);
   if (typeof out.subtype === 'string' && /budget/i.test(out.subtype)) return done('failed', 'Cost cap reached');
   if (failed) return done('failed', 'Agent run failed');
   const reply = oneLine(redact(text), REPLY_MAX); // the thread is committed: no secret the run read may land there
   if (!reply) return done('failed', 'Agent sent no reply');
-  await replyFromAgent(d.ctx, t.ref, reply, agent);
-  await handleEntry(d.ctx, e.id, agent, 'Delivered');
+  // The run took minutes: the owner may have withdrawn the message, and the task may have moved. Post on the row where it is now.
+  if (!(await stillOpen(d, e, !!extra.approved))) return done('failed', 'Withdrawn');
+  const at = await rowNow(d, e);
+  if (!at) return done('failed', 'Task gone');
+  try { await replyFromAgent(d.ctx, at.ref, reply, agent, at.text); } catch { return done('failed', 'Task changed during the run'); }
+  // Delivered is written before the entry is handled: if handling fails, the next pass finishes it instead of running again.
+  d.store.set(e.id, { state: 'delivered', at: now().toISOString(), agent });
+  await handleEntry(d.ctx, e.id, agent, 'Delivered').catch(() => undefined);
   return done('delivered');
+}
+
+/** The entry is still open (not withdrawn, not handled); for an approved re-run (already handled), only not withdrawn. */
+async function stillOpen(d: DeliveryDeps, e: ListedEntry, rerun = false): Promise<boolean> {
+  return (await listInbox(d.ctx, { project: e.project, state: rerun ? 'all' : 'open' })).some((x) => x.id === e.id);
+}
+
+/** The entry's row now, with its text so the reply write fails if the row changes in between. */
+async function rowNow(d: DeliveryDeps, e: ListedEntry): Promise<{ ref: TaskRef; text: string } | null> {
+  const ref = toRef((await currentRows(d.ctx, [e])).get(e.id) ?? '');
+  if (!ref) return null;
+  const line = (await d.ctx.storage.read(ref.path)).content.split('\n')[ref.line] ?? '';
+  const bare = line.replace(/\r$/, '');
+  return /^\s*- \[[ xX]\]/.test(bare) ? { ref, text: bare.replace(/^\s*- \[[ xX]\] ?/, '') } : null; // same row text the inbox checks
 }
 
 /** Every denied tool call is one ask; Stack never re-runs it. @req FR:agent-delivery/run.asks @req FR:acp-driver/perm.headless */
@@ -373,7 +444,8 @@ async function denialAsks(d: DeliveryDeps, e: ListedEntry, t: Target, denials: u
 /** The newest live session for this agent or task: link only. @req FR:agent-delivery/live.find */
 export function liveSessionFor(inv: Pick<Inventory, 'sessions'> | undefined, agent: { name: string }, apiRef: string): LiveSession | undefined {
   const hit = (inv?.sessions ?? [])
-    .filter((s) => s.state !== 'done' && (s.title.endsWith(` · ${apiRef}`) || s.title.startsWith(agent.name)))
+    // Archived sessions never reach the inventory (FR:session-inventory/state.archived). The name is the whole title head: `<name>` or `<name> · …`.
+    .filter((s) => s.state !== 'done' && (s.title.endsWith(` · ${apiRef}`) || s.title === agent.name || s.title.startsWith(`${agent.name} · `)))
     .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))[0];
   return hit ? { id: hit.id, title: hit.title, link: hit.link } : undefined;
 }

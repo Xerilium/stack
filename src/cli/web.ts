@@ -80,8 +80,8 @@ export interface WebOpts {
   storage?: Storage & { close?(): Promise<void> };
   /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
   agents?: AgentRuns | false;
-  /** Agent delivery: overrides for tests (runner, home); `false` turns it off (demo). The loop runs only when `inbox.delivery` is `claude`. @req FR:agent-delivery/host.loop */
-  delivery?: Partial<Pick<DeliveryDeps, 'run' | 'isRepo' | 'store'>> & { intervalMs?: number; login?: () => { started: boolean; step?: string } } | false;
+  /** Agent delivery: overrides for tests (runner, home); `false` turns it off. Always off in demo mode (`info.mode`). The loop runs only when `inbox.delivery` is `claude`. @req FR:agent-delivery/host.loop */
+  delivery?: Partial<Pick<DeliveryDeps, 'run' | 'isRepo' | 'store'>> & { intervalMs?: number; login?: () => Promise<{ started: boolean; step?: string }> | { started: boolean; step?: string } } | false;
   /** This machine's inbox sign-ins for `GET /inbox-sources`; default the cached local probe. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
   /** The live report store; default `~/.stack` (or `STACK_HOME`). @req FR:status-ingest/api.put */
@@ -237,7 +237,8 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const live = new LiveStore(laneHome);
   const offLive = live.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'live'] }); });
   // @req FR:agent-delivery/host.loop @req FR:agent-delivery/state.api: state is always readable here; the loop starts only when the config opts in.
-  const dd: DeliveryDeps | undefined = o.delivery === false ? undefined : { ctx: { storage, config }, settings: deliverySettings(config, o.dir), store: o.delivery?.store ?? new DeliveryStore(stackHome()), repoDir: o.dir, ...(o.delivery?.run ? { run: o.delivery.run } : {}), ...(o.delivery?.isRepo ? { isRepo: o.delivery.isRepo } : {}) };
+  // A demo copy never runs agents on copied messages or writes the live delivery state.
+  const dd: DeliveryDeps | undefined = o.delivery === false || o.info?.mode === 'demo' ? undefined : { ctx: { storage, config }, settings: deliverySettings(config, o.dir), store: o.delivery?.store ?? new DeliveryStore(stackHome()), repoDir: o.dir, ...(o.delivery?.run ? { run: o.delivery.run } : {}), ...(o.delivery?.isRepo ? { isRepo: o.delivery.isRepo } : {}) };
   const deliveryLoop = dd && dd.settings.mode === 'claude' ? startDeliveryLoop(dd, { intervalMs: o.delivery ? o.delivery.intervalMs : undefined, onError: (e) => console.error(`delivery: ${e instanceof Error ? e.message : 'error'}`) }) : undefined;
   const delivery = dd ? { status: (ref: string) => deliveryStatus(dd, ref, inventory), login: () => (o.delivery && o.delivery.login ? o.delivery.login() : startLogin()) } : undefined;
   const api = createApiHandler({ storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe(), ...(o.app ? { app: o.app } : {}) });

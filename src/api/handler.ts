@@ -85,7 +85,7 @@ export interface ApiDeps {
   /** This machine's inbox sign-ins (Graph caches, GitHub); absent on the hosted app, which uses sync records only. `fresh` skips any cache. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
   /** Agent delivery on this machine: per-message state for a row and the Claude sign-in; absent means /inbox/delivery is 404. @req FR:agent-delivery/state.api */
-  delivery?: { status(ref: string): Promise<unknown>; login(): { started: boolean; step?: string } };
+  delivery?: { status(ref: string): Promise<unknown>; login(): Promise<{ started: boolean; step?: string }> | { started: boolean; step?: string } };
   /** Files "Request this action" issues; absent means a Stack task instead. @req FR:inbox-page/action.request */
   issues?: IssueFiler;
   /** Today's meetings for the day plan; absent means no calendar. @req FR:day-inputs/api.calendar */
@@ -1192,7 +1192,7 @@ export const ROUTES: Route[] = [
       noQuery(c);
       ownerOnly(c, 'Only the owner can sign in');
       if (!c.deps.delivery) throw new ApiError('not_found', 'Delivery is not available on this host');
-      return json(200, c.deps.delivery.login());
+      return json(200, await c.deps.delivery.login());
     },
   },
   {
