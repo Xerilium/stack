@@ -55,6 +55,19 @@ describe('stack inbox list and handle', () => {
     expect((await stack(d, 'inbox', 'handle')).code).toBe(2);
     expect((await stack(d, 'inbox', 'list')).out).toBe('');
   });
+  // @req FR:product-reset/ui.thread: --agent lists messages picked for that agent in any project
+  it('lists with --agent and names the picked agent', async () => {
+    const d = dir();
+    mkdirSync(join(d, 'tasks/inbox'));
+    writeFileSync(join(d, 'tasks/inbox/f4.md'), [
+      '# F4 inbox', '',
+      '## in-20261028T140311Z-3f9a', '', '- at: 2026-10-28T14:03:11.000Z', '- state: open', '- kind: instruction', '- to: agent', '- agent: bea', '- ref: tasks/f4.md:5', '- task: Ship', '- text: For Bea', '',
+      '## in-20261028T140312Z-3f9b', '', '- at: 2026-10-28T14:03:12.000Z', '- state: open', '- kind: instruction', '- to: agent', '- ref: tasks/f4.md:5', '- task: Ship', '- text: Plain', '',
+    ].join('\n'));
+    expect((await stack(d, 'inbox', 'list')).out).toBe('in-20261028T140311Z-3f9a instruction f4 tasks/f4.md:5 For Bea (to bea)\nin-20261028T140312Z-3f9b instruction f4 tasks/f4.md:5 Plain\n');
+    expect((await stack(d, 'inbox', 'list', '--agent', 'bea')).out).toBe('in-20261028T140311Z-3f9a instruction f4 tasks/f4.md:5 For Bea (to bea)\n');
+    expect((await stack(d, 'inbox', 'list', '--agent', 'cid', '--project', 'f4')).out).toBe('in-20261028T140312Z-3f9b instruction f4 tasks/f4.md:5 Plain\n');
+  });
   // @req FR:agent-inbox/cli.list: a withdrawn entry shows only with --all
   it('hides withdrawn entries unless --all', async () => {
     const d = dir();

@@ -348,7 +348,9 @@ async function targetOf(d: DeliveryDeps, e: ListedEntry, row: string | undefined
   const c = await taskContext(d.ctx, ref).catch(() => null);
   if (c?.human) return 'human'; // the owner's own row: never delivered
   if (!c) return null;
-  const agent = deliveryAgent(team, c.project, c.section);
+  // The recipient Now named (the pick, else the owner) wins when Stack can run it. @req FR:agent-delivery/pick.agent @req FR:product-reset/ui.thread
+  const named = !e.from && e.agent ? team.find((a) => a.slug === e.agent && !a.home) : undefined;
+  const agent = named ?? deliveryAgent(team, c.project, c.section);
   return agent ? { ref, apiRef: formatRef(ref), agent, context: c.text, title: c.title, project: c.project } : null;
 }
 

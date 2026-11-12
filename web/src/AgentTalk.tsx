@@ -5,14 +5,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { QUICK, type ChipView, type Talk, type TeamAgent } from './team';
 import type { Team } from './useTeam';
+import { Avatar } from './AgentAvatar';
+import { nameBeside } from './avatar';
 import './team.css';
 
 export function AgentChip({ view, onClick, onNeeds }: { view: ChipView; onClick: () => void; onNeeds?: () => void }) {
   return (
     <span class="agent-slot">
-      <button type="button" class={`chip agent-chip ${view.tone}${view.state ? ' state' : ''}`} title={view.title} aria-label={`Agent: ${view.text}. ${view.title}`} onClick={(e) => { e.stopPropagation(); if (view.needs && onNeeds) onNeeds(); else onClick(); }}>
+      <button type="button" data-c="AgentChip" data-agent={view.agent?.slug} class={`chip agent-chip ${view.tone}${view.state ? ' state' : ''}`} title={view.title} aria-label={`Agent: ${view.text}. ${view.title}`} onClick={(e) => { e.stopPropagation(); if (view.needs && onNeeds) onNeeds(); else onClick(); }}>
         {(view.tone === 'accent' || view.tone === 'warn') && <span class="dot" aria-hidden="true" />}
-        <span>{view.text}</span>
+        {view.agent && <Avatar who={view.agent} size={16} />}
+        <span>{view.agent && view.text === view.agent.name ? nameBeside(view.agent) : view.text}</span>
       </button>
     </span>
   );

@@ -202,7 +202,7 @@ const RESULT_BODY = {
   required: ['ref', 'outcome', 'summary'],
 };
 const INBOX_BODY = {
-  schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: INBOX_KINDS }, expect: { t: 'str', max: 2000, line: true } } satisfies Record<string, Spec>,
+  schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: INBOX_KINDS }, expect: { t: 'str', max: 2000, line: true }, agent: { t: 'str', max: 64, line: true } } satisfies Record<string, Spec>,
   required: ['ref', 'text'],
 };
 const CAL_Q: Record<string, Spec> = { from: { t: 'str', max: 40 }, to: { t: 'str', max: 40 } };
@@ -239,7 +239,7 @@ async function overridesOf(storage: unknown): Promise<{ value: ScheduleOverrides
   if (!f) return { value: {}, version: null };
   try { return { value: cleanOverrides(JSON.parse(f.content)), version: f.version }; } catch { return { value: {}, version: f.version, broken: true }; }
 }
-const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES } };
+const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES }, agent: { t: 'str', max: 64 } };
 const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true }, withdrawn: { t: 'bool' } } satisfies Record<string, Spec>, required: ['id'] };
 const ASK_PUT_BODY = {
   schema: {
@@ -360,10 +360,10 @@ function flatten(doc: Doc): TaskView[] {
   const out: TaskView[] = [];
   const walk = (ts: Task[], section: string, depth: number) => {
     for (const t of ts) {
-      if (t.text.trim() !== '') {
-        out.push({ ref: formatRef({ path: doc.path, line: t.line }), text: t.text, project: doc.name, section, done: t.checked, depth, notes: t.notes });
-      }
-      walk(t.children, section, depth + 1);
+      // An empty row is not listed and is not a level: depth counts listed ancestors, so a client never reads a child as another row's.
+      const listed = t.text.trim() !== '';
+      if (listed) out.push({ ref: formatRef({ path: doc.path, line: t.line }), text: t.text, project: doc.name, section, done: t.checked, depth, notes: t.notes });
+      walk(t.children, section, listed ? depth + 1 : depth);
     }
   };
   for (const s of doc.project.sections) walk(s.tasks, s.heading, 0);
@@ -715,10 +715,12 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/inbox', name: 'inbox.send', body: INBOX_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; kind?: InboxKind; expect?: string }>(await readBody(c.req), INBOX_BODY.schema, INBOX_BODY.required);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; kind?: InboxKind; expect?: string; agent?: string }>(await readBody(c.req), INBOX_BODY.schema, INBOX_BODY.required);
       // Only the owner speaks in the inbox; an agent token must never write words in the owner's voice.
       if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can write to an agent inbox');
-      return json(201, await sendToInbox(c.life, b.ref, b.text, b.kind ?? 'reply', b.expect));
+      // `agent`: the agent the owner picked in Now; only a runnable team member. @req FR:product-reset/ui.thread
+      if (b.agent !== undefined && !(await listTeam(c.life)).some((a) => a.slug === b.agent)) throw new ApiError('invalid', 'agent is not on the team', [{ field: 'agent', message: 'Not on the team' }]);
+      return json(201, await sendToInbox(c.life, b.ref, b.text, b.kind ?? 'reply', b.expect, undefined, b.agent));
     },
   },
   {
@@ -726,8 +728,8 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/inbox', name: 'inbox.list', query: INBOX_Q,
     async run(c) {
       const q = readQuery(c.url, Object.keys(INBOX_Q));
-      const v = validate<{ project?: string; state?: (typeof INBOX_STATES)[number] }>(Object.fromEntries(q.entries()), INBOX_Q, []);
-      const items = await listInbox(c.life, { project: v.project, state: v.state });
+      const v = validate<{ project?: string; state?: (typeof INBOX_STATES)[number]; agent?: string }>(Object.fromEntries(q.entries()), INBOX_Q, []);
+      const items = await listInbox(c.life, { project: v.project, state: v.state, agent: v.agent });
       const rows = await currentRows(c.life, items);
       return json(200, { items: items.map((e) => { const row = rows.get(e.id); return { ...e, ref: apiRef(e.ref), ...(row ? { row: apiRef(row) } : {}) }; }) });
     },

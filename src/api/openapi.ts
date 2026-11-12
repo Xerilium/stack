@@ -142,11 +142,12 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'inbox.send': {
     operationId: 'sendToInbox', summary: 'Send a reply or decision to the agent inbox of the task project (tasks/inbox). Owner session only: 403 for tokens',
-    desc: { text: 'Your words to the agent; secrets are redacted', expect: 'Expected current row text at ref; 409 conflict when the row differs' },
+    desc: { text: 'Your words to the agent; secrets are redacted', expect: 'Expected current row text at ref; 409 conflict when the row differs', agent: 'Slug of the agent the message is for (the Now picker); default: the task agent' },
     responses: ok('Sent', { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' } } }, '201'),
   },
   'inbox.list': {
     operationId: 'listInbox', summary: 'Inbox entries for agents to act on (open by default)',
+    desc: { agent: 'Agent slug: messages picked for it in any project, plus the unaddressed ones in project' },
     responses: ok('Entries', { type: 'object', properties: { items: { type: 'array', items: ref('InboxEntry') } } }),
   },
   'inbox.handle': {

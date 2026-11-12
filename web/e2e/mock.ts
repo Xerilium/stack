@@ -184,7 +184,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
         return json(route, 202, { runId: 'run-assign', sessionId: id, agent: ag?.slug ?? 'cos', title, claimed: true });
       }
       const items: unknown[] = [];
-      for (const e of m.inbox) if (e.row === t.ref || e.ref === t.ref) items.push(e.from === 'agent' ? { at: e.at, kind: 'agent', id: e.id, agent: e.agent, text: e.text } : { at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state, ...(e.withdrawn ? { withdrawn: true } : {}) });
+      for (const e of m.inbox) if (e.row === t.ref || e.ref === t.ref) items.push(e.from === 'agent' ? { at: e.at, kind: 'agent', id: e.id, agent: e.agent, text: e.text } : { at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state, ...(e.agent ? { agent: e.agent } : {}), ...(e.withdrawn ? { withdrawn: true } : {}) });
       for (const a of m.asks) if ((a.row ?? a.ref) === t.ref) items.push({ at: a.created, kind: 'ask', ask: a });
       const review = m.reviews.find((r) => r.ref === t.ref);
       if (review) items.push({ at: review.at, kind: 'review', verdict: review.verdict, plan: review.plan, estimate: review.estimate, agent: review.agent });
@@ -256,7 +256,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       if (!t) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } });
       if (body.expect !== undefined && body.expect !== t.text) return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
       const id = `in-20261028T100000Z-${String(m.inbox.length).padStart(4, '0')}`;
-      m.inbox.push({ id, at: new Date().toISOString(), project: t.project, ref: t.ref, task: t.text.replace(/[🤖🪄🙋]/gu, '').trim(), kind: body.kind ?? 'reply', to: /🙋/u.test(t.text) ? 'human' : /🤖|🪄/u.test(t.text) ? 'agent' : 'none', text: body.text, state: 'open', row: t.ref });
+      m.inbox.push({ id, at: new Date().toISOString(), project: t.project, ref: t.ref, task: t.text.replace(/[🤖🪄🙋]/gu, '').trim(), kind: body.kind ?? 'reply', to: /🙋/u.test(t.text) ? 'human' : /🤖|🪄/u.test(t.text) ? 'agent' : 'none', text: body.text, state: 'open', row: t.ref, ...(body.agent ? { agent: body.agent } : {}) });
       return json(route, 201, { id, path: `tasks/inbox/${t.project}.md` });
     }
     if (path === '/inbox/handled') { const e = m.inbox.find((x) => x.id === body.id); if (!e) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }); const changed = e.state !== 'handled'; e.state = 'handled'; if (changed && body.withdrawn === true) e.withdrawn = true; return json(route, 200, { changed }); }

@@ -913,6 +913,10 @@ paths:
                   type: string
                   maxLength: 2000
                   description: Expected current row text at ref; 409 conflict when the row differs Single line.
+                agent:
+                  type: string
+                  maxLength: 64
+                  description: "Slug of the agent the message is for (the Now picker); default: the task agent Single line."
       responses:
         "201":
           description: Sent
@@ -943,6 +947,11 @@ paths:
               - open
               - handled
               - all
+        - name: agent
+          in: query
+          schema:
+            type: string
+          description: "Agent slug: messages picked for it in any project, plus the unaddressed ones in project"
       responses:
         "200":
           description: Entries

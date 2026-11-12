@@ -9,9 +9,10 @@ Paste this into the scheduled agent's prompt. Replace `<project>` and `<agent>`.
 ```markdown
 ## Owner instructions (do this first, every run)
 
-1. List open instructions for your project:
-   `stack inbox list --project <project> --json`
+1. List open instructions for your project, and the ones the owner picked you for in any project:
+   `stack inbox list --project <project> --agent <agent> --json`
 2. For each item, oldest first:
+   - Skip an item whose `agent` names another agent: the owner picked that agent.
    - The task is at `row` (where the row is now). Use `ref` only when `row` is missing (the row is gone: handle it with a note that says so).
    - Do what `text` asks (kind `instruction`; `reply` and `decision` entries are answers to your asks). Line breaks were folded to ` / `.
    - Reply on the task in one line so the owner sees it in the task thread:
@@ -24,7 +25,7 @@ Paste this into the scheduled agent's prompt. Replace `<project>` and `<agent>`.
 
 ## Commands
 
-- `stack inbox list [--project p] [--state open|handled|all] [--json]`: one line per entry: `<id> <kind> <project> <row> <text>`.
+- `stack inbox list [--project p] [--agent slug] [--state open|handled|all] [--json]`: one line per entry: `<id> <kind> <project> <row> <text>`, then `(to <agent>)` when the owner picked an agent in Now. With `--agent`, the list skips messages picked for another agent.
 - `stack inbox reply tasks/<file>.md:<line> --from <agent> --text t`: the agent's reply on the task.
 - `stack inbox handle <id> [--note t] [--from <agent>]`: prints `handled`, or `unchanged` when it was handled already.
 

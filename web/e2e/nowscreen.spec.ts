@@ -92,7 +92,7 @@ test.describe('Now screen', () => {
     await page.waitForTimeout(400);
     await page.screenshot({ path: `e2e/screenshots/now-chat-${info.project.name}.png` });
     await box.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', kind: 'instruction', text: 'Use the new logo / then ship to staging' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', kind: 'instruction', text: 'Use the new logo / then ship to staging', agent: 'alpha-lead' }); // the owner is named, so no other agent claims it
     // a message is not a hand-off: the row is never edited, so it stays in the owner queue (FR:task-lifecycle/rank.owner)
     expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
     expect(m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
@@ -103,6 +103,69 @@ test.describe('Now screen', () => {
     expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
     // Undo means never sent: the bubble goes at once, without waiting for the poll
     await expect(page.getByTestId('now-thread')).not.toContainText('Use the new logo', { timeout: 3000 });
+  });
+
+  // @req FR:product-reset/schema.agent: the owner, not a broad worker listed first, and never the roll-up
+  test('Now talks to the task owner, not the broad worker listed first', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [
+      { slug: 'cos', name: 'Chief of Staff', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha', 'beta'] },
+      { slug: 'sweep-manager', name: '🔄 Sweep Manager', scope: ['alpha', 'beta'], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: ['alpha', 'beta'] },
+      { slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: ['alpha'] },
+    ];
+    await page.goto('/#/now');
+    await expect(page.getByTestId('now-to').locator('.now-to-name')).toHaveText('Ada Lead');
+  });
+
+  // @req FR:product-reset/ui.thread @req FR:product-reset/ui.agentchip
+  test('the agent chip picks another agent from the whole team; the pick is kept for the task and goes with the message', async ({ page }, info) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [
+      { slug: 'cos', name: 'Chief of Staff', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha', 'beta'], role: 'Keeps you focused' },
+      { slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] },
+      { slug: 'beta-dev', name: '🎧 Bea Dev', scope: ['beta'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['beta'], role: 'Builds beta' },
+    ];
+    m.inbox.push({ id: 'in-20261101T100000Z-aaaa', at: '2026-11-01T10:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'instruction', to: 'agent', text: 'Earlier note', state: 'handled', row: 'alpha:6' });
+    await page.goto('/#/now');
+    const chip = page.getByTestId('now-to');
+    await expect(chip.locator('.now-to-name')).toHaveText('Ada Lead');
+    await chip.click();
+    const list = page.getByRole('listbox', { name: 'Agents' });
+    await expect(list.getByRole('option')).toHaveCount(3); // the whole team, not only alpha's agents
+    await expect(page.getByRole('searchbox', { name: 'Find an agent' })).toBeFocused();
+    const axe = await new AxeBuilder({ page }).include('[data-testid="now"]').analyze();
+    expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(' ')}`)).toEqual([]);
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: `e2e/screenshots/now-picker-${info.project.name}.png` });
+    await page.keyboard.type('builds');
+    await expect(list.getByRole('option')).toHaveCount(1);
+    await page.keyboard.press('Enter');
+    await expect(list).toHaveCount(0);
+    await expect(chip.locator('.now-to-name')).toHaveText('Bea Dev'); // the avatar draws the emoji
+    await expect(chip).toBeFocused();
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false); // picking never writes the task
+    const box = page.getByTestId('now').getByRole('textbox', { name: 'Message 🎧 Bea Dev' });
+    await box.fill('Can you take the beta part?');
+    await box.press('Enter');
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', agent: 'beta-dev', text: 'Can you take the beta part?' });
+    await expect(page.getByRole('status')).toContainText('Sent to 🎧 Bea Dev');
+    await expect(page.getByTestId('now-thread').locator('li.from-me')).toHaveCount(2);
+    await expect(page.getByTestId('now-thread').locator('li.from-me').first()).toContainText('You to Ada Lead'); // sent before the pick
+    await expect(page.getByTestId('now-thread').locator('li.from-me').last()).toContainText('You to Bea Dev');
+    // Kept for this task; recent first next time.
+    await page.reload();
+    await expect(page.getByTestId('now-to').locator('.now-to-name')).toHaveText('Bea Dev');
+    await page.getByTestId('now-to').click();
+    await expect(page.getByRole('listbox', { name: 'Agents' }).getByRole('option').first()).toContainText('Bea Dev');
+    // Escape closes; picking the owner again clears the pick.
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('listbox', { name: 'Agents' })).toHaveCount(0);
+    await page.getByTestId('now-to').click();
+    await page.getByRole('option', { name: /Ada Lead/ }).click();
+    await expect(page.getByTestId('now-to').locator('.now-to-name')).toHaveText('Ada Lead');
+    expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('stack.now.pick') ?? '{}')))).toEqual([]);
   });
 
   // @req FR:now-screen/now.undo: Undo after the agent handled the message keeps it and says so

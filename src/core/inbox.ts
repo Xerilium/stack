@@ -17,9 +17,11 @@ export const INBOX_KINDS = ['reply', 'decision', 'instruction'] as const;
 export const INBOX_STATES = ['open', 'handled', 'all'] as const;
 
 export type InboxFrom = 'owner' | 'agent';
+/** An agent slug, as the owner names a recipient. */
+export const AGENT_SLUG = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 export interface InboxEntry {
   id: string; at: string; state: InboxState; kind: InboxKind; to: InboxTo;
-  /** Who wrote it: the owner (v1 default) or an agent (`agent` names it). @req FR:agent-thread/reply.entry */
+  /** Who wrote it: the owner (v1 default) or an agent (`agent` names it). On an owner entry, `agent` is the agent it is for (the Now picker). @req FR:agent-thread/reply.entry @req FR:product-reset/ui.thread */
   from?: InboxFrom; agent?: string;
   /** `tasks/<file>.md:<line>`, 1-based. */
   ref: string; task: string; text: string;
@@ -59,7 +61,8 @@ export const INBOX_HEADER = (title: string): string =>
 /** One entry as markdown; ends with a blank line. */
 export function formatEntry(e: InboxEntry): string {
   const lines = [`## ${e.id}`, '', `- at: ${e.at}`, `- state: ${e.state}`, `- kind: ${e.kind}`, `- to: ${e.to}`];
-  if (e.from === 'agent') { lines.push('- from: agent'); if (e.agent) lines.push(`- agent: ${e.agent}`); }
+  if (e.from === 'agent') lines.push('- from: agent');
+  if (e.agent) lines.push(`- agent: ${e.agent}`);
   lines.push(`- ref: ${e.ref}`, `- task: ${e.task}`);
   if (e.parent) lines.push(`- parent: ${e.parent}`);
   lines.push(`- text: ${e.text}`);
@@ -98,7 +101,7 @@ function blocks(content: string): Block[] {
     if (b.entry.handled === undefined) delete b.entry.handled;
     if (b.entry.note === undefined) delete b.entry.note;
     if (!b.entry.withdrawn) delete b.entry.withdrawn;
-    if (b.entry.from !== 'agent') { delete b.entry.from; delete b.entry.agent; }
+    if (b.entry.from !== 'agent') { delete b.entry.from; if (!b.entry.agent || !AGENT_SLUG.test(b.entry.agent)) delete b.entry.agent; }
   }
   return out;
 }
@@ -201,8 +204,10 @@ function makeRoom(content: string, need: number): string {
  * `handled`: the entry is written already handled in the same write (a record, never queue work), e.g. a note sent with Do it.
  * @req FR:agent-inbox/inbox.send @req FR:agent-inbox/inbox.id @req FR:agent-inbox/inbox.cap
  */
-export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect?: string, handled?: { actor: string; note?: string }): Promise<{ id: string; path: string }> {
-  return appendEntry(ctx, ref, text, kind, expect, {}, handled);
+/** `agent`: the slug of the agent the message is for (the Now picker); without it the task's agent reads it. */
+export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect?: string, handled?: { actor: string; note?: string }, agent?: string): Promise<{ id: string; path: string }> {
+  if (agent !== undefined && (typeof agent !== 'string' || !AGENT_SLUG.test(agent))) throw new LifecycleError('agent must be an agent slug');
+  return appendEntry(ctx, ref, text, kind, expect, agent ? { agent } : {}, handled);
 }
 
 /** An agent's reply on a task: `from: agent`, to the owner, never a queue item for anyone (state handled). @req FR:agent-thread/reply.entry */
@@ -236,7 +241,7 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
     const agentSide = who.from === 'agent';
     const done = handled ? { handled: `${now.toISOString()} by ${/^[A-Za-z0-9._:-]{1,64}$/.test(handled.actor) ? handled.actor : 'api'}`, ...(handled.note?.trim() ? { note: field(handled.note).slice(0, MAX_NOTE) } : {}) } : {};
     const entry = formatEntry({
-      id, at: now.toISOString(), state: agentSide || handled ? 'handled' : 'open', kind, to: agentSide ? 'human' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
+      id, at: now.toISOString(), state: agentSide || handled ? 'handled' : 'open', kind, to: agentSide ? 'human' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : who.agent ? { agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
       task: inboxTitle(row.text), ...(parent ? { parent: inboxTitle(parent.text) } : {}), text: field(t), ...done, extra: [],
     });
     const head = cur ? makeRoom(cur.content, entry.length + 1).replace(/\n*$/, '\n\n') : INBOX_HEADER(field(project.title || baseName(ref.path)));
@@ -249,19 +254,25 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
   }
 }
 
-/** Open (default), handled, or all entries across every project inbox, oldest first. Withdrawn entries only with `withdrawn: true`. @req FR:agent-inbox/inbox.list */
-export async function listInbox(ctx: LifecycleContext, o: { project?: string; state?: (typeof INBOX_STATES)[number]; withdrawn?: boolean } = {}): Promise<ListedEntry[]> {
+/**
+ * Open (default), handled, or all entries across every project inbox, oldest first. Withdrawn entries only with `withdrawn: true`.
+ * `agent`: owner messages picked for that agent in any project, plus the unaddressed ones in `project` (never one picked for another agent).
+ * @req FR:agent-inbox/inbox.list @req FR:product-reset/ui.thread
+ */
+export async function listInbox(ctx: LifecycleContext, o: { project?: string; state?: (typeof INBOX_STATES)[number]; withdrawn?: boolean; agent?: string } = {}): Promise<ListedEntry[]> {
   const state = o.state ?? 'open';
   const out: ListedEntry[] = [];
   for (const p of await ctx.storage.list()) {
     const name = baseName(p);
-    if (/^readme$/i.test(name) || (o.project && o.project.toLowerCase() !== name.toLowerCase())) continue;
+    const inProject = !o.project || o.project.toLowerCase() === name.toLowerCase();
+    if (/^readme$/i.test(name) || (!inProject && !o.agent)) continue;
     const f = await readOrNull(ctx, inboxPath({ path: p }));
     if (!f) continue;
     for (const full of parseInbox(f.content)) {
       const { extra, ...e } = full;
       void extra;
       if (e.withdrawn && !o.withdrawn) continue;
+      if (o.agent) { const picked = !e.from && e.agent; if (picked ? e.agent !== o.agent : !o.project || !inProject) continue; }
       if (state === 'all' || e.state === state) out.push({ ...e, project: name });
     }
   }

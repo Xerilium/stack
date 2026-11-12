@@ -49,7 +49,8 @@ import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
 import { ThreadView } from './ThreadView';
 import { useThread } from './useThread';
-import { agentForAsk, ownerOf } from './team';
+import { agentForAsk } from './team';
+import { pickKeyIn } from './agentpick';
 import { planWeek } from './week';
 import { HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
 import { TaskDetail } from './TaskDetail';
@@ -327,16 +328,16 @@ export function App() {
   /** @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups */
   const pinsCtl = usePins(store());
   /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
-  const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name));
+  const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name), tasks);
   const wantActive = team.active || team.talk !== null || open !== null;
   /** Open a task on its thread with the composer focused (the chip, `a`, the palette); Today keeps the floating composer. @req FR:agent-thread/web.keys */
   const viewRef = useRef(view); viewRef.current = view;
-  /** The Now composer: to the task's most specific agent, else the roll-up; a live session offers its chat. @req FR:now-screen/now.compose */
-  const taskAgent = (t: Task) => ownerOf(team.agentsOf(t), t) ?? null;
+  /** The Now composer: to the task's owning agent (`ownerOf`), or the agent picked for the task; a live session offers its chat. @req FR:now-screen/now.compose @req FR:product-reset/schema.agent */
+  const taskAgent = (t: Task) => team.ownerOf(t) ?? null;
   const nowChat = (t: Task) => ({
-    agent: taskAgent(t),
+    agent: taskAgent(t), team: team.team, pickKey: pickKeyIn(tasks, t),
     agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
-    onSend: (text: string) => delegate(t.ref, text), loadThread: api.thread,
+    onSend: (text: string, agent?: string) => delegate(t.ref, text, agent), loadThread: api.thread,
     onOpenSession: team.openSessionId, tick: threadTick,
     // @req FR:agent-delivery/state.bubble: the local host reports delivery; the hosted app answers 404 and Now shows no note.
     ...(local ? { loadDelivery: api.delivery, onSignIn: async () => { try { const r = await api.deliveryLogin(); return r.started ? null : (r.step ?? 'claude auth login'); } catch { return 'claude auth login'; } } } : {}),
@@ -630,7 +631,7 @@ export function App() {
    * `note`: a message to the agent, written to the inbox as an instruction (the Now composer). A message never adds 🪄 and never
    * edits the row: only Delegate hands the row over. @req FR:now-screen/now.compose @req FR:task-lifecycle/rank.owner
    */
-  const delegate = async (ref = refNow(), note = ''): Promise<boolean> => {
+  const delegate = async (ref = refNow(), note = '', agent?: string): Promise<boolean> => {
     const t = ref ? tasks.find((x) => x.ref === ref) : undefined;
     if (!t) return false;
     const has = parseRow(t.text).who === 'agent';
@@ -640,12 +641,12 @@ export function App() {
     let id = '';
     const ok = await run(async () => {
       if (mark) await api.edit(t.ref, text, t.text);
-      else id = (await api.send(t.ref, note, 'instruction', t.text)).id;
+      else id = (await api.send(t.ref, note, 'instruction', t.text, agent)).id;
       return true;
     }, () => '');
     if (!ok) return false;
     const who = titles.get(t.project) ?? t.project;
-    toast(note ? `Sent to ${taskAgent(t)?.name ?? `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { let taken = false; if (id) { taken = !(await api.handled(id, 'Withdrawn by the owner', true)).changed; setWithdrawTick((n) => n + 1); } if (mark) await api.edit(t.ref, t.text, text); return taken; }, (taken) => (taken ? 'Restored; the agent already picked it up' : 'Restored')); });
+    toast(note ? `Sent to ${(agent && team.team.find((a) => a.slug === agent)?.name) || taskAgent(t)?.name || `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { let taken = false; if (id) { taken = !(await api.handled(id, 'Withdrawn by the owner', true)).changed; setWithdrawTick((n) => n + 1); } if (mark) await api.edit(t.ref, t.text, text); return taken; }, (taken) => (taken ? 'Restored; the agent already picked it up' : 'Restored')); });
     return true;
   };
   type RowAct = 'start' | 'done' | 'defer' | 'notnow' | 'delegate';
@@ -790,7 +791,7 @@ export function App() {
       { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
       // @req FR:agent-team/web.keys
       { id: 'talk', label: 'Ask the task agent', hint: 'a', run: () => { const t = taskAt(refNow()); if (t) openThread(t); } },
-      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const t = taskAt(refNow()); if (t) void team.assign(t.ref, ownerOf(team.agentsOf(t), t)?.slug); } },
+      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const t = taskAt(refNow()); if (t) void team.assign(t.ref, team.ownerOf(t)?.slug); } },
       { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ] : []),
     ...(view === 'home' ? HAVE.map((m, i) => ({ id: `have-${m}`, label: `I have ${span(m)}`, hint: `h ${i + 1}`, run: () => setHave(m) })) : []),
@@ -886,7 +887,7 @@ export function App() {
       if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'n') { e.preventDefault(); void A.notNow(); return; }
       if (L.view === 'home' && k === 'A') { e.preventDefault(); void A.delegate(); return; } // My day has no delegate: its rows message the agent @req FR:task-detail-design/myday.nodelegate
       // @req FR:agent-thread/web.keys: on a list row A assigns the task to its agent (inside the composer the same key does the same)
-      if (k === 'A' && L.cursor && L.view !== 'home' && L.view !== 'today') { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) void teamRef.current.assign(t.ref, ownerOf(teamRef.current.agentsOf(t), t)?.slug); return; }
+      if (k === 'A' && L.cursor && L.view !== 'home' && L.view !== 'today') { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) void teamRef.current.assign(t.ref, teamRef.current.ownerOf(t)?.slug); return; }
       // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
       if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
       if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); if (!L.tomorrowOn) A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; } // tomorrow's Available is read-only
@@ -959,7 +960,7 @@ export function App() {
     isOpen: () => team.talk?.askKey !== undefined, close: () => team.setTalk(null),
   };
   const tileAgent = {
-    chip: (project: string, title: string) => { const ag = team.agentsOf({ project, section: '' })[0]; return <AgentChip view={ag ? { text: ag.name, tone: 'plain', title: `Talk to ${ag.name} about ${title}` } : { text: 'No agent', tone: 'muted', title: 'No agent covers this project' }} onClick={() => team.toggleTalk({ project, about: title })} />; },
+    chip: (project: string, title: string) => { const ag = team.ownerOf({ project }); return <AgentChip view={ag ? { text: ag.name, tone: 'plain', title: `Talk to ${ag.name} about ${title}`, agent: ag } : { text: 'No agent', tone: 'muted', title: 'No agent covers this project' }} onClick={() => team.toggleTalk({ project, about: title })} />; },
     talk: (project: string, title: string) => (team.talk && !team.talk.ref && !team.talk.askKey && team.talk.project === project ? <AgentTalk key={project} team={team} talk={{ project, about: title }} agents={team.agentsOf({ project, section: '' })} /> : null),
   };
   const focusTask = focusRef ? tasks.find((t) => t.ref === focusRef) : undefined;
