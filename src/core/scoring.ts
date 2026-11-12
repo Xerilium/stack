@@ -657,15 +657,16 @@ const ACTIVE = /^🔄 Active/i;
 const TASK_LINE = /^(\s*)- \[ \] (.+)$/;
 const CAPACITY_LINE = /^-\s+\*\*(.+?)\s+capacity:\*\*\s+(\d+(?:\.\d+)?)h\s*$/i;
 
-/**
- * @req FR:scoring-engine/load.@function @req FR:scoring-engine/load.name @req FR:scoring-engine/load.metadata
- * @req FR:scoring-engine/load.tasks @req FR:scoring-engine/filter.capacity
- */
 /** Names from the first `**Aliases:**` line (comma-separated). */
 export function parseAliases(lines: string[]): string[] {
   const line = lines.map(l => /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean);
   return line?.split(',').map(a => a.trim()).filter(Boolean) ?? [];
 }
+
+/**
+ * @req FR:scoring-engine/load.@function @req FR:scoring-engine/load.name @req FR:scoring-engine/load.metadata
+ * @req FR:scoring-engine/load.tasks @req FR:scoring-engine/filter.capacity
+ */
 
 export function toScoringProject(project: Project, fallbackName = ''): ScoringProject {
   // Legacy: H1 on the first line only; otherwise the file base name with '-' as ' '.

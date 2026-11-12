@@ -9,6 +9,6 @@ Source: Michael's ordered priorities, 2026-11-11 (`daily-pris.md`). One phrase p
 - finops-hubs 0.11
 - v16 PRs
 - draft PR
-- Clyde's patch
+- errand one
 - Stack v2
 - Office hours blog

@@ -17,7 +17,7 @@ Fixtures: `tests/fixtures/pris-aware-ranking` (the 12 priorities of 2026-11-11 w
 | autopri | 2/10 |
 | pris | 9/10 |
 
-Missed by pris: Stack v2. Missed by autopri: PR quality pass, Autopilot escalations, Allyte marketplace, finops-hubs 0.11, v16 PRs, draft PR, Clyde's patch, Stack v2.
+Missed by pris: Stack v2. Missed by autopri: PR quality pass, Autopilot escalations, Allyte marketplace, finops-hubs 0.11, v16 PRs, draft PR, errand one, Stack v2.
 
 | # | autopri | pris | Priority served (pris) |
 | --- | --- | --- | --- |
@@ -29,8 +29,8 @@ Missed by pris: Stack v2. Missed by autopri: PR quality pass, Autopilot escalati
 | 6 | Refactor logger internals | **finops-hubs 0.11 backend changes** | 4:p4 keyword |
 | 7 | Rename workbook tabs | **Update authored v16 PRs and review non-authored v16 PRs** | 5:p5 keyword |
 | 8 | Old v14 docs cleanup | **Publish one draft PR** | 6:p6 ref |
-| 9 | Merch store ideas | Clyde's Xbox gift card | 7:p7 ref |
-| 10 | Rename CLI flags for consistency | **Clyde's patch** | 7:p7 ref |
+| 9 | Merch store ideas | Errand two | 7:p7 ref |
+| 10 | Rename CLI flags for consistency | **Errand one** | 7:p7 ref |
 
 The unblocker (Catalyst 0.3.4, 🔓) stays first. The due-today blog stays high. Untagged noise with high emoji value drops out.
 
@@ -44,8 +44,8 @@ Population: 483 unparked leaf tasks, live `pris.json` (12 priorities, no link te
 
 | Metric | Value |
 | --- | --- |
-| Priorities with linked tasks (auto) | 5 of 12 |
+| Priorities with linked tasks (auto) | 6 of 12 |
 | Top 10 overlap with autopri | 100% |
-| Broad project links (auto) | p3 links 239 tasks; p5 links 83 |
+| Broad project links (auto) | p3 links 224 tasks; p5 links 83 |
 
 Automatic project links are broad. Explicit keywords and refs make the boost precise.

@@ -5,6 +5,6 @@
 
 ## 🔄 Active
 
-- [ ] Clyde's patch 🟢
-- [ ] Clyde's Xbox gift card 🔹
+- [ ] Errand one 🟢
+- [ ] Errand two 🔹
 - [ ] Organize garage ‼️ ⬆️ 🟢

@@ -7,7 +7,7 @@ import { autopriRank, autopriParts, type AutopriParts } from './autopri';
 import type { StackConfig } from './config';
 import { PRI_LINKS, type Pri } from './pris';
 import { escapeRe, wordsRe } from './regex';
-import { legacyEngine, listEngines, registerEngine, type ScoredTask, type ScoringEngine, type ScoringProject } from './scoring';
+import { isMessage, legacyEngine, listEngines, registerEngine, type ScoredTask, type ScoringEngine, type ScoringProject } from './scoring';
 
 export type PriVia = 'ref' | 'keyword' | 'project';
 /** @req FR:pris-aware-ranking/$pri-link */
@@ -23,6 +23,12 @@ const tokenRe = (t: string) => new RegExp(`(?<![\\w.])${escapeRe(t)}(?!\\w|\\.\\
 const low = (s: string) => s.toLowerCase();
 
 interface Terms { refs: string[]; keywords: string[]; projects: string[]; auto: boolean }
+/** A capitalized whole word or phrase, as a name is written in a title (`Personal`, `FTK`), not a common word. */
+const nameIn = (title: string, name: string): boolean => {
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])`, 'giu');
+  for (const m of title.matchAll(re)) if (/^\p{Lu}/u.test(m[0])) return true;
+  return false;
+};
 
 /** The priorities that link (active, blocked), in order, with rank 1..N. @req FR:pris-aware-ranking/link.active */
 export const linkingPris = (pris: Pri[]): { pri: Pri; rank: number }[] => pris.filter((p) => LINKING.has(p.status)).map((pri, i) => ({ pri, rank: i + 1 }));
@@ -30,8 +36,10 @@ export const linkingPris = (pris: Pri[]): { pri: Pri; rank: number }[] => pris.f
 /** Explicit terms, or automatic ones from the title when none are set. @req FR:pris-aware-ranking/link.auto */
 function termsOf(p: Pri, names: string[]): Terms {
   if (PRI_LINKS.some((k) => p[k]?.length)) return { refs: p.refs ?? [], keywords: p.keywords ?? [], projects: p.projects ?? [], auto: false };
-  const projects = names.filter((n) => wordsRe(n).test(p.title));
-  return { refs: [], keywords: [...new Set(p.title.match(VERSION) ?? [])], projects, auto: true };
+  // Text in parentheses is a note, not the subject.
+  const title = p.title.replace(/\([^)]*\)/g, ' ');
+  const projects = names.filter((n) => nameIn(title, n));
+  return { refs: [], keywords: [...new Set(title.match(VERSION) ?? [])], projects, auto: true };
 }
 
 /**
@@ -45,7 +53,9 @@ export function linker(pris: Pri[], names: string[] = []): (row: LinkRow) => Pri
     const t = termsOf(pri, names);
     // Auto version tokens use the strict token rule (`0.4` is not in `v0.4`); explicit phrases match whole words.
     const re = (s: string) => (t.auto ? tokenRe(s) : wordsRe(s));
-    return { pri, rank, full: (PRI_SCORE * (n + 1 - rank)) / n, refs: t.refs.map((s) => [s, wordsRe(s)] as const), keywords: t.keywords.map((s) => [s, re(s)] as const), projects: t.projects.map(low) };
+    // Auto version tokens apply only inside the projects the title names, when it names any (`Stack v2` is not FOCUS v2).
+    const scope = t.auto && t.projects.length ? new Set(t.projects.map(low)) : undefined;
+    return { pri, rank, full: (PRI_SCORE * (n + 1 - rank)) / n, refs: t.refs.map((s) => [s, wordsRe(s)] as const), keywords: t.keywords.map((s) => [s, re(s)] as const), projects: t.projects.map(low), scope };
   });
   return (row) => {
     let best: PriLink | undefined;
@@ -57,7 +67,8 @@ export function linker(pris: Pri[], names: string[] = []): (row: LinkRow) => Pri
       };
       const ref = c.refs.find(([, re]) => re.test(row.text));
       if (ref) { hit('ref', ref[0]); continue; }
-      const kw = c.keywords.find(([, re]) => re.test(row.text) || (row.context !== undefined && re.test(row.context)));
+      const inScope = !c.scope || [...names].some((x) => c.scope!.has(x));
+      const kw = inScope ? c.keywords.find(([, re]) => re.test(row.text) || (row.context !== undefined && re.test(row.context))) : undefined;
       if (kw) { hit('keyword', kw[0]); continue; }
       const pj = c.projects.find((p) => names.has(p));
       if (pj) hit('project', pj, PROJECT_SHARE);
@@ -179,10 +190,10 @@ export function priGaps(pris: Pri[], linked: Map<string, number>, now: Date): Pr
   });
 }
 
-/** Open tasks linked per priority id (leaves, not parked). */
+/** Open tasks linked per priority id (leaves, not parked, not 💬 messages: the rows the ranking keeps). */
 export function linkCounts(all: ScoredTask[], projects: ScoringProject[], pris: Pri[]): Map<string, number> {
   const out = new Map<string, number>();
-  const live = new Set(all.filter((s) => s.leaf && !s.parked).map((s) => s.task.id));
+  const live = new Set(all.filter((s) => s.leaf && !s.parked && !isMessage(s.task.text)).map((s) => s.task.id));
   for (const [id, l] of linkAll(all, projects, pris)) if (live.has(id)) out.set(l.id, (out.get(l.id) ?? 0) + 1);
   return out;
 }

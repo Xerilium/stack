@@ -7,7 +7,7 @@ import { autopriEngine, checkMisses, parseMisses, pickMatch } from '../../src/co
 import { parseTruth } from '../../src/core/autopri-tags';
 import { parsePris, PrisInvalid, type Pri } from '../../src/core/pris';
 import {
-  formatGaps, isoWeek, linkCounts, linkTask, PRI_SCORE, priGaps, prisEngine, prisParts, registerPrisEngine, setPris, weekStart, withLinks, withNote,
+  formatGaps, isoWeek, linkCounts, linker, linkTask, PRI_SCORE, priGaps, prisEngine, prisParts, registerPrisEngine, setPris, weekStart, withLinks, withNote,
 } from '../../src/core/pris-rank';
 
 const FIX = join(__dirname, '../fixtures/pris-aware-ranking');
@@ -68,6 +68,13 @@ describe('linkTask', () => {
     expect(linkTask(pris, row('Chore', { project: 'Catalyst' }))).toMatchObject({ id: 'p9', via: 'project' });
     expect(linkTask(pris, row('Nov 16 review', { project: 'FinOps toolkit', aliases: ['ftk'] }))).toMatchObject({ id: 'p5', via: 'project' }); // `16` is not a token
     expect(linkTask([pri('x', { title: 'FTK 16', keywords: ['blog'] })], row('Chore', { project: 'ftk' }))).toBeUndefined(); // explicit terms turn auto off
+    // Only capitalized names outside parentheses; version tokens stay in the named project.
+    const live = [pri('p3', { title: 'Allyte marketplace (+ is FH personal account sign-in required?)' }), pri('p7', { title: 'Personal' }), pri('p8', { title: 'Stack v2 as central tracker' })];
+    const link = linker(live, ['Allyte', 'Personal', 'personal', 'Stack', 'FOCUS']);
+    expect(link(row('Chore', { project: 'Personal', aliases: ['personal'] }))).toMatchObject({ id: 'p7', via: 'project' });
+    expect(link(row('FOCUS v2 draft', { project: 'FOCUS' }))).toBeUndefined();
+    expect(link(row('Ship v2', { project: 'Stack' }))).toMatchObject({ id: 'p8', via: 'keyword', term: 'v2' });
+    expect(linkTask([pri('p', { title: 'My personal goals' })], row('Chore', { project: 'personal' }))).toBeUndefined();
   });
 });
 
@@ -220,7 +227,7 @@ describe('rank cache', () => {
     const top = async () => (await rankStack(ctx, at, 2))[1].text;
     setPris([pri('a', { keywords: ['Stack v2'] })]);
     expect(await top()).toContain('Stack v2');
-    setPris([pri('a', { keywords: ['Clyde'] })]);
-    expect(await top()).toContain('Clyde');
+    setPris([pri('a', { keywords: ['errand'] })]);
+    expect(await top()).toContain('Errand');
   });
 });

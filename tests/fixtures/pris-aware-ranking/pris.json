@@ -155,19 +155,19 @@
       "status": "active",
       "items": [
         {
-          "text": "Clyde's patch",
+          "text": "errand one",
           "status": "todo"
         },
         {
-          "text": "Clyde's Xbox gift card",
+          "text": "errand two",
           "status": "todo"
         }
       ],
       "backlog": [],
       "weekly": [],
       "refs": [
-        "Clyde's patch",
-        "Clyde's Xbox gift card"
+        "errand one",
+        "errand two"
       ]
     },
     {
