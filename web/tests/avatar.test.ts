@@ -1,6 +1,6 @@
 // @req FR:agent-team/web.avatar
 import { describe, expect, it } from 'vitest';
-import { AVATAR_COLORS, avatarOf, initials } from '../src/avatar';
+import { AVATAR_COLORS, avatarOf, initials, nameBeside } from '../src/avatar';
 import { fluentSrc } from '../src/fluent';
 
 const lum = (hex: string) => {
@@ -34,5 +34,12 @@ describe('avatar', () => {
     expect(avatarOf({ slug: 'cid-manager', name: '🎧 Cid Manager' })).toEqual({ kind: 'fluent', src: fluentSrc('🎧'), text: '🎧' });
     expect(avatarOf({ slug: 'troll', name: '🧌 Troll' })).toEqual({ kind: 'emoji', text: '🧌' });
     expect(avatarOf({ slug: 'x', name: '🎧 Cid', icon: '/agents/cid.png' })).toEqual({ kind: 'img', src: '/agents/cid.png' });
+    // the name beside the avatar drops its emoji only when the avatar draws that same emoji
+    expect(nameBeside({ name: '🎧 Cid Manager' })).toBe('Cid Manager');
+    expect(nameBeside({ name: '🎧 Cid Manager', icon: '🎧️' })).toBe('Cid Manager');
+    expect(nameBeside({ name: '🎧 Cid Manager', icon: '🦉' })).toBe('🎧 Cid Manager');
+    expect(nameBeside({ name: '🎧 Cid Manager', icon: '/agents/cid.png' })).toBe('🎧 Cid Manager');
+    expect(nameBeside({ name: 'Ada Lead' })).toBe('Ada Lead');
+    expect(nameBeside({ name: '🎧' })).toBe('🎧');
   });
 });

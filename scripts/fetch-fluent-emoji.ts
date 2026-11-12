@@ -1,10 +1,10 @@
 /**
  * Fetch Microsoft Fluent Emoji (`Color` SVGs) from one pinned commit into web/src/emoji/ and rewrite index.json.
  * Usage: pnpm emoji:fetch [emoji…]
- * With no arguments it rebuilds the default set; arguments add to it. The assets are committed; the page never fetches them from GitHub.
+ * Keeps the default set and every emoji already in index.json; arguments add to it; `--reset` drops the earlier additions. The assets are committed; the page never fetches them from GitHub.
  * @req FR:agent-team/web.avatar.fetch
  */
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 
 const REPO = 'microsoft/fluentui-emoji';
 /** Pinned: bump on purpose, then re-run and review the diff. */
@@ -51,7 +51,10 @@ export function minify(svg: string): string {
 }
 
 async function main(): Promise<void> {
-  let want = [...new Set([...USED, ...COMMON, ...process.argv.slice(2)].map(emojiKey))];
+  const args = process.argv.slice(2);
+  const reset = args.includes('--reset');
+  const had = reset ? [] : await readFile(new URL('index.json', OUT), 'utf8').then((t) => Object.keys((JSON.parse(t) as { emoji: Record<string, string> }).emoji), () => [] as string[]);
+  let want = [...new Set([...[...USED, ...COMMON, ...args.filter((a) => a !== '--reset')].map(emojiKey), ...had])];
   const tree = (await get(`https://api.github.com/repos/${REPO}/git/trees/${COMMIT}?recursive=1`, 'json')) as { truncated: boolean; tree: { path: string }[] };
   if (tree.truncated) throw new Error('Tree listing truncated');
   const paths = tree.tree.map((t) => t.path);
@@ -83,4 +86,4 @@ async function main(): Promise<void> {
   console.log(`${want.length} emoji, ${(bytes / 1024).toFixed(1)} KB`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main().catch((e: unknown) => { console.error(e instanceof Error ? e.message : e); process.exit(1); });
+if (import.meta.url === new URL(`file://${process.argv[1]}`).href) main().catch((e: unknown) => { console.error(e instanceof Error ? e.message : e); process.exit(1); });

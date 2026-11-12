@@ -3,12 +3,13 @@
  * Decorative, since the name is always next to it.
  * @req FR:agent-team/web.avatar @req FR:agent-team/web.avatar.fluent @req FR:agent-team/web.avatar.project
  */
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { avatarOf, emojiView, type AvatarView, type AvatarWho } from './avatar';
 import { leadEmoji } from './fluent';
 
 export function Avatar({ who, size = 28 }: { who: AvatarWho; size?: number }) {
   const [broken, setBroken] = useState(false); // a missing Fluent image falls back to native text; a missing icon image to the name's emoji or monogram
+  useEffect(() => setBroken(false), [who.icon, who.name]); // a new agent gets a fresh try
   const first = avatarOf(who);
   const v: AvatarView = !broken ? first : first.kind === 'fluent' ? { kind: 'emoji', text: first.text } : avatarOf({ ...who, icon: undefined });
   const style = { width: `${size}px`, height: `${size}px` };
@@ -26,6 +27,7 @@ export function Avatar({ who, size = 28 }: { who: AvatarWho; size?: number }) {
 /** One emoji inline with text, sized to the font. */
 export function Emoji({ text }: { text: string }) {
   const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [text]);
   const v = emojiView(text);
   if (v.kind === 'fluent' && !broken) return <img class="emo" src={v.src} alt="" aria-hidden="true" onError={() => setBroken(true)} />;
   return <span class="emo-native" aria-hidden="true">{text}</span>;

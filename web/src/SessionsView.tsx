@@ -8,7 +8,7 @@
  * @req FR:agent-team/org.keys @req FR:agent-team/org.a11y @req FR:agent-team/compose.agent @req FR:agent-team/compose.agent.filter @req FR:agent-team/compose.folder @req FR:agent-team/compose.prompt @req FR:agent-team/compose.after
  */
 import { Avatar } from './AgentAvatar';
-import { bareName } from './fluent';
+import { nameBeside } from './avatar';
 import { Fragment } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { chartOrder, chatsFor, orgChart, otherSessions, type ChartNode } from './chart';
@@ -48,7 +48,7 @@ function AgentCard({ agent, chats, on, onPick }: { agent: TeamAgent; chats: Sess
   return (
     <button type="button" class={`agent-card${on ? ' on' : ''}`} data-agent={agent.slug} data-state={state || undefined} aria-pressed={on} onClick={onPick}
       aria-label={`${agent.name}${agent.role ? `, ${agent.role}` : ''}, ${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}${label ? `, ${label}` : ''}`}>
-      <span class="ac-head"><Avatar who={agent} size={22} /><span class="ac-name">{bareName(agent.name)}</span>{state && <span class={`ac-dot ${state}`} title={label} aria-hidden="true" />}</span>
+      <span class="ac-head"><Avatar who={agent} size={22} /><span class="ac-name">{nameBeside(agent)}</span>{state && <span class={`ac-dot ${state}`} title={label} aria-hidden="true" />}</span>
       {agent.role && <span class="ac-role">{agent.role}</span>}
       <span class="ac-foot">
         <span class="ac-projects" aria-hidden="true">{agent.scope.includes('*') ? <span class="chip">all projects</span> : agent.projects.slice(0, 2).map((p) => <span class="chip" key={p}>{p}</span>)}{agent.projects.length > 2 && !agent.scope.includes('*') && <span class="chip">+{agent.projects.length - 2}</span>}</span>

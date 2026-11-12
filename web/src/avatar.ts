@@ -3,7 +3,7 @@
  * else a monogram on a stable color. An emoji renders as bundled Fluent Emoji when there is one. Pure; no network.
  * @req FR:agent-team/web.avatar @req FR:agent-team/web.avatar.fluent
  */
-import { fluentNamed, fluentSrc, leadEmoji } from './fluent';
+import { emojiKey, fluentNamed, fluentSrc, leadEmoji } from './fluent';
 
 /** Each reaches 4.5:1 with white text. */
 export const AVATAR_COLORS = ['#4338ca', '#0f766e', '#b45309', '#be123c', '#6d28d9', '#1d4ed8', '#15803d', '#a21caf'] as const;
@@ -29,6 +29,13 @@ const FLUENT = /^fluent:([a-z0-9_]{1,60})$/;
 export function emojiView(text: string): AvatarView {
   const src = fluentSrc(text);
   return src ? { kind: 'fluent', src, text } : { kind: 'emoji', text };
+}
+
+/** The name to print next to the avatar: without its leading emoji only when the avatar already draws that emoji. */
+export function nameBeside(who: AvatarWho): string {
+  const lead = leadEmoji(who.name);
+  const v = avatarOf(who);
+  return lead && lead.rest && (v.kind === 'fluent' || v.kind === 'emoji') && emojiKey(v.text) === emojiKey(lead.emoji) ? lead.rest : who.name;
 }
 
 export function avatarOf(who: AvatarWho): AvatarView {

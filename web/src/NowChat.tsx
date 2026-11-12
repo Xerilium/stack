@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
-import { bareName } from './fluent';
+import { nameBeside } from './avatar';
 import type { AvatarWho } from './avatar';
 import { foldLines, tellThread, TELL_MAX } from './nowscreen';
 import { unescapeMd } from './agents';
@@ -36,7 +36,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
     const h = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, POLL_MS);
     return () => clearInterval(h);
   }, [load]);
-  const name = agent ? bareName(agent.name) : 'the agent'; // the avatar shows its emoji
+  const name = agent ? nameBeside(agent) : 'the agent';
   const sending = useRef(false); // two fast Enters send once
   const send = async () => {
     const t = foldLines(text);
@@ -64,7 +64,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
               <li key={i.id} class={`now-bubble ${who ? 'from-agent' : 'from-me'}`}>
                 {who && <Avatar who={who} size={28} />}
                 <div class="now-bubble-body">
-                  <span class="now-bubble-who">{who ? bareName(who.name) : `You to ${name}`}{i.at && <> · <time dateTime={i.at}>{ago(i.at, now)}</time></>}</span>
+                  <span class="now-bubble-who">{who ? nameBeside(who) : `You to ${name}`}{i.at && <> · <time dateTime={i.at}>{ago(i.at, now)}</time></>}</span>
                   <p class="now-bubble-text">{unescapeMd(i.text)}</p>
                 </div>
               </li>

@@ -23,11 +23,8 @@ export function fluentNamed(name: string): { src: string; text: string } | undef
   return k && src ? { src, text: fromKey(k) } : undefined;
 }
 
-/** One emoji: a pictograph (or keycap/flag) with its modifiers, variation selectors, and ZWJ parts. */
+/** One emoji: a pictograph (or a flag) with its modifiers, variation selectors, and ZWJ parts. */
 const LEAD = /^(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}(?:️|\p{Emoji_Modifier})?(?:‍\p{Extended_Pictographic}(?:️|\p{Emoji_Modifier})?)*)/u;
-
-/** A name without its leading emoji, for text next to an avatar that already shows it. */
-export const bareName = (name: string): string => leadEmoji(name)?.rest || name;
 
 /** The emoji that starts a title, and the rest: `🎧 Flantastic 4` → `{ emoji: '🎧', rest: 'Flantastic 4' }`. */
 export function leadEmoji(text: string): { emoji: string; rest: string } | undefined {

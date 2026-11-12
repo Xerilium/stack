@@ -1,7 +1,7 @@
 // @req FR:agent-team/web.avatar.fluent @req FR:agent-team/web.avatar.project @req FR:agent-team/web.avatar.fetch
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { bareName, emojiKey, fluentNamed, fluentSrc, leadEmoji } from '../src/fluent';
+import { emojiKey, fluentNamed, fluentSrc, leadEmoji } from '../src/fluent';
 
 const dir = new URL('../src/emoji/', import.meta.url);
 
@@ -29,9 +29,6 @@ describe('fluent emoji', () => {
     expect(leadEmoji('Stack')).toBeUndefined();
     expect(leadEmoji('1 thing')).toBeUndefined();
     expect(leadEmoji('#tag')).toBeUndefined();
-    expect(bareName('🎧 Cid Manager')).toBe('Cid Manager');
-    expect(bareName('Ada Lead')).toBe('Ada Lead');
-    expect(bareName('🎧')).toBe('🎧');
   });
   it('bundles only indexed Color SVGs, under 400 KB, from a pinned commit', () => {
     const idx = JSON.parse(readFileSync(new URL('index.json', dir), 'utf8')) as { commit: string; emoji: Record<string, string> };

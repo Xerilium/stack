@@ -4,6 +4,7 @@
  * @req FR:ask-queue/web.a11y @req FR:ask-queue/web.responsive @req FR:ask-queue/web.live @req FR:ask-queue/web.optimistic
  */
 import { Avatar } from './AgentAvatar';
+import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { actionsFor, deadline, freshness, ifSilent, splitTop, type Action, type AskItem } from './asks';
 import { blockedHelp } from './notify';
@@ -110,7 +111,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
         <div class="ask-eyebrow">
           {flow ? <span class="of flow" data-testid="flow-step">Quick triage · {flow.step} of {flow.total}</span> : <span class="of" aria-hidden="true">{n} of {total}</span>}
           {a.project && <span class="proj">{a.project}</span>}
-          {!talk?.chip(a) && <span class="from"><Avatar who={{ slug: a.from, name: a.from }} size={20} />{a.from}</span>}
+          {!talk?.chip(a) && <span class="from"><Avatar who={{ slug: a.from, name: a.from }} size={20} />{nameBeside({ slug: a.from, name: a.from })}</span>}
           {talk?.chip(a)}
           {asks.fresh.has(a.key) && <span class="new">New</span>}
           <span class="grow" />

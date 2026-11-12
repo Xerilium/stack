@@ -39,6 +39,17 @@ test.describe('Fluent emoji', () => {
     await expect.poll(() => loaded(page.getByTestId('now-chat').locator('form img.avatar.fluent'))).toBe(true);
   });
 
+  // @req FR:agent-team/web.avatar.fluent: a Fluent image that fails to load falls back to native text
+  test('a Fluent image that fails to load shows the native emoji', async ({ page }) => {
+    await ten(page);
+    await page.route(/\/assets\/[^/]+\.svg$/, (r) => r.abort());
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [{ slug: 'alpha-lead', name: '🎧 Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] }];
+    await page.goto('/#/now');
+    await expect(page.getByTestId('now-chat').locator('form span.avatar.emoji')).toHaveText('🎧');
+    await expect(page.getByTestId('now-chat').locator('form img.avatar')).toHaveCount(0);
+  });
+
   // @req FR:agent-team/web.avatar.project
   test('project headings draw their emoji with the same renderer', async ({ page }, info) => {
     await ten(page);
