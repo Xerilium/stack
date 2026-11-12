@@ -24,7 +24,7 @@ import { AsksView } from './AsksView';
 import { PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
-import { PrsButton, PrsFlyoutHost, PrsNavBadge, PrsPage, usePrsNav } from './PrsPanel';
+import { PrsButton, PrsFlyoutHost, PrsNavItem, PrsPage, prsNavNow } from './PrsPanel';
 import { FeedbackButton, FeedbackHost, feedbackActive } from './FeedbackPanel';
 import { actionsFor, type AskItem, type DeferChoice, type Send } from './asks';
 import { isFresh, sourceOf, type CalSource } from './calsource';
@@ -356,8 +356,6 @@ export function App() {
   const [perm, setPerm] = useState(() => (notifySupported() ? Notification.permission : 'denied'));
   const notifyRef = useRef(false); notifyRef.current = notifyOn && perm === 'granted';
   /** Open 🙋 rows that have no reply yet, as asks. @req FR:web-shell/state.needs */
-  // The PR board loads at app start, so the nav count and the first open are ready. @req FR:pr-page/nav.badge @req FR:pr-page/nav.load
-  const prsNav = usePrsNav(api);
   const asks = useAsks(api, toast, () => void refresh(), stream, (items) => {
     if (!notifyRef.current || !document.hidden) return;
     const note = noteFor(items, new Date());
@@ -808,6 +806,7 @@ export function App() {
     { id: 'signout', label: 'Sign out', run: () => void signOut() },
   ].map((c) => ({ group: 'Actions' as Group, ...c }));
   // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump @req FR:web-shell/palette.jump.groups
+  const prsNav = () => prsNavNow(api);
   const goTo: Command[] = [
     { id: 'go-now', label: 'Go to Now', hint: HINT.now, group: 'Go to', run: () => go('now') },
     { id: 'go-home', label: `Go to ${LABEL.home}`, hint: HINT.home, group: 'Go to', run: () => go('home') }, // @req FR:ux-consolidation/nav.home
@@ -815,7 +814,7 @@ export function App() {
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
     { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
     // @req FR:pr-page/nav.phone: the phone reaches Pull requests through More.
-    ...(prsNav.on ? [{ id: 'go-prs', label: `Go to ${LABEL.prs}${prsNav.need ? ` (${prsNav.need})` : prsNav.signIn ? ' (sign in)' : ''}`, hint: HINT.prs, group: 'Go to' as Group, run: () => go('prs') }] : []),
+    ...(prsNav().on ? [{ id: 'go-prs', label: `Go to ${LABEL.prs}${prsNav().need ? ` (${prsNav().need})` : prsNav().signIn ? ' (sign in)' : ''}`, hint: HINT.prs, group: 'Go to' as Group, run: () => go('prs') }] : []),
     { id: 'go-inbox', label: 'Go to Inbox', hint: HINT.inbox, group: 'Go to', run: () => go('inbox') },
     { id: 'go-sessions', label: 'Go to Agents', hint: HINT.sessions, group: 'Go to', run: () => go('sessions') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
@@ -971,10 +970,10 @@ export function App() {
   // @req FR:web-shell/nav.rail
   const inboxDot = inboxAttention ? <span class="nav-dot" role="img" aria-label="Inbox needs setup" data-testid="inbox-dot" /> : null;
   /** @req FR:inbox-page/web.dot */
-  const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : v === 'prs' ? <PrsNavBadge api={api} /> : null);
+  const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : null);
   /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
-  // The PR entry is absent only where the host has no board. @req FR:pr-page/nav.rail @req FR:pr-page/icon.absent
-  const nav = () => RAIL.filter((v) => v !== 'prs' || prsNav.on).map((v) => (
+  // The PR entry renders itself: absent only where the host has no board; the board loads at app start. @req FR:pr-page/nav.rail @req FR:pr-page/icon.absent @req FR:pr-page/nav.load
+  const nav = () => RAIL.map((v) => v === 'prs' ? <PrsNavItem key={v} api={api} active={view === v} label={LABEL[v]} hint={HINT[v]} onGo={() => go(v)} /> : (
     <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
   ));
   return (

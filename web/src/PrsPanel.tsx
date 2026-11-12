@@ -39,11 +39,24 @@ function PrIcon() {
 /** The board phase for the nav: the PR entry is absent only where the host has no board. @req FR:pr-page/icon.absent @req FR:pr-page/nav.badge */
 export function usePrsNav(api: Client): { on: boolean; need: number; signIn: boolean } {
   const s = storeFor(api);
-  const pick = () => { const { board, phase } = s.get(); return { on: phase === 'ready' || phase === 'signin' || phase === 'error', need: needCount(board), signIn: phase === 'signin' }; };
+  const pick = () => { const { board, phase } = s.get(); return { on: phase !== 'off', need: needCount(board), signIn: phase === 'signin' }; };
   const [v, setV] = useState(pick);
   // The app shell re-renders only when the nav words change, not on every board poll.
   useEffect(() => s.subscribe(() => setV((old) => { const n = pick(); return n.on === old.on && n.need === old.need && n.signIn === old.signIn ? old : n; })), [s]);
   return v;
+}
+
+/** The nav words now, without a subscription: the palette reads it when it opens. @req FR:pr-page/nav.phone */
+export function prsNavNow(api: Client): { on: boolean; need: number; signIn: boolean } {
+  const { board, phase } = storeFor(api).get();
+  return { on: phase !== 'off', need: needCount(board), signIn: phase === 'signin' };
+}
+
+/** The rail entry. It owns its subscription, so a board change re-renders this button, not the app shell. @req FR:pr-page/nav.rail @req FR:pr-page/nav.badge */
+export function PrsNavItem({ api, active, label, hint, onGo }: { api: Client; active: boolean; label: string; hint: string; onGo: () => void }) {
+  const { on } = usePrsNav(api);
+  if (!on) return null;
+  return <button type="button" class={`tab${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} onClick={onGo}><span class="tab-label">{label}<PrsNavBadge api={api} /></span><kbd>{hint}</kbd></button>;
 }
 
 /** The nav badge: Blocked on me plus Waiting on me; a dot when signed out. @req FR:pr-page/nav.badge */
@@ -53,13 +66,13 @@ export function PrsNavBadge({ api }: { api: Client }) {
   return need > 0 ? <span class="badge" aria-label={`${need} need you`} data-testid="prs-nav-badge">{need}</span> : null;
 }
 
-/** The top bar icon: the active agent count; it opens the flyout. Absent until the host answers, and where it has no board. @req FR:pr-page/icon.place @req FR:pr-page/icon.absent */
+/** The top bar icon: the active agent count; it opens the flyout. Shown while the first poll runs (no count); absent where the host has no board. @req FR:pr-page/icon.place @req FR:pr-page/icon.absent */
 export function PrsButton({ api, where }: { api: Client; where: 'rail' | 'phone' }) {
   const s = useStore(api);
   const { board, phase, open } = s.get();
-  if (phase === 'off' || phase === 'loading') return null;
+  if (phase === 'off') return null;
   const n = board?.agents.count ?? 0;
-  const label = phase === 'signin' ? 'Pull requests: sign in to GitHub' : `Pull requests: ${n} ${n === 1 ? 'agent' : 'agents'} active`;
+  const label = phase === 'loading' ? 'Pull requests: loading' : phase === 'signin' ? 'Pull requests: sign in to GitHub' : `Pull requests: ${n} ${n === 1 ? 'agent' : 'agents'} active`;
   return (
     <button type="button" class="prs-btn compact" data-testid={where === 'rail' ? 'prs-btn' : 'prs-btn-phone'} aria-haspopup="dialog" aria-expanded={open} aria-label={label} title={label}
       onClick={(e) => { opener = e.currentTarget as HTMLElement; s.setOpen(true); }}>
@@ -381,6 +394,8 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
   // Bulk runs only what the project filter shows.
   const bulkItems = esc ? escIn([...esc.blocked.filter((e) => board?.queue && (answers[e.url] ?? e.recommend ?? '').trim()), ...esc.enable], sel).filter((e) => bulk?.has(e.url)) : [];
 
+  // The page and the flyout can both be open: each heading has its own id.
+  const hid = page ? 'prs-page-h' : 'prs-h';
   const body = (
       <div ref={ref} class={`prs-fly${page ? ' page' : ''}`} {...(page ? { 'data-testid': 'prs-page' } : { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'prs-h', 'data-testid': 'prs-flyout' })} onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
@@ -390,7 +405,7 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
           if (e.key === 'Escape') { e.preventDefault(); onClose(); }
         }}>
         <header class="prs-head">
-          <h2 id="prs-h">Pull requests</h2>
+          <h2 id={hid}>Pull requests</h2>
           {/* The live validation checklist. @req FR:pr-review-lane/panel.view */}
           <a class="btn prs-live" href="#/live">Live check</a>
           <span class="prs-age" role="status" aria-live="off" data-testid="prs-age">{updatedText(board, now)}</span>
@@ -398,7 +413,7 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
         </header>
         {/* Signed out, loading, or a failed first load: one state, never a zero board. @req FR:pr-page/auth.state @req FR:pr-page/nav.load */}
         {!board ? (phase === 'signin' && auth ? <SignIn api={api} auth={auth} onDone={reload} />
-          : phase === 'off' ? <div class="prs-signin" data-testid="prs-off"><p class="prs-signin-title">This host has no PR board.</p><p class="prs-note">Set GITHUB_TOKEN on the host to turn it on.</p></div>
+          : phase === 'off' ? <div class="prs-signin" data-testid="prs-off"><p class="prs-signin-title">This host has no PR board.</p><p class="prs-note">Set GITHUB_TOKEN on the host, and check STACK_GITHUB_REPOS is a valid list.</p></div>
           : phase === 'error' ? <div class="prs-signin" role="alert"><p class="prs-signin-title">Could not load your PRs.</p><button type="button" class="btn primary" onClick={reload}>Retry</button></div>
           : <div class="skeleton prs-sk" role="status" aria-busy="true" aria-label="Loading pull requests" data-testid="prs-skeleton"><div class="sk" /><div class="sk" /><div class="sk" /><div class="sk" /></div>) : <>
         {board?.error && board.at && <p class="prs-note" role="status">{board.error}. Showing the last good copy.</p>}
@@ -465,5 +480,5 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
         )}
       </div>
   );
-  return page ? <section class="prs-pagewrap" aria-labelledby="prs-h">{body}</section> : <div class="prs-scrim" onClick={onClose}>{body}</div>;
+  return page ? <section class="prs-pagewrap" aria-labelledby={hid}>{body}</section> : <div class="prs-scrim" onClick={onClose}>{body}</div>;
 }

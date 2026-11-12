@@ -104,7 +104,7 @@ The owner needs near-real-time status so that he never reloads.
 The owner needs a glance count so that he knows agents are moving.
 
 - **FR:icon.place** (P1): A PR icon sits in the app top bar: the rail brand row (desktop) and the phone top bar. It shows the active agent count when above 0. Its name is `Pull requests: n agents active`. Signed out, it shows no count and its name is `Pull requests: sign in to GitHub`
-- **FR:icon.absent** (P1): The icon and the nav entry are absent only where the host has no board at all: `GET /prs` answers `200` `{off: true}` (the Azure host with no token; no failing request in the console). A `404` from an older host also hides them. Signed out is not absent (`FR:pr-page/auth.state`)
+- **FR:icon.absent** (P1): The icon and the nav entry show while the first poll runs (no count). They are absent only where the host has no board at all: `GET /prs` answers `200` `{off: true}` (the Azure host with no token; no failing request in the console). A `404` from an older host also hides them. Signed out is not absent (`FR:pr-page/auth.state`)
 - **FR:icon.open** (P1): Click or tap opens the flyout (full screen on a phone)
 - **FR:icon.why** (P1): Choice: PR 145 hid the icon whenever `GET /prs` said `off`, and the host said `off` whenever `GITHUB_TOKEN` was not in its environment. A macOS app opened from the Dock gets no shell environment, so the installed app never had a token and never showed the icon. There was no nav entry either. The sign-in (`FR:pr-page/auth.*`) and the nav entry (`FR:pr-page/nav.*`) fix both
 

@@ -89,7 +89,6 @@
 body:has(.prs-scrim) .toasts { z-index: 70; }
 .pr-check-l { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; flex: none; align-self: center; }
 @media (pointer: coarse) { .pr-check-l { min-width: var(--tap); min-height: var(--tap); } }
-.rail .prs-btn .prs-ic { width: 16px; height: 16px; }
 @media (min-width: 720px) { .prs-tabs { flex-wrap: wrap; overflow: visible; } }
 .prs-preview { margin: 0; padding: 8px; border-radius: var(--r-chip); background: var(--chip); color: var(--ink); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
