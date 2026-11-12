@@ -96,3 +96,20 @@ describe('sync state and flush', () => {
     expect(calls[1].init.keepalive).toBe(true);
   });
 });
+
+describe('sync', () => {
+  // @req FR:pr-priority/needs.poll
+  it('joins rev and the live token; a null rev stays null', async () => {
+    const one = (body: unknown) => createClient((async () => new Response(JSON.stringify(body), { status: 200 })) as typeof fetch);
+    expect(await one({ rev: 'abc', live: '1.2' }).sync()).toBe('abc~1.2');
+    expect(await one({ rev: 'abc' }).sync()).toBe('abc');
+    expect(await one({ rev: null, live: '1.2' }).sync()).toBeNull();
+  });
+  // @req FR:pr-priority/needs.actions
+  it('posts a PR priority decision to its decide path under the API base', async () => {
+    const { client, calls } = rec(() => res(200, {}));
+    await client.decideRec('/api/pr-priority/recommendations/r1', { decision: 'reject', reason: 'not now' });
+    expect(calls[0].url).toBe('/api/pr-priority/recommendations/r1');
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ decision: 'reject', reason: 'not now' });
+  });
+});

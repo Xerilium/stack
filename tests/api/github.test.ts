@@ -122,7 +122,7 @@ describe('repo allow-list', () => {
       const ok = await setup({ ...ENV, GITHUB_TOKEN: 't', STACK_GITHUB_REPOS: 'o' });
       await ok.storage.write('tasks/alpha.md', doc);
       const { items } = (await (await ok.owner('/api/agents')).json()) as Agents;
-      expect(items[0].prs).toEqual([expect.objectContaining({ repo: 'o/r', state: 'open' }), { url: 'https://github.com/private/repo/pull/2', repo: 'private/repo', number: 2 }]);
+      expect(items[0].prs).toEqual([expect.objectContaining({ repo: 'o/r', state: 'open' }), { url: 'https://github.com/private/repo/pull/2', repo: 'private/repo', number: 2, priority: null }]);
       expect(f.seen.some((x) => x.url.includes('private'))).toBe(false);
       const bad = await setup({ ...ENV, GITHUB_TOKEN: 't', STACK_GITHUB_REPOS: 'o, hidden/x/y' });
       await bad.storage.write('tasks/alpha.md', doc);

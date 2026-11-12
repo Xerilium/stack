@@ -516,6 +516,17 @@ export function App() {
    */
   const answerNeedItem = async (a: AskItem, s: Send) => {
     const id = a.key.replace(/^need:/, '');
+    // A PR priority recommendation: Go accepts, a reply rejects with the text as the reason; it has no defer and no undo. @req FR:pr-priority/needs.actions
+    if (a.decide) {
+      if (s.answer === 'defer') throw new Error('A PR priority recommendation cannot be deferred: accept it or reply to reject it');
+      const accept = s.answer === 'go' || s.answer === 'done';
+      const reason = s.text?.trim() || (s.answer === 'no' ? 'No' : '');
+      if (!accept && !reason) throw new Error('Reply with a reason to reject');
+      await api.decideRec(a.decide, accept ? { decision: 'accept' } : { decision: 'reject', reason });
+      setNeeds(await api.needs());
+      toast(accept ? 'Accepted · PR priority changed' : 'Rejected · the agent will see the reason', 'ok');
+      return;
+    }
     const body = s.answer === 'defer' && s.until ? { choice: 'defer' as const, until: s.until }
       : s.answer === 'go' || s.answer === 'done' ? { choice: 'go' as const }
         : { choice: 'reply' as const, text: s.text || (s.answer === 'no' ? 'No' : 'Noted') };

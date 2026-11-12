@@ -5,6 +5,7 @@ import { InboxFull } from '../core/inbox';
 import { AskDenied } from '../core/asks';
 import { ReportBusy, ReportDenied } from '../core/reports';
 import { PrisBusy, PrisConflict } from '../core/pris';
+import { PrPriBusy, PrPriConflict, PrPriInvalid, PrPriNotFound } from '../core/pr-priority';
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -43,6 +44,10 @@ export function toApiError(e: unknown): ApiError {
   // These two carry fixed text written in the core, never row content.
   if (e instanceof TriageDenied || e instanceof AskDenied || e instanceof ReportDenied) return new ApiError('forbidden', e.message);
   if (e instanceof ReportBusy || e instanceof PrisBusy || e instanceof PrisConflict) return new ApiError('conflict', e.message);
+  // PR priority messages are fixed text or name a PR url or id the caller sent. @req FR:pr-priority/api.put
+  if (e instanceof PrPriConflict || e instanceof PrPriBusy) return new ApiError('conflict', e.message);
+  if (e instanceof PrPriNotFound) return new ApiError('not_found', e.message);
+  if (e instanceof PrPriInvalid) return new ApiError('invalid', 'Validation failed', e.issues);
   if (e instanceof TriageBlocked) return new ApiError('conflict', e.message);
   // Core messages can quote file content or user input, so clients only get fixed text.
   if (e instanceof LifecycleError) return /not found/i.test(e.message) ? new ApiError('not_found', 'Not found') : new ApiError('invalid', 'Request cannot be applied');

@@ -59,6 +59,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     /** The Chief of Staff's escalations. @req FR:ask-queue/needs.api */
     needs: async () => (await call<{ items: NeedItem[] }>('/needs-you')).items,
     answerNeed: (id: string, body: { choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }) => call<{ changed: boolean }>(`/needs-you/${encodeURIComponent(id)}/answer`, body),
+    /** Accept or reject a PR priority recommendation on its `decide` path (`/api/...`). @req FR:pr-priority/needs.actions */
+    decideRec: (decide: string, body: { decision: 'accept' } | { decision: 'reject'; reason: string }) => call<unknown>(decide.replace(/^\/api(?=\/)/, ''), body),
     async tasks(): Promise<Task[]> {
       // @req FR:perf/client.pages — the first page gives the total; the rest go out together.
       const page = (offset: number) => call<{ items: Task[]; total: number }>(`/tasks?state=all&limit=200&offset=${offset}&fields=${TASK_FIELDS}`);
@@ -103,7 +105,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     review: (ref: string, agent?: string) => call<{ runId: string; sessionId: string | null; agent: string }>('/tasks/review', { ref, ...(agent ? { agent } : {}) }),
     cancelSession: (id: string) => call<{ changed: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, {}),
     /** Repo revision for change-driven polling (null: the host has none). @req FR:live-deploy/web.poll */
-    sync: async () => (await call<{ rev: string | null }>('/sync')).rev,
+    /** The change token: the revision plus `live` (state outside the repo) when the host sends it; null stays null (reload every probe). @req FR:pr-priority/needs.poll */
+    sync: async () => { const s = await call<SyncState>('/sync'); return s.rev !== null && s.live ? `${s.rev}~${s.live}` : s.rev; },
     /** Revision plus what a batching server has not committed yet. @req FR:live-deploy/web.unsaved @req FR:live-deploy/$sync-state */
     syncState: () => call<SyncState>('/sync'),
     /** Commit and push pending edits now; `keepalive` when the page is going away. @req FR:live-deploy/web.unsaved.hide @req FR:live-deploy/$flush-result */
@@ -114,6 +117,6 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
 export type Client = ReturnType<typeof createClient>;
 
 /** `GET /api/sync`: `pending`/`since` only when the server batches commits. */
-export interface SyncState { rev: string | null; pending?: number; since?: string | null }
+export interface SyncState { rev: string | null; pending?: number; since?: string | null; live?: string }
 /** `POST /api/sync`. */
 export interface FlushResult { flushed: number; rev: string | null }

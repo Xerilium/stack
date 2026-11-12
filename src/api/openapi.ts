@@ -11,6 +11,7 @@ import { REPORT_ASK_KINDS } from '../core/reports';
 import { PROJECTS, SESSION_REASONS, SESSION_STATES } from '../core/session-inventory';
 import { PRI_ITEM_STATUSES, PRI_STATUSES } from '../core/pris';
 import { INBOX_KINDS } from '../core/inbox';
+import { ESC_STATUSES, REC_STATES } from '../core/pr-priority';
 import { ANCHORS, CADENCES, WEEKDAYS } from '../core/model';
 import { MAX_STR, REF_RE, type Spec } from './validate';
 
@@ -177,7 +178,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   sync: {
     operationId: 'sync', summary: 'Change probe: the head revision of the task repo (null when the storage has none), plus pending/since when the storage batches commits. Poll it and reload only when rev changes',
-    responses: ok('Sync state', { type: 'object', properties: { rev: { type: 'string', nullable: true }, pending: { type: 'integer', description: 'Writes not yet committed (batching storage only)' }, since: { type: 'string', format: 'date-time', nullable: true, description: 'First pending write (batching storage only)' } } }),
+    responses: ok('Sync state', { type: 'object', properties: { rev: { type: 'string', nullable: true }, pending: { type: 'integer', description: 'Writes not yet committed (batching storage only)' }, since: { type: 'string', format: 'date-time', nullable: true, description: 'First pending write (batching storage only)' }, live: { type: 'string', description: 'Changes when live state outside the repo (PR priorities) changes; present only when the host has it' } } }),
   },
   'sync.flush': {
     operationId: 'flushSync', summary: 'Commit and push pending edits now (owner only). flushed is 0 when nothing was pending or the storage does not batch',
@@ -211,7 +212,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'needs.list': {
     operationId: 'listNeeds', summary: 'The Chief of Staff\'s open decisions and go-dos (`.stack/needs-you.json`), each with a recommendation, a default, and a link',
-    responses: ok('Needs', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, recommendation: { type: 'string' }, default: { type: 'string' }, by: { type: 'string' }, link: { type: 'string' }, project: { type: 'string' }, ref: { type: 'string' }, answer: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string', format: 'date-time' } } } } } } } }),
+    responses: ok('Needs', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, recommendation: { type: 'string' }, default: { type: 'string' }, by: { type: 'string' }, link: { type: 'string' }, project: { type: 'string' }, ref: { type: 'string' }, kind: { type: 'string', enum: ['decision'], description: 'A PR priority recommendation: post actions to decide' }, actions: { type: 'array', items: { type: 'string', enum: ['accept', 'edit', 'reject'] } }, decide: { type: 'string' }, answer: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string', format: 'date-time' } } } } } } } }),
   },
   'needs.answer': {
     operationId: 'answerNeed', summary: 'Record the owner\'s answer on a need (go, defer, reply) or clear it (undo). Owner session only: 403 for tokens',
@@ -256,6 +257,28 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'putPriorities', summary: 'Owner only. Replace the priorities list. Send the rev you read: a stale rev is 409. 400 lists every issue',
     requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['rev', 'pris'], properties: { rev: { type: 'integer', minimum: 0 }, pris: { type: 'array', maxItems: 30, items: ref('Pri') } } } } } },
     responses: ok('Stored', ref('PrisFile')),
+  },
+  'prPriority.get': {
+    operationId: 'getPrPriority', summary: 'Owner only. The PR priority queue for the Sweep Manager (~/.stack/pr-priority.json), each PR with cached facts, merge-order edges, the newest report record, acks and status, plus the escalation set and open recommendations (by project, oldest first). 404 on hosts with no store',
+    responses: ok('PR priorities', ref('PrPriView')),
+  },
+  'prPriority.put': {
+    operationId: 'changePrPriority', summary: 'Owner only. One idempotent queue action: add (default top), move (to top, up, down, or rank), pin, unpin, remove, undo (restores the prior revision), or ack (a hold thread). Send the rev you read: a stale rev is 409; a PR not queued is 404',
+    desc: { ref: '<owner>/<name>#<n> or a GitHub PR url; required except for undo', to: 'For move: top, up or down (or send rank)', thread: 'For ack: the https url of the thread', note: 'For add and move: the item note; for ack: the ack note' },
+    responses: ok('Changed', ref('PrPriView')),
+  },
+  'prPriority.recommend': {
+    operationId: 'recommendPrPriority', summary: 'An agent recommends a higher rank for a PR. Returns the new or already open recommendation. 409 when the owner rejected a similar reason in the last 14 days (the message has his reason), when the PR is already queued high enough, or when it is excluded',
+    responses: ok('Recommended', { type: 'object', properties: { created: { type: 'boolean' }, rec: ref('PrRec') } }),
+  },
+  'prPriority.decisions': {
+    operationId: 'listPrPriorityDecisions', summary: 'Decided recommendations (accepted, edited, rejected with the owner reason), newest first, so agents do not retry',
+    responses: ok('Decisions', { type: 'object', properties: { items: { type: 'array', items: ref('PrRec') } } }),
+  },
+  'prPriority.decide': {
+    operationId: 'decidePrPriority', summary: 'Owner only. Accept, edit, or reject a recommendation. Edit and reject need a reason. The same decision again is a no-op; another decision is 409',
+    desc: { rank: 'For edit: the rank to use', note: 'For edit: the item note', reason: 'Required for edit and reject' },
+    responses: ok('Decided', { type: 'object', properties: { changed: { type: 'boolean' }, rec: ref('PrRec'), queue: { type: 'object' } } }),
   },
   'sessions.list': {
     operationId: 'listSessions', summary: 'Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents',
@@ -468,6 +491,36 @@ export function buildOpenApi(): J {
             weekly: { type: 'array', maxItems: 12, description: 'Weekly progress, newest first', items: { type: 'object', additionalProperties: false, required: ['week', 'text'], properties: { week: { type: 'string', pattern: '^\\d{4}-W(0[1-9]|[1-4]\\d|5[0-3])$' }, text: { type: 'string', minLength: 1, maxLength: 500 } } } },
           },
         },
+        PrRec: {
+          type: 'object', required: ['id', 'repo', 'number', 'url', 'agent', 'reason', 'state', 'at'],
+          properties: {
+            id: { type: 'string', pattern: '^pp-[0-9a-f]{8}$' }, repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, agent: { type: 'string' }, reason: { type: 'string' },
+            toRank: { type: 'integer' }, state: { type: 'string', enum: [...REC_STATES] }, at: { type: 'string', format: 'date-time' },
+            decision: { type: 'object', properties: { at: { type: 'string', format: 'date-time' }, reason: { type: 'string' }, rank: { type: 'integer' }, note: { type: 'string' } } },
+          },
+        },
+        PrPriView: {
+          type: 'object', required: ['version', 'rev', 'items'],
+          properties: {
+            changed: { type: 'boolean' }, version: { type: 'integer' }, rev: { type: 'integer' }, updatedAt: { type: 'string', format: 'date-time' },
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  rank: { type: 'integer' }, repo: { type: 'string' }, number: { type: 'integer' }, pr: { type: 'integer' }, url: { type: 'string' }, pinned: { type: 'boolean' }, note: { type: 'string' }, by: { type: 'string' }, at: { type: 'string' },
+                  title: { type: 'string' }, author: { type: 'string' }, isDraft: { type: 'boolean' }, assignee: { type: 'string', nullable: true }, labels: { type: 'array', items: { type: 'string' } },
+                  reviewDecision: { type: 'string', nullable: true }, checks: { type: 'string', enum: ['green', 'red', 'pending'] }, mergeable: { type: 'string' }, lastPushAt: { type: 'string' }, headSha: { type: 'string' }, state: { type: 'string', enum: ['open', 'merged', 'closed'] }, factsAt: { type: 'string' },
+                  baseStack: { type: 'array', items: { type: 'string' }, description: 'PR urls this PR merges after' }, waitsOn: { type: 'array', items: { type: 'string' }, description: 'baseStack urls not merged' }, why: { type: 'string' },
+                  michaelDecision: { type: 'object', properties: { state: { type: 'string' }, reason: { type: 'string' }, at: { type: 'string' } } },
+                  report: { type: 'object', description: 'Newest per-PR report record' }, acks: { type: 'array', items: { type: 'object', properties: { thread: { type: 'string' }, note: { type: 'string' }, at: { type: 'string' } } } },
+                  status: { type: 'string', enum: [...ESC_STATUSES] },
+                },
+              },
+            },
+            escalations: { type: 'object', nullable: true }, recommendations: { type: 'array', items: ref('PrRec') },
+          },
+        },
         PrisFile: {
           type: 'object', required: ['version', 'rev', 'pris'],
           properties: {
@@ -608,6 +661,7 @@ export function buildOpenApi(): J {
                 properties: {
                   url: { type: 'string' }, repo: { type: 'string' }, number: { type: 'integer' }, state: { type: 'string', enum: ['open', 'draft', 'merged', 'closed'] },
                   checks: { type: 'string', enum: ['passing', 'failing', 'pending', 'none'] }, title: { type: 'string' }, updatedAt: { type: 'string' },
+                  priority: { type: 'integer', nullable: true, description: 'Rank in the PR priority queue, or null' },
                 },
               },
             },

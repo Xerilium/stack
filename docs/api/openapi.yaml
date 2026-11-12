@@ -146,6 +146,21 @@ paths:
                           type: string
                         ref:
                           type: string
+                        kind:
+                          type: string
+                          enum:
+                            - decision
+                          description: "A PR priority recommendation: post actions to decide"
+                        actions:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                              - accept
+                              - edit
+                              - reject
+                        decide:
+                          type: string
                         answer:
                           type: object
                           properties:
@@ -1292,6 +1307,208 @@ paths:
                 $ref: "#/components/schemas/PrisFile"
         default:
           $ref: "#/components/responses/Error"
+  /pr-priority:
+    get:
+      summary: Owner only. The PR priority queue for the Sweep Manager (~/.stack/pr-priority.json), each PR with cached facts, merge-order edges, the newest report record, acks and status, plus the escalation set and open recommendations (by project, oldest first). 404 on hosts with no store
+      operationId: getPrPriority
+      responses:
+        "200":
+          description: PR priorities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrPriView"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: "Owner only. One idempotent queue action: add (default top), move (to top, up, down, or rank), pin, unpin, remove, undo (restores the prior revision), or ack (a hold thread). Send the rev you read: a stale rev is 409; a PR not queued is 404"
+      operationId: changePrPriority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - rev
+                - op
+              properties:
+                rev:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000000000
+                op:
+                  type: string
+                  enum:
+                    - add
+                    - move
+                    - pin
+                    - unpin
+                    - remove
+                    - undo
+                    - ack
+                ref:
+                  type: string
+                  maxLength: 300
+                  description: <owner>/<name>#<n> or a GitHub PR url; required except for undo Single line.
+                rank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                to:
+                  type: string
+                  enum:
+                    - top
+                    - up
+                    - down
+                  description: "For move: top, up or down (or send rank)"
+                note:
+                  type: string
+                  maxLength: 300
+                  description: "For add and move: the item note; for ack: the ack note Single line."
+                thread:
+                  type: string
+                  maxLength: 2000
+                  description: "For ack: the https url of the thread Single line."
+      responses:
+        "200":
+          description: Changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrPriView"
+        default:
+          $ref: "#/components/responses/Error"
+  /pr-priority/recommendations:
+    post:
+      summary: An agent recommends a higher rank for a PR. Returns the new or already open recommendation. 409 when the owner rejected a similar reason in the last 14 days (the message has his reason), when the PR is already queued high enough, or when it is excluded
+      operationId: recommendPrPriority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - agent
+                - reason
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  description: Single line.
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                agent:
+                  type: string
+                  maxLength: 40
+                  description: Single line.
+                reason:
+                  type: string
+                  maxLength: 300
+                  description: Single line.
+                toRank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+      responses:
+        "200":
+          description: Recommended
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: boolean
+                  rec:
+                    $ref: "#/components/schemas/PrRec"
+        default:
+          $ref: "#/components/responses/Error"
+    get:
+      summary: Decided recommendations (accepted, edited, rejected with the owner reason), newest first, so agents do not retry
+      operationId: listPrPriorityDecisions
+      parameters:
+        - name: agent
+          in: query
+          schema:
+            type: string
+            description: Single line.
+      responses:
+        "200":
+          description: Decisions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PrRec"
+        default:
+          $ref: "#/components/responses/Error"
+  /pr-priority/recommendations/{id}:
+    post:
+      summary: Owner only. Accept, edit, or reject a recommendation. Edit and reject need a reason. The same decision again is a no-op; another decision is 409
+      operationId: decidePrPriority
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum:
+                    - accept
+                    - edit
+                    - reject
+                rank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  description: "For edit: the rank to use"
+                note:
+                  type: string
+                  maxLength: 300
+                  description: "For edit: the item note Single line."
+                reason:
+                  type: string
+                  maxLength: 300
+                  description: Required for edit and reject Single line.
+      responses:
+        "200":
+          description: Decided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+                  rec:
+                    $ref: "#/components/schemas/PrRec"
+                  queue:
+                    type: object
+        default:
+          $ref: "#/components/responses/Error"
   /inbox-items:
     get:
       summary: "All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens"
@@ -2115,6 +2332,9 @@ paths:
                     format: date-time
                     nullable: true
                     description: First pending write (batching storage only)
+                  live:
+                    type: string
+                    description: Changes when live state outside the repo (PR priorities) changes; present only when the host has it
         default:
           $ref: "#/components/responses/Error"
     post:
@@ -2495,6 +2715,179 @@ components:
                 type: string
                 minLength: 1
                 maxLength: 500
+    PrRec:
+      type: object
+      required:
+        - id
+        - repo
+        - number
+        - url
+        - agent
+        - reason
+        - state
+        - at
+      properties:
+        id:
+          type: string
+          pattern: ^pp-[0-9a-f]{8}$
+        repo:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+        agent:
+          type: string
+        reason:
+          type: string
+        toRank:
+          type: integer
+        state:
+          type: string
+          enum:
+            - open
+            - accepted
+            - edited
+            - rejected
+        at:
+          type: string
+          format: date-time
+        decision:
+          type: object
+          properties:
+            at:
+              type: string
+              format: date-time
+            reason:
+              type: string
+            rank:
+              type: integer
+            note:
+              type: string
+    PrPriView:
+      type: object
+      required:
+        - version
+        - rev
+        - items
+      properties:
+        changed:
+          type: boolean
+        version:
+          type: integer
+        rev:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              rank:
+                type: integer
+              repo:
+                type: string
+              number:
+                type: integer
+              pr:
+                type: integer
+              url:
+                type: string
+              pinned:
+                type: boolean
+              note:
+                type: string
+              by:
+                type: string
+              at:
+                type: string
+              title:
+                type: string
+              author:
+                type: string
+              isDraft:
+                type: boolean
+              assignee:
+                type: string
+                nullable: true
+              labels:
+                type: array
+                items:
+                  type: string
+              reviewDecision:
+                type: string
+                nullable: true
+              checks:
+                type: string
+                enum:
+                  - green
+                  - red
+                  - pending
+              mergeable:
+                type: string
+              lastPushAt:
+                type: string
+              headSha:
+                type: string
+              state:
+                type: string
+                enum:
+                  - open
+                  - merged
+                  - closed
+              factsAt:
+                type: string
+              baseStack:
+                type: array
+                items:
+                  type: string
+                description: PR urls this PR merges after
+              waitsOn:
+                type: array
+                items:
+                  type: string
+                description: baseStack urls not merged
+              why:
+                type: string
+              michaelDecision:
+                type: object
+                properties:
+                  state:
+                    type: string
+                  reason:
+                    type: string
+                  at:
+                    type: string
+              report:
+                type: object
+                description: Newest per-PR report record
+              acks:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    thread:
+                      type: string
+                    note:
+                      type: string
+                    at:
+                      type: string
+              status:
+                type: string
+                enum:
+                  - approve
+                  - review
+                  - decide
+                  - unblock
+        escalations:
+          type: object
+          nullable: true
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrRec"
     PrisFile:
       type: object
       required:
@@ -3086,6 +3479,10 @@ components:
                 type: string
               updatedAt:
                 type: string
+              priority:
+                type: integer
+                nullable: true
+                description: Rank in the PR priority queue, or null
         last:
           type: object
           properties:
