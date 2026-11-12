@@ -20,6 +20,7 @@ import { parseRow, taskText } from './row';
 import { calendarRange, dayFrame, needsRefresh, wallMinutes, withProjects, type DaySched } from './schedule';
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
+import { loadPlaced, loadView, resolvePlaced, savePlaced } from './grid';
 import { AsksView } from './AsksView';
 import { PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
@@ -165,7 +166,9 @@ export function App() {
   /** Weekly meetings (`.stack/meetings.md`): Brief's second layer. @req FR:cos-view/meet.layers */
   const [rules, setRules] = useState<Rule[]>([]);
   /** Tomorrow's plan in My day: its schedule and meetings. @req FR:home/day.tomorrow */
-  const [ahead, setAhead] = useState<{ sched: DaySched; events: CalEvent[] } | null>(null);
+  const [ahead, setAhead] = useState<{ sched: DaySched; events: CalEvent[]; offset: number } | null>(null);
+  const [placedTick, setPlacedTick] = useState(0); // @req FR:my-day-grid/grid.place
+  const daySeq = useRef(0);
   /** "I have N min" from Home: memory only, runs out after N minutes. @req FR:home/home.have */
   const [have, setHaveRaw] = useState<{ minutes: number; at: number } | null>(null);
   const haveChord = useRef(0);
@@ -193,7 +196,8 @@ export function App() {
   const dayKey = sched?.date ?? dateKey(clockNow);
   const busyTime = useMemo(() => busyIntervals(events, day.origin ?? clockNow, day.origin ? 2 : 1), [events, clockNow, day]);
   const budget = budgetOf(clockNow, day, saved && saved.date === dayKey ? saved.minutes : null, busyTime);
-  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, dayOrder, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks }), [tasks, next, dayOrder, clockNow, day, budget.minutes, busyTime, emailAsks]);
+  const placedToday = useMemo(() => resolvePlaced(loadPlaced(store(), dayKey), tasks), [dayKey, placedTick, tasks]);
+  const plan = useMemo(() => buildPlan(planCandidates(tasks, clockNow, dayOrder, next?.ref), clockNow, day, budget.minutes, { busy: busyTime, email: emailAsks, fixed: placedToday }), [tasks, next, dayOrder, clockNow, day, budget.minutes, busyTime, emailAsks, placedToday]);
   // Tomorrow: the next waking day planned from its wake. @req FR:home/day.tomorrow
   const tmr = useMemo(() => {
     if (!ahead) return null;
@@ -201,21 +205,35 @@ export function App() {
     const at = new Date(ahead.sched.wake);
     const b = busyIntervals(ahead.events, d.origin!, 2);
     const bud = budgetOf(at, d, null, b);
-    return { day: d, now: at, budget: bud, plan: buildPlan(planCandidates(tasks, at, dayOrder), at, d, bud.minutes, { busy: b }), events: ahead.events };
-  }, [ahead, projects, tasks, dayOrder]);
+    // A past day shows its meetings only. @req FR:my-day-grid/view.nav
+    const cands = ahead.offset < 0 ? [] : planCandidates(tasks, at, dayOrder);
+    return { day: d, now: at, budget: bud, plan: buildPlan(cands, at, d, bud.minutes, { busy: b, fixed: resolvePlaced(loadPlaced(store(), ahead.sched.date), tasks) }), events: ahead.events, offset: ahead.offset };
+  }, [ahead, projects, tasks, dayOrder, placedTick]);
   const offerTomorrow = !!sched && !sched.asleep && nowMinutes(clockNow, day) >= day.end - 180;
-  const toggleTomorrow = useCallback(async () => {
-    if (ahead) { setAhead(null); return; }
-    if (!sched) return;
-    const at = new Date(Date.parse(sched.bed) + 60_000);
+  /** Show the waking day `n` days from today (0: today). Tomorrow starts just after bed; other days 4 h after their wake. @req FR:home/day.tomorrow @req FR:my-day-grid/view.nav */
+  const goDay = useCallback(async (n: number) => {
+    const seq = ++daySeq.current; // a later click wins over a slower earlier load
+    if (n === 0 || !sched) { setAhead(null); return; }
+    const at = new Date(n === 1 ? Date.parse(sched.bed) + 60_000 : Date.parse(sched.wake) + n * 864e5 + 4 * 36e5);
     try {
       const s = await api.schedule(at.toISOString());
       if (!s) return;
       const r = calendarRange(s, at);
       const c = await api.calendar(r.from, r.to).catch(() => ({ items: [] as CalEvent[] }));
-      setAhead({ sched: s, events: c.items });
-    } catch (e) { toast(e instanceof Error ? e.message : 'Could not load tomorrow', 'err'); }
-  }, [ahead, sched]);
+      if (seq === daySeq.current) setAhead({ sched: s, events: c.items, offset: n });
+    } catch (e) { toast(e instanceof Error ? e.message : 'Could not load that day', 'err'); }
+  }, [sched]);
+  const toggleTomorrow = useCallback(() => goDay(ahead ? 0 : 1), [ahead, goDay]);
+  /** Place a task at a slot of the shown day; Undo puts it back. @req FR:my-day-grid/grid.place */
+  const placeTask = useCallback((ref: string, at: number) => {
+    const date = ahead?.sched.date ?? dayKey;
+    const before = loadPlaced(store(), date)[ref];
+    const t = tasks.find((x) => x.ref === ref);
+    if (!t) return;
+    savePlaced(store(), date, ref, { at, title: parseRow(t.text).title || t.text }, dayKey);
+    setPlacedTick((x) => x + 1);
+    toast(`Placed at ${clock(at)}`, 'ok', () => { savePlaced(store(), date, ref, before ?? null, dayKey); setPlacedTick((x) => x + 1); });
+  }, [ahead, dayKey, tasks]);
   /** Change wake/bed for the shown day or its weekday; the plan reloads. @req FR:home/day.override */
   const saveTimes = useCallback(async (c: { wake?: string; bed?: string; every?: boolean; reset?: boolean }): Promise<boolean> => {
     const shown = ahead?.sched ?? sched;
@@ -999,7 +1017,8 @@ export function App() {
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} team={team.team} projectRank={projectRank} />}
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
-            onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
+            onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: tmr?.offset === 1, toggle: () => void goDay(tmr?.offset === 1 ? 0 : 1) }}
+            events={tmr?.events ?? events} nav={{ offset: tmr?.offset ?? 0, go: (n) => void goDay(n) }} selected={focusRef} onPlace={placeTask} onCloseTask={() => setFocusRef(null)} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             message={{ name: (t) => { const a = taskAgent(t); return a ? displayName(a) : 'the agent'; }, open: (r) => { setComposeRef(r); setFocusRef(r); } }}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
@@ -1035,7 +1054,7 @@ export function App() {
             ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label={`More: open command palette${inboxAttention ? '. Inbox needs setup' : ''}`}><TabIcon v="more" /><span>More</span>{inboxDot}</button>
             : <button type="button" key={slot} class={`tab${view === slot ? ' on' : ''}`} aria-current={view === slot ? 'page' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
       </nav>
-      {focusTask && <TaskDetail task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, focusTask.text, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
+      {focusTask && <TaskDetail side={view === 'today' && loadView(store()) === 'grid'} task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, focusTask.text, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
       {deferRefs && (
         <Dialog title="Defer until" onClose={() => setDeferRefs(null)}>

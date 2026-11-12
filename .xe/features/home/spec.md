@@ -39,7 +39,7 @@ Home itself (the one thing, fit, up next, projects, countdowns) is `FR:web-app/h
 
 ### FR:myday: My day (the schedule)
 
-- **FR:myday.timeline** (P1): My day (`g t`) is the waking day as a timeline: schedule blocks as band headers (`{label} · {start}–{end}`; personal bands muted), meetings, planned tasks, the email block, free gaps of 15 minutes or more (`{span} free`), and a now line. Time before the current band folds into one `Earlier` row
+- **FR:myday.timeline** (P1): My day (`g t`) is the waking day as a timeline (the Agenda view; Grid is the default, `FR:my-day-grid/view.default`): schedule blocks as band headers (`{label} · {start}–{end}`; personal bands muted), meetings, planned tasks, the email block, free gaps of 15 minutes or more (`{span} free`), and a now line. Time before the current band folds into one `Earlier` row
 - **FR:myday.overflow** (P1): What does not fit is one collapsed line at the end (`{n} don't fit`, plus `· {k} due soon` in the warning color when any are at risk); expanded it lists at-risk tasks first (12 at most) then `{n} later`
 - **FR:myday.actions** (P1): Every task row has one-tap Done, Start, Defer 2h, and Message `<agent>` (icon buttons with labels and no key badges; 44 px targets on touch). One click or tap on the row opens the task detail (`FR:task-detail-design/detail.open`). Keys work on the cursor row: `s`, `d`, `n`, `z`, `a`, Enter
 - **FR:myday.quiet** (P2): Needs-you cards and AI team leave the top of the view: they sit below the timeline behind one summary line (`2 to decide · 1 CI failing`) until the Asks view carries them

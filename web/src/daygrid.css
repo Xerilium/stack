@@ -1,0 +1,61 @@
+/* My day grid: equal 30-minute slots on Fluent 2 tokens. @req FR:my-day-grid/grid.slots @req FR:my-day-grid/look.fluent @req FR:my-day-grid/detail.side */
+.dg-page { --dg-gutter: 56px; --dg-row: 48px; --dg-panel: 440px; max-width: 900px; background: none; }
+.dg-head { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--fl-s-s) var(--fl-s-l); padding: var(--fl-s-m) 0; background: var(--bg); border-bottom: 1px solid var(--fl-stroke2); }
+.dg-date { margin: 0; font: 600 var(--fl-sub1)/var(--fl-sub1-lh) var(--fl-font); color: var(--fl-fg1); }
+.dg-sub { margin: 0; color: var(--fl-fg3); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); }
+.dg-head-r { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fl-s-s); }
+.dg-nav { display: inline-flex; align-items: center; gap: 2px; }
+.dg-arrow { min-width: var(--fl-target); padding: 0; font-size: 20px; }
+
+.dg { position: relative; margin-top: var(--fl-s-s); }
+.dg-body { position: relative; }
+.dg-slot { position: absolute; left: 0; right: 0; height: var(--dg-row); border-top: 1px solid var(--fl-stroke2); }
+.dg-slot:not(.hour) { border-top-style: dashed; border-top-color: color-mix(in srgb, var(--fl-stroke2) 60%, transparent); }
+.dg-hour { position: absolute; left: 0; top: -8px; width: calc(var(--dg-gutter) - 8px); text-align: right; font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--fl-fg3); background: var(--bg); padding-right: 4px; }
+.dg-slot:first-child .dg-hour { top: 2px; }
+.dg-free { position: absolute; left: var(--dg-gutter); right: 0; top: 0; bottom: 0; border: 1px dashed transparent; border-radius: var(--fl-r-md); background: none; cursor: pointer; display: flex; align-items: center; justify-content: flex-end; padding: 0 var(--fl-s-m); color: var(--fl-fg3); }
+.dg-plus { opacity: 0; font-size: 18px; transition: opacity var(--fl-fast) var(--fl-ease); }
+.dg-free:hover, .dg-free.over, .dg-free[aria-expanded="true"] { background: var(--fl-subtle-hover); border-color: var(--fl-stroke1); }
+.dg-free:hover .dg-plus, .dg-free:focus-visible .dg-plus, .dg-free.over .dg-plus, .dg-free[aria-expanded="true"] .dg-plus { opacity: 1; }
+@media (hover: none) { .dg-plus { opacity: .5; } }
+
+.dg-band { position: absolute; left: var(--dg-gutter); right: 0; pointer-events: none; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--fl-stroke2) 45%, transparent) 6px 7px); border-left: 2px solid var(--fl-stroke1); }
+.dg-band span { position: absolute; right: var(--fl-s-s); top: 2px; font-size: var(--fl-caption); color: var(--fl-fg3); }
+
+.dg-item { position: absolute; z-index: 1; display: flex; align-items: stretch; border-radius: var(--fl-r-lg); overflow: hidden; background: var(--fl-bg1); border: 1px solid var(--fl-stroke2); border-left: 3px solid var(--fl-stroke-access); box-shadow: var(--fl-shadow4); transition: background var(--fl-fast) var(--fl-ease); }
+.dg-item.task { border-left-color: var(--fl-brand-fg); }
+.dg-item.meeting { background: var(--fl-brand2); border-left-color: var(--fl-brand); }
+.dg-item.meeting.tentative { border-style: dashed; border-left-style: dashed; }
+.dg-item.email { background: var(--fl-bg3); box-shadow: none; }
+@media (hover: hover) { .dg-item.task:hover, .dg-item.meeting:hover { background: var(--fl-bg1-hover); } .dg-item.meeting:hover { background: color-mix(in srgb, var(--fl-brand2) 70%, var(--fl-bg1-hover)); } }
+.dg-item.on { outline: 2px solid var(--fl-brand-fg); outline-offset: -1px; }
+.dg-item.task[draggable="true"] { cursor: grab; }
+.dg-open { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 4px var(--fl-s-s); border: 0; background: none; color: var(--fl-fg1); text-align: left; font: inherit; cursor: pointer; position: relative; }
+.dg-open.static { cursor: default; }
+.dg-open:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: -2px; }
+.dg-title { max-width: 100%; font-weight: 600; font-size: var(--fl-body); line-height: var(--fl-body-lh); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 14px; }
+.dg-time { max-width: 100%; font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--fl-fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dg-open .chev { position: absolute; right: 6px; top: 4px; color: var(--fl-fg3); }
+.dg-join { flex: none; align-self: flex-start; margin: 4px; min-height: 32px; padding: 0 var(--fl-s-m); display: inline-flex; align-items: center; border-radius: var(--fl-r-md); background: var(--fl-brand); color: var(--fl-on-brand); font-weight: 600; text-decoration: none; }
+.dg-join:hover { background: var(--fl-brand-hover); }
+@media (max-width: 719px), (hover: none) { .dg-join { align-self: stretch; margin: 0; min-height: var(--fl-target); border-radius: 0; } }
+
+.dg-now { position: absolute; z-index: 2; left: calc(var(--dg-gutter) - 6px); right: 0; height: 0; border-top: 2px solid var(--fl-danger); pointer-events: none; }
+.dg-now::before { content: ''; position: absolute; left: -4px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--fl-danger); }
+.dg-now time { position: absolute; left: calc(6px - var(--dg-gutter)); top: -9px; width: calc(var(--dg-gutter) - 12px); text-align: right; font-size: 11px; z-index: 1; white-space: nowrap; font-weight: 600; color: var(--fl-danger); background: var(--bg); }
+
+.dg-place { left: var(--dg-gutter); right: 0; max-width: 420px; z-index: 5; }
+.dg-place-head { margin: var(--fl-s-xs) var(--fl-s-s); font-weight: 600; }
+.dg-place .fl-option { justify-content: space-between; }
+.dg-place-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dg-place-m { flex: none; color: var(--fl-fg3); font-size: var(--fl-caption); }
+.dg-when { margin: 0 0 var(--fl-s-l); color: var(--fl-fg2); }
+.dg-actions { display: flex; flex-wrap: wrap; gap: var(--fl-s-s); }
+.dg-actions .fl-btn { text-decoration: none; }
+
+/* Wide: the detail is a right-hand panel and the grid makes room. Narrow: the detail stays the full page (.focus-mode). */
+@media (min-width: 1100px) {
+  .focus-mode.side { left: auto; width: var(--dg-panel, 440px); border-left: 1px solid var(--fl-stroke2); box-shadow: var(--fl-shadow16); }
+  .dg-page[data-split], .dg-page:has(.dg[data-split]) { margin-right: 440px; }
+}
+@media (max-width: 719px) { .dg-page { --dg-gutter: 50px; } .dg-head { padding-top: var(--fl-s-s); } }
