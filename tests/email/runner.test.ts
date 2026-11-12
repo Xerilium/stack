@@ -8,7 +8,7 @@ import { createServer, request as httpRequest } from 'http';
 import { createSafeHttp, isPrivateAddress, pinnedLookup } from '../../src/email/http';
 import { claudeArgs, createClaudeJson, MODELS, type ClaudeJson, type JsonCall } from '../../src/email/llm';
 import { createClassifier, createDrafter, createJudge, emailBlock, newUsage } from '../../src/email/models';
-import { lockPath, readState, rulesFor, rulesPath, runPass, statePath, takeLock, tolerant, withDetails } from '../../src/email/runner';
+import { CLAUDE_LOGIN_ASK, lockPath, MODEL_FAIL_LIMIT, ModelUnavailable, readState, rulesFor, rulesPath, runPass, statePath, takeLock, tolerant, withDetails } from '../../src/email/runner';
 import { emailCmd, launchdPlist, offlineTransport } from '../../src/cli/email';
 import { FileTokenCache } from '../../src/graph/auth';
 import { mkCtx, msg, NOW } from './fixtures';
@@ -489,5 +489,89 @@ describe('no send', () => {
     const g = createGraphGuard();
     for (const p of ['sendMail', 'messages/m1/send', 'messages/m1/forward', 'messages/m1/reply', 'messages/m1/replyAll']) expect(() => g.check({ method: 'POST', url: `${GRAPH_BASE}/me/${p}`, body: {} })).toThrow(GraphDenied);
     expect(() => g.check({ method: 'POST', url: `${GRAPH_BASE}/me/messages/m1/createReply`, body: { comment: 'x' } })).not.toThrow();
+  });
+});
+
+// @req FR:email-runner/model.down
+describe('model down (claude signed out)', () => {
+  const AUTH = 'claude exited 1: Invalid API key · Please run /login';
+  const delta3 = {
+    '/messages/delta': {
+      value: ['a', 'b', 'c', 'd'].map((id) => ({ id, conversationId: `c-${id}`, subject: `Plan ${id}`, from: { emailAddress: { name: 'Alex', address: 'alex@example.test' } }, receivedDateTime: '2026-10-26T10:00:00Z', bodyPreview: 'Can you review?', isRead: false })),
+      '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t9`,
+    },
+    '/me/messages/': { internetMessageHeaders: [], uniqueBody: { contentType: 'text', content: 'Can you review?' } },
+  };
+  const failing = (text: string): ClaudeJson => async () => { throw new Error(text); };
+
+  it('an auth error stops at the first failure, with no retry', async () => {
+    const calls = jest.fn(async () => { throw new Error(AUTH); });
+    const c = tolerant({ classify: calls }, () => undefined);
+    await expect(c.classify(msg(), { vip: false })).rejects.toBeInstanceOf(ModelUnavailable);
+    expect(calls).toHaveBeenCalledTimes(1);
+  });
+  it(`${MODEL_FAIL_LIMIT} messages failing in a row is systemic; a success resets the count`, async () => {
+    let ok = false;
+    const c = tolerant({ classify: async () => { if (ok) return { class: 'fyi', urgency: 0, confidence: 1, reason: 'r' }; throw new Error('timeout'); } }, () => undefined);
+    for (let i = 1; i < MODEL_FAIL_LIMIT; i++) expect(await c.classify(msg(), { vip: false })).toMatchObject({ class: 'needs_decision' });
+    ok = true; await c.classify(msg(), { vip: false }); ok = false;
+    for (let i = 1; i < MODEL_FAIL_LIMIT; i++) await c.classify(msg(), { vip: false });
+    await expect(c.classify(msg(), { vip: false })).rejects.toBeInstanceOf(ModelUnavailable);
+  });
+  it('the adapter error carries the result text claude prints as JSON', async () => {
+    const run = async () => ({ code: 1, stdout: JSON.stringify({ is_error: true, result: 'Invalid API key · Please run /login' }), stderr: '' });
+    await expect(createClaudeJson({ run })({ model: 'm', system: 's', user: 'u', schema: {} })).rejects.toThrow(/Please run \/login/);
+  });
+  it('runPass writes no ask and keeps the old cursor', async () => {
+    for (const text of [AUTH, 'claude timed out after 120s']) {
+      const dataDir = tmp();
+      const { storage, ctx } = mkCtx();
+      await expect(runPass({ ctx, account: 'sam@example.test', transport: fakeGraph(delta3).transport, mode: 'drafts', llm: failing(text), dataDir })).rejects.toBeInstanceOf(ModelUnavailable);
+      expect(await storage.listAsks!()).toEqual([]);
+      expect(existsSync(statePath('sam@example.test', dataDir))).toBe(false);
+    }
+  });
+  it('stack email run writes one stable login ask and exits 4; a rerun and --all add no more', async () => {
+    const { storage, ctx } = mkCtx();
+    const dir = tmp(); const dataDir = tmp();
+    for (const a of ['sam@outlook.com', 'sam@contoso.test']) {
+      const c = new FileTokenCache(join(dir, `graph-token-${a}.json`));
+      await c.write({ version: 1, tenant: 't', clientId: 'id', scopes: ['Mail.ReadWrite'], refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, account: a });
+    }
+    const d = { cacheDir: dir, dataDir, transport: fakeGraph(delta3).transport, llm: failing(AUTH) };
+    const one = await emailCmd(ctx, 'run', {}, { ...d, cache: new FileTokenCache(join(dir, 'graph-token-sam@outlook.com.json')) });
+    expect(one).toMatchObject({ code: 4, json: { ok: false, modelDown: true } });
+    expect(one.text).toMatch(/Claude login expired: run `claude` and sign in/);
+    const all = await emailCmd(ctx, 'run', { all: true }, d);
+    expect(all.code).toBe(4);
+    expect(await storage.listAsks!()).toEqual([asksPath(CLAUDE_LOGIN_ASK)]);
+    expect(parseAsk(CLAUDE_LOGIN_ASK, (await storage.read(asksPath(CLAUDE_LOGIN_ASK))).content)).toMatchObject({ state: 'open', ask: 'Claude login expired: run `claude` and sign in' });
+  });
+});
+
+// @req FR:email-triage/rules.sensitive
+describe('sensitive mail never reaches a model', () => {
+  it('a lab-results subject from a plain address is settled by rules; no classify, no draft, a plain ask', async () => {
+    const dataDir = tmp();
+    const { storage, ctx } = mkCtx();
+    const g = fakeGraph({
+      '/messages/delta': { value: [{ id: 'L', conversationId: 'c-L', subject: 'Your lab results are ready', from: { emailAddress: { name: 'Dr. Kim', address: 'drkim@gmail.example' } }, receivedDateTime: '2026-10-26T10:00:00Z', bodyPreview: 'Can you call?', isRead: false }], '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t` },
+      '/me/messages/L?': { internetMessageHeaders: [], uniqueBody: { contentType: 'text', content: 'Results attached.' } },
+    });
+    const m = fakeLlm(() => ({ class: 'needs_reply', urgency: 1, confidence: 0.9, reason: 'r', injectionSuspected: false }));
+    const s = await runPass({ ctx, account: 'sam@example.test', transport: g.transport, mode: 'drafts', llm: m.llm, dataDir });
+    expect(m.calls).toEqual([]);
+    expect(s).toMatchObject({ rules: 1, model: 0, drafts: 0, asks: 1 });
+    const keys = await storage.listAsks!();
+    expect(keys).toHaveLength(1);
+    expect((await storage.read(keys[0])).content).toMatch(/Sensitive mail from Dr. Kim/);
+  });
+  it('rules.json sensitive {keywords, domains} adds to the defaults; the legacy list still works', () => {
+    const d = tmp();
+    mkdirSync(join(d, 'email', 'sam@example.test'), { recursive: true });
+    writeFileSync(rulesPath('sam@example.test', d), JSON.stringify({ sensitive: { keywords: ['adoption', 7], domains: ['agency.example.test'] } }));
+    const r = rulesFor('sam@example.test', d);
+    expect(r.sensitiveKeywords).toEqual(expect.arrayContaining(['lab results', 'adoption']));
+    expect(r.sensitive).toContain('agency.example.test');
   });
 });

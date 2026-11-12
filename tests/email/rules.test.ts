@@ -93,3 +93,20 @@ describe('rules are data', () => {
     expect(prefilter(msg({ subject: 'Delivery update', bodyPreview: 'Arrives today.' }), c)?.class).toBe('receipt');
   });
 });
+
+// @req FR:email-triage/rules.sensitive
+describe('sensitive subject and display name', () => {
+  it('built-in keywords in the subject or sender name settle as sensitive, whatever the address', () => {
+    const d = (over: Parameters<typeof msg>[0]) => prefilter(msg(over), DEFAULT_RULES)?.class;
+    expect(d({ from: { name: 'Dr. Kim', address: 'drkim@gmail.example' }, subject: 'Your lab results are ready' })).toBe('sensitive');
+    expect(d({ from: { name: 'MyChart Patient Portal', address: 'noreply@mychart.example' }, subject: 'New message' })).toBe('sensitive');
+    expect(d({ subject: 'Insurance claim 4471 update', headers: bulk })).toBe('sensitive');
+    expect(d({ subject: 'Your 2026 tax return' })).toBe('sensitive');
+    expect(d({ subject: 'Labrador results from the show' })).toBeUndefined();
+  });
+  it('config keywords and domains add to the defaults', () => {
+    const c: RulesConfig = { ...cfg, sensitiveKeywords: [...DEFAULT_RULES.sensitiveKeywords, 'adoption'], sensitive: [...cfg.sensitive, 'agency.example.test'] };
+    expect(prefilter(msg({ subject: 'Adoption paperwork' }), c)?.class).toBe('sensitive');
+    expect(prefilter(msg({ from: { address: 'case@agency.example.test' } }), c)?.class).toBe('sensitive');
+  });
+});
