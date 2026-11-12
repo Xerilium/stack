@@ -50,7 +50,7 @@ The owner and agents need routes to send, list, and handle inbox entries and lis
 
 An agent or CoS needs to read and close open entries with no model tokens and no server so that a scheduled run can act on instructions.
 
-- **FR:cli.list** (P1): `stack inbox list [--project p] [--state open|handled|all] [--all] [--json]` prints `listInbox` entries (state defaults to `open`; `--all` lists every entry, withdrawn ones too; `--state` still narrows it), one line each: `<id> <kind> <project> <row> <text>`, where `<row>` is the current row (`FR:inbox.rows`), else the stored `ref`. `--json` prints `{items}` with the same fields as `GET /inbox`; `ref` and `row` keep the CLI form `tasks/<file>.md:<line>`
+- **FR:cli.list** (P1): `stack inbox list [--project p] [--state open|handled|all] [--all] [--json]` prints `listInbox` entries (state defaults to `open`; `--all` lists every entry, withdrawn ones too, marked `(withdrawn)`; `--state` still narrows it), one line each: `<id> <kind> <project> <row> <text>`, where `<row>` is the current row (`FR:inbox.rows`), else the stored `ref`. `--json` prints `{items}` with the same fields as `GET /inbox`; `ref` and `row` keep the CLI form `tasks/<file>.md:<line>`
 - **FR:cli.handle** (P1): `stack inbox handle <id> [--note t] [--from <agent>]` calls `handleEntry` (actor `--from`, else `cli`) and prints `handled` or `unchanged`. An unknown id exits 2
 - **FR:cli.docs** (P2): `docs/agent-instructions.md` is the prompt snippet for a scheduled agent: list open entries for its project, act, reply (`stack inbox reply`), then handle
 
