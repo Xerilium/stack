@@ -5,7 +5,9 @@
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
-import { actionsFor, deadline, ifSilent, type Action, type AskItem, type DeferChoice, type Send } from './asks';
+import { actionsFor, deadline, ifSilent, needsContext, type Action, type AskItem, type DeferChoice, type Send } from './asks';
+import { BriefBlock, ConfirmAct, Linked } from './AskBrief';
+import { repoFor, repoMap } from './autolink';
 import type { AvatarWho } from './avatar';
 
 export interface AskCtl {
@@ -37,6 +39,7 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
   const field = useRef<HTMLInputElement | null>(null);
   useEffect(() => { if (open && panel === 'reply') field.current?.focus(); }, [open, panel]);
   const id = `now-ask-${i}`;
+  const repo = repoFor(a.link, a.project, repoMap());
   const run = (x: Action) => {
     if (x.send) ctl.answer(a, x.send);
     else if (x.reply) onPanel('reply');
@@ -60,9 +63,10 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
       </div>
       {open && (
         <div class="now-ask-more" id={id} data-testid="now-ask-more">
-          {a.why && <p class="now-ask-why">{a.why}</p>}
+          {a.why && <p class="now-ask-why"><Linked text={a.why} repo={repo} /></p>}
+          <BriefBlock brief={a.brief} missing={needsContext(a)} from={who.name} repo={repo} />
           <dl class="now-ask-facts">
-            {a.recommend && <div><dt>Recommend</dt><dd>{a.recommend}</dd></div>}
+            {a.recommend && <div><dt>Recommend</dt><dd><Linked text={a.recommend} repo={repo} /></dd></div>}
             {a.options && a.options.length > 0 && a.kind !== 'decide' && <div><dt>Options</dt><dd>{a.options.join(' · ')}</dd></div>}
             <div class={silent.waits ? 'waits' : ''}><dt>Default</dt><dd>{silent.text}</dd></div>
             {dl && <div><dt>Due</dt><dd class={`now-ask-dl ${dl.tone}`}>{dl.label} · {dl.rel}</dd></div>}
@@ -71,7 +75,8 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
           <div class="now-ask-acts" role="group" aria-label="Respond">
             {actions.map((x) => (x.open && a.source !== 'task'
               ? a.link && <a key={x.id} class="now-act" href={a.link} target="_blank" rel="noopener noreferrer">Open {host(a.link)} <span aria-hidden="true">↗</span></a>
-              : <button key={x.id} type="button" class={`now-act${x.primary ? ' primary' : ''}`} disabled={ctl.busy && !!x.send} onClick={() => run(x)}>{x.label}</button>))}
+              : x.confirm ? <ConfirmAct key={x.id} label={x.label} confirmLabel="Confirm: no context" cls="now-act quiet" disabled={ctl.busy} onConfirm={() => run(x)} />
+                : <button key={x.id} type="button" class={`now-act${x.primary ? ' primary' : ''}`} disabled={ctl.busy && !!x.send} onClick={() => run(x)}>{x.label}</button>))}
             {a.link && a.source !== 'task' && !actions.some((x) => x.open) && <a class="now-act" href={a.link} target="_blank" rel="noopener noreferrer">Open {host(a.link)} <span aria-hidden="true">↗</span></a>}
             {!isAnswer && !actions.some((x) => x.reply) && <button type="button" class="now-act quiet" aria-expanded={panel === 'reply'} onClick={() => onPanel(panel === 'reply' ? 'none' : 'reply')}>Reply</button>}
             <button type="button" class="now-act quiet" aria-expanded={panel === 'defer'} onClick={() => onPanel(panel === 'defer' ? 'none' : 'defer')}>Defer</button>

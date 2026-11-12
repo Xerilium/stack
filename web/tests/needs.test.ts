@@ -42,7 +42,7 @@ describe('mergeNeeds', () => {
 // @req FR:ask-queue/needs.web @req FR:ask-queue/needs.web.card @req FR:ask-queue/$need
 describe('fromNeeds', () => {
   const NOW = new Date('2026-11-01T20:00:00Z');
-  const n = (id: string, over: Partial<NeedItem> = {}): NeedItem => ({ id, title: `Title ${id}`, recommendation: 'Do it', link: 'https://example.test/x', ...over });
+  const n = (id: string, over: Partial<NeedItem> = {}): NeedItem => ({ id, title: `Title ${id}`, recommendation: 'Do it', link: 'https://example.test/x', brief: { problem: 'p', solution: 's', risks: ['r'], recommendation: 'go' }, ...over });
   it('open items become asks from the Chief of Staff, in file order, ahead of everything else', () => {
     const a = fromNeeds([n('one', { default: 'I wait', project: 'finance', ref: 'finance:12' }), n('two')], NOW);
     expect(a.map((x) => x.key)).toEqual(['need:one', 'need:two']);
@@ -70,5 +70,21 @@ describe('fromNeeds', () => {
   // @req FR:pr-review-lane/lane.needs
   it('a blocked live check is not reversible (no Undo)', () => {
     expect(fromNeeds([n('lv.li-0000abcd')], NOW)[0].reversible).toBe(false);
+  });
+});
+
+// @req FR:ask-briefs/brief.needs @req FR:ask-briefs/context.need
+describe('fromNeeds: briefs and context', () => {
+  const NOW2 = new Date('2026-11-12T18:00:00Z');
+  const n = (id: string, over: Partial<NeedItem> = {}): NeedItem => ({ id, title: `Title ${id}`, recommendation: 'Do it', link: 'https://example.test/x', ...over });
+  const B = { problem: 'p', solution: 's', risks: ['r'], recommendation: 'go' };
+  it('carries the agent, its kind, and the brief', () => {
+    expect(fromNeeds([n('rp.xe-cos.stack.a', { from: 'xe-cos', askKind: 'approve', brief: B })], NOW2)[0]).toMatchObject({ from: 'xe-cos', askKind: 'approve', brief: B });
+    expect(fromNeeds([n('x')], NOW2)[0].from).toBe('Chief of Staff');
+  });
+  it('hides an item asked for context until the brief comes back', () => {
+    const asked = { choice: 'context' as const, at: NOW2.toISOString() };
+    expect(fromNeeds([n('a', { answer: asked })], NOW2)).toEqual([]);
+    expect(fromNeeds([n('a', { answer: asked, brief: B })], NOW2).map((x) => x.key)).toEqual(['need:a']);
   });
 });

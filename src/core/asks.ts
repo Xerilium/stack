@@ -9,6 +9,7 @@ import { ConflictError, NotFoundError, writeAll, type FileWrite } from './storag
 import { redact } from './triage';
 import { updateWake } from './ask-wake';
 import { currentRows, inboxTitle } from './inbox';
+import { checkBrief, formatBriefLines, parseBriefLines, type AskBrief } from './ask-brief';
 import { applyAction, describe as describeAction, parseAction, parseTaskRef, readRow, type Action } from './ask-actions';
 
 export const ASK_KINDS = ['approve', 'decide', 'review', 'go-do', 'answer'] as const;
@@ -35,6 +36,8 @@ export interface Ask {
   refText?: string;
   /** Who created the ask (`token:<name>` for a token, else the core actor); only that writer or the owner updates it (security M5). */
   writer?: string;
+  /** The context for the owner, under `## Brief`. @req FR:ask-briefs/brief.store */
+  brief?: AskBrief;
   /** Free markdown under `## Detail`; shown only when the owner expands the ask. */
   detail: string;
   /** Lines under `## Thread`, as written. */
@@ -48,6 +51,8 @@ export interface AskPut {
   ask?: string; kind?: AskKind; from?: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string;
   reversible?: boolean; link?: string; priority?: AskPriority; effort?: string; blocks?: number; detail?: string; reopen?: boolean;
   flow?: string; seq?: number; ref?: string; apply?: string; applies?: string[];
+  /** @req FR:ask-briefs/brief.api */
+  brief?: AskBrief;
 }
 export interface AnswerInput { answer: AskAnswer; text?: string; until?: string }
 export interface HandleInput { outcome: AskOutcome; note?: string; reply?: string }
@@ -106,6 +111,7 @@ export function formatAsk(a: Ask): string {
     ['writer', a.writer],
   ];
   const lines = [`# Ask: ${a.key}`, '', HEADER, '', ...f.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `- ${k}: ${v}`), ...a.extra];
+  if (a.brief) lines.push('', '## Brief', '', ...formatBriefLines(a.brief));
   if (a.detail.trim()) lines.push('', '## Detail', '', a.detail.trim().replace(/^## /gm, '\\## '));
   if (a.thread.length) lines.push('', '## Thread', '', ...a.thread);
   return `${lines.join('\n')}\n`;
@@ -114,11 +120,14 @@ export function formatAsk(a: Ask): string {
 /** Tolerant parse: a missing field takes its default, a bad one is dropped, unknown lines are kept. */
 export function parseAsk(key: string, content: string): Ask {
   const a: Ask = { key, state: 'open', ask: '', kind: 'approve', from: '', reversible: false, priority: 'normal', blocks: 0, created: '', updated: '', detail: '', thread: [], extra: [] };
-  let section: 'head' | 'detail' | 'thread' = 'head';
+  let section: 'head' | 'brief' | 'detail' | 'thread' = 'head';
   const detail: string[] = [];
+  const brief: string[] = [];
   for (const raw of content.split('\n')) {
     const line = raw.replace(/\r$/, '');
+    if (/^## Brief\s*$/.test(line) && section === 'head') { section = 'brief'; continue; }
     if (/^## Detail\s*$/.test(line)) { section = 'detail'; continue; }
+    if (section === 'brief') { if (line.startsWith('- ')) brief.push(line); continue; }
     if (/^## Thread\s*$/.test(line)) { section = 'thread'; continue; }
     if (section === 'detail') { detail.push(line.replace(/^\\## /, '## ')); continue; }
     if (section === 'thread') { if (line.startsWith('- ')) a.thread.push(line); continue; }
@@ -148,6 +157,8 @@ export function parseAsk(key: string, content: string): Ask {
     }
   }
   a.detail = detail.join('\n').trim();
+  const b = parseBriefLines(brief);
+  if (b) a.brief = b;
   return a;
 }
 
@@ -238,6 +249,13 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
   if (input.applies !== undefined) {
     if (!Array.isArray(input.applies) || !input.applies.every((x) => typeof x === 'string')) throw new LifecycleError('applies must list one action per option');
     out.applies = input.applies.map((x, i) => { const v = line(`applies[${i}]`, x, MAX_LINE, false)!.replace(/\|/g, '/'); parseAction(v); return v; }); // one clean line each; `|` separates the stored list
+  }
+  // @req FR:ask-briefs/brief.api @req FR:ask-briefs/brief.validate
+  if (input.brief !== undefined) {
+    const r = checkBrief(input.brief);
+    if (!r.brief) throw new LifecycleError(r.issues.map((i) => `${i.field}: ${i.message}`).join('; '));
+    const b = r.brief;
+    out.brief = { problem: oneLine(b.problem), solution: oneLine(b.solution), risks: b.risks.map(oneLine), recommendation: oneLine(b.recommendation), ...(b.evidence ? { evidence: b.evidence } : {}) };
   }
   if (input.detail !== undefined) {
     if (typeof input.detail !== 'string' || input.detail.length > MAX_DETAIL) throw new LifecycleError(`detail must be at most ${MAX_DETAIL} characters`);

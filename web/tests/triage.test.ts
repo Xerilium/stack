@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AskItem } from '../src/asks';
 import { changeText, flowOf } from '../src/triage';
 
-const ask = (key: string, o: Partial<AskItem> = {}): AskItem => ({ key, state: 'open', ask: key, kind: 'approve', from: 'cos', reversible: true, priority: 'normal', blocks: 0, created: '', updated: '', score: 10, overdue: false, ...o });
+const ask = (key: string, o: Partial<AskItem> = {}): AskItem => ({ brief: { problem: 'p', solution: 's', risks: ['r'], recommendation: 'go' }, key, state: 'open', ask: key, kind: 'approve', from: 'cos', reversible: true, priority: 'normal', blocks: 0, created: '', updated: '', score: 10, overdue: false, ...o });
 
 describe('flowOf', () => {
   it('describes where the owner is in a flow: step, total, done', () => {

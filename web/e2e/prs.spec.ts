@@ -29,7 +29,7 @@ const BOARD = () => ({
   ],
   escalations: {
     at: ago(1),
-    blocked: [{ repo: 'Xerilium/stack', number: 101, url: 'https://github.com/Xerilium/stack/pull/101', title: 'Pick the API shape', blocker: 'Keep the old API or break it?', context: 'Two callers use the old shape.', recommend: 'Keep the old API for one release', link: 'https://github.com/Xerilium/stack/pull/101#discussion_r9' }],
+    blocked: [{ brief: { problem: 'Two callers use the old API.', solution: 'Keep it for one release.', risks: ['Two shapes for a while.'], recommendation: 'Keep the old API.' }, repo: 'Xerilium/stack', number: 101, url: 'https://github.com/Xerilium/stack/pull/101', title: 'Pick the API shape', blocker: 'Keep the old API or break it?', context: 'Two callers use the old shape.', recommend: 'Keep the old API for one release', link: 'https://github.com/Xerilium/stack/pull/101#discussion_r9' }],
     enable: [{ repo: 'Xerilium/stack', number: 106, url: 'https://github.com/Xerilium/stack/pull/106', title: 'Ready for your review' }],
     live: [{ repo: 'Xerilium/stack', number: 109, url: 'https://github.com/Xerilium/stack/pull/109', title: 'Tailnet access' }],
   },
@@ -274,3 +274,27 @@ for (const scheme of ['light', 'dark'] as const) {
     }
   });
 }
+
+// @req FR:ask-briefs/web.pr @req FR:ask-briefs/web.anyway @req FR:ask-briefs/link.web
+test('Escalation set: a decision shows its brief; one with no brief asks for context and accepts only after a confirm', async ({ page }, info) => {
+  const b = BOARD();
+  const noBrief = { ...b.escalations.blocked[0], brief: undefined, number: 110, url: 'https://github.com/Xerilium/stack/pull/110', title: 'Rename the CLI', context: 'Follows #101 and FH 1105.' };
+  (b.escalations.blocked as unknown[]).push(noBrief);
+  const { posts } = await setup(page, { board: b });
+  const fly = await openFly(page, info.project.name === 'mobile');
+  await fly.getByRole('tab', { name: /Escalation set/ }).click();
+  const withBrief = fly.locator('.pr-row.esc', { hasText: 'Pick the API shape' });
+  await expect(withBrief.getByTestId('brief')).toContainText('Two callers use the old API.');
+  await expect(withBrief.getByRole('button', { name: 'Accept', exact: true })).toBeVisible();
+  const bare = fly.locator('.pr-row.esc', { hasText: 'Rename the CLI' });
+  await expect(bare.getByTestId('brief-none')).toContainText('No context yet');
+  await expect(bare.getByRole('link', { name: '#101' })).toHaveAttribute('href', 'https://github.com/Xerilium/stack/issues/101');
+  await expect(bare.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(0);
+  await bare.getByRole('button', { name: 'Ask for context' }).click();
+  await expect.poll(() => posts.at(-1)?.body.note).toMatch(/^Send a brief/);
+  await bare.getByRole('button', { name: 'Accept anyway' }).click();
+  await bare.getByRole('button', { name: 'Confirm: no context' }).click();
+  await expect.poll(() => posts.at(-1)?.body.note).toBe(noBrief.recommend);
+  const { violations } = await new AxeBuilder({ page }).include('.prs-fly').analyze();
+  expect(violations).toEqual([]);
+});

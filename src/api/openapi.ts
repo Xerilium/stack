@@ -28,6 +28,8 @@ interface RouteDoc {
   extra?: Record<string, J>;
   /** Authored request body, for a route whose nested body the core validates (no flat `body` spec). */
   requestBody?: J;
+  /** Body properties the flat schema cannot express (objects). */
+  bodyProps?: Record<string, J>;
   responses: J;
 }
 
@@ -231,7 +233,8 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Asks', { type: 'object', properties: { items: { type: 'array', items: ref('Ask') }, total: { type: 'integer' }, latest: { type: 'string', format: 'date-time' }, snoozed: { type: 'integer' } } }),
   },
   'asks.put': {
-    operationId: 'putAsk', summary: 'Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys',
+    operationId: 'putAsk', summary: 'Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys. Send brief (see Brief) with every approve or decide ask',
+    bodyProps: { brief: ref('Brief') },
     desc: { ask: 'The one exact ask, one line. Required on create', kind: 'Required on create', from: "Agent name; defaults to the token's name (the owner session writes as owner)", default: 'What happens if the owner stays silent', by: 'Deadline (ISO)', reopen: 'Open a done ask again', detail: 'Free markdown shown only when the owner expands the ask', flow: 'Quick triage: the flow this question belongs to (slug)', seq: 'Its place in the flow (1-99)', ref: 'The task this ask belongs to (project:line); the task must exist', apply: 'Action Stack runs on go: set prop=value…, due Mon d, suspend 7d, skip, complete, start, resume, note text', applies: 'One action per option (- for none)' },
     responses: ok('Written', { type: 'object', properties: { key: { type: 'string' }, created: { type: 'boolean' } } }),
   },
@@ -258,10 +261,10 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'needs.list': {
     operationId: 'listNeeds', summary: 'The Chief of Staff\'s open decisions and go-dos (`.stack/needs-you.json`), each with a recommendation, a default, and a link',
-    responses: ok('Needs', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, recommendation: { type: 'string' }, default: { type: 'string' }, by: { type: 'string' }, link: { type: 'string' }, project: { type: 'string' }, ref: { type: 'string' }, kind: { type: 'string', enum: ['decision'], description: 'A PR priority recommendation: post actions to decide' }, actions: { type: 'array', items: { type: 'string', enum: ['accept', 'edit', 'reject'] } }, decide: { type: 'string' }, answer: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string', format: 'date-time' } } } } } } } }),
+    responses: ok('Needs', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, recommendation: { type: 'string' }, default: { type: 'string' }, by: { type: 'string' }, link: { type: 'string' }, project: { type: 'string' }, ref: { type: 'string' }, kind: { type: 'string', enum: ['decision'], description: 'A PR priority recommendation: post actions to decide' }, actions: { type: 'array', items: { type: 'string', enum: ['accept', 'edit', 'reject'] } }, decide: { type: 'string' }, from: { type: 'string' }, askKind: { type: 'string' }, brief: ref('Brief'), answer: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply', 'context'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string', format: 'date-time' } } } } } } } }),
   },
   'needs.answer': {
-    operationId: 'answerNeed', summary: 'Record the owner\'s answer on a need (go, defer, reply) or clear it (undo). Owner session only: 403 for tokens',
+    operationId: 'answerNeed', summary: 'Record the owner\'s answer on a need (go, defer, reply, context: ask the agent for a brief) or clear it (undo). Owner session only: 403 for tokens',
     desc: { text: 'Required for reply', until: 'Required for defer (ISO)' },
     responses: ok('Answered', { type: 'object', properties: { changed: { type: 'boolean' } } }),
   },
@@ -287,7 +290,7 @@ const DOCS: Record<string, RouteDoc> = {
       type: 'object',
       properties: {
         agent: { type: 'string' }, project: { type: 'string' }, created: { type: 'boolean' },
-        asks: { type: 'object', properties: { put: { type: 'array', items: { type: 'string' } }, dropped: { type: 'array', items: { type: 'string' } }, answers: { type: 'object', description: 'Owner answers on the kept asks, by ask key: {choice, text?, until?, at}', additionalProperties: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string' } } } } } },
+        asks: { type: 'object', properties: { put: { type: 'array', items: { type: 'string' } }, dropped: { type: 'array', items: { type: 'string' } }, answers: { type: 'object', description: 'Owner answers on the kept asks, by ask key: {choice, text?, until?, at}', additionalProperties: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply', 'context'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string' } } } } } },
       },
     }),
   },
@@ -482,7 +485,7 @@ function operation(r: (typeof ROUTES)[number]): J {
   const op: J = { summary: d.summary, operationId: d.operationId };
   if (parameters.length) op.parameters = parameters;
   if (r.body) {
-    const props = Object.fromEntries(Object.entries(r.body.schema).map(([k, spec]) => [k, schemaOf(spec, d.desc?.[k], d.extra?.[k])]));
+    const props = { ...Object.fromEntries(Object.entries(r.body.schema).map(([k, spec]) => [k, schemaOf(spec, d.desc?.[k], d.extra?.[k])])), ...d.bodyProps };
     op.requestBody = {
       ...(r.body.required.length ? { required: true } : {}),
       content: {
@@ -642,6 +645,14 @@ export function buildOpenApi(): J {
             done: { type: 'array', items: { type: 'object', properties: { repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, at: { type: 'string' }, reason: { type: 'string' } } } },
           },
         },
+        Brief: {
+          type: 'object', additionalProperties: false, required: ['problem', 'solution', 'risks', 'recommendation'],
+          description: 'Context for an approve or decide ask: at most 120 words in all and 25 words per sentence (Simplified Technical English). An approve or decide ask without one shows "No context yet". See docs/asks.md',
+          properties: {
+            problem: { type: 'string', maxLength: 400 }, solution: { type: 'string', maxLength: 400 }, recommendation: { type: 'string', maxLength: 400 },
+            risks: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'string', maxLength: 400 } }, evidence: { type: 'array', maxItems: 5, items: { type: 'string', pattern: '^https://' } },
+          },
+        },
         ReportItem: {
           type: 'object', additionalProperties: false, required: ['text'],
           properties: { text: { type: 'string', minLength: 1, maxLength: 200, description: 'Single line.' }, link: { type: 'string', maxLength: 2000, pattern: '^https://' } },
@@ -662,7 +673,7 @@ export function buildOpenApi(): J {
                   by: { type: 'string', description: 'ISO date or date-time deadline' },
                   kind: { type: 'string', enum: [...REPORT_ASK_KINDS], default: 'answer' },
                   recommend: { type: 'string', maxLength: 200 }, why: { type: 'string', maxLength: 500 }, default: { type: 'string', maxLength: 200 },
-                  priority: { type: 'string', enum: [...ASK_PRIORITIES] },
+                  priority: { type: 'string', enum: [...ASK_PRIORITIES] }, brief: ref('Brief'),
                 },
               },
             },
@@ -730,7 +741,7 @@ export function buildOpenApi(): J {
             handled: { type: 'string' }, note: { type: 'string' }, snoozed: { type: 'string', format: 'date-time' }, detail: { type: 'string' },
             score: { type: 'integer' }, rank: { type: 'integer' }, overdue: { type: 'boolean' }, snoozedUntil: { type: 'string', format: 'date-time' }, agentReply: { type: 'string' },
             flow: { type: 'string' }, seq: { type: 'integer' }, ref: ref('Ref'), apply: { type: 'string' }, applies: { type: 'array', items: { type: 'string' } }, flowTotal: { type: 'integer' }, flowDone: { type: 'integer' }, refText: { type: 'string' }, writer: { type: 'string', description: 'Who created the ask; only that token or the owner updates it' },
-            row: ref('Ref'), task: { type: 'string' },
+            row: ref('Ref'), task: { type: 'string' }, brief: ref('Brief'),
           },
         },
         TeamAgent: {

@@ -72,7 +72,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     prRec: (id: string, b: { decision: 'accept' | 'edit' | 'reject'; rank?: number; note?: string; reason?: string }) => call<{ ok: true }>(`/prs/recs/${encodeURIComponent(id)}`, b),
     /** The Chief of Staff's escalations. @req FR:ask-queue/needs.api */
     needs: async () => (await call<{ items: NeedItem[] }>('/needs-you')).items,
-    answerNeed: (id: string, body: { choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }) => call<{ changed: boolean }>(`/needs-you/${encodeURIComponent(id)}/answer`, body),
+    answerNeed: (id: string, body: { choice: 'go' | 'defer' | 'reply' | 'context' | 'undo'; text?: string; until?: string }) => call<{ changed: boolean }>(`/needs-you/${encodeURIComponent(id)}/answer`, body),
     /** Accept or reject a PR priority recommendation on its `decide` path (`/api/...`). @req FR:pr-priority/needs.actions */
     decideRec: (decide: string, body: { decision: 'accept' } | { decision: 'reject'; reason: string }) => call<unknown>(decide.replace(/^\/api(?=\/)/, ''), body),
     async tasks(): Promise<Task[]> {

@@ -1,10 +1,10 @@
 /** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/web.keys @req FR:ask-queue/web.a11y @req FR:ask-queue/web.responsive @req FR:ask-queue/live.fallback */
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi, type Mock, type MockAsk } from './mock';
+import { BRIEF, mockApi, type Mock, type MockAsk } from './mock';
 
 const iso = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
 const mk = (o: Partial<MockAsk> & { key: string; ask: string }): MockAsk => ({
-  state: 'open', kind: 'approve', from: 'allyte-cos', reversible: false, priority: 'normal', blocks: 0, created: iso(-5), updated: iso(-1), score: 30, overdue: false, ...o,
+  brief: BRIEF, state: 'open', kind: 'approve', from: 'allyte-cos', reversible: false, priority: 'normal', blocks: 0, created: iso(-5), updated: iso(-1), score: 30, overdue: false, ...o,
 });
 const seed = (): MockAsk[] => [
   mk({ key: 'pr-879', ask: 'Approve merging PR 879 into dev', project: 'allyte', why: 'Go-live is Oct 29; Roland re-approved and CI is green', recommend: 'Approve', default: 'Merges Oct 29 8:00 am', reversible: true, by: iso(3), link: 'https://github.com/o/r/pull/879', score: 120, detail: 'Remaining risk: keyboard pass not signed off.' }),
@@ -32,7 +32,8 @@ test.describe('Asks', () => {
     await expect(card(page).locator('.dl')).toContainText(/Today|Tomorrow/); // +3 h crosses midnight late in the day
     await expect(card(page).locator('.dl')).toContainText('in 3 h');
     await expect(card(page).locator('.btn.primary')).toHaveText(/Approve/);
-    await expect(card(page)).not.toContainText('Recommend');
+    await expect(card(page).locator('.ask-facts')).not.toContainText('Recommend');
+    await expect(card(page).getByTestId('brief')).toBeVisible();
     await expect(card(page).locator('.of')).toHaveText('1 of 7');
     await expect(card(page)).toContainText('If silent: Merges Oct 29 8:00 am');
     await expect(card(page).getByRole('link', { name: /Open/ })).toHaveAttribute('href', 'https://github.com/o/r/pull/879');

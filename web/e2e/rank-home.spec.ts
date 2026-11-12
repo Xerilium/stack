@@ -1,8 +1,8 @@
 /** One ranking, the CoS's Needs you, and a quiet Home. */
 import { expect, test } from '@playwright/test';
-import { mockApi, type MockNeed } from './mock';
+import { BRIEF, mockApi, type MockNeed } from './mock';
 
-const need = (over: Partial<MockNeed> = {}): MockNeed => ({ id: 'pay-bills', title: 'Pay bills tonight', recommendation: 'Pay USAA first', default: 'I wait until Monday', link: 'https://example.test/bills', project: 'alpha', ...over });
+const need = (over: Partial<MockNeed> = {}): MockNeed => ({ brief: BRIEF, id: 'pay-bills', title: 'Pay bills tonight', recommendation: 'Pay USAA first', default: 'I wait until Monday', link: 'https://example.test/bills', project: 'alpha', ...over });
 
 test.describe('Home draws the server ranking', () => {
   // @req FR:web-app/now.active @req FR:web-app/home.one @req FR:top-asks/top.rows
@@ -160,7 +160,7 @@ test.describe('Needs you cursor', () => {
   // @req FR:ask-queue/needs.web
   test('a CoS item that arrives after the asks took the card: the cursor follows the top item', async ({ page }) => {
     const m = await mockApi(page);
-    m.asks = [{ key: 'pr-1', state: 'open', ask: 'Review PR 1', kind: 'approve', from: 'cos', project: 'alpha', reversible: true, priority: 'normal', blocks: 0, created: '2026-10-31T10:00:00Z', updated: '2026-10-31T10:00:00Z', score: 60, overdue: false }];
+    m.asks = [{ brief: BRIEF, key: 'pr-1', state: 'open', ask: 'Review PR 1', kind: 'approve', from: 'cos', project: 'alpha', reversible: true, priority: 'normal', blocks: 0, created: '2026-10-31T10:00:00Z', updated: '2026-10-31T10:00:00Z', score: 60, overdue: false }];
     m.needs = [need()];
     await page.route('**/api/needs-you', async (route) => { await new Promise((ok) => setTimeout(ok, 600)); await route.fallback(); }); // the file loads after the asks
     await page.goto('/#/asks');

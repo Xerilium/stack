@@ -1,10 +1,10 @@
 /** The shell: layout, nav, palette, and the states Michael hit on first use. */
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi, seed, type MockAsk } from './mock';
+import { BRIEF, mockApi, seed, type MockAsk } from './mock';
 
 const KEYBOARD = 'keyboard';
 const iso = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
-const ask = (key: string, text: string, score = 50): MockAsk => ({ key, state: 'open', ask: text, kind: 'approve', from: 'cos', project: 'alpha', reversible: true, priority: 'normal', blocks: 0, created: iso(-2), updated: iso(-1), score, overdue: false });
+const ask = (key: string, text: string, score = 50): MockAsk => ({ brief: BRIEF, key, state: 'open', ask: text, kind: 'approve', from: 'cos', project: 'alpha', reversible: true, priority: 'normal', blocks: 0, created: iso(-2), updated: iso(-1), score, overdue: false });
 const center = async (page: Page, sel: string) => { const b = (await page.locator(sel).boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 
 test.describe('layout and nav', () => {

@@ -12,7 +12,7 @@ export interface PrRow {
   createdAt: string; updatedAt: string; ci: 'passing' | 'failing' | 'pending' | 'none'; unresolved: number; labels: string[]; state: PrState; bucket?: Bucket;
   healthy: boolean; agent: boolean; after: string[]; rank: number | null; pinned: boolean; rec?: { id: string; agent: string; reason: string; toRank?: number }; autopilot: boolean;
 }
-export interface EscEntry { repo: string; number: number; url: string; title?: string; blocker?: string; context?: string; recommend?: string; link?: string; project?: string }
+export interface EscEntry { repo: string; number: number; url: string; title?: string; blocker?: string; context?: string; recommend?: string; link?: string; project?: string; /** @req FR:ask-briefs/brief.pr */ brief?: import('./AskBrief').Brief }
 export interface PrBoard {
   at: string | null; user: string; agents: { count: number; source: 'sessions' | 'wip-label' }; counts: Record<PrGroup, number>;
   footer: { running: number; waiting: number; parked: number }; rows: PrRow[]; escalations?: { at?: string; blocked: EscEntry[]; enable: EscEntry[]; live: EscEntry[] };

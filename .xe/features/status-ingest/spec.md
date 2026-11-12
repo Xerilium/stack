@@ -31,7 +31,7 @@ An agent needs a strict schema so that a bad report is rejected before anything 
 
 - **FR:schema.body** (P1): A report body is a JSON object with only the keys `agent`, `project`, `top`, `asks`, `blockers`, `progress` (lists optional, default empty). Any other key is rejected (@req FR:$report)
 - **FR:schema.items** (P1): `top` has at most 3 items; `blockers` and `progress` have at most 10. Each item is `{text, link?}`: `text` is one line of 1-200 characters; `link` is an `https` url of at most 2000 characters. Any other key is rejected
-- **FR:schema.asks** (P1): `asks` has at most 10 items. Each is `{id, ask, link, by, kind?, recommend?, why?, default?, priority?}`. `id` matches `[a-z0-9][a-z0-9-]{0,23}` and is unique in the report. `ask` is one line of 1-200 characters. `link` (`https` url) and `by` (ISO date or date-time on a real calendar date) are required. `kind` is `approve`, `review`, `go-do` or `answer` (default `answer`). `recommend` and `default` are one line of at most 200 characters, `why` at most 500. `priority` is `crit`, `high`, `normal` or `low`. Any other key is rejected
+- **FR:schema.asks** (P1): `asks` has at most 10 items. Each is `{id, ask, link, by, kind?, recommend?, why?, default?, priority?, brief?}`; `brief` is checked by `FR:ask-briefs/brief.validate`. `id` matches `[a-z0-9][a-z0-9-]{0,23}` and is unique in the report. `ask` is one line of 1-200 characters. `link` (`https` url) and `by` (ISO date or date-time on a real calendar date) are required. `kind` is `approve`, `review`, `go-do` or `answer` (default `answer`). `recommend` and `default` are one line of at most 200 characters, `why` at most 500. `priority` is `crit`, `high`, `normal` or `low`. Any other key is rejected
 - **FR:schema.names** (P1): `agent` and `project` match `[a-z0-9][a-z0-9-]{0,23}`
 - **FR:schema.text** (P1): A text field with a control character, a line break, or an invisible format character is rejected, not cleaned
 - **FR:schema.errors** (P1): `parseReport` MUST check the whole body and throw one `ReportInvalid` that lists every issue as `{field, message}` (for example `asks[0].link`). Nothing is written when the body is invalid
@@ -58,7 +58,7 @@ The owner needs only the latest status from each agent, kept off git, so that ol
 
 The owner needs report asks in **Needs you** so that there is one list, read from the live store, not git.
 
-- **FR:needs.list** (P1): `GET /needs-you` returns the CoS items (`FR:ask-queue/needs.read`) then one item per report ask (newest report first): `id` = ask key, `title` = `ask`, `recommendation` = `recommend` or `Open the link and decide`, `link`, `project`, `by`, `default` and `answer` when set (@req FR:ask-queue/$need)
+- **FR:needs.list** (P1): `GET /needs-you` returns the CoS items (`FR:ask-queue/needs.read`) then one item per report ask (newest report first): `id` = ask key, `title` = `ask`, `recommendation` = `recommend` or `Open the link and decide`, `link`, `project`, `by`, `from` (the agent), `askKind`, and `default`, `answer` and `brief` when set (@req FR:ask-queue/$need)
 - **FR:needs.answer** (P1): `POST /needs-you/{id}/answer` with a report ask key records the owner's answer (`go`, `defer` with `until`, `reply` with `text`, stamped; same shape as CoS answers) on that ask in the live store, and `undo` clears it. An unknown key is `404`
 
 ### FR:auth: Who may write
@@ -72,7 +72,7 @@ The owner needs report asks in **Needs you** so that there is one list, read fro
 
 ### FR:cli: CLI
 
-- **FR:cli.report** (P1): `stack report --agent <name> --project <p> [--file <path>] [--json]` reads the report JSON from `--file`, or from stdin when no file is given (an open pipe that sends nothing for 5 s counts as no input). It needs no content repo. It prints `report <agent>/<project>: <n> asks, <m> dropped (host|store)` (or the result plus `via` with `--json`)
+- **FR:cli.report** (P1): `stack report --agent <name> --project <p> [--file <path>] [--json]` reads the report JSON from `--file`, or from stdin when no file is given (an open pipe that sends nothing for 5 s counts as no input). It needs no content repo. It prints `report <agent>/<project>: <n> asks, <m> dropped (host|store)` (or the result plus `via` with `--json`), then the brief warnings of `FR:ask-briefs/brief.lint`
 - **FR:cli.host** (P1): When `host.json` names a running process (its `pid`) whose url answers as a Stack host, the CLI posts the report to `<url>/api/reports` and does not write the store itself. A host `400` is exit 2 with the host's issues; another Stack error (not `404`) fails
 - **FR:cli.direct** (P1): When there is no `host.json`, its pid is not running, nothing answers, the host has no store (`404`), or the answer is not from Stack, the CLI writes the store directly under the single-writer lock
 - **FR:cli.errors** (P1): Missing `--agent` or `--project`, no input (stdin is a terminal and no `--file`), a file that cannot be read, input that is not JSON, a body whose `agent` or `project` differs from the flags, or a body that fails the schema exits with code 2 and names every issue
