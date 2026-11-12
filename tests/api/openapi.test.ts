@@ -16,6 +16,18 @@ import { tmpdir } from 'os';
 import { createAuth, createTokenService, MemoryTokenStore } from '../../src/api';
 import { createRunManager, type AgentDriver, type Run, type Update } from '../../src/agents';
 import { putAgent } from '../../src/core/agents';
+import { createAppUpdater, type UpdateSettings } from '../../src/core/app-update';
+
+/** An installer with a ready build, fake files and no real process. */
+function oaApp() {
+  let st: UpdateSettings = { mode: 'on-quit', idleMinutes: 30 };
+  const stamp = (sha: string, builtAt: string) => JSON.stringify({ stackBuild: { version: '0.0.1', sha, dirty: false, builtAt } });
+  return createAppUpdater({
+    running: { version: '0.0.1', sha: 'aaaaaaaaaaaa', dirty: false, builtAt: '2026-11-01T00:00:00.000Z' }, target: '/A/Stack.app', source: '/s/Stack.app', stateDir: '/h/.stack', pid: 1,
+    readText: (p) => (p.startsWith('/s/') ? stamp('bbbbbbbbbbbb', '2026-11-12T00:00:00.000Z') : p.endsWith('update-result.json') ? '{"ok":true,"step":"done","at":"2026-11-12T00:00:00Z"}' : null),
+    settings: () => st, saveSettings: (x) => { st = x; }, spawnHelper: () => undefined, quit: () => undefined,
+  });
+}
 
 const FILE = join(__dirname, '../../docs/api/openapi.yaml');
 const text = readFileSync(FILE, 'utf8');
@@ -229,7 +241,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
   // A calendar with an online meeting, so the documented event shape (joinUrl included) is checked against real output.
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
   const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))),
-    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }) });
+    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), app: oaApp() });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
@@ -303,6 +315,10 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('sync', 'GET', '/sync', undefined, 200);
     // @req FR:live-deploy/sync.flush
     await go('sync.flush', 'POST', '/sync', {}, 200);
+    // @req FR:devops-installer/version.get @req FR:devops-installer/version.mode @req FR:devops-installer/restart.spawn
+    await go('version', 'GET', '/version', undefined, 200);
+    await go('version.mode', 'POST', '/version/mode', { mode: 'ask', idleMinutes: 20 }, 200);
+    await go('version.restart', 'POST', '/version/restart', {}, 200);
     // @req FR:day-inputs/api.calendar
     await go('calendar.list', 'GET', '/calendar?from=2026-10-28T00:00:00Z&to=2026-10-29T00:00:00Z', undefined, 200);
     await go('calendar.list', 'GET', '/calendar?from=x&to=y', undefined, 422);

@@ -39,6 +39,7 @@ import type { MailProvider } from '../email/types';
 import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type SourceProbe } from '../inbox';
 import { createBriefCache } from './brief';
 import type { ClaudeJson } from '../email/llm';
+import { IDLE_MINUTES, UPDATE_MODES, UpdateRefused, type AppUpdater, type UpdateMode } from '../core/app-update';
 import { ApiError, errorResponse, flushError, invalid, json, toApiError } from './errors';
 import { parseFields, pick } from './fields';
 import { ENUMS, formatRef, intParam, parseRef, readBody, readQuery, validate, type Spec } from './validate';
@@ -85,6 +86,8 @@ export interface ApiDeps {
   prWrites?: GitHubWrites;
   /** Changes the PR priority queue. @req FR:pr-page/api.queue-client */
   prQueue?: PrQueue;
+  /** The desktop installer: version probe, update mode, restart. Absent means /version is 404. @req FR:devops-installer/version.get */
+  app?: AppUpdater;
   /** Called with unexpected errors (they are never sent to the caller). */
   onError?: (e: unknown) => void;
 }
@@ -190,6 +193,11 @@ const SCHEDULE_DAY_BODY = {
   schema: { date: { t: 'str', required: true, max: 10 }, wake: { t: 'str', max: 5 }, bed: { t: 'str', max: 5 }, every: { t: 'bool' }, reset: { t: 'bool' } } satisfies Record<string, Spec>,
   required: ['date'],
 };
+const VERSION_MODE_BODY = {
+  schema: { mode: { t: 'enum', values: UPDATE_MODES }, idleMinutes: { t: 'int', min: IDLE_MINUTES.min, max: IDLE_MINUTES.max } } satisfies Record<string, Spec>,
+  required: ['mode'],
+};
+const appOf = (c: Ctx): AppUpdater => { if (!c.deps.app) throw new ApiError('not_found', 'No installer on this host'); return c.deps.app; };
 const SCHEDULE_PATH = '.stack/schedule.json';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** A storage that batches commits (storage-git FR:batch), found by duck typing so no adapter is imported here. @req FR:live-deploy/sync.pending */
@@ -1180,6 +1188,42 @@ export const ROUTES: Route[] = [
       // `live` changes when live state outside the repo (the PR priority store) changes, so a poller reloads Needs you. @req FR:pr-priority/needs.poll
       const p = b?.pending();
       return json(200, { rev: await revOf(c.deps.storage), ...(p ? { pending: p.count, since: p.since?.toISOString() ?? null } : {}), ...(c.deps.prPriority ? { live: c.deps.prPriority.stamp() } : {}) });
+    },
+  },
+  {
+    // @req FR:devops-installer/version.@api @req FR:devops-installer/version.get @req FR:devops-installer/version.cheap @req FR:devops-installer/$version-state
+    method: 'GET', doc: '/version', name: 'version',
+    async run(c) {
+      readQuery(c.url, []);
+      return json(200, appOf(c).state());
+    },
+  },
+  {
+    // @req FR:devops-installer/version.mode
+    method: 'POST', doc: '/version/mode', name: 'version.mode', body: VERSION_MODE_BODY,
+    async run(c) {
+      readQuery(c.url, []);
+      const app = appOf(c);
+      ownerOnly(c, 'Only the owner can change how updates install');
+      const b = validate<{ mode: UpdateMode; idleMinutes?: number }>(await readBody(c.req), VERSION_MODE_BODY.schema, VERSION_MODE_BODY.required);
+      return json(200, app.setMode(b.mode, b.idleMinutes));
+    },
+  },
+  {
+    // Commit the live batch first, then the helper swaps after the app quits.
+    // @req FR:devops-installer/restart.@api @req FR:devops-installer/restart.owner @req FR:devops-installer/restart.ready @req FR:devops-installer/restart.flush @req FR:devops-installer/restart.spawn
+    method: 'POST', doc: '/version/restart', name: 'version.restart',
+    async run(c) {
+      readQuery(c.url, []);
+      const app = appOf(c);
+      ownerOnly(c, 'Only the owner can restart Stack');
+      const s = app.state();
+      if (!s.ready) throw new ApiError('conflict', 'No update ready');
+      if (!s.canRestart) throw new ApiError('conflict', 'Restart is not available on this host');
+      const b = batchOf(c.deps.storage);
+      if (b && b.pending().count > 0) { try { await b.flush(); } catch (e) { throw flushError(e); } }
+      try { app.restart(); } catch (e) { if (e instanceof UpdateRefused) throw new ApiError('conflict', e.message); throw e; }
+      return json(200, { restarting: true });
     },
   },
   {

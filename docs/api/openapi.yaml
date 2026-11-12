@@ -2700,6 +2700,106 @@ paths:
                     nullable: true
         default:
           $ref: "#/components/responses/Error"
+  /version:
+    get:
+      summary: "Desktop app only: the running and available builds, whether an update is ready, the update mode, and the last helper result. 404 on hosts with no installer. Reads only local files"
+      operationId: getVersion
+      responses:
+        "200":
+          description: Version state
+          content:
+            application/json:
+              schema: &a4
+                type: object
+                properties:
+                  running: &a3
+                    type: object
+                    nullable: true
+                    properties:
+                      version:
+                        type: string
+                      sha:
+                        type: string
+                      dirty:
+                        type: boolean
+                      builtAt:
+                        type: string
+                        format: date-time
+                  available: *a3
+                  ready:
+                    type: boolean
+                  mode:
+                    type: string
+                    enum:
+                      - on-quit
+                      - ask
+                      - auto-idle
+                      - off
+                  idleMinutes:
+                    type: integer
+                  canRestart:
+                    type: boolean
+                  last:
+                    type: object
+                    nullable: true
+                    properties:
+                      ok:
+                        type: boolean
+                      step:
+                        type: string
+                      at:
+                        type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /version/mode:
+    post:
+      summary: "Set when updates install: on-quit (default), ask, auto-idle, or off (owner only). Saved in ~/.config/stack/config.json"
+      operationId: setUpdateMode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - mode
+              properties:
+                mode:
+                  type: string
+                  enum:
+                    - on-quit
+                    - ask
+                    - auto-idle
+                    - off
+                idleMinutes:
+                  type: integer
+                  minimum: 5
+                  maximum: 240
+      responses:
+        "200":
+          description: Version state
+          content:
+            application/json:
+              schema: *a4
+        default:
+          $ref: "#/components/responses/Error"
+  /version/restart:
+    post:
+      summary: Commit pending edits, then quit, swap in the ready build, and relaunch (owner only). 409 when no update is ready or the host cannot restart
+      operationId: restartForUpdate
+      responses:
+        "200":
+          description: Restarting
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restarting:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
   /projects:
     get:
       summary: List projects

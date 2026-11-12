@@ -12,9 +12,13 @@ const json = (p) => JSON.parse(readFileSync(p, 'utf8'));
 const run = (cmd, args, cwd = root) => { const r = spawnSync(cmd, args, { cwd, stdio: 'inherit' }); if (r.status !== 0) process.exit(r.status ?? 1); };
 
 run('pnpm', ['--filter', '@xerilium/stack-desktop', 'build']);
-const { checkPlatform, packPlan } = createRequire(import.meta.url)(join(desktop, 'dist/desktop/src/pack.js'));
+const { buildStamp, checkPlatform, packPlan } = createRequire(import.meta.url)(join(desktop, 'dist/desktop/src/pack.js'));
 try { checkPlatform(process.platform); } catch (e) { console.error(e.message); process.exit(1); }
-const p = packPlan({ root, rootPkg: json(join(root, 'package.json')), desktopPkg: json(join(desktop, 'package.json')) });
+const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8' }).stdout ?? '';
+const desktopPkg = json(join(desktop, 'package.json'));
+// @req FR:devops-installer/stamp.write
+const build = buildStamp({ version: desktopPkg.version, head: git('rev-parse', 'HEAD'), status: git('status', '--porcelain'), now: new Date() });
+const p = packPlan({ root, rootPkg: json(join(root, 'package.json')), desktopPkg, build });
 
 for (const [cmd, args] of p.build) run(cmd, args);
 rmSync(join(root, 'desktop/out'), { recursive: true, force: true });
@@ -33,4 +37,4 @@ const [at, to] = p.dmg.link;
 symlinkSync(to, at);
 run(...p.dmg.create);
 for (const d of p.cleanup) rmSync(d, { recursive: true, force: true });
-console.log(`Built:\n  ${p.appPath}\n  ${p.zipPath}\n  ${p.dmgPath}`);
+console.log(`Built ${build.sha}${build.dirty ? '+dirty' : ''}:\n  ${p.appPath}\n  ${p.zipPath}\n  ${p.dmgPath}`);

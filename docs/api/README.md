@@ -49,6 +49,9 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/sessions/{id}/prompt` | POST resume a session with a prompt (owner only; stream on `/sessions/{id}/events`) |
 | `/sessions/{id}/cancel` | POST stop the run in flight (owner only) |
 | `/agents` | GET what agents are doing (agent rows, result logs, inbox, PR state and checks) |
+| `/version` | Desktop app only (404 elsewhere): GET the running and ready builds, whether an update is ready, the update mode, and the last update result |
+| `/version/mode` | POST `{ mode, idleMinutes? }`: when updates install (`on-quit`, `ask`, `auto-idle`, `off`). Owner only |
+| `/version/restart` | POST: commit pending edits, then quit, swap in the ready build, and relaunch. Owner only; 409 when nothing is ready |
 | `/sync` | GET the repo revision (`rev`, head commit sha; `null` when the storage has none). Poll it and reload only when it changes |
 | `/calendar` | GET calendar events for a range, read-only (owner session only) |
 | `/meetings` | GET the weekly meeting rules from `.stack/meetings.md` (owner session only) |

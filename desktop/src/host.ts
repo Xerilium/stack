@@ -7,6 +7,7 @@ import { ReportStore, stackHome, writeHostFile } from '../../src/core/reports';
 import { PriStore } from '../../src/core/pris';
 import { PrPriorityStore } from '../../src/core/pr-priority';
 import { runInventory } from '../../src/core/session-inventory';
+import { noteUpdateResult, type AppUpdater } from '../../src/core/app-update';
 
 export interface UserConfig { repo?: string; dir?: string; mode?: string; branch?: string; remote?: string; batch?: number }
 
@@ -25,6 +26,8 @@ export interface HostDeps {
   log?: (line: string) => void;
   /** The Stack home for live state (`reports.json`, `host.json`); default `STACK_HOME` or `<home>/.stack`. */
   stateDir?: string;
+  /** The installer for `/api/version`; its last result becomes a Needs-you note at launch. @req FR:devops-installer/fail.note */
+  app?: AppUpdater;
 }
 
 const NO_REPO = 'No content repo. Set "repo" in ~/.config/stack/config.json';
@@ -69,7 +72,10 @@ export async function startHost(plan: HostPlan, deps: HostDeps = {}): Promise<Ho
   const state = plan.live ? deps.stateDir ?? stackHome(process.env, plan.home) : join(plan.home, '.config/stack/demo-state');
   // Demo reads no session store. @req FR:session-inventory/api.inventory
   const inventory = plan.live ? () => runInventory({ home: state }) : (false as const);
-  const s = await (deps.startWeb ?? startWeb)({ dir, port: 0, webDir, label, info, storage, reports: new ReportStore(state), inventory, pris: new PriStore(state), prPriority: new PrPriorityStore(state) });
+  const reports = new ReportStore(state);
+  // @req FR:devops-installer/fail.note @req FR:devops-installer/fail.clear: best effort, never blocks the host.
+  if (plan.live && deps.app) await noteUpdateResult(deps.app.state().last, reports).catch((e: unknown) => log(`update: cannot note the last result (${e instanceof Error ? e.message : String(e)})`));
+  const s = await (deps.startWeb ?? startWeb)({ dir, port: 0, webDir, label, info, storage, reports, inventory, pris: new PriStore(state), prPriority: new PrPriorityStore(state), ...(deps.app ? { app: deps.app } : {}) });
   const url = `http://127.0.0.1:${new URL(s.url).port}`;
   // The port is random: `stack report` finds the host here. Best effort: a host that cannot write it still serves.
   // @req FR:status-ingest/host.file
