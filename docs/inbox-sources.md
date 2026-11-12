@@ -34,7 +34,7 @@ Sign-in expired: run the same `stack graph login` command again for that address
 
 ## GitHub
 
-Sign in to the GitHub CLI (`gh auth login`), or set `GITHUB_TOKEN` for the Stack host. Read only: Stack never posts.
+Sign in to the GitHub CLI (`gh auth login`), or set `GITHUB_TOKEN` for the Stack host. Read only: Stack never posts. The page shows the sign-in now. GitHub counts as a source once a GitHub inbox sync runs; none is scheduled yet.
 
 ## Teams
 

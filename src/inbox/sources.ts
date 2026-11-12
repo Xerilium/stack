@@ -35,7 +35,7 @@ export interface InboxSource {
 }
 
 /** One connector run, written by the runner to the data repo. @req FR:inbox-page/src.record */
-export interface SyncRecord { kind: Source; account: string; at: string; ok: boolean; error?: SyncError }
+export interface SyncRecord { kind: Source; account: string; at: string; ok: boolean; error?: SyncError; /** Email only: the sign-in mode, so a fix keeps drafts on a host with no probe. */ mode?: MailMode }
 
 /** What a local host sees on this machine. No token values. @req FR:inbox-page/src.probe */
 export interface SourceProbe {
@@ -59,6 +59,10 @@ const NEVER_SENDS = 'Stack never sends.';
 
 const isTime = (s: unknown): s is string => typeof s === 'string' && s.length <= 40 && !Number.isNaN(Date.parse(s));
 const acct = (s: unknown) => (typeof s === 'string' ? s.trim().toLowerCase().slice(0, 200) : '');
+/** A mailbox address safe to put in a copyable command: no spaces, quotes or shell characters. @req FR:inbox-page/src.safe */
+export const MAILBOX = /^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
+/** Email needs a mailbox address; every other kind has one account, named by an empty string. */
+const accountOk = (kind: Source, a: string) => (kind === 'email' ? MAILBOX.test(a) : a === '');
 const same = (a: SyncRecord, b: SyncRecord) => a.kind === b.kind && a.account === b.account;
 
 /** Well formed records only; an unknown error becomes `sync-failed`, so stray text never shows. @req FR:inbox-page/src.safe */
@@ -68,6 +72,8 @@ export function parseRecords(raw: unknown): SyncRecord[] {
   for (const r of list as Record<string, unknown>[]) {
     if (!r || typeof r !== 'object' || !KINDS.includes(r.kind as Source) || !isTime(r.at) || typeof r.ok !== 'boolean') continue;
     const rec: SyncRecord = { kind: r.kind as Source, account: acct(r.account), at: r.at, ok: r.ok };
+    if (!accountOk(rec.kind, rec.account)) continue;
+    if (rec.kind === 'email' && (r.mode === 'read-only' || r.mode === 'drafts')) rec.mode = r.mode;
     if (!r.ok) rec.error = SYNC_ERRORS.includes(r.error as SyncError) ? (r.error as SyncError) : 'sync-failed';
     const i = out.findIndex((x) => same(x, rec));
     if (i >= 0) out[i] = rec; else out.push(rec);
@@ -129,7 +135,7 @@ function help(s: InboxSource, code: SyncError | 'token-unreadable' | undefined, 
   if (s.kind === 'email') {
     const doc = `${DOC}#email`;
     if (s.state === 'not-connected' || code === 'signin-expired') return { ...s, needs: SIGN_IN_NEEDS, command: loginCmd(s.account, clientId, s.mode), doc };
-    if (code === 'token-unreadable') return { ...s, needs: `Only you may read the sign-in file. Run chmod 600 on graph-token-${s.account}.json in ~/.config/stack, then check again.`, doc };
+    if (code === 'token-unreadable') return { ...s, needs: `Stack cannot read the sign-in file graph-token-${s.account}.json in ~/.config/stack. If it is readable by others, run chmod 600 on it. Else sign in again. ${NEVER_SENDS}`, command: loginCmd(s.account, clientId, s.mode), doc };
     if (code === 'model-down') return { ...s, needs: `Run claude in a terminal and sign in. Triage starts again on the next pass. ${NEVER_SENDS}`, command: 'claude', doc };
     if (code === 'sync-failed') return { ...s, needs: 'Run one pass by hand to see the error.', command: `stack email run --account ${s.account}`, doc };
     if (s.state === 'connecting') return { ...s, needs: `Signed in. Run the first sync, then schedule it with stack email schedule. ${NEVER_SENDS}`, command: `stack email run --account ${s.account}`, doc };
@@ -139,7 +145,7 @@ function help(s: InboxSource, code: SyncError | 'token-unreadable' | undefined, 
   if (s.kind === 'github') {
     const doc = `${DOC}#github`;
     if (s.state === 'not-connected') return { ...s, needs: 'Sign in to the GitHub CLI, or set GITHUB_TOKEN for the Stack host. Read only: Stack never posts.', command: 'gh auth login', doc };
-    if (s.state === 'connecting') return { ...s, needs: 'GitHub is signed in. No GitHub sync has run yet.', doc };
+    if (s.state === 'connecting') return { ...s, needs: 'GitHub is signed in. The GitHub inbox sync is not scheduled yet, so GitHub items do not show here.', doc };
     if (s.state === 'error' || s.state === 'stale') return { ...s, needs: 'Check the GitHub CLI sign-in.', command: 'gh auth status', doc };
     return s;
   }
@@ -149,6 +155,7 @@ function help(s: InboxSource, code: SyncError | 'token-unreadable' | undefined, 
 
 /** One source from its latest record (if any), given it is known to exist. @req FR:inbox-page/src.state */
 function fromRecord(base: InboxSource, rec: SyncRecord | undefined, now: Date, freshMs: number, clientId?: string): InboxSource {
+  if (rec?.mode && !base.mode) base = { ...base, mode: rec.mode };
   if (!rec) return help({ ...base, state: base.state === 'not-connected' ? 'not-connected' : 'connecting' }, undefined, clientId);
   const s: InboxSource = { ...base, lastSyncAt: rec.at, state: !rec.ok ? 'error' : now.getTime() - Date.parse(rec.at) <= freshMs ? 'ok' : 'stale' };
   if (!rec.ok) s.error = ERROR_TEXT[rec.error ?? 'sync-failed'](s);
@@ -164,7 +171,7 @@ export function buildSources(o: { now: Date; records: SyncRecord[]; probe?: Sour
   const rec = (kind: Source, account: string) => o.records.find((r) => r.kind === kind && r.account === account);
   const clientId = o.probe?.clientId;
   const probed = new Map((o.probe?.emails ?? []).map((e) => [acct(e.account), e]));
-  const accounts = [...new Set([...probed.keys(), ...o.records.filter((r) => r.kind === 'email').map((r) => r.account), ...(o.accounts ?? []).map(acct)].filter(Boolean))].sort();
+  const accounts = [...new Set([...probed.keys(), ...o.records.filter((r) => r.kind === 'email').map((r) => r.account), ...(o.accounts ?? []).map(acct)].filter((a) => MAILBOX.test(a)))].sort();
   const out: InboxSource[] = [];
   for (const a of accounts) {
     const p = probed.get(a);
@@ -176,7 +183,8 @@ export function buildSources(o: { now: Date; records: SyncRecord[]; probe?: Sour
   }
   if (!accounts.length) out.push(help({ kind: 'email', account: '', state: 'not-connected' }, undefined, clientId));
   const gh = rec('github', '');
-  out.push(fromRecord({ kind: 'github', account: '', state: o.probe?.github || (!o.probe && gh) ? 'connecting' : 'not-connected' }, o.probe && !o.probe.github ? undefined : gh, o.now, freshMs));
+  // GitHub counts once its runner has reported; until then it shows the sign-in only. @req FR:inbox-page/src.planned
+  out.push(fromRecord({ kind: 'github', account: '', state: o.probe?.github || (!o.probe && gh) ? 'connecting' : 'not-connected', ...(gh ? {} : { planned: true }) }, o.probe && !o.probe.github ? undefined : gh, o.now, freshMs));
   out.push(help({ kind: 'teams', account: '', state: 'not-connected', planned: true }, undefined, clientId));
   out.push(help({ kind: 'slack', account: '', state: 'not-connected', planned: true }, undefined, clientId));
   return out;
@@ -200,5 +208,6 @@ export function summarize(sources: InboxSource[], now: Date): SourcesSummary {
     headline = newest ? `Last synced ${agoText(newest, now)}` : 'Waiting for the first sync';
   } else if (stale.length) headline = `${fresh} of ${fresh + stale.length} inboxes up to date`;
   else if (connected < total) headline = `${connected} of ${total} sources connected`;
-  return { connected, total, fresh, attention, canClaimZero: fresh >= 1, headline };
+  // Zero is a claim about every connected inbox: one broken or behind source makes it untrue.
+  return { connected, total, fresh, attention, canClaimZero: fresh >= 1 && !errors.length && !stale.length, headline };
 }

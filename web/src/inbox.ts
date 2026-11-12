@@ -43,7 +43,7 @@ export function emptyText(s: SourcesSummary | undefined): { zero: boolean; what:
 export const progressLine = (s: SourcesSummary): string => `${s.connected} of ${s.total} sources connected`;
 /** Open while something needs the owner; else one line. @req FR:inbox-page/web.sources */
 export const panelOpen = (s: SourcesSummary): boolean => s.attention || !!s.headline;
-export const stepLabel = (s: SourceRow): string => (s.planned ? 'What it needs' : s.state === 'not-connected' ? 'Connect' : s.state === 'error' ? 'Fix' : 'Next step');
+export const stepLabel = (s: SourceRow): string => (s.planned && !s.command ? 'What it needs' : s.state === 'not-connected' ? 'Connect' : s.state === 'error' ? 'Fix' : 'Next step');
 
 /** `Synced 3h ago`, or `Never synced`. */
 export function lastSync(at: string | undefined, now = new Date()): string {

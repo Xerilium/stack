@@ -18,10 +18,10 @@ const planned = [
 const nothing = () => ({
   sources: [
     { kind: 'email', account: '', state: 'not-connected', needs: SIGN_IN, command: 'stack graph login --client-id <app id> --account <address> --with mail', doc: `${DOC}#email` },
-    { kind: 'github', account: '', state: 'not-connected', needs: 'Sign in to the GitHub CLI, or set GITHUB_TOKEN for the Stack host. Read only: Stack never posts.', command: 'gh auth login', doc: `${DOC}#github` },
+    { kind: 'github', account: '', state: 'not-connected', planned: true, needs: 'Sign in to the GitHub CLI, or set GITHUB_TOKEN for the Stack host. Read only: Stack never posts.', command: 'gh auth login', doc: `${DOC}#github` },
     ...planned,
   ],
-  summary: { connected: 0, total: 2, fresh: 0, attention: true, canClaimZero: false, headline: 'No inboxes connected' },
+  summary: { connected: 0, total: 1, fresh: 0, attention: true, canClaimZero: false, headline: 'No inboxes connected' },
 });
 /** Two M365 and four Outlook.com mailboxes, each in its own state. */
 const six = () => ({
@@ -32,10 +32,10 @@ const six = () => ({
     { kind: 'email', account: 'd@outlook.com', state: 'not-connected', needs: SIGN_IN, command: login('d@outlook.com'), doc: `${DOC}#email` },
     { kind: 'email', account: 'me@contoso.test', state: 'error', mode: 'drafts', lastSyncAt: ago(20), error: 'Email sign-in expired: me@contoso.test', needs: SIGN_IN, command: login('me@contoso.test', 'mail,drafts'), doc: `${DOC}#email` },
     { kind: 'email', account: 'ops@contoso.test', state: 'ok', mode: 'read-only', lastSyncAt: ago(2) },
-    { kind: 'github', account: '', state: 'connecting', needs: 'GitHub is signed in. No GitHub sync has run yet.', doc: `${DOC}#github` },
+    { kind: 'github', account: '', state: 'connecting', planned: true, needs: 'GitHub is signed in. The GitHub inbox sync is not scheduled yet, so GitHub items do not show here.', doc: `${DOC}#github` },
     ...planned,
   ],
-  summary: { connected: 5, total: 7, fresh: 2, attention: true, canClaimZero: true, headline: 'Email sign-in expired: me@contoso.test' },
+  summary: { connected: 4, total: 6, fresh: 2, attention: true, canClaimZero: false, headline: 'Email sign-in expired: me@contoso.test' },
 });
 
 async function open(page: Page, src: Mock['inboxSources'], items: Record<string, unknown>[] = []): Promise<Mock> {
@@ -51,7 +51,7 @@ test('nothing connected: never says Inbox zero; says No inboxes connected and sh
   await open(page, nothing());
   await expect(page.getByText('Inbox zero')).toHaveCount(0);
   await expect(page.getByTestId('empty-state')).toContainText('No inboxes connected');
-  await expect(page.getByTestId('src-progress')).toHaveText('0 of 2 sources connected');
+  await expect(page.getByTestId('src-progress')).toHaveText('0 of 1 sources connected');
   await expect(page.getByTestId('inbox-sources')).toContainText('Stack never sends.');
   await page.getByRole('button', { name: 'Connect: Email' }).click();
   const step = page.locator('.src-row[data-kind="email"] .src-step');
@@ -72,16 +72,16 @@ test('six mailboxes: each with its own state; an expired sign-in is the headline
   await expect(state('a@outlook.com')).toContainText('writes reply drafts');
   await expect(state('b@outlook.com')).toContainText('Synced 3h ago');
   await expect(state('me@contoso.test')).toContainText('Email sign-in expired: me@contoso.test');
-  await expect(page.getByTestId('src-progress')).toHaveText('5 of 7 sources connected');
-  // A fresh source exists, so Inbox zero is honest, and the problem still shows.
-  await expect(page.getByTestId('empty-state')).toContainText('Inbox zero. Nothing needs you.');
-  await expect(page.getByTestId('empty-state')).toContainText('Email sign-in expired');
+  await expect(page.getByTestId('src-progress')).toHaveText('4 of 6 sources connected');
+  // One mailbox is broken, so Inbox zero would be untrue: the problem is the empty state.
+  await expect(page.getByText('Inbox zero')).toHaveCount(0);
+  await expect(page.getByTestId('empty-state')).toContainText('Email sign-in expired: me@contoso.test');
   await page.getByRole('button', { name: 'Fix: Email me@contoso.test' }).click();
   await expect(state('me@contoso.test').locator('code')).toHaveText(login('me@contoso.test', 'mail,drafts'));
 });
 
 test('stale only: says when it last synced, not Inbox zero', async ({ page }) => {
-  await open(page, { sources: [{ kind: 'email', account: 'a@outlook.com', state: 'stale', mode: 'read-only', lastSyncAt: ago(180), needs: 'Sync is behind.', command: 'stack email run --all' }, { kind: 'github', account: '', state: 'connecting', needs: 'GitHub is signed in.' }, ...planned], summary: { connected: 2, total: 2, fresh: 0, attention: false, canClaimZero: false, headline: 'Last synced 3h ago' } });
+  await open(page, { sources: [{ kind: 'email', account: 'a@outlook.com', state: 'stale', mode: 'read-only', lastSyncAt: ago(180), needs: 'Sync is behind.', command: 'stack email run --all' }, { kind: 'github', account: '', state: 'connecting', planned: true, needs: 'GitHub is signed in.' }, ...planned], summary: { connected: 1, total: 1, fresh: 0, attention: false, canClaimZero: false, headline: 'Last synced 3h ago' } });
   await expect(page.getByTestId('empty-state')).toContainText('Last synced 3h ago');
   await expect(page.getByText('Inbox zero')).toHaveCount(0);
 });

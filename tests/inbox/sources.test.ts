@@ -17,10 +17,10 @@ describe('buildSources', () => {
   it('nothing known: one empty email row, GitHub, and planned Teams and Slack, all not connected', () => {
     const s = build({ probe: probe() });
     expect(s.map((x) => [x.kind, x.account, x.state, !!x.planned])).toEqual([
-      ['email', '', 'not-connected', false], ['github', '', 'not-connected', false], ['teams', '', 'not-connected', true], ['slack', '', 'not-connected', true],
+      ['email', '', 'not-connected', false], ['github', '', 'not-connected', true], ['teams', '', 'not-connected', true], ['slack', '', 'not-connected', true],
     ]);
     const m = summarize(s, NOW);
-    expect(m).toMatchObject({ connected: 0, total: 2, fresh: 0, attention: true, canClaimZero: false, headline: 'No inboxes connected' });
+    expect(m).toMatchObject({ connected: 0, total: 1, fresh: 0, attention: true, canClaimZero: false, headline: 'No inboxes connected' });
   });
 
   it('each email account is its own source, sorted, with its own state', () => {
@@ -94,6 +94,21 @@ describe('buildSources', () => {
     expect(by(s, 'teams').doc).toMatch(/#teams$/);
     expect(by(s, 'slack').doc).toMatch(/#slack$/);
   });
+  it('records with an unsafe account are dropped, so no shell text reaches a command', () => {
+    expect(parseRecords({ records: [{ kind: 'email', account: 'a@x.com; rm -rf ~', at: ago(1), ok: false, error: 'signin-expired' }, { kind: 'github', account: '$(id)', at: ago(1), ok: true }] })).toEqual([]);
+    const s = build({ records: [{ kind: 'email', account: 'a@x.com`id`', at: ago(1), ok: false, error: 'signin-expired' }], accounts: ['b@x.com'] });
+    expect(s.filter((x) => x.kind === 'email').map((x) => x.account)).toEqual(['b@x.com']);
+  });
+
+  it('no probe: an expired drafts mailbox keeps --with mail,drafts from its record', () => {
+    const s = build({ records: [{ kind: 'email', account: 'b@contoso.test', at: ago(1), ok: false, error: 'signin-expired', mode: 'drafts' }] });
+    expect(by(s, 'email', 'b@contoso.test').command).toMatch(/--with mail,drafts$/);
+  });
+
+  it('GitHub stays planned (not counted) until its runner reports', () => {
+    expect(by(build({ probe: probe({ github: true }) }), 'github').planned).toBe(true);
+    expect(by(build({ probe: probe({ github: true }), records: [{ kind: 'github', account: '', at: ago(1), ok: true }] }), 'github').planned).toBeUndefined();
+  });
 });
 
 describe('summarize', () => {
@@ -106,7 +121,7 @@ describe('summarize', () => {
   });
   it('one error: its message; several: a count', () => {
     const one = build({ probe: p(2), records: [ok(0), { kind: 'email', account: 'm1@outlook.com', at: ago(1), ok: false, error: 'signin-expired' }, gh] });
-    expect(summarize(one, NOW)).toMatchObject({ attention: true, headline: 'Email sign-in expired: m1@outlook.com', canClaimZero: true });
+    expect(summarize(one, NOW)).toMatchObject({ attention: true, headline: 'Email sign-in expired: m1@outlook.com', canClaimZero: false });
     const two = build({ probe: p(2), records: [{ kind: 'email', account: 'm0@outlook.com', at: ago(1), ok: false, error: 'sync-failed' }, { kind: 'email', account: 'm1@outlook.com', at: ago(1), ok: false, error: 'signin-expired' }] });
     expect(summarize(two, NOW).headline).toBe('2 inboxes need attention');
   });
@@ -116,7 +131,7 @@ describe('summarize', () => {
     expect(summarize(build({ probe: probe({ emails: [{ account: 'm0@outlook.com', mode: 'read-only' }], github: true }) }), NOW)).toMatchObject({ headline: 'Waiting for the first sync', canClaimZero: false });
   });
   it('some stale: N of M up to date; some missing: N of M connected', () => {
-    expect(summarize(build({ probe: p(2), records: [ok(0), ok(1, 90), gh] }), NOW).headline).toBe('2 of 3 inboxes up to date');
+    expect(summarize(build({ probe: p(2), records: [ok(0), ok(1, 90), gh] }), NOW)).toMatchObject({ headline: '2 of 3 inboxes up to date', canClaimZero: false });
     expect(summarize(build({ probe: p(2), records: [ok(0), ok(1), gh], accounts: ['x@outlook.com'] }), NOW)).toMatchObject({ headline: '3 of 4 sources connected', attention: true, canClaimZero: true });
   });
   it('planned sources never count, never set the dot', () => {

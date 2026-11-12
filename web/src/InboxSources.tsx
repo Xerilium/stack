@@ -18,7 +18,7 @@ function Source({ s, open, toggle }: { s: SourceRow; open: boolean; toggle: () =
       <div class="src-top">
         <span class="in-src">{SOURCE[s.kind]}</span>
         <span class="src-acct">{s.account || (s.kind === 'email' ? 'No account yet' : '')}</span>
-        <span class={`src-state ${s.state}`}>{s.planned ? 'Not available yet' : STATE_TEXT[s.state]}</span>
+        <span class={`src-state ${s.state}`}>{s.planned ? (s.state === 'connecting' ? 'Signed in' : s.kind === 'github' ? 'Not signed in' : 'Not available yet') : STATE_TEXT[s.state]}</span>
       </div>
       {!s.planned && <p class="src-meta">{lastSync(s.lastSyncAt)}{s.mode ? ` · ${MODE_TEXT[s.mode]}` : ''}</p>}
       {s.error && <p class="src-err">{s.error}</p>}

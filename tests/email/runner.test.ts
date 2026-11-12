@@ -622,21 +622,21 @@ describe('stack email run writes a sync record', () => {
     await emailCmd(ctx, 'run', { 'dry-run': true }, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport: fakeGraph(empty).transport, llm: fakeLlm(() => ({})).llm });
     expect(await readRecords(storage)).toEqual([]);
     await emailCmd({ ...ctx, now: () => NOW }, 'run', {}, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport: fakeGraph(empty).transport, llm: fakeLlm(() => ({})).llm });
-    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: true }]);
+    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: true, mode: 'read-only' }]);
   });
 
   it('an expired sign-in records signin-expired and still fails the pass; no error text is kept', async () => {
     const { storage, ctx } = mkCtx();
     const transport = async () => { throw new GraphSignInRequired(); };
     await expect(emailCmd({ ...ctx, now: () => NOW }, 'run', {}, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport, llm: fakeLlm(() => ({})).llm })).rejects.toThrow(GraphSignInRequired);
-    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: false, error: 'signin-expired' }]);
+    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: false, error: 'signin-expired', mode: 'read-only' }]);
   });
 
   it('other failures record sync-failed; too many messages too', async () => {
     const { storage, ctx } = mkCtx();
     const transport = async () => { throw new Error('boom Bearer eyJ'); };
     await expect(emailCmd({ ...ctx, now: () => NOW }, 'run', {}, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport, llm: fakeLlm(() => ({})).llm })).rejects.toThrow(/boom/);
-    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: false, error: 'sync-failed' }]);
+    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: false, error: 'sync-failed', mode: 'read-only' }]);
     expect(JSON.stringify(await storage.readAux('.stack/inbox-sources.json'))).not.toMatch(/boom|Bearer/);
   });
 });

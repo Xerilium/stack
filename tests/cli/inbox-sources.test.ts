@@ -31,13 +31,13 @@ describe('stack inbox sources', () => {
     writeFileSync(join(d, '.xe/config/stack.json'), JSON.stringify({ inbox: { accounts: ['b@outlook.com'] } }));
     const t = await stack(d, 'inbox', 'sources');
     expect(t.code).toBe(4);
-    expect(t.out).toContain('2 of 3 sources connected');
+    expect(t.out).toContain('1 of 2 sources connected');
     expect(t.out).toMatch(/email\s+a@outlook\.com\s+connecting/);
     expect(t.out).toMatch(/email\s+b@outlook\.com\s+not-connected/);
     expect(t.out).toContain('stack graph login --client-id 11111111-2222-3333-4444-555555555555 --account b@outlook.com --with mail');
     expect(t.out).toMatch(/teams .*planned/);
     const j = JSON.parse((await stack(d, 'inbox', 'sources', '--json')).out);
-    expect(j.summary).toMatchObject({ connected: 2, total: 3, attention: true });
+    expect(j.summary).toMatchObject({ connected: 1, total: 2, attention: true });
     expect(j.sources.map((s: { kind: string }) => s.kind)).toEqual(['email', 'email', 'github', 'teams', 'slack']);
     expect(t.out + JSON.stringify(j)).not.toMatch(/SECRET/);
   });

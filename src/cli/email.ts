@@ -131,9 +131,12 @@ export function syncErrorOf(e: unknown): SyncError {
 }
 
 /** One sync record per real pass, for the Inbox source status. A failed write never hides the pass result. @req FR:inbox-page/src.record */
-async function syncRecord(ctx: LifecycleContext, account: string, e: unknown | null): Promise<void> {
+async function syncRecord(ctx: LifecycleContext, account: string, mode: string, e: unknown | null): Promise<void> {
+  // A usage error is the caller's typo, not the mailbox: no record.
+  if (e instanceof UsageError) return;
   const at = (ctx.now ?? (() => new Date()))().toISOString();
-  await recordSync(ctx.storage, e === null ? { kind: 'email', account, at, ok: true } : { kind: 'email', account, at, ok: false, error: syncErrorOf(e) }).catch(() => undefined);
+  const m = mode === 'drafts' ? 'drafts' as const : 'read-only' as const;
+  await recordSync(ctx.storage, e === null ? { kind: 'email', account, at, ok: true, mode: m } : { kind: 'email', account, at, ok: false, error: syncErrorOf(e), mode: m }).catch(() => undefined);
 }
 
 export async function emailCmd(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps = {}): Promise<EmailOutcome> {
@@ -181,11 +184,11 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
       const max = flag(f, 'max') ? Number(flag(f, 'max')) : undefined;
       if (max !== undefined && (!Number.isInteger(max) || max < 1)) throw new UsageError('--max must be a positive integer');
       const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), onResults: async (r) => { await syncInbox(ctx, { account, results: r }); }, project: flag(f, 'project') });
-      if (!dry) await syncRecord(ctx, account, null);
+      if (!dry) await syncRecord(ctx, account, mode, null);
       if (!dry && s.modelCalls > 0 && s.modelErrors === 0) await handleAsk(ctx, CLAUDE_LOGIN_ASK, { outcome: 'resolved', note: 'claude works again' }, 'email-triage').catch((e) => { if (!(e instanceof NotFoundError)) throw e; });
       return { json: { ok: true, account, mode, dryRun: dry, ...s }, text: `${mode}${dry ? ' (dry run)' : ''}: ${s!.messages} messages, ${s!.rules} by rules, ${s!.model} by model, ${s!.asks} asks, ${s!.drafts} drafts, archive ${s!.archivePending}, spam ${s!.spamPending}, ${s!.modelCalls} model calls` };
     } catch (e) {
-      if (!dry) await syncRecord(ctx, account, e);
+      if (!dry) await syncRecord(ctx, account, mode, e);
       if (e instanceof MaxExceeded) return { json: { ok: false, found: e.found, max: e.max }, text: e.message, code: 4 };
       if (e instanceof ModelUnavailable) {
         await loginAsk(passCtx, e);

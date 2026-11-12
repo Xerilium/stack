@@ -48,7 +48,8 @@ export function cachedProbe(o: ProbeOptions & { ttlMs?: number; now?: () => numb
     if (!opts?.fresh && last && now() - last.at < (o.ttlMs ?? 60_000)) return last.value;
     const value = probeLocal(o);
     last = { at: now(), value };
-    value.catch(() => { last = null; });
+    const mine = last;
+    value.catch(() => { if (last === mine) last = null; });
     return value;
   };
 }
