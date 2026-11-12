@@ -36,7 +36,7 @@ export interface StackConfig {
   /** Extra formats written alongside the primary. @req FR:formatter-clean/select.also */
   alsoWrite: FormatId[];
   /** The PR page: the signed-in GitHub login, PRs to leave out, poll seconds (30-60). @req FR:pr-page/group.@function @req FR:pr-page/live.poll */
-  github?: { user?: string; exclude?: string[]; pollSeconds?: number };
+  github?: { user?: string; exclude?: string[]; pollSeconds?: number; /** My repos: owners or owner/repo. @req FR:pr-page/auth.repos */ repos?: string[] };
   /** Inbox source status: freshness window (minutes) and the mailboxes expected in the Inbox. @req FR:config/load.validate.inbox */
   inbox?: {
     freshMinutes?: number; accounts?: string[];
@@ -172,6 +172,10 @@ export function parseConfig(input?: unknown): StackConfig {
     const out: NonNullable<StackConfig['github']> = {};
     if (g.user !== undefined) { out.user = str(g.user, 'github.user'); if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(out.user)) throw new ConfigError('github.user: expected a GitHub login'); }
     if (g.exclude !== undefined) { if (!Array.isArray(g.exclude)) throw new ConfigError('github.exclude: expected array'); out.exclude = g.exclude.map((e, i) => str(e, `github.exclude[${i}]`)); }
+    if (g.repos !== undefined) {
+      if (!Array.isArray(g.repos)) throw new ConfigError('github.repos: expected array');
+      out.repos = g.repos.map((e, i) => { const v = str(e, `github.repos[${i}]`); if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\/[A-Za-z0-9._-]{1,100})?$/.test(v)) throw new ConfigError(`github.repos[${i}]: expected an owner or owner/repo`); return v; });
+    }
     if (g.pollSeconds !== undefined) { if (typeof g.pollSeconds !== 'number' || g.pollSeconds < 30 || g.pollSeconds > 60) throw new ConfigError('github.pollSeconds: expected 30-60'); out.pollSeconds = g.pollSeconds; }
     cfg.github = out;
   }

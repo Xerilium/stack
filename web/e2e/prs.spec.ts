@@ -3,6 +3,7 @@
  * @req FR:pr-page/icon.place @req FR:pr-page/icon.absent @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape @req FR:pr-page/flyout.tabs @req FR:pr-page/flyout.row
  * @req FR:pr-page/flyout.filter @req FR:pr-page/flyout.empty @req FR:pr-page/flyout.a11y @req FR:pr-page/act.queue @req FR:pr-page/act.autopilot @req FR:pr-page/act.accept
  * @req FR:pr-page/act.thread @req FR:pr-page/act.rec @req FR:pr-page/act.set @req FR:pr-page/act.never @req FR:pr-page/live.age @req FR:pr-page/state.view @req FR:pr-page/group.footer
+ * @req FR:pr-page/nav.rail @req FR:pr-page/nav.badge @req FR:pr-page/nav.phone @req FR:pr-page/nav.page @req FR:pr-page/nav.load @req FR:pr-page/auth.state @req FR:pr-page/auth.signin
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -35,13 +36,19 @@ const BOARD = () => ({
   },
 });
 
-async function setup(page: Page, o: { board?: unknown; status?: number } = {}) {
+async function setup(page: Page, o: { board?: unknown; status?: number; delayMs?: number; signIn?: unknown[] } = {}) {
   const m = await mockApi(page);
   const posts: { path: string; body: any }[] = [];
   await page.route('**/api/prs**', async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname.replace(/^\/api/, '');
+    if (path === '/prs/sign-in') {
+      posts.push({ path: `${req.method()} ${path}`, body: null });
+      const next = req.method() === 'POST' ? o.signIn?.[0] : o.signIn?.[Math.min(posts.filter((p) => p.path === 'GET /prs/sign-in').length, (o.signIn?.length ?? 1) - 1)];
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(next ?? { state: 'none' }) });
+    }
     if (req.method() === 'GET') {
+      if (o.delayMs) await new Promise((r) => setTimeout(r, o.delayMs));
       if (o.status) return route.fulfill({ status: o.status, contentType: 'application/json', body: JSON.stringify({ error: { code: 'not_found', message: 'No PR board on this host' } }) });
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o.board ?? BOARD()) });
     }
@@ -80,7 +87,7 @@ test('icon counts active agents; click opens the flyout; Escape closes and focus
   await expect(b).toBeFocused();
 });
 
-test('g r opens the flyout', async ({ page }, info) => {
+test('g r opens the Pull requests page', async ({ page }, info) => {
   test.skip(info.project.name === 'mobile', 'keys are desktop');
   await setup(page);
   await page.goto('/#/now');
@@ -88,15 +95,113 @@ test('g r opens the flyout', async ({ page }, info) => {
   await page.locator('body').click({ position: { x: 600, y: 700 } });
   await page.keyboard.press('g');
   await page.keyboard.press('r');
+  await expect(page).toHaveURL(/#\/prs$/);
+  await expect(page.getByTestId('prs-page')).toBeVisible();
+});
+
+test('the rail has Pull requests with a count of Blocked plus Waiting; it opens #/prs', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'the rail is desktop');
+  await setup(page);
+  await page.goto('/#/now');
+  const rail = page.getByRole('navigation', { name: 'Views' });
+  const entry = rail.locator('button.tab', { hasText: 'Pull requests' });
+  await expect(entry).toBeVisible();
+  // BOARD counts: blocked 1 + waiting 1.
+  await expect(entry.getByTestId('prs-nav-badge')).toHaveText('2');
+  await expect(entry.getByTestId('prs-nav-badge')).toHaveAttribute('aria-label', '2 need you');
+  // After Needs you.
+  const names = await rail.locator('button.tab').allInnerTexts();
+  expect(names.findIndex((n) => n.startsWith('Pull requests'))).toBe(names.findIndex((n) => n.startsWith('Needs you')) + 1);
+  await entry.click();
+  await expect(page).toHaveURL(/#\/prs$/);
+  const pg = page.getByTestId('prs-page');
+  await expect(pg.getByRole('tab', { name: /Blocked on me/ })).toBeVisible();
+  // Every PR title is a full GitHub link.
+  for (const href of await pg.locator('a.pr-title').evaluateAll((els) => els.map((e) => (e as HTMLAnchorElement).href))) expect(href).toMatch(/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/);
+  // Direct actions on the page too: Top on a queued row; Apply Autopilot on a pending row; open link.
+  await pg.getByRole('tab', { name: /Blocked on me/ }).click();
+  await expect(pg.locator('.pr-row').first().getByRole('button', { name: 'Top', exact: true })).toBeVisible();
+  await pg.getByRole('tab', { name: /Pending/ }).click();
+  await expect(pg.getByRole('button', { name: 'Apply Autopilot' })).toBeVisible();
+  // The top bar icon still opens the flyout over the page.
+  await icon(page, false).click();
   await expect(page.getByTestId('prs-flyout')).toBeVisible();
 });
 
-test('no icon on a host with no GitHub token ({off: true}) or an older host (404)', async ({ page }, info) => {
+test('phone: More lists Go to Pull requests with the count; the top icon opens the flyout full screen', async ({ page }, info) => {
+  test.skip(info.project.name !== 'mobile', 'the tab bar is phone');
+  await setup(page);
+  await page.goto('/#/now');
+  await expect(page.getByRole('navigation', { name: 'Views (mobile)' }).getByRole('button')).toHaveCount(5);
+  await page.getByRole('button', { name: /^More/ }).click();
+  const go = page.getByRole('option', { name: /Go to Pull requests \(2\)/ }).or(page.getByRole('button', { name: /Go to Pull requests \(2\)/ }));
+  await expect(go.first()).toBeVisible();
+  await go.first().click();
+  await expect(page).toHaveURL(/#\/prs$/);
+  await expect(page.getByTestId('prs-page')).toBeVisible();
+});
+
+test('first open shows a skeleton, never zero counts, until the board answers', async ({ page }, info) => {
+  const mobile = info.project.name === 'mobile';
+  await setup(page, { delayMs: 1500 });
+  await page.goto('/#/prs');
+  const sk = page.getByTestId('prs-skeleton');
+  await expect(sk).toBeVisible();
+  await expect(sk).toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByTestId('prs-page').getByRole('tab')).toHaveCount(0);
+  // The icon and the nav entry show while the first poll runs, with no count.
+  await expect(icon(page, mobile)).toHaveAccessibleName('Pull requests: loading');
+  await expect(icon(page, mobile).locator('.badge')).toHaveCount(0);
+  if (!mobile) await expect(page.getByRole('navigation', { name: 'Views' }).locator('button.tab', { hasText: 'Pull requests' })).toBeVisible();
+  await expect(page.getByTestId('prs-page').getByRole('tab', { name: /Blocked on me/ })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('prs-age')).toHaveText(/Updated \d+ s ago/);
+  await expect(icon(page, mobile)).toBeVisible();
+});
+
+test('signed out: one honest state with Sign in to GitHub; the device code; the board after done', async ({ page }, info) => {
+  const mobile = info.project.name === 'mobile';
+  const SIGNED_OUT = { auth: { state: 'signed-out', method: 'gh' } };
+  let board: unknown = SIGNED_OUT;
+  const { posts } = await setup(page, { signIn: [{ state: 'waiting', userCode: 'AB12-CD34', verificationUri: 'https://github.com/login/device' }, { state: 'waiting', userCode: 'AB12-CD34', verificationUri: 'https://github.com/login/device' }, { state: 'done' }] });
+  await page.route('**/api/prs', (route) => route.request().method() === 'GET' ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(board) }) : route.fallback());
+  await page.goto('/#/now');
+  // The icon and the nav entry show, with no count.
+  const b = icon(page, mobile);
+  await expect(b).toHaveAccessibleName('Pull requests: sign in to GitHub');
+  await expect(b.locator('.badge')).toHaveCount(0);
+  if (!mobile) await expect(page.getByTestId('prs-nav-dot')).toHaveAttribute('aria-label', 'Sign in to GitHub');
+  await page.goto('/#/prs');
+  const pg = page.getByTestId('prs-page');
+  await expect(pg.getByTestId('prs-signin')).toContainText('Sign in to GitHub to see your PRs.');
+  await expect(pg.getByRole('tab')).toHaveCount(0);
+  await expect(pg.getByTestId('prs-foot')).toHaveCount(0);
+  await pg.getByTestId('prs-signin-btn').click();
+  await expect(pg.getByTestId('prs-code')).toHaveText('AB12-CD34');
+  await expect(pg.getByRole('link', { name: 'Open github.com/login/device' })).toHaveAttribute('href', 'https://github.com/login/device');
+  expect(posts.some((p) => p.path === 'POST /prs/sign-in')).toBe(true);
+  board = BOARD();
+  await expect(pg.getByRole('tab', { name: /Blocked on me/ })).toBeVisible({ timeout: 10_000 });
+});
+
+test('no gh CLI: the state says how to fix it, no button', async ({ page }) => {
+  await setup(page, { board: { auth: { state: 'signed-out', method: 'none' } } });
+  await page.goto('/#/prs');
+  const s = page.getByTestId('prs-signin');
+  await expect(s).toContainText('Install the GitHub CLI, or set GITHUB_TOKEN.');
+  await expect(page.getByTestId('prs-signin-btn')).toHaveCount(0);
+});
+
+test('no icon and no nav entry on a host with no board ({off: true}) or an older host (404)', async ({ page }, info) => {
   await setup(page, { board: { off: true } });
   await page.goto('/#/now');
   await expect(page.locator('.main')).toBeVisible();
   await page.waitForTimeout(300);
   await expect(icon(page, info.project.name === 'mobile')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Pull requests/ })).toHaveCount(0);
+  // A direct #/prs (or g r) says so instead of loading forever.
+  await page.goto('/#/prs');
+  await expect(page.getByTestId('prs-off')).toContainText('This host has no PR board.');
+  await expect(page.getByTestId('prs-skeleton')).toHaveCount(0);
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   await setup(page, { status: 404 });
   await page.goto('/#/now');
@@ -251,6 +356,27 @@ test('a recommendation: Reject needs a reason', async ({ page }, info) => {
 });
 
 for (const scheme of ['light', 'dark'] as const) {
+  test(`#/prs page and signed-out state (${scheme}): axe clean, no sideways scroll, tap size`, async ({ page }, info) => {
+    const mobile = info.project.name === 'mobile';
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const [name, board] of [['page', BOARD()], ['signin', { auth: { state: 'signed-out', method: 'gh' } }]] as const) {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+      await setup(page, { board });
+      await page.goto('/#/prs');
+      await page.reload();
+      const pg = page.getByTestId('prs-page');
+      await expect(name === 'page' ? pg.getByRole('tab').first() : pg.getByTestId('prs-signin')).toBeVisible();
+      await page.waitForTimeout(350);
+      const { violations } = await new AxeBuilder({ page }).include('[data-testid="prs-page"]').analyze();
+      const bad = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').flatMap((v) => v.nodes.map((n) => `${v.id} ${n.target.join(' ')}`));
+      expect(bad, bad.join('\n')).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+      const min = mobile ? 44 : 24;
+      const small = await pg.locator('button:visible, a:visible').evaluateAll((els, m) => els.map((e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), what: `${(e as HTMLElement).className} "${(e.textContent ?? '').trim().slice(0, 30)}"` }; }).filter((x) => x.h > 0 && x.h < m), min);
+      expect(small, JSON.stringify(small, null, 1)).toEqual([]);
+      await page.screenshot({ path: `e2e/screenshots/prs-${name}-${info.project.name}-${scheme}.png`, fullPage: true });
+    }
+  });
   test(`flyout (${scheme}): axe clean, no sideways scroll, tap size; screenshot`, async ({ page }, info) => {
     const mobile = info.project.name === 'mobile';
     await page.emulateMedia({ colorScheme: scheme });

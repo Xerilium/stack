@@ -4,13 +4,14 @@
  * @req FR:pr-page/icon.place @req FR:pr-page/icon.absent @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape @req FR:pr-page/flyout.tabs
  * @req FR:pr-page/flyout.row @req FR:pr-page/flyout.filter @req FR:pr-page/flyout.empty @req FR:pr-page/act.queue @req FR:pr-page/act.autopilot
  * @req FR:pr-page/act.accept @req FR:pr-page/act.thread @req FR:pr-page/act.rec @req FR:pr-page/act.set @req FR:pr-page/act.never @req FR:pr-page/state.view
+ * @req FR:pr-page/auth.state @req FR:pr-page/auth.signin @req FR:pr-page/nav.badge @req FR:pr-page/nav.page @req FR:pr-page/nav.load
  */
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
 import {
-  threadOf, ageText, replyToOf, BUCKET, CI, clip, countOf, createPrStore, EMPTY, escFor, escIn, healthyCount, loadPrefs, ownerOf, PROJECT_LABEL, projectsOf, refOf, replyText, rowsOf,
-  savePrefs, shortLabels, TAB_LABEL, tabsOf, updatedText, type EscEntry, type Prefs, type PrRow, type PrStore, type Tab,
+  needCount, signInText, threadOf, ageText, replyToOf, BUCKET, CI, clip, countOf, createPrStore, EMPTY, escFor, escIn, healthyCount, loadPrefs, ownerOf, PROJECT_LABEL, projectsOf, refOf, replyText, rowsOf,
+  savePrefs, shortLabels, TAB_LABEL, tabsOf, updatedText, type EscEntry, type PrAuthState, type Prefs, type PrRow, type PrStore, type SignInSession, type Tab,
 } from './prs';
 import type { Toast } from './parts';
 import { store } from './day';
@@ -22,7 +23,7 @@ type ToastFn = (text: string, kind?: Toast['kind'], undo?: () => void) => void;
 let shared: PrStore | null = null;
 let opener: HTMLElement | null = null;
 const storeFor = (api: Client) => (shared ??= createPrStore(() => api.prs(), { status: (e) => (e instanceof ApiFailure ? e.status : 0) }));
-function useStore(api: Client) {
+export function useStore(api: Client) {
   const s = storeFor(api);
   const [, tick] = useState(0);
   useEffect(() => s.subscribe(() => tick((n) => n + 1)), [s]);
@@ -35,19 +36,93 @@ function PrIcon() {
   return <svg class="prs-ic" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 4v10m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 0V9a3 3 0 0 0-3-3h-4m0 0 2.5-2.5M11 6l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>;
 }
 
-/** The icon. Absent until the host answers, and on a host with no GitHub token. @req FR:pr-page/icon.place @req FR:pr-page/icon.absent */
-export function PrsButton({ api, compact = false }: { api: Client; compact?: boolean }) {
+/** The board phase for the nav: the PR entry is absent only where the host has no board. @req FR:pr-page/icon.absent @req FR:pr-page/nav.badge */
+export function usePrsNav(api: Client): { on: boolean; need: number; signIn: boolean } {
+  const s = storeFor(api);
+  const pick = () => { const { board, phase } = s.get(); return { on: phase !== 'off', need: needCount(board), signIn: phase === 'signin' }; };
+  const [v, setV] = useState(pick);
+  // The app shell re-renders only when the nav words change, not on every board poll.
+  useEffect(() => s.subscribe(() => setV((old) => { const n = pick(); return n.on === old.on && n.need === old.need && n.signIn === old.signIn ? old : n; })), [s]);
+  return v;
+}
+
+/** The nav words now, without a subscription: the palette reads it when it opens. @req FR:pr-page/nav.phone */
+export function prsNavNow(api: Client): { on: boolean; need: number; signIn: boolean } {
+  const { board, phase } = storeFor(api).get();
+  return { on: phase !== 'off', need: needCount(board), signIn: phase === 'signin' };
+}
+
+/** The rail entry. It owns its subscription, so a board change re-renders this button, not the app shell. @req FR:pr-page/nav.rail @req FR:pr-page/nav.badge */
+export function PrsNavItem({ api, active, label, hint, onGo }: { api: Client; active: boolean; label: string; hint: string; onGo: () => void }) {
+  const nav = usePrsNav(api);
+  if (!nav.on) return null;
+  return <button type="button" class={`tab${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} title={`${label} (${hint})`} onClick={onGo}><span class="tab-label">{label}<PrsNavBadge nav={nav} /></span></button>;
+}
+
+/** The nav badge: Blocked on me plus Waiting on me; a dot when signed out. @req FR:pr-page/nav.badge */
+export function PrsNavBadge({ nav: { need, signIn } }: { nav: { need: number; signIn: boolean } }) {
+  if (signIn) return <span class="nav-dot" role="img" aria-label="Sign in to GitHub" data-testid="prs-nav-dot" />;
+  return need > 0 ? <span class="badge" aria-label={`${need} need you`} data-testid="prs-nav-badge">{need}</span> : null;
+}
+
+/** The top bar icon: the active agent count; it opens the flyout. Shown while the first poll runs (no count); absent where the host has no board. @req FR:pr-page/icon.place @req FR:pr-page/icon.absent */
+export function PrsButton({ api, where }: { api: Client; where: 'rail' | 'phone' }) {
   const s = useStore(api);
   const { board, phase, open } = s.get();
-  if (phase === 'off' || !board) return null;
-  const n = board.agents.count;
+  if (phase === 'off') return null;
+  const n = board?.agents.count ?? 0;
+  const label = phase === 'loading' ? 'Pull requests: loading' : phase === 'signin' ? 'Pull requests: sign in to GitHub' : `Pull requests: ${n} ${n === 1 ? 'agent' : 'agents'} active`;
   return (
-    <button type="button" class={`prs-btn${compact ? ' compact' : ' tab'}`} data-testid={compact ? 'prs-btn-phone' : 'prs-btn'} aria-haspopup="dialog" aria-expanded={open}
-      aria-label={`Pull requests: ${n} ${n === 1 ? 'agent' : 'agents'} active`} title={`Pull requests (g r) · ${n} active ${n === 1 ? 'agent' : 'agents'}`}
+    <button type="button" class="prs-btn compact" data-testid={where === 'rail' ? 'prs-btn' : 'prs-btn-phone'} aria-haspopup="dialog" aria-expanded={open} aria-label={label} title={label}
       onClick={(e) => { opener = e.currentTarget as HTMLElement; s.setOpen(true); }}>
-      {compact ? <><PrIcon />{n > 0 && <span class="badge" aria-hidden="true">{n}</span>}</> : <><span class="tab-label"><PrIcon />Pull requests{n > 0 && <span class="badge" aria-hidden="true">{n}</span>}</span></>}
+      <PrIcon />{n > 0 && <span class="badge" aria-hidden="true">{n}</span>}
     </button>
   );
+}
+
+/** The signed-out state: one line, one button, then the code and the device link. @req FR:pr-page/auth.state @req FR:pr-page/auth.signin */
+function SignIn({ api, auth, onDone }: { api: Client; auth: PrAuthState; onDone: () => void }) {
+  const [sess, setSess] = useState<SignInSession | null>(auth.session?.state === 'waiting' ? auth.session : null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState('');
+  const t = signInText({ ...auth, ...(sess ? { session: sess } : {}) });
+  useEffect(() => {
+    if (sess?.state !== 'waiting') return;
+    const iv = setInterval(() => {
+      void api.prSignInState().then((x) => { if (x.state === 'done') { clearInterval(iv); onDone(); } else setSess(x); }).catch(() => undefined);
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [sess?.state]);
+  const start = async () => {
+    setBusy(true); setErr('');
+    try { const x = await api.prSignIn(); if (x.state === 'done') onDone(); else setSess(x); } catch (e) { setErr(errText(e, 'Could not start the sign-in')); } finally { setBusy(false); }
+  };
+  const copy = async () => { try { await navigator.clipboard.writeText(sess?.userCode ?? ''); setCopied(true); } catch { setCopied(false); } };
+  return (
+    <div class="prs-signin" data-testid="prs-signin">
+      <p class="prs-signin-title">{t.title}</p>
+      {t.detail && <p class="prs-note">{t.detail}</p>}
+      {(t.note || err) && <p class="prs-note" role="alert">{err || t.note}</p>}
+      {sess?.state === 'waiting' && sess.userCode ? (
+        <div class="prs-code-box" role="status">
+          <span>Enter this code on GitHub:</span>
+          <code class="prs-code" data-testid="prs-code">{sess.userCode}</code>
+          <div class="prs-sheet-actions">
+            <button type="button" class="btn" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy code'}</button>
+            <a class="btn primary" href={sess.verificationUri ?? 'https://github.com/login/device'} target="_blank" rel="noopener noreferrer">Open github.com/login/device</a>
+          </div>
+          <span class="prs-note">Waiting for GitHub…</span>
+        </div>
+      ) : t.action && <button type="button" class="btn primary" disabled={busy} onClick={() => void start()} data-testid="prs-signin-btn">{busy ? 'Starting…' : t.action}</button>}
+    </div>
+  );
+}
+
+/** The `#/prs` page: the flyout content in the page. @req FR:pr-page/nav.page */
+export function PrsPage({ api, toast }: { api: Client; toast: ToastFn }) {
+  const s = useStore(api);
+  return <Flyout api={api} s={s} toast={toast} page onClose={() => undefined} />;
 }
 
 /** One sheet over the flyout: confirm or cancel. Focus stays inside. */
@@ -92,28 +167,16 @@ type SheetSpec =
   | { kind: 'rec'; row: PrRow; decision: 'accept' | 'edit' | 'reject'; rank: string; note: string; reason: string }
   | { kind: 'bulk'; items: EscEntry[] };
 
-/** The flyout, once per page. `g r` opens it. @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape */
+/** The flyout, once per page; the top bar icon opens it. @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape */
 export function PrsFlyoutHost({ api, toast }: { api: Client; toast: ToastFn }) {
   const s = useStore(api);
-  const { open, phase } = s.get();
-  useEffect(() => {
-    if (phase === 'off') return;
-    let g = 0;
-    const key = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (e.metaKey || e.ctrlKey || e.altKey || (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable))) return;
-      if (e.key === 'g') { g = Date.now(); return; }
-      if (e.key === 'r' && Date.now() - g < 1500) { e.preventDefault(); e.stopPropagation(); g = 0; opener = document.activeElement as HTMLElement; s.setOpen(true); }
-    };
-    window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
-  }, [s, phase]);
+  const { open } = s.get();
   if (!open) return null;
   return <Flyout api={api} s={s} toast={toast} onClose={() => { s.setOpen(false); const o = opener && opener.isConnected && opener.offsetParent !== null ? opener : document.querySelector<HTMLElement>('[data-testid="prs-btn"], [data-testid="prs-btn-phone"]'); setTimeout(() => o?.focus(), 0); }} />;
 }
 
-function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: ToastFn; onClose: () => void }) {
-  const { board } = s.get();
+function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrStore; toast: ToastFn; onClose: () => void; page?: boolean }) {
+  const { board, phase, auth } = s.get();
   const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs(local()));
   const setPrefs = (p: Prefs) => { setPrefsState(p); savePrefs(local(), p); };
   const [now, setNow] = useState(() => new Date());
@@ -123,6 +186,8 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
   const [bulk, setBulk] = useState<Set<string> | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const ref = useRef<HTMLDivElement>(null);
+  // The page and the flyout can both be open: every id is page- or flyout-specific.
+  const px = page ? 'prs-page' : 'prs';
   const tabs = tabsOf(board);
   const tab: Tab = tabs.includes(prefs.tab) ? prefs.tab : tabs.includes('blocked') ? 'blocked' : tabs[0];
   const projects = projectsOf(board);
@@ -130,11 +195,12 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
   const rows = useMemo(() => rowsOf(board, tab, sel, healthy), [board, tab, sel.join(), healthy]);
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
-  useLayoutEffect(() => { ref.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus(); }, []);
+  useLayoutEffect(() => { if (!page) (ref.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? ref.current?.querySelector<HTMLElement>('button'))?.focus(); }, []);
   /** The focus trap: the flyout plus the toasts, whose Undo must stay in reach by keyboard. A sheet runs its own trap. */
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
+    if (page) return;
     const key = (e: KeyboardEvent) => {
       const fly = ref.current;
       if (!fly || fly.querySelector('.prs-sheet-scrim')) return;
@@ -236,7 +302,7 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
     const i = tabs.indexOf(tab);
     const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
     setPrefs({ ...prefs, tab: next });
-    setTimeout(() => ref.current?.querySelector<HTMLElement>(`#prs-tab-${next}`)?.focus(), 0);
+    setTimeout(() => ref.current?.querySelector<HTMLElement>(`#${px}-tab-${next}`)?.focus(), 0);
   };
 
   const row = (r: PrRow) => {
@@ -293,7 +359,7 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
   };
 
   const entry = (e: EscEntry, kind: 'blocked' | 'enable' | 'live') => {
-    const id = `esc-${kind}-${e.url}`;
+    const id = `${px}-esc-${kind}-${e.url}`;
     const answer = answers[e.url] ?? e.recommend ?? '';
     const thread = threadOf(e);
     return (
@@ -329,21 +395,28 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
   // Bulk runs only what the project filter shows.
   const bulkItems = esc ? escIn([...esc.blocked.filter((e) => board?.queue && (answers[e.url] ?? e.recommend ?? '').trim()), ...esc.enable], sel).filter((e) => bulk?.has(e.url)) : [];
 
-  return (
-    <div class="prs-scrim" onClick={onClose}>
-      <div ref={ref} class="prs-fly" role="dialog" aria-modal="true" aria-labelledby="prs-h" data-testid="prs-flyout" onClick={(e) => e.stopPropagation()}
+  // The page and the flyout can both be open: each heading has its own id.
+  const hid = page ? 'prs-page-h' : 'prs-h';
+  const body = (
+      <div ref={ref} class={`prs-fly${page ? ' page' : ''}`} {...(page ? { 'data-testid': 'prs-page' } : { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'prs-h', 'data-testid': 'prs-flyout' })} onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          // The app shortcuts stay out while the flyout is open.
+          // The app shortcuts stay out while the flyout is open; on the page, only the keys a row or tab used.
+          if (page) { if (e.defaultPrevented) e.stopPropagation(); return; }
           e.stopPropagation();
           if (e.key === 'Escape') { e.preventDefault(); onClose(); }
         }}>
         <header class="prs-head">
-          <h2 id="prs-h">Pull requests</h2>
+          <h2 id={hid}>Pull requests</h2>
           {/* The live validation checklist. @req FR:pr-review-lane/panel.view */}
           <a class="btn prs-live" href="#/live">Live check</a>
           <span class="prs-age" role="status" aria-live="off" data-testid="prs-age">{updatedText(board, now)}</span>
-          <button type="button" class="btn prs-close" onClick={onClose} aria-label="Close pull requests">Close</button>
+          {!page && <button type="button" class="btn prs-close" onClick={onClose} aria-label="Close pull requests">Close</button>}
         </header>
+        {/* Signed out, loading, or a failed first load: one state, never a zero board. @req FR:pr-page/auth.state @req FR:pr-page/nav.load */}
+        {!board ? (phase === 'signin' && auth ? <SignIn api={api} auth={auth} onDone={reload} />
+          : phase === 'off' ? <div class="prs-signin" data-testid="prs-off"><p class="prs-signin-title">This host has no PR board.</p><p class="prs-note">Set GITHUB_TOKEN on the host, and check STACK_GITHUB_REPOS is a valid list.</p></div>
+          : phase === 'error' ? <div class="prs-signin" role="alert"><p class="prs-signin-title">Could not load your PRs.</p><button type="button" class="btn primary" onClick={reload}>Retry</button></div>
+          : <div class="skeleton prs-sk" role="status" aria-busy="true" aria-label="Loading pull requests" data-testid="prs-skeleton"><div class="sk" /><div class="sk" /><div class="sk" /><div class="sk" /></div>) : <>
         {board?.error && board.at && <p class="prs-note" role="status">{board.error}. Showing the last good copy.</p>}
         {board?.truncated && <p class="prs-note">Some PRs may be missing: a search hit its 50-PR limit.</p>}
         {projects.length > 1 && (
@@ -353,12 +426,12 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
         )}
         <div class="prs-tabs" role="tablist" aria-label="PR groups" onKeyDown={tabKeys}>
           {tabs.map((t) => (
-            <button type="button" role="tab" key={t} id={`prs-tab-${t}`} aria-controls="prs-panel" aria-selected={t === tab} tabIndex={t === tab ? 0 : -1} class={`prs-tab${t === tab ? ' on' : ''}`} onClick={() => setPrefs({ ...prefs, tab: t })}>
+            <button type="button" role="tab" key={t} id={`${px}-tab-${t}`} aria-controls={`${px}-panel`} aria-selected={t === tab} tabIndex={t === tab ? 0 : -1} class={`prs-tab${t === tab ? ' on' : ''}`} onClick={() => setPrefs({ ...prefs, tab: t })}>
               {TAB_LABEL[t]} <span class="prs-count">{countOf(board, t, sel)}</span>
             </button>
           ))}
         </div>
-        <div class="prs-panel" id="prs-panel" role="tabpanel" aria-labelledby={`prs-tab-${tab}`}>
+        <div class="prs-panel" id={`${px}-panel`} role="tabpanel" aria-labelledby={`${px}-tab-${tab}`}>
           {tab === 'processing' && healthyCount(board, sel) > 0 && (
             <label class="prs-toggle"><input type="checkbox" checked={healthy} onChange={() => setHealthy(!healthy)} /> Show healthy ({healthyCount(board, sel)})</label>
           )}
@@ -380,6 +453,7 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
             : <ul class="pr-list" aria-label={TAB_LABEL[tab]}>{rows.map(row)}</ul>)}
         </div>
         <footer class="prs-foot" data-testid="prs-foot">running {board?.footer.running ?? 0} · waiting {board?.footer.waiting ?? 0} · parked {board?.footer.parked ?? 0}</footer>
+        </>}
         {sheet && (
           <Sheet busy={busy} onClose={() => setSheet(null)} onConfirm={() => void confirmSheet()}
             title={sheet.kind === 'label' ? (sheet.op === 'add' ? 'Apply Autopilot?' : 'Remove Autopilot?') : sheet.kind === 'reply' ? (sheet.post ? 'Reply on GitHub?' : 'Record your answer?') : sheet.kind === 'rec' ? `${sheet.decision === 'accept' ? 'Accept' : sheet.decision === 'edit' ? 'Edit' : 'Reject'} the recommendation?` : `Run ${sheet.items.length} actions?`}
@@ -406,6 +480,6 @@ function Flyout({ api, s, toast, onClose }: { api: Client; s: PrStore; toast: To
           </Sheet>
         )}
       </div>
-    </div>
   );
+  return page ? <section class="prs-pagewrap" aria-labelledby={hid}>{body}</section> : <div class="prs-scrim" onClick={onClose}>{body}</div>;
 }

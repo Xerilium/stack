@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { replyToOf, threadOf, ageText, countOf, createPrStore, escFor, escIn, healthyCount, loadPrefs, ownerOf, projectsOf, replyText, rowsOf, savePrefs, shortLabels, tabsOf, updatedText, type PrBoard, type PrRow } from '../src/prs';
+import { needCount, signInText, replyToOf, threadOf, ageText, countOf, createPrStore, escFor, escIn, healthyCount, loadPrefs, ownerOf, projectsOf, replyText, rowsOf, savePrefs, shortLabels, tabsOf, updatedText, type PrBoard, type PrRow } from '../src/prs';
 import { connectLive, onLiveChange, type EventSourceLike } from '../src/live';
 
 const row = (o: Partial<PrRow>): PrRow => ({
@@ -108,5 +108,56 @@ describe('store', () => {
     fire({ data: JSON.stringify({ kinds: ['prs'] }) });
     expect(heard).toEqual([['prs']]);
     stop(); off();
+  });
+});
+
+// @req FR:pr-page/auth.state @req FR:pr-page/nav.badge @req FR:pr-page/nav.load
+describe('signed out, loading, and the nav count', () => {
+  it('a signed-out answer is phase signin with the method, never a zero board', async () => {
+    const s = createPrStore(async () => ({ auth: { state: 'signed-out', method: 'gh' } }) as never, { visible: () => true, every: 10_000_000, listen: () => () => undefined });
+    expect(s.get().phase).toBe('loading');
+    s.subscribe(() => undefined);
+    await vi.waitFor(() => expect(s.get().phase).toBe('signin'));
+    expect(s.get().board).toBeNull();
+    expect(s.get().auth).toEqual({ state: 'signed-out', method: 'gh' });
+  });
+  it('a sign-in that lands turns the next load into the board', async () => {
+    let signedIn = false;
+    const s = createPrStore(async () => (signedIn ? board([]) : ({ auth: { state: 'signed-out', method: 'gh' } }) as never), { visible: () => true, every: 10_000_000, listen: () => () => undefined });
+    s.subscribe(() => undefined);
+    await vi.waitFor(() => expect(s.get().phase).toBe('signin'));
+    signedIn = true;
+    await s.reload();
+    expect(s.get().phase).toBe('ready');
+    expect(s.get().auth).toBeNull();
+  });
+  it('a failed first load (no snapshot, an error) is the failed state, never a zero board', async () => {
+    const s = createPrStore(async () => board([], { at: null, error: 'GitHub unavailable' }), { visible: () => true, every: 10_000_000, listen: () => () => undefined });
+    s.subscribe(() => undefined);
+    await vi.waitFor(() => expect(s.get().phase).toBe('error'));
+    expect(s.get().board).toBeNull();
+  });
+  it('signed out, it checks again each 15 seconds', async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const s = createPrStore(async () => { n++; return ({ auth: { state: 'signed-out', method: 'gh' } }) as never; }, { visible: () => true, every: 10_000_000, listen: () => () => undefined });
+      const off = s.subscribe(() => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(n).toBe(1);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(n).toBe(2);
+      off();
+    } finally { vi.useRealTimers(); }
+  });
+  it('needCount is Blocked on me plus Waiting on me', () => {
+    expect(needCount(board([], { counts: { blocked: 2, waiting: 3, processing: 9, pending: 4, paused: 1 } }))).toBe(5);
+    expect(needCount(null)).toBe(0);
+  });
+  it('the sign-in words: one honest line per method and session', () => {
+    expect(signInText({ state: 'signed-out', method: 'gh' })).toEqual({ title: 'Sign in to GitHub to see your PRs.', action: 'Sign in to GitHub' });
+    expect(signInText({ state: 'signed-out', method: 'none' })).toEqual({ title: 'Install the GitHub CLI, or set GITHUB_TOKEN.', detail: 'Then reopen this page. Stack reads the gh sign-in; it never stores a token.' });
+    expect(signInText({ state: 'signed-out', method: 'gh', session: { state: 'error', error: 'expired' } }).note).toBe('The code expired. Try again.');
+    expect(signInText({ state: 'signed-out', method: 'gh', session: { state: 'error', error: 'failed' } }).note).toBe('GitHub sign-in did not finish. Try again.');
   });
 });

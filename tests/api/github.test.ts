@@ -138,10 +138,17 @@ describe('repo allow-list', () => {
 // @req FR:github-pr-status/wire.token
 describe('wiring', () => {
   const read = (p: string) => readFileSync(join(__dirname, '../..', p), 'utf8');
-  it.each(['src/host/runtime.ts', 'src/cli/web.ts'])('%s passes the provider only when GITHUB_TOKEN is set, never logs it', (p) => {
+  it.each(['src/host/runtime.ts'])('%s passes the provider only when GITHUB_TOKEN is set, never logs it', (p) => {
     const src = read(p);
     expect(src).toMatch(/GITHUB_TOKEN\?\.trim\(\)/);
     expect(src).toMatch(/ghToken \? createGitHubPrs\(\{ token: ghToken, repos: githubRepos\((env|process\.env)\.STACK_GITHUB_REPOS\) \}\) : undefined/);
     expect(src).not.toMatch(/log\([^)]*ghToken|console\.\w+\([^)]*ghToken/);
+  });
+  // @req FR:pr-page/auth.token
+  it('src/cli/web.ts reads the token from GITHUB_TOKEN or gh when needed, never logs it', () => {
+    const src = read('src/cli/web.ts');
+    expect(src).toMatch(/createGitHubAuth\(\{ env: process\.env \}\)/);
+    expect(src).toMatch(/const t = await ghAuth\.token\(\);\n {4}if \(!t\) return new Map\(\);/);
+    expect(src).not.toMatch(/(log|console\.\w+)\([^)]*(ghToken|token\b|\bt\))/);
   });
 });
