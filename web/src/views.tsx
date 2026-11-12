@@ -240,7 +240,7 @@ export function ProjectsView({ rows, week, onOpen }: { rows: (CapacityRow & { to
           <li key={r.project} class={`prow${r.over ? ' over' : ''}${r.capacity === null ? ' nocap' : ''}`} data-testid={`cap-${r.project}`}>
             <button type="button" class="proj-btn" onClick={() => onOpen(r.project)}>
               <span class="proj-name">{r.title || r.project}</span>
-              <span class="proj-top">{r.top ? <Md text={parseRow(r.top.text).title || r.top.text} /> : <i>Nothing open</i>}</span>
+              <span class="proj-top">{r.top ? <Md text={parseRow(r.top.text).title || r.top.text} links={false} /> : <i>Nothing open</i>}</span>
               <span class="proj-count">{r.open}</span>
               <span class="bar" role="meter" aria-label={`${r.project} load`} aria-valuemin={0} aria-valuemax={r.capacity ?? undefined} aria-valuenow={Math.round(r.hours * 10) / 10} title={`${fmt(r.hours)}h effort${r.capacity === null ? '' : ` of ${fmt(r.capacity)}h capacity`}`}>
                 <span class="fill" style={{ width: `${Math.min(100, (r.ratio ?? (r.hours > 0 ? 1 : 0)) * 100)}%` }} />
@@ -544,7 +544,7 @@ export function TodayView(t: TodayProps) {
               <li key={x.project}>
                 <button type="button" class="tile" onClick={() => t.onProject(x.project)}>
                   <span class="tile-name"><Titled text={x.title} /></span>
-                  <span class="tile-top"><Md text={parseRow(x.task!.text).title || x.task!.text} /></span>
+                  <span class="tile-top"><Md text={parseRow(x.task!.text).title || x.task!.text} links={false} /></span>
                   {t.tileAgent?.chip(x.project, x.title)}
                 </button>
                 {t.tileAgent?.talk(x.project, x.title)}
