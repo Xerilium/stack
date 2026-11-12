@@ -113,6 +113,18 @@ describe('static caching', () => {
       expect((await fetch(`${s.url}/api/tasks`)).headers.get('cache-control')).not.toContain('immutable');
     } finally { await s.close(); }
   });
+
+  // @req FR:agent-team/agent.icon: every image type an icon may use is served with its own type (nosniff blocks octet-stream)
+  it('serves agent icon images with their image type', async () => {
+    const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
+    const web = tmp(); mkdirSync(join(web, 'agents')); writeFileSync(join(web, 'index.html'), '<html>app</html>');
+    const types: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
+    for (const ext of Object.keys(types)) writeFileSync(join(web, `agents/a.${ext}`), 'x');
+    const s = await startWeb({ dir: dest, port: 0, webDir: web });
+    try {
+      for (const [ext, type] of Object.entries(types)) expect((await fetch(`${s.url}/agents/a.${ext}`)).headers.get('content-type')).toBe(type);
+    } finally { await s.close(); }
+  });
 });
 
 describe('prepareLive', () => {
