@@ -41,7 +41,7 @@
   },
   "msg011": {
     "kind": "github",
-    "accept": ["newsletter", "fyi"]
+    "accept": ["needs_reply", "fyi"]
   },
   "msg012": {
     "kind": "github",
@@ -73,7 +73,7 @@
   },
   "msg019": {
     "kind": "github",
-    "accept": ["newsletter", "fyi"]
+    "accept": ["fyi", "needs_decision"]
   },
   "msg020": {
     "kind": "github",
