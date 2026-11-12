@@ -1,6 +1,6 @@
 :root {
   --bg: #fbfbfa; --panel: #ffffff; --rail: #f4f4f2; --ink: #1d1d1f; --ink2: #4b4b50; --muted: #6e6e76; --line: #e7e7e4; --line2: #efefec;
-  --accent: #5b5fe0; --accent-soft: #eeeefc; --accent-ink: #fff; --warn: #c2410c; --ok: #15803d; --chip: #f1f1ee; --hover: #f3f3f1; --focus: #5b5fe0;
+  --accent: #5b5fe0; --accent-soft: #f4f4fe; --accent-ink: #fff; --warn: #c2410c; --ok: #15803d; --chip: #f1f1ee; --hover: #f3f3f1; --focus: #5b5fe0;
   --shadow: 0 12px 40px rgb(20 20 30 / 14%), 0 2px 6px rgb(20 20 30 / 6%);
   --railw: 208px; --tap: 44px; --row: 34px; --ease: cubic-bezier(.2,.7,.2,1);
   /* space: 4 pt grid. @req FR:now-screen/tokens.scale */
@@ -21,7 +21,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #111113; --panel: #1a1a1d; --rail: #0e0e10; --ink: #f2f2f3; --ink2: #c4c4c8; --muted: #8a8a92; --line: #2c2c31; --line2: #232327;
-    --accent: #8b8ff5; --accent-soft: #23233a; --accent-ink: #12121c; --warn: #fb923c; --ok: #4ade80; --chip: #26262b; --hover: #202024; --focus: #a3a6ff;
+    --accent: #8b8ff5; --accent-soft: #1e1e30; --accent-ink: #12121c; --warn: #fb923c; --ok: #4ade80; --chip: #26262b; --hover: #202024; --focus: #a3a6ff;
     --shadow: 0 12px 40px rgb(0 0 0 / 55%), 0 2px 6px rgb(0 0 0 / 40%); }
 }
 * { box-sizing: border-box; }

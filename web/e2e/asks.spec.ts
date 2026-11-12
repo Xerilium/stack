@@ -1,4 +1,5 @@
 /** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/web.keys @req FR:ask-queue/web.a11y @req FR:ask-queue/web.responsive @req FR:ask-queue/live.fallback */
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi, type Mock, type MockAsk } from './mock';
 
@@ -217,6 +218,28 @@ test.describe('Asks', () => {
     await open(page);
     await expect(page.getByRole('list', { name: /Asks, highest score first/ })).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Views' }).or(page.getByRole('navigation', { name: 'Views (mobile)' })).first()).toBeVisible();
+  });
+
+  // @req FR:ask-queue/web.card
+  test('every text pair clears WCAG AA contrast in light and dark', async ({ page }) => {
+    const m = await mockApi(page);
+    m.asks = seed();
+    const failures: string[] = [];
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto('/#/asks');
+      // A second goto to the same url is a same-document navigation: the page keeps its styles and the 120ms color
+      // transitions run, so axe would sample the blend. Reload to lay the scheme down from scratch.
+      await page.reload();
+      await expect(page.locator('.ask-card')).toBeVisible();
+      const { violations } = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
+      for (const v of violations) {
+        for (const n of v.nodes) {
+          failures.push(`${scheme} ${n.target.join(' ')}: ${n.any[0]?.message ?? v.help} (${n.html.slice(0, 90)})`);
+        }
+      }
+    }
+    expect(failures, 'text below 4.5:1').toEqual([]);
   });
 
   test('command palette lists the ask actions', async ({ page }) => {
