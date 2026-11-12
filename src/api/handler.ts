@@ -15,6 +15,8 @@ import type { AuxFiles, Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
 import type { CalendarProvider } from '../calendar';
 import { ReportInvalid, type ReportStore } from '../core/reports';
+import type { Inventory } from '../core/session-inventory';
+import { PrisInvalid, type PriStore } from '../core/pris';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
@@ -48,6 +50,10 @@ export interface ApiDeps {
   engine?: string;
   /** The live report store (~/.stack); absent means POST /reports is 404 and Needs you has no report asks. @req FR:status-ingest/api.put */
   reports?: ReportStore;
+  /** Runs the Claude app session inventory; absent means GET /session-inventory is 404. @req FR:session-inventory/api.inventory */
+  inventory?: () => Inventory;
+  /** The owner's priorities store (~/.stack/pris.json); absent means /pris is 404. @req FR:session-inventory/api.pris.get */
+  pris?: PriStore;
   /** Deny-by-default: when absent every request gets 401. */
   authorize?: Authorize;
   basePath?: string;
@@ -617,6 +623,47 @@ export const ROUTES: Route[] = [
         return json(200, await c.deps.reports.put(body, actor.startsWith('token:') ? { writer: `token:${name}` } : {}));
       } catch (e) {
         if (e instanceof ReportInvalid) throw new ApiError('bad_request', 'Validation failed', e.issues);
+        throw e;
+      }
+    },
+  },
+  {
+    // Session titles are the owner's: owner only. @req FR:session-inventory/api.inventory
+    method: 'GET', doc: '/session-inventory', name: 'inventory.list',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can read the session inventory');
+      if (!c.deps.inventory) throw new ApiError('not_found', 'No session inventory on this host');
+      return json(200, c.deps.inventory());
+    },
+  },
+  {
+    // @req FR:session-inventory/api.pris.get
+    method: 'GET', doc: '/pris', name: 'pris.get',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can read priorities');
+      if (!c.deps.pris) throw new ApiError('not_found', 'No priorities store on this host');
+      return json(200, c.deps.pris.read());
+    },
+  },
+  {
+    // The list is nested, so the core checks it; the OpenAPI body is authored in openapi.ts. @req FR:session-inventory/api.pris.put
+    method: 'POST', doc: '/pris', name: 'pris.put',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can change priorities');
+      if (!c.deps.pris) throw new ApiError('not_found', 'No priorities store on this host');
+      const b = await readBody(c.req) as { rev?: unknown; pris?: unknown } | null;
+      const issues: { field: string; message: string }[] = [];
+      if (!b || typeof b !== 'object' || Array.isArray(b)) throw new ApiError('bad_request', 'Validation failed', [{ field: 'body', message: 'Must be a JSON object {rev, pris}' }]);
+      for (const k of Object.keys(b)) if (k !== 'rev' && k !== 'pris') issues.push({ field: k, message: 'Unknown field' });
+      if (!Number.isInteger(b.rev) || (b.rev as number) < 0) issues.push({ field: 'rev', message: 'Required: the rev you read' });
+      if (issues.length) throw new ApiError('bad_request', 'Validation failed', issues);
+      try {
+        return json(200, await c.deps.pris.put(b.rev as number, b.pris));
+      } catch (e) {
+        if (e instanceof PrisInvalid) throw new ApiError('bad_request', 'Validation failed', e.issues.map((i) => ({ ...i, field: i.field === 'pris' ? 'pris' : `pris${i.field}` })));
         throw e;
       }
     },

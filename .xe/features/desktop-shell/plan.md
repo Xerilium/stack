@@ -25,6 +25,6 @@ Developer ID signing, notarization, auto-update feed. Needs: Apple Developer Pro
 
 ## Risks
 
-- `startWeb` reads `process.env` for GitHub and calendar settings. The shell inherits the owner's shell environment only when launched from a terminal; a Finder launch sees the login environment. Slice 2 reads them from user config.
+- `startWeb` reads `process.env` for GitHub and calendar settings. A Finder launch sees only the login environment. `FR:host.path` fixes `PATH` from the login shell; other settings come from user config (slice 2).
 - Electron majors move every 8 weeks. Pinned to `45.3.0`; bump with the renovate flow.
 - `web/dist` must exist. The smoke script builds it first.
