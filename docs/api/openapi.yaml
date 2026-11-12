@@ -32,7 +32,7 @@ paths:
           $ref: "#/components/responses/Error"
   /rank:
     get:
-      summary: "The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. `blocks=any` keeps tasks the current time block would hide"
+      summary: "The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. Only rows the owner must do: agent rows (🤖, 🪄, and unmarked rows under them) are left out. `stale: true` marks a row overdue 3+ days with no commit to it in 3+ days (score at most 500). `blocks=any` keeps tasks the current time block would hide"
       operationId: rank
       parameters:
         - name: limit
@@ -74,6 +74,9 @@ paths:
                           description: The override that applied
                         root:
                           $ref: "#/components/schemas/Ref"
+                        stale:
+                          type: boolean
+                          description: True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500
         default:
           $ref: "#/components/responses/Error"
   /meetings:

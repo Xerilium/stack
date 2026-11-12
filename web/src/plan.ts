@@ -34,12 +34,12 @@ export function openLeaves(tasks: Task[]): Task[] {
 const whoOf = (t: Task) => parseRow(t.text).who;
 
 /**
- * Rows in the server's order (`GET /rank?blocks=any`). A row the ranking left out is excluded (hidden by a rule, blocked, or done
- * with); with no ranking at all (it failed, or nothing is ranked) rows keep their file order.
+ * Rows in the server's order (`GET /rank?blocks=any`). A row the ranking left out is excluded (hidden by a rule, blocked, done
+ * with, or not the owner's); an empty ranking keeps none. With no ranking (`null`: not loaded, or it failed) rows keep their file order.
  * The page never ranks: this is the one ordering Home, `stack next`, and the day plan share. @req FR:web-app/now.active
  */
-export function byServerRank<T extends { ref: string }>(rows: T[], order: string[], keepUnranked = false): T[] {
-  if (!order.length) return rows;
+export function byServerRank<T extends { ref: string }>(rows: T[], order: string[] | null, keepUnranked = false): T[] {
+  if (!order) return rows;
   const at = new Map(order.map((r, i) => [r, i]));
   // keepUnranked: rows the ranking cannot hold (it ranks leaves only, so a decision with children is never in it) follow the ranked ones in file order.
   const k = (t: T, i: number) => at.get(t.ref) ?? order.length + i;
@@ -47,7 +47,7 @@ export function byServerRank<T extends { ref: string }>(rows: T[], order: string
 }
 
 /** Tasks for the plan: yours (not an agent's, not a decision), active, actionable, leaf, in the server's order. @req FR:web-app/today.plan */
-export function planCandidates(tasks: Task[], now: Date, order: string[], first?: string): Task[] {
+export function planCandidates(tasks: Task[], now: Date, order: string[] | null, first?: string): Task[] {
   const mine = openLeaves(tasks).filter((t) => isActive(t) && actionable(t, now) && !whoOf(t));
   const ranked = byServerRank(mine, order);
   // The server's next task may be a parent: its first open leaf is what you actually do.
@@ -199,7 +199,7 @@ const doing = (t: Task) => parseRow(t.text).status?.replace(/️/g, '') === '�
 const answered = (tasks: Task[], t: Task) => children(tasks, t.ref).some((c) => !c.done && isMessage(c));
 
 /** Open 🙋 rows in active work (an Active section, or under a row in progress): what only you can do or decide. */
-export function decisions(tasks: Task[], now: Date, order: string[]): Decision[] {
+export function decisions(tasks: Task[], now: Date, order: string[] | null): Decision[] {
   const rows = tasks.filter((t) => !t.done && whoOf(t) === 'human' && actionable(t, now) && !answered(tasks, t) && (isActive(t) || ancestorsOf(tasks, t).some(doing)));
   const withParent = rows.map((t) => ({ task: t, context: ancestorsOf(tasks, t)[0], recommendation: recommendationOf(tasks, t) }));
   return byServerRank(rows, order, true).map((r) => withParent.find((x) => x.task.ref === r.ref)!);

@@ -21,7 +21,7 @@ export function weekDates(now: Date): Date[] {
 const workday = (d: Date) => d.getDay() >= 1 && d.getDay() <= 5;
 
 /** Plans the week: due tasks on their day (overdue on today), then ranked work fills what is left, at most 2 h of a task per day. */
-export function planWeek(tasks: Task[], now: Date, todayBudget?: number, day: Day = DEFAULT_DAY, order: string[] = []): Week {
+export function planWeek(tasks: Task[], now: Date, todayBudget?: number, day: Day = DEFAULT_DAY, order: string[] | null = null): Week {
   const dates = weekDates(now);
   const days: WeekDay[] = dates.map((date, i) => ({
     date, today: i === 0, planned: 0, over: 0,

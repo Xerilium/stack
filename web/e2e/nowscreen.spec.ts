@@ -51,7 +51,7 @@ test.describe('Now screen', () => {
   });
 
   // @req FR:now-screen/now.compose @req FR:now-screen/now.thread @req FR:now-screen/now.undo @req FR:agent-team/web.avatar @req FR:now-screen/now.a11y
-  test('the composer messages the task agent: Enter sends the instruction and 🪄 in one step; bubbles show; Undo withdraws both', async ({ page }, info) => {
+  test('the composer messages the task agent: Enter sends the instruction and never adds 🪄; bubbles show; Undo withdraws it', async ({ page }, info) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
     m.team = [
@@ -93,16 +93,14 @@ test.describe('Now screen', () => {
     await page.screenshot({ path: `e2e/screenshots/now-chat-${info.project.name}.png` });
     await box.press('Enter');
     await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', kind: 'instruction', text: 'Use the new logo / then ship to staging' });
-    // the mark goes first, so the entry is addressed to the agent
-    const edit = m.calls.findIndex((c) => c.path === '/tasks/edit'); const send = m.calls.findIndex((c) => c.path === '/inbox');
-    expect(edit).toBeGreaterThanOrEqual(0); expect(edit).toBeLessThan(send);
-    expect(m.inbox.at(-1)!.to).toBe('agent');
-    await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
+    // a message is not a hand-off: the row is never edited, so it stays in the owner queue (FR:task-lifecycle/rank.owner)
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
+    expect(m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
     await expect(page.getByTestId('now-thread')).toContainText('Use the new logo');
     await expect(page.getByRole('status')).toContainText('Sent to Ada Lead');
     await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
-    await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
     await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner', withdrawn: true });
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
     // Undo means never sent: the bubble goes at once, without waiting for the poll
     await expect(page.getByTestId('now-thread')).not.toContainText('Use the new logo', { timeout: 3000 });
   });
@@ -164,8 +162,8 @@ test.describe('Now screen', () => {
     expect(m.tasks.find((x) => x.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
   });
 
-  // @req FR:now-screen/now.compose: a failed inbox write takes the 🪄 back off
-  test('a failed send reverts the mark', async ({ page }) => {
+  // @req FR:now-screen/now.compose: a failed inbox write leaves the row alone
+  test('a failed send leaves the row alone and keeps the text', async ({ page }) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
     m.fail.set('POST /inbox', { status: 500, code: 'internal', message: 'Disk full' });
@@ -174,7 +172,7 @@ test.describe('Now screen', () => {
     await box.fill('Do it');
     await box.press('Enter');
     await expect(page.getByRole('status')).toContainText('Disk full');
-    await expect.poll(() => m.calls.filter((c) => c.path === '/tasks/edit').length).toBe(2);
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
     expect(m.tasks.find((x) => x.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
     await expect(box).toHaveValue('Do it'); // the text stays for a retry
   });
