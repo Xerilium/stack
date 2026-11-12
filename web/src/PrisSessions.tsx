@@ -35,18 +35,22 @@ function InlineText({ value, label, editLabel, max, onSave, onEditing, cls, show
   );
 }
 
-/** A field that adds one line on Enter, then clears. */
+/** A field that adds one line on Enter or blur, then clears; Escape drops the text. */
 function AddLine({ label, placeholder, max, onAdd, onEditing, autoFocus }: { label: string; placeholder: string; max: number; onAdd: (t: string) => void; onEditing: (on: boolean) => void; autoFocus?: boolean }) {
-  const [text, setText] = useState('');
+  const [text, setTextState] = useState('');
+  // The ref, not the render value: Enter or Escape is followed by a blur that must see the cleared text.
+  const cur = useRef('');
+  const setText = (t: string) => { cur.current = t; setTextState(t); };
+  const add = () => { const t = cur.current; if (t.trim()) { setText(''); onAdd(t); } };
   const focused = useRef(false);
   useEffect(() => () => { if (focused.current) onEditing(false); }, []);
   return (
     <input class="inline-input add-line" type="text" value={text} maxLength={max} aria-label={label} placeholder={placeholder}
       ref={(el) => { if (el && autoFocus && !el.dataset.f) { el.dataset.f = '1'; el.focus(); } }}
-      onFocus={() => { focused.current = true; onEditing(true); }} onBlur={() => { focused.current = false; onEditing(false); }}
+      onFocus={() => { focused.current = true; onEditing(true); }} onBlur={() => { focused.current = false; onEditing(false); add(); }}
       onInput={(e) => setText((e.target as HTMLInputElement).value)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); if (text.trim()) { onAdd(text); setText(''); } }
+        if (e.key === 'Enter') { e.preventDefault(); add(); }
         else if (e.key === 'Escape') { e.stopPropagation(); setText(''); (e.target as HTMLElement).blur(); }
       }} />
   );
@@ -90,7 +94,7 @@ function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /**
                 <span class={`item-glyph${ITEM_STATUS[it.status].warn ? ' warn' : ''}`} aria-hidden="true">{ITEM_STATUS[it.status].glyph}</span>
                 <InlineText cls={`item-text${it.status === 'done' ? ' done' : ''}`} value={it.text} label="Item text" editLabel={`Edit item ${it.text}`} max={LIMITS.item} onEditing={ctl.setEditing} onSave={(t) => ctl.apply(edits.itemText(pri.id, i, it.text, t))} />
                 <StatusSelect<ItemStatus> value={it.status} label={`Status of item ${it.text}`} words={ITEM_STATUS} onChange={(s) => ctl.apply(edits.itemStatus(pri.id, i, it.text, s))} />
-                <button type="button" class="icon-btn" aria-label={`Remove item ${it.text}`} title="Remove" onClick={() => ctl.apply(edits.removeItem(pri.id, i, it.text))}>×</button>
+                <button type="button" class="icon-btn" aria-label={`Remove item ${it.text}`} title="Remove" onClick={(e) => { const li = (e.currentTarget as HTMLElement).closest('.pri'); ctl.apply(edits.removeItem(pri.id, i, it.text)); setTimeout(() => (li?.querySelector<HTMLElement>('.add-line') ?? li?.querySelector<HTMLElement>('.pri-toggle'))?.focus(), 0); }}>×</button>
               </li>
             ))}
           </ul>

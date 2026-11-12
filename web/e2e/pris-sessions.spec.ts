@@ -103,6 +103,7 @@ test.describe('Priorities', () => {
     await expect(row(page, 'p1').locator('.pri-item')).toHaveCount(4);
     await expect.poll(() => m.pris!.pris[0].items.at(-1)?.text).toBe('Ship chunk 3');
     await row(page, 'p1').getByRole('button', { name: 'Remove item FH PR quality pass' }).click();
+    await expect(row(page, 'p1').getByLabel('New item')).toBeFocused();
     await expect.poll(() => m.pris!.pris[0].items.map((i) => i.text)).toEqual(['Stack v2 UI', 'Anything below', 'Ship chunk 3']);
     await row(page, 'p1').getByRole('button', { name: 'Move Quota-maxxing down' }).click();
     await expect.poll(() => m.pris!.pris.map((p) => p.id).slice(0, 2)).toEqual(['p2', 'p1']);
@@ -149,6 +150,11 @@ test.describe('Priorities', () => {
     await page.keyboard.press('Enter');
     await expect(row(page, 'ship-the-web-app')).toContainText('Ship the web app');
     await expect.poll(() => m.pris!.pris).toEqual([P('ship-the-web-app', 'Ship the web app')]);
+    // blur adds too: typed text is never lost
+    await block(page).getByRole('button', { name: 'Add priority' }).click();
+    await block(page).getByLabel('New priority').fill('Second one');
+    await block(page).getByLabel('New priority').blur();
+    await expect.poll(() => m.pris!.pris.map((p) => p.title)).toEqual(['Ship the web app', 'Second one']);
   });
 
   test('view keys do not fire while a priority field has focus', async ({ page }) => {
