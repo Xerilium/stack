@@ -2,8 +2,15 @@
 id: settings
 title: Settings
 author: flanakin
-description: "One Settings view for the things the owner sets once: accounts, agent delivery, and updates. Views that do work never manage them."
-dependencies: [connect-accounts, agent-delivery, devops-installer, web-shell, task-detail-design]
+description: "One view for accounts, agent delivery and updates. Work views never manage them."
+dependencies:
+  [
+    connect-accounts,
+    agent-delivery,
+    devops-installer,
+    web-shell,
+    task-detail-design,
+  ]
 ---
 
 <!-- markdownlint-disable single-title -->
@@ -38,7 +45,7 @@ The owner needs one place to set things up, so the views that do work stay small
 
 ### FR:agents: Agents delivery
 
-The owner needs to see whether agents get his messages, and fix the sign-in, without reading config files.
+The owner needs to see whether agents get his messages, so he can fix the sign-in without reading config files.
 
 - **FR:agents.api** (P1): `GET /inbox/delivery` with no `ref` returns `{mode, login}` (owner only; 404 where the host does not deliver). With a `ref` it returns the per-row state (`FR:agent-delivery/state.api`).
 - **FR:agents.state** (P1): The section shows one row: `Delivery` with `On` (mode `claude`) or `Off`, and `Claude sign-in` with `Signed in`, `Sign-in expired` or `Unknown`. When the sign-in is expired or unknown it has `Sign in to Claude` (`FR:agent-delivery/login.signin`). When the host does not deliver (404), the section says `Agents answer from Stack on your Mac.` and shows no control.
@@ -46,11 +53,20 @@ The owner needs to see whether agents get his messages, and fix the sign-in, wit
 
 ### FR:updates: Updates
 
-The owner needs to pick when updates install from Settings too, not only from the update chip.
+The owner needs to pick when updates install from Settings, so he does not wait for the update chip.
 
 - **FR:updates.modes** (P1): The section shows the four update modes as a radio group with the words of `FR:devops-installer/notice.words`. Picking one posts `POST /api/version/mode` (`FR:devops-installer/version.mode`) and announces `Saved`.
 - **FR:updates.builds** (P1): Under the modes: the running build and `Up to date` or `Update ready` with `Restart now` when the host can restart (`FR:devops-installer/notice.restart`).
 - **FR:updates.none** (P1): When `GET /api/version` is 404 (no installer on this host), the section says `Updates come with the desktop app.` and shows no control.
+
+## Data Model
+
+- **Delivery summary**: `{mode: claude|off, login: ok|expired|unknown}`.
+- **Section**: `accounts`, `agents` or `updates`, from `#/settings/<section>`.
+
+## External Dependencies
+
+- None beyond the Stack host routes.
 
 ## Dependencies
 

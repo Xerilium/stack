@@ -8,7 +8,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
-  DRAFTS_HINT, needsFix, sessionText, SETUP_RESULT, SETUP_TEXT, STATE_TEXT, statusTip, waitFor,
+  DRAFTS_HINT, DRAFTS_LABEL, needsFix, sessionText, SETUP_RESULT, SETUP_TEXT, STATE_TEXT, statusTip, waitFor,
   type AccountRow, type ConnectApi, type ConnectInfo, type ConnectSession, type SetupState,
 } from './connect';
 
@@ -87,7 +87,8 @@ function RowMenu({ a, busy, onDrafts, onSignIn, onRemove }: { a: AccountRow; bus
               {a.mail && a.account && (
                 <button type="button" role="menuitemcheckbox" aria-checked={a.drafts} class="fl-option acct-check" aria-describedby={`${id}-hint`} onClick={pick(() => onDrafts(!a.drafts))}>
                   <span class="acct-box" aria-hidden="true">{a.drafts ? '✓' : ''}</span>
-                  <span>Reply drafts<small id={`${id}-hint`} class="acct-hint">{DRAFTS_HINT}</small></span>
+                  <span>{DRAFTS_LABEL}<small id={`${id}-hint`} class="acct-hint">{DRAFTS_HINT}</small></span>
+                  <span class="acct-onoff">{a.drafts ? 'On' : 'Off'}</span>
                 </button>
               )}
               <button type="button" role="menuitem" class="fl-option" onClick={pick(onSignIn)}>Sign in again</button>

@@ -2,7 +2,9 @@
  * The HTTP side of Graph calls: bearer token, JSON, Graph host only, a hard 8 s cap per request. Guards decide what may be asked; this only carries it.
  * @req FR:day-inputs/graph.transport @req FR:connect-accounts/acct.timeout
  */
+import { randomUUID } from 'crypto';
 import type { GraphRequest, Transport } from '../email/guard';
+import type { GraphFailureRecord } from './diag';
 
 /** `status` 0 is a request that got no reply: `Timeout` (over the cap) or `Network`. `retryAfterMs` is from a 429's `Retry-After`. */
 export class GraphHttpError extends Error {
@@ -29,7 +31,12 @@ export function timedFetch(base: typeof fetch = (...a) => fetch(...a), ms = GRAP
 }
 
 /** A token function may be asked to force a refresh after a 401. */
-export interface GraphTransportOptions { token: string | ((o?: { force?: boolean }) => string | Promise<string>); fetch?: typeof fetch; timeoutMs?: number }
+export interface GraphTransportOptions {
+  token: string | ((o?: { force?: boolean }) => string | Promise<string>); fetch?: typeof fetch; timeoutMs?: number;
+  /** Called once per failed call with the path (no query), status, code and request id. Never a token. @req FR:connect-accounts/acct.diag */
+  onFail?: (r: Omit<GraphFailureRecord, 'account'>) => void;
+  now?: () => number;
+}
 
 const retryAfter = (h: string | null): number | undefined => {
   if (!h) return undefined;
@@ -44,6 +51,10 @@ export function graphTransport(o: GraphTransportOptions): Transport {
     let u: URL;
     try { u = new URL(req.url); } catch { throw new GraphHttpError(0, 'BadUrl'); }
     if (u.origin !== 'https://graph.microsoft.com') throw new GraphHttpError(0, 'NotGraph');
+    // A correlation id on every call, so a timeout can still be traced. @req FR:connect-accounts/acct.diag
+    const cid = randomUUID();
+    const now = o.now ?? (() => Date.now());
+    const t0 = now();
     // One cap for the whole call, body included: a 502 that takes 20 s ends at 8 s.
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), ms);
@@ -60,14 +71,16 @@ export function graphTransport(o: GraphTransportOptions): Transport {
         method: req.method,
         redirect: 'error',
         signal: ctl.signal,
-        headers: { authorization: `Bearer ${token}`, accept: 'application/json', ...(req.body !== undefined ? { 'content-type': 'application/json' } : {}) },
+        headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'client-request-id': cid, 'return-client-request-id': 'true', ...(req.body !== undefined ? { 'content-type': 'application/json' } : {}) },
         ...(req.body !== undefined ? { body: JSON.stringify(req.body) } : {}),
       }).catch(noReply);
     };
+    let rid: string = cid;
     try {
       let res = await send(false);
       // A revoked token: refresh once and retry.
       if (res.status === 401 && typeof o.token === 'function') res = await send(true);
+      rid = res.headers?.get?.('request-id') ?? cid;
       const text = await res.text().catch(noReply);
       let data: unknown;
       try { data = text ? JSON.parse(text) : undefined; } catch { data = undefined; }
@@ -76,6 +89,11 @@ export function graphTransport(o: GraphTransportOptions): Transport {
         throw new GraphHttpError(res.status, typeof code === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(code) ? code : 'Error', res.status === 429 ? retryAfter(res.headers.get('retry-after')) : undefined);
       }
       return data;
+    } catch (e) {
+      if (e instanceof GraphHttpError) {
+        try { const end = now(); o.onFail?.({ at: new Date(end).toISOString(), method: req.method, path: u.pathname, status: e.status, code: e.code, requestId: rid, ms: end - t0 }); } catch { /* never breaks the call */ }
+      }
+      throw e;
     } finally { clearTimeout(timer); }
   };
 }

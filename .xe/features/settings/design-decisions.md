@@ -42,3 +42,17 @@
 **Rejected**:
 
 - _Retry inside one request._ A 20 s 502 times 3 retries holds the page for a minute; the next scheduled read retries instead.
+
+---
+
+## The 2026-11-12 calendar failure is not Stack's request
+
+**Date**: 2026-11-12
+
+**Decision**: Keep the `calendarView` request as it is. Log each failed Graph call with its request id to `~/.stack/graph.log`, and say `Microsoft not responding` in the page.
+
+**Why**: A minimal hand-made `curl` with only `Authorization` fails the same way: `/me/mailFolders/inbox` and `/me/calendar` return 502 or 503 `UnknownError` (about 21 s) for every account, mail as well as calendar. `/me` and `$metadata` answer in under 1 s. The same 502 comes back with a token from a different app (Azure PowerShell), a different tenant and a different user. So the app registration, consent, scopes, query format and headers are not the cause; the Graph to Exchange path (West US 2 slice E) is. Example request ids: `9796edf9-9fc2-4464-bac5-72b6733ee307`, `e62261c2-eb9c-428a-…`.
+
+**Rejected**:
+
+- _Add `User.Read` or `Prefer: outlook.timezone`._ Neither changes a call that fails before Exchange answers, and the other app's token has `User.Read` and fails too.

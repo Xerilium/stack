@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildHash, parseHash } from '../src/filters';
 import { CHORDS, HINT, LABEL, RAIL } from '../src/nav';
-import { DRAFTS_HINT, needsFix, READ_TEXT, STATE_TEXT, statusTip, type AccountRow } from '../src/connect';
+import { DRAFTS_HINT, DRAFTS_LABEL, needsFix, READ_TEXT, STATE_TEXT, statusTip, type AccountRow } from '../src/connect';
 import { accountBadge, agentsLines, multiAccount, settingsSection } from '../src/settings';
 
 const row: AccountRow = { account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, state: 'connected' };
@@ -54,7 +54,8 @@ describe('account rows', () => {
   });
   // @req FR:connect-accounts/web.menu @req FR:connect-accounts/web.learn
   it('short words: one-line drafts hint, one-line summary', () => {
-    expect(DRAFTS_HINT).toBe('Save reply drafts. Never sends.');
+    expect(DRAFTS_LABEL).toBe('Let Stack save reply drafts in my mailbox');
+    expect(DRAFTS_HINT).toBe('Stack writes drafts for you to review. It never sends.');
     expect(READ_TEXT).toBe('Stack reads mail and calendar. It never sends.');
   });
 });

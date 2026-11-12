@@ -8,6 +8,7 @@ import { basename } from 'path';
 import { cacheDir as defaultCacheDir, cachePathsWith, FileTokenCache, graphToken, hasScope } from '../graph/auth';
 import { graphTransport, timedFetch } from '../graph/transport';
 import { AccountHealth, type GraphFailure } from '../graph/connect';
+import { graphLogger, type GraphFailureRecord } from '../graph/diag';
 import { createGraphCalendar, type CalendarEvent, type CalendarInfo, type CalendarProvider } from './index';
 
 /** No account with a calendar and no fallback: the source is not connected. */
@@ -30,6 +31,8 @@ export interface AccountsCalendarOptions {
   fetch?: typeof fetch;
   /** A provider for one account; tests replace it. */
   provider?: (account: string, cache: FileTokenCache) => CalendarProvider;
+  /** Failure records for `~/.stack/graph.log`; default writes there. @req FR:connect-accounts/acct.diag */
+  log?: (r: GraphFailureRecord) => void;
 }
 
 export function createAccountsCalendar(o: AccountsCalendarOptions = {}): CalendarProvider {
@@ -40,8 +43,9 @@ export function createAccountsCalendar(o: AccountsCalendarOptions = {}): Calenda
   let last: CalendarInfo | undefined;
   // Health is always tracked, so the backoff works even when no shared health is passed.
   const health = o.health ?? new AccountHealth();
+  const log = o.log ?? graphLogger();
   // The token refresh gets the same 8 s cap as the Graph read. @req FR:connect-accounts/acct.timeout
-  const make = o.provider ?? ((_a: string, cache: FileTokenCache) => createGraphCalendar({ transport: graphTransport({ token: graphToken(cache, { fetch: timedFetch(o.fetch) }), ...(o.fetch ? { fetch: o.fetch } : {}) }) }));
+  const make = o.provider ?? ((_a: string, cache: FileTokenCache) => createGraphCalendar({ transport: graphTransport({ token: graphToken(cache, { fetch: timedFetch(o.fetch) }), ...(o.fetch ? { fetch: o.fetch } : {}), onFail: (r) => log({ ...r, ...(_a ? { account: _a } : {}) }) }) }));
 
   /** Every cache with Calendars.Read, by account (an unnamed cache uses its file name). */
   async function calendars(): Promise<{ account: string; cache: FileTokenCache }[]> {

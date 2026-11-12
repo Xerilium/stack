@@ -100,3 +100,5 @@
   .now-cal-link { min-height: 44px; }
 }
 .set-gear { vertical-align: -3px; margin-right: 6px; }
+.acct-onoff { margin-left: auto; padding-left: var(--fl-s-s); color: var(--fl-fg2); font-weight: 600; }
+.acct-more .acct-menu { min-width: min(300px, calc(100vw - 32px)); }

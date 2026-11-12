@@ -28,7 +28,8 @@ export const POLL_MS = 2000;
 export const DRAFTS_TEXT = 'Drafts lets Stack save reply drafts in your mailbox. Stack never sends.';
 export const READ_TEXT = 'Stack reads mail and calendar. It never sends.';
 /** The one-line hint on the drafts menu item. @req FR:connect-accounts/web.menu */
-export const DRAFTS_HINT = 'Save reply drafts. Never sends.';
+export const DRAFTS_LABEL = 'Let Stack save reply drafts in my mailbox';
+export const DRAFTS_HINT = 'Stack writes drafts for you to review. It never sends.';
 /** The Learn more popover. @req FR:connect-accounts/web.learn */
 export const LEARN_TEXT = [
   'Stack reads mail and calendar from each account. It signs in on Microsoft pages only and never sees your password.',

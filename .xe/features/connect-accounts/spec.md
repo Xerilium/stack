@@ -2,8 +2,17 @@
 id: connect-accounts
 title: Connect Accounts (Outlook and Microsoft 365)
 author: flanakin
-description: "In-app Connect for Outlook.com and Microsoft 365: browser sign-in, read-only by default, opt-in drafts, one live calendar over every account, honest errors, and a compact list in Settings."
-dependencies: [graph-signin, inbox-page, day-inputs, now-screen, ux-consolidation, desktop-shell, settings]
+description: "In-app Connect for Outlook.com and Microsoft 365: browser sign-in, read-only by default, one live calendar, honest errors."
+dependencies:
+  [
+    graph-signin,
+    inbox-page,
+    day-inputs,
+    now-screen,
+    ux-consolidation,
+    desktop-shell,
+    settings,
+  ]
 ---
 
 <!-- markdownlint-disable single-title -->
@@ -63,6 +72,7 @@ The owner needs to see each connected account and its health, so he can fix, cha
   - `other`: anything else. Marks the account `error`.
   - A good read clears the mark and sets `lastOkAt`. The marks are in memory, shared by the calendar, the accounts list and the inbox probe.
 - **FR:acct.retry** (P1): After a failure, the account is not read again before its retry time: 30 s after the first failure in a row, 2 min after the second, then 10 min. Until then the calendar serves the last copy for that account. A 429 waits for `Retry-After` (seconds) when it is given, else 30 s, and does not count as a failure in a row. A good read, a sign-in or a disconnect resets the count.
+- **FR:acct.diag** (P1): Every Graph call sends a fresh `client-request-id` (with `return-client-request-id: true`). Each failed call appends one JSON line to `~/.stack/graph.log` (mode 0600, rolled to `.1` past 1 MB): `{at, account, method, path, status, code, requestId, ms}`. `path` has no query. No token, query value or response body is written.
 - **FR:acct.timeout** (P1): Every Graph and token request for an account read has a hard 8 s cap. A request over the cap is aborted and counts as `down`.
 - **FR:acct.remove** (P1): Disconnect deletes the cache file that holds that account: its own file, or an older default `graph-token.json` that names it (an empty account removes a default file that names no one). A new sign-in for an account that the default file names replaces that file, so the account is listed once.
 - **FR:acct.sources** (P1): Each connected mail account is an inbox source (`FR:inbox-page/src.probe`). An `expired` account is an email source in `error` with `signin-expired`. A connected account's calendar feeds the Now calendar source.
@@ -105,7 +115,7 @@ The owner needs every account and its state on one screen in Settings, so he see
   - `error`: red dot, `Not working`.
   - The status has a tooltip (`title`) with the last good read (`Last synced 9:41 AM`, or `Never synced`) and, for `down`, `Retrying in 2 min`.
 - **FR:web.fix** (P1): An `expired` or `error` row has one `Fix` button that starts a sign-in for that account (drafts kept on when on). A `down` row has no `Fix`: Stack retries on its own.
-- **FR:web.menu** (P1): Each row has one `More` menu button (`aria-haspopup="menu"`, label `More for <address>`) with: `Reply drafts` as a `menuitemcheckbox` with the one-line hint `Save reply drafts. Never sends.`; `Sign in again`; `Disconnect`. Escape closes the menu and returns focus to its button. Disconnect asks to confirm first (`FR:task-detail-design/rules` rule 9).
+- **FR:web.menu** (P1): Each row has one `More` menu button (`aria-haspopup="menu"`, label `More for <address>`) with: the setting `Let Stack save reply drafts in my mailbox` as a `menuitemcheckbox` with its state word (`On` or `Off`) and the hint `Stack writes drafts for you to review. It never sends.`; `Sign in again`; `Disconnect`. Escape closes the menu and returns focus to its button. Disconnect asks to confirm first (`FR:task-detail-design/rules` rule 9).
 - **FR:web.learn** (P1): The section summary is `Stack reads mail and calendar. It never sends.` with a `Learn more` button that opens a popover: what Stack reads, what reply drafts do, and that Stack never sends.
 - **FR:web.manual** (P1): One opt-in link under the list, `Other ways to connect`, expands: the one-time setup when it is needed (`FR:web.setup`), and the published calendar link field (`FR:ux-consolidation/cal.connect`). It is closed by default, and open by default only when setup is needed.
 - **FR:web.fit** (P1): At 1280x800, 6 accounts, `Add account` and `Other ways to connect` are visible in Settings without scrolling.
