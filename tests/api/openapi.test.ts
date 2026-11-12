@@ -20,6 +20,7 @@ import { createAuth, createTokenService, MemoryTokenStore } from '../../src/api'
 import { createRunManager, type AgentDriver, type Run, type Update } from '../../src/agents';
 import { putAgent } from '../../src/core/agents';
 import { createAppUpdater, type UpdateSettings } from '../../src/core/app-update';
+import { createConnect } from '../../src/graph/connect';
 
 /** An installer with a ready build, fake files and no real process. */
 function oaApp() {
@@ -247,7 +248,9 @@ describe('response parity (real handler output vs documented schemas)', () => {
   const laneStore = new LiveStore(laneHome, { now: () => NOW });
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
   const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))),
-    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), live: laneStore, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), feedback: new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), app: oaApp() });
+    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), live: laneStore, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), feedback: new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), app: oaApp(),
+    // Connect with fakes: no listener port, no browser, no network. @req FR:connect-accounts/api.get
+    connect: createConnect({ clientId: () => '11111111-2222-3333-4444-555555555555', cacheDir: mkdtempSync(join(tmpdir(), 'stack-oa-')), listen: async () => ({ port: 50000, close: () => undefined }), openUrl: async () => undefined, setup: async () => ({ state: 'needs-azure-signin' }) }) });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
@@ -295,6 +298,14 @@ describe('response parity (real handler output vs documented schemas)', () => {
     // @req FR:inbox-page/api.read @req FR:inbox-page/api.act
     await go('inboxItems.list', 'GET', '/inbox-items', undefined, 200);
     await go('inboxSources.list', 'GET', '/inbox-sources', undefined, 200);
+    await go('connect.get', 'GET', '/connect', undefined, 200);
+    await go('connect.setup', 'POST', '/connect/setup', {}, 200);
+    const signIn = await go('connect.start', 'POST', '/connect/sign-in', { drafts: false }, 201);
+    await go('connect.poll', 'GET', '/connect/sign-in/' + String((signIn.body as { id: string }).id), undefined, 200);
+    await go('connect.poll', 'GET', '/connect/sign-in/nope', undefined, 404);
+    await go('connect.drafts', 'POST', '/connect/drafts', { account: 'me@outlook.com', on: true }, 200);
+    await go('connect.remove', 'POST', '/connect/remove', { account: 'me@outlook.com' }, 200);
+    await go('connect.remove', 'POST', '/connect/remove', { account: 'nope' }, 422);
     await go('inboxItems.action', 'POST', '/inbox-items/mail-000000000000/action', { action: 'mark-done' }, 404);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha', dryRun: true }, 200);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha' }, 201);

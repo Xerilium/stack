@@ -1,6 +1,6 @@
 // @req FR:ux-consolidation/cal.fresh @req FR:ux-consolidation/cal.ui @req FR:ux-consolidation/cal.check
 import { describe, expect, it } from 'vitest';
-import { calLine, checkText, isFresh, sourceOf, GRAPH_CMD } from '../src/calsource';
+import { calLine, checkText, isFresh, sourceOf } from '../src/calsource';
 
 const NOW = new Date('2026-11-11T18:00:00Z');
 const ago = (min: number) => new Date(NOW.getTime() - min * 60_000).toISOString();
@@ -48,7 +48,6 @@ describe('checkText', () => {
     expect(checkText({ kind: 'calendar', state: 'ok', account: 'a.test', lastSyncAt: ago(5) }, NOW)).toBe('Connected to a.test · synced 5 min ago');
     expect(checkText({ kind: 'calendar', state: 'not-connected' }, NOW)).toBe('Not connected');
     expect(checkText({ kind: 'calendar', state: 'error' }, NOW)).toBe('Calendar unavailable. Check the link, then try again.');
-    expect(checkText({ kind: 'calendar', via: 'graph', state: 'error' }, NOW)).toBe('Calendar unavailable. Sign in again with Microsoft Graph.');
+    expect(checkText({ kind: 'calendar', via: 'graph', state: 'error' }, NOW)).toBe('Calendar unavailable. Click Fix and sign in again.');
   });
-  it('the Graph sign-in asks for the calendar only', () => expect(GRAPH_CMD).toBe('stack graph login --client-id <app id> --with calendar'));
 });

@@ -1943,7 +1943,7 @@ paths:
                           type: string
                         ready:
                           type: boolean
-                  sources: &a1
+                  sources: &a2
                     type: array
                     items:
                       type: object
@@ -1974,6 +1974,9 @@ paths:
                           type: string
                         command:
                           type: string
+                        connect:
+                          type: boolean
+                          description: The step is the in-app Connect panel, not a command
                         doc:
                           type: string
                         mode:
@@ -1983,7 +1986,7 @@ paths:
                             - drafts
                         planned:
                           type: boolean
-                  summary: &a2
+                  summary: &a3
                     type: object
                     properties:
                       connected:
@@ -1999,6 +2002,211 @@ paths:
                       headline:
                         type: string
                         nullable: true
+        default:
+          $ref: "#/components/responses/Error"
+  /connect:
+    get:
+      summary: "Whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Never a token. Owner session only: 403 for tokens; 404 on a host without Connect"
+      operationId: getConnect
+      responses:
+        "200":
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  setup:
+                    type: object
+                    properties:
+                      clientId:
+                        type: boolean
+                  accounts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        account:
+                          type: string
+                        type:
+                          type: string
+                          enum:
+                            - personal
+                            - work
+                        mail:
+                          type: boolean
+                        calendar:
+                          type: boolean
+                        drafts:
+                          type: boolean
+                        state:
+                          type: string
+                          enum:
+                            - connected
+                            - expired
+                            - error
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/setup:
+    post:
+      summary: "Run the one-time app registration (scripts/register-stack-app.ps1, Az PowerShell). Returns a state code only: done, needs-azure-signin, needs-pwsh, failed. Owner session only"
+      operationId: runConnectSetup
+      responses:
+        "200":
+          description: Setup state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - done
+                      - needs-azure-signin
+                      - needs-pwsh
+                      - failed
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/sign-in:
+    post:
+      summary: "Start a Microsoft sign-in: the browser opens the sign-in page (PKCE, loopback), or a device code shows in the page. Read-only scopes; drafts opt-in; never send. 409 until setup has run. Owner session only"
+      operationId: startConnect
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$
+                  description: Mailbox address to sign in (login hint) Single line.
+                drafts:
+                  type: boolean
+                  description: Also ask for Mail.ReadWrite (reply drafts)
+                method:
+                  type: string
+                  enum:
+                    - browser
+                    - device
+                  description: browser (default) or device
+      responses:
+        "201":
+          description: Sign-in session
+          content:
+            application/json:
+              schema: &a1
+                type: object
+                properties:
+                  id:
+                    type: string
+                  method:
+                    type: string
+                    enum:
+                      - browser
+                      - device
+                  state:
+                    type: string
+                    enum:
+                      - waiting
+                      - done
+                      - error
+                  url:
+                    type: string
+                  userCode:
+                    type: string
+                  verificationUri:
+                    type: string
+                  expiresAt:
+                    type: string
+                  account:
+                    type: string
+                  error:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/sign-in/{id}:
+    get:
+      summary: "A sign-in session: waiting, done (with the account) or error (an OAuth code). Owner session only"
+      operationId: getConnectSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sign-in session
+          content:
+            application/json:
+              schema: *a1
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/drafts:
+    post:
+      summary: Turn reply drafts on (starts a sign-in that asks for Mail.ReadWrite) or off (read scopes only from the next refresh). Owner session only
+      operationId: setConnectDrafts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - account
+                - on
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$
+                  description: Mailbox address Single line.
+                on:
+                  type: boolean
+                  description: Drafts on or off
+      responses:
+        "200":
+          description: Session or ok
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/remove:
+    post:
+      summary: "Disconnect an account: deletes its token cache. Owner session only"
+      operationId: removeConnect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - account
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$
+                  description: Mailbox address Single line.
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
         default:
           $ref: "#/components/responses/Error"
   /inbox-sources:
@@ -2021,8 +2229,8 @@ paths:
               schema:
                 type: object
                 properties:
-                  sources: *a1
-                  summary: *a2
+                  sources: *a2
+                  summary: *a3
         default:
           $ref: "#/components/responses/Error"
   /inbox-items/{id}/action:
@@ -2884,10 +3092,10 @@ paths:
           description: Version state
           content:
             application/json:
-              schema: &a4
+              schema: &a5
                 type: object
                 properties:
-                  running: &a3
+                  running: &a4
                     type: object
                     nullable: true
                     properties:
@@ -2900,7 +3108,7 @@ paths:
                       builtAt:
                         type: string
                         format: date-time
-                  available: *a3
+                  available: *a4
                   ready:
                     type: boolean
                   mode:
@@ -2956,7 +3164,7 @@ paths:
           description: Version state
           content:
             application/json:
-              schema: *a4
+              schema: *a5
         default:
           $ref: "#/components/responses/Error"
   /version/restart:

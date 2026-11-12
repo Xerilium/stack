@@ -24,7 +24,7 @@ export const tomorrow = (now = new Date()): string => { const d = new Date(now.g
 export type SourceState = 'not-connected' | 'connecting' | 'ok' | 'error' | 'stale';
 /** One inbox source, as the server reports it. The server writes `needs` and `command`; the page only shows them. @req FR:inbox-page/src.shape */
 export interface SourceRow {
-  kind: InboxRow['source']; account: string; state: SourceState; lastSyncAt?: string; error?: string; needs?: string; command?: string; doc?: string; mode?: 'read-only' | 'drafts'; planned?: boolean;
+  kind: InboxRow['source']; account: string; state: SourceState; lastSyncAt?: string; error?: string; needs?: string; command?: string; connect?: boolean; doc?: string; mode?: 'read-only' | 'drafts'; planned?: boolean;
 }
 /** @req FR:inbox-page/src.summary */
 export interface SourcesSummary { connected: number; total: number; fresh: number; attention: boolean; canClaimZero: boolean; headline: string | null }

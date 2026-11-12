@@ -370,7 +370,7 @@ export function App() {
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
   /** Live calendar when it works and is fresh, else the weekly schedule. @req FR:cos-view/meet.layers @req FR:ux-consolidation/cal.fresh */
   const liveCal = calOn && !calError && isFresh(calSource, clockNow);
-  /** When the page last read the calendar: the minute timer reads it again after 15 min. @req FR:ux-consolidation/cal.check */
+  /** When the page last read the calendar: the minute timer reads it again after 5 min. @req FR:ux-consolidation/cal.check @req FR:connect-accounts/cal.page */
   const calReadAt = useRef(Date.now());
   /** Check connection: read the calendar again for today's range. @req FR:ux-consolidation/cal.check */
   const checkCalendar = useCallback(async (): Promise<CalSource | null> => {
@@ -389,7 +389,7 @@ export function App() {
       return null;
     }
   }, [sched]);
-  useEffect(() => { if (calSource && Date.now() - calReadAt.current >= 15 * 60_000) void checkCalendar(); }, [tick, calSource, checkCalendar]);
+  useEffect(() => { if (calSource && Date.now() - calReadAt.current >= 5 * 60_000) void checkCalendar(); }, [tick, calSource, checkCalendar]);
   /** Connect: save the published link in the user config on the local host; wait for its restart. @req FR:ux-consolidation/cal.save */
   const connectCalendar = useCallback(async (ics: string): Promise<string | null> => {
     const f: Fetch = (u, i) => fetch(u, i);
@@ -1004,7 +1004,7 @@ export function App() {
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
-          chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} asks={nowAsks} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }}
+          chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} asks={nowAsks} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar, ...(local ? { api } : {}) }}
           onOpenAsks={() => go('asks')} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (

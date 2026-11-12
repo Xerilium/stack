@@ -40,6 +40,12 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/inbox` | GET inbox entries for agents; POST send a reply or decision to the task project agent inbox (owner session only) |
 | `/inbox/handled` | POST mark an inbox entry handled |
 | `/inbox-items` | GET all mail, unread Teams, Slack and GitHub items with summaries and suggested actions, plus source status (Inbox page; owner session only) |
+| `/connect` | GET whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Local host only; never a token (owner session only) |
+| `/connect/setup` | POST run the one-time app registration (Az PowerShell); returns a state code (owner session only) |
+| `/connect/sign-in` | POST start a Microsoft sign-in: browser (PKCE, loopback) or device code; read-only scopes, drafts opt-in, never send (owner session only) |
+| `/connect/sign-in/{id}` | GET a sign-in session: waiting, done, or error (owner session only) |
+| `/connect/drafts` | POST turn reply drafts on (new sign-in) or off for an account (owner session only) |
+| `/connect/remove` | POST disconnect an account: deletes its token file (owner session only) |
 | `/inbox-sources` | GET each inbox source (every email account, GitHub, planned Teams and Slack): state, last sync, the exact step to connect it, and N of M connected. `fresh=1` re-probes the local host. Never a token (owner session only) |
 | `/inbox-items/{id}/action` | POST run an inbox action; reply-draft makes a draft and never sends (owner session only) |
 | `/brief/summary` | GET the AI daily brief (owner only; `refresh=1` bypasses the cache) |

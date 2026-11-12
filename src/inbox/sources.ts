@@ -30,6 +30,8 @@ export interface InboxSource {
   needs?: string;
   /** The terminal command for that step, when one exists. */
   command?: string;
+  /** The step is the in-app Connect panel (Microsoft sign-in in the browser), not a command. @req FR:connect-accounts/web.nocmd */
+  connect?: boolean;
   doc?: string;
   /** Email only. */
   mode?: MailMode;
@@ -42,7 +44,7 @@ export interface SyncRecord { kind: Source; account: string; at: string; ok: boo
 
 /** What a local host sees on this machine. No token values. @req FR:inbox-page/src.probe */
 export interface SourceProbe {
-  emails: { account: string; mode: MailMode; error?: 'token-unreadable' }[];
+  emails: { account: string; mode: MailMode; error?: 'token-unreadable' | 'signin-expired' }[];
   github: boolean;
   /** A mail sign-in in the default cache that names no mailbox (`graph login` without `--account`). */
   unnamedMail?: { mode: MailMode };
@@ -128,20 +130,17 @@ const ERROR_TEXT: Record<SyncError | 'token-unreadable', (s: Pick<InboxSource, '
   'token-unreadable': (s) => `${LABEL[s.kind]} sign-in file cannot be read${s.account ? `: ${s.account}` : ''}`,
 };
 
-/** The sign-in command. The client id comes from an existing sign-in; `--with mail` is read-only. @req FR:inbox-page/src.help */
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Only a GUID goes into a copyable command; anything else (a tampered cache) becomes the placeholder. @req FR:inbox-page/src.safe */
 export const safeClientId = (id: unknown): string | undefined => (typeof id === 'string' && GUID.test(id) ? id : undefined);
-const loginCmd = (account: string, clientId: string | undefined, mode: MailMode | undefined) =>
-  `stack graph login --client-id ${safeClientId(clientId) ?? '<app id>'} --account ${account || '<address>'} --with ${mode === 'drafts' ? 'mail,drafts' : 'mail'}`;
-const SIGN_IN_NEEDS = `Sign in from a terminal. Read-only by default: Stack reads mail. Use --with mail,drafts to let Stack write reply drafts. ${NEVER_SENDS}`;
+const SIGN_IN_NEEDS = `Click Connect and sign in with Microsoft. Read-only by default: Stack reads mail and your calendar. Turn on drafts per account to let Stack save reply drafts. ${NEVER_SENDS}`;
 
 /** Fills `needs`, `command` and `doc` for a source that is not ok. @req FR:inbox-page/src.help */
-function help(s: InboxSource, code: SyncError | 'token-unreadable' | undefined, clientId: string | undefined): InboxSource {
+function help(s: InboxSource, code: SyncError | 'token-unreadable' | undefined): InboxSource {
   if (s.kind === 'email') {
     const doc = `${DOC}#email`;
-    if (s.state === 'not-connected' || code === 'signin-expired') return { ...s, needs: SIGN_IN_NEEDS, command: loginCmd(s.account, clientId, s.mode), doc };
-    if (code === 'token-unreadable') return { ...s, needs: `Stack cannot read the sign-in file graph-token-${s.account}.json in ~/.config/stack. If it is readable by others, run chmod 600 on it. Else sign in again. ${NEVER_SENDS}`, command: loginCmd(s.account, clientId, s.mode), doc };
+    if (s.state === 'not-connected' || code === 'signin-expired') return { ...s, needs: SIGN_IN_NEEDS, connect: true, doc };
+    if (code === 'token-unreadable') return { ...s, needs: `Stack cannot read the sign-in file graph-token-${s.account}.json in ~/.config/stack. If it is readable by others, run chmod 600 on it. Else click Connect and sign in again. ${NEVER_SENDS}`, connect: true, doc };
     if (code === 'model-down') return { ...s, needs: `Run claude in a terminal and sign in. Triage starts again on the next pass. ${NEVER_SENDS}`, command: 'claude', doc };
     if (code === 'sync-failed') return { ...s, needs: 'Run one pass by hand to see the error.', command: `stack email run --account ${s.account}`, doc };
     if (s.state === 'connecting') return { ...s, needs: `Signed in. Run the first sync${s.account ? '' : ' with your mailbox address'}, then schedule it with stack email schedule. ${NEVER_SENDS}`, command: `stack email run --account ${s.account || '<address>'}`, doc };
@@ -160,12 +159,12 @@ function help(s: InboxSource, code: SyncError | 'token-unreadable' | undefined, 
 }
 
 /** One source from its latest record (if any), given it is known to exist. @req FR:inbox-page/src.state */
-function fromRecord(base: InboxSource, rec: SyncRecord | undefined, now: Date, freshMs: number, clientId?: string): InboxSource {
+function fromRecord(base: InboxSource, rec: SyncRecord | undefined, now: Date, freshMs: number): InboxSource {
   if (rec?.mode && !base.mode) base = { ...base, mode: rec.mode };
-  if (!rec) return help({ ...base, state: base.state === 'not-connected' ? 'not-connected' : 'connecting' }, undefined, clientId);
+  if (!rec) return help({ ...base, state: base.state === 'not-connected' ? 'not-connected' : 'connecting' }, undefined);
   const s: InboxSource = { ...base, lastSyncAt: rec.at, state: !rec.ok ? 'error' : now.getTime() - Date.parse(rec.at) <= freshMs ? 'ok' : 'stale' };
   if (!rec.ok) s.error = ERROR_TEXT[rec.error ?? 'sync-failed'](s);
-  return help(s, rec.ok ? undefined : rec.error ?? 'sync-failed', clientId);
+  return help(s, rec.ok ? undefined : rec.error ?? 'sync-failed');
 }
 
 /**
@@ -175,26 +174,25 @@ function fromRecord(base: InboxSource, rec: SyncRecord | undefined, now: Date, f
 export function buildSources(o: { now: Date; records: SyncRecord[]; probe?: SourceProbe; accounts?: string[]; freshMinutes?: number }): InboxSource[] {
   const freshMs = (o.freshMinutes && o.freshMinutes > 0 ? o.freshMinutes : DEFAULT_FRESH_MINUTES) * 60_000;
   const rec = (kind: Source, account: string) => o.records.find((r) => r.kind === kind && r.account === account);
-  const clientId = o.probe?.clientId;
   const probed = new Map((o.probe?.emails ?? []).map((e) => [acct(e.account), e]));
   const accounts = [...new Set([...probed.keys(), ...o.records.filter((r) => r.kind === 'email').map((r) => r.account), ...(o.accounts ?? []).map(acct)].filter((a) => MAILBOX.test(a)))].sort();
   const out: InboxSource[] = [];
   for (const a of accounts) {
     const p = probed.get(a);
     const base: InboxSource = { kind: 'email', account: a, state: p ? 'connecting' : 'not-connected', ...(p ? { mode: p.mode } : {}) };
-    if (p?.error) { out.push(help({ ...base, state: 'error', error: ERROR_TEXT['token-unreadable'](base) }, 'token-unreadable', clientId)); continue; }
+    if (p?.error) { out.push(help({ ...base, state: 'error', error: ERROR_TEXT[p.error](base) }, p.error)); continue; }
     const r = rec('email', a);
     // Not signed in here, but a runner elsewhere reported it (the hosted app has no probe): trust the record.
-    out.push(fromRecord(r && !p ? { ...base, state: 'connecting' } : base, r, o.now, freshMs, clientId));
+    out.push(fromRecord(r && !p ? { ...base, state: 'connecting' } : base, r, o.now, freshMs));
   }
   // A mail sign-in that names no mailbox (first-run onboarding) is connected: its first `email run --account` names it.
   const unnamed = o.probe?.unnamedMail;
-  if (!accounts.length) out.push(help(unnamed ? { kind: 'email', account: '', state: 'connecting', mode: unnamed.mode } : { kind: 'email', account: '', state: 'not-connected' }, undefined, clientId));
+  if (!accounts.length) out.push(help(unnamed ? { kind: 'email', account: '', state: 'connecting', mode: unnamed.mode } : { kind: 'email', account: '', state: 'not-connected' }, undefined));
   const gh = rec('github', '');
   // GitHub counts once its runner has reported; until then it shows the sign-in only. @req FR:inbox-page/src.planned
   out.push(fromRecord({ kind: 'github', account: '', state: o.probe?.github || (!o.probe && gh) ? 'connecting' : 'not-connected', ...(gh ? {} : { planned: true }) }, o.probe && !o.probe.github ? undefined : gh, o.now, freshMs));
-  out.push(help({ kind: 'teams', account: '', state: 'not-connected', planned: true }, undefined, clientId));
-  out.push(help({ kind: 'slack', account: '', state: 'not-connected', planned: true }, undefined, clientId));
+  out.push(help({ kind: 'teams', account: '', state: 'not-connected', planned: true }, undefined));
+  out.push(help({ kind: 'slack', account: '', state: 'not-connected', planned: true }, undefined));
   return out;
 }
 

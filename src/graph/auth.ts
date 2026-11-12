@@ -2,9 +2,9 @@
  * Owner sign-in to Microsoft Graph with the device code flow, a token cache outside the task repo, and refresh on demand.
  * Read scopes only (plus reply drafts when asked); nothing here can send mail or write a calendar.
  * @req FR:graph-signin/scope.sets @req FR:graph-signin/scope.never @req FR:graph-signin/flow.start @req FR:graph-signin/flow.poll @req FR:graph-signin/flow.host
- * @req FR:graph-signin/cache.file @req FR:graph-signin/cache.provider
+ * @req FR:graph-signin/cache.file @req FR:graph-signin/cache.provider @req FR:graph-signin/flow.pkce @req FR:graph-signin/flow.idtoken
  */
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { existsSync, promises as fs, readdirSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join, resolve } from 'path';
@@ -84,7 +84,8 @@ export async function startDeviceCode(o: SignInOptions & { scopes: string[] }): 
   };
 }
 
-export interface Granted { accessToken: string; refreshToken: string; expiresAt: number; scopes: string[] }
+/** `idToken` is used to name the account; it is never saved. */
+export interface Granted { accessToken: string; refreshToken: string; expiresAt: number; scopes: string[]; idToken?: string }
 
 /** Checks what was actually granted: Microsoft grants every scope already consented for the app, so an unsafe one must be refused here, before anything is saved. */
 function granted(b: Record<string, unknown>, now: number): Granted {
@@ -92,7 +93,48 @@ function granted(b: Record<string, unknown>, now: number): Granted {
   if (typeof b.refresh_token !== 'string') throw new GraphSignInError('no_refresh_token');
   const scopes = typeof b.scope === 'string' ? b.scope.split(/\s+/).filter(Boolean) : [];
   assertSafeScopes(scopes);
-  return { accessToken: b.access_token, refreshToken: b.refresh_token, expiresAt: now + (Number(b.expires_in) || 3600) * 1000, scopes };
+  return { accessToken: b.access_token, refreshToken: b.refresh_token, expiresAt: now + (Number(b.expires_in) || 3600) * 1000, scopes, ...(typeof b.id_token === 'string' ? { idToken: b.id_token } : {}) };
+}
+
+// ------------------------------------------------------------------ authorization code + PKCE
+
+/** A random verifier and its S256 challenge. @req FR:graph-signin/flow.pkce */
+export function pkcePair(): { verifier: string; challenge: string } {
+  const verifier = randomBytes(48).toString('base64url');
+  return { verifier, challenge: createHash('sha256').update(verifier).digest('base64url') };
+}
+const LOOPBACK = /^http:\/\/(?:localhost|127\.0\.0\.1):\d{1,5}\/?$/;
+function checkRedirect(uri: string): void { if (!LOOPBACK.test(uri)) throw new GraphSignInError('invalid_redirect', 'the redirect must be http://localhost:<port>'); }
+
+/** The Microsoft sign-in page URL for the code flow. @req FR:graph-signin/flow.pkce */
+export function authorizeUrl(o: SignInOptions & { scopes: string[]; redirectUri: string; challenge: string; state: string; loginHint?: string }): string {
+  check(o, o.scopes);
+  checkRedirect(o.redirectUri);
+  const q = new URLSearchParams({
+    client_id: o.clientId, response_type: 'code', response_mode: 'query', redirect_uri: o.redirectUri, scope: o.scopes.join(' '),
+    code_challenge: o.challenge, code_challenge_method: 'S256', state: o.state, prompt: 'select_account', ...(o.loginHint ? { login_hint: o.loginHint } : {}),
+  });
+  return `${LOGIN}/${encodeURIComponent(o.tenant)}/oauth2/v2.0/authorize?${q.toString()}`;
+}
+
+/** Redeems the code from the loopback redirect with the PKCE verifier. @req FR:graph-signin/flow.pkce */
+export async function redeemAuthCode(o: SignInOptions & { code: string; verifier: string; redirectUri: string; now?: () => number }): Promise<Granted> {
+  check(o, []);
+  checkRedirect(o.redirectUri);
+  const r = await post(o, 'token', { grant_type: 'authorization_code', client_id: o.clientId, code: o.code, code_verifier: o.verifier, redirect_uri: o.redirectUri });
+  if (!r.ok) throw new GraphSignInError(errorCode(r.body));
+  return granted(r.body, (o.now ?? (() => Date.now()))());
+}
+
+/** The personal Microsoft account tenant id. */
+export const MSA_TENANT = '9188040d-6c67-4c5b-b112-36a304b66dad';
+/** Account name and tenant id from an id token received straight from the token endpoint (no signature check needed there). @req FR:graph-signin/flow.idtoken */
+export function idClaims(idToken: string): { account?: string; tid?: string } {
+  try {
+    const c = JSON.parse(Buffer.from(idToken.split('.')[1] ?? '', 'base64url').toString('utf8')) as Record<string, unknown>;
+    const account = typeof c.preferred_username === 'string' ? c.preferred_username : typeof c.email === 'string' ? c.email : undefined;
+    return { ...(account ? { account: account.toLowerCase() } : {}), ...(typeof c.tid === 'string' ? { tid: c.tid } : {}) };
+  } catch { return {}; }
 }
 
 /** Polls until the owner finishes signing in, declines, or the code expires. @req FR:graph-signin/flow.poll */

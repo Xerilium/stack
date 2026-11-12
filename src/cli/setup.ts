@@ -238,6 +238,8 @@ export interface LocalServer { url: string; close(): Promise<void> }
 export async function startSetupServer(o: { port: number; webDir: string; setup: SetupHandler; headers?: Record<string, string> }): Promise<LocalServer> {
   const extra = o.headers ?? (() => { try { return (JSON.parse(readFileSync(join(o.webDir, 'staticwebapp.config.json'), 'utf8')) as { globalHeaders?: Record<string, string> }).globalHeaders ?? {}; } catch { return {}; } })();
   const server = createServer((req, res) => {
+    // This server restarts into the real one on the same port: no kept-alive socket, so a client never reuses a dead one.
+    res.shouldKeepAlive = false;
     void (async () => {
       const send = (status: number, body: string | Buffer, type: string) => { res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...extra }); res.end(body); };
       try {

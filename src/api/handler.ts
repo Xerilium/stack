@@ -2,7 +2,7 @@
  * Framework-neutral REST handler over the core. Pure (Request) -> Response; storage is injected.
  * @req FR:api/handler.@function
  */
-import { getDefaults, type StackConfig } from '../core/config';
+import { getDefaults, MAILBOX, type StackConfig } from '../core/config';
 import { cleanOverrides, daySchedule, dayScheduleOn, type ScheduleOverrides } from '../core/schedule';
 import {
   addProject, addTask, completeTask, nextTask, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
@@ -15,6 +15,8 @@ import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, rec
 import type { AuxFiles, Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
 import { sourceStatus, type CalendarProvider } from '../calendar';
+import { CalendarNotConnected } from '../calendar/accounts';
+import type { Connect } from '../graph/connect';
 import { ReportInvalid, type ReportStore } from '../core/reports';
 import type { Inventory } from '../core/session-inventory';
 import { PrisInvalid, type PriStore } from '../core/pris';
@@ -86,6 +88,8 @@ export interface ApiDeps {
   issues?: IssueFiler;
   /** Today's meetings for the day plan; absent means no calendar. @req FR:day-inputs/api.calendar */
   calendar?: CalendarProvider;
+  /** In-app Connect for Microsoft accounts; absent (the Azure host) means every /connect route is 404. @req FR:connect-accounts/api.get */
+  connect?: Connect;
   /** Model for the AI daily brief (`claude -p`); absent means `GET /brief/summary` says not configured. @req FR:cos-view/brief.ai.route */
   brief?: ClaudeJson;
   /** The PR page board; absent means GET /prs is 404. @req FR:pr-page/api.get */
@@ -433,6 +437,18 @@ async function ghCall(fn: () => Promise<void>): Promise<void> {
     throw e;
   }
 }
+
+const ACCOUNT: Spec = { t: 'str', max: 200, line: true, pattern: new RegExp(MAILBOX.source, 'i') };
+const CONNECT_START_BODY = { schema: { account: ACCOUNT, drafts: { t: 'bool' }, method: { t: 'enum', values: ['browser', 'device'] } } satisfies Record<string, Spec>, required: [] as string[] };
+const CONNECT_DRAFTS_BODY = { schema: { account: { ...ACCOUNT, required: true }, on: { t: 'bool' } } satisfies Record<string, Spec>, required: ['account', 'on'] };
+const CONNECT_REMOVE_BODY = { schema: { account: { ...ACCOUNT, required: true } } satisfies Record<string, Spec>, required: ['account'] };
+/** The connect service, owner only; 404 on a host without one. @req FR:connect-accounts/api.get */
+const connectOf = (c: Ctx): Connect => {
+  if (!c.deps.connect) throw new ApiError('not_found', 'Connect is not available on this host');
+  ownerOnly(c, 'Only the owner can connect accounts');
+  return c.deps.connect;
+};
+const lower = (s: unknown) => (typeof s === 'string' ? s.trim().toLowerCase() : undefined);
 
 const SOURCES_Q: Record<string, Spec> = { fresh: { t: 'enum', values: ['1', 'true'] } };
 /** Sources from the sync records, the config and (local host) this machine's probe. A failing probe reads as none. @req FR:inbox-page/api.sources @req FR:inbox-page/src.fresh */
@@ -1027,6 +1043,66 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    // @req FR:connect-accounts/api.get
+    method: 'GET', doc: '/connect', name: 'connect.get',
+    async run(c) {
+      noQuery(c);
+      const k = connectOf(c);
+      return json(200, { setup: { clientId: k.hasClientId() }, accounts: await k.accounts() });
+    },
+  },
+  {
+    // Runs the one-time app registration script; state codes only. @req FR:connect-accounts/api.setup
+    method: 'POST', doc: '/connect/setup', name: 'connect.setup',
+    async run(c) {
+      noQuery(c);
+      return json(200, await connectOf(c).setup());
+    },
+  },
+  {
+    // @req FR:connect-accounts/api.start
+    method: 'POST', doc: '/connect/sign-in', name: 'connect.start', body: CONNECT_START_BODY,
+    async run(c) {
+      noQuery(c);
+      const k = connectOf(c);
+      const b = validate<{ account?: string; drafts?: boolean; method?: 'browser' | 'device' }>(await readBody(c.req), CONNECT_START_BODY.schema, CONNECT_START_BODY.required);
+      if (!k.hasClientId()) throw new ApiError('conflict', 'One-time setup needed: run setup first');
+      const account = lower(b.account);
+      return json(201, await k.start({ ...(b.drafts !== undefined ? { drafts: b.drafts } : {}), ...(b.method ? { method: b.method } : {}), ...(account ? { account } : {}) }));
+    },
+  },
+  {
+    // @req FR:connect-accounts/api.poll
+    method: 'GET', doc: '/connect/sign-in/{id}', name: 'connect.poll',
+    async run(c) {
+      noQuery(c);
+      const s = connectOf(c).get(c.params[0]);
+      if (!s) throw new ApiError('not_found', 'Sign-in not found');
+      return json(200, s);
+    },
+  },
+  {
+    // @req FR:connect-accounts/api.drafts
+    method: 'POST', doc: '/connect/drafts', name: 'connect.drafts', body: CONNECT_DRAFTS_BODY,
+    async run(c) {
+      noQuery(c);
+      const k = connectOf(c);
+      const b = validate<{ account: string; on: boolean }>(await readBody(c.req), CONNECT_DRAFTS_BODY.schema, CONNECT_DRAFTS_BODY.required);
+      return json(200, await k.setDrafts(lower(b.account)!, b.on));
+    },
+  },
+  {
+    // @req FR:connect-accounts/api.remove
+    method: 'POST', doc: '/connect/remove', name: 'connect.remove', body: CONNECT_REMOVE_BODY,
+    async run(c) {
+      noQuery(c);
+      const k = connectOf(c);
+      const b = validate<{ account: string }>(await readBody(c.req), CONNECT_REMOVE_BODY.schema, CONNECT_REMOVE_BODY.required);
+      await k.remove(lower(b.account)!);
+      return json(200, { ok: true });
+    },
+  },
+  {
     // @req FR:inbox-page/api.sources
     method: 'GET', doc: '/inbox-sources', name: 'inboxSources.list', query: SOURCES_Q,
     async run(c) {
@@ -1152,6 +1228,8 @@ export const ROUTES: Route[] = [
         const items = await cal.events(new Date(from).toISOString(), new Date(to).toISOString());
         return json(200, { configured: true, items, source: sourceStatus(cal, true, at()) });
       } catch (e) {
+        // No account and no feed yet: not connected, not an error. @req FR:connect-accounts/cal.fallback
+        if (e instanceof CalendarNotConnected) return json(200, { configured: false, items: [], source: sourceStatus(undefined, false, at()) });
         c.deps.onError?.(e);
         return json(200, { configured: true, items: [], error: 'Calendar unavailable', source: sourceStatus(cal, false, at()) });
       }

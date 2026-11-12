@@ -6,12 +6,14 @@
 import { useEffect, useState } from 'preact/hooks';
 import { lastSync, MODE_TEXT, panelOpen, progressLine, SOURCE, STATE_TEXT, stepLabel, type SourceRow, type SourcesSummary } from './inbox';
 import { CopyCommand } from './parts';
+import { ConnectAccounts } from './ConnectAccounts';
+import type { ConnectApi } from './connect';
 import './onboarding.css';
 
 const key = (s: SourceRow) => `${s.kind}:${s.account}`;
 const name = (s: SourceRow) => `${SOURCE[s.kind]}${s.account ? ` ${s.account}` : ''}`;
 
-function Source({ s, open, toggle }: { s: SourceRow; open: boolean; toggle: () => void }) {
+function Source({ s, open, toggle, api, onConnected }: { s: SourceRow; open: boolean; toggle: () => void; api?: ConnectApi; onConnected?: () => void }) {
   const id = `src-${key(s).replace(/[^a-z0-9]/gi, '-')}`;
   return (
     <li class={`src-row ${s.state}${s.planned ? ' planned' : ''}`} data-kind={s.kind} data-state={s.state} data-account={s.account}>
@@ -28,7 +30,8 @@ function Source({ s, open, toggle }: { s: SourceRow; open: boolean; toggle: () =
       {open && s.needs && (
         <div class="src-step" id={id}>
           <p>{s.needs}</p>
-          {s.command && <CopyCommand cmd={s.command} label={`Copy command for ${name(s)}`} />}
+          {/* Email sign-in runs in the app: no command. @req FR:connect-accounts/web.where */}
+          {s.connect && api ? <ConnectAccounts api={api} {...(onConnected ? { onChange: onConnected } : {})} /> : s.command && <CopyCommand cmd={s.command} label={`Copy command for ${name(s)}`} />}
           {s.doc && <p class="src-doc"><a href={s.doc} target="_blank" rel="noopener noreferrer">How to connect {SOURCE[s.kind]}</a></p>}
         </div>
       )}
@@ -36,14 +39,14 @@ function Source({ s, open, toggle }: { s: SourceRow; open: boolean; toggle: () =
   );
 }
 
-export function InboxSources({ sources, summary, checking, onCheck }: { sources: SourceRow[]; summary: SourcesSummary; checking: boolean; onCheck: () => void }) {
+export function InboxSources({ sources, summary, checking, onCheck, api }: { sources: SourceRow[]; summary: SourcesSummary; checking: boolean; onCheck: () => void; api?: ConnectApi }) {
   const [open, setOpen] = useState(panelOpen(summary));
   const [shown, setShown] = useState<string | null>(null);
   // A check that finds a new problem opens the panel again.
   useEffect(() => { if (panelOpen(summary)) setOpen(true); }, [summary]);
   const counted = sources.filter((s) => !s.planned);
   const planned = sources.filter((s) => s.planned);
-  const row = (s: SourceRow) => <Source key={key(s)} s={s} open={shown === key(s)} toggle={() => setShown(shown === key(s) ? null : key(s))} />;
+  const row = (s: SourceRow) => <Source key={key(s)} s={s} open={shown === key(s)} toggle={() => setShown(shown === key(s) ? null : key(s))} {...(api ? { api } : {})} onConnected={onCheck} />;
   return (
     <section class="src-panel" aria-labelledby="src-h" data-testid="inbox-sources">
       <div class="src-head">

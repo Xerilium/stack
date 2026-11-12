@@ -16,7 +16,7 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 
 ## Scope
 
-- In: device code start and poll, scope sets, token cache file, access-token provider with refresh, CLI `stack graph`, `stack web` live calendar wiring.
+- In: device code start and poll, authorization code with PKCE (for in-app Connect, `FR:connect-accounts/*`), scope sets, token cache file, access-token provider with refresh, CLI `stack graph`, `stack web` live calendar wiring.
 - Note: `Mail.ReadWrite` (drafts) is not read-only; Graph has no drafts-only scope. What limits mail writes to reply drafts is the email guard (`FR:email-triage/safe.allowlist`), not the scope.
 - Out: the app registration itself (owner, one time: a public client with "Allow public client flows" on), the mail runner (`FR:email-triage/*`, scheduled separately), the Azure host (it has no owner terminal; it keeps fixtures off and no calendar), confidential clients and secrets.
 
@@ -31,6 +31,8 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 
 - **FR:flow.start** (P1): `startDeviceCode({tenant, clientId, scopes, fetch})` posts form data to `https://login.microsoftonline.com/<tenant>/oauth2/v2.0/devicecode` and returns `{deviceCode, userCode, verificationUri, expiresIn, interval, message}`. `tenant` is `organizations`, `consumers`, `common`, or a GUID or domain; `clientId` is a GUID. Anything else is refused before a request
 - **FR:flow.poll** (P1): `pollDeviceCode(...)` posts the device code grant to the token endpoint every `interval` seconds (`sleep` injectable), adds 5 seconds on `slow_down`, keeps waiting on `authorization_pending`, and stops with a typed error on `expired_token`, `access_denied`, `authorization_declined`, `bad_verification_code`, or when `expiresIn` has passed. Success returns `{accessToken, refreshToken, expiresAt, scopes}`; a response without a refresh token is an error (`offline_access` was not granted)
+- **FR:flow.pkce** (P1): `pkcePair()` makes a random verifier (43+ characters) and its `S256` challenge. `authorizeUrl({tenant, clientId, scopes, redirectUri, challenge, state, loginHint?})` builds the `/authorize` URL (`response_type=code`, `response_mode=query`, `prompt=select_account`). `redeemAuthCode({tenant, clientId, code, verifier, redirectUri})` posts the `authorization_code` grant with the verifier and returns the same result as `FR:flow.poll`. The redirect URI must be `http://localhost:<port>` or `http://127.0.0.1:<port>`; scopes are checked by `FR:scope.never`
+- **FR:flow.idtoken** (P1): A token response with `id_token` keeps it as `idToken` (never saved). `idClaims(idToken)` reads `preferred_username`, `email` and `tid` from its payload without a network call; a bad token gives no claims
 - **FR:flow.host** (P1): Sign-in requests go only to `https://login.microsoftonline.com`; error results carry the OAuth `error` code only, never the response body or a token
 
 ### FR:cache: Token cache
@@ -49,7 +51,7 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 
 ### FR:web: Live calendar
 
-- **FR:web.calendar** (P1): `stack web` uses the Graph calendar adapter with `graphToken` when the cache exists and its scopes include `Calendars.Read` (any case, with or without the Graph prefix), unless `STACK_CALENDAR_FIXTURE` is set (fixture wins). It logs one line naming the source (`calendar: Graph` or `calendar: fixture`), never a token. A sign-in failure surfaces through `GET /calendar` as `Calendar unavailable`
+- **FR:web.calendar** (P1): `stack web` uses the accounts calendar (`FR:connect-accounts/cal.live`) over every token cache with `Calendars.Read` (any case, with or without the Graph prefix), with the ICS feeds as its fallback, unless `STACK_CALENDAR_FIXTURE` is set (fixture wins). It logs one line naming the source at start (`calendar: Graph`, `calendar: ICS feeds`, `calendar: fixture` or `calendar: none yet`), never a token. A sign-in failure surfaces through `GET /calendar` as `Calendar unavailable`
 
 ## Dependencies
 
