@@ -193,3 +193,14 @@ describe('brief on PR escalations', () => {
     expect(parseQueue({ state: { escalations: { blockedAutopilot: [{ ...entry, brief: { problem: 'x' } }] } } }).escalations!.blocked[0].brief).toBeUndefined();
   });
 });
+
+describe('brief with a thread', () => {
+  // @req FR:ask-briefs/brief.store
+  it('keeps ## Thread when an ask has a brief and no detail', () => {
+    const file = ['# Ask: k', '', '- state: open', '- ask: Approve PR 1', '- kind: approve', '- from: cos', '', '## Brief', '', ...formatBriefLines(BRIEF), '', '## Thread', '', '- 2026-11-12T18:00:00.000Z you: why?'].join('\n');
+    const a = parseAsk('k', file);
+    expect(a.brief).toEqual(BRIEF);
+    expect(a.thread).toEqual(['- 2026-11-12T18:00:00.000Z you: why?']);
+    expect(parseAsk('k', formatAsk(a)).thread).toEqual(a.thread);
+  });
+});

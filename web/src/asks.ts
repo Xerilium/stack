@@ -65,8 +65,9 @@ export const CONTEXT_ASK = 'Send a brief before I decide: problem, proposed solu
  * row is the context); PR priority recommendations and blocked live checks carry their own reason.
  * @req FR:ask-briefs/web.none
  */
-export function needsContext(a: Pick<AskItem, 'kind' | 'brief' | 'source' | 'askKind' | 'decide' | 'key'>): boolean {
-  if (a.brief || a.source === 'task' || a.decide || a.key.startsWith('need:lv.')) return false;
+export function needsContext(a: Pick<AskItem, 'kind' | 'brief' | 'source' | 'askKind' | 'decide' | 'key' | 'flow'>): boolean {
+  // Quick triage questions are about the owner's own rows, shown on the card (FR:quick-triage). 
+  if (a.brief || a.source === 'task' || a.flow || a.decide || a.key.startsWith('need:lv.')) return false;
   const kind = a.source === 'need' ? (a.askKind ?? 'approve') : a.kind;
   return kind === 'approve' || kind === 'decide';
 }
@@ -82,7 +83,7 @@ function contextActions(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'fro
 }
 
 /** Buttons for an ask by kind. `Enter` is always the primary action. */
-export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'> & Partial<Pick<AskItem, 'brief' | 'askKind' | 'decide' | 'key' | 'from'>>): Action[] {
+export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'> & Partial<Pick<AskItem, 'brief' | 'askKind' | 'decide' | 'key' | 'from' | 'flow'>>): Action[] {
   const open: Action[] = a.link ? [{ id: 'open', label: 'Open', key: 'o', open: true }] : [];
   if (needsContext({ key: '', ...a }) && a.from) return contextActions({ ...a, from: a.from }, open);
   const rec = a.recommend?.trim().toLowerCase();

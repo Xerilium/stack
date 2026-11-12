@@ -19,7 +19,7 @@ Agent contract: `docs/asks.md` (ask files), `docs/report.md` (reports).
 ## Scope
 
 - In: the brief schema and its check; the brief on ask files (`asks.put`, `stack asks put`), report asks (`stack report`, `reports.put`), Chief of Staff items (`.stack/needs-you.json`) and PR escalations; the brief and `No context yet` on Now, Needs you and the PR page; `Ask <agent> for context`; `Go with it anyway` behind a confirm; reference links in asks, briefs, threads and task text; the lint warning; agent docs.
-- Out: briefs on 🙋 task rows (the row and its context line are the context), PR priority recommendations and blocked live checks (they carry their own reason), a model writing briefs for agents.
+- Out: briefs on 🙋 task rows and quick triage questions (the owner's own row is the context), PR priority recommendations and blocked live checks (they carry their own reason), a model writing briefs for agents.
 
 ## Scenarios
 
@@ -30,8 +30,8 @@ Agent contract: `docs/asks.md` (ask files), `docs/report.md` (reports).
 - **FR:brief.api** (P1): `POST /asks/{key}` takes `brief`; a bad brief is `422` with every issue. An update without `brief` keeps the stored one. `GET /asks` returns it on each item. The OpenAPI document has a `Brief` schema
 - **FR:brief.cli** (P1): `stack asks put … --brief-file <brief.json>` reads the brief as JSON
 - **FR:brief.report** (P1): A report ask takes an optional `brief`; a bad brief fails the report with the issue paths (`FR:status-ingest/schema.errors`)
-- **FR:brief.needs** (P1): `GET /needs-you` returns, for each report ask, `from` (the agent), `askKind`, and `brief`. A Chief of Staff item may carry `from` and `brief`; a bad brief is left out and the item still shows
-- **FR:brief.pr** (P1): A PR escalation entry (`escalations.blockedAutopilot[]`) may carry `brief`; a bad one is left out
+- **FR:brief.needs** (P1): `GET /needs-you` returns, for each report ask, `from` (the agent), `askKind`, and `brief`. A Chief of Staff item may carry `from`, `askKind` (default `approve`) and `brief`; a bad brief is left out and the item still shows
+- **FR:brief.pr** (P1): A PR escalation entry (`escalations.blockedAutopilot[]`) may carry `brief`. `stack pr-pri escalate` rejects a bad brief with its issue paths; reading the set drops a bad one and keeps the entry
 - **FR:brief.lint** (P1): `stack report` stores an `approve` ask with no brief, exits 0, and prints one line per ask: `warning: asks <id> (approve) has no brief: …` (`warnings` with `--json`). `stack asks put` prints the same warning for an `approve` or `decide` ask with no brief
 
 ### FR:context: Ask for context
@@ -49,7 +49,7 @@ Agent contract: `docs/asks.md` (ask files), `docs/report.md` (reports).
 ### FR:link: References as links
 
 - **FR:link.refs** (P1): `autolink(text, {repo, repos})` is pure. It links full `https` urls, `owner/repo#123`, `#123`, `PR 123`, `PR #123`, `<alias> 123` and `<alias> PR 123` (for example `FH 1105`). `PR` forms link to `/pull/<n>`, the others to `/issues/<n>` (GitHub redirects). Trailing punctuation stays text. A reference with no repo stays plain text
-- **FR:link.repo** (P1): A bare `#123` or `PR 123` takes the repo of the ask's GitHub link, else of its project. Aliases come from the project map: each project's name, title and `Aliases` to its `Repository` (or `Repo`) metadata (a markdown link, url, or `owner/repo`)
+- **FR:link.repo** (P1): A bare `#123` or `PR 123` takes the repo of the ask's GitHub link, else of its project. Aliases come from the project map: each project's name and `Aliases` (never its title) to its `Repository` (or `Repo`) metadata (a markdown link, url, or `owner/repo`)
 - **FR:link.web** (P1): Asks (title, why, recommendation, agent reply), briefs, thread lines, task markdown and PR escalation context render references as links with `target="_blank"` and `rel="noopener noreferrer"`; the desktop app opens them in the browser (`FR:desktop-shell` window policy). Text inside a button stays plain (no nested controls)
 
 ## Data Model

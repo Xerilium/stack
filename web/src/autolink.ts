@@ -11,13 +11,15 @@ export interface LinkCtx { repo?: string; repos?: RepoMap }
 
 const REPO = /^[A-Za-z0-9][\w.-]*\/[\w.-]+$/;
 const GH = /^https:\/\/github\.com\/([A-Za-z0-9][\w.-]*)\/([\w.-]+?)(?:\.git)?(?:[/?#]|$)/;
+/** First path segments that are GitHub pages, not owners. */
+const NOT_OWNER = new Set(['orgs', 'users', 'settings', 'apps', 'marketplace', 'sponsors', 'features', 'topics', 'notifications', 'search', 'login', 'enterprises']);
 // 1 url · 2-3 owner/repo#n · 4-5 word n (alias or PR) · 6 PR#n · 7 bare #n
 const RE = /(https:\/\/[^\s<>"'`]+)|\b([A-Za-z0-9][\w.-]*\/[\w.-]+)#(\d{1,7})\b|\b([A-Za-z][\w-]{0,23})\s+(?:PR\s+)?#?(\d{1,7})\b|\bPR#(\d{1,7})\b|(?<![\w/&#])#(\d{1,7})\b/gi;
 
 /** `owner/repo` of a GitHub url, else undefined. */
 export function repoOfUrl(url: string | undefined): string | undefined {
   const m = url ? GH.exec(url) : null;
-  return m ? `${m[1]}/${m[2]}` : undefined;
+  return m && !NOT_OWNER.has(m[1].toLowerCase()) ? `${m[1]}/${m[2]}` : undefined;
 }
 
 /** `owner/repo` from a `Repository` value: a markdown link, a url, or `owner/repo`. */
@@ -29,14 +31,14 @@ function repoOfValue(v: string | undefined): string | undefined {
   return repoOfUrl(t) ?? (REPO.test(t) ? t : undefined);
 }
 
-/** The project map: name, title and each alias (lower case) to the project's `Repository` (or `Repo`). */
+/** The project map: name and each alias (lower case) to the project's `Repository` (or `Repo`). Titles are prose ("Stack 2.0"), so never keys. */
 export function repoMapOf(projects: { name: string; title?: string; metadata?: Record<string, string> }[]): RepoMap {
   const out: RepoMap = {};
   for (const p of projects) {
     const m = p.metadata ?? {};
     const repo = repoOfValue(m.Repository ?? m.Repo);
     if (!repo) continue;
-    const names = [p.name, p.title ?? '', ...(m.Aliases ?? '').split(',')].map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const names = [p.name, ...(m.Aliases ?? '').split(',')].map((s) => s.trim().toLowerCase()).filter(Boolean);
     for (const n of names) out[n] ??= repo;
   }
   return out;

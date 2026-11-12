@@ -43,16 +43,17 @@ describe('repo resolution', () => {
     expect(repoOfUrl('https://github.com/Xerilium/stack/pull/1')).toBe('Xerilium/stack');
     expect(repoOfUrl('https://github.com/o/r.git')).toBe('o/r');
     expect(repoOfUrl('https://example.test/o/r')).toBeUndefined();
+    expect(repoOfUrl('https://github.com/orgs/Xerilium/projects/1')).toBeUndefined();
     expect(repoOfUrl(undefined)).toBeUndefined();
   });
 
-  it('maps project name, title and aliases to its Repository', () => {
+  it('maps project name and aliases (never the title) to its Repository', () => {
     const m = repoMapOf([
       { name: 'finops-toolkit', title: 'FinOps toolkit', metadata: { Repository: '[microsoft/finops-toolkit](https://github.com/microsoft/finops-toolkit)', Aliases: 'ftk, FH' } },
       { name: 'stack', metadata: { Repo: 'Xerilium/stack' } },
       { name: 'house', metadata: { Aliases: 'home' } },
     ]);
-    expect(m).toEqual({ 'finops-toolkit': 'microsoft/finops-toolkit', 'finops toolkit': 'microsoft/finops-toolkit', ftk: 'microsoft/finops-toolkit', fh: 'microsoft/finops-toolkit', stack: 'Xerilium/stack' });
+    expect(m).toEqual({ 'finops-toolkit': 'microsoft/finops-toolkit', ftk: 'microsoft/finops-toolkit', fh: 'microsoft/finops-toolkit', stack: 'Xerilium/stack' });
   });
 
   it('prefers the link repo, then the project repo', () => {

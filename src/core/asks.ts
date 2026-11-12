@@ -127,8 +127,8 @@ export function parseAsk(key: string, content: string): Ask {
     const line = raw.replace(/\r$/, '');
     if (/^## Brief\s*$/.test(line) && section === 'head') { section = 'brief'; continue; }
     if (/^## Detail\s*$/.test(line)) { section = 'detail'; continue; }
-    if (section === 'brief') { if (line.startsWith('- ')) brief.push(line); continue; }
     if (/^## Thread\s*$/.test(line)) { section = 'thread'; continue; }
+    if (section === 'brief') { if (line.startsWith('- ')) brief.push(line); continue; }
     if (section === 'detail') { detail.push(line.replace(/^\\## /, '## ')); continue; }
     if (section === 'thread') { if (line.startsWith('- ')) a.thread.push(line); continue; }
     if (line === '' || line.startsWith('#') || line.startsWith('<!--')) continue;

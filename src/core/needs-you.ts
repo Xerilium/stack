@@ -53,6 +53,8 @@ function parseItem(raw: unknown): Need | undefined {
     ...(str(r.default, 200) ? { default: str(r.default, 200) } : {}), ...(str(r.by, 40) ? { by: str(r.by, 40) } : {}),
     ...(str(r.project, 80) ? { project: str(r.project, 80) } : {}), ...(str(r.ref, 120) ? { ref: str(r.ref, 120) } : {}),
     ...(answer ? { answer } : {}), ...(brief ? { brief } : {}), ...(str(r.from, 80) ? { from: str(r.from, 80) } : {}),
+    // The kind of ask (default approve): a go-do or answer item needs no brief. @req FR:ask-briefs/brief.needs
+    ...(typeof r.askKind === 'string' && ['approve', 'decide', 'review', 'go-do', 'answer'].includes(r.askKind) ? { askKind: r.askKind } : {}),
   };
 }
 

@@ -149,3 +149,10 @@ describe('asks without a brief', () => {
     expect(actionsFor(bare({ source: 'need', key: 'need:rp.xe-cos.stack.a', from: 'xe-cos' }))[0].label).toBe('Ask xe-cos for context');
   });
 });
+
+describe('quick triage is exempt', () => {
+  // @req FR:ask-briefs/web.none
+  it('a triage question with no brief keeps its own actions', () => {
+    expect(needsContext(ask({ brief: undefined, flow: 'triage-1', apply: 'complete' }))).toBe(false);
+  });
+});
