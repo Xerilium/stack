@@ -247,7 +247,7 @@ test.describe('Now screen', () => {
     await page.goto('/#/now');
     await expect(page.getByTestId('now-empty')).toContainText('Nothing now');
     await expect(page.getByTestId('now-empty')).toContainText('You are clear.');
-    await expect(page.getByTestId('now').getByRole('button')).toHaveCount(0);
+    await expect(page.getByTestId('now-focus').getByRole('button')).toHaveCount(0); // the win state; the side may still offer a calendar fix
     await page.waitForTimeout(400); // past the enter motion
     await page.screenshot({ path: `e2e/screenshots/now-empty-${info.project.name}.png` });
   });
@@ -299,15 +299,17 @@ test.describe('Now screen', () => {
     await page.waitForTimeout(400);
     await page.screenshot({ path: `e2e/screenshots/now-one-${info.project.name}.png`, fullPage: true });
     // one tap answers the message the same way Needs you does, and the line leaves
-    await waiting.locator('li').first().getByRole('button').click();
+    await waiting.locator('li').first().getByRole('button', { name: 'Approve', exact: true }).click();
     await expect.poll(() => m.asks.find((a) => a.key === 'm1')?.state).toBe('answered');
     await expect(waiting).not.toContainText('Reply to Dana');
     await expect(page.getByRole('status')).toContainText('Sent to email-triage');
   });
 
+  // @req FR:ux-consolidation/cal.fresh: only a fresh, connected calendar may say there are no meetings
   test('empty sections say so in one line', async ({ page }) => {
     await ten(page);
-    await mockApi(page, { tasks: seed() });
+    const m = await mockApi(page, { tasks: seed() });
+    m.events = [];
     await page.goto('/#/now');
     await expect(page.getByText('No meetings left today.')).toBeVisible();
     await expect(page.getByText('Nothing waiting.')).toBeVisible();

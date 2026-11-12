@@ -13,7 +13,7 @@ import { captureTask, CaptureError } from '../core/quick-capture';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { AuxFiles, Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
-import type { CalendarProvider } from '../calendar';
+import { sourceStatus, type CalendarProvider } from '../calendar';
 import { ReportInvalid, type ReportStore } from '../core/reports';
 import type { Inventory } from '../core/session-inventory';
 import { PrisInvalid, type PriStore } from '../core/pris';
@@ -1015,7 +1015,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // @req FR:day-inputs/api.calendar
+    // @req FR:day-inputs/api.calendar @req FR:ux-consolidation/cal.status
     method: 'GET', doc: '/calendar', name: 'calendar.list', query: CAL_Q,
     async run(c) {
       const q = readQuery(c.url, Object.keys(CAL_Q));
@@ -1023,12 +1023,16 @@ export const ROUTES: Route[] = [
       if (!isInstant(q.get('from')) || !isInstant(q.get('to')) || !(from < to) || to - from > 7 * 864e5) throw invalid([{ field: 'from', message: 'from and to must be ISO date-times, from before to, at most 7 days apart' }]);
       // Calendars hold personal data: the owner only.
       if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can read the calendar');
-      if (!c.deps.calendar) return json(200, { configured: false, items: [] });
+      // Every reply says how the source is doing, so the page never reads "no meetings" off a missing calendar. @req FR:ux-consolidation/cal.status
+      const at = () => (c.deps.now ?? (() => new Date()))().getTime();
+      const cal = c.deps.calendar;
+      if (!cal) return json(200, { configured: false, items: [], source: sourceStatus(undefined, false, at()) });
       try {
-        return json(200, { configured: true, items: await c.deps.calendar.events(new Date(from).toISOString(), new Date(to).toISOString()) });
+        const items = await cal.events(new Date(from).toISOString(), new Date(to).toISOString());
+        return json(200, { configured: true, items, source: sourceStatus(cal, true, at()) });
       } catch (e) {
         c.deps.onError?.(e);
-        return json(200, { configured: true, items: [], error: 'Calendar unavailable' });
+        return json(200, { configured: true, items: [], error: 'Calendar unavailable', source: sourceStatus(cal, false, at()) });
       }
     },
   },

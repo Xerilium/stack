@@ -259,7 +259,7 @@ async function download(fetchFn: typeof globalThis.fetch, url: string): Promise<
 /**
  * A calendar over published ICS feeds. Each feed's text is cached for `ttlMs`; failed feeds are skipped; the call
  * throws only when every feed fails.
- * @req FR:schedule/ics.provider
+ * @req FR:schedule/ics.provider @req FR:ux-consolidation/cal.status
  */
 export function createIcsCalendar(o: IcsOptions): CalendarProvider {
   if (!Array.isArray(o.urls) || o.urls.length === 0) throw new IcsError('No calendar feeds');
@@ -268,25 +268,34 @@ export function createIcsCalendar(o: IcsOptions): CalendarProvider {
   const ttl = o.ttlMs ?? 300_000;
   const now = o.now ?? Date.now;
   // A failed fetch is remembered for the same ttl (no 10 s wait on every call) and the last good copy keeps serving.
-  const cache = new Map<string, { at: number; text?: string; error?: IcsError }>();
+  const cache = new Map<string, { at: number; text?: string; error?: IcsError; okAt?: number }>();
   const read = async (url: string) => {
     const hit = cache.get(url);
     if (hit && now() - hit.at < ttl) { if (hit.text !== undefined) return hit.text; throw hit.error!; }
     try {
       const text = await download(fetchFn, url);
-      cache.set(url, { at: now(), text });
+      cache.set(url, { at: now(), text, okAt: now() });
       return text;
     } catch (e) {
       const error = e instanceof IcsError ? e : new IcsError('error');
-      cache.set(url, { at: now(), ...(hit?.text !== undefined ? { text: hit.text } : { error }) });
+      cache.set(url, { at: now(), ...(hit?.text !== undefined ? { text: hit.text, okAt: hit.okAt } : { error }) });
       if (hit?.text !== undefined) return hit.text;
       throw error;
     }
   };
+  // Host names only: the path holds the secret. @req FR:ux-consolidation/cal.status
+  const account = [...new Set(urls.map((u) => new URL(u).hostname))].join(', ');
+  // A feed left out of the last read (no usable copy, or it did not parse): the source is `error`, events still show.
+  let partial = false;
   return {
+    info() {
+      const ok = [...cache.values()].flatMap((c) => (c.okAt !== undefined ? [c.okAt] : []));
+      return { via: 'ics', account, ...(ok.length ? { syncedAt: Math.min(...ok) } : {}), ...(partial ? { partial } : {}) };
+    },
     async events(from, to) {
       const results = await Promise.allSettled(urls.map(async (u) => parseIcs(await read(u), from, to)));
       const ok = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+      partial = ok.length < results.length;
       if (ok.length === 0) {
         const why = results.map((r, i) => `feed ${i + 1}: ${r.status === 'rejected' && r.reason instanceof IcsError ? r.reason.message : 'error'}`);
         throw new IcsError(`All calendar feeds failed (${why.join('; ')})`);

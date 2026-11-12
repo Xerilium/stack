@@ -45,6 +45,7 @@ describe('STACK_CALENDAR_ICS', () => {
     try {
       const fx = await calendarSource({ fixture: f, ics: 'https://a.test/secret.ics', cachePath: noGraph });
       expect(fx.source).toBe('fixture');
+      expect(fx.provider!.info?.()).toEqual({ via: 'fixture' }); // @req FR:ux-consolidation/cal.status
       expect((await fx.provider!.events(...R)).map((e) => e.subject)).toEqual(['Fixture sync']);
       expect(spy).not.toHaveBeenCalled();
       const lines: string[] = [];
@@ -52,6 +53,7 @@ describe('STACK_CALENDAR_ICS', () => {
       expect(ics.source).toBe('ics');
       expect((await ics.provider!.events(...R)).map((e) => e.subject)).toEqual(['Feed sync']);
       expect(lines.join('\n')).not.toContain('secret');
+      expect(ics.provider!.info?.()).toMatchObject({ via: 'ics', account: 'a.test' });
     } finally { spy.mockRestore(); }
     expect((await calendarSource({ cachePath: noGraph })).source).toBe('none');
   });

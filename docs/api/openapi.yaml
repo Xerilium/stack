@@ -2167,6 +2167,35 @@ paths:
                     type: boolean
                   error:
                     type: string
+                  source:
+                    type: object
+                    description: How the calendar source is doing; never holds a feed path or token
+                    properties:
+                      kind:
+                        type: string
+                        enum:
+                          - calendar
+                      via:
+                        type: string
+                        enum:
+                          - graph
+                          - ics
+                          - fixture
+                          - none
+                      account:
+                        type: string
+                        description: Sign-in address or feed host names
+                      state:
+                        type: string
+                        enum:
+                          - not-connected
+                          - ok
+                          - error
+                          - stale
+                      lastSyncAt:
+                        type: string
+                        format: date-time
+                        description: When the data shown was last read from the source
                   items:
                     type: array
                     items:

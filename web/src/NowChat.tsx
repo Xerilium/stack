@@ -63,7 +63,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
               <li key={i.id} class={`now-bubble ${who ? 'from-agent' : 'from-me'}`}>
                 {who && <Avatar who={who} size={28} />}
                 <div class="now-bubble-body">
-                  <span class="now-bubble-who">{who ? who.name : 'You'}{i.at && <> · <time dateTime={i.at}>{ago(i.at, now)}</time></>}</span>
+                  <span class="now-bubble-who">{who ? who.name : `You to ${name}`}{i.at && <> · <time dateTime={i.at}>{ago(i.at, now)}</time></>}</span>
                   <p class="now-bubble-text">{unescapeMd(i.text)}</p>
                 </div>
               </li>
@@ -71,8 +71,13 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
           })}
         </ol>
       )}
+      {items.length > 0 && items[items.length - 1].kind === 'owner' && (
+        <p class="now-awaits" data-testid="now-awaits">{name === 'the agent' ? 'The agent' : name} replies here</p>
+      )}
       <form class="now-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        {agent && <Avatar who={agent} size={36} />}
+        {/* Who the box talks to, above the field. @req FR:now-screen/now.compose */}
+        <p class="now-to" data-testid="now-to">{agent && <Avatar who={agent} size={28} />}<span class="now-to-name">{agent ? agent.name : 'The agent'}</span></p>
+        <div class="now-compose-row">
         <textarea id="now-msg" rows={1} maxLength={TELL_MAX} value={text} aria-label={`Message ${name}`} placeholder={`Message ${name}…`}
           onInput={(e) => { const el = e.target as HTMLTextAreaElement; setText(el.value); grow(el); }}
           onKeyDown={(e) => {
@@ -80,6 +85,7 @@ export function NowChat({ taskRef, busy, agent, agentOf, onSend, loadThread, onO
             else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); void send(); }
           }} />
         <button type="submit" class="now-send" disabled={busy || !foldLines(text)}>Send</button>
+        </div>
       </form>
       {onOpenSession && session && session.state !== 'stale' && <button type="button" class="now-live" onClick={() => onOpenSession(session.id)}>Open live chat</button>}
     </section>
