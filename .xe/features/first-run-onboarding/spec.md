@@ -52,11 +52,11 @@ A new owner opens `stack web` or the desktop app with no content repo set. Today
 - **FR:host.setup** (P1): With no repo, `stack web` and the desktop app start a setup server instead of failing: loopback only, the same guards as `stack web` (`FR:cli/web.serve.loopback`), the built web app, `/.auth/me` (`local: null, setup: true`), and `/setup`.
 - **FR:host.apply** (P1): `POST /setup` takes `{ step, repo?, mode?, ack?, ics?, skip? }`, validates it, and saves it. A change to the repo, the mode, or the calendar restarts the host on the same port. The reply says `restart: true`; the page waits for the host and reloads.
 - **FR:host.broken** (P1): A host that fails to start with the saved repo falls back to the setup server at the Repo step with a plain error line, instead of quitting.
-- **FR:host.live** (P1): The live server also answers `/setup`, so an empty repo or a flow in progress continues in the app.
+- **FR:host.live** (P1): The live server also answers `/setup` and adds `setup: true` to `/.auth/me` while the flow is needed, so an empty repo or a flow in progress continues in the app.
 
 ### FR:web: Page
 
-- **FR:web.gate** (P1): On a loopback host the page reads `/setup` first. `needed: true` shows the flow; anything else (404, not JSON, network error) shows the app.
+- **FR:web.gate** (P1): On a loopback host the page reads `/.auth/me` first. Only `setup: true` there makes it read `/setup`; `needed: true` shows the flow. Anything else (no flag, not JSON, network error) shows the app, and no request 404s on a host without setup.
 - **FR:web.a11y** (P1): Each step has one `h1`, labeled inputs, a visible focus ring, and errors in `role="alert"`. axe finds no serious or critical issue at 375 x 812 and 1280 x 800, light and dark.
 - **FR:web.phone** (P1): At 375 px nothing scrolls sideways and every control is at least 44 px tall.
 

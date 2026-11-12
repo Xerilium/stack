@@ -17,6 +17,12 @@ async function fakeSetup(page: Page, start: Partial<Fake> = {}): Promise<Fake> {
   const f: Fake = { step: 'repo', done: false, repo: null, mode: 'demo', posts: [], ...start };
   let down = 0;
   const status = () => ({ needed: !f.done, reason: f.error ? 'broken' : f.repo ? 'resume' : 'no-repo', step: f.step, steps: STEPS, repo: f.repo, mode: f.mode, calendar: false, email: false, signIn: 'stack graph login --client-id <app id> --with calendar,mail,drafts', ...(f.error ? { error: f.error } : {}) });
+  // The host marks the page: the built index.html gets the meta tag, as the local server adds it.
+  await page.route(/\/(index\.html)?(#.*)?$/, async (route) => {
+    const r = await route.fetch();
+    const html = await r.text();
+    await route.fulfill({ response: r, body: f.done ? html : html.replace(/<head[^>]*>/i, (h) => h + '<meta name="stack-setup" content="1">') });
+  });
   await page.route('**/setup', async (route) => {
     const req = route.request();
     if (req.method() === 'GET') {

@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
 import { actionsFor, SOURCE, tomorrow, type ActionInfo, type InboxRow } from './inbox';
-import type { Toast } from './parts';
+import { EmptyState, type Toast } from './parts';
 import './inbox.css';
 
 type ToastFn = (text: string, kind?: Toast['kind'], undo?: () => void) => void;
@@ -103,7 +103,7 @@ export function InboxView({ api, toast }: { api: Client; toast: ToastFn }) {
       <div class="in-head"><h1 class="h1" id="inbox-h">Inbox{unread > 0 && <span class="count">{unread}</span>}</h1></div>
       {phase === 'loading' && <p class="in-empty" role="status">Loading</p>}
       {phase === 'error' && <p class="in-empty" role="alert">Could not load the inbox.</p>}
-      {phase === 'ready' && items.length === 0 && <p class="in-empty">Inbox zero. Nothing needs you.</p>}
+      {phase === 'ready' && items.length === 0 && <EmptyState what="Inbox zero. Nothing needs you." next={<a href="#/now">Back to Now</a>} />}
       <ul class="in-list">{items.map((r) => <Row key={r.id} row={r} catalog={catalog} api={api} toast={toast} done={(id) => setItems((xs) => xs.filter((x) => x.id !== id))} />)}</ul>
     </section>
   );

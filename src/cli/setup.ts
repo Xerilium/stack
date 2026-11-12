@@ -194,9 +194,16 @@ export async function serveSetup(setup: SetupHandler, req: IncomingMessage, res:
   if (req.method === 'GET') { send(200, setup.status()); return true; }
   if (req.method !== 'POST') { send(405, { error: { code: 'method', message: 'GET or POST' } }); return true; }
   const r = setup.post(await readJson(req));
-  if (r.restart) res.once('finish', () => setTimeout(() => setup.restart(), 10));
+  if (r.restart) res.once('finish', () => setup.restart());
   send(r.code, r.body);
   return true;
+}
+
+/** Marks the app page as needing setup: `<meta name="stack-setup">` right after `<head>`. @req FR:first-run-onboarding/web.gate */
+export function withSetupMeta(html: Buffer | string): string {
+  const t = html.toString();
+  const tag = '<meta name="stack-setup" content="1">';
+  return /<head[^>]*>/i.test(t) ? t.replace(/<head[^>]*>/i, (h) => h + tag) : tag + t;
 }
 
 export interface LocalServer { url: string; close(): Promise<void> }
@@ -219,7 +226,7 @@ export async function startSetupServer(o: { port: number; webDir: string; setup:
           const cand = realpathSync(join(root, normalize(decodeURIComponent(path))));
           if (path !== '/' && cand.startsWith(root + sep) && statSync(cand).isFile()) file = cand;
         } catch { /* single-page app fallback */ }
-        send(200, readFileSync(file), TYPES[extname(file)] ?? 'application/octet-stream');
+        send(200, file === join(root, 'index.html') ? withSetupMeta(readFileSync(file)) : readFileSync(file), TYPES[extname(file)] ?? 'application/octet-stream');
       } catch {
         if (!res.headersSent) send(500, 'internal error', 'text/plain'); else res.end();
       }
@@ -272,7 +279,7 @@ export async function runLocal(o: RunLocalOpts): Promise<LocalHost> {
   await boot();
   return {
     get url() { return `http://localhost:${port}`; },
-    settled: async () => { await new Promise((ok) => setTimeout(ok, 60)); await chain; },
+    settled: () => chain,
     close: async () => { closed = true; await chain.catch(() => undefined); await cur?.close(); },
   };
 }

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSy
 import { request } from 'http';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { applySetup, createSetup, hasTaskRows, readConfig, runLocal, setupStatus, SIGN_IN, startSetupServer, STEPS, writeConfig } from '../../src/cli/setup';
+import { applySetup, createSetup, withSetupMeta, hasTaskRows, readConfig, runLocal, setupStatus, SIGN_IN, startSetupServer, STEPS, writeConfig } from '../../src/cli/setup';
 import { startWeb } from '../../src/cli/web';
 
 const quiet = { watch: { watchFn: (() => ({ on() { return this; }, close() { /* none */ } })) as unknown as typeof import('fs').watch } };
@@ -149,11 +149,13 @@ describe('applySetup', () => {
 describe('setup server', () => {
   // @req FR:first-run-onboarding/host.setup @req FR:first-run-onboarding/host.apply
   it('serves the app, the setup routes, and the loopback and CSRF guards', async () => {
-    const home = tmp(); let restarts = 0;
-    const setup = createSetup({ home, env: {}, spec: () => readConfig(home).repo as string | undefined, dir: () => null, restart: () => { restarts++; } });
+    const home = tmp(); let restarts = 0; let restarted!: () => void;
+    const once = new Promise<void>((ok) => { restarted = ok; });
+    const setup = createSetup({ home, env: {}, spec: () => readConfig(home).repo as string | undefined, dir: () => null, restart: () => { restarts++; restarted(); } });
     const s = await startSetupServer({ port: 0, webDir: webDir(), setup });
     try {
       expect(await (await fetch(s.url)).text()).toContain('app');
+      expect(await (await fetch(s.url)).text()).toContain('<meta name="stack-setup" content="1">');
       expect(await (await fetch(`${s.url}/.auth/me`)).json()).toMatchObject({ local: null, setup: true, clientPrincipal: { identityProvider: 'local' } });
       expect(await (await fetch(`${s.url}/setup`)).json()).toMatchObject({ needed: true, reason: 'no-repo', step: 'repo' });
       expect((await fetch(`${s.url}/api/tasks`)).status).toBe(404);
@@ -164,7 +166,7 @@ describe('setup server', () => {
       expect((await post(s.url, { step: 'repo', repo: gitRepo() }, { 'sec-fetch-site': 'cross-site' })).status).toBe(403);
       const ok = await post(s.url, { step: 'repo', repo: gitRepo() });
       expect(await ok.json()).toMatchObject({ restart: true, status: { step: 'mode' } });
-      await new Promise((r) => setTimeout(r, 30));
+      await once;
       expect(restarts).toBe(1);
       const port = new URL(s.url).port;
       const code = await new Promise<number>((ok) => request({ host: '127.0.0.1', port, path: '/setup', headers: { host: 'evil.example' } }, (r) => { r.resume(); ok(r.statusCode ?? 0); }).end());
@@ -180,6 +182,7 @@ describe('setup server', () => {
     const s = await startWeb({ dir: repo, port: 0, webDir: webDir(), agents: false, setup, ...quiet });
     try {
       expect(await (await fetch(`${s.url}/setup`)).json()).toMatchObject({ needed: true, reason: 'empty' });
+      expect(await (await fetch(s.url)).text()).toContain('<meta name="stack-setup" content="1">');
       expect(await (await post(s.url, { step: 'repo', repo })).json()).toMatchObject({ restart: false, status: { step: 'mode' } });
     } finally { await s.close(); }
   });
@@ -202,7 +205,8 @@ describe('runLocal', () => {
       expect(started).toEqual([Number(port)]);
       expect(new URL(h.url).port).toBe(port);
       const me = await (await fetch(`${h.url}/.auth/me`)).json() as { setup?: boolean };
-      expect(me.setup).toBeUndefined();
+      expect(me.setup).toBeUndefined(); // the real server now
+      expect(await (await fetch(h.url)).text()).toContain('<meta name="stack-setup"'); // flow still in progress
       expect(await (await fetch(`${h.url}/setup`)).json()).toMatchObject({ needed: true, reason: 'resume', step: 'mode' });
     } finally { await h.close(); }
   });
@@ -227,6 +231,20 @@ describe('runLocal', () => {
       expect(s.step).toBe('mode');
       expect(s.error).toBeUndefined();
     } finally { await h.close(); }
+  });
+});
+
+describe('withSetupMeta', () => {
+  // @req FR:first-run-onboarding/web.gate
+  it('adds the meta tag after <head>, or in front when there is none', () => {
+    expect(withSetupMeta('<html><head lang="x"><title>t</title>')).toBe('<html><head lang="x"><meta name="stack-setup" content="1"><title>t</title>');
+    expect(withSetupMeta('<div>')).toBe('<meta name="stack-setup" content="1"><div>');
+  });
+  it('a full repo with setup routes gets no meta tag', async () => {
+    const repo = gitRepo(); const home = tmp();
+    const setup = createSetup({ home, env: {}, spec: () => repo, dir: () => repo, restart: () => undefined });
+    const s = await startWeb({ dir: repo, port: 0, webDir: webDir(), agents: false, setup, ...quiet });
+    try { expect(await (await fetch(s.url)).text()).not.toContain('stack-setup'); } finally { await s.close(); }
   });
 });
 

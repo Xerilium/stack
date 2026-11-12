@@ -42,10 +42,19 @@ export function Chip({ group, value, onPick }: { group: GroupName; value: string
   const name = GROUPS[group].set.find((c) => vsel(c.e) === vsel(value))?.name ?? value;
   const g = glyphOf(group, value);
   return (
-    <button type="button" class={`chip chip-${group} ${g.tone}`} aria-label={`${GROUPS[group].label}: ${name}. Change`} title={`${GROUPS[group].label}: ${name}`} onClick={(e) => { e.stopPropagation(); onPick(group); }}>
-      <span aria-hidden="true">{g.text}</span><span class="chip-name">{name}</span>
+    // The name comes from the content (label in name, WCAG 2.5.3): "Effort: 30 min. Change". @req FR:first-run-onboarding/polish.contrast
+    <button type="button" class={`chip chip-${group} ${g.tone}`} title={`${GROUPS[group].label}: ${name}`} onClick={(e) => { e.stopPropagation(); onPick(group); }}>
+      <span class="sr-only">{GROUPS[group].label}: {name}. Change</span><span aria-hidden="true">{g.text}</span><span class="chip-name" aria-hidden="true">{name}</span>
     </button>
   );
+}
+
+/**
+ * One shape for every empty state: what is empty, then the next step (a key, a button, or a link).
+ * @req FR:first-run-onboarding/polish.empty
+ */
+export function EmptyState({ what, next }: { what: ComponentChildren; next?: ComponentChildren }) {
+  return <div class="empty-state" data-testid="empty-state"><p class="empty-what">{what}</p>{next && <p class="empty-next">{next}</p>}</div>;
 }
 
 /** Dialog with focus restore. @req FR:web-app/ux.a11y */

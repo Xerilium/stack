@@ -39,6 +39,12 @@ export function parseSetup(j: unknown): SetupStatus | null {
   };
 }
 
+/**
+ * The gate: a local host marks the page with `<meta name="stack-setup">` only while the flow is needed.
+ * No tag, no request: a normal start pays nothing. @req FR:first-run-onboarding/web.gate
+ */
+export const wantsSetup = (doc: Pick<Document, 'querySelector'>, hostname: string): boolean => isLocalHost(hostname) && !!doc.querySelector('meta[name="stack-setup"]');
+
 /** Reads `/setup`; null on any failure, so the app shows. @req FR:first-run-onboarding/web.gate */
 export async function loadSetup(f: Fetch, timeoutMs = 3000): Promise<SetupStatus | null> {
   const ctl = typeof AbortController === 'undefined' ? undefined : new AbortController();

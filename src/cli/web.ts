@@ -20,7 +20,7 @@ import type { Storage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo, type WatchOptions } from './watch';
 import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
-import { serveSetup, type SetupHandler } from './setup';
+import { serveSetup, withSetupMeta, type SetupHandler } from './setup';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
@@ -269,7 +269,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         } catch { /* unknown path: single-page app fallback */ }
         // @req FR:perf/serve.assets — built files carry a content hash in their name, so the browser may keep them.
         const hashed = file.startsWith(join(root, 'assets') + sep);
-        send(200, readFileSync(file), TYPES[extname(file)] ?? 'application/octet-stream', hashed ? { 'cache-control': 'public, max-age=31536000, immutable' } : {});
+        // The page learns it needs setup from a meta tag, so a normal start pays no extra round trip. @req FR:first-run-onboarding/web.gate
+        const body = o.setup && file === join(root, 'index.html') && o.setup.status().needed ? withSetupMeta(readFileSync(file)) : readFileSync(file);
+        send(200, body, TYPES[extname(file)] ?? 'application/octet-stream', hashed ? { 'cache-control': 'public, max-age=31536000, immutable' } : {});
       } catch (e) {
         console.error(e);
         if (!res.headersSent) send(500, 'internal error', 'text/plain'); else res.end();

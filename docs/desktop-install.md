@@ -55,7 +55,7 @@ After this, Stack opens like any app (Dock, Spotlight, Launchpad).
 
 - Use an absolute path or a git URL. `~` is not expanded.
 - `mode: "live"` edits the repo and commits in batches (`batch` minutes). Without it, the app uses a demo copy in `~/.config/stack/demo`.
-- No repo: the app logs `No content repo` and quits.
+- No repo: the app opens a short setup flow (repo, demo or live, then optional calendar, email, and iPhone steps). It saves your answers in this file. A repo that fails to start opens the flow at the repo step with the error.
 
 ## Use
 
