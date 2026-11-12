@@ -16,6 +16,8 @@ import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, ty
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { runInventory } from '../core/session-inventory';
 import { PRI_LINKS, PrisInvalid, PriStore, type Pri } from '../core/pris';
+import { PrPriConflict, PrPriInvalid, PrPriNotFound, PrPriorityStore } from '../core/pr-priority';
+import { PR_PRI_USAGE, prPriArgv, prPriCmd } from './pr-pri';
 import { formatGaps, priGaps, registerPrisEngine, setPris, withLinks, withNote } from '../core/pris-rank';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
 import { currentRows, handleEntry, INBOX_STATES, listInbox, replyFromAgent } from '../core/inbox';
@@ -87,6 +89,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
   sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
   pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
+  'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md' },
   update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (default stack: scores and order like `stack next`, with .stack/priorities.json; --engine legacy: the PowerShell output)' },
 };
 
@@ -718,7 +721,7 @@ async function web(f: Record<string, string | true>, io: IO, here: { dir: string
     const reports = webReportStore(live, home);
     const ics = (cfg as { ics?: unknown }).ics; // @req FR:first-run-onboarding/step.calendar
     // Demo reads no session store and keeps priorities beside the demo copy. @req FR:status-ingest/host.demo
-    const demoLive = live ? {} : { inventory: false as const, pris: new PriStore(join(home, '.config/stack/demo-state')) };
+    const demoLive = live ? {} : { inventory: false as const, pris: new PriStore(join(home, '.config/stack/demo-state')), prPriority: new PrPriorityStore(join(home, '.config/stack/demo-state')) };
     const server = await startWeb({ dir: target, port: p, webDir, label, info, storage, setup, ...(typeof ics === 'string' ? { ics } : {}), ...(reports ? { reports } : {}), ...demoLive });
     return { server, dir: target };
   };
@@ -730,6 +733,10 @@ async function web(f: Record<string, string | true>, io: IO, here: { dir: string
 }
 
 function exitCodeFor(e: unknown): number {
+  // @req FR:pr-priority/cli.edit: bad input 2, stale rev or a closed decision 3, not queued or unknown id 1.
+  if (e instanceof PrPriInvalid) return EXIT.usage;
+  if (e instanceof PrPriConflict) return EXIT.conflict;
+  if (e instanceof PrPriNotFound) return EXIT.failure;
   if (e instanceof UsageError || e instanceof LifecycleError || e instanceof NotFoundError || e instanceof PathError || e instanceof ReportInvalid || e instanceof PrisInvalid) return EXIT.usage;
   if (e instanceof ConflictError) return EXIT.conflict;
   return EXIT.failure;
@@ -743,7 +750,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
   let json = argv.includes('--json') && !argv.includes('--');
   let command: string | undefined;
   try {
-    const p = parseArgs(argv);
+    const p = parseArgs(prPriArgv(argv));
     json = p.flags['json'] === true;
     // @req FR:cli/run.help.version
     if (p.flags['version']) { io.out(`${pkgVersion()}\n`); return EXIT.ok; }
@@ -762,14 +769,14 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
     // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report
     // Live state under ~/.stack needs no content repo. @req FR:session-inventory/cli.sessions @req FR:session-inventory/cli.pris
-    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : await dispatch(p.command, p, dir);
+    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
     return r.code ?? EXIT.ok;
   } catch (e) {
     const code = exitCodeFor(e);
     const msg = e instanceof Error ? e.message : String(e);
-    if (json) io.out(`${JSON.stringify({ ok: false, ...(command ? { command } : {}), error: msg, code, ...(e instanceof ReportInvalid ? { issues: e.issues } : {}) })}\n`);
+    if (json) io.out(`${JSON.stringify({ ok: false, ...(command ? { command } : {}), error: msg, code, ...(e instanceof ReportInvalid || e instanceof PrPriInvalid ? { issues: e.issues } : {}) })}\n`);
     else io.err(`error: ${msg}\n`);
     return code;
   }

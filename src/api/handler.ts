@@ -17,6 +17,7 @@ import type { CalendarProvider } from '../calendar';
 import { ReportInvalid, type ReportStore } from '../core/reports';
 import type { Inventory } from '../core/session-inventory';
 import { PrisInvalid, type PriStore } from '../core/pris';
+import { blockedText, DECISIONS, MOVE_TO, QUEUE_OPS, type PrPriorityStore, type QueueOp } from '../core/pr-priority';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
@@ -55,6 +56,8 @@ export interface ApiDeps {
   inventory?: () => Inventory;
   /** The owner's priorities store (~/.stack/pris.json); absent means /pris is 404. @req FR:session-inventory/api.pris.get */
   pris?: PriStore;
+  /** The PR priority store (~/.stack/pr-priority.json); absent means /pr-priority is 404 and GET /agents PRs have priority null. @req FR:pr-priority/api.get */
+  prPriority?: PrPriorityStore;
   /** Deny-by-default: when absent every request gets 401. */
   authorize?: Authorize;
   basePath?: string;
@@ -212,6 +215,25 @@ const NEED_ANSWER_BODY = {
   schema: { choice: { t: 'enum', values: ['go', 'defer', 'reply', 'undo'] }, text: { t: 'str', max: 1000, line: true }, until: { t: 'str', max: 40, line: true } } satisfies Record<string, Spec>,
   required: ['choice'],
 };
+const PR_PRI_BODY = {
+  schema: {
+    rev: { t: 'int', min: 0, max: 1_000_000_000 }, op: { t: 'enum', values: QUEUE_OPS }, ref: { t: 'str', max: 300, line: true },
+    rank: { t: 'int', min: 1, max: 100 }, to: { t: 'enum', values: MOVE_TO }, note: { t: 'str', max: 300, line: true }, thread: { t: 'str', max: 2000, line: true },
+  } satisfies Record<string, Spec>,
+  required: ['rev', 'op'],
+};
+const PR_REC_BODY = {
+  schema: {
+    repo: { t: 'str', max: 140, line: true }, number: { t: 'int', min: 1, max: 9_999_999 }, agent: { t: 'str', max: 40, line: true },
+    reason: { t: 'str', max: 300, line: true }, toRank: { t: 'int', min: 1, max: 100 },
+  } satisfies Record<string, Spec>,
+  required: ['repo', 'number', 'agent', 'reason'],
+};
+const PR_DECIDE_BODY = {
+  schema: { decision: { t: 'enum', values: DECISIONS }, rank: { t: 'int', min: 1, max: 100 }, note: { t: 'str', max: 300, line: true }, reason: { t: 'str', max: 300, line: true } } satisfies Record<string, Spec>,
+  required: ['decision'],
+};
+const PR_DEC_Q: Record<string, Spec> = { agent: { t: 'str', max: 40, line: true } };
 const RANK_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 1000 }, blocks: { t: 'enum', values: ['now', 'any'] } };
 const INBOX_ACTION_BODY = {
   schema: { action: { t: 'enum', values: ACTION_IDS }, text: { t: 'str', max: 5000 }, until: { t: 'str', max: 40, line: true }, request: { t: 'bool' } } satisfies Record<string, Spec>,
@@ -315,6 +337,9 @@ const noQuery = (c: Ctx) => { readQuery(c.url, []); };
 const agentsOf = (c: Ctx): AgentRuns => { if (!c.deps.agents) throw new ApiError('not_found', 'Not found'); return c.deps.agents; };
 const sessionId = (c: Ctx): string => { const id = c.params[0]; const bad = validate<{ id: string }>({ id }, { id: UUID }, ['id']); return bad.id; };
 const ownerOnly = (c: Ctx, why: string) => { if (!isOwner(c.req)) throw new ApiError('forbidden', why); };
+const prStore = (c: Ctx): PrPriorityStore => { if (!c.deps.prPriority) throw new ApiError('not_found', 'No PR priority store on this host'); return c.deps.prPriority; };
+/** The list view (cached facts only) plus open recommendations. @req FR:pr-priority/view.item */
+const prView = (c: Ctx, s: PrPriorityStore) => { const q = s.read(); return { ...q, items: s.view(), escalations: s.state().escalations ?? null, recommendations: s.openRecs() }; };
 
 /** `ref` is optional for actions that fall back to the core's own target choice. */
 async function action(c: Ctx, name: (typeof ACTIONS)[number]): Promise<Response> {
@@ -391,7 +416,7 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       // Report asks come from the live store, never git. @req FR:status-ingest/needs.list
-      return json(200, { items: [...await readNeeds(c.deps.storage), ...(c.deps.reports?.needs() ?? [])] });
+      return json(200, { items: [...await readNeeds(c.deps.storage), ...(c.deps.reports?.needs() ?? []), ...(c.deps.prPriority?.needs() ?? [])] });
     },
   },
   {
@@ -404,7 +429,12 @@ export const ROUTES: Route[] = [
       if (b.choice === 'defer' && (!b.until || Number.isNaN(Date.parse(b.until)))) throw invalid([{ field: 'until', message: 'Required for defer: an ISO date or time' }]);
       if (b.choice === 'reply' && !b.text?.trim()) throw invalid([{ field: 'text', message: 'Required for reply' }]);
       // @req FR:status-ingest/needs.answer
-      if (c.params[0].startsWith('rp.') && c.deps.reports) await c.deps.reports.answer(c.params[0], b);
+      // A PR priority recommendation: go accepts; the other choices need the decide route. @req FR:pr-priority/needs.actions
+      if (c.params[0].startsWith('pp.') && c.deps.prPriority) {
+        const id = c.params[0].slice(3);
+        if (b.choice !== 'go') throw new ApiError('bad_request', `Use POST /api/pr-priority/recommendations/${id} with decision accept, edit or reject`);
+        await c.deps.prPriority.decide(id, { decision: 'accept' });
+      } else if (c.params[0].startsWith('rp.') && c.deps.reports) await c.deps.reports.answer(c.params[0], b);
       else await answerNeed(c.deps.storage, c.params[0], b, (c.deps.now ?? (() => new Date()))());
       return json(200, { changed: true });
     },
@@ -672,6 +702,69 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    // The list view with open recommendations; owner only. @req FR:pr-priority/api.get
+    method: 'GET', doc: '/pr-priority', name: 'prPriority.get',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can read the PR priorities');
+      return json(200, prView(c, prStore(c)));
+    },
+  },
+  {
+    // One queue action; idempotent; returns the list view. @req FR:pr-priority/api.put @req FR:pr-priority/queue.idem
+    method: 'POST', doc: '/pr-priority', name: 'prPriority.put', body: PR_PRI_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can change the PR priorities');
+      const s = prStore(c);
+      const b = validate<{ rev: number; op: (typeof QUEUE_OPS)[number]; ref?: string; rank?: number; to?: (typeof MOVE_TO)[number]; note?: string; thread?: string }>(await readBody(c.req), PR_PRI_BODY.schema, PR_PRI_BODY.required);
+      if (b.op !== 'undo' && !b.ref) throw invalid([{ field: 'ref', message: `Required for ${b.op}` }]);
+      let changed: boolean;
+      if (b.op === 'ack') {
+        if (!b.thread || !b.note) throw invalid([{ field: b.thread ? 'note' : 'thread', message: 'Required for ack' }]);
+        if (b.rev !== s.read().rev) throw new ApiError('conflict', 'PR priorities changed; reload and try again');
+        changed = (await s.ack(b.ref!, b.thread, b.note)).changed;
+      } else {
+        if (b.op === 'move' && b.to === undefined && b.rank === undefined) throw invalid([{ field: 'to', message: 'Required for move: top, up, down, or rank' }]);
+        const op: QueueOp = b.op === 'undo' ? { op: 'undo' }
+          : b.op === 'add' ? { op: 'add', ref: b.ref!, ...(b.rank !== undefined ? { rank: b.rank } : {}), ...(b.note !== undefined ? { note: b.note } : {}) }
+            : b.op === 'move' ? { op: 'move', ref: b.ref!, to: b.to ?? b.rank!, ...(b.note !== undefined ? { note: b.note } : {}) }
+              : { op: b.op, ref: b.ref! };
+        changed = (await s.edit(op, { rev: b.rev })).changed;
+      }
+      return json(200, { changed, ...prView(c, s) });
+    },
+  },
+  {
+    // An agent token may recommend; a blocked recommendation is 409 with the reason. @req FR:pr-priority/api.recommend
+    method: 'POST', doc: '/pr-priority/recommendations', name: 'prPriority.recommend', body: PR_REC_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ repo: string; number: number; agent: string; reason: string; toRank?: number }>(await readBody(c.req), PR_REC_BODY.schema, PR_REC_BODY.required);
+      const r = await prStore(c).recommend(b);
+      if ('blocked' in r) { const t = blockedText(r.blocked); throw new ApiError('conflict', `Blocked: ${t}`, [{ field: r.blocked.kind === 'rejected' ? 'reason' : 'number', message: t }]); }
+      return json(200, r);
+    },
+  },
+  {
+    // Prior decisions so agents do not retry. @req FR:pr-priority/api.decisions
+    method: 'GET', doc: '/pr-priority/recommendations', name: 'prPriority.decisions', query: PR_DEC_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(PR_DEC_Q));
+      return json(200, { items: prStore(c).decisions(q.get('agent') ?? undefined) });
+    },
+  },
+  {
+    // The owner accepts, edits or rejects. @req FR:pr-priority/api.decide
+    method: 'POST', doc: '/pr-priority/recommendations/{id}', name: 'prPriority.decide', body: PR_DECIDE_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can decide a recommendation');
+      const b = validate<{ decision: (typeof DECISIONS)[number]; rank?: number; note?: string; reason?: string }>(await readBody(c.req), PR_DECIDE_BODY.schema, PR_DECIDE_BODY.required);
+      return json(200, await prStore(c).decide(c.params[0], b));
+    },
+  },
+  {
     // @req FR:inbox-page/api.read
     method: 'GET', doc: '/inbox-items', name: 'inboxItems.list',
     async run(c) {
@@ -905,7 +998,10 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/agents', name: 'agents.list',
     async run(c) {
       readQuery(c.url, []);
-      return json(200, { items: await agentActivity({ ...c.life, prs: c.deps.prs }) });
+      // Each PR carries its queue rank for the PR page. @req FR:pr-priority/api.pr
+      const q = c.deps.prPriority;
+      const items = (await agentActivity({ ...c.life, prs: c.deps.prs })).map((i) => ({ ...i, prs: i.prs.map((p) => ({ ...p, priority: q ? q.rankOf(p.repo, p.number) : null })) }));
+      return json(200, { items });
     },
   },
   {

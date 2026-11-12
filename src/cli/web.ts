@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import { ReportStore, stackHome } from '../core/reports';
 import { runInventory, type Inventory } from '../core/session-inventory';
 import { PriStore } from '../core/pris';
+import { PrPriorityStore } from '../core/pr-priority';
 import { execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type Server } from 'http';
@@ -73,6 +74,8 @@ export interface WebOpts {
   inventory?: (() => Inventory) | false;
   /** The priorities store; default `~/.stack/pris.json`. @req FR:session-inventory/api.pris.get */
   pris?: PriStore;
+  /** The PR priority store; default `~/.stack/pr-priority.json`. @req FR:pr-priority/api.get */
+  prPriority?: PrPriorityStore;
 }
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
@@ -187,7 +190,12 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const pris = o.pris ?? new PriStore(stackHome());
   // pris.json is outside the repo too: a write tells open pages to re-read it. @req FR:pris-sessions-ui/live.event
   const offPris = pris.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['pris'] }); });
-  const api = createApiHandler({ storage, config, reports, inventory, pris, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
+  const prPriority = o.prPriority ?? new PrPriorityStore(stackHome());
+  // The queue and recommendations change from the CLI too (agents): a write tells open pages to reload Needs you and the PR page.
+  const tellPr = () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'pr-priority'] }); };
+  const offPrPri = prPriority.onWrite(tellPr);
+  const unwatchPrPri = prPriority.watch(tellPr);
+  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson() });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
@@ -294,7 +302,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // @req FR:cli/web.batch.shutdown
   const close = async () => {
     offPending?.();
-    offReports();
+    offReports(); offPrPri(); unwatchPrPri();
     offPris();
     watcher.close();
     const closed = new Promise<void>((ok) => server.close(() => ok())); // stop accepting; open sockets stay until below

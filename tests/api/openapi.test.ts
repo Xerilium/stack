@@ -10,6 +10,7 @@ import { ENUMS, MAX_STR, type Spec } from '../../src/api/validate';
 import { MemoryStorage } from '../../src/core/storage';
 import { ReportStore } from '../../src/core/reports';
 import { PriStore } from '../../src/core/pris';
+import { PrPriorityStore } from '../../src/core/pr-priority';
 import { runInventory } from '../../src/core/session-inventory';
 import { tmpdir } from 'os';
 import { createAuth, createTokenService, MemoryTokenStore } from '../../src/api';
@@ -228,7 +229,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
   // A calendar with an online meeting, so the documented event shape (joinUrl included) is checked against real output.
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
   const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))),
-    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }) });
+    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }) });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
@@ -336,6 +337,14 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('pris.put', 'POST', '/pris', { rev: 0, pris: [{ id: 'p1', title: 'One', status: 'active', items: [], backlog: [], weekly: [{ week: '2026-W46', text: 'Done' }] }] }, 200);
     await go('pris.put', 'POST', '/pris', { rev: 0, pris: [] }, 409);
     await go('pris.put', 'POST', '/pris', { rev: 1, pris: [{ id: 'X' }] }, 400);
+    // @req FR:pr-priority/api.get @req FR:pr-priority/api.put @req FR:pr-priority/api.recommend @req FR:pr-priority/api.decisions @req FR:pr-priority/api.decide
+    await go('prPriority.get', 'GET', '/pr-priority', undefined, 200);
+    await go('prPriority.put', 'POST', '/pr-priority', { rev: 0, op: 'add', ref: 'o/r#1' }, 200);
+    await go('prPriority.put', 'POST', '/pr-priority', { rev: 0, op: 'add', ref: 'o/r#2' }, 409);
+    const rec = (await go('prPriority.recommend', 'POST', '/pr-priority/recommendations', { repo: 'o/r', number: 2, agent: 'cos', reason: 'Hot' }, 200)).body as { rec: { id: string } };
+    await go('prPriority.decide', 'POST', `/pr-priority/recommendations/${rec.rec.id}`, { decision: 'reject', reason: 'No' }, 200);
+    await go('prPriority.recommend', 'POST', '/pr-priority/recommendations', { repo: 'o/r', number: 2, agent: 'cos', reason: 'Hot' }, 409);
+    await go('prPriority.decisions', 'GET', '/pr-priority/recommendations', undefined, 200);
     // @req FR:agent-sessions/driver.interface (no driver here: every sessions route is 404 and the error shape still conforms)
     await go('sessions.list', 'GET', '/sessions', undefined, 404);
     await go('sessions.cost', 'GET', '/sessions/cost', undefined, 404);
