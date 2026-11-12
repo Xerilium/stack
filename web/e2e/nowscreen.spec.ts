@@ -38,6 +38,35 @@ test.describe('Now screen', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
   });
 
+  // @req FR:product-reset/ui.done @req FR:product-reset/ia.now
+  test('Done plays the check on the card, then the next task opens with no tap; Undo is offered', async ({ page }) => {
+    await ten(page);
+    await mockApi(page, { tasks: seed() });
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: /^Done/ }).click();
+    const card = page.locator('.now-card.done-anim[data-ref="alpha:6"]');
+    await expect(card).toBeVisible();
+    await expect(card.locator('.now-done-check')).toBeVisible();
+    expect(await card.evaluate((el) => getComputedStyle(el).animationName)).not.toBe('none');
+    await expect(page.locator('.now-card[data-ref="alpha:6"]')).toHaveCount(0); // the next task replaced it
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Nothing now');
+    await expect(page.getByRole('status').getByRole('button', { name: 'Undo' })).toBeVisible();
+    const axe = await new AxeBuilder({ page }).include('[data-testid="now"]').analyze();
+    expect(axe.violations).toEqual([]);
+  });
+
+  test('Done with reduced motion: no animation, still advances', async ({ page }) => {
+    await ten(page);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await mockApi(page, { tasks: seed() });
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: /^Done/ }).click();
+    const card = page.locator('.now-card.done-anim');
+    await expect(card).toBeVisible();
+    expect(await card.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Ship the web app');
+  });
+
   test('Defer parks the row for 2 hours; Undo resumes it', async ({ page }) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });

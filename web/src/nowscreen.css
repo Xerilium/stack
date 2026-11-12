@@ -65,7 +65,12 @@
 .now-empty .now-title { font-size: var(--fs-screen); }
 .now-check { display: inline-grid; place-items: center; width: 44px; height: 44px; margin-bottom: var(--s-16); border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 20px; }
 @keyframes now-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .now-card { animation: none; } .now-btn:active:not(:disabled) { transform: none; } }
+/* Done: the check pops, then the card collapses; the next task enters in its place. @req FR:product-reset/ui.done */
+.now-card.done-anim { position: relative; animation: now-done 400ms var(--ease) both; }
+.now-done-check { display: inline-grid; place-items: center; width: 36px; height: 36px; margin-bottom: var(--s-12); border-radius: 50%; background: var(--ok); color: #fff; font-size: 18px; font-weight: 700; animation: now-check-pop 160ms var(--ease) both; }
+@keyframes now-done { 0%, 45% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-8px) scale(.98); } }
+@keyframes now-check-pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .now-card, .now-card.done-anim, .now-done-check { animation: none; } .now-btn:active:not(:disabled) { transform: none; } }
 
 /* Message the task agent: bubbles over one composer. @req FR:now-screen/now.compose @req FR:now-screen/now.thread */
 .now-chat { display: grid; gap: var(--s-12); }
