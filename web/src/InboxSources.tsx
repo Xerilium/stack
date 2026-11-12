@@ -15,6 +15,8 @@ const name = (s: SourceRow) => `${SOURCE[s.kind]}${s.account ? ` ${s.account}` :
 
 function Source({ s, open, toggle, api, onConnected }: { s: SourceRow; open: boolean; toggle: () => void; api?: ConnectApi; onConnected?: () => void }) {
   const id = `src-${key(s).replace(/[^a-z0-9]/gi, '-')}`;
+  // A healthy mail account keeps a way in to the accounts panel: add another, drafts, disconnect. @req FR:connect-accounts/web.where
+  const manage = !!api && s.kind === 'email' && s.state === 'ok' && !s.planned;
   return (
     <li class={`src-row ${s.state}${s.planned ? ' planned' : ''}`} data-kind={s.kind} data-state={s.state} data-account={s.account}>
       <div class="src-top">
@@ -27,6 +29,8 @@ function Source({ s, open, toggle, api, onConnected }: { s: SourceRow; open: boo
       {s.state !== 'ok' && s.needs && (
         <button type="button" class="btn src-go" aria-expanded={open} aria-controls={id} aria-label={`${stepLabel(s)}: ${name(s)}`} onClick={toggle}>{stepLabel(s)}</button>
       )}
+      {manage && <button type="button" class="btn src-go" aria-expanded={open} aria-controls={id} aria-label={`Manage accounts: ${name(s)}`} onClick={toggle}>Manage accounts</button>}
+      {open && manage && api && <div class="src-step" id={id}><ConnectAccounts api={api} {...(onConnected ? { onChange: onConnected } : {})} /></div>}
       {open && s.needs && (
         <div class="src-step" id={id}>
           <p>{s.needs}</p>

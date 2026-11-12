@@ -90,3 +90,29 @@ describe('accounts calendar', () => {
     expect(cal.info?.()).toMatchObject({ via: 'graph' });
   });
 });
+
+describe('accounts calendar: cache files', () => {
+  // @req FR:connect-accounts/cal.live @req FR:connect-accounts/acct.remove
+  it('an account moved from the default file to its own file gets a provider for the new file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acal-'));
+    const made: string[] = [];
+    const cal = createAccountsCalendar({ dir, ttlMs: 0, provider: (_a, cache) => { made.push(cache.path); return { events: async () => [] }; } });
+    const def = new FileTokenCache(join(dir, 'graph-token.json'));
+    await def.write({ version: 1, tenant: 'consumers', clientId: CLIENT, scopes: ['Calendars.Read'], refreshToken: 'RT', account: 'me@outlook.com' });
+    await cal.events(...R);
+    await def.clear();
+    await seed(dir, 'me@outlook.com', ['Calendars.Read']);
+    await cal.events(...R);
+    expect(made).toEqual([join(dir, 'graph-token.json'), accountCachePath('me@outlook.com', dir)]);
+  });
+  // @req FR:graph-signin/web.calendar
+  it('reads an explicit STACK_GRAPH_CACHE file with a custom name', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acal-'));
+    const custom = join(dir, 'ms-token.json');
+    await new FileTokenCache(custom).write({ version: 1, tenant: 'consumers', clientId: CLIENT, scopes: ['Calendars.Read'], refreshToken: 'RT', account: 'me@outlook.com' });
+    const reads: string[] = [];
+    const cal = createAccountsCalendar({ dir, cachePath: custom, provider: (a) => ({ events: async () => { reads.push(a); return [ev('1', 'Gym', 9)]; } }) });
+    expect((await cal.events(...R)).map((e) => e.subject)).toEqual(['Gym']);
+    expect(reads).toEqual(['me@outlook.com']);
+  });
+});

@@ -37,3 +37,16 @@ describe('connect words', () => {
     expect(seen).toEqual(['waiting', 'waiting', 'done']);
   });
 });
+
+describe('connect review fixes', () => {
+  it('a 404 poll (host restarted) ends the session; other failures retry', async () => {
+    let n = 0;
+    const end = await waitFor({ connectPoll: async () => { n++; throw Object.assign(new Error('gone'), { status: 404 }); } }, { id: '1', method: 'device', state: 'waiting' }, { wait: async () => undefined });
+    expect(end).toMatchObject({ state: 'error', error: 'lost' });
+    expect(n).toBe(1);
+    expect(sessionText(end)).toMatch(/restarted/);
+  });
+  it('a different account picked says so', () => {
+    expect(sessionText({ id: '1', method: 'browser', state: 'error', error: 'account_mismatch' })).toMatch(/different account/);
+  });
+});

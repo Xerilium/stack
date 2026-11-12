@@ -103,18 +103,27 @@ export interface Connect {
 /** A loopback listener: calls `handler` for each request URL; `close` stops it. */
 export type Listen = (handler: (url: URL) => Promise<{ status: number; body: string }>) => Promise<{ port: number; close(): void }>;
 
-/** Listens on 127.0.0.1 on a free port; GET only; small HTML replies. */
+/**
+ * Listens on 127.0.0.1 on a free port, and on ::1 on the same port when the host has IPv6, so `localhost` resolves either way.
+ * GET only; small HTML replies with `connection: close`. `close` stops new connections and lets a reply in progress finish.
+ */
 export const loopbackListen: Listen = (handler) => new Promise((ok, fail) => {
-  const srv = createServer((req, res) => {
-    if (req.method !== 'GET') { res.writeHead(405).end(); return; }
+  const serve = () => createServer((req, res) => {
+    if (req.method !== 'GET') { res.writeHead(405, { connection: 'close' }).end(); return; }
     void handler(new URL(req.url ?? '/', 'http://localhost')).then((r) => {
-      res.writeHead(r.status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' }).end(r.body);
-    }, () => res.writeHead(500).end());
+      res.writeHead(r.status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', connection: 'close' }).end(r.body);
+    }, () => res.writeHead(500, { connection: 'close' }).end());
   });
-  srv.once('error', fail);
-  srv.listen(0, '127.0.0.1', () => {
-    const a = srv.address();
-    ok({ port: typeof a === 'object' && a ? a.port : 0, close: () => { srv.close(); srv.closeAllConnections?.(); } });
+  const v4 = serve();
+  v4.once('error', fail);
+  v4.listen(0, '127.0.0.1', () => {
+    const a = v4.address();
+    const port = typeof a === 'object' && a ? a.port : 0;
+    const all = [v4];
+    const done = () => ok({ port, close: () => { for (const s of all) { s.close(); s.closeIdleConnections?.(); } } });
+    const v6 = serve();
+    v6.once('error', () => done()); // no IPv6 loopback, or the port is taken there: 127.0.0.1 alone
+    v6.listen(port, '::1', () => { all.push(v6); done(); });
   });
 });
 
@@ -161,11 +170,17 @@ export function createConnect(d: ConnectDeps): Connect {
   const fail = (s: ConnectSession, e: unknown) => { s.state = 'error'; s.error = e instanceof GraphSignInError && CODE.test(e.code) ? e.code : 'server_error'; };
 
   /** Names the account from the id token and saves its cache. @req FR:connect-accounts/flow.account @req FR:connect-accounts/flow.save */
-  async function finish(s: ConnectSession, g: Granted, clientId: string, scopes: string[]): Promise<void> {
+  async function finish(s: ConnectSession, g: Granted, clientId: string, scopes: string[], hint?: string): Promise<void> {
     const c = g.idToken ? idClaims(g.idToken) : {};
     if (!c.account || !MAILBOX.test(c.account)) throw new GraphSignInError('no_account');
+    // A sign-in for one account (drafts, sign in again) must not save another one picked in the Microsoft page.
+    if (hint && c.account !== hint) throw new GraphSignInError('account_mismatch');
     const tenant = c.tid === MSA_TENANT ? 'consumers' : c.tid && GUID.test(c.tid) ? c.tid : tenantFor(c.account);
-    await new FileTokenCache(accountCachePath(c.account, dir())).write({ version: 1, tenant, clientId, scopes: g.scopes.length ? g.scopes : scopes, refreshToken: g.refreshToken, accessToken: g.accessToken, expiresAt: g.expiresAt, account: c.account });
+    // Microsoft returns every scope ever consented: Mail.ReadWrite stays only when this sign-in asked for drafts.
+    const drafts = hasScope(scopes, 'Mail.ReadWrite');
+    let kept = (g.scopes.length ? g.scopes : scopes).filter((x) => drafts || !hasScope([x], 'Mail.ReadWrite'));
+    if (!drafts && hasScope(g.scopes, 'Mail.ReadWrite') && !hasScope(kept, 'Mail.Read')) kept = [...kept, 'Mail.Read'];
+    await new FileTokenCache(accountCachePath(c.account, dir())).write({ version: 1, tenant, clientId, scopes: kept, refreshToken: g.refreshToken, accessToken: g.accessToken, expiresAt: g.expiresAt, account: c.account });
     // An older default file for this account would list it twice: the new file replaces it.
     const old = join(dir(), 'graph-token.json');
     const prev = await new FileTokenCache(old).read().catch(() => null);
@@ -177,7 +192,8 @@ export function createConnect(d: ConnectDeps): Connect {
 
   /** @req FR:connect-accounts/flow.device */
   async function device(s: ConnectSession, clientId: string, scopes: string[], account?: string): Promise<ConnectSession> {
-    const tenant = account ? tenantFor(account) : 'common';
+    // `common`, as the browser flow: a personal account outside the known Outlook domains still signs in.
+    const tenant = 'common';
     const code = await startDeviceCode({ tenant, clientId, scopes, ...(d.fetch ? { fetch: d.fetch } : {}) });
     Object.assign(s, { method: 'device', userCode: code.userCode, verificationUri: code.verificationUri, expiresAt: new Date(now() + code.expiresIn * 1000).toISOString() });
     delete s.url;
@@ -187,7 +203,7 @@ export function createConnect(d: ConnectDeps): Connect {
     const base = d.sleep ?? ((sec: number) => new Promise<void>((r) => setTimeout(r, sec * 1000)));
     const sleep = async (sec: number) => { await base(sec); if (stopped) throw new GraphSignInError('replaced'); };
     void pollDeviceCode({ tenant, clientId, code, ...(d.fetch ? { fetch: d.fetch } : {}), sleep, now })
-      .then((g) => finish(s, g, clientId, scopes)).catch((e: unknown) => fail(s, e)).finally(() => listeners.delete(s.id));
+      .then((g) => finish(s, g, clientId, scopes, account)).catch((e: unknown) => fail(s, e)).finally(() => listeners.delete(s.id));
     return s;
   }
 
@@ -210,7 +226,7 @@ export function createConnect(d: ConnectDeps): Connect {
         if (err) { fail(s, new GraphSignInError(CODE.test(err) ? err : 'server_error')); return { status: 200, body: FAIL_HTML }; }
         try {
           const g = await redeemAuthCode({ tenant: 'common', clientId, code: u.searchParams.get('code') ?? '', verifier, redirectUri, ...(d.fetch ? { fetch: d.fetch } : {}), now });
-          await finish(s, g, clientId, scopes);
+          await finish(s, g, clientId, scopes, account);
           return { status: 200, body: DONE_HTML };
         } catch (e) { fail(s, e); return { status: 200, body: FAIL_HTML }; }
       });
@@ -232,7 +248,8 @@ export function createConnect(d: ConnectDeps): Connect {
     if (account !== undefined && !MAILBOX.test(account)) throw new Error('Invalid account address');
     const scopes = connectScopes(!!o.drafts);
     for (const [id, stop] of [...listeners]) { stop(); const old = sessions.get(id)?.s; if (old?.state === 'waiting') { old.state = 'error'; old.error = 'replaced'; } }
-    const s = put({ id: randomBytes(12).toString('hex'), method: 'browser', state: 'waiting' });
+    // The hinted account rides on the session, so "Use a code instead" keeps it.
+    const s = put({ id: randomBytes(12).toString('hex'), method: 'browser', state: 'waiting', ...(account ? { account } : {}) });
     if (o.method !== 'device' && (await browser(s, clientId, scopes, account))) return s;
     return device(s, clientId, scopes, account);
   }

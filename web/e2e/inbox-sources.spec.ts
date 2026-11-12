@@ -83,6 +83,13 @@ test('six mailboxes: each with its own state; an expired sign-in is the headline
   await expect(state('me@contoso.test').locator('code')).toHaveCount(0);
 });
 
+test('a healthy mailbox keeps a way to manage accounts', async ({ page }) => {
+  await open(page, six());
+  // Add another account, drafts and disconnect stay reachable once mail works. @req FR:connect-accounts/web.where
+  await page.getByRole('button', { name: 'Manage accounts: Email a@outlook.com' }).click();
+  await expect(page.locator('.src-row[data-account="a@outlook.com"]').getByTestId('connect-accounts')).toBeVisible();
+});
+
 test('stale only: says when it last synced, not Inbox zero', async ({ page }) => {
   await open(page, { sources: [{ kind: 'email', account: 'a@outlook.com', state: 'stale', mode: 'read-only', lastSyncAt: ago(180), needs: 'Sync is behind.', command: 'stack email run --all' }, { kind: 'github', account: '', state: 'connecting', planned: true, needs: 'GitHub is signed in.' }, ...planned], summary: { connected: 1, total: 1, fresh: 0, attention: false, canClaimZero: false, headline: 'Last synced 3h ago' } });
   await expect(page.getByTestId('empty-state')).toContainText('Last synced 3h ago');

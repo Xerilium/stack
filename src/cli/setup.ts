@@ -7,7 +7,7 @@ import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'http';
 import { dirname, extname, join, normalize, resolve, sep } from 'path';
-import { defaultCachePath, listCachePaths } from '../graph/auth';
+import { cachePathsWith, defaultCachePath } from '../graph/auth';
 
 /** The steps, in order. @req FR:first-run-onboarding/step.max */
 export const STEPS = ['repo', 'mode', 'calendar', 'email', 'phone'] as const;
@@ -178,7 +178,7 @@ export function createSetup(o: {
   error?: () => string | undefined; email?: () => boolean; locks?: () => Locks;
 }): SetupHandler {
   // Any sign-in file counts: Connect writes one per account. @req FR:connect-accounts/web.where
-  const email = o.email ?? (() => listCachePaths(dirname(o.env.STACK_GRAPH_CACHE ?? defaultCachePath(o.home))).length > 0);
+  const email = o.email ?? (() => cachePathsWith(dirname(o.env.STACK_GRAPH_CACHE ?? defaultCachePath(o.home)), o.env.STACK_GRAPH_CACHE).length > 0);
   const status = () => setupStatus({ cfg: readConfig(o.home), env: o.env, dir: o.dir(), email: email(), spec: o.spec(), error: o.error?.(), locks: o.locks?.() });
   return {
     status,

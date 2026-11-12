@@ -12,7 +12,7 @@ import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { accountCachePath, authorizeUrl, FileTokenCache, idClaims, MSA_TENANT, pkcePair, redeemAuthCode, GraphSignInError } from '../../src/graph/auth';
-import { AccountHealth, createConnect, readClientId, runSetup, type ConnectSession, type Listen } from '../../src/graph/connect';
+import { AccountHealth, createConnect, loopbackListen, readClientId, runSetup, type ConnectSession, type Listen } from '../../src/graph/connect';
 import { probeLocal } from '../../src/inbox/probe';
 
 const CLIENT = '11111111-2222-3333-4444-555555555555';
@@ -325,4 +325,42 @@ it('a new sign-in also stops a waiting device code poll', async () => {
   expect(c.get(first.id)).toMatchObject({ state: 'error', error: 'replaced' });
   // Stop the second poll too, so nothing keeps running after the test.
   await c.start({});
+});
+
+// @req FR:connect-accounts/flow.account @req FR:connect-accounts/flow.session @req FR:connect-accounts/scope.drafts @req FR:connect-accounts/flow.device
+describe('review fixes', () => {
+  const stateOf = (s: ConnectSession) => new URL(s.url!).searchParams.get('state');
+  it('a sign-in for one account fails with account_mismatch when another is picked, and saves nothing', async () => {
+    const { c, dir, l } = mk({ replies: [tokenReply({ preferred_username: 'b@outlook.com', tid: MSA_TENANT }, 'Mail.ReadWrite Calendars.Read offline_access')] });
+    const s = await c.setDrafts('a@outlook.com', true) as ConnectSession;
+    expect(s).toMatchObject({ state: 'waiting', account: 'a@outlook.com' });
+    await l.box.handler!(new URL(`http://localhost:53682/?code=C&state=${stateOf(s)}`));
+    expect(c.get(s.id)).toMatchObject({ state: 'error', error: 'account_mismatch' });
+    expect(await new FileTokenCache(accountCachePath('b@outlook.com', dir)).read()).toBeNull();
+  });
+  it('an earlier Mail.ReadWrite consent is not saved by a read-only sign-in', async () => {
+    const { c, dir, l } = mk({ replies: [tokenReply({ preferred_username: 'me@outlook.com', tid: MSA_TENANT }, 'Mail.ReadWrite Calendars.Read openid profile offline_access')] });
+    const s = await c.start({});
+    await l.box.handler!(new URL(`http://localhost:53682/?code=C&state=${stateOf(s)}`));
+    const t = await new FileTokenCache(accountCachePath('me@outlook.com', dir)).read();
+    expect(t!.scopes).not.toContain('Mail.ReadWrite');
+    expect(t!.scopes).toContain('Mail.Read');
+    expect((await c.accounts())[0]).toMatchObject({ drafts: false, mail: true });
+  });
+  it('the device code uses the common authority, even for a personal domain tenantFor does not know', async () => {
+    const dc = { device_code: 'D', user_code: 'U', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 0 };
+    const { c, login } = mk({ replies: [dc] });
+    const s = await c.start({ account: 'me@outlook.fr', method: 'device' });
+    expect(login.hits[0].url).toBe('https://login.microsoftonline.com/common/oauth2/v2.0/devicecode');
+    expect(s.account).toBe('me@outlook.fr');
+    await c.start({}); // stop the poll
+  });
+  it('loopbackListen: the callback that closes the listener still gets its page', async () => {
+    let close: () => void = () => undefined;
+    const l = await loopbackListen(async () => { close(); return { status: 200, body: 'DONE' }; });
+    close = l.close;
+    const r = await fetch(`http://127.0.0.1:${l.port}/`);
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe('DONE');
+  });
 });

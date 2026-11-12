@@ -182,6 +182,13 @@ export function listCachePaths(dir = cacheDir()): string[] {
   return names.filter((n) => n === 'graph-token.json' || /^graph-token-.+\.json$/.test(n)).sort().map((n) => join(dir, n));
 }
 
+/** `listCachePaths(dir)` plus an explicit cache file (`STACK_GRAPH_CACHE`) with a custom name, when it exists; no duplicates. */
+export function cachePathsWith(dir: string, explicit?: string): string[] {
+  const out = listCachePaths(dir);
+  if (explicit && existsSync(explicit) && !out.includes(resolve(explicit)) && !out.includes(explicit)) out.push(explicit);
+  return out;
+}
+
 /** True when `dir` or a parent holds a `tasks/` folder: a Stack task repo, which a token must never enter. */
 function inTaskRepo(path: string): boolean {
   for (let d = dirname(resolve(path)); ; d = dirname(d)) {
@@ -227,7 +234,7 @@ const SKEW = 5 * 60_000;
 export function graphToken(cache: FileTokenCache, o: { fetch?: typeof fetch; now?: () => number } = {}): (opts?: { force?: boolean }) => Promise<string> {
   const now = o.now ?? (() => Date.now());
   let inflight: Promise<string> | null = null;
-  const refresh = async (force: boolean): Promise<string> => {
+  const refresh = async (force: boolean, tries = 2): Promise<string> => {
     const t = await cache.read();
     if (!t) throw new GraphSignInRequired();
     if (!force && t.accessToken && (t.expiresAt ?? 0) - now() > SKEW) return t.accessToken;
@@ -237,7 +244,14 @@ export function graphToken(cache: FileTokenCache, o: { fetch?: typeof fetch; now
     });
     if (!r.ok) { const code = errorCode(r.body); if (code === 'invalid_grant' || code === 'interaction_required') throw new GraphSignInRequired(); throw new GraphSignInError(code); }
     const g = granted({ refresh_token: t.refreshToken, ...r.body }, now());
-    await cache.write({ ...t, accessToken: g.accessToken, refreshToken: g.refreshToken, expiresAt: g.expiresAt });
+    // Generation check: a disconnect or a drafts change during the request wins over this refresh.
+    const cur = await cache.read().catch(() => null);
+    if (!cur) throw new GraphSignInRequired();
+    if (cur.refreshToken !== t.refreshToken || cur.scopes.join(' ') !== t.scopes.join(' ') || cur.account !== t.account) {
+      if (tries <= 1) throw new GraphSignInError('cache_changed');
+      return refresh(true, tries - 1);
+    }
+    await cache.write({ ...cur, accessToken: g.accessToken, refreshToken: g.refreshToken, expiresAt: g.expiresAt });
     return g.accessToken;
   };
   // `force` is for a 401 from Graph: the cached token was revoked before it expired.

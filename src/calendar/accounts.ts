@@ -4,7 +4,7 @@
  * @req FR:connect-accounts/cal.live @req FR:connect-accounts/cal.ttl @req FR:connect-accounts/cal.fallback @req FR:connect-accounts/cal.info @req FR:connect-accounts/acct.health
  */
 import { basename } from 'path';
-import { cacheDir as defaultCacheDir, FileTokenCache, graphToken, GraphSignInRequired, hasScope, listCachePaths } from '../graph/auth';
+import { cacheDir as defaultCacheDir, cachePathsWith, FileTokenCache, graphToken, GraphSignInRequired, hasScope } from '../graph/auth';
 import { graphTransport } from '../graph/transport';
 import type { AccountHealth } from '../graph/connect';
 import { createGraphCalendar, type CalendarEvent, type CalendarInfo, type CalendarProvider } from './index';
@@ -20,6 +20,8 @@ const MAX_SHOWN = 3;
 export interface AccountsCalendarOptions {
   /** Token cache folder; default `~/.config/stack` (or beside `STACK_GRAPH_CACHE`). */
   dir?: string;
+  /** An explicit cache file (`STACK_GRAPH_CACHE`), read even when its name is not `graph-token*.json`. */
+  cachePath?: string;
   fallback?: CalendarProvider;
   health?: AccountHealth;
   now?: () => number;
@@ -40,7 +42,7 @@ export function createAccountsCalendar(o: AccountsCalendarOptions = {}): Calenda
   /** Every cache with Calendars.Read, by account (an unnamed cache uses its file name). */
   async function calendars(): Promise<{ account: string; cache: FileTokenCache }[]> {
     const out: { account: string; cache: FileTokenCache }[] = [];
-    for (const p of listCachePaths(o.dir ?? defaultCacheDir())) {
+    for (const p of cachePathsWith(o.dir ?? defaultCacheDir(), o.cachePath)) {
       const cache = new FileTokenCache(p);
       const t = await cache.read().catch(() => null);
       if (!t || !hasScope(t.scopes, 'Calendars.Read')) continue;
@@ -67,8 +69,9 @@ export function createAccountsCalendar(o: AccountsCalendarOptions = {}): Calenda
         const key = `${account}|${from}|${to}`;
         let c = copies.get(key);
         if (!c || now() - c.at >= ttl) {
-          const p = providers.get(account) ?? make(account, cache);
-          providers.set(account, p);
+          // By file: a sign-in that moves an account to its own file gets a new provider.
+          const p = providers.get(cache.path) ?? make(account, cache);
+          providers.set(cache.path, p);
           try {
             c = { at: now(), events: await p.events(from, to) };
             copies.set(key, c);

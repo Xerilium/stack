@@ -49,7 +49,8 @@ export function packPlan(i: PackInput) {
     // The script builds desktop first: it needs this file compiled.
     build: [['pnpm', ['--filter', 'stack-web', 'build']]] as Cmd[],
     stageDir,
-    copies: ['desktop/dist', 'desktop/assets', 'web/dist', 'pnpm-lock.yaml'].map((p): [string, string] => [join(i.root, p), join(stageDir, p)]),
+    // The Connect one-time setup script runs from the bundle (`setupScriptPath`). @req FR:connect-accounts/setup.run
+    copies: ['desktop/dist', 'desktop/assets', 'web/dist', 'scripts/register-stack-app.ps1', 'pnpm-lock.yaml'].map((p): [string, string] => [join(i.root, p), join(stageDir, p)]),
     manifest: {
       name: 'stack-desktop', productName: NAME, version, private: true,
       main: 'desktop/dist/desktop/src/main.js',

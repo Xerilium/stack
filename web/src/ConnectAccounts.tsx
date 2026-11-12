@@ -63,8 +63,8 @@ export function ConnectAccounts({ api, onChange }: { api: ConnectApi; onChange?:
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const gone = useRef(false);
-  /** The last sign-in asked for, so "Use a code instead" keeps its account. */
-  const last = useRef<{ account?: string }>({});
+  /** The last sign-in asked for, so "Use a code instead" keeps its account and drafts. */
+  const last = useRef<{ account?: string; drafts?: boolean }>({});
   useEffect(() => () => { gone.current = true; }, []);
 
   const load = async () => {
@@ -91,7 +91,8 @@ export function ConnectAccounts({ api, onChange }: { api: ConnectApi; onChange?:
       else { await load(); onChange?.(); }
     } catch (e) { setMsg(e instanceof Error && e.message ? e.message : 'That did not work. Try again.'); } finally { setBusy(false); }
   };
-  const start = (o: { account?: string; method?: 'browser' | 'device' } = {}) => { last.current = o.account ? { account: o.account } : {}; return run(() => api.connectStart(o)); };
+  const remember = (o: { account?: string; drafts?: boolean }) => { last.current = { ...(o.account ? { account: o.account } : {}), ...(o.drafts ? { drafts: true } : {}) }; };
+  const start = (o: { account?: string; drafts?: boolean; method?: 'browser' | 'device' } = {}) => { remember(o); return run(() => api.connectStart(o)); };
   const runSetup = async () => {
     setSetup('running');
     try { const r = await api.connectSetup(); setSetup(r.state); if (r.state === 'done') await load(); } catch { setSetup('failed'); }
@@ -114,10 +115,11 @@ export function ConnectAccounts({ api, onChange }: { api: ConnectApi; onChange?:
         <>
           {info.accounts.length > 0 && (
             <ul class="src-list">
-              {info.accounts.map((a) => (
-                <Account key={a.account} a={a} busy={busy || waiting}
-                  onSignIn={() => void start(a.account ? { account: a.account } : {})}
-                  onDrafts={(on) => void run(() => api.connectDrafts(a.account, on))}
+              {info.accounts.map((a, i) => (
+                <Account key={`${a.account}|${i}`} a={a} busy={busy || waiting}
+                  // Signing in again keeps drafts on when they were on.
+                  onSignIn={() => void start(a.account ? { account: a.account, ...(a.drafts ? { drafts: true } : {}) } : {})}
+                  onDrafts={(on) => { if (on) remember({ account: a.account, drafts: true }); void run(() => api.connectDrafts(a.account, on)); }}
                   onRemove={() => void run(async () => { await api.connectRemove(a.account); })} />
               ))}
             </ul>

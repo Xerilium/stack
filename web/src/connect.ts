@@ -45,6 +45,8 @@ const ERROR_TEXT: Record<string, string> = {
   expired_token: 'The sign-in timed out. Try again.',
   no_account: 'Microsoft did not name the account. Try again.',
   unsafe_scope: 'The Stack app asks for a permission Stack refuses. Run setup again.',
+  account_mismatch: 'You signed in with a different account. Try again and pick the same account.',
+  lost: 'Stack restarted during the sign-in. Try again.',
 };
 /** What the panel says while a sign-in runs, and when it ends. @req FR:connect-accounts/web.signin */
 export function sessionText(s: ConnectSession): string {
@@ -60,7 +62,10 @@ export async function waitFor(api: Pick<ConnectApi, 'connectPoll'>, s: ConnectSe
   while (cur.state === 'waiting' && !o.stop?.()) {
     await wait(POLL_MS);
     if (o.stop?.()) break;
-    try { cur = await api.connectPoll(s.id); } catch { /* a missed poll: try again */ }
+    try { cur = await api.connectPoll(s.id); } catch (e) {
+      // The host restarted and the session is gone: end it. Any other failure is a missed poll: try again.
+      if ((e as { status?: number } | null)?.status === 404) cur = { ...cur, state: 'error', error: 'lost' };
+    }
     o.onUpdate?.(cur);
   }
   return cur;

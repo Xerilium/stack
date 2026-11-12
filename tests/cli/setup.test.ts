@@ -316,3 +316,19 @@ describe('config file content', () => {
     expect(() => JSON.parse(readFileSync(join(home, '.config/stack/config.json'), 'utf8'))).not.toThrow();
   });
 });
+
+// @req FR:connect-accounts/web.where
+describe('email step: sign-in detection', () => {
+  it('counts a per-account file, and an explicit STACK_GRAPH_CACHE file with a custom name', () => {
+    const home = tmp();
+    const dir = join(home, 'cfg');
+    mkdirSync(dir);
+    const st = (env: NodeJS.ProcessEnv) => createSetup({ home, env, spec: () => undefined, dir: () => null, restart: () => undefined }).status().email;
+    const custom = join(dir, 'ms-token.json');
+    expect(st({ STACK_GRAPH_CACHE: custom })).toBe(false);
+    writeFileSync(custom, '{}');
+    expect(st({ STACK_GRAPH_CACHE: custom })).toBe(true);
+    writeFileSync(join(home, 'cfg', 'graph-token-me@outlook.com.json'), '{}');
+    expect(st({ STACK_GRAPH_CACHE: join(dir, 'graph-token.json') })).toBe(true);
+  });
+});

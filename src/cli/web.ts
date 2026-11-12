@@ -25,7 +25,7 @@ import { createPrPage, type PrPage } from '../api/pr-page';
 import { storePrQueue } from '../api/pr-queue';
 import { fixtureCalendar, type CalendarEvent, type CalendarProvider } from '../calendar';
 import { createIcsCalendar, icsUrls } from '../calendar/ics';
-import { defaultCachePath, FileTokenCache, hasScope, listCachePaths } from '../graph/auth';
+import { cachePathsWith, defaultCachePath, FileTokenCache, hasScope } from '../graph/auth';
 import { AccountHealth, createConnect, readClientId, type Connect } from '../graph/connect';
 import { createAccountsCalendar } from '../calendar/accounts';
 import { cachedProbe } from '../inbox/probe';
@@ -184,10 +184,10 @@ export async function calendarSource(o: { cachePath?: string; fixture?: string; 
   if (fx) { o.log?.('calendar: fixture'); return { source: 'fixture', provider: fx }; }
   const dir = dirname(o.cachePath ?? defaultCachePath());
   const ics = icsCalendar(o.ics);
-  const provider = createAccountsCalendar({ dir, ...(ics ? { fallback: ics } : {}), ...(o.health ? { health: o.health } : {}) });
+  const provider = createAccountsCalendar({ dir, ...(o.cachePath ? { cachePath: o.cachePath } : {}), ...(ics ? { fallback: ics } : {}), ...(o.health ? { health: o.health } : {}) });
   // A broken token file must not hide the ICS feeds: it is skipped.
   let graph = false;
-  for (const p of listCachePaths(dir)) { const t = await new FileTokenCache(p).read().catch(() => null); if (t && hasScope(t.scopes, 'Calendars.Read')) { graph = true; break; } }
+  for (const p of cachePathsWith(dir, o.cachePath)) { const t = await new FileTokenCache(p).read().catch(() => null); if (t && hasScope(t.scopes, 'Calendars.Read')) { graph = true; break; } }
   const source = graph ? 'graph' : ics ? 'ics' : 'none';
   o.log?.(graph ? 'calendar: Graph' : ics ? 'calendar: ICS feeds' : 'calendar: none yet');
   return { source, provider };
