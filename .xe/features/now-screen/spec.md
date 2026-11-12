@@ -2,7 +2,7 @@
 id: now-screen
 title: Now screen and design tokens
 author: flanakin
-description: "One focal task, one-line reason, Done / Defer with Undo, a message composer to the task's agent, and an empty state; built on the design tokens from the Stack app design principles."
+description: "One focal task, its reason, Done / Defer with Undo, a message composer to its agent, and an empty state."
 dependencies: [home, web-app, stack-app]
 ---
 
