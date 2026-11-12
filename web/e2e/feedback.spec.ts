@@ -100,3 +100,14 @@ test('Shift+F opens it; Escape closes it; axe clean', async ({ page }, info) => 
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
 });
+
+test('app and view keys stand down while the panel is open', async ({ page }, info) => {
+  await setup(page);
+  await icon(page, info.project.name === 'mobile').click();
+  const panel = page.getByRole('dialog', { name: 'Send feedback' });
+  await panel.getByRole('textbox', { name: 'Feedback' }).fill('keys');
+  await panel.getByRole('button', { name: 'Send', exact: true }).focus();
+  for (const k of ['?', ':', 'c', 'd']) await page.keyboard.press(k);
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(panel).toBeVisible();
+});

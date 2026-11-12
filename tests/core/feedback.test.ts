@@ -38,6 +38,9 @@ describe('FeedbackStore', () => {
     expect(it.route).toBe('/x#asks');
     expect((await mk().add({ text: 'x', route: '/#/list?code=abc' })).route).toBe('/#/list');
     expect(redactSecrets('plain words stay')).toBe('plain words stay');
+    const oauth = redactSecrets('access_token=at1 refresh_token=rt2 client_secret=cs3 {"token":"jt4"}');
+    expect(oauth).not.toMatch(/at1|rt2|cs3|jt4/);
+    expect(oauth).toContain('access_token=[redacted]');
   });
 
   // @req FR:feedback-button/store.atomic @req FR:feedback-button/store.path

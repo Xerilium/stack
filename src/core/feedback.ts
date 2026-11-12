@@ -2,7 +2,7 @@
  * Owner feedback from the app: one JSON line per item in `<stack home>/feedback.jsonl`, append-only, for an agent session to tail.
  * See docs/feedback.md. @req FR:feedback-button/store.path
  */
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'fs';
+import { closeSync, existsSync, fstatSync, fsyncSync, ftruncateSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { join } from 'path';
 import { withFileLock, writeAtomic } from './file-lock';
@@ -33,7 +33,7 @@ const SECRETS: RegExp[] = [
   /\bAKIA[0-9A-Z]{16}\b/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
   /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi,
-  /\b((?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*)\S+/gi,
+  /((?:password|passwd|secret|token|api[_-]?key)["']?\s*[:=]\s*)\S+/gi,
 ];
 export const redactSecrets = (s: string): string => SECRETS.reduce((t, re) => t.replace(re, (m, p1?: string) => (typeof p1 === 'string' && /[:=]\s*$/.test(p1) ? `${p1}[redacted]` : '[redacted]')), s);
 /** The route without query strings (also inside the hash), which can carry tokens. */
@@ -49,8 +49,14 @@ const isPng = (b: Buffer) => b.length > PNG_MAGIC.length && b.subarray(0, PNG_MA
 function appendLine(file: string, obj: object): void {
   const fd = openSync(file, 'a', 0o600);
   const b = Buffer.from(JSON.stringify(obj) + '\n', 'utf8');
-  // A short write would leave a partial line: fail loudly instead.
-  try { const n = writeSync(fd, b); if (n !== b.length) throw new Error(`Short write to ${file}: ${n} of ${b.length} bytes`); fsyncSync(fd); } finally { closeSync(fd); }
+  // A short or failed write would leave a partial line: cut the file back (callers hold the lock), then fail loudly.
+  const size = fstatSync(fd).size;
+  try {
+    let n = -1;
+    try { n = writeSync(fd, b); } finally { if (n !== b.length) try { ftruncateSync(fd, size); } catch { /* best effort */ } }
+    if (n !== b.length) throw new Error(`Short write to ${file}: ${n} of ${b.length} bytes`);
+    fsyncSync(fd);
+  } finally { closeSync(fd); }
 }
 
 const readLines = <T>(file: string): T[] => {

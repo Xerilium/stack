@@ -13,6 +13,7 @@ import { parseRow } from './row';
 import { changeText, flowOf } from './triage';
 import type { Asks } from './useAsks';
 import type { ComponentChildren } from 'preact';
+import { feedbackActive } from './FeedbackPanel';
 import './asks.css';
 
 const TOP = 5;
@@ -212,7 +213,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, a
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return; // a finished chord is not a view key
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || feedbackActive()) return; // a finished chord is not a view key; the feedback flow owns the keys @req FR:feedback-button/ui.a11y
       if (e.key === 'Escape' && talk?.isOpen()) { e.preventDefault(); talk.close(); return; }
       if (e.key === 'Escape' && asks.panelRef.current !== 'none') { e.preventDefault(); asks.setPanel('none'); return; }
       if (isTyping(e.target)) return;

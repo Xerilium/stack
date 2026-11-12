@@ -25,7 +25,7 @@ import { PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
 import { PrsButton, PrsFlyoutHost } from './PrsPanel';
-import { FeedbackButton, FeedbackHost } from './FeedbackPanel';
+import { FeedbackButton, FeedbackHost, feedbackActive } from './FeedbackPanel';
 import { actionsFor, type AskItem, type DeferChoice, type Send } from './asks';
 import { isFresh, sourceOf, type CalSource } from './calsource';
 import { postStep, waitForHost, type Fetch } from './onboarding';
@@ -819,6 +819,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.prs-scrim')) return; // the PR flyout owns the keys while open @req FR:pr-page/flyout.shape
+      if (feedbackActive()) return; // so does the feedback flow, also while hidden for capture @req FR:feedback-button/ui.a11y
       if (haveChord.current && !/^[0-4h]$/.test(e.key)) haveChord.current = 0; // any other key disarms h
       const L = latest.current, A = act.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); return; }

@@ -7,6 +7,9 @@ import './feedback.css';
 type Phase = 'closed' | 'open' | 'sending' | 'sent';
 /** The host's open function; the icons call it. */
 let openFn: ((from: HTMLElement | null) => void) | undefined;
+let active = false;
+/** True from open until close, also while the panel hides for capture: app and view shortcuts stand down. @req FR:feedback-button/ui.a11y */
+export const feedbackActive = (): boolean => active;
 
 const Icon = () => (
   <svg class="fb-ic" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
@@ -31,6 +34,7 @@ export function FeedbackHost({ api }: { api: Client }) {
   const from = useRef<HTMLElement | null>(null);
   const phaseRef = useRef<Phase>('closed');
   phaseRef.current = phase;
+  active = phase !== 'closed';
   useEffect(() => {
     openFn = (el) => { if (phaseRef.current !== 'closed') return; from.current = el ?? document.querySelector<HTMLElement>('.fb-btn:not(.compact)'); setPhase('open'); };
     const on = (e: KeyboardEvent) => {
@@ -42,7 +46,7 @@ export function FeedbackHost({ api }: { api: Client }) {
       openFn?.(vis);
     };
     window.addEventListener('keydown', on);
-    return () => { window.removeEventListener('keydown', on); openFn = undefined; };
+    return () => { window.removeEventListener('keydown', on); openFn = undefined; active = false; };
   }, []);
   if (phase === 'closed') return null;
   return <Panel api={api} phase={phase} setPhase={setPhase} onClose={() => { setPhase('closed'); setTimeout(() => from.current?.focus(), 0); }} />;
