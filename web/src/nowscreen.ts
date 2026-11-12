@@ -5,6 +5,7 @@
 import { topAsksOf, type Home, type HomeItem } from './home';
 import { span } from './plan';
 import { parseRow } from './row';
+import type { ThreadItem } from './thread';
 import type { Task } from './types';
 
 /** The longest "why now" line. @req FR:now-screen/now.why */
@@ -34,3 +35,11 @@ export function nowOf(h: Home, minutesLeft: number, agentHasIt: (t: Task) => boo
   const r = parseRow(item.task.text);
   return { task: item.task, title: r.title || item.task.text, why: whyLine(item, minutesLeft, agentHasIt(item.task)) };
 }
+
+/** Inbox text is one line, at most 1000 characters. @req FR:now-screen/now.tell */
+export const TELL_MAX = 1000;
+/** The box text as one inbox line: lines trimmed, blank ones dropped, joined with ` / `. */
+export const foldLines = (text: string): string => text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(' / ').slice(0, TELL_MAX);
+/** The task's earlier instructions and agent replies, oldest first. @req FR:now-screen/now.thread */
+export const tellThread = (items: ThreadItem[]): Extract<ThreadItem, { kind: 'owner' | 'agent' }>[] =>
+  items.filter((i): i is Extract<ThreadItem, { kind: 'owner' | 'agent' }> => i.kind === 'owner' || i.kind === 'agent').sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));

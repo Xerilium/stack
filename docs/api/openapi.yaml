@@ -824,6 +824,7 @@ paths:
                   enum:
                     - reply
                     - decision
+                    - instruction
                 expect:
                   type: string
                   maxLength: 2000
@@ -2736,6 +2737,7 @@ components:
           enum:
             - reply
             - decision
+            - instruction
         to:
           type: string
           enum:

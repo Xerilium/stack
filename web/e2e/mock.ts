@@ -231,6 +231,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       m.inbox.push({ id, at: new Date().toISOString(), project: t.project, ref: t.ref, task: t.text.replace(/[🤖🪄🙋]/gu, '').trim(), kind: body.kind ?? 'reply', to: /🙋/u.test(t.text) ? 'human' : /🤖|🪄/u.test(t.text) ? 'agent' : 'none', text: body.text, state: 'open', row: t.ref });
       return json(route, 201, { id, path: `tasks/inbox/${t.project}.md` });
     }
+    if (path === '/inbox/handled') { const e = m.inbox.find((x) => x.id === body.id); if (!e) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }); const changed = e.state !== 'handled'; e.state = 'handled'; return json(route, 200, { changed }); }
     if (path === '/sync' && req.method() === 'POST') { const n = m.pending ?? 0; if (m.pending !== undefined) { m.pending = 0; m.since = null; } return json(route, 200, { flushed: n, rev: m.rev ?? null }); }
     if (path === '/sync') return json(route, 200, { rev: m.rev ?? null, ...(m.pending !== undefined ? { pending: m.pending, since: m.since ?? null } : {}) });
     if (path === '/inbox') return json(route, 200, { items: m.inbox.filter((e) => e.state === 'open') });

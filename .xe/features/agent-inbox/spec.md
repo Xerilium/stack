@@ -33,6 +33,7 @@ The owner needs to send a reply or decision on a task row so that the owning age
 - **FR:inbox.list** (P1): `listInbox({project?, state?})` returns entries from every inbox file (oldest first) with `id`, `at`, `project`, `ref`, `task`, `kind`, `to`, `text`, `state`, and `handled`/`note` when set. `state` defaults to `open`; `all` returns both
 - **FR:inbox.rows** (P1): `currentRows(entries)` finds where each entry's row is now: the row in the same file whose title words match the stored `task` (marks, dates, and links ignored; both run through the same redaction and escaping; a title cut at 300 characters matches by prefix). When the entry has a `parent`, rows whose parent title matches it the same way win, so rows with the same title under different parents stay apart; if none does (parent renamed), title alone decides. The row nearest the stored line breaks ties. Entries whose row is gone get none
 - **FR:inbox.handle** (P1): `handleEntry(id, actor, note?)` sets `state: handled` and adds the handled line (and note) to that entry only; every other byte is unchanged. Unknown id is 404; an already handled entry is `changed: false`
+- **FR:inbox.kinds** (P1): `kind` is `reply`, `decision`, or `instruction`. `instruction` is work the owner asks of the agent on a row (Now `Delegate…`, `FR:now-screen/now.tell`). The entry format is unchanged
 - **FR:inbox.cap** (P2): An inbox file over 256 KiB drops handled entries, oldest first, before an append; if it is still over, the append is `409 conflict` ("Inbox is full; handle some entries first"). Dropped entries stay in storage history
 
 ### FR:api: Routes
@@ -43,6 +44,14 @@ The owner and agents need routes to send, list, and handle inbox entries and lis
 - **FR:api.list** (P1): `GET /inbox?project=&state=` (route `inbox.list`, scope `tasks:read`) returns `{items}`; each item has `row`, the current ref of its row (`FR:inbox.rows`), when the row still exists
 - **FR:api.handle** (P1): `POST /inbox/handled` `{id, note?}` (route `inbox.handle`, scope `tasks:write`) returns `{changed}`; `note` is one line up to 500 characters. Agents call it after acting on an entry
 - **FR:api.agents** (P1): `GET /agents` (route `agents.list`, scope `tasks:read`) returns `{items}` built by `FR:activity.*`. All four routes are in `docs/api/openapi.yaml`
+
+### FR:cli: Agent pickup from the command line
+
+An agent or CoS needs to read and close open entries with no model tokens and no server so that a scheduled run can act on instructions.
+
+- **FR:cli.list** (P1): `stack inbox list [--project p] [--state open|handled|all] [--json]` prints `listInbox` entries (state defaults to `open`), one line each: `<id> <kind> <project> <row> <text>`, where `<row>` is the current row (`FR:inbox.rows`), else the stored `ref`. `--json` prints `{items}` with the same fields as `GET /inbox`; `ref` and `row` keep the CLI form `tasks/<file>.md:<line>`
+- **FR:cli.handle** (P1): `stack inbox handle <id> [--note t] [--from <agent>]` calls `handleEntry` (actor `--from`, else `cli`) and prints `handled` or `unchanged`. An unknown id exits 2
+- **FR:cli.docs** (P2): `docs/agent-instructions.md` is the prompt snippet for a scheduled agent: list open entries for its project, act, reply (`stack inbox reply`), then handle
 
 ### FR:activity: Agent activity from artifacts
 
@@ -63,7 +72,7 @@ The owner needs to see what each agent is doing so that the owner can tell what 
   - `id` (string) — `in-<UTC yyyymmddThhmmssZ>-<4 hex>`
   - `at` (string) — ISO timestamp of the write
   - `state` (string) — Allowed: open, handled
-  - `kind` (string) — Allowed: reply, decision
+  - `kind` (string) — Allowed: reply, decision, instruction
   - `to` (string) — Allowed: agent, human, none. The row's own 🤖/🪄 or 🙋 mark
   - `ref` (string) — `path:line` (1-based) of the row when written. A hint only: lines move, so readers find the row again by `task` and `parent` (`FR:inbox.rows`); no commit hash is stored
   - `task` (string) — The row's title, one line. Matches the row after edits; it is not a copy of the task

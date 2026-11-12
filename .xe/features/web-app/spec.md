@@ -170,7 +170,7 @@ None
 
 ## Architecture Constraints
 
-- **FR:arch.deps** (P2): Runtime dependency is `preact` only. Dev: `vite`, `vitest`, `jsdom`, `@playwright/test`, `typescript`. All versions exact, pnpm only
+- **FR:arch.deps** (P2): Runtime dependency is `preact` only. Dev: `vite`, `vitest`, `jsdom`, `@playwright/test`, `@axe-core/playwright` (accessibility checks in e2e), `typescript`. All versions exact, pnpm only
 - **FR:arch.tsconfig** (P2): `web/tsconfig.json` is separate from the root configs and does not import `src/` (the client talks to the api over HTTP, with its own types)
 - **FR:arch.ci** (P2): CI runs web unit tests, lint, and build in the existing job; e2e runs in a separate job that installs Chromium
 

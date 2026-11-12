@@ -56,3 +56,18 @@
 .now-check { display: inline-grid; place-items: center; width: 44px; height: 44px; margin-bottom: var(--s-16); border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 20px; }
 @keyframes now-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .now-card { animation: none; } .now-btn:active:not(:disabled) { transform: none; } }
+
+/* Delegate…: tell the agent what to do. @req FR:now-screen/now.tell @req FR:now-screen/now.thread */
+.now-tell { display: grid; gap: var(--s-8); }
+.now-tell-label { font-size: var(--fs-secondary); font-weight: 600; color: var(--ink); }
+.now-tell textarea { width: 100%; box-sizing: border-box; min-height: calc(var(--tap) * 2); padding: var(--s-12); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-body); line-height: 1.4; resize: vertical; }
+.now-tell textarea::placeholder { color: var(--muted); }
+.now-tell-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-12); }
+.now-tell-actions .now-btn.primary { grid-column: auto; min-height: var(--tap); }
+.now-thread { list-style: none; margin: var(--s-8) 0 0; padding: 0; display: grid; }
+.now-thread-item { display: grid; gap: 2px; padding: var(--s-8) 0; border-top: 1px solid var(--line2); }
+.now-thread-item:first-child { border-top: 0; }
+@media (hover: hover) and (pointer: fine) {
+  .now-tell-actions { grid-template-columns: repeat(2, auto); justify-content: start; gap: var(--s-8); }
+  .now-tell-actions .now-btn.primary { min-height: 40px; }
+}

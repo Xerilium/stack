@@ -238,6 +238,9 @@ export function App() {
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
   const nowTask = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
+  // @req FR:now-screen/now.tell: the Delegate… box; a new task closes it
+  const [tell, setTell] = useState(false);
+  useEffect(() => setTell(false), [nowTask?.task.ref]);
   const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
@@ -532,12 +535,19 @@ export function App() {
     // @req FR:now-screen/now.undo: Undo resumes the row
     if (await run(() => api.action('suspend', ref, { hours: 2 }), () => '')) toast(`Deferred 2h: back at ${back}`, 'ok', () => { void run(() => api.action('resume', ref), () => 'Restored'); });
   };
-  const delegate = async (ref = refNow()) => {
+  /** `note`: what the agent should do, written to the inbox as an instruction in the same step (Now `Delegate…`). @req FR:now-screen/now.tell */
+  const delegate = async (ref = refNow(), note = ''): Promise<boolean> => {
     const t = ref ? tasks.find((x) => x.ref === ref) : undefined;
-    if (!t) return;
-    if (parseRow(t.text).who === 'agent') { toast('Already with an agent'); return; }
+    if (!t) return false;
+    const has = parseRow(t.text).who === 'agent';
+    if (has && !note) { toast('Already with an agent'); return true; }
     const text = `🪄 ${t.text}`;
-    if (await run(() => api.edit(t.ref, text, t.text), () => '')) toast(`🪄 Delegated to the ${titles.get(t.project) ?? t.project} agent`, 'ok', () => { void run(() => api.edit(t.ref, t.text, text), () => 'Restored'); });
+    let id = '';
+    const ok = await run(async () => { if (note) id = (await api.send(t.ref, note, 'instruction', t.text)).id; if (!has) await api.edit(t.ref, text, t.text); return true; }, () => '');
+    if (!ok) return false;
+    const who = titles.get(t.project) ?? t.project;
+    toast(note ? `🪄 Sent to the ${who} agent` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { if (id) await api.handled(id, 'Withdrawn by the owner'); if (!has) await api.edit(t.ref, t.text, text); return true; }, () => 'Restored'); });
+    return true;
   };
   type RowAct = 'start' | 'done' | 'defer' | 'notnow' | 'delegate';
   const rowAct = (a: RowAct, ref?: string) => (a === 'defer' ? openDefer(ref) : a === 'notnow' ? void notNow(ref) : a === 'delegate' ? void delegate(ref) : void doAct(a, ref));
@@ -740,7 +750,7 @@ export function App() {
       if (k === 'c' && L.view !== 'sessions') { e.preventDefault(); setCaptureOpen(true); return; } // Sessions uses c for costs
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
-      if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } } return; }
+      if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); setTell(true); } } return; }
       if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox') return; // these views own their keys
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
@@ -868,7 +878,8 @@ export function App() {
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : a === 'defer' ? void notNow(nowTask?.task.ref) : void delegate(nowTask?.task.ref))}
+        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : a === 'defer' ? void notNow(nowTask?.task.ref) : setTell(true))}
+          tell={tell} onTell={setTell} onSend={async (text) => { const ok = await delegate(nowTask?.task.ref, text); if (ok) setTell(false); return ok; }} loadThread={api.thread}
           onAnswer={(a) => { const p = actionsFor(a).find((x) => x.send); if (p?.send) void asks.answer(a, p.send, `Sent to ${a.from}`); }} onReply={(a) => { asks.setCursor(a.key); asks.setPanel('reply'); go('asks'); }} onOpenAsks={() => go('asks')} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (

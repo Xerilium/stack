@@ -10,6 +10,7 @@ import { ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES } from '../core/as
 import { REPORT_ASK_KINDS } from '../core/reports';
 import { PROJECTS, SESSION_REASONS, SESSION_STATES } from '../core/session-inventory';
 import { PRI_ITEM_STATUSES, PRI_STATUSES } from '../core/pris';
+import { INBOX_KINDS } from '../core/inbox';
 import { ANCHORS, CADENCES, WEEKDAYS } from '../core/model';
 import { MAX_STR, REF_RE, type Spec } from './validate';
 
@@ -545,7 +546,7 @@ export function buildOpenApi(): J {
           properties: {
             id: { type: 'string' }, at: { type: 'string', format: 'date-time' }, project: { type: 'string' }, ref: ref('Ref'), task: { type: 'string' },
             parent: { type: 'string', description: 'Title of the parent row; absent for top-level rows' },
-            kind: { type: 'string', enum: ['reply', 'decision'] }, to: { type: 'string', enum: ['agent', 'human', 'none'] }, text: { type: 'string' },
+            kind: { type: 'string', enum: [...INBOX_KINDS] }, to: { type: 'string', enum: ['agent', 'human', 'none'] }, text: { type: 'string' },
             state: { type: 'string', enum: ['open', 'handled'] }, handled: { type: 'string' }, note: { type: 'string' },
             row: { ...ref('Ref'), description: 'Where the row is now, found by title (lines move); absent when the row is gone' },
           },

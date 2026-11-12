@@ -77,6 +77,15 @@ describe('send', () => {
     expect(r2.id).not.toBe(r.id);
     expect(parseInbox((await storage.read('tasks/inbox/alpha.md')).content).map((e) => [e.kind, e.to])).toEqual([['reply', 'agent'], ['decision', 'human']]);
   });
+  // @req FR:agent-inbox/inbox.kinds
+  it('stores an instruction in the same format', async () => {
+    const { storage, ctx } = await mk();
+    await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'Draft it from the changelog / keep it short', 'instruction');
+    const f = (await storage.read('tasks/inbox/alpha.md')).content;
+    expect(f).toContain('- kind: instruction\n- to: agent');
+    expect(parseInbox(f)[0]).toMatchObject({ kind: 'instruction', state: 'open' });
+    await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x', 'nope' as never)).rejects.toThrow(LifecycleError);
+  });
   it('marks plain rows as to: none', async () => {
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply');

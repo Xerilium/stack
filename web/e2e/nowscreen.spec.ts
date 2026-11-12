@@ -1,5 +1,6 @@
 /** Now: one task, one reason, Done / Defer / Delegate with Undo, an empty state. */
 import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { mockApi, seed, type MockAsk } from './mock';
 
 const ask = (key: string, from: string, score: number, extra: Partial<MockAsk> = {}): MockAsk => ({ key, state: 'open', ask: `Ask ${key}`, kind: 'approve', from, reversible: true, priority: 'normal', blocks: 0, created: '2026-11-05T09:00:00Z', updated: '2026-11-05T09:00:00Z', score, overdue: false, recommend: 'Go ahead', ...extra });
@@ -49,14 +50,69 @@ test.describe('Now screen', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
   });
 
-  test('Delegate adds 🪄; Undo removes it', async ({ page }) => {
+  // @req FR:now-screen/now.tell: empty text is a plain delegate
+  test('Delegate… with no text adds 🪄; Undo removes it', async ({ page }) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
     await page.goto('/#/now');
-    await page.getByRole('button', { name: /^Delegate/ }).click();
+    await page.getByRole('button', { name: /^Delegate…/ }).click();
+    await page.getByTestId('now-tell').getByRole('button', { name: /^Send/ }).click();
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
+    expect(m.calls.some((c) => c.path === '/inbox')).toBe(false);
     await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
+  });
+
+  // @req FR:now-screen/now.tell @req FR:now-screen/now.thread @req FR:now-screen/now.undo @req FR:now-screen/now.a11y
+  test('Delegate… tells the agent: one step writes the instruction and 🪄; the thread shows; Undo withdraws both', async ({ page }, info) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.inbox.push(
+      { id: 'in-20261101T100000Z-aaaa', at: '2026-11-01T10:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'instruction', to: 'none', text: 'Start with the login page', state: 'handled', row: 'alpha:6' },
+      { id: 'in-20261101T110000Z-bbbb', at: '2026-11-01T11:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'reply', to: 'human', from: 'agent', agent: 'alpha', text: 'Login page is in PR 12', state: 'handled', row: 'alpha:6' },
+    );
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: /^Delegate…/ }).click();
+    const box = page.getByTestId('now-tell');
+    const text = box.getByRole('textbox', { name: 'Tell the agent' });
+    await expect(text).toBeFocused();
+    const thread = page.getByTestId('now-thread');
+    await expect(thread.locator('li')).toHaveCount(2);
+    await expect(thread.locator('li').first()).toContainText('Start with the login page');
+    await expect(thread.locator('li').nth(1)).toContainText('Login page is in PR 12');
+    // targets and layout
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (info.project.name === 'mobile') for (const b of await box.getByRole('button').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    const axe = await new AxeBuilder({ page }).include('[data-testid="now"]').analyze();
+    expect(axe.violations.map((v) => v.id)).toEqual([]);
+    await page.screenshot({ path: `e2e/screenshots/now-tell-${info.project.name}.png` });
+    await text.fill('Use the new logo\nthen ship to staging');
+    await box.getByRole('button', { name: /^Send/ }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', kind: 'instruction', text: 'Use the new logo / then ship to staging' });
+    await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
+    await expect(page.getByRole('status')).toContainText('Sent to the');
+    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+    await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner' });
+  });
+
+  // @req FR:now-screen/now.tell (keys)
+  test('Shift+A opens the box; Esc closes it; Cmd/Ctrl+Enter sends', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'keys are for desktop');
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    await page.goto('/#/now');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
+    await page.keyboard.press('Shift+A');
+    const text = page.getByRole('textbox', { name: 'Tell the agent' });
+    await expect(text).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('now-tell')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Delegate…/ })).toBeFocused();
+    await page.keyboard.press('Shift+A');
+    await text.fill('Ping me when done');
+    await text.press('ControlOrMeta+Enter');
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body?.text).toBe('Ping me when done');
   });
 
   // @req FR:now-screen/now.actions (desktop keys)
