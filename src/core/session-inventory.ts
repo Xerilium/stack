@@ -135,7 +135,8 @@ export function sessionFacts(raw: unknown): Omit<SessionFacts, 'tail' | 'txMtime
     const o = p as Record<string, unknown>;
     return o && str(o.url) && str(o.state) ? [{ url: o.url as string, state: o.state as string, ...(o.dismissed === true ? { dismissed: true } : {}) }] : [];
   });
-  const errorAt = str(j.error) ? num(j.errorAt) ?? num(j.lastActivityAt) : undefined;
+  // Only a set errorAt dates the error: lastActivityAt moves past the turn edge after a good turn.
+  const errorAt = str(j.error) ? num(j.errorAt) : undefined;
   return {
     id, title: line(j.title, 200) ?? id, cwd, archived: j.isArchived === true, pinned: j.isStarred === true,
     lastActivityAt: num(j.lastActivityAt) ?? num(j.createdAt) ?? 0, prs,
@@ -239,8 +240,9 @@ export function runInventory(o: InventoryOptions): Inventory {
         if (!tx) { const rest = { ...entry.facts }; delete rest.tail; delete rest.txMtimeMs; entry = { ...entry, facts: rest, txMtimeMs: undefined }; }
         else if (tx.mtimeMs !== entry.txMtimeMs || entry.facts.tail === undefined) {
           const tail = readTail(entry.tx);
-          // A failed read keeps no transcript time, so the next run reads the tail again.
-          entry = tail ? { ...entry, txMtimeMs: tx.mtimeMs, facts: { ...entry.facts, tail, txMtimeMs: tx.mtimeMs } } : { ...entry, txMtimeMs: undefined };
+          // A failed read keeps no old kind and no transcript time, so the next run reads the tail again.
+          if (tail) entry = { ...entry, txMtimeMs: tx.mtimeMs, facts: { ...entry.facts, tail, txMtimeMs: tx.mtimeMs } };
+          else { const rest = { ...entry.facts }; delete rest.tail; delete rest.txMtimeMs; entry = { ...entry, facts: rest, txMtimeMs: undefined }; }
         }
       }
       // A pending tool call may be a subagent that writes only its own transcript: its writes count as activity (not cached).

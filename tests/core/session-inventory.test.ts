@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { classify, projectOf, readTail, runInventory, type SessionFacts } from '../../src/core/session-inventory';
@@ -189,6 +189,25 @@ describe('runInventory', () => {
     const sub = join(e.projects, '-Users-u-dev-todo', 'cli-local_ag', 'subagents'); mkdirSync(sub, { recursive: true });
     writeFileSync(join(sub, 'agent-1.jsonl'), '{}'); const fresh = new Date(T - MIN); utimesSync(join(sub, 'agent-1.jsonl'), fresh, fresh);
     expect(e.run().sessions[0]).toMatchObject({ state: 'running', reason: 'turn-open' });
+  });
+
+  // @req FR:session-inventory/state.stuck
+  it('an error with no errorAt is not stuck (lastActivityAt moves past the edge after a good turn)', () => {
+    const e = setup();
+    e.put('local_e1', { error: 'old error', lastActivityAt: T - 59 * MIN, lastTurnEdgeAt: T - 60 * MIN }, [{ type: 'system', subtype: 'turn_duration' }]);
+    expect(e.run().sessions[0]).toMatchObject({ state: 'idle' });
+  });
+
+  // @req FR:session-inventory/read.tail @req FR:session-inventory/read.cache
+  it('a failed tail read drops the old kind and reads again next run', () => {
+    if (process.getuid?.() === 0) return;
+    const e = setup();
+    e.put('local_t1', {}, [{ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'AskUserQuestion' }] } }]);
+    expect(e.run().sessions[0].state).toBe('waiting');
+    const tx = join(e.projects, '-Users-u-dev-todo', 'cli-local_t1.jsonl');
+    const later = new Date(T - 30 * MIN); utimesSync(tx, later, later); chmodSync(tx, 0o000);
+    try { expect(e.run().sessions[0].state).not.toBe('waiting'); } finally { chmodSync(tx, 0o600); }
+    expect(e.run().sessions[0].state).toBe('waiting');
   });
 
   it('a home that cannot be written never fails the inventory', () => {
