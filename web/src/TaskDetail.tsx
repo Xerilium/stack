@@ -179,11 +179,11 @@ export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, 
       <button type="button" class="close" aria-label="Close" title="Close" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></button>
       <div class="focus-inner">
         <p class="fl-facts">{project ?? task.project} · {plainSection(task.section)}{status ? ` · ${status}` : ''}</p>
-        <h1><Md text={r.title || task.text} /></h1>
+        <h1><Md text={r.title || task.text} project={task.project} /></h1>
         {/* Bare URLs parseRow lifts out of the title stay usable here. @req FR:task-detail-design/detail.facts */}
         {r.links.length > 0 && <p class="fl-links">{r.links.map((l) => <a key={l.href} class="fl-link" href={l.href} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}</p>}
         <PropertyBar t={task} onSave={onSave} onSet={onSet} />
-        {task.notes.length > 0 && <div class="notes big">{task.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
+        {task.notes.length > 0 && <div class="notes big">{task.notes.map((n, i) => <p key={i}><Md text={n.trim()} project={task.project} /></p>)}</div>}
         {subs.length > 0 && (
           <ul class="checklist" aria-label="Subtasks">
             {subs.map((s) => <li key={s.ref} class={s.done ? 'done' : ''} style={{ '--depth': s.depth - task.depth - 1 }}>

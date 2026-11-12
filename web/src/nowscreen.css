@@ -145,6 +145,8 @@
 .now-ask-facts dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
 .now-ask-facts .waits dd { color: var(--ink2); }
 .now-ask-who { display: inline-flex; align-items: center; gap: var(--s-8); }
+.now-ask-links { display: flex; flex-wrap: wrap; gap: var(--s-4) var(--s-12); }
+.now-ask-links a { display: inline-flex; align-items: center; min-height: var(--tap); color: var(--accent); font-weight: 600; text-underline-offset: 2px; }
 .now-ask-acts, .now-ask-defer { display: flex; flex-wrap: wrap; gap: var(--s-8); }
 .now-act { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-4); min-height: var(--tap); padding: 0 var(--s-16); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: var(--fs-secondary); font-weight: 600; text-decoration: none; cursor: pointer; transition: background var(--t-feedback) var(--ease); }
 .now-act:hover:not(:disabled) { background: var(--hover); }
@@ -163,6 +165,7 @@
   .now-act { min-height: 34px; padding: 0 var(--s-12); }
   .now-ask-reply input, .now-connect-row input { min-height: 36px; }
   .now-ask-needs { min-height: 0; padding: var(--s-4) 0; }
+  .now-ask-links a { min-height: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .now-ask-more { animation: none; } }
 

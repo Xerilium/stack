@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
 import { actionsFor, deadline, ifSilent, type Action, type AskItem, type DeferChoice, type Send } from './asks';
 import type { AvatarWho } from './avatar';
+import { Md, mdLinks } from './parts';
 
 export interface AskCtl {
   busy: boolean; now: Date;
@@ -23,7 +24,8 @@ export interface AskCtl {
 }
 
 type Panel = 'none' | 'reply' | 'defer';
-const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+/** The ask's refs and link as inline links; no "Open {host}" button. @req FR:product-reset/ui.reflink */
+const refsOf = (a: AskItem) => [...mdLinks(a.ask, a.project), ...(a.link ? mdLinks(a.link, a.project) : [])].filter((l, i, all) => all.findIndex((x) => x.href === l.href) === i);
 
 function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: number; open: boolean; panel: Panel; ctl: AskCtl; onToggle: () => void; onPanel: (p: Panel) => void }) {
   const who = ctl.whoOf(a.from);
@@ -31,6 +33,7 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
   const primary = actions.find((x) => x.primary && x.send) ?? actions.find((x) => x.send);
   const dl = deadline(a.by, ctl.now);
   const silent = ifSilent(a);
+  const links = refsOf(a);
   const isAnswer = a.kind === 'answer';
   const replying = panel === 'reply' || (isAnswer && panel !== 'defer');
   const [text, setText] = useState('');
@@ -60,19 +63,17 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
       </div>
       {open && (
         <div class="now-ask-more" id={id} data-testid="now-ask-more">
-          {a.why && <p class="now-ask-why">{a.why}</p>}
+          {a.why && <p class="now-ask-why"><Md text={a.why} project={a.project} /></p>}
           <dl class="now-ask-facts">
-            {a.recommend && <div><dt>Recommend</dt><dd>{a.recommend}</dd></div>}
+            {a.recommend && <div><dt>Recommend</dt><dd><Md text={a.recommend} project={a.project} /></dd></div>}
             {a.options && a.options.length > 0 && a.kind !== 'decide' && <div><dt>Options</dt><dd>{a.options.join(' · ')}</dd></div>}
+            {links.length > 0 && <div><dt>Links</dt><dd class="now-ask-links">{links.map((l) => <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer">{l.label}</a>)}</dd></div>}
             <div class={silent.waits ? 'waits' : ''}><dt>Default</dt><dd>{silent.text}</dd></div>
             {dl && <div><dt>Due</dt><dd class={`now-ask-dl ${dl.tone}`}>{dl.label} · {dl.rel}</dd></div>}
             <div><dt>From</dt><dd class="now-ask-who"><Avatar who={who} size={24} />{who.name}{a.project ? ` · ${a.project}` : ''}</dd></div>
           </dl>
           <div class="now-ask-acts" role="group" aria-label="Respond">
-            {actions.map((x) => (x.open && a.source !== 'task'
-              ? a.link && <a key={x.id} class="now-act" href={a.link} target="_blank" rel="noopener noreferrer">Open {host(a.link)} <span aria-hidden="true">↗</span></a>
-              : <button key={x.id} type="button" class={`now-act${x.primary ? ' primary' : ''}`} disabled={ctl.busy && !!x.send} onClick={() => run(x)}>{x.label}</button>))}
-            {a.link && a.source !== 'task' && !actions.some((x) => x.open) && <a class="now-act" href={a.link} target="_blank" rel="noopener noreferrer">Open {host(a.link)} <span aria-hidden="true">↗</span></a>}
+            {actions.filter((x) => !x.open || a.source === 'task').map((x) => <button key={x.id} type="button" class={`now-act${x.primary ? ' primary' : ''}`} disabled={ctl.busy && !!x.send} onClick={() => run(x)}>{x.label}</button>)}
             {!isAnswer && !actions.some((x) => x.reply) && <button type="button" class="now-act quiet" aria-expanded={panel === 'reply'} onClick={() => onPanel(panel === 'reply' ? 'none' : 'reply')}>Reply</button>}
             <button type="button" class="now-act quiet" aria-expanded={panel === 'defer'} onClick={() => onPanel(panel === 'defer' ? 'none' : 'defer')}>Defer</button>
           </div>

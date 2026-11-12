@@ -185,7 +185,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
           <Editor text={t.text} onSave={(v) => p.onSave(t.ref, v)} onCancel={() => p.onEdit(null)} />
         ) : (
           <>
-            <div class="title">{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text" {...toggleOn<HTMLSpanElement>(t.ref, p)}><Md text={r.title || t.text} /></span></div>
+            <div class="title">{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text" {...toggleOn<HTMLSpanElement>(t.ref, p)}><Md text={r.title || t.text} project={t.project} /></span></div>
             <button type="button" class="edit-btn" aria-label={`Edit ${r.title || 'task'}`} onClick={(e) => { e.stopPropagation(); p.onEdit(t.ref); }}>✎</button>
             <div class="chips">
               {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
@@ -202,7 +202,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
           </>
         )}
       </div>
-      {open && !editing && p.open !== t.ref && t.notes.length > 0 && <div class="notes">{t.notes.map((n, i) => <div key={i}><Md text={n.trim()} /></div>)}</div>}
+      {open && !editing && p.open !== t.ref && t.notes.length > 0 && <div class="notes">{t.notes.map((n, i) => <div key={i}><Md text={n.trim()} project={t.project} /></div>)}</div>}
       {p.open === t.ref && !editing && <RowDetail t={t} all={p.all} busy={p.busy} onAct={p.onAct} onToggle={p.onToggle} onOpen={p.onOpen} extra={p.detail} />}
       {p.agent?.talk(t)}
     </li>
@@ -509,8 +509,8 @@ export function TodayView(t: TodayProps) {
               return (
                 <li class={`card need${sent.length ? ' decided' : ''}`} key={key}>
                   <p class="card-eyebrow"><Titled text={owner} />{d.context ? ` · ${parseRow(d.context.text).title.replace(/\s--\s/g, ' — ')}` : ''}</p>
-                  <p class="card-title"><Md text={r.title || d.task.text} /></p>
-                  {rec && sent.length === 0 && <p class="rec"><span>Recommended</span><Md text={rec} /></p>}
+                  <p class="card-title"><Md text={r.title || d.task.text} project={d.task.project} /></p>
+                  {rec && sent.length === 0 && <p class="rec"><span>Recommended</span><Md text={rec} project={d.task.project} /></p>}
                   {sent.length > 0 && <p class="waiting-agent">Sent, waiting on the agent</p>}
                   <Sent items={sent} now={t.now} />
                   <div class="card-actions">
@@ -595,7 +595,7 @@ function PlanBlock({ b, p, busy, onAct, message }: { b: Block; p: RowProps; busy
       <div class="what" onClick={(e) => { if ((e.target as HTMLElement).closest('a')) return; open(); }} onDblClick={open}>
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', ref); }}><span class="box" /></button>
         <div class="what-body">
-          <p class="what-title"><button type="button" class="row-open" aria-label={`Open ${r.title || b.task.text}`} onClick={(e) => { e.stopPropagation(); open(); }} onFocus={() => p.onCursor(ref)}><Md text={r.title || b.task.text} links={false} /></button><TitleLinks text={r.title || b.task.text} /></p>
+          <p class="what-title"><button type="button" class="row-open" aria-label={`Open ${r.title || b.task.text}`} onClick={(e) => { e.stopPropagation(); open(); }} onFocus={() => p.onCursor(ref)}><Md text={r.title || b.task.text} links={false} /></button><TitleLinks text={r.title || b.task.text} project={b.task.project} /></p>
           <p class="what-meta">
             <span>{p.titles.get(b.task.project) ?? b.task.project}</span>
             <DueNote due={r.due} />
