@@ -747,7 +747,7 @@ export function buildOpenApi(): J {
           properties: {
             slug: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, scope: { type: 'array', items: { type: 'string' } }, model: { type: 'string' },
             tools: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['long-running', 'ad-hoc'] }, prompt: { type: 'string' }, defined: { type: 'boolean' }, projects: { type: 'array', items: { type: 'string' } },
-            reportsTo: { type: 'string', description: 'Slug of the agent this one reports to; absent on the roll-up' }, icon: { type: 'string', description: 'Avatar: an emoji, fluent:<name> (a Fluent Emoji file name), or a same-origin image path; absent means a monogram' }, source: { type: 'string', enum: ['stack', 'claude', 'metadata'], description: 'tasks/agents file, .claude/agents file, or a project Agents line' },
+            reportsTo: { type: 'string', description: 'Slug of the agent this one reports to; absent on the roll-up' }, icon: { type: 'string', description: 'Avatar: an emoji, fluent:<name> (a Fluent Emoji file name), or a same-origin image path; absent means a monogram' }, source: { type: 'string', enum: ['stack', 'claude', 'metadata'], description: 'tasks/agents file, .claude/agents file, or a project Agents line' }, home: { type: 'string', description: 'Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents' }, aliases: { type: 'array', items: { type: 'string' }, description: 'Older display names a session title may start with: the H1 text before its colon' },
           },
         },
         ThreadItem: {
