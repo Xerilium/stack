@@ -1,6 +1,6 @@
 /** @req FR:agents-team/chart.primary @req FR:agents-team/chart.tree @req FR:agents-team/chat.list @req FR:agents-team/other.hidden */
 import { describe, expect, it } from 'vitest';
-import { chatsFor, chartOrder, isPrimary, orgChart, otherSessions, type ChartNode } from '../src/chart';
+import { agentStatus, chatsFor, chartOrder, orgChart, otherSessions, type ChartNode } from '../src/chart';
 import type { SessionItem } from '../src/sessions';
 import type { TeamAgent } from '../src/team';
 
@@ -19,24 +19,14 @@ const team = [
 const rank = new Map([['allyte', 0], ['stack', 1]]);
 const shape = (n: ChartNode): unknown => (n.children.length ? [n.agent.slug, n.children.map(shape)] : n.agent.slug);
 
-describe('isPrimary', () => {
-  it('is the roll-up, or a defined agent with a project or a report; not metadata-only or scopeless workers', () => {
-    expect(team.filter((a) => isPrimary(a, team)).map((a) => a.slug)).toEqual(['cos', 'xe-cos', 'allyte-cos']);
-  });
-  it('keeps an architect that has a report', () => {
-    const t = [...team, ag('helper', [], { reportsTo: 'arch', projects: [] })];
-    expect(isPrimary(t[1], t)).toBe(true);
-  });
-});
-
 describe('orgChart', () => {
-  it('nests primary agents under the roll-up by project priority; non-primary agents are dropped', () => {
+  it('shows the whole team: every agent, nested by reportsTo, siblings by project priority', () => {
     const t = [...team, ag('helper', [], { reportsTo: 'arch', projects: [] })];
-    expect(orgChart(t, rank).map(shape)).toEqual([['cos', ['allyte-cos', ['xe-cos', ['arch']]]]]);
+    expect(orgChart(t, rank).map(shape)).toEqual([['cos', [['allyte-cos', ['meta']], ['xe-cos', [['arch', ['helper']]]], 'sweeper']]]);
   });
-  it('moves an agent under its nearest primary ancestor when its manager is not primary', () => {
-    const t = [ag('cos', ['*']), ag('w', [], { reportsTo: 'cos', defined: false }), ag('p', ['stack'], { reportsTo: 'w' })];
-    expect(orgChart(t, rank).map(shape)).toEqual([['cos', ['p']]]);
+  it('an agent whose manager is missing is a root', () => {
+    const t = [ag('cos', ['*']), ag('p', ['stack'], { reportsTo: 'gone' })];
+    expect(orgChart(t, rank).map(shape)).toEqual(['cos', 'p']);
   });
   it('survives a cycle and an empty team', () => {
     const t = [ag('a', ['stack'], { reportsTo: 'b' }), ag('b', ['stack'], { reportsTo: 'a' })];
@@ -44,7 +34,7 @@ describe('orgChart', () => {
     expect(orgChart([], rank)).toEqual([]);
   });
   it('chartOrder lists the agents in paint order', () => {
-    expect(chartOrder(orgChart(team, rank))).toEqual(['cos', 'allyte-cos', 'xe-cos']);
+    expect(chartOrder(orgChart(team, rank))).toEqual(['cos', 'allyte-cos', 'meta', 'xe-cos', 'arch', 'sweeper']);
   });
 });
 
@@ -60,10 +50,20 @@ describe('chatsFor / otherSessions', () => {
   it('lists an agent\'s chats newest first', () => {
     expect(chatsFor(team[0], items, team).map((s) => s.id)).toEqual(['c2', 'c1']);
   });
-  it('other sessions are every session not matched to a primary agent', () => {
-    expect(otherSessions(items, team).map((s) => s.id)).toEqual(['m1', 'w1', 'f1']);
+  it('other sessions are every session matched to no agent', () => {
+    expect(otherSessions(items, team).map((s) => s.id)).toEqual(['f1']);
   });
   it('without a team every session is other', () => {
     expect(otherSessions(items, []).length).toBe(items.length);
+  });
+});
+
+/** @req FR:agents-team/chart.card */
+describe('agentStatus', () => {
+  it('is needs you, running, idle with chats, else none', () => {
+    expect(agentStatus([sess({ state: 'running' }), sess({ state: 'needs-you' })])).toBe('needs-you');
+    expect(agentStatus([sess({ state: 'idle' }), sess({ state: 'running' })])).toBe('running');
+    expect(agentStatus([sess({ state: 'stale' })])).toBe('idle');
+    expect(agentStatus([])).toBe('none');
   });
 });

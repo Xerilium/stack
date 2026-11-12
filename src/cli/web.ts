@@ -5,6 +5,9 @@
 import { createHash } from 'crypto';
 import { ReportStore, stackHome } from '../core/reports';
 import { runInventory, type Inventory } from '../core/session-inventory';
+import { scanAgents } from '../core/agent-scan';
+import { projectRepos } from '../core/repos';
+import { homedir } from 'os';
 import { PriStore } from '../core/pris';
 import { PrPriorityStore } from '../core/pr-priority';
 import { FeedbackStore } from '../core/feedback';
@@ -211,6 +214,13 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // @req FR:status-ingest/store.live
   const offReports = reports.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks'] }); });
   const inventory = o.inventory === false ? undefined : o.inventory ?? (() => runInventory({ home: stackHome() }));
+  // The whole team: agents in every repo under the scan roots and at user level (not in the demo). @req FR:agent-team/agent.team.scan
+  // One scan serves every /team read for 15 s (files are mtime-cached too); a failed scan is logged, never fatal.
+  let scanned: { at: number; p: ReturnType<typeof scanAgents> } | undefined;
+  const agentScan = o.inventory === false ? undefined : () => {
+    if (!scanned || Date.now() - scanned.at > 15_000) scanned = { at: Date.now(), p: projectRepos({ storage }).then((repos) => scanAgents({ home: homedir(), roots: config.agents?.scanRoots, skip: [o.dir], repos })).catch((e: unknown) => { console.error(`agents: scan failed (${e instanceof Error ? e.message : 'error'})`); scanned = undefined; return []; }) };
+    return scanned.p;
+  };
   const pris = o.pris ?? new PriStore(stackHome());
   // pris.json is outside the repo too: a write tells open pages to re-read it. @req FR:pris-sessions-ui/live.event
   const offPris = pris.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['pris'] }); });
@@ -232,7 +242,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const offLive = live.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'live'] }); });
   // @req FR:connect-accounts/flow.browser
   const connect = o.connect === false ? undefined : o.connect ?? createConnect({ clientId: () => readClientId(), health, ...(o.openUrl ? { openUrl: o.openUrl } : {}) });
-  const api = createApiHandler({ storage, config, reports, inventory, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) });
+  const api = createApiHandler({ storage, config, reports, inventory, agentScan, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), authorize: () => true, onError: (e) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) });
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });

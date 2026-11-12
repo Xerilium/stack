@@ -73,6 +73,17 @@ describe('team, reviews, and task sessions', () => {
     expect((await call('owner', 'GET', '/team?weird=1')).status).toBe(422);
   });
 
+  it('GET /team reports a failed agent scan and still lists the content repo team', async () => {
+    const storage = new MemoryStorage();
+    await storage.write('tasks/flantastic-4.md', F4);
+    const errors: unknown[] = [];
+    const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, agentScan: async () => { throw new Error('scan failed'); }, onError: (e) => errors.push(e) });
+    const res = await h(new Request('https://x.test/api/team'));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { items: { slug: string }[] }).items.map((a: { slug: string }) => a.slug)).toEqual(['cid-manager']);
+    expect(errors.map((e) => (e as Error).message)).toEqual(['scan failed']);
+  });
+
   it('POST /sessions with a ref runs the task agent (the roll-up by default) in the served folder with its persona; cwd stays optional', async () => {
     const { call, mint, prompts } = await mk();
     expect((await call(await mint('tasks:write'), 'POST', '/sessions', { ref: 'flantastic-4:7', text: 'hi' })).status).toBe(403);
