@@ -545,7 +545,7 @@ describe('model down (claude signed out)', () => {
     const all = await emailCmd(ctx, 'run', { all: true }, d);
     expect(all.code).toBe(4);
     expect(await storage.listAsks!()).toEqual([asksPath(CLAUDE_LOGIN_ASK)]);
-    expect(parseAsk(CLAUDE_LOGIN_ASK, (await storage.read(asksPath(CLAUDE_LOGIN_ASK))).content)).toMatchObject({ state: 'open', ask: 'Claude login expired: run `claude` and sign in' });
+    expect(parseAsk(CLAUDE_LOGIN_ASK, (await storage.read(asksPath(CLAUDE_LOGIN_ASK))).content)).toMatchObject({ state: 'open', ask: expect.stringMatching(/^Claude login expired: run .claude. and sign in$/) });
   });
 });
 

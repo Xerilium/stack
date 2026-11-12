@@ -4,6 +4,8 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
+import { oneLine, putAsk, readAsk } from '../core/asks';
+import { redact } from '../core/triage';
 import type { LifecycleContext } from '../core/lifecycle';
 import { MemoryStorage } from '../core/storage';
 import { syncInbox } from '../inbox/runner';
@@ -11,7 +13,7 @@ import { sentItems } from '../email/graph-mail';
 import { GRAPH_BASE, type GraphRequest, type Transport } from '../email/guard';
 import { createSafeHttp } from '../email/http';
 import type { ClaudeJson } from '../email/llm';
-import { lockPath, MaxExceeded, readState, rulesFor, runPass, statePath, takeLock } from '../email/runner';
+import { CLAUDE_LOGIN_ASK, CLAUDE_LOGIN_TEXT, lockPath, MaxExceeded, ModelUnavailable, readState, rulesFor, runPass, statePath, takeLock } from '../email/runner';
 import { learnVoice, loadVoice, renderStyleGuide, saveVoice, voicePath, type SentMessage } from '../email/voice';
 import { defaultCachePath, FileTokenCache, graphToken, hasScope, listCachePaths } from '../graph/auth';
 import { graphTransport } from '../graph/transport';
@@ -106,6 +108,16 @@ async function emailOffline(ctx: LifecycleContext, action: string | undefined, f
   return { json: { ok: true, account, mode: 'drafts', dryRun: true, offline: true, ...s }, text: `offline dry run: ${s.messages} messages, ${s.rules} by rules, ${s.model} by model, ${s.asks} asks, no network` };
 }
 
+/**
+ * One ask for every mailbox and pass (same key): written when missing, left alone while open, reopened when done.
+ * @req FR:email-runner/model.down
+ */
+async function loginAsk(ctx: LifecycleContext, e: ModelUnavailable): Promise<void> {
+  const cur = (await readAsk(ctx, CLAUDE_LOGIN_ASK))?.ask;
+  if (cur && cur.state !== 'done') return;
+  await putAsk(ctx, CLAUDE_LOGIN_ASK, { kind: 'go-do', from: 'email-triage', ask: CLAUDE_LOGIN_TEXT, why: `Email triage stopped before writing any ask: ${redact(oneLine(e.detail)).slice(0, 300)}`, priority: 'high', reversible: true, reopen: true }, 'email-triage');
+}
+
 export async function emailCmd(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps = {}): Promise<EmailOutcome> {
   return f.all === true ? emailAll(ctx, action, f, d) : emailOne(ctx, action, f, d);
 }
@@ -145,15 +157,19 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
   if (action === 'run') {
     const release = takeLock(lockPath(account, d.dataDir));
     if (!release) return { json: { ok: false, busy: true }, text: 'a pass is already running', code: 4 };
+    const dry = f['dry-run'] === true;
+    const passCtx: LifecycleContext = dry ? { ...ctx, storage: new MemoryStorage() } : ctx;
     try {
       const max = flag(f, 'max') ? Number(flag(f, 'max')) : undefined;
       if (max !== undefined && (!Number.isInteger(max) || max < 1)) throw new UsageError('--max must be a positive integer');
-      const dry = f['dry-run'] === true;
-      const passCtx: LifecycleContext = dry ? { ...ctx, storage: new MemoryStorage() } : ctx;
       const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), onResults: async (r) => { await syncInbox(ctx, { account, results: r }); }, project: flag(f, 'project') });
       return { json: { ok: true, account, mode, dryRun: dry, ...s }, text: `${mode}${dry ? ' (dry run)' : ''}: ${s!.messages} messages, ${s!.rules} by rules, ${s!.model} by model, ${s!.asks} asks, ${s!.drafts} drafts, archive ${s!.archivePending}, spam ${s!.spamPending}, ${s!.modelCalls} model calls` };
     } catch (e) {
       if (e instanceof MaxExceeded) return { json: { ok: false, found: e.found, max: e.max }, text: e.message, code: 4 };
+      if (e instanceof ModelUnavailable) {
+        await loginAsk(passCtx, e);
+        return { json: { ok: false, modelDown: true, auth: e.auth }, text: e.message, code: 4 };
+      }
       throw e;
     } finally { release(); }
   }

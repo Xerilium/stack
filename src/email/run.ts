@@ -87,9 +87,15 @@ export async function runTriage(d: RunDeps): Promise<{ cursor: string; summary: 
   const now = (d.ctx.now ?? (() => new Date()))();
   const h = d.hygiene;
   const s = h ? await h.state.get() : undefined;
-  for (const m of newest.values()) {
-    const r = await triage(d, m, summary);
-    results.push(r);
+  // Asks are written after every message is triaged, so a pass the model stops (signed out) writes none.
+  // Only a draft already made in the mailbox keeps its ask, so the next pass reuses it. @req FR:email-runner/model.down
+  try {
+    for (const m of newest.values()) results.push(await triage(d, m, summary));
+  } catch (e) {
+    for (const r of results) if (r.draft && !r.draft.reused) await recordResult(d.ctx, r, { project: d.project });
+    throw e;
+  }
+  for (const r of results) {
     await recordResult(d.ctx, r, { project: d.project });
     // Only the message that was triaged: a class never spreads to the rest of its thread.
     if (s) observe(s, r, { now });

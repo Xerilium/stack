@@ -99,25 +99,58 @@ export function withDetails(provider: MailProvider, details: (id: string) => Pro
   };
 }
 
-/** A model that fails twice does not stop the pass: the message goes to the owner as an open question, so it is never lost or billed again. @req FR:email-runner/model.classify */
+/** Messages in a row whose model calls all fail: the model is down, not the message. */
+export const MODEL_FAIL_LIMIT = 3;
+/** Error text that means the `claude` login is gone; no retry helps. */
+const AUTH_ERROR = /\b(log ?in|sign ?in|logged out|signed out|oauth|unauthori[sz]ed|authenticat\w*|401|403|api key|credentials?|token (expired|revoked)|expired token)\b/i;
+/** The one ask a model-down pass writes, for every mailbox (they share one `claude` login). @req FR:email-runner/model.down */
+export const CLAUDE_LOGIN_ASK = 'email-claude-login';
+export const CLAUDE_LOGIN_TEXT = 'Claude login expired: run `claude` and sign in';
+
+/** The model is unusable for the whole pass (signed out, or failing on every message). @req FR:email-runner/model.down */
+export class ModelUnavailable extends Error {
+  constructor(readonly detail: string, readonly auth: boolean) { super(`${CLAUDE_LOGIN_TEXT} (${detail.slice(0, 200)})`); this.name = 'ModelUnavailable'; }
+}
+
+/**
+ * A message whose model calls fail twice goes to the owner as an open question, so it is never lost or billed again.
+ * A login error, or {@link MODEL_FAIL_LIMIT} messages failing in a row, is systemic: it throws {@link ModelUnavailable} to stop the pass.
+ * @req FR:email-runner/model.classify @req FR:email-runner/model.down
+ */
 export function tolerant(c: Classifier, onError: () => void): Classifier {
+  let inRow = 0;
+  const text = (e: unknown) => (e instanceof Error ? e.message : String(e));
   return {
     async classify(m, o) {
-      try { return await c.classify(m, o); } catch { /* retry once */ }
-      try { return await c.classify(m, o); } catch {
-        onError();
-        return { class: 'needs_decision', urgency: 1, confidence: 0, reason: 'Could not classify (model error); open it to decide' };
+      let last = '';
+      for (let i = 0; i < 2; i++) {
+        try { const r = await c.classify(m, o); inRow = 0; return r; } catch (e) {
+          last = text(e);
+          if (AUTH_ERROR.test(last)) throw new ModelUnavailable(last, true);
+        }
       }
+      onError();
+      if (++inRow >= MODEL_FAIL_LIMIT) throw new ModelUnavailable(last, false);
+      return { class: 'needs_decision', urgency: 1, confidence: 0, reason: 'Could not classify (model error); open it to decide' };
     },
   };
 }
 
-/** Rules for a mailbox: the account is the owner, plus `rules.json` next to the state when present. @req FR:email-runner/cli.run */
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+
+/**
+ * Rules for a mailbox: the account is the owner, plus `rules.json` next to the state when present. Lists add to the defaults.
+ * `sensitive` is a list of addresses and domains, or `{ keywords, domains }`. @req FR:email-runner/cli.run @req FR:email-triage/rules.sensitive
+ */
 export function rulesFor(account: string, base?: string): RulesConfig {
   const p = rulesPath(account, base);
-  const extra = existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as Partial<RulesConfig>) : {};
-  const list = (k: keyof RulesConfig) => [...new Set([...DEFAULT_RULES[k], ...(Array.isArray(extra[k]) ? (extra[k] as unknown[]).filter((x): x is string => typeof x === 'string') : [])])];
-  return { owner: [...new Set([account, ...list('owner')])], vip: list('vip'), sensitive: list('sensitive'), sensitivePatterns: list('sensitivePatterns'), receiptSenderPatterns: list('receiptSenderPatterns'), receiptSubjectPatterns: list('receiptSubjectPatterns') };
+  const extra = (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : {}) as Record<string, unknown>;
+  const s = extra.sensitive && typeof extra.sensitive === 'object' && !Array.isArray(extra.sensitive) ? (extra.sensitive as Record<string, unknown>) : undefined;
+  const add = (k: keyof RulesConfig, ...more: unknown[]) => [...new Set([...DEFAULT_RULES[k], ...strings(extra[k]), ...more.flatMap(strings)])];
+  return {
+    owner: [...new Set([account, ...add('owner')])], vip: add('vip'), sensitive: add('sensitive', s?.domains, s?.addresses), sensitivePatterns: add('sensitivePatterns'),
+    sensitiveKeywords: add('sensitiveKeywords', s?.keywords), receiptSenderPatterns: add('receiptSenderPatterns'), receiptSubjectPatterns: add('receiptSubjectPatterns'),
+  };
 }
 
 export interface PassOptions {
