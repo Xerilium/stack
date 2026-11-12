@@ -26,7 +26,9 @@ export function createPrPage(o: {
 }): PrPage {
   const g = o.config?.github ?? {};
   // My repos: the explicit list (env, then config), else the owner plus admin orgs. Writes check only an explicit list. @req FR:pr-page/auth.repos
-  const repos = o.repos ?? g.repos;
+  // An empty list means no list: reads, grouping, and writes must agree.
+  const list = o.repos ?? g.repos;
+  const repos = list?.length ? list : undefined;
   const source = createGitHubBoard({ token: o.token, repos, user: g.user, fetch: o.fetch, adminOrgs: !repos?.length && !!o.adminOrgs });
   const prQueue = o.queue ?? cliPrQueue();
   return {

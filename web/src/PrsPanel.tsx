@@ -186,6 +186,8 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
   const [bulk, setBulk] = useState<Set<string> | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const ref = useRef<HTMLDivElement>(null);
+  // The page and the flyout can both be open: every id is page- or flyout-specific.
+  const px = page ? 'prs-page' : 'prs';
   const tabs = tabsOf(board);
   const tab: Tab = tabs.includes(prefs.tab) ? prefs.tab : tabs.includes('blocked') ? 'blocked' : tabs[0];
   const projects = projectsOf(board);
@@ -300,7 +302,7 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
     const i = tabs.indexOf(tab);
     const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
     setPrefs({ ...prefs, tab: next });
-    setTimeout(() => ref.current?.querySelector<HTMLElement>(`#prs-tab-${next}`)?.focus(), 0);
+    setTimeout(() => ref.current?.querySelector<HTMLElement>(`#${px}-tab-${next}`)?.focus(), 0);
   };
 
   const row = (r: PrRow) => {
@@ -357,7 +359,7 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
   };
 
   const entry = (e: EscEntry, kind: 'blocked' | 'enable' | 'live') => {
-    const id = `esc-${kind}-${e.url}`;
+    const id = `${px}-esc-${kind}-${e.url}`;
     const answer = answers[e.url] ?? e.recommend ?? '';
     const thread = threadOf(e);
     return (
@@ -424,12 +426,12 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
         )}
         <div class="prs-tabs" role="tablist" aria-label="PR groups" onKeyDown={tabKeys}>
           {tabs.map((t) => (
-            <button type="button" role="tab" key={t} id={`prs-tab-${t}`} aria-controls="prs-panel" aria-selected={t === tab} tabIndex={t === tab ? 0 : -1} class={`prs-tab${t === tab ? ' on' : ''}`} onClick={() => setPrefs({ ...prefs, tab: t })}>
+            <button type="button" role="tab" key={t} id={`${px}-tab-${t}`} aria-controls={`${px}-panel`} aria-selected={t === tab} tabIndex={t === tab ? 0 : -1} class={`prs-tab${t === tab ? ' on' : ''}`} onClick={() => setPrefs({ ...prefs, tab: t })}>
               {TAB_LABEL[t]} <span class="prs-count">{countOf(board, t, sel)}</span>
             </button>
           ))}
         </div>
-        <div class="prs-panel" id="prs-panel" role="tabpanel" aria-labelledby={`prs-tab-${tab}`}>
+        <div class="prs-panel" id={`${px}-panel`} role="tabpanel" aria-labelledby={`${px}-tab-${tab}`}>
           {tab === 'processing' && healthyCount(board, sel) > 0 && (
             <label class="prs-toggle"><input type="checkbox" checked={healthy} onChange={() => setHealthy(!healthy)} /> Show healthy ({healthyCount(board, sel)})</label>
           )}

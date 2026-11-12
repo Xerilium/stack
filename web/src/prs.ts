@@ -125,7 +125,7 @@ export interface PrStore {
   get(): StoreState; subscribe(fn: () => void): () => void; reload(): Promise<void>; setOpen(v: boolean): void;
 }
 /** Loads on first subscribe; reloads on `prs`/`poll`/reconnect, on show, and each minute while visible (that renews the host lease). @req FR:pr-page/live.event */
-export function createPrStore(load: () => Promise<PrBoard | { off: true } | { auth: PrAuthState }>, o: { visible?: () => boolean; every?: number; listen?: typeof onLiveChange; status?: (e: unknown) => number; /** The host says it has a board; false means off with no request (no 404 in the console). */ enabled?: () => Promise<boolean> } = {}): PrStore {
+export function createPrStore(load: () => Promise<PrBoard | { off: true } | { auth: PrAuthState }>, o: { visible?: () => boolean; every?: number; /** The reload cadence while signed out. */ signinEvery?: number; listen?: typeof onLiveChange; status?: (e: unknown) => number; /** The host says it has a board; false means off with no request (no 404 in the console). */ enabled?: () => Promise<boolean> } = {}): PrStore {
   let st: StoreState = { board: null, phase: 'loading', open: false, auth: null };
   const subs = new Set<() => void>();
   const set = (p: Partial<StoreState>) => { st = { ...st, ...p }; subs.forEach((f) => f()); };
@@ -141,6 +141,8 @@ export function createPrStore(load: () => Promise<PrBoard | { off: true } | { au
       const b = await load();
       if ('off' in b && b.off) set({ phase: 'off' });
       else if ('auth' in b && b.auth) set({ phase: 'signin', auth: b.auth, board: null });
+      // A first load that failed has no snapshot: the failed state, never a zero board. @req FR:pr-page/nav.load
+      else if (!(b as PrBoard).at && (b as PrBoard).error) set({ phase: 'error', board: null, auth: null });
       else set({ board: b as PrBoard, phase: 'ready', auth: null });
     } catch (e) {
       const status = o.status?.(e) ?? (e as { status?: number })?.status;
@@ -153,9 +155,11 @@ export function createPrStore(load: () => Promise<PrBoard | { off: true } | { au
     void gate.then((on) => { if (on) void reload(); else set({ phase: 'off' }); });
     const off = (o.listen ?? onLiveChange)((kinds) => { if (kinds.some((k) => k === 'prs' || k === 'pr-priority' || k === 'poll') || ['asks', 'tasks', 'state'].every((k) => kinds.includes(k))) void reload(); });
     const t = setInterval(() => { if (visible()) void reload(); }, o.every ?? 60_000);
+    // Signed out, check each 15 seconds: a terminal sign-in shows without a wait. @req FR:pr-page/auth.state
+    const t2 = setInterval(() => { if (visible() && st.phase === 'signin') void reload(); }, o.signinEvery ?? 15_000);
     const vis = () => { if (visible()) void reload(); };
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', vis);
-    stop = () => { off(); clearInterval(t); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', vis); };
+    stop = () => { off(); clearInterval(t); clearInterval(t2); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', vis); };
   };
   return {
     get: () => st,

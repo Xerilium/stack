@@ -131,6 +131,25 @@ describe('signed out, loading, and the nav count', () => {
     expect(s.get().phase).toBe('ready');
     expect(s.get().auth).toBeNull();
   });
+  it('a failed first load (no snapshot, an error) is the failed state, never a zero board', async () => {
+    const s = createPrStore(async () => board([], { at: null, error: 'GitHub unavailable' }), { visible: () => true, every: 10_000_000, listen: () => () => undefined });
+    s.subscribe(() => undefined);
+    await vi.waitFor(() => expect(s.get().phase).toBe('error'));
+    expect(s.get().board).toBeNull();
+  });
+  it('signed out, it checks again each 15 seconds', async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const s = createPrStore(async () => { n++; return ({ auth: { state: 'signed-out', method: 'gh' } }) as never; }, { visible: () => true, every: 10_000_000, listen: () => () => undefined });
+      const off = s.subscribe(() => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(n).toBe(1);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(n).toBe(2);
+      off();
+    } finally { vi.useRealTimers(); }
+  });
   it('needCount is Blocked on me plus Waiting on me', () => {
     expect(needCount(board([], { counts: { blocked: 2, waiting: 3, processing: 9, pending: 4, paused: 1 } }))).toBe(5);
     expect(needCount(null)).toBe(0);

@@ -263,7 +263,7 @@ export function App() {
   const held = shownNow.current;
   const nowTask = held && justDone.has(held.task.ref) && held.task.ref !== liveNow?.task.ref ? held : liveNow;
   shownNow.current = nowTask;
-  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' || view === 'prs' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
@@ -841,7 +841,7 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (document.querySelector('.prs-scrim')) return; // the PR flyout owns the keys while open @req FR:pr-page/flyout.shape
+      if (document.querySelector('.prs-scrim, .prs-sheet-scrim')) return; // the PR flyout and its confirm sheets own the keys while open @req FR:pr-page/flyout.shape
       if (updatesOpen.current) return; // so does the Updates dialog @req FR:devops-installer/notice.dialog
       if (feedbackActive()) return; // so does the feedback flow, also while hidden for capture @req FR:feedback-button/ui.a11y
       if (haveChord.current && !/^[0-4h]$/.test(e.key)) haveChord.current = 0; // any other key disarms h
@@ -885,7 +885,7 @@ export function App() {
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
       if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } else if (k === 'm') { e.preventDefault(); document.getElementById('now-msg')?.focus(); } } return; }
-      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox') return; // these views own their keys
+      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox' || L.view === 'prs') return; // these views own their keys @req FR:pr-page/nav.page
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;

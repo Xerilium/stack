@@ -11,6 +11,7 @@ import { clampInterval, createPrBoardService } from '../../src/api/pr-board-serv
 import { cliPrQueue, storePrQueue, noQueue, QueueRefused, QueueUnavailable, type PrQueue } from '../../src/api/pr-queue';
 import type { PrFacts } from '../../src/core/pr-board';
 import { parseConfig } from '../../src/core/config';
+import { createPrPage } from '../../src/api/pr-page';
 
 const NOW = Date.parse('2026-11-11T12:00:00Z');
 const OWNER = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ userDetails: 'me', identityProvider: 'github', userRoles: ['authenticated'] })).toString('base64') };
@@ -415,4 +416,12 @@ it('config github: user, exclude, pollSeconds', () => {
   expect(() => parseConfig({ github: { user: 'bad user' } })).toThrow('github.user');
   expect(() => parseConfig({ github: { pollSeconds: 5 } })).toThrow('30-60');
   expect(parseConfig({}).github).toBeUndefined();
+});
+
+// @req FR:pr-page/auth.repos
+it('an empty repo list means no list: writes do not reject every PR', async () => {
+  const f = fakeFetch(() => ({ status: 200, body: {} }));
+  const page = createPrPage({ token: TOKEN, repos: [], home: mkdtempSync(join(tmpdir(), 'prp-')), fetch: f.fetch, queue: noQueue() });
+  await expect(page.prWrites.addLabel({ repo: 'o/r', number: 4 }, 'Status: 🤖 Autopilot')).resolves.not.toThrow();
+  page.prBoard.stop();
 });
