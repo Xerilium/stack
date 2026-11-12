@@ -188,6 +188,20 @@ describe('handle', () => {
   });
 });
 
+// @req FR:agent-inbox/inbox.withdraw
+describe('withdraw', () => {
+  it("marks the entry withdrawn, keeps it in the file, and hides it from the list unless asked", async () => {
+    const { storage, ctx } = await mk();
+    const a = await sendToInbox(ctx, { path: "tasks/alpha.md", line: 5 }, "one", "instruction");
+    const b = await sendToInbox(ctx, { path: "tasks/alpha.md", line: 6 }, "two", "instruction");
+    expect(await handleEntry(ctx, a.id, "owner", "Withdrawn by the owner", { withdrawn: true })).toEqual({ changed: true });
+    expect(parseInbox((await storage.read("tasks/inbox/alpha.md")).content)[0]).toMatchObject({ id: a.id, state: "handled", withdrawn: true, note: "Withdrawn by the owner" });
+    expect((await listInbox(ctx, { state: "all" })).map((e) => e.id)).toEqual([b.id]);
+    expect((await listInbox(ctx, { state: "all", withdrawn: true })).map((e) => [e.id, e.withdrawn ?? false])).toEqual([[a.id, true], [b.id, false]]);
+    expect(formatEntry(entry({ state: "handled", withdrawn: true }))).toContain("- withdrawn: true");
+  });
+});
+
 // @req FR:agent-inbox/inbox.cap
 describe('cap', () => {
   it('drops handled entries when full, then refuses', async () => {

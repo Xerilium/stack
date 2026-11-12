@@ -83,6 +83,8 @@ export function App() {
   const [local, setLocal] = useState(false);
   // The day plan is "from now": re-plan every minute and when the tab comes back.
   const [tick, setTick] = useState(0);
+  /** Bumps on Undo of a message, so the Now thread re-reads and the bubble goes. @req FR:now-screen/now.undo */
+  const [withdrawn, setWithdrawn] = useState(0);
   useEffect(() => {
     const bump = () => { if (document.visibilityState !== 'hidden') setTick((n) => n + 1); };
     const h = setInterval(bump, 60_000);
@@ -342,7 +344,7 @@ export function App() {
   /** Priorities above Needs you, sessions under it; both re-read on live changes and every 15 s. @req FR:pris-sessions-ui/live.inventory @req FR:pris-sessions-ui/live.pris */
   const prisSessions = usePrisSessions(api, toast, asks.liveTick, view === 'asks');
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
-  const threadTick = `${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
+  const threadTick = `${withdrawn}|${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
   /** Live calendar when it works, else the weekly schedule. @req FR:cos-view/meet.layers */
   const liveCal = calOn && !calError;
@@ -557,7 +559,7 @@ export function App() {
     }, () => '');
     if (!ok) return false;
     const who = titles.get(t.project) ?? t.project;
-    toast(note ? `🪄 Sent to ${taskAgent(t)?.name ?? `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { if (id) await api.handled(id, 'Withdrawn by the owner'); if (!has) await api.edit(t.ref, t.text, text); return true; }, () => 'Restored'); });
+    toast(note ? `🪄 Sent to ${taskAgent(t)?.name ?? `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { if (id) { await api.handled(id, 'Withdrawn by the owner', true); setWithdrawn((n) => n + 1); } if (!has) await api.edit(t.ref, t.text, text); return true; }, () => 'Restored'); });
     return true;
   };
   type RowAct = 'start' | 'done' | 'defer' | 'notnow' | 'delegate';

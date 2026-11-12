@@ -3,7 +3,7 @@ import { createRunManager, type AgentDriver, type Run, type Session, type Update
 import { assignTask, personaOf, reviewTask, taskThread } from '../../src/agents/team';
 import { putAgent } from '../../src/core/agents';
 import { answerAsk, listAsks, putAsk } from '../../src/core/asks';
-import { replyFromAgent, sendToInbox } from '../../src/core/inbox';
+import { handleEntry, replyFromAgent, sendToInbox } from '../../src/core/inbox';
 import { MemoryStorage } from '../../src/core/storage';
 
 const NOW = new Date('2026-10-29T10:00:00Z');
@@ -41,6 +41,17 @@ async function mk(sessions: Session[] = []) {
 }
 
 describe('taskThread', () => {
+  // @req FR:agent-thread/thread.read.items @req FR:now-screen/now.undo
+  it("flags an owner message the owner withdrew", async () => {
+    const { ctx } = await mk();
+    const ref = { path: "tasks/flantastic-4.md", line: 7 };
+    const a = await sendToInbox(ctx, ref, "Kept", "instruction");
+    const b = await sendToInbox(ctx, ref, "Taken back", "instruction");
+    await handleEntry(ctx, b.id, "owner", "Withdrawn by the owner", { withdrawn: true });
+    const th = await taskThread(ctx, undefined, "flantastic-4:7");
+    expect(th.items.filter((i) => i.kind === "owner").map((i) => [(i as { id: string }).id, (i as { withdrawn?: boolean }).withdrawn ?? false])).toEqual([[a.id, false], [b.id, true]]);
+  });
+
   // @req FR:agent-thread/thread.read.items @req FR:agent-thread/thread.read.subtask @req FR:agent-thread/thread.read.review @req FR:agent-thread/$thread-item
   it('merges owner messages, agent replies, asks on the task, the review verdict, and agent-owned subtasks in time order', async () => {
     const { ctx, runs } = await mk();
