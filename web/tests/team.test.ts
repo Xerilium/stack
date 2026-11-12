@@ -1,12 +1,31 @@
 /** @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live @req FR:agent-team/web.chip.title @req FR:agent-team/web.talk @req FR:agent-team/web.review @req FR:agent-team/web.anything @req FR:agent-team/org.match */
 import { describe, expect, it } from 'vitest';
-import { agentForAsk, agentsFor, chipFor, liveAgents, matchAgent, ownerOf, sessionFor, verdictLabel, type ReviewItem, type TeamAgent } from '../src/team';
+import { agentForAsk, agentsFor, runnable, chipFor, liveAgents, matchAgent, ownerOf, sessionFor, verdictLabel, type ReviewItem, type TeamAgent } from '../src/team';
 import type { SessionItem } from '../src/sessions';
 
 const ag = (slug: string, scope: string[], o: Partial<TeamAgent> = {}): TeamAgent => ({ slug, name: slug, scope, mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: [], ...o });
 const team = [ag('cos', ['*']), ag('labels', ['f4/Labels']), ag('cid', ['f4'], { name: '🎧 Cid Manager', role: 'label manager' })];
 const sess = (o: Partial<SessionItem>): SessionItem => ({ id: 'a', title: 't', project: 'f4', cwd: '/x', lastActive: '2026-10-29T10:00:00Z', state: 'idle', cost: { usd: 0, tokens: 0 }, prs: [], ...o });
 const review = (o: Partial<ReviewItem> = {}): ReviewItem => ({ ref: 'f4:7', at: '2026-10-29T10:00:00Z', verdict: 'can', plan: 'Upload it', estimate: '2h', agent: 'cid', needs: [], ...o });
+
+// @req FR:agent-team/agent.team.scan.view
+describe('view-only scanned agents', () => {
+  const base: TeamAgent = { slug: 'cos', name: 'CoS', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: ['f4'] };
+  const away: TeamAgent = { slug: 'fh-dev', name: 'FH Dev', scope: ['f4'], mode: 'ad-hoc', prompt: '', defined: true, source: 'claude', projects: ['f4'], home: 'finops-hubs' };
+  const user: TeamAgent = { ...away, slug: 'helper', name: 'Helper', home: 'user' };
+  it('is not runnable when it has a home', () => {
+    expect(runnable(base)).toBe(true);
+    expect(runnable(away)).toBe(false);
+    expect(runnable(user)).toBe(false);
+  });
+  it('is never offered to assign, review or talk', () => {
+    expect(agentsFor([base, away, user], 'f4').map((a) => a.slug)).toEqual(['cos']);
+  });
+  it('never answers an ask from its name; the project agent does', () => {
+    expect(agentForAsk([base, away], { from: 'fh-dev', project: 'f4' })?.slug).toBe('cos');
+    expect(agentForAsk([away], { from: 'FH Dev' })).toBeUndefined();
+  });
+});
 
 describe('agentsFor', () => {
   it('the roll-up first, then most specific: section, project', () => {
