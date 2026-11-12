@@ -5,7 +5,7 @@
  */
 import type { SessionItem } from './sessions';
 
-export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** The manager's slug; absent on the roll-up. */ reportsTo?: string; /** Emoji or same-origin image path. @req FR:agent-team/agent.icon */ icon?: string }
+export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** Where a scanned agent lives (project, folder, or `user`). @req FR:agent-team/agent.team.scan */ home?: string; /** The manager's slug; absent on the roll-up. */ reportsTo?: string; /** Emoji or same-origin image path. @req FR:agent-team/agent.icon */ icon?: string; /** Older names a session title may start with. @req FR:agent-team/org.match */ aliases?: string[] }
 /** The first agent whose scope is `*`. */
 export const rollupOf = (team: TeamAgent[]): TeamAgent | undefined => team.find((a) => a.scope.includes('*'));
 /** How long a metadata-only agent stays on tasks after its last session. @req FR:agent-team/web.chip.live */
@@ -40,15 +40,18 @@ export function ownerOf(agents: TeamAgent[], task?: { project: string; section?:
   return agents.find((a, i) => !(i === 0 && a.scope.includes('*')) && fits(a)) ?? agents[0];
 }
 
+/** Stack can run the agent: a scanned agent (another repo or user level, `home` set) is view only for now. @req FR:agent-team/agent.team.scan.view */
+export const runnable = (a: Pick<TeamAgent, 'home'>): boolean => !a.home;
+
 /**
- * Agents covering a task: the roll-up first, then most specific first; the first is the active agent. With `live`, a metadata-only agent
+ * Agents covering a task (view-only agents left out): the roll-up first, then most specific first; the first is the active agent. With `live`, a metadata-only agent
  * (no file) stays only while a session has matched it recently. @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live
  */
 export function agentsFor(team: TeamAgent[], project: string, section?: string, live?: Set<string>): TeamAgent[] {
   const rollup = rollupOf(team);
   return team
     .map((a, i) => ({ a, i, s: a === rollup ? 4 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
-    .filter((x) => x.s > 0 && (!live || x.a.defined || live.has(x.a.slug)))
+    .filter((x) => x.s > 0 && runnable(x.a) && (!live || x.a.defined || live.has(x.a.slug)))
     .sort((x, y) => y.s - x.s || x.i - y.i)
     .map((x) => x.a);
 }
@@ -61,7 +64,7 @@ export function matchAgent(s: Pick<SessionItem, 'title'>, team: TeamAgent[]): Te
   let best: { a: TeamAgent; len: number } | undefined;
   for (const a of team) {
     const role = a.role && a.role.replace(/[.!?]$/, '').trim().split(/\s+/).length <= 4 ? nameKey(a.role) : '';
-    for (const k of [nameKey(a.name), a.slug, role]) {
+    for (const k of [nameKey(a.name), a.slug, role, ...(a.aliases ?? []).map(nameKey)]) {
       if (!k || !(t === k || t.startsWith(`${k}-`))) continue;
       if (!best || k.length > best.len) best = { a, len: k.length };
     }
@@ -106,7 +109,7 @@ export function chipFor(o: { agent?: TeamAgent; review?: ReviewItem; session?: S
   return { text: o.agent.name, tone: 'plain', title: `${chain}. Talk to it (a)` };
 }
 
-/** The ask's agent when it is a team member, else the project's active agent. @req FR:agent-team/web.anything */
+/** The ask's agent when it is a runnable team member, else the project's active agent. @req FR:agent-team/web.anything @req FR:agent-team/agent.team.scan.view */
 export function agentForAsk(team: TeamAgent[], ask: { from: string; project?: string }): TeamAgent | undefined {
-  return team.find((a) => a.slug === ask.from || a.name === ask.from) ?? (ask.project ? agentsFor(team, ask.project)[0] : undefined);
+  return team.find((a) => runnable(a) && (a.slug === ask.from || a.name === ask.from)) ?? (ask.project ? agentsFor(team, ask.project)[0] : undefined);
 }

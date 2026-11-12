@@ -29,7 +29,7 @@ import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handle
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
 import type { AgentRuns } from '../agents/runs';
-import { agentFor, listTeam } from '../core/agents';
+import { agentFor, listTeam, type ScannedAgent } from '../core/agents';
 import { agentPromptOptions, assignTask, listReviews, reviewTask, startAgentRun, taskThread } from '../agents/team';
 import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
@@ -62,6 +62,8 @@ export interface ApiDeps {
   reports?: ReportStore;
   /** Runs the Claude app session inventory; absent means GET /session-inventory is 404. @req FR:session-inventory/api.inventory */
   inventory?: () => Inventory;
+  /** Agents outside the content repo (other repos, user level); absent means the content repo team only. @req FR:agent-team/agent.team.scan */
+  agentScan?: () => Promise<ScannedAgent[]>;
   /** The owner's priorities store (~/.stack/pris.json); absent means /pris is 404. @req FR:session-inventory/api.pris.get */
   pris?: PriStore;
   /** The PR priority store (~/.stack/pr-priority.json); absent means /pr-priority is 404 and GET /agents PRs have priority null. @req FR:pr-priority/api.get */
@@ -1190,7 +1192,7 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/team', name: 'team.list', query: TEAM_Q,
     async run(c) {
       const q = validate<{ project?: string; section?: string }>(Object.fromEntries(readQuery(c.url, Object.keys(TEAM_Q)).entries()), TEAM_Q, []);
-      const team = await listTeam(c.life);
+      const team = await listTeam(c.life, c.deps.agentScan ? await c.deps.agentScan().catch((e) => { c.deps.onError?.(e); return []; }) : []);
       return json(200, { items: q.project ? agentFor(team, q.project, q.section) : team });
     },
   },

@@ -39,6 +39,8 @@ export interface StackConfig {
   github?: { user?: string; exclude?: string[]; pollSeconds?: number };
   /** Inbox source status: freshness window (minutes) and the mailboxes expected in the Inbox. @req FR:config/load.validate.inbox */
   inbox?: { freshMinutes?: number; accounts?: string[] };
+  /** Folders whose child repos hold `.claude/agents` (absolute or `~/`); default `~/dev`. @req FR:agent-team/agent.team.scan */
+  agents?: { scanRoots?: string[] };
 }
 
 const ALL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -170,6 +172,15 @@ export function parseConfig(input?: unknown): StackConfig {
     cfg.github = out;
   }
   if (input.inbox !== undefined) cfg.inbox = parseInbox(input.inbox);
+  if (input.agents !== undefined) {
+    if (!isObj(input.agents)) throw new ConfigError('agents: expected object');
+    const r = input.agents.scanRoots;
+    if (r === undefined) cfg.agents = {};
+    else {
+      if (!Array.isArray(r)) throw new ConfigError('agents.scanRoots: expected array');
+      cfg.agents = { scanRoots: r.map((v, i) => { const x = str(v, `agents.scanRoots[${i}]`); if (!/^(~\/|\/)/.test(x)) throw new ConfigError(`agents.scanRoots[${i}]: expected an absolute or ~/ path`); return x; }) };
+    }
+  }
   if (input.taskScoring !== undefined) {
     if (!isObj(input.taskScoring)) throw new ConfigError('taskScoring: expected object');
     const ts = input.taskScoring;
