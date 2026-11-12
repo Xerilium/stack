@@ -429,6 +429,34 @@ describe('update lifecycle gaps', () => {
   });
 });
 
+// @req FR:cli/cmd.update.engine @req FR:cli/ref.default @req FR:task-lifecycle/next.rank
+describe('README top is the no-ref target', () => {
+  /** The task text of the README "Top of the stack" row, without its score. */
+  const readmeTop = (d: string) => {
+    const block = /## 🎯 Top of the stack\n\n([\s\S]*?)\n\n/.exec(file(d, 'README.md'))![1].split('\n');
+    return /^\s*- (.*?) 🟰 [-\d.]+$/.exec(block[block.length - 1])![1];
+  };
+  const ranks = () => {
+    const d = repo();
+    stack(d, 'add', 'alpha', 'Low 🔻');
+    stack(d, 'add', 'alpha', 'High 🚨 ⬆️');
+    mkdirSync(join(d, '.stack'), { recursive: true });
+    writeFileSync(join(d, '.stack/priorities.json'), JSON.stringify({ rules: [{ match: 'Low', effect: 'top' }] }));
+    expect(stack(d, 'update', '--now', NOW).code).toBe(0);
+    return d;
+  };
+  it.each([
+    ['start'], ['complete'], ['skip'],
+  ])('update then %s with no ref acts on the README top row', (cmd) => {
+    const d = ranks();
+    const top = readmeTop(d);
+    expect(stack(d, 'next', '--now', NOW).out).toContain(top);
+    const r = stack(d, cmd, '--now', NOW, '--no-update', '--json');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out).before).toContain(top);
+  });
+});
+
 // Legacy parity: every legacy mutator ran Update-StackSummary; the parity run showed Stack start/complete/skip leaving stale summaries
 // and unswept due dates (a 📅 Nov 2 row kept ‼️ where legacy wrote 🚨).
 // @req FR:cli/cmd.refresh
