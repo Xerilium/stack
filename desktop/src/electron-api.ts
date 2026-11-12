@@ -46,6 +46,8 @@ export interface WebContentsLike {
   on(event: 'will-navigate' | 'will-redirect', fn: (e: PreventableEvent, url: string) => void): unknown;
   setWindowOpenHandler(fn: (details: { url: string }) => { action: 'deny' } | { action: 'allow' }): void;
   session: SessionLike;
+  /** The page as an image (Electron `capturePage`). @req FR:feedback-button/store.capture */
+  capturePage?(): Promise<{ toPNG(): Buffer; isEmpty?(): boolean }>;
 }
 
 export interface WindowLike {

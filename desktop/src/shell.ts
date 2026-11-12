@@ -9,6 +9,7 @@ import { badgeTip, needsYouCount } from './badge';
 import type { HostHandle } from './host';
 import type { AppUpdater } from '../../src/core/app-update';
 import { harden, windowOptions } from './policy';
+import { setPageCapture } from '../../src/core/feedback';
 
 /** @req FR:desktop-shell/hotkey.register */
 export const HOTKEY = 'CommandOrControl+Shift+Space';
@@ -86,6 +87,8 @@ export function createShell(deps: ShellDeps): Shell {
     w.on('close', (e: PreventableEvent) => { if (!stopping) { e.preventDefault(); w.hide(); } });
     void w.loadURL(host!.url);
     win = w;
+    // The feedback route captures this window in-process; no renderer bridge. @req FR:feedback-button/store.capture
+    setPageCapture(async () => { if (w.isDestroyed() || !w.webContents.capturePage) return null; const img = await w.webContents.capturePage(); return img.isEmpty?.() ? null : img.toPNG(); });
     return w;
   };
   const show = () => { if (!host) { showPending = true; return; } const w = window(); w.show(); w.focus(); };

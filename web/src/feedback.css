@@ -1,0 +1,20 @@
+/* Feedback icon and panel. Uses the app tokens (styles.css). @req FR:feedback-button/ui.icon @req FR:feedback-button/ui.panel */
+.fb-btn { display: inline-flex; align-items: center; justify-content: center; min-width: var(--tap); min-height: var(--tap); padding: 0 8px; border: 0; border-radius: var(--r-row); background: transparent; color: var(--ink2); cursor: pointer; transition: background var(--t-feedback) var(--ease), color var(--t-feedback) var(--ease); }
+.rail .fb-btn { align-self: flex-start; min-height: 36px; margin: 0 2px; }
+.fb-btn:hover { background: var(--hover); color: var(--ink); }
+.fb-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.fb-btn .fb-ic { flex: none; }
+.phone-brand .fb-btn.compact { margin-left: auto; color: var(--ink); }
+.phone-brand .chip.unsaved + .fb-btn.compact, .phone-brand .fb-btn.compact + .prs-btn.compact { margin-left: 4px; }
+.fb-panel { display: flex; flex-direction: column; gap: var(--s-12); width: min(440px, calc(100vw - 32px)); }
+.fb-panel .dialog-title { margin: 0; }
+.fb-text { width: 100%; box-sizing: border-box; min-height: 112px; resize: vertical; padding: 10px 12px; font: inherit; font-size: var(--fs-secondary); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-row); }
+.fb-text:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: transparent; }
+.fb-shot { display: flex; align-items: center; gap: var(--s-8); min-height: var(--tap); font-size: var(--fs-secondary); color: var(--ink2); cursor: pointer; }
+.fb-shot input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.fb-err { margin: 0; color: var(--warn); font-size: var(--fs-caption); }
+.fb-actions { display: flex; justify-content: flex-end; }
+.fb-actions .btn { min-height: var(--tap); padding: 0 var(--s-24); }
+.fb-sent { margin: 0; padding: var(--s-8) 0; text-align: center; font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+@media (max-width: 719px) { .fb-scrim:has(.fb-panel) { align-items: flex-start; padding-top: 8px; } }
+@media (prefers-reduced-motion: reduce) { .fb-btn { transition: none; } }

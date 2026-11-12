@@ -56,7 +56,7 @@ function takeOver(lockFile: string, staleMs: number): boolean {
 }
 
 /** Writes `text` to `file` atomically: a temp file in the same folder, then a rename. Mode 0600. */
-export function writeAtomic(file: string, text: string): void {
+export function writeAtomic(file: string, text: string | Buffer): void {
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmp, text, { mode: 0o600 });
   renameSync(tmp, file);

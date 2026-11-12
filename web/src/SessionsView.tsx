@@ -17,6 +17,7 @@ import { groupByProject, orderWithPins, type Pins } from './pins';
 import { barWidths, dayLabel, fmtTokens, groupTurns, localDay, orderSessions, priceLine, rowOf, scopeSessions, splitSessions, usageStrip, type Line, type SessionItem } from './sessions';
 import { matchAgent, nameKey, rollupOf, type TeamAgent } from './team';
 import type { Sessions } from './useSessions';
+import { feedbackActive } from './FeedbackPanel';
 import './sessions.css';
 
 const TOP = 20;
@@ -282,7 +283,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
 
   // Keys act on this render's state, not the state of the render whose effect last registered the listener.
   const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || feedbackActive()) return; // @req FR:feedback-button/ui.a11y
       const k = e.key;
       if (k === 'Escape' && modal) { e.preventDefault(); close(); return; }
       if (isTyping(e.target)) return;
