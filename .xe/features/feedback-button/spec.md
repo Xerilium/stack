@@ -35,7 +35,7 @@ Send feedback on the app from the app. One line lands in a local file. An agent 
 
 ### FR:store: Store
 
-- **FR:store.path** (P1): `<STACK_HOME or ~/.stack>/feedback.jsonl`; screenshots at `feedback/<id>.png`. Files 0600, folders 0700
+- **FR:store.path** (P1): `<STACK_HOME or ~/.stack>/feedback.jsonl`; screenshots at `feedback/<id>.png`. Files 0600, folders 0700. Demo mode writes the live store too: feedback is about the app, and the agent must see it
 - **FR:store.line** (P1): One JSON object per line: `{id, at, text, route?, viewport?, theme?, appVersion?, sha?, screenshotPath?}`. Append-only. `id` sorts by time
 - **FR:store.atomic** (P1): Each append holds `feedback.lock` and writes the whole line in one `write` (O_APPEND), so a tailing reader never sees a partial line. A short write is an error. The PNG is written (temp file and rename) before its line and removed when the line fails
 - **FR:store.redact** (P1): Token-like strings (Stack `stk_`, GitHub, Anthropic/OpenAI, Slack, AWS, JWT, bearer, `key=value` secrets) in `text` and every query string in `route` (also inside the hash) are removed before the write. No headers, cookies or tokens are stored

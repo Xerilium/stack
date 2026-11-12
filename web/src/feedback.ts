@@ -35,6 +35,8 @@ export async function startShot(): Promise<(() => Promise<string | null>) | null
       video.muted = true;
       video.srcObject = stream;
       await video.play();
+      // A fresh frame, taken after the panel hid.
+      await new Promise<void>((r) => { const v = video as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => void }; if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(() => r()); else requestAnimationFrame(() => r()); });
       for (const max of FIT_WIDTHS) {
         const scale = Math.min(1, max / (video.videoWidth || max));
         const c = document.createElement('canvas');

@@ -29,8 +29,10 @@ export function FeedbackButton({ compact = false }: { compact?: boolean }) {
 export function FeedbackHost({ api }: { api: Client }) {
   const [phase, setPhase] = useState<Phase>('closed');
   const from = useRef<HTMLElement | null>(null);
+  const phaseRef = useRef<Phase>('closed');
+  phaseRef.current = phase;
   useEffect(() => {
-    openFn = (el) => { from.current = el ?? document.querySelector<HTMLElement>('.fb-btn:not(.compact)'); setPhase('open'); };
+    openFn = (el) => { if (phaseRef.current !== 'closed') return; from.current = el ?? document.querySelector<HTMLElement>('.fb-btn:not(.compact)'); setPhase('open'); };
     const on = (e: KeyboardEvent) => {
       if (e.key !== 'F' || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
