@@ -573,17 +573,19 @@ export function webReportStore(live: boolean, home: string): ReportStore | undef
  * `stack web`: the real server when a repo is known, else the first-run setup server; setup restarts it on the same port.
  * @req FR:cli/web.@cli @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live @req FR:first-run-onboarding/host.setup
  */
-async function web(f: Record<string, string | true>, io: IO, found: string | null, home: string): Promise<number> {
+async function web(f: Record<string, string | true>, io: IO, discover: () => string | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
   // Flags win over discovery, and discovery over user config; config is read again on every restart (setup writes it).
-  const spec = () => { const c = userConfig(home); return flag(f, 'repo') ?? found ?? c.repo ?? c.dir; };
+  const spec = () => { const c = userConfig(home); return flag(f, 'repo') ?? discover() ?? c.repo ?? c.dir; };
   let reset = f['reset'] === true;
   const startReal = async (p: number, setup: SetupHandler) => {
     const cfg = userConfig(home);
     const repo = resolveRepo(spec()!, join(home, '.config/stack/clones'));
-    const live = f['live'] === true || cfg.mode === 'live';
+    // A mode picked in setup wins over --live: the page promised Demo never writes the repo. @req FR:first-run-onboarding/step.mode
+    const picked = (cfg as { onboarding?: unknown }).onboarding !== undefined && (cfg.mode === 'live' || cfg.mode === 'demo');
+    const live = picked ? cfg.mode === 'live' : f['live'] === true || cfg.mode === 'live';
     let target: string; let info: RepoInfo; let label: string; let storage: BatchedGitStorage | undefined;
     if (live) {
       // @req FR:cli/web.live @req FR:cli/web.batch @req FR:cli/web.batch.idle @req FR:cli/web.batch.zero
@@ -644,7 +646,8 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     const explicit = flag(p.flags, 'dir');
     const found = explicit ? null : findStackDir({ cwd: process.cwd(), env: process.env, home });
     const dir = resolve(explicit ?? found ?? process.cwd());
-    if (p.command === 'web') return await web(p.flags, io, explicit ?? found, home);
+    // Discovery runs again on every setup restart: the repo setup saves must win over the one found at startup.
+    if (p.command === 'web') return await web(p.flags, io, () => explicit ?? findStackDir({ cwd: process.cwd(), env: process.env, home }), home);
     if (p.command === 'graph') return await graphCmd(p.positionals[0], p.flags, io, json);
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
     // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report

@@ -206,7 +206,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
         const path = (req.url ?? '/').split('?')[0];
         // @req FR:cli/web.serve.local
-        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents }), 'application/json');
+        if (path === '/.auth/me') return send(200, JSON.stringify({ clientPrincipal: { userDetails: who, identityProvider: 'local', userRoles: ['authenticated'] }, local: o.info ?? null, events: watcher.active(), agents: !!agents, ...(o.setup?.status().needed ? { setup: true } : {}) }), 'application/json');
         // @req FR:first-run-onboarding/host.live
         if (o.setup && path === '/setup') { await serveSetup(o.setup, req, res, extra); return; }
         if (path === '/.auth/logout') return send(302, '', 'text/plain', { location: '/' });

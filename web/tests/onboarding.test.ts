@@ -1,8 +1,8 @@
 /** @req FR:first-run-onboarding/web.gate @req FR:first-run-onboarding/state.status @req FR:first-run-onboarding/host.apply @req FR:first-run-onboarding/step.max */
 import { describe, expect, it } from 'vitest';
-import { icsOk, wantsSetup, isLocalHost, loadSetup, parseSetup, postStep, prevStep, STEP_IDS, stepLine, TITLES, waitForHost, type Fetch } from '../src/onboarding';
+import { authSaysSetup, icsOk, wantsSetup, isLocalHost, loadSetup, parseSetup, postStep, prevStep, STEP_IDS, stepLine, TITLES, waitForHost, type Fetch } from '../src/onboarding';
 
-const status = { needed: true, reason: 'no-repo', step: 'repo', steps: STEP_IDS, repo: null, mode: 'demo', calendar: false, email: false, signIn: 'stack graph login' };
+const status = { needed: true, reason: 'no-repo', step: 'repo', steps: STEP_IDS, repo: null, mode: 'demo', calendar: false, email: false, signIn: 'stack graph login', repoEnv: false };
 const reply = (body: unknown, init: { status?: number; type?: string } = {}) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status: init.status ?? 200, headers: { 'content-type': init.type ?? 'application/json' } });
 
 describe('onboarding', () => {
@@ -36,6 +36,11 @@ describe('onboarding', () => {
     expect(wantsSetup(doc(true), 'localhost')).toBe(true);
     expect(wantsSetup(doc(false), 'localhost')).toBe(false);
     expect(wantsSetup(doc(true), 'stack.example.com')).toBe(false);
+  });
+  it('authSaysSetup: only setup: true', async () => {
+    expect(await authSaysSetup(async () => reply({ setup: true }))).toBe(true);
+    expect(await authSaysSetup(async () => reply({ clientPrincipal: {} }))).toBe(false);
+    expect(await authSaysSetup(async () => { throw new Error('x'); })).toBe(false);
   });
   it('postStep: returns the restart flag or the error line', async () => {
     const calls: { url: string; init?: RequestInit }[] = [];

@@ -20,7 +20,7 @@ export type UserCfg = Record<string, unknown> & { repo?: string; dir?: string; m
 export type Reason = 'no-repo' | 'empty' | 'resume' | 'broken' | null;
 export interface SetupStatus {
   needed: boolean; reason: Reason; step: StepId; steps: readonly StepId[];
-  repo: string | null; mode: 'demo' | 'live'; calendar: boolean; email: boolean; signIn: string; error?: string;
+  repo: string | null; /** The repo comes from STACK_REPO or STACK_DIR, which win over what setup saves. */ repoEnv: boolean; mode: 'demo' | 'live'; calendar: boolean; email: boolean; signIn: string; error?: string;
 }
 
 const cfgPath = (home: string) => join(home, '.config/stack/config.json');
@@ -64,7 +64,7 @@ export function setupStatus(o: { cfg: UserCfg; env: NodeJS.ProcessEnv; dir: stri
   const step: StepId = reason === 'broken' || reason === 'no-repo' ? 'repo' : isStep(ob?.step) ? ob.step : 'repo';
   return {
     needed: reason !== null, reason, step, steps: STEPS,
-    repo: spec ? redact(spec) : null, mode: o.cfg.mode === 'live' ? 'live' : 'demo',
+    repo: spec ? redact(spec) : null, repoEnv: !!(o.env.STACK_REPO || o.env.STACK_DIR), mode: o.cfg.mode === 'live' ? 'live' : 'demo',
     calendar: !!(o.env.STACK_CALENDAR_ICS || o.cfg.ics || o.env.STACK_CALENDAR_FIXTURE), email: o.email, signIn: SIGN_IN,
     ...(o.error ? { error: o.error } : {}),
   };
@@ -103,8 +103,9 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
       const raw = typeof b.repo === 'string' ? b.repo.trim() : '';
       if (!raw || raw.length > 2048) return fail('Type a folder path or a git url.');
       if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !isUrl(raw)) return fail('Use an https, ssh, file, or git@ url.');
-      let value = raw;
-      if (!isUrl(raw)) {
+      // The page shows the url redacted; sending it back unchanged keeps the saved url and its credentials.
+      let value = cfg.repo && raw === redact(cfg.repo) ? cfg.repo : raw;
+      if (!isUrl(value)) {
         value = resolve(raw.replace(/^~(?=$|[/\\])/, o.home));
         if (!existsSync(value) || !statSync(value).isDirectory()) return fail(`Folder not found: ${value}`);
         if (!insideGit(value)) return fail(`${value} is not a git repo. Run git init there first.`);
@@ -121,7 +122,7 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
       const was = cfg.mode === 'live' ? 'live' : 'demo';
       if (b.mode === 'demo') {
         if (noTasks) return fail('This repo has no tasks/ folder, so there is nothing to copy. Pick Live to start a new list here.');
-        return save({ mode: undefined }, was !== 'demo');
+        return save({ mode: 'demo' }, was !== 'demo');
       }
       if (b.ack !== true) return fail('Check "I understand" to use Live.');
       if (noTasks) mkdirSync(join(local, 'tasks'));
@@ -257,7 +258,7 @@ export interface LocalHost extends LocalServer { /** Resolves when restarts aske
 export async function runLocal(o: RunLocalOpts): Promise<LocalHost> {
   let cur: LocalServer | undefined; let port = o.port; let dir: string | null = null; let error: string | undefined;
   let chain: Promise<void> = Promise.resolve(); let closed = false;
-  const setup = createSetup({ home: o.home, env: o.env, spec: o.spec, dir: () => dir, error: () => error, restart: () => { chain = chain.then(reboot, reboot); } });
+  const setup = createSetup({ home: o.home, env: o.env, spec: o.spec, dir: () => dir, error: () => error, restart: () => { chain = chain.then(reboot).catch((e: unknown) => o.log(`setup: restart failed (${redact(e instanceof Error ? e.message : String(e))})`)); } });
   const boot = async () => {
     error = undefined; dir = null; cur = undefined;
     const spec = o.spec();

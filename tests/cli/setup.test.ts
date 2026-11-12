@@ -72,7 +72,8 @@ describe('setupStatus', () => {
   // @req FR:first-run-onboarding/state.status
   it('redacts credentials in the repo url and reports calendar and email', () => {
     const s = setupStatus({ env: { STACK_CALENDAR_ICS: 'https://x.test/a.ics' }, email: true, cfg: { repo: 'https://me:tok@github.com/o/r.git', mode: 'live' }, dir: null });
-    expect(s).toMatchObject({ repo: 'https://github.com/o/r.git', mode: 'live', calendar: true, email: true });
+    expect(s).toMatchObject({ repo: 'https://github.com/o/r.git', repoEnv: false, mode: 'live', calendar: true, email: true });
+    expect(setupStatus({ ...base, env: { STACK_REPO: '/r' }, cfg: {}, dir: null }).repoEnv).toBe(true);
     expect(setupStatus({ ...base, cfg: { ics: 'https://x.test/a.ics' }, dir: null }).calendar).toBe(true);
   });
 });
@@ -93,6 +94,12 @@ describe('applySetup', () => {
     expect(applySetup({ home, env, body: { step: 'repo', repo: 'ftp://x/y' } })).toMatchObject({ ok: false });
   });
   // @req FR:first-run-onboarding/step.repo
+  it('repo: the redacted url sent back unchanged keeps the saved url', () => {
+    const home = tmp(); writeConfig(home, { repo: 'https://me:tok@github.com/o/r.git' });
+    expect(applySetup({ home, env, body: { step: 'repo', repo: 'https://github.com/o/r.git' } })).toEqual({ ok: true, restart: false });
+    expect(readConfig(home).repo).toBe('https://me:tok@github.com/o/r.git');
+  });
+  // @req FR:first-run-onboarding/step.repo
   it('repo: expands ~ to the home folder', () => {
     const home = tmp(); const r = join(home, 'tasks-repo'); mkdirSync(r); git(r, 'init', '-q');
     expect(applySetup({ home, env, body: { step: 'repo', repo: '~/tasks-repo' } })).toMatchObject({ ok: true });
@@ -104,7 +111,7 @@ describe('applySetup', () => {
     applySetup({ home, env, body: { step: 'repo', repo } });
     expect(applySetup({ home, env, body: { step: 'mode', mode: 'demo' } })).toEqual({ ok: true, restart: false });
     expect(readConfig(home)).toMatchObject({ onboarding: { step: 'calendar' } });
-    expect(readConfig(home)).not.toHaveProperty('mode');
+    expect(readConfig(home).mode).toBe('demo');
     expect(applySetup({ home, env, body: { step: 'mode', mode: 'live' } })).toMatchObject({ ok: false, error: expect.stringMatching(/I understand/) });
     expect(applySetup({ home, env, body: { step: 'mode', mode: 'live', ack: true } })).toEqual({ ok: true, restart: true });
     expect(readConfig(home).mode).toBe('live');
@@ -183,6 +190,7 @@ describe('setup server', () => {
     try {
       expect(await (await fetch(`${s.url}/setup`)).json()).toMatchObject({ needed: true, reason: 'empty' });
       expect(await (await fetch(s.url)).text()).toContain('<meta name="stack-setup" content="1">');
+      expect(await (await fetch(`${s.url}/.auth/me`)).json()).toMatchObject({ setup: true });
       expect(await (await post(s.url, { step: 'repo', repo })).json()).toMatchObject({ restart: false, status: { step: 'mode' } });
     } finally { await s.close(); }
   });
@@ -205,7 +213,7 @@ describe('runLocal', () => {
       expect(started).toEqual([Number(port)]);
       expect(new URL(h.url).port).toBe(port);
       const me = await (await fetch(`${h.url}/.auth/me`)).json() as { setup?: boolean };
-      expect(me.setup).toBeUndefined(); // the real server now
+      expect(me.setup).toBe(true); // the real server now, flow still in progress
       expect(await (await fetch(h.url)).text()).toContain('<meta name="stack-setup"'); // flow still in progress
       expect(await (await fetch(`${h.url}/setup`)).json()).toMatchObject({ needed: true, reason: 'resume', step: 'mode' });
     } finally { await h.close(); }

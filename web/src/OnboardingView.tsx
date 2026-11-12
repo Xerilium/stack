@@ -50,8 +50,8 @@ export function Onboarding({ initial, fetch: f = (u, i) => fetch(u, i), onDone }
         <form class="ob-form" onSubmit={(e) => { e.preventDefault(); void send({ step: 'repo', repo }); }}>
           <p class="ob-lede">Stack keeps tasks as markdown files in a git repo. Point it at yours.</p>
           <label class="ob-label" for="ob-repo">Folder path or git url</label>
-          <input id="ob-repo" class="ob-input" type="text" autoComplete="off" spellcheck={false} autoCapitalize="off" placeholder="~/tasks or https://github.com/you/tasks.git" value={repo} onInput={(e) => setRepo((e.target as HTMLInputElement).value)} aria-describedby="ob-repo-hint" aria-invalid={!!error} />
-          <p class="ob-hint" id="ob-repo-hint">{s.repo ? <>Now set to <code>{s.repo}</code>. Continue to keep it.</> : 'A folder on this computer that is a git repo, or a url to clone.'}</p>
+          <input id="ob-repo" class="ob-input" type="text" readOnly={s.repoEnv} autoComplete="off" spellcheck={false} autoCapitalize="off" placeholder="~/tasks or https://github.com/you/tasks.git" value={repo} onInput={(e) => setRepo((e.target as HTMLInputElement).value)} aria-describedby="ob-repo-hint" aria-invalid={!!error} />
+          <p class="ob-hint" id="ob-repo-hint">{s.repoEnv ? <>Set by <code>STACK_REPO</code> or <code>STACK_DIR</code>. Change it there.</> : s.repo ? <>Now set to <code>{s.repo}</code>. Continue to keep it.</> : 'A folder on this computer that is a git repo, or a url to clone.'}</p>
           {errLine}
           <div class="ob-actions">{backBtn}<button type="submit" class="ob-btn primary" disabled={working || !repo.trim()}>Continue</button></div>
         </form>

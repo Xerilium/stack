@@ -10,14 +10,15 @@
 /* +30m sits beside the "don't fit" summary, not inside it. */
 .nofit-wrap { position: relative; }
 .nofit-more { position: absolute; right: 0; top: 22px; z-index: 1; }
+.nofit-wrap .nofit-head { padding-right: 96px; } /* the summary never runs under the button */
 
 /* Muted text and the active tab on the soft accent (cursor row, active tab) clear 4.5:1. */
-.tab.on, .row.cursor { --muted: #5d5d65; }
-.tab.on { color: #4a4ed6; }
+:root { --muted-on-soft: #5d5d65; --accent-on-soft: #4a4ed6; }
+.tab.on, .row.cursor { --muted: var(--muted-on-soft); }
+.tab.on { color: var(--accent-on-soft); }
 .tab.on kbd { color: inherit; }
 @media (prefers-color-scheme: dark) {
-  .tab.on, .row.cursor { --muted: #a0a0a8; }
-  .tab.on { color: var(--accent); }
+  :root { --muted-on-soft: #a0a0a8; --accent-on-soft: var(--accent); }
 }
 
 /* Touch: every control a finger must hit is at least 44 px tall. Text controls in rows grow their hit area, not the row. */
@@ -25,7 +26,7 @@
   .step, .tick, .main .chip, .more, .quiet-toggle, .main .btn, .section > button, .ob-btn { min-height: var(--tap); min-width: var(--tap); }
   .tick { display: inline-grid; place-items: center; }
   .main .chip, .more, .section > button, .main .btn { display: inline-flex; align-items: center; justify-content: center; }
-  .proj-link, .quiet-link { display: inline-block; padding-block: 12px; margin-block: -12px; min-height: var(--tap); position: relative; z-index: 1; }
+  .proj-link, .quiet-link { display: inline-block; padding-block: 12px; margin-block: -12px; min-height: var(--tap); }
 }
 
 /* Desktop: 24 px minimum (WCAG 2.2 2.5.8). Small controls grow their box, not the row. */

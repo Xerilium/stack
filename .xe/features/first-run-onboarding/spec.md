@@ -39,8 +39,8 @@ A new owner opens `stack web` or the desktop app with no content repo set. Today
 
 ### FR:step: Steps
 
-- **FR:step.repo** (P1): The owner types a local path or a git url, or confirms the repo already set. A path must be a folder in a git repo. A git url must start with `https://`, `ssh://`, `file://` or `git@`. A bad value gives one plain error line and stays on the step.
-- **FR:step.mode** (P1): Two choices: `Demo` (default, a copy; the repo is never written) and `Live`. Live shows: "Live edits your repo. Stack writes task files in `tasks/`, commits them, and pushes to your remote." The owner must check "I understand" before Live continues.
+- **FR:step.repo** (P1): The owner types a local path or a git url, or confirms the repo already set. A path must be a folder in a git repo. A git url must start with `https://`, `ssh://`, `file://` or `git@`. A bad value gives one plain error line and stays on the step. The saved url shows redacted; sending it back unchanged keeps the saved url. When `STACK_REPO` or `STACK_DIR` is set, the field is read only and says so.
+- **FR:step.mode** (P1): Two choices: `Demo` (default, a copy; the repo is never written) and `Live`. Live shows: "Live edits your repo. Stack writes task files in `tasks/`, commits them, and pushes to your remote." The owner must check "I understand" before Live continues. A mode picked here wins over `stack web --live`.
 - **FR:step.mode.tasks** (P2): Live on a repo with no `tasks/` folder creates an empty `tasks/` folder. Demo on such a repo is an error that names Live as the fix.
 - **FR:step.calendar** (P2): Optional. The owner pastes a published ICS link (`https:` or `webcal:`). It is saved as `ics` in the user config and used when `STACK_CALENDAR_ICS` is not set. Skip is always there.
 - **FR:step.email** (P2): Optional. Shows the sign-in command `stack graph login --client-id <app id> --with calendar,mail,drafts` with a Copy button, and says: "Stack reads mail and writes reply drafts. It never sends mail." It shows `Signed in` when a Graph token cache exists. Skip is always there.
@@ -49,14 +49,14 @@ A new owner opens `stack web` or the desktop app with no content repo set. Today
 
 ### FR:host: Hosts
 
-- **FR:host.setup** (P1): With no repo, `stack web` and the desktop app start a setup server instead of failing: loopback only, the same guards as `stack web` (`FR:cli/web.serve.loopback`), the built web app, `/.auth/me` (`local: null, setup: true`), and `/setup`.
+- **FR:host.setup** (P1): With no repo, `stack web` and the desktop app start a setup server instead of failing: loopback only, the same guards as `stack web` (`FR:cli/web.serve.loopback`), the built web app, `/.auth/me` (`local: null, setup: true`), and `/setup`. The page carries the setup tag (`FR:web.gate`).
 - **FR:host.apply** (P1): `POST /setup` takes `{ step, repo?, mode?, ack?, ics?, skip? }`, validates it, and saves it. A change to the repo, the mode, or the calendar restarts the host on the same port. The reply says `restart: true`; the page waits for the host and reloads.
 - **FR:host.broken** (P1): A host that fails to start with the saved repo falls back to the setup server at the Repo step with a plain error line, instead of quitting.
-- **FR:host.live** (P1): The live server also answers `/setup` and adds `setup: true` to `/.auth/me` while the flow is needed, so an empty repo or a flow in progress continues in the app.
+- **FR:host.live** (P1): The live server also answers `/setup`, so an empty repo or a flow in progress continues in the app. While the flow is needed it marks the page (`FR:web.gate`).
 
 ### FR:web: Page
 
-- **FR:web.gate** (P1): On a loopback host the page reads `/.auth/me` first. Only `setup: true` there makes it read `/setup`; `needed: true` shows the flow. Anything else (no flag, not JSON, network error) shows the app, and no request 404s on a host without setup.
+- **FR:web.gate** (P1): While the flow is needed, the local host adds `<meta name="stack-setup">` to the page and `setup: true` to `/.auth/me`. A page with the tag reads `/setup` before it draws; a page without it shows the app at once and, on a loopback host, still checks `/.auth/me` (a page from the service worker cache can lack the tag). `needed: true` from `/setup` shows the flow; anything else shows the app. A normal start makes no extra request that can 404.
 - **FR:web.a11y** (P1): Each step has one `h1`, labeled inputs, a visible focus ring, and errors in `role="alert"`. axe finds no serious or critical issue at 375 x 812 and 1280 x 800, light and dark.
 - **FR:web.phone** (P1): At 375 px nothing scrolls sideways and every control is at least 44 px tall.
 
