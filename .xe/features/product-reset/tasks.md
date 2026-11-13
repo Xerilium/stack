@@ -27,7 +27,7 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 - [ ] Move `ownerOf` to `src/core/agents.ts` (`FR:schema.agent`)
 - [ ] `GET /tasks` summary fields; `GET /tasks/{ref}?view=full`; openapi (`FR:api.summary`, `FR:api.full`)
 - [ ] Agent delivery sends `TaskFull` (`FR:connect.agents`)
-- [ ] Moved refs (`FR:api.moved`)
+- [ ] Write preconditions and moved refs (`FR:api.expect`, `FR:api.moved`)
 
 ## Stage 3: quality-gate
 

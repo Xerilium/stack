@@ -261,7 +261,8 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
   - The `blocks` parameter keeps its meaning: it controls schedule time blocks, not task blockers. Rows with an open `Blocked by:` stay out of the list in both `blocks=now` and `blocks=any`.
   - The defaults are `owner=me`, `quality=actionable`, `blocks=now`.
 - **FR:api.enrich** (P1): `POST /tasks/{ref}/enrich` sends the `enrich` message (`FR:quality.enrich`) and returns the thread message id. `POST /tasks/enrich` with `{refs}` does a bulk enrich (`FR:quality.enrich.batch`).
-- **FR:api.moved** (P2): When a ref no longer points at its row, the server looks for a row with the same text and the same ancestor titles in the same file. It acts only when exactly one row matches. With no match or more than one, the response is `404` with code `moved`, and the page shows `This task moved or is done` and a link to Tasks.
+- **FR:api.expect** (P1): Each request that changes a task sends `expect: { text, ancestors }`, copied from the `text` and ancestor titles of its last read. Before it writes, the server compares them with the row at the ref. When they differ, it never writes that row; it runs `FR:api.moved` with the expected values. The UI and the CLI always send `expect`.
+- **FR:api.moved** (P2): When a ref no longer points at its row (`FR:api.expect` fails), the server looks for a row with the expected text and the same ancestor titles in the same file. It acts only when exactly one row matches. With no match or more than one, the response is `404` with code `moved`, and the page shows `This task moved or is done` and a link to Tasks.
 - **FR:cli.check** (P1): `stack task check <ref>` prints the quality score and the missing checks. It exits 0 at score 4, else 1. Agents use it; the owner never sees it.
 
 ### FR:ui: One component set
