@@ -2,7 +2,7 @@
 id: connect-accounts
 title: Connect Accounts (Outlook and Microsoft 365)
 author: flanakin
-description: "In-app Connect for Outlook.com and Microsoft 365: browser sign-in, read-only by default, one live calendar, honest errors."
+description: "In-app Connect for Outlook.com and Microsoft 365: browser sign-in, read-only by default, live calendar, honest errors."
 dependencies:
   [
     graph-signin,
