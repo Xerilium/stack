@@ -23,7 +23,7 @@ const hold = { author: 'flanakin', body: 'Hold until I test it live', url: 'http
 // @req FR:pr-page/card.action
 describe('signoffThreads: threads where I asked to wait', () => {
   it('my human hold, wait, or ack phrase on an unresolved thread', () => {
-    for (const body of ['Hold until I test it live', 'Please wait for my ack', 'wait', 'Do not merge yet', "Don't merge until I check", 'Ack first please', 'Until I ack this, leave it']) {
+    for (const body of ['Hold until I test it live', 'Please wait for my ack', 'wait until I look', 'Do not merge yet', "Don't merge until I check", 'Ack first please', 'Until I ack this, leave it']) {
       expect(signoffThreads(pr({ threads: [T({ comments: [{ ...hold, body }] })] }), ctx())).toHaveLength(1);
     }
   });
@@ -32,6 +32,7 @@ describe('signoffThreads: threads where I asked to wait', () => {
     expect(signoffThreads(pr({ threads: [T({ comments: [{ ...hold, author: 'roland' }] })] }), ctx())).toHaveLength(0);
     expect(signoffThreads(pr({ threads: [T({ resolved: true, comments: [hold] })] }), ctx())).toHaveLength(0);
     expect(signoffThreads(pr({ threads: [T({ comments: [{ ...hold, body: 'Rename this' }] })] }), ctx())).toHaveLength(0);
+    expect(signoffThreads(pr({ threads: [T({ comments: [{ ...hold, body: 'Wait, why is this here?' }] })] }), ctx())).toHaveLength(0);
   });
   it('a later agent reply keeps it a sign-off: only I can sign off', () => {
     const t = T({ comments: [hold, { author: 'flanakin', body: '🤖 [AI] Fixed in abc', url: 'https://github.com/Xerilium/stack/pull/1#discussion_r10', at: '2026-11-11T10:00:00Z' }] });
@@ -76,6 +77,8 @@ describe('nextActionOf: one action per card, first match wins', () => {
     expect(rowOf(pr({ ...mine, threads: [T({ resolved: true, comments: [{ author: 'x', body: 'y', url: 'u3' }] })] })).nextAction).toBe('autopilot');
     expect(rowOf(pr({ ...mine, threads: [waitsOnMe] })).nextAction).toBe('autopilot');
     expect(rowOf(pr({ ...mine, threads: [waitsOnAgent] })).nextAction).toBeNull();
+    // An agent reply under my login waits for me, not for an agent.
+    expect(rowOf(pr({ ...mine, threads: [T({ comments: [{ author: 'flanakin', body: 'Rename it', url: 'u5' }, { author: 'flanakin', body: '🤖 [AI] Fixed', url: 'u6' }] })] })).nextAction).toBe('autopilot');
     expect(rowOf(pr({ ...mine, threads: [waitsOnMe, { ...waitsOnMe, url: 'u4' }] })).nextAction).toBeNull();
     expect(rowOf(pr({ ...mine, draft: true })).nextAction).toBeNull();
     expect(rowOf(pr({ labels: ['Status: ⏸️ Paused'] })).nextAction).toBeNull();

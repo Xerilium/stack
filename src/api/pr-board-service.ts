@@ -21,7 +21,9 @@ export interface PrBoard {
   truncated?: boolean;
 }
 export interface PrBoardService {
-  get(): Promise<PrBoard>; refresh(): Promise<void>; stop(): void;
+  get(): Promise<PrBoard>;
+  /** Polls now; with `url`, that PR's detail is read again. A poll already running is waited for, then a new one runs. */
+  refresh(url?: string): Promise<void>; stop(): void;
   /** True when the review thread (GraphQL node id) belongs to the PR on the last board. */
   hasThread?(url: string, threadId: string): boolean;
 }
@@ -129,7 +131,12 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
       schedule();
       return build();
     },
-    async refresh() { if (pausedUntil <= now()) await poll(); },
+    async refresh(url) {
+      if (url) o.source.forget?.(url);
+      // A poll that started before this write or tap may miss it: wait for it, then poll again.
+      if (inFlight) await inFlight;
+      if (pausedUntil <= now()) await poll();
+    },
     hasThread(url, threadId) { return !!facts?.find((f) => f.url.toLowerCase() === url.toLowerCase())?.threads?.some((t) => t.nodeId === threadId); },
     stop() { stopped = true; if (timer !== null) timers.clear(timer); timer = null; },
   };

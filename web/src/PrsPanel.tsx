@@ -202,8 +202,11 @@ function Pinned({ rows, c, onMove }: { rows: PrRow[]; c: Ctx; onMove: (r: PrRow,
   useEffect(() => { if (!heldRef.current) setOrder(null); }, [rows]);
   const commit = (id: string, next: string[]) => {
     const r = by.get(id);
-    const res = moveTo(ids, id, next.indexOf(id));
-    if (r && res) onMove(r, res.rank); else setOrder(null);
+    const to = next.indexOf(id);
+    const res = moveTo(ids, id, to);
+    // The queue rank of the card now at that place: a project filter or a pinned PR off the board leaves gaps in the visible list.
+    const rank = by.get(ids[to])?.rank ?? (res ? res.rank : null);
+    if (r && res && rank) onMove(r, rank); else setOrder(null);
   };
   // A moved card loses focus when the list reorders: give it back to the held handle.
   useLayoutEffect(() => {
@@ -346,7 +349,7 @@ function Detail({ r, back, busy, onResolve }: { r: PrRow; back?: () => void; bus
     return (
       <div class="pr-d">
         {head}
-        <p>All threads are clear. Add the Autopilot label on GitHub when it is ready.</p>
+        <p>Every thread is resolved, or only one waits for your reply. Add the Autopilot label on GitHub when it is ready.</p>
         <p><a class="fl-btn primary" href={r.url} {...ext}>Open PR</a></p>
         <h4 class="pr-d-sub">Your earlier comments</h4>
         {notes.length === 0 ? <p class="pr-d-none">No earlier comments from you.</p>

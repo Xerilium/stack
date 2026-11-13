@@ -82,6 +82,8 @@ export const isAutopilot = (pr: PrFacts) => has(pr, LABELS.autopilot);
 export const isWip = (pr: PrFacts) => has(pr, LABELS.wip);
 export const same = (a: string | undefined, b: string | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const isBot = (login: string) => /\[bot\]$/i.test(login);
+/** My words that ask an agent to wait: the Sign-off phrases. A bare "wait" is not one ("Wait, why?"). */
+const WAIT = /\b(hold|on hold|wait (for|until)|my ack|ack first|until i ack|don'?t merge|do not merge)\b/i;
 /** A comment by the owner that no agent wrote (agents post as the owner with a prefix). @req FR:pr-page/group.@function */
 const AGENT = /^\s*(🤖\uFE0F? \[AI\]|⚛\uFE0F? \[Catalyst\])/u;
 export const isHuman = (author: string, body: string, user: string) => same(author, user) && !AGENT.test(body);
@@ -149,7 +151,7 @@ function rawState(pr: PrFacts, ctx: BoardCtx): PrState {
   const compassThread = unresolvedOf(pr).map((t) => ({ ...t, ask: openAsk(t) })).find((x) => x.ask);
   if (compassThread) { const t = firstLine(compassThread.ask!.body.replace(/^\s*(🤖\uFE0F? \[AI\]|⚛\uFE0F? \[Catalyst\])\s*/u, '')); return me(t, compassThread.ask!.url ?? compassThread.url ?? pr.url, bucketOf(t), { key: `t:${compassThread.id ?? compassThread.url}`, ...(compassThread.id ? { replyTo: compassThread.id } : {}) }); }
   // 3. An owner hold on an open thread.
-  const hold = unresolvedOf(pr).find((t) => isHuman(t.lastAuthor, t.lastBody, ctx.user) && /\b(hold|wait for (my )?ack)\b/i.test(t.lastBody));
+  const hold = unresolvedOf(pr).find((t) => isHuman(t.lastAuthor, t.lastBody, ctx.user) && WAIT.test(unquoted(t.lastBody)));
   if (hold) return me(`Sign-off: ${firstLine(hold.lastBody, 100)}`, hold.url ?? pr.url, 'decide', { key: `t:${hold.id ?? hold.url}`, ...(hold.id ? { replyTo: hold.id } : {}) });
   // 4. A workflow run that waits for a maintainer's approval.
   if (pr.checks.some((c) => c.state === 'action')) return me('Approve the workflow run', `${pr.url}/checks`, 'unblock', { key: 'action-required' });
@@ -268,8 +270,7 @@ export type BoardCounts = Record<PrGroup, number>;
 
 // ---- next action, sign-off threads, details @req FR:pr-page/card.action @req FR:pr-page/detail.data
 
-/** My words that ask an agent to wait: the Sign-off phrases. */
-const WAIT = /\b(hold|wait|my ack|ack first|until i ack|don'?t merge|do not merge)\b/i;
+
 const threadComments = (t: PrThread): PrComment[] => (t.comments?.length ? t.comments : [{ author: t.lastAuthor, body: t.lastBody, ...(t.url ? { url: t.url } : {}) }]);
 const askIn = (t: PrThread, user: string): PrComment | undefined => threadComments(t).find((c) => isHuman(c.author, c.body, user) && WAIT.test(unquoted(c.body)));
 
@@ -297,7 +298,8 @@ export function nextActionOf(pr: PrFacts, ctx: BoardCtx, group: PrGroup, live: s
   if (group === 'waiting' && !pr.draft && (ci === 'passing' || ci === 'none') && pr.mergeable !== 'CONFLICTING' && pr.reviews.find((v) => same(v.author, ctx.user))?.state !== 'APPROVED') return 'approve';
   if (same(pr.author, ctx.user) && !isAutopilot(pr) && !has(pr, LABELS.paused) && !pr.draft) {
     const open = unresolvedOf(pr);
-    if (open.length === 0 || (open.length === 1 && !same(open[0].lastAuthor, ctx.user))) return 'autopilot';
+    // One open thread may wait for me (its last comment is not mine; an agent note under my login counts as not mine).
+    if (open.length === 0 || (open.length === 1 && !isHuman(open[0].lastAuthor, open[0].lastBody, ctx.user))) return 'autopilot';
   }
   return null;
 }

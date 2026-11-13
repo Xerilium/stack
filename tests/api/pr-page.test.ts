@@ -139,6 +139,22 @@ describe('GitHub board read', () => {
     expect(p.files).toEqual([{ path: '.xe/features/a/spec.md', additions: 3, deletions: 1 }]);
     expect(p.pendingReview).toEqual({ url: 'https://github.com/o/r/pull/1#pullrequestreview-5', body: 'Draft', comments: [{ path: 'src/a.ts', body: 'Nit' }] });
   });
+  // @req FR:pr-page/api.resolve
+  it('forget(url) reads that PR\'s detail again on the next fetch', async () => {
+    let detailCalls = 0;
+    const f = fakeFetch((c) => {
+      const q = JSON.parse(c.body!).query as string;
+      if (q.includes('search(')) return { body: { data: { a: { nodes: [node(1)] }, b: { nodes: [] }, c: { nodes: [] } } } };
+      detailCalls++;
+      return { body: { data: { p0: { pullRequest: { reviewThreads: { nodes: [] }, comments: { nodes: [] }, commits: { nodes: [] } } } } } };
+    });
+    const g = createGitHubBoard({ token: TOKEN, fetch: f.fetch, user: 'me' });
+    await g.fetch(); await g.fetch();
+    expect(detailCalls).toBe(1);
+    g.forget!('https://github.com/O/r/pull/1');
+    await g.fetch();
+    expect(detailCalls).toBe(2);
+  });
   it('partial data with errors is a failed poll, not an empty board', async () => {
     const part = fakeFetch(() => ({ body: { errors: [{ type: 'NOT_FOUND', message: 'x' }], data: { a: { nodes: [] }, b: null, c: { nodes: [] } } } }));
     await expect(createGitHubBoard({ token: TOKEN, fetch: part.fetch, user: 'me' }).fetch()).rejects.toThrow('GitHub graphql error');
@@ -181,6 +197,9 @@ describe('GitHub writes', () => {
     await expect(w.resolveThread({ repo: 'x/y', number: 1 }, 'PRRT_kw1', true)).rejects.toBeInstanceOf(GitHubWriteDenied);
     const errs = createGitHubWrites({ token: TOKEN, fetch: fakeFetch(() => ({ status: 200, body: { errors: [{ message: TOKEN }] } })).fetch });
     await expect(errs.resolveThread(pr, 'PRRT_kw1', true)).rejects.toThrow(/^GitHub graphql error$/);
+    // A 200 with no JSON body is not a success.
+    const empty = createGitHubWrites({ token: TOKEN, fetch: fakeFetch(() => ({ status: 200 })).fetch });
+    await expect(empty.resolveThread(pr, 'PRRT_kw1', true)).rejects.toThrow(/^GitHub graphql error$/);
     expect(f.calls).toHaveLength(2);
   });
   it('add uses the repo spelling of the label', async () => {
@@ -209,8 +228,8 @@ const facts = (n: number, o: Partial<PrFacts> = {}): PrFacts => ({
   url: `https://github.com/o/r/pull/${n}`, repo: 'o/r', number: n, title: `PR ${n}`, author: 'me', draft: false, createdAt: '2026-11-10T00:00:00Z', updatedAt: '2026-11-11T00:00:00Z',
   headOid: 'abc1234', body: '', labels: ['Status: 🤖 Autopilot'], assignees: [], requested: [], reviews: [], mergeable: 'MERGEABLE', checks: [], threads: [], comments: [], ...o,
 });
-function fakeSource(list: () => PrFacts[] | Error): GitHubBoard & { n: number } {
-  const s = { n: 0, user: async () => 'me', fetch: async () => { s.n++; const r = list(); if (r instanceof Error) throw r; return { user: 'me', facts: r }; } };
+function fakeSource(list: () => PrFacts[] | Error): GitHubBoard & { n: number; forgot: string[] } {
+  const s = { n: 0, forgot: [] as string[], user: async () => 'me', forget: (u: string) => { s.forgot.push(u); }, fetch: async () => { s.n++; const r = list(); if (r instanceof Error) throw r; return { user: 'me', facts: r }; } };
   return s;
 }
 function clock() {
@@ -366,7 +385,7 @@ describe('PR routes', () => {
     const prQueue: PrQueue = { move: async (r, to) => { qCalls.push(`move ${r} ${to}`); }, add: async (r) => { qCalls.push(`add ${r}`); }, pin: async (r) => { qCalls.push(`pin ${r}`); }, unpin: async (r) => { qCalls.push(`unpin ${r}`); }, remove: async (r) => { qCalls.push(`remove ${r}`); }, undo: push('undo'), ack: async (r, t, n) => { qCalls.push(`ack ${r} ${t} ${n}`); }, accept: async (id) => { qCalls.push(`accept ${id}`); }, edit: async (id, d) => { qCalls.push(`edit ${id} ${d.reason}`); }, reject: async (id, why) => { qCalls.push(`reject ${id} ${why}`); } };
     const src = fakeSource(() => [facts(1, { ...(o.labels ? { labels: o.labels } : {}), ...(o.threads ? { threads: o.threads } : {}) }), facts(2)]);
     const prBoard = createPrBoardService({ source: src, now: () => NOW, timers: clock().timers, queue: async () => true, files: () => ({ queue: { items: Object.entries(o.ranks ?? {}).map(([u, rank]) => ({ url: u, rank })) } }) });
-    const prWrites = createGitHubWrites({ token: TOKEN, fetch: fakeFetch((c) => { ghCalls.push(`${c.method} ${c.url}`); return { status: o.ghStatus ?? 200, body: {} }; }).fetch, repos: ['o'] });
+    const prWrites = createGitHubWrites({ token: TOKEN, fetch: fakeFetch((c) => { ghCalls.push(`${c.method} ${c.url}`); return { status: o.ghStatus ?? 200, body: { data: {} } }; }).fetch, repos: ['o'] });
     const deps = { storage: new MemoryStorage(), ...(o.board === false ? {} : { prBoard, prWrites, ...(o.queue === null ? {} : { prQueue: o.queue ?? prQueue }) }) };
     const tokens = createTokenService({ store: new MemoryTokenStore(), now: () => new Date(NOW) });
     const auth = createAuth({ owners: [], tokens });
@@ -475,6 +494,8 @@ describe('PR routes', () => {
     expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_kw1', op: 'resolve' })).json).toEqual({ ok: true, op: 'resolve' });
     expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_kw1', op: 'unresolve' })).status).toBe(200);
     expect(m.ghCalls).toEqual(['POST https://api.github.com/graphql', 'POST https://api.github.com/graphql']);
+    // The PR's cached threads are read again: resolving does not always change updatedAt.
+    expect(m.src.forgot).toEqual(['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/1']);
     expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_other', op: 'resolve' })).status).toBe(404);
     expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 2, thread: 'PRRT_kw1', op: 'resolve' })).status).toBe(404);
     expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_kw1', op: 'merge' })).status).toBe(422);

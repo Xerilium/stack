@@ -367,6 +367,22 @@ test('Pin on every card; Pinned is sorted by drag and by keyboard', async ({ pag
   await expect(pg.getByRole('button', { name: /^Reorder / })).toHaveCount(0);
 });
 
+test('a move under a project filter sends the queue rank of the target place, not the visible place', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'keys are desktop');
+  const b = BOARD();
+  for (const r of b.rows) { if (r.number === 101) Object.assign(r, { pinned: true, rank: 1 }); if (r.number === 1105) Object.assign(r, { pinned: true, rank: 2 }); if (r.number === 109) Object.assign(r, { pinned: true, rank: 3 }); }
+  const { posts } = await setup(page, { board: b });
+  const pg = await openPage(page);
+  await pg.getByRole('button', { name: 'Xerilium', exact: true }).click();
+  await pg.getByRole('tab', { name: /Pinned/ }).click();
+  await expect(pg.locator('.pr-card')).toHaveCount(2);
+  await pg.getByRole('button', { name: 'Reorder Xerilium/stack#101' }).focus();
+  await page.keyboard.press('Space');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Space');
+  await expect.poll(() => posts.filter((p) => p.path === '/prs/queue').map((p) => p.body)).toEqual([{ repo: 'Xerilium/stack', number: 101, op: 'move', rank: 3 }]);
+});
+
 test('no automatic reload; Refresh asks the host to poll; the age ticks', async ({ page }) => {
   await page.clock.install();
   const { gets } = await setup(page);

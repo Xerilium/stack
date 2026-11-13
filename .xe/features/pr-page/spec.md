@@ -26,7 +26,7 @@ The owner has many open PRs across repos. Agents move most of them. He must see,
 - **Me**: a PR author, assignee, reviewer, or comment author that equals the owner (no case).
 - **Human comment**: a comment by me that does not start with `🤖 [AI]` or `⚛️ [Catalyst]`. Agents post as the owner with that prefix.
 - **Labels** (no case; emoji and variation selectors ignored, so `Status: Autopilot 🤖` is the Autopilot label too): Autopilot `Status: 🤖 Autopilot`; WIP `Status: 🚧 WIP`; Paused `Status: ⏸️ Paused`; Needs attention: any label that matches `needs:? attention`.
-- **Sign-off thread**: an unresolved review thread where a human comment of mine asks to wait: it matches `hold`, `wait`, `my ack`, `ack first`, `until I ack`, `don't merge`, or `do not merge` (no case). A thread with an ack of mine (`FR:pr-page/data.report` `acks`, matched on the thread url or one of its comment urls) is also a sign-off thread. The UI calls it `Sign-off`. The UI never uses the words hold, held, escalate, escalation, or blocked.
+- **Sign-off thread**: an unresolved review thread where a human comment of mine asks to wait: it matches `hold`, `on hold`, `wait for`, `wait until`, `my ack`, `ack first`, `until I ack`, `don't merge`, or `do not merge` (no case; a bare `wait` is not one). A thread with an ack of mine (`FR:pr-page/data.report` `acks`, matched on the thread url or one of its comment urls) is also a sign-off thread. The UI calls it `Sign-off`. The UI never uses the words hold, held, escalate, escalation, or blocked.
 - **Live PR**: the one PR that needs live validation. In order: the active PR of the live lane (`FR:pr-review-lane/lane.model`), else the first `liveValidation` entry of the escalation set, else the first row (board order) that is mine, not a draft, and needs live validation (`FR:pr-review-lane/flag.rule` on its labels, body, and changed paths). It must be a board row.
 - **Active agent**: a `running` session in `GET /session-inventory` that links at least one PR whose state is not `MERGED` or `CLOSED`. On a host with no inventory, each board PR with the WIP label counts as one active agent. Choice: the inventory knows which session works which PR; a label is a weaker sign, so it is only the fallback.
 
@@ -58,7 +58,7 @@ The owner needs only his own gates marked as his so that waits on others never l
 - **FR:state.rule** (P1): With no usable report, the first match wins. Michael-only gates (owner `me`):
   1. A Needs attention label: `🧭`, "Needs attention label"
   2. The newest comment or thread reply that holds `🧭` has no later human comment: `🧭`, its first line
-  3. An unresolved thread whose last comment is a human comment that says `hold` or `wait for (my) ack`: `🧭`, "Sign-off: " and the text
+  3. An unresolved thread whose last comment is a human comment with a Sign-off phrase (`Terms`): `🧭`, "Sign-off: " and the text
   4. A check run with conclusion `action_required`: `⛔`, "Approve the workflow run"
 
   Waits on others:
@@ -97,7 +97,7 @@ The owner needs the board to work on first open so that he never sets a token or
 The owner needs near-real-time status so that he never reloads.
 
 - **FR:live.poll** (P1): The host polls GitHub every 45 s (config 30-60 s) while a page holds a lease. `GET /prs` takes or renews a 3-minute lease. With no lease, the host does not poll. A board older than two intervals (a lapsed lease) polls before `GET /prs` answers. `GET /prs?refresh=1` polls before it answers (not during a back-off). Queue, ack, and decision writes change local files only and do not poll GitHub
-- **FR:live.event** (P1): When a poll changes the board, the host sends `change` with kinds `["prs"]` on `/events`. The page does not reload by itself: no timer, no reload on an event, no reload on show. It loads the board once on first open, after each owner action on the page, and when the owner taps Refresh. Signed out, it checks the sign-in every 15 s (`FR:pr-page/auth.state`). Choice: a list that moves while the owner reads it loses his place
+- **FR:live.event** (P1): When a poll changes the board, the host sends `change` with kinds `["prs"]` on `/events`. The page does not reload while open: no timer, no reload on an event or on show. It loads the board when the page or the flyout opens, after each owner action on it, and when the owner taps Refresh. Signed out, it checks the sign-in every 15 s (`FR:pr-page/auth.state`). Choice: a list that moves while the owner reads it loses his place
 - **FR:live.backoff** (P1): A rate-limit answer (HTTP 403 or 429 with `x-ratelimit-remaining: 0` or `retry-after`, or GraphQL `RATE_LIMITED`) pauses polls until the reset time. Fewer than 100 GraphQL points left pauses until `resetAt`. Other errors back off 2x per failure, up to 15 minutes. The last good board stays
 - **FR:live.age** (P1): The page shows `Updated 12 s ago`, from `at`, and ticks while open. When backing off, it shows `Paused until 2:15`. Next to it, one icon button `Refresh pull requests` runs `GET /prs?refresh=1`. It shows a busy state while it runs
 
@@ -135,7 +135,7 @@ The owner needs the PR list one keystroke away on any screen so that he can act 
 
 The owner needs the few PRs that need him, in clear sections, so that he acts without a hunt.
 
-- **FR:summary.@function** (P1): `summaryOf(rows, ctx)` is pure. It returns `{live, signoff, autopilot, missing}`. `live`, `signoff`, and `autopilot` are lists of row urls. `missing` is a list of `{url, reason}`. No url is in two lists
+- **FR:summary.@function** (P1): `summaryOf(rows, ctx)` is pure. It returns `{live, signoff, autopilot, missing}`. `live`, `signoff`, and `autopilot` are lists of row urls. `missing` is a list of `{url, reason}`. No PR is in two of `live`, `signoff`, `autopilot`, and the action lines of `missing`; the live check lines of `missing` name the Live PR
 - **FR:summary.live** (P1): Section `Needs live validation`: exactly the Live PR (`Terms`), or none
 - **FR:summary.signoff** (P1): Section `Needs your sign-off`: up to 3 rows whose next action is `signoff`, in board order
 - **FR:summary.autopilot** (P1): Section `Ready for Autopilot`: up to 3 rows whose next action is `autopilot`. Fewest spec lines first; unknown spec lines last; then board order
@@ -152,7 +152,7 @@ The owner needs one card shape everywhere so that he reads each PR the same way,
   2. `signoff` (`Sign off`): the row has a sign-off thread
   3. `publish` (`Publish review`): I have a pending (not submitted) review on the PR with a body or at least one comment
   4. `approve` (`Approve`): the row is `waiting`, not a draft, CI is `passing` or `none`, no merge conflict, and my latest review is not `APPROVED`
-  5. `autopilot` (`Enable Autopilot`): I am the author, no Autopilot label, no Paused label, not a draft, and either every thread is resolved or exactly one unresolved thread waits for me (its last comment is not mine)
+  5. `autopilot` (`Enable Autopilot`): I am the author, no Autopilot label, no Paused label, not a draft, and either every thread is resolved or exactly one unresolved thread waits for me (its last comment is not a human comment of mine; an agent note under my login waits for me)
   6. Else null
 - **FR:card.color** (P1): The card background shows the owner: my Autopilot PR, my other PR, or someone else's PR. Each has two strengths: strong when the card has a next action, subdued when not. Text on every background meets WCAG AA (4.5:1), light and dark. The color is never the only signal: the author text says the same
 - **FR:card.space** (P1): Cards have at least 12 px between them and 12 px padding inside
@@ -197,7 +197,7 @@ The web page and agents need one owner-only route for the board so that every cl
 - **FR:api.label** (P1): `POST /prs/label` (route `prs.label`) takes `{repo, number, op}`, `op` `add` or `remove`. The label is always Autopilot; no other label can be set
 - **FR:api.ack** (P1): `POST /prs/ack` (route `prs.ack`) takes `{repo, number, thread, note, post?, text?, replyTo?}` (`thread` is a GitHub url). `post` true also posts `text` (must start with `🤖 [AI] `) as a thread reply to `replyTo` (a review comment id), else as a PR comment. The post runs first; a failed post records nothing. After a post, a failed record answers `200` `{posted: true, recorded: false, message}`, so the page closes the sheet and never posts twice. With no post, a missing queue answers `409`. A thread link `#discussion_r<id>` gives `replyTo`
 - **FR:api.rec** (P1): `POST /prs/recs/{id}` (route `prs.rec`) takes `{decision, rank?, note?, reason?}`: `accept` runs `accept <id>`, `edit` runs `edit <id> --reason [--rank] [--note]`, `reject` runs `reject <id> --reason`. Edit and Reject need a reason
-- **FR:api.resolve** (P1): `POST /prs/resolve` (route `prs.resolve`, scope `tasks:write`) takes `{repo, number, thread, op}`. `thread` is a review thread node id from the row `detail.signoff`; `op` is `resolve` or `unresolve`. The thread must be a review thread of that PR on the board, else `404`. It calls `FR:github-pr-status/write.resolve`, then refreshes the board
+- **FR:api.resolve** (P1): `POST /prs/resolve` (route `prs.resolve`, scope `tasks:write`) takes `{repo, number, thread, op}`. `thread` is a review thread node id from the row `detail.signoff`; `op` is `resolve` or `unresolve`. The thread must be a review thread of that PR on the board, else `404`. It calls `FR:github-pr-status/write.resolve`, drops the cached detail of that PR, then refreshes the board, so the next board shows the new thread state
 - **FR:api.queue-client** (P1): The host changes the queue through `PrQueue`, which runs `stack pr-pri` (`FR:pr-priority/cli.*`): `move <ref> --to=top|up|down|n`, `add`, `pin`, `unpin`, `remove <ref>`, `undo`, `ack <ref> --thread=<url> --note=<t>`, `accept <id>`, `edit <id> --reason=<t> [--rank=n] [--note=t]`, `reject <id> --reason=<t>`. `--name=value` keeps a value that starts with `--` a value. `queue` on the board is true only when `pr-pri list --json` runs (checked at most every 10 minutes); `stack web` calls its own `PrPriorityStore` in-process with the same ops (no child process); the Azure host has no CLI and uses a queue that is never available. An unknown command answers `409` `PR priority queue is not installed`; a refused change answers `409` with the reason
 - **FR:api.repos** (P1): Every GitHub write checks the repo against `STACK_GITHUB_REPOS` when set (`FR:github-pr-status/repos.allow`), and the PR must be on the owner board. Others get `403`
 

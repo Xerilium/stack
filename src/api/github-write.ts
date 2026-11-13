@@ -58,8 +58,9 @@ export function createGitHubWrites(o: { token: string; fetch?: typeof fetch; rep
       const m = resolve ? 'resolveReviewThread' : 'unresolveReviewThread';
       const res = await get(`${API}/graphql`, { method: 'POST', headers, body: JSON.stringify({ query: `mutation($id: ID!) { ${m}(input: {threadId: $id}) { thread { isResolved } } }`, variables: { id: threadId } }), signal: AbortSignal.timeout(15_000) });
       if (!res.ok) throw new Error(`GitHub ${res.status}`);
-      const body = (await res.json().catch(() => null)) as { errors?: unknown[] } | null;
-      if (body?.errors?.length) throw new Error('GitHub graphql error');
+      const body = (await res.json().catch(() => null)) as { data?: unknown; errors?: unknown[] } | null;
+      // A 200 is not enough: GraphQL reports failures in the body.
+      if (!body || !body.data || body.errors?.length) throw new Error('GitHub graphql error');
     },
     async addLabel(pr, label) {
       autopilot(label);

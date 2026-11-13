@@ -1030,7 +1030,8 @@ export const ROUTES: Route[] = [
       const row = await onBoard(c, b);
       if (!boardOf(c).hasThread?.(row.url, b.thread)) throw new ApiError('not_found', 'No such thread on this PR');
       await ghCall(() => w.resolveThread(b, b.thread, b.op === 'resolve'));
-      await c.deps.prBoard?.refresh();
+      // Resolving does not always change updatedAt: read this PR's threads again.
+      await c.deps.prBoard?.refresh(row.url);
       return json(200, { ok: true, op: b.op });
     },
   },

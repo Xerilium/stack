@@ -63,7 +63,7 @@ export function createLazyPrPage(o: { auth: GitHubAuth; make: (token: string) =>
   };
   const page = async (): Promise<PrPage> => { if (!(await ready()) || !cur) throw new ApiError('conflict', 'Sign in to GitHub first'); return cur.page; };
   return {
-    prBoard: { get: async () => (await page()).prBoard.get(), refresh: async () => { if (cur) await cur.page.prBoard.refresh(); }, stop: () => cur?.page.prBoard.stop(), hasThread: (u, t) => !!cur?.page.prBoard.hasThread?.(u, t) },
+    prBoard: { get: async () => (await page()).prBoard.get(), refresh: async (u?: string) => { if (cur) await cur.page.prBoard.refresh(u); }, stop: () => cur?.page.prBoard.stop(), hasThread: (u, t) => !!cur?.page.prBoard.hasThread?.(u, t) },
     prWrites: {
       addLabel: async (pr, l) => (await page()).prWrites.addLabel(pr, l), removeLabel: async (pr, l) => (await page()).prWrites.removeLabel(pr, l),
       comment: async (pr, b) => (await page()).prWrites.comment(pr, b), reply: async (pr, id, b) => (await page()).prWrites.reply(pr, id, b),

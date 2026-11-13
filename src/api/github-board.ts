@@ -21,7 +21,7 @@ export class GitHubRateLimit extends Error {
   constructor(public until: number) { super('GitHub rate limit'); this.name = 'GitHubRateLimit'; }
 }
 export interface BoardRead { user: string; facts: PrFacts[]; /** My repos found from the owner and the orgs the owner admins (no explicit list). */ myRepos?: string[]; /** A search hit its 50-PR limit: some PRs may be missing. */ truncated?: boolean; rate?: { remaining: number; resetAt: string } }
-export interface GitHubBoard { user(): Promise<string>; fetch(): Promise<BoardRead> }
+export interface GitHubBoard { user(): Promise<string>; fetch(): Promise<BoardRead>; /** Drops one PR's cached detail: the next fetch reads it again (after a write such as resolve). */ forget?(url: string): void }
 export interface GitHubBoardOptions { token: string; fetch?: typeof fetch; user?: string; repos?: string[]; now?: () => number; /** With no repos: my repos are the owner plus admin orgs. @req FR:pr-page/auth.repos */ adminOrgs?: boolean }
 
 type Obj = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -156,6 +156,7 @@ export function createGitHubBoard(o: GitHubBoardOptions): GitHubBoard {
 
   return {
     user,
+    forget(url) { detail.delete(url.toLowerCase()); },
     async fetch() {
       const u = await user();
       const mine = !o.repos?.length && o.adminOrgs ? [u, ...(await adminOrgs()).filter((x) => x.toLowerCase() !== u.toLowerCase())] : undefined;
