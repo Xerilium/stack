@@ -5,7 +5,7 @@ import type { Task, View } from './types';
 export interface Filters { q: string; project: string; state: 'open' | 'done' | 'all'; status: string; priority: string; effort: string }
 
 export const NO_FILTERS: Filters = { q: '', project: '', state: 'open', status: '', priority: '', effort: '' };
-const VIEWS: View[] = ['now', 'home', 'asks', 'prs', 'inbox', 'sessions', 'today', 'projects', 'list'];
+const VIEWS: View[] = ['now', 'home', 'asks', 'prs', 'inbox', 'sessions', 'today', 'projects', 'list', 'settings'];
 /** Old view names still open their view; Brief folded into Now. @req FR:web-shell/nav.views @req FR:ux-consolidation/nav.brief */
 const ALIAS: Record<string, View> = { next: 'home', focus: 'home', brief: 'now', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions' };
 const STATES = ['open', 'done', 'all'];
@@ -32,9 +32,9 @@ export function buildHash(view: View, f: Filters): string {
   return `#/${view === 'sessions' ? 'agents' : view}${qs ? `?${qs}` : ''}`; // the Agents view keeps its old id
 }
 
-/** An unknown or empty hash opens Now, the one place. @req FR:ux-consolidation/one.start @req FR:web-shell/nav.views */
+/** An unknown or empty hash opens Now, the one place. `#/settings/<section>` opens Settings. @req FR:ux-consolidation/one.start @req FR:web-shell/nav.views @req FR:settings/view.route */
 export function parseHash(hash: string): { view: View; filters: Filters } {
-  const m = /^#\/([a-z]+)(?:\?(.*))?$/.exec(hash);
+  const m = /^#\/([a-z]+)(?:\/[a-z]+)?(?:\?(.*))?$/.exec(hash);
   const name = m?.[1] ?? '';
   const view: View = ALIAS[name] ?? ((VIEWS as string[]).includes(name) ? (name as View) : 'now');
   const filters: Filters = { ...NO_FILTERS };

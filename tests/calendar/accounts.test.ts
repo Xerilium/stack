@@ -9,6 +9,7 @@ import { CalendarNotConnected, createAccountsCalendar } from '../../src/calendar
 import { fixtureCalendar, type CalendarEvent, type CalendarProvider } from '../../src/calendar';
 import { accountCachePath, FileTokenCache, GraphSignInRequired } from '../../src/graph/auth';
 import { AccountHealth } from '../../src/graph/connect';
+import { GraphHttpError } from '../../src/graph/transport';
 
 const CLIENT = '11111111-2222-3333-4444-555555555555';
 const R = ['2026-11-12T00:00:00.000Z', '2026-11-13T00:00:00.000Z'] as const;
@@ -16,13 +17,13 @@ const ev = (id: string, subject: string, h: number): CalendarEvent => ({ id, sub
 const seed = (dir: string, account: string, scopes: string[]) =>
   new FileTokenCache(accountCachePath(account, dir)).write({ version: 1, tenant: 'consumers', clientId: CLIENT, scopes, refreshToken: 'RT', account });
 
-function mk(o: { fallback?: CalendarProvider; by?: Record<string, () => Promise<CalendarEvent[]>> } = {}) {
+function mk(o: { fallback?: CalendarProvider; by?: Record<string, () => Promise<CalendarEvent[]>>; accountMs?: number } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'acal-'));
   let now = Date.parse('2026-11-12T12:00:00Z');
   const reads: string[] = [];
   const health = new AccountHealth();
   const cal = createAccountsCalendar({
-    dir, health, now: () => now, ...(o.fallback ? { fallback: o.fallback } : {}),
+    dir, health, now: () => now, ...(o.fallback ? { fallback: o.fallback } : {}), ...(o.accountMs ? { accountMs: o.accountMs } : {}),
     provider: (account) => ({ events: async () => { reads.push(account); return (o.by?.[account] ?? (async () => []))(); } }),
   });
   return { cal, dir, reads, health, tick: (ms: number) => { now += ms; } };
@@ -114,5 +115,132 @@ describe('accounts calendar: cache files', () => {
     const cal = createAccountsCalendar({ dir, cachePath: custom, provider: (a) => ({ events: async () => { reads.push(a); return [ev('1', 'Gym', 9)]; } }) });
     expect((await cal.events(...R)).map((e) => e.subject)).toEqual(['Gym']);
     expect(reads).toEqual(['me@outlook.com']);
+  });
+});
+
+describe('accounts calendar: honest errors and aggregation', () => {
+  // @req FR:connect-accounts/cal.account
+  it('tags each event with its account; a meeting on two calendars keeps the first', async () => {
+    const { cal, dir } = mk({ by: { 'a@outlook.com': async () => [ev('1', 'Gym', 9), ev('s', 'Standup', 15)], 'b@contoso.test': async () => [ev('x', 'Standup', 15), ev('2', '1:1', 11)] } });
+    await seed(dir, 'a@outlook.com', ['Calendars.Read']);
+    await seed(dir, 'b@contoso.test', ['Calendars.Read']);
+    const got = await cal.events(...R);
+    expect(got.map((e) => [e.subject, e.account])).toEqual([['Gym', 'a@outlook.com'], ['1:1', 'b@contoso.test'], ['Standup', expect.stringMatching(/@/)]]);
+  });
+
+  // @req FR:connect-accounts/cal.isolate
+  it('a slow or failing account never blocks the others', async () => {
+    const { cal, dir, health } = mk({ by: {
+      'a@outlook.com': async () => [ev('1', 'Gym', 9)],
+      'b@contoso.test': async () => { throw new GraphHttpError(502, 'UnknownError'); },
+      'c@contoso.test': async () => { throw new GraphHttpError(0, 'Timeout'); },
+    } });
+    for (const a of ['a@outlook.com', 'b@contoso.test', 'c@contoso.test']) await seed(dir, a, ['Calendars.Read']);
+    expect((await cal.events(...R)).map((e) => e.subject)).toEqual(['Gym']);
+    expect(cal.info?.()).toMatchObject({ partial: true, reason: 'down' });
+    expect(health.get('b@contoso.test')).toBe('down');
+    expect(health.get('c@contoso.test')).toBe('down');
+    expect(health.get('a@outlook.com')).toBeUndefined();
+  });
+
+  // @req FR:connect-accounts/cal.info
+  it('reason is signin when any failing account needs sign-in, else down, else error', async () => {
+    const fails: Record<string, Error> = {};
+    const { cal, dir, tick } = mk({ by: { 'a@x.test': async () => { if (fails.a) throw fails.a; return []; }, 'b@x.test': async () => { if (fails.b) throw fails.b; return [ev('1', 'Gym', 9)]; } } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await seed(dir, 'b@x.test', ['Calendars.Read']);
+    fails.a = new GraphHttpError(401, 'InvalidAuthenticationToken');
+    await cal.events(...R);
+    expect(cal.info?.()).toMatchObject({ reason: 'signin' });
+    tick(11 * 60_000); fails.a = new Error('boom');
+    await cal.events(...R);
+    expect(cal.info?.()).toMatchObject({ reason: 'error' });
+    tick(11 * 60_000); delete fails.a;
+    await cal.events(...R);
+    expect(cal.info?.()).not.toHaveProperty('reason');
+  });
+
+  // @req FR:connect-accounts/acct.retry @req FR:connect-accounts/cal.ttl
+  it('an account waiting for its retry time is not called; it is called again after 30 s, 2 min, 10 min', async () => {
+    let fail = true;
+    const { cal, dir, reads, tick, health } = mk({ by: { 'a@x.test': async () => { if (fail) throw new GraphHttpError(502, 'UnknownError'); return [ev('1', 'Gym', 9)]; } } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await expect(cal.events(...R)).rejects.toThrow();
+    expect(reads).toHaveLength(1);
+    tick(10_000);
+    await expect(cal.events(...R)).rejects.toThrow();
+    expect(reads).toHaveLength(1); // still waiting: no call
+    tick(20_000);
+    await expect(cal.events(...R)).rejects.toThrow();
+    expect(reads).toHaveLength(2);
+    tick(119_000);
+    await expect(cal.events(...R)).rejects.toThrow();
+    expect(reads).toHaveLength(2);
+    tick(1_000);
+    await expect(cal.events(...R)).rejects.toThrow();
+    expect(reads).toHaveLength(3);
+    tick(599_000);
+    await expect(cal.events(...R)).rejects.toThrow();
+    expect(reads).toHaveLength(3);
+    fail = false; tick(1_000);
+    expect((await cal.events(...R)).map((e) => e.subject)).toEqual(['Gym']);
+    expect(reads).toHaveLength(4);
+    expect(health.get('a@x.test')).toBeUndefined();
+    expect(health.lastOk('a@x.test')).toBeDefined();
+  });
+
+  // @req FR:connect-accounts/acct.retry
+  it('429 keeps the last copy and the account state, and waits', async () => {
+    let throttle = false;
+    const { cal, dir, reads, tick, health } = mk({ by: { 'a@x.test': async () => { if (throttle) throw new GraphHttpError(429, 'TooManyRequests', 60_000); return [ev('1', 'Gym', 9)]; } } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await cal.events(...R);
+    throttle = true; tick(4 * 60_000);
+    expect((await cal.events(...R)).map((e) => e.subject)).toEqual(['Gym']);
+    expect(health.get('a@x.test')).toBeUndefined();
+    expect(reads).toHaveLength(2);
+    tick(30_000);
+    await cal.events(...R);
+    expect(reads).toHaveLength(2);
+  });
+});
+
+describe('accounts calendar: review fixes', () => {
+  // @req FR:connect-accounts/acct.retry
+  it('a 429 with no copy yet is not ok: partial with reason down', async () => {
+    const { cal, dir } = mk({ by: { 'a@x.test': async () => [ev('1', 'Gym', 9)], 'b@x.test': async () => { throw new GraphHttpError(429, 'TooManyRequests'); } } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await seed(dir, 'b@x.test', ['Calendars.Read']);
+    await cal.events(...R);
+    expect(cal.info?.()).toMatchObject({ partial: true, reason: 'down' });
+  });
+  // @req FR:connect-accounts/acct.retry
+  it('a second read inside the Retry-After window, with no copy, is partial and makes no call', async () => {
+    const { cal, dir, reads, tick } = mk({ by: { 'a@x.test': async () => [ev('1', 'Gym', 9)], 'b@x.test': async () => { throw new GraphHttpError(429, 'TooManyRequests', 60_000); } } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await seed(dir, 'b@x.test', ['Calendars.Read']);
+    await cal.events(...R);
+    const calls = reads.filter((a) => a === 'b@x.test').length;
+    tick(10_000);
+    expect((await cal.events(...R)).map((e) => e.subject)).toEqual(['Gym']);
+    expect(cal.info?.()).toMatchObject({ partial: true, reason: 'down' });
+    expect(reads.filter((a) => a === 'b@x.test')).toHaveLength(calls);
+  });
+  // @req FR:connect-accounts/cal.isolate
+  it('a stalled account read ends at the cap; the others return and it is marked down', async () => {
+    const { cal, dir, health } = mk({ accountMs: 30, by: { 'a@x.test': async () => [ev('1', 'Gym', 9)], 'b@x.test': () => new Promise<CalendarEvent[]>(() => undefined) } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await seed(dir, 'b@x.test', ['Calendars.Read']);
+    expect((await cal.events(...R)).map((e) => e.subject)).toEqual(['Gym']);
+    expect(cal.info?.()).toMatchObject({ partial: true, reason: 'down' });
+    expect(health.get('b@x.test')).toBe('down');
+  });
+  // @req FR:connect-accounts/cal.account
+  it('a meeting on two calendars keeps the account listed first, whatever answers first', async () => {
+    const slow = (ms: number, a: string) => async () => { await new Promise((r) => setTimeout(r, ms)); return [ev(a, 'Standup', 15)]; };
+    const { cal, dir } = mk({ by: { 'a@x.test': slow(20, 'a'), 'b@x.test': slow(0, 'b') } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await seed(dir, 'b@x.test', ['Calendars.Read']);
+    expect((await cal.events(...R)).map((e) => e.account)).toEqual(['a@x.test']);
   });
 });

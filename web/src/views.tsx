@@ -6,6 +6,8 @@ import { children, dueDays } from './now';
 import type { Week } from './week';
 import { clock, estimate, nowMinutes, span, type Block, type Day, type Decision, type Plan } from './plan';
 import { joinable, type Busy, type CalEvent } from './meetings';
+import { AcctBadge } from './CalendarLink';
+import { multiAccount } from './settings';
 import { timelineOf } from './timeline';
 import { countdown, HAVE, topAsksOf, type Home, type HomeProject, type Window } from './home';
 import type { LiveStatus } from './live';
@@ -307,6 +309,7 @@ export interface TodayProps {
   decisions: Decision[]; agents: Agent[] | null; agentsError: string; onRetryAgents: () => void; inbox: InboxItem[]; p: RowProps; busy: boolean;
   tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
   allDay: CalEvent[]; calError: string; onEmail: () => void;
+  /** The whole day's calendar events, past ones too, so badges stay on once a meeting ends. @req FR:connect-accounts/web.label */ dayEvents?: CalEvent[];
   onAct: (a: 'start' | 'done' | 'defer' | 'notnow' | 'delegate', ref: string) => void; onReply: (task: RefText, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
   /** The project's agent on each tile. @req FR:agent-team/web.anything */
   tileAgent?: { chip: (project: string, title: string) => ComponentChildren; talk: (project: string, title: string) => ComponentChildren };
@@ -361,6 +364,8 @@ export function TodayView(t: TodayProps) {
   const end = Math.min(t.day.origin ? 48 * 60 : 24 * 60, Math.max(t.day.end, start + t.budget.minutes, lastEnd));
   const personal = (t.day.blocks ?? []).filter((b) => b.kind === 'personal' && b.end > t.day.start && b.start < end);
   const nextMeeting = t.plan.meetings.find((m) => m.end > nowMin);
+  // Account badges only when the day spans more than one account. @req FR:connect-accounts/web.label
+  const multi = multiAccount(t.dayEvents ?? t.plan.meetings.flatMap((m) => m.events));
   const joinOf = (m: Busy) => joinable(m.events, t.now, Math.max(10, m.start - nowMin)) ?? m.events.find((e) => e.joinUrl)?.joinUrl;
   const meetingMin = t.plan.meetings.reduce((m, x) => m + Math.max(0, Math.min(x.end, t.day.end) - Math.max(x.start, start)), 0);
   // @req FR:home/myday.timeline
@@ -460,7 +465,7 @@ export function TodayView(t: TodayProps) {
           <ol class="plan" data-testid="plan">
             {timeline.map((r) => r.kind === 'block'
               ? <PlanBlock key={r.b.task.ref} b={r.b} p={t.p} busy={t.busy} onAct={t.onAct} message={t.message} />
-              : r.kind === 'meeting' ? <MeetingRow key={`m${r.m.start}`} m={r.m} />
+              : r.kind === 'meeting' ? <MeetingRow key={`m${r.m.start}`} m={r.m} multi={multi} />
                 : r.kind === 'band' ? <li key={`band${r.at}`} class={`band${r.personal ? ' personal' : ''}`} data-testid="band"><span><i class="band-glyph" aria-hidden="true">{r.emoji}</i>{r.name}</span><span class="band-time">{clock(r.from)}–{clock(r.to)}</span></li>
                   : r.kind === 'gap' ? <li key={`gap${r.at}`} class="gap"><time class="when">{clock(r.at)}</time><span>{span(r.min)} free</span></li>
                     : r.kind === 'now' ? <li key="now" class="now-line" aria-label={`Now ${clock(r.at)}`}><time>{clock(r.at)}</time></li>
@@ -560,14 +565,14 @@ export function TodayView(t: TodayProps) {
 }
 
 /** Meetings: fixed time, not tasks; overlapping ones stack, each with its own Join. @req FR:web-app/today.meetings */
-function MeetingRow({ m }: { m: Busy }) {
+function MeetingRow({ m, multi }: { m: Busy; multi: boolean }) {
   return (
     <li class="meeting">
       <time class="when">{clock(m.start)}<small>{clock(m.end)}</small></time>
       <div class="what">
         {m.events.map((e) => (
           <p key={e.id} class="m-line">
-            <span class="m-title">{e.subject}</span>
+            <span class="m-title">{multi && e.account && <AcctBadge account={e.account} />}{e.subject}</span>
             {e.showAs === 'tentative' && <span class="m-tent">Tentative</span>}
             {e.joinUrl && <a class="join" href={e.joinUrl} target="_blank" rel="noopener noreferrer">Join</a>}
           </p>

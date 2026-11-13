@@ -55,3 +55,11 @@ describe('GET /calendar', () => {
     expect((await get('owner', '/calendar')).status).toBe(422);
   });
 });
+
+// @req FR:ux-consolidation/cal.status @req FR:connect-accounts/cal.info
+describe('GET /calendar: reason', () => {
+  it('copies the provider reason into source.reason', async () => {
+    const p: CalendarProvider = { events: async () => EVENTS, info: () => ({ via: 'graph', account: 'a@x.test', syncedAt: NOW.getTime(), partial: true, reason: 'down' }) };
+    expect((await (await mk(p)).get('owner', Q)).json.source).toEqual({ kind: 'calendar', via: 'graph', account: 'a@x.test', state: 'error', lastSyncAt: NOW.toISOString(), reason: 'down' });
+  });
+});

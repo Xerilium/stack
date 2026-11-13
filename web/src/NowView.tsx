@@ -28,7 +28,7 @@ export function NowScreen({ n, done = false, b, layer, busy, onAct, asks, cal, n
   n: NowTask | null; /** Done just ran on this task: the card plays the check, then the next task replaces it. @req FR:product-reset/ui.done */ done?: boolean; b: Brief; layer: Layer; busy: boolean; onAct: (a: NowAct) => void;
   /** The message composer under the task. */ chat?: Omit<NowChatProps, 'taskRef' | 'busy'>;
   /** Answers on the ask cards, as Needs you answers them. */ asks: Omit<AskCtl, 'busy' | 'now'>;
-  /** The calendar source and its fixes. */ cal: CalCtl;
+  /** The calendar source; fixes live in Settings. */ cal: Pick<CalCtl, 'source'>;
   now: Date;
   onOpenAsks: () => void;
 }) {

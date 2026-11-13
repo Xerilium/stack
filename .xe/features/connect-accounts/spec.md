@@ -2,8 +2,16 @@
 id: connect-accounts
 title: Connect Accounts (Outlook and Microsoft 365)
 author: flanakin
-description: "In-app Connect for Outlook.com and Microsoft 365: browser sign-in, read-only by default, opt-in drafts, live calendar."
-dependencies: [graph-signin, inbox-page, day-inputs, now-screen, ux-consolidation, desktop-shell]
+description: "In-app Connect for Outlook.com and Microsoft 365: browser sign-in, read-only by default, live calendar, honest errors."
+dependencies:
+  [
+    graph-signin,
+    inbox-page,
+    day-inputs,
+    now-screen,
+    ux-consolidation,
+    desktop-shell,
+  ]
 ---
 
 <!-- markdownlint-disable single-title -->
@@ -19,6 +27,7 @@ The owner uses Outlook.com, 2 Microsoft 365 accounts and 4 more personal account
 - Stack never sends. No `Mail.Send` and no calendar write, in any flow (`FR:graph-signin/scope.never`).
 - Tokens live only in the `0600` token cache (`FR:graph-signin/cache.file`). No token, code, verifier or id token is logged, returned by the API, or shown in the page.
 - Stack never takes a password or an Azure credential. The owner signs in on Microsoft pages only.
+- Error handling never changes token storage: a Graph outage leaves the cache as it is.
 - The only human steps: sign in to Azure once (`Connect-AzAccount`) for the one-time app registration, and the Microsoft consent click for each account.
 
 ## Scenarios
@@ -54,8 +63,16 @@ The owner needs Stack to ask for the least access, so it reads by default and wr
 
 The owner needs to see each connected account and its health, so he can fix, change or remove one in a click.
 
-- **FR:acct.list** (P1): `accounts()` lists every token cache: `{account, type: personal|work, mail, calendar, drafts, state}`. `state` is `connected`, `expired` (sign-in no longer works) or `error` (unreadable cache or a failed read). A cache with no account name is listed with an empty account.
-- **FR:acct.health** (P1): A live read that gets `GraphSignInRequired` marks the account `expired`; any other failure marks it `error`; a good read clears the mark. The mark is in memory, shared by the calendar, the accounts list and the inbox probe.
+- **FR:acct.list** (P1): `accounts()` lists every token cache: `{account, type: personal|work, mail, calendar, drafts, state, lastOkAt?, retryAt?}`. `state` is `connected`, `expired` (needs sign-in), `down` (Microsoft not responding) or `error` (unreadable cache or another failure). `lastOkAt` is the ISO time of the last good live read; `retryAt` is the ISO time of the next automatic try. A cache with no account name is listed with an empty account.
+- **FR:acct.health** (P1): Each live read classifies its failure (`classifyGraphError`):
+  - `signin`: `GraphSignInRequired`, a token refresh with `invalid_grant` or `interaction_required`, or Graph 401 or 403. Marks the account `expired`.
+  - `down`: Graph 5xx, the 8 s timeout, a network failure, or a token endpoint 5xx (`server_error`, `temporarily_unavailable`). Marks the account `down`.
+  - `throttled`: Graph 429. Keeps the current mark.
+  - `other`: anything else. Marks the account `error`.
+  - A good read clears the mark and sets `lastOkAt`. The marks are in memory, shared by the calendar, the accounts list and the inbox probe.
+- **FR:acct.retry** (P1): After a failure, the account is not read again before its retry time: 30 s after the first failure in a row, 2 min after the second, then 10 min. Until then the calendar serves the last copy for that account. A 429 waits for `Retry-After` (seconds, kept in full up to 24 h) when it is given, else 30 s, and does not count as a failure in a row; it is silent while a copy serves, and sets `partial` (reason `down`) when the account has no copy yet. A good read, a sign-in or a disconnect resets the count.
+- **FR:acct.diag** (P1): Every Graph HTTP attempt sends a fresh `client-request-id` (with `return-client-request-id: true`). Each failed call (a 401 that a refresh then fixes too; mail reads too) appends one JSON line to `~/.stack/graph.log` (mode 0600, rolled to `.1` past 1 MB): `{at, account, method, path, status, code, requestId, ms}`. `path` has no query; a failed token refresh is logged with `path` `/oauth2/v2.0/token`, `status` 0 or its HTTP status, and its OAuth code. No token, query value or response body is written.
+- **FR:acct.timeout** (P1): Every Graph and token request for an account read has a hard 8 s cap, body included. A request over the cap is aborted and counts as `down`.
 - **FR:acct.remove** (P1): Disconnect deletes the cache file that holds that account: its own file, or an older default `graph-token.json` that names it (an empty account removes a default file that names no one). A new sign-in for an account that the default file names replaces that file, so the account is listed once.
 - **FR:acct.sources** (P1): Each connected mail account is an inbox source (`FR:inbox-page/src.probe`). An `expired` account is an email source in `error` with `signin-expired`. A connected account's calendar feeds the Now calendar source.
 
@@ -64,9 +81,11 @@ The owner needs to see each connected account and its health, so he can fix, cha
 The owner needs one live calendar over all his accounts, so Now and My day show every meeting without a published link.
 
 - **FR:cal.live** (P1): `createAccountsCalendar()` reads `calendarView` (`FR:day-inputs/cal.graph`) for every cache with `Calendars.Read` (plus an explicit `STACK_GRAPH_CACHE` file with any name), one provider per cache file, at each read, so an account connected after start shows at once. It merges the events by start and drops a copy of the same meeting (same subject, start and end) seen in two calendars.
-- **FR:cal.ttl** (P1): Each account's events for a range are kept for 3 minutes, then read again. A failed read serves the last copy for that account and sets `partial`. Delta queries are not used: the window changes with every day and the 3 minute copy keeps Graph calls low.
+- **FR:cal.account** (P1): Each merged event carries `account`, the address of the calendar it came from (for a meeting on two calendars, the account listed first, so it does not change between reads).
+- **FR:cal.isolate** (P1): The accounts are read in parallel. A failing or slow account never blocks or empties the others: one account read, every page included, ends at 8 s (`down`); its last copy is served (or nothing), and the read still returns the other accounts' events.
+- **FR:cal.ttl** (P1): Each account's events for a range are kept for 3 minutes, then read again. A failed read serves the last copy for that account and sets `partial`. An account waiting for its retry time (`FR:acct.retry`) is not called. Delta queries are not used: the window changes with every day and the 3 minute copy keeps Graph calls low.
 - **FR:cal.fallback** (P1): With no calendar account, the ICS feeds (`FR:schedule/ics.wire`) are used. With neither, `events()` throws `CalendarNotConnected` and `GET /calendar` says `not-connected`.
-- **FR:cal.info** (P1): `info()` is `{via: 'graph', account: the accounts, syncedAt: the oldest copy, partial}`, or the fallback's info.
+- **FR:cal.info** (P1): `info()` is `{via: 'graph', account: the accounts, syncedAt: the oldest copy, partial, reason?}`, or the fallback's info. `reason` is set when `partial`: `signin` when any failing account needs sign-in, else `down` when any is not responding, else `error`. `GET /calendar` copies `reason` into `source.reason` (`FR:ux-consolidation/cal.status`).
 - **FR:cal.page** (P1): An open page reads the calendar again every 5 minutes (was 15).
 
 ### FR:api: API
@@ -84,20 +103,40 @@ All routes are owner only (403 for tokens) and 404 on a host with no connect ser
 
 ### FR:web: Page
 
-The owner needs the Connect panel where he notices a gap, so he connects from Inbox or Now without a terminal.
+The owner needs every account and its state on one screen in Settings, so he sees what works and fixes what does not in one click.
 
-- **FR:web.panel** (P1): A Connect accounts panel lists each account with its type, what Stack reads (mail, calendar), drafts on or off (a switch with the plain words above), and its state. It has "Add an account" and, per account, "Sign in again" (expired or error) and "Disconnect".
-- **FR:web.setup** (P1): Until a client id exists, the panel shows one "One-time setup" step with a "Run setup" button. `needs-azure-signin` says: "Sign in to Azure once: open PowerShell, run Connect-AzAccount, then click Run setup again." `needs-pwsh` says to install PowerShell. No other step and no copy box.
-- **FR:web.signin** (P1): Add an account starts a browser sign-in and shows "Finish signing in in your browser" with the link. A device code session shows the code, a Copy button and the link. The panel polls the session every 2 seconds and redraws the list when it is done.
-- **FR:web.where** (P1): The panel is in Inbox (email Connect and Fix open it; a healthy mail account has "Manage accounts") and in Now (calendar Connect opens it). The Now calendar panel keeps the ICS link as "Or use a published calendar link".
+- **FR:web.where** (P1): Accounts are managed in Settings > Accounts (`FR:settings/view.sections`); the first-run email step (`FR:first-run-onboarding`) shows the same list. Now and Inbox never embed the list; they link to `#/settings/accounts`.
+- **FR:web.panel** (P1): One compact list, one row per account, sorted by address. `Add account` is a button at the top of the list. No paragraph per row.
+- **FR:web.row** (P1): A row shows, on one line: the kind icon (`Work` briefcase or `Personal` person, with that word as its accessible name), the address, and a status dot plus one short word:
+  - `connected`: green dot, `Connected`.
+  - `expired`: orange dot, `Needs sign-in`.
+  - `down`: yellow dot, `Microsoft not responding`.
+  - `error`: red dot, `Not working`.
+  - The status has a tooltip (`title`) with the last good read (`Last synced 9:41 AM`, or `Never synced`) and, for `down`, `Retrying in 2 min`.
+  - The rows are read again after each calendar read. While Settings is open, a `down` row's retry time triggers a calendar read, then the rows are read again.
+- **FR:web.fix** (P1): An `expired` or `error` row has one `Fix` button that starts a sign-in for that account (drafts kept on when on). A `down` row has no `Fix`: Stack retries on its own.
+- **FR:web.menu** (P1): Each row has one `More` menu button (`aria-haspopup="menu"`, label `More for <address>`) with: the setting `Let Stack save reply drafts in my mailbox` as a `menuitemcheckbox` with its state word (`On` or `Off`) and the hint `Stack writes drafts for you to review. It never sends.`; `Sign in again`; `Disconnect`. Escape closes the menu and returns focus to its button. Disconnect asks to confirm first (`FR:task-detail-design/rules` rule 9).
+- **FR:web.learn** (P1): The section summary is `Stack reads mail and calendar. It never sends.` with a `Learn more` button that opens a popover: what Stack reads, what reply drafts do, and that Stack never sends.
+- **FR:web.manual** (P1): One opt-in link under the list, `Other ways to connect`, expands: the one-time setup when it is needed (`FR:web.setup`), and the published calendar link field (`FR:ux-consolidation/cal.connect`). While an account feeds the calendar (`via: graph`), the field is replaced by `Your connected accounts feed the calendar. A calendar link is used only when no account has a calendar.` (`FR:cal.fallback`). It is closed by default, and open by default only when setup is needed.
+- **FR:web.fit** (P1): At 1280x800, 6 accounts, `Add account` and `Other ways to connect` are visible in Settings without scrolling.
+- **FR:web.setup** (P1): Until a client id exists, the list area shows one "One-time setup" step with a "Run setup" button. `needs-azure-signin` says: "Sign in to Azure once: open PowerShell, run Connect-AzAccount, then click Run setup again." `needs-pwsh` says to install PowerShell. No other step and no copy box.
+- **FR:web.signin** (P1): Add account starts a browser sign-in and shows "Finish signing in in your browser" with the link. A device code session shows the code, a Copy button and the link. The list polls the session every 2 seconds and redraws when it is done.
 - **FR:web.nocmd** (P1): No email sign-in step shows a terminal command.
+- **FR:web.now** (P1): Now shows at most one quiet line about the calendar, as a link to `#/settings/accounts`:
+  - not connected: `Calendar not connected`.
+  - `source.reason` is `down`: `Calendar: Microsoft not responding`.
+  - `source.reason` is `signin`: `Calendar needs sign-in`.
+  - any other error: `Calendar unavailable`.
+  - stale: `Calendar last synced 2 h ago`.
+  - fresh, or still loading: nothing.
+- **FR:web.label** (P1): When the day's events come from more than one account, each meeting in Now and My day shows a small badge with the account's first letter in a color fixed per account; the badge's accessible name and tooltip are the address.
 
 ## Data Model
 
 - **Token cache** (one file per account, mode 0600): `{version, tenant, clientId, scopes, refreshToken, accessToken?, expiresAt?, account?}`.
 - **Connect session** (in memory, 30 minutes): see the sign-in scenario.
-- **Account row**: `{account, type, mail, calendar, drafts, state}`.
-- **Health mark** (in memory): `expired` or `error` per account.
+- **Account row**: `{account, type, mail, calendar, drafts, state, lastOkAt?, retryAt?}`.
+- **Health** (in memory, per account): mark (`expired`, `down` or `error`), failures in a row, retry time, last good read.
 
 ## External Dependencies
 

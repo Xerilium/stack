@@ -31,23 +31,37 @@ describe('isFresh', () => {
   });
 });
 
+// @req FR:connect-accounts/web.now
 describe('calLine', () => {
-  it('says why and offers the fix; nothing when fresh', () => {
-    expect(calLine({ kind: 'calendar', state: 'not-connected' }, NOW)).toEqual({ text: 'Calendar not connected', act: 'connect' });
-    expect(calLine({ kind: 'calendar', state: 'error' }, NOW)).toEqual({ text: 'Calendar unavailable', act: 'fix' });
-    expect(calLine({ kind: 'calendar', state: 'stale', lastSyncAt: ago(125) }, NOW)).toEqual({ text: 'Calendar last synced 2 h ago', act: 'fix' });
-    expect(calLine({ kind: 'calendar', state: 'ok', lastSyncAt: ago(90) }, NOW)).toEqual({ text: 'Calendar last synced 2 h ago', act: 'fix' });
+  it('one quiet line that names the cause; nothing when fresh or still loading', () => {
+    expect(calLine({ kind: 'calendar', state: 'not-connected' }, NOW)).toEqual({ text: 'Calendar not connected' });
+    expect(calLine({ kind: 'calendar', state: 'error' }, NOW)).toEqual({ text: 'Calendar unavailable' });
+    expect(calLine({ kind: 'calendar', via: 'graph', state: 'error', reason: 'down' }, NOW)).toEqual({ text: 'Calendar: Microsoft not responding' });
+    expect(calLine({ kind: 'calendar', via: 'graph', state: 'error', reason: 'signin' }, NOW)).toEqual({ text: 'Calendar needs sign-in' });
+    expect(calLine({ kind: 'calendar', state: 'stale', lastSyncAt: ago(125) }, NOW)).toEqual({ text: 'Calendar last synced 2 h ago' });
+    expect(calLine({ kind: 'calendar', state: 'ok', lastSyncAt: ago(90) }, NOW)).toEqual({ text: 'Calendar last synced 2 h ago' });
     expect(calLine({ kind: 'calendar', state: 'ok', lastSyncAt: ago(1) }, NOW)).toBeNull();
-    expect(calLine(null, NOW)).toEqual({ text: 'Checking your calendar…', act: null });
+    expect(calLine(null, NOW)).toBeNull();
   });
 });
 
+describe('sourceOf: reason', () => {
+  it('keeps a known reason, drops others', () => {
+    expect(sourceOf({ configured: true, source: { kind: 'calendar', via: 'graph', state: 'error', reason: 'down' } }, NOW)).toEqual({ kind: 'calendar', via: 'graph', state: 'error', reason: 'down' });
+    expect(sourceOf({ configured: true, source: { kind: 'calendar', state: 'error', reason: 'zzz' } }, NOW)).toEqual({ kind: 'calendar', state: 'error' });
+  });
+});
+
+// @req FR:ux-consolidation/cal.check
 describe('checkText', () => {
-  it('reads like a result', () => {
+  it('reads like a result and never blames sign-in for an outage', () => {
     expect(checkText({ kind: 'calendar', state: 'ok', lastSyncAt: ago(0) }, NOW)).toBe('Connected · synced just now');
     expect(checkText({ kind: 'calendar', state: 'ok', account: 'a.test', lastSyncAt: ago(5) }, NOW)).toBe('Connected to a.test · synced 5 min ago');
     expect(checkText({ kind: 'calendar', state: 'not-connected' }, NOW)).toBe('Not connected');
     expect(checkText({ kind: 'calendar', state: 'error' }, NOW)).toBe('Calendar unavailable. Check the link, then try again.');
-    expect(checkText({ kind: 'calendar', via: 'graph', state: 'error' }, NOW)).toBe('Calendar unavailable. Click Fix and sign in again.');
+    expect(checkText({ kind: 'calendar', via: 'graph', state: 'error', reason: 'down' }, NOW)).toBe('Microsoft is not responding. Stack retries on its own.');
+    expect(checkText({ kind: 'calendar', via: 'graph', state: 'error', reason: 'signin' }, NOW)).toBe('An account needs sign-in. Select Fix on it.');
+    expect(checkText({ kind: 'calendar', via: 'graph', state: 'error' }, NOW)).toBe('Calendar unavailable.');
+    for (const s of ['down', 'error'] as const) expect(checkText({ kind: 'calendar', via: 'graph', state: 'error', reason: s }, NOW)).not.toMatch(/sign in again/i);
   });
 });

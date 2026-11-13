@@ -13,6 +13,8 @@ export interface CalendarEvent {
   organizer?: string; webLink?: string;
   /** The online meeting's join link (Teams), when there is one. */
   joinUrl?: string;
+  /** The connected account whose calendar holds it. @req FR:connect-accounts/cal.account */
+  account?: string;
 }
 /** Where a provider reads from, without secrets. @req FR:ux-consolidation/cal.status */
 export interface CalendarInfo {
@@ -23,6 +25,8 @@ export interface CalendarInfo {
   syncedAt?: number;
   /** True when the last read left out a configured feed (no usable copy, or it did not parse). */
   partial?: boolean;
+  /** Why a Graph read left an account out: needs sign-in, Microsoft not responding, or another error. @req FR:connect-accounts/cal.info */
+  reason?: 'signin' | 'down' | 'error';
 }
 export interface CalendarProvider { events(from: string, to: string): Promise<CalendarEvent[]>; info?(): CalendarInfo }
 
@@ -32,6 +36,8 @@ export interface CalendarSource {
   state: 'not-connected' | 'ok' | 'error' | 'stale';
   /** ISO time the data shown was last read from the source. */
   lastSyncAt?: string;
+  /** Graph only: why the source is in error. @req FR:connect-accounts/cal.info */
+  reason?: CalendarInfo['reason'];
 }
 /** A copy older than this is stale. */
 export const STALE_MS = 60 * 60_000;
@@ -48,7 +54,7 @@ export function sourceStatus(p: CalendarProvider | undefined, ok: boolean, at: n
   const i = p.info?.();
   const synced = i?.syncedAt ?? (ok ? at : undefined);
   const state = !ok || i?.partial ? 'error' : at - synced! > STALE_MS ? 'stale' : 'ok';
-  return { kind: 'calendar', ...(i ? { via: i.via } : {}), ...(i?.account ? { account: i.account } : {}), state, ...(synced !== undefined ? { lastSyncAt: new Date(synced).toISOString() } : {}) };
+  return { kind: 'calendar', ...(i ? { via: i.via } : {}), ...(i?.account ? { account: i.account } : {}), state, ...(synced !== undefined ? { lastSyncAt: new Date(synced).toISOString() } : {}), ...(state === 'error' && i?.reason ? { reason: i.reason } : {}) };
 }
 
 const overlaps = (e: CalendarEvent, from: number, to: number) => Date.parse(e.end) > from && Date.parse(e.start) < to;

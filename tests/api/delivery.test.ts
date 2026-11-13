@@ -48,3 +48,13 @@ describe('/inbox/delivery', () => {
     expect((await none.call('POST', '/inbox/delivery/login')).status).toBe(404);
   });
 });
+
+// @req FR:settings/agents.api
+describe('/inbox/delivery summary', () => {
+  it('without a ref returns {mode, login}; owner only; 404 without delivery', async () => {
+    const { call, mint } = await mk({ delivery: { status: async () => ({}), summary: () => ({ mode: 'off', login: 'expired' }), login: () => ({ started: true }) } });
+    expect(await call('GET', '/inbox/delivery')).toEqual({ status: 200, json: { mode: 'off', login: 'expired' } });
+    expect((await call('GET', '/inbox/delivery', await mint())).status).toBe(403);
+    expect((await (await mk()).call('GET', '/inbox/delivery')).status).toBe(404);
+  });
+});

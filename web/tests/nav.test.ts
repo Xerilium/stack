@@ -14,8 +14,8 @@ describe('nav model', () => {
     expect(TABBAR).toEqual(['now', 'today', 'new', 'asks', 'more']);
   });
   // @req FR:ux-consolidation/nav.keys @req FR:ux-consolidation/nav.brief
-  it('chords: g n, g h, g d (and g t), g k, g r, g i, g s, g p, g a; no g b', () => {
-    expect(CHORDS).toEqual({ n: 'now', h: 'home', d: 'today', t: 'today', k: 'asks', r: 'prs', i: 'inbox', s: 'sessions', p: 'projects', a: 'list' });
+  it('chords: g n, g h, g d (and g t), g k, g r, g i, g s, g p, g a, g ,; no g b', () => {
+    expect(CHORDS).toEqual({ n: 'now', h: 'home', d: 'today', t: 'today', k: 'asks', r: 'prs', i: 'inbox', s: 'sessions', p: 'projects', a: 'list', ',': 'settings' });
     expect(HINT.prs).toBe('g r');
   });
   // @req FR:ux-consolidation/nav.home

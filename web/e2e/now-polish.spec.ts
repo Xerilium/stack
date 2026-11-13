@@ -1,4 +1,4 @@
-/** Now polish: an honest calendar line with Connect, ask cards that expand in place, two columns on wide screens, a named composer. */
+/** Now polish: one quiet, honest calendar line that links to Settings, ask cards that expand in place, two columns on wide screens, a named composer. */
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mockApi, seed, type MockAsk } from './mock';
@@ -12,170 +12,97 @@ const axe = async (page: Page) => (await new AxeBuilder({ page }).include('[data
 const tall = async (page: Page, scope: string) => {
   for (const el of await page.locator(`${scope} button:visible, ${scope} a:visible, ${scope} input:visible, ${scope} textarea:visible`).all()) expect((await el.boundingBox())!.height, await el.evaluate((e) => e.outerHTML.slice(0, 80))).toBeGreaterThanOrEqual(44);
 };
-/** Make the page a local host (`stack web`), where `/setup` exists. */
-const local = (page: Page) => page.route('**/.auth/me', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ clientPrincipal: { identityProvider: 'local', userId: 'local', userDetails: 'local', userRoles: ['authenticated'] }, local: { mode: 'demo', repo: '/r', branch: 'main' } }) }));
 
-test.describe('Now: the calendar line is honest', () => {
-  // @req FR:ux-consolidation/cal.ui @req FR:ux-consolidation/cal.connect @req FR:ux-consolidation/one.meetings
-  test('not connected: never says No meetings; Connect opens the panel in place', async ({ page }, info) => {
+test.describe('Now: the calendar line is quiet and honest', () => {
+  // @req FR:connect-accounts/web.now @req FR:connect-accounts/web.where @req FR:ux-consolidation/cal.ui @req FR:ux-consolidation/one.meetings
+  test('not connected: one line that links to Settings > Accounts; no panel, no Fix, no Connect; never No meetings', async ({ page }, info) => {
     await ten(page);
     await mockApi(page, { tasks: seed() }); // no calendar
     await page.goto('/#/now');
     await page.clock.resume();
     const cal = page.getByTestId('now-cal');
-    await expect(cal).toContainText('Calendar not connected');
+    await expect(cal).toHaveText(/Calendar not connected/);
+    await expect(cal.getByRole('button')).toHaveCount(0);
+    await expect(page.getByTestId('now-connect')).toHaveCount(0);
+    await expect(page.getByTestId('connect-accounts')).toHaveCount(0);
     await expect(page.getByText('No meetings left today.')).toHaveCount(0);
-    const connect = cal.getByRole('button', { name: 'Connect' });
-    await expect(connect).toHaveAttribute('aria-expanded', 'false');
-    await connect.click();
-    await expect(cal.getByRole('button', { name: 'Close' })).toHaveAttribute('aria-expanded', 'true');
-    const panel = page.getByTestId('now-connect');
-    // the hosted app has no /setup: steps and the way to connect, no field
-    await expect(panel).toContainText('Outlook');
-    await expect(panel).toContainText('Google');
-    await expect(panel).toContainText('STACK_CALENDAR_ICS');
-    await expect(panel.getByRole('textbox')).toHaveCount(0);
-    await expect(panel.locator('.now-cmd')).toHaveCount(0); // @req FR:connect-accounts/web.nocmd
-    await expect(panel.getByRole('button', { name: 'Check connection' })).toBeVisible();
     expect(await noScrollX(page)).toBe(true);
     expect(await axe(page)).toEqual([]);
     if (info.project.name === 'mobile') await tall(page, '[data-testid="now-side"]');
+    await cal.getByRole('link').click();
+    await expect(page).toHaveURL(/#\/settings\/accounts$/);
+    await expect(page.getByTestId('settings')).toBeVisible();
   });
 
-  // @req FR:ux-consolidation/cal.connect @req FR:ux-consolidation/cal.save @req FR:ux-consolidation/cal.check
-  test('local host: paste a link, Connect saves it through /setup, then the next 2 meetings show', async ({ page }, info) => {
+  // @req FR:connect-accounts/web.now @req FR:connect-accounts/acct.health
+  test('Microsoft not responding is not a sign-in problem; weekly meetings still show', async ({ page }) => {
     const d = await ten(page);
     const m = await mockApi(page, { tasks: seed() });
-    await local(page); // after mockApi: the last route registered wins
-    const posts: unknown[] = [];
-    await page.route('**/setup', async (r) => {
-      if (r.request().method() !== 'POST') return r.fulfill({ status: 404, body: '' });
-      posts.push(r.request().postDataJSON());
-      // the host now reads the feed
-      m.events = [
-        { id: 'e1', subject: 'Allyte sync', start: at(d, 10, 10), end: at(d, 10, 40), allDay: false, showAs: 'busy', cancelled: false, online: true, joinUrl: 'https://example.test/join' },
-        { id: 'e2', subject: 'FOCUS TF1', start: at(d, 13), end: at(d, 14), allDay: false, showAs: 'busy', cancelled: false, online: false },
-        { id: 'e3', subject: 'Third', start: at(d, 15), end: at(d, 16), allDay: false, showAs: 'busy', cancelled: false, online: false },
-      ];
-      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ restart: false, status: null }) });
-    });
-    await page.goto('/#/now');
-    await page.clock.resume();
-    await page.getByTestId('now-cal').getByRole('button', { name: 'Connect' }).click();
-    const panel = page.getByTestId('now-connect');
-    const field = panel.getByRole('textbox', { name: 'Published calendar link (ICS)' });
-    await field.fill('http://not-secure.test/cal.ics');
-    await panel.getByRole('button', { name: 'Connect', exact: true }).click();
-    await expect(panel.getByRole('alert')).toContainText('https');
-    expect(posts).toEqual([]);
-    expect(await axe(page)).toEqual([]);
-    if (info.project.name === 'mobile') await tall(page, '[data-testid="now-side"]');
-    await page.screenshot({ path: `e2e/screenshots/now-connect-${info.project.name}.png`, fullPage: true });
-    const link = 'https://outlook.office365.com/owa/calendar/abc/def/calendar.ics';
-    await field.fill(link);
-    await field.press('Enter');
-    await expect.poll(() => posts).toEqual([{ connect: 'calendar', ics: link }]);
-    const meetings = page.getByTestId('now-meetings');
-    await expect(meetings.locator('li')).toHaveCount(2);
-    await expect(meetings).toContainText('Allyte sync');
-    await expect(meetings).not.toContainText('Third');
-    await expect(page.getByTestId('now-cal')).toHaveCount(0);
-    await expect(page.getByTestId('now-layer')).toHaveText(/Live calendar/);
-    // the link never shows in the page once saved
-    expect(await page.content()).not.toContain('abc/def');
-  });
-
-  // @req FR:ux-consolidation/cal.ui @req FR:ux-consolidation/cal.check @req FR:ux-consolidation/cal.fresh
-  test('unavailable and stale say so, with Check connection; weekly meetings still show', async ({ page }) => {
-    const d = await ten(page);
-    const m = await mockApi(page, { tasks: seed() });
-    m.calendarFail = true;
+    m.calendarFail = true; m.calSource = { kind: 'calendar', via: 'graph', account: 'a@x.test', state: 'error', reason: 'down' };
     m.meetings = [{ days: [d.getDay()], start: '11:00', end: '11:30', title: 'Weekly sync', owner: 'cos', topic: 'Status' }];
     await page.goto('/#/now');
     await page.clock.resume();
     const cal = page.getByTestId('now-cal');
-    await expect(cal).toContainText('Calendar unavailable');
-    await expect(cal.getByRole('button', { name: 'Fix' })).toBeVisible();
+    await expect(cal).toHaveText(/^Calendar: Microsoft not responding/);
+    await expect(page.locator('[data-testid="now"]')).not.toContainText(/sign in again/i);
     await expect(page.getByText('No meetings left today.')).toHaveCount(0);
     await expect(page.getByTestId('now-meetings')).toContainText('Weekly sync');
     await expect(page.getByTestId('now-layer')).toHaveText(/Weekly schedule/);
-    // stale: the copy is 2 h old
-    m.calendarFail = false; m.events = [];
-    m.calSource = { kind: 'calendar', via: 'ics', state: 'stale', lastSyncAt: new Date(d.getTime() - 125 * 60_000).toISOString() }; // the page clock, not this process's
-    await cal.getByRole('button', { name: 'Check connection' }).click();
-    await expect(cal).toContainText('Calendar last synced 2 h ago');
+  });
+
+  // @req FR:connect-accounts/web.now
+  for (const [src, text] of [
+    [{ kind: 'calendar', via: 'graph', state: 'error', reason: 'signin' }, 'Calendar needs sign-in'],
+    [{ kind: 'calendar', via: 'ics', state: 'error' }, 'Calendar unavailable'],
+  ] as const) {
+    test(`error line: ${text}`, async ({ page }) => {
+      await ten(page);
+      const m = await mockApi(page, { tasks: seed() });
+      m.calendarFail = true; m.calSource = src;
+      await page.goto('/#/now');
+      await expect(page.getByTestId('now-cal')).toHaveText(new RegExp(`^${text}`));
+    });
+  }
+
+  // @req FR:ux-consolidation/cal.fresh @req FR:connect-accounts/web.now
+  test('stale says when it last synced; fresh and empty says No meetings with no line', async ({ page }) => {
+    const d = await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.events = [];
+    m.calSource = { kind: 'calendar', via: 'ics', state: 'stale', lastSyncAt: new Date(d.getTime() - 125 * 60_000).toISOString() };
+    await page.goto('/#/now');
+    await expect(page.getByTestId('now-cal')).toHaveText(/Calendar last synced 2 h ago/);
     await expect(page.getByText('No meetings left today.')).toHaveCount(0);
-    // fresh and empty: now it may say so
     m.calSource = undefined;
-    await cal.getByRole('button', { name: 'Check connection' }).click();
+    await page.reload();
     await expect(page.getByText('No meetings left today.')).toBeVisible();
+    await expect(page.getByTestId('now-cal')).toHaveCount(0);
+  });
+
+  // @req FR:connect-accounts/web.label @req FR:connect-accounts/cal.account
+  test('meetings from more than one account carry the account badge; one account shows none', async ({ page }) => {
+    const d = await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.events = [
+      { id: 'e1', subject: 'Allyte sync', start: at(d, 10, 30), end: at(d, 11), allDay: false, showAs: 'busy', cancelled: false, online: false, account: 'michael@allyte.com' },
+      { id: 'e2', subject: 'FOCUS TF1', start: at(d, 13), end: at(d, 14), allDay: false, showAs: 'busy', cancelled: false, online: false, account: 'michael@xerilium.com' },
+    ];
+    await page.goto('/#/now');
+    const meetings = page.getByTestId('now-meetings');
+    await expect(meetings.getByRole('img', { name: 'michael@allyte.com' })).toHaveText('M');
+    await expect(meetings.getByRole('img', { name: 'michael@xerilium.com' })).toBeVisible();
+    expect(await axe(page)).toEqual([]);
+    await page.goto('/#/today');
+    await expect(page.getByTestId('plan').getByRole('img', { name: 'michael@allyte.com' })).toBeVisible();
+    m.events = m.events!.map((e) => ({ ...e, account: 'michael@allyte.com' }));
+    await page.goto('/#/now');
+    await page.reload();
+    await expect(page.getByTestId('now-meetings')).toContainText('Allyte sync');
+    await expect(page.getByTestId('now-meetings').getByRole('img')).toHaveCount(0);
   });
 });
 
-test.describe('Now: calendar connect, more', () => {
-  // @req FR:ux-consolidation/cal.save: a first connect restarts the host; the page waits for it, then checks
-  test('a restart reply waits for the host, then shows the meetings', async ({ page }) => {
-    const d = await ten(page);
-    const m = await mockApi(page, { tasks: seed() });
-    await local(page);
-    let back = false;
-    await page.route('**/setup', async (r) => {
-      if (r.request().method() === 'POST') {
-        m.events = [{ id: 'e1', subject: 'After restart', start: at(d, 10, 30), end: at(d, 11), allDay: false, showAs: 'busy', cancelled: false, online: false }];
-        setTimeout(() => { back = true; }, 300);
-        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ restart: true, status: null }) });
-      }
-      if (!back) return r.abort();
-      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ needed: false, reason: null, step: 'phone', steps: ['repo', 'mode', 'calendar', 'email', 'phone'], repo: '/r', mode: 'demo', calendar: true, email: false, signIn: '' }) });
-    });
-    await page.goto('/#/now');
-    await page.clock.resume();
-    await page.getByTestId('now-cal').getByRole('button', { name: 'Connect' }).click();
-    await page.getByRole('textbox', { name: 'Published calendar link (ICS)' }).fill('https://calendar.google.com/calendar/ical/x/private-y/basic.ics');
-    await page.getByTestId('now-connect').getByRole('button', { name: 'Connect', exact: true }).click();
-    await expect(page.getByTestId('now-meetings')).toContainText('After restart');
-  });
-
-  // @req FR:ux-consolidation/cal.connect @req FR:connect-accounts/web.where: a failing Graph sign-in wins over a link, so Fix offers Sign in again, not a field
-  test('a failing Graph sign-in: Fix shows the account with Sign in again, no field, no command', async ({ page }) => {
-    await ten(page);
-    const m = await mockApi(page, { tasks: seed() });
-    await local(page);
-    m.calendarFail = true; m.calSource = { kind: 'calendar', via: 'graph', account: 'me@x.test', state: 'error' };
-    m.connect = { info: { setup: { clientId: true }, accounts: [{ account: 'me@x.test', type: 'work', mail: true, calendar: true, drafts: false, state: 'expired' }] } };
-    await page.goto('/#/now');
-    await page.getByTestId('now-cal').getByRole('button', { name: 'Fix' }).click();
-    const panel = page.getByTestId('now-connect');
-    await expect(panel.locator('[data-account="me@x.test"]')).toContainText('Sign-in expired');
-    await panel.getByRole('button', { name: 'Sign in again' }).click();
-    await expect(panel.getByTestId('connect-session')).toContainText('Finish signing in in your browser.');
-    expect(m.calls.find((c) => c.path === '/connect/sign-in')?.body).toEqual({ account: 'me@x.test' });
-    await expect(panel.getByRole('textbox')).toHaveCount(0);
-    await expect(panel.locator('.now-cmd')).toHaveCount(0);
-  });
-
-  // @req FR:connect-accounts/web.panel @req FR:connect-accounts/web.setup @req FR:connect-accounts/web.signin @req FR:connect-accounts/web.where
-  test('calendar Connect: one-time setup, then Connect a Microsoft account with a device code; ICS stays as the fallback', async ({ page }) => {
-    await ten(page);
-    const m = await mockApi(page, { tasks: seed() });
-    await local(page);
-    m.connect = { info: { setup: { clientId: false }, accounts: [] }, setup: 'needs-azure-signin', session: { id: 's1', method: 'device', state: 'waiting', userCode: 'ABCD-1234', verificationUri: 'https://microsoft.com/devicelogin' }, polls: [{ id: 's1', method: 'device', state: 'done', account: 'me@outlook.com' }] };
-    await page.goto('/#/now');
-    await page.getByTestId('now-cal').getByRole('button', { name: 'Connect' }).click();
-    const panel = page.getByTestId('now-connect');
-    await panel.getByRole('button', { name: 'Run setup' }).click();
-    await expect(panel).toContainText('Sign in to Azure once: open PowerShell, run Connect-AzAccount, then click Run setup again.');
-    m.connect.setup = 'done';
-    await panel.getByRole('button', { name: 'Run setup' }).click();
-    await panel.getByRole('button', { name: 'Connect a Microsoft account' }).click();
-    await expect(panel.getByTestId('connect-code')).toHaveText('ABCD-1234');
-    await page.clock.runFor(2500);
-    await expect(panel.locator('[data-account="me@outlook.com"]')).toContainText('Connected');
-    await expect(panel.getByRole('button', { name: 'Add another account' })).toBeVisible();
-    await expect(panel.getByLabel('Or use a published calendar link (ICS)')).toBeVisible();
-    expect(await axe(page)).toEqual([]);
-  });
-
+test.describe('Now: calendar refresh', () => {
   // @req FR:ux-consolidation/cal.check: an open page reads the calendar again, so a working calendar never goes stale
   // @req FR:connect-accounts/cal.page
   test('the page reads the calendar again after 5 minutes', async ({ page }) => {
