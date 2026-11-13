@@ -150,8 +150,8 @@ describe('lazy PR page and the signed-out board', () => {
     made.push(token);
     let stopped = false;
     return {
-      prBoard: { get: async () => ({ at: '2026-11-12T00:00:00Z', user: 'me', agents: { count: 1, source: 'sessions' }, counts: { blocked: 0, waiting: 0, processing: 0, pending: 0, paused: 0 }, footer: { running: 1, waiting: 0, parked: 0 }, rows: [], queue: false, ...(stopped ? { error: 'stopped' } : {}) }), refresh: async () => undefined, stop: () => { stopped = true; } },
-      prWrites: { addLabel: async () => undefined, removeLabel: async () => undefined, comment: async () => undefined, reply: async () => undefined },
+      prBoard: { get: async () => ({ at: '2026-11-12T00:00:00Z', user: 'me', agents: { count: 1, source: 'sessions' }, counts: { waiting: 0, processing: 0, pending: 0, paused: 0 }, footer: { running: 1, waiting: 0, parked: 0 }, rows: [], summary: { live: [], signoff: [], autopilot: [], missing: [] }, queue: false, ...(stopped ? { error: 'stopped' } : {}) }), refresh: async () => undefined, stop: () => { stopped = true; } },
+      prWrites: { addLabel: async () => undefined, removeLabel: async () => undefined, comment: async () => undefined, reply: async () => undefined, resolveThread: async () => undefined },
       prQueue: noQueue(),
     };
   };

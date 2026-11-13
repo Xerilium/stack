@@ -7,14 +7,15 @@ import { createPrPage } from '../api/pr-page';
 import { createGitHubAuth } from '../api/github-auth';
 import type { PrBoard } from '../api/pr-board-service';
 import type { StackConfig } from '../core/config';
-import { PR_GROUPS, type PrGroup, type PrRow } from '../core/pr-board';
+import { ACTION_WORD, PR_GROUPS, type PrGroup, type PrRow } from '../core/pr-board';
+import { LiveStore } from '../core/live-lane';
 import { runInventory } from '../core/session-inventory';
 import { UsageError } from './args';
 import { specSort } from './pr-review';
 
 const SIGN_IN = 'GitHub sign-in needed: run gh auth login or set GITHUB_TOKEN';
 const OWNER: Record<string, string> = { me: 'you', ci: 'CI', runner: 'runner', none: '-' };
-const ownerWord = (r: PrRow) => (r.state.owner === 'reviewer' ? r.state.login ?? 'reviewer' : OWNER[r.state.owner]);
+const ownerWord = (r: PrRow) => (r.nextAction ? ACTION_WORD[r.nextAction] : r.state.owner === 'reviewer' ? r.state.login ?? 'reviewer' : OWNER[r.state.owner]);
 
 /** Filters a board by group and project (a project name or a repo). */
 export function filterBoard(b: PrBoard, group?: string, project?: string): PrRow[] {
@@ -23,7 +24,7 @@ export function filterBoard(b: PrBoard, group?: string, project?: string): PrRow
   return b.rows.filter((r) => (!group || r.group === group) && (!p || r.project === p || r.repo.toLowerCase() === p || r.repo.split('/')[1]?.toLowerCase() === p));
 }
 
-/** The text form: counts, then one line per row. */
+/** The text form: counts, then one line per row with the next action (else the owner). @req FR:pr-page/cli.prs */
 export function formatBoard(b: PrBoard, rows: PrRow[]): string {
   const lines = [`prs: ${PR_GROUPS.map((g) => `${g} ${b.counts[g]}`).join(', ')}; agents ${b.agents.count} (${b.agents.source})${b.at ? `; updated ${b.at}` : ''}${b.error ? `; ${b.error}` : ''}`];
   for (const r of rows) lines.push(`${r.group} [${r.project}] ${r.repo}#${r.number} ${r.title} · ${ownerWord(r)}${r.state.blocker ? `: ${r.state.blocker}` : ''} ${r.state.link}`);
@@ -42,7 +43,7 @@ export async function prsCmd(flags: Record<string, string | true>, positionals: 
   if (!tok) return { json: { ok: false, error: SIGN_IN }, text: `error: ${SIGN_IN}`, code: 1 };
   let cfg: StackConfig | undefined;
   try { cfg = config(); } catch { cfg = undefined; }
-  const page = createPrPage({ token: tok, repos: githubRepos(env.STACK_GITHUB_REPOS), config: cfg, home, inventory: () => runInventory({ home }), adminOrgs: true });
+  const page = createPrPage({ token: tok, repos: githubRepos(env.STACK_GITHUB_REPOS), config: cfg, home, inventory: () => runInventory({ home }), adminOrgs: true, live: () => new LiveStore(home).view() });
   try {
     const b = await page.prBoard.get();
     const all = filterBoard(b, group, project);

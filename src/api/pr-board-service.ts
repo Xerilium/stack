@@ -2,7 +2,7 @@
  * The host side of the PR page: polls GitHub while a page holds a lease, backs off on rate limits, and tells open pages when the board changes.
  * @req FR:pr-page/live.poll @req FR:pr-page/live.event @req FR:pr-page/live.backoff @req FR:pr-page/data.board
  */
-import { activeAgents, buildRows, countRows, footerOf, isWip, parseQueue, type BoardCounts, type Escalations, type PrFacts, type PrRow } from '../core/pr-board';
+import { activeAgents, buildRows, countRows, footerOf, isWip, parseQueue, summaryOf, type BoardCounts, type Escalations, type LiveLane, type PrFacts, type PrRow, type PrSummary } from '../core/pr-board';
 import { GitHubRateLimit, type GitHubBoard } from './github-board';
 
 /** @req FR:pr-page/$board */
@@ -11,6 +11,8 @@ export interface PrBoard {
   at: string | null; user: string;
   agents: { count: number; source: 'sessions' | 'wip-label' };
   counts: BoardCounts; footer: { running: number; waiting: number; parked: number }; rows: PrRow[];
+  /** The Summary tab. @req FR:pr-page/summary.@function */
+  summary: PrSummary;
   escalations?: Escalations; queue: boolean;
   /** While polls are paused for a rate limit or errors. */
   rate?: { until: string };
@@ -18,13 +20,19 @@ export interface PrBoard {
   /** A search hit its limit; some PRs may be missing. */
   truncated?: boolean;
 }
-export interface PrBoardService { get(): Promise<PrBoard>; refresh(): Promise<void>; stop(): void }
+export interface PrBoardService {
+  get(): Promise<PrBoard>; refresh(): Promise<void>; stop(): void;
+  /** True when the review thread (GraphQL node id) belongs to the PR on the last board. */
+  hasThread?(url: string, threadId: string): boolean;
+}
 export interface PrBoardServiceOptions {
   source: GitHubBoard;
   /** The session inventory; absent means the WIP label stands in for active agents. */
   inventory?: () => { sessions: { state: string; prs: { url: string; state: string }[] }[] };
   /** The pr-priority store files, parsed JSON or undefined. */
   files?: () => { queue?: unknown; state?: unknown; config?: unknown };
+  /** The live lane (`stack live`); absent on hosts without one. */
+  live?: () => LiveLane | undefined;
   myRepos?: string[]; exclude?: string[];
   /** Whether the host can change the queue (the `pr-pri` command exists). */
   queue?: () => Promise<boolean>;
@@ -69,9 +77,12 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
     try { files = o.files?.() ?? {}; } catch { files = {}; }
     const q = parseQueue(files);
     // Excludes: config `github.exclude` plus the store's `pr-priority.config.json`.
-    const rows = facts ? buildRows(facts, { user, now: new Date(now()), agentPrs, myRepos: o.myRepos ?? derived, exclude: [...(o.exclude ?? []), ...q.exclude], reports: q.reports, ranks: q.ranks, pinned: q.pinned, recs: q.recs, acks: q.acks }) : [];
+    let live: LiveLane | undefined;
+    try { live = o.live?.(); } catch { live = undefined; }
+    const ctx = { user, now: new Date(now()), agentPrs, myRepos: o.myRepos ?? derived, exclude: [...(o.exclude ?? []), ...q.exclude], reports: q.reports, ranks: q.ranks, pinned: q.pinned, recs: q.recs, acks: q.acks, ...(live ? { live } : {}), ...(q.escalations?.live[0] ? { liveFirst: q.escalations.live[0].url } : {}) };
+    const rows = facts ? buildRows(facts, ctx) : [];
     return {
-      at: at === null ? null : new Date(at).toISOString(), user, agents, counts: countRows(rows), footer: footerOf(rows, agents.count), rows,
+      at: at === null ? null : new Date(at).toISOString(), user, agents, counts: countRows(rows), footer: footerOf(rows, agents.count), rows, summary: summaryOf(rows, ctx),
       ...(q.escalations ? { escalations: q.escalations } : {}), queue: queueOk,
       ...(pausedUntil > now() ? { rate: { until: new Date(pausedUntil).toISOString() } } : {}), ...(error ? { error } : {}), ...(truncated ? { truncated } : {}),
     };
@@ -119,6 +130,7 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
       return build();
     },
     async refresh() { if (pausedUntil <= now()) await poll(); },
+    hasThread(url, threadId) { return !!facts?.find((f) => f.url.toLowerCase() === url.toLowerCase())?.threads?.some((t) => t.nodeId === threadId); },
     stop() { stopped = true; if (timer !== null) timers.clear(timer); timer = null; },
   };
 }

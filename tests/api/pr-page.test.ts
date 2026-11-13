@@ -241,7 +241,7 @@ describe('board service', () => {
     list = [facts(1), facts(2, { labels: ['Status: 🤖 Autopilot', 'Needs attention'] })];
     await c.advance(45_000);
     expect(changes).toBe(1);
-    expect((await svc.get()).counts.blocked).toBe(1);
+    expect((await svc.get()).counts.processing).toBe(2);
     await c.advance(45_000 * 5); // lease (3 min) runs out
     const n = src.n;
     await c.advance(45_000 * 3);
