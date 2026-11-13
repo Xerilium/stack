@@ -16,7 +16,7 @@ One owner, one private task repo, hosted on Azure Static Web Apps (SWA) free tie
 - SWA to managed Function: the Function trusts the principal header only because the Function is reachable through SWA alone. `/api/*` is anonymous at the SWA layer on purpose so token callers get in; the code does the real check.
 - Script or agent to Function: presents a bearer token.
 - Function to token store and task storage: server-side only.
-- Tailnet to Mac host (`stack web --bind tailnet`): WireGuard-encrypted, tailnet members only; every non-loopback request needs a paired device token ([phone access](../phone-access.md)).
+- Tailnet to Mac host (`stack web --bind tailnet`): WireGuard-encrypted; the bind is not the boundary (a LAN host may reach the Tailscale address), so every non-loopback request needs a paired device token ([phone access](../phone-access.md)).
 
 ## Threats
 
@@ -37,7 +37,7 @@ One owner, one private task repo, hosted on Azure Static Web Apps (SWA) free tie
 | 13 | Other sign-in providers | SWA route rules return 404 for non-GitHub login (`docs/security/staticwebapp.config.json`) | `docs.test.ts` |
 | 14 | Lost or stolen phone | One token per device (3 scopes, 90 days); owner revokes the device, which revokes the token and drops its push subscription | `devices.test.ts` |
 | 15 | Host posts to an attacker URL via a saved push endpoint | Endpoint must be https on a known push-service host, no credentials or port; a device token is needed to save it | `devices.test.ts` |
-| 16 | Another tailnet member or a rebinding page reaches the Mac host | Listens on loopback and Tailscale addresses only (never `0.0.0.0`); remote Host must be a Tailscale address or `*.ts.net`; device token or cookie on every remote request; proxy headers trusted from loopback only. A paired device is the owner (it can start agent runs) but never reaches token or device admin | `tailnet.test.ts` |
+| 16 | Any host that reaches the Tailscale address, or a rebinding page, reaches the Mac host | Listens on loopback and Tailscale addresses only (never `0.0.0.0`); remote Host must be a Tailscale address or `*.ts.net`; device token or cookie on every remote request; proxy headers trusted from loopback only. A paired device is the owner (it can start agent runs) but never reaches token or device admin | `tailnet.test.ts` |
 
 ## Residual risk
 

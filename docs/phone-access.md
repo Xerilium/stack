@@ -25,7 +25,7 @@ Web Push and the service worker need a secure context. Plain `http://100.x.y.z:4
 
 - The host listens on `127.0.0.1` and the Mac's Tailscale addresses only, never `0.0.0.0`. No Funnel: nothing is public.
 - Without Tailscale running, `--bind tailnet` refuses to start.
-- Every request that is not from the Mac itself needs a paired device token (cookie or bearer). Other tailnet members get the pairing page only.
+- Every request that is not from the Mac itself needs a paired device token (cookie or bearer). Any other host that reaches the Tailscale address gets the pairing page only.
 - A remote Host must be a Tailscale address or a `*.ts.net` name, so a DNS-rebinding page gets `403`.
 - Proxy headers count only from loopback. A tailnet peer cannot fake `tailscale serve`.
 - The device acts as the owner (it can start agent runs on the Mac), but cannot mint or revoke tokens or devices. Revoke cuts it off on the next request.
