@@ -222,8 +222,9 @@ test.describe('Settings: entry, agents, updates', () => {
     const u = page.getByTestId('settings-updates');
     await expect(u.getByRole('radio')).toHaveCount(4);
     await expect(u.getByRole('radio', { name: 'When I quit Stack (recommended)' })).toBeChecked();
-    await u.getByRole('radio', { name: 'Only when I select Restart' }).check();
+    await u.getByRole('radio', { name: 'Only when I select Restart' }).click();
     await expect.poll(() => modes).toEqual([{ mode: 'ask' }]);
+    await expect(u.getByRole('radio', { name: 'Only when I select Restart' })).toBeChecked();
     await expect(page.locator('#settings-updates')).toContainText('Saved');
     await expect(page.locator('#settings-updates')).toContainText('Up to date');
   });
