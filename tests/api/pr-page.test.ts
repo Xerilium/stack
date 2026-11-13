@@ -85,6 +85,9 @@ describe('GitHub board read', () => {
     const r = await g.fetch();
     expect(r.facts.map((x) => x.number)).toEqual([1, 2]);
     expect(r.facts[0].threads).toEqual([{ resolved: false, lastAuthor: 'me', lastBody: '🤖 [AI] 🧭 Pick one', url: 'https://github.com/o/r/pull/1#discussion_r9', id: 9, comments: [{ author: 'me', body: '🤖 [AI] 🧭 Pick one', url: 'https://github.com/o/r/pull/1#discussion_r9' }] }]);
+    // No id, path, times, commits, files, or pending review in this answer: absent, not empty strings.
+    expect(r.facts[0].files).toBeUndefined();
+    expect(r.facts[0].pendingReview).toBeUndefined();
     expect(r.facts[0].checks.find((c) => c.name === 'build')?.required).toBe(true);
     expect(r.facts[1].comments).toEqual([{ author: 'x', body: 'hi', url: 'u' }]);
     expect(r.rate).toEqual({ remaining: 4000, resetAt: '2026-11-11T13:00:00Z' });
@@ -112,6 +115,30 @@ describe('GitHub board read', () => {
     const boom = fakeFetch(() => ({ status: 502, body: { message: TOKEN } }));
     await expect(createGitHubBoard({ token: TOKEN, fetch: boom.fetch, user: 'me' }).fetch()).rejects.toThrow(/^GitHub 502$/);
   });
+  // @req FR:github-pr-status/board.detail @req FR:pr-page/detail.data
+  it('detail reads thread node ids, paths, times, commits, changed files, and my pending review', async () => {
+    const q = detailQuery([{ repo: 'o/r', number: 7 }]);
+    for (const part of ['id isResolved path', 'createdAt', 'files(first: 100)', 'reviews(states: [PENDING]', 'recent: commits(last: 10)', 'messageHeadline']) expect(q).toContain(part);
+    const f = fakeFetch((c) => {
+      const body = JSON.parse(c.body!).query as string;
+      if (body.includes('search(')) return { body: { data: { a: { nodes: [node(1)] }, b: { nodes: [] }, c: { nodes: [] } } } };
+      return { body: { data: { p0: { pullRequest: {
+        reviewThreads: { nodes: [{ id: 'PRRT_kw1', isResolved: false, path: 'src/a.ts', root: { nodes: [{ databaseId: 9 }] }, comments: { nodes: [{ url: 'https://github.com/o/r/pull/1#discussion_r9', body: 'Hold', createdAt: '2026-11-11T09:00:00Z', author: { login: 'me', __typename: 'User' } }] } }] },
+        comments: { nodes: [{ url: 'https://github.com/o/r/pull/1#issuecomment-1', body: 'Why not now?', createdAt: '2026-11-10T09:00:00Z', author: { login: 'me', __typename: 'User' } }] },
+        commits: { nodes: [] },
+        recent: { nodes: [{ commit: { oid: 'abcdef1234', messageHeadline: 'Fix it', url: 'https://github.com/o/r/commit/abcdef1234', committedDate: '2026-11-11T10:00:00Z' } }] },
+        files: { nodes: [{ path: '.xe/features/a/spec.md', additions: 3, deletions: 1 }] },
+        reviews: { nodes: [{ url: 'https://github.com/o/r/pull/1#pullrequestreview-5', body: 'Draft', author: { login: 'me', __typename: 'User' }, comments: { nodes: [{ path: 'src/a.ts', body: 'Nit' }] } }, { url: 'x', body: 'not mine', author: { login: 'roland', __typename: 'User' }, comments: { nodes: [] } }] },
+      } } } } };
+    });
+    const r = await createGitHubBoard({ token: TOKEN, fetch: f.fetch, user: 'me' }).fetch();
+    const p = r.facts[0];
+    expect(p.threads![0]).toMatchObject({ nodeId: 'PRRT_kw1', path: 'src/a.ts', comments: [{ author: 'me', body: 'Hold', at: '2026-11-11T09:00:00Z' }] });
+    expect(p.comments![0].at).toBe('2026-11-10T09:00:00Z');
+    expect(p.commits).toEqual([{ sha: 'abcdef1234', title: 'Fix it', url: 'https://github.com/o/r/commit/abcdef1234', at: '2026-11-11T10:00:00Z' }]);
+    expect(p.files).toEqual([{ path: '.xe/features/a/spec.md', additions: 3, deletions: 1 }]);
+    expect(p.pendingReview).toEqual({ url: 'https://github.com/o/r/pull/1#pullrequestreview-5', body: 'Draft', comments: [{ path: 'src/a.ts', body: 'Nit' }] });
+  });
   it('partial data with errors is a failed poll, not an empty board', async () => {
     const part = fakeFetch(() => ({ body: { errors: [{ type: 'NOT_FOUND', message: 'x' }], data: { a: { nodes: [] }, b: null, c: { nodes: [] } } } }));
     await expect(createGitHubBoard({ token: TOKEN, fetch: part.fetch, user: 'me' }).fetch()).rejects.toThrow('GitHub graphql error');
@@ -138,8 +165,23 @@ describe('GitHub writes', () => {
     await expect(w.comment(pr, 'Yes')).rejects.toBeInstanceOf(GitHubWriteDenied);
     await expect(w.comment(pr, `${AI_PREFIX}${'x'.repeat(4000)}`)).rejects.toBeInstanceOf(GitHubWriteDenied);
     await expect(w.addLabel({ repo: 'bad', number: 1 }, 'Status: 🤖 Autopilot')).rejects.toBeInstanceOf(GitHubWriteDenied);
-    expect(Object.keys(w).sort()).toEqual(['addLabel', 'comment', 'removeLabel', 'reply']);
+    expect(Object.keys(w).sort()).toEqual(['addLabel', 'comment', 'removeLabel', 'reply', 'resolveThread']);
     expect(f.calls).toHaveLength(6);
+  });
+  // @req FR:github-pr-status/write.resolve
+  it('resolveThread runs the resolve or unresolve mutation with a checked node id and repo', async () => {
+    const f = fakeFetch(() => ({ status: 200, body: { data: {} } }));
+    const w = createGitHubWrites({ token: TOKEN, fetch: f.fetch, repos: ['o'] });
+    await w.resolveThread(pr, 'PRRT_kw1', true);
+    await w.resolveThread(pr, 'PRRT_kw1', false);
+    expect(f.calls.map((c) => `${c.method} ${c.url}`)).toEqual(['POST https://api.github.com/graphql', 'POST https://api.github.com/graphql']);
+    expect(JSON.parse(f.calls[0].body!)).toEqual({ query: 'mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }', variables: { id: 'PRRT_kw1' } });
+    expect(JSON.parse(f.calls[1].body!).query).toContain('unresolveReviewThread');
+    await expect(w.resolveThread(pr, 'bad id!', true)).rejects.toBeInstanceOf(GitHubWriteDenied);
+    await expect(w.resolveThread({ repo: 'x/y', number: 1 }, 'PRRT_kw1', true)).rejects.toBeInstanceOf(GitHubWriteDenied);
+    const errs = createGitHubWrites({ token: TOKEN, fetch: fakeFetch(() => ({ status: 200, body: { errors: [{ message: TOKEN }] } })).fetch });
+    await expect(errs.resolveThread(pr, 'PRRT_kw1', true)).rejects.toThrow(/^GitHub graphql error$/);
+    expect(f.calls).toHaveLength(2);
   });
   it('add uses the repo spelling of the label', async () => {
     const f = fakeFetch((c) => (c.url.endsWith('/labels?per_page=100') ? { body: [{ name: 'Status: 🤖️ Autopilot' }] } : { status: 200, body: {} }));
@@ -317,12 +359,13 @@ describe('queue client', () => {
 
 // @req FR:pr-page/api.get @req FR:pr-page/api.queue @req FR:pr-page/api.label @req FR:pr-page/api.ack @req FR:pr-page/api.rec @req FR:pr-page/act.owner @req FR:pr-page/api.repos @req FR:pr-page/act.never
 describe('PR routes', () => {
-  function mk(o: { board?: boolean; queue?: PrQueue | null; ranks?: Record<string, number>; ghStatus?: number; labels?: string[] } = {}) {
+  function mk(o: { board?: boolean; queue?: PrQueue | null; ranks?: Record<string, number>; ghStatus?: number; labels?: string[]; threads?: PrFacts['threads'] } = {}) {
     const ghCalls: string[] = [];
     const qCalls: string[] = [];
     const push = (s: string) => async () => { qCalls.push(s); };
     const prQueue: PrQueue = { move: async (r, to) => { qCalls.push(`move ${r} ${to}`); }, add: async (r) => { qCalls.push(`add ${r}`); }, pin: async (r) => { qCalls.push(`pin ${r}`); }, unpin: async (r) => { qCalls.push(`unpin ${r}`); }, remove: async (r) => { qCalls.push(`remove ${r}`); }, undo: push('undo'), ack: async (r, t, n) => { qCalls.push(`ack ${r} ${t} ${n}`); }, accept: async (id) => { qCalls.push(`accept ${id}`); }, edit: async (id, d) => { qCalls.push(`edit ${id} ${d.reason}`); }, reject: async (id, why) => { qCalls.push(`reject ${id} ${why}`); } };
-    const prBoard = createPrBoardService({ source: fakeSource(() => [facts(1, o.labels ? { labels: o.labels } : {}), facts(2)]), now: () => NOW, timers: clock().timers, queue: async () => true, files: () => ({ queue: { items: Object.entries(o.ranks ?? {}).map(([u, rank]) => ({ url: u, rank })) } }) });
+    const src = fakeSource(() => [facts(1, { ...(o.labels ? { labels: o.labels } : {}), ...(o.threads ? { threads: o.threads } : {}) }), facts(2)]);
+    const prBoard = createPrBoardService({ source: src, now: () => NOW, timers: clock().timers, queue: async () => true, files: () => ({ queue: { items: Object.entries(o.ranks ?? {}).map(([u, rank]) => ({ url: u, rank })) } }) });
     const prWrites = createGitHubWrites({ token: TOKEN, fetch: fakeFetch((c) => { ghCalls.push(`${c.method} ${c.url}`); return { status: o.ghStatus ?? 200, body: {} }; }).fetch, repos: ['o'] });
     const deps = { storage: new MemoryStorage(), ...(o.board === false ? {} : { prBoard, prWrites, ...(o.queue === null ? {} : { prQueue: o.queue ?? prQueue }) }) };
     const tokens = createTokenService({ store: new MemoryTokenStore(), now: () => new Date(NOW) });
@@ -335,15 +378,16 @@ describe('PR routes', () => {
       const t = await res.text();
       return { status: res.status, json: t ? JSON.parse(t) : undefined, text: t };
     };
-    return { call, tokens, ghCalls, qCalls };
+    return { call, tokens, ghCalls, qCalls, src };
   }
   it('routes are registered with scopes and documented', () => {
     for (const n of ['prs.get']) expect(routeScope(n)).toBe('tasks:read');
-    for (const n of ['prs.queue', 'prs.label', 'prs.ack', 'prs.rec']) expect(routeScope(n)).toBe('tasks:write');
-    expect(ROUTES.filter((r) => r.name.startsWith('prs.')).map((r) => `${r.method} ${r.doc}`)).toEqual(['GET /prs', 'POST /prs/queue', 'POST /prs/label', 'POST /prs/ack', 'POST /prs/recs/{id}', 'GET /prs/sign-in', 'POST /prs/sign-in']);
+    for (const n of ['prs.queue', 'prs.label', 'prs.ack', 'prs.rec', 'prs.resolve']) expect(routeScope(n)).toBe('tasks:write');
+    expect(ROUTES.filter((r) => r.name.startsWith('prs.')).map((r) => `${r.method} ${r.doc}`)).toEqual(['GET /prs', 'POST /prs/queue', 'POST /prs/label', 'POST /prs/ack', 'POST /prs/recs/{id}', 'POST /prs/resolve', 'GET /prs/sign-in', 'POST /prs/sign-in']);
     const y = readFileSync(join(__dirname, '../../docs/api/openapi.yaml'), 'utf8');
     expect(y).toContain('/prs:');
     expect(y).toContain('/prs/recs/{id}:');
+    expect(y).toContain('/prs/resolve:');
     // Never a merge, close, draft, or review route.
     expect(ROUTES.some((r) => /merge|close|draft|approve|review/i.test(r.name) && r.name.startsWith('prs.'))).toBe(false);
   });
@@ -399,6 +443,43 @@ describe('PR routes', () => {
     const variant = mk({ labels: ['status: 🤖 autopilot'] });
     expect((await variant.call('owner', 'POST', '/prs/label', { repo: 'o/r', number: 1, op: 'remove' })).status).toBe(200);
     expect(variant.ghCalls).toEqual([`DELETE https://api.github.com/repos/o/r/issues/1/labels/${encodeURIComponent('status: 🤖 autopilot')}`]);
+  });
+  // @req FR:pr-page/api.get @req FR:pr-page/live.poll
+  it('GET /prs?refresh=1 polls GitHub first; other queries are refused', async () => {
+    const m = mk();
+    await m.call('owner', 'GET', '/prs');
+    const before = m.src.n;
+    expect((await m.call('owner', 'GET', '/prs')).status).toBe(200);
+    expect(m.src.n).toBe(before);
+    expect((await m.call('owner', 'GET', '/prs?refresh=1')).status).toBe(200);
+    expect(m.src.n).toBe(before + 1);
+    expect((await m.call('owner', 'GET', '/prs?x=1')).status).toBe(422);
+  });
+  // @req FR:pr-page/data.board @req FR:pr-page/summary.@function
+  it('GET /prs carries nextAction, specLines, pinned, and the summary', async () => {
+    const r = await mk().call('owner', 'GET', '/prs');
+    expect(r.json.summary).toEqual({ live: [], signoff: [], autopilot: [], missing: [] });
+    expect(r.json.rows[0]).toMatchObject({ nextAction: null, specLines: null, pinned: false, mine: true, detail: {} });
+  });
+  // @req FR:pr-page/api.queue @req FR:pr-page/pin.toggle
+  it('POST /prs/queue pin adds a PR that is not queued, then pins it', async () => {
+    const m = mk({ ranks: { 'https://github.com/o/r/pull/1': 1 } });
+    await m.call('owner', 'POST', '/prs/queue', { repo: 'o/r', number: 2, op: 'pin' });
+    await m.call('owner', 'POST', '/prs/queue', { repo: 'o/r', number: 1, op: 'pin' });
+    expect(m.qCalls).toEqual(['add o/r#2', 'pin o/r#2', 'pin o/r#1']);
+  });
+  // @req FR:pr-page/api.resolve @req FR:pr-page/detail.signoff
+  it('POST /prs/resolve resolves or reopens a sign-off thread on the row only', async () => {
+    const hold = { resolved: false, lastAuthor: 'me', lastBody: 'Hold', url: 'https://github.com/o/r/pull/1#discussion_r9', id: 9, nodeId: 'PRRT_kw1', comments: [{ author: 'me', body: 'Hold', url: 'https://github.com/o/r/pull/1#discussion_r9' }] };
+    const m = mk({ threads: [hold] });
+    expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_kw1', op: 'resolve' })).json).toEqual({ ok: true, op: 'resolve' });
+    expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_kw1', op: 'unresolve' })).status).toBe(200);
+    expect(m.ghCalls).toEqual(['POST https://api.github.com/graphql', 'POST https://api.github.com/graphql']);
+    expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_other', op: 'resolve' })).status).toBe(404);
+    expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 2, thread: 'PRRT_kw1', op: 'resolve' })).status).toBe(404);
+    expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_kw1', op: 'merge' })).status).toBe(422);
+    const t = (await m.tokens.create({ name: 'cos', scopes: ['tasks:read', 'tasks:write'] as never })).token;
+    expect((await m.call(t, 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_kw1', op: 'resolve' })).status).toBe(403);
   });
   it('POST /prs/recs/{id}: edit and reject need a reason', async () => {
     const m = mk();
