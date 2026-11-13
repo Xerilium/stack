@@ -139,6 +139,18 @@ describe('GitHub board read', () => {
     expect(p.files).toEqual([{ path: '.xe/features/a/spec.md', additions: 3, deletions: 1 }]);
     expect(p.pendingReview).toEqual({ url: 'https://github.com/o/r/pull/1#pullrequestreview-5', body: 'Draft', comments: [{ path: 'src/a.ts', body: 'Nit' }] });
   });
+  // @req FR:github-pr-status/board.detail @req FR:pr-page/card.action
+  it('a thread keeps its first and last comments, so an early ask stays in view', async () => {
+    const c = (i: number, body = `reply ${i}`) => ({ url: `https://github.com/o/r/pull/1#discussion_r${i}`, body, createdAt: '2026-11-11T09:00:00Z', author: { login: 'me', __typename: 'User' } });
+    const f = fakeFetch((x) => {
+      const q = JSON.parse(x.body!).query as string;
+      if (q.includes('search(')) return { body: { data: { a: { nodes: [node(1)] }, b: { nodes: [] }, c: { nodes: [] } } } };
+      return { body: { data: { p0: { pullRequest: { reviewThreads: { nodes: [{ id: 'PRRT_1', isResolved: false, root: { nodes: [{ databaseId: 1 }] }, head: { nodes: [c(1, 'Hold until I ack'), c(2)] }, comments: { nodes: [c(2), c(30), c(31)] } }] }, comments: { nodes: [] }, commits: { nodes: [] } } } } } };
+    });
+    const r = await createGitHubBoard({ token: TOKEN, fetch: f.fetch, user: 'me' }).fetch();
+    expect(r.facts[0].threads![0].comments!.map((x) => x.body)).toEqual(['Hold until I ack', 'reply 2', 'reply 30', 'reply 31']);
+    expect(r.facts[0].threads![0].lastBody).toBe('reply 31');
+  });
   // @req FR:pr-page/api.resolve
   it('forget(url) reads that PR\'s detail again on the next fetch', async () => {
     let detailCalls = 0;
@@ -480,12 +492,32 @@ describe('PR routes', () => {
     expect(r.json.summary).toEqual({ live: [], signoff: [], autopilot: [], missing: [] });
     expect(r.json.rows[0]).toMatchObject({ nextAction: null, specLines: null, pinned: false, mine: true, detail: {} });
   });
+  // @req FR:pr-page/live.poll @req FR:pr-page/api.resolve
+  it('refresh(url) waits for a running poll, then forgets the PR, then polls again', async () => {
+    const log: string[] = [];
+    let open: () => void = () => undefined;
+    let first = true;
+    const src: GitHubBoard = { user: async () => 'me', forget: (u) => { log.push(`forget ${u}`); }, fetch: async () => { log.push('fetch'); if (first) { first = false; await new Promise<void>((r) => { open = r; }); } log.push('fetched'); return { user: 'me', facts: [facts(1)] }; } };
+    const svc = createPrBoardService({ source: src, now: () => NOW, timers: clock().timers });
+    const g = svc.get();
+    await new Promise((r) => setImmediate(r));
+    const rf = svc.refresh('https://github.com/o/r/pull/1');
+    open();
+    await Promise.all([g, rf]);
+    expect(log).toEqual(['fetch', 'fetched', 'forget https://github.com/o/r/pull/1', 'fetch', 'fetched']);
+    svc.stop();
+  });
   // @req FR:pr-page/api.queue @req FR:pr-page/pin.toggle
-  it('POST /prs/queue pin adds a PR that is not queued, then pins it', async () => {
+  it('POST /prs/queue pin adds a PR that is not queued, then pins it; a failed pin takes the add back', async () => {
     const m = mk({ ranks: { 'https://github.com/o/r/pull/1': 1 } });
     await m.call('owner', 'POST', '/prs/queue', { repo: 'o/r', number: 2, op: 'pin' });
     await m.call('owner', 'POST', '/prs/queue', { repo: 'o/r', number: 1, op: 'pin' });
     expect(m.qCalls).toEqual(['add o/r#2', 'pin o/r#2', 'pin o/r#1']);
+    const calls: string[] = [];
+    const bad: PrQueue = { ...noQueue(), add: async (r) => { calls.push(`add ${r}`); }, pin: async () => { throw new QueueRefused('pin refused'); }, remove: async (r) => { calls.push(`remove ${r}`); } };
+    const f = mk({ queue: bad });
+    expect(await f.call('owner', 'POST', '/prs/queue', { repo: 'o/r', number: 2, op: 'pin' })).toMatchObject({ status: 409, json: { error: { message: 'pin refused' } } });
+    expect(calls).toEqual(['add o/r#2', 'remove o/r#2']);
   });
   // @req FR:pr-page/api.resolve @req FR:pr-page/detail.signoff
   it('POST /prs/resolve resolves or reopens a sign-off thread on the row only', async () => {

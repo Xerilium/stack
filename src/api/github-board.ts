@@ -87,7 +87,7 @@ export function detailQuery(prs: { repo: string; number: number }[]): string {
     const [owner, name] = p.repo.split('/');
     const n = Math.trunc(p.number);
     return `p${i}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequest(number: ${n}) {
-  reviewThreads(first: 50) { nodes { id isResolved path root: comments(first: 1) { nodes { databaseId } } comments(last: ${THREAD_TAIL}) { nodes { url body createdAt author { login __typename } } } } }
+  reviewThreads(first: 50) { nodes { id isResolved path root: comments(first: 1) { nodes { databaseId } } head: comments(first: ${THREAD_TAIL}) { nodes { url body createdAt author { login __typename } } } comments(last: ${THREAD_TAIL}) { nodes { url body createdAt author { login __typename } } } } }
   comments(last: 10) { nodes { url body createdAt author { login __typename } } }
   recent: commits(last: 10) { nodes { commit { oid messageHeadline url committedDate } } }
   files(first: 100) { nodes { path additions deletions } }
@@ -188,7 +188,10 @@ ${FRAGMENT}`, { a, b, c });
           const p = d[`p${j}`]?.pullRequest;
           if (!p) return;
           const threads: PrThread[] = (p.reviewThreads?.nodes ?? []).map((t: Obj) => {
-            const tail: PrComment[] = (t.comments?.nodes ?? []).map(comment);
+            // The first and the last comments: an ask early in a long thread stays in view.
+            const last10: PrComment[] = (t.comments?.nodes ?? []).map(comment);
+            const first10: PrComment[] = (t.head?.nodes ?? []).map(comment).filter((c: PrComment) => !last10.some((x) => x.url && x.url === c.url));
+            const tail: PrComment[] = [...first10, ...last10];
             const last = tail[tail.length - 1];
             return {
               resolved: !!t.isResolved, lastAuthor: last?.author ?? 'ghost', lastBody: last?.body ?? '', ...(last?.url ? { url: last.url } : {}), ...(Number.isInteger(t.root?.nodes?.[0]?.databaseId) ? { id: t.root.nodes[0].databaseId } : {}),

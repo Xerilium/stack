@@ -159,14 +159,15 @@ interface Ctx { board: PrBoard; selected: string | null; select: (r: PrRow) => v
 function Card({ r, c, sort }: { r: PrRow; c: Ctx; sort?: { onDown: (e: PointerEvent) => void; onKey: (e: KeyboardEvent) => void; dragging: boolean } }) {
   const spec = specText(r);
   return (
-    <li class={`pr-card tone-${toneOf(r)}${sort?.dragging ? ' dragging' : ''}`} data-number={r.number} data-url={r.url} aria-current={c.selected === r.url ? 'true' : undefined}>
+    <li class={`pr-card tone-${toneOf(r)}${sort?.dragging ? ' dragging' : ''}`} data-number={r.number} data-url={r.url} data-selected={c.selected === r.url ? 'true' : undefined}>
       <div class="pr-card-top">
         <span class="pr-repo">{r.repo}</span>
         <a class="pr-num" href={r.url} target="_blank" rel="noopener noreferrer">#{r.number}</a>
         {r.nextAction && <span class="pr-act">{ACTION_LABEL[r.nextAction]}</span>}
       </div>
-      <button type="button" class="pr-open" onClick={() => c.select(r)}>
+      <button type="button" class="pr-open" aria-current={c.selected === r.url ? 'true' : undefined} onClick={() => c.select(r)}>
         <span class="pr-title">{clip(r.title, 120)}</span>
+        {r.nextAction && <span class="sr-only">, next: {ACTION_LABEL[r.nextAction]}</span>}
         <span class="pr-sub"><span class="pr-author">{authorText(r)}</span>{spec && <span class="pr-spec">{spec}</span>}</span>
         <span class="pr-chev" aria-hidden="true">›</span>
       </button>
@@ -447,7 +448,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
   const back = () => {
     const u = selected;
     setSelected(null);
-    setTimeout(() => ref.current?.querySelector<HTMLElement>(`.pr-card[data-url="${CSS.escape(u ?? '')}"] .pr-open`)?.focus(), 0);
+    setTimeout(() => { const q = CSS.escape(u ?? ''); (ref.current?.querySelector<HTMLElement>(`.pr-card[data-url="${q}"] .pr-open`) ?? ref.current?.querySelector<HTMLElement>(`.pr-miss-open[data-url="${q}"]`))?.focus(); }, 0);
   };
   const c: Ctx | null = board ? { board, selected, select, pin, busy } : null;
 
@@ -479,7 +480,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
             {sum.missing.slice(0, MISS_MAX).map((m, k) => (
               <li key={`${m.row.url}-${k}`}>
                 <a class="pr-num" href={m.row.url} target="_blank" rel="noopener noreferrer">{refOf(m.row)}</a>
-                <button type="button" class="pr-miss-open" onClick={() => select(m.row)}>{clip(m.row.title, 80)}</button>
+                <button type="button" class="pr-miss-open" data-url={m.row.url} onClick={() => select(m.row)}>{clip(m.row.title, 80)}</button>
                 <span class="pr-miss-why">{m.reason}</span>
               </li>
             ))}

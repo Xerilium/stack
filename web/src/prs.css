@@ -70,7 +70,7 @@
 .pr-card.tone-auto { --edge: var(--pr-auto-edge); --soft: var(--pr-auto-soft); --bg-strong: var(--pr-auto); }
 .pr-card.tone-mine { --edge: var(--pr-mine-edge); --soft: var(--pr-mine-soft); --bg-strong: var(--pr-mine); }
 .pr-card.tone-other { --edge: var(--pr-other-edge); --soft: var(--pr-other-soft); --bg-strong: var(--pr-other); }
-.pr-card[aria-current="true"] { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pr-card[data-selected="true"] { outline: 2px solid var(--focus); outline-offset: 2px; }
 .pr-card.dragging { box-shadow: var(--fl-shadow16); opacity: .92; }
 .pr-card-top { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: 12px; color: var(--pr-ink2); }
 .pr-repo { overflow-wrap: anywhere; }

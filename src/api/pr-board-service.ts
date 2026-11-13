@@ -132,9 +132,9 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
       return build();
     },
     async refresh(url) {
-      if (url) o.source.forget?.(url);
-      // A poll that started before this write or tap may miss it: wait for it, then poll again.
+      // A poll that started before this write or tap may miss it (and cache old threads): wait for it, then forget, then poll again.
       if (inFlight) await inFlight;
+      if (url) o.source.forget?.(url);
       if (pausedUntil <= now()) await poll();
     },
     hasThread(url, threadId) { return !!facts?.find((f) => f.url.toLowerCase() === url.toLowerCase())?.threads?.some((t) => t.nodeId === threadId); },

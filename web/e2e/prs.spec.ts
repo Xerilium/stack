@@ -253,6 +253,7 @@ test('details: wide shows a pane on the right; narrow replaces the list with Bac
   await setup(page);
   const pg = await openPage(page);
   if (!mobile) await expect(pg.getByTestId('prs-detail')).toContainText('Select a PR to see its next step.');
+  await expect(card(pg, 109).locator('.pr-open')).toHaveAccessibleName(/next: Validate/);
   await card(pg, 109).locator('.pr-open').click();
   const d = pg.getByTestId('prs-detail');
   await expect(d).toBeVisible();
@@ -260,7 +261,7 @@ test('details: wide shows a pane on the right; narrow replaces the list with Bac
   await expect(d.locator('ol li')).toHaveText([/Open the app on the phone/, /Sign in works.*Failed/]);
   await expect(d.getByRole('link', { name: /localhost:5174/ })).toHaveAttribute('href', 'http://localhost:5174');
   await expect(d.getByRole('link', { name: 'Open the checklist to tick items' })).toHaveAttribute('href', '#/live');
-  await expect(card(pg, 109)).toHaveAttribute('aria-current', 'true');
+  await expect(card(pg, 109).locator('.pr-open')).toHaveAttribute('aria-current', 'true');
   if (mobile) {
     await expect(pg.locator('.pr-list-col')).toBeHidden();
     await d.getByRole('button', { name: 'Back' }).click();
@@ -276,6 +277,18 @@ test('details: wide shows a pane on the right; narrow replaces the list with Bac
   await expect(d.getByRole('heading', { level: 3 })).toHaveText('Enable Autopilot');
   await expect(d.getByRole('link', { name: 'Open PR' })).toHaveAttribute('href', U(106));
   await expect(d).toContainText('Not yet: the copy is wrong');
+});
+
+test('phone: Back from a missing line returns focus to that line', async ({ page }, info) => {
+  test.skip(info.project.name !== 'mobile', 'the details replace the list below 1100 px');
+  await setup(page);
+  const pg = await openPage(page);
+  const line = pg.locator('.pr-miss-open[data-url="https://github.com/Xerilium/stack/pull/110"]');
+  await line.click();
+  const d = pg.getByTestId('prs-detail');
+  await expect(d).toContainText('Nothing for you now.');
+  await d.getByRole('button', { name: 'Back' }).click();
+  await expect(line).toBeFocused();
 });
 
 test('Sign off: one thread at a time, how it was addressed, Resolve thread with Undo, Re-review', async ({ page }) => {

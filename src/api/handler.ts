@@ -956,7 +956,8 @@ export const ROUTES: Route[] = [
           case 'move': return q.move(ref, b.rank ?? 1);
           case 'add': return q.add(ref);
           // Pin adds a PR that is not queued first: the pinned order is the queue order. @req FR:pr-page/pin.toggle
-          case 'pin': return cur === null ? q.add(ref).then(() => q.pin(ref)) : q.pin(ref);
+          // A failed pin after the add takes the add back, so the queue never keeps a PR the owner did not ask for.
+          case 'pin': return cur === null ? q.add(ref).then(() => q.pin(ref).catch(async (e: unknown) => { await q.remove(ref).catch(() => undefined); throw e; })) : q.pin(ref);
           case 'unpin': return q.unpin(ref);
           case 'remove': return q.remove(ref);
           default: return q.undo();
