@@ -38,6 +38,7 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 - [ ] Ranker: owner field, gate, blocked, `Checked:` and activity sources (`FR:rank.*`); `GET /rank` fields (`FR:api.rank`)
 - [ ] Needs-context item on an empty Now (`FR:rank.needs-context`)
 - [ ] Routes for Keep, Update date, Drop (`FR:rank.stale.prompt`)
+- [ ] Day plan: separate an empty ranking from a loading or failed one; never restore excluded rows; zero-eligible-tasks test (`FR:web-app/today.plan`)
 
 ## Stage 4: components
 
