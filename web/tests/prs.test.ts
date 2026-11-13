@@ -21,8 +21,8 @@ describe('tabs, counts, and filters', () => {
     row({ url: 'c', group: 'waiting', project: 'ftk', mine: false, author: 'roland', nextAction: 'approve' }), row({ url: 'd', group: 'pending', autopilot: false }),
   ], { summary: { live: ['a'], signoff: ['b'], autopilot: [], missing: [{ url: 'c', reason: 'Approve' }, { url: 'a', reason: 'Live check failed: Login' }] } });
   it('Summary first, then the groups, then Pinned; clear names', () => {
-    expect(tabsOf(b)).toEqual(['summary', 'processing', 'waiting', 'pending', 'paused', 'pinned']);
-    expect(tabsOf(b).map((t) => TAB_LABEL[t])).toEqual(['Summary', 'Processing', 'Waiting on me', 'Pending', 'Paused', 'Pinned']);
+    expect(tabsOf()).toEqual(['summary', 'processing', 'waiting', 'pending', 'paused', 'pinned']);
+    expect(tabsOf().map((t) => TAB_LABEL[t])).toEqual(['Summary', 'Processing', 'Waiting on me', 'Pending', 'Paused', 'Pinned']);
   });
   it('Pinned lists pinned rows by rank; groups list their rows; counts follow the project filter', () => {
     expect(rowsOf(b, 'pinned', []).map((r) => r.url)).toEqual(['b', 'a']);

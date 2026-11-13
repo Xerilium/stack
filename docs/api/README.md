@@ -18,11 +18,12 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/reports` | POST an agent status report into the desktop host's live store (`~/.stack`, never git); 400 lists every issue. See [report.md](../report.md) |
 | `/session-inventory` | GET (owner only) Claude app sessions: counts, ranked Needs you, archive candidates; read-only on the app store, cached in `~/.stack` |
 | `/pr-priority` | GET (owner) the PR priority list view and open recommendations; POST (owner) one idempotent action `{rev, op, ref?, rank?, to?, note?, thread?}`. `/pr-priority/recommendations`: POST (agent token ok) recommend, GET decisions. `/pr-priority/recommendations/{id}`: POST (owner) accept, edit or reject. See [pr-priority.md](../pr-priority.md) |
-| `/prs` | GET (owner only) the PR board: open PRs grouped by who must act, with CI, threads, queue rank, and the escalation set; renews a 3-minute poll lease; `{auth: {state, method}}` when signed out of GitHub (local host); `{off: true}` on a host with no board |
-| `/prs/queue` | POST (owner only) change the priority queue through `stack pr-pri`: `top`, `up`, `down`, `move`, `add`, `pin`, `unpin`, `remove`, `undo` |
+| `/prs` | GET (owner only) the PR board: open PRs by group, each with its one next action, spec lines, pin, and details, plus the Summary (live validation, sign-off, ready for Autopilot, anything else); `refresh=1` polls GitHub first; renews a 3-minute poll lease; `{auth: {state, method}}` when signed out of GitHub (local host); `{off: true}` on a host with no board |
+| `/prs/queue` | POST (owner only) change the priority queue through `stack pr-pri`: `top`, `up`, `down`, `move`, `add`, `pin` (adds the PR first when not queued), `unpin`, `remove`, `undo` |
 | `/prs/label` | POST (owner only) add or remove the Autopilot label (no other label) |
 | `/prs/ack` | POST (owner only) record an answer on a thread (`thread`, `note`); `post: true` first posts the `🤖 [AI]` text on GitHub |
 | `/prs/recs/{id}` | POST (owner only) accept, edit, or reject a PR priority recommendation |
+| `/prs/resolve` | POST (owner only) resolve or reopen a review thread (`thread` node id, `op`) of a PR on the board |
 | `/prs/sign-in` | GET (owner only) the GitHub sign-in session (code and device link, never a token); POST starts `gh auth login --web`; 404 where the host has no sign-in |
 | `/pris` | GET or POST (owner only) the owner priorities with sub-items, backlog and weekly progress; POST sends `{rev, pris}`, a stale rev is 409 |
 | `/pr-review` | GET cached PR facts (`specLines`, `live`, head SHA) and agent briefs with `stale`. No GitHub call |

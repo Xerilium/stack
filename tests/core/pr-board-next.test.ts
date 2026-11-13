@@ -81,6 +81,11 @@ describe('nextActionOf: one action per card, first match wins', () => {
     expect(rowOf(pr({ labels: ['Status: ⏸️ Paused'] })).nextAction).toBeNull();
     expect(rowOf(pr()).nextAction).toBeNull(); // already Autopilot
   });
+  it('the Autopilot label matches with the emoji on either side', () => {
+    expect(rowOf(pr({ labels: ['Status: Autopilot 🤖'] })).nextAction).toBeNull();
+    expect(rowOf(pr({ labels: ['status: autopilot'] })).autopilot).toBe(true);
+    expect(rowOf(pr({ labels: ['Status: 🔁 Updated'] })).nextAction).toBe('autopilot');
+  });
   it('nextActionOf is pure and matches the row', () => {
     const p = pr({ labels: [] });
     expect(nextActionOf(p, ctx(), 'pending', undefined)).toBe('autopilot');

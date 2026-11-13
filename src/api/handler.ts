@@ -938,7 +938,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // @req FR:pr-page/api.queue @req FR:pr-page/act.queue
+    // @req FR:pr-page/api.queue @req FR:pr-page/pin.toggle
     method: 'POST', doc: '/prs/queue', name: 'prs.queue', body: PR_QUEUE_BODY,
     async run(c) {
       noQuery(c);
@@ -968,7 +968,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // The label is always Autopilot: the owner's click is the human act. @req FR:pr-page/api.label @req FR:pr-page/act.autopilot @req FR:pr-page/api.repos
+    // The label is always Autopilot: the owner's click is the human act. @req FR:pr-page/api.label @req FR:pr-page/api.repos
     method: 'POST', doc: '/prs/label', name: 'prs.label', body: PR_LABEL_BODY,
     async run(c) {
       noQuery(c);
@@ -984,7 +984,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // Records the owner's ack; posting to GitHub is opt-in and AI-prefixed. @req FR:pr-page/api.ack @req FR:pr-page/act.accept
+    // Records the owner's ack; posting to GitHub is opt-in and AI-prefixed. @req FR:pr-page/api.ack
     method: 'POST', doc: '/prs/ack', name: 'prs.ack', body: PR_ACK_BODY,
     async run(c) {
       noQuery(c);
@@ -1004,7 +1004,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // @req FR:pr-page/api.rec @req FR:pr-page/act.rec
+    // @req FR:pr-page/api.rec
     method: 'POST', doc: '/prs/recs/{id}', name: 'prs.rec', body: PRS_REC_BODY,
     async run(c) {
       noQuery(c);

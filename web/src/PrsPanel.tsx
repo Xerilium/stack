@@ -1,17 +1,16 @@
 /**
- * The PR page: a top bar icon with the active agent count, and a flyout (full screen on a phone) with tabs per group,
- * project chips, live age, and one-tap owner actions. No merge, un-draft, close, or approve control exists here.
- * @req FR:pr-page/icon.place @req FR:pr-page/icon.absent @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape @req FR:pr-page/flyout.tabs
- * @req FR:pr-page/flyout.row @req FR:pr-page/flyout.filter @req FR:pr-page/flyout.empty @req FR:pr-page/act.queue @req FR:pr-page/act.autopilot
- * @req FR:pr-page/act.accept @req FR:pr-page/act.thread @req FR:pr-page/act.rec @req FR:pr-page/act.set @req FR:pr-page/act.never @req FR:pr-page/state.view
- * @req FR:pr-page/auth.state @req FR:pr-page/auth.signin @req FR:pr-page/nav.badge @req FR:pr-page/nav.page @req FR:pr-page/nav.load
+ * The PR page: a top bar icon with the active agent count, and a flyout (full screen on a phone) and a `#/prs` page with a Summary tab,
+ * one PR card shape, a details pane, and a Pinned tab sorted by drag. No merge, un-draft, close, or approve control exists here.
+ * @req FR:pr-page/icon.place @req FR:pr-page/icon.absent @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape @req FR:pr-page/flyout.tabs @req FR:pr-page/flyout.header
+ * @req FR:pr-page/flyout.filter @req FR:pr-page/flyout.empty @req FR:pr-page/act.list @req FR:pr-page/act.never @req FR:pr-page/auth.state @req FR:pr-page/auth.signin
+ * @req FR:pr-page/nav.badge @req FR:pr-page/nav.page @req FR:pr-page/nav.load @req FR:pr-page/summary.layout @req FR:pr-page/card.fields @req FR:pr-page/card.select
+ * @req FR:pr-page/detail.layout @req FR:pr-page/pin.toggle @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys @req FR:pr-page/live.age
  */
-import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
 import {
-  needCount, signInText, threadOf, ageText, replyToOf, BUCKET, CI, clip, countOf, createPrStore, EMPTY, escFor, escIn, healthyCount, loadPrefs, ownerOf, PROJECT_LABEL, projectsOf, refOf, replyText, rowsOf,
-  savePrefs, shortLabels, TAB_LABEL, tabsOf, updatedText, type EscEntry, type PrAuthState, type Prefs, type PrRow, type PrStore, type SignInSession, type Tab,
+  ACTION_LABEL, authorText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText,
+  summaryView, TAB_LABEL, tabsOf, toneOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type PrStore, type SignInSession, type Tab,
 } from './prs';
 import type { Toast } from './parts';
 import { store } from './day';
@@ -22,7 +21,7 @@ type ToastFn = (text: string, kind?: Toast['kind'], undo?: () => void) => void;
 
 let shared: PrStore | null = null;
 let opener: HTMLElement | null = null;
-const storeFor = (api: Client) => (shared ??= createPrStore(() => api.prs(), { status: (e) => (e instanceof ApiFailure ? e.status : 0) }));
+const storeFor = (api: Client) => (shared ??= createPrStore((fresh) => api.prs(fresh), { status: (e) => (e instanceof ApiFailure ? e.status : 0) }));
 export function useStore(api: Client) {
   const s = storeFor(api);
   const [, tick] = useState(0);
@@ -35,13 +34,19 @@ const errText = (e: unknown, fallback: string) => (e instanceof ApiFailure ? e.m
 function PrIcon() {
   return <svg class="prs-ic" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 4v10m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 0V9a3 3 0 0 0-3-3h-4m0 0 2.5-2.5M11 6l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>;
 }
+function RefreshIcon() {
+  return <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>;
+}
+function PinIcon({ on }: { on: boolean }) {
+  return <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Zm3 11v7" fill={on ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" /></svg>;
+}
 
 /** The board phase for the nav: the PR entry is absent only where the host has no board. @req FR:pr-page/icon.absent @req FR:pr-page/nav.badge */
 export function usePrsNav(api: Client): { on: boolean; need: number; signIn: boolean } {
   const s = storeFor(api);
   const pick = () => { const { board, phase } = s.get(); return { on: phase !== 'off', need: needCount(board), signIn: phase === 'signin' }; };
   const [v, setV] = useState(pick);
-  // The app shell re-renders only when the nav words change, not on every board poll.
+  // The app shell re-renders only when the nav words change, not on every board load.
   useEffect(() => s.subscribe(() => setV((old) => { const n = pick(); return n.on === old.on && n.need === old.need && n.signIn === old.signIn ? old : n; })), [s]);
   return v;
 }
@@ -59,13 +64,13 @@ export function PrsNavItem({ api, active, label, hint, onGo }: { api: Client; ac
   return <button type="button" class={`tab${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} title={`${label} (${hint})`} onClick={onGo}><span class="tab-label">{label}<PrsNavBadge nav={nav} /></span></button>;
 }
 
-/** The nav badge: Blocked on me plus Waiting on me; a dot when signed out. @req FR:pr-page/nav.badge */
+/** The nav badge: rows with a next action; a dot when signed out. @req FR:pr-page/nav.badge */
 export function PrsNavBadge({ nav: { need, signIn } }: { nav: { need: number; signIn: boolean } }) {
   if (signIn) return <span class="nav-dot" role="img" aria-label="Sign in to GitHub" data-testid="prs-nav-dot" />;
   return need > 0 ? <span class="badge" aria-label={`${need} need you`} data-testid="prs-nav-badge">{need}</span> : null;
 }
 
-/** The top bar icon: the active agent count; it opens the flyout. Shown while the first poll runs (no count); absent where the host has no board. @req FR:pr-page/icon.place @req FR:pr-page/icon.absent */
+/** The top bar icon: the active agent count; it opens the flyout. @req FR:pr-page/icon.place @req FR:pr-page/icon.absent */
 export function PrsButton({ api, where }: { api: Client; where: 'rail' | 'phone' }) {
   const s = useStore(api);
   const { board, phase, open } = s.get();
@@ -108,13 +113,13 @@ function SignIn({ api, auth, onDone }: { api: Client; auth: PrAuthState; onDone:
         <div class="prs-code-box" role="status">
           <span>Enter this code on GitHub:</span>
           <code class="prs-code" data-testid="prs-code">{sess.userCode}</code>
-          <div class="prs-sheet-actions">
-            <button type="button" class="btn" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy code'}</button>
-            <a class="btn primary" href={sess.verificationUri ?? 'https://github.com/login/device'} target="_blank" rel="noopener noreferrer">Open github.com/login/device</a>
+          <div class="prs-row-actions">
+            <button type="button" class="fl-btn" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy code'}</button>
+            <a class="fl-btn primary" href={sess.verificationUri ?? 'https://github.com/login/device'} target="_blank" rel="noopener noreferrer">Open github.com/login/device</a>
           </div>
           <span class="prs-note">Waiting for GitHub…</span>
         </div>
-      ) : t.action && <button type="button" class="btn primary" disabled={busy} onClick={() => void start()} data-testid="prs-signin-btn">{busy ? 'Starting…' : t.action}</button>}
+      ) : t.action && <button type="button" class="fl-btn primary" disabled={busy} onClick={() => void start()} data-testid="prs-signin-btn">{busy ? 'Starting…' : t.action}</button>}
     </div>
   );
 }
@@ -122,92 +127,281 @@ function SignIn({ api, auth, onDone }: { api: Client; auth: PrAuthState; onDone:
 /** The `#/prs` page: the flyout content in the page. @req FR:pr-page/nav.page */
 export function PrsPage({ api, toast }: { api: Client; toast: ToastFn }) {
   const s = useStore(api);
-  return <Flyout api={api} s={s} toast={toast} page onClose={() => undefined} />;
+  return <Board api={api} s={s} toast={toast} page onClose={() => undefined} />;
 }
-
-/** One sheet over the flyout: confirm or cancel. Focus stays inside. */
-function Sheet({ title, onClose, onConfirm, confirm, busy, children, ok = true }: { title: string; onClose: () => void; onConfirm: () => void; confirm: string; busy: boolean; children: ComponentChildren; ok?: boolean }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const from = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>('textarea, input, button')?.focus();
-    // On close, focus goes back to the control that opened the sheet, else the flyout's tab, so the flyout trap still holds.
-    return () => setTimeout(() => {
-      const ok = from && from.isConnected && !(from as HTMLButtonElement).disabled && from.offsetParent !== null;
-      (ok ? from : document.querySelector<HTMLElement>('.prs-fly [role="tab"][aria-selected="true"]'))?.focus();
-    }, 0);
-  }, []);
-  return (
-    <div class="prs-sheet-scrim" onClick={onClose}>
-      <div ref={ref} class="prs-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
-          if (e.key === 'Tab') {
-            const els = [...ref.current!.querySelectorAll<HTMLElement>('a[href], button, input, textarea, select')].filter((x) => !(x as HTMLButtonElement).disabled);
-            const i = els.indexOf(document.activeElement as HTMLElement);
-            e.preventDefault();
-            els[e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length]?.focus();
-          }
-        }}>
-        <h3 class="prs-sheet-title">{title}</h3>
-        {children}
-        <div class="prs-sheet-actions">
-          <button type="button" class="btn primary" disabled={busy || !ok} onClick={onConfirm}>{confirm}</button>
-          <button type="button" class="btn" onClick={onClose}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type SheetSpec =
-  | { kind: 'label'; row: { repo: string; number: number; url: string; title?: string }; op: 'add' | 'remove' }
-  | { kind: 'reply'; e: { repo: string; number: number; url: string; thread: string; replyTo?: number }; answer: string; post: boolean }
-  | { kind: 'rec'; row: PrRow; decision: 'accept' | 'edit' | 'reject'; rank: string; note: string; reason: string }
-  | { kind: 'bulk'; items: EscEntry[] };
 
 /** The flyout, once per page; the top bar icon opens it. @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape */
 export function PrsFlyoutHost({ api, toast }: { api: Client; toast: ToastFn }) {
   const s = useStore(api);
   const { open } = s.get();
   if (!open) return null;
-  return <Flyout api={api} s={s} toast={toast} onClose={() => { s.setOpen(false); const o = opener && opener.isConnected && opener.offsetParent !== null ? opener : document.querySelector<HTMLElement>('[data-testid="prs-btn"], [data-testid="prs-btn-phone"]'); setTimeout(() => o?.focus(), 0); }} />;
+  return <Board api={api} s={s} toast={toast} onClose={() => { s.setOpen(false); const o = opener && opener.isConnected && opener.offsetParent !== null ? opener : document.querySelector<HTMLElement>('[data-testid="prs-btn"], [data-testid="prs-btn-phone"]'); setTimeout(() => o?.focus(), 0); }} />;
 }
 
-function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrStore; toast: ToastFn; onClose: () => void; page?: boolean }) {
-  const { board, phase, auth } = s.get();
+/** The details pane beside the list at 1100 px and up, on the page only. @req FR:pr-page/detail.layout */
+const WIDE = '(min-width: 1100px)';
+function useWide(page: boolean): boolean {
+  const q = () => page && typeof window !== 'undefined' && !!window.matchMedia?.(WIDE).matches;
+  const [wide, setWide] = useState(q);
+  useEffect(() => {
+    if (!page || !window.matchMedia) return;
+    const m = window.matchMedia(WIDE);
+    const on = () => setWide(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, [page]);
+  return wide;
+}
+
+interface Ctx { board: PrBoard; selected: string | null; select: (r: PrRow) => void; pin: (r: PrRow) => void; busy: boolean }
+
+/** One card everywhere: repo, # link, title, author, one next action, spec lines, Pin. @req FR:pr-page/card.fields @req FR:pr-page/card.color @req FR:pr-page/card.select */
+function Card({ r, c, sort }: { r: PrRow; c: Ctx; sort?: { onDown: (e: PointerEvent) => void; onKey: (e: KeyboardEvent) => void; dragging: boolean } }) {
+  const spec = specText(r);
+  return (
+    <li class={`pr-card tone-${toneOf(r)}${sort?.dragging ? ' dragging' : ''}`} data-number={r.number} data-url={r.url} aria-current={c.selected === r.url ? 'true' : undefined}>
+      <div class="pr-card-top">
+        <span class="pr-repo">{r.repo}</span>
+        <a class="pr-num" href={r.url} target="_blank" rel="noopener noreferrer">#{r.number}</a>
+        {r.nextAction && <span class="pr-act">{ACTION_LABEL[r.nextAction]}</span>}
+      </div>
+      <button type="button" class="pr-open" onClick={() => c.select(r)}>
+        <span class="pr-title">{clip(r.title, 120)}</span>
+        <span class="pr-sub"><span class="pr-author">{authorText(r)}</span>{spec && <span class="pr-spec">{spec}</span>}</span>
+        <span class="pr-chev" aria-hidden="true">›</span>
+      </button>
+      <div class="pr-card-tools">
+        {c.board.queue && (
+          <button type="button" class="pr-pin" aria-pressed={r.pinned} aria-label={`${r.pinned ? 'Unpin' : 'Pin'} ${refOf(r)}`} title={r.pinned ? 'Unpin: drop it from the Pinned order' : 'Pin: the Sweep Manager works pinned PRs first'} disabled={c.busy} onClick={() => c.pin(r)}>
+            <PinIcon on={r.pinned} />
+          </button>
+        )}
+        {sort && (
+          <button type="button" class="pr-grip" aria-label={`Reorder ${refOf(r)}`} aria-describedby="prs-sort-help" title="Drag to reorder, or press Space then the arrow keys"
+            onPointerDown={(e) => sort.onDown(e as unknown as PointerEvent)} onKeyDown={(e) => sort.onKey(e as unknown as KeyboardEvent)}>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg>
+          </button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** The Pinned tab: the only list with an order. Drag the handle, or Space, arrows, Space. @req FR:pr-page/pin.tab @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys */
+function Pinned({ rows, c, onMove }: { rows: PrRow[]; c: Ctx; onMove: (r: PrRow, rank: number) => void }) {
+  const ids = rows.map((r) => r.url);
+  const [order, setOrder] = useState<string[] | null>(null);
+  const [held, setHeld] = useState<string | null>(null);
+  const [say, setSay] = useState('');
+  const listRef = useRef<HTMLUListElement>(null);
+  const shown = order ?? ids;
+  const by = new Map(rows.map((r) => [r.url, r]));
+  // A new board drops the local order, but never under a keyboard pick-up.
+  const heldRef = useRef(held);
+  heldRef.current = held;
+  useEffect(() => { if (!heldRef.current) setOrder(null); }, [rows]);
+  const commit = (id: string, next: string[]) => {
+    const r = by.get(id);
+    const res = moveTo(ids, id, next.indexOf(id));
+    if (r && res) onMove(r, res.rank); else setOrder(null);
+  };
+  // A moved card loses focus when the list reorders: give it back to the held handle.
+  useLayoutEffect(() => {
+    if (!held) return;
+    const g = listRef.current?.querySelector<HTMLElement>(`.pr-card[data-url="${CSS.escape(held)}"] .pr-grip`);
+    if (g && document.activeElement !== g && (!document.activeElement || document.activeElement === document.body || listRef.current?.contains(document.activeElement))) g.focus();
+  }, [shown.join(), held]);
+  const place = (id: string, list: string[]) => setSay(`${refOf(by.get(id)!)}, place ${list.indexOf(id) + 1} of ${list.length}`);
+  const onDown = (r: PrRow) => (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    let cur = ids;
+    const move = (ev: PointerEvent) => {
+      const cards = [...(listRef.current?.querySelectorAll<HTMLElement>('.pr-card') ?? [])].filter((el) => el.dataset.url !== r.url);
+      const to = cards.filter((el) => { const b = el.getBoundingClientRect(); return b.top + b.height / 2 < ev.clientY; }).length;
+      const m = moveTo(ids, r.url, to);
+      cur = m ? m.order : ids;
+      setOrder(cur);
+      setHeld(r.url);
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      move(ev);
+      setHeld(null);
+      if (cur !== ids) { commit(r.url, cur); place(r.url, cur); }
+    };
+    const cancel = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel); setHeld(null); setOrder(null); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+  };
+  const onKey = (r: PrRow) => (e: KeyboardEvent) => {
+    const k = e.key;
+    if (k === ' ' || k === 'Enter') {
+      e.preventDefault(); e.stopPropagation();
+      if (held !== r.url) { setHeld(r.url); setSay(`Picked up ${refOf(r)}. Use the arrow keys, then Space to drop.`); return; }
+      setHeld(null);
+      if (order && order.indexOf(r.url) !== ids.indexOf(r.url)) { commit(r.url, order); place(r.url, order); } else { setOrder(null); setSay(`Dropped ${refOf(r)}. No change.`); }
+      return;
+    }
+    if (held !== r.url) return;
+    if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); setHeld(null); setOrder(null); setSay(`Cancelled. ${refOf(r)} did not move.`); return; }
+    if (k === 'ArrowUp' || k === 'ArrowDown') {
+      e.preventDefault(); e.stopPropagation();
+      const m = moveTo(shown, r.url, shown.indexOf(r.url) + (k === 'ArrowDown' ? 1 : -1));
+      if (m) { setOrder(m.order); place(r.url, m.order); }
+    }
+  };
+  return (
+    <>
+      <p id="prs-sort-help" class="prs-hint">Drag a handle to set the order. Keyboard: Space to pick up, arrow keys to move, Space to drop, Escape to cancel.</p>
+      <p class="sr-only" role="status" aria-live="polite" data-testid="prs-sort-status">{say}</p>
+      <ul ref={listRef} class="pr-cards" aria-label="Pinned, in order">{shown.map((u) => by.get(u)).filter((r): r is PrRow => !!r).map((r) => <Card key={r.url} r={r} c={c} sort={{ onDown: onDown(r), onKey: onKey(r), dragging: held === r.url }} />)}</ul>
+    </>
+  );
+}
+
+/** The details for the selected card: only what its next action needs. No AI call. @req FR:pr-page/detail.validate @req FR:pr-page/detail.signoff @req FR:pr-page/detail.approve @req FR:pr-page/detail.publish @req FR:pr-page/detail.autopilot @req FR:pr-page/detail.none */
+function Detail({ r, back, busy, onResolve }: { r: PrRow; back?: () => void; busy: boolean; onResolve: (r: PrRow, id: string) => void }) {
+  const [i, setI] = useState(0);
+  const h = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { setI(0); }, [r.url]);
+  useLayoutEffect(() => { if (back) h.current?.focus(); }, [r.url]);
+  const a = r.nextAction;
+  const ext = { target: '_blank', rel: 'noopener noreferrer' } as const;
+  const head = (
+    <>
+      {back && <button type="button" class="fl-btn subtle prs-back" onClick={back}>‹ Back</button>}
+      <h3 ref={h} tabIndex={-1} class="pr-d-h">{a ? ACTION_LABEL[a] : 'No action'}</h3>
+      <p class="pr-d-pr"><a href={r.url} {...ext}>{refOf(r)}</a> {r.title}</p>
+    </>
+  );
+  if (a === 'validate') {
+    const s = r.detail.steps;
+    return (
+      <div class="pr-d">
+        {head}
+        <p class="pr-d-what">Check that this PR works in the running app before it merges.{s?.source === 'lane' && ` ${LANE_WORD[s.state] ?? ''}`}</p>
+        {s?.source === 'lane' && s.serverUrl && <p><a class="fl-btn primary" href={s.serverUrl} {...ext}>Open the app: {s.serverUrl.replace(/^https?:\/\//, '')}</a></p>}
+        {s && s.items.length > 0
+          ? <><h4 class="pr-d-sub">Steps</h4><ol class="pr-d-steps">{s.items.map((x, k) => <li key={k}>{x.text}{'state' in x && x.state && <span class={`pr-d-state s-${x.state}`}> · {ITEM_WORD[x.state] ?? x.state}</span>}</li>)}</ol></>
+          : <p>No steps listed. <a href={r.url} {...ext}>Open PR</a></p>}
+        {s?.source === 'lane' && <p><a href="#/live">Open the checklist to tick items</a></p>}
+      </div>
+    );
+  }
+  if (a === 'signoff') {
+    const list = r.detail.signoff ?? [];
+    const k = Math.min(i, Math.max(0, list.length - 1));
+    const t = list[k];
+    return (
+      <div class="pr-d">
+        {head}
+        {list.length > 1 && (
+          <div class="pr-d-nav">
+            <button type="button" class="fl-btn" aria-label="Previous thread" disabled={k === 0} onClick={() => setI(k - 1)}>‹ Previous</button>
+            <span>Thread {k + 1} of {list.length}</span>
+            <button type="button" class="fl-btn" aria-label="Next thread" disabled={k >= list.length - 1} onClick={() => setI(k + 1)}>Next ›</button>
+          </div>
+        )}
+        {!t ? <p>No open sign-off thread. <a href={r.url} {...ext}>Open PR</a></p> : <>
+          {t.path && <p class="pr-d-path"><code>{t.path}</code></p>}
+          <h4 class="pr-d-sub">You asked {t.ask.at && <span class="pr-d-when">{whenText(t.ask.at)}</span>}</h4>
+          <blockquote class="pr-d-quote">{t.ask.body}</blockquote>
+          <p><a href={t.ask.url ?? t.url} {...ext}>Open thread</a></p>
+          <h4 class="pr-d-sub">How it was addressed</h4>
+          {t.after.length === 0 && t.commits.length === 0 ? <p class="pr-d-none">No reply or commit since your ask.</p> : (
+            <ul class="pr-d-log">
+              {t.after.map((x, n) => <li key={`c${n}`}><span class="pr-d-who">{x.author}</span> <a href={x.url ?? t.url} {...ext}>{clip(x.body.replace(/\s+/g, ' '), 300)}</a></li>)}
+              {t.commits.map((x) => <li key={x.sha}><span class="pr-d-who">Commit {x.sha.slice(0, 7)}</span> <a href={x.url} {...ext}>{x.title}</a></li>)}
+            </ul>
+          )}
+          <div class="prs-row-actions">
+            <button type="button" class="fl-btn primary" disabled={busy || !t.id} onClick={() => onResolve(r, t.id)}>Resolve thread</button>
+            <a class="fl-btn" href={`${r.url}/files`} {...ext}>Re-review</a>
+          </div>
+        </>}
+      </div>
+    );
+  }
+  if (a === 'approve') {
+    return <div class="pr-d">{head}<p>Review the changes on GitHub, then approve there.</p><p><a class="fl-btn primary" href={`${r.url}/files`} {...ext}>Open PR files</a></p></div>;
+  }
+  if (a === 'publish') {
+    const rv = r.detail.review;
+    const simple = rv && rv.comments.length <= 5 && rv.comments.every((x) => x.body.length <= 300);
+    return (
+      <div class="pr-d">
+        {head}
+        <p>Your review is a draft. Publish it on GitHub.</p>
+        <p><a class="fl-btn primary" href={rv?.url ?? `${r.url}/files`} {...ext}>Open your draft review</a></p>
+        {simple && rv!.comments.length > 0 && <><h4 class="pr-d-sub">Your findings</h4><ul class="pr-d-log">{rv!.comments.map((x, n) => <li key={n}>{x.path && <code>{x.path}</code>} {x.body}</li>)}</ul></>}
+      </div>
+    );
+  }
+  if (a === 'autopilot') {
+    const notes = r.detail.notes ?? [];
+    return (
+      <div class="pr-d">
+        {head}
+        <p>All threads are clear. Add the Autopilot label on GitHub when it is ready.</p>
+        <p><a class="fl-btn primary" href={r.url} {...ext}>Open PR</a></p>
+        <h4 class="pr-d-sub">Your earlier comments</h4>
+        {notes.length === 0 ? <p class="pr-d-none">No earlier comments from you.</p>
+          : <ul class="pr-d-log">{notes.map((x, n) => <li key={n}>{x.at && <span class="pr-d-when">{whenText(x.at)}</span>} <a href={x.url} {...ext}>{clip(x.body.replace(/\s+/g, ' '), 300)}</a></li>)}</ul>}
+      </div>
+    );
+  }
+  return <div class="pr-d">{head}<p class="pr-d-none">Nothing for you now.</p><p><a class="fl-btn" href={r.url} {...ext}>Open PR</a></p></div>;
+}
+
+/** "Am I missing anything?" stays short. @req FR:pr-page/summary.missing */
+const MISS_MAX = 10;
+const moreText = (rest: PrRow[]) => {
+  const where = (['processing', 'waiting', 'pending', 'paused'] as const).filter((g) => rest.some((r) => r.group === g)).map((g) => TAB_LABEL[g]);
+  return `${rest.length} more in ${where.length > 1 ? `${where.slice(0, -1).join(', ')} and ${where[where.length - 1]}` : where[0] ?? 'the tabs'}.`;
+};
+
+function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrStore; toast: ToastFn; onClose: () => void; page?: boolean }) {
+  const { board, phase, auth, busy: loading } = s.get();
   const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs(local()));
   const setPrefs = (p: Prefs) => { setPrefsState(p); savePrefs(local(), p); };
   const [now, setNow] = useState(() => new Date());
-  const [healthy, setHealthy] = useState(false);
-  const [sheet, setSheet] = useState<SheetSpec | null>(null);
   const [busy, setBusy] = useState(false);
-  const [bulk, setBulk] = useState<Set<string> | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<string | null>(null);
+  const wide = useWide(page);
   const ref = useRef<HTMLDivElement>(null);
   // The page and the flyout can both be open: every id is page- or flyout-specific.
   const px = page ? 'prs-page' : 'prs';
-  const tabs = tabsOf(board);
-  const tab: Tab = tabs.includes(prefs.tab) ? prefs.tab : tabs.includes('blocked') ? 'blocked' : tabs[0];
+  const tabs = tabsOf();
+  const tab: Tab = tabs.includes(prefs.tab) ? prefs.tab : 'summary';
   const projects = projectsOf(board);
   const sel = prefs.projects.filter((p) => projects.includes(p));
-  const rows = useMemo(() => rowsOf(board, tab, sel, healthy), [board, tab, sel.join(), healthy]);
+  const rows = useMemo(() => rowsOf(board, tab, sel), [board, tab, sel.join()]);
+  const sum = useMemo(() => summaryView(board, sel), [board, sel.join()]);
+  const row = selected ? board?.rows.find((r) => r.url === selected) ?? null : null;
 
+  // The age ticks; the board does not reload by itself. @req FR:pr-page/live.age @req FR:pr-page/live.event
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+  // Opening the page or flyout again shows the current board (not on first load: the store loads then).
+  useEffect(() => { if (s.get().board) void s.reload(); }, []);
   useLayoutEffect(() => { if (!page) (ref.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? ref.current?.querySelector<HTMLElement>('button'))?.focus(); }, []);
-  /** The focus trap: the flyout plus the toasts, whose Undo must stay in reach by keyboard. A sheet runs its own trap. */
+  useEffect(() => { if (selected && board && !row) setSelected(null); }, [board]);
+
+  /** The focus trap: the flyout plus the toasts, whose Undo must stay in reach by keyboard. */
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
     if (page) return;
     const key = (e: KeyboardEvent) => {
       const fly = ref.current;
-      if (!fly || fly.querySelector('.prs-sheet-scrim')) return;
+      if (!fly) return;
       const a = document.activeElement as HTMLElement | null;
       const inToasts = !!a?.closest('.toasts');
       if (a && a !== document.body && !inToasts && !fly.contains(a)) return;
-      if (inToasts) e.stopPropagation(); // the app shortcuts stay out, as in the flyout
+      if (inToasts) e.stopPropagation();
       if (e.key === 'Escape' && inToasts) { e.preventDefault(); closeRef.current(); return; }
       if (e.key !== 'Tab') return;
       const els = [
@@ -225,76 +419,34 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
   }, []);
 
   const reload = () => void s.reload();
-  /** Bulk runs by url: a reload between select and run gives new objects. */
-  const isEnable = (e: EscEntry) => !!board?.escalations?.enable.some((x) => x.url === e.url);
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
 
-  /** Queue moves with Undo back to the old rank. @req FR:pr-page/act.queue */
-  const queue = (r: PrRow, op: 'top' | 'up' | 'down' | 'add' | 'pin' | 'unpin' | 'remove') => run(async () => {
-    try {
-      const res = await api.prQueue(r.repo, r.number, op);
-      // Undo is `stack pr-pri undo`: the order before this edit.
-      const undo = async () => { try { await api.prQueue(r.repo, r.number, 'undo'); } catch (e) { toast(errText(e, 'Undo failed'), 'err'); } reload(); };
-      const said = { add: `Queued ${refOf(r)} at the top`, pin: `Pinned ${refOf(r)}`, unpin: `Unpinned ${refOf(r)}`, remove: `Removed ${refOf(r)} from the queue` } as Record<string, string>;
-      toast(said[op] ?? `${refOf(r)} now rank ${res.rank ?? '-'}`, 'ok', () => void undo());
-      reload();
-    } catch (e) { toast(errText(e, 'Queue change failed'), 'err'); }
+  /** Pin adds the PR to the queue when needed; Unpin keeps it queued. @req FR:pr-page/pin.toggle */
+  const pin = (r: PrRow) => void run(async () => {
+    try { await api.prQueue(r.repo, r.number, r.pinned ? 'unpin' : 'pin'); toast(r.pinned ? `Unpinned ${refOf(r)}` : `Pinned ${refOf(r)}`); reload(); }
+    catch (e) { toast(errText(e, 'Pin failed'), 'err'); }
   });
-  /** One tap: record the answer; Undo takes it back. @req FR:pr-page/act.accept */
-  const accept = (e: { repo: string; number: number; thread: string }, answer: string) => run(async () => {
+  /** A drop in Pinned: the new rank (pinned items lead the queue). @req FR:pr-page/pin.drag */
+  const moveRow = (r: PrRow, rank: number) => void run(async () => {
+    try { await api.prQueue(r.repo, r.number, 'move', rank); reload(); }
+    catch (e) { toast(errText(e, 'Move failed'), 'err'); reload(); }
+  });
+  /** Resolve with Undo, which reopens the thread. @req FR:pr-page/detail.signoff @req FR:pr-page/api.resolve */
+  const resolve = (r: PrRow, id: string) => void run(async () => {
     try {
-      await api.prAck({ repo: e.repo, number: e.number, thread: e.thread, note: answer });
-      // No Undo: the store keeps the newest answer per thread; answer again to change it.
-      toast(`Answered ${refOf(e)}`);
+      await api.prResolve(r.repo, r.number, id, 'resolve');
+      toast(`Resolved a thread on ${refOf(r)}`, 'ok', () => { void api.prResolve(r.repo, r.number, id, 'unresolve').then(reload, (e) => toast(errText(e, 'Undo failed'), 'err')); });
       reload();
-    } catch (x) { toast(errText(x, 'Could not record the answer'), 'err'); }
+    } catch (e) { toast(errText(e, 'Could not resolve the thread'), 'err'); }
   });
 
-  const confirmSheet = () => sheet && run(async () => {
-    try {
-      if (sheet.kind === 'label') { await api.prLabel(sheet.row.repo, sheet.row.number, sheet.op); toast(sheet.op === 'add' ? `Autopilot on ${refOf(sheet.row)}` : `Autopilot off ${refOf(sheet.row)}`); }
-      if (sheet.kind === 'reply') {
-        const answer = sheet.answer.trim();
-        const r = await api.prAck({ repo: sheet.e.repo, number: sheet.e.number, thread: sheet.e.thread, note: answer, ...(sheet.post ? { post: true, text: replyText(answer) } : {}), ...(sheet.post && sheet.e.replyTo ? { replyTo: sheet.e.replyTo } : {}) });
-        // A posted reply whose answer was not recorded still closes the sheet: a second tap would post twice.
-        if (r.posted && !r.recorded) toast(`Replied on ${refOf(sheet.e)}; answer not recorded: ${r.message ?? 'queue unavailable'}`, 'err');
-        else toast(r.posted ? `Replied on ${refOf(sheet.e)}` : `Answered ${refOf(sheet.e)}`, );
-      }
-      if (sheet.kind === 'rec') {
-        await api.prRec(sheet.row.rec!.id, { decision: sheet.decision, ...(sheet.decision === 'edit' && sheet.rank ? { rank: Number(sheet.rank) } : {}), ...(sheet.decision === 'edit' && sheet.note ? { note: sheet.note } : {}), ...(sheet.decision !== 'accept' ? { reason: sheet.reason } : {}) });
-        toast(`${sheet.decision === 'accept' ? 'Accepted' : sheet.decision === 'edit' ? 'Edited' : 'Rejected'}: ${refOf(sheet.row)}`);
-      }
-      if (sheet.kind === 'bulk') {
-        let done = 0;
-        for (const e of sheet.items) {
-          try {
-            if (isEnable(e)) await api.prLabel(e.repo, e.number, 'add');
-            else await api.prAck({ repo: e.repo, number: e.number, thread: threadOf(e), note: answers[e.url] ?? e.recommend ?? '' });
-            done++;
-          } catch (x) { toast(`${refOf(e)}: ${errText(x, 'failed')}`, 'err'); }
-        }
-        toast(`Ran ${done} of ${sheet.items.length}`);
-        setBulk(null);
-      }
-      setSheet(null);
-      reload();
-    } catch (e) { toast(errText(e, 'Action failed'), 'err'); }
-  });
-
-  /** Keys on the focused row. @req FR:pr-page/act.queue @req FR:pr-page/act.accept */
-  const rowKeys = (e: KeyboardEvent, r: PrRow) => {
-    if (e.target !== e.currentTarget || e.metaKey || e.ctrlKey || e.altKey) return;
-    const k = e.key;
-    if (board?.queue && (k === 't' || k === 'u' || k === 'd') && r.rank !== null) { e.preventDefault(); void queue(r, k === 't' ? 'top' : k === 'u' ? 'up' : 'down'); }
-    else if (board?.queue && k === 'p') { e.preventDefault(); void queue(r, r.rank === null ? 'add' : r.pinned ? 'unpin' : 'pin'); }
-    else if (k === 'a' && board?.queue) { const esc = escFor(board, r.url); if (esc?.recommend) { e.preventDefault(); void accept({ ...esc, thread: threadOf(esc) }, esc.recommend); } }
-    else if (k === 'o' || k === 'Enter') { e.preventDefault(); window.open(r.url, '_blank', 'noopener'); }
-    else if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'j' || k === 'k') {
-      e.preventDefault();
-      const items = [...(ref.current?.querySelectorAll<HTMLElement>('.pr-row') ?? [])];
-      items[items.indexOf(e.currentTarget as HTMLElement) + (k === 'ArrowDown' || k === 'j' ? 1 : -1)]?.focus();
-    }
+  const select = (r: PrRow) => setSelected(r.url);
+  const back = () => {
+    const u = selected;
+    setSelected(null);
+    setTimeout(() => ref.current?.querySelector<HTMLElement>(`.pr-card[data-url="${CSS.escape(u ?? '')}"] .pr-open`)?.focus(), 0);
   };
+  const c: Ctx | null = board ? { board, selected, select, pin, busy } : null;
 
   const tabKeys = (e: KeyboardEvent) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -305,181 +457,89 @@ function Flyout({ api, s, toast, onClose, page = false }: { api: Client; s: PrSt
     setTimeout(() => ref.current?.querySelector<HTMLElement>(`#${px}-tab-${next}`)?.focus(), 0);
   };
 
-  const row = (r: PrRow) => {
-    const owner = ownerOf(r);
-    const esc = escFor(board, r.url);
-    const thread = r.state.link && r.state.link !== r.url;
-    return (
-      <li key={r.url} class={`pr-row${r.state.owner === 'me' ? ' mine' : ''}`} tabIndex={0} data-url={r.url} onKeyDown={(e) => rowKeys(e as unknown as KeyboardEvent, r)}
-        aria-label={`${r.title}, ${refOf(r)}${r.bucket ? `, ${BUCKET[r.bucket]}` : ''}${owner ? `, owner ${owner.text}` : ''}`}>
-        <div class="pr-top">
-          <span class="pr-rank" data-slot="priority" aria-label={r.rank === null ? undefined : `Rank ${r.rank}`}>{r.rank === null ? '' : `${r.pinned ? '📌' : ''}#${r.rank}`}</span>
-          {r.bucket && <span class={`pr-bucket ${r.bucket}`}>{BUCKET[r.bucket]}</span>}
-          <a class="pr-title" href={r.url} target="_blank" rel="noopener noreferrer" tabIndex={-1} title={r.title}>{clip(r.title, 80)}</a>
-        </div>
-        <div class="pr-meta">
-          <span>{refOf(r)}</span><span>{ageText(r.createdAt, now)}</span>
-          <span class={`pr-ci ${r.ci}`}>{CI[r.ci]}</span>
-          {r.unresolved > 0 && <span>{r.unresolved} {r.unresolved === 1 ? 'thread' : 'threads'}</span>}
-          {r.draft && <span class="pr-lbl">Draft</span>}
-          {shortLabels(r.labels).map((l) => <span class="pr-lbl" key={l}>{l}</span>)}
-          {r.agent && <span class="pr-lbl agent">Agent on it</span>}
-        </div>
-        {(owner || r.state.blocker || r.after.length > 0) && (
-          <div class="pr-state">
-            {owner && <span class={`pr-owner ${owner.kind}`}>{owner.text}</span>}
-            {r.state.owner === 'runner' && <span class="pr-lbl warn">CI/runner</span>}
-            {r.state.blocker && <a class="pr-blocker" href={r.state.link} target="_blank" rel="noopener noreferrer" aria-label={`${thread ? 'Open thread' : 'Open PR'}: ${r.state.blocker}`}>{clip(r.state.blocker, 90)}</a>}
-            {r.after.map((a) => <span class="pr-lbl" key={a}>after {a}</span>)}
-          </div>
+  const cards = (list: PrRow[], label: string) => <ul class="pr-cards" aria-label={label}>{list.map((r) => <Card key={r.url} r={r} c={c!} />)}</ul>;
+  const section = (title: string, list: PrRow[]) => (
+    <section class="pr-sec" aria-label={title}>
+      <h3 class="pr-sec-h">{title}</h3>
+      {list.length ? cards(list, title) : <p class="prs-empty">None now.</p>}
+    </section>
+  );
+  const summary = (
+    <>
+      {section('Needs live validation', sum.live)}
+      {section('Needs your sign-off', sum.signoff)}
+      {section('Ready for Autopilot', sum.autopilot)}
+      <section class="pr-sec" aria-label="Am I missing anything?">
+        <h3 class="pr-sec-h">Am I missing anything?</h3>
+        {sum.missing.length === 0 ? <p class="prs-empty">Nothing else.</p> : (
+          <ul class="pr-miss">
+            {sum.missing.slice(0, MISS_MAX).map((m, k) => (
+              <li key={`${m.row.url}-${k}`}>
+                <a class="pr-num" href={m.row.url} target="_blank" rel="noopener noreferrer">{refOf(m.row)}</a>
+                <button type="button" class="pr-miss-open" onClick={() => select(m.row)}>{clip(m.row.title, 80)}</button>
+                <span class="pr-miss-why">{m.reason}</span>
+              </li>
+            ))}
+          </ul>
         )}
-        {r.rec && <div class="pr-rec">Raise to {r.rec.toRank ?? 'next'}: {clip(r.rec.reason, 80)} <span class="muted">({r.rec.agent})</span></div>}
-        <div class="pr-actions">
-          {board?.queue && esc?.recommend && <button type="button" class="btn primary" disabled={busy} onClick={() => void accept({ ...esc, thread: threadOf(esc) }, esc.recommend!)}>Accept</button>}
-          {!esc && r.state.owner === 'me' && r.state.key && r.state.key !== 'action-required' && <button type="button" class="btn" disabled={busy} onClick={() => setSheet({ kind: 'reply', e: { repo: r.repo, number: r.number, url: r.url, thread: r.state.link, ...(r.state.replyTo ? { replyTo: r.state.replyTo } : {}) }, answer: '', post: !board?.queue })}>Answer…</button>}
-          {r.group === 'pending' && !r.draft && !r.autopilot && <button type="button" class="btn primary" disabled={busy} onClick={() => setSheet({ kind: 'label', row: r, op: 'add' })}>Apply Autopilot</button>}
-          {board?.queue && r.rec && <>
-            <button type="button" class="btn" disabled={busy} onClick={() => setSheet({ kind: 'rec', row: r, decision: 'accept', rank: '', note: '', reason: '' })}>Accept rank</button>
-            <button type="button" class="btn" disabled={busy} onClick={() => setSheet({ kind: 'rec', row: r, decision: 'edit', rank: String(r.rec!.toRank ?? ''), note: '', reason: '' })}>Edit</button>
-            <button type="button" class="btn" disabled={busy} onClick={() => setSheet({ kind: 'rec', row: r, decision: 'reject', rank: '', note: '', reason: '' })}>Reject</button>
-          </>}
-          {board?.queue && (r.rank === null
-            ? <button type="button" class="btn" disabled={busy} onClick={() => void queue(r, 'add')} aria-keyshortcuts="p">Queue</button>
-            : <>
-              <button type="button" class="btn" disabled={busy || r.rank === 1} onClick={() => void queue(r, 'top')} aria-keyshortcuts="t">Top</button>
-              <button type="button" class="btn" disabled={busy || r.rank === 1} onClick={() => void queue(r, 'up')} aria-keyshortcuts="u" aria-label={`Move ${refOf(r)} up`}>Up</button>
-              <button type="button" class="btn" disabled={busy} onClick={() => void queue(r, 'down')} aria-keyshortcuts="d" aria-label={`Move ${refOf(r)} down`}>Down</button>
-              <button type="button" class="btn" disabled={busy} onClick={() => void queue(r, r.pinned ? 'unpin' : 'pin')} aria-keyshortcuts="p">{r.pinned ? 'Unpin' : 'Pin'}</button>
-              <button type="button" class="btn quiet" disabled={busy} onClick={() => void queue(r, 'remove')} aria-label={`Remove ${refOf(r)} from the queue`}>Remove</button>
-            </>)}
-          {r.autopilot && <button type="button" class="btn quiet" disabled={busy} onClick={() => setSheet({ kind: 'label', row: r, op: 'remove' })}>Remove Autopilot</button>}
-        </div>
-      </li>
-    );
-  };
+        {sum.missing.length > MISS_MAX && <p class="prs-hint" data-testid="prs-miss-more">{moreText(sum.missing.slice(MISS_MAX).map((m) => m.row))}</p>}
+      </section>
+    </>
+  );
 
-  const entry = (e: EscEntry, kind: 'blocked' | 'enable' | 'live') => {
-    const id = `${px}-esc-${kind}-${e.url}`;
-    const answer = answers[e.url] ?? e.recommend ?? '';
-    const thread = threadOf(e);
-    return (
-      <li key={e.url} class="pr-row esc" data-url={e.url}>
-        <div class="pr-top">
-          {bulk && (kind === 'enable' || (kind === 'blocked' && board?.queue)) && <label class="pr-check-l"><input type="checkbox" class="pr-check" aria-label={`Select ${refOf(e)}`} checked={bulk.has(e.url)} onChange={() => setBulk((b) => { const n = new Set(b); if (n.has(e.url)) n.delete(e.url); else n.add(e.url); return n; })} /></label>}
-          <a class="pr-title" href={e.url} target="_blank" rel="noopener noreferrer">{clip(e.title ?? refOf(e), 80)}</a>
-        </div>
-        <div class="pr-meta"><span>{refOf(e)}</span></div>
-        {e.blocker && <div class="pr-state"><span class="pr-owner me">You</span>{e.link ? <a class="pr-blocker" href={e.link} target="_blank" rel="noopener noreferrer" aria-label={`Open thread: ${e.blocker}`}>{clip(e.blocker, 90)}</a> : <span class="pr-blocker">{clip(e.blocker, 90)}</span>}</div>}
-        {e.context && <p class="pr-context">{clip(e.context, 160)}</p>}
-        {kind === 'blocked' && (
-          <label class="pr-answer" for={id}><span class="sr-only">Answer for {refOf(e)}</span>
-            <input id={id} type="text" value={answer} placeholder="Your answer" onInput={(x) => setAnswers((a) => ({ ...a, [e.url]: (x.target as HTMLInputElement).value }))} />
-          </label>
-        )}
-        <div class="pr-actions">
-          {kind === 'blocked' && <>
-            {board?.queue && <button type="button" class="btn primary" disabled={busy || !answer.trim()} onClick={() => void accept({ ...e, thread }, answer)}>Accept</button>}
-            <button type="button" class={`btn${board?.queue ? '' : ' primary'}`} disabled={busy || !answer.trim()} onClick={() => setSheet({ kind: 'reply', e: { ...e, thread, ...(replyToOf(e.link) ? { replyTo: replyToOf(e.link) } : {}) }, answer, post: true })}>{board?.queue ? 'Accept and reply…' : 'Reply on GitHub…'}</button>
-          </>}
-          {kind === 'enable' && <button type="button" class="btn primary" disabled={busy} onClick={() => setSheet({ kind: 'label', row: e, op: 'add' })}>Apply Autopilot</button>}
-          {kind === 'live' && <a class="btn primary" href={e.url} target="_blank" rel="noopener noreferrer">Open PR</a>}
-        </div>
-      </li>
-    );
-  };
-
-  const esc = board?.escalations;
-  const section = (title: string, all: EscEntry[], kind: 'blocked' | 'enable' | 'live') => { const list = escIn(all, sel); return list.length > 0 && (
-    <section class="pr-esc-sec" aria-label={title}><h3 class="pr-sec-h">{title}</h3><ul class="pr-list">{list.map((e) => entry(e, kind))}</ul></section>
-  ); };
-  // Bulk runs only what the project filter shows.
-  const bulkItems = esc ? escIn([...esc.blocked.filter((e) => board?.queue && (answers[e.url] ?? e.recommend ?? '').trim()), ...esc.enable], sel).filter((e) => bulk?.has(e.url)) : [];
-
-  // The page and the flyout can both be open: each heading has its own id.
+  const showDetail = !!row && !wide;
   const hid = page ? 'prs-page-h' : 'prs-h';
   const body = (
-      <div ref={ref} class={`prs-fly${page ? ' page' : ''}`} {...(page ? { 'data-testid': 'prs-page' } : { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'prs-h', 'data-testid': 'prs-flyout' })} onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          // The app shortcuts stay out while the flyout is open; on the page, only the keys a row or tab used.
-          if (page) { if (e.defaultPrevented) e.stopPropagation(); return; }
-          e.stopPropagation();
-          if (e.key === 'Escape') { e.preventDefault(); onClose(); }
-        }}>
-        <header class="prs-head">
-          <h2 id={hid}>Pull requests</h2>
-          {/* The live validation checklist. @req FR:pr-review-lane/panel.view */}
-          <a class="btn prs-live" href="#/live">Live check</a>
-          <span class="prs-age" role="status" aria-live="off" data-testid="prs-age">{updatedText(board, now)}</span>
-          {!page && <button type="button" class="btn prs-close" onClick={onClose} aria-label="Close pull requests">Close</button>}
-        </header>
-        {/* Signed out, loading, or a failed first load: one state, never a zero board. @req FR:pr-page/auth.state @req FR:pr-page/nav.load */}
-        {!board ? (phase === 'signin' && auth ? <SignIn api={api} auth={auth} onDone={reload} />
-          : phase === 'off' ? <div class="prs-signin" data-testid="prs-off"><p class="prs-signin-title">This host has no PR board.</p><p class="prs-note">Set GITHUB_TOKEN on the host, and check STACK_GITHUB_REPOS is a valid list.</p></div>
-          : phase === 'error' ? <div class="prs-signin" role="alert"><p class="prs-signin-title">Could not load your PRs.</p><button type="button" class="btn primary" onClick={reload}>Retry</button></div>
-          : <div class="skeleton prs-sk" role="status" aria-busy="true" aria-label="Loading pull requests" data-testid="prs-skeleton"><div class="sk" /><div class="sk" /><div class="sk" /><div class="sk" /></div>) : <>
-        {board?.error && board.at && <p class="prs-note" role="status">{board.error}. Showing the last good copy.</p>}
-        {board?.truncated && <p class="prs-note">Some PRs may be missing: a search hit its 50-PR limit.</p>}
+    <div ref={ref} class={`prs-fly fl${page ? ' page' : ''}${wide ? ' wide' : ''}`} {...(page ? { 'data-testid': 'prs-page' } : { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'prs-h', 'data-testid': 'prs-flyout' })} onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        // The app shortcuts stay out while the flyout is open; on the page, only the keys a control used.
+        if (page) { if (e.defaultPrevented) e.stopPropagation(); return; }
+        e.stopPropagation();
+        if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+      }}>
+      <header class="prs-head">
+        <h2 id={hid}>Pull requests</h2>
+        <span class="prs-age" role="status" aria-live="off" data-testid="prs-age">{updatedText(board, now)}</span>
+        {board && <button type="button" class={`prs-refresh${loading ? ' spin' : ''}`} aria-label="Refresh pull requests" title="Refresh pull requests" disabled={loading} onClick={() => void s.reload(true)}><RefreshIcon /></button>}
+        {!page && <button type="button" class="fl-btn prs-close" onClick={onClose} aria-label="Close pull requests">Close</button>}
+      </header>
+      {/* Signed out, loading, or a failed first load: one state, never a zero board. @req FR:pr-page/auth.state @req FR:pr-page/nav.load */}
+      {!board || !c ? (phase === 'signin' && auth ? <SignIn api={api} auth={auth} onDone={reload} />
+        : phase === 'off' ? <div class="prs-signin" data-testid="prs-off"><p class="prs-signin-title">This host has no PR board.</p><p class="prs-note">Set GITHUB_TOKEN on the host, and check STACK_GITHUB_REPOS is a valid list.</p></div>
+        : phase === 'error' ? <div class="prs-signin" role="alert"><p class="prs-signin-title">Could not load your PRs.</p><button type="button" class="fl-btn primary" onClick={reload}>Retry</button></div>
+        : <div class="skeleton prs-sk" role="status" aria-busy="true" aria-label="Loading pull requests" data-testid="prs-skeleton"><div class="sk" /><div class="sk" /><div class="sk" /><div class="sk" /></div>) : <>
+        {board.error && board.at && <p class="prs-note" role="status">{board.error}. Showing the last good copy.</p>}
+        {board.truncated && <p class="prs-note">Some PRs may be missing: a search hit its 50-PR limit.</p>}
         {projects.length > 1 && (
           <div class="prs-chips" role="group" aria-label="Filter by project">
-            {projects.map((p) => <button type="button" key={p} class={`prs-chip${sel.includes(p) ? ' on' : ''}`} aria-pressed={sel.includes(p)} onClick={() => setPrefs({ ...prefs, projects: sel.includes(p) ? sel.filter((x) => x !== p) : [...sel, p] })}>{PROJECT_LABEL[p] ?? p}</button>)}
+            {projects.map((p) => <button type="button" key={p} class="fl-chip prs-chip" aria-pressed={sel.includes(p)} onClick={() => setPrefs({ ...prefs, projects: sel.includes(p) ? sel.filter((x) => x !== p) : [...sel, p] })}>{PROJECT_LABEL[p] ?? p}</button>)}
           </div>
         )}
         <div class="prs-tabs" role="tablist" aria-label="PR groups" onKeyDown={tabKeys}>
           {tabs.map((t) => (
-            <button type="button" role="tab" key={t} id={`${px}-tab-${t}`} aria-controls={`${px}-panel`} aria-selected={t === tab} tabIndex={t === tab ? 0 : -1} class={`prs-tab${t === tab ? ' on' : ''}`} onClick={() => setPrefs({ ...prefs, tab: t })}>
+            <button type="button" role="tab" key={t} id={`${px}-tab-${t}`} aria-controls={`${px}-panel`} aria-selected={t === tab} tabIndex={t === tab ? 0 : -1} class={`prs-tab${t === tab ? ' on' : ''}`} onClick={() => { setPrefs({ ...prefs, tab: t }); }}>
               {TAB_LABEL[t]} <span class="prs-count">{countOf(board, t, sel)}</span>
             </button>
           ))}
         </div>
-        <div class="prs-panel" id={`${px}-panel`} role="tabpanel" aria-labelledby={`${px}-tab-${tab}`}>
-          {tab === 'processing' && healthyCount(board, sel) > 0 && (
-            <label class="prs-toggle"><input type="checkbox" checked={healthy} onChange={() => setHealthy(!healthy)} /> Show healthy ({healthyCount(board, sel)})</label>
+        <div class={`prs-body${wide ? ' split' : ''}`}>
+          <div class="pr-list-col" hidden={showDetail}>
+            <div class="prs-panel" id={`${px}-panel`} role="tabpanel" aria-labelledby={`${px}-tab-${tab}`}>
+              {tab === 'summary' ? summary
+                : rows.length === 0 ? <p class="prs-empty" data-testid="prs-empty">{EMPTY[tab]}</p>
+                : tab === 'pinned' && board.queue ? <Pinned rows={rows} c={c} onMove={moveRow} />
+                : cards(rows, TAB_LABEL[tab])}
+            </div>
+          </div>
+          {(wide || showDetail) && (
+            <aside class="pr-detail-col" data-testid="prs-detail" aria-label="PR details">
+              {row ? <Detail r={row} busy={busy} onResolve={resolve} {...(wide ? {} : { back })} /> : <p class="prs-empty">Select a PR to see its next step.</p>}
+            </aside>
           )}
-          {tab === 'escalations' && esc && (
-            <>
-              <div class="prs-bulk">
-                {bulk ? <>
-                  <button type="button" class="btn primary" disabled={busy || bulkItems.length === 0} onClick={() => setSheet({ kind: 'bulk', items: bulkItems })}>Run {bulkItems.length}</button>
-                  <button type="button" class="btn" onClick={() => setBulk(null)}>Done selecting</button>
-                </> : <button type="button" class="btn" onClick={() => setBulk(new Set())}>Select</button>}
-              </div>
-              {section('Decide', esc.blocked, 'blocked')}
-              {section('Enable Autopilot', esc.enable, 'enable')}
-              {section('Validate live', esc.live, 'live')}
-            </>
-          )}
-          {tab !== 'escalations' && (rows.length === 0
-            ? <p class="prs-empty" data-testid="prs-empty">{EMPTY[tab]}</p>
-            : <ul class="pr-list" aria-label={TAB_LABEL[tab]}>{rows.map(row)}</ul>)}
         </div>
-        <footer class="prs-foot" data-testid="prs-foot">running {board?.footer.running ?? 0} · waiting {board?.footer.waiting ?? 0} · parked {board?.footer.parked ?? 0}</footer>
-        </>}
-        {sheet && (
-          <Sheet busy={busy} onClose={() => setSheet(null)} onConfirm={() => void confirmSheet()}
-            title={sheet.kind === 'label' ? (sheet.op === 'add' ? 'Apply Autopilot?' : 'Remove Autopilot?') : sheet.kind === 'reply' ? (sheet.post ? 'Reply on GitHub?' : 'Record your answer?') : sheet.kind === 'rec' ? `${sheet.decision === 'accept' ? 'Accept' : sheet.decision === 'edit' ? 'Edit' : 'Reject'} the recommendation?` : `Run ${sheet.items.length} actions?`}
-            confirm={sheet.kind === 'label' ? (sheet.op === 'add' ? 'Apply' : 'Remove') : sheet.kind === 'reply' ? (sheet.post ? 'Post reply' : 'Save answer') : sheet.kind === 'rec' ? (sheet.decision === 'accept' ? 'Accept' : sheet.decision === 'edit' ? 'Save' : 'Reject') : 'Run all'}
-            ok={sheet.kind === 'rec' ? sheet.decision === 'accept' || !!sheet.reason.trim() : sheet.kind === 'reply' ? !!sheet.answer.trim() && (sheet.post || !!board?.queue) : true}>
-            {sheet.kind === 'label' && <p class="prs-sheet-body"><a href={sheet.row.url} target="_blank" rel="noopener noreferrer">{refOf(sheet.row)}</a> · label <strong>Status: 🤖 Autopilot</strong></p>}
-            {sheet.kind === 'reply' && <>
-              <label class="prs-field">Your answer<textarea rows={3} value={sheet.answer} onInput={(x) => setSheet({ ...sheet, answer: (x.target as HTMLTextAreaElement).value })} /></label>
-              {board?.queue && <label class="prs-toggle"><input type="checkbox" checked={sheet.post} onChange={() => setSheet({ ...sheet, post: !sheet.post })} /> Also post on GitHub</label>}
-              {sheet.post && <>
-                <p class="prs-sheet-body">Posts this exact text on <a href={sheet.e.url} target="_blank" rel="noopener noreferrer">{refOf(sheet.e)}</a>{sheet.e.replyTo ? ' as a thread reply' : ' as a comment'}:</p>
-                <p class="prs-preview" data-testid="prs-preview">{replyText(sheet.answer)}</p>
-              </>}
-            </>}
-            {sheet.kind === 'rec' && <>
-              <p class="prs-sheet-body"><a href={sheet.row.url} target="_blank" rel="noopener noreferrer">{refOf(sheet.row)}</a> · {sheet.row.rec!.agent}: {sheet.row.rec!.reason}</p>
-              {sheet.decision === 'edit' && <>
-                <label class="prs-field">Rank<input type="number" min={1} max={100} value={sheet.rank} onInput={(x) => setSheet({ ...sheet, rank: (x.target as HTMLInputElement).value })} /></label>
-                <label class="prs-field">Note<input type="text" maxLength={300} value={sheet.note} onInput={(x) => setSheet({ ...sheet, note: (x.target as HTMLInputElement).value })} /></label>
-              </>}
-              {sheet.decision !== 'accept' && <label class="prs-field">Reason (needed)<input type="text" maxLength={300} value={sheet.reason} onInput={(x) => setSheet({ ...sheet, reason: (x.target as HTMLInputElement).value })} /></label>}
-            </>}
-            {sheet.kind === 'bulk' && <ul class="prs-sheet-list">{sheet.items.map((e) => <li key={e.url}>{isEnable(e) ? 'Apply Autopilot' : `Answer "${clip(answers[e.url] ?? e.recommend ?? '', 60)}"`} · <a href={e.url} target="_blank" rel="noopener noreferrer">{refOf(e)}</a></li>)}</ul>}
-          </Sheet>
-        )}
-      </div>
+        <footer class="prs-foot" data-testid="prs-foot">running {board.footer.running} · waiting {board.footer.waiting} · parked {board.footer.parked}</footer>
+      </>}
+    </div>
   );
-  return page ? <section class="prs-pagewrap" aria-labelledby={hid}>{body}</section> : <div class="prs-scrim" onClick={onClose}>{body}</div>;
+  return page ? <section class={`prs-pagewrap${wide ? ' wide' : ''}`} aria-labelledby={hid}>{body}</section> : <div class="prs-scrim" onClick={onClose}>{body}</div>;
 }

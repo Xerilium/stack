@@ -36,7 +36,7 @@ export const isSpecPath = (p: string): boolean => p.startsWith('.xe/') || /(^|\/
 export const specLines = (files: PrFile[]): number => files.filter((f) => isSpecPath(f.filename)).reduce((n, f) => n + (f.additions || 0) + (f.deletions || 0), 0);
 
 /** Label match with no case and no variation selectors. */
-const norm = (s: string): string => s.replace(/️/g, '').trim().toLowerCase();
+const norm = (s: string): string => s.replace(/[\p{Extended_Pictographic}\uFE0E\uFE0F\u200D]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
 export const isAutopilot = (label: string): boolean => norm(label) === norm('Status: 🤖 Autopilot');
 
 /** Drops Autopilot rows; fewest spec lines first; no count last; stable. @req FR:pr-review-lane/sort.order */

@@ -202,6 +202,17 @@ test('Summary: four clearly separated sections; Nothing else when empty', async 
   await expect(miss.nth(3)).toContainText('Live check failed: Sign in works');
   const [a, b] = [await secs.nth(0).boundingBox(), await secs.nth(1).boundingBox()];
   expect(b!.y - (a!.y + a!.height)).toBeGreaterThanOrEqual(16);
+  await expect(pg.getByTestId('prs-miss-more')).toHaveCount(0);
+  // More than 10 lines: the first 10, then where the rest are.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  const many = BOARD();
+  const extra = Array.from({ length: 12 }, (_, k) => row(300 + k, { author: 'roland', mine: false, group: k < 8 ? 'waiting' : 'pending', autopilot: false, labels: [], nextAction: 'approve' }));
+  many.rows.push(...extra);
+  many.summary.missing = extra.map((r) => ({ url: r.url, reason: 'Approve' }));
+  await setup(page, { board: many });
+  await page.reload();
+  await expect(pg.locator('section.pr-sec').nth(3).locator('li')).toHaveCount(10);
+  await expect(pg.getByTestId('prs-miss-more')).toHaveText('2 more in Pending.');
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   await setup(page, { board: EMPTY_BOARD() });
   await page.reload();
@@ -248,6 +259,7 @@ test('details: wide shows a pane on the right; narrow replaces the list with Bac
   await expect(d.getByRole('heading', { level: 3 })).toHaveText('Validate');
   await expect(d.locator('ol li')).toHaveText([/Open the app on the phone/, /Sign in works.*Failed/]);
   await expect(d.getByRole('link', { name: /localhost:5174/ })).toHaveAttribute('href', 'http://localhost:5174');
+  await expect(d.getByRole('link', { name: 'Open the checklist to tick items' })).toHaveAttribute('href', '#/live');
   await expect(card(pg, 109)).toHaveAttribute('aria-current', 'true');
   if (mobile) {
     await expect(pg.locator('.pr-list-col')).toBeHidden();
@@ -335,6 +347,8 @@ test('Pin on every card; Pinned is sorted by drag and by keyboard', async ({ pag
   }
   await expect.poll(() => posts.filter((p) => p.path === '/prs/queue').map((p) => p.body).slice(2)).toEqual([{ repo: 'Xerilium/stack', number: 109, op: 'move', rank: 1 }]);
   if (mobile) return;
+  // The reload after the drop brings the board order back (this mock board never changes).
+  await expect(pg.locator('.pr-card').nth(0)).toHaveAttribute('data-number', '101');
   // Keyboard: Space picks up, ArrowDown moves, Space drops.
   await pg.getByRole('button', { name: 'Reorder Xerilium/stack#101' }).focus();
   await page.keyboard.press('Space');
@@ -370,11 +384,11 @@ test('no automatic reload; Refresh asks the host to poll; the age ticks', async 
 test('project chips filter the Summary and are remembered', async ({ page }) => {
   await setup(page);
   const pg = await openPage(page);
-  await pg.getByRole('button', { name: 'Allyte' }).click();
+  await pg.getByRole('button', { name: 'Allyte', exact: true }).click();
   await expect(pg.getByRole('tab', { name: /Summary/ })).toHaveText('Summary 1');
   await expect(pg.locator('section.pr-sec').nth(1).locator('.pr-card')).toHaveCount(1);
   await page.reload();
-  await expect(pg.getByRole('button', { name: 'Allyte' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(pg.getByRole('button', { name: 'Allyte', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
 for (const scheme of ['light', 'dark'] as const) {

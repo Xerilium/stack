@@ -71,7 +71,8 @@ export interface BoardCtx {
 }
 
 const HOUR = 3_600_000;
-const norm = (s: string) => s.replace(/[︎️]/g, '').trim().toLowerCase();
+/** Label text without case, emoji, or variation selectors: `Status: 🤖 Autopilot` and `Status: Autopilot 🤖` are one label. */
+const norm = (s: string) => s.replace(/[\p{Extended_Pictographic}\uFE0E\uFE0F\u200D]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
 export const LABELS = { autopilot: 'Status: 🤖 Autopilot', wip: 'Status: 🚧 WIP', paused: 'Status: ⏸️ Paused' } as const;
 /** Labels match without case or emoji variation selectors. */
 export const sameLabel = (a: string, b: string) => norm(a) === norm(b);
