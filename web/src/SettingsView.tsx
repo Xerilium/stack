@@ -64,11 +64,11 @@ const build = (s: BuildStamp | null) => (s ? `${s.sha}${s.dirty ? '+dirty' : ''}
 
 function Updates({ u }: { u: SettingsUpdates }) {
   const [saved, setSaved] = useState('');
-  if (!u.state) return <p class="set-note">Updates come with the desktop app.</p>;
-  const st = u.state;
   const [want, setWant] = useState<UpdateMode | null>(null);
   // `Saved` only once the host reports the new mode; a failed save shows as a toast.
-  useEffect(() => { if (want && st.mode === want) { setSaved('Saved'); setWant(null); } }, [want, st.mode]);
+  useEffect(() => { if (want && u.state?.mode === want) { setSaved('Saved'); setWant(null); } }, [want, u.state?.mode]);
+  if (!u.state) return <p class="set-note">Updates come with the desktop app.</p>;
+  const st = u.state;
   const pick = async (m: UpdateMode) => { setSaved(''); setWant(m); await u.setMode(m); };
   return (
     <>
