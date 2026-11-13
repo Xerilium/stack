@@ -65,7 +65,13 @@
 .now-empty .now-title { font-size: var(--fs-screen); }
 .now-check { display: inline-grid; place-items: center; width: 44px; height: 44px; margin-bottom: var(--s-16); border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 20px; }
 @keyframes now-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .now-card { animation: none; } .now-btn:active:not(:disabled) { transform: none; } }
+/* Done: the check pops and the card dims; it stays readable until the save lands, then the next task enters in its place. @req FR:product-reset/ui.done */
+.now-card.done-anim { position: relative; }
+.now-card.done-anim > :not(.now-done-check) { animation: now-done 400ms var(--ease) both; }
+.now-done-check { display: inline-grid; place-items: center; width: 36px; height: 36px; margin-bottom: var(--s-12); border-radius: 50%; background: var(--ok); color: #fff; font-size: 18px; font-weight: 700; animation: now-check-pop 160ms var(--ease) both; }
+@keyframes now-done { 0%, 45% { opacity: 1; } 100% { opacity: .4; } }
+@keyframes now-check-pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .now-card, .now-card.done-anim > *, .now-done-check { animation: none; } .now-btn:active:not(:disabled) { transform: none; } }
 
 /* Message the task agent: bubbles over one composer. @req FR:now-screen/now.compose @req FR:now-screen/now.thread */
 .now-chat { display: grid; gap: var(--s-12); }
@@ -107,8 +113,10 @@
 
 /* Waiting on you: cards with room to breathe; the body expands in place. @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.expand */
 .now-asks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-12); }
-.now-ask { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); transition: border-color var(--t-feedback) var(--ease), box-shadow var(--t-feedback) var(--ease); }
+.now-ask { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--card-bg); transition: background var(--t-feedback) var(--ease), border-color var(--t-feedback) var(--ease), box-shadow var(--t-feedback) var(--ease); }
 .now-ask:hover { border-color: var(--line); box-shadow: var(--shadow); }
+/* Hover and focus change the card background. @req FR:product-reset/ui.taskcard */
+.now-ask:not(.open):hover, .now-ask:not(.open):focus-within { background: var(--card-hover); }
 .now-ask.open { box-shadow: var(--shadow); }
 .now-ask-head { display: flex; align-items: flex-start; gap: var(--s-12); padding: var(--s-16); }
 .now-ask-head .now-mini { margin-top: 2px; }
@@ -127,6 +135,8 @@
 .now-ask-facts dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
 .now-ask-facts .waits dd { color: var(--ink2); }
 .now-ask-who { display: inline-flex; align-items: center; gap: var(--s-8); }
+.now-ask-links { display: flex; flex-wrap: wrap; gap: var(--s-4) var(--s-12); }
+.now-ask-links a { display: inline-flex; align-items: center; min-height: var(--tap); color: var(--accent); font-weight: 600; text-underline-offset: 2px; }
 .now-ask-acts, .now-ask-defer { display: flex; flex-wrap: wrap; gap: var(--s-8); }
 .now-act { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-4); min-height: var(--tap); padding: 0 var(--s-16); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: var(--fs-secondary); font-weight: 600; text-decoration: none; cursor: pointer; transition: background var(--t-feedback) var(--ease); }
 .now-act:hover:not(:disabled) { background: var(--hover); }
@@ -145,6 +155,7 @@
   .now-act { min-height: 34px; padding: 0 var(--s-12); }
   .now-ask-reply input, .now-connect-row input { min-height: 36px; }
   .now-ask-needs { min-height: 0; padding: var(--s-4) 0; }
+  .now-ask-links a { min-height: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .now-ask-more { animation: none; } }
 

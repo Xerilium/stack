@@ -4,6 +4,8 @@ import type { PrBoard } from '../../src/api/pr-board-service';
 import type { PrRow } from '../../src/core/pr-board';
 import { getDefaults } from '../../src/core/config';
 
+const SIGN_IN = 'GitHub sign-in needed: run gh auth login or set GITHUB_TOKEN';
+
 const row = (o: Partial<PrRow>): PrRow => ({
   url: 'https://github.com/o/r/pull/1', repo: 'o/r', number: 1, title: 'Fix it', author: 'me', project: 'other', group: 'blocked', draft: false, createdAt: '', updatedAt: '', ci: 'passing',
   unresolved: 0, labels: [], state: { owner: 'me', bucket: 'decide', blocker: 'Pick one', link: 'https://github.com/o/r/pull/1#discussion_r1', stalled: false, source: 'rule' },
@@ -28,19 +30,22 @@ describe('stack prs', () => {
       'waiting [xerilium] x/stack#2 Fix it · roland: Waiting on roland https://github.com/x/stack/pull/2',
     ]);
   });
-  it('no token exits 1 and says so; never asks GitHub', async () => {
-    const r = await prsCmd({}, [], getDefaults, '/nonexistent', {});
-    expect(r).toEqual({ json: { ok: false, error: 'GITHUB_TOKEN is not set' }, text: 'error: GITHUB_TOKEN is not set', code: 1 });
-    await expect(prsCmd({}, ['extra'], getDefaults, '/x', {})).rejects.toThrow('Unexpected argument');
+  // @req FR:pr-page/auth.token
+  it('no token exits 1 and says how to sign in; never asks GitHub', async () => {
+    const r = await prsCmd({}, [], getDefaults, '/nonexistent', {}, async () => null);
+    expect(r).toEqual({ json: { ok: false, error: SIGN_IN }, text: `error: ${SIGN_IN}`, code: 1 });
+    await expect(prsCmd({}, ['extra'], getDefaults, '/x', {}, async () => null)).rejects.toThrow('Unexpected argument');
   });
   it('is a registered command with its flags', async () => {
     const out: string[] = [];
     const prev = process.env.GITHUB_TOKEN;
+    const off = process.env.STACK_GH_AUTH;
     delete process.env.GITHUB_TOKEN;
+    process.env.STACK_GH_AUTH = 'off';
     try {
       expect(await run(['prs', '--group', 'blocked', '--json'], { out: (s) => out.push(s), err: () => undefined })).toBe(1);
-      expect(JSON.parse(out.join(''))).toEqual({ ok: false, error: 'GITHUB_TOKEN is not set' });
+      expect(JSON.parse(out.join(''))).toEqual({ ok: false, error: SIGN_IN });
       expect(await run(['prs', '--bogus'], { out: () => undefined, err: () => undefined })).toBe(2);
-    } finally { if (prev !== undefined) process.env.GITHUB_TOKEN = prev; }
+    } finally { if (prev !== undefined) process.env.GITHUB_TOKEN = prev; if (off === undefined) delete process.env.STACK_GH_AUTH; else process.env.STACK_GH_AUTH = off; }
   });
 });

@@ -19,6 +19,9 @@ export interface PrBoard {
   queue: boolean; rate?: { until: string }; error?: string; truncated?: boolean;
 }
 export type Tab = 'escalations' | PrGroup;
+/** The host has no GitHub token: one honest state. @req FR:pr-page/auth.state */
+export interface SignInSession { state: 'waiting' | 'done' | 'error' | 'none'; userCode?: string; verificationUri?: string; error?: string }
+export interface PrAuthState { state: 'signed-out'; method: 'gh' | 'none'; session?: SignInSession }
 
 export const TAB_LABEL: Record<Tab, string> = { escalations: 'Escalation set', blocked: 'Blocked on me', waiting: 'Waiting on me', processing: 'Processing', pending: 'Pending', paused: 'Paused' };
 export const EMPTY: Record<Tab, string> = {
@@ -95,6 +98,15 @@ export const replyToOf = (link?: string): number | undefined => { const m = /#di
 /** The thread an answer is for (`stack pr-pri ack --thread`): the blocker's thread, else the PR. */
 export const threadOf = (x: { url: string; link?: string }) => x.link ?? x.url;
 
+/** The nav count: rows that wait on the owner. @req FR:pr-page/nav.badge */
+export const needCount = (b: PrBoard | null): number => (b ? (b.counts.blocked ?? 0) + (b.counts.waiting ?? 0) : 0);
+/** The one signed-out state. @req FR:pr-page/auth.state */
+export function signInText(a: PrAuthState): { title: string; action?: string; detail?: string; note?: string } {
+  if (a.method === 'none') return { title: 'Install the GitHub CLI, or set GITHUB_TOKEN.', detail: 'Then reopen this page. Stack reads the gh sign-in; it never stores a token.' };
+  const e = a.session?.state === 'error' ? a.session.error : undefined;
+  return { title: 'Sign in to GitHub to see your PRs.', action: 'Sign in to GitHub', ...(e ? { note: e === 'expired' ? 'The code expired. Try again.' : e === 'gh-missing' ? 'The GitHub CLI is not installed.' : 'GitHub sign-in did not finish. Try again.' } : {}) };
+}
+
 // ---- prefs (per viewer; storage may be missing)
 const PREFS = 'stack.prs.v1';
 export interface Prefs { tab: Tab; projects: string[] }
@@ -107,14 +119,14 @@ export function loadPrefs(s: Pick<Storage, 'getItem'> | null): Prefs {
 export function savePrefs(s: Pick<Storage, 'setItem'> | null, p: Prefs): void { try { s?.setItem(PREFS, JSON.stringify(p)); } catch { /* private mode */ } }
 
 // ---- the shared board store: one fetch for every icon and the flyout
-export type Phase = 'loading' | 'ready' | 'off' | 'error';
-interface StoreState { board: PrBoard | null; phase: Phase; open: boolean }
+export type Phase = 'loading' | 'ready' | 'off' | 'error' | 'signin';
+interface StoreState { board: PrBoard | null; phase: Phase; open: boolean; auth: PrAuthState | null }
 export interface PrStore {
   get(): StoreState; subscribe(fn: () => void): () => void; reload(): Promise<void>; setOpen(v: boolean): void;
 }
 /** Loads on first subscribe; reloads on `prs`/`poll`/reconnect, on show, and each minute while visible (that renews the host lease). @req FR:pr-page/live.event */
-export function createPrStore(load: () => Promise<PrBoard>, o: { visible?: () => boolean; every?: number; listen?: typeof onLiveChange; status?: (e: unknown) => number; /** The host says it has a board; false means off with no request (no 404 in the console). */ enabled?: () => Promise<boolean> } = {}): PrStore {
-  let st: StoreState = { board: null, phase: 'loading', open: false };
+export function createPrStore(load: () => Promise<PrBoard | { off: true } | { auth: PrAuthState }>, o: { visible?: () => boolean; every?: number; /** The reload cadence while signed out. */ signinEvery?: number; listen?: typeof onLiveChange; status?: (e: unknown) => number; /** The host says it has a board; false means off with no request (no 404 in the console). */ enabled?: () => Promise<boolean> } = {}): PrStore {
+  let st: StoreState = { board: null, phase: 'loading', open: false, auth: null };
   const subs = new Set<() => void>();
   const set = (p: Partial<StoreState>) => { st = { ...st, ...p }; subs.forEach((f) => f()); };
   const visible = o.visible ?? (() => typeof document === 'undefined' || document.visibilityState === 'visible');
@@ -125,7 +137,14 @@ export function createPrStore(load: () => Promise<PrBoard>, o: { visible?: () =>
     // Check after the gate: two reloads that wait on it together must not both load.
     if (busy || st.phase === 'off') return;
     busy = true;
-    try { const b = await load(); if ((b as { off?: boolean }).off) set({ phase: 'off' }); else set({ board: b, phase: 'ready' }); } catch (e) {
+    try {
+      const b = await load();
+      if ('off' in b && b.off) set({ phase: 'off' });
+      else if ('auth' in b && b.auth) set({ phase: 'signin', auth: b.auth, board: null });
+      // A first load that failed has no snapshot: the failed state, never a zero board. @req FR:pr-page/nav.load
+      else if (!(b as PrBoard).at && (b as PrBoard).error) set({ phase: 'error', board: null, auth: null });
+      else set({ board: b as PrBoard, phase: 'ready', auth: null });
+    } catch (e) {
       const status = o.status?.(e) ?? (e as { status?: number })?.status;
       set({ phase: status === 404 ? 'off' : st.board ? 'ready' : 'error' });
     } finally { busy = false; }
@@ -136,9 +155,11 @@ export function createPrStore(load: () => Promise<PrBoard>, o: { visible?: () =>
     void gate.then((on) => { if (on) void reload(); else set({ phase: 'off' }); });
     const off = (o.listen ?? onLiveChange)((kinds) => { if (kinds.some((k) => k === 'prs' || k === 'pr-priority' || k === 'poll') || ['asks', 'tasks', 'state'].every((k) => kinds.includes(k))) void reload(); });
     const t = setInterval(() => { if (visible()) void reload(); }, o.every ?? 60_000);
+    // Signed out, check each 15 seconds: a terminal sign-in shows without a wait. @req FR:pr-page/auth.state
+    const t2 = setInterval(() => { if (visible() && st.phase === 'signin') void reload(); }, o.signinEvery ?? 15_000);
     const vis = () => { if (visible()) void reload(); };
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', vis);
-    stop = () => { off(); clearInterval(t); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', vis); };
+    stop = () => { off(); clearInterval(t); clearInterval(t2); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', vis); };
   };
   return {
     get: () => st,

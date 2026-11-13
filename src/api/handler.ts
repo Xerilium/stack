@@ -23,6 +23,7 @@ import { PrisInvalid, type PriStore } from '../core/pris';
 import { blockedText, DECISIONS, MOVE_TO, QUEUE_OPS, type PrPriorityStore, type QueueOp } from '../core/pr-priority';
 import { LABELS, sameLabel, type PrRow } from '../core/pr-board';
 import type { PrBoardService } from './pr-board-service';
+import type { PrAuth } from './pr-page';
 import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write';
 import { QueueRefused, QueueUnavailable, type PrQueue } from './pr-queue';
 import { ITEM_OPS, LiveError, type ItemOp, type LiveStore } from '../core/live-lane';
@@ -102,6 +103,8 @@ export interface ApiDeps {
   prWrites?: GitHubWrites;
   /** Changes the PR priority queue. @req FR:pr-page/api.queue-client */
   prQueue?: PrQueue;
+  /** The GitHub sign-in of a local host; absent means the board needs GITHUB_TOKEN and /prs/sign-in is 404. @req FR:pr-page/auth.state */
+  prAuth?: PrAuth;
   /** The desktop installer: version probe, update mode, restart. Absent means /version is 404. @req FR:devops-installer/version.get */
   app?: AppUpdater;
   /** The owner feedback store (~/.stack/feedback.jsonl); absent means POST /feedback is 404. @req FR:feedback-button/api.route */
@@ -422,6 +425,7 @@ const prView = (c: Ctx, s: PrPriorityStore) => { const q = s.read(); return { ..
 /** The PR page parts, or 404 where the host has no GitHub token. @req FR:pr-page/api.get */
 const boardOf = (c: Ctx): PrBoardService => { if (!c.deps.prBoard) throw new ApiError('not_found', 'No PR board on this host'); return c.deps.prBoard; };
 const writesOf = (c: Ctx): GitHubWrites => { if (!c.deps.prWrites) throw new ApiError('not_found', 'No GitHub writes on this host'); return c.deps.prWrites; };
+const authOf = (c: Ctx): PrAuth => { if (!c.deps.prAuth) throw new ApiError('not_found', 'No GitHub sign-in on this host'); return c.deps.prAuth; };
 const queueOf = (c: Ctx): PrQueue => { if (!c.deps.prQueue) throw new ApiError('conflict', 'PR priority queue is not installed'); return c.deps.prQueue; };
 /** GitHub writes only reach PRs on the owner's board, even with no repo allow-list. @req FR:pr-page/api.repos */
 async function onBoard(c: Ctx, pr: { repo: string; number: number }): Promise<PrRow> {
@@ -923,6 +927,8 @@ export const ROUTES: Route[] = [
       ownerOnly(c, 'Only the owner can read the PR board');
       // No token: say so with 200, so the page hides the icon without a failing request. @req FR:pr-page/icon.absent
       if (!c.deps.prBoard) return json(200, { off: true });
+      // Signed out: one honest state, never an empty board. @req FR:pr-page/auth.state
+      if (c.deps.prAuth && !(await c.deps.prAuth.ready())) return json(200, { auth: await c.deps.prAuth.status() });
       return json(200, await boardOf(c).get());
     },
   },
@@ -1005,6 +1011,25 @@ export const ROUTES: Route[] = [
       // `accept`, `edit`, `reject` are the `stack pr-pri` decisions. @req FR:pr-page/api.queue-client
       await prQueueCall(() => (b.decision === 'accept' ? q.accept(id) : b.decision === 'edit' ? q.edit(id, { reason: b.reason!, ...(b.rank ? { rank: b.rank } : {}), ...(b.note ? { note: b.note } : {}) }) : q.reject(id, b.reason!)));
       return json(200, { ok: true });
+    },
+  },
+  {
+    // The sign-in session: a code and the device link, never a token. @req FR:pr-page/auth.signin
+    method: 'GET', doc: '/prs/sign-in', name: 'prs.signin.get',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can sign in to GitHub');
+      const a = authOf(c);
+      return json(200, a.session() ?? { state: (await a.ready()) ? 'done' : 'none' });
+    },
+  },
+  {
+    // Runs gh auth login --web (the GitHub device flow); one at a time. @req FR:pr-page/auth.signin
+    method: 'POST', doc: '/prs/sign-in', name: 'prs.signin',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can sign in to GitHub');
+      return json(200, await authOf(c).start());
     },
   },
   {

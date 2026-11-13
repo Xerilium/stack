@@ -1589,7 +1589,7 @@ paths:
           $ref: "#/components/responses/Error"
   /prs:
     get:
-      summary: "Owner only. Open PRs the owner reviews or moves, grouped (blocked, waiting, processing, pending, paused), with who must act, CI, unresolved threads, queue rank, and the escalation set. Taking it renews a 3-minute poll lease. `{off: true}` on hosts with no GitHub token"
+      summary: "Owner only. Open PRs the owner reviews or moves, grouped (blocked, waiting, processing, pending, paused), with who must act, CI, unresolved threads, queue rank, and the escalation set. Taking it renews a 3-minute poll lease. `{auth: {state, method, session?}}` when signed out of GitHub; `{off: true}` on hosts with no board"
       operationId: getPrBoard
       responses:
         "200":
@@ -1624,6 +1624,8 @@ paths:
                     type: string
                   off:
                     type: boolean
+                  auth:
+                    type: object
         default:
           $ref: "#/components/responses/Error"
   /prs/queue:
@@ -1821,6 +1823,58 @@ paths:
             application/json:
               schema:
                 type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/sign-in:
+    get:
+      summary: "Owner only. The GitHub sign-in session: state (waiting, done, error, none), the one-time code, and the device link. Never a token. 404 on hosts with no sign-in"
+      operationId: getGitHubSignIn
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - waiting
+                      - done
+                      - error
+                      - none
+                  userCode:
+                    type: string
+                  verificationUri:
+                    type: string
+                  error:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: "Owner only. Start the GitHub sign-in (gh auth login --web, the device flow). One at a time: a start while one waits returns it. 404 on hosts with no sign-in"
+      operationId: startGitHubSignIn
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - waiting
+                      - done
+                      - error
+                  userCode:
+                    type: string
+                  verificationUri:
+                    type: string
+                  error:
+                    type: string
         default:
           $ref: "#/components/responses/Error"
   /pr-review:

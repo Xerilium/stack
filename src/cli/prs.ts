@@ -4,6 +4,7 @@
  */
 import { githubRepos } from '../api/github';
 import { createPrPage } from '../api/pr-page';
+import { createGitHubAuth } from '../api/github-auth';
 import type { PrBoard } from '../api/pr-board-service';
 import type { StackConfig } from '../core/config';
 import { PR_GROUPS, type PrGroup, type PrRow } from '../core/pr-board';
@@ -11,6 +12,7 @@ import { runInventory } from '../core/session-inventory';
 import { UsageError } from './args';
 import { specSort } from './pr-review';
 
+const SIGN_IN = 'GitHub sign-in needed: run gh auth login or set GITHUB_TOKEN';
 const OWNER: Record<string, string> = { me: 'you', ci: 'CI', runner: 'runner', none: '-' };
 const ownerWord = (r: PrRow) => (r.state.owner === 'reviewer' ? r.state.login ?? 'reviewer' : OWNER[r.state.owner]);
 
@@ -28,18 +30,19 @@ export function formatBoard(b: PrBoard, rows: PrRow[]): string {
   return lines.join('\n');
 }
 
-export async function prsCmd(flags: Record<string, string | true>, positionals: string[], config: () => StackConfig, home: string, env: NodeJS.ProcessEnv = process.env): Promise<{ json: unknown; text: string; code?: number }> {
+export async function prsCmd(flags: Record<string, string | true>, positionals: string[], config: () => StackConfig, home: string, env: NodeJS.ProcessEnv = process.env, token: () => Promise<string | null> = () => createGitHubAuth({ env }).token()): Promise<{ json: unknown; text: string; code?: number }> {
   if (positionals.length) throw new UsageError(`Unexpected argument: ${positionals[0]}`);
   const group = typeof flags.group === 'string' ? flags.group : flags.group === true ? '' : undefined;
   const project = typeof flags.project === 'string' ? flags.project : undefined;
   if (group === '') throw new UsageError('--group needs a value');
   const sort = typeof flags.sort === 'string' ? flags.sort : undefined;
   if (flags.sort !== undefined && sort !== 'spec-lines') throw new UsageError('--sort must be spec-lines');
-  const token = env.GITHUB_TOKEN?.trim();
-  if (!token) return { json: { ok: false, error: 'GITHUB_TOKEN is not set' }, text: 'error: GITHUB_TOKEN is not set', code: 1 };
+  // GITHUB_TOKEN, else the gh sign-in. @req FR:pr-page/auth.token
+  const tok = await token();
+  if (!tok) return { json: { ok: false, error: SIGN_IN }, text: `error: ${SIGN_IN}`, code: 1 };
   let cfg: StackConfig | undefined;
   try { cfg = config(); } catch { cfg = undefined; }
-  const page = createPrPage({ token, repos: githubRepos(env.STACK_GITHUB_REPOS), config: cfg, home, inventory: () => runInventory({ home }) });
+  const page = createPrPage({ token: tok, repos: githubRepos(env.STACK_GITHUB_REPOS), config: cfg, home, inventory: () => runInventory({ home }), adminOrgs: true });
   try {
     const b = await page.prBoard.get();
     const all = filterBoard(b, group, project);
