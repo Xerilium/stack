@@ -3,7 +3,7 @@
  * @req FR:github-pr-status/board.@function @req FR:github-pr-status/board.search @req FR:github-pr-status/board.detail
  * @req FR:github-pr-status/board.user @req FR:github-pr-status/board.etag @req FR:github-pr-status/board.rate @req FR:github-pr-status/board.scopes
  */
-import type { PrCheck, PrComment, PrFacts, PrThread } from '../core/pr-board';
+import type { PrCheck, PrComment, PrCommit, PrFacts, PrFile, PrPendingReview, PrThread } from '../core/pr-board';
 
 const API = 'https://api.github.com';
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -21,10 +21,12 @@ export class GitHubRateLimit extends Error {
   constructor(public until: number) { super('GitHub rate limit'); this.name = 'GitHubRateLimit'; }
 }
 export interface BoardRead { user: string; facts: PrFacts[]; /** My repos found from the owner and the orgs the owner admins (no explicit list). */ myRepos?: string[]; /** A search hit its 50-PR limit: some PRs may be missing. */ truncated?: boolean; rate?: { remaining: number; resetAt: string } }
-export interface GitHubBoard { user(): Promise<string>; fetch(): Promise<BoardRead> }
+export interface GitHubBoard { user(): Promise<string>; fetch(): Promise<BoardRead>; /** Drops one PR's cached detail: the next fetch reads it again (after a write such as resolve). */ forget?(url: string): void }
 export interface GitHubBoardOptions { token: string; fetch?: typeof fetch; user?: string; repos?: string[]; now?: () => number; /** With no repos: my repos are the owner plus admin orgs. @req FR:pr-page/auth.repos */ adminOrgs?: boolean }
 
 type Obj = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+const NODE_ID = /^[A-Za-z0-9_=-]{1,100}$/;
+const comment = (c: Obj): PrComment => ({ author: login(c.author), body: String(c.body ?? '').slice(0, 2000), ...(c.url ? { url: String(c.url) } : {}), ...(c.createdAt ? { at: String(c.createdAt) } : {}) });
 const login = (a: Obj | null | undefined): string => (a?.login ? (a.__typename === 'Bot' && !String(a.login).endsWith('[bot]') ? `${a.login}[bot]` : String(a.login)) : 'ghost');
 
 /** A check run or status to one state. */
@@ -79,14 +81,17 @@ export function searches(user: string, repos?: string[]): [string, string, strin
   return [`${base} involves:${user}`, `${base} review-requested:${user}`, `${base} draft:false -author:${user} ${scope}`];
 }
 
-/** The detail query for up to 10 PRs: threads, comments, and which checks are required. Names are checked before they go in. */
+/** The detail query for up to 10 PRs: threads, comments, commits, files, my pending review, and which checks are required. Names are checked before they go in. */
 export function detailQuery(prs: { repo: string; number: number }[]): string {
   const parts = prs.map((p, i) => {
     const [owner, name] = p.repo.split('/');
     const n = Math.trunc(p.number);
     return `p${i}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequest(number: ${n}) {
-  reviewThreads(first: 50) { nodes { isResolved root: comments(first: 1) { nodes { databaseId } } comments(last: ${THREAD_TAIL}) { nodes { url body author { login __typename } } } } }
-  comments(last: 10) { nodes { url body author { login __typename } } }
+  reviewThreads(first: 50) { nodes { id isResolved path root: comments(first: 1) { nodes { databaseId } } head: comments(first: ${THREAD_TAIL}) { nodes { url body createdAt author { login __typename } } } comments(last: ${THREAD_TAIL}) { nodes { url body createdAt author { login __typename } } } } }
+  comments(last: 10) { nodes { url body createdAt author { login __typename } } }
+  recent: commits(last: 10) { nodes { commit { oid messageHeadline url committedDate } } }
+  files(first: 100) { nodes { path additions deletions } }
+  reviews(states: [PENDING], first: 5) { nodes { url body author { login __typename } comments(first: 20) { nodes { path body } } } }
   commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 50) { nodes { __typename
     ... on CheckRun { name isRequired(pullRequestNumber: ${n}) } ... on StatusContext { context isRequired(pullRequestNumber: ${n}) } } } } } } } } }`;
   });
@@ -99,7 +104,7 @@ export function createGitHubBoard(o: GitHubBoardOptions): GitHubBoard {
   const headers = { authorization: `Bearer ${o.token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'stack' };
   let me = o.user && LOGIN.test(o.user) ? o.user : '';
   let etag = '';
-  const detail = new Map<string, { key: string; at: number; threads: PrThread[]; comments: PrComment[]; required: Map<string, boolean> }>();
+  const detail = new Map<string, { key: string; at: number; threads: PrThread[]; comments: PrComment[]; required: Map<string, boolean>; commits?: PrCommit[]; files?: PrFile[]; pending?: PrPendingReview }>();
 
   /** Rate-limit answers to `GitHubRateLimit`; other failures to `GitHub <status>`, no body. @req FR:github-pr-status/board.rate */
   const limited = (res: Response): never | void => {
@@ -151,6 +156,7 @@ export function createGitHubBoard(o: GitHubBoardOptions): GitHubBoard {
 
   return {
     user,
+    forget(url) { detail.delete(url.toLowerCase()); },
     async fetch() {
       const u = await user();
       const mine = !o.repos?.length && o.adminOrgs ? [u, ...(await adminOrgs()).filter((x) => x.toLowerCase() !== u.toLowerCase())] : undefined;
@@ -182,20 +188,34 @@ ${FRAGMENT}`, { a, b, c });
           const p = d[`p${j}`]?.pullRequest;
           if (!p) return;
           const threads: PrThread[] = (p.reviewThreads?.nodes ?? []).map((t: Obj) => {
-            const tail: PrComment[] = (t.comments?.nodes ?? []).map((c: Obj) => ({ author: login(c.author), body: String(c.body ?? '').slice(0, 2000), ...(c.url ? { url: String(c.url) } : {}) }));
+            // The first and the last comments: an ask early in a long thread stays in view.
+            const last10: PrComment[] = (t.comments?.nodes ?? []).map(comment);
+            const first10: PrComment[] = (t.head?.nodes ?? []).map(comment).filter((c: PrComment) => !last10.some((x) => x.url && x.url === c.url));
+            const tail: PrComment[] = [...first10, ...last10];
             const last = tail[tail.length - 1];
-            return { resolved: !!t.isResolved, lastAuthor: last?.author ?? 'ghost', lastBody: last?.body ?? '', ...(last?.url ? { url: last.url } : {}), ...(Number.isInteger(t.root?.nodes?.[0]?.databaseId) ? { id: t.root.nodes[0].databaseId } : {}), comments: tail };
+            return {
+              resolved: !!t.isResolved, lastAuthor: last?.author ?? 'ghost', lastBody: last?.body ?? '', ...(last?.url ? { url: last.url } : {}), ...(Number.isInteger(t.root?.nodes?.[0]?.databaseId) ? { id: t.root.nodes[0].databaseId } : {}),
+              ...(typeof t.id === 'string' && NODE_ID.test(t.id) ? { nodeId: t.id } : {}), ...(t.path ? { path: String(t.path) } : {}), comments: tail,
+            };
           });
-          const comments: PrComment[] = (p.comments?.nodes ?? []).map((c: Obj) => ({ author: login(c.author), body: String(c.body ?? '').slice(0, 2000), ...(c.url ? { url: String(c.url) } : {}) }));
+          const comments: PrComment[] = (p.comments?.nodes ?? []).map(comment);
+          const commits: PrCommit[] | undefined = p.recent ? (p.recent.nodes ?? []).map((n: Obj) => n?.commit).filter((c: Obj) => c?.oid).map((c: Obj) => ({ sha: String(c.oid), title: String(c.messageHeadline ?? '').slice(0, 200), url: String(c.url ?? ''), at: String(c.committedDate ?? '') })) : undefined;
+          const files: PrFile[] | undefined = p.files ? (p.files.nodes ?? []).filter((x: Obj) => x?.path).map((x: Obj) => ({ path: String(x.path), additions: Number(x.additions) || 0, deletions: Number(x.deletions) || 0 })) : undefined;
+          // Only my own pending review: GitHub shows a pending review to its author only, but check anyway.
+          const rv = (p.reviews?.nodes ?? []).find((r: Obj) => r?.url && login(r.author).toLowerCase() === u.toLowerCase());
+          const pending: PrPendingReview | undefined = rv ? { url: String(rv.url), body: String(rv.body ?? '').slice(0, 2000), comments: (rv.comments?.nodes ?? []).map((c: Obj) => ({ path: String(c.path ?? ''), body: String(c.body ?? '').slice(0, 2000) })) } : undefined;
           const required = new Map<string, boolean>();
           for (const n of p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []) required.set(String(n.name ?? n.context), !!n.isRequired);
-          detail.set(f.url.toLowerCase(), { key: keyOf(f), at: now(), threads, comments, required });
+          detail.set(f.url.toLowerCase(), { key: keyOf(f), at: now(), threads, comments, required, ...(commits ? { commits } : {}), ...(files ? { files } : {}), ...(pending ? { pending } : {}) });
         });
       });
       for (const f of facts) {
         const d = detail.get(f.url.toLowerCase());
         if (!d) continue;
         f.threads = d.threads; f.comments = d.comments;
+        if (d.commits) f.commits = d.commits;
+        if (d.files) f.files = d.files;
+        if (d.pending) f.pendingReview = d.pending;
         f.checks = f.checks.map((c) => (d.required.has(c.name) ? { ...c, required: d.required.get(c.name) } : c));
       }
       return { user: u, facts, ...(mine ? { myRepos: mine } : {}), ...(truncated ? { truncated } : {}), ...(rate ? { rate } : {}) };

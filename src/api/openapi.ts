@@ -359,11 +359,11 @@ const DOCS: Record<string, RouteDoc> = {
   },
   // @req FR:pr-page/api.get @req FR:pr-page/api.queue @req FR:pr-page/api.label @req FR:pr-page/api.ack @req FR:pr-page/api.rec
   'prs.get': {
-    operationId: 'getPrBoard', summary: 'Owner only. Open PRs the owner reviews or moves, grouped (blocked, waiting, processing, pending, paused), with who must act, CI, unresolved threads, queue rank, and the escalation set. Taking it renews a 3-minute poll lease. `{auth: {state, method, session?}}` when signed out of GitHub; `{off: true}` on hosts with no board',
-    responses: ok('Board', { type: 'object', properties: { at: { type: 'string', nullable: true }, user: { type: 'string' }, agents: { type: 'object' }, counts: { type: 'object' }, footer: { type: 'object' }, rows: { type: 'array', items: { type: 'object' } }, escalations: { type: 'object' }, queue: { type: 'boolean' }, rate: { type: 'object' }, error: { type: 'string' }, off: { type: 'boolean' }, auth: { type: 'object' } } }),
+    operationId: 'getPrBoard', summary: 'Owner only. Open PRs the owner reviews or moves, grouped (processing, waiting, pending, paused), each with its next action for the owner (validate, signoff, publish, approve, autopilot), spec lines, pin, and details; the Summary; who must act, CI, unresolved threads, queue rank, and the escalation set. refresh=1 polls GitHub first. Taking it renews a 3-minute poll lease. `{auth: {state, method, session?}}` when signed out of GitHub; `{off: true}` on hosts with no board',
+    responses: ok('Board', { type: 'object', properties: { at: { type: 'string', nullable: true }, user: { type: 'string' }, agents: { type: 'object' }, counts: { type: 'object' }, footer: { type: 'object' }, rows: { type: 'array', items: { type: 'object' } }, summary: { type: 'object', properties: { live: { type: 'array', items: { type: 'string' } }, signoff: { type: 'array', items: { type: 'string' } }, autopilot: { type: 'array', items: { type: 'string' } }, missing: { type: 'array', items: { type: 'object' } } } }, escalations: { type: 'object' }, queue: { type: 'boolean' }, rate: { type: 'object' }, error: { type: 'string' }, off: { type: 'boolean' }, auth: { type: 'object' } } }),
   },
   'prs.queue': {
-    operationId: 'movePrInQueue', summary: 'Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin, unpin, remove, undo. 409 when the queue is not installed or refuses',
+    operationId: 'movePrInQueue', summary: 'Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin (adds the PR first when not queued), unpin, remove, undo. 409 when the queue is not installed or refuses',
     desc: { op: 'top, up, down, move, add, pin, unpin, remove, or undo', rank: 'Target rank for move' },
     responses: ok('New rank', { type: 'object', properties: { rank: { type: 'integer', nullable: true }, was: { type: 'integer', nullable: true }, pinned: { type: 'boolean' } } }),
   },
@@ -379,6 +379,12 @@ const DOCS: Record<string, RouteDoc> = {
   'prs.rec': {
     operationId: 'decidePrRec', summary: 'Owner only. Accept, edit, or reject a PR priority recommendation; edit and reject need a reason',
     responses: ok('Done', { type: 'object' }),
+  },
+  // @req FR:pr-page/api.resolve
+  'prs.resolve': {
+    operationId: 'resolvePrThread', summary: 'Owner only. Resolve or reopen a review thread (GraphQL node id) of a PR on the board. 404 when the thread is not on that PR',
+    desc: { thread: 'Review thread node id from the row detail', op: 'resolve or unresolve' },
+    responses: ok('Done', { type: 'object', properties: { ok: { type: 'boolean' }, op: { type: 'string' } } }),
   },
   // @req FR:pr-page/auth.signin
   'prs.signin.get': {

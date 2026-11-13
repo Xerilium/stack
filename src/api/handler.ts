@@ -289,6 +289,8 @@ const PR_REPO: Spec = { t: 'str', required: true, max: 140, pattern: /^[A-Za-z0-
 const PR_NUM: Spec = { t: 'int', min: 1, max: 9_999_999 };
 export const PR_QUEUE_OPS = ['top', 'up', 'down', 'move', 'add', 'pin', 'unpin', 'remove', 'undo'] as const;
 const PR_QUEUE_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: PR_QUEUE_OPS }, rank: { t: 'int', min: 1, max: 100 } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
+const PR_RESOLVE_BODY = { schema: { repo: PR_REPO, number: PR_NUM, thread: { t: 'str', required: true, max: 100, pattern: /^[A-Za-z0-9_=-]{1,100}$/ }, op: { t: 'enum', values: ['resolve', 'unresolve'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'thread', 'op'] };
+const PR_GET_Q: Record<string, Spec> = { refresh: { t: 'enum', values: ['1'] } };
 const PR_LABEL_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: ['add', 'remove'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
 const PR_ACK_BODY = {
   schema: { repo: PR_REPO, number: PR_NUM, thread: { t: 'str', required: true, max: 500, line: true, pattern: /^https:\/\/github\.com\/\S+$/ }, note: { t: 'str', required: true, max: 300, line: true }, post: { t: 'bool' }, text: { t: 'str', max: 4000 }, replyTo: { t: 'int', min: 1, max: Number.MAX_SAFE_INTEGER } } satisfies Record<string, Spec>,
@@ -441,7 +443,7 @@ async function prQueueCall(fn: () => Promise<void>): Promise<void> {
 async function ghCall(fn: () => Promise<void>): Promise<void> {
   try { await fn(); } catch (e) {
     if (e instanceof GitHubWriteDenied) throw new ApiError('forbidden', e.message);
-    if (e instanceof Error && /^GitHub \d+$/.test(e.message)) throw new ApiError('conflict', e.message);
+    if (e instanceof Error && /^GitHub (\d+|graphql error)$/.test(e.message)) throw new ApiError('conflict', e.message);
     throw e;
   }
 }
@@ -921,19 +923,22 @@ export const ROUTES: Route[] = [
   },
   {
     // PR titles and blockers are the owner's: owner only. @req FR:pr-page/api.get @req FR:pr-page/act.owner
-    method: 'GET', doc: '/prs', name: 'prs.get',
+    method: 'GET', doc: '/prs', name: 'prs.get', query: PR_GET_Q,
     async run(c) {
-      noQuery(c);
+      // `refresh=1`: the owner tapped Refresh; poll GitHub first. @req FR:pr-page/api.get @req FR:pr-page/live.poll
+      const refresh = readQuery(c.url, Object.keys(PR_GET_Q)).get('refresh');
+      if (refresh !== null && refresh !== '1') throw invalid([{ field: 'refresh', message: 'Must be 1' }]);
       ownerOnly(c, 'Only the owner can read the PR board');
       // No token: say so with 200, so the page hides the icon without a failing request. @req FR:pr-page/icon.absent
       if (!c.deps.prBoard) return json(200, { off: true });
       // Signed out: one honest state, never an empty board. @req FR:pr-page/auth.state
       if (c.deps.prAuth && !(await c.deps.prAuth.ready())) return json(200, { auth: await c.deps.prAuth.status() });
+      if (refresh) await boardOf(c).refresh();
       return json(200, await boardOf(c).get());
     },
   },
   {
-    // @req FR:pr-page/api.queue @req FR:pr-page/act.queue
+    // @req FR:pr-page/api.queue @req FR:pr-page/pin.toggle
     method: 'POST', doc: '/prs/queue', name: 'prs.queue', body: PR_QUEUE_BODY,
     async run(c) {
       noQuery(c);
@@ -950,7 +955,9 @@ export const ROUTES: Route[] = [
           case 'top': case 'up': case 'down': return q.move(ref, b.op);
           case 'move': return q.move(ref, b.rank ?? 1);
           case 'add': return q.add(ref);
-          case 'pin': return q.pin(ref);
+          // Pin adds a PR that is not queued first: the pinned order is the queue order. @req FR:pr-page/pin.toggle
+          // A failed pin after the add takes the add back, so the queue never keeps a PR the owner did not ask for.
+          case 'pin': return cur === null ? q.add(ref).then(() => q.pin(ref).catch(async (e: unknown) => { await q.remove(ref).catch(() => undefined); throw e; })) : q.pin(ref);
           case 'unpin': return q.unpin(ref);
           case 'remove': return q.remove(ref);
           default: return q.undo();
@@ -962,7 +969,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // The label is always Autopilot: the owner's click is the human act. @req FR:pr-page/api.label @req FR:pr-page/act.autopilot @req FR:pr-page/api.repos
+    // The label is always Autopilot: the owner's click is the human act. @req FR:pr-page/api.label @req FR:pr-page/api.repos
     method: 'POST', doc: '/prs/label', name: 'prs.label', body: PR_LABEL_BODY,
     async run(c) {
       noQuery(c);
@@ -978,7 +985,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // Records the owner's ack; posting to GitHub is opt-in and AI-prefixed. @req FR:pr-page/api.ack @req FR:pr-page/act.accept
+    // Records the owner's ack; posting to GitHub is opt-in and AI-prefixed. @req FR:pr-page/api.ack
     method: 'POST', doc: '/prs/ack', name: 'prs.ack', body: PR_ACK_BODY,
     async run(c) {
       noQuery(c);
@@ -998,7 +1005,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // @req FR:pr-page/api.rec @req FR:pr-page/act.rec
+    // @req FR:pr-page/api.rec
     method: 'POST', doc: '/prs/recs/{id}', name: 'prs.rec', body: PRS_REC_BODY,
     async run(c) {
       noQuery(c);
@@ -1011,6 +1018,22 @@ export const ROUTES: Route[] = [
       // `accept`, `edit`, `reject` are the `stack pr-pri` decisions. @req FR:pr-page/api.queue-client
       await prQueueCall(() => (b.decision === 'accept' ? q.accept(id) : b.decision === 'edit' ? q.edit(id, { reason: b.reason!, ...(b.rank ? { rank: b.rank } : {}), ...(b.note ? { note: b.note } : {}) }) : q.reject(id, b.reason!)));
       return json(200, { ok: true });
+    },
+  },
+  {
+    // Resolve or reopen a sign-off thread of a PR on the board. @req FR:pr-page/api.resolve @req FR:pr-page/detail.signoff @req FR:pr-page/api.repos
+    method: 'POST', doc: '/prs/resolve', name: 'prs.resolve', body: PR_RESOLVE_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can resolve a thread');
+      const b = validate<{ repo: string; number: number; thread: string; op: 'resolve' | 'unresolve' }>(await readBody(c.req), PR_RESOLVE_BODY.schema, PR_RESOLVE_BODY.required);
+      const w = writesOf(c);
+      const row = await onBoard(c, b);
+      if (!boardOf(c).hasThread?.(row.url, b.thread)) throw new ApiError('not_found', 'No such thread on this PR');
+      await ghCall(() => w.resolveThread(b, b.thread, b.op === 'resolve'));
+      // Resolving does not always change updatedAt: read this PR's threads again.
+      await c.deps.prBoard?.refresh(row.url);
+      return json(200, { ok: true, op: b.op });
     },
   },
   {

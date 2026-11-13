@@ -1,11 +1,12 @@
 /**
  * The PR board: pure rules that group the owner's open PRs and say who must act. No I/O.
  * Change the BLOCKED rule here only (`stateOf`); its tests list each case.
- * @req FR:pr-page/group.@function @req FR:pr-page/state.@function @req FR:pr-page/state.why
+ * @req FR:pr-page/group.@function @req FR:pr-page/state.@function @req FR:pr-page/state.why @req FR:pr-page/card.action @req FR:pr-page/summary.@function
  */
 import { PROJECTS, RULES, type SessionProject } from './session-inventory';
+import { isSpecPath, needsLiveValidation } from './pr-review';
 
-export const PR_GROUPS = ['blocked', 'waiting', 'processing', 'pending', 'paused'] as const;
+export const PR_GROUPS = ['processing', 'waiting', 'pending', 'paused'] as const;
 export type PrGroup = (typeof PR_GROUPS)[number];
 export type CiState = 'passing' | 'failing' | 'pending' | 'none';
 export type Owner = 'me' | 'reviewer' | 'ci' | 'runner' | 'none';
@@ -13,8 +14,21 @@ export type Bucket = 'approve' | 'review' | 'decide' | 'unblock';
 
 export interface PrCheck { name: string; state: 'pass' | 'fail' | 'pending' | 'action' | 'skip'; startedAt?: string; required?: boolean }
 /** `id` is the thread's first review comment: GitHub takes replies to it only. */
-export interface PrComment { author: string; body: string; url?: string }
-export interface PrThread { resolved: boolean; lastAuthor: string; lastBody: string; url?: string; id?: number; /** The newest replies, oldest first; absent means only the last is known. */ comments?: PrComment[] }
+export interface PrComment { author: string; body: string; url?: string; at?: string }
+export interface PrThread { resolved: boolean; lastAuthor: string; lastBody: string; url?: string; id?: number; /** The GraphQL node id: resolve and unresolve take it. */ nodeId?: string; path?: string; /** The newest replies, oldest first; absent means only the last is known. */ comments?: PrComment[] }
+export interface PrCommit { sha: string; title: string; url: string; at: string }
+export interface PrFile { path: string; additions: number; deletions: number }
+/** My pending (not submitted) review. */
+export interface PrPendingReview { url: string; body: string; comments: { path: string; body: string }[] }
+export type NextAction = 'validate' | 'signoff' | 'publish' | 'approve' | 'autopilot';
+/** The live lane, as the board needs it. */
+export interface LiveLane { url: string; state: string; serverUrl?: string; items: { text: string; state: string }[] }
+export interface SignoffDetail { id: string; url: string; path?: string; ask: PrComment; after: PrComment[]; commits: PrCommit[] }
+export type StepsDetail = { source: 'lane'; state: string; serverUrl?: string; items: { text: string; state: string }[] } | { source: 'body'; items: { text: string }[] };
+/** @req FR:pr-page/detail.data */
+export interface PrDetail { signoff?: SignoffDetail[]; review?: PrPendingReview; steps?: StepsDetail; notes?: { body: string; url: string; at?: string }[] }
+/** @req FR:pr-page/summary.@function */
+export interface PrSummary { live: string[]; signoff: string[]; autopilot: string[]; missing: { url: string; reason: string }[] }
 /** What GitHub says about one open PR, normalized. */
 export interface PrFacts {
   url: string; repo: string; number: number; title: string; author: string; draft: boolean;
@@ -23,6 +37,7 @@ export interface PrFacts {
   mergeable: string; checks: PrCheck[];
   /** From the detail read; absent until it is read. */
   threads?: PrThread[]; comments?: PrComment[];
+  commits?: PrCommit[]; files?: PrFile[]; pendingReview?: PrPendingReview;
 }
 export interface PrReport { state?: string; worker?: string; blocker?: string; nextAction?: string; owner: string; headSha?: string; ts?: string; link?: string; bucket?: Bucket }
 export interface EscEntry { repo: string; number: number; url: string; title?: string; blocker?: string; context?: string; recommend?: string; link?: string; /** For the project chips. */ project?: SessionProject }
@@ -34,6 +49,7 @@ export interface PrRow {
   url: string; repo: string; number: number; title: string; author: string; project: SessionProject; group: PrGroup; draft: boolean;
   createdAt: string; updatedAt: string; ci: CiState; unresolved: number; labels: string[]; state: PrState; bucket?: Bucket;
   healthy: boolean; agent: boolean; after: string[]; rank: number | null; pinned: boolean; rec?: PrRec; autopilot: boolean;
+  mine: boolean; nextAction: NextAction | null; specLines: number | null; detail: PrDetail;
 }
 export interface BoardCtx {
   user: string; now: Date;
@@ -48,10 +64,15 @@ export interface BoardCtx {
   /** Owner thread acks by lowercase PR url. */
   acks?: Map<string, PrAck[]>;
   pinned?: Set<string>;
+  /** The live lane (`stack live`). */
+  live?: LiveLane;
+  /** The first `liveValidation` url of the escalation set. */
+  liveFirst?: string;
 }
 
 const HOUR = 3_600_000;
-const norm = (s: string) => s.replace(/[︎️]/g, '').trim().toLowerCase();
+/** Label text without case, emoji, or variation selectors: `Status: 🤖 Autopilot` and `Status: Autopilot 🤖` are one label. */
+const norm = (s: string) => s.replace(/[\p{Extended_Pictographic}\uFE0E\uFE0F\u200D]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
 export const LABELS = { autopilot: 'Status: 🤖 Autopilot', wip: 'Status: 🚧 WIP', paused: 'Status: ⏸️ Paused' } as const;
 /** Labels match without case or emoji variation selectors. */
 export const sameLabel = (a: string, b: string) => norm(a) === norm(b);
@@ -61,6 +82,8 @@ export const isAutopilot = (pr: PrFacts) => has(pr, LABELS.autopilot);
 export const isWip = (pr: PrFacts) => has(pr, LABELS.wip);
 export const same = (a: string | undefined, b: string | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const isBot = (login: string) => /\[bot\]$/i.test(login);
+/** My words that ask an agent to wait: the Sign-off phrases. A bare "wait" is not one ("Wait, why?"). */
+const WAIT = /\b(hold|on hold|wait (for|until)|my ack|ack first|until i ack|don'?t merge|do not merge)\b/i;
 /** A comment by the owner that no agent wrote (agents post as the owner with a prefix). @req FR:pr-page/group.@function */
 const AGENT = /^\s*(🤖\uFE0F? \[AI\]|⚛\uFE0F? \[Catalyst\])/u;
 export const isHuman = (author: string, body: string, user: string) => same(author, user) && !AGENT.test(body);
@@ -128,8 +151,8 @@ function rawState(pr: PrFacts, ctx: BoardCtx): PrState {
   const compassThread = unresolvedOf(pr).map((t) => ({ ...t, ask: openAsk(t) })).find((x) => x.ask);
   if (compassThread) { const t = firstLine(compassThread.ask!.body.replace(/^\s*(🤖\uFE0F? \[AI\]|⚛\uFE0F? \[Catalyst\])\s*/u, '')); return me(t, compassThread.ask!.url ?? compassThread.url ?? pr.url, bucketOf(t), { key: `t:${compassThread.id ?? compassThread.url}`, ...(compassThread.id ? { replyTo: compassThread.id } : {}) }); }
   // 3. An owner hold on an open thread.
-  const hold = unresolvedOf(pr).find((t) => isHuman(t.lastAuthor, t.lastBody, ctx.user) && /\b(hold|wait for (my )?ack)\b/i.test(t.lastBody));
-  if (hold) return me(`Hold: ${firstLine(hold.lastBody, 100)}`, hold.url ?? pr.url, 'decide', { key: `t:${hold.id ?? hold.url}`, ...(hold.id ? { replyTo: hold.id } : {}) });
+  const hold = unresolvedOf(pr).find((t) => isHuman(t.lastAuthor, t.lastBody, ctx.user) && WAIT.test(unquoted(t.lastBody)));
+  if (hold) return me(`Sign-off: ${firstLine(hold.lastBody, 100)}`, hold.url ?? pr.url, 'decide', { key: `t:${hold.id ?? hold.url}`, ...(hold.id ? { replyTo: hold.id } : {}) });
   // 4. A workflow run that waits for a maintainer's approval.
   if (pr.checks.some((c) => c.state === 'action')) return me('Approve the workflow run', `${pr.url}/checks`, 'unblock', { key: 'action-required' });
   // 5. A human reviewer other than me.
@@ -173,11 +196,11 @@ const mine = (repo: string, user: string, list?: string[]) => {
 };
 
 /** One PR's group, or null when the board does not show it. @req FR:pr-page/group.@function */
-export function groupOf(pr: PrFacts, ctx: BoardCtx, st: PrState = stateOf(pr, ctx)): PrGroup | null {
+export function groupOf(pr: PrFacts, ctx: BoardCtx): PrGroup | null {
   if (excluded(pr, ctx.exclude)) return null;
   const authored = same(pr.author, ctx.user);
   if (authored && has(pr, LABELS.paused)) return 'paused';
-  if (isAutopilot(pr) && (authored || pr.assignees.some((a) => same(a, ctx.user)))) return st.owner === 'me' ? 'blocked' : 'processing';
+  if (isAutopilot(pr) && (authored || pr.assignees.some((a) => same(a, ctx.user)))) return 'processing';
   if (!authored && !pr.draft) {
     const mineLatest = pr.reviews.find((v) => same(v.author, ctx.user));
     const askedMe = pr.requested.some((l) => same(l, ctx.user));
@@ -223,9 +246,9 @@ export const isHealthy = (s: PrState) => (s.owner === 'none' || s.owner === 'ci'
 
 /** @req FR:pr-page/group.bucket */
 function rowBucket(group: PrGroup, pr: PrFacts, st: PrState): Bucket | undefined {
+  if (st.owner === 'me') return st.bucket ?? 'decide';
   if (group === 'waiting') return 'approve';
   if (group === 'pending' && !pr.draft) return 'review';
-  if (group === 'blocked') return st.bucket ?? 'decide';
   return undefined;
 }
 
@@ -244,26 +267,139 @@ export function activeAgents(inv: { sessions: { state: string; prs: { url: strin
 }
 
 export type BoardCounts = Record<PrGroup, number>;
-/** Facts to rows, grouped and sorted. @req FR:pr-page/data.row */
+
+// ---- next action, sign-off threads, details @req FR:pr-page/card.action @req FR:pr-page/detail.data
+
+
+const threadComments = (t: PrThread): PrComment[] => (t.comments?.length ? t.comments : [{ author: t.lastAuthor, body: t.lastBody, ...(t.url ? { url: t.url } : {}) }]);
+const askIn = (t: PrThread, user: string): PrComment | undefined => threadComments(t).find((c) => isHuman(c.author, c.body, user) && WAIT.test(unquoted(c.body)));
+
+/** Unresolved threads where I asked to wait, or that I acked. Oldest first. @req FR:pr-page/card.action */
+export function signoffThreads(pr: PrFacts, ctx: BoardCtx): PrThread[] {
+  const acks = ctx.acks?.get(pr.url.toLowerCase()) ?? [];
+  const acked = (t: PrThread) => acks.some((a) => a.thread === t.url || threadComments(t).some((c) => c.url && c.url === a.thread));
+  return unresolvedOf(pr).filter((t) => !!askIn(t, ctx.user) || acked(t));
+}
+
+/** The changed spec lines; null when the files are not known. @req FR:pr-review-lane/sort.lines */
+const specLinesOf = (pr: PrFacts): number | null => (pr.files ? pr.files.filter((f) => isSpecPath(f.path)).reduce((n, f) => n + (f.additions || 0) + (f.deletions || 0), 0) : null);
+const needsLive = (pr: PrFacts) => needsLiveValidation({ labels: pr.labels, body: pr.body, paths: (pr.files ?? []).map((f) => f.path) }).live;
+
+/**
+ * The one next action for me on a PR, first match wins. Pure. `live` is the Live PR url.
+ * @req FR:pr-page/card.action
+ */
+export function nextActionOf(pr: PrFacts, ctx: BoardCtx, group: PrGroup, live: string | undefined): NextAction | null {
+  if (live && same(live, pr.url)) return 'validate';
+  if (signoffThreads(pr, ctx).length) return 'signoff';
+  const rv = pr.pendingReview;
+  if (rv && (rv.body.trim() || rv.comments.length)) return 'publish';
+  const ci = ciOf(pr.checks);
+  if (group === 'waiting' && !pr.draft && (ci === 'passing' || ci === 'none') && pr.mergeable !== 'CONFLICTING' && pr.reviews.find((v) => same(v.author, ctx.user))?.state !== 'APPROVED') return 'approve';
+  if (same(pr.author, ctx.user) && !isAutopilot(pr) && !has(pr, LABELS.paused) && !pr.draft) {
+    const open = unresolvedOf(pr);
+    // One open thread may wait for me (its last comment is not mine; an agent note under my login counts as not mine).
+    if (open.length === 0 || (open.length === 1 && !isHuman(open[0].lastAuthor, open[0].lastBody, ctx.user))) return 'autopilot';
+  }
+  return null;
+}
+
+/** List items under the first PR body heading that holds `validat`. @req FR:pr-page/detail.validate */
+export function validationSteps(body: string): string[] {
+  const lines = (body ?? '').split(/\r?\n/);
+  const start = lines.findIndex((l) => /^\s{0,3}#{1,6}\s.*validat/i.test(l));
+  if (start < 0) return [];
+  const out: string[] = [];
+  for (const l of lines.slice(start + 1)) {
+    if (/^\s{0,3}#{1,6}\s/.test(l)) break;
+    const m = /^\s*(?:\d+[.)]|[-*+])\s+(?:\[[ xX]\]\s+)?(.+)$/.exec(l);
+    if (m) out.push(firstLine(m[1], 300));
+    if (out.length === 30) break;
+  }
+  return out;
+}
+
+const afterAt = (at: string | undefined, x: { at?: string }) => !at || !x.at ? false : Date.parse(x.at) > Date.parse(at);
+/** Facts for the details pane. No AI call. @req FR:pr-page/detail.data */
+function detailOf(pr: PrFacts, ctx: BoardCtx, action: NextAction | null): PrDetail {
+  const d: PrDetail = {};
+  const threads = signoffThreads(pr, ctx);
+  if (threads.length) {
+    d.signoff = threads.map((t) => {
+      const list = threadComments(t);
+      const ask = askIn(t, ctx.user) ?? list[0];
+      const i = list.indexOf(ask);
+      return {
+        id: t.nodeId ?? '', url: t.url ?? ask.url ?? pr.url, ...(t.path ? { path: t.path } : {}), ask, after: list.slice(i + 1),
+        commits: (pr.commits ?? []).filter((c) => afterAt(ask.at, c)).slice(-10).reverse(),
+      };
+    });
+  }
+  if (pr.pendingReview) d.review = pr.pendingReview;
+  if (action === 'validate') {
+    if (ctx.live && same(ctx.live.url, pr.url)) d.steps = { source: 'lane', state: ctx.live.state, ...(ctx.live.serverUrl ? { serverUrl: ctx.live.serverUrl } : {}), items: ctx.live.items };
+    else d.steps = { source: 'body', items: validationSteps(pr.body).map((text) => ({ text })) };
+  }
+  const mineSaid = [...(pr.comments ?? []), ...(pr.threads ?? []).flatMap(threadComments)].filter((c) => isHuman(c.author, c.body, ctx.user) && c.url);
+  if (mineSaid.length) d.notes = mineSaid.map((c, i) => ({ c, i })).sort((a, b) => (Date.parse(b.c.at ?? '') || 0) - (Date.parse(a.c.at ?? '') || 0) || b.i - a.i).slice(0, 5).map(({ c }) => ({ body: c.body.slice(0, 1000), url: c.url!, ...(c.at ? { at: c.at } : {}) }));
+  return d;
+}
+
+/** Facts to rows, grouped and sorted, each with its next action. @req FR:pr-page/data.row */
 export function buildRows(facts: PrFacts[], ctx: BoardCtx): PrRow[] {
-  const rows: PrRow[] = [];
+  const keep: { pr: PrFacts; st: PrState; group: PrGroup }[] = [];
   const seen = new Set<string>();
   for (const pr of facts) {
     const key = pr.url.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const st = stateOf(pr, ctx);
-    const group = groupOf(pr, ctx, st);
-    if (!group) continue;
+    const group = groupOf(pr, ctx);
+    if (group) keep.push({ pr, st: stateOf(pr, ctx), group });
+  }
+  const base = keep.map(({ pr, st, group }) => {
+    const key = pr.url.toLowerCase();
     const rec = ctx.recs?.get(key);
-    rows.push({
+    const row: PrRow = {
       url: pr.url, repo: pr.repo, number: pr.number, title: pr.title, author: pr.author, project: projectOfRepo(pr.repo), group, draft: pr.draft,
       createdAt: pr.createdAt, updatedAt: pr.updatedAt, ci: ciOf(pr.checks), unresolved: unresolvedOf(pr).length, labels: pr.labels, state: st,
       bucket: rowBucket(group, pr, st), healthy: group === 'processing' && isHealthy(st), agent: ctx.agentPrs.has(key), after: afterOf(pr.body, pr.repo),
       rank: ctx.ranks?.get(key) ?? null, pinned: !!ctx.pinned?.has(key), autopilot: isAutopilot(pr), ...(rec ? { rec } : {}),
-    });
-  }
-  return rows.sort(compareRows);
+      mine: same(pr.author, ctx.user), nextAction: null, specLines: specLinesOf(pr), detail: {},
+    };
+    return { pr, row };
+  }).sort((a, b) => compareRows(a.row, b.row));
+  const live = liveUrlOf(base, ctx);
+  for (const { pr, row } of base) { row.nextAction = nextActionOf(pr, ctx, row.group, live); row.detail = detailOf(pr, ctx, row.nextAction); }
+  return base.map((x) => x.row);
+}
+
+/** The Live PR: the lane PR, else the escalation set entry, else my first PR that needs live validation. Must be a board row. */
+function liveUrlOf(rows: { pr: PrFacts; row: PrRow }[], ctx: BoardCtx): string | undefined {
+  const on = (u?: string) => (u ? rows.find((x) => same(x.row.url, u))?.row.url : undefined);
+  return on(ctx.live?.url) ?? on(ctx.liveFirst) ?? rows.find((x) => x.row.mine && !x.row.draft && needsLive(x.pr))?.row.url;
+}
+
+export const ACTION_WORD: Record<NextAction, string> = { validate: 'Validate', signoff: 'Sign off', approve: 'Approve', publish: 'Publish review', autopilot: 'Enable Autopilot' };
+/** Our words only: never hold, escalate, or blocked in UI text. @req FR:pr-page/summary.missing */
+export const plainWords = (t: string) => t.replace(/\bheld thread\b/gi, 'sign-off thread').replace(/\bheld\b/gi, 'waiting for sign-off').replace(/\bon hold\b/gi, 'waiting for sign-off').replace(/\bhold\b/gi, 'sign-off')
+  .replace(/\bescalat(?:ed|es|ion|ions|e)\b/gi, 'ask').replace(/\bblocked\b/gi, 'stuck').replace(/\bblocker\b/gi, 'ask').replace(/\bunblock\b/gi, 'clear');
+
+/**
+ * The Summary tab: 1 Live PR, up to 3 sign-offs, up to 3 ready for Autopilot, and everything else that needs me. Pure.
+ * @req FR:pr-page/summary.@function @req FR:pr-page/summary.live @req FR:pr-page/summary.signoff @req FR:pr-page/summary.autopilot @req FR:pr-page/summary.missing
+ */
+export function summaryOf(rows: PrRow[], ctx: Pick<BoardCtx, 'live'> = {}): PrSummary {
+  const live = rows.filter((r) => r.nextAction === 'validate').slice(0, 1).map((r) => r.url);
+  const signoff = rows.filter((r) => r.nextAction === 'signoff').slice(0, 3).map((r) => r.url);
+  const lines = (r: PrRow) => (r.specLines === null ? Infinity : r.specLines);
+  const autopilot = rows.map((r, i) => ({ r, i })).filter(({ r }) => r.nextAction === 'autopilot').sort((a, b) => lines(a.r) - lines(b.r) || a.i - b.i).slice(0, 3).map(({ r }) => r.url);
+  const shown = new Set([...live, ...signoff, ...autopilot]);
+  const missing: PrSummary['missing'] = [];
+  for (const r of rows) if (r.nextAction && !shown.has(r.url)) { missing.push({ url: r.url, reason: ACTION_WORD[r.nextAction] }); shown.add(r.url); }
+  for (const r of rows) if (!r.nextAction && r.state.owner === 'me' && !shown.has(r.url)) { missing.push({ url: r.url, reason: plainWords(r.state.blocker) || 'Needs you' }); shown.add(r.url); }
+  const lane = ctx.live && rows.find((r) => same(r.url, ctx.live!.url));
+  if (lane) for (const it of ctx.live!.items) if (it.state === 'failed' || it.state === 'needs-fix' || it.state === 'blocked') missing.push({ url: lane.url, reason: `Live check failed: ${firstLine(it.text, 120)}` });
+  return { live, signoff, autopilot, missing };
 }
 
 export function countRows(rows: PrRow[]): BoardCounts {

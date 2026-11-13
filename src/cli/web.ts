@@ -252,7 +252,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // The PR page polls GitHub only while a page holds a lease; a changed board tells open pages. @req FR:pr-page/live.event
   // Built on the first read that finds a token; signed out, GET /prs answers the sign-in state. @req FR:pr-page/auth.state
   const prQueue = storePrQueue(prPriority);
-  const prPage: ReturnType<typeof createLazyPrPage> | undefined = reposOk ? createLazyPrPage({ auth: ghAuth, queue: prQueue, make: (token) => createPrPage({ token, repos: ghRepos, config, home: stackHome(), inventory, queue: prQueue, adminOrgs: true, onChange: () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['prs'] }); } }) }) : undefined;
+  const prPage: ReturnType<typeof createLazyPrPage> | undefined = reposOk ? createLazyPrPage({ auth: ghAuth, queue: prQueue, make: (token) => createPrPage({ token, repos: ghRepos, config, home: stackHome(), inventory, queue: prQueue, adminOrgs: true, live: () => live.view(), onChange: () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['prs'] }); } }) }) : undefined;
   // The live lane, briefs and PR facts live outside the repo too; a lane write tells open pages (`tasks` reloads Needs you for blocked checks). @req FR:pr-review-lane/lane.api
   const laneHome = o.laneHome ?? stackHome();
   const live = new LiveStore(laneHome);

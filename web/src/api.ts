@@ -60,8 +60,10 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     putPris: (rev: number, pris: Pri[]) => call<PrisFile>('/pris', { rev, pris }),
     /** The Claude app session inventory. @req FR:pris-sessions-ui/sessions.list */
     inventory: () => call<Inventory>('/session-inventory'),
-    /** The PR board; 404 where the host has no GitHub token. @req FR:pr-page/api.get */
-    prs: () => call<PrBoard | { off: true } | { auth: PrAuthState }>('/prs'),
+    /** The PR board; 404 where the host has no GitHub token. `fresh` polls GitHub first (Refresh). @req FR:pr-page/api.get */
+    prs: (fresh = false) => call<PrBoard | { off: true } | { auth: PrAuthState }>(fresh ? '/prs?refresh=1' : '/prs'),
+    /** Resolve or reopen a review thread. @req FR:pr-page/api.resolve */
+    prResolve: (repo: string, number: number, thread: string, op: 'resolve' | 'unresolve') => call<{ ok: true; op: string }>('/prs/resolve', { repo, number, thread, op }),
     /** @req FR:pr-page/auth.signin */
     prSignIn: () => call<SignInSession>('/prs/sign-in', {}),
     prSignInState: () => call<SignInSession>('/prs/sign-in'),

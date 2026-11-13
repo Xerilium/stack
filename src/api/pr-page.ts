@@ -11,6 +11,11 @@ import { createPrBoardService, type PrBoardService } from './pr-board-service';
 import { cliPrQueue, type PrQueue } from './pr-queue';
 import { ApiError } from './errors';
 import type { GitHubAuth, GitHubAuthStatus, GitHubSignIn } from './github-auth';
+import type { LiveLane } from '../core/pr-board';
+import type { LaneView } from '../core/live-lane';
+
+/** The live lane view as the board needs it. @req FR:pr-page/summary.live */
+export const laneOf = (v: LaneView): LiveLane | undefined => (v.active ? { url: v.active.url, state: v.active.state, ...(v.active.serverUrl ? { serverUrl: v.active.serverUrl } : {}), items: v.items.map((i) => ({ text: i.text, state: i.state })) } : undefined);
 
 const readJson = (path: string): unknown => { try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return undefined; } };
 /** The pr-priority files under `<home>`, read on each board build. */
@@ -23,6 +28,8 @@ export function createPrPage(o: {
   adminOrgs?: boolean;
   inventory?: () => { sessions: { state: string; prs: { url: string; state: string }[] }[] };
   onChange?: () => void; fetch?: typeof fetch; queue?: PrQueue;
+  /** The live lane view (`stack live`). */
+  live?: () => LaneView;
 }): PrPage {
   const g = o.config?.github ?? {};
   // My repos: the explicit list (env, then config), else the owner plus admin orgs. Writes check only an explicit list. @req FR:pr-page/auth.repos
@@ -32,7 +39,7 @@ export function createPrPage(o: {
   const source = createGitHubBoard({ token: o.token, repos, user: g.user, fetch: o.fetch, adminOrgs: !repos?.length && !!o.adminOrgs });
   const prQueue = o.queue ?? cliPrQueue();
   return {
-    prBoard: createPrBoardService({ source, inventory: o.inventory, files: queueFiles(o.home), myRepos: repos, exclude: g.exclude, queue: async () => (prQueue.available ? prQueue.available() : true), intervalMs: g.pollSeconds ? g.pollSeconds * 1000 : undefined, onChange: o.onChange }),
+    prBoard: createPrBoardService({ source, inventory: o.inventory, files: queueFiles(o.home), ...(o.live ? { live: () => laneOf(o.live!()) } : {}), myRepos: repos, exclude: g.exclude, queue: async () => (prQueue.available ? prQueue.available() : true), intervalMs: g.pollSeconds ? g.pollSeconds * 1000 : undefined, onChange: o.onChange }),
     prWrites: createGitHubWrites({ token: o.token, repos, fetch: o.fetch }),
     prQueue,
   };
@@ -56,10 +63,11 @@ export function createLazyPrPage(o: { auth: GitHubAuth; make: (token: string) =>
   };
   const page = async (): Promise<PrPage> => { if (!(await ready()) || !cur) throw new ApiError('conflict', 'Sign in to GitHub first'); return cur.page; };
   return {
-    prBoard: { get: async () => (await page()).prBoard.get(), refresh: async () => { if (cur) await cur.page.prBoard.refresh(); }, stop: () => cur?.page.prBoard.stop() },
+    prBoard: { get: async () => (await page()).prBoard.get(), refresh: async (u?: string) => { if (cur) await cur.page.prBoard.refresh(u); }, stop: () => cur?.page.prBoard.stop(), hasThread: (u, t) => !!cur?.page.prBoard.hasThread?.(u, t) },
     prWrites: {
       addLabel: async (pr, l) => (await page()).prWrites.addLabel(pr, l), removeLabel: async (pr, l) => (await page()).prWrites.removeLabel(pr, l),
       comment: async (pr, b) => (await page()).prWrites.comment(pr, b), reply: async (pr, id, b) => (await page()).prWrites.reply(pr, id, b),
+      resolveThread: async (pr, id, r) => (await page()).prWrites.resolveThread(pr, id, r),
     },
     prQueue: o.queue,
     prAuth: { ready, status: () => o.auth.status(), start: () => o.auth.start(), session: () => o.auth.session() },

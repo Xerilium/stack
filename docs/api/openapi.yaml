@@ -1589,8 +1589,15 @@ paths:
           $ref: "#/components/responses/Error"
   /prs:
     get:
-      summary: "Owner only. Open PRs the owner reviews or moves, grouped (blocked, waiting, processing, pending, paused), with who must act, CI, unresolved threads, queue rank, and the escalation set. Taking it renews a 3-minute poll lease. `{auth: {state, method, session?}}` when signed out of GitHub; `{off: true}` on hosts with no board"
+      summary: "Owner only. Open PRs the owner reviews or moves, grouped (processing, waiting, pending, paused), each with its next action for the owner (validate, signoff, publish, approve, autopilot), spec lines, pin, and details; the Summary; who must act, CI, unresolved threads, queue rank, and the escalation set. refresh=1 polls GitHub first. Taking it renews a 3-minute poll lease. `{auth: {state, method, session?}}` when signed out of GitHub; `{off: true}` on hosts with no board"
       operationId: getPrBoard
+      parameters:
+        - name: refresh
+          in: query
+          schema:
+            type: string
+            enum:
+              - "1"
       responses:
         "200":
           description: Board
@@ -1614,6 +1621,25 @@ paths:
                     type: array
                     items:
                       type: object
+                  summary:
+                    type: object
+                    properties:
+                      live:
+                        type: array
+                        items:
+                          type: string
+                      signoff:
+                        type: array
+                        items:
+                          type: string
+                      autopilot:
+                        type: array
+                        items:
+                          type: string
+                      missing:
+                        type: array
+                        items:
+                          type: object
                   escalations:
                     type: object
                   queue:
@@ -1630,7 +1656,7 @@ paths:
           $ref: "#/components/responses/Error"
   /prs/queue:
     post:
-      summary: "Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin, unpin, remove, undo. 409 when the queue is not installed or refuses"
+      summary: "Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin (adds the PR first when not queued), unpin, remove, undo. 409 when the queue is not installed or refuses"
       operationId: movePrInQueue
       requestBody:
         required: true
@@ -1823,6 +1849,56 @@ paths:
             application/json:
               schema:
                 type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/resolve:
+    post:
+      summary: Owner only. Resolve or reopen a review thread (GraphQL node id) of a PR on the board. 404 when the thread is not on that PR
+      operationId: resolvePrThread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - thread
+                - op
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                thread:
+                  type: string
+                  maxLength: 100
+                  pattern: ^[A-Za-z0-9_=-]{1,100}$
+                  description: Review thread node id from the row detail
+                op:
+                  type: string
+                  enum:
+                    - resolve
+                    - unresolve
+                  description: resolve or unresolve
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  op:
+                    type: string
         default:
           $ref: "#/components/responses/Error"
   /prs/sign-in:

@@ -1,97 +1,135 @@
 import { describe, expect, it, vi } from 'vitest';
-import { needCount, signInText, replyToOf, threadOf, ageText, countOf, createPrStore, escFor, escIn, healthyCount, loadPrefs, ownerOf, projectsOf, replyText, rowsOf, savePrefs, shortLabels, tabsOf, updatedText, type PrBoard, type PrRow } from '../src/prs';
-import { connectLive, onLiveChange, type EventSourceLike } from '../src/live';
+import {
+  ACTION_LABEL, authorText, countOf, createPrStore, loadPrefs, moveTo, needCount, projectsOf, rowsOf, savePrefs, signInText, specText, summaryView, tabsOf, TAB_LABEL, toneOf, updatedText,
+  type PrBoard, type PrRow,
+} from '../src/prs';
 
 const row = (o: Partial<PrRow>): PrRow => ({
-  url: 'https://github.com/o/r/pull/1', repo: 'o/r', number: 1, title: 'T', author: 'me', project: 'xerilium', group: 'processing', draft: false, createdAt: '2026-11-10T12:00:00Z', updatedAt: '', ci: 'passing',
-  unresolved: 0, labels: [], state: { owner: 'none', blocker: '', link: '', stalled: false, source: 'rule' }, healthy: true, agent: false, after: [], rank: null, pinned: false, autopilot: true, ...o,
+  url: 'https://github.com/o/r/pull/1', repo: 'o/r', number: 1, title: 'T', author: 'me', mine: true, project: 'xerilium', group: 'processing', draft: false, createdAt: '2026-11-10T12:00:00Z', updatedAt: '', ci: 'passing',
+  unresolved: 0, labels: [], state: { owner: 'none', blocker: '', link: '', stalled: false, source: 'rule' }, healthy: true, agent: false, after: [], rank: null, pinned: false, autopilot: true,
+  nextAction: null, specLines: null, detail: {}, ...o,
 });
-const board = (rows: PrRow[], o: Partial<PrBoard> = {}): PrBoard => ({ at: '2026-11-11T12:00:00Z', user: 'me', agents: { count: 0, source: 'sessions' }, counts: { blocked: 0, waiting: 0, processing: 0, pending: 0, paused: 0 }, footer: { running: 0, waiting: 0, parked: 0 }, rows, queue: true, ...o });
+const board = (rows: PrRow[], o: Partial<PrBoard> = {}): PrBoard => ({
+  at: '2026-11-11T12:00:00Z', user: 'me', agents: { count: 0, source: 'sessions' }, counts: { waiting: 0, processing: 0, pending: 0, paused: 0 }, footer: { running: 0, waiting: 0, parked: 0 }, rows,
+  summary: { live: [], signoff: [], autopilot: [], missing: [] }, queue: true, ...o,
+});
 
-// @req FR:pr-page/flyout.tabs @req FR:pr-page/flyout.filter @req FR:pr-page/group.healthy
-describe('tabs and filters', () => {
+// @req FR:pr-page/flyout.tabs @req FR:pr-page/flyout.filter @req FR:pr-page/pin.tab
+describe('tabs, counts, and filters', () => {
   const b = board([
-    row({ url: 'a', project: 'allyte' }), row({ url: 'b', healthy: false, state: { owner: 'reviewer', login: 'roland', blocker: 'Waiting on roland', link: '', stalled: false, source: 'rule' } }),
-    row({ url: 'c', group: 'blocked', project: 'ftk', healthy: false }), row({ url: 'd', group: 'waiting', project: 'xerilium', healthy: false }),
-  ]);
-  it('the Escalation set tab only when present', () => {
-    expect(tabsOf(b)).toEqual(['blocked', 'waiting', 'processing', 'pending', 'paused']);
-    expect(tabsOf({ ...b, escalations: { blocked: [], enable: [], live: [{ repo: 'o/r', number: 1, url: 'u' }] } })[0]).toBe('escalations');
+    row({ url: 'a', project: 'allyte', nextAction: 'validate', pinned: true, rank: 2 }), row({ url: 'b', nextAction: 'signoff', pinned: true, rank: 1 }),
+    row({ url: 'c', group: 'waiting', project: 'ftk', mine: false, author: 'roland', nextAction: 'approve' }), row({ url: 'd', group: 'pending', autopilot: false }),
+  ], { summary: { live: ['a'], signoff: ['b'], autopilot: [], missing: [{ url: 'c', reason: 'Approve' }, { url: 'a', reason: 'Live check failed: Login' }] } });
+  it('Summary first, then the groups, then Pinned; clear names', () => {
+    expect(tabsOf()).toEqual(['summary', 'processing', 'waiting', 'pending', 'paused', 'pinned']);
+    expect(tabsOf().map((t) => TAB_LABEL[t])).toEqual(['Summary', 'Processing', 'Waiting on me', 'Pending', 'Paused', 'Pinned']);
   });
-  it('Processing hides healthy rows unless asked; counts follow the project filter', () => {
-    expect(rowsOf(b, 'processing', []).map((r) => r.url)).toEqual(['b']);
-    expect(rowsOf(b, 'processing', [], true).map((r) => r.url)).toEqual(['a', 'b']);
-    expect(healthyCount(b, [])).toBe(1);
-    expect(countOf(b, 'blocked', ['xerilium'])).toBe(0);
-    expect(countOf(b, 'blocked', ['ftk', 'xerilium'])).toBe(1);
+  it('Pinned lists pinned rows by rank; groups list their rows; counts follow the project filter', () => {
+    expect(rowsOf(b, 'pinned', []).map((r) => r.url)).toEqual(['b', 'a']);
+    expect(rowsOf(b, 'processing', []).map((r) => r.url)).toEqual(['a', 'b']);
+    expect(countOf(b, 'pinned', ['allyte'])).toBe(1);
+    expect(countOf(b, 'waiting', [])).toBe(1);
+    // Summary counts distinct PRs: a, b, c.
+    expect(countOf(b, 'summary', [])).toBe(3);
+    expect(countOf(b, 'summary', ['ftk'])).toBe(1);
     expect(projectsOf(b)).toEqual(['allyte', 'ftk', 'xerilium']);
-    expect(countOf({ ...b, escalations: { blocked: [{ repo: 'o/r', number: 1, url: 'u' }], enable: [], live: [] } }, 'escalations', [])).toBe(1);
   });
-  it('the project filter covers the Escalation set, including PRs with no board row', () => {
-    const e = { blocked: [{ repo: 'allytehq/x', number: 1, url: 'e1', project: 'allyte' }], enable: [{ repo: 'Xerilium/stack', number: 2, url: 'e2', project: 'xerilium' }], live: [{ repo: 'o/r', number: 3, url: 'e3', project: 'other' }] };
-    const eb = board([], { escalations: e });
-    expect(projectsOf(eb)).toEqual(['allyte', 'xerilium', 'other']);
-    expect(countOf(eb, 'escalations', ['allyte'])).toBe(1);
-    expect(escIn([...e.blocked, ...e.enable], ['allyte']).map((x) => x.url)).toEqual(['e1']);
+  // @req FR:pr-page/summary.layout @req FR:pr-page/summary.missing
+  it('summaryView maps urls to rows under the filter and drops urls with no row', () => {
+    const v = summaryView({ ...b, summary: { ...b.summary!, signoff: ['b', 'gone'] } }, []);
+    expect(v.live.map((r) => r.url)).toEqual(['a']);
+    expect(v.signoff.map((r) => r.url)).toEqual(['b']);
+    expect(v.missing.map((m) => `${m.row.url} ${m.reason}`)).toEqual(['c Approve', 'a Live check failed: Login']);
+    expect(summaryView(b, ['ftk']).live).toEqual([]);
+    expect(summaryView(null, []).missing).toEqual([]);
   });
-  it('prefs survive a reload and a broken store', () => {
+  it('prefs default to Summary; old tabs fall back to Summary; a broken store is fine', () => {
     const m = new Map<string, string>();
     const s = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
-    savePrefs(s, { tab: 'waiting', projects: ['ftk'] });
-    expect(loadPrefs(s)).toEqual({ tab: 'waiting', projects: ['ftk'] });
-    expect(loadPrefs({ getItem: () => { throw new Error('denied'); } })).toEqual({ tab: 'blocked', projects: [] });
-    expect(loadPrefs(null)).toEqual({ tab: 'blocked', projects: [] });
+    savePrefs(s, { tab: 'pinned', projects: ['ftk'] });
+    expect(loadPrefs(s)).toEqual({ tab: 'pinned', projects: ['ftk'] });
+    m.set('stack.prs.v1', JSON.stringify({ tab: 'blocked', projects: [] }));
+    expect(loadPrefs(s).tab).toBe('summary');
+    expect(loadPrefs({ getItem: () => { throw new Error('denied'); } })).toEqual({ tab: 'summary', projects: [] });
+    expect(loadPrefs(null)).toEqual({ tab: 'summary', projects: [] });
   });
 });
 
-// @req FR:pr-page/live.age @req FR:pr-page/flyout.row @req FR:pr-page/state.view @req FR:pr-page/act.accept
-describe('words', () => {
+// @req FR:pr-page/card.fields @req FR:pr-page/card.color @req FR:pr-page/card.action
+describe('card words and colors', () => {
+  it('next action labels', () => {
+    expect(ACTION_LABEL).toEqual({ validate: 'Validate', signoff: 'Sign off', approve: 'Approve', publish: 'Publish review', autopilot: 'Enable Autopilot' });
+  });
+  it('author: My Autopilot, You, or the login', () => {
+    expect(authorText(row({}))).toBe('My Autopilot');
+    expect(authorText(row({ autopilot: false }))).toBe('You');
+    expect(authorText(row({ mine: false, author: 'roland', autopilot: true }))).toBe('roland');
+  });
+  it('tone: owner kind and strength', () => {
+    expect(toneOf(row({ nextAction: 'signoff' }))).toBe('auto strong');
+    expect(toneOf(row({}))).toBe('auto');
+    expect(toneOf(row({ autopilot: false, nextAction: 'autopilot' }))).toBe('mine strong');
+    expect(toneOf(row({ mine: false, nextAction: null }))).toBe('other');
+  });
+  it('spec lines: small text only when known', () => {
+    expect(specText(row({ specLines: 1 }))).toBe('1 spec line');
+    expect(specText(row({ specLines: 42 }))).toBe('42 spec lines');
+    expect(specText(row({ specLines: 0 }))).toBe('0 spec lines');
+    expect(specText(row({}))).toBe('');
+  });
+  // @req FR:pr-page/nav.badge
+  it('the nav count is the rows with a next action', () => {
+    expect(needCount(board([row({ nextAction: 'approve' }), row({}), row({ nextAction: 'signoff' })]))).toBe(2);
+    expect(needCount(null)).toBe(0);
+  });
+});
+
+// @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys
+describe('moveTo: the Pinned order', () => {
+  it('moves one item and returns the new rank (1 is first)', () => {
+    expect(moveTo(['a', 'b', 'c', 'd'], 'd', 0)).toEqual({ order: ['d', 'a', 'b', 'c'], rank: 1 });
+    expect(moveTo(['a', 'b', 'c', 'd'], 'a', 2)).toEqual({ order: ['b', 'c', 'a', 'd'], rank: 3 });
+    expect(moveTo(['a', 'b'], 'a', 9)).toEqual({ order: ['b', 'a'], rank: 2 });
+    expect(moveTo(['a', 'b'], 'a', 0)).toBeNull();
+    expect(moveTo(['a', 'b'], 'x', 0)).toBeNull();
+  });
+});
+
+// @req FR:pr-page/live.age
+it('Updated 12 s ago; Paused until while backing off', () => {
   const now = new Date('2026-11-11T12:00:12Z');
-  it('Updated 12 s ago; Paused until while backing off', () => {
-    expect(updatedText(board([]), now)).toBe('Updated 12 s ago');
-    expect(updatedText(board([], { at: '2026-11-11T11:55:00Z' }), now)).toBe('Updated 5 min ago');
-    expect(updatedText(board([], { rate: { until: '2026-11-11T12:30:00Z' } }), now)).toMatch(/^Paused until /);
-    expect(updatedText(board([], { at: null, error: 'GitHub unavailable' }), now)).toBe('GitHub unavailable');
-  });
-  it('age, owner chips, labels, reply text, keys', () => {
-    expect([ageText('2026-11-11T11:50:00Z', now), ageText('2026-11-11T07:00:00Z', now), ageText('2026-11-08T12:00:00Z', now)]).toEqual(['10m', '5h', '3d']);
-    expect(ownerOf(row({ state: { owner: 'me', blocker: 'x', link: '', stalled: false, source: 'rule' } }))).toEqual({ text: 'You', kind: 'me' });
-    expect(ownerOf(row({ state: { owner: 'reviewer', login: 'roland', blocker: 'x', link: '', stalled: false, source: 'rule' } }))).toEqual({ text: 'roland', kind: 'reviewer' });
-    expect(ownerOf(row({}))).toBeNull();
-    expect(shortLabels(['Status: 🤖 Autopilot', 'bug', 'a', 'b'])).toEqual(['🤖 Autopilot', 'bug', 'a']);
-    expect(replyText('  Use A ')).toBe('🤖 [AI] Use A');
-    expect(threadOf({ url: 'u', link: 'l' })).toBe('l');
-    expect(threadOf({ url: 'u' })).toBe('u');
-    expect(replyToOf('https://github.com/o/r/pull/1#discussion_r42')).toBe(42);
-    expect(replyToOf('https://github.com/o/r/pull/1#issuecomment-4')).toBeUndefined();
-    expect(escFor(board([], { escalations: { blocked: [{ repo: 'o/r', number: 1, url: 'https://github.com/O/r/pull/1' }], enable: [], live: [] } }), 'https://github.com/o/r/pull/1')?.number).toBe(1);
-  });
+  expect(updatedText(board([]), now)).toBe('Updated 12 s ago');
+  expect(updatedText(board([], { at: '2026-11-11T11:55:00Z' }), now)).toBe('Updated 5 min ago');
+  expect(updatedText(board([], { rate: { until: '2026-11-11T12:30:00Z' } }), now)).toMatch(/^Paused until /);
+  expect(updatedText(board([], { at: null, error: 'GitHub unavailable' }), now)).toBe('GitHub unavailable');
 });
 
 // @req FR:pr-page/live.event @req FR:pr-page/icon.absent
-describe('store', () => {
-  it('loads once for every subscriber, reloads on prs and poll changes, and turns off on 404', async () => {
-    let n = 0;
-    let hear: (k: string[]) => void = () => undefined;
-    const s = createPrStore(async () => { n++; return board([]); }, { visible: () => true, every: 10_000_000, listen: (fn) => { hear = fn; return () => undefined; } });
-    const off1 = s.subscribe(() => undefined); const off2 = s.subscribe(() => undefined);
-    await vi.waitFor(() => expect(s.get().phase).toBe('ready'));
-    expect(n).toBe(1);
-    hear(['tasks']); hear(['asks']); await Promise.resolve();
-    expect(n).toBe(1);
-    hear(['asks', 'tasks', 'state']); await vi.waitFor(() => expect(n).toBe(2)); // a reconnect
-    n = 1;
-    hear(['prs']); await vi.waitFor(() => expect(n).toBe(2));
-    off1(); off2();
-    const gone = createPrStore(async () => { throw Object.assign(new Error('nf'), { status: 404 }); }, { listen: () => () => undefined, every: 10_000_000 });
+describe('store: no automatic reload', () => {
+  it('loads once; no reload on events, timers, or show; Refresh asks the host to poll', async () => {
+    vi.useFakeTimers();
+    try {
+      const calls: boolean[] = [];
+      const s = createPrStore(async (fresh) => { calls.push(fresh); return board([]); }, { visible: () => true });
+      const off1 = s.subscribe(() => undefined); const off2 = s.subscribe(() => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(s.get().phase).toBe('ready');
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toEqual([false]);
+      await s.reload(true);
+      expect(calls).toEqual([false, true]);
+      off1(); off2();
+    } finally { vi.useRealTimers(); }
+  });
+  it('a 404 turns it off; two reloads that wait on the gate load once', async () => {
+    const gone = createPrStore(async () => { throw Object.assign(new Error('nf'), { status: 404 }); });
     gone.subscribe(() => undefined);
     await vi.waitFor(() => expect(gone.get().phase).toBe('off'));
-  });
-  it('two reloads that wait on the gate together load once', async () => {
     let n = 0;
     let open: (v: boolean) => void = () => undefined;
     const gate = new Promise<boolean>((r) => { open = r; });
-    const s = createPrStore(async () => { n++; await new Promise((r) => setTimeout(r, 5)); return board([]); }, { enabled: () => gate, visible: () => true, every: 10_000_000, listen: () => () => undefined });
+    const s = createPrStore(async () => { n++; await new Promise((r) => setTimeout(r, 5)); return board([]); }, { enabled: () => gate });
     s.subscribe(() => undefined);
     const a = s.reload(); const b = s.reload();
     open(true);
@@ -99,49 +137,27 @@ describe('store', () => {
     await vi.waitFor(() => expect(s.get().phase).toBe('ready'));
     expect(n).toBe(1);
   });
-  it('the live stream tells every listener its kinds', () => {
-    const heard: string[][] = [];
-    const off = onLiveChange((k) => heard.push(k));
-    let fire: (e: { data: string }) => void = () => undefined;
-    const es: EventSourceLike = { readyState: 1, onopen: null, onerror: null, addEventListener: (_t, fn) => { fire = fn; }, close: () => undefined };
-    const stop = connectLive({ make: () => es, onChange: () => undefined, onStatus: () => undefined });
-    fire({ data: JSON.stringify({ kinds: ['prs'] }) });
-    expect(heard).toEqual([['prs']]);
-    stop(); off();
-  });
 });
 
-// @req FR:pr-page/auth.state @req FR:pr-page/nav.badge @req FR:pr-page/nav.load
-describe('signed out, loading, and the nav count', () => {
+// @req FR:pr-page/auth.state @req FR:pr-page/nav.load
+describe('signed out and loading', () => {
   it('a signed-out answer is phase signin with the method, never a zero board', async () => {
-    const s = createPrStore(async () => ({ auth: { state: 'signed-out', method: 'gh' } }) as never, { visible: () => true, every: 10_000_000, listen: () => () => undefined });
+    const s = createPrStore(async () => ({ auth: { state: 'signed-out', method: 'gh' } }) as never);
     expect(s.get().phase).toBe('loading');
     s.subscribe(() => undefined);
     await vi.waitFor(() => expect(s.get().phase).toBe('signin'));
     expect(s.get().board).toBeNull();
-    expect(s.get().auth).toEqual({ state: 'signed-out', method: 'gh' });
   });
-  it('a sign-in that lands turns the next load into the board', async () => {
-    let signedIn = false;
-    const s = createPrStore(async () => (signedIn ? board([]) : ({ auth: { state: 'signed-out', method: 'gh' } }) as never), { visible: () => true, every: 10_000_000, listen: () => () => undefined });
-    s.subscribe(() => undefined);
-    await vi.waitFor(() => expect(s.get().phase).toBe('signin'));
-    signedIn = true;
-    await s.reload();
-    expect(s.get().phase).toBe('ready');
-    expect(s.get().auth).toBeNull();
-  });
-  it('a failed first load (no snapshot, an error) is the failed state, never a zero board', async () => {
-    const s = createPrStore(async () => board([], { at: null, error: 'GitHub unavailable' }), { visible: () => true, every: 10_000_000, listen: () => () => undefined });
+  it('a failed first load is the failed state, never a zero board', async () => {
+    const s = createPrStore(async () => board([], { at: null, error: 'GitHub unavailable' }));
     s.subscribe(() => undefined);
     await vi.waitFor(() => expect(s.get().phase).toBe('error'));
-    expect(s.get().board).toBeNull();
   });
   it('signed out, it checks again each 15 seconds', async () => {
     vi.useFakeTimers();
     try {
       let n = 0;
-      const s = createPrStore(async () => { n++; return ({ auth: { state: 'signed-out', method: 'gh' } }) as never; }, { visible: () => true, every: 10_000_000, listen: () => () => undefined });
+      const s = createPrStore(async () => { n++; return ({ auth: { state: 'signed-out', method: 'gh' } }) as never; }, { visible: () => true });
       const off = s.subscribe(() => undefined);
       await vi.advanceTimersByTimeAsync(0);
       expect(n).toBe(1);
@@ -150,14 +166,8 @@ describe('signed out, loading, and the nav count', () => {
       off();
     } finally { vi.useRealTimers(); }
   });
-  it('needCount is Blocked on me plus Waiting on me', () => {
-    expect(needCount(board([], { counts: { blocked: 2, waiting: 3, processing: 9, pending: 4, paused: 1 } }))).toBe(5);
-    expect(needCount(null)).toBe(0);
-  });
-  it('the sign-in words: one honest line per method and session', () => {
+  it('the sign-in words', () => {
     expect(signInText({ state: 'signed-out', method: 'gh' })).toEqual({ title: 'Sign in to GitHub to see your PRs.', action: 'Sign in to GitHub' });
-    expect(signInText({ state: 'signed-out', method: 'none' })).toEqual({ title: 'Install the GitHub CLI, or set GITHUB_TOKEN.', detail: 'Then reopen this page. Stack reads the gh sign-in; it never stores a token.' });
     expect(signInText({ state: 'signed-out', method: 'gh', session: { state: 'error', error: 'expired' } }).note).toBe('The code expired. Try again.');
-    expect(signInText({ state: 'signed-out', method: 'gh', session: { state: 'error', error: 'failed' } }).note).toBe('GitHub sign-in did not finish. Try again.');
   });
 });

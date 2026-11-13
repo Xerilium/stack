@@ -2,7 +2,7 @@
  * The only GitHub writes for the PR page: the Autopilot label and an AI-prefixed comment or thread reply.
  * No merge, close, un-draft, or review: there is no method for them.
  * @req FR:github-pr-status/write.@function @req FR:github-pr-status/write.label @req FR:github-pr-status/write.comment
- * @req FR:github-pr-status/write.never @req FR:github-pr-status/write.errors @req FR:github-pr-status/write.scopes
+ * @req FR:github-pr-status/write.never @req FR:github-pr-status/write.errors @req FR:github-pr-status/write.scopes @req FR:github-pr-status/write.resolve
  */
 import { LABELS, sameLabel } from '../core/pr-board';
 
@@ -12,6 +12,8 @@ export interface GitHubWrites {
   removeLabel(pr: PrRef, label: string): Promise<void>;
   comment(pr: PrRef, body: string): Promise<void>;
   reply(pr: PrRef, commentId: number, body: string): Promise<void>;
+  /** Resolves (true) or reopens (false) a review thread by its GraphQL node id. */
+  resolveThread(pr: PrRef, threadId: string, resolve: boolean): Promise<void>;
 }
 /** A write the module refuses before any call. */
 export class GitHubWriteDenied extends Error { constructor(why: string) { super(why); this.name = 'GitHubWriteDenied'; } }
@@ -50,6 +52,16 @@ export function createGitHubWrites(o: { token: string; fetch?: typeof fetch; rep
     return spelled.get(key)!;
   };
   return {
+    async resolveThread(pr, threadId, resolve) {
+      path(pr);
+      if (!/^[A-Za-z0-9_=-]{1,100}$/.test(threadId)) throw new GitHubWriteDenied('Bad thread id');
+      const m = resolve ? 'resolveReviewThread' : 'unresolveReviewThread';
+      const res = await get(`${API}/graphql`, { method: 'POST', headers, body: JSON.stringify({ query: `mutation($id: ID!) { ${m}(input: {threadId: $id}) { thread { isResolved } } }`, variables: { id: threadId } }), signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) throw new Error(`GitHub ${res.status}`);
+      const body = (await res.json().catch(() => null)) as { data?: unknown; errors?: unknown[] } | null;
+      // A 200 is not enough: GraphQL reports failures in the body.
+      if (!body || !body.data || body.errors?.length) throw new Error('GitHub graphql error');
+    },
     async addLabel(pr, label) {
       autopilot(label);
       // Use the repo's own spelling so a variant never makes a second label.
