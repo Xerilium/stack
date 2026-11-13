@@ -99,25 +99,63 @@ export function withDetails(provider: MailProvider, details: (id: string) => Pro
   };
 }
 
-/** A model that fails twice does not stop the pass: the message goes to the owner as an open question, so it is never lost or billed again. @req FR:email-runner/model.classify */
-export function tolerant(c: Classifier, onError: () => void): Classifier {
+/** Messages in a row whose model calls all fail: the model is down, not the message. */
+export const MODEL_FAIL_LIMIT = 3;
+/** Usage-limit errors: no retry or next message helps until the limit resets. Rate limits and overloads are transient, so they retry. */
+const LIMIT_ERROR = /\b(usage limit|credit balance)\b/i;
+/** What a signed-out `claude` prints (stderr or JSON `result`); kept narrow so a message or model text cannot match it. */
+const AUTH_ERROR = /(please run \/login|not logged in|invalid api key|oauth token (has )?expired|authentication_error)/i;
+/** The one ask a model-down pass writes, for every mailbox (they share one `claude` login). @req FR:email-runner/model.down */
+export const CLAUDE_LOGIN_ASK = 'email-claude-login';
+export const CLAUDE_LOGIN_TEXT = 'Claude login expired: run `claude` and sign in';
+export const CLAUDE_DOWN_TEXT = 'Claude calls are failing: run `claude` to check sign-in and usage';
+
+/** The model is unusable for the whole pass (signed out, or failing on every message). @req FR:email-runner/model.down */
+export class ModelUnavailable extends Error {
+  constructor(readonly detail: string, readonly auth: boolean) { super(`${auth ? CLAUDE_LOGIN_TEXT : CLAUDE_DOWN_TEXT} (${detail.slice(0, 200)})`); this.name = 'ModelUnavailable'; }
+}
+
+/**
+ * A message whose model calls fail twice goes to the owner as an open question, so it is never lost or billed again.
+ * A login or usage-limit error, or {@link MODEL_FAIL_LIMIT} messages failing in a row, is systemic: it throws {@link ModelUnavailable} to stop the pass.
+ * `check()` throws too when every message in the pass failed (a small scheduled pass never reaches the limit).
+ * @req FR:email-runner/model.classify @req FR:email-runner/model.down
+ */
+export function tolerant(c: Classifier, onError: () => void): Classifier & { check(): void } {
+  let inRow = 0; let ok = 0; let failed = 0; let last = '';
+  const text = (e: unknown) => (e instanceof Error ? e.message : String(e));
   return {
+    check() { if (failed && !ok) throw new ModelUnavailable(last, false); },
     async classify(m, o) {
-      try { return await c.classify(m, o); } catch { /* retry once */ }
-      try { return await c.classify(m, o); } catch {
-        onError();
-        return { class: 'needs_decision', urgency: 1, confidence: 0, reason: 'Could not classify (model error); open it to decide' };
+      for (let i = 0; i < 2; i++) {
+        try { const r = await c.classify(m, o); inRow = 0; ok++; return r; } catch (e) {
+          last = text(e);
+          if (AUTH_ERROR.test(last)) throw new ModelUnavailable(last, true);
+          if (LIMIT_ERROR.test(last)) throw new ModelUnavailable(last, false);
+        }
       }
+      onError(); failed++;
+      if (++inRow >= MODEL_FAIL_LIMIT) throw new ModelUnavailable(last, false);
+      return { class: 'needs_decision', urgency: 1, confidence: 0, reason: 'Could not classify (model error); open it to decide' };
     },
   };
 }
 
-/** Rules for a mailbox: the account is the owner, plus `rules.json` next to the state when present. @req FR:email-runner/cli.run */
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+
+/**
+ * Rules for a mailbox: the account is the owner, plus `rules.json` next to the state when present. Lists add to the defaults.
+ * `sensitive` is a list of addresses and domains, or `{ keywords, domains }`. @req FR:email-runner/cli.run @req FR:email-triage/rules.sensitive
+ */
 export function rulesFor(account: string, base?: string): RulesConfig {
   const p = rulesPath(account, base);
-  const extra = existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as Partial<RulesConfig>) : {};
-  const list = (k: keyof RulesConfig) => [...new Set([...DEFAULT_RULES[k], ...(Array.isArray(extra[k]) ? (extra[k] as unknown[]).filter((x): x is string => typeof x === 'string') : [])])];
-  return { owner: [...new Set([account, ...list('owner')])], vip: list('vip'), sensitive: list('sensitive'), sensitivePatterns: list('sensitivePatterns'), receiptSenderPatterns: list('receiptSenderPatterns'), receiptSubjectPatterns: list('receiptSubjectPatterns') };
+  const extra = (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : {}) as Record<string, unknown>;
+  const s = extra.sensitive && typeof extra.sensitive === 'object' && !Array.isArray(extra.sensitive) ? (extra.sensitive as Record<string, unknown>) : undefined;
+  const add = (k: keyof RulesConfig, ...more: unknown[]) => [...new Set([...DEFAULT_RULES[k], ...strings(extra[k]), ...more.flatMap(strings)])];
+  return {
+    owner: [...new Set([account, ...add('owner')])], vip: add('vip'), sensitive: add('sensitive', s?.domains), sensitivePatterns: add('sensitivePatterns'),
+    sensitiveKeywords: add('sensitiveKeywords', s?.keywords), receiptSenderPatterns: add('receiptSenderPatterns'), receiptSubjectPatterns: add('receiptSubjectPatterns'),
+  };
 }
 
 export interface PassOptions {
@@ -168,9 +206,10 @@ export async function runPass(o: PassOptions): Promise<PassSummary> {
   const inbox = createGraphMail({ transport: o.transport, ...(st.cursor ? {} : { since: lookback }) });
   const marked: MailProvider = { ...inbox, async delta(c) { const r = await inbox.delta(c); return { ...r, messages: r.messages.map((m) => (answered.has(m.conversationId) && answered.get(m.conversationId)! >= m.receivedAt ? { ...m, threadLastFrom: o.account } : m)) }; } };
   const provider = withDetails(marked, (id) => messageDetails({ transport: o.transport }, id), o.max ?? DEFAULT_MAX);
+  const classifier = tolerant(createClassifier(llm, usage), () => { modelErrors++; });
   const { cursor, summary, results } = await runTriage({
     ctx: o.ctx, provider, rules: o.rules ?? rulesFor(o.account, o.dataDir), project: o.project, cursor: st.cursor, voice,
-    classifier: tolerant(createClassifier(llm, usage), () => { modelErrors++; }),
+    classifier, beforeAsks: () => classifier.check(),
     ...(live ? { drafter: createDrafter(llm, voice, usage) } : {}),
     hygiene: { state, judge: createJudge(llm, usage), ...(live ? { actions: createGraphActions({ transport: o.transport, approvedMoves: moves }), ...(o.http ? { http: o.http } : {}) } : {}) },
   });

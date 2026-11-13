@@ -3,7 +3,7 @@ import { createRunManager, type AgentDriver, type Run, type Session, type Update
 import { assignTask, personaOf, reviewTask, taskThread } from '../../src/agents/team';
 import { putAgent } from '../../src/core/agents';
 import { answerAsk, listAsks, putAsk } from '../../src/core/asks';
-import { replyFromAgent, sendToInbox } from '../../src/core/inbox';
+import { handleEntry, replyFromAgent, sendToInbox } from '../../src/core/inbox';
 import { MemoryStorage } from '../../src/core/storage';
 
 const NOW = new Date('2026-10-29T10:00:00Z');
@@ -41,6 +41,28 @@ async function mk(sessions: Session[] = []) {
 }
 
 describe('taskThread', () => {
+  // @req FR:agent-thread/thread.read.items @req FR:now-screen/now.undo
+  it("flags an owner message the owner withdrew", async () => {
+    const { ctx } = await mk();
+    const ref = { path: "tasks/flantastic-4.md", line: 7 };
+    const a = await sendToInbox(ctx, ref, "Kept", "instruction");
+    const b = await sendToInbox(ctx, ref, "Taken back", "instruction");
+    await handleEntry(ctx, b.id, "owner", "Withdrawn by the owner", { withdrawn: true });
+    const th = await taskThread(ctx, undefined, "flantastic-4:7");
+    expect(th.items.filter((i) => i.kind === "owner").map((i) => [(i as { id: string }).id, (i as { withdrawn?: boolean }).withdrawn ?? false])).toEqual([[a.id, false], [b.id, true]]);
+  });
+
+  // @req FR:product-reset/ui.thread
+  it('names the agent an owner message went to', async () => {
+    const { ctx } = await mk();
+    const ref = { path: 'tasks/flantastic-4.md', line: 7 };
+    await sendToInbox(ctx, ref, 'Plain', 'instruction');
+    await sendToInbox(ctx, ref, 'Picked', 'instruction', undefined, undefined, 'cid-manager');
+    const owner = (await taskThread(ctx, undefined, 'flantastic-4:7')).items.filter((i) => i.kind === 'owner');
+    expect(owner[0]).not.toHaveProperty('agent');
+    expect(owner[1]).toMatchObject({ kind: 'owner', text: 'Picked', agent: 'cid-manager' });
+  });
+
   // @req FR:agent-thread/thread.read.items @req FR:agent-thread/thread.read.subtask @req FR:agent-thread/thread.read.review @req FR:agent-thread/$thread-item
   it('merges owner messages, agent replies, asks on the task, the review verdict, and agent-owned subtasks in time order', async () => {
     const { ctx, runs } = await mk();
@@ -137,6 +159,24 @@ describe('assignTask', () => {
     const again = await assignTask(runs, ctx, 'flantastic-4:7');
     expect(again).toMatchObject({ claimed: false, agent: 'cid-manager' });
     expect(prompts).toHaveLength(2);
+  });
+
+  // @req FR:task-detail-design/compose.doit
+  it('carries the owner\'s Do it note in the assign prompt', async () => {
+    const { ctx, runs, prompts, storage } = await mk();
+    // One inbox write, already handled: a polling agent never sees the note open.
+    const inboxWrites: string[] = [];
+    const write = storage.write.bind(storage);
+    storage.write = (async (path: string, content: string, o?: unknown) => { if (path.startsWith('tasks/inbox/')) inboxWrites.push(content); return write(path, content, o as never); }) as typeof storage.write;
+    await assignTask(runs, ctx, 'flantastic-4:7', undefined, '  Use the short version  ');
+    expect(inboxWrites).toHaveLength(1);
+    expect(inboxWrites[0]).toMatch(/- state: handled[\s\S]*- handled: \S+ by owner\n- note: Sent with Do it/);
+    expect(inboxWrites[0]).not.toContain('- state: open');
+    expect(prompts[0].text).toContain('This task is yours now');
+    expect(prompts[0].text).toMatch(/The owner's note: Use the short version$/);
+    // The thread keeps it, already handled: the inbox never hands it to an agent again.
+    const thread = await taskThread(ctx, runs, 'flantastic-4:7');
+    expect(thread.items.filter((i) => i.kind === 'owner')).toEqual([expect.objectContaining({ text: 'Use the short version', state: 'handled' })]);
   });
 
   // @req FR:agent-thread/thread.assign.order

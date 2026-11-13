@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { checkPlatform, packPlan } from '../src/pack';
+import { buildStamp, checkPlatform, packPlan } from '../src/pack';
 
 const root = '/repo';
 const plan = () => packPlan({
@@ -34,6 +34,7 @@ describe('desktop packaging plan', () => {
       [join(root, 'desktop/dist'), join(p.stageDir, 'desktop/dist')],
       [join(root, 'desktop/assets'), join(p.stageDir, 'desktop/assets')],
       [join(root, 'web/dist'), join(p.stageDir, 'web/dist')],
+      [join(root, 'scripts/register-stack-app.ps1'), join(p.stageDir, 'scripts/register-stack-app.ps1')],
       [join(root, 'pnpm-lock.yaml'), join(p.stageDir, 'pnpm-lock.yaml')],
     ]);
     expect(p.manifest).toEqual({
@@ -85,5 +86,16 @@ describe('desktop install doc', () => {
   it('gives the build command, install steps, first launch, and how the host is found', () => {
     const doc = readFileSync(join(__dirname, '../../docs/desktop-install.md'), 'utf8');
     for (const s of ['pnpm desktop:package', '/Applications', 'Open Anyway', 'macOS 14', 'xattr -dr com.apple.quarantine', '`gh`', '~/.config/stack/config.json', '127.0.0.1']) expect(doc).toContain(s);
+  });
+});
+
+describe('build stamp', () => {
+  /** @req FR:devops-installer/stamp.write @req FR:devops-installer/$build-stamp */
+  it('writes stackBuild into the app manifest from the git head', () => {
+    const build = buildStamp({ version: '1.2.3', head: '0123456789abcdef0123\n', status: ' M web/src/App.tsx\n', now: new Date('2026-11-12T10:00:00Z') });
+    expect(build).toEqual({ version: '1.2.3', sha: '0123456789ab', dirty: true, builtAt: '2026-11-12T10:00:00.000Z' });
+    expect(buildStamp({ version: '1', head: 'abc', status: '', now: new Date(0) }).dirty).toBe(false);
+    const p = packPlan({ root, rootPkg: {}, desktopPkg: { version: '1.2.3', devDependencies: { electron: '45.3.0' } }, build });
+    expect(p.manifest.stackBuild).toEqual(build);
   });
 });

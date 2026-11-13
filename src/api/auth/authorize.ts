@@ -14,11 +14,16 @@ const ROUTE_SCOPE = new Map<string, string>([
   ['tasks.add', 'tasks:write'], ['capture', 'tasks:write'], ['tasks.start', 'tasks:write'], ['tasks.complete', 'tasks:write'], ['tasks.skip', 'tasks:write'],
   ['tasks.resume', 'tasks:write'], ['tasks.suspend', 'tasks:write'], ['tasks.set', 'tasks:write'], ['tasks.edit', 'tasks:write'], ['tasks.move', 'tasks:write'], ['tasks.removeCompleted', 'tasks:write'],
   ['tasks.triage', 'tasks:write'], ['tasks.claim', 'tasks:write'], ['tasks.result', 'tasks:write'],
-  ['inbox.send', 'tasks:write'], ['inbox.list', 'tasks:read'], ['inbox.handle', 'tasks:write'], ['agents.list', 'tasks:read'], ['calendar.list', 'tasks:read'], ['meetings.list', 'tasks:read'], ['schedule.get', 'tasks:read'], ['schedule.day', 'tasks:write'], ['sync', 'tasks:read'], ['sync.flush', 'tasks:write'], ['rank', 'tasks:read'], ['needs.list', 'tasks:read'], ['needs.answer', 'tasks:write'], ['inboxItems.list', 'tasks:read'], ['inboxItems.action', 'tasks:write'],
-  ['asks.list', 'tasks:read'], ['brief.summary', 'tasks:read'], ['asks.put', 'tasks:write'], ['asks.answer', 'tasks:write'], ['asks.handle', 'tasks:write'], ['reports.put', 'tasks:write'],
+  ['inbox.send', 'tasks:write'], ['inbox.list', 'tasks:read'], ['inbox.handle', 'tasks:write'], ['agents.list', 'tasks:read'], ['calendar.list', 'tasks:read'], ['meetings.list', 'tasks:read'], ['schedule.get', 'tasks:read'], ['schedule.day', 'tasks:write'], ['sync', 'tasks:read'], ['sync.flush', 'tasks:write'], ['version', 'tasks:read'], ['version.mode', 'tasks:write'], ['version.restart', 'tasks:write'], ['rank', 'tasks:read'], ['needs.list', 'tasks:read'], ['needs.answer', 'tasks:write'], ['inboxItems.list', 'tasks:read'], ['inboxSources.list', 'tasks:read'], ['connect.get', 'tasks:read'], ['connect.poll', 'tasks:read'], ['connect.setup', 'tasks:write'], ['connect.start', 'tasks:write'], ['connect.drafts', 'tasks:write'], ['connect.remove', 'tasks:write'], ['inboxItems.action', 'tasks:write'],
+  ['asks.list', 'tasks:read'], ['brief.summary', 'tasks:read'], ['asks.put', 'tasks:write'], ['asks.answer', 'tasks:write'], ['asks.handle', 'tasks:write'], ['reports.put', 'tasks:write'], ['inventory.list', 'tasks:read'], ['pris.get', 'tasks:read'], ['pris.put', 'tasks:write'], ['feedback', 'tasks:write'],
+  // @req FR:pr-priority/api.get @req FR:pr-priority/api.recommend @req FR:pr-priority/api.decisions
+  ['prPriority.get', 'tasks:read'], ['prPriority.put', 'tasks:write'], ['prPriority.recommend', 'tasks:write'], ['prPriority.decisions', 'tasks:read'], ['prPriority.decide', 'tasks:write'],
+  // @req FR:pr-page/api.get @req FR:pr-page/act.owner
+  ['prs.get', 'tasks:read'], ['prs.queue', 'tasks:write'], ['prs.label', 'tasks:write'], ['prs.ack', 'tasks:write'], ['prs.rec', 'tasks:write'], ['prs.resolve', 'tasks:write'], ['prs.signin', 'tasks:write'], ['prs.signin.get', 'tasks:read'],
+  ['prReview.get', 'tasks:read'], ['live.get', 'tasks:read'], ['live.item', 'tasks:write'],
   ['sessions.list', 'tasks:read'], ['sessions.messages', 'tasks:read'], ['sessions.cost', 'tasks:read'], ['sessions.prompt', 'tasks:write'], ['sessions.new', 'tasks:write'], ['sessions.cancel', 'tasks:write'],
   ['team.list', 'tasks:read'], ['reviews.list', 'tasks:read'], ['tasks.review', 'tasks:write'],
-  ['inbox.reply', 'tasks:write'], ['tasks.thread', 'tasks:read'], ['tasks.assign', 'tasks:write'],
+  ['inbox.reply', 'tasks:write'], ['inbox.delivery', 'tasks:read'], ['inbox.deliveryLogin', 'tasks:write'], ['tasks.thread', 'tasks:read'], ['tasks.assign', 'tasks:write'],
   ['projects.list', 'projects:read'], ['projects.get', 'projects:read'], ['projects.add', 'projects:write'],
   ['summaries.get', 'summaries:read'],
   // @req FR:iphone-access/check.@http

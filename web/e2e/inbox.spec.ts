@@ -37,7 +37,7 @@ test('draft reply: edit, create draft, no send control anywhere', async ({ page 
   await row.getByRole('button', { name: 'Create draft' }).click();
   await expect(row.getByRole('link', { name: 'Open draft in Outlook' })).toBeVisible();
   expect(m.calls.find((c) => c.path.endsWith('/action'))?.body).toEqual({ action: 'reply-draft', text: 'Looks good. Budget is final.' });
-  await expect(page.getByRole('button', { name: /^send/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^send(?! feedback)/i })).toHaveCount(0); // the app feedback icon is not a mail send
 });
 
 test('a missing action offers Request this action and files it', async ({ page }) => {

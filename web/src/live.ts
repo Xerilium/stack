@@ -34,6 +34,10 @@ export type LiveHandle = (() => void) & { retry: () => void };
 
 const ALL = ['asks', 'tasks', 'state'];
 
+/** Parts that re-read their own data (the PR page) hear every change the one stream sees. @req FR:pr-page/live.event */
+const listeners = new Set<(kinds: string[]) => void>();
+export function onLiveChange(fn: (kinds: string[]) => void): () => void { listeners.add(fn); return () => { listeners.delete(fn); }; }
+
 const defaultWake = (fn: () => void) => {
   if (typeof document === 'undefined' || typeof window === 'undefined') return () => undefined;
   const vis = () => { if (document.visibilityState === 'visible') fn(); };
@@ -42,6 +46,7 @@ const defaultWake = (fn: () => void) => {
 };
 
 export function connectLive(o: LiveOpts): LiveHandle {
+  const emit = (kinds: string[]) => { o.onChange(kinds); for (const f of listeners) f(kinds); };
   const make = o.make === undefined ? (typeof EventSource === 'undefined' ? null : (u: string) => new EventSource(u) as unknown as EventSourceLike) : o.make;
   const visible = o.visible ?? (() => typeof document === 'undefined' || document.visibilityState === 'visible');
   let es: EventSourceLike | null = null;
@@ -61,7 +66,7 @@ export function connectLive(o: LiveOpts): LiveHandle {
    */
   const check = () => {
     if (stopped || inFlight || !visible()) return;
-    if (!o.probe) { o.onChange(['poll']); return; }
+    if (!o.probe) { emit(['poll']); return; }
     inFlight = true;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const hung = new Promise<never>((_ok, bad) => { timeout = setTimeout(() => bad(Object.assign(new Error('Timed out'), { status: 0 })), o.probeMs ?? 10_000); });
@@ -71,10 +76,10 @@ export function connectLive(o: LiveOpts): LiveHandle {
       o.onStatus('poll');
       o.onSynced?.(new Date());
       // After a failure, reload: changes may have been missed. A null revision cannot tell, so it reloads from the second probe on.
-      if (failed) o.onChange(ALL);
-      else if (seen && r === null) o.onChange(['poll']);
+      if (failed) emit(ALL);
+      else if (seen && r === null) emit(['poll']);
       // The first real revision also reloads once: a change between the initial load and this probe would otherwise wait for the next change.
-      else if (r !== null && r !== rev) o.onChange(ALL);
+      else if (r !== null && r !== rev) emit(ALL);
       rev = r; failed = false; seen = true;
     }, (e: unknown) => {
       inFlight = false;
@@ -102,11 +107,11 @@ export function connectLive(o: LiveOpts): LiveHandle {
     mine.onopen = () => {
       o.onStatus('live');
       // A reconnect may have missed changes: refresh everything once.
-      if (wasLive) o.onChange(ALL);
+      if (wasLive) emit(ALL);
       wasLive = true;
     };
     mine.addEventListener('change', (e) => {
-      try { const d = JSON.parse(e.data) as { kinds?: string[] }; o.onChange(Array.isArray(d.kinds) ? d.kinds : ALL); } catch { o.onChange(ALL); }
+      try { const d = JSON.parse(e.data) as { kinds?: string[] }; emit(Array.isArray(d.kinds) ? d.kinds : ALL); } catch { emit(ALL); }
     });
     mine.onerror = () => {
       if (stopped || es !== mine) return;

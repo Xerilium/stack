@@ -35,6 +35,16 @@ export interface StackConfig {
   format: FormatId;
   /** Extra formats written alongside the primary. @req FR:formatter-clean/select.also */
   alsoWrite: FormatId[];
+  /** The PR page: the signed-in GitHub login, PRs to leave out, poll seconds (30-60). @req FR:pr-page/group.@function @req FR:pr-page/live.poll */
+  github?: { user?: string; exclude?: string[]; pollSeconds?: number; /** My repos: owners or owner/repo. @req FR:pr-page/auth.repos */ repos?: string[] };
+  /** Inbox source status: freshness window (minutes) and the mailboxes expected in the Inbox. @req FR:config/load.validate.inbox */
+  inbox?: {
+    freshMinutes?: number; accounts?: string[];
+    /** Agent delivery: `claude` runs agents on owner messages; default off. @req FR:agent-delivery/safe.optin */
+    delivery?: 'claude' | 'off'; deliveryTimeoutSeconds?: number; deliveryMaxUsd?: number; deliveryDailyCapUsd?: number; reposRoot?: string;
+  };
+  /** Folders whose child repos hold `.claude/agents` (absolute or `~/`); default `~/dev`. @req FR:agent-team/agent.team.scan */
+  agents?: { scanRoots?: string[] };
 }
 
 const ALL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -156,6 +166,29 @@ export function parseConfig(input?: unknown): StackConfig {
     if (new Set(extra).size !== extra.length) throw new ConfigError('alsoWrite: duplicate format');
     cfg.alsoWrite = extra;
   } else if (cfg.alsoWrite.includes(cfg.format)) cfg.alsoWrite = [];
+  if (input.github !== undefined) {
+    if (!isObj(input.github)) throw new ConfigError('github: expected object');
+    const g = input.github;
+    const out: NonNullable<StackConfig['github']> = {};
+    if (g.user !== undefined) { out.user = str(g.user, 'github.user'); if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(out.user)) throw new ConfigError('github.user: expected a GitHub login'); }
+    if (g.exclude !== undefined) { if (!Array.isArray(g.exclude)) throw new ConfigError('github.exclude: expected array'); out.exclude = g.exclude.map((e, i) => str(e, `github.exclude[${i}]`)); }
+    if (g.repos !== undefined) {
+      if (!Array.isArray(g.repos)) throw new ConfigError('github.repos: expected array');
+      out.repos = g.repos.map((e, i) => { const v = str(e, `github.repos[${i}]`); if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\/[A-Za-z0-9._-]{1,100})?$/.test(v)) throw new ConfigError(`github.repos[${i}]: expected an owner or owner/repo`); return v; });
+    }
+    if (g.pollSeconds !== undefined) { if (typeof g.pollSeconds !== 'number' || g.pollSeconds < 30 || g.pollSeconds > 60) throw new ConfigError('github.pollSeconds: expected 30-60'); out.pollSeconds = g.pollSeconds; }
+    cfg.github = out;
+  }
+  if (input.inbox !== undefined) cfg.inbox = parseInbox(input.inbox);
+  if (input.agents !== undefined) {
+    if (!isObj(input.agents)) throw new ConfigError('agents: expected object');
+    const r = input.agents.scanRoots;
+    if (r === undefined) cfg.agents = {};
+    else {
+      if (!Array.isArray(r)) throw new ConfigError('agents.scanRoots: expected array');
+      cfg.agents = { scanRoots: r.map((v, i) => { const x = str(v, `agents.scanRoots[${i}]`); if (!/^(~\/|\/)/.test(x)) throw new ConfigError(`agents.scanRoots[${i}]: expected an absolute or ~/ path`); return x; }) };
+    }
+  }
   if (input.taskScoring !== undefined) {
     if (!isObj(input.taskScoring)) throw new ConfigError('taskScoring: expected object');
     const ts = input.taskScoring;
@@ -174,6 +207,49 @@ export function parseConfig(input?: unknown): StackConfig {
     }
   }
   return cfg;
+}
+
+/** A mailbox address safe to put in a copyable command: no spaces, quotes or shell characters. Shared with the Inbox source list. @req FR:config/load.validate.inbox @req FR:inbox-page/src.safe */
+export const MAILBOX = /^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
+
+/** @req FR:config/load.validate.inbox */
+function parseInbox(v: unknown): NonNullable<StackConfig['inbox']> {
+  if (!isObj(v)) throw new ConfigError('inbox: expected object');
+  const out: NonNullable<StackConfig['inbox']> = {};
+  if (v.freshMinutes !== undefined) {
+    if (!Number.isInteger(v.freshMinutes) || (v.freshMinutes as number) < 1) throw new ConfigError('inbox.freshMinutes: expected a positive integer');
+    out.freshMinutes = v.freshMinutes as number;
+  }
+  if (v.delivery !== undefined) {
+    if (v.delivery !== 'claude' && v.delivery !== 'off') throw new ConfigError('inbox.delivery: expected "claude" or "off"');
+    out.delivery = v.delivery;
+  }
+  if (v.deliveryTimeoutSeconds !== undefined) {
+    if (!Number.isInteger(v.deliveryTimeoutSeconds) || (v.deliveryTimeoutSeconds as number) < 30 || (v.deliveryTimeoutSeconds as number) > 1800) throw new ConfigError('inbox.deliveryTimeoutSeconds: expected an integer 30-1800');
+    out.deliveryTimeoutSeconds = v.deliveryTimeoutSeconds as number;
+  }
+  if (v.deliveryMaxUsd !== undefined) {
+    if (typeof v.deliveryMaxUsd !== 'number' || !(v.deliveryMaxUsd >= 0.01 && v.deliveryMaxUsd <= 10)) throw new ConfigError('inbox.deliveryMaxUsd: expected a number 0.01-10');
+    out.deliveryMaxUsd = v.deliveryMaxUsd;
+  }
+  if (v.deliveryDailyCapUsd !== undefined) {
+    if (typeof v.deliveryDailyCapUsd !== 'number' || !(v.deliveryDailyCapUsd >= 0.01 && v.deliveryDailyCapUsd <= 1000)) throw new ConfigError('inbox.deliveryDailyCapUsd: expected a number 0.01-1000');
+    out.deliveryDailyCapUsd = v.deliveryDailyCapUsd;
+  }
+  if (v.reposRoot !== undefined) {
+    if (typeof v.reposRoot !== 'string' || !v.reposRoot.startsWith('/')) throw new ConfigError('inbox.reposRoot: expected an absolute path');
+    out.reposRoot = v.reposRoot.replace(/\/+$/, '') || '/';
+  }
+  if (v.accounts !== undefined) {
+    if (!Array.isArray(v.accounts)) throw new ConfigError('inbox.accounts: expected array');
+    out.accounts = v.accounts.map((a, i) => {
+      const v = typeof a === 'string' ? a.trim().toLowerCase() : '';
+      // Same rule as the Inbox source list, so a bad address fails here, not silently later.
+      if (!MAILBOX.test(v)) throw new ConfigError(`inbox.accounts[${i}]: expected a mailbox address`);
+      return v;
+    });
+  }
+  return out;
 }
 
 const mins = (t: string): number => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));

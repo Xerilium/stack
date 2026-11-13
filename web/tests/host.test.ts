@@ -27,6 +27,14 @@ describe('staticwebapp.config.json', () => {
     expect(h['X-Content-Type-Options']).toBe('nosniff');
     expect(h['Referrer-Policy']).toBe('same-origin');
   });
+  // @req FR:deploy-stack-xerilium-com/auth.headers
+  it('sends HSTS, a locked Permissions-Policy, and COOP for the public domain', () => {
+    const h = web.globalHeaders;
+    const age = Number(/max-age=(\d+)/.exec(h['Strict-Transport-Security'] ?? '')?.[1]);
+    expect(age).toBeGreaterThanOrEqual(31536000);
+    for (const f of ['camera=()', 'microphone=()', 'geolocation=()']) expect(h['Permissions-Policy']).toContain(f);
+    expect(h['Cross-Origin-Opener-Policy']).toBe('same-origin');
+  });
 });
 
 // @req FR:web-app/host.static @req FR:web-app/host.nosecrets
@@ -65,7 +73,7 @@ describe('dependencies', () => {
   it('has preact as the only runtime dependency and exact versions', () => {
     expect(Object.keys(pkg.dependencies)).toEqual(['preact']);
     for (const v of [...Object.values(pkg.dependencies), ...Object.values(pkg.devDependencies)]) expect(v).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(Object.keys(pkg.devDependencies).sort()).toEqual(['@playwright/test', '@types/node', 'jsdom', 'typescript', 'vite', 'vitest']);
+    expect(Object.keys(pkg.devDependencies).sort()).toEqual(['@axe-core/playwright', '@playwright/test', '@types/node', 'jsdom', 'typescript', 'vite', 'vitest']);
   });
 });
 
@@ -75,7 +83,7 @@ describe('tsconfig', () => {
     const ts = JSON.parse(readFileSync(join(ROOT, 'web/tsconfig.json'), 'utf8'));
     expect(ts.extends).toBeUndefined();
     expect(ts.include).not.toContain('../src');
-    const files = readdirSync(join(ROOT, 'web/src')).map((f) => readFileSync(join(ROOT, 'web/src', f), 'utf8')).join('\n');
+    const files = readdirSync(join(ROOT, 'web/src'), { withFileTypes: true }).filter((d) => d.isFile()).map((d) => readFileSync(join(ROOT, 'web/src', d.name), 'utf8')).join('\n');
     expect(files).not.toMatch(/from '\.\.\/(\.\.\/)?src|from '\.\.\//);
   });
 });

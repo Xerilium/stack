@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
 import type { Toast } from './parts';
-import { agentsFor, chipFor, liveAgents, sessionFor, type ChipView, type ReviewItem, type Talk, type TeamAgent } from './team';
+import { agentsFor, ancestorsOf, chipFor, liveAgents, ownerOf as ownerFor, sessionFor, type ChipView, type ReviewItem, type Talk, type TeamAgent } from './team';
 import { fmtTokens } from './sessions';
 import type { Sessions } from './useSessions';
 import type { Task } from './types';
@@ -13,8 +13,8 @@ import type { Task } from './types';
 type ToastFn = (text: string, kind?: Toast['kind'], undo?: () => void) => void;
 const DONE_MS = 10 * 60_000;
 
-/** `enabled`: true when the host runs agents, false when not, null while unknown. `ready`: the task list has loaded (the team is read then). */
-export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled: boolean | null, ready: boolean, projects: string[]) {
+/** `enabled`: true when the host runs agents, false when not, null while unknown. `ready`: the task list has loaded (the team is read then). `tasks`: in file order, for `Owner:` on ancestors. */
+export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled: boolean | null, ready: boolean, projects: string[], tasks: Task[] = []) {
   const [team, setTeam] = useState<TeamAgent[]>([]);
   const [reviews, setReviews] = useState<Map<string, ReviewItem>>(new Map());
   const [talk, setTalkState] = useState<Talk | null>(null);
@@ -44,7 +44,19 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
 
   // Metadata-only agents stay on tasks only while a session has matched them recently; without a runner, or before the first sessions read, there is nothing to match against, so nothing is dropped. @req FR:agent-team/web.chip.live
   const live = useMemo(() => (enabled === true && sessions.phase === 'ready' ? liveAgents(team, sessions.items, sessions.now) : undefined), [enabled, sessions.phase, team, sessions.items, sessions.now]);
-  const agentsOf = useCallback((t: Pick<Task, 'project' | 'section'>) => agentsFor(team, t.project, t.section, live), [team, live]);
+  /**
+   * The task's owning agent: the one helper every chip, composer, tile and Now uses. A project tile passes `{ project }`.
+   * Not filtered by recent sessions: an agent that owns the task by its files owns it whether or not it ran lately.
+   * @req FR:product-reset/schema.agent
+   */
+  const index = useMemo(() => new Map(tasks.map((t, i) => [t.ref, i])), [tasks]);
+  const ownerOf = useCallback((t: Pick<Task, 'project'> & Partial<Pick<Task, 'ref' | 'section' | 'notes'>>): TeamAgent | undefined => ownerFor(team, t, t.ref ? ancestorsOf(tasks, t.ref, index) : []), [team, tasks, index]);
+  /** The task's agents for a picker: the owner first, then the rest that cover it (roll-up, then most specific). */
+  const agentsOf = useCallback((t: Pick<Task, 'project' | 'section'> & Partial<Pick<Task, 'ref' | 'notes'>>) => {
+    const owner = ownerOf(t);
+    const rest = agentsFor(team, t.project, t.section, live).filter((a) => a !== owner);
+    return owner ? [owner, ...rest] : rest;
+  }, [team, live, ownerOf]);
   const sessionOf = useCallback((ref: string) => {
     const hit = sessionFor(sessions.items, ref);
     if (hit) return hit;
@@ -52,12 +64,12 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
     return r ? sessions.items.find((s) => s.id === r.id) : undefined;
   }, [sessions.items, recent]);
   /** @req FR:agent-team/web.chip */
-  const chipOf = useCallback((t: Pick<Task, 'ref' | 'project' | 'section'>): ChipView => {
+  const chipOf = useCallback((t: Pick<Task, 'ref' | 'project' | 'section'> & Partial<Pick<Task, 'notes'>>): ChipView => {
     const s = sessionOf(t.ref);
     const r = recent.get(t.ref);
     if (s && s.state !== 'running' && s.state !== 'needs-you' && r && Date.now() - r.at < DONE_MS) return { text: `Done · ${fmtTokens(s.cost.tokens)}`, tone: 'ok', title: `${s.title}. Open the session`, state: true };
     const chain = agentsOf(t);
-    return chipFor({ agent: chain[0], chain, review: reviews.get(t.ref), session: s, reviewing: reviewing.has(t.ref) });
+    return chipFor({ agent: chain[0], chain, review: reviews.get(t.ref), session: s, reviewing: reviewing.has(t.ref) }); // chain[0] is the owner
   }, [agentsOf, reviews, sessionOf, reviewing, recent]);
 
   const setTalk = useCallback((t: Talk | null) => setTalkState(t), []);
@@ -81,10 +93,10 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   }, [api, enabled, sessions, noteStarted]);
 
   /** Assign: the row is claimed for the agent and its session starts with the assign prompt; the chip follows it. @req FR:agent-thread/thread.assign */
-  const assign = useCallback(async (ref: string, agent?: string, keepOpen = false): Promise<boolean> => {
+  const assign = useCallback(async (ref: string, agent?: string, keepOpen = false, note?: string): Promise<boolean> => {
     if (enabled !== true) { toastRef.current('Runs in stack web on your machine', 'err'); return false; }
     try {
-      const r = await api.assign(ref, agent);
+      const r = await api.assign(ref, agent, note);
       if (r.sessionId) noteStarted(ref, r.sessionId);
       toastRef.current(`Assigned to ${r.agent}`);
       if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
@@ -127,6 +139,6 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   }, [recent.size]);
   const active = useMemo(() => reviewing.size > 0 || recent.size > 0, [reviewing, recent]);
 
-  return { team, reviews, talk, setTalk, toggleTalk, agentsOf, chipOf, sessionOf, start, noteStarted, assign, review, reviewing, openSession, openSessionId, enabled, active };
+  return { team, reviews, talk, setTalk, toggleTalk, ownerOf, agentsOf, chipOf, sessionOf, start, noteStarted, assign, review, reviewing, openSession, openSessionId, enabled, active };
 }
 export type Team = ReturnType<typeof useTeam>;

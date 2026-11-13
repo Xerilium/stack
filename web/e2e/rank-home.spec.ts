@@ -44,17 +44,17 @@ test.describe('Needs you from the Chief of Staff', () => {
     await expect(page.locator('.ask-card .ask-title')).toHaveText('Pay bills tonight');
     await expect(page.locator('.ask-card')).toContainText('Pay USAA first');
     await expect(page.locator('.ask-card')).toContainText('I wait until Monday');
-    await expect(page.locator('.ask-card').getByRole('button', { name: /Go with it/ })).toBeVisible();
+    await expect(page.locator('.ask-card').getByRole('button', { name: 'Approve: Pay USAA first' })).toBeVisible();
   });
 
   // @req FR:ask-queue/needs.answer @req FR:ask-queue/needs.web.answered
-  test('Go with it records the answer on the item and offers Undo, which clears it', async ({ page }) => {
+  test('Approve records the answer on the item and offers Undo, which clears it', async ({ page }) => {
     const m = await mockApi(page);
     m.needs = [need()];
     await page.goto('/#/asks');
-    await page.locator('.ask-card').getByRole('button', { name: /Go with it/ }).click();
+    await page.locator('.ask-card').getByRole('button', { name: 'Approve: Pay USAA first' }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/needs-you/pay-bills/answer')?.body).toMatchObject({ choice: 'go' });
-    await expect(page.getByText(/Going with it/)).toBeVisible();
+    await expect(page.getByText(/^Approved/)).toBeVisible();
     await expect(page.locator('.ask-card .ask-title')).toHaveCount(0); // gone from the list
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect.poll(() => m.calls.filter((c) => c.path === '/needs-you/pay-bills/answer').at(-1)?.body).toMatchObject({ choice: 'undo' });
@@ -82,7 +82,8 @@ test.describe('Needs you from the Chief of Staff', () => {
 
 test.describe('Quiet Home', () => {
   // @req FR:web-app/home3.keys
-  test('key hints stay hidden until the first key press; every control carries its key in its tooltip', async ({ page }, info) => {
+  // @req FR:task-detail-design/rules.nokeys
+  test('buttons never show key badges, even after a key press; every control carries its key in its tooltip', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keyboard');
     await mockApi(page);
     await page.goto('/#/home');
@@ -91,7 +92,7 @@ test.describe('Quiet Home', () => {
     await expect(focus.getByRole('button', { name: /^Done/ })).toHaveAttribute('title', /\(d\)/);
     await expect(focus.locator('kbd:visible')).toHaveCount(0);
     await page.keyboard.press('j');
-    await expect(focus.locator('kbd:visible').first()).toBeVisible();
+    await expect(focus.locator('button kbd:visible, [role="menuitem"] kbd:visible')).toHaveCount(0);
   });
 
   // @req FR:web-app/home3.menu

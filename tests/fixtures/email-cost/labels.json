@@ -1,0 +1,242 @@
+{
+  "msg001": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg002": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg003": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg004": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg005": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg006": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg007": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg008": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg009": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg010": {
+    "kind": "newsletter",
+    "accept": ["newsletter"]
+  },
+  "msg011": {
+    "kind": "github",
+    "accept": ["needs_reply", "fyi"]
+  },
+  "msg012": {
+    "kind": "github",
+    "accept": ["newsletter", "fyi"]
+  },
+  "msg013": {
+    "kind": "github",
+    "accept": ["newsletter", "fyi"]
+  },
+  "msg014": {
+    "kind": "github",
+    "accept": ["newsletter", "fyi"]
+  },
+  "msg015": {
+    "kind": "github",
+    "accept": ["newsletter", "fyi"]
+  },
+  "msg016": {
+    "kind": "github",
+    "accept": ["newsletter", "fyi"]
+  },
+  "msg017": {
+    "kind": "github",
+    "accept": ["newsletter", "fyi"]
+  },
+  "msg018": {
+    "kind": "github",
+    "accept": ["newsletter", "fyi"]
+  },
+  "msg019": {
+    "kind": "github",
+    "accept": ["fyi", "needs_decision"]
+  },
+  "msg020": {
+    "kind": "github",
+    "accept": ["newsletter", "fyi"]
+  },
+  "msg021": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg022": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg023": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg024": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg025": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg026": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg027": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg028": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg029": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg030": {
+    "kind": "receipt",
+    "accept": ["receipt"]
+  },
+  "msg031": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg032": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg033": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg034": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg035": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg036": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg037": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg038": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg039": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg040": {
+    "kind": "cold",
+    "accept": ["spam", "fyi"]
+  },
+  "msg041": {
+    "kind": "ask",
+    "accept": ["needs_reply", "needs_decision"]
+  },
+  "msg042": {
+    "kind": "ask",
+    "accept": ["needs_reply"]
+  },
+  "msg043": {
+    "kind": "ask",
+    "accept": ["needs_decision", "needs_reply"]
+  },
+  "msg044": {
+    "kind": "ask",
+    "accept": ["needs_reply", "needs_decision"]
+  },
+  "msg045": {
+    "kind": "ask",
+    "accept": ["needs_decision", "needs_reply"]
+  },
+  "msg046": {
+    "kind": "ask",
+    "accept": ["needs_reply", "needs_decision"]
+  },
+  "msg047": {
+    "kind": "ask",
+    "accept": ["needs_reply"]
+  },
+  "msg048": {
+    "kind": "ask",
+    "accept": ["needs_decision", "needs_reply"]
+  },
+  "msg049": {
+    "kind": "sensitive",
+    "accept": ["sensitive"]
+  },
+  "msg050": {
+    "kind": "sensitive",
+    "accept": ["sensitive"]
+  },
+  "msg051": {
+    "kind": "sensitive",
+    "accept": ["sensitive"]
+  },
+  "msg052": {
+    "kind": "injection",
+    "accept": ["needs_decision", "spam"]
+  },
+  "msg053": {
+    "kind": "injection",
+    "accept": ["needs_decision", "spam"]
+  },
+  "msg054": {
+    "kind": "calendar",
+    "accept": ["calendar"]
+  },
+  "msg055": {
+    "kind": "calendar",
+    "accept": ["calendar"]
+  },
+  "msg056": {
+    "kind": "calendar",
+    "accept": ["calendar"]
+  },
+  "msg057": {
+    "kind": "fyi",
+    "accept": ["fyi"]
+  },
+  "msg058": {
+    "kind": "fyi",
+    "accept": ["fyi"]
+  },
+  "msg059": {
+    "kind": "fyi",
+    "accept": ["fyi"]
+  },
+  "msg060": {
+    "kind": "fyi",
+    "accept": ["fyi"]
+  }
+}

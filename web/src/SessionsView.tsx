@@ -7,14 +7,17 @@
  * @req FR:agent-team/org.tree @req FR:agent-team/org.tree.row @req FR:agent-team/org.tree.sessions @req FR:agent-team/org.tree.unmatched @req FR:agent-team/org.tree.pinned @req FR:agent-team/org.tree.phone
  * @req FR:agent-team/org.keys @req FR:agent-team/org.a11y @req FR:agent-team/compose.agent @req FR:agent-team/compose.agent.filter @req FR:agent-team/compose.folder @req FR:agent-team/compose.prompt @req FR:agent-team/compose.after
  */
+import { Avatar } from './AgentAvatar';
+import { nameBeside } from './avatar';
 import { Fragment } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { chartOrder, chatsFor, orgChart, otherSessions, type ChartNode } from './chart';
+import { agentStatus, chartOrder, chatsFor, orgChart, otherSessions, type ChartNode } from './chart';
 import { composeDefault, folderFor, orderAgents, repoRoot } from './org';
 import { groupByProject, orderWithPins, type Pins } from './pins';
 import { barWidths, dayLabel, fmtTokens, groupTurns, localDay, orderSessions, priceLine, rowOf, scopeSessions, splitSessions, usageStrip, type Line, type SessionItem } from './sessions';
-import { matchAgent, nameKey, rollupOf, type TeamAgent } from './team';
+import { matchAgent, nameKey, rollupOf, runnable, type TeamAgent } from './team';
 import type { Sessions } from './useSessions';
+import { feedbackActive } from './FeedbackPanel';
 import './sessions.css';
 
 const TOP = 20;
@@ -39,18 +42,21 @@ function Row({ s, now, cursor, pinned, level = 0, onOpen, onCursor, onPin }: { s
   );
 }
 
-/** One agent card in the chart: name, role, projects, state dot, chat count. The whole card selects it. @req FR:agents-team/chart.card */
+/** One agent card in the chart: avatar, name, role, projects (else its home), status, chat count. The whole card selects it. @req FR:agents-team/chart.card */
 function AgentCard({ agent, chats, on, onPick }: { agent: TeamAgent; chats: SessionItem[]; on: boolean; onPick: () => void }) {
-  const state = chats.some((c) => c.state === 'needs-you') ? 'needs-you' : chats.some((c) => c.state === 'running') ? 'running' : '';
-  const label = state === 'needs-you' ? 'needs you' : state === 'running' ? 'working' : '';
+  const status = agentStatus(chats);
+  const state = status === 'needs-you' || status === 'running' ? status : '';
+  const label = status === 'needs-you' ? 'needs you' : status === 'running' ? 'working' : status === 'idle' ? 'idle' : 'no session';
+  const role = agent.role && agent.role.toLowerCase() !== agent.name.toLowerCase() ? agent.role : '';
+  const where = agent.projects.length ? agent.projects : agent.home ? [agent.home] : [];
   return (
     <button type="button" class={`agent-card${on ? ' on' : ''}`} data-agent={agent.slug} data-state={state || undefined} aria-pressed={on} onClick={onPick}
-      aria-label={`${agent.name}${agent.role ? `, ${agent.role}` : ''}, ${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}${label ? `, ${label}` : ''}`}>
-      <span class="ac-head"><span class="ac-name">{agent.name}</span>{state && <span class={`ac-dot ${state}`} title={label} aria-hidden="true" />}</span>
-      {agent.role && <span class="ac-role">{agent.role}</span>}
+      data-status={status} aria-label={`${agent.name}${role ? `, ${role}` : ''}${where.length ? `, ${where.join(', ')}` : ''}, ${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}, ${label}`}>
+      <span class="ac-head"><Avatar who={agent} size={22} /><span class="ac-name">{nameBeside(agent)}</span>{state && <span class={`ac-dot ${state}`} title={label} aria-hidden="true" />}</span>
+      {role && <span class="ac-role">{role}</span>}
       <span class="ac-foot">
-        <span class="ac-projects" aria-hidden="true">{agent.scope.includes('*') ? <span class="chip">all projects</span> : agent.projects.slice(0, 2).map((p) => <span class="chip" key={p}>{p}</span>)}{agent.projects.length > 2 && !agent.scope.includes('*') && <span class="chip">+{agent.projects.length - 2}</span>}</span>
-        <span class="ac-chats" aria-hidden="true">{chats.length ? chats.length : 'no chat'}</span>
+        <span class="ac-projects" aria-hidden="true">{agent.scope.includes('*') ? <span class="chip">all projects</span> : where.slice(0, 2).map((p) => <span class="chip" key={p}>{p}</span>)}{where.length > 2 && !agent.scope.includes('*') && <span class="chip">+{where.length - 2}</span>}</span>
+        <span class="ac-chats" aria-hidden="true"><span class={`ac-status ${status}`}>{label}</span>{chats.length > 0 && ` · ${chats.length}`}</span>
       </span>
     </button>
   );
@@ -275,12 +281,14 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
   };
   /** Closes the overlay and puts focus back on the row or card it came from. */
   const close = () => { const was = s.open ?? cursor; s.closeDrawer(); setTimeout(() => document.querySelector<HTMLElement>(`[data-id="${CSS.escape(was ?? '')}"] button, [data-agent="${CSS.escape(sel)}"]`)?.focus(), 0); };
-  const compose = (slug?: string) => { s.setComposing(true, slug ?? (chartMode ? sel : composeDefault(cursor, team, s.items))); };
+  // A view-only agent never starts a chat: the composer opens on the roll-up instead. @req FR:agent-team/agent.team.scan.view
+  const runTeam = useMemo(() => agentsOrdered.filter(runnable), [agentsOrdered]);
+  const compose = (slug?: string) => { const want = slug ?? (chartMode ? sel : composeDefault(cursor, runTeam, s.items)); s.setComposing(true, runTeam.some((a) => a.slug === want) ? want : undefined); };
   const pick = (slug: string) => { setSel(slug); };
 
   // Keys act on this render's state, not the state of the render whose effect last registered the listener.
   const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || feedbackActive()) return; // @req FR:feedback-button/ui.a11y
       const k = e.key;
       if (k === 'Escape' && modal) { e.preventDefault(); close(); return; }
       if (isTyping(e.target)) return;
@@ -353,7 +361,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
       {enabled !== false && s.phase === 'error' && <div class="sess-error" role="alert"><p>Cannot load agents: {s.error}</p><button type="button" class="btn primary" onClick={() => void s.reload()}>Retry</button></div>}
       {ready && chartMode && (
         <Fragment>
-          <nav class="chart-wrap" aria-label="My team: primary agents by who they report to"><Chart nodes={chart} sel={sel} chatsOf={chatsOf} onPick={pick} /></nav>
+          <nav class="chart-wrap" aria-label="My team: every agent by who they report to"><Chart nodes={chart} sel={sel} chatsOf={chatsOf} onPick={pick} /></nav>
           <section class="chat-pane" aria-label={selAgent ? `${selAgent.name} chat` : 'Chat'} data-testid="chat-pane">
             {chats.length > 1 && (
               <div class="chat-tabs" role="tablist" aria-label={`${selAgent?.name ?? 'Agent'} chats, newest first`}>
@@ -364,12 +372,14 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
                 ))}
               </div>
             )}
-            {inlineChat && <Drawer key={s.open ?? 'chat'} inline s={s} item={item} cursorItem={null} team={agentsOrdered} onClose={close} />}
+            {inlineChat && <Drawer key={s.open ?? 'chat'} inline s={s} item={item} cursorItem={null} team={runTeam} onClose={close} />}
             {!chats.length && selAgent && (
               <div class="chat-empty" data-testid="chat-empty">
                 <p class="big">{selAgent.name} has no chat yet.</p>
                 <p class="sub">{selAgent.role ?? 'Start one to brief this agent.'}</p>
-                <button type="button" class="btn primary" onClick={() => compose(selAgent.slug)}>Start chat</button>
+                {runnable(selAgent)
+                  ? <button type="button" class="btn primary" onClick={() => compose(selAgent.slug)}>Start chat</button>
+                  : <p class="sub" data-testid="view-only">View only: this agent lives in {selAgent.home === 'user' ? 'your user folder' : selAgent.home}. Start its chats there.</p>}
               </div>
             )}
           </section>
@@ -396,7 +406,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
       {!chartMode && count > 0 && <p class="keys-hint" aria-hidden="true">j k move · Enter open · f pin{hasTeam ? ' · t my team' : ''} · A all repos · s stop · c usage · n new</p>}
       {chartMode && count > 0 && <p class="keys-hint" aria-hidden="true">j k pick an agent · n new · c usage · p other sessions</p>}
       {modal && <div class="sess-scrim" onClick={close} />}
-      {modal && <Drawer key={s.open ?? 'new'} s={s} item={item} cursorItem={s.items.find((i) => i.id === cursor) ?? null} team={agentsOrdered} defaultAgent={s.composeAgent ?? undefined} onClose={close} />}
+      {modal && <Drawer key={s.open ?? 'new'} s={s} item={item} cursorItem={s.items.find((i) => i.id === cursor) ?? null} team={runTeam} defaultAgent={s.composeAgent ?? undefined} onClose={close} />}
     </section>
   );
 }

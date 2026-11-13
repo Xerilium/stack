@@ -1,6 +1,8 @@
 :root {
   --bg: #fbfbfa; --panel: #ffffff; --rail: #f4f4f2; --ink: #1d1d1f; --ink2: #4b4b50; --muted: #6e6e76; --line: #e7e7e4; --line2: #efefec;
   --accent: #5b5fe0; --accent-soft: #eeeefc; --accent-ink: #fff; --warn: #c2410c; --ok: #15803d; --chip: #f1f1ee; --hover: #f3f3f1; --focus: #5b5fe0;
+  /* cards: rest and hover/focus. @req FR:product-reset/ui.taskcard */
+  --card-bg: #ffffff; --card-hover: #f3f3f1;
   --shadow: 0 12px 40px rgb(20 20 30 / 14%), 0 2px 6px rgb(20 20 30 / 6%);
   --railw: 208px; --tap: 44px; --row: 34px; --ease: cubic-bezier(.2,.7,.2,1);
   /* space: 4 pt grid. @req FR:now-screen/tokens.scale */
@@ -22,6 +24,7 @@
 @media (prefers-color-scheme: dark) {
   :root { --bg: #111113; --panel: #1a1a1d; --rail: #0e0e10; --ink: #f2f2f3; --ink2: #c4c4c8; --muted: #8a8a92; --line: #2c2c31; --line2: #232327;
     --accent: #8b8ff5; --accent-soft: #23233a; --accent-ink: #12121c; --warn: #fb923c; --ok: #4ade80; --chip: #26262b; --hover: #202024; --focus: #a3a6ff;
+    --card-bg: #161618; --card-hover: #212125;
     --shadow: 0 12px 40px rgb(0 0 0 / 55%), 0 2px 6px rgb(0 0 0 / 40%); }
 }
 * { box-sizing: border-box; }
@@ -86,6 +89,13 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
 .chips { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .chip { border: 0; background: var(--chip); border-radius: 6px; padding: 0 6px; min-height: 22px; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; color: var(--ink2); transition: background .12s; }
 .chip:hover { background: var(--line); }
+/* Agent avatar: emoji, image, or monogram; decorative. @req FR:agent-team/web.avatar */
+.avatar { flex: none; display: inline-grid; place-items: center; border-radius: 50%; overflow: hidden; vertical-align: middle; line-height: 1; object-fit: cover; }
+.avatar.emoji { background: var(--chip); }
+/* Fluent Emoji: the art is its own shape, so no circle crop. @req FR:agent-team/web.avatar.fluent @req FR:agent-team/web.avatar.project */
+.avatar.fluent { border-radius: 0; overflow: visible; object-fit: contain; }
+.emo { width: 1.15em; height: 1.15em; vertical-align: -0.2em; }
+.from:has(.avatar), .ac-head:has(.avatar) { display: inline-flex; align-items: center; gap: 6px; }
 .chip-name { display: none; }
 .focus-block .chip-name, .focus-inner .chip-name { display: inline; }
 .focus-block .chip, .focus-inner .chip { min-height: 26px; padding: 0 9px; }
@@ -796,3 +806,12 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
 @media (prefers-reduced-motion: reduce) { .top-rows li.fresh { animation: none; } }
 .top-rows li > .agent-talk { grid-column: 1 / -1; }
 
+
+/* Desktop updates: a quiet chip and the Updates dialog. @req FR:devops-installer/notice.chip */
+.update-chip { display: inline-flex; gap: 4px; align-items: center; }
+.update-modes { border: 0; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; }
+.update-modes legend { font-weight: 600; margin-bottom: 6px; }
+.update-modes label { display: flex; gap: 8px; align-items: center; }
+.update-builds { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 14px; font-size: 12.5px; color: var(--ink2); }
+.update-builds dd { margin: 0; overflow-wrap: anywhere; }
+.update-actions { display: flex; gap: 8px; justify-content: flex-end; }

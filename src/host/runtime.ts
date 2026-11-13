@@ -11,6 +11,9 @@ import type { CalendarProvider } from '../calendar';
 import { writeAll, type FileWrite, type Storage } from '../core/storage';
 import { openGitStorage, type GitDeps } from './git-repo';
 import { GitHubStorage, parseGitHubRepo } from './github-storage';
+import { createPrPage, type PrPage } from '../api/pr-page';
+import { noQueue } from '../api/pr-queue';
+import { stackHome } from '../core/reports';
 import { ghIssueFiler, type IssueFiler } from '../inbox';
 import { DEVICE_PATH, GitTokenStore, needAux, type HostStorage } from './token-store';
 import { createPushCheck, PUSH_LEDGER_PATH, withPush } from './push';
@@ -83,6 +86,8 @@ function lazyStorage(open: () => Promise<Storage>, now: () => number, cooldownMs
     writeAux: async (path, content, opts) => needAux(await get()).writeAux(path, content, opts),
     sync: async () => { const s = (await get()) as { sync?: () => Promise<void> }; if (s.sync) await s.sync(); },
     rev: async () => { const s = (await get()) as { rev?: () => Promise<string> }; return s.rev ? s.rev() : null; },
+    // @req FR:storage-git/git.activity: history passes through when the adapter has it
+    lineActivity: async (path) => (await (await get()).lineActivity?.(path)) ?? [],
   };
 }
 
@@ -129,6 +134,9 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
   const ghToken = env.GITHUB_TOKEN?.trim();
   let prs: ReturnType<typeof createGitHubPrs> | undefined;
   try { prs = ghToken ? createGitHubPrs({ token: ghToken, repos: githubRepos(env.STACK_GITHUB_REPOS) }) : undefined; } catch (e) { log(`host: STACK_GITHUB_REPOS ${e instanceof GitHubReposError ? e.message : className(e)}`); }
+  // @req FR:pr-page/api.get: the PR board where a token is set; no inventory here, so the WIP label stands in for agents.
+  let prPage: PrPage | undefined;
+  try { prPage = ghToken ? createPrPage({ token: ghToken, repos: githubRepos(env.STACK_GITHUB_REPOS), config: settings.config, home: stackHome(env), fetch: deps.fetch, queue: noQueue() }) : undefined; } catch { prPage = undefined; }
   // @req FR:schedule/ics.wire: the feed URLs are secrets; a bad value logs a URL-free reason and leaves the calendar off.
   let calendar: CalendarProvider | undefined;
   try { const urls = icsUrls(env.STACK_CALENDAR_ICS); calendar = urls.length ? createIcsCalendar({ urls }) : undefined; } catch (e) { log(`host: STACK_CALENDAR_ICS ${e instanceof IcsError ? e.message : className(e)}`); }
@@ -143,7 +151,7 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
       return ((await r.json()) as { items: DueAsk[] }).items;
     },
   });
-  const api = withPush(auth.wrap(createApiHandler({ storage, config: settings.config, authorize: auth.authorize, onError, prs, calendar, issues: deps.issues ?? ghIssueFiler() })), { authorize: auth.authorize, check: push, onError });
+  const api = withPush(auth.wrap(createApiHandler({ storage, config: settings.config, authorize: auth.authorize, onError, prs, ...(prPage ?? {}), calendar, issues: deps.issues ?? ghIssueFiler() })), { authorize: auth.authorize, check: push, onError });
   const mcp = createMcpHandler({ api, tokens, basePath: '/api/mcp', onEvent: event, onError: onName });
   const botApi = createApiHandler({ storage, config: settings.config, authorize: botGate, onError });
   const bots = createBotHandler({

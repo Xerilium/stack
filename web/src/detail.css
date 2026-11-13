@@ -1,0 +1,50 @@
+/* The task detail, the composer, and My day rows on the Fluent 2 tokens (fluent2.css). @req FR:task-detail-design/detail.open @req FR:task-detail-design/a11y.targets */
+.focus-mode.fl { background: var(--fl-bg2); color: var(--fl-fg1); }
+.focus-mode.fl h1 { font: 600 var(--fl-title)/var(--fl-title-lh) var(--fl-font); letter-spacing: 0; margin: var(--fl-s-s) 0 var(--fl-s-l); }
+.fl-facts { margin: 0; color: var(--fl-fg3); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); font-weight: 600; }
+.fl-links { display: flex; flex-wrap: wrap; gap: var(--fl-s-m); margin: 0 0 var(--fl-s-l); font-size: var(--fl-body); }
+.fl-link { color: var(--fl-brand-fg); }
+.fl-props { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fl-s-s); margin-bottom: var(--fl-s-xxl); }
+.fl-prop .v.none { color: var(--fl-fg3); font-weight: 400; }
+.fl-field { display: grid; gap: var(--fl-s-xs); padding: var(--fl-s-xs); color: var(--fl-fg2); font-size: var(--fl-caption); }
+.fl-popover .fl-btn { justify-self: start; }
+.fl-pop-row .fl-input { width: 110px; }
+.fl-actions { margin: var(--fl-s-l) 0 var(--fl-s-xxl); }
+.fl-row { display: flex; flex-wrap: wrap; gap: var(--fl-s-s); }
+.focus-mode.fl .thread { border-top: 1px solid var(--fl-stroke2); padding-top: var(--fl-s-l); }
+.row-detail .fl-actions { margin: var(--fl-s-s) 0; font-family: var(--fl-font); }
+
+/* Composer */
+.composer { display: grid; gap: var(--fl-s-m); margin-top: var(--fl-s-l); padding: var(--fl-s-l); background: var(--fl-bg1); border: 1px solid var(--fl-stroke2); border-radius: var(--fl-r-xl); box-shadow: var(--fl-shadow4); }
+.cm-to { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fl-s-s); }
+.cm-to .avatar { flex: none; border-radius: 50%; }
+.cm-role { color: var(--fl-fg3); font-weight: 400; }
+.cm-mode .fl-hint { margin-top: var(--fl-s-xs); }
+.cm-send { display: flex; gap: var(--fl-s-s); }
+.cm-send .fl-input { flex: 1; }
+@media (max-width: 719px) { .cm-send { flex-direction: column; } .cm-send .fl-btn { width: 100%; } }
+
+/* My day rows: the whole row opens the detail. */
+.today .block .what { cursor: pointer; transition: background var(--fl-fast) var(--fl-ease); }
+.today .block .what:focus-within { background: var(--hover); }
+.today .block .row-open { all: unset; cursor: pointer; display: flex; align-items: center; min-height: 24px; overflow-wrap: anywhere; }
+.today .block .row-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+section.today .block .what { grid-template-columns: 22px minmax(0, 1fr) auto auto 16px; grid-template-areas: 'tick title meta acts chev'; }
+.today .chev { grid-area: chev; color: var(--muted); font-size: 18px; line-height: 1; text-align: center; transition: transform var(--fl-fast) var(--fl-ease); }
+@media (hover: hover) { .today .block .what:hover .chev { color: var(--ink); transform: translateX(2px); } }
+.nofit li { cursor: pointer; }
+.nofit .row-open { all: unset; cursor: pointer; display: inline-flex; align-items: center; min-height: 24px; }
+.nofit .row-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (hover: hover) and (min-width: 801px) {
+  section.today .block .what { grid-template-columns: 22px minmax(0, 1fr) auto 16px; grid-template-areas: 'tick title meta chev'; }
+  section.today .block .row-acts { right: 22px; }
+}
+@media (max-width: 800px), (hover: none) {
+  .today .block .row-open, .nofit .row-open { min-height: 44px; display: flex; align-items: center; }
+  .today .block .tick, .today .block .chip { min-height: 44px; min-width: 44px; }
+}
+.focus-mode.fl .close { min-width: 44px; min-height: 44px; }
+@media (max-width: 800px), (hover: none) {
+  section.today .block .what { grid-template-columns: 26px minmax(0, 1fr) auto; grid-template-areas: 'tick title chev' 'tick meta acts'; }
+  .today .chev { align-self: center; }
+}

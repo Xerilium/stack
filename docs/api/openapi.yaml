@@ -32,7 +32,7 @@ paths:
           $ref: "#/components/responses/Error"
   /rank:
     get:
-      summary: "The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. `blocks=any` keeps tasks the current time block would hide"
+      summary: "The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. Only rows the owner must do: agent rows (🤖, 🪄, and unmarked rows under them) are left out. `stale: true` marks a row overdue 3+ days with no commit to it in 3+ days (score at most 500). `blocks=any` keeps tasks the current time block would hide"
       operationId: rank
       parameters:
         - name: limit
@@ -74,6 +74,9 @@ paths:
                           description: The override that applied
                         root:
                           $ref: "#/components/schemas/Ref"
+                        stale:
+                          type: boolean
+                          description: True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500
         default:
           $ref: "#/components/responses/Error"
   /meetings:
@@ -145,6 +148,21 @@ paths:
                         project:
                           type: string
                         ref:
+                          type: string
+                        kind:
+                          type: string
+                          enum:
+                            - decision
+                          description: "A PR priority recommendation: post actions to decide"
+                        actions:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                              - accept
+                              - edit
+                              - reject
+                        decide:
                           type: string
                         answer:
                           type: object
@@ -375,6 +393,68 @@ paths:
                 $ref: "#/components/schemas/CaptureResult"
         default:
           $ref: "#/components/responses/Error"
+  /feedback:
+    post:
+      summary: Owner only. Append one feedback line to ~/.stack/feedback.jsonl (docs/feedback.md) for an agent to tail. Tokens in text and the route query are removed. 404 on hosts with no store
+      operationId: sendFeedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  maxLength: 4000
+                  description: The feedback
+                route:
+                  type: string
+                  maxLength: 500
+                  description: The app route (query string dropped) Single line.
+                viewport:
+                  type: string
+                  maxLength: 11
+                  pattern: ^\d{2,5}x\d{2,5}$
+                  description: Width x height, such as 1280x800
+                theme:
+                  type: string
+                  enum:
+                    - light
+                    - dark
+                  description: The app theme
+                capture:
+                  type: boolean
+                  description: Ask the desktop host to capture the window as the screenshot
+                png:
+                  type: string
+                  maxLength: 1000000
+                  pattern: ^[A-Za-z0-9+/]+={0,2}$
+                  description: A base64 PNG screenshot (browser), at most 700 KB decoded
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - at
+                  - screenshot
+                properties:
+                  id:
+                    type: string
+                  at:
+                    type: string
+                    format: date-time
+                  screenshot:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
   /tasks/start:
     post:
       summary: "Start a task (ref omitted means the next task). Tokens: ref required, autonomy assist or higher; 403 otherwise"
@@ -540,6 +620,10 @@ paths:
                   description: "`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears"
                 clearEmojis:
                   type: boolean
+                expect:
+                  type: string
+                  maxLength: 2000
+                  description: Expected current task text; 409 conflict when the row differs (stale line number) Single line.
       responses:
         "200":
           $ref: "#/components/responses/Mutation"
@@ -824,10 +908,15 @@ paths:
                   enum:
                     - reply
                     - decision
+                    - instruction
                 expect:
                   type: string
                   maxLength: 2000
                   description: Expected current row text at ref; 409 conflict when the row differs Single line.
+                agent:
+                  type: string
+                  maxLength: 64
+                  description: "Slug of the agent the message is for (the Now picker); default: the task agent Single line."
       responses:
         "201":
           description: Sent
@@ -858,6 +947,11 @@ paths:
               - open
               - handled
               - all
+        - name: agent
+          in: query
+          schema:
+            type: string
+          description: "Agent slug: messages picked for it in any project, plus the unaddressed ones in project"
       responses:
         "200":
           description: Entries
@@ -895,6 +989,9 @@ paths:
                   type: string
                   maxLength: 500
                   description: Single line.
+                withdrawn:
+                  type: boolean
+                  description: "Owner only (403 for tokens): the owner took the message back (Undo); lists and the thread then hide it"
       responses:
         "200":
           description: Handled
@@ -1231,9 +1328,739 @@ paths:
                               type: string
         default:
           $ref: "#/components/responses/Error"
+  /session-inventory:
+    get:
+      summary: "Owner only. Claude app sessions on this machine (read-only, cached by mtime in ~/.stack/sessions.json): counts per state, the ranked Needs-you list (waiting, stuck), archive candidates, and every session. No transcript text. 404 on hosts with no inventory"
+      operationId: listSessionInventory
+      responses:
+        "200":
+          description: Inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Inventory"
+        default:
+          $ref: "#/components/responses/Error"
+  /pris:
+    get:
+      summary: Owner only. The owner priorities, most important first (~/.stack/pris.json); rev 0 and an empty list when none. 404 on hosts with no store
+      operationId: getPriorities
+      responses:
+        "200":
+          description: Priorities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrisFile"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: "Owner only. Replace the priorities list. Send the rev you read: a stale rev is 409. 400 lists every issue"
+      operationId: putPriorities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - rev
+                - pris
+              properties:
+                rev:
+                  type: integer
+                  minimum: 0
+                pris:
+                  type: array
+                  maxItems: 30
+                  items:
+                    $ref: "#/components/schemas/Pri"
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrisFile"
+        default:
+          $ref: "#/components/responses/Error"
+  /pr-priority:
+    get:
+      summary: Owner only. The PR priority queue for the Sweep Manager (~/.stack/pr-priority.json), each PR with cached facts, merge-order edges, the newest report record, acks and status, plus the escalation set and open recommendations (by project, oldest first). 404 on hosts with no store
+      operationId: getPrPriority
+      responses:
+        "200":
+          description: PR priorities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrPriView"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: "Owner only. One idempotent queue action: add (default top), move (to top, up, down, or rank), pin, unpin, remove, undo (restores the prior revision), or ack (a hold thread). Send the rev you read: a stale rev is 409; a PR not queued is 404"
+      operationId: changePrPriority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - rev
+                - op
+              properties:
+                rev:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000000000
+                op:
+                  type: string
+                  enum:
+                    - add
+                    - move
+                    - pin
+                    - unpin
+                    - remove
+                    - undo
+                    - ack
+                ref:
+                  type: string
+                  maxLength: 300
+                  description: <owner>/<name>#<n> or a GitHub PR url; required except for undo Single line.
+                rank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                to:
+                  type: string
+                  enum:
+                    - top
+                    - up
+                    - down
+                  description: "For move: top, up or down (or send rank)"
+                note:
+                  type: string
+                  maxLength: 300
+                  description: "For add and move: the item note; for ack: the ack note Single line."
+                thread:
+                  type: string
+                  maxLength: 2000
+                  description: "For ack: the https url of the thread Single line."
+      responses:
+        "200":
+          description: Changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrPriView"
+        default:
+          $ref: "#/components/responses/Error"
+  /pr-priority/recommendations:
+    post:
+      summary: An agent recommends a higher rank for a PR. Returns the new or already open recommendation. 409 when the owner rejected a similar reason in the last 14 days (the message has his reason), when the PR is already queued high enough, or when it is excluded
+      operationId: recommendPrPriority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - agent
+                - reason
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  description: Single line.
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                agent:
+                  type: string
+                  maxLength: 40
+                  description: Single line.
+                reason:
+                  type: string
+                  maxLength: 300
+                  description: Single line.
+                toRank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+      responses:
+        "200":
+          description: Recommended
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: boolean
+                  rec:
+                    $ref: "#/components/schemas/PrRec"
+        default:
+          $ref: "#/components/responses/Error"
+    get:
+      summary: Decided recommendations (accepted, edited, rejected with the owner reason), newest first, so agents do not retry
+      operationId: listPrPriorityDecisions
+      parameters:
+        - name: agent
+          in: query
+          schema:
+            type: string
+            description: Single line.
+      responses:
+        "200":
+          description: Decisions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PrRec"
+        default:
+          $ref: "#/components/responses/Error"
+  /pr-priority/recommendations/{id}:
+    post:
+      summary: Owner only. Accept, edit, or reject a recommendation. Edit and reject need a reason. The same decision again is a no-op; another decision is 409
+      operationId: decidePrPriority
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum:
+                    - accept
+                    - edit
+                    - reject
+                rank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  description: "For edit: the rank to use"
+                note:
+                  type: string
+                  maxLength: 300
+                  description: "For edit: the item note Single line."
+                reason:
+                  type: string
+                  maxLength: 300
+                  description: Required for edit and reject Single line.
+      responses:
+        "200":
+          description: Decided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
+                    type: boolean
+                  rec:
+                    $ref: "#/components/schemas/PrRec"
+                  queue:
+                    type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /prs:
+    get:
+      summary: "Owner only. Open PRs the owner reviews or moves, grouped (processing, waiting, pending, paused), each with its next action for the owner (validate, signoff, publish, approve, autopilot), spec lines, pin, and details; the Summary; who must act, CI, unresolved threads, queue rank, and the escalation set. refresh=1 polls GitHub first. Taking it renews a 3-minute poll lease. `{auth: {state, method, session?}}` when signed out of GitHub; `{off: true}` on hosts with no board"
+      operationId: getPrBoard
+      parameters:
+        - name: refresh
+          in: query
+          schema:
+            type: string
+            enum:
+              - "1"
+      responses:
+        "200":
+          description: Board
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  at:
+                    type: string
+                    nullable: true
+                  user:
+                    type: string
+                  agents:
+                    type: object
+                  counts:
+                    type: object
+                  footer:
+                    type: object
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                  summary:
+                    type: object
+                    properties:
+                      live:
+                        type: array
+                        items:
+                          type: string
+                      signoff:
+                        type: array
+                        items:
+                          type: string
+                      autopilot:
+                        type: array
+                        items:
+                          type: string
+                      missing:
+                        type: array
+                        items:
+                          type: object
+                  escalations:
+                    type: object
+                  queue:
+                    type: boolean
+                  rate:
+                    type: object
+                  error:
+                    type: string
+                  off:
+                    type: boolean
+                  auth:
+                    type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/queue:
+    post:
+      summary: "Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin (adds the PR first when not queued), unpin, remove, undo. 409 when the queue is not installed or refuses"
+      operationId: movePrInQueue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - op
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                op:
+                  type: string
+                  enum:
+                    - top
+                    - up
+                    - down
+                    - move
+                    - add
+                    - pin
+                    - unpin
+                    - remove
+                    - undo
+                  description: top, up, down, move, add, pin, unpin, remove, or undo
+                rank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  description: Target rank for move
+      responses:
+        "200":
+          description: New rank
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rank:
+                    type: integer
+                    nullable: true
+                  was:
+                    type: integer
+                    nullable: true
+                  pinned:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/label:
+    post:
+      summary: Owner only. Add or remove the Autopilot label (no other label). 403 for repos outside STACK_GITHUB_REPOS
+      operationId: labelPr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - op
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                op:
+                  type: string
+                  enum:
+                    - add
+                    - remove
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/ack:
+    post:
+      summary: Owner only. Record the owner answer on a thread (stack pr-pri ack --thread --note). With post true, first post text (must start with the AI prefix) as a thread reply (replyTo) or a PR comment
+      operationId: ackPr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - thread
+                - note
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                thread:
+                  type: string
+                  maxLength: 500
+                  pattern: ^https:\/\/github\.com\/\S+$
+                  description: Thread or PR url the answer is for Single line.
+                note:
+                  type: string
+                  maxLength: 300
+                  description: The answer Single line.
+                post:
+                  type: boolean
+                text:
+                  type: string
+                  maxLength: 4000
+                replyTo:
+                  type: integer
+                  minimum: 1
+                  maximum: 9007199254740991
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/recs/{id}:
+    post:
+      summary: Owner only. Accept, edit, or reject a PR priority recommendation; edit and reject need a reason
+      operationId: decidePrRec
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum:
+                    - accept
+                    - edit
+                    - reject
+                rank:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                note:
+                  type: string
+                  maxLength: 300
+                  description: Single line.
+                reason:
+                  type: string
+                  maxLength: 300
+                  description: Single line.
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/resolve:
+    post:
+      summary: Owner only. Resolve or reopen a review thread (GraphQL node id) of a PR on the board. 404 when the thread is not on that PR
+      operationId: resolvePrThread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - thread
+                - op
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                thread:
+                  type: string
+                  maxLength: 100
+                  pattern: ^[A-Za-z0-9_=-]{1,100}$
+                  description: Review thread node id from the row detail
+                op:
+                  type: string
+                  enum:
+                    - resolve
+                    - unresolve
+                  description: resolve or unresolve
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  op:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/sign-in:
+    get:
+      summary: "Owner only. The GitHub sign-in session: state (waiting, done, error, none), the one-time code, and the device link. Never a token. 404 on hosts with no sign-in"
+      operationId: getGitHubSignIn
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - waiting
+                      - done
+                      - error
+                      - none
+                  userCode:
+                    type: string
+                  verificationUri:
+                    type: string
+                  error:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: "Owner only. Start the GitHub sign-in (gh auth login --web, the device flow). One at a time: a start while one waits returns it. 404 on hosts with no sign-in"
+      operationId: startGitHubSignIn
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - waiting
+                      - done
+                      - error
+                  userCode:
+                    type: string
+                  verificationUri:
+                    type: string
+                  error:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /pr-review:
+    get:
+      summary: Cached PR facts (specLines, live flag, head SHA) and agent briefs with stale. No GitHub call. 404 on hosts with no store
+      operationId: getPrReview
+      responses:
+        "200":
+          description: PR review
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - facts
+                  - briefs
+                properties:
+                  facts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PrFacts"
+                  briefs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PrBrief"
+        default:
+          $ref: "#/components/responses/Error"
+  /live:
+    get:
+      summary: "The live validation lane: state (idle when no PR), the active PR, its checklist, and done PRs. 404 on hosts with no lane"
+      operationId: getLiveLane
+      responses:
+        "200":
+          description: Lane
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveLane"
+        default:
+          $ref: "#/components/responses/Error"
+  /live/items:
+    post:
+      summary: "Change one checklist item of the live PR: add, check, uncheck, fail, needs-fix, fixed, block, comment, edit. Owner calls are by owner; token calls are by the token name. 404 when the PR is not live or the id is unknown"
+      operationId: changeLiveItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - op
+                - repo
+                - number
+              properties:
+                op:
+                  type: string
+                  enum:
+                    - add
+                    - check
+                    - uncheck
+                    - fail
+                    - needs-fix
+                    - fixed
+                    - block
+                    - comment
+                    - edit
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                  description: Single line.
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                id:
+                  type: string
+                  maxLength: 11
+                  pattern: ^li-[0-9a-f]{8}$
+                  description: Required for every op except add Single line.
+                text:
+                  type: string
+                  maxLength: 300
+                  description: Required for add, comment, edit; the comment for needs-fix Single line.
+                reason:
+                  type: string
+                  maxLength: 300
+                  description: Required for block Single line.
+      responses:
+        "200":
+          description: Changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - changed
+                  - item
+                properties:
+                  changed:
+                    type: boolean
+                  item:
+                    $ref: "#/components/schemas/LiveItem"
+        default:
+          $ref: "#/components/responses/Error"
   /inbox-items:
     get:
-      summary: "All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens"
+      summary: "All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog and the source status (as GET /inbox-sources). Owner session only: 403 for tokens"
       operationId: listInboxItems
       responses:
         "200":
@@ -1258,6 +2085,301 @@ paths:
                           type: string
                         ready:
                           type: boolean
+                  sources: &a2
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - email
+                            - github
+                            - teams
+                            - slack
+                        account:
+                          type: string
+                        state:
+                          type: string
+                          enum:
+                            - not-connected
+                            - connecting
+                            - ok
+                            - error
+                            - stale
+                        lastSyncAt:
+                          type: string
+                          format: date-time
+                        error:
+                          type: string
+                        needs:
+                          type: string
+                        command:
+                          type: string
+                        connect:
+                          type: boolean
+                          description: The step is the in-app Connect panel, not a command
+                        doc:
+                          type: string
+                        mode:
+                          type: string
+                          enum:
+                            - read-only
+                            - drafts
+                        planned:
+                          type: boolean
+                  summary: &a3
+                    type: object
+                    properties:
+                      connected:
+                        type: integer
+                      total:
+                        type: integer
+                      fresh:
+                        type: integer
+                      attention:
+                        type: boolean
+                      canClaimZero:
+                        type: boolean
+                      headline:
+                        type: string
+                        nullable: true
+        default:
+          $ref: "#/components/responses/Error"
+  /connect:
+    get:
+      summary: "Whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Never a token. Owner session only: 403 for tokens; 404 on a host without Connect"
+      operationId: getConnect
+      responses:
+        "200":
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  setup:
+                    type: object
+                    properties:
+                      clientId:
+                        type: boolean
+                  accounts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        account:
+                          type: string
+                        type:
+                          type: string
+                          enum:
+                            - personal
+                            - work
+                        mail:
+                          type: boolean
+                        calendar:
+                          type: boolean
+                        drafts:
+                          type: boolean
+                        state:
+                          type: string
+                          enum:
+                            - connected
+                            - expired
+                            - down
+                            - error
+                          description: "expired: needs sign-in; down: Microsoft not responding (retries on its own)"
+                        lastOkAt:
+                          type: string
+                          format: date-time
+                          description: The last good live read
+                        retryAt:
+                          type: string
+                          format: date-time
+                          description: The next automatic try, while the account is not connected
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/setup:
+    post:
+      summary: "Run the one-time app registration (scripts/register-stack-app.ps1, Az PowerShell). Returns a state code only: done, needs-azure-signin, needs-pwsh, failed. Owner session only"
+      operationId: runConnectSetup
+      responses:
+        "200":
+          description: Setup state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - done
+                      - needs-azure-signin
+                      - needs-pwsh
+                      - failed
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/sign-in:
+    post:
+      summary: "Start a Microsoft sign-in: the browser opens the sign-in page (PKCE, loopback), or a device code shows in the page. Read-only scopes; drafts opt-in; never send. 409 until setup has run. Owner session only"
+      operationId: startConnect
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$
+                  description: Mailbox address to sign in (login hint) Single line.
+                drafts:
+                  type: boolean
+                  description: Also ask for Mail.ReadWrite (reply drafts)
+                method:
+                  type: string
+                  enum:
+                    - browser
+                    - device
+                  description: browser (default) or device
+      responses:
+        "201":
+          description: Sign-in session
+          content:
+            application/json:
+              schema: &a1
+                type: object
+                properties:
+                  id:
+                    type: string
+                  method:
+                    type: string
+                    enum:
+                      - browser
+                      - device
+                  state:
+                    type: string
+                    enum:
+                      - waiting
+                      - done
+                      - error
+                  url:
+                    type: string
+                  userCode:
+                    type: string
+                  verificationUri:
+                    type: string
+                  expiresAt:
+                    type: string
+                  account:
+                    type: string
+                  error:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/sign-in/{id}:
+    get:
+      summary: "A sign-in session: waiting, done (with the account) or error (an OAuth code). Owner session only"
+      operationId: getConnectSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sign-in session
+          content:
+            application/json:
+              schema: *a1
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/drafts:
+    post:
+      summary: Turn reply drafts on (starts a sign-in that asks for Mail.ReadWrite) or off (read scopes only from the next refresh). Owner session only
+      operationId: setConnectDrafts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - account
+                - on
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$
+                  description: Mailbox address Single line.
+                on:
+                  type: boolean
+                  description: Drafts on or off
+      responses:
+        "200":
+          description: Session or ok
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/remove:
+    post:
+      summary: "Disconnect an account: deletes its token cache. Owner session only"
+      operationId: removeConnect
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^(?:|[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+)$
+                  description: Mailbox address Single line.
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /inbox-sources:
+    get:
+      summary: "Each inbox source (every email account, GitHub, and planned Teams and Slack) with its state, last sync and the exact step to connect it, plus a summary (N of M connected, whether Inbox zero may be claimed, a headline). fresh=1 re-probes this machine. Never a token. Owner session only: 403 for tokens"
+      operationId: listInboxSources
+      parameters:
+        - name: fresh
+          in: query
+          schema:
+            type: string
+            enum:
+              - "1"
+              - "true"
+      responses:
+        "200":
+          description: Sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sources: *a2
+                  summary: *a3
         default:
           $ref: "#/components/responses/Error"
   /inbox-items/{id}/action:
@@ -1653,6 +2775,42 @@ paths:
                     type: boolean
                   error:
                     type: string
+                  source:
+                    type: object
+                    description: How the calendar source is doing; never holds a feed path or token
+                    properties:
+                      kind:
+                        type: string
+                        enum:
+                          - calendar
+                      via:
+                        type: string
+                        enum:
+                          - graph
+                          - ics
+                          - fixture
+                          - none
+                      account:
+                        type: string
+                        description: Sign-in address or feed host names
+                      state:
+                        type: string
+                        enum:
+                          - not-connected
+                          - ok
+                          - error
+                          - stale
+                      lastSyncAt:
+                        type: string
+                        format: date-time
+                        description: When the data shown was last read from the source
+                      reason:
+                        type: string
+                        enum:
+                          - signin
+                          - down
+                          - error
+                        description: "Graph only, when state is error: an account needs sign-in, Microsoft is not responding, or another error"
                   items:
                     type: array
                     items:
@@ -1731,6 +2889,80 @@ paths:
                     type: string
         default:
           $ref: "#/components/responses/Error"
+  /inbox/delivery:
+    get:
+      summary: "Delivery state of the owner messages on one row (working, delivered, failed, not-delivered), the delivery mode, the Claude login state, and a live session for the agent when there is one (link only). Without ref: only the mode and the login state. Owner session only: 403 for tokens; 404 where the host does not deliver"
+      operationId: getInboxDelivery
+      parameters:
+        - name: ref
+          in: query
+          schema:
+            $ref: "#/components/schemas/Ref"
+          description: The row (project:line); omit for the mode and login only
+      responses:
+        "200":
+          description: Delivery
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - claude
+                      - off
+                  login:
+                    type: string
+                    enum:
+                      - ok
+                      - expired
+                      - unknown
+                  items:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        state:
+                          type: string
+                          enum:
+                            - working
+                            - delivered
+                            - failed
+                            - not-delivered
+                        agent:
+                          type: string
+                        reason:
+                          type: string
+                  live:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      link:
+                        type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /inbox/delivery/login:
+    post:
+      summary: "Start the Claude sign-in (claude auth login) on this machine; when it cannot start, the answer names the one step. Owner session only: 403 for tokens"
+      operationId: startDeliveryLogin
+      responses:
+        "200":
+          description: Started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  started:
+                    type: boolean
+                  step:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
   /tasks/{ref}/thread:
     get:
       summary: "One task's thread in time order: the owner's messages, the agent's replies, its asks, the review verdict, agent-owned subtasks; plus the task's newest session when a runner exists"
@@ -1788,6 +3020,10 @@ paths:
                   maxLength: 40
                   pattern: ^[a-z0-9][a-z0-9._-]{0,39}$
                   description: "Agent slug; default: the active agent Single line."
+                note:
+                  type: string
+                  maxLength: 1000
+                  description: The owner's note, added to the assign prompt (at most 1000 characters) Single line.
       responses:
         "202":
           description: Assigned
@@ -2054,6 +3290,9 @@ paths:
                     format: date-time
                     nullable: true
                     description: First pending write (batching storage only)
+                  live:
+                    type: string
+                    description: Changes when live state outside the repo (PR priorities) changes; present only when the host has it
         default:
           $ref: "#/components/responses/Error"
     post:
@@ -2072,6 +3311,106 @@ paths:
                   rev:
                     type: string
                     nullable: true
+        default:
+          $ref: "#/components/responses/Error"
+  /version:
+    get:
+      summary: "Desktop app only: the running and available builds, whether an update is ready, the update mode, and the last helper result. 404 on hosts with no installer. Reads only local files"
+      operationId: getVersion
+      responses:
+        "200":
+          description: Version state
+          content:
+            application/json:
+              schema: &a5
+                type: object
+                properties:
+                  running: &a4
+                    type: object
+                    nullable: true
+                    properties:
+                      version:
+                        type: string
+                      sha:
+                        type: string
+                      dirty:
+                        type: boolean
+                      builtAt:
+                        type: string
+                        format: date-time
+                  available: *a4
+                  ready:
+                    type: boolean
+                  mode:
+                    type: string
+                    enum:
+                      - on-quit
+                      - ask
+                      - auto-idle
+                      - off
+                  idleMinutes:
+                    type: integer
+                  canRestart:
+                    type: boolean
+                  last:
+                    type: object
+                    nullable: true
+                    properties:
+                      ok:
+                        type: boolean
+                      step:
+                        type: string
+                      at:
+                        type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /version/mode:
+    post:
+      summary: "Set when updates install: on-quit (default), ask, auto-idle, or off (owner only). Saved in ~/.config/stack/config.json"
+      operationId: setUpdateMode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - mode
+              properties:
+                mode:
+                  type: string
+                  enum:
+                    - on-quit
+                    - ask
+                    - auto-idle
+                    - off
+                idleMinutes:
+                  type: integer
+                  minimum: 5
+                  maximum: 240
+      responses:
+        "200":
+          description: Version state
+          content:
+            application/json:
+              schema: *a5
+        default:
+          $ref: "#/components/responses/Error"
+  /version/restart:
+    post:
+      summary: Commit pending edits, then quit, swap in the ready build, and relaunch (owner only). 409 when no update is ready or the host cannot restart
+      operationId: restartForUpdate
+      responses:
+        "200":
+          description: Restarting
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restarting:
+                    type: boolean
         default:
           $ref: "#/components/responses/Error"
   /projects:
@@ -2245,6 +3584,580 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    SessionItem:
+      type: object
+      required:
+        - id
+        - title
+        - project
+        - state
+        - reason
+        - pinned
+        - lastActivityAt
+        - link
+        - prs
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        project:
+          type: string
+          enum:
+            - allyte
+            - ftk
+            - focus
+            - f4
+            - xerilium
+            - other
+        state:
+          type: string
+          enum:
+            - running
+            - waiting
+            - stuck
+            - done
+            - pinned
+            - idle
+        reason:
+          type: string
+          enum:
+            - question
+            - permission
+            - needs-user
+            - blocked
+            - error
+            - cut-short
+            - api-error
+            - dead-turn
+            - pr-merged
+            - superseded
+            - turn-open
+            - idle
+        pinned:
+          type: boolean
+        lastActivityAt:
+          type: string
+          format: date-time
+        link:
+          type: string
+          description: claude://claude.ai/epitaxy/<id>
+        prs:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              state:
+                type: string
+        ask:
+          type: string
+        scheduled:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+    Inventory:
+      type: object
+      required:
+        - at
+        - total
+        - counts
+        - needsYou
+        - archive
+        - sessions
+      properties:
+        at:
+          type: string
+          format: date-time
+        total:
+          type: integer
+        counts:
+          type: object
+          properties:
+            running:
+              type: integer
+            waiting:
+              type: integer
+            stuck:
+              type: integer
+            done:
+              type: integer
+            pinned:
+              type: integer
+            idle:
+              type: integer
+        needsYou:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionItem"
+        archive:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionItem"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionItem"
+    PriItem:
+      type: object
+      additionalProperties: false
+      required:
+        - text
+        - status
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 300
+        status:
+          type: string
+          enum:
+            - todo
+            - doing
+            - blocked
+            - done
+    Pri:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - status
+        - items
+        - backlog
+        - weekly
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{0,23}$
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+            - blocked
+            - done
+        items:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/PriItem"
+        backlog:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/PriItem"
+        weekly:
+          type: array
+          maxItems: 12
+          description: Weekly progress, newest first
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - week
+              - text
+            properties:
+              week:
+                type: string
+                pattern: ^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$
+              text:
+                type: string
+                minLength: 1
+                maxLength: 500
+    PrRec:
+      type: object
+      required:
+        - id
+        - repo
+        - number
+        - url
+        - agent
+        - reason
+        - state
+        - at
+      properties:
+        id:
+          type: string
+          pattern: ^pp-[0-9a-f]{8}$
+        repo:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+        agent:
+          type: string
+        reason:
+          type: string
+        toRank:
+          type: integer
+        state:
+          type: string
+          enum:
+            - open
+            - accepted
+            - edited
+            - rejected
+        at:
+          type: string
+          format: date-time
+        decision:
+          type: object
+          properties:
+            at:
+              type: string
+              format: date-time
+            reason:
+              type: string
+            rank:
+              type: integer
+            note:
+              type: string
+    PrPriView:
+      type: object
+      required:
+        - version
+        - rev
+        - items
+      properties:
+        changed:
+          type: boolean
+        version:
+          type: integer
+        rev:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              rank:
+                type: integer
+              repo:
+                type: string
+              number:
+                type: integer
+              pr:
+                type: integer
+              url:
+                type: string
+              pinned:
+                type: boolean
+              note:
+                type: string
+              by:
+                type: string
+              at:
+                type: string
+              title:
+                type: string
+              author:
+                type: string
+              isDraft:
+                type: boolean
+              assignee:
+                type: string
+                nullable: true
+              labels:
+                type: array
+                items:
+                  type: string
+              reviewDecision:
+                type: string
+                nullable: true
+              checks:
+                type: string
+                enum:
+                  - green
+                  - red
+                  - pending
+              mergeable:
+                type: string
+              lastPushAt:
+                type: string
+              headSha:
+                type: string
+              state:
+                type: string
+                enum:
+                  - open
+                  - merged
+                  - closed
+              factsAt:
+                type: string
+              baseStack:
+                type: array
+                items:
+                  type: string
+                description: PR urls this PR merges after
+              waitsOn:
+                type: array
+                items:
+                  type: string
+                description: baseStack urls not merged
+              why:
+                type: string
+              michaelDecision:
+                type: object
+                properties:
+                  state:
+                    type: string
+                  reason:
+                    type: string
+                  at:
+                    type: string
+              report:
+                type: object
+                description: Newest per-PR report record
+              acks:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    thread:
+                      type: string
+                    note:
+                      type: string
+                    at:
+                      type: string
+              status:
+                type: string
+                enum:
+                  - approve
+                  - review
+                  - decide
+                  - unblock
+        escalations:
+          type: object
+          nullable: true
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrRec"
+    PrisFile:
+      type: object
+      required:
+        - version
+        - rev
+        - pris
+      properties:
+        version:
+          type: integer
+        rev:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+        seed:
+          type: object
+          properties:
+            source:
+              type: string
+            at:
+              type: string
+            sha256:
+              type: string
+        pris:
+          type: array
+          items:
+            $ref: "#/components/schemas/Pri"
+    PrFacts:
+      type: object
+      required:
+        - repo
+        - number
+        - url
+        - headSha
+        - specLines
+        - live
+        - at
+      properties:
+        repo:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+        title:
+          type: string
+        headSha:
+          type: string
+        specLines:
+          type: integer
+          description: Lines changed in spec files (.xe/, spec.md, docs/*.md)
+        labels:
+          type: array
+          items:
+            type: string
+        live:
+          type: boolean
+          description: Needs live validation
+        reasons:
+          type: array
+          items:
+            type: string
+        draft:
+          type: boolean
+        at:
+          type: string
+          format: date-time
+    PrBrief:
+      type: object
+      required:
+        - repo
+        - number
+        - url
+        - problem
+        - solution
+        - recommendation
+        - evidence
+        - askedAt
+        - headSha
+        - stale
+      properties:
+        repo:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+        problem:
+          type: string
+        solution:
+          type: string
+        recommendation:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+        askedAt:
+          type: string
+        headSha:
+          type: string
+        by:
+          type: string
+        stale:
+          type: boolean
+    LiveItem:
+      type: object
+      required:
+        - id
+        - text
+        - by
+        - state
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        by:
+          type: string
+        state:
+          type: string
+          enum:
+            - open
+            - passed
+            - failed
+            - needs-fix
+            - fixed-pending-revalidation
+            - blocked
+        comment:
+          type: string
+        reason:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        updatedBy:
+          type: string
+          description: "Who made the last change: owner or an agent"
+    LiveLane:
+      type: object
+      required:
+        - state
+        - rev
+        - items
+        - done
+      properties:
+        state:
+          type: string
+          enum:
+            - idle
+            - preparing
+            - working
+            - ready-for-michael
+            - revalidating
+        rev:
+          type: integer
+        active:
+          type: object
+          properties:
+            repo:
+              type: string
+            number:
+              type: integer
+            url:
+              type: string
+            title:
+              type: string
+            state:
+              type: string
+              enum:
+                - preparing
+                - working
+                - ready-for-michael
+                - revalidating
+            by:
+              type: string
+            claimedAt:
+              type: string
+            worktree:
+              type: string
+            serverUrl:
+              type: string
+            port:
+              type: integer
+            pid:
+              type: integer
+            headSha:
+              type: string
+            waitingOnLock:
+              type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveItem"
+        done:
+          type: array
+          items:
+            type: object
+            properties:
+              repo:
+                type: string
+              number:
+                type: integer
+              url:
+                type: string
+              at:
+                type: string
+              reason:
+                type: string
     ReportItem:
       type: object
       additionalProperties: false
@@ -2463,6 +4376,7 @@ components:
           enum:
             - reply
             - decision
+            - instruction
         to:
           type: string
           enum:
@@ -2647,6 +4561,9 @@ components:
         reportsTo:
           type: string
           description: Slug of the agent this one reports to; absent on the roll-up
+        icon:
+          type: string
+          description: "Avatar: an emoji, fluent:<name> (a Fluent Emoji file name), or a same-origin image path; absent means a monogram"
         source:
           type: string
           enum:
@@ -2654,6 +4571,14 @@ components:
             - claude
             - metadata
           description: tasks/agents file, .claude/agents file, or a project Agents line
+        home:
+          type: string
+          description: "Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents"
+        aliases:
+          type: array
+          items:
+            type: string
+          description: "Older display names a session title may start with: the H1 text before its colon"
     ThreadItem:
       type: object
       properties:
@@ -2675,6 +4600,9 @@ components:
           type: string
         agent:
           type: string
+        withdrawn:
+          type: boolean
+          description: Owner item the owner took back (Undo); clients hide it
         ask:
           $ref: "#/components/schemas/Ask"
         verdict:
@@ -2802,6 +4730,10 @@ components:
                 type: string
               updatedAt:
                 type: string
+              priority:
+                type: integer
+                nullable: true
+                description: Rank in the PR priority queue, or null
         last:
           type: object
           properties:

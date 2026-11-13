@@ -34,7 +34,7 @@ test.describe('shell and security', () => {
     await expect(page.getByRole('heading', { name: 'Not on the allow-list' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sign out' })).toHaveAttribute('href', '/.auth/logout');
     // @req FR:live-deploy/setup.owner
-    await expect(page.getByTestId('owner-cmd')).toHaveText('scripts/setup-azure.sh --owner github:d2f0c0ffee');
+    await expect(page.getByTestId('owner-cmd')).toHaveText('scripts/setup-azure.ps1 -Owner github:d2f0c0ffee');
     await expect(page.getByText('Ship the')).toHaveCount(0);
   });
 
@@ -186,7 +186,7 @@ test.describe('focus mode', () => {
     const m = await mockApi(page);
     await page.goto('/#/home');
     await page.locator('.focus-block').click(); await page.keyboard.press('Enter');
-    const dlg = page.getByRole('dialog', { name: 'Focus' });
+    const dlg = page.getByRole('dialog', { name: 'Task detail' });
     await expect(dlg).toBeVisible();
     await expect(dlg.locator('h1')).toContainText('Ship the web app');
     await expect(dlg.locator('.notes a')).toHaveAttribute('href', 'https://example.test/spec');
@@ -208,7 +208,7 @@ test.describe('focus mode', () => {
     await expect(page.locator('.row.cursor')).toHaveAttribute('data-ref', 'alpha:6');
     await page.keyboard.press('j');
     await page.keyboard.press('Enter');
-    const dlg = page.getByRole('dialog', { name: 'Focus' });
+    const dlg = page.getByRole('dialog', { name: 'Task detail' });
     await expect(dlg.locator('h1')).toContainText('Review pull requests');
     await page.keyboard.press('s');
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/start', body: { ref: 'alpha:9' } });
@@ -531,7 +531,7 @@ test.describe('editor', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByLabel('Edit task text')).toHaveCount(0);
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('dialog', { name: 'Focus' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Task detail' })).toBeVisible();
     await expect(page.getByLabel('Edit task text')).toHaveCount(0);
   });
 });
@@ -863,20 +863,21 @@ test.describe('today view', () => {
     await shot(page, 'today', info);
   });
 
-  // @req FR:home/myday.actions @req FR:home/home.delegate
-  test('Defer 2h on a row defers 2 hours in one tap; Delegate marks it 🪄', async ({ page }) => {
+  // @req FR:home/myday.actions @req FR:task-detail-design/myday.message
+  test('Defer 2h on a row defers 2 hours in one tap; Message opens the detail on the composer', async ({ page }) => {
     const m = await setup(page, day());
     const first = page.locator('[data-testid="plan"] .block').first();
     await first.hover();
     await first.getByRole('button', { name: 'Defer 2h' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref: 'gamma:1', hours: 2 } });
     await first.hover();
-    await first.getByRole('button', { name: 'Delegate' }).click();
-    await expect.poll(() => m.calls.at(-1)?.body.text).toMatch(/^🪄 /);
+    await expect(first.getByRole('button', { name: 'Delegate' })).toHaveCount(0);
+    await first.getByRole('button', { name: /^Message / }).click();
+    await expect(page.getByRole('dialog', { name: 'Task detail' })).toBeVisible();
   });
 
   // @req FR:home/myday.actions
-  test('n and Shift+A act on the cursor row', async ({ page }, info) => {
+  test('n defers the cursor row; Enter opens it; Shift+A does not delegate on My day', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', KEYBOARD);
     const m = await setup(page, day());
     await page.keyboard.press('j');
@@ -885,8 +886,11 @@ test.describe('today view', () => {
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/suspend', body: { ref, hours: 2 } });
     await page.keyboard.press('j');
     const next = await page.locator('.block.cursor').getAttribute('data-ref');
+    const calls = m.calls.length;
     await page.keyboard.press('Shift+A');
-    await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/tasks/edit', body: { ref: next } });
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog', { name: 'Task detail' })).toContainText(await page.locator(`.block[data-ref="${next}"] .what-title`).innerText());
+    expect(m.calls.slice(calls).filter((c) => c.path === '/tasks/edit')).toEqual([]);
   });
 
   // @req FR:web-app/today.fit
@@ -939,19 +943,19 @@ test.describe('today view', () => {
   });
 
   // @req FR:web-app/today.needs @req FR:web-app/today.reply
-  test('Needs you: Go with it and Reply go to the agent inbox; the card shows it was sent', async ({ page }) => {
+  test('Needs you: Approve and Reply go to the agent inbox; the card shows it was sent', async ({ page }) => {
     const m = await setup(page, day());
     await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // @req FR:home/myday.quiet
     const card = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a vendor' });
     await expect(card.locator('.rec')).toContainText('Use Acme for now');
-    await card.getByRole('button', { name: 'Go with it' }).click();
+    await card.getByRole('button', { name: 'Approve: Use Acme for now' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'gamma:10', kind: 'decision', expect: '🙋 Pick a vendor' } });
     expect(m.calls.at(-1)!.body.text).toMatch(/^Go with the recommendation: Use Acme for now/);
     await expect(page.locator('[data-testid="needs"] .card', { hasText: 'Pick a vendor' })).toContainText('Sent, waiting on the agent');
     await expect(page.locator('[data-testid="needs"] .card').last()).toContainText('Pick a vendor');
     expect(m.calls.some((c) => c.path === '/tasks')).toBe(false);
     const plain = page.locator('[data-testid="needs"] .card', { hasText: 'Pick a color' });
-    await expect(plain.getByRole('button', { name: 'Go with it' })).toHaveCount(0);
+    await expect(plain.getByRole('button', { name: /^Approve/ })).toHaveCount(0);
     await plain.getByRole('button', { name: 'Reply' }).click();
     await plain.getByLabel('Reply').fill('Blue');
     await plain.getByRole('button', { name: 'Send' }).click();

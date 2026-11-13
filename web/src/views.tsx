@@ -1,18 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { approveLabel } from './asks';
 import type { CapacityRow } from './capacity';
-import type { Filters } from './filters';
+import { NO_FILTERS, type Filters } from './filters';
 import { children, dueDays } from './now';
 import type { Week } from './week';
 import { clock, estimate, nowMinutes, span, type Block, type Day, type Decision, type Plan } from './plan';
 import { joinable, type Busy, type CalEvent } from './meetings';
+import { AcctBadge } from './CalendarLink';
+import { multiAccount } from './settings';
 import { timelineOf } from './timeline';
 import { countdown, HAVE, topAsksOf, type Home, type HomeProject, type Window } from './home';
 import type { LiveStatus } from './live';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
-import { Chip, glyphOf, GROUPS, GROUP_NAMES, Md, type GroupName } from './parts';
+import { Titled } from './AgentAvatar';
+import { Chip, EmptyState, GROUPS, GROUP_NAMES, Md, TitleLinks, type GroupName } from './parts';
 import { parseRow } from './row';
 import type { Agent, InboxItem, Task } from './types';
 import type { ComponentChildren, JSX } from 'preact';
+import { DetailActions } from './TaskDetail';
 
 export const chipsOf = (text: string) => {
   const r = parseRow(text);
@@ -58,22 +63,17 @@ export function RowDetail({ t, all, busy, onAct, onToggle, onOpen, extra }: {
   const subs = children(all, t.ref).filter((s) => !/^\s*💬/u.test(s.text));
   return (
     <div class="row-detail" data-testid="row-detail" onClick={(e) => e.stopPropagation()}>
-      {t.notes.length > 0 && <div class="body">{t.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
+      {t.notes.length > 0 && <div class="body">{t.notes.map((n, i) => <p key={i}><Md text={n.trim()} project={t.project} /></p>)}</div>}
       {subs.length > 0 && (
         <ul class="checklist" aria-label="Subtasks">
           {subs.map((s) => <li key={s.ref} class={s.done ? 'done' : ''} style={{ '--depth': s.depth - t.depth - 1 }}>
             <button type="button" class="tick" aria-label={s.done ? 'Mark not done' : 'Mark done'} disabled={busy} onClick={(e) => { e.stopPropagation(); onToggle(s); }}><span class="box">{s.done ? '✓' : ''}</span></button>
-            <span><Md text={parseRow(s.text).title || s.text} /></span>
+            <span><Md text={parseRow(s.text).title || s.text} project={s.project} /></span>
           </li>)}
         </ul>
       )}
-      <div class="actions small">
-        <button type="button" class="btn primary" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('start', t.ref); }}>Start <kbd>s</kbd></button>
-        <button type="button" class="btn" disabled={busy} onClick={(e) => { e.stopPropagation(); onToggle(t); }}>{t.done ? 'Reopen' : 'Done'} <kbd>d</kbd></button>
-        <button type="button" class="btn quiet" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('defer', t.ref); }}>Defer <kbd>z</kbd></button>
-        <span class="grow" />
-        <button type="button" class="btn quiet" aria-label="Open" title="Open full screen (Enter)" onClick={(e) => { e.stopPropagation(); onOpen(t.ref); }}>⤢ <kbd>⏎</kbd></button>
-      </div>
+      {/* @req FR:task-detail-design/detail.actions */}
+      <DetailActions t={t} busy={busy} onStart={() => onAct('start', t.ref)} onDone={() => onToggle(t)} onDefer={() => onAct('defer', t.ref)} onOpen={() => onOpen(t.ref)} />
       {extra && <div class="row-extra">{extra(t)}</div>}
     </div>
   );
@@ -135,19 +135,19 @@ export function ListView(p: ListProps) {
         </div>
       )}
       <p class="count" aria-live="polite">{p.total} task{p.total === 1 ? '' : 's'}</p>
-      {p.total === 0 && <p class="empty-note">No tasks match.</p>}
+      {p.total === 0 && <EmptyState what="No tasks match." next={<button type="button" class="btn" onClick={() => p.onFilters({ ...NO_FILTERS })}>Clear filters</button>} />}
       <ul class="rows" data-testid="rows">
         {p.rows.map((t) => {
           const key = `${t.project}/${t.section}`;
           const head = key !== lastKey; lastKey = key;
           const phead = t.project !== lastProject; lastProject = t.project;
           return <>
-            {phead && <li class="group" key={`p-${t.project}`} role="presentation"><span>{p.titles.get(t.project) ?? t.project}</span></li>}
-            {head && <li class="section" key={`h-${key}`} role="presentation"><button type="button" aria-expanded="true" onClick={() => p.onSection(key)}>▾ {plainSection(t.section)}</button></li>}
+            {phead && <li class="group" key={`p-${t.project}`}><span><Titled text={p.titles.get(t.project) ?? t.project} /></span></li>}
+            {head && <li class="section" key={`h-${key}`}><button type="button" aria-expanded="true" onClick={() => p.onSection(key)}>▾ {plainSection(t.section)}</button></li>}
             <TaskRow key={t.ref} t={t} p={p} />
           </>;
         })}
-        {[...p.collapsed].filter((k) => p.all.some((t) => `${t.project}/${t.section}` === k)).map((k) => <li class="section" key={`c-${k}`} role="presentation"><button type="button" aria-expanded="false" onClick={() => p.onSection(k)}>▸ {plainSection(k.replace('/', ' · '))}</button></li>)}
+        {[...p.collapsed].filter((k) => p.all.some((t) => `${t.project}/${t.section}` === k)).map((k) => <li class="section" key={`c-${k}`}><button type="button" aria-expanded="false" onClick={() => p.onSection(k)}>▸ {plainSection(k.replace('/', ' · '))}</button></li>)}
       </ul>
     </section>
   );
@@ -187,16 +187,16 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
           <Editor text={t.text} onSave={(v) => p.onSave(t.ref, v)} onCancel={() => p.onEdit(null)} />
         ) : (
           <>
-            <div class="title">{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text" {...toggleOn<HTMLSpanElement>(t.ref, p)}><Md text={r.title || t.text} /></span></div>
+            <div class="title">{r.status && <Chip group="status" value={r.status} onPick={(g) => p.onPick([t.ref], g)} />}<Tags r={r} /><span class="text" {...toggleOn<HTMLSpanElement>(t.ref, p)}><Md text={r.title || t.text} project={t.project} /></span></div>
             <button type="button" class="edit-btn" aria-label={`Edit ${r.title || 'task'}`} onClick={(e) => { e.stopPropagation(); p.onEdit(t.ref); }}>✎</button>
             <div class="chips">
               {(['priority', 'effort'] as const).map((g) => { const c = chipsOf(t.text).find((x) => x.group === g); return c ? <Chip key={g} {...c} onPick={(gg) => p.onPick([t.ref], gg)} /> : <span key={g} class="slot" />; })}
               <button type="button" class="chip ghost" aria-label="Set properties" onClick={(e) => { e.stopPropagation(); p.onPick([t.ref], GROUP_NAMES); }}>＋</button>
-              {p.showProject && <span class="proj-tag">{p.titles.get(t.project) ?? t.project}</span>}
+              {p.showProject && <span class="proj-tag"><Titled text={p.titles.get(t.project) ?? t.project} /></span>}
               {p.agent?.chip(t)}
               <span class={`meta due${r.due ? dueClass(r.due) : ''}`}>{r.suspend ? `💤 ${r.suspend}` : r.due ?? ''}{r.recurrence ? ' ↻' : ''}</span>
               {(pr && pr.total > 0) || t.notes.length > 0 ? (
-                <button type="button" class="more" aria-expanded={open} aria-label={open ? 'Collapse details' : 'Expand details'} onClick={(e) => { e.stopPropagation(); p.onExpand(t.ref); }}>
+                <button type="button" class="more" aria-expanded={open} aria-label={`${open ? 'Collapse details' : 'Expand details'}${pr && pr.total > 0 ? ` ${pr.done}/${pr.total}` : ''}`} onClick={(e) => { e.stopPropagation(); p.onExpand(t.ref); }}>
                   {open ? '▾' : '▸'}{pr && pr.total > 0 ? ` ${pr.done}/${pr.total}` : ''}
                 </button>
               ) : <span class="more-slot" />}
@@ -204,7 +204,7 @@ function TaskRow({ t, p }: { t: Task; p: RowProps }) {
           </>
         )}
       </div>
-      {open && !editing && p.open !== t.ref && t.notes.length > 0 && <div class="notes">{t.notes.map((n, i) => <div key={i}><Md text={n.trim()} /></div>)}</div>}
+      {open && !editing && p.open !== t.ref && t.notes.length > 0 && <div class="notes">{t.notes.map((n, i) => <div key={i}><Md text={n.trim()} project={t.project} /></div>)}</div>}
       {p.open === t.ref && !editing && <RowDetail t={t} all={p.all} busy={p.busy} onAct={p.onAct} onToggle={p.onToggle} onOpen={p.onOpen} extra={p.detail} />}
       {p.agent?.talk(t)}
     </li>
@@ -231,59 +231,6 @@ function Editor({ text, onSave, onCancel }: { text: string; onSave: (t: string) 
   );
 }
 
-/** @req FR:web-app/now.focusmode */
-export function FocusMode({ task, all, busy, onToggle, onAct, onBack, extra }: {
-  task: Task; all: Task[]; busy: boolean; onToggle: (t: Task) => void; onAct: (a: 'start' | 'defer') => void; onBack: () => void;
-  /** Rendered under the actions (the task's agent thread). @req FR:agent-thread/web.hero */
-  extra?: ComponentChildren;
-}) {
-  const r = parseRow(task.text);
-  const subs = children(all, task.ref);
-  const box = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const prev = document.activeElement as HTMLElement | null;
-    box.current?.focus();
-    return () => prev?.focus?.();
-  }, []);
-  return (
-    <div ref={box} tabIndex={-1} class="focus-mode" role="dialog" aria-modal="true" aria-label="Focus"
-      onKeyDown={(e) => {
-        if (e.key !== 'Tab') return;
-        const els = [...box.current!.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((x) => !(x as HTMLButtonElement).disabled && x.getAttribute('type') !== 'hidden');
-        if (!els.length) return;
-        const i = els.indexOf(document.activeElement as HTMLElement);
-        e.preventDefault();
-        els[e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length].focus();
-      }}>
-      <button type="button" class="close" aria-label="Close" title="Close (Esc)" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></button>
-      <div class="focus-inner">
-        <p class="eyebrow">{task.project} · {task.section}</p>
-        <h1><Md text={r.title || task.text} /></h1>
-        <div class="chips">
-          {chipsOf(task.text).map((c) => <span key={c.group} class={`chip ${glyphOf(c.group, c.value).tone}`}>{GROUPS[c.group].set.find((x) => x.e.replace(/\uFE0F/g, '') === c.value.replace(/\uFE0F/g, ''))?.name}</span>)}
-          <Tags r={r} />
-          {r.due && <span class={`meta${dueClass(r.due)}`}>{r.due}</span>}
-        </div>
-        {task.notes.length > 0 && <div class="notes big">{task.notes.map((n, i) => <p key={i}><Md text={n.trim()} /></p>)}</div>}
-        {subs.length > 0 && (
-          <ul class="checklist" aria-label="Subtasks">
-            {subs.map((s) => <li key={s.ref} class={s.done ? 'done' : ''} style={{ '--depth': s.depth - task.depth - 1 }}>
-              <button type="button" class="tick" aria-label={s.done ? 'Mark not done' : 'Mark done'} disabled={busy} onClick={() => onToggle(s)}><span class="box">{s.done ? '✓' : ''}</span></button>
-              <span><Md text={parseRow(s.text).title || s.text} /></span>
-            </li>)}
-          </ul>
-        )}
-        <div class="actions">
-          <button type="button" class="btn primary" disabled={busy} onClick={() => onAct('start')}>Start <kbd>s</kbd></button>
-          <button type="button" class="btn" disabled={busy} onClick={() => onToggle(task)}>Done <kbd>d</kbd></button>
-          <button type="button" class="btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>z</kbd></button>
-        </div>
-        {extra}
-      </div>
-    </div>
-  );
-}
-
 /** @req FR:web-app/projects.glance */
 export function ProjectsView({ rows, week, onOpen }: { rows: (CapacityRow & { top?: Task })[]; week?: Week; onOpen: (p: string) => void }) {
   return (
@@ -295,7 +242,7 @@ export function ProjectsView({ rows, week, onOpen }: { rows: (CapacityRow & { to
           <li key={r.project} class={`prow${r.over ? ' over' : ''}${r.capacity === null ? ' nocap' : ''}`} data-testid={`cap-${r.project}`}>
             <button type="button" class="proj-btn" onClick={() => onOpen(r.project)}>
               <span class="proj-name">{r.title || r.project}</span>
-              <span class="proj-top">{r.top ? <Md text={parseRow(r.top.text).title || r.top.text} /> : <i>Nothing open</i>}</span>
+              <span class="proj-top">{r.top ? <Md text={parseRow(r.top.text).title || r.top.text} links={false} /> : <i>Nothing open</i>}</span>
               <span class="proj-count">{r.open}</span>
               <span class="bar" role="meter" aria-label={`${r.project} load`} aria-valuemin={0} aria-valuemax={r.capacity ?? undefined} aria-valuenow={Math.round(r.hours * 10) / 10} title={`${fmt(r.hours)}h effort${r.capacity === null ? '' : ` of ${fmt(r.capacity)}h capacity`}`}>
                 <span class="fill" style={{ width: `${Math.min(100, (r.ratio ?? (r.hours > 0 ? 1 : 0)) * 100)}%` }} />
@@ -362,12 +309,15 @@ export interface TodayProps {
   decisions: Decision[]; agents: Agent[] | null; agentsError: string; onRetryAgents: () => void; inbox: InboxItem[]; p: RowProps; busy: boolean;
   tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
   allDay: CalEvent[]; calError: string; onEmail: () => void;
+  /** The whole day's calendar events, past ones too, so badges stay on once a meeting ends. @req FR:connect-accounts/web.label */ dayEvents?: CalEvent[];
   onAct: (a: 'start' | 'done' | 'defer' | 'notnow' | 'delegate', ref: string) => void; onReply: (task: RefText, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
   /** The project's agent on each tile. @req FR:agent-team/web.anything */
   tileAgent?: { chip: (project: string, title: string) => ComponentChildren; talk: (project: string, title: string) => ComponentChildren };
   /** Change wake/bed for this day or its weekday. @req FR:home/day.override */ onTimes?: (c: DayChange) => Promise<boolean>;
   /** False when no calendar is connected. @req FR:home/day.nocal */ calendar?: boolean;
   /** Tomorrow's plan: offered late in the day, on when shown. @req FR:home/day.tomorrow */ tomorrow?: { offer: boolean; on: boolean; toggle: () => void };
+  /** The row message button: the owning agent's name, and open the detail with the composer focused. @req FR:task-detail-design/myday.message */
+  message?: { name: (t: Task) => string; open: (ref: string) => void };
 }
 export interface DayChange { wake?: string; bed?: string; every?: boolean; reset?: boolean }
 
@@ -414,6 +364,8 @@ export function TodayView(t: TodayProps) {
   const end = Math.min(t.day.origin ? 48 * 60 : 24 * 60, Math.max(t.day.end, start + t.budget.minutes, lastEnd));
   const personal = (t.day.blocks ?? []).filter((b) => b.kind === 'personal' && b.end > t.day.start && b.start < end);
   const nextMeeting = t.plan.meetings.find((m) => m.end > nowMin);
+  // Account badges only when the day spans more than one account. @req FR:connect-accounts/web.label
+  const multi = multiAccount(t.dayEvents ?? t.plan.meetings.flatMap((m) => m.events));
   const joinOf = (m: Busy) => joinable(m.events, t.now, Math.max(10, m.start - nowMin)) ?? m.events.find((e) => e.joinUrl)?.joinUrl;
   const meetingMin = t.plan.meetings.reduce((m, x) => m + Math.max(0, Math.min(x.end, t.day.end) - Math.max(x.start, start)), 0);
   // @req FR:home/myday.timeline
@@ -449,10 +401,10 @@ export function TodayView(t: TodayProps) {
       <li key={key} class={`agent ${a.state}`}>
         <span class="pulse" aria-hidden="true" />
         <div class="agent-body">
-          <p class="agent-title"><Md text={agentTitle(r.title || a.title)} /></p>
+          <p class="agent-title"><Md text={agentTitle(r.title || a.title)} project={a.project} /></p>
           <p class="agent-meta">
             <span class="agent-state">{AGENT_LABEL[a.state]}</span>
-            <span>{owner}</span>
+            <span><Titled text={owner} /></span>
             {a.prs.map((pr) => (
               <a key={pr.url} class={`pr ${pr.checks ?? ''} ${pr.state ?? ''}`} href={pr.url} target="_blank" rel="noopener noreferrer" title={pr.title ? `${pr.title}${pr.checks ? ` · checks ${pr.checks}` : ''}` : undefined}>
                 {pr.repo.split('/')[1]}#{pr.number}{pr.state === 'merged' ? ' merged' : pr.checks && CHECK[pr.checks] ? ` ${CHECK[pr.checks]}` : ''}
@@ -508,30 +460,33 @@ export function TodayView(t: TodayProps) {
       <div class="t-cols one">
         <div class="t-plan">
           {t.calError && <p class="cal-note">{t.calError}; meetings are not counted.</p>}
-          {t.plan.blocks.length === 0 && <p class="empty-note">{t.budget.minutes === 0 ? 'No time set for today. Add some with + or ].' : <>Nothing left that fits. Add something with <kbd>c</kbd>.</>}</p>}
+          {t.plan.blocks.length === 0 && (t.budget.minutes === 0 ? <EmptyState what="No time set for today." next={<>Add some with <kbd>+</kbd> or <kbd>]</kbd>.</>} /> : <EmptyState what="Nothing left that fits." next={<>Add something with <kbd>c</kbd>.</>} />)}
           {earlier && <p class="earlier" data-testid="earlier">Earlier · {clock(earlier.from)}–{clock(earlier.to)}</p>}
           <ol class="plan" data-testid="plan">
             {timeline.map((r) => r.kind === 'block'
-              ? <PlanBlock key={r.b.task.ref} b={r.b} p={t.p} busy={t.busy} onAct={t.onAct} />
-              : r.kind === 'meeting' ? <MeetingRow key={`m${r.m.start}`} m={r.m} />
+              ? <PlanBlock key={r.b.task.ref} b={r.b} p={t.p} busy={t.busy} onAct={t.onAct} message={t.message} />
+              : r.kind === 'meeting' ? <MeetingRow key={`m${r.m.start}`} m={r.m} multi={multi} />
                 : r.kind === 'band' ? <li key={`band${r.at}`} class={`band${r.personal ? ' personal' : ''}`} data-testid="band"><span><i class="band-glyph" aria-hidden="true">{r.emoji}</i>{r.name}</span><span class="band-time">{clock(r.from)}–{clock(r.to)}</span></li>
                   : r.kind === 'gap' ? <li key={`gap${r.at}`} class="gap"><time class="when">{clock(r.at)}</time><span>{span(r.min)} free</span></li>
                     : r.kind === 'now' ? <li key="now" class="now-line" aria-label={`Now ${clock(r.at)}`}><time>{clock(r.at)}</time></li>
                       : <li key="email" class="email-block"><time class="when">{clock(r.e.start)}<small>{span(r.e.end - r.e.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {r.e.count} ask{r.e.count === 1 ? '' : 's'}</button><kbd>g k</kbd></div></li>)}
           </ol>
           {over && (
-            <details class="nofit" data-testid="nofit">
+            // The +30m button sits beside the summary, not in it: no button inside a button (axe nested-interactive).
+            <div class="nofit-wrap" data-testid="nofit">
+            {t.onBudget && <button type="button" class="btn quiet nofit-more" title="More time (])" onClick={() => t.onBudget?.(t.budget.minutes + 30)}>+30m <kbd>]</kbd></button>}
+            <details class="nofit">
               <summary class="nofit-head">
                 <h3>{t.plan.overflow.length} don't fit{t.plan.atRisk.length > 0 && <span class="warn"> · {t.plan.atRisk.length} due soon</span>}</h3>
-                {t.onBudget && <button type="button" class="btn quiet" title="More time (])" onClick={(e) => { e.preventDefault(); t.onBudget?.(t.budget.minutes + 30); }}>+30m <kbd>]</kbd></button>}
               </summary>
               <ul>
                 {shownOver.map((o) => {
                   const e = estimate(o);
                   return (
-                    <li key={o.ref} class={t.plan.atRisk.includes(o) ? 'risk' : undefined} onDblClick={() => t.p.onOpen(o.ref)}>
+                    <li key={o.ref} class={t.plan.atRisk.includes(o) ? 'risk' : undefined} onClick={() => t.p.onOpen(o.ref)}>
                       <span class="nofit-est">{e.assumed ? '~' : ''}{span(e.minutes)}{e.partial ? '+' : ''}</span>
-                      <span class="nofit-title"><Md text={parseRow(o.text).title || o.text} /></span>
+                      <button type="button" class="nofit-title row-open" onClick={(e) => { e.stopPropagation(); t.p.onOpen(o.ref); }}><Md text={parseRow(o.text).title || o.text} links={false} /></button>
+                      <TitleLinks text={parseRow(o.text).title || o.text} project={o.project} />
                       <span class="nofit-proj"><DueNote due={parseRow(o.text).due} />{t.p.titles.get(o.project) ?? o.project}</span>
                     </li>
                   );
@@ -539,6 +494,7 @@ export function TodayView(t: TodayProps) {
               </ul>
               {t.plan.overflow.length > shownOver.length && <p class="nofit-later">{t.plan.overflow.length - shownOver.length} later</p>}
             </details>
+            </div>
           )}
         </div>
 
@@ -557,13 +513,13 @@ export function TodayView(t: TodayProps) {
               const rec = d.recommendation && !/:$/.test(d.recommendation) ? d.recommendation : undefined;
               return (
                 <li class={`card need${sent.length ? ' decided' : ''}`} key={key}>
-                  <p class="card-eyebrow">{owner}{d.context ? ` · ${parseRow(d.context.text).title.replace(/\s--\s/g, ' — ')}` : ''}</p>
-                  <p class="card-title"><Md text={r.title || d.task.text} /></p>
-                  {rec && sent.length === 0 && <p class="rec"><span>Recommended</span><Md text={rec} /></p>}
+                  <p class="card-eyebrow"><Titled text={owner} />{d.context ? ` · ${parseRow(d.context.text).title.replace(/\s--\s/g, ' — ')}` : ''}</p>
+                  <p class="card-title"><Md text={r.title || d.task.text} project={d.task.project} /></p>
+                  {rec && sent.length === 0 && <p class="rec"><span>Recommended</span><Md text={rec} project={d.task.project} /></p>}
                   {sent.length > 0 && <p class="waiting-agent">Sent, waiting on the agent</p>}
                   <Sent items={sent} now={t.now} />
                   <div class="card-actions">
-                    {rec && sent.length === 0 && <button type="button" class="btn primary" disabled={t.busy} onClick={() => t.onAccept(d)}>Go with it</button>}
+                    {rec && sent.length === 0 && <button type="button" class="btn primary" disabled={t.busy} onClick={() => t.onAccept(d)}>{approveLabel(rec)}</button>}
                     <button type="button" class="btn" aria-expanded={replying === key} onClick={() => setReplying(replying === key ? null : key)}>Reply</button>
                     <button type="button" class="btn quiet" onClick={() => t.p.onOpen(d.task.ref)}>Details</button>
                   </div>
@@ -592,8 +548,8 @@ export function TodayView(t: TodayProps) {
             {t.tops.filter((x) => x.task).map((x) => (
               <li key={x.project}>
                 <button type="button" class="tile" onClick={() => t.onProject(x.project)}>
-                  <span class="tile-name">{x.title}</span>
-                  <span class="tile-top"><Md text={parseRow(x.task!.text).title || x.task!.text} /></span>
+                  <span class="tile-name"><Titled text={x.title} /></span>
+                  <span class="tile-top"><Md text={parseRow(x.task!.text).title || x.task!.text} links={false} /></span>
                   {t.tileAgent?.chip(x.project, x.title)}
                 </button>
                 {t.tileAgent?.talk(x.project, x.title)}
@@ -609,14 +565,14 @@ export function TodayView(t: TodayProps) {
 }
 
 /** Meetings: fixed time, not tasks; overlapping ones stack, each with its own Join. @req FR:web-app/today.meetings */
-function MeetingRow({ m }: { m: Busy }) {
+function MeetingRow({ m, multi }: { m: Busy; multi: boolean }) {
   return (
     <li class="meeting">
       <time class="when">{clock(m.start)}<small>{clock(m.end)}</small></time>
       <div class="what">
         {m.events.map((e) => (
           <p key={e.id} class="m-line">
-            <span class="m-title">{e.subject}</span>
+            <span class="m-title">{multi && e.account && <AcctBadge account={e.account} />}{e.subject}</span>
             {e.showAs === 'tentative' && <span class="m-tent">Tentative</span>}
             {e.joinUrl && <a class="join" href={e.joinUrl} target="_blank" rel="noopener noreferrer">Join</a>}
           </p>
@@ -626,28 +582,38 @@ function MeetingRow({ m }: { m: Busy }) {
   );
 }
 
-function PlanBlock({ b, p, busy, onAct }: { b: Block; p: RowProps; busy: boolean; onAct: TodayProps['onAct'] }) {
+const MSG_ICON = <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5.5h16v10H9l-5 4v-14Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" /></svg>;
+
+/**
+ * A My day row: one click or tap (or Enter, or double-click) opens the detail; pointer, hover, focus, and a chevron say so. Done, Start, Defer 2h, Message.
+ * @req FR:task-detail-design/detail.open @req FR:task-detail-design/myday.message @req FR:task-detail-design/myday.nodelegate @req FR:home/myday.actions
+ */
+function PlanBlock({ b, p, busy, onAct, message }: { b: Block; p: RowProps; busy: boolean; onAct: TodayProps['onAct']; message?: TodayProps['message'] }) {
   const r = parseRow(b.task.text);
-  const isCursor = p.cursor === b.task.ref;
+  const ref = b.task.ref;
+  const isCursor = p.cursor === ref;
+  const open = () => { p.onCursor(ref); p.onOpen(ref); };
+  const who = message?.name(b.task) ?? 'the agent';
   return (
-    <li class={`block${isCursor ? ' cursor' : ''}`} data-ref={b.task.ref} style={{ '--min': b.end - b.start }} onClick={() => p.onCursor(b.task.ref)}>
+    <li class={`block${isCursor ? ' cursor' : ''}`} data-ref={ref} style={{ '--min': b.end - b.start }}>
       <time class="when">{clock(b.start)}<small title={b.assumed ? 'No effort set; 30 min assumed' : undefined}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</small></time>
-      <div class="what">
-        <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', b.task.ref); }}><span class="box" /></button>
+      <div class="what" onClick={(e) => { if ((e.target as HTMLElement).closest('a')) return; open(); }} onDblClick={open}>
+        <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', ref); }}><span class="box" /></button>
         <div class="what-body">
-          <p class="what-title" onDblClick={() => p.onOpen(b.task.ref)}><Md text={r.title || b.task.text} /></p>
+          <p class="what-title"><button type="button" class="row-open" aria-label={`Open ${r.title || b.task.text}`} onClick={(e) => { e.stopPropagation(); open(); }} onFocus={() => p.onCursor(ref)}><Md text={r.title || b.task.text} links={false} /></button><TitleLinks text={r.title || b.task.text} project={b.task.project} /></p>
           <p class="what-meta">
             <span>{p.titles.get(b.task.project) ?? b.task.project}</span>
             <DueNote due={r.due} />
-            {chipsOf(b.task.text).filter((c) => c.group === 'status').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([b.task.ref], g)} />)}
+            {chipsOf(b.task.text).filter((c) => c.group === 'status').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([ref], g)} />)}
             <Tags r={r} />
           </p>
         </div>
         <span class="row-acts">
-            <button type="button" class="ic" title="Start (s)" aria-label="Start" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('start', b.task.ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor" /></svg></button>
-            <button type="button" class="ic" title="Defer 2 hours (n)" aria-label="Defer 2h" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('notnow', b.task.ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v4.5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></button>
-            <button type="button" class="ic" title="Delegate to an agent (Shift+A)" aria-label="Delegate" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('delegate', b.task.ref); }}>🪄</button>
+            <button type="button" class="ic" title="Start: marks it in progress" aria-label="Start" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('start', ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor" /></svg></button>
+            <button type="button" class="ic" title="Defer 2h: back in 2 hours" aria-label="Defer 2h" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('notnow', ref); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v4.5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></button>
+            {message && <button type="button" class="ic" title={`Message ${who}`} aria-label={`Message ${who}`} onClick={(e) => { e.stopPropagation(); message.open(ref); }}>{MSG_ICON}</button>}
         </span>
+        <span class="chev" aria-hidden="true">›</span>
       </div>
     </li>
   );
@@ -785,7 +751,7 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
       {!one && <div class="empty"><h1>Nothing active</h1><p>Add something: press <kbd class="always">c</kbd></p></div>}
       {one && hero && (
         <div class={`focus-block${p.cursor === one.task.ref ? ' cursor' : ''}${p.justDone.has(one.task.ref) ? ' done-anim' : ''}`} data-ref={one.task.ref} aria-label="Next task" role="group" onClick={() => p.onCursor(one.task.ref)}>
-          <h1 data-testid="next-title"><span class="h1-toggle" {...toggleOn<HTMLSpanElement>(one.task.ref, p)}><Md text={hero.title || one.task.text} /></span></h1>
+          <h1 data-testid="next-title"><span class="h1-toggle" {...toggleOn<HTMLSpanElement>(one.task.ref, p)}><Md text={hero.title || one.task.text} project={one.task.project} /></span></h1>
           <p class="context" data-testid="now-context">{p.titles.get(one.task.project) ?? one.task.project}{one.due?.tone === 'late' && <> · <span class="late">late</span></>}{p.agent?.owned?.(one.task) && <> · <span class="owned">agent has it</span></>}</p>
           {!h.fits && !demoted && (
             <p class="nofit-line" data-testid="nofit">{win.allow && !win.have && !one.task.text.replace(/\uFE0F/g, '').includes(win.allow.emoji.replace(/\uFE0F/g, '')) && !win.allow.projects?.includes(one.task.project) ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : win.allow && !win.have ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${win.until && win.until.at < win.inside!.until ? win.until.label : `${win.inside!.label} ends`}` : win.inside && !win.have ? `${win.inside.label} now: back at ${clock(win.inside.until)}` : minutesLeft > 0 ? `No time for this now: needs ${span(one.minutes)}, ${span(minutesLeft)} until ${until}` : 'No time left today'}</p>
@@ -803,7 +769,7 @@ export function HomeView({ h, minutesLeft, win, have, onHave, p, busy, onAct, on
       )}
       {demoted && (
         <div class={`unfit${p.cursor === demoted.task.ref ? ' cursor' : ''}`} data-testid="unfit" data-ref={demoted.task.ref} onClick={() => p.onCursor(demoted.task.ref)}>
-          <span class="unfit-title"><Md text={parseRow(demoted.task.text).title || demoted.task.text} /></span>
+          <span class="unfit-title"><Md text={parseRow(demoted.task.text).title || demoted.task.text} project={demoted.task.project} /></span>
           <span class="unfit-why">{win.allow && !win.have ? `${win.inside!.label} until ${clock(win.inside!.until)}: only ${win.allow.emoji} tasks now` : `doesn't fit now: needs ${span(demoted.minutes)}, ${span(minutesLeft)}${until ? ` until ${until}` : ' left'}`}</span>
           <span class="grow" />
           <button type="button" class="btn quiet" onClick={onMoreTime}>More time <kbd>]</kbd></button>
@@ -850,7 +816,7 @@ function TopRow({ x, p, detail, onProject, armed }: { armed: boolean; x: HomePro
   return (
     <li class={`${p.cursor === ref ? 'cursor' : ''}${p.open === ref ? ' open' : ''}${fresh ? ' fresh' : ''}`} data-ref={ref} onClick={() => { p.onCursor(ref); p.onToggleOpen(ref); }}>
       <button type="button" class="proj-link" onClick={(e) => { e.stopPropagation(); onProject(x.project); }}>{x.title}</button>
-      <span class="proj-top" {...toggleOn<HTMLSpanElement>(ref, p)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} /></span>
+      <span class="proj-top" {...toggleOn<HTMLSpanElement>(ref, p)}><Md text={parseRow(x.top.task.text).title || x.top.task.text} project={x.top.task.project} /></span>
       <span class="top-meta">
         <span class="top-time" data-testid="top-time">{x.top.assumed ? '~' : ''}{span(x.top.minutes)}</span>
         {x.top.due ? <span class={`top-due ${late ? x.top.due.tone : ''}`} data-testid="countdown">{x.top.due.text}</span> : <span class="top-due" aria-hidden="true" />}

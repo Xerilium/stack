@@ -39,7 +39,7 @@ describe('triage results hook', () => {
   it('runTriage returns the results it triaged', async () => {
     const { ctx } = mkCtx();
     const provider = { delta: async () => ({ messages: [msg()], cursor: 'x' }), createDraft: async () => ({ id: 'D', webLink: 'https://o.example.test/D' }) };
-    const r = await runTriage({ ctx, provider, rules: { owner: [], vip: [], sensitive: [], sensitivePatterns: [], receiptSenderPatterns: [], receiptSubjectPatterns: [] }, classifier: { classify: async () => ({ class: 'fyi', urgency: 0, confidence: 0.9, reason: 'r' }) } });
+    const r = await runTriage({ ctx, provider, rules: { owner: [], vip: [], sensitive: [], sensitivePatterns: [], sensitiveKeywords: [], receiptSenderPatterns: [], receiptSubjectPatterns: [] }, classifier: { classify: async () => ({ class: 'fyi', urgency: 0, confidence: 0.9, reason: 'r' }) } });
     expect(r.results.map((x) => x.class)).toEqual(['fyi']);
   });
 });

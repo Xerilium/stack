@@ -36,14 +36,14 @@ test.describe('Agent thread', () => {
     await expect(th.locator('.th-item')).toHaveCount(4);
     const metas = th.locator('.th-meta');
     await expect(metas.nth(0)).toHaveText(/^You · /);
-    await expect(metas.nth(1)).toHaveText(/^CoS · /);
+    await expect(metas.nth(1)).toHaveText(/^Roll-up · /); // @req FR:task-detail-design/compose.to: a name that is only the slug shows the role
     await expect(th.locator('.th-text.you')).toHaveText('Can you take this one?');
     await expect(th.locator('.th-item.review .th-text')).toHaveText('Partly · 1h: Merge the docs PRs, hold the schema one');
     await expect(th.locator('.th-ask .th-text')).toHaveText('Merge the docs PRs without a second review?');
     await th.locator('.th-ask').getByRole('button', { name: 'Approve' }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/q1/answer')?.body).toEqual({ answer: 'go' });
     await expect(th.locator('.th-ask .th-state')).toHaveText('Approved');
-    await expect(th.getByRole('group', { name: /Talk to CoS/ })).toBeVisible();
+    await expect(th.getByRole('group', { name: 'Message' })).toBeVisible();
   });
 
   test('a opens the task and focuses the composer; Ask saves on the task and starts the agent; a second ask follows up an idle session', async ({ page }, info) => {
@@ -56,8 +56,8 @@ test.describe('Agent thread', () => {
     await expect(box).toBeFocused();
     await page.keyboard.type('Is the plan solid?');
     await page.keyboard.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toEqual({ ref: 'alpha:6', text: 'Is the plan solid?', kind: 'reply' });
-    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Is the plan solid?', agent: 'cos', ref: 'alpha:6' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toEqual({ ref: 'alpha:6', text: 'Is the plan solid?', kind: 'reply', agent: 'alpha-lead' }); // @req FR:product-reset/ui.thread: the composer's agent rides with the message
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Is the plan solid?', agent: 'alpha-lead', ref: 'alpha:6' });
     await expect(r.locator('.thread .th-text.you')).toHaveText('Is the plan solid?');
     await expect(r.locator('.thread .th-note.live')).toContainText('Working');
     // The session goes idle: the next question is a follow-up to it, not a new session.
@@ -68,7 +68,7 @@ test.describe('Agent thread', () => {
     await expect(box).toBeFocused();
     await page.keyboard.type('And the deploy?');
     await page.keyboard.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path.endsWith('/prompt'))?.body, { timeout: 15_000 }).toEqual({ text: 'And the deploy?', ref: 'alpha:6', agent: 'cos' }); // the persona rides along on a follow-up
+    await expect.poll(() => m.calls.find((c) => c.path.endsWith('/prompt'))?.body, { timeout: 15_000 }).toEqual({ text: 'And the deploy?', ref: 'alpha:6', agent: 'alpha-lead' }); // the persona rides along on a follow-up
     expect(m.calls.filter((c) => c.path === '/sessions')).toHaveLength(1);
     expect(m.calls.find((c) => c.path.endsWith('/assign'))).toBeUndefined(); // a capital A typed in the box is text, not the shortcut
     await page.keyboard.press('Escape'); // leaves the box
@@ -76,15 +76,16 @@ test.describe('Agent thread', () => {
     await expect(r.locator('.thread')).toHaveCount(0);
   });
 
-  test('Assign claims the row and starts the agent with the assign prompt; the Home hero has the thread too', async ({ page }) => {
+  // @req FR:task-detail-design/compose.doit
+  test('Do it claims the row and starts the owning agent; the Home hero has the thread too', async ({ page }) => {
     const m = await open(page);
     const r = row(page, 'alpha:9');
     await r.locator('.title .text').click();
-    await r.locator('.thread').getByRole('button', { name: /^Assign/ }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'cos' });
-    await expect(page.locator('.toast')).toContainText('Assigned to cos');
+    await r.locator('.thread').getByRole('radio', { name: 'Do it' }).click();
+    await r.locator('.thread').getByRole('button', { name: 'Do it', exact: true }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' });
+    await expect(page.locator('.toast')).toContainText('Assigned to alpha-lead');
     await expect(r.locator('.thread .th-note.live')).toContainText('Working');
-    if (await page.getByRole('dialog').count()) { await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); } // the roll-up is long-running: Keep open shows the drawer
     await page.goto('/#/home');
     const hero = page.locator('.focus-block');
     await expect(hero).toBeVisible();
@@ -97,8 +98,9 @@ test.describe('Agent thread', () => {
     const m = await open(page);
     await row(page, 'alpha:9').click();
     await page.keyboard.press('Shift+A');
-    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'cos' });
-    await expect(page.locator('.toast')).toContainText('Assigned to cos');
+    // @req FR:task-detail-design/compose.to — the same owner as the composer and the row's Message button
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/alpha:9/assign')?.body).toEqual({ agent: 'alpha-lead' });
+    await expect(page.locator('.toast')).toContainText('Assigned to alpha-lead');
     await expect(row(page, 'alpha:9').locator('.agent-chip')).toHaveText('Working');
   });
 
@@ -115,16 +117,18 @@ test.describe('Agent thread', () => {
     await expect(focus.locator('.thread input[type="text"]')).toBeVisible();
   });
 
-  test('without a runner the thread still reads and Ask saves on the task; Assign is off', async ({ page }) => {
+  test('without a runner the thread still reads and Ask saves on the task; Do it is off', async ({ page }) => {
     const m = await open(page, { runner: false });
     const r = row(page, 'alpha:9');
     await r.locator('.title .text').click();
     const th = r.locator('.thread');
     await expect(th.locator('.th-item')).toHaveCount(4);
-    await expect(th.getByRole('button', { name: /^Assign/ })).toBeDisabled();
+    await th.getByRole('radio', { name: 'Do it' }).click();
+    await expect(th.getByRole('button', { name: 'Do it', exact: true })).toBeDisabled();
+    await th.getByRole('radio', { name: 'Ask' }).click();
     await th.locator('input[type="text"]').fill('Noted, thanks');
     await th.locator('input[type="text"]').press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toEqual({ ref: 'alpha:9', text: 'Noted, thanks', kind: 'reply' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toEqual({ ref: 'alpha:9', text: 'Noted, thanks', kind: 'reply', agent: 'alpha-lead' });
     await expect(page.locator('.toast')).toContainText('runs in stack web');
     expect(m.calls.find((c) => c.path === '/sessions')).toBeUndefined();
   });

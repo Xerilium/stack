@@ -77,6 +77,27 @@ describe('send', () => {
     expect(r2.id).not.toBe(r.id);
     expect(parseInbox((await storage.read('tasks/inbox/alpha.md')).content).map((e) => [e.kind, e.to])).toEqual([['reply', 'agent'], ['decision', 'human']]);
   });
+  // @req FR:agent-inbox/inbox.kinds
+  it('stores an instruction in the same format', async () => {
+    const { storage, ctx } = await mk();
+    await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'Draft it from the changelog / keep it short', 'instruction');
+    const f = (await storage.read('tasks/inbox/alpha.md')).content;
+    expect(f).toContain('- kind: instruction\n- to: agent');
+    expect(parseInbox(f)[0]).toMatchObject({ kind: 'instruction', state: 'open' });
+    await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x', 'nope' as never)).rejects.toThrow(LifecycleError);
+  });
+  // @req FR:product-reset/ui.thread: the picker's recipient travels with the message
+  it('stores the agent an owner message is for, and reads it back without marking it from an agent', async () => {
+    const { storage, ctx } = await mk();
+    await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'Take this one', 'instruction', undefined, undefined, 'cid-manager');
+    const f = (await storage.read('tasks/inbox/alpha.md')).content;
+    expect(f).toContain('- to: agent\n- agent: cid-manager\n- ref:');
+    const [e] = parseInbox(f);
+    expect(e).toMatchObject({ agent: 'cid-manager', to: 'agent' });
+    expect(e).not.toHaveProperty('from');
+    expect(formatEntry(e)).toBe(f.slice(f.indexOf('## ')));
+    await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x', 'instruction', undefined, undefined, 'bad slug!')).rejects.toThrow(LifecycleError);
+  });
   it('marks plain rows as to: none', async () => {
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply');
@@ -158,6 +179,18 @@ describe('list', () => {
     expect((await listInbox(ctx, { state: 'all' })).map((e) => [e.project, e.text, e.state])).toEqual([['alpha', 'one', 'handled'], ['beta', 'two', 'open']]);
     expect((await listInbox(ctx, { project: 'alpha', state: 'all' })).map((e) => e.text)).toEqual(['one']);
   });
+  // @req FR:product-reset/ui.thread: a picked agent finds the message wherever the task is
+  it('with agent: messages addressed to it in any project, plus its project\'s unaddressed ones', async () => {
+    const { storage, ctx } = await mk();
+    await storage.write('tasks/beta.md', '# Beta\n\n## Active\n\n- [ ] 🤖 Fix build\n');
+    await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'to cid', 'instruction', undefined, undefined, 'cid');
+    await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'alpha plain', 'instruction');
+    await sendToInbox(ctx, { path: 'tasks/beta.md', line: 4 }, 'to bea', 'instruction', undefined, undefined, 'bea');
+    await sendToInbox(ctx, { path: 'tasks/beta.md', line: 4 }, 'beta plain', 'instruction');
+    expect((await listInbox(ctx, { agent: 'cid' })).map((e) => e.text)).toEqual(['to cid']);
+    expect((await listInbox(ctx, { agent: 'bea', project: 'beta' })).map((e) => e.text)).toEqual(['to bea', 'beta plain']);
+    expect((await listInbox(ctx, { agent: 'cid', project: 'beta' })).map((e) => e.text)).toEqual(['to cid', 'beta plain']); // never beta's message to bea
+  });
 });
 
 // @req FR:agent-inbox/inbox.handle
@@ -176,6 +209,20 @@ describe('handle', () => {
     expect(await handleEntry(ctx, b.id, 'token:x')).toEqual({ changed: false });
     await expect(handleEntry(ctx, 'in-nope', 'token:x')).rejects.toThrow('Inbox entry not found');
     expect(a.id).toBeTruthy();
+  });
+});
+
+// @req FR:agent-inbox/inbox.withdraw
+describe('withdraw', () => {
+  it("marks the entry withdrawn, keeps it in the file, and hides it from the list unless asked", async () => {
+    const { storage, ctx } = await mk();
+    const a = await sendToInbox(ctx, { path: "tasks/alpha.md", line: 5 }, "one", "instruction");
+    const b = await sendToInbox(ctx, { path: "tasks/alpha.md", line: 6 }, "two", "instruction");
+    expect(await handleEntry(ctx, a.id, "owner", "Withdrawn by the owner", { withdrawn: true })).toEqual({ changed: true });
+    expect(parseInbox((await storage.read("tasks/inbox/alpha.md")).content)[0]).toMatchObject({ id: a.id, state: "handled", withdrawn: true, note: "Withdrawn by the owner" });
+    expect((await listInbox(ctx, { state: "all" })).map((e) => e.id)).toEqual([b.id]);
+    expect((await listInbox(ctx, { state: "all", withdrawn: true })).map((e) => [e.id, e.withdrawn ?? false])).toEqual([[a.id, true], [b.id, false]]);
+    expect(formatEntry(entry({ state: "handled", withdrawn: true }))).toContain("- withdrawn: true");
   });
 });
 

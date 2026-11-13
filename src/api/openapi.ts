@@ -8,11 +8,18 @@ import { ERROR_CODES, STATUS } from './errors';
 import { QUERY_DEFAULTS, ROUTES } from './handler';
 import { ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES } from '../core/asks';
 import { REPORT_ASK_KINDS } from '../core/reports';
+import { PROJECTS, SESSION_REASONS, SESSION_STATES } from '../core/session-inventory';
+import { PRI_ITEM_STATUSES, PRI_STATUSES } from '../core/pris';
+import { ITEM_STATES, LIVE_STATES } from '../core/live-lane';
+import { INBOX_KINDS } from '../core/inbox';
+import { ESC_STATUSES, REC_STATES } from '../core/pr-priority';
 import { ANCHORS, CADENCES, WEEKDAYS } from '../core/model';
 import { MAX_STR, REF_RE, type Spec } from './validate';
 
 type J = Record<string, unknown>;
 const ref = (name: string, kind = 'schemas'): J => ({ $ref: `#/components/${kind}/${name}` });
+/** A Connect sign-in session. Never a token or code. @req FR:connect-accounts/flow.session */
+const SESSION: J = { type: 'object', properties: { id: { type: 'string' }, method: { type: 'string', enum: ['browser', 'device'] }, state: { type: 'string', enum: ['waiting', 'done', 'error'] }, url: { type: 'string' }, userCode: { type: 'string' }, verificationUri: { type: 'string' }, expiresAt: { type: 'string' }, account: { type: 'string' }, error: { type: 'string' } } };
 
 interface RouteDoc {
   operationId: string;
@@ -27,11 +34,22 @@ interface RouteDoc {
 }
 
 const mutation = (status: string): J => ({ [status]: ref('Mutation', 'responses'), default: ref('Error', 'responses') });
+const BUILD_STAMP: J = { type: 'object', nullable: true, properties: { version: { type: 'string' }, sha: { type: 'string' }, dirty: { type: 'boolean' }, builtAt: { type: 'string', format: 'date-time' } } };
+/** @req FR:devops-installer/$version-state */
+const VERSION_STATE: J = {
+  type: 'object', properties: {
+    running: BUILD_STAMP, available: BUILD_STAMP, ready: { type: 'boolean' }, mode: { type: 'string', enum: ['on-quit', 'ask', 'auto-idle', 'off'] },
+    idleMinutes: { type: 'integer' }, canRestart: { type: 'boolean' },
+    last: { type: 'object', nullable: true, properties: { ok: { type: 'boolean' }, step: { type: 'string' }, at: { type: 'string' } } },
+  },
+};
 const ok = (description: string, schema: J, status = '200'): J => ({
   [status]: { description, content: { 'application/json': { schema } } },
   default: ref('Error', 'responses'),
 });
 
+/** Inbox source status, shared by GET /inbox-sources and GET /inbox-items. @req FR:inbox-page/api.sources */
+const SOURCES_PROPS = { sources: { type: 'array', items: { type: 'object', properties: { kind: { type: 'string', enum: ['email', 'github', 'teams', 'slack'] }, account: { type: 'string' }, state: { type: 'string', enum: ['not-connected', 'connecting', 'ok', 'error', 'stale'] }, lastSyncAt: { type: 'string', format: 'date-time' }, error: { type: 'string' }, needs: { type: 'string' }, command: { type: 'string' }, connect: { type: 'boolean', description: 'The step is the in-app Connect panel, not a command' }, doc: { type: 'string' }, mode: { type: 'string', enum: ['read-only', 'drafts'] }, planned: { type: 'boolean' } } } }, summary: { type: 'object', properties: { connected: { type: 'integer' }, total: { type: 'integer' }, fresh: { type: 'integer' }, attention: { type: 'boolean' }, canClaimZero: { type: 'boolean' }, headline: { type: 'string', nullable: true } } } };
 const DOCS: Record<string, RouteDoc> = {
   next: {
     operationId: 'next', summary: 'Top-ranked task',
@@ -50,6 +68,17 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'addTask', summary: 'Add a task',
     desc: { project: 'File base name, title, or alias', section: 'Default Active', text: 'One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy)', expect: 'Expected current parent row text; 409 conflict when the parent row differs (stale line number)' },
     responses: mutation('201'),
+  },
+  feedback: {
+    operationId: 'sendFeedback', summary: 'Owner only. Append one feedback line to ~/.stack/feedback.jsonl (docs/feedback.md) for an agent to tail. Tokens in text and the route query are removed. 404 on hosts with no store',
+    desc: {
+      text: 'The feedback', route: 'The app route (query string dropped)', viewport: 'Width x height, such as 1280x800', theme: 'The app theme',
+      capture: 'Ask the desktop host to capture the window as the screenshot', png: 'A base64 PNG screenshot (browser), at most 700 KB decoded',
+    },
+    responses: {
+      '201': { description: 'Stored', content: { 'application/json': { schema: { type: 'object', required: ['id', 'at', 'screenshot'], properties: { id: { type: 'string' }, at: { type: 'string', format: 'date-time' }, screenshot: { type: 'boolean' } } } } } },
+      default: ref('Error', 'responses'),
+    },
   },
   capture: {
     operationId: 'captureTask', summary: 'Add a task from a natural-language or speech phrase',
@@ -71,7 +100,7 @@ const DOCS: Record<string, RouteDoc> = {
   'tasks.suspend': { operationId: 'suspendTask', summary: 'Suspend a task for days or hours. Owner session only (403 for tokens)', responses: mutation('200') },
   'tasks.set': {
     operationId: 'setTask', summary: 'Set task properties. Tokens: ref required; autonomy triage (priority, effort, impact), assist (status), fills missing priority/effort/impact only; checkbox, clearEmojis, and gate marks are owner-only (403)',
-    desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears' },
+    desc: { suspend: '`MMM d`, `HH:mm`, or `MMM d HH:mm`; empty clears', expect: 'Expected current task text; 409 conflict when the row differs (stale line number)' },
     responses: mutation('200'),
   },
   'tasks.triage': {
@@ -113,16 +142,45 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'inbox.send': {
     operationId: 'sendToInbox', summary: 'Send a reply or decision to the agent inbox of the task project (tasks/inbox). Owner session only: 403 for tokens',
-    desc: { text: 'Your words to the agent; secrets are redacted', expect: 'Expected current row text at ref; 409 conflict when the row differs' },
+    desc: { text: 'Your words to the agent; secrets are redacted', expect: 'Expected current row text at ref; 409 conflict when the row differs', agent: 'Slug of the agent the message is for (the Now picker); default: the task agent' },
     responses: ok('Sent', { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' } } }, '201'),
   },
   'inbox.list': {
     operationId: 'listInbox', summary: 'Inbox entries for agents to act on (open by default)',
+    desc: { agent: 'Agent slug: messages picked for it in any project, plus the unaddressed ones in project' },
     responses: ok('Entries', { type: 'object', properties: { items: { type: 'array', items: ref('InboxEntry') } } }),
   },
   'inbox.handle': {
     operationId: 'handleInboxEntry', summary: 'Mark an inbox entry handled after acting on it',
+    desc: { withdrawn: 'Owner only (403 for tokens): the owner took the message back (Undo); lists and the thread then hide it' },
     responses: ok('Handled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
+  },
+  'connect.get': {
+    operationId: 'getConnect', summary: 'Whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Never a token. Owner session only: 403 for tokens; 404 on a host without Connect',
+    responses: ok('Accounts', { type: 'object', properties: { setup: { type: 'object', properties: { clientId: { type: 'boolean' } } }, accounts: { type: 'array', items: { type: 'object', properties: { account: { type: 'string' }, type: { type: 'string', enum: ['personal', 'work'] }, mail: { type: 'boolean' }, calendar: { type: 'boolean' }, drafts: { type: 'boolean' }, state: { type: 'string', enum: ['connected', 'expired', 'down', 'error'], description: 'expired: needs sign-in; down: Microsoft not responding (retries on its own)' }, lastOkAt: { type: 'string', format: 'date-time', description: 'The last good live read' }, retryAt: { type: 'string', format: 'date-time', description: 'The next automatic try, while the account is not connected' } } } } } }),
+  },
+  'connect.setup': {
+    operationId: 'runConnectSetup', summary: 'Run the one-time app registration (scripts/register-stack-app.ps1, Az PowerShell). Returns a state code only: done, needs-azure-signin, needs-pwsh, failed. Owner session only',
+    responses: ok('Setup state', { type: 'object', properties: { state: { type: 'string', enum: ['done', 'needs-azure-signin', 'needs-pwsh', 'failed'] } } }),
+  },
+  'connect.start': {
+    operationId: 'startConnect', summary: 'Start a Microsoft sign-in: the browser opens the sign-in page (PKCE, loopback), or a device code shows in the page. Read-only scopes; drafts opt-in; never send. 409 until setup has run. Owner session only',
+    desc: { account: 'Mailbox address to sign in (login hint)', drafts: 'Also ask for Mail.ReadWrite (reply drafts)', method: 'browser (default) or device' },
+    responses: ok('Sign-in session', SESSION, '201'),
+  },
+  'connect.poll': {
+    operationId: 'getConnectSession', summary: 'A sign-in session: waiting, done (with the account) or error (an OAuth code). Owner session only',
+    responses: ok('Sign-in session', SESSION),
+  },
+  'connect.drafts': {
+    operationId: 'setConnectDrafts', summary: 'Turn reply drafts on (starts a sign-in that asks for Mail.ReadWrite) or off (read scopes only from the next refresh). Owner session only',
+    desc: { account: 'Mailbox address', on: 'Drafts on or off' },
+    responses: ok('Session or ok', { type: 'object' }),
+  },
+  'connect.remove': {
+    operationId: 'removeConnect', summary: 'Disconnect an account: deletes its token cache. Owner session only',
+    desc: { account: 'Mailbox address' },
+    responses: ok('Removed', { type: 'object', properties: { ok: { type: 'boolean' } } }),
   },
   'calendar.list': {
     operationId: 'listCalendar', summary: 'Calendar events overlapping a range (at most 7 days), read-only. Owner session only: 403 for tokens',
@@ -131,6 +189,14 @@ const DOCS: Record<string, RouteDoc> = {
       type: 'object',
       properties: {
         configured: { type: 'boolean' }, error: { type: 'string' },
+        source: {
+          type: 'object', description: 'How the calendar source is doing; never holds a feed path or token',
+          properties: {
+            kind: { type: 'string', enum: ['calendar'] }, via: { type: 'string', enum: ['graph', 'ics', 'fixture', 'none'] }, account: { type: 'string', description: 'Sign-in address or feed host names' },
+            state: { type: 'string', enum: ['not-connected', 'ok', 'error', 'stale'] }, lastSyncAt: { type: 'string', format: 'date-time', description: 'When the data shown was last read from the source' },
+            reason: { type: 'string', enum: ['signin', 'down', 'error'], description: 'Graph only, when state is error: an account needs sign-in, Microsoft is not responding, or another error' },
+          },
+        },
         items: {
           type: 'array',
           items: {
@@ -173,7 +239,19 @@ const DOCS: Record<string, RouteDoc> = {
   },
   sync: {
     operationId: 'sync', summary: 'Change probe: the head revision of the task repo (null when the storage has none), plus pending/since when the storage batches commits. Poll it and reload only when rev changes',
-    responses: ok('Sync state', { type: 'object', properties: { rev: { type: 'string', nullable: true }, pending: { type: 'integer', description: 'Writes not yet committed (batching storage only)' }, since: { type: 'string', format: 'date-time', nullable: true, description: 'First pending write (batching storage only)' } } }),
+    responses: ok('Sync state', { type: 'object', properties: { rev: { type: 'string', nullable: true }, pending: { type: 'integer', description: 'Writes not yet committed (batching storage only)' }, since: { type: 'string', format: 'date-time', nullable: true, description: 'First pending write (batching storage only)' }, live: { type: 'string', description: 'Changes when live state outside the repo (PR priorities) changes; present only when the host has it' } } }),
+  },
+  version: {
+    operationId: 'getVersion', summary: 'Desktop app only: the running and available builds, whether an update is ready, the update mode, and the last helper result. 404 on hosts with no installer. Reads only local files',
+    responses: ok('Version state', VERSION_STATE),
+  },
+  'version.mode': {
+    operationId: 'setUpdateMode', summary: 'Set when updates install: on-quit (default), ask, auto-idle, or off (owner only). Saved in ~/.config/stack/config.json',
+    responses: ok('Version state', VERSION_STATE),
+  },
+  'version.restart': {
+    operationId: 'restartForUpdate', summary: 'Commit pending edits, then quit, swap in the ready build, and relaunch (owner only). 409 when no update is ready or the host cannot restart',
+    responses: ok('Restarting', { type: 'object', properties: { restarting: { type: 'boolean' } } }),
   },
   'sync.flush': {
     operationId: 'flushSync', summary: 'Commit and push pending edits now (owner only). flushed is 0 when nothing was pending or the storage does not batch',
@@ -189,12 +267,16 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Written', { type: 'object', properties: { key: { type: 'string' }, created: { type: 'boolean' } } }),
   },
   rank: {
-    operationId: 'rank', summary: 'The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. `blocks=any` keeps tasks the current time block would hide',
-    responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref') } } } } }),
+    operationId: 'rank', summary: 'The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. Only rows the owner must do: agent rows (🤖, 🪄, and unmarked rows under them) are left out. `stale: true` marks a row overdue 3+ days with no commit to it in 3+ days (score at most 500). `blocks=any` keeps tasks the current time block would hide',
+    responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref'), stale: { type: 'boolean', description: 'True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500' } } } } } }),
   },
   'inboxItems.list': {
-    operationId: 'listInboxItems', summary: 'All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog. Owner session only: 403 for tokens',
-    responses: ok('Inbox', { type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, actions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, ready: { type: 'boolean' } } } } } }),
+    operationId: 'listInboxItems', summary: 'All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog and the source status (as GET /inbox-sources). Owner session only: 403 for tokens',
+    responses: ok('Inbox', { type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, actions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, ready: { type: 'boolean' } } } }, ...SOURCES_PROPS } }),
+  },
+  'inboxSources.list': {
+    operationId: 'listInboxSources', summary: 'Each inbox source (every email account, GitHub, and planned Teams and Slack) with its state, last sync and the exact step to connect it, plus a summary (N of M connected, whether Inbox zero may be claimed, a headline). fresh=1 re-probes this machine. Never a token. Owner session only: 403 for tokens',
+    responses: ok('Sources', { type: 'object', properties: SOURCES_PROPS }),
   },
   'inboxItems.action': {
     operationId: 'inboxAction', summary: 'Run an inbox action (reply-draft makes a draft and never sends), or with request true file a request for a missing action. Owner session only: 403 for tokens',
@@ -207,7 +289,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'needs.list': {
     operationId: 'listNeeds', summary: 'The Chief of Staff\'s open decisions and go-dos (`.stack/needs-you.json`), each with a recommendation, a default, and a link',
-    responses: ok('Needs', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, recommendation: { type: 'string' }, default: { type: 'string' }, by: { type: 'string' }, link: { type: 'string' }, project: { type: 'string' }, ref: { type: 'string' }, answer: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string', format: 'date-time' } } } } } } } }),
+    responses: ok('Needs', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, recommendation: { type: 'string' }, default: { type: 'string' }, by: { type: 'string' }, link: { type: 'string' }, project: { type: 'string' }, ref: { type: 'string' }, kind: { type: 'string', enum: ['decision'], description: 'A PR priority recommendation: post actions to decide' }, actions: { type: 'array', items: { type: 'string', enum: ['accept', 'edit', 'reject'] } }, decide: { type: 'string' }, answer: { type: 'object', properties: { choice: { type: 'string', enum: ['go', 'defer', 'reply'] }, text: { type: 'string' }, until: { type: 'string' }, at: { type: 'string', format: 'date-time' } } } } } } } }),
   },
   'needs.answer': {
     operationId: 'answerNeed', summary: 'Record the owner\'s answer on a need (go, defer, reply) or clear it (undo). Owner session only: 403 for tokens',
@@ -240,6 +322,92 @@ const DOCS: Record<string, RouteDoc> = {
       },
     }),
   },
+  'inventory.list': {
+    operationId: 'listSessionInventory', summary: 'Owner only. Claude app sessions on this machine (read-only, cached by mtime in ~/.stack/sessions.json): counts per state, the ranked Needs-you list (waiting, stuck), archive candidates, and every session. No transcript text. 404 on hosts with no inventory',
+    responses: ok('Inventory', ref('Inventory')),
+  },
+  'pris.get': {
+    operationId: 'getPriorities', summary: 'Owner only. The owner priorities, most important first (~/.stack/pris.json); rev 0 and an empty list when none. 404 on hosts with no store',
+    responses: ok('Priorities', ref('PrisFile')),
+  },
+  'pris.put': {
+    operationId: 'putPriorities', summary: 'Owner only. Replace the priorities list. Send the rev you read: a stale rev is 409. 400 lists every issue',
+    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['rev', 'pris'], properties: { rev: { type: 'integer', minimum: 0 }, pris: { type: 'array', maxItems: 30, items: ref('Pri') } } } } } },
+    responses: ok('Stored', ref('PrisFile')),
+  },
+  'prPriority.get': {
+    operationId: 'getPrPriority', summary: 'Owner only. The PR priority queue for the Sweep Manager (~/.stack/pr-priority.json), each PR with cached facts, merge-order edges, the newest report record, acks and status, plus the escalation set and open recommendations (by project, oldest first). 404 on hosts with no store',
+    responses: ok('PR priorities', ref('PrPriView')),
+  },
+  'prPriority.put': {
+    operationId: 'changePrPriority', summary: 'Owner only. One idempotent queue action: add (default top), move (to top, up, down, or rank), pin, unpin, remove, undo (restores the prior revision), or ack (a hold thread). Send the rev you read: a stale rev is 409; a PR not queued is 404',
+    desc: { ref: '<owner>/<name>#<n> or a GitHub PR url; required except for undo', to: 'For move: top, up or down (or send rank)', thread: 'For ack: the https url of the thread', note: 'For add and move: the item note; for ack: the ack note' },
+    responses: ok('Changed', ref('PrPriView')),
+  },
+  'prPriority.recommend': {
+    operationId: 'recommendPrPriority', summary: 'An agent recommends a higher rank for a PR. Returns the new or already open recommendation. 409 when the owner rejected a similar reason in the last 14 days (the message has his reason), when the PR is already queued high enough, or when it is excluded',
+    responses: ok('Recommended', { type: 'object', properties: { created: { type: 'boolean' }, rec: ref('PrRec') } }),
+  },
+  'prPriority.decisions': {
+    operationId: 'listPrPriorityDecisions', summary: 'Decided recommendations (accepted, edited, rejected with the owner reason), newest first, so agents do not retry',
+    responses: ok('Decisions', { type: 'object', properties: { items: { type: 'array', items: ref('PrRec') } } }),
+  },
+  'prPriority.decide': {
+    operationId: 'decidePrPriority', summary: 'Owner only. Accept, edit, or reject a recommendation. Edit and reject need a reason. The same decision again is a no-op; another decision is 409',
+    desc: { rank: 'For edit: the rank to use', note: 'For edit: the item note', reason: 'Required for edit and reject' },
+    responses: ok('Decided', { type: 'object', properties: { changed: { type: 'boolean' }, rec: ref('PrRec'), queue: { type: 'object' } } }),
+  },
+  // @req FR:pr-page/api.get @req FR:pr-page/api.queue @req FR:pr-page/api.label @req FR:pr-page/api.ack @req FR:pr-page/api.rec
+  'prs.get': {
+    operationId: 'getPrBoard', summary: 'Owner only. Open PRs the owner reviews or moves, grouped (processing, waiting, pending, paused), each with its next action for the owner (validate, signoff, publish, approve, autopilot), spec lines, pin, and details; the Summary; who must act, CI, unresolved threads, queue rank, and the escalation set. refresh=1 polls GitHub first. Taking it renews a 3-minute poll lease. `{auth: {state, method, session?}}` when signed out of GitHub; `{off: true}` on hosts with no board',
+    responses: ok('Board', { type: 'object', properties: { at: { type: 'string', nullable: true }, user: { type: 'string' }, agents: { type: 'object' }, counts: { type: 'object' }, footer: { type: 'object' }, rows: { type: 'array', items: { type: 'object' } }, summary: { type: 'object', properties: { live: { type: 'array', items: { type: 'string' } }, signoff: { type: 'array', items: { type: 'string' } }, autopilot: { type: 'array', items: { type: 'string' } }, missing: { type: 'array', items: { type: 'object' } } } }, escalations: { type: 'object' }, queue: { type: 'boolean' }, rate: { type: 'object' }, error: { type: 'string' }, off: { type: 'boolean' }, auth: { type: 'object' } } }),
+  },
+  'prs.queue': {
+    operationId: 'movePrInQueue', summary: 'Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin (adds the PR first when not queued), unpin, remove, undo. 409 when the queue is not installed or refuses',
+    desc: { op: 'top, up, down, move, add, pin, unpin, remove, or undo', rank: 'Target rank for move' },
+    responses: ok('New rank', { type: 'object', properties: { rank: { type: 'integer', nullable: true }, was: { type: 'integer', nullable: true }, pinned: { type: 'boolean' } } }),
+  },
+  'prs.label': {
+    operationId: 'labelPr', summary: 'Owner only. Add or remove the Autopilot label (no other label). 403 for repos outside STACK_GITHUB_REPOS',
+    responses: ok('Done', { type: 'object' }),
+  },
+  'prs.ack': {
+    operationId: 'ackPr', summary: 'Owner only. Record the owner answer on a thread (stack pr-pri ack --thread --note). With post true, first post text (must start with the AI prefix) as a thread reply (replyTo) or a PR comment',
+    desc: { thread: 'Thread or PR url the answer is for', note: 'The answer' },
+    responses: ok('Done', { type: 'object' }),
+  },
+  'prs.rec': {
+    operationId: 'decidePrRec', summary: 'Owner only. Accept, edit, or reject a PR priority recommendation; edit and reject need a reason',
+    responses: ok('Done', { type: 'object' }),
+  },
+  // @req FR:pr-page/api.resolve
+  'prs.resolve': {
+    operationId: 'resolvePrThread', summary: 'Owner only. Resolve or reopen a review thread (GraphQL node id) of a PR on the board. 404 when the thread is not on that PR',
+    desc: { thread: 'Review thread node id from the row detail', op: 'resolve or unresolve' },
+    responses: ok('Done', { type: 'object', properties: { ok: { type: 'boolean' }, op: { type: 'string' } } }),
+  },
+  // @req FR:pr-page/auth.signin
+  'prs.signin.get': {
+    operationId: 'getGitHubSignIn', summary: 'Owner only. The GitHub sign-in session: state (waiting, done, error, none), the one-time code, and the device link. Never a token. 404 on hosts with no sign-in',
+    responses: ok('Session', { type: 'object', properties: { state: { type: 'string', enum: ['waiting', 'done', 'error', 'none'] }, userCode: { type: 'string' }, verificationUri: { type: 'string' }, error: { type: 'string' } } }),
+  },
+  'prs.signin': {
+    operationId: 'startGitHubSignIn', summary: 'Owner only. Start the GitHub sign-in (gh auth login --web, the device flow). One at a time: a start while one waits returns it. 404 on hosts with no sign-in',
+    responses: ok('Session', { type: 'object', properties: { state: { type: 'string', enum: ['waiting', 'done', 'error'] }, userCode: { type: 'string' }, verificationUri: { type: 'string' }, error: { type: 'string' } } }),
+  },
+  'prReview.get': {
+    operationId: 'getPrReview', summary: 'Cached PR facts (specLines, live flag, head SHA) and agent briefs with stale. No GitHub call. 404 on hosts with no store',
+    responses: ok('PR review', { type: 'object', required: ['facts', 'briefs'], properties: { facts: { type: 'array', items: ref('PrFacts') }, briefs: { type: 'array', items: ref('PrBrief') } } }),
+  },
+  'live.get': {
+    operationId: 'getLiveLane', summary: 'The live validation lane: state (idle when no PR), the active PR, its checklist, and done PRs. 404 on hosts with no lane',
+    responses: ok('Lane', ref('LiveLane')),
+  },
+  'live.item': {
+    operationId: 'changeLiveItem', summary: 'Change one checklist item of the live PR: add, check, uncheck, fail, needs-fix, fixed, block, comment, edit. Owner calls are by owner; token calls are by the token name. 404 when the PR is not live or the id is unknown',
+    desc: { text: 'Required for add, comment, edit; the comment for needs-fix', reason: 'Required for block', id: 'Required for every op except add' },
+    responses: ok('Changed', { type: 'object', required: ['changed', 'item'], properties: { changed: { type: 'boolean' }, item: ref('LiveItem') } }),
+  },
   'sessions.list': {
     operationId: 'listSessions', summary: 'Live agent sessions on this machine, attention first (needs-you, running, active, idle, stale). 404 on hosts that cannot run agents',
     responses: ok('Sessions', { type: 'object', properties: { items: { type: 'array', items: ref('Session') }, total: { type: 'integer' }, indexing: { type: 'integer' } } }),
@@ -263,6 +431,15 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { cwd: 'Absolute path to an existing folder; default: the served folder (also with agent, ref, or project: an agent can be started in its project repo)', text: 'The prompt', agent: 'Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task (404 when it has no file)' },
     responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string', description: 'Set for a task or project session' }, title: { type: 'string', description: 'Set for a task or project session: `<agent> · <task> · <ref>`' } } }, '202'),
   },
+  'inbox.delivery': {
+    operationId: 'getInboxDelivery', summary: 'Delivery state of the owner messages on one row (working, delivered, failed, not-delivered), the delivery mode, the Claude login state, and a live session for the agent when there is one (link only). Without ref: only the mode and the login state. Owner session only: 403 for tokens; 404 where the host does not deliver',
+    desc: { ref: 'The row (project:line); omit for the mode and login only' },
+    responses: ok('Delivery', { type: 'object', properties: { mode: { type: 'string', enum: ['claude', 'off'] }, login: { type: 'string', enum: ['ok', 'expired', 'unknown'] }, items: { type: 'object', additionalProperties: { type: 'object', properties: { state: { type: 'string', enum: ['working', 'delivered', 'failed', 'not-delivered'] }, agent: { type: 'string' }, reason: { type: 'string' } } } }, live: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, link: { type: 'string' } } } } }),
+  },
+  'inbox.deliveryLogin': {
+    operationId: 'startDeliveryLogin', summary: 'Start the Claude sign-in (claude auth login) on this machine; when it cannot start, the answer names the one step. Owner session only: 403 for tokens',
+    responses: ok('Started', { type: 'object', properties: { started: { type: 'boolean' }, step: { type: 'string' } } }),
+  },
   'inbox.reply': {
     operationId: 'replyFromAgent', summary: "An agent's reply on a task (tasks/inbox, from: agent, named by the token). Tokens only: the owner session gets 403",
     desc: { text: 'One line to the owner; secrets are redacted', expect: 'Expected current row text; 409 when the row differs' },
@@ -274,7 +451,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'tasks.assign': {
     operationId: 'assignTask', summary: 'Hand the task to its agent: claims the row (log + in progress) and starts a session with the assign prompt. Owner session only; 404 without a runner; 403 for a 🙋 row',
-    desc: { agent: 'Agent slug; default: the active agent' },
+    desc: { agent: 'Agent slug; default: the active agent', note: 'The owner\'s note, added to the assign prompt (at most 1000 characters)' },
     responses: ok('Assigned', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string' }, title: { type: 'string' }, claimed: { type: 'boolean' } } }, '202'),
   },
   'team.list': {
@@ -421,6 +598,105 @@ export function buildOpenApi(): J {
         },
       },
       schemas: {
+        SessionItem: {
+          type: 'object', required: ['id', 'title', 'project', 'state', 'reason', 'pinned', 'lastActivityAt', 'link', 'prs'],
+          properties: {
+            id: { type: 'string' }, title: { type: 'string' }, project: { type: 'string', enum: [...PROJECTS] },
+            state: { type: 'string', enum: [...SESSION_STATES] }, reason: { type: 'string', enum: [...SESSION_REASONS] }, pinned: { type: 'boolean' },
+            lastActivityAt: { type: 'string', format: 'date-time' }, link: { type: 'string', description: 'claude://claude.ai/epitaxy/<id>' },
+            prs: { type: 'array', items: { type: 'object', properties: { url: { type: 'string' }, state: { type: 'string' } } } },
+            ask: { type: 'string' }, scheduled: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } } },
+          },
+        },
+        Inventory: {
+          type: 'object', required: ['at', 'total', 'counts', 'needsYou', 'archive', 'sessions'],
+          properties: {
+            at: { type: 'string', format: 'date-time' }, total: { type: 'integer' },
+            counts: { type: 'object', properties: Object.fromEntries(SESSION_STATES.map((k) => [k, { type: 'integer' }])) },
+            needsYou: { type: 'array', items: ref('SessionItem') }, archive: { type: 'array', items: ref('SessionItem') }, sessions: { type: 'array', items: ref('SessionItem') },
+          },
+        },
+        PriItem: {
+          type: 'object', additionalProperties: false, required: ['text', 'status'],
+          properties: { text: { type: 'string', minLength: 1, maxLength: 300 }, status: { type: 'string', enum: [...PRI_ITEM_STATUSES] } },
+        },
+        Pri: {
+          type: 'object', additionalProperties: false, required: ['id', 'title', 'status', 'items', 'backlog', 'weekly'],
+          properties: {
+            id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,23}$' }, title: { type: 'string', minLength: 1, maxLength: 200 }, status: { type: 'string', enum: [...PRI_STATUSES] },
+            items: { type: 'array', maxItems: 20, items: ref('PriItem') }, backlog: { type: 'array', maxItems: 50, items: ref('PriItem') },
+            weekly: { type: 'array', maxItems: 12, description: 'Weekly progress, newest first', items: { type: 'object', additionalProperties: false, required: ['week', 'text'], properties: { week: { type: 'string', pattern: '^\\d{4}-W(0[1-9]|[1-4]\\d|5[0-3])$' }, text: { type: 'string', minLength: 1, maxLength: 500 } } } },
+          },
+        },
+        PrRec: {
+          type: 'object', required: ['id', 'repo', 'number', 'url', 'agent', 'reason', 'state', 'at'],
+          properties: {
+            id: { type: 'string', pattern: '^pp-[0-9a-f]{8}$' }, repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, agent: { type: 'string' }, reason: { type: 'string' },
+            toRank: { type: 'integer' }, state: { type: 'string', enum: [...REC_STATES] }, at: { type: 'string', format: 'date-time' },
+            decision: { type: 'object', properties: { at: { type: 'string', format: 'date-time' }, reason: { type: 'string' }, rank: { type: 'integer' }, note: { type: 'string' } } },
+          },
+        },
+        PrPriView: {
+          type: 'object', required: ['version', 'rev', 'items'],
+          properties: {
+            changed: { type: 'boolean' }, version: { type: 'integer' }, rev: { type: 'integer' }, updatedAt: { type: 'string', format: 'date-time' },
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  rank: { type: 'integer' }, repo: { type: 'string' }, number: { type: 'integer' }, pr: { type: 'integer' }, url: { type: 'string' }, pinned: { type: 'boolean' }, note: { type: 'string' }, by: { type: 'string' }, at: { type: 'string' },
+                  title: { type: 'string' }, author: { type: 'string' }, isDraft: { type: 'boolean' }, assignee: { type: 'string', nullable: true }, labels: { type: 'array', items: { type: 'string' } },
+                  reviewDecision: { type: 'string', nullable: true }, checks: { type: 'string', enum: ['green', 'red', 'pending'] }, mergeable: { type: 'string' }, lastPushAt: { type: 'string' }, headSha: { type: 'string' }, state: { type: 'string', enum: ['open', 'merged', 'closed'] }, factsAt: { type: 'string' },
+                  baseStack: { type: 'array', items: { type: 'string' }, description: 'PR urls this PR merges after' }, waitsOn: { type: 'array', items: { type: 'string' }, description: 'baseStack urls not merged' }, why: { type: 'string' },
+                  michaelDecision: { type: 'object', properties: { state: { type: 'string' }, reason: { type: 'string' }, at: { type: 'string' } } },
+                  report: { type: 'object', description: 'Newest per-PR report record' }, acks: { type: 'array', items: { type: 'object', properties: { thread: { type: 'string' }, note: { type: 'string' }, at: { type: 'string' } } } },
+                  status: { type: 'string', enum: [...ESC_STATUSES] },
+                },
+              },
+            },
+            escalations: { type: 'object', nullable: true }, recommendations: { type: 'array', items: ref('PrRec') },
+          },
+        },
+        PrisFile: {
+          type: 'object', required: ['version', 'rev', 'pris'],
+          properties: {
+            version: { type: 'integer' }, rev: { type: 'integer' }, updatedAt: { type: 'string', format: 'date-time' },
+            seed: { type: 'object', properties: { source: { type: 'string' }, at: { type: 'string' }, sha256: { type: 'string' } } },
+            pris: { type: 'array', items: ref('Pri') },
+          },
+        },
+        PrFacts: {
+          type: 'object', required: ['repo', 'number', 'url', 'headSha', 'specLines', 'live', 'at'],
+          properties: {
+            repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, title: { type: 'string' }, headSha: { type: 'string' },
+            specLines: { type: 'integer', description: 'Lines changed in spec files (.xe/, spec.md, docs/*.md)' }, labels: { type: 'array', items: { type: 'string' } },
+            live: { type: 'boolean', description: 'Needs live validation' }, reasons: { type: 'array', items: { type: 'string' } }, draft: { type: 'boolean' }, at: { type: 'string', format: 'date-time' },
+          },
+        },
+        PrBrief: {
+          type: 'object', required: ['repo', 'number', 'url', 'problem', 'solution', 'recommendation', 'evidence', 'askedAt', 'headSha', 'stale'],
+          properties: {
+            repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, problem: { type: 'string' }, solution: { type: 'string' }, recommendation: { type: 'string' },
+            evidence: { type: 'array', items: { type: 'string' } }, askedAt: { type: 'string' }, headSha: { type: 'string' }, by: { type: 'string' }, stale: { type: 'boolean' },
+          },
+        },
+        LiveItem: {
+          type: 'object', required: ['id', 'text', 'by', 'state', 'createdAt', 'updatedAt'],
+          properties: {
+            id: { type: 'string' }, text: { type: 'string' }, by: { type: 'string' }, state: { type: 'string', enum: [...ITEM_STATES] },
+            comment: { type: 'string' }, reason: { type: 'string' }, createdAt: { type: 'string' }, updatedAt: { type: 'string' }, updatedBy: { type: 'string', description: 'Who made the last change: owner or an agent' },
+          },
+        },
+        LiveLane: {
+          type: 'object', required: ['state', 'rev', 'items', 'done'],
+          properties: {
+            state: { type: 'string', enum: ['idle', ...LIVE_STATES] }, rev: { type: 'integer' },
+            active: { type: 'object', properties: { repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, title: { type: 'string' }, state: { type: 'string', enum: [...LIVE_STATES] }, by: { type: 'string' }, claimedAt: { type: 'string' }, worktree: { type: 'string' }, serverUrl: { type: 'string' }, port: { type: 'integer' }, pid: { type: 'integer' }, headSha: { type: 'string' }, waitingOnLock: { type: 'string' } } },
+            items: { type: 'array', items: ref('LiveItem') },
+            done: { type: 'array', items: { type: 'object', properties: { repo: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, at: { type: 'string' }, reason: { type: 'string' } } } },
+          },
+        },
         ReportItem: {
           type: 'object', additionalProperties: false, required: ['text'],
           properties: { text: { type: 'string', minLength: 1, maxLength: 200, description: 'Single line.' }, link: { type: 'string', maxLength: 2000, pattern: '^https://' } },
@@ -492,7 +768,7 @@ export function buildOpenApi(): J {
           properties: {
             id: { type: 'string' }, at: { type: 'string', format: 'date-time' }, project: { type: 'string' }, ref: ref('Ref'), task: { type: 'string' },
             parent: { type: 'string', description: 'Title of the parent row; absent for top-level rows' },
-            kind: { type: 'string', enum: ['reply', 'decision'] }, to: { type: 'string', enum: ['agent', 'human', 'none'] }, text: { type: 'string' },
+            kind: { type: 'string', enum: [...INBOX_KINDS] }, to: { type: 'string', enum: ['agent', 'human', 'none'] }, text: { type: 'string' },
             state: { type: 'string', enum: ['open', 'handled'] }, handled: { type: 'string' }, note: { type: 'string' },
             row: { ...ref('Ref'), description: 'Where the row is now, found by title (lines move); absent when the row is gone' },
           },
@@ -517,13 +793,14 @@ export function buildOpenApi(): J {
           properties: {
             slug: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, scope: { type: 'array', items: { type: 'string' } }, model: { type: 'string' },
             tools: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['long-running', 'ad-hoc'] }, prompt: { type: 'string' }, defined: { type: 'boolean' }, projects: { type: 'array', items: { type: 'string' } },
-            reportsTo: { type: 'string', description: 'Slug of the agent this one reports to; absent on the roll-up' }, source: { type: 'string', enum: ['stack', 'claude', 'metadata'], description: 'tasks/agents file, .claude/agents file, or a project Agents line' },
+            reportsTo: { type: 'string', description: 'Slug of the agent this one reports to; absent on the roll-up' }, icon: { type: 'string', description: 'Avatar: an emoji, fluent:<name> (a Fluent Emoji file name), or a same-origin image path; absent means a monogram' }, source: { type: 'string', enum: ['stack', 'claude', 'metadata'], description: 'tasks/agents file, .claude/agents file, or a project Agents line' }, home: { type: 'string', description: 'Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents' }, aliases: { type: 'array', items: { type: 'string' }, description: 'Older display names a session title may start with: the H1 text before its colon' },
           },
         },
         ThreadItem: {
           type: 'object',
           properties: {
             at: { type: 'string' }, kind: { type: 'string', enum: ['owner', 'agent', 'ask', 'review', 'subtask'] }, id: { type: 'string' }, text: { type: 'string' }, state: { type: 'string' }, agent: { type: 'string' },
+            withdrawn: { type: 'boolean', description: 'Owner item the owner took back (Undo); clients hide it' },
             ask: ref('Ask'), verdict: { type: 'string' }, plan: { type: 'string' }, estimate: { type: 'string' }, ref: ref('Ref'), done: { type: 'boolean' },
           },
         },
@@ -552,6 +829,7 @@ export function buildOpenApi(): J {
                 properties: {
                   url: { type: 'string' }, repo: { type: 'string' }, number: { type: 'integer' }, state: { type: 'string', enum: ['open', 'draft', 'merged', 'closed'] },
                   checks: { type: 'string', enum: ['passing', 'failing', 'pending', 'none'] }, title: { type: 'string' }, updatedAt: { type: 'string' },
+                  priority: { type: 'integer', nullable: true, description: 'Rank in the PR priority queue, or null' },
                 },
               },
             },

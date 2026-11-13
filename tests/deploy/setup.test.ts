@@ -1,117 +1,207 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const root = resolve(__dirname, '../..');
-const script = readFileSync(join(root, 'scripts/setup-azure.sh'), 'utf8');
+const path = join(root, 'scripts/setup-azure.ps1');
+const script = existsSync(path) ? readFileSync(path, 'utf8') : '';
 const doc = readFileSync(join(root, 'docs/setup-live.md'), 'utf8');
-/** The script's inline node programs, by marker. */
-const nodeProgram = (marker: string) => {
-  const m = [...script.matchAll(/node -e '([^']+)'/g)].map((x) => x[1]).find((p) => p.includes(marker));
-  if (!m) throw new Error(`no node program with ${marker}`);
-  return m;
-};
+const hasPwsh = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).status === 0;
+const itPwsh = hasPwsh ? it : it.skip;
+/** Runs PowerShell with the script dot-sourced (functions only, main body skipped). */
+const ps = (code: string) => execFileSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', `. '${path}'; ${code}`], { encoding: 'utf8', env: { PATH: process.env.PATH!, HOME: process.env.HOME! } });
+/** Code lines only (no comments). */
+const code = script.split('\n').filter((l) => !/^\s*#/.test(l));
 
-// @req FR:live-deploy/setup.script
-describe('setup-azure.sh', () => {
-  it('is an executable strict bash script', () => {
-    expect(script.startsWith('#!/usr/bin/env bash\n')).toBe(true);
-    expect(script).toMatch(/^set -euo pipefail$/m);
-    expect(statSync(join(root, 'scripts/setup-azure.sh')).mode & 0o111).not.toBe(0);
+// @req FR:deploy-stack-xerilium-com/setup.ps @req FR:live-deploy/setup.script
+describe('setup-azure.ps1', () => {
+  it('exists and the bash script is gone', () => {
+    expect(script.length).toBeGreaterThan(0);
+    expect(existsSync(join(root, 'scripts/setup-azure.sh'))).toBe(false);
+    expect(script).toMatch(/^Set-StrictMode -Version Latest$/m);
+    expect(script).toMatch(/^\$ErrorActionPreference = 'Stop'$/m);
+  });
+  // @req FR:deploy-stack-xerilium-com/setup.ps
+  it('never calls the az CLI', () => {
+    for (const l of code) expect(l).not.toMatch(/(^|[|;({]\s*|&\s*)az\s/);
+  });
+  // @req FR:deploy-stack-xerilium-com/setup.sub
+  it('selects the subscription it is given, else prompts; never the default context', () => {
+    expect(script).toMatch(/\[string\]\$Subscription = ''/);
+    expect(script).toMatch(/Set-AzContext -Subscription \$Subscription -Scope Process/);
+    expect(script).toMatch(/Get-AzSubscription/);
+    expect(script).toMatch(/Read-Host 'Subscription/);
   });
   // @req FR:live-deploy/setup.script.rerun
   it('applies the bicep template only when the site does not exist yet', () => {
-    const deploy = script.indexOf('az deployment group create');
-    const guard = script.lastIndexOf('if [ "$EXISTS" = 0 ]; then', deploy);
+    const deploy = script.indexOf('New-AzResourceGroupDeployment');
+    const guard = script.lastIndexOf('if (-not $exists) {', deploy);
     expect(deploy).toBeGreaterThan(0);
     expect(guard).toBeGreaterThan(0);
-    expect(script.slice(guard, deploy)).not.toMatch(/\nfi\n/);
-    expect(script).toMatch(/-f infra\/main\.bicep/);
-  });
-  it('only "not there" counts as a new site; any other az failure stops the script', () => {
-    expect(script).not.toMatch(/2>\/dev\/null && EXISTS=1/);
-    expect(script).toMatch(/^GROUP_EXISTS=\$\(az group exists -n "\$GROUP"\)$/m);
-    expect(script).toMatch(/then FOUND=\$\(az staticwebapp list -g "\$GROUP"/);
-    expect(script).not.toMatch(/if \[ "\$\(az /);
-    expect(script).toMatch(/az staticwebapp list -g "\$GROUP" --query/);
-    expect(script).toMatch(/Subscription: /);
-  });
-  it('a re-run changes the repo URL only when --repo is given', () => {
-    expect(script).toMatch(/--repo\) REPO=\$2; REPO_SET=1;/);
-    expect(script).toMatch(/STACK_P_URL=\$\(\[ "\$REPO_SET" = 1 \]/);
+    expect(script).toMatch(/-TemplateFile \(Join-Path \$root 'infra\/main\.bicep'\)/);
   });
   it('sets the deploy secret and starts the deploy', () => {
-    expect(script).toMatch(/gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN -R/);
-    expect(script).toMatch(/gh workflow run deploy\.yml/);
+    expect(script).toMatch(/Invoke-AzRestMethod -Method POST -Path "\$\(\$site\.Id\)\/listSecrets/);
+    expect(script).toMatch(/\| gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN -R \$App/);
+    expect(script).toMatch(/gh workflow run deploy\.yml -R \$App --ref main/);
   });
-  // @req FR:live-deploy/setup.script.args
-  it('validates every argument before use', () => {
-    for (const f of ['--repo', '--app', '--group', '--name', '--location', '--owner']) expect(script).toMatch(new RegExp(`\\|\\| bad ${f} `));
+  // @req FR:deploy-stack-xerilium-com/setup.args @req FR:live-deploy/setup.script.args
+  it('validates every parameter at bind time', () => {
+    for (const p of ['Repo', 'Branch', 'Group', 'Name', 'Location', 'App', 'Owner', 'Domain', 'Subscription']) expect(script).toMatch(new RegExp(`\\[Validate(Pattern|Set)\\([^\\n]*\\)\\]\\s*\\[string\\]\\$${p}\\b`));
   });
-  // @req FR:live-deploy/setup.script.rerun
-  it('re-run merges only the changed settings and keeps the rest', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'stack-setup-test-'));
-    try {
-      writeFileSync(join(dir, 'cur.json'), JSON.stringify({ STACK_OWNERS: '', STACK_SLACK_SIGNING_SECRET: 'keep', STACK_REPO_TOKEN: 'old', STACK_TOKEN_PEPPER: 'pep' }));
-      const run = (env: Record<string, string>) => {
-        execFileSync('node', ['-e', nodeProgram('p.STACK_OWNERS = '), join(dir, 'cur.json'), join(dir, 'body.json')], { env: { PATH: process.env.PATH!, ...env } });
-        return JSON.parse(readFileSync(join(dir, 'body.json'), 'utf8')).properties;
-      };
-      expect(run({ STACK_P_OWNERS: 'github:abc', STACK_P_URL: '', STACK_P_TOKEN: '' })).toEqual({ STACK_OWNERS: 'github:abc', STACK_SLACK_SIGNING_SECRET: 'keep', STACK_REPO_TOKEN: 'old', STACK_TOKEN_PEPPER: 'pep' });
-      expect(run({ STACK_P_OWNERS: '', STACK_P_URL: 'https://github.com/a/b', STACK_P_TOKEN: 'new' })).toMatchObject({ STACK_OWNERS: '', STACK_REPO_TOKEN: 'new', STACK_REPO_URL: 'https://github.com/a/b', STACK_SLACK_SIGNING_SECRET: 'keep', STACK_TOKEN_PEPPER: 'pep' });
-    } finally { rmSync(dir, { recursive: true, force: true }); }
+  // @req FR:deploy-stack-xerilium-com/setup.args
+  itPwsh('rejects a bad argument before any Azure call', () => {
+    for (const args of [['-Repo', 'not a repo'], ['-Branch', '--upload-pack=x'], ['-Owner', 'github:a b'], ['-Domain', 'http://x'], ['-Domain', 'xerilium.com'], ['-Branch', 'main'], ['-Branch', 'master']]) {
+      const r = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', path, ...args], { encoding: 'utf8' });
+      expect(r.status).not.toBe(0);
+      expect(r.stdout + r.stderr).toMatch(/Cannot validate argument/);
+      expect(r.stdout + r.stderr).not.toMatch(/Connect-AzAccount|Subscription:/);
+    }
+  });
+  // @req FR:deploy-stack-xerilium-com/branch.default
+  itPwsh('refuses -Owner with -Repo or -Branch before any Azure call', () => {
+    const r = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', path, '-Owner', 'github:abc', '-Branch', 'x'], { encoding: 'utf8' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout + r.stderr).toMatch(/cannot be combined/);
+  });
+  it('a re-run checks the repo and branch the site uses, and never the default branch', () => {
+    expect(script).toMatch(/\$Branch -eq \$default/);
+    expect(script.indexOf('listAppSettings')).toBeLessThan(script.indexOf('Test-StackBranch $Repo $Branch'));
+  });
+  it('restores your own GH_TOKEN after using the repo token', () => {
+    expect(script).toMatch(/\$prevGh = \$env:GH_TOKEN/);
+  });
+  // @req FR:deploy-stack-xerilium-com/setup.merge @req FR:live-deploy/setup.script.rerun
+  itPwsh('re-run merges only the changed settings and keeps the rest', () => {
+    const out = ps(`$c = @{ STACK_OWNERS = ''; STACK_SLACK_SIGNING_SECRET = 'keep'; STACK_REPO_TOKEN = 'old'; STACK_TOKEN_PEPPER = 'pep' }; Merge-StackSettings -Current $c -Changes @{ STACK_OWNERS = 'github:abc'; STACK_REPO_URL = ''; STACK_REPO_TOKEN = '' } | ConvertTo-Json -Compress`);
+    expect(JSON.parse(out)).toEqual({ STACK_OWNERS: 'github:abc', STACK_SLACK_SIGNING_SECRET: 'keep', STACK_REPO_TOKEN: 'old', STACK_TOKEN_PEPPER: 'pep' });
+  });
+  // @req FR:deploy-stack-xerilium-com/branch.rerun
+  itPwsh('re-run fills a missing setting and never overwrites a set one', () => {
+    const out = ps(`$c = @{ STACK_REPO_URL = 'https://github.com/a/b' }; Merge-StackSettings -Current $c -Changes @{} -Defaults @{ STACK_REPO_BRANCH = 'stack/live'; STACK_REPO_URL = 'https://github.com/x/y' } | ConvertTo-Json -Compress`);
+    expect(JSON.parse(out)).toEqual({ STACK_REPO_URL: 'https://github.com/a/b', STACK_REPO_BRANCH: 'stack/live' });
+  });
+  // @req FR:deploy-stack-xerilium-com/setup.merge.pepper
+  it('never adds a pepper on a re-run (that would void every token)', () => {
+    const d = code.find((l) => /\$defaults = /.test(l)) ?? '';
+    expect(d).toMatch(/STACK_REPO_URL/);
+    expect(d).not.toMatch(/PEPPER|New-StackPepper/);
+  });
+  // @req FR:deploy-stack-xerilium-com/setup.check
+  it('checks the repo and branch with the site token when Enter keeps it', () => {
+    expect(script).toMatch(/\$useToken = if \(\$plain\) \{ \$plain \} else \{ "\$\(\$current\['STACK_REPO_TOKEN'\]\)" \}/);
+    expect(script).toMatch(/\$env:GH_TOKEN = \$useToken/);
+  });
+  // @req FR:deploy-stack-xerilium-com/branch.move
+  it('a move never reuses an existing branch and starts from the current one', () => {
+    expect(script).toMatch(/\$moving = \$exists -and \(\$Repo -ne \$curRepo -or \$Branch -ne \$curBranch\)/);
+    expect(script).toMatch(/if \(Test-StackBranch \$Repo \$Branch\) \{\n\s*if \(\$moving\) \{ throw/);
+    expect(script).toMatch(/\$from = if \(\$moving -and \$curRepo -eq \$Repo\) \{ \$curBranch \} else \{ \$default \}/);
+  });
+  it('treats only a missing group or site as new; any other Azure error stops the script', () => {
+    expect(script).not.toMatch(/Get-AzResourceGroup[^\n]*SilentlyContinue/);
+    expect(script).not.toMatch(/Get-AzStaticWebApp[^\n]*SilentlyContinue/);
+  });
+  it('checks the branch exists even when the token is kept, and that the deploy started', () => {
+    expect(script).toMatch(/Test-StackBranch/);
+    expect(script).toMatch(/gh workflow run deploy\.yml[^\n]*\n\s*if \(\$LASTEXITCODE -ne 0\)/);
+  });
+  it('refuses -Debug, which would log secrets', () => {
+    expect(script).toMatch(/\$DebugPreference -ne 'SilentlyContinue'/);
+  });
+  // @req FR:deploy-stack-xerilium-com/setup.merge
+  itPwsh('builds the first-run parameters with every bicep parameter', () => {
+    const out = ps(`New-StackDeployParams -Name n -Location westus2 -Owners '' -Pepper p -RepoUrl https://github.com/a/b -RepoToken 'a"b\\c' -Branch stack/live -Domain '' | ConvertTo-Json -Compress`);
+    const p = JSON.parse(out);
+    expect(p.repoToken).toBe('a"b\\c');
+    expect(p.repoBranch).toBe('stack/live');
+    expect(Object.keys(p).sort()).toEqual(['customDomain', 'location', 'name', 'owners', 'repoBranch', 'repoToken', 'repoUrl', 'tokenPepper']);
   });
 });
 
-// @req FR:live-deploy/setup.secrets
+// @req FR:deploy-stack-xerilium-com/setup.secrets @req FR:live-deploy/setup.secrets
 describe('setup secrets', () => {
-  it('reads the token hidden, checks contents access, keeps secrets in a mode-600 temp folder it deletes, pipes the deploy key on stdin', () => {
-    expect(script).toMatch(/read -r -s -p/);
-    expect(script).toMatch(/git\/ref\/heads\/\$BRANCH/);
-    expect(script).toMatch(/umask 077/);
-    expect(script).toMatch(/mktemp -d/);
-    expect(script).toMatch(/trap 'rm -rf "\$TMP"' EXIT/);
-    expect(script).toMatch(/--query properties\.apiKey -o tsv \| gh secret set/);
-    expect(script).toMatch(/--body "@\$TMP\/body\.json"/);
+  it('reads the token hidden and pipes the deploy key on stdin', () => {
+    expect(script).toMatch(/Read-Host -AsSecureString/);
+    expect(script).toMatch(/\$env:STACK_REPO_TOKEN/);
+    expect(script).toMatch(/TemplateParameterObject/);
+    expect(script).not.toMatch(/Out-File|Set-Content|TemplateParameterFile/);
   });
   // @req FR:live-deploy/setup.secrets.quiet
   it('never prints a secret or puts one on a command line', () => {
-    for (const line of script.split('\n').filter((l) => /^\s*(echo|printf|say)\b/.test(l))) expect(line).not.toMatch(/\$(TOKEN|PEPPER)\b/);
-    for (const line of script.split('\n').filter((l) => /^\s*(az|gh) /.test(l))) expect(line).not.toMatch(/\$\{?(TOKEN|PEPPER)\b/);
+    for (const l of code.filter((x) => /\b(Write-Host|Write-Output|Say)\b/.test(x))) expect(l).not.toMatch(/\$(token|pepper|plain)\b/i);
+    for (const l of code.filter((x) => /^\s*(gh|& gh)\s/.test(x))) expect(l).not.toMatch(/\$(token|pepper|plain)\b/i);
   });
-  // @req FR:live-deploy/setup.secrets.json
-  it('builds parameter JSON in node, so any value is encoded safely', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'stack-setup-test-'));
-    try {
-      execFileSync('node', ['-e', nodeProgram('deploymentParameters'), join(dir, 'p.json')], { env: { PATH: process.env.PATH!, STACK_P_NAME: 'n', STACK_P_LOCATION: 'westus2', STACK_P_OWNERS: '', STACK_P_PEPPER: 'p', STACK_P_URL: 'https://github.com/a/b', STACK_P_TOKEN: 'a"b\\c' } });
-      const p = JSON.parse(readFileSync(join(dir, 'p.json'), 'utf8')).parameters;
-      expect(p.repoToken.value).toBe('a"b\\c');
-      expect(Object.keys(p).sort()).toEqual(['location', 'name', 'owners', 'repoToken', 'repoUrl', 'tokenPepper']);
-    } finally { rmSync(dir, { recursive: true, force: true }); }
+  it('clears the token from the child environment when done', () => {
+    expect(script).toMatch(/Remove-Item Env:GH_TOKEN/);
+  });
+});
+
+// @req FR:deploy-stack-xerilium-com/branch.default @req FR:deploy-stack-xerilium-com/branch.create @req FR:deploy-stack-xerilium-com/branch.rerun
+describe('live branch', () => {
+  it('defaults to stack/live and creates it from the default branch when missing', () => {
+    expect(script).toMatch(/\[string\]\$Branch = 'stack\/live'/);
+    expect(script).toMatch(/gh api "repos\/\$Repo\/git\/refs" -f "ref=refs\/heads\/\$Branch" -f "sha=\$base"/);
+    expect(script).toMatch(/Creating branch \$Branch from \$from/);
+    expect(script).toMatch(/default_branch/);
+  });
+  it('a re-run changes the branch and repo only when given', () => {
+    expect(script).toMatch(/\$PSBoundParameters\.ContainsKey\('Branch'\)/);
+    expect(script).toMatch(/\$PSBoundParameters\.ContainsKey\('Repo'\)/);
+  });
+});
+
+// @req FR:deploy-stack-xerilium-com/domain.script
+describe('custom domain', () => {
+  it('prints the CNAME and adds the domain only when missing, without stopping the rest', () => {
+    expect(script).toMatch(/\[string\]\$Domain = 'stack\.xerilium\.com'/);
+    expect(script).toMatch(/CNAME/);
+    expect(script).toMatch(/Get-AzStaticWebAppCustomDomain/);
+    expect(script).toMatch(/New-AzStaticWebAppCustomDomain[^\n]*-ValidationMethod cname-delegation/);
+    expect(script).toMatch(/catch \{[^}]*re-run/s);
+    expect(script).toMatch(/Exception\.Message/);
+    expect(script).toMatch(/Status -ne 'Ready'|Status -eq 'Ready'/);
   });
 });
 
 // @req FR:live-deploy/setup.owner
 describe('owner claim', () => {
-  // @req FR:live-deploy/setup.owner
-  it('--owner on an existing site only updates the allow-list', () => {
-    expect(script).toMatch(/if \[ -n "\$OWNER" \] && \[ "\$EXISTS" = 1 \]; then\n\s+ONLY_OWNER=1/);
-    const only = script.indexOf('if [ "$ONLY_OWNER" = 1 ]; then\n  say "Done"');
+  it('-Owner on an existing site only updates the allow-list', () => {
+    expect(script).toMatch(/\$onlyOwner = \[bool\]\$Owner -and \$exists/);
+    const only = script.indexOf('if ($onlyOwner) {\n  Say \'Done\'');
     expect(only).toBeGreaterThan(0);
     expect(script.indexOf('gh secret set')).toBeGreaterThan(only);
   });
 });
 
-// @req FR:live-deploy/setup.doc
+// @req FR:live-deploy/setup.doc @req FR:deploy-stack-xerilium-com/domain.doc @req FR:deploy-stack-xerilium-com/branch.doc
 describe('setup doc', () => {
-  // @req FR:live-deploy/setup.doc
   it('lists the human-only steps with exact clicks and the least-privilege token', () => {
     expect(doc).toMatch(/personal-access-tokens\/new\?[^)]*contents=write/);
     expect(doc).toMatch(/Only select repositories/);
-    expect(doc).toMatch(/scripts\/setup-azure\.sh/);
-    expect(doc).toMatch(/--owner github:/);
+    expect(doc).toMatch(/scripts\/setup-azure\.ps1/);
+    expect(doc).not.toMatch(/setup-azure\.sh|az login/);
+    expect(doc).toMatch(/-Owner github:/);
     expect(doc).toMatch(/Install this site as an app/);
     expect(doc).toMatch(/## Undo or rotate/);
+  });
+  it('gives the exact DNS record and names the live branch', () => {
+    expect(doc).toMatch(/CNAME/);
+    expect(doc).toMatch(/`stack`/);
+    expect(doc).toMatch(/azurestaticapps\.net/);
+    expect(doc).toMatch(/stack\/live/);
+  });
+});
+
+// @req FR:deploy-stack-xerilium-com/auth.doc @req FR:deploy-stack-xerilium-com/hybrid.design
+describe('deploy docs', () => {
+  const lines = (p: string) => readFileSync(join(root, p), 'utf8').trimEnd().split('\n').length;
+  it('keeps the auth answer and hybrid design short', () => {
+    expect(lines('docs/deploy-auth.md')).toBeLessThanOrEqual(30);
+    expect(lines('docs/hybrid-state.md')).toBeLessThanOrEqual(25);
+  });
+  it('auth answer covers what exists, what is not covered, and gaps', () => {
+    const d = readFileSync(join(root, 'docs/deploy-auth.md'), 'utf8');
+    for (const s of ['STACK_OWNERS', 'Bearer', 'device', 'Not covered', 'Gaps', 'Strict-Transport-Security']) expect(d).toContain(s);
   });
 });

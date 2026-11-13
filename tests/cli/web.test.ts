@@ -7,6 +7,7 @@ import { join } from 'path';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb } from '../../src/cli/web';
 import { BatchedGitStorage } from '../../src/core/storage-batch';
 import { ReportStore } from '../../src/core/reports';
+import { PriStore } from '../../src/core/pris';
 
 const ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 Object.assign(process.env, ENV);
@@ -100,6 +101,20 @@ describe('startWeb', () => {
   });
 });
 
+describe('demo delivery', () => {
+  // @req FR:agent-delivery/host.loop: a demo copy never runs agents on copied messages or writes live delivery state.
+  it('has no delivery in demo mode, even when the copied config opts in', async () => {
+    const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
+    mkdirSync(join(dest, '.xe/config'), { recursive: true });
+    writeFileSync(join(dest, '.xe/config/stack.json'), JSON.stringify({ inbox: { delivery: 'claude' } }));
+    const web = tmp(); writeFileSync(join(web, 'index.html'), '<html>app</html>');
+    const s = await startWeb({ ...quiet, dir: dest, port: 0, webDir: web, info: { mode: 'demo', repo: 'x', branch: 'main' }, delivery: { run: async () => { throw new Error('no run in demo'); } } });
+    try {
+      expect((await fetch(`${s.url}/api/inbox/delivery?ref=alpha:4`)).status).toBe(404);
+    } finally { await s.close(); }
+  });
+});
+
 describe('static caching', () => {
   // @req FR:perf/serve.assets
   it('keeps hashed assets for a year and leaves the page and api uncached', async () => {
@@ -110,6 +125,18 @@ describe('static caching', () => {
       expect((await fetch(`${s.url}/assets/index-abc.js`)).headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
       expect((await fetch(s.url)).headers.get('cache-control')).toBe('no-store');
       expect((await fetch(`${s.url}/api/tasks`)).headers.get('cache-control')).not.toContain('immutable');
+    } finally { await s.close(); }
+  });
+
+  // @req FR:agent-team/agent.icon: every image type an icon may use is served with its own type (nosniff blocks octet-stream)
+  it('serves agent icon images with their image type', async () => {
+    const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
+    const web = tmp(); mkdirSync(join(web, 'agents')); writeFileSync(join(web, 'index.html'), '<html>app</html>');
+    const types: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
+    for (const ext of Object.keys(types)) writeFileSync(join(web, `agents/a.${ext}`), 'x');
+    const s = await startWeb({ dir: dest, port: 0, webDir: web });
+    try {
+      for (const [ext, type] of Object.entries(types)) expect((await fetch(`${s.url}/agents/a.${ext}`)).headers.get('content-type')).toBe(type);
     } finally { await s.close(); }
   });
 });
@@ -266,6 +293,27 @@ describe('startWeb reports', () => {
       await until(/event: change\ndata: \{"rev":\d+,"kinds":\["tasks"\]\}/);
       req.destroy();
       expect(existsSync(join(dest, '.stack/reports.json'))).toBe(false);
+    } finally { await s.close(); }
+  });
+});
+
+describe('startWeb priorities', () => {
+  // @req FR:pris-sessions-ui/live.event
+  it('a priorities write pushes a pris change to open pages', async () => {
+    const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
+    const web = tmp(); writeFileSync(join(web, 'index.html'), '<html>app</html>');
+    const s = await startWeb({ ...quiet, dir: dest, port: 0, webDir: web, reports: new ReportStore(tmp()), pris: new PriStore(tmp()), inventory: false, agents: false });
+    try {
+      let seen = '';
+      let wake: () => void = () => {};
+      const until = (re: RegExp) => new Promise<void>((ok) => { wake = () => { if (re.test(seen)) ok(); }; wake(); });
+      const req = http.get(`${s.url}/events`, (r) => { r.on('data', (c) => { seen += String(c); wake(); }); });
+      await until(/event: hello/);
+      const pris = [{ id: 'p1', title: 'Ship', status: 'active', items: [], backlog: [], weekly: [] }];
+      const res = await fetch(`${s.url}/api/pris`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rev: 0, pris }) });
+      expect(res.status).toBe(200);
+      await until(/event: change\ndata: \{"rev":\d+,"kinds":\["pris"\]\}/);
+      req.destroy();
     } finally { await s.close(); }
   });
 });

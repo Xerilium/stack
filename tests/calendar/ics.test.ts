@@ -1,4 +1,5 @@
 import { createIcsCalendar, icsUrls, parseIcs } from '../../src/calendar/ics';
+import { sourceStatus } from '../../src/calendar';
 
 const cal = (...lines: string[]) => ['BEGIN:VCALENDAR', 'VERSION:2.0', ...lines, 'END:VCALENDAR'].join('\r\n');
 const vevent = (...lines: string[]) => ['BEGIN:VEVENT', ...lines, 'END:VEVENT'];
@@ -216,6 +217,36 @@ describe('createIcsCalendar', () => {
     expect(f.calls).toHaveLength(4);
   });
 
+  // @req FR:ux-consolidation/cal.status
+  it('reports via, the feed hosts (never a path), and when the oldest copy served was read', async () => {
+    let t = 1000, up = true;
+    const f = fake({ 'https://a.test/secret/x.ics': () => (up ? ok(feed('x', '10')) : new Response('down', { status: 503 })), 'https://b.test/y.ics': () => ok(feed('y', '11')) });
+    const c = createIcsCalendar({ urls: ['webcal://a.test/secret/x.ics', 'https://b.test/y.ics'], fetch: f.fetch, now: () => t, ttlMs: 100 });
+    expect(c.info!()).toEqual({ via: 'ics', account: 'a.test, b.test' }); // nothing read yet
+    await c.events(FROM, TO);
+    expect(c.info!()).toEqual({ via: 'ics', account: 'a.test, b.test', syncedAt: 1000 });
+    up = false; t = 5000;
+    await c.events(FROM, TO); // a.test fails and serves its copy from t=1000; b.test reads again
+    expect(c.info!().syncedAt).toBe(1000);
+    expect(JSON.stringify(c.info!())).not.toContain('secret');
+  });
+
+  // @req FR:ux-consolidation/cal.status
+  it('flags a read that left a feed out (empty feed plus a failed or unparsable one), and clears it once all feeds read', async () => {
+    let bad = true;
+    const f = fake({
+      'https://a.test/x.ics': () => ok(cal()),
+      'https://b.test/y.ics': () => (bad ? ok('<html>Sign in</html>') : ok(feed('y', '11'))),
+    });
+    const c = createIcsCalendar({ urls: ['https://a.test/x.ics', 'https://b.test/y.ics'], fetch: f.fetch, ttlMs: 0 });
+    expect(await c.events(FROM, TO)).toEqual([]);
+    expect(c.info!().partial).toBe(true);
+    expect(sourceStatus(c, true, Date.now()).state).toBe('error');
+    bad = false;
+    expect((await c.events(FROM, TO)).map((e) => e.subject)).toEqual(['y']);
+    expect(c.info!().partial).toBeUndefined();
+    expect(sourceStatus(c, true, Date.now()).state).toBe('ok');
+  });
   it('never follows a redirect to a loopback, private, or link-local host', async () => {
     for (const where of ['https://127.0.0.1/x.ics', 'https://localhost/x.ics', 'https://10.1.2.3/x.ics', 'https://169.254.169.254/x.ics', 'https://[::1]/x.ics', 'https://intranet/x.ics', 'https://box.local/x.ics']) {
       const f = fake({ 'https://a.test/x.ics': () => new Response(null, { status: 302, headers: { location: where } }) });

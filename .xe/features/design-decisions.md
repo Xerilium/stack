@@ -285,3 +285,13 @@
 
 **Trade-offs**: The web AI summary section went with the Brief page (`FR:cos-view/brief.ai.web` deprecated). Keep, fold into Now, or remove the server route is an open owner call (`.xe/features/stack-app/architecture-review.md` #3).
 
+
+## Now: honest calendar line, ask cards that expand, two columns on wide screens
+
+**Decision**: `GET /calendar` reports a source status (`{kind, via, account, state, lastSyncAt}`). Now says `No meetings left today.` only when that source is `ok` and under 60 min old; otherwise it says what is wrong and offers Connect (paste a published ICS link, saved in the user config with mode `0600` through `POST /setup {connect: 'calendar'}`), the Graph sign-in command, and Check connection. `Waiting on you` rows are cards that expand in place with the full ask and every response, through the same `useAsks` calls as Needs you. At 1100 px and wider, Now uses two columns: the task and its message box on the left, `Next` and `Waiting on you` on the right.
+
+**Date**: 2026-11-11
+
+**Why**: The owner saw `No meetings left today.` with a meeting 10 minutes away: no calendar was connected, so the page lied. The ask rows had one button and no context, and the page left most of a desktop screen empty. Specs: `.xe/features/ux-consolidation/spec.md` (`FR:cal.*`, `FR:one.expand`), `.xe/features/now-screen/spec.md` (`FR:now.layout`, `FR:now.compose`).
+
+**Trade-offs**: Connect reuses the first-run restart (the host restarts on the same port) instead of a hot swap of the calendar provider: one code path, a few seconds of wait. The source shape matches the inbox source status planned in `xe/inbox-connect` (`{kind, account, state, lastSyncAt}`) so the two can merge into one `sources[]` list later. Rejected: a right column below 1100 px (the task column gets too narrow beside the rail).

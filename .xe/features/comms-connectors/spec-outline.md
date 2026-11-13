@@ -24,6 +24,7 @@ One connector contract. Any source yields `InboxItem`s. Stack ranks them by the 
 5. Accounts: personal and work stay separate. Each has its own token and state file.
 6. Failure: auth expiry (Gmail 7-day token) raises an ask, not a silent gap.
 7. Cost cap: a per-connector monthly cap (X, models). Over cap -> pause + ask.
+8. Status: every connector run writes a sync record (`{ kind, account, at, ok, error? }`, codes only) to `.stack/inbox-sources.json`. A new connector adds its kind to `InboxSource` and its connect step to `FR:inbox-page/src.help`. Until it is wired to a sign-in it is `planned` (`FR:inbox-page/src.planned`).
 
 ## Safety
 

@@ -5,10 +5,14 @@
 import { topAsksOf, type Home, type HomeItem } from './home';
 import { span } from './plan';
 import { parseRow } from './row';
+import { isWithdrawn, type ThreadItem } from './thread';
 import type { Task } from './types';
 
 /** The longest "why now" line. @req FR:now-screen/now.why */
 export const WHY_MAX = 60;
+
+/** How long Done holds the check before the next task shows. @req FR:product-reset/ui.done */
+export const DONE_MS = 400;
 
 export interface NowTask { task: Task; title: string; why: string }
 
@@ -34,3 +38,14 @@ export function nowOf(h: Home, minutesLeft: number, agentHasIt: (t: Task) => boo
   const r = parseRow(item.task.text);
   return { task: item.task, title: r.title || item.task.text, why: whyLine(item, minutesLeft, agentHasIt(item.task)) };
 }
+
+/** Inbox text is one line, at most 1000 characters. @req FR:now-screen/now.compose */
+export const TELL_MAX = 1000;
+/** The box text as one inbox line: lines trimmed, blank ones dropped, joined with ` / `. */
+export const foldLines = (text: string): string => text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(' / ').slice(0, TELL_MAX);
+/** The task's earlier instructions and agent replies, oldest first. @req FR:now-screen/now.thread */
+export const tellThread = (items: ThreadItem[]): Extract<ThreadItem, { kind: 'owner' | 'agent' }>[] =>
+  items.filter((i): i is Extract<ThreadItem, { kind: 'owner' | 'agent' }> => (i.kind === 'owner' || i.kind === 'agent') && !isWithdrawn(i)).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+
+/** The row once an agent takes it: 🪄 in front; a 🙋 mark goes, since inbox routing reads 🙋 first. @req FR:now-screen/now.compose */
+export const agentMark = (text: string): string => `🪄 ${text.includes('🙋') ? text.replace(/\s*🙋\s*/gu, ' ').trim() : text}`;

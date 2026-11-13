@@ -1,7 +1,9 @@
 // @req FR:now-screen/now.one @req FR:now-screen/now.why @req FR:now-screen/now.empty
 import { describe, expect, it } from 'vitest';
 import { homeOf, type RankItem } from '../src/home';
-import { nowOf, whyLine, WHY_MAX } from '../src/nowscreen';
+import { readFileSync } from 'node:fs';
+import { agentMark, DONE_MS, foldLines, nowOf, tellThread, TELL_MAX, whyLine, WHY_MAX } from '../src/nowscreen';
+import { foldSubtasks, type ThreadItem } from '../src/thread';
 import type { Project, Task } from '../src/types';
 
 const at = new Date(2026, 9, 29, 15, 0);
@@ -41,5 +43,52 @@ describe('whyLine', () => {
   it('skips fit when there is no window', () => expect(why('📅 Oct 29: Ship it 🟠', 0)).toBe('due today'));
   it('is at most 60 characters', () => {
     for (const text of ['🚨 🚧 📅 Oct 1: x 🔴', '‼️ 📅 Oct 27: x ⚫️', 'x']) for (const m of [0, 45, 600]) expect(why(text, m, true).length).toBeLessThanOrEqual(WHY_MAX);
+  });
+});
+
+// @req FR:now-screen/now.compose @req FR:now-screen/now.thread
+describe('tell the agent', () => {
+  it('folds lines into one inbox line', () => {
+    expect(foldLines('  Use the new logo  ')).toBe('Use the new logo');
+    expect(foldLines('Step one\r\n\n  step two \nstep three')).toBe('Step one / step two / step three');
+    expect(foldLines(' \n ')).toBe('');
+    expect(foldLines('x'.repeat(1200)).length).toBe(TELL_MAX);
+  });
+  it('keeps only instructions and agent replies, oldest first', () => {
+    const items: ThreadItem[] = [
+      { at: '2026-11-02T10:00:00Z', kind: 'agent', id: 'b', agent: 'cid', text: 'Done' },
+      { at: '2026-11-01T10:00:00Z', kind: 'owner', id: 'a', text: 'Do it', state: 'handled' },
+      { at: '2026-11-01T11:00:00Z', kind: 'subtask', ref: 'alpha:7', text: 'x', done: false },
+    ];
+    expect(tellThread(items).map((i) => i.kind === 'owner' || i.kind === 'agent' ? i.id : '')).toEqual(['a', 'b']);
+  });
+  // @req FR:now-screen/now.undo: Undo means never sent
+  it('hides a message the owner withdrew', () => {
+    const items: ThreadItem[] = [
+      { at: '2026-11-01T10:00:00Z', kind: 'owner', id: 'a', text: 'Keep', state: 'open' },
+      { at: '2026-11-01T11:00:00Z', kind: 'owner', id: 'w', text: 'Oops', state: 'handled', withdrawn: true },
+    ];
+    expect(tellThread(items).map((i) => i.id)).toEqual(['a']);
+    expect(foldSubtasks(items).map((i) => (i.kind === 'owner' ? i.id : ''))).toEqual(['a']);
+  });
+});
+
+// @req FR:now-screen/now.compose: the agent takes the row: 🪄 replaces 🙋, so the inbox entry stores `to: agent`
+describe('agentMark', () => {
+  it('adds 🪄 and drops the human mark', () => {
+    expect(agentMark('Ship it 🟠')).toBe('🪄 Ship it 🟠');
+    expect(agentMark('🙋 Ship it 🟠')).toBe('🪄 Ship it 🟠');
+    expect(agentMark('Ship 🙋 it')).toBe('🪄 Ship it');
+  });
+});
+
+// @req FR:product-reset/ui.done @req FR:product-reset/ia.now
+describe('Done on Now', () => {
+  it('holds the check for 400 ms before the next task shows', () => {
+    expect(DONE_MS).toBe(400);
+  });
+  it('plays no animation with reduced motion', () => {
+    const css = readFileSync(new URL('../src/nowscreen.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/prefers-reduced-motion: reduce\)[^}]*\.now-card\.done-anim/);
   });
 });

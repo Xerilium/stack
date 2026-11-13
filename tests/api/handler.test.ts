@@ -289,6 +289,13 @@ describe('list and get', () => {
     const r = await m.call('GET', '/api/tasks?fields=ref,depth,notes');
     expect(Object.keys(r.json.items[0])).toEqual(['ref', 'depth', 'notes']);
   });
+  // @req FR:api/routes.tasks
+  it('depth skips an empty row, so its children never read as an earlier row\'s', async () => {
+    const m = mk();
+    await m.storage.write('tasks/x.md', '# X\n\n## 🔄 Active\n\n- [ ] Root A\n  - [ ] Child A\n- [ ] \n  - [ ] Child of empty\n');
+    const r = await m.call('GET', '/api/tasks?fields=text,depth&limit=200');
+    expect(r.json.items.map((t: { text: string; depth: number }) => [t.text, t.depth])).toEqual([['Root A', 0], ['Child A', 1], ['Child of empty', 0]]);
+  });
   it('gets one task; 404 on non-task line', async () => {
     const m = mk();
     await seed(m.call);
@@ -344,6 +351,16 @@ describe('summaries', () => {
     expect(r.json.stack).toContain('First task');
     const f = await m.call('GET', '/api/summaries?fields=stack');
     expect(Object.keys(f.json)).toEqual(['stack']);
+  });
+  // @req FR:summaries/engine.order
+  it('the README top is the task GET /next returns, with the owner overrides', async () => {
+    const m = mk();
+    await seed(m.call);
+    await m.storage.writeAux('.stack/priorities.json', JSON.stringify({ rules: [{ match: 'Second task', effect: 'top' }] }), { expectedVersion: null });
+    const next = (await m.call('GET', '/api/next')).json.task.text;
+    expect(next).toContain('Second task');
+    const readme: string = (await m.call('GET', '/api/summaries?fields=readme')).json.readme;
+    expect(/## 🎯 Top of the stack\n\n[\s\S]*?\n\n/.exec(readme)![0]).toContain(next);
   });
   it('myDay is null with no tasks', async () => {
     const r = await mk().call('GET', '/api/summaries?fields=myDay');

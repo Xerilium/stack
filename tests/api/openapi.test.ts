@@ -1,5 +1,5 @@
 import { fixtureCalendar } from '../../src/calendar';
-import { mkdtempSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { parseDocument } from 'yaml';
 import { createApiHandler, QUERY_DEFAULTS, ROUTES } from '../../src/api/handler';
@@ -9,10 +9,29 @@ import { parseRef } from '../../src/api/validate';
 import { ENUMS, MAX_STR, type Spec } from '../../src/api/validate';
 import { MemoryStorage } from '../../src/core/storage';
 import { ReportStore } from '../../src/core/reports';
+import { PriStore } from '../../src/core/pris';
+import { PrPriorityStore } from '../../src/core/pr-priority';
+import { FeedbackStore } from '../../src/core/feedback';
+import { LiveStore } from '../../src/core/live-lane';
+import { BriefStore, FactsStore } from '../../src/core/pr-review';
+import { runInventory } from '../../src/core/session-inventory';
 import { tmpdir } from 'os';
 import { createAuth, createTokenService, MemoryTokenStore } from '../../src/api';
 import { createRunManager, type AgentDriver, type Run, type Update } from '../../src/agents';
 import { putAgent } from '../../src/core/agents';
+import { createAppUpdater, type UpdateSettings } from '../../src/core/app-update';
+import { createConnect } from '../../src/graph/connect';
+
+/** An installer with a ready build, fake files and no real process. */
+function oaApp() {
+  let st: UpdateSettings = { mode: 'on-quit', idleMinutes: 30 };
+  const stamp = (sha: string, builtAt: string) => JSON.stringify({ stackBuild: { version: '0.0.1', sha, dirty: false, builtAt } });
+  return createAppUpdater({
+    running: { version: '0.0.1', sha: 'aaaaaaaaaaaa', dirty: false, builtAt: '2026-11-01T00:00:00.000Z' }, target: '/A/Stack.app', source: '/s/Stack.app', stateDir: '/h/.stack', pid: 1,
+    readText: (p) => (p.startsWith('/s/') ? stamp('bbbbbbbbbbbb', '2026-11-12T00:00:00.000Z') : p.endsWith('update-result.json') ? '{"ok":true,"step":"done","at":"2026-11-12T00:00:00Z"}' : null),
+    settings: () => st, saveSettings: (x) => { st = x; }, spawnHelper: () => undefined, quit: () => undefined,
+  });
+}
 
 const FILE = join(__dirname, '../../docs/api/openapi.yaml');
 const text = readFileSync(FILE, 'utf8');
@@ -169,8 +188,8 @@ describe('route parity', () => {
   // @req FR:api/docs.openapi.parity
   it('matches request bodies: properties, required, bounds, enums, strictness', () => {
     for (const { route, op } of ops) {
-      // reports.put has a nested body the core validates; its schema is authored (FR:status-ingest/api.put).
-      if (!route.body) { if (route.name === 'reports.put') expect(resolve(op.requestBody).required).toBe(true); else expect(op.requestBody).toBeUndefined(); continue; }
+      // reports.put and pris.put have nested bodies the core validates; their schemas are authored (FR:status-ingest/api.put, FR:session-inventory/api.pris.put).
+      if (!route.body) { if (route.name === 'reports.put' || route.name === 'pris.put') expect(resolve(op.requestBody).required).toBe(true); else expect(op.requestBody).toBeUndefined(); continue; }
       const rb = resolve(op.requestBody);
       expect(!!rb.required).toBe(route.body.required.length > 0);
       const s = resolve(rb.content['application/json'].schema);
@@ -186,7 +205,7 @@ describe('route parity', () => {
   it('declares the same enums the API enforces and no force flag', () => {
     const set = resolve(doc.paths['/tasks/set'].post.requestBody).content['application/json'].schema.properties;
     for (const [name, values] of Object.entries(ENUMS)) expect(set[name].enum).toEqual([...values]);
-    expect(Object.keys(set).sort()).toEqual(['checkbox', 'clearEmojis', 'effort', 'impact', 'priority', 'ref', 'status', 'suspend']);
+    expect(Object.keys(set).sort()).toEqual(['checkbox', 'clearEmojis', 'effort', 'expect', 'impact', 'priority', 'ref', 'status', 'suspend']);
     expect(text).not.toMatch(/force:/);
     expect(doc.components.schemas.Error.properties.error.properties.code.enum).toEqual([...ERROR_CODES]);
     expect(resolve(doc.paths['/tasks'].get.parameters.find((p: any) => p.name === 'state')).schema.enum).toEqual(['open', 'done', 'all']);
@@ -212,12 +231,26 @@ describe('security parity', () => {
   });
 });
 
+/** One waiting scheduled session with a PR, so every documented SessionItem field is checked against real output. */
+function sessionFixture(): string {
+  const d = mkdtempSync(join(tmpdir(), 'stack-oa-sess-')); const f = join(d, 'a', 'b'); mkdirSync(f, { recursive: true });
+  writeFileSync(join(f, 'local_1.json'), JSON.stringify({ sessionId: 'local_1', cwd: '/u/dev/todo', title: 'T', lastActivityAt: 1, lastTurnEdgeAt: 1, scheduledTaskId: 's', interruptedAwaitingPerson: true, lastAssistantUuid: 'u', postTurnSummary: { status_category: 'blocked', needs_action: 'Approve', summarizes_uuid: 'u' }, prs: [{ url: 'https://x.test/pull/1', state: 'OPEN' }] }));
+  writeFileSync(join(f, 'scheduled-tasks.json'), JSON.stringify({ scheduledTasks: [{ id: 's', displayName: 'Daily' }] }));
+  return d;
+}
+
 describe('response parity (real handler output vs documented schemas)', () => {
   const NOW = new Date('2026-10-22T18:00:00Z');
   const storage = new MemoryStorage();
   // A calendar with an online meeting, so the documented event shape (joinUrl included) is checked against real output.
+  const laneHome = mkdtempSync(join(tmpdir(), 'stack-oa-'));
+  writeFileSync(join(laneHome, 'live.config.json'), JSON.stringify({ lockPath: join(laneHome, 'fh.lock') }));
+  const laneStore = new LiveStore(laneHome, { now: () => NOW });
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
-  const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))) });
+  const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))),
+    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), live: laneStore, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), feedback: new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), app: oaApp(),
+    // Connect with fakes: no listener port, no browser, no network. @req FR:connect-accounts/api.get
+    connect: createConnect({ clientId: () => '11111111-2222-3333-4444-555555555555', cacheDir: mkdtempSync(join(tmpdir(), 'stack-oa-')), listen: async () => ({ port: 50000, close: () => undefined }), openUrl: async () => undefined, setup: async () => ({ state: 'needs-azure-signin' }) }) });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await h(new Request(`https://x.test/api${path}`, {
@@ -264,9 +297,21 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('needs.answer', 'POST', '/needs-you/none/answer', { choice: 'go' }, 404);
     // @req FR:inbox-page/api.read @req FR:inbox-page/api.act
     await go('inboxItems.list', 'GET', '/inbox-items', undefined, 200);
+    await go('inboxSources.list', 'GET', '/inbox-sources', undefined, 200);
+    await go('connect.get', 'GET', '/connect', undefined, 200);
+    await go('connect.setup', 'POST', '/connect/setup', {}, 200);
+    const signIn = await go('connect.start', 'POST', '/connect/sign-in', { drafts: false }, 201);
+    await go('connect.poll', 'GET', '/connect/sign-in/' + String((signIn.body as { id: string }).id), undefined, 200);
+    await go('connect.poll', 'GET', '/connect/sign-in/nope', undefined, 404);
+    await go('connect.drafts', 'POST', '/connect/drafts', { account: 'me@outlook.com', on: true }, 200);
+    await go('connect.remove', 'POST', '/connect/remove', { account: 'me@outlook.com' }, 200);
+    await go('connect.remove', 'POST', '/connect/remove', { account: 'nope' }, 422);
+    await go('connect.remove', 'POST', '/connect/remove', { account: '' }, 200);
     await go('inboxItems.action', 'POST', '/inbox-items/mail-000000000000/action', { action: 'mark-done' }, 404);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha', dryRun: true }, 200);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha' }, 201);
+    await go('feedback', 'POST', '/feedback', { text: 'Rail too wide', route: '/#list', viewport: '1280x800', theme: 'dark' }, 201);
+    await go('feedback', 'POST', '/feedback', { text: '' }, 422);
     await go('tasks.start', 'POST', '/tasks/start', { ref }, 200);
     await go('tasks.suspend', 'POST', '/tasks/suspend', { ref, days: 1 }, 200);
     await go('tasks.resume', 'POST', '/tasks/resume', { ref }, 200);
@@ -290,6 +335,10 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('sync', 'GET', '/sync', undefined, 200);
     // @req FR:live-deploy/sync.flush
     await go('sync.flush', 'POST', '/sync', {}, 200);
+    // @req FR:devops-installer/version.get @req FR:devops-installer/version.mode @req FR:devops-installer/restart.spawn
+    await go('version', 'GET', '/version', undefined, 200);
+    await go('version.mode', 'POST', '/version/mode', { mode: 'ask', idleMinutes: 20 }, 200);
+    await go('version.restart', 'POST', '/version/restart', {}, 200);
     // @req FR:day-inputs/api.calendar
     await go('calendar.list', 'GET', '/calendar?from=2026-10-28T00:00:00Z&to=2026-10-29T00:00:00Z', undefined, 200);
     await go('calendar.list', 'GET', '/calendar?from=x&to=y', undefined, 422);
@@ -319,6 +368,39 @@ describe('response parity (real handler output vs documented schemas)', () => {
     // @req FR:status-ingest/api.put @req FR:status-ingest/api.invalid
     await go('reports.put', 'POST', '/reports', { agent: 'xe-cos', project: 'stack', top: [{ text: 'Ship' }], asks: [{ id: 'a', ask: 'Approve', link: 'https://x.test/1', by: '2026-10-23' }] }, 200);
     await go('reports.put', 'POST', '/reports', { agent: 'Bad' }, 400);
+    // @req FR:session-inventory/api.inventory @req FR:session-inventory/api.pris.get @req FR:session-inventory/api.pris.put
+    await go('inventory.list', 'GET', '/session-inventory', undefined, 200);
+    await go('pris.get', 'GET', '/pris', undefined, 200);
+    await go('pris.put', 'POST', '/pris', { rev: 0, pris: [{ id: 'p1', title: 'One', status: 'active', items: [], backlog: [], weekly: [{ week: '2026-W46', text: 'Done' }] }] }, 200);
+    await go('pris.put', 'POST', '/pris', { rev: 0, pris: [] }, 409);
+    await go('pris.put', 'POST', '/pris', { rev: 1, pris: [{ id: 'X' }] }, 400);
+    // @req FR:pr-priority/api.get @req FR:pr-priority/api.put @req FR:pr-priority/api.recommend @req FR:pr-priority/api.decisions @req FR:pr-priority/api.decide
+    await go('prPriority.get', 'GET', '/pr-priority', undefined, 200);
+    await go('prPriority.put', 'POST', '/pr-priority', { rev: 0, op: 'add', ref: 'o/r#1' }, 200);
+    await go('prPriority.put', 'POST', '/pr-priority', { rev: 0, op: 'add', ref: 'o/r#2' }, 409);
+    const rec = (await go('prPriority.recommend', 'POST', '/pr-priority/recommendations', { repo: 'o/r', number: 2, agent: 'cos', reason: 'Hot' }, 200)).body as { rec: { id: string } };
+    await go('prPriority.decide', 'POST', `/pr-priority/recommendations/${rec.rec.id}`, { decision: 'reject', reason: 'No' }, 200);
+    await go('prPriority.recommend', 'POST', '/pr-priority/recommendations', { repo: 'o/r', number: 2, agent: 'cos', reason: 'Hot' }, 409);
+    await go('prPriority.decisions', 'GET', '/pr-priority/recommendations', undefined, 200);
+    // @req FR:pr-page/api.get @req FR:pr-page/api.queue-client (no board, writes, or queue here: the error shapes still conform)
+    await go('prs.get', 'GET', '/prs', undefined, 200);
+    await go('prs.queue', 'POST', '/prs/queue', { repo: 'o/r', number: 1, op: 'pin' }, 404);
+    await go('prs.label', 'POST', '/prs/label', { repo: 'o/r', number: 1, op: 'add' }, 404);
+    await go('prs.ack', 'POST', '/prs/ack', { repo: 'o/r', number: 1, thread: 'https://github.com/o/r/pull/1', note: 'a' }, 409);
+    await go('prs.rec', 'POST', '/prs/recs/pp-0000000a', { decision: 'accept' }, 409);
+    // @req FR:pr-page/api.resolve
+    await go('prs.resolve', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_x', op: 'resolve' }, 404);
+    // No GitHub sign-in on this host. @req FR:pr-page/auth.signin
+    await go('prs.signin.get', 'GET', '/prs/sign-in', undefined, 404);
+    await go('prs.signin', 'POST', '/prs/sign-in', {}, 404);
+    // @req FR:pr-review-lane/sort.api @req FR:pr-review-lane/lane.api
+    await go('prReview.get', 'GET', '/pr-review', undefined, 200);
+    await go('live.get', 'GET', '/live', undefined, 200);
+    await go('live.item', 'POST', '/live/items', { op: 'add', repo: 'o/r', number: 1, text: 'x' }, 404);
+    await laneStore.next({ ref: { repo: 'o/r', number: 1, url: 'https://github.com/o/r/pull/1' }, agent: 'live-1' }, async () => null);
+    await go('live.item', 'POST', '/live/items', { op: 'add', repo: 'o/r', number: 1, text: 'Sign in works' }, 200);
+    await go('live.get', 'GET', '/live', undefined, 200);
+    await go('live.item', 'POST', '/live/items', { op: 'zap', repo: 'o/r', number: 1 }, 422);
     // @req FR:agent-sessions/driver.interface (no driver here: every sessions route is 404 and the error shape still conforms)
     await go('sessions.list', 'GET', '/sessions', undefined, 404);
     await go('sessions.cost', 'GET', '/sessions/cost', undefined, 404);
@@ -331,6 +413,8 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('reviews.list', 'GET', '/reviews?project=alpha', undefined, 200);
     await go('tasks.review', 'POST', '/tasks/review', { ref: 'alpha:4' }, 404);
     // @req FR:agent-thread/thread.read
+    await go('inbox.delivery', 'GET', '/inbox/delivery?ref=alpha:4', undefined, 404);
+    await go('inbox.deliveryLogin', 'POST', '/inbox/delivery/login', undefined, 404);
     await go('inbox.reply', 'POST', '/inbox/reply', { ref: 'alpha:4', text: 'x' }, 403);
     await go('tasks.thread', 'GET', `/tasks/${encodeURIComponent(ref)}/thread`, undefined, 200);
     await go('tasks.assign', 'POST', `/tasks/${encodeURIComponent(ref)}/assign`, {}, 404);

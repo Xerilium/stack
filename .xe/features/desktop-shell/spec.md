@@ -17,7 +17,7 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 ## Scope
 
 - In (slice 1): `desktop/` package with the Electron main process: start the host on a loopback port, one window that loads the host, tray icon with a menu, global hotkey to show or hide, single-instance lock, clean host stop on quit, renderer hardening, a smoke script for a local run. The unsigned `.app`, `zip`, and `dmg` build is `FR:desktop-app/package`.
-- Out: Developer ID signing, notarization, auto-update, login item, Windows and Linux, a preload bridge or IPC, notifications from the shell (the page does them, `FR:pwa/notify.*`), Tailscale.
+- Out: Developer ID signing, notarization, Electron auto-update (updates: [devops-installer](../devops-installer/spec.md)), login item, Windows and Linux, a preload bridge or IPC, notifications from the shell (the page does them, `FR:pwa/notify.*`), Tailscale.
 - Human-only: Apple Developer Program enrollment, the Developer ID certificate, notarization secrets in CI (`FR:desktop-app/native.human`).
 
 ## Architecture
@@ -33,15 +33,16 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 
 ### FR:host: The shell runs the Stack host
 
-- **FR:host.plan** (P1): `hostPlan({cfg, env, home, cwd})` resolves the content repo like `stack web`: `STACK_REPO`, then `STACK_DIR`, then user config `repo` or `dir`. `live` is user config `mode: 'live'`; `batch` is user config `batch` (minutes, default 5, must be a number 0 or more). No repo is an error with the text `No content repo. Set "repo" in ~/.config/stack/config.json`
+- **FR:host.plan** (P1): `hostPlan({cfg, env, home, cwd})` resolves the content repo like `stack web`: `STACK_REPO`, then `STACK_DIR`, then user config `repo` or `dir`. `live` is user config `mode: 'live'`; `batch` is user config `batch` (minutes, default 5, must be a number 0 or more). No repo is an error with the text `No content repo. Set "repo" in ~/.config/stack/config.json`; the desktop entry catches it first and opens the first-run setup flow (`FR:first-run-onboarding/host.setup`)
 - **FR:host.start** (P1): `startHost(plan, deps)` prepares the repo (live: `prepareLive` with `BatchedGitStorage`; demo: `prepareDemo` into `~/.config/stack/demo`), then calls `startWeb` with `port: 0` so the OS picks a free loopback port. It returns `{url, close}` where `url` is `http://127.0.0.1:<port>` (never `localhost`, never another host)
 - **FR:host.webdir** (P1): The web app comes from `web/dist` next to the repo root. A missing `web/dist/index.html` fails with `Web app not built. Run: pnpm build`
 - **FR:host.stop** (P1): `close()` calls the host's `close()` once, which flushes batched edits (`FR:cli/web.batch.shutdown`). A second `close()` is a no-op
 - **FR:host.fail** (P1): A host that fails to start (no repo, no web build, port error) logs `host: <message>` and the shell quits. No window and no tray are created
+- **FR:host.path** (P1): Before the host starts, the shell sets `process.env.PATH` to the owner's login-shell `PATH`, so the host and the agents it spawns find `gh`, `claude`, `gemini`, and Node tools (Homebrew, nvm, `~/.local/bin`) on a Finder launch. It runs `$SHELL -ilc` (default `/bin/zsh`) with a 5 s timeout and reads the `PATH` between markers, so shell start-up output is ignored. Entries from the current `PATH` that the shell result lacks are kept at the end. When the shell fails, times out, or prints no `PATH`, the fallback puts `/opt/homebrew/bin`, `/usr/local/bin`, and `~/.local/bin` before the current `PATH`. No entry repeats. A `PATH` with any entry outside `/usr/bin:/bin:/usr/sbin:/sbin` (a terminal launch) is kept as is and no shell runs. The shell logs `path: login shell`, `path: fallback (<reason>)`, or `path: unchanged (<reason>)`, never the `PATH` value. Windows keeps its `PATH`
 
 ### FR:window: One window shows the web UI
 
-- **FR:window.load** (P1): After the host starts, the shell creates one `BrowserWindow` and calls `loadURL` with the host url. It never calls `loadURL` or `loadFile` with any other url
+- **FR:window.load** (P1): After the host starts, the shell creates one `BrowserWindow` and calls `loadURL` with the host url. It never calls `loadURL` or `loadFile` with any other url, except `<host url>/#/updates` from `Stack > Updates…` (`FR:devops-installer/notice.menu`)
 - **FR:window.hide** (P1): Closing the window hides it; the host keeps running. The window shows again from the tray, the hotkey, the Dock, or a second launch
 - **FR:window.toggle** (P1): `toggle()` hides the window when it is visible and focused; otherwise it shows and focuses it. A window that was never created is created first
 
@@ -70,9 +71,9 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 ### FR:safe: Renderer hardening
 
 - **FR:safe.prefs** (P1): Every window has `contextIsolation: true`, `nodeIntegration: false`, `nodeIntegrationInWorker: false`, `sandbox: true`, `webSecurity: true`, `allowRunningInsecureContent: false`, `webviewTag: false`, and no `preload`
-- **FR:safe.navigate** (P1): `will-navigate` or `will-redirect` to an origin other than the host origin is prevented. An `http:` or `https:` target opens in the default browser with `shell.openExternal`; any other scheme is dropped. `setWindowOpenHandler` denies every new window and opens `http(s)` targets the same way
+- **FR:safe.navigate** (P1): `will-navigate` or `will-redirect` to an origin other than the host origin is prevented. An `http:` or `https:` target opens in the default browser with `shell.openExternal`; a Claude session link (`FR:pris-sessions-ui/tray.link`) opens in the Claude app the same way; any other scheme is dropped. `setWindowOpenHandler` denies every new window and opens those targets the same way
 - **FR:safe.csp** (P1): Responses to the window without a `Content-Security-Policy` header get `default-src 'self'; img-src 'self' data:; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'` (the same policy the host serves from `staticwebapp.config.json`). A header the host sent is kept
-- **FR:safe.permissions** (P1): Permission requests and permission checks are denied except `notifications` from the host origin
+- **FR:safe.permissions** (P1): Permission requests and permission checks are denied except `notifications` and `clipboard-sanitized-write` (Copy ids, `FR:pris-sessions-ui/sessions.archive`) from the host origin
 - **FR:safe.remote** (P1): The shell never loads remote content: no `loadURL` to a non-loopback origin, no `webview`, no `<iframe>` from another origin (blocked by `default-src 'self'`), no auto-update feed
 
 ### FR:dev: Local run
@@ -81,5 +82,5 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 
 ## Non-functional
 
-- **NFR:shell.test** (P1): Every rule above except `FR:dev.smoke` is tested in Jest with fake `electron` objects; the tests never import `electron` and never spawn a process
+- **NFR:shell.test** (P1): Every rule above except `FR:dev.smoke` is tested in Jest with fake `electron` objects; the tests never import `electron` and never spawn a process, except the `FR:host.path` spawner tests, which run short Node scripts (`process.execPath`), never a shell
 - **NFR:shell.log** (P1): The shell logs the host url, the repo path (redacted), and lifecycle lines. It never logs tokens, environment, or request bodies

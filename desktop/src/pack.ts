@@ -1,5 +1,6 @@
 /** Unsigned Mac build: a pure plan of every path and command. `scripts/package.mjs` runs it. No Apple account. */
 import { join } from 'path';
+import type { BuildStamp } from '../../src/core/app-update';
 
 export type Cmd = [cmd: string, args: string[]];
 
@@ -7,6 +8,13 @@ export interface PackInput {
   root: string;
   rootPkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   desktopPkg: { version: string; devDependencies?: Record<string, string> };
+  /** The build stamp written into the app manifest. @req FR:devops-installer/stamp.write */
+  build?: BuildStamp;
+}
+
+/** The stamp for this build from `git rev-parse HEAD` and `git status --porcelain`. @req FR:devops-installer/stamp.write */
+export function buildStamp(o: { version: string; head: string; status: string; now: Date }): BuildStamp {
+  return { version: o.version, sha: o.head.trim().slice(0, 12), dirty: o.status.trim() !== '', builtAt: o.now.toISOString() };
 }
 
 const NAME = 'Stack';
@@ -41,12 +49,14 @@ export function packPlan(i: PackInput) {
     // The script builds desktop first: it needs this file compiled.
     build: [['pnpm', ['--filter', 'stack-web', 'build']]] as Cmd[],
     stageDir,
-    copies: ['desktop/dist', 'desktop/assets', 'web/dist', 'pnpm-lock.yaml'].map((p): [string, string] => [join(i.root, p), join(stageDir, p)]),
+    // The Connect one-time setup script runs from the bundle (`setupScriptPath`). @req FR:connect-accounts/setup.run
+    copies: ['desktop/dist', 'desktop/assets', 'web/dist', 'scripts/register-stack-app.ps1', 'pnpm-lock.yaml'].map((p): [string, string] => [join(i.root, p), join(stageDir, p)]),
     manifest: {
       name: 'stack-desktop', productName: NAME, version, private: true,
       main: 'desktop/dist/desktop/src/main.js',
       // devDependencies only so the root lockfile matches; `--prod` skips them.
       dependencies: i.rootPkg.dependencies ?? {}, devDependencies: i.rootPkg.devDependencies ?? {},
+      ...(i.build ? { stackBuild: i.build } : {}),
     },
     install: ['pnpm', ['install', '--prod', '--frozen-lockfile', '--ignore-workspace', '--config.node-linker=hoisted'], stageDir] as [string, string[], string],
     icon: { src: iconSrc, iconset, icns, commands: iconCommands },

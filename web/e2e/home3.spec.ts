@@ -45,7 +45,7 @@ test.describe('Home round 3', () => {
       await expect(detail).toHaveCount(0);
       await page.keyboard.press('Enter');
     } else await detail.getByRole('button', { name: 'Open' }).click();
-    const full = page.getByRole('dialog', { name: 'Focus' });
+    const full = page.getByRole('dialog', { name: 'Task detail' });
     await expect(full).toBeVisible();
     await expect(full).toContainText('Draft is in Outlook.');
     await expect(full.getByRole('button', { name: /^Back/ })).toHaveCount(0);
@@ -86,7 +86,7 @@ test.describe('Home round 3', () => {
     await expect(row.locator('.row-detail')).toBeVisible();
     await title.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('dialog', { name: 'Focus' })).toContainText('Reply to Dana');
+    await expect(page.getByRole('dialog', { name: 'Task detail' })).toContainText('Reply to Dana');
   });
 
   // @req FR:web-app/home2.done
@@ -107,7 +107,7 @@ test.describe('Home round 3', () => {
     await page.goto('/#/home');
     const brand = info.project.name === 'mobile' ? page.locator('.phone-brand') : page.locator('.rail .brand');
     await expect(brand).toHaveText('Stack [DEMO]');
-    await expect(brand.locator('svg')).toHaveCount(1);
+    await expect(brand.locator('svg.mark')).toHaveCount(1);
     await expect(page.getByTestId('repo-banner')).toHaveCount(0);
     await expect(page.getByTestId('repo-pill')).toHaveCount(0);
     await expect(page.getByText('/Users/me/todo')).toHaveCount(0);

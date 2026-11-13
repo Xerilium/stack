@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef } from 'preact/hooks';
-import { parseInline, type Node } from './markdown';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { mdLinks as linksOf, parseInline, refCtxOf, type Node } from './markdown';
 import { EFFORT, IMPACT, PRIORITY, STATUS, type Choice } from './row';
 
 export const GROUPS = {
@@ -20,9 +20,30 @@ const renderNode = (n: Node, i: number): ComponentChildren => {
   return n.t === 'b' ? <b key={i}>{kids}</b> : <i key={i}>{kids}</i>;
 };
 
-/** Markdown subset as elements. @req FR:web-app/edit.preview */
-export function Md({ text }: { text: string }) {
-  return <>{parseInline(text).map(renderNode)}</>;
+/** A link as its text: inside a button (a row's open control) an anchor would nest one control in another. */
+const plainNode = (n: Node, i: number): ComponentChildren => {
+  if (typeof n === 'string') return n;
+  if (n.t === 'code') return <code key={i}>{n.c}</code>;
+  if (n.t === 'a') return n.c;
+  const kids = n.c.map(plainNode);
+  return n.t === 'b' ? <b key={i}>{kids}</b> : <i key={i}>{kids}</i>;
+};
+
+/** Refs resolve against the loaded projects' repos; set when the projects load. @req FR:product-reset/schema.refs */
+let refsOf = refCtxOf([]);
+export const setRefProjects = (projects: Parameters<typeof refCtxOf>[0]): void => { refsOf = refCtxOf(projects); };
+
+/** Markdown subset as elements; PR and issue refs link to GitHub. `links={false}`: links as text (pair with `TitleLinks` outside the control). @req FR:web-app/edit.preview @req FR:product-reset/ui.reflink */
+export function Md({ text, links = true, project }: { text: string; links?: boolean; /** Resolves `#N` and `PR N`. */ project?: string }) {
+  return <>{parseInline(text, refsOf(project)).map(links ? renderNode : plainNode)}</>;
+}
+
+/** The links in a text, in order: markdown links, bare urls and resolved refs. */
+export const mdLinks = (text: string, project?: string) => linksOf(text, refsOf(project));
+
+/** A title's markdown links as their own anchors, beside (never inside) the row's open button; a click never opens the row. @req FR:task-detail-design/detail.open */
+export function TitleLinks({ text, project }: { text: string; project?: string }) {
+  return <>{mdLinks(text, project).map((l, i) => <a key={`${i}-${l.href}`} class="tag link" href={l.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{l.label} ↗</a>)}</>;
 }
 
 const vsel = (s: string) => s.replace(/\uFE0F/g, '');
@@ -42,9 +63,29 @@ export function Chip({ group, value, onPick }: { group: GroupName; value: string
   const name = GROUPS[group].set.find((c) => vsel(c.e) === vsel(value))?.name ?? value;
   const g = glyphOf(group, value);
   return (
-    <button type="button" class={`chip chip-${group} ${g.tone}`} aria-label={`${GROUPS[group].label}: ${name}. Change`} title={`${GROUPS[group].label}: ${name}`} onClick={(e) => { e.stopPropagation(); onPick(group); }}>
-      <span aria-hidden="true">{g.text}</span><span class="chip-name">{name}</span>
+    // The name comes from the content (label in name, WCAG 2.5.3): "Effort: 30 min. Change". @req FR:first-run-onboarding/polish.contrast
+    <button type="button" class={`chip chip-${group} ${g.tone}`} title={`${GROUPS[group].label}: ${name}`} onClick={(e) => { e.stopPropagation(); onPick(group); }}>
+      <span class="sr-only">{GROUPS[group].label}: {name}. Change</span><span aria-hidden="true">{g.text}</span><span class="chip-name" aria-hidden="true">{name}</span>
     </button>
+  );
+}
+
+/**
+ * One shape for every empty state: what is empty, then the next step (a key, a button, or a link).
+ * @req FR:first-run-onboarding/polish.empty
+ */
+export function EmptyState({ what, next }: { what: ComponentChildren; next?: ComponentChildren }) {
+  return <div class="empty-state" data-testid="empty-state"><p class="empty-what">{what}</p>{next && <p class="empty-next">{next}</p>}</div>;
+}
+
+/** A terminal command with a Copy button. Shared by first-run setup and the Inbox sources panel. @req FR:first-run-onboarding/step.email @req FR:inbox-page/web.sources */
+export function CopyCommand({ cmd, testId, label = 'Copy' }: { cmd: string; testId?: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div class="ob-cmd">
+      <code data-testid={testId}>{cmd}</code>
+      <button type="button" class="ob-btn" aria-label={label === 'Copy' ? undefined : label} onClick={() => { void navigator.clipboard?.writeText(cmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }, () => undefined); }}>{copied ? 'Copied' : 'Copy'}</button>
+    </div>
   );
 }
 
@@ -116,10 +157,10 @@ export function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: num
 }
 
 export const SHORTCUTS: [string, string][] = [
-  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g h / g d / g k / g s / g p / g a', 'Go to Home / My day / Needs you / Agents / Projects / Full stack'], ['Agents: Enter, f, t, p, A, s, c, n, m', 'Open (a session) or talk (an agent), pin, team tree, by project, all repos, stop a run, usage, new, show more'], ['Asks: Enter, n, o, r, z, e, u, 1-4, m', 'Primary action, reject, open link, reply, defer, details, undo, pick option, show more'], ['a / A / R', 'Ask the task agent (opens its thread) / assign the task to its agent (Home and My day: delegate 🪄) / review the task'], ['[ / ]', 'Less / more time today'], ['h then 1-4, 0', 'Home: I have 15m / 30m / 1h / 2h, reset'],
+  ['Ctrl/Cmd+K or :', 'Command palette'], ['c', 'Capture'], ['/', 'Search the list'], ['g h / g d / g k / g s / g p / g a', 'Go to Home / My day / Needs you / Agents / Projects / Full stack'], ['Agents: Enter, f, t, p, A, s, c, n, m', 'Open (a session) or talk (an agent), pin, team tree, by project, all repos, stop a run, usage, new, show more'], ['Asks: Enter, n, o, r, z, e, u, 1-4, m', 'Primary action, reject, open link, reply, defer, details, undo, pick option, show more'], ['a / A / R', 'Ask the task agent (opens its thread) / assign the task to its agent (Home: delegate 🪄) / review the task'], ['[ / ]', 'Less / more time today'], ['h then 1-4, 0', 'Home: I have 15m / 30m / 1h / 2h, reset'],
   ['j k or arrows', 'Move cursor'], ['Space', 'Expand in place'], ['Enter', 'Open full screen'], ['e', 'Edit row'], ['x', 'Select row'], ['Esc', 'Collapse, then clear selection'],
-  ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['n', 'Defer 2 hours'], ['Shift+A', 'Home and My day: delegate to an agent (🪄); elsewhere: assign the task to its agent'], ['z', 'Defer…'], ['Shift+S', 'Skip'],
-  ['Shift+J / Shift+K', 'Move row down / up'], ['?', 'This sheet'],
+  ['p t f i', 'Priority, status, effort, impact'], ['d', 'Done'], ['s', 'Start'], ['n', 'Defer 2 hours'], ['Shift+A', 'Home: delegate to an agent (🪄); list rows: assign the task to its agent; My day: none (use Message)'], ['z', 'Defer…'], ['Shift+S', 'Skip'],
+  ['Shift+J / Shift+K', 'Move row down / up'], ['Shift+F', 'Send feedback'], ['?', 'This sheet'],
 ];
 export function Help({ onClose }: { onClose: () => void }) {
   return (

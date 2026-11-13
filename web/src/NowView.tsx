@@ -1,17 +1,21 @@
 /**
- * Now: the one place. One task, one reason, three actions; then the next meetings and the top messages, one line each.
- * @req FR:now-screen/now.one @req FR:now-screen/now.why @req FR:now-screen/now.actions @req FR:now-screen/now.next @req FR:now-screen/now.empty @req FR:now-screen/now.a11y
- * @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.answer @req FR:ux-consolidation/one.focus @req FR:ux-consolidation/one.clamp
+ * Now: the one place. One task, one reason, two actions, a message to its agent; beside it on wide screens (under it on
+ * phones) the next meetings and the top asks.
+ * @req FR:now-screen/now.one @req FR:now-screen/now.why @req FR:now-screen/now.actions @req FR:now-screen/now.compose @req FR:now-screen/now.next @req FR:now-screen/now.empty @req FR:now-screen/now.a11y @req FR:now-screen/now.layout
+ * @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.answer @req FR:ux-consolidation/one.focus @req FR:ux-consolidation/one.clamp @req FR:ux-consolidation/one.layout
+ * @req FR:product-reset/ui.done @req FR:product-reset/ia.now
  */
-import { actionsFor, type AskItem } from './asks';
+import type { AskItem } from './asks';
 import type { Brief } from './brief';
 import { Md } from './parts';
-import { clock, span } from './plan';
 import type { NowTask } from './nowscreen';
+import { NowAsks, type AskCtl } from './NowAsks';
+import { NowChat, type NowChatProps } from './NowChat';
+import { NowNext, type CalCtl, type Layer } from './NowNext';
 import './nowscreen.css';
 
-export type NowAct = 'done' | 'defer' | 'delegate';
-export type Layer = 'live' | 'weekly' | 'none';
+export type NowAct = 'done' | 'defer';
+export type { Layer };
 const WAITING = 3;
 
 /** The top 3 of the merged asks: messages first (best score first), then the rest. @req FR:ux-consolidation/one.messages */
@@ -20,70 +24,46 @@ export function waitingOf(b: Pick<Brief, 'messages' | 'actions' | 'moreMessages'
   return { rows: all.slice(0, WAITING), more: Math.max(0, all.length - WAITING) + b.moreMessages + b.moreActions };
 }
 
-export function NowScreen({ n, b, layer, busy, onAct, onAnswer, onReply, onOpenAsks }: {
-  n: NowTask | null; b: Brief; layer: Layer; busy: boolean; onAct: (a: NowAct) => void;
-  /** The ask's primary action, answered as Needs you would. */ onAnswer: (a: AskItem) => void;
-  /** An ask with no one-tap answer: open it in Needs you with the reply box. */ onReply: (a: AskItem) => void;
+export function NowScreen({ n, done = false, b, layer, busy, onAct, asks, cal, now, onOpenAsks, chat }: {
+  n: NowTask | null; /** Done just ran on this task: the card plays the check, then the next task replaces it. @req FR:product-reset/ui.done */ done?: boolean; b: Brief; layer: Layer; busy: boolean; onAct: (a: NowAct) => void;
+  /** The message composer under the task. */ chat?: Omit<NowChatProps, 'taskRef' | 'busy'>;
+  /** Answers on the ask cards, as Needs you answers them. */ asks: Omit<AskCtl, 'busy' | 'now'>;
+  /** The calendar source; fixes live in Settings. */ cal: Pick<CalCtl, 'source'>;
+  now: Date;
   onOpenAsks: () => void;
 }) {
   const waiting = waitingOf(b);
   return (
     <section class="now" aria-label="Now" data-testid="now">
-      {/* The live region stays mounted, so a swap to the next task is announced. */}
-      <div class="now-stage" aria-live="polite">
-        {n ? (
-          <article class="now-card" key={n.task.ref} data-ref={n.task.ref}>
-            <h1 class="now-title" id="now-title" aria-describedby="now-why" title={n.title}><Md text={n.title} /></h1>
-            <p class="now-why" id="now-why" data-testid="now-why">{n.why}</p>
-          </article>
-        ) : (
-          <div class="now-card now-empty" key="empty" data-testid="now-empty">
-            <span class="now-check" aria-hidden="true">✓</span>
-            <h1 class="now-title">Nothing now</h1>
-            <p class="now-why">You are clear.</p>
+      <div class="now-focus" data-testid="now-focus">
+        {/* The live region stays mounted, so a swap to the next task is announced. */}
+        <div class="now-stage" aria-live="polite">
+          {n ? (
+            <article class={`now-card${done ? ' done-anim' : ''}`} key={n.task.ref} data-ref={n.task.ref}>
+              {done && <span class="now-done-check" aria-hidden="true">✓</span>}
+              <h1 class="now-title" id="now-title" aria-describedby="now-why" title={n.title}><Md text={n.title} project={n.task.project} /></h1>
+              <p class="now-why" id="now-why" data-testid="now-why">{n.why}</p>
+            </article>
+          ) : (
+            <div class="now-card now-empty" key="empty" data-testid="now-empty">
+              <span class="now-check" aria-hidden="true">✓</span>
+              <h1 class="now-title">Nothing now</h1>
+              <p class="now-why">You are clear.</p>
+            </div>
+          )}
+        </div>
+        {n && (
+          <div class="now-actions" role="group" aria-label="Actions">
+            <button type="button" class="now-btn primary" title="Done (D)" disabled={busy} onClick={() => onAct('done')}>Done</button>
+            <button type="button" class="now-btn" title="Defer (N)" disabled={busy} onClick={() => onAct('defer')}>Defer</button>
           </div>
         )}
+        {n && chat && <NowChat key={n.task.ref} taskRef={n.task.ref} busy={busy} {...chat} />}
       </div>
-      {n && (
-        <div class="now-actions" role="group" aria-label="Actions">
-          <button type="button" class="now-btn primary" disabled={busy} onClick={() => onAct('done')}>Done <kbd>d</kbd></button>
-          <button type="button" class="now-btn" disabled={busy} onClick={() => onAct('defer')}>Defer <kbd>n</kbd></button>
-          <button type="button" class="now-btn" disabled={busy} onClick={() => onAct('delegate')}>Delegate <kbd>⇧A</kbd></button>
-        </div>
-      )}
 
-      <div class="now-side">
-        <h2 class="now-h2">Next{layer !== 'none' && <span class="now-layer" data-testid="now-layer"> · {layer === 'live' ? 'Live calendar' : 'Weekly schedule'}</span>}</h2>
-        {b.meetings.length === 0 ? <p class="now-none">No meetings left today.</p> : (
-          <ul class="now-list" data-testid="now-meetings">
-            {b.meetings.map((m) => (
-              <li key={m.start + m.title} class="now-row">
-                <span class="now-when">{clock(m.start)}</span>
-                <span class="now-text"><span class="now-main">{m.title}</span>{(m.owner || m.topic) && <span class="now-sub">{m.owner}{m.owner && m.topic && ' · '}{m.topic}</span>}</span>
-                <span class={`now-in${m.now ? ' on' : ''}`}>{m.now ? 'now' : `in ${span(m.in)}`}</span>
-                {m.join && <a class="now-join" href={m.join} target="_blank" rel="noopener noreferrer">Join</a>}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <h2 class="now-h2">Waiting on you</h2>
-        {waiting.rows.length === 0 ? <p class="now-none">Nothing waiting.</p> : (
-          <ul class="now-list" data-testid="now-asks">
-            {waiting.rows.map((a) => {
-              const primary = actionsFor(a).find((x) => x.send);
-              return (
-                <li key={a.key} class="now-row">
-                  <span class="now-text"><span class="now-main">{a.ask}</span><span class="now-sub">{a.from}{a.overdue && <> · <span class="now-late">overdue</span></>}</span></span>
-                  {primary
-                    ? <button type="button" class="now-mini" disabled={busy} onClick={() => onAnswer(a)}>{primary.label}</button>
-                    : <button type="button" class="now-mini" onClick={() => onReply(a)}>Reply</button>}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {waiting.more > 0 && <button type="button" class="now-more" onClick={onOpenAsks}>{waiting.more} more in Needs you</button>}
+      <div class="now-side" data-testid="now-side">
+        <NowNext meetings={b.meetings} layer={layer} cal={cal} now={now} />
+        <NowAsks rows={waiting.rows} more={waiting.more} ctl={{ ...asks, busy, now }} onOpenAsks={onOpenAsks} />
       </div>
     </section>
   );

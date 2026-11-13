@@ -1,5 +1,6 @@
-/** Now: one task, one reason, Done / Defer / Delegate with Undo, an empty state. */
+/** Now: one task, one reason, Done / Defer with Undo, a message composer to the task's agent, an empty state. */
 import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { mockApi, seed, type MockAsk } from './mock';
 
 const ask = (key: string, from: string, score: number, extra: Partial<MockAsk> = {}): MockAsk => ({ key, state: 'open', ask: `Ask ${key}`, kind: 'approve', from, reversible: true, priority: 'normal', blocks: 0, created: '2026-11-05T09:00:00Z', updated: '2026-11-05T09:00:00Z', score, overdue: false, recommend: 'Go ahead', ...extra });
@@ -16,7 +17,7 @@ test.describe('Now screen', () => {
     await expect(now.getByRole('heading', { level: 1 })).toHaveText('Ship the web app'); // the task Home shows
     await expect(page.getByTestId('now-why')).toHaveText(/^due today · high priority · fits your /);
     expect((await page.getByTestId('now-why').innerText()).length).toBeLessThanOrEqual(60);
-    await expect(now.getByRole('button')).toHaveText([/^Done/, /^Defer/, /^Delegate/]);
+    await expect(now.getByRole('group', { name: 'Actions' }).getByRole('button')).toHaveText([/^Done/, /^Defer/]);
     expect(await now.locator('li, table').count()).toBe(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     // the action targets are 44 px on touch
@@ -37,6 +38,66 @@ test.describe('Now screen', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
   });
 
+  // @req FR:product-reset/ui.done @req FR:product-reset/ia.now
+  test('Done plays the check on the card, then the next task opens with no tap; Undo is offered', async ({ page }) => {
+    await ten(page);
+    await mockApi(page, { tasks: seed() });
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: /^Done/ }).click();
+    const card = page.locator('.now-card.done-anim[data-ref="alpha:6"]');
+    await expect(card).toBeVisible();
+    await expect(card.locator('.now-done-check')).toBeVisible();
+    expect(await card.locator('h1').evaluate((el) => getComputedStyle(el).animationName)).toBe('now-done');
+    await expect(page.locator('.now-card[data-ref="alpha:6"]')).toHaveCount(0); // the next task replaced it
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Nothing now');
+    await expect(page.getByRole('status').getByRole('button', { name: 'Undo' })).toBeVisible();
+    const axe = await new AxeBuilder({ page }).include('[data-testid="now"]').analyze();
+    expect(axe.violations).toEqual([]);
+  });
+
+  test('a slow save never shows the done task again: the check holds until the next task loads', async ({ page }) => {
+    await ten(page);
+    await mockApi(page, { tasks: seed() });
+    await page.route('**/api/tasks/complete', async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.fallback(); });
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: /^Done/ }).click();
+    const old = page.locator('.now-card[data-ref="alpha:6"]');
+    await expect(old).toHaveClass(/done-anim/);
+    await page.waitForTimeout(1100); // past the old 900 ms clear, before the save returns
+    await expect(old).toHaveClass(/done-anim/);
+    expect(await old.locator('.now-done-check').evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1); // the check stays in view while the save runs
+    expect(await old.locator('h1').evaluate((el) => Number(getComputedStyle(el).opacity))).toBeGreaterThan(0);
+    await expect(old).toHaveCount(0, { timeout: 5000 });
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Ship the web app');
+  });
+
+  test('a live reload during Done keeps the done card until the save lands', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    await page.route('**/api/tasks/complete', async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.fallback(); });
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: /^Done/ }).click();
+    const old = page.locator('.now-card[data-ref="alpha:6"]');
+    await expect(old).toHaveClass(/done-anim/);
+    m.tasks.find((t) => t.ref === 'alpha:6')!.done = true; // the file changed on disk before the save returns
+    await page.evaluate(() => window.dispatchEvent(new Event('online'))); // a live reload, as the watcher sends
+    await page.waitForTimeout(600);
+    await expect(old).toHaveClass(/done-anim/);
+    await expect(old).toHaveCount(0, { timeout: 5000 });
+  });
+
+  test('Done with reduced motion: no animation, still advances', async ({ page }) => {
+    await ten(page);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await mockApi(page, { tasks: seed() });
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: /^Done/ }).click();
+    const card = page.locator('.now-card.done-anim');
+    await expect(card).toBeVisible();
+    expect(await card.locator('h1').evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Ship the web app');
+  });
+
   test('Defer parks the row for 2 hours; Undo resumes it', async ({ page }) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
@@ -49,14 +110,244 @@ test.describe('Now screen', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
   });
 
-  test('Delegate adds 🪄; Undo removes it', async ({ page }) => {
+  // @req FR:now-screen/now.compose @req FR:now-screen/now.thread @req FR:now-screen/now.undo @req FR:agent-team/web.avatar @req FR:now-screen/now.a11y
+  test('the composer messages the task agent: Enter sends the instruction and never adds 🪄; bubbles show; Undo withdraws it', async ({ page }, info) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [
+      { slug: 'cos', name: 'Chief of Staff', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha', 'beta'] },
+      { slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'], reportsTo: 'cos' },
+    ];
+    m.inbox.push(
+      { id: 'in-20261101T100000Z-aaaa', at: '2026-11-01T10:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'instruction', to: 'agent', text: 'Start with the login page', state: 'handled', row: 'alpha:6' },
+      { id: 'in-20261101T110000Z-bbbb', at: '2026-11-01T11:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'reply', to: 'human', from: 'agent', agent: 'alpha-lead', text: 'Login page is in PR 12', state: 'handled', row: 'alpha:6' },
+    );
+    await page.goto('/#/now');
+    const now = page.getByTestId('now');
+    await expect(now.getByRole('button', { name: /Delegate/ })).toHaveCount(0);
+    const box = now.getByRole('textbox', { name: 'Message Ada Lead' }); // the project's agent, not the roll-up
+    await expect(box).toHaveAttribute('placeholder', 'Message Ada Lead…');
+    const chat = page.getByTestId('now-chat');
+    await expect(chat.locator('form svg.avatar')).toContainText('AL');
+    const thread = page.getByTestId('now-thread');
+    await expect(thread.locator('li')).toHaveCount(2);
+    await expect(thread.locator('li.from-me')).toContainText('Start with the login page');
+    await expect(thread.locator('li.from-agent')).toContainText('Ada Lead');
+    await expect(thread.locator('li.from-agent')).toContainText('Login page is in PR 12');
+    await expect(thread.locator('li.from-agent svg.avatar')).toHaveCount(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (info.project.name === 'mobile') {
+      for (const b of await now.getByRole('button').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect((await box.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    await box.fill('x');
+    const axe = await new AxeBuilder({ page }).include('[data-testid="now"]').analyze();
+    expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(' ')}`)).toEqual([]);
+    await box.fill('');
+    // Shift+Enter is a new line; Enter sends
+    await box.pressSequentially('Use the new logo');
+    await box.press('Shift+Enter');
+    await box.pressSequentially('then ship to staging');
+    await expect(box).toHaveValue('Use the new logo\nthen ship to staging');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `e2e/screenshots/now-chat-${info.project.name}.png` });
+    await box.press('Enter');
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', kind: 'instruction', text: 'Use the new logo / then ship to staging', agent: 'alpha-lead' }); // the owner is named, so no other agent claims it
+    // a message is not a hand-off: the row is never edited, so it stays in the owner queue (FR:task-lifecycle/rank.owner)
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
+    expect(m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
+    await expect(page.getByTestId('now-thread')).toContainText('Use the new logo');
+    await expect(page.getByRole('status')).toContainText('Sent to Ada Lead');
+    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body).toMatchObject({ note: 'Withdrawn by the owner', withdrawn: true });
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
+    // Undo means never sent: the bubble goes at once, without waiting for the poll
+    await expect(page.getByTestId('now-thread')).not.toContainText('Use the new logo', { timeout: 3000 });
+  });
+
+  // @req FR:product-reset/schema.agent: the owner, not a broad worker listed first, and never the roll-up
+  test('Now talks to the task owner, not the broad worker listed first', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [
+      { slug: 'cos', name: 'Chief of Staff', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha', 'beta'] },
+      { slug: 'sweep-manager', name: '🔄 Sweep Manager', scope: ['alpha', 'beta'], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: ['alpha', 'beta'] },
+      { slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: ['alpha'] },
+    ];
+    await page.goto('/#/now');
+    await expect(page.getByTestId('now-to').locator('.now-to-name')).toHaveText('Ada Lead');
+  });
+
+  // @req FR:product-reset/ui.thread @req FR:product-reset/ui.agentchip
+  test('the agent chip picks another agent from the whole team; the pick is kept for the task and goes with the message', async ({ page }, info) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [
+      { slug: 'cos', name: 'Chief of Staff', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha', 'beta'], role: 'Keeps you focused' },
+      { slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] },
+      { slug: 'beta-dev', name: '🎧 Bea Dev', scope: ['beta'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['beta'], role: 'Builds beta' },
+    ];
+    m.inbox.push({ id: 'in-20261101T100000Z-aaaa', at: '2026-11-01T10:00:00Z', project: 'alpha', ref: 'alpha:6', task: 'Ship the web app', kind: 'instruction', to: 'agent', text: 'Earlier note', state: 'handled', row: 'alpha:6' });
+    await page.goto('/#/now');
+    const chip = page.getByTestId('now-to');
+    await expect(chip.locator('.now-to-name')).toHaveText('Ada Lead');
+    await chip.click();
+    const list = page.getByRole('listbox', { name: 'Agents' });
+    await expect(list.getByRole('option')).toHaveCount(3); // the whole team, not only alpha's agents
+    await expect(page.getByRole('searchbox', { name: 'Find an agent' })).toBeFocused();
+    const axe = await new AxeBuilder({ page }).include('[data-testid="now"]').analyze();
+    expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(' ')}`)).toEqual([]);
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: `e2e/screenshots/now-picker-${info.project.name}.png` });
+    await page.keyboard.type('builds');
+    await expect(list.getByRole('option')).toHaveCount(1);
+    await page.keyboard.press('Enter');
+    await expect(list).toHaveCount(0);
+    await expect(chip.locator('.now-to-name')).toHaveText('Bea Dev'); // the avatar draws the emoji
+    await expect(chip).toBeFocused();
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false); // picking never writes the task
+    const box = page.getByTestId('now').getByRole('textbox', { name: 'Message 🎧 Bea Dev' });
+    await box.fill('Can you take the beta part?');
+    await box.press('Enter');
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toMatchObject({ ref: 'alpha:6', agent: 'beta-dev', text: 'Can you take the beta part?' });
+    await expect(page.getByRole('status')).toContainText('Sent to 🎧 Bea Dev');
+    await expect(page.getByTestId('now-thread').locator('li.from-me')).toHaveCount(2);
+    await expect(page.getByTestId('now-thread').locator('li.from-me').first()).toContainText('You to Ada Lead'); // sent before the pick
+    await expect(page.getByTestId('now-thread').locator('li.from-me').last()).toContainText('You to Bea Dev');
+    // Kept for this task; recent first next time.
+    await page.reload();
+    await expect(page.getByTestId('now-to').locator('.now-to-name')).toHaveText('Bea Dev');
+    await page.getByTestId('now-to').click();
+    await expect(page.getByRole('listbox', { name: 'Agents' }).getByRole('option').first()).toContainText('Bea Dev');
+    // Escape closes; picking the owner again clears the pick.
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('listbox', { name: 'Agents' })).toHaveCount(0);
+    await page.getByTestId('now-to').click();
+    await page.getByRole('option', { name: /Ada Lead/ }).click();
+    await expect(page.getByTestId('now-to').locator('.now-to-name')).toHaveText('Ada Lead');
+    expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('stack.now.pick') ?? '{}')))).toEqual([]);
+  });
+
+  // @req FR:now-screen/now.undo: Undo after the agent handled the message keeps it and says so
+  test('Undo after the agent picked up a message keeps the bubble and says so', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [{ slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] }];
+    await page.goto('/#/now');
+    const box = page.getByTestId('now').getByRole('textbox', { name: 'Message Ada Lead' });
+    await box.fill('Use the new logo');
+    await box.press('Enter');
+    await expect(page.getByRole('status')).toContainText('Sent to Ada Lead');
+    await expect.poll(() => m.inbox.length).toBe(1);
+    m.inbox[0]!.state = 'handled'; // the agent took it inside the Undo window
+    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+    await expect(page.getByRole('status')).toContainText('Restored; the agent already picked it up');
+    await expect(page.getByTestId('now-thread')).toContainText('Use the new logo');
+  });
+
+  // @req FR:agent-team/web.avatar: an emoji icon shows; a missing image falls back to the monogram
+  test('the composer avatar uses the agent icon, and a missing image falls back to the monogram', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [{ slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'], icon: '/agents/missing.png' } as never];
+    await page.goto('/#/now');
+    await expect(page.getByTestId('now-chat').locator('form svg.avatar')).toContainText('AL');
+  });
+
+  // @req FR:now-screen/now.compose: a live session offers its chat
+  test('a task with a live agent session offers Open live chat', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.team = [{ slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] }];
+    m.sessions = [{ id: 'a1b2c3d4-0000-0000-0000-000000000001', title: 'Ada Lead · alpha:6', project: 'alpha', owner: 'alpha', cwd: '/x/alpha', lastActive: new Date().toISOString(), state: 'active', cost: { usd: 0, tokens: 10 }, prs: [] }];
+    await page.goto('/#/now');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
+    await expect(page.getByRole('button', { name: 'Open live chat' })).toBeVisible();
+  });
+
+  // @req FR:now-screen/now.compose: a row an agent already has keeps its mark; only the text goes
+  test('a row with 🪄 keeps its mark: the message only writes the inbox; Undo only withdraws it', async ({ page }) => {
+    await ten(page);
+    const tasks = seed();
+    const t = tasks.find((x) => x.ref === 'alpha:6')!; t.text = `🪄 ${t.text}`;
+    const m = await mockApi(page, { tasks });
+    await page.goto('/#/now');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
+    const box = page.getByRole('textbox', { name: /^Message / });
+    await expect(box).toHaveAttribute('placeholder', 'Message the agent…'); // no team: a plain address
+    await box.fill('Ping me when done');
+    await box.press('Enter');
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body?.text).toBe('Ping me when done');
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
+    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox/handled')?.body?.id).toBe(m.inbox.at(-1)!.id);
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
+    expect(m.tasks.find((x) => x.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
+  });
+
+  // @req FR:now-screen/now.compose: a failed inbox write leaves the row alone
+  test('a failed send leaves the row alone and keeps the text', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.fail.set('POST /inbox', { status: 500, code: 'internal', message: 'Disk full' });
+    await page.goto('/#/now');
+    const box = page.getByRole('textbox', { name: /^Message / });
+    await box.fill('Do it');
+    await box.press('Enter');
+    await expect(page.getByRole('status')).toContainText('Disk full');
+    expect(m.calls.some((c) => c.path === '/tasks/edit')).toBe(false);
+    expect(m.tasks.find((x) => x.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
+    await expect(box).toHaveValue('Do it'); // the text stays for a retry
+  });
+
+  // @req FR:now-screen/now.thread: stored Markdown escapes never show; an agent reply appears without a send
+  test('the thread shows unescaped text and picks up a new reply on its own', async ({ page }) => {
+    const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.install({ time: d });
+    const m = await mockApi(page, { tasks: seed() });
+    m.inbox.push({ id: 'in-1', at: '2026-11-05T09:00:00Z', project: 'alpha', ref: 'alpha:6', row: 'alpha:6', task: 'Ship the web app', kind: 'instruction', to: 'agent', text: 'Use \\[logo\\] here', state: 'open' });
+    await page.goto('/#/now');
+    const thread = page.getByTestId('now-thread');
+    await expect(thread).toContainText('Use [logo] here');
+    await expect(thread).not.toContainText('\\[');
+    m.inbox.push({ id: 'in-2', at: '2026-11-05T09:05:00Z', project: 'alpha', ref: 'alpha:6', row: 'alpha:6', task: 'Ship the web app', kind: 'reply', to: 'human', text: 'On it', state: 'open', from: 'agent', agent: 'alpha-lead' });
+    await page.clock.runFor(11_000);
+    await expect(thread).toContainText('On it');
+  });
+
+  // @req FR:now-screen/now.compose: a draft typed while a send is in flight survives it
+  test('text typed during a send is kept', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    let release = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    await page.route('**/api/inbox', async (route) => { await gate; await route.fallback(); });
+    await page.goto('/#/now');
+    const box = page.getByRole('textbox', { name: /^Message / });
+    await box.fill('First');
+    await box.press('Enter');
+    await box.fill('Second draft');
+    release();
+    await expect.poll(() => m.calls.filter((c) => c.path === '/inbox').length).toBe(1);
+    await expect(page.getByRole('status')).toContainText('Sent to');
+    await expect(box).toHaveValue('Second draft');
+  });
+
+  // @req FR:now-screen/now.compose (keys)
+  test('m focuses the composer; Esc leaves it; Shift+A still delegates', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'keys are for desktop');
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });
     await page.goto('/#/now');
-    await page.getByRole('button', { name: /^Delegate/ }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
+    await page.keyboard.press('m');
+    const box = page.getByRole('textbox', { name: /^Message / });
+    await expect(box).toBeFocused();
+    await expect(box).toHaveValue('');
+    await page.keyboard.press('Escape');
+    await expect(box).not.toBeFocused();
+    await page.keyboard.press('Shift+A');
     await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(true);
-    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
-    await expect.poll(() => m.tasks.find((t) => t.ref === 'alpha:6')!.text.startsWith('🪄')).toBe(false);
+    expect(m.calls.some((c) => c.path === '/inbox')).toBe(false);
   });
 
   // @req FR:now-screen/now.actions (desktop keys)
@@ -77,7 +368,7 @@ test.describe('Now screen', () => {
     await page.goto('/#/now');
     await expect(page.getByTestId('now-empty')).toContainText('Nothing now');
     await expect(page.getByTestId('now-empty')).toContainText('You are clear.');
-    await expect(page.getByTestId('now').getByRole('button')).toHaveCount(0);
+    await expect(page.getByTestId('now-focus').getByRole('button')).toHaveCount(0); // the win state; the side may still offer a calendar fix
     await page.waitForTimeout(400); // past the enter motion
     await page.screenshot({ path: `e2e/screenshots/now-empty-${info.project.name}.png` });
   });
@@ -129,15 +420,17 @@ test.describe('Now screen', () => {
     await page.waitForTimeout(400);
     await page.screenshot({ path: `e2e/screenshots/now-one-${info.project.name}.png`, fullPage: true });
     // one tap answers the message the same way Needs you does, and the line leaves
-    await waiting.locator('li').first().getByRole('button').click();
+    await waiting.locator('li').first().getByRole('button', { name: 'Approve', exact: true }).click();
     await expect.poll(() => m.asks.find((a) => a.key === 'm1')?.state).toBe('answered');
     await expect(waiting).not.toContainText('Reply to Dana');
     await expect(page.getByRole('status')).toContainText('Sent to email-triage');
   });
 
+  // @req FR:ux-consolidation/cal.fresh: only a fresh, connected calendar may say there are no meetings
   test('empty sections say so in one line', async ({ page }) => {
     await ten(page);
-    await mockApi(page, { tasks: seed() });
+    const m = await mockApi(page, { tasks: seed() });
+    m.events = [];
     await page.goto('/#/now');
     await expect(page.getByText('No meetings left today.')).toBeVisible();
     await expect(page.getByText('Nothing waiting.')).toBeVisible();

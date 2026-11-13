@@ -11,6 +11,8 @@ export interface AppLike {
   requestSingleInstanceLock(): boolean;
   quit(): void;
   whenReady(): Promise<void>;
+  /** Dock badge (macOS) and launcher count (Linux). @req FR:pris-sessions-ui/tray.badge */
+  setBadgeCount?(count: number): boolean;
   on(event: string, fn: (...args: any[]) => void): unknown; // eslint-disable-line @typescript-eslint/no-explicit-any -- Electron's own listener shape
 }
 
@@ -44,6 +46,8 @@ export interface WebContentsLike {
   on(event: 'will-navigate' | 'will-redirect', fn: (e: PreventableEvent, url: string) => void): unknown;
   setWindowOpenHandler(fn: (details: { url: string }) => { action: 'deny' } | { action: 'allow' }): void;
   session: SessionLike;
+  /** The page as an image (Electron `capturePage`). @req FR:feedback-button/store.capture */
+  capturePage?(): Promise<{ toPNG(): Buffer; isEmpty?(): boolean }>;
 }
 
 export interface WindowLike {
@@ -60,6 +64,8 @@ export interface WindowLike {
 
 export interface TrayLike {
   setToolTip(text: string): void;
+  /** Text beside the icon (macOS). @req FR:pris-sessions-ui/tray.badge */
+  setTitle?(title: string): void;
   setContextMenu(menu: unknown): void;
   on(event: string, fn: () => void): unknown;
   destroy(): void;
@@ -75,4 +81,6 @@ export interface ShellElectron {
   globalShortcut: { register(accelerator: string, fn: () => void): boolean; unregisterAll(): void };
   nativeImage: { createFromPath(path: string): unknown };
   shell: { openExternal(url: string): Promise<void> };
+  /** System idle seconds for the idle restart. @req FR:devops-installer/idle.check */
+  powerMonitor?: { getSystemIdleTime(): number };
 }

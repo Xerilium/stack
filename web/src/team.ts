@@ -5,7 +5,7 @@
  */
 import type { SessionItem } from './sessions';
 
-export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** The manager's slug; absent on the roll-up. */ reportsTo?: string }
+export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** Where a scanned agent lives (project, folder, or `user`). @req FR:agent-team/agent.team.scan */ home?: string; /** The manager's slug; absent on the roll-up. */ reportsTo?: string; /** Emoji or same-origin image path. @req FR:agent-team/agent.icon */ icon?: string; /** Older names a session title may start with. @req FR:agent-team/org.match */ aliases?: string[] }
 /** The first agent whose scope is `*`. */
 export const rollupOf = (team: TeamAgent[]): TeamAgent | undefined => team.find((a) => a.scope.includes('*'));
 /** How long a metadata-only agent stays on tasks after its last session. @req FR:agent-team/web.chip.live */
@@ -30,15 +30,70 @@ function specificity(scope: string, project: string, section?: string): number {
   return a.length > 0 && a.length <= b.length && a.every((w, i) => w === b[i]) ? 3 : 0;
 }
 
+/** What `ownerOf` reads from a task or an ancestor. */
+export interface OwnerTask { project: string; section?: string; notes?: string[] }
+
+/** The `Owner:` value in a task's notes (`Owner: x` or `**Owner:** x`), if any. */
+export function ownerNote(notes: string[] = []): string | undefined {
+  for (const n of notes) { const m = /^\s*(?:[-*]\s+)?\**Owner(?::\**|\**:)\s*(.+?)\s*$/i.exec(n); if (m && m[1]) return m[1].replace(/^`|`$/g, ''); }
+  return undefined;
+}
+
 /**
- * Agents covering a task: the roll-up first, then most specific first; the first is the active agent. With `live`, a metadata-only agent
+ * The task's owning agent: the one agent every chip, composer, tile and Now talks to.
+ * 1. `Owner:` on the task, else on the nearest ancestor that names `me` or an agent (`ancestors`: nearest first). `me` stops the walk.
+ * 2. Else the most specific agent whose scope covers the project and section: section before project, an agent file before a metadata line,
+ *    a narrower agent before a broad worker (fewer projects), then team order. An agent may also hold `*`.
+ * 3. Else the roll-up. View-only agents are never the owner.
+ * With no task: the first agent past the roll-up with a non-`*` scope, else the first agent.
+ * @req FR:product-reset/schema.agent @req FR:product-reset/schema.owner @req FR:task-detail-design/compose.to
+ */
+export function ownerOf(team: TeamAgent[], task?: OwnerTask, ancestors: OwnerTask[] = []): TeamAgent | undefined {
+  if (task) {
+    for (const t of [task, ...ancestors]) {
+      const v = ownerNote(t.notes);
+      if (!v) continue;
+      if (/^me$/i.test(v)) break;
+      const key = nameKey(v);
+      const hit = team.find((a) => runnable(a) && (a.slug === v || a.name === v || a.slug === key || nameKey(a.name) === key));
+      if (hit) return hit;
+    }
+  }
+  const rollup = rollupOf(team.filter(runnable)); // a view-only `*` agent can never take a message
+  const fit = (a: TeamAgent) => Math.max(0, ...a.scope.filter((x) => x !== '*').map((x) => (task ? specificity(x, task.project, task.section) : 2)));
+  const best = team
+    .map((a, i) => ({ a, i, s: a === rollup || !runnable(a) ? 0 : fit(a) }))
+    .filter((x) => x.s > 1)
+    .sort((x, y) => y.s - x.s || Number(y.a.defined) - Number(x.a.defined) || (x.a.projects.length || 1) - (y.a.projects.length || 1) || x.i - y.i)[0]?.a;
+  return best ?? rollup ?? (task ? undefined : team.find(runnable));
+}
+
+/** The task's ancestors, nearest first: earlier rows of the same project and section with a smaller depth (the list is in file order). `index`: ref → position, to skip the scan. */
+export function ancestorsOf<T extends { ref: string; project: string; depth: number; section?: string }>(tasks: T[], ref: string, index?: Map<string, number>): T[] {
+  const i = index ? (index.get(ref) ?? -1) : tasks.findIndex((t) => t.ref === ref);
+  if (i < 0) return [];
+  const out: T[] = [];
+  let depth = tasks[i].depth;
+  for (let j = i - 1; j >= 0 && depth > 0; j--) {
+    const t = tasks[j];
+    if (t.project !== tasks[i].project || t.section !== tasks[i].section) break;
+    if (t.depth < depth) { out.push(t); depth = t.depth; }
+  }
+  return out;
+}
+
+/** Stack can run the agent: a scanned agent (another repo or user level, `home` set) is view only for now. @req FR:agent-team/agent.team.scan.view */
+export const runnable = (a: Pick<TeamAgent, 'home'>): boolean => !a.home;
+
+/**
+ * Agents covering a task (view-only agents left out): the roll-up first, then most specific first; the first is the active agent. With `live`, a metadata-only agent
  * (no file) stays only while a session has matched it recently. @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live
  */
 export function agentsFor(team: TeamAgent[], project: string, section?: string, live?: Set<string>): TeamAgent[] {
   const rollup = rollupOf(team);
   return team
     .map((a, i) => ({ a, i, s: a === rollup ? 4 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
-    .filter((x) => x.s > 0 && (!live || x.a.defined || live.has(x.a.slug)))
+    .filter((x) => x.s > 0 && runnable(x.a) && (!live || x.a.defined || live.has(x.a.slug)))
     .sort((x, y) => y.s - x.s || x.i - y.i)
     .map((x) => x.a);
 }
@@ -51,7 +106,7 @@ export function matchAgent(s: Pick<SessionItem, 'title'>, team: TeamAgent[]): Te
   let best: { a: TeamAgent; len: number } | undefined;
   for (const a of team) {
     const role = a.role && a.role.replace(/[.!?]$/, '').trim().split(/\s+/).length <= 4 ? nameKey(a.role) : '';
-    for (const k of [nameKey(a.name), a.slug, role]) {
+    for (const k of [nameKey(a.name), a.slug, role, ...(a.aliases ?? []).map(nameKey)]) {
       if (!k || !(t === k || t.startsWith(`${k}-`))) continue;
       if (!best || k.length > best.len) best = { a, len: k.length };
     }
@@ -80,7 +135,7 @@ export function verdictLabel(r: ReviewItem): string {
   return r.estimate ? `${head} · ${r.estimate}` : head;
 }
 
-export interface ChipView { text: string; tone: 'muted' | 'ok' | 'warn' | 'accent' | 'plain'; title: string; needs?: number; /** Carries state (a verdict or a live session): always visible, not only on hover. */ state?: boolean }
+export interface ChipView { text: string; tone: 'muted' | 'ok' | 'warn' | 'accent' | 'plain'; title: string; needs?: number; /** Carries state (a verdict or a live session): always visible, not only on hover. */ state?: boolean; /** The agent the chip names: its avatar and name show. @req FR:product-reset/ui.agentchip */ agent?: Pick<TeamAgent, 'slug' | 'name' | 'icon'> }
 /** What the row's agent chip says: a live session first, then a review, then the agent. @req FR:agent-team/web.chip */
 export function chipFor(o: { agent?: TeamAgent; review?: ReviewItem; session?: SessionItem; reviewing?: boolean; /** The task's agents in order; the title lists the chain. @req FR:agent-team/web.chip.title */ chain?: TeamAgent[] }): ChipView {
   if (o.reviewing) return { text: 'Reviewing…', tone: 'accent', title: `${o.agent?.name ?? 'Agent'} is reviewing this task`, state: true };
@@ -93,10 +148,10 @@ export function chipFor(o: { agent?: TeamAgent; review?: ReviewItem; session?: S
   }
   if (!o.agent) return { text: 'No agent', tone: 'muted', title: 'No agent covers this task. Add one in tasks/agents/ or the project Agents line' };
   const chain = o.chain && o.chain.length > 1 ? o.chain.map((a) => a.name).join(' › ') : `${o.agent.name}${o.agent.role ? `: ${o.agent.role}` : ''}`;
-  return { text: o.agent.name, tone: 'plain', title: `${chain}. Talk to it (a)` };
+  return { text: o.agent.name, tone: 'plain', title: `${chain}. Talk to it (a)`, agent: o.agent };
 }
 
-/** The ask's agent when it is a team member, else the project's active agent. @req FR:agent-team/web.anything */
+/** The ask's agent when it is a runnable team member, else the project's active agent. @req FR:agent-team/web.anything @req FR:agent-team/agent.team.scan.view */
 export function agentForAsk(team: TeamAgent[], ask: { from: string; project?: string }): TeamAgent | undefined {
-  return team.find((a) => a.slug === ask.from || a.name === ask.from) ?? (ask.project ? agentsFor(team, ask.project)[0] : undefined);
+  return team.find((a) => runnable(a) && (a.slug === ask.from || a.name === ask.from)) ?? (ask.project ? agentsFor(team, ask.project)[0] : undefined);
 }

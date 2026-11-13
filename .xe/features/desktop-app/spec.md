@@ -17,7 +17,7 @@ Stack opens like a Mac app: own window, Dock icon, starts at login, taps you for
 ## Scope
 
 - In: install button, manifest shortcuts, login start for the local host (P2), the criteria to revisit a native shell, an unsigned Mac build of the Electron shell (P2).
-- Non-goals: Tauri, Developer ID signing and notarization, auto-update, Mac App Store, Intel Mac builds, Windows or Linux installers, offline writes.
+- Non-goals: Tauri, Developer ID signing and notarization, Electron auto-update (install and update: [devops-installer](../devops-installer/spec.md)), Mac App Store, Intel Mac builds, Windows or Linux installers, offline writes.
 
 ## Scenarios
 
@@ -46,7 +46,7 @@ Stack opens like a Mac app: own window, Dock icon, starts at login, taps you for
 - **FR:package.app** (P2): The bundle MUST be `arm64`, name `Stack`, bundle id `com.xerilium.stack`, category `public.app-category.productivity`, `asar` off, and the Stack icon from `web/public/icons/icon-512.png`
 - **FR:package.sign** (P2): The bundle MUST be ad-hoc signed (`codesign --force --deep --sign -`) so Apple silicon runs it. It MUST NOT use a Developer ID, notarization, or any Apple account secret
 - **FR:package.dmg** (P2): The `dmg` MUST show `Stack.app` next to an `Applications` link so the owner drags to install. The `zip` MUST keep the bundle intact (`ditto --keepParent`)
-- **FR:package.docs** (P2): `docs/desktop-install.md` MUST give the build command, the install steps, the one-time Gatekeeper step for a quarantined copy (`Open Anyway` on macOS 15+, right-click `Open` on macOS 14, `xattr` from the terminal), the Finder `PATH` limit, and how the app finds its repo and host
+- **FR:package.docs** (P2): `docs/desktop-install.md` MUST give the build command, the install steps, the one-time Gatekeeper step for a quarantined copy (`Open Anyway` on macOS 15+, right-click `Open` on macOS 14, `xattr` from the terminal), how a Finder launch gets the login-shell `PATH`, and how the app finds its repo and host
 
 ## Non-functional
 

@@ -55,7 +55,8 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
     if (!ref || busy) return false;
     setBusy(true);
     try {
-      try { await api.send(ref, text, 'reply'); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to send', 'err'); return false; }
+      // The composer's agent rides along, so no other agent on the project claims it. @req FR:product-reset/ui.thread
+      try { await api.send(ref, text, 'reply', undefined, agent); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to send', 'err'); return false; }
       // From here the message is on the task: the box clears even if the session step fails (a retry would write it twice).
       if (cur.current === ref) setThread((t) => ({ ...t, items: [...t.items, { at: new Date().toISOString(), kind: 'owner', id: `local-${Date.now()}`, text, state: 'open' }] }));
       if (team.enabled !== true) { toastRef.current('Saved on the task; it runs in stack web on your machine'); return true; }
@@ -76,11 +77,16 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
     } finally { setBusy(false); }
   }, [api, ref, busy, thread, team, sessions, load]);
 
-  /** @req FR:agent-thread/thread.assign */
-  const assign = useCallback(async (agent?: string, keepOpen = false): Promise<boolean> => {
+  /** `note`: goes in the assign prompt; the server records it on the task as handled (the composer's Do it). @req FR:agent-thread/thread.assign @req FR:task-detail-design/compose.doit */
+  const assign = useCallback(async (agent?: string, keepOpen = false, note = ''): Promise<boolean> => {
     if (!ref || busy) return false;
     setBusy(true);
-    try { const ok = await team.assign(ref, agent, keepOpen); if (ok) void load(ref, true); return ok; } finally { setBusy(false); }
+    try {
+      // The note rides in the assign prompt; the server records it on the thread as handled. A refused or failed assign writes nothing.
+      const ok = await team.assign(ref, agent, keepOpen, note || undefined);
+      if (ok) void load(ref, true);
+      return ok;
+    } finally { setBusy(false); }
   }, [ref, busy, team, load]);
 
   /** Answer one of the task's asks from the thread. */

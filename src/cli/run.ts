@@ -10,14 +10,21 @@ import { basename, dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
-  explainAutopri, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
+  explainAutopri, explainStack, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
+import { runInventory } from '../core/session-inventory';
+import { PRI_LINKS, PrisInvalid, PriStore, type Pri } from '../core/pris';
+import { PrPriConflict, PrPriInvalid, PrPriNotFound, PrPriorityStore } from '../core/pr-priority';
+import { PR_PRI_USAGE, prPriArgv, prPriCmd } from './pr-pri';
+import { formatGaps, priGaps, registerPrisEngine, setPris, withLinks, withNote } from '../core/pris-rank';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
-import { replyFromAgent } from '../core/inbox';
+import { addNote, retitleTask } from '../api/edit';
+import { currentRows, handleEntry, INBOX_STATES, listInbox, replyFromAgent } from '../core/inbox';
 import { registerAutopriEngine } from '../core/autopri';
 import { captureTask, CaptureError } from '../core/quick-capture';
+import { FeedbackError, FeedbackStore } from '../core/feedback';
 import { AUTONOMY_LEVELS, type Autonomy } from '../core/model';
 import { applyTriage, effectiveAutonomy, setAutonomy } from '../core/triage';
 import { createGhClient, refreshQueryTasks } from '../core/query-tasks';
@@ -26,14 +33,22 @@ import { PRIORITIES_PATH } from '../core/priorities';
 import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
+import { inboxSourcesCmd } from './inbox-sources';
+import { inboxRunCmd } from './delivery';
 import { emailCmd } from './email';
 import { agentCmd } from './agent';
 import { graphCmd } from './graph';
-import { findStackDir, userConfig } from './discover';
+import { prsCmd } from './prs';
+import { appCmd, realAppDeps } from './app';
+import { findStackDir, userConfig, walkStackDir } from './discover';
 import { devicesCmd } from './devices';
 import { bindMode } from './tailnet';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
+import { runLocal, type Locks, type SetupHandler } from './setup';
 import { BatchedGitStorage } from '../core/storage-batch';
+import { liveCmd, liveExit } from './pr-review';
+import { LiveError } from '../core/live-lane';
+import { BriefInvalid } from '../core/pr-review';
 import { homedir } from 'os';
 
 /** `in` reads all of stdin; `null` means no piped input (a terminal). */
@@ -71,8 +86,10 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   resume: { flags: ['expect', 'queries', 'no-update'], usage: 'resume [ref] [--expect t] [--queries] [--no-update]', help: 'unpark the first parked task' },
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
+  retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)' },
+  note: { flags: ['text', 'expect'], usage: 'note add <ref> --text t [--expect t]', help: 'append a nested note bullet under a task (children stay)' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
-  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks; --explain (autopri) shows score parts; --truth lists ground-truth items to tag or add' },
+  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset', 'bind'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches; --bind tailnet also serves paired devices on your Tailscale addresses)' },
@@ -80,17 +97,24 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
-  inbox: { flags: ['from', 'text', 'expect'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t]', help: 'reply on a task as an agent (tasks/inbox, from: agent); the owner reads it in the task thread' },
+  inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all', 'once', 'watch', 'agent'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--agent slug] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | run [--project p] [--once|--watch] [--json] | sources [--json]', help: 'reply on a task as an agent (tasks/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), deliver open messages to their agents (claude -p), or show each inbox source and how to connect it' },
   agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
-  update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (--engine stack: scores and order like `stack next`, with .stack/priorities.json)' },
+  prs: { flags: ['group', 'project', 'sort'], usage: 'prs [--group g] [--project p] [--sort spec-lines] [--json]', help: 'open PRs you review or move (--sort spec-lines: no Autopilot rows, fewest spec lines first, 🔬 = needs live validation), by group (blocked, waiting, processing, pending, paused) with who must act; uses GITHUB_TOKEN or the gh sign-in' },
+  feedback: { flags: ['route', 'since'], usage: 'feedback add "<text>" [--route r] | list [--since id] | done <id>', help: 'owner feedback on the app (~/.stack/feedback.jsonl, one JSON line each; docs/feedback.md); done writes feedback.done.jsonl' },
+  sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
+  pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
+  'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md' },
+  app: { flags: ['check', 'install', 'no-build', 'source'], usage: 'app install [--no-build] | update [--check | --install] [--no-build] | status [--source dir]', help: 'build Stack.app from the source checkout (STACK_SOURCE or ~/.local/share/stack) and install or update it in /Applications; update never quits a running app unless --install (docs/desktop-install.md)' },
+  live: { flags: ['agent', 'worktree', 'url', 'port', 'pid', 'file', 'text', 'reason', 'by', 'offline'], usage: 'live [next [ref] [--agent a --worktree p --offline] | ready <ref> --url u --pid n [--port n --worktree p] | state <ref> preparing|working | checklist <ref> --file items.json [--agent a] | item add|check|uncheck|fail|needs-fix|fixed|block|comment|edit <ref> [id] [--text t --reason r --by b] | resolve <ref> [--reason merged|closed|done]]', help: 'the live validation lane: one PR at a time, a checklist, the shared server lock; docs/live-validation-agent.md; never touches GitHub threads' },
+  update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (default stack: scores and order like `stack next`, with .stack/priorities.json; --engine legacy: the PowerShell output)' },
 };
 
 interface Outcome { json: Record<string, unknown>; text: string; code?: number }
 
 const VERBS: Record<string, string> = {
-  start: 'started', complete: 'completed', skip: 'skipped', park: 'skipped', resume: 'resumed', suspend: 'suspended', set: 'set', add: 'added',
+  start: 'started', complete: 'completed', skip: 'skipped', park: 'skipped', resume: 'resumed', suspend: 'suspended', set: 'set', add: 'added', retitle: 'retitled',
 };
 
 const taskText = (line: string | undefined): string => (line ?? '').replace(/^\s*- \[[ xX]\] ?/, '');
@@ -223,9 +247,11 @@ async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: bo
   for (const p of await storage.list()) projects.push({ fileName: p.replace(/^tasks\//, ''), content: (await storage.read(p)).content });
   const strip = (s?: string | null) => s?.replace(/^﻿/, '');
   // @req FR:cli/cmd.update.engine
-  const priorities = opts.engine === 'stack' ? (await (storage as Partial<AuxFiles>).readAux?.(PRIORITIES_PATH))?.content : undefined;
+  // The default is the engine `nextTask` uses, so the README top is the row a no-ref start/complete/skip acts on.
+  const engine = opts.engine ?? 'stack';
+  const priorities = engine === 'stack' ? (await (storage as Partial<AuxFiles>).readAux?.(PRIORITIES_PATH))?.content : undefined;
   const files = generateSummaries({
-    projects, config, now, ...(opts.engine ? { engine: opts.engine } : {}), ...(priorities ? { priorities } : {}),
+    projects, config, now, engine, ...(priorities ? { priorities } : {}),
     previousReadme: strip((await readOpt('README.md'))?.content), previousProjects: strip((await readOpt('projects.md'))?.content),
   });
   const changed: { path: string; content: string; expectedVersion: string | null }[] = [];
@@ -348,6 +374,118 @@ async function reportCmd(p: ReturnType<typeof parseArgs>, input: () => Promise<s
   return { json: { ok: true, via, ...r }, text: `report ${agent}/${project}: ${r.asks.put.length} asks, ${r.asks.dropped.length} dropped${answered ? `, ${answered} answered (see --json)` : ''} (${via})` };
 }
 
+/** Owner feedback in the local store; no repo. @req FR:feedback-button/cli.add @req FR:feedback-button/cli.list @req FR:feedback-button/cli.done */
+async function feedbackCmd(p: ReturnType<typeof parseArgs>): Promise<Outcome> {
+  const store = new FeedbackStore(stackHome());
+  const [sub, ...rest] = p.positionals;
+  if (sub === 'add') {
+    const text = rest.join(' ').trim();
+    if (!text) throw new UsageError('feedback add needs "<text>"');
+    try {
+      const item = await store.add({ text, route: flag(p.flags, 'route') });
+      return { json: { ok: true, changed: true, item }, text: item.id };
+    } catch (e) { if (e instanceof FeedbackError && e.code === 'invalid') throw new UsageError(e.message); throw e; }
+  }
+  if (sub === 'list') {
+    if (rest.length) throw new UsageError(`Unexpected argument: ${rest[0]}`);
+    const items = store.list({ since: flag(p.flags, 'since') });
+    const line = (x: (typeof items)[number]) => `${x.id}${x.done ? ' done' : ''}  ${x.text.replace(/\s+/g, ' ')}${x.screenshotPath ? ` [${x.screenshotPath}]` : ''}`;
+    return { json: { ok: true, items }, text: items.map(line).join('\n') || 'no feedback' };
+  }
+  if (sub === 'done') {
+    if (rest.length !== 1) throw new UsageError('feedback done needs exactly one <id>');
+    try {
+      const r = await store.done(rest[0]);
+      return { json: { ok: true, ...r }, text: `${r.id} ${r.changed ? 'done' : 'already done'}` };
+    } catch (e) {
+      if (e instanceof FeedbackError && e.code === 'not_found') return { json: { ok: false, error: e.message, code: EXIT.none }, text: `error: ${e.message}`, code: EXIT.none };
+      throw e;
+    }
+  }
+  throw new UsageError('feedback needs add, list or done');
+}
+
+/**
+ * The session inventory, read-only on the app store. @req FR:session-inventory/cli.sessions
+ */
+function sessionsCmd(p: ReturnType<typeof parseArgs>): Outcome {
+  if (p.positionals.length) throw new UsageError(`Unexpected argument: ${p.positionals[0]}`);
+  const inv = runInventory({ home: stackHome() });
+  const c = inv.counts;
+  const lines = [`sessions: ${inv.total} (running ${c.running}, waiting ${c.waiting}, stuck ${c.stuck}, done ${c.done}, pinned ${c.pinned}, idle ${c.idle})`];
+  if (inv.needsYou.length) lines.push('needs you:');
+  inv.needsYou.forEach((s, i) => lines.push(`${i + 1}. [${s.project}] ${s.state} ${s.title} - ${s.ask ?? s.reason} ${s.link}`));
+  lines.push(`archive candidates: ${inv.archive.length}`);
+  return { json: { ok: true, ...inv }, text: lines.join('\n') };
+}
+
+/**
+ * The owner priorities, or a one-time seed from markdown. @req FR:session-inventory/cli.pris @req FR:session-inventory/pris.seed.once
+ */
+async function prisCmd(p: ReturnType<typeof parseArgs>, ctxOf: () => LifecycleContext): Promise<Outcome> {
+  const store = new PriStore(stackHome());
+  const [sub, extra] = p.positionals;
+  if (sub === 'link' || sub === 'note' || sub === 'gaps') return prisCos(store, sub, p, ctxOf);
+  if (extra !== undefined || (sub !== undefined && sub !== 'seed')) throw new UsageError(`Unexpected argument: ${extra ?? sub}`);
+  for (const k of ['projects', 'keywords', 'refs']) if (p.flags[k] !== undefined) throw new UsageError(`--${k} needs pris link`);
+  if (sub === 'seed') {
+    const file = flag(p.flags, 'file');
+    if (!file) throw new UsageError('pris seed needs --file <md>');
+    let r: { seeded: boolean; count: number };
+    try { r = await store.seed(resolve(file)); } catch (e) {
+      if (e instanceof PrisInvalid) throw e;
+      // Any file-system error opening or reading --file is a usage error. @req FR:session-inventory/cli.pris
+      if (['open', 'read'].includes(String((e as NodeJS.ErrnoException).syscall))) throw new UsageError(`Cannot read --file: ${file}`);
+      throw e;
+    }
+    return { json: { ok: true, ...r }, text: r.seeded ? `seeded ${r.count} priorities` : `already seeded (${r.count} priorities)` };
+  }
+  const d = store.read();
+  if (!d.pris.length) return { json: { ok: true, ...d }, text: 'no priorities (run: stack pris seed --file <md>)' };
+  const lines = d.pris.flatMap((x, i) => [`${i + 1}. ${x.title} [${x.status}]`, ...x.items.map((it) => `   - ${it.text}${it.status === 'todo' ? '' : ` [${it.status}]`}`), ...(x.weekly[0] ? [`   week ${x.weekly[0].week}: ${x.weekly[0].text}`] : [])]);
+  return { json: { ok: true, ...d }, text: lines.join('\n') };
+}
+
+/**
+ * CoS commands: link terms, status notes, and gaps.
+ * @req FR:pris-aware-ranking/cos.link @req FR:pris-aware-ranking/cos.note @req FR:pris-aware-ranking/cos.gaps.cli
+ */
+async function prisCos(store: PriStore, sub: 'link' | 'note' | 'gaps', p: ReturnType<typeof parseArgs>, ctxOf: () => LifecycleContext): Promise<Outcome> {
+  const args = p.positionals.slice(1);
+  const d = store.read();
+  if (sub === 'gaps') {
+    if (args.length) throw new UsageError(`Unexpected argument: ${args[0]}`);
+    const ctx = ctxOf();
+    const gaps = priGaps(d.pris, await priLinkCounts(ctx, d.pris), ctx.now?.() ?? new Date());
+    return { json: { ok: true, gaps }, text: formatGaps(gaps) };
+  }
+  const [id, ...rest] = args;
+  if (!id) throw new UsageError(`pris ${sub} needs <id>`);
+  if (!d.pris.some((x) => x.id === id)) throw new UsageError(`Unknown priority: ${id}`);
+  let next: Pri[];
+  if (sub === 'link') {
+    if (rest.length) throw new UsageError(`Unexpected argument: ${rest[0]}`);
+    const lists: Partial<Record<(typeof PRI_LINKS)[number], string[]>> = {};
+    for (const k of PRI_LINKS) {
+      const v = p.flags[k];
+      if (v === true) throw new UsageError(`--${k} needs a value (use "" to clear)`);
+      if (v !== undefined) lists[k] = v.split(',').map((x) => x.trim()).filter(Boolean);
+    }
+    if (!Object.keys(lists).length) throw new UsageError('pris link needs --projects, --keywords or --refs');
+    next = withLinks(d.pris, id, lists);
+  } else {
+    const text = rest.join(' ').trim();
+    if (!text) throw new UsageError('pris note needs <text>');
+    const nowFlag = flag(p.flags, 'now');
+    const at = nowFlag ? new Date(nowFlag) : new Date();
+    if (Number.isNaN(at.getTime())) throw new UsageError(`--now must be an ISO date: ${nowFlag}`);
+    next = withNote(d.pris, id, text, at);
+  }
+  const w = await store.put(d.rev, next);
+  const x = w.pris.find((y) => y.id === id)!;
+  return { json: { ok: true, changed: true, rev: w.rev, pri: x }, text: sub === 'link' ? `${id} linked: ${PRI_LINKS.map((k) => `${k}=${(x[k] ?? []).join(',') || '-'}`).join(' ')}${PRI_LINKS.some((k) => x[k]?.length) ? '' : ' (no terms: automatic terms from the title apply)'}` : `${id} noted (${x.weekly[0].week})` };
+}
+
 /** A core ref as the api writes it (`<project>:<line>`, 0-based). */
 const apiRef = (r: { path: string; line: number }) => `${basename(r.path).replace(/\.md$/, '')}:${r.line}`;
 
@@ -394,7 +532,7 @@ function buildCtx(f: Record<string, string | true>, dir: string): LifecycleConte
 }
 
 /** Commands after which legacy ran `Update-StackSummary`. @req FR:cli/cmd.refresh */
-const REFRESH = new Set(['start', 'complete', 'skip', 'resume', 'suspend', 'remove-completed', 'add-project']);
+const REFRESH = new Set(['start', 'complete', 'skip', 'resume', 'suspend', 'retitle', 'remove-completed', 'add-project']);
 
 /** @req FR:cli/cmd.refresh @req FR:cli/cmd.refresh.skip @req FR:cli/cmd.refresh.json */
 async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: string): Promise<Outcome> {
@@ -462,7 +600,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         const ranked = await rankStack(ctx, at, top);
         if (!ranked.length) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
         return {
-          json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}) })) },
+          json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}), ...(n.stale ? { stale: true } : {}) })) },
           text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'),
         };
       }
@@ -486,6 +624,23 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       if (p.positionals.length !== 1) throw new UsageError('set needs exactly one <ref>');
       return describe(cmd, await setProperties(ctx, { ...parseRef(p.positionals[0]), text: flag(f, 'expect') }, props(f)));
     }
+    // @req FR:cli/cmd.retitle
+    case 'retitle': {
+      const text = flag(f, 'text');
+      if (p.positionals.length !== 1) throw new UsageError('retitle needs exactly one <ref>');
+      if (text === undefined) throw new UsageError('retitle needs --text');
+      const r = parseRef(p.positionals[0]);
+      return describe(cmd, await retitleTask(storage, r, text, flag(f, 'expect')));
+    }
+    // @req FR:cli/cmd.note
+    case 'note': {
+      const text = flag(f, 'text');
+      if (p.positionals[0] !== 'add') throw new UsageError('Usage: stack note add <ref> --text t [--expect t]');
+      if (p.positionals.length !== 2) throw new UsageError('note add needs exactly one <ref>');
+      if (text === undefined) throw new UsageError('note add needs --text');
+      const r = await addNote(storage, parseRef(p.positionals[1]), text, flag(f, 'expect'));
+      return { json: { ok: true, command: 'note', changed: true, ref: { path: r.ref.path, line: r.ref.line + 1 }, text: text.trim() }, text: `noted ${formatRef(r.ref)}` };
+    }
     // @req FR:auto-priority/tag.cli
     case 'tag': {
       if (p.positionals.length !== 1) throw new UsageError('tag needs exactly one <ref>');
@@ -500,24 +655,32 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     case 'rank': {
       extra(0);
       const engine = flag(f, 'engine') ?? 'stack';
-      if (engine !== 'autopri' && engine !== 'stack') throw new UsageError('--engine must be autopri or stack');
+      if (engine !== 'autopri' && engine !== 'pris' && engine !== 'stack') throw new UsageError('--engine must be autopri, pris or stack');
       const explain = f['explain'] === true;
-      if (explain && engine !== 'autopri') throw new UsageError('--explain needs --engine autopri');
       if (flag(f, 'truth') !== undefined && !explain) throw new UsageError('--truth needs --explain');
+      if (flag(f, 'truth') !== undefined && engine === 'stack') throw new UsageError('--truth needs --engine autopri or pris');
       const top = num(flag(f, 'top'), 'top');
       if (top !== undefined && (!Number.isInteger(top) || top < 1 || top > 50)) throw new UsageError('--top must be a whole number from 1 to 50');
+      // @req FR:task-lifecycle/rank.explain
+      if (explain && engine === 'stack') {
+        const r = await explainStack(ctx, at, { top });
+        return { json: { ok: true, items: r.items, dropped: r.dropped }, text: r.text, code: r.items.length ? EXIT.ok : EXIT.none };
+      }
       registerAutopriEngine();
+      // @req FR:pris-aware-ranking/explain.cli @req FR:pris-aware-ranking/explain.json
+      const pris = engine === 'pris' ? new PriStore(stackHome()).read().pris : undefined;
+      if (pris) { registerPrisEngine(); setPris(pris); }
       const rctx = { ...ctx, engine };
       if (explain) {
         const tf = flag(f, 'truth');
         let truth: string | undefined;
         if (tf !== undefined) { try { truth = readFileSync(resolve(tf), 'utf8'); } catch { throw new UsageError(`Cannot read --truth file: ${tf}`); } }
-        const r = await explainAutopri(rctx, at, { top, truth });
+        const r = await explainAutopri(rctx, at, { top, truth, ...(pris ? { pris } : {}) });
         return { json: { ok: true, items: r.items, ...(r.truth ? { truth: r.truth } : {}) }, text: r.text, code: r.items.length ? EXIT.ok : EXIT.none };
       }
       const ranked = await rankStack(rctx, at, top);
       return {
-        json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text })) },
+        json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.stale ? { stale: true } : {}) })) },
         text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'), code: ranked.length ? EXIT.ok : EXIT.none,
       };
     }
@@ -542,8 +705,29 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     case 'asks': return asksCmd(ctx, p);
     case 'agents': return agentsCmd(ctx, p);
     case 'inbox': {
+      // @req FR:agent-inbox/cli.list
+      if (p.positionals[0] === 'list') {
+        extra(1);
+        const state = flag(f, 'state');
+        if (state !== undefined && !(INBOX_STATES as readonly string[]).includes(state)) throw new UsageError(`--state must be one of ${INBOX_STATES.join(', ')}`);
+        const items = await listInbox(ctx, { project: flag(f, 'project'), agent: flag(f, 'agent'), state: (state ?? (f.all === true ? 'all' : undefined)) as (typeof INBOX_STATES)[number] | undefined, withdrawn: f.all === true }); // --all: every entry, withdrawn too; --state still narrows
+        const rows = await currentRows(ctx, items);
+        const out = items.map((e) => ({ ...e, ...(rows.has(e.id) ? { row: rows.get(e.id)! } : {}) }));
+        return { json: { ok: true, items: out }, text: out.map((e) => `${e.id} ${e.kind} ${e.project} ${e.row ?? e.ref} ${e.text}${!e.from && e.agent ? ` (to ${e.agent})` : ''}${e.withdrawn ? ' (withdrawn)' : ''}`).join('\n') }; // @req FR:product-reset/ui.thread
+      }
+      // @req FR:inbox-page/cli.sources
+      if (p.positionals[0] === 'sources') { extra(1); return inboxSourcesCmd(ctx); }
+      // @req FR:agent-delivery/cli.run
+      if (p.positionals[0] === 'run') { extra(1); return inboxRunCmd(ctx, f, { repo: dir, config: loadConfig(dir), out: (l) => process.stdout.write(`${l}\n`) }); }
+      // @req FR:agent-inbox/cli.handle
+      if (p.positionals[0] === 'handle') {
+        if (!p.positionals[1]) throw new UsageError('inbox handle needs an id');
+        extra(2);
+        const r = await handleEntry(ctx, p.positionals[1], flag(f, 'from') ?? 'cli', flag(f, 'note'));
+        return { json: { ok: true, ...r }, text: r.changed ? 'handled' : 'unchanged' };
+      }
       // @req FR:agent-thread/reply.entry
-      if (p.positionals[0] !== 'reply') throw new UsageError('Usage: stack inbox reply <ref> --from <agent> --text t');
+      if (p.positionals[0] !== 'reply') throw new UsageError('Usage: stack inbox reply <ref> --from <agent> --text t | list | handle <id> | run | sources');
       if (!p.positionals[1]) throw new UsageError('inbox reply needs a ref');
       extra(2);
       const from = flag(f, 'from'); const text = flag(f, 'text');
@@ -555,7 +739,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     case 'email': return emailCmd(ctx, p.positionals[0], p.flags, { repo: dir });
     case 'update': {
       extra(0);
-      const engine = f['engine'] === true ? '' : flag(f, 'engine'); // a bare --engine is an error, not legacy
+      const engine = f['engine'] === true ? '' : flag(f, 'engine'); // a bare --engine is an error, not the default
       if (engine !== undefined && engine !== 'legacy' && engine !== 'stack') throw new UsageError('--engine must be legacy or stack');
       return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true, engine: engine as 'legacy' | 'stack' | undefined });
     }
@@ -571,50 +755,70 @@ export function webReportStore(live: boolean, home: string): ReportStore | undef
   return live ? undefined : new ReportStore(join(home, '.config/stack/demo-state'));
 }
 
-/** @req FR:cli/web.@cli @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live */
-async function web(f: Record<string, string | true>, io: IO, found: string | null, home: string): Promise<number> {
+/**
+ * `stack web`: the real server when a repo is known, else the first-run setup server; setup restarts it on the same port.
+ * @req FR:cli/web.@cli @req FR:cli/web.serve @req FR:cli/web.demo @req FR:cli/web.live @req FR:first-run-onboarding/host.setup
+ */
+async function web(f: Record<string, string | true>, io: IO, here: { dir: string; by: string } | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
-  const cfg = userConfig(home);
   // @req FR:tailnet-access/bind.@cli
-  const bind = bindMode(f['bind'], cfg.bind);
-  const spec = flag(f, 'repo') ?? found;
-  if (!spec) throw new UsageError('No content repo. Use: stack web --repo <path-or-git-url> (or set STACK_REPO, or "repo" in ~/.config/stack/config.json)');
-  const repo = resolveRepo(spec, join(home, '.config/stack/clones'));
-  const live = f['live'] === true || cfg.mode === 'live';
-  let target: string; let info: RepoInfo; let label: string; let storage: BatchedGitStorage | undefined;
-  if (live) {
-    // @req FR:cli/web.live @req FR:cli/web.batch @req FR:cli/web.batch.idle @req FR:cli/web.batch.zero
-    if (cfg.batch !== undefined && (typeof cfg.batch !== 'number' || !Number.isFinite(cfg.batch) || cfg.batch < 0)) throw new UsageError('user config "batch" must be a number of minutes, 0 or more');
-    const minutes = num(flag(f, 'batch'), 'batch') ?? cfg.batch ?? 5;
-    if (minutes < 0) throw new UsageError('--batch must be 0 or more minutes');
-    const l = prepareLive(repo, flag(f, 'branch') ?? cfg.branch, flag(f, 'remote') ?? cfg.remote); // flags win over user config, as for branch and batch
-    target = l.dir;
-    info = { mode: 'live', repo: redact(repo), branch: l.branch };
-    label = `LIVE - ${repo} on ${l.branch}`;
-    storage = new BatchedGitStorage(target, { idleMs: minutes * 60_000, remote: l.remote, branch: l.branch, onError: (e) => io.err(`error: commit failed, edits kept and retried: ${e instanceof Error ? e.message : String(e)}\n`) });
-    io.out(`${liveLine(repo, l.branch, minutes, l.remote)}\n`);
-  } else {
-    target = join(home, '.config/stack/demo');
-    prepareDemo(repo, target, f['reset'] === true);
-    info = { mode: 'demo', repo: redact(repo), branch: 'main' };
-    label = `DEMO COPY of ${repo} - edits stay in the copy`;
-    io.out(`DEMO MODE: serving a COPY of ${repo}\nEdits stay in ${target}; the real repo is never touched. Reset: stack web --reset. Real data: stack web --live\n`);
-  }
+  const bind = bindMode(f['bind'], userConfig(home).bind);
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
-  // Demo never touches live state (~/.stack): its reports stay beside the demo copy. @req FR:status-ingest/host.demo
-  const reports = webReportStore(live, home);
-  const s = await startWeb({ dir: target, port, webDir, label, info, storage, bind, ...(reports ? { reports } : {}) });
-  io.out(`Stack web: ${s.url}  (data: ${target}; Ctrl+C to stop)\n`);
-  // @req FR:tailnet-access/bind.startup
-  if (bind === 'tailnet') io.out(`Tailnet (paired devices only): ${s.urls.slice(1).join('  ')}\nHTTPS for the phone: tailscale serve --bg ${new URL(s.url).port}. Pair a phone: stack devices add <name>\n`);
+  // --repo, then --dir or the current folder, then env, then user config; config is read again on every restart (setup writes it).
+  const spec = () => { const c = userConfig(home); return flag(f, 'repo') ?? here?.dir ?? process.env.STACK_REPO ?? process.env.STACK_DIR ?? c.repo ?? c.dir; };
+  // What wins over setup: the flow shows these as fixed instead of saving a choice that would not apply. @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.mode
+  const locks = (): Locks => ({ repo: flag(f, 'repo') ? '--repo' : here?.by, mode: f['live'] === true ? '--live' : undefined });
+  let reset = f['reset'] === true;
+  const startReal = async (p: number, setup: SetupHandler) => {
+    const cfg = userConfig(home);
+    const repo = resolveRepo(spec()!, join(home, '.config/stack/clones'));
+    const live = f['live'] === true || cfg.mode === 'live';
+    let target: string; let info: RepoInfo; let label: string; let storage: BatchedGitStorage | undefined;
+    if (live) {
+      // @req FR:cli/web.live @req FR:cli/web.batch @req FR:cli/web.batch.idle @req FR:cli/web.batch.zero
+      if (cfg.batch !== undefined && (typeof cfg.batch !== 'number' || !Number.isFinite(cfg.batch) || cfg.batch < 0)) throw new UsageError('user config "batch" must be a number of minutes, 0 or more');
+      const minutes = num(flag(f, 'batch'), 'batch') ?? cfg.batch ?? 5;
+      if (minutes < 0) throw new UsageError('--batch must be 0 or more minutes');
+      const l = prepareLive(repo, flag(f, 'branch') ?? cfg.branch, flag(f, 'remote') ?? cfg.remote); // flags win over user config, as for branch and batch
+      target = l.dir;
+      info = { mode: 'live', repo: redact(repo), branch: l.branch };
+      label = `LIVE - ${repo} on ${l.branch}`;
+      storage = new BatchedGitStorage(target, { idleMs: minutes * 60_000, remote: l.remote, branch: l.branch, onError: (e) => io.err(`error: commit failed, edits kept and retried: ${e instanceof Error ? e.message : String(e)}\n`) });
+      io.out(`${liveLine(repo, l.branch, minutes, l.remote)}\n`);
+    } else {
+      target = join(home, '.config/stack/demo');
+      prepareDemo(repo, target, reset);
+      reset = false; // --reset once, not on every setup restart
+      info = { mode: 'demo', repo: redact(repo), branch: 'main' };
+      label = `DEMO COPY of ${repo} - edits stay in the copy`;
+      io.out(`DEMO MODE: serving a COPY of ${repo}\nEdits stay in ${target}; the real repo is never touched. Reset: stack web --reset. Real data: stack web --live\n`);
+    }
+    // Demo never touches live state (~/.stack): its reports stay beside the demo copy. @req FR:status-ingest/host.demo
+    const reports = webReportStore(live, home);
+    const ics = (cfg as { ics?: unknown }).ics; // @req FR:first-run-onboarding/step.calendar
+    // Demo reads no session store and keeps priorities beside the demo copy. @req FR:status-ingest/host.demo
+    const demoLive = live ? {} : { inventory: false as const, pris: new PriStore(join(home, '.config/stack/demo-state')), prPriority: new PrPriorityStore(join(home, '.config/stack/demo-state')) };
+    const server = await startWeb({ dir: target, port: p, webDir, label, info, storage, bind, setup, ...(typeof ics === 'string' ? { ics } : {}), ...(reports ? { reports } : {}), ...demoLive });
+    // @req FR:tailnet-access/bind.startup
+    if (bind === 'tailnet') io.out(`Tailnet (paired devices only): ${server.urls.slice(1).join('  ')}\nHTTPS for the phone: tailscale serve --bg ${new URL(server.url).port}. Pair a phone: stack devices add <name>\n`);
+    return { server, dir: target };
+  };
+  const s = await runLocal({ port, home, env: process.env, webDir, spec, locks, startReal, log: (l) => io.out(`${l}\n`) });
+  io.out(`Stack web: ${s.url}  (${spec() ? 'Ctrl+C to stop' : 'first run: finish setup in the browser; Ctrl+C to stop'})\n`);
   await new Promise<void>((ok) => { process.once('SIGINT', ok); process.once('SIGTERM', ok); });
   await s.close();
   return EXIT.ok;
 }
 
 function exitCodeFor(e: unknown): number {
-  if (e instanceof UsageError || e instanceof LifecycleError || e instanceof NotFoundError || e instanceof PathError || e instanceof ReportInvalid) return EXIT.usage;
+  // @req FR:pr-priority/cli.edit: bad input 2, stale rev or a closed decision 3, not queued or unknown id 1.
+  if (e instanceof PrPriInvalid) return EXIT.usage;
+  if (e instanceof PrPriConflict) return EXIT.conflict;
+  if (e instanceof PrPriNotFound) return EXIT.failure;
+  if (e instanceof LiveError) return liveExit(e);
+  if (e instanceof BriefInvalid) return EXIT.usage;
+  if (e instanceof UsageError || e instanceof LifecycleError || e instanceof NotFoundError || e instanceof PathError || e instanceof ReportInvalid || e instanceof PrisInvalid) return EXIT.usage;
   if (e instanceof ConflictError) return EXIT.conflict;
   return EXIT.failure;
 }
@@ -627,7 +831,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
   let json = argv.includes('--json') && !argv.includes('--');
   let command: string | undefined;
   try {
-    const p = parseArgs(argv);
+    const p = parseArgs(prPriArgv(argv));
     json = p.flags['json'] === true;
     // @req FR:cli/run.help.version
     if (p.flags['version']) { io.out(`${pkgVersion()}\n`); return EXIT.ok; }
@@ -640,20 +844,28 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     const explicit = flag(p.flags, 'dir');
     const found = explicit ? null : findStackDir({ cwd: process.cwd(), env: process.env, home });
     const dir = resolve(explicit ?? found ?? process.cwd());
-    if (p.command === 'web') return await web(p.flags, io, explicit ?? found, home);
+    // Only --dir or the current folder is fixed at startup; env and user config are read on every setup restart.
+    if (p.command === 'web') { const up = walkStackDir(process.cwd()); return await web(p.flags, io, explicit ? { dir: explicit, by: '--dir' } : up ? { dir: up, by: 'the current folder' } : null, home); }
     if (p.command === 'graph') return await graphCmd(p.positionals[0], p.flags, io, json);
     if (p.command === 'agent') return await agentCmd(p.positionals, p.flags, io, json, () => buildCtx(p.flags, dir));
     // A report is live state for the host's store, not the content repo: it needs no repo. @req FR:status-ingest/cli.report
+    // Live state under ~/.stack needs no content repo. @req FR:session-inventory/cli.sessions @req FR:session-inventory/cli.pris
+    // PR review lane state lives under ~/.stack too. @req FR:pr-review-lane/sort.cli @req FR:pr-review-lane/brief.cli @req FR:pr-review-lane/lane.show
+    if (p.command === 'live') {
+      const o = await liveCmd(p);
+      if (json) io.out(`${JSON.stringify(o.json)}\n`); else if (o.text) (o.code ? io.err : io.out)(`${o.text}\n`);
+      return o.code ?? EXIT.ok;
+    }
     // Devices live in ~/.stack (STACK_HOME), not the content repo. @req FR:tailnet-access/pair.@cli
     if (p.command === 'devices') { const d = await devicesCmd(p.positionals[0], p.positionals.slice(1), stackHome()); io.out(`${json ? JSON.stringify(d.json) : d.text}\n`); return EXIT.ok; }
-    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : await dispatch(p.command, p, dir);
+    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'feedback' ? await feedbackCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'app' ? await appCmd(p.positionals[0], p.flags, realAppDeps(home)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
     return r.code ?? EXIT.ok;
   } catch (e) {
     const code = exitCodeFor(e);
     const msg = e instanceof Error ? e.message : String(e);
-    if (json) io.out(`${JSON.stringify({ ok: false, ...(command ? { command } : {}), error: msg, code, ...(e instanceof ReportInvalid ? { issues: e.issues } : {}) })}\n`);
+    if (json) io.out(`${JSON.stringify({ ok: false, ...(command ? { command } : {}), error: msg, code, ...(e instanceof ReportInvalid || e instanceof PrPriInvalid ? { issues: e.issues } : {}) })}\n`);
     else io.err(`error: ${msg}\n`);
     return code;
   }

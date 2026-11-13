@@ -12,17 +12,17 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 ## Prerequisites
 
 - Azure subscription and a resource group
-- `az` CLI and `bicep`
+- PowerShell 7 with Az PowerShell (`Install-Module Az`), `bicep`, and `gh`. Never the `az` CLI
 - A private GitHub repo for task data (the Function reads and writes it)
 - The Functions host in `host/` ships with this repo ([Azure host](azure-host.md))
 
 ## Deploy
 
 1. Check the template offline: `bicep build infra/main.bicep` (lint only, no Azure calls).
-2. Preview: `az deployment group what-if -g <rg> -f infra/main.bicep -p infra/main.parameters.json -p owners=... tokenPepper=... repoToken=... repoUrl=https://github.com/<you>/<tasks>.git`
-3. Create: same command with `create` instead of `what-if`. Secrets come from the command line or your shell, never from a file in git.
-4. Get the deployment token: `az staticwebapp secrets list -n <name> --query properties.apiKey -o tsv`.
-5. Add it to GitHub: repo Settings, Secrets and variables, Actions, new secret `AZURE_STATIC_WEB_APPS_API_TOKEN`.
+2. Preview: `$p = @{ owners = ''; tokenPepper = '<random hex>'; repoToken = '<token>'; repoUrl = 'https://github.com/<you>/<tasks>' }`, then `New-AzResourceGroupDeployment -WhatIf -ResourceGroupName <rg> -TemplateFile infra/main.bicep -TemplateParameterObject $p` (`repoBranch` defaults to `stack/live`; set `customDomain` only after its CNAME exists). Type the values in your shell, never in a file in git.
+3. Create: same command without `-WhatIf`. **First run only:** the template replaces every app setting, so never run it against a live site. Re-runs go through `scripts/setup-azure.ps1`, which merges.
+4. Store the deployment token without printing it: `(Invoke-AzRestMethod -Method POST -Path "$((Get-AzStaticWebApp -ResourceGroupName <rg> -Name <name>).Id)/listSecrets?api-version=2023-12-01").Content | ConvertFrom-Json | % { $_.properties.apiKey } | gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN -R Xerilium/stack`.
+5. Check it exists: `gh secret list -R Xerilium/stack`.
 6. Push to `main`. `.github/workflows/deploy.yml` builds and uploads. With no secret it logs a skip and passes.
 
 ## Settings
@@ -34,35 +34,42 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 | `STACK_REPO_TOKEN` | Credential for the private task repo |
 | `STACK_REPO_URL` | https URL of the private task repo (no credentials in it). More settings: [Azure host](azure-host.md) |
 | `STACK_CALENDAR_FIXTURE` | `stack web` only: JSON file of calendar events for Today (demo and screenshots); wins over Graph and ICS |
+| `STACK_GRAPH_CLIENT_ID` | `stack web` and the desktop app: the Stack app registration id for in-app Connect. Default `graph.clientId` in `~/.config/stack/config.json`, written by Run setup (see `docs/connect-accounts.md`) |
 | `STACK_GRAPH_CACHE` | `stack graph`, `stack email` and `stack web` only: path of the Graph token file. Default `~/.config/stack/graph-token.json` (mode 0600; never inside a task repo) |
 | `STACK_CALENDAR_ICS` | Published calendar links (ICS), separated by spaces or commas; `stack web` and the Azure host. Outlook on the web: Settings, Calendar, Shared calendars, Publish a calendar, ICS link. Google: Settings, your calendar, Secret address in iCal format. Treat as a secret: anyone with the link reads the calendar. Order: `STACK_CALENDAR_FIXTURE`, then a Graph sign-in, then these feeds |
 | `STACK_TOKEN_STORE` | Optional file path for the token store (needs `STACK_TOKEN_PEPPER`). Default: the data repo (`.stack/tokens.json`) |
 | `STACK_REPO_BRANCH`, `STACK_REPO_PATH` | Branch (default `main`) and optional subfolder of the task repo |
-| `STACK_HOME` | Local live state for `stack web`, the desktop host, and `stack report` (default `~/.stack`): `reports.json`, `host.json`. Never in git. See [report.md](report.md) |
+| `STACK_HOME` | Local live state for `stack web`, the desktop host, and `stack report` (default `~/.stack`): `reports.json`, `host.json`, `sessions.json`, `pris.json`, `pr-priority.json`, `pr-priority-state.json`, `pr-priority.config.json`, `pr-facts.json`, `pr-briefs.json`, `live-lane.json`, `live.config.json`. Never in git. See [report.md](report.md) |
+| `STACK_GH` | `stack pr-pri list --refresh`, `stack prs`, `stack pr-pri brief --refresh` and `stack live next`: the `gh` binary for GitHub reads (default `gh`). Reads only: PR, PR files, and search. Facts cache in `pr-facts.json`; the lane in `live-lane.json`; briefs in `pr-briefs.json`; lane settings in `live.config.json` (all under `STACK_HOME`) |
+| `STACK_SESSIONS_DIR` | `stack sessions` and the desktop host: the Claude app session store to read (default `~/Library/Application Support/Claude/claude-code-sessions`). Read-only |
+| `STACK_TRANSCRIPTS_DIR` | `stack sessions`: the Claude Code transcripts folder for the last-event kind (default `~/.claude/projects`). Read-only; no text is kept |
 | `STACK_CONFIG` | Optional Stack config as JSON |
 | `STACK_GIT_NAME`, `STACK_GIT_EMAIL` | Commit identity |
 | `STACK_SLACK_SIGNING_SECRET`, `STACK_SLACK_ALLOW` | Slack bot secret and allowed user ids |
 | `STACK_WEBHOOK_SECRET`, `STACK_WEBHOOK_ALLOW` | Webhook bot secret and allowed senders |
 | `STACK_IMESSAGE_SECRET`, `STACK_IMESSAGE_ALLOW` | iMessage bridge secret and allowed senders |
 | `STACK_GITHUB_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_ALLOW` | GitHub comment bot secret and allowed logins |
-| `GITHUB_TOKEN` | `stack web` and the Azure host: read-only GitHub token for pull request state and checks on the AI team panel. Sent only to `api.github.com` |
-| `STACK_GITHUB_REPOS` | Optional comma list of `owner` or `owner/repo`. When set, only PRs in these repos get status, so an agent token cannot read other PRs through `GET /agents`. Unset: every repo the token can see |
+| `GITHUB_TOKEN` | Azure host: GitHub token for pull request state and the PR page. `stack web`, the desktop app, and `stack prs` use it when set, else the `gh` CLI sign-in (`gh auth token`), so no setup is needed; signed out, the PR page offers one-tap Sign in to GitHub (`gh auth login --web`). Sent only to `api.github.com`, never logged |
+| `STACK_GH_AUTH` | `off` stops the local host and `stack prs` from reading the `gh` sign-in (tests set it). Unset: on |
+| `STACK_GITHUB_REPOS` | Optional comma list of `owner` or `owner/repo`. When set, only PRs in these repos get status, so an agent token cannot read other PRs through `GET /agents`. Unset: every repo the token can see. On the local host the token may be the `gh` sign-in (every repo you can see); the local host takes no agent tokens (loopback, owner only), and the Azure host never reads `gh` |
 | `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY`, `STACK_VAPID_SUBJECT` | Optional Web Push VAPID keys (base64url) and contact (`mailto:you@example.com` or an `https:` URL); see [iPhone push](#iphone-push). The public key is served to devices at `GET /api/auth/devices/me/push-key`. The private key is a host secret only: never in a repo, never logged. Push is off unless all three are set and valid |
 | `STACK_PUSH_QUIET` | Optional quiet hours `<start>-<end>` in the config `timezone`, default `21-8`; only `crit` asks push inside them. `off` turns them off |
 | `STACK_REPO`, `STACK_DIR` | Local content repo for the CLI, `stack web`, and `stack-mcp` (when none is found by walking up from the current folder). Content never lives in the Stack repo; see the README "Two repos" |
+| `STACK_SOURCE` | `stack app install|update` and the desktop app: the Stack source checkout that builds `Stack.app`, default `~/.local/share/stack` ([desktop-install.md](desktop-install.md#update)) |
+| `STACK_UPDATE_SOURCE`, `STACK_UPDATE_TARGET`, `STACK_UPDATE_PID`, `STACK_UPDATE_QUIT`, `STACK_UPDATE_RELAUNCH`, `STACK_UPDATE_LOG`, `STACK_UPDATE_RESULT`, `STACK_UPDATE_OPEN`, `STACK_UPDATE_WAIT_S`, `STACK_UPDATE_SHA`, `STACK_UPDATE_BUILT`, `STACK_UPDATE_QUITTER` | Internal: inputs the installer passes to its swap helper (`~/.stack/app/update.sh`). Do not set them yourself |
 | `STACK_MCP_SCOPES` | Scopes for `stack-mcp` (stdio only), default `read,write` |
 | `STACK_DATA_DIR` | Owner-only local data (email voice profile and mail state), default `~/Library/Application Support/stack`. Never inside a repo: it holds learned writing samples |
 | `STACK_CLAUDE_BIN` | `stack email` only: the Claude Code binary used for model calls (`claude -p`, no tools), default `claude`. Model calls use your Claude login |
 
 ## Owner allow-list
 
-Sign-in is GitHub through SWA built-in auth. SWA's `userId` is generated per app, not your GitHub id ([user information](https://learn.microsoft.com/azure/static-web-apps/user-information)): sign in once, and the "Not on the allow-list" page shows your `github:<id>` and the command `scripts/setup-azure.sh --owner github:<id>`. Or set `STACK_OWNERS=github:<id>` yourself. Update with `az staticwebapp appsettings set -n <name> --setting-names STACK_OWNERS=github:<id>`. Only people on the list get owner access; everyone else is denied.
+Sign-in is GitHub through SWA built-in auth. SWA's `userId` is generated per app, not your GitHub id ([user information](https://learn.microsoft.com/azure/static-web-apps/user-information)): sign in once, and the "Not on the allow-list" page shows your `github:<id>` and the command `scripts/setup-azure.ps1 -Owner github:<id>`. Run that; it merges the change and keeps every other setting. Only people on the list get owner access; everyone else is denied.
 
 ## Tokens
 
 Create, list, and revoke as the owner (signed in) through `POST /api/auth/tokens`, `GET /api/auth/tokens`, `POST /api/auth/tokens/{id}/revoke`. A secret (`stk_...`) is shown once. Default expiry 90 days, max 365, 50 active at most. Give each agent the narrowest scopes ([API](api/README.md), [MCP](mcp.md)).
 
-Rotate: create a new token, update the client, revoke the old one. Rotate the pepper only if the token store leaks: set a new `STACK_TOKEN_PEPPER`, then recreate every token. Rotate `AZURE_STATIC_WEB_APPS_API_TOKEN` with `az staticwebapp secrets reset-api-key -n <name>` and update the GitHub secret.
+Rotate: create a new token, update the client, revoke the old one. Rotate the pepper only if the token store leaks: set a new `STACK_TOKEN_PEPPER`, then recreate every token. Rotate `AZURE_STATIC_WEB_APPS_API_TOKEN` in the portal (Static Web App, Overview, Manage deployment token, Reset), then re-run `scripts/setup-azure.ps1`.
 
 The token store holds only hashes (never secrets) plus scopes and expiry. By default it is committed to the private data repo as `.stack/tokens.json`, so tokens survive restarts; keep that repo private (see the [threat model](security/threat-model.md)). Revoking on one instance reaches others within about a minute.
 
@@ -70,7 +77,7 @@ The token store holds only hashes (never secrets) plus scopes and expiry. By def
 
 The host pushes an ask to each paired phone when the ask is due within 1 hour. Human-only steps:
 
-1. Make VAPID keys once: `npx web-push generate-vapid-keys --json`. Set `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY` and `STACK_VAPID_SUBJECT` as host secrets (`az staticwebapp appsettings set`). Keep the private key in a password manager.
+1. Make VAPID keys once: `npx web-push generate-vapid-keys --json`. Set `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY` and `STACK_VAPID_SUBJECT` as host secrets (portal: Static Web App, Environment variables; the setup script keeps them on re-run). Keep the private key in a password manager.
 2. Add a cron caller. Something must call `POST /api/push/check` (body `{}`) every 5 minutes with a `tasks:write` token, for example a GitHub Actions `schedule` workflow in the data repo with the token in a repo secret. Without it, only ask writes (`POST /api/asks/{key}`) start a check.
 3. Pair the phone (iOS 16.4 or later): create a device as the owner (`POST /api/auth/devices`), open `/#/install?device=<token>` in Safari, Add to Home Screen, open Stack from the Home Screen, then tap `Turn on notifications`.
 4. Optional, for the live Mac view only: use Tailscale Serve (tailnet only; steps in [phone-access.md](phone-access.md)). Phone push uses the Azure host and needs no tunnel. Cloudflare Tunnel is not recommended (public hostname, extra account).

@@ -54,14 +54,14 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 ### FR:routes: Endpoints
 
 - **FR:routes.next** (P1): `GET /next` returns `{task}`, where `task` is `{ref,text,project,score}` (the first of `GET /rank`) or `null` when nothing is active
-- **FR:routes.rank** (P1): `GET /rank?limit=&blocks=` (limit 1-200, default 20; `blocks` is `now`, the default, or `any` to keep tasks the current time block would hide, for surfaces that place tasks across the day) returns `{items}`, the ranked tasks (@req FR:task-lifecycle/rank.output), each `{ref,text,project,score,rule?,root?}`
+- **FR:routes.rank** (P1): `GET /rank?limit=&blocks=` (limit 1-200, default 20; `blocks` is `now`, the default, or `any` to keep tasks the current time block would hide, for surfaces that place tasks across the day) returns `{items}`, the ranked tasks (@req FR:task-lifecycle/rank.output), each `{ref,text,project,score,rule?,root?,stale?}` (`stale: true` for a stale row, `FR:task-lifecycle/rank.stale`); only the owner queue (`FR:task-lifecycle/rank.owner`)
   > - @req FR:task-lifecycle/rank.order
 - **FR:routes.add** (P1): `POST /tasks` `{project,text,section?,parent?}` adds a task (201); `POST /projects` `{name,description?,repositoryUrl?,aliases?,priority?,capacity?,weeklyCapacity?,fileName?,force?}` adds a project (201 `{path,project}`)
 - **FR:routes.actions** (P1): `POST /tasks/{start|complete|skip|resume|suspend|set}` with `ref` (optional except for `set`; omitted means the next or parked task, as in the core). `complete` takes `summary?`, `remove?`; `suspend` takes `days?` or `hours?`; `set` takes `status?`, `priority?`, `effort?`, `impact?`, `checkbox?`, `suspend?`, `clearEmojis?`. Returns `{changed,ref?,before?,after?,message?}`
 - **FR:routes.remove** (P1): `POST /tasks/remove-completed` `{project?}` returns `{removed,files}`
-- **FR:routes.tasks** (P1): `GET /tasks` lists tasks (children included) with `project`, `section`, `state` (`open` default, `done`, `all`), `q` (case-insensitive text), `limit` (1-200, default 50), `offset`; returns `{items,total,offset,limit}`. `GET /tasks/{ref}` returns one item (404 if the line is not a task)
+- **FR:routes.tasks** (P1): `GET /tasks` lists tasks (children included) with `project`, `section`, `state` (`open` default, `done`, `all`), `q` (case-insensitive text), `limit` (1-200, default 50), `offset`; returns `{items,total,offset,limit}`. `GET /tasks/{ref}` returns one item (404 if the line is not a task). Empty rows are not listed; `depth` counts listed ancestors only
 - **FR:routes.projects** (P1): `GET /projects` lists projects; `GET /projects/{name}` returns one (404 when absent); `name` matches the file base name
-- **FR:routes.summaries** (P1): `GET /summaries` returns `{readme,stack,projects,myDay}` generated from storage (`myDay` is `null` when no tasks); `fields` selects which
+- **FR:routes.summaries** (P1): `GET /summaries` returns `{readme,stack,projects,myDay}` generated from storage with the `stack` engine and `.stack/priorities.json`, so the README top is the `GET /next` task (`myDay` is `null` when no tasks); `fields` selects which
 
 ### FR:compact: Token-efficient responses
 

@@ -1,0 +1,67 @@
+/* Priorities and Sessions in Needs you. Calm: neutral base, one accent, warn only for blocked or stuck. @req NFR:pris-sessions-ui/a11y.calm */
+.pris { margin: 0 0 24px; }
+.pris-h, .sessions-h { margin: 0 0 8px; font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--ink2); display: flex; align-items: center; gap: 8px; }
+.sessions-h .count { font-size: 12px; font-weight: 650; color: var(--ink2); background: var(--chip); border-radius: 999px; padding: 1px 9px; letter-spacing: 0; text-transform: none; }
+.pris-empty { margin: 0 0 4px; color: var(--muted); }
+.pri-list, .pri-items, .s-list, .archive-list { list-style: none; margin: 0; padding: 0; }
+.pri { border-top: 1px solid var(--line); }
+.pri:last-child { border-bottom: 1px solid var(--line); }
+.pri-toggle { width: 100%; display: flex; align-items: center; gap: 12px; min-height: var(--tap); padding: 6px 8px; background: none; border: 0; border-radius: var(--r-row); text-align: left; color: var(--ink); font: inherit; cursor: pointer; transition: background var(--t-feedback) var(--ease); }
+.pri-toggle:hover { background: var(--hover); }
+.pri-n { flex: none; width: 20px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pri-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pri-title { font-weight: 550; overflow-wrap: anywhere; }
+.pri-next { font-size: var(--fs-secondary); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pri-side { flex: none; display: flex; align-items: center; gap: 10px; font-size: var(--fs-caption); color: var(--ink2); }
+.pri-progress { font-variant-numeric: tabular-nums; color: var(--muted); }
+.pri-status .g, .s-state .g { display: inline-block; width: 1.1em; text-align: center; }
+.pri-status.warn, .item-glyph.warn, .s-state.stuck { color: var(--warn); }
+.pri-panel { padding: 4px 8px 12px 40px; display: flex; flex-direction: column; gap: 6px; }
+.pri-edit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pri-item { display: flex; align-items: center; gap: 8px; }
+.item-glyph { flex: none; width: 1.2em; text-align: center; color: var(--muted); }
+.inline-text { flex: 1; min-width: 0; min-height: var(--tap); padding: 4px 8px; background: none; border: 1px solid transparent; border-radius: var(--r-row); text-align: left; color: var(--ink); font: inherit; overflow-wrap: anywhere; cursor: text; }
+.inline-text:hover { border-color: var(--line); }
+.inline-text.done { color: var(--muted); text-decoration: line-through; }
+.inline-text.pri-title-edit { flex: none; color: var(--ink2); }
+.inline-input.pri-title-edit { font-weight: 550; }
+.inline-input { flex: 1; min-width: 0; min-height: var(--tap); padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--r-row); background: var(--panel); color: var(--ink); font: inherit; }
+.inline-input::placeholder { color: var(--muted); opacity: 1; }
+.add-line { width: 100%; }
+.status-select { flex: none; min-height: var(--tap); padding: 2px 6px; border: 1px solid var(--line); border-radius: var(--r-chip); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-caption); }
+.icon-btn { flex: none; min-width: var(--tap); min-height: var(--tap); background: none; border: 0; border-radius: var(--r-chip); color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.icon-btn:hover { background: var(--hover); color: var(--ink); }
+.pri-move { display: flex; gap: 8px; }
+.pri-move .btn { min-height: var(--tap); }
+.pris-foot { display: flex; gap: 4px; flex-wrap: wrap; }
+.pris .more-btn, .archive .foot-btn { min-height: var(--tap); padding: 6px 8px; color: var(--ink2); }
+
+.sessions-need { margin: 24px 0 8px; }
+.s-group + .s-group { margin-top: 8px; }
+.s-proj { margin: 8px 0 2px; font-size: var(--fs-caption); font-weight: 600; color: var(--muted); }
+.session-row { display: flex; align-items: center; gap: 12px; min-height: var(--tap); padding: 6px 8px; border-radius: var(--r-row); color: var(--ink); text-decoration: none; transition: background var(--t-feedback) var(--ease); }
+a.session-row:hover { background: var(--hover); }
+.s-state { flex: none; width: 72px; font-size: var(--fs-caption); font-weight: 600; color: var(--ink2); }
+.s-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.s-title { font-weight: 500; overflow-wrap: anywhere; }
+.s-line { font-size: var(--fs-secondary); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s-time { flex: none; font-size: var(--fs-caption); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.archive { margin: 8px 0 16px; }
+.archive-list { padding: 0 8px; }
+.archive-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: var(--tap); }
+.archive-list a { color: var(--ink); display: inline-flex; align-items: center; min-height: var(--tap); }
+.a-meta { font-size: var(--fs-caption); color: var(--muted); }
+.archive .btn { margin: 4px 8px; min-height: var(--tap); }
+
+.pri-toggle:focus-visible, .inline-text:focus-visible, .inline-input:focus-visible, .status-select:focus-visible, .icon-btn:focus-visible, .session-row:focus-visible, .archive-list a:focus-visible, .pris .more-btn:focus-visible, .archive .foot-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Desktop: denser rows, still 24 px or more. @req NFR:pris-sessions-ui/a11y.targets */
+@media (hover: hover) and (pointer: fine) {
+  .pri-toggle, .session-row, .inline-text, .inline-input, .status-select, .pri-move .btn, .pris .more-btn, .archive .foot-btn, .archive .btn, .archive-list li, .archive-list a { min-height: 32px; }
+  .icon-btn { min-width: 32px; min-height: 32px; }
+}
+@media (max-width: 480px) {
+  .pri-panel { padding-left: 8px; }
+  .pri-side { gap: 6px; }
+}

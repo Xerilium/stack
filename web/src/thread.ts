@@ -6,7 +6,7 @@ import type { AskItem } from './asks';
 import type { ReviewItem } from './team';
 
 export type ThreadItem =
-  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled' }
+  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled'; withdrawn?: true; /** The agent picked for it in Now. */ agent?: string }
   | { at: string; kind: 'agent'; id: string; agent: string; text: string }
   | { at: string; kind: 'ask'; ask: AskItem }
   | { at: string; kind: 'review'; verdict: ReviewItem['verdict']; plan: string; estimate?: string; agent: string }
@@ -39,10 +39,13 @@ export function ago(iso: string, now: Date): string {
 export const verdictLine = (i: Extract<ThreadItem, { kind: 'review' }>): string =>
   `${i.verdict === 'can' ? 'Can do' : i.verdict === 'partial' ? 'Partly' : "Can't"}${i.estimate ? ` · ${i.estimate}` : ''}: ${i.plan}`;
 
+/** A message the owner took back (Undo): never sent, so no view shows it. @req FR:now-screen/now.undo */
+export const isWithdrawn = (i: ThreadItem): boolean => i.kind === 'owner' && !!i.withdrawn;
+
 /** Subtasks fold into one line (`The agent added 3 subtasks · 1 done`); everything else stays an entry. */
 export function foldSubtasks(items: ThreadItem[]): Folded[] {
   const subs = items.filter((i): i is Extract<ThreadItem, { kind: 'subtask' }> => i.kind === 'subtask');
-  const rest = items.filter((i) => i.kind !== 'subtask');
+  const rest = items.filter((i) => i.kind !== 'subtask' && !isWithdrawn(i));
   return subs.length ? [...rest, { at: '', kind: 'subtasks', count: subs.length, done: subs.filter((s) => s.done).length }] : rest;
 }
 

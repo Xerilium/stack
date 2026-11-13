@@ -11,6 +11,8 @@ export interface NeedAnswer { choice: 'go' | 'defer' | 'reply'; text?: string; u
 export interface Need {
   id: string; title: string; recommendation: string; default?: string; by?: string; link: string;
   project?: string; ref?: string; answer?: NeedAnswer;
+  /** A decision item (PR priority recommendation): the UI shows `actions` and posts them to `decide`. @req FR:pr-priority/needs.list */
+  kind?: 'decision'; actions?: string[]; decide?: string;
 }
 export interface NeedAnswerInput { choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }
 

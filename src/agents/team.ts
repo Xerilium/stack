@@ -5,7 +5,7 @@
  */
 import { agentFor, listTeam, reviewPrefix, reviewsIn, type Review, type TeamAgent } from '../core/agents';
 import { handleAsk, listAsks, putAsk, type AskKind, type ListedAsk } from '../core/asks';
-import { currentRows, listInbox, type ListedEntry } from '../core/inbox';
+import { currentRows, listInbox, sendToInbox, type ListedEntry } from '../core/inbox';
 import { checkClaim, claimTask } from '../core/triage';
 import { LifecycleError, type LifecycleContext, type TaskRef } from '../core/lifecycle';
 import { parseProject, type Task } from '../core/parser';
@@ -135,13 +135,15 @@ export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText
   return { ...r, agent: agent.slug };
 }
 
-/** Assign: the row is claimed for the agent (log + in progress) and a session starts with the assign prompt. @req FR:agent-thread/thread.assign */
-export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string): Promise<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }> {
+/** Assign: the row is claimed for the agent (log + in progress) and a session starts with the assign prompt, plus the owner's note (the composer's Do it). @req FR:agent-thread/thread.assign @req FR:task-detail-design/compose.doit */
+export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string, note?: string): Promise<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }> {
   const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug });
   if (!ref || !c) throw new LifecycleError('Bad ref');
   const caller = { actor: `agent:${agent.slug}`, owner: true };
   await checkClaim(ctx, ref, caller); // refused (🙋, held, done, autonomy) before any run starts
-  const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text: QUICK_PROMPTS.assign }); // then the start: one that fails leaves no 🚧 behind
+  const said = note?.trim().slice(0, 1000);
+  const text = said ? `${QUICK_PROMPTS.assign}\n\nThe owner's note: ${said}` : QUICK_PROMPTS.assign;
+  const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text }); // then the start: one that fails leaves no 🚧 behind
   // The start is async: rows may have moved meanwhile, and the bare line would then claim a different task than the agent was told about.
   const now = await taskContext(ctx, ref).catch(() => null);
   if (!now || now.title !== c.title) {
@@ -149,11 +151,14 @@ export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText
     throw new LifecycleError('The task moved while the agent started; nothing was claimed. Assign again');
   }
   const claimed = (await claimTask(ctx, ref, caller)).changed;
+  // The note is on the thread as a record, written already handled in one write: the agent has it in its prompt, so no queue ever sees it open.
+  // Best effort: the run has started and the row is claimed, so a failed record must not turn the assign into an error the owner retries (a second run).
+  if (said) { try { await sendToInbox(ctx, ref, said, 'instruction', undefined, { actor: 'owner', note: 'Sent with Do it' }); } catch { /* the agent already has the note in its prompt */ } }
   return { ...r, claimed };
 }
 
 export type ThreadItem =
-  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled' }
+  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled'; withdrawn?: true; /** The agent it was for, when the owner picked one. */ agent?: string }
   | { at: string; kind: 'agent'; id: string; agent: string; text: string }
   | { at: string; kind: 'ask'; ask: ListedAsk }
   | { at: string; kind: 'review'; verdict: Review['verdict']; plan: string; estimate?: string; agent: string }
@@ -167,13 +172,13 @@ export async function taskThread(ctx: LifecycleContext, runs: AgentRuns | undefi
   const c = await taskContext(ctx, ref);
   const stored = `${ref.path}:${ref.line + 1}`;
   const items: ThreadItem[] = [];
-  const inbox: ListedEntry[] = await listInbox(ctx, { project: c.project, state: 'all' }).catch(() => []);
+  const inbox: ListedEntry[] = await listInbox(ctx, { project: c.project, state: 'all', withdrawn: true }).catch(() => []);
   // An entry follows its row when rows move (same rule as the inbox list): the current row wins over the stored line.
   const rows = await currentRows(ctx, inbox.filter((e) => e.ref)).catch(() => new Map<string, string>());
   for (const e of inbox) {
     if (rows.get(e.id) !== stored) continue; // no resolved row (the task was deleted or renamed): never the one that moved into its line
     if (e.from === 'agent') items.push({ at: e.at, kind: 'agent', id: e.id, agent: e.agent ?? 'agent', text: e.text });
-    else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state });
+    else items.push({ at: e.at, kind: 'owner', id: e.id, text: e.text, state: e.state, ...(e.agent ? { agent: e.agent } : {}), ...(e.withdrawn ? { withdrawn: true as const } : {}) }); // the page hides it (Undo: never sent)
   }
   const asks = await listAsks(ctx, { state: 'all', limit: ALL }).catch(() => ({ items: [] as ListedAsk[] }));
   // An ask with a task title needs its resolved row; only a legacy ask without one falls back to its stored ref.

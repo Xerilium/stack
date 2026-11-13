@@ -46,10 +46,13 @@ section.today { max-width: 860px; }
 .band.personal { border-bottom: 0; padding-left: 10px; }
 .band.personal::before { content: ''; position: absolute; left: 0; top: 0; bottom: 4px; width: 3px; border-radius: 2px; background: repeating-linear-gradient(135deg, var(--muted) 0 2px, transparent 2px 5px); }
 .today .what::before { display: none; }
-@media (hover: hover) { .today .what:hover { background: var(--hover); } }
+/* Hover and focus change the row background. @req FR:product-reset/ui.taskcard */
+@media (hover: hover) { .today .what:hover { background: var(--card-hover); } }
+.today .block:focus-within .what { background: var(--card-hover); }
 .today .block.cursor .what { background: var(--hover); box-shadow: inset 2px 0 0 var(--accent); }
 .today .when { padding-top: 8px; }
 .today .what-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.what-title .tag.link { margin-left: 6px; vertical-align: 1px; } /* a title link sits beside the open button, never inside it */
 
 .row-acts { display: flex; gap: 2px; opacity: 0; transition: opacity .12s; flex: none; }
 .today .block:hover .row-acts, .today .block.cursor .row-acts, .today .block:focus-within .row-acts { opacity: 1; }

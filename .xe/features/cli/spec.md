@@ -42,7 +42,7 @@ Owner needs one `stack` binary that finds the task repo and commits what it chan
 Owner needs `stack web` to serve the app over a task repo on their own machine so that they can try it on a copy, or run it for real on the files they already edit by hand.
 
 - **FR:web.@cli** (P1): Interface: `stack web [--repo path-or-git-url] [--live] [--branch name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]` (`--bind`: [tailnet-access](../tailnet-access/spec.md))
-- **FR:web.serve** (P1): `stack web` MUST serve the web app and `/api` on `127.0.0.1` (default port 4173), plus the Tailscale addresses with `--bind tailnet` (tailnet-access `FR:bind.tailnet`)
+- **FR:web.serve** (P1): `stack web` MUST serve the web app and `/api` on `127.0.0.1` (default port 4173), plus the Tailscale addresses with `--bind tailnet` (tailnet-access `FR:bind.tailnet`). With no repo it MUST serve the first-run setup flow instead (`FR:first-run-onboarding/host.setup`)
   - The content repo comes from `--repo`, else discovery (cwd walk, `$STACK_REPO`, `$STACK_DIR`, user config `repo`); a git url is cloned once into `~/.config/stack/clones`
   - **FR:web.serve.local** (P1): The server MUST answer `/.auth/me` with a local sign-in stub (no Azure) whose single user is the owner
   - **FR:web.serve.loopback** (P1): The server MUST serve only loopback Host names and accept writes only from its own origin
@@ -103,11 +103,14 @@ Owner needs one command per core operation so that the terminal can do everythin
 - **FR:cmd.set** (P1): `stack set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis]` MUST call `setProperties`
   > - @req FR:task-lifecycle/set.props
   - An emoji flag takes an emoji or `none`
+- **FR:cmd.retitle** (P1): `stack retitle <ref> --text t [--expect t] [--no-update]` MUST replace the row text in place through the web edit path (`editTask`): checkbox, indent, children, notes, and history stay. Old status, priority, effort, and impact marks at the start or end of the row stay unless the new text has a mark of the same kind at that end (tags after the marks, such as `📅 Nov 5`, are part of the text: pass them in `--text`). Summaries refresh like `FR:cmd.refresh`. Missing ref or `--text` is exit 2; a changed row (`--expect`) is exit 3
+  > - @req FR:web-app/api.edit
+- **FR:cmd.note** (P1): `stack note add <ref> --text t [--expect t]` MUST append `- <t>` as a nested bullet at the end of the task block, children and older notes kept; it copies a child's indent when there is one and never refreshes summaries. A changed row (`--expect`) is exit 3. Empty, multi-line, or checkbox-like text is exit 2
 - **FR:cmd.remove-completed** (P1): `stack remove-completed [--project name]` MUST call `removeCompleted` and print the removed count
   > - @req FR:task-lifecycle/remove.blocks
 - **FR:cmd.update** (P1): `stack update [--sweep] [--engine legacy|stack]` MUST regenerate README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writing only files whose text changed
   > - @req FR:summaries/generate.@function
-  - **FR:cmd.update.engine** (P1): `--engine stack` MUST generate the files with the `stack` engine and the overrides in `.stack/priorities.json`, so their scores and order match `stack next`; the default is `legacy` (PowerShell parity)
+  - **FR:cmd.update.engine** (P1): `--engine stack` MUST generate the files with the `stack` engine and the overrides in `.stack/priorities.json`, so their scores and order match `stack next`; the default is `stack`, so the README top is the row a no-ref `start`, `complete`, or `skip` acts on (`FR:ref.default`); `--engine legacy` MUST write the PowerShell output byte-for-byte (parity)
     > - @req FR:summaries/engine.@option
   - **FR:cmd.update.commit** (P1): `update` MUST make ONE commit for all changed summary files
     > - @req FR:storage-git/write.many.commit
@@ -115,7 +118,7 @@ Owner needs one command per core operation so that the terminal can do everythin
     > - @req FR:task-lifecycle/sweep.all
   - **FR:cmd.update.queries** (P2): `--queries` MUST first refresh `🔎` query tasks through the `gh` CLI (off by default: it uses the network; files change and commit one by one; failures are reported, not fatal)
   - my-day.md is untouched when the generator returns none
-- **FR:cmd.refresh** (P1): After `start`, `complete`, `skip`/`park`, `resume`, `suspend`, `remove-completed`, and `add-project` change a file, the CLI MUST run `update --sweep` (and `--queries` when that flag is given), so the task files and the four summaries match what the legacy command leaves (legacy runs `Update-StackSummary` after each of these). A no-op MUST NOT refresh
+- **FR:cmd.refresh** (P1): After `start`, `complete`, `skip`/`park`, `resume`, `suspend`, `retitle`, `remove-completed`, and `add-project` change a file, the CLI MUST run `update --sweep` (and `--queries` when that flag is given), so the task files and the four summaries are current, as legacy left them (legacy runs `Update-StackSummary` after each of these). The summaries use the `update` default engine (`FR:cmd.update.engine`). A no-op MUST NOT refresh
   - **FR:cmd.refresh.skip** (P2): `--no-update` MUST skip the refresh
   - **FR:cmd.refresh.json** (P2): `--json` MUST add `update: { files, swept?, queries? }` to the result; text output stays one line
 

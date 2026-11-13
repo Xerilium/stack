@@ -25,7 +25,8 @@
     "build:web": "pnpm --filter stack-web build",
     "test:web": "pnpm --filter stack-web test",
     "test:e2e": "pnpm --filter stack-web e2e",
-    "web": "node dist/cli/index.js web"
+    "web": "node dist/cli/index.js web",
+    "emoji:fetch": "node --experimental-strip-types --no-warnings scripts/fetch-fluent-emoji.ts"
   },
   "keywords": [
     "task-management",

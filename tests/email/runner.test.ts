@@ -1,16 +1,17 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { answerAsk, asksPath, parseAsk } from '../../src/core/asks';
+import { answerAsk, asksPath, handleAsk, parseAsk } from '../../src/core/asks';
 import { createGraphActions, createGraphMail, htmlToText, messageDetails, sentItems } from '../../src/email/graph-mail';
 import { createGraphGuard, GRAPH_BASE, GraphDenied, type GraphRequest } from '../../src/email/guard';
 import { createServer, request as httpRequest } from 'http';
 import { createSafeHttp, isPrivateAddress, pinnedLookup } from '../../src/email/http';
 import { claudeArgs, createClaudeJson, MODELS, type ClaudeJson, type JsonCall } from '../../src/email/llm';
 import { createClassifier, createDrafter, createJudge, emailBlock, newUsage } from '../../src/email/models';
-import { lockPath, readState, rulesFor, rulesPath, runPass, statePath, takeLock, tolerant, withDetails } from '../../src/email/runner';
+import { CLAUDE_LOGIN_ASK, lockPath, MODEL_FAIL_LIMIT, ModelUnavailable, readState, rulesFor, rulesPath, runPass, statePath, takeLock, tolerant, withDetails } from '../../src/email/runner';
 import { emailCmd, launchdPlist, offlineTransport } from '../../src/cli/email';
-import { FileTokenCache } from '../../src/graph/auth';
+import { FileTokenCache, GraphSignInRequired } from '../../src/graph/auth';
+import { readRecords } from '../../src/inbox/sources';
 import { mkCtx, msg, NOW } from './fixtures';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'email-runner-'));
@@ -478,6 +479,26 @@ describe('stack email --all', () => {
     const none = await emailCmd(ctx, 'run', { all: true }, { cacheDir: tmp(), dataDir: tmp() });
     expect(none.code).toBe(4);
   });
+  // @req FR:graph-signin/cache.accounts: the first-sync and retry commands work for a per-mailbox sign-in
+  it('--account uses that mailbox\'s own sign-in', async () => {
+    const { ctx } = mkCtx();
+    const dir = tmp();
+    await cacheAt(dir, 'sam@outlook.com', ['Mail.Read']);
+    const r = await emailCmd(ctx, 'status', { account: 'sam@outlook.com' }, { cacheDir: dir, dataDir: tmp() });
+    expect(r.json).toMatchObject({ ok: true, account: 'sam@outlook.com', mode: 'observe' });
+  });
+  // @req FR:inbox-page/src.probe: an onboarding sign-in (no mailbox name) takes the address of its first real pass
+  it('a pass names an unnamed sign-in, so --all finds it next time', async () => {
+    const { ctx } = mkCtx();
+    const dir = tmp();
+    const c = await cacheAt(dir, undefined, ['Mail.Read'], 'graph-token.json');
+    const dry = await emailCmd(ctx, 'run', { all: true, 'dry-run': true }, { cacheDir: dir, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    expect(dry.code).toBe(4); // unnamed: --all cannot run it yet
+    await emailCmd(ctx, 'run', { account: 'Sam@Outlook.com' }, { cache: c, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    expect((await c.read())?.account).toBe('sam@outlook.com');
+    const all = await emailCmd(ctx, 'run', { all: true, 'dry-run': true }, { cacheDir: dir, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    expect((all.json.accounts as { account: string }[]).map((a) => a.account)).toEqual(['sam@outlook.com']);
+  });
   it('schedules --all', () => {
     expect(launchdPlist({ node: '/n', cli: '/c', claudeDir: '/b', repo: '/r', logDir: '/l' })).toContain('<string>--all</string>');
   });
@@ -489,5 +510,165 @@ describe('no send', () => {
     const g = createGraphGuard();
     for (const p of ['sendMail', 'messages/m1/send', 'messages/m1/forward', 'messages/m1/reply', 'messages/m1/replyAll']) expect(() => g.check({ method: 'POST', url: `${GRAPH_BASE}/me/${p}`, body: {} })).toThrow(GraphDenied);
     expect(() => g.check({ method: 'POST', url: `${GRAPH_BASE}/me/messages/m1/createReply`, body: { comment: 'x' } })).not.toThrow();
+  });
+});
+
+// @req FR:email-runner/model.down
+describe('model down (claude signed out)', () => {
+  const AUTH = 'claude exited 1: Invalid API key · Please run /login';
+  const delta3 = {
+    '/messages/delta': {
+      value: ['a', 'b', 'c', 'd'].map((id) => ({ id, conversationId: `c-${id}`, subject: `Plan ${id}`, from: { emailAddress: { name: 'Alex', address: 'alex@example.test' } }, receivedDateTime: '2026-10-26T10:00:00Z', bodyPreview: 'Can you review?', isRead: false })),
+      '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t9`,
+    },
+    '/me/messages/': { internetMessageHeaders: [], uniqueBody: { contentType: 'text', content: 'Can you review?' } },
+  };
+  const failing = (text: string): ClaudeJson => async () => { throw new Error(text); };
+
+  it('an auth error stops at the first failure, with no retry', async () => {
+    const calls = jest.fn(async () => { throw new Error(AUTH); });
+    const c = tolerant({ classify: calls }, () => undefined);
+    await expect(c.classify(msg(), { vip: false })).rejects.toBeInstanceOf(ModelUnavailable);
+    expect(calls).toHaveBeenCalledTimes(1);
+  });
+  it(`${MODEL_FAIL_LIMIT} messages failing in a row is systemic; a success resets the count`, async () => {
+    let ok = false;
+    const c = tolerant({ classify: async () => { if (ok) return { class: 'fyi', urgency: 0, confidence: 1, reason: 'r' }; throw new Error('timeout'); } }, () => undefined);
+    for (let i = 1; i < MODEL_FAIL_LIMIT; i++) expect(await c.classify(msg(), { vip: false })).toMatchObject({ class: 'needs_decision' });
+    ok = true; await c.classify(msg(), { vip: false }); ok = false;
+    for (let i = 1; i < MODEL_FAIL_LIMIT; i++) await c.classify(msg(), { vip: false });
+    await expect(c.classify(msg(), { vip: false })).rejects.toBeInstanceOf(ModelUnavailable);
+  });
+  it('the adapter error carries the result text claude prints as JSON', async () => {
+    const run = async () => ({ code: 1, stdout: JSON.stringify({ is_error: true, result: 'Invalid API key · Please run /login' }), stderr: '' });
+    await expect(createClaudeJson({ run })({ model: 'm', system: 's', user: 'u', schema: {} })).rejects.toThrow(/Please run \/login/);
+  });
+  it('a usage limit stops at once; one failing message alone in a pass is systemic too', async () => {
+    const c = tolerant({ classify: async () => { throw new Error('claude exited 1: usage limit reached'); } }, () => undefined);
+    await expect(c.classify(msg(), { vip: false })).rejects.toMatchObject({ auth: false });
+    // A rate limit or a model echoing "sign in" is not systemic: it retries, then becomes one open question.
+    for (const text of ['rate limit, retry', 'claude returned no structured output: please sign in to view']) {
+      const calls = jest.fn(async () => { throw new Error(text); });
+      expect(await tolerant({ classify: calls }, () => undefined).classify(msg(), { vip: false })).toMatchObject({ class: 'needs_decision' });
+      expect(calls).toHaveBeenCalledTimes(2);
+    }
+    const one = tolerant({ classify: async () => { throw new Error('timeout'); } }, () => undefined);
+    await one.classify(msg(), { vip: false });
+    expect(() => one.check()).toThrow(ModelUnavailable);
+  });
+  it('the login ask reopens when done and the login fails again, and closes when claude works again', async () => {
+    const { storage, ctx } = mkCtx();
+    const dataDir = tmp();
+    const c = new FileTokenCache(join(tmp(), 'graph-token.json'));
+    await c.write({ version: 1, tenant: 't', clientId: 'id', scopes: ['Mail.ReadWrite'], refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, account: 'sam@example.test' });
+    const state = async () => parseAsk(CLAUDE_LOGIN_ASK, (await storage.read(asksPath(CLAUDE_LOGIN_ASK))).content).state;
+    const run = (llm: ClaudeJson) => emailCmd(ctx, 'run', { mode: 'observe' }, { cache: c, dataDir, transport: fakeGraph(delta3).transport, llm });
+    await run(failing(AUTH));
+    await handleAsk(ctx, CLAUDE_LOGIN_ASK, { outcome: 'handled' }, 'me');
+    expect(await state()).toBe('done');
+    expect((await run(failing(AUTH))).code).toBe(4);
+    expect(await state()).toBe('open');
+    expect((await run(fakeLlm(() => ({ class: 'fyi', urgency: 0, confidence: 0.9, reason: 'r' })).llm)).code).toBeUndefined();
+    expect(await state()).toBe('done');
+  });
+  it('runPass writes no ask and keeps the old cursor', async () => {
+    // A timeout is not a login error: 4 messages stop at the 3rd in a row; 1 message stops at check().
+    for (const [text, routes] of [[AUTH, delta3], ['claude timed out after 120s', delta3], ['claude timed out after 120s', { ...delta3, '/messages/delta': { ...delta3['/messages/delta'], value: delta3['/messages/delta'].value.slice(0, 1) } }]] as const) {
+      const dataDir = tmp();
+      const { storage, ctx } = mkCtx();
+      await expect(runPass({ ctx, account: 'sam@example.test', transport: fakeGraph(routes).transport, mode: 'drafts', llm: failing(text), dataDir })).rejects.toBeInstanceOf(ModelUnavailable);
+      expect(await storage.listAsks!()).toEqual([]);
+      expect(existsSync(statePath('sam@example.test', dataDir))).toBe(false);
+    }
+  });
+  it('stack email run writes one stable login ask and exits 4; a rerun and --all add no more', async () => {
+    const { storage, ctx } = mkCtx();
+    const dir = tmp(); const dataDir = tmp();
+    for (const a of ['sam@outlook.com', 'sam@contoso.test']) {
+      const c = new FileTokenCache(join(dir, `graph-token-${a}.json`));
+      await c.write({ version: 1, tenant: 't', clientId: 'id', scopes: ['Mail.ReadWrite'], refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, account: a });
+    }
+    const d = { cacheDir: dir, dataDir, transport: fakeGraph(delta3).transport, llm: failing(AUTH) };
+    const one = await emailCmd(ctx, 'run', {}, { ...d, cache: new FileTokenCache(join(dir, 'graph-token-sam@outlook.com.json')) });
+    expect(one).toMatchObject({ code: 4, json: { ok: false, modelDown: true } });
+    expect(one.text).toMatch(/Claude login expired: run `claude` and sign in/);
+    const all = await emailCmd(ctx, 'run', { all: true }, d);
+    expect(all.code).toBe(4);
+    // The mailboxes share one claude login: after one is down the rest are skipped, not retried.
+    expect((all.json.accounts as { skipped?: boolean }[]).filter((x) => x.skipped)).toHaveLength(1);
+    expect(await storage.listAsks!()).toEqual([asksPath(CLAUDE_LOGIN_ASK)]);
+    expect(parseAsk(CLAUDE_LOGIN_ASK, (await storage.read(asksPath(CLAUDE_LOGIN_ASK))).content)).toMatchObject({ state: 'open', ask: expect.stringMatching(/^Claude login expired: run .claude. and sign in$/) });
+  });
+});
+
+// @req FR:email-triage/rules.sensitive
+describe('sensitive mail never reaches a model', () => {
+  it('a lab-results subject from a plain address is settled by rules; no classify, no draft, a plain ask', async () => {
+    const dataDir = tmp();
+    const { storage, ctx } = mkCtx();
+    const g = fakeGraph({
+      '/messages/delta': { value: [{ id: 'L', conversationId: 'c-L', subject: 'Your lab results are ready', from: { emailAddress: { name: 'Dr. Kim', address: 'drkim@gmail.example' } }, receivedDateTime: '2026-10-26T10:00:00Z', bodyPreview: 'Can you call?', isRead: false }], '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t` },
+      '/me/messages/L?': { internetMessageHeaders: [], uniqueBody: { contentType: 'text', content: 'Results attached.' } },
+    });
+    const m = fakeLlm(() => ({ class: 'needs_reply', urgency: 1, confidence: 0.9, reason: 'r', injectionSuspected: false }));
+    const s = await runPass({ ctx, account: 'sam@example.test', transport: g.transport, mode: 'drafts', llm: m.llm, dataDir });
+    expect(m.calls).toEqual([]);
+    expect(s).toMatchObject({ rules: 1, model: 0, drafts: 0, asks: 1 });
+    const keys = await storage.listAsks!();
+    expect(keys).toHaveLength(1);
+    expect((await storage.read(keys[0])).content).toMatch(/Sensitive mail from Dr. Kim/);
+  });
+  it('rules.json sensitive {keywords, domains} adds to the defaults; the legacy list still works', () => {
+    const d = tmp();
+    mkdirSync(join(d, 'email', 'sam@example.test'), { recursive: true });
+    writeFileSync(rulesPath('sam@example.test', d), JSON.stringify({ sensitive: { keywords: ['adoption', 7], domains: ['agency.example.test'] } }));
+    const r = rulesFor('sam@example.test', d);
+    expect(r.sensitiveKeywords).toEqual(expect.arrayContaining(['lab results', 'adoption']));
+    expect(r.sensitive).toContain('agency.example.test');
+  });
+});
+
+/** @req FR:inbox-page/src.record @req FR:inbox-page/src.safe */
+describe('stack email run writes a sync record', () => {
+  const cacheWith = async (scopes: string[]) => {
+    const c = new FileTokenCache(join(tmp(), 'graph-token.json'));
+    await c.write({ version: 1, tenant: 't', clientId: 'id', scopes, refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, account: 'sam@example.test' });
+    return c;
+  };
+  const empty = { '/messages/delta': { value: [], '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t` } };
+
+  it('ok after a real pass; none for a dry run', async () => {
+    const { storage, ctx } = mkCtx();
+    await emailCmd(ctx, 'run', { 'dry-run': true }, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport: fakeGraph(empty).transport, llm: fakeLlm(() => ({})).llm });
+    expect(await readRecords(storage)).toEqual([]);
+    await emailCmd({ ...ctx, now: () => NOW }, 'run', {}, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport: fakeGraph(empty).transport, llm: fakeLlm(() => ({})).llm });
+    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: true, mode: 'read-only' }]);
+  });
+
+  it('an expired sign-in records signin-expired and still fails the pass; no error text is kept', async () => {
+    const { storage, ctx } = mkCtx();
+    const transport = async () => { throw new GraphSignInRequired(); };
+    await expect(emailCmd({ ...ctx, now: () => NOW }, 'run', {}, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport, llm: fakeLlm(() => ({})).llm })).rejects.toThrow(GraphSignInRequired);
+    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: false, error: 'signin-expired', mode: 'read-only' }]);
+  });
+
+  it('other failures record sync-failed; too many messages too', async () => {
+    const { storage, ctx } = mkCtx();
+    const transport = async () => { throw new Error('boom Bearer eyJ'); };
+    await expect(emailCmd({ ...ctx, now: () => NOW }, 'run', {}, { cache: await cacheWith(['Mail.Read']), dataDir: tmp(), transport, llm: fakeLlm(() => ({})).llm })).rejects.toThrow(/boom/);
+    expect(await readRecords(storage)).toEqual([{ kind: 'email', account: 'sam@example.test', at: NOW.toISOString(), ok: false, error: 'sync-failed', mode: 'read-only' }]);
+    expect(JSON.stringify(await storage.readAux('.stack/inbox-sources.json'))).not.toMatch(/boom|Bearer/);
+  });
+});
+
+/** @req FR:inbox-page/src.help */
+describe('sync record mode', () => {
+  it('keeps the sign-in mode (drafts) even when the pass runs --mode observe', async () => {
+    const { storage, ctx } = mkCtx();
+    const c = new FileTokenCache(join(tmp(), 'graph-token.json'));
+    await c.write({ version: 1, tenant: 't', clientId: 'id', scopes: ['Mail.ReadWrite'], refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, account: 'sam@example.test' });
+    const transport = async () => { throw new GraphSignInRequired(); };
+    await expect(emailCmd(ctx, 'run', { mode: 'observe' }, { cache: c, dataDir: tmp(), transport, llm: fakeLlm(() => ({})).llm })).rejects.toThrow();
+    expect((await readRecords(storage))[0]).toMatchObject({ error: 'signin-expired', mode: 'drafts' });
   });
 });

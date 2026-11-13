@@ -19,7 +19,7 @@ const team: MockTeamAgent[] = [
   { slug: 'alpha-lead', name: '🅰️ Alpha Lead', role: 'owns alpha', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: ['alpha'], reportsTo: 'cos' },
   { slug: 'beta-cos', name: 'Beta CoS', role: 'owns beta', scope: ['beta'], mode: 'ad-hoc', prompt: '', defined: true, source: 'claude', projects: ['beta'], reportsTo: 'cos' },
   { slug: 'beta-worker', name: 'PR sweep worker: beta', scope: ['beta'], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: ['beta'], reportsTo: 'beta-cos' },
-  { slug: 'lonely', name: 'Lonely', role: 'no project', scope: [], mode: 'ad-hoc', prompt: '', defined: true, source: 'claude', projects: [], reportsTo: 'cos' },
+  { slug: 'lonely', name: 'Lonely', role: 'no project', scope: [], mode: 'ad-hoc', prompt: '', defined: true, source: 'claude', projects: [], reportsTo: 'cos', home: 'user' },
 ];
 /** Sessions for the team tree: alpha and beta are the mock projects (alpha ranks first on Home). */
 const teamSeed = (): MockSession[] => [
@@ -186,11 +186,14 @@ test.describe('Sessions', () => {
   });
 
   // @req FR:agents-team/chart.primary @req FR:agents-team/chart.tree @req FR:agents-team/chart.card @req FR:agents-team/chat.show @req FR:agents-team/other.hidden
-  test('with a team the page opens on the my-team chart of primary agents only, the roll-up selected, its chat inline under the chart', async ({ page }) => {
+  test('with a team the page opens on the my-team chart of the whole team, the roll-up selected, its chat inline under the chart', async ({ page }) => {
     await open(page, teamSeed(), true);
-    await expect(page.locator('.agent-card .ac-name')).toHaveText(['👔 CoS', '🅰️ Alpha Lead', 'Beta CoS']); // Lonely (no project) and the metadata worker are not primary
+    await expect(page.locator('.agent-card .ac-name')).toHaveText(['CoS', 'Alpha Lead', 'Beta CoS', 'PR sweep worker: beta', 'Lonely']); // the avatar shows the name's emoji (FR:agent-team/web.avatar); every agent is on the chart
+    await expect(page.locator('.agent-card[data-agent="lonely"] .chip')).toHaveText('user'); // no project: its home
+    await expect(page.locator('.agent-card[data-agent="lonely"]')).toHaveAttribute('data-status', 'idle');
+    await expect(page.locator('.agent-card[data-agent="beta-cos"]')).toHaveAttribute('data-status', 'none');
     await expect(page.locator('.agent-card.on')).toHaveCount(1);
-    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('👔 CoS');
+    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('CoS');
     const pane = page.getByTestId('chat-pane');
     await expect(pane.getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief');
     await expect(page.getByRole('dialog')).toHaveCount(0); // inline, not an overlay
@@ -228,17 +231,27 @@ test.describe('Sessions', () => {
     await expect(d.getByRole('combobox', { name: 'Agent' })).toHaveValue('Beta CoS');
   });
 
+  // @req FR:agent-team/agent.team.scan.view
+  test('a scanned agent is view only: New never starts a chat with it', async ({ page }) => {
+    await open(page, teamSeed(), true);
+    await page.locator('.agent-card[data-agent="lonely"]').click();
+    await page.keyboard.press('n');
+    const d = drawer(page);
+    await expect(d.getByRole('heading', { level: 2 })).toHaveText('New session');
+    await expect(d.getByRole('combobox', { name: 'Agent' })).not.toHaveValue('Lonely');
+  });
+
   // @req FR:agents-team/other.toggle @req FR:agents-team/other.list @req FR:agents-team/other.hidden
-  test('Other sessions lists only sessions of no primary agent, by project; the choice survives a reload; My team returns', async ({ page }) => {
+  test('Other sessions lists only sessions of no agent, by project; the choice survives a reload; My team returns', async ({ page }) => {
     await open(page, teamSeed(), true);
     await page.getByRole('button', { name: 'Other sessions' }).click();
     await expect(page.locator('.agent-card')).toHaveCount(0);
-    await expect(page.locator('.sess-row .sess-title')).toHaveText(['beta: fix the parser', 'Lonely · tests']); // the roll-up's and Alpha Lead's chats are not here
-    await expect(page.locator('.sess-group')).toHaveText(['beta', 'Other repos']);
+    await expect(page.locator('.sess-row .sess-title')).toHaveText(['beta: fix the parser']); // every agent's chats are on My team
+    await expect(page.locator('.sess-group')).toHaveText(['beta']);
     await page.reload();
     await expect(page.getByRole('button', { name: 'Other sessions' })).toHaveAttribute('aria-pressed', 'true');
     await page.getByRole('button', { name: 'My team' }).click();
-    await expect(page.locator('.agent-card')).toHaveCount(3);
+    await expect(page.locator('.agent-card')).toHaveCount(5);
   });
 
   // @req FR:agents-team/chart.keys
@@ -246,11 +259,11 @@ test.describe('Sessions', () => {
     test.skip(info.project.name === 'mobile', 'keyboard flow');
     await open(page, teamSeed(), true);
     await page.keyboard.press('j');
-    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('🅰️ Alpha Lead');
-    await page.keyboard.press('j'); await page.keyboard.press('j');
+    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Alpha Lead');
+    await page.keyboard.press('j');
     await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Beta CoS');
     await page.keyboard.press('k');
-    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('🅰️ Alpha Lead');
+    await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Alpha Lead');
   });
 
   // @req FR:agents-team/chart.layout

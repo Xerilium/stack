@@ -1,6 +1,7 @@
 import { createApiHandler, ROUTES } from '../../src/api/handler';
 import { createAuth, createTokenService, MemoryTokenStore, routeScope } from '../../src/api';
 import { MemoryStorage } from '../../src/core/storage';
+import { putAgent } from '../../src/core/agents';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -47,6 +48,17 @@ describe('inbox and agents routes', () => {
     for (const p of ['/inbox:', '/inbox/handled:', '/agents:']) expect(doc).toContain(p);
   });
 
+  // @req FR:product-reset/ui.thread
+  it('owner sends to a picked agent', async () => {
+    const { call, storage } = await mk();
+    await putAgent({ storage }, 'cid-manager', { name: 'Cid', scope: ['beta'] });
+    expect((await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'You take it', kind: 'instruction', agent: 'cid-manager' })).status).toBe(201);
+    expect((await storage.read('tasks/inbox/alpha.md')).content).toContain('- agent: cid-manager');
+    expect((await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'x', agent: 'no spaces' })).status).toBe(422);
+    expect((await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'x', agent: 'not-on-team' })).status).toBe(422); // only a team member
+    expect((await call('owner', 'GET', '/inbox?agent=cid-manager')).json.items.map((e: { text: string }) => e.text)).toEqual(['You take it']);
+  });
+
   it('owner sends; tokens cannot write in the owner voice', async () => {
     const { call, mint, storage } = await mk();
     const r = await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'Keep it short', expect: '🪄 Draft notes https://github.com/o/r/pull/7' });
@@ -82,6 +94,16 @@ describe('inbox and agents routes', () => {
     expect((await call(ro, 'GET', '/inbox')).json.items).toEqual([]);
     expect((await call(ro, 'GET', '/inbox?state=all&project=alpha')).json.items[0]).toMatchObject({ state: 'handled', note: 'Booked' });
     expect((await call(ro, 'GET', '/inbox?state=maybe')).status).toBe(422);
+  });
+
+  // @req FR:agent-inbox/api.handle @req FR:now-screen/now.undo
+  it('only the owner withdraws a message; the list then hides it', async () => {
+    const { call, mint } = await mk();
+    const sent = (await call('owner', 'POST', '/inbox', { ref: 'alpha:6', text: 'Oops', kind: 'instruction' })).json;
+    const rw = await mint('tasks:write');
+    expect((await call(rw, 'POST', '/inbox/handled', { id: sent.id, withdrawn: true })).status).toBe(403);
+    expect((await call('owner', 'POST', '/inbox/handled', { id: sent.id, note: 'Withdrawn by the owner', withdrawn: true })).json).toEqual({ changed: true });
+    expect((await call('owner', 'GET', '/inbox?state=all')).json.items).toEqual([]);
   });
 
   it('GET /agents returns activity with PR status from the provider', async () => {

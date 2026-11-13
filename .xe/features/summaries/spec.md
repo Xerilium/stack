@@ -41,7 +41,7 @@ Owner needs stack.md, README.md, my-day.md, and `stack next` to agree, so that t
   > - @req FR:scoring-engine/engine.stack
 - **FR:engine.order** (P1): With `stack`, every list MUST order by the engine score and then by the owner's overrides (`top` rows first, in the order of their rules, `down` rows last), so the first row of stack.md and the README top task are the first rows of `stack next`
   > - @req FR:scoring-engine/overrides.tiers
-  - **FR:engine.order.hide** (P2): A row matching a `hide` rule MUST sink to the end of every list instead of disappearing (the files list all the work)
+  - **FR:engine.order.hide** (P2): A row matching a `hide` rule MUST sink to the end of every list instead of disappearing (the files list all the work); the README top and Up next lists MUST drop it, as `stack next` does
 - **FR:engine.top.blocks** (P1): With `stack`, the README top list MUST keep a row matching a `top` rule even when the current time block would hide it
   > - @req FR:scoring-engine/overrides.top.blocks
 - **FR:engine.breakdown** (P1): With `stack`, the breakdown under a leaf MUST stay arithmetically honest: when the engine score differs from the formula, a line says why (`📅 + N due-date lens`, or `↪ inherits N from <task>`), and the `does not match` warning appears only for a real mismatch
@@ -55,7 +55,7 @@ Owner needs stack.md, README.md, my-day.md, and `stack next` to agree, so that t
 ### FR:readme: README.md
 
 - **FR:readme.banner** (P1): The banner MUST show the weekday and time in the configured zone, each active time block, urgent-task count, ready AI-task count, and waiting-checkpoint count
-- **FR:readme.top** (P1): The top task MUST be the first outcome-deduplicated, time-filtered leaf; the next three follow as Up next
+- **FR:readme.top** (P1): The top task MUST be the first outcome-deduplicated, time-filtered leaf; the next three follow as Up next. With `stack`, the row of an outcome MUST be its highest-ranked task, not its first actionable step, so the top is the first row of `stack next`
 - **FR:readme.other** (P1): Other priorities MUST list the first actionable task of every project not shown above, sorted by score
 - **FR:readme.parking** (P1): The parking lot MUST list tasks carrying `🅿️` or `💤`, or a congratulation line when none
 - **FR:readme.footer** (P1): The footer MUST be preserved from the previous README (text after its last `---`)

@@ -68,6 +68,7 @@ Stack System needs every write to be a direct commit on the task repo so that hi
 - **FR:git.branch** (P1): With a remote or explicit `branch`, `write` and `sync` MUST throw `StorageError` when the configured branch is not checked out
 - **FR:git.concurrency** (P2): Serialization is per adapter instance; multiple instances or processes on one repo MAY fail on `index.lock` with `StorageError`
 - **FR:git.env** (P1): `GitStorage` MUST take an optional base environment for spawned git (default `process.env`) and never mutate the process environment
+- **FR:git.activity** (P1): `GitStorage.lineActivity(path)` MUST give, per 0-based line of the file, the time of the last commit that changed the line (`git blame`); a line not yet committed counts as now. It MUST cache the answer per HEAD revision and file version, so git reads one revision once. A file git does not track gives an empty list. Adapters without history leave `lineActivity` out
 - **FR:git.exec** (P1): Git MUST run via argument arrays (no shell)
 
 ### FR:batch: Batched commits

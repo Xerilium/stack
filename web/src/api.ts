@@ -5,13 +5,17 @@ import type { AskList, Send } from './asks';
 import type { CostReport, SessionList, Turn } from './sessions';
 import type { RankItem } from './home';
 import type { NeedItem } from './needs';
+import type { Pri, PrisFile } from './pris';
+import type { Inventory } from './inventory';
+import type { PrAuthState, PrBoard, SignInSession } from './prs';
 import type { ReviewItem, TeamAgent } from './team';
 import type { Thread } from './thread';
+import type { UpdateMode, VersionState } from './update';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
 
 /** @req FR:web-app/api.client */
 export class ApiFailure extends Error {
-  constructor(public status: number, public code: string, message: string) { super(message); }
+  constructor(public status: number, public code: string, message: string, public details?: { field: string; message: string }[]) { super(message); }
 }
 
 const TASK_FIELDS = 'ref,text,project,section,done,depth,notes';
@@ -38,8 +42,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     let data: unknown;
     try { data = text ? JSON.parse(text) : undefined; } catch { data = undefined; }
     if (!res.ok) {
-      const e = (data as { error?: { code?: string; message?: string } } | undefined)?.error;
-      throw new ApiFailure(res.status, e?.code ?? `http_${res.status}`, e?.message ?? `Request failed (${res.status})`);
+      const e = (data as { error?: { code?: string; message?: string; details?: { field: string; message: string }[] } } | undefined)?.error;
+      throw new ApiFailure(res.status, e?.code ?? `http_${res.status}`, e?.message ?? `Request failed (${res.status})`, Array.isArray(e?.details) ? e.details : undefined);
     }
     if (body === undefined) onRead?.(res.headers?.get?.('x-stack-cache') === 'offline' ? res.headers.get('x-stack-saved-at') ?? '' : null);
     return data as T;
@@ -48,9 +52,34 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     next: async () => (await call<{ task: NextTask | null }>('/next')).task,
     /** The one ranking (engine order plus the owner's overrides); Home draws only this. @req FR:api/routes.rank */
     rank: async (limit = 100, blocks: 'now' | 'any' = 'now') => (await call<{ items: RankItem[] }>(`/rank?limit=${limit}${blocks === 'any' ? '&blocks=any' : ''}`)).items,
+    /** Owner feedback to ~/.stack/feedback.jsonl. @req FR:feedback-button/api.route */
+    feedback: (b: FeedbackBody) => call<{ id: string; at: string; screenshot: boolean }>('/feedback', b),
+    /** The owner's priorities. @req FR:pris-sessions-ui/pris.block */
+    pris: () => call<PrisFile>('/pris'),
+    /** Replaces the priorities when `rev` is current; 409 when not. @req FR:pris-sessions-ui/pris.save */
+    putPris: (rev: number, pris: Pri[]) => call<PrisFile>('/pris', { rev, pris }),
+    /** The Claude app session inventory. @req FR:pris-sessions-ui/sessions.list */
+    inventory: () => call<Inventory>('/session-inventory'),
+    /** The PR board; 404 where the host has no GitHub token. `fresh` polls GitHub first (Refresh). @req FR:pr-page/api.get */
+    prs: (fresh = false) => call<PrBoard | { off: true } | { auth: PrAuthState }>(fresh ? '/prs?refresh=1' : '/prs'),
+    /** Resolve or reopen a review thread. @req FR:pr-page/api.resolve */
+    prResolve: (repo: string, number: number, thread: string, op: 'resolve' | 'unresolve') => call<{ ok: true; op: string }>('/prs/resolve', { repo, number, thread, op }),
+    /** @req FR:pr-page/auth.signin */
+    prSignIn: () => call<SignInSession>('/prs/sign-in', {}),
+    prSignInState: () => call<SignInSession>('/prs/sign-in'),
+    /** @req FR:pr-page/api.queue */
+    prQueue: (repo: string, number: number, op: 'top' | 'up' | 'down' | 'move' | 'add' | 'pin' | 'unpin' | 'remove' | 'undo', rank?: number) => call<{ rank: number | null; was: number | null; pinned: boolean }>('/prs/queue', { repo, number, op, ...(rank ? { rank } : {}) }),
+    /** @req FR:pr-page/api.label */
+    prLabel: (repo: string, number: number, op: 'add' | 'remove') => call<{ ok: true }>('/prs/label', { repo, number, op }),
+    /** @req FR:pr-page/api.ack */
+    prAck: (b: { repo: string; number: number; thread: string; note: string; post?: boolean; text?: string; replyTo?: number }) => call<{ ok: true; posted: boolean; recorded: boolean; message?: string }>('/prs/ack', b),
+    /** @req FR:pr-page/api.rec */
+    prRec: (id: string, b: { decision: 'accept' | 'edit' | 'reject'; rank?: number; note?: string; reason?: string }) => call<{ ok: true }>(`/prs/recs/${encodeURIComponent(id)}`, b),
     /** The Chief of Staff's escalations. @req FR:ask-queue/needs.api */
     needs: async () => (await call<{ items: NeedItem[] }>('/needs-you')).items,
     answerNeed: (id: string, body: { choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }) => call<{ changed: boolean }>(`/needs-you/${encodeURIComponent(id)}/answer`, body),
+    /** Accept or reject a PR priority recommendation on its `decide` path (`/api/...`). @req FR:pr-priority/needs.actions */
+    decideRec: (decide: string, body: { decision: 'accept' } | { decision: 'reject'; reason: string }) => call<unknown>(decide.replace(/^\/api(?=\/)/, ''), body),
     async tasks(): Promise<Task[]> {
       // @req FR:perf/client.pages — the first page gives the total; the rest go out together.
       const page = (offset: number) => call<{ items: Task[]; total: number }>(`/tasks?state=all&limit=200&offset=${offset}&fields=${TASK_FIELDS}`);
@@ -61,7 +90,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     },
     projects: async () => (await call<{ items: Project[] }>('/projects?fields=name,title,open,done,metadata')).items,
     action: (name: ActionName, ref?: string, extra: Record<string, unknown> = {}) => call<Mutation>(`/tasks/${name}`, { ...(ref ? { ref } : {}), ...extra }),
-    set: (ref: string, props: SetProps) => call<Mutation>('/tasks/set', { ref, ...props }),
+    set: (ref: string, props: SetProps, expect?: string) => call<Mutation>('/tasks/set', { ref, ...props, ...(expect !== undefined ? { expect } : {}) }),
     edit: (ref: string, text: string, expect?: string) => call<Mutation>('/tasks/edit', { ref, text, ...(expect !== undefined ? { expect } : {}) }),
     move: (ref: string, target: string, position: Position, expect?: { ref?: string; target?: string }) =>
       call<Mutation>('/tasks/move', { ref, target, position, ...(expect?.ref !== undefined ? { expect: expect.ref } : {}), ...(expect?.target !== undefined ? { expectTarget: expect.target } : {}) }),
@@ -69,14 +98,32 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     schedule: (at: string) => call<DaySched | null>(`/schedule?at=${encodeURIComponent(at)}`),
     scheduleDay: (body: { date: string; wake?: string; bed?: string; every?: boolean; reset?: boolean }) => call<DaySched>('/schedule/day', body),
     meetings: async () => (await call<{ items: Rule[] }>('/meetings')).items,
-    calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+    calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string; source?: unknown }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
-    send: (ref: string, text: string, kind: 'reply' | 'decision', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
+    /** `agent`: the slug of the agent picked in Now. @req FR:product-reset/ui.thread */
+    send: (ref: string, text: string, kind: 'reply' | 'decision' | 'instruction', expect?: string, agent?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}), ...(agent ? { agent } : {}) }),
+    /** Delivery state of the row's messages; 404 on hosts that do not deliver. @req FR:agent-delivery/state.api */
+    delivery: (ref: string) => call<import('./delivery').DeliveryInfo>(`/inbox/delivery?ref=${encodeURIComponent(ref)}`),
+    /** Starts the Claude sign-in on the host. @req FR:agent-delivery/login.signin */
+    deliveryLogin: () => call<{ started: boolean; step?: string }>('/inbox/delivery/login', {}),
+    /** Delivery mode and Claude sign-in for Settings; 404 on hosts that do not deliver. @req FR:settings/agents.api */
+    deliverySummary: () => call<import('./settings').DeliverySummary>('/inbox/delivery'),
+    /** @req FR:agent-inbox/api.handle */
+    handled: (id: string, note?: string, withdrawn?: boolean) => call<{ changed: boolean }>('/inbox/handled', { id, ...(note ? { note } : {}), ...(withdrawn ? { withdrawn } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
     /** The Inbox page: all mail, unread Teams and Slack. @req FR:inbox-page/api.read */
-    inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] }>('/inbox-items'),
+    inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] } & Partial<import('./inbox').SourcesReply>>('/inbox-items'),
+    /** In-app Connect for Microsoft accounts; the server runs every step. @req FR:connect-accounts/api.get */
+    connect: () => call<import('./connect').ConnectInfo>('/connect'),
+    connectSetup: () => call<{ state: import('./connect').SetupState }>('/connect/setup', {}),
+    connectStart: (body: { account?: string; drafts?: boolean; method?: 'browser' | 'device' }) => call<import('./connect').ConnectSession>('/connect/sign-in', body),
+    connectPoll: (id: string) => call<import('./connect').ConnectSession>(`/connect/sign-in/${encodeURIComponent(id)}`),
+    connectDrafts: (account: string, on: boolean) => call<import('./connect').ConnectSession | { ok: true }>('/connect/drafts', { account, on }),
+    connectRemove: (account: string) => call<{ ok: true }>('/connect/remove', { account }),
+    /** Each inbox source and the summary; `fresh` asks a local host to probe again. @req FR:inbox-page/api.sources */
+    inboxSources: (fresh = false) => call<import('./inbox').SourcesReply>(`/inbox-sources${fresh ? '?fresh=1' : ''}`),
     /** Runs one action; never sends. @req FR:inbox-page/api.act */
     inboxAct: (id: string, body: { action: string; text?: string; until?: string; request?: boolean }) => call<import('./inbox').ActResult>(`/inbox-items/${encodeURIComponent(id)}/action`, body),
     sessions: () => call<SessionList>('/sessions?limit=200'),
@@ -89,21 +136,31 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     reviews: async (project: string) => (await call<{ items: ReviewItem[] }>(`/reviews?project=${encodeURIComponent(project)}`)).items,
     /** @req FR:agent-thread/thread.read @req FR:agent-thread/thread.assign */
     thread: (ref: string) => call<Thread>(`/tasks/${encodeURIComponent(ref)}/thread`),
-    assign: (ref: string, agent?: string) => call<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }>(`/tasks/${encodeURIComponent(ref)}/assign`, { ...(agent ? { agent } : {}) }),
+    assign: (ref: string, agent?: string, note?: string) => call<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }>(`/tasks/${encodeURIComponent(ref)}/assign`, { ...(agent ? { agent } : {}), ...(note ? { note } : {}) }),
     review: (ref: string, agent?: string) => call<{ runId: string; sessionId: string | null; agent: string }>('/tasks/review', { ref, ...(agent ? { agent } : {}) }),
     cancelSession: (id: string) => call<{ changed: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, {}),
     /** Repo revision for change-driven polling (null: the host has none). @req FR:live-deploy/web.poll */
-    sync: async () => (await call<{ rev: string | null }>('/sync')).rev,
+    /** The change token: the revision plus `live` (state outside the repo) when the host sends it; null stays null (reload every probe). @req FR:pr-priority/needs.poll */
+    sync: async () => { const s = await call<SyncState>('/sync'); return s.rev !== null && s.live ? `${s.rev}~${s.live}` : s.rev; },
     /** Revision plus what a batching server has not committed yet. @req FR:live-deploy/web.unsaved @req FR:live-deploy/$sync-state */
     syncState: () => call<SyncState>('/sync'),
     /** Commit and push pending edits now; `keepalive` when the page is going away. @req FR:live-deploy/web.unsaved.hide @req FR:live-deploy/$flush-result */
     flush: (keepalive = false) => call<FlushResult>('/sync', {}, keepalive ? { keepalive: true } : {}),
     capture: (text: string, o: { project?: string; section?: string; dryRun?: boolean } = {}) => call<CaptureResult>('/capture', { text, ...o }),
+    /** Desktop app builds and update mode; 404 on hosts with no installer. @req FR:devops-installer/version.get */
+    version: () => call<VersionState>('/version'),
+    /** @req FR:devops-installer/version.mode */
+    setUpdateMode: (mode: UpdateMode, idleMinutes?: number) => call<VersionState>('/version/mode', { mode, ...(idleMinutes !== undefined ? { idleMinutes } : {}) }),
+    /** @req FR:devops-installer/notice.restart */
+    restartForUpdate: () => call<{ restarting: boolean }>('/version/restart', {}),
   };
 }
 export type Client = ReturnType<typeof createClient>;
 
 /** `GET /api/sync`: `pending`/`since` only when the server batches commits. */
-export interface SyncState { rev: string | null; pending?: number; since?: string | null }
+export interface SyncState { rev: string | null; pending?: number; since?: string | null; live?: string }
 /** `POST /api/sync`. */
 export interface FlushResult { flushed: number; rev: string | null }
+
+/** The body of `POST /feedback`. @req FR:feedback-button/api.route */
+export interface FeedbackBody { text: string; route?: string; viewport?: string; theme?: 'light' | 'dark'; capture?: boolean; png?: string }

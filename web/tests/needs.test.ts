@@ -60,4 +60,15 @@ describe('fromNeeds', () => {
     expect(fromNeeds([n('x', { by: '2026-11-01T19:00:00Z' })], NOW)[0].overdue).toBe(true);
     expect(fromNeeds([n('y', { by: '2026-11-02T19:00:00Z' })], NOW)[0].overdue).toBe(false);
   });
+  // @req FR:pr-priority/needs.actions
+  it('a PR priority recommendation keeps its decide path and is not reversible (no Undo)', () => {
+    const [rec, plain] = fromNeeds([n('pp.r1', { decide: '/api/pr-priority/recommendations/r1' }), n('two')], NOW);
+    expect(rec).toMatchObject({ decide: '/api/pr-priority/recommendations/r1', reversible: false });
+    expect(plain.reversible).toBe(true);
+    expect(plain.decide).toBeUndefined();
+  });
+  // @req FR:pr-review-lane/lane.needs
+  it('a blocked live check is not reversible (no Undo)', () => {
+    expect(fromNeeds([n('lv.li-0000abcd')], NOW)[0].reversible).toBe(false);
+  });
 });

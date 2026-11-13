@@ -10,7 +10,7 @@ function setup(o: { locked?: boolean; shortcutsFree?: boolean; startHost?: Shell
   const log: string[] = [];
   let closes = 0;
   const startHost: ShellDeps['startHost'] = o.startHost ?? (async () => ({ url: URL_, close: async () => { closes++; } }));
-  const shell = createShell({ electron: e, startHost, assetsDir: '/assets', log: (l) => log.push(l), closeTimeoutMs: o.closeTimeoutMs ?? 50 });
+  const shell = createShell({ electron: e, startHost, assetsDir: '/assets', log: (l) => log.push(l), closeTimeoutMs: o.closeTimeoutMs ?? 50, needsCount: async () => 0 });
   return { e, log, shell, closes: () => closes, win: () => e.windows[0], tray: () => e.trays[0] };
 }
 
@@ -233,5 +233,23 @@ describe('test seam', () => {
     const imports = (dir: string) => readdirSync(dir).filter((f) => f !== 'shell.test.ts' && /from ['"]electron['"]|require\(['"]electron['"]\)/.test(readFileSync(join(dir, f), 'utf8')));
     expect(imports(src)).toEqual(['main.ts']);
     expect(imports(__dirname)).toEqual([]);
+  });
+});
+
+describe('feedback capture', () => {
+  // @req FR:feedback-button/store.capture
+  it('registers a page capture for the feedback store; a destroyed window gives none', async () => {
+    const { mkdtempSync } = await import('fs');
+    const { tmpdir } = await import('os');
+    const { FeedbackStore, setPageCapture } = await import('../../src/core/feedback');
+    const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(8)]);
+    const { shell, win } = setup();
+    await shell.start();
+    (win().webContents as unknown as { capturePage: () => Promise<{ toPNG(): Buffer }> }).capturePage = async () => ({ toPNG: () => PNG });
+    const store = new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-fbsh-')));
+    expect((await store.add({ text: 'x' }, { capture: true })).screenshotPath).toBeDefined();
+    win().destroyed = true;
+    expect((await store.add({ text: 'y' }, { capture: true })).screenshotPath).toBeUndefined();
+    setPageCapture(undefined);
   });
 });

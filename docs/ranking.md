@@ -59,11 +59,13 @@ Only the CoS writes this file. Stack lists the items first in Needs you and writ
 
 ## stack.md, README.md and my-day.md
 
-`stack update` writes them with the legacy scorer by default (byte-for-byte what the PowerShell script wrote). To make the files agree with `stack next`, the web Home, and My day:
+`stack update` writes them with the `stack` engine, so they agree with `stack next`, the web Home, and My day. The README top is the row a `stack start`, `complete`, or `skip` with no ref acts on. For byte-for-byte what the PowerShell script wrote (parity runs):
 
 ```bash
-stack update --engine stack
+stack update --engine legacy
 ```
+
+With the default:
 
 - Each leaf shows the `stack` engine score (`🟰`), the one `stack next` prints; its breakdown adds one line when the score differs from the formula (`📅 + N due-date lens`, or `↪ inherits N from <task>`).
 - Every list orders by that score, then by `.stack/priorities.json` (`top` first, `down` last; a `hide` row sinks to the end instead of disappearing, so the files still list all the work).
