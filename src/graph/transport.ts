@@ -86,7 +86,7 @@ export function graphTransport(o: GraphTransportOptions): Transport {
       try { data = text ? JSON.parse(text) : undefined; } catch { data = undefined; }
       if (!res.ok) {
         const code = (data as { error?: { code?: unknown } } | undefined)?.error?.code;
-        throw new GraphHttpError(res.status, typeof code === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(code) ? code : 'Error', res.status === 429 ? retryAfter(res.headers.get('retry-after')) : undefined);
+        throw new GraphHttpError(res.status, typeof code === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(code) ? code : 'Error', res.status === 429 ? retryAfter(res.headers?.get?.('retry-after') ?? null) : undefined);
       }
       return data;
     } catch (e) {

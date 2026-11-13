@@ -204,3 +204,22 @@ describe('accounts calendar: honest errors and aggregation', () => {
     expect(reads).toHaveLength(2);
   });
 });
+
+describe('accounts calendar: review fixes', () => {
+  // @req FR:connect-accounts/acct.retry
+  it('a 429 with no copy yet is not ok: partial with reason down', async () => {
+    const { cal, dir } = mk({ by: { 'a@x.test': async () => [ev('1', 'Gym', 9)], 'b@x.test': async () => { throw new GraphHttpError(429, 'TooManyRequests'); } } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await seed(dir, 'b@x.test', ['Calendars.Read']);
+    await cal.events(...R);
+    expect(cal.info?.()).toMatchObject({ partial: true, reason: 'down' });
+  });
+  // @req FR:connect-accounts/cal.account
+  it('a meeting on two calendars keeps the account listed first, whatever answers first', async () => {
+    const slow = (ms: number, a: string) => async () => { await new Promise((r) => setTimeout(r, ms)); return [ev(a, 'Standup', 15)]; };
+    const { cal, dir } = mk({ by: { 'a@x.test': slow(20, 'a'), 'b@x.test': slow(0, 'b') } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await seed(dir, 'b@x.test', ['Calendars.Read']);
+    expect((await cal.events(...R)).map((e) => e.account)).toEqual(['a@x.test']);
+  });
+});

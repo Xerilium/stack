@@ -11,6 +11,7 @@ import {
   DRAFTS_HINT, DRAFTS_LABEL, needsFix, sessionText, SETUP_RESULT, SETUP_TEXT, STATE_TEXT, statusTip, waitFor,
   type AccountRow, type ConnectApi, type ConnectInfo, type ConnectSession, type SetupState,
 } from './connect';
+import './settings.css';
 
 function Session({ s, onCode }: { s: ConnectSession; onCode: () => void }) {
   const [copied, setCopied] = useState(false);

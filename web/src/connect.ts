@@ -52,8 +52,6 @@ export const readsText = (a: AccountRow) => [a.mail && 'mail', a.calendar && 'ca
 export const STATE_TEXT: Record<AccountRow['state'], string> = { connected: 'Connected', expired: 'Needs sign-in', down: 'Microsoft not responding', error: 'Not working' };
 /** An account that a sign-in can fix. An outage (`down`) is not one: Stack retries on its own. @req FR:connect-accounts/web.fix */
 export const needsFix = (a: AccountRow) => a.state === 'expired' || a.state === 'error';
-/** @deprecated use needsFix */
-export const needsSignIn = needsFix;
 
 const clockAt = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 /** The status tooltip: the last good read, and the next try while Microsoft is not responding. @req FR:connect-accounts/web.row */

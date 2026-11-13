@@ -73,8 +73,9 @@ export function createAccountsCalendar(o: AccountsCalendarOptions = {}): Calenda
       const failed: GraphFailure[] = [];
       let oldest = Infinity;
       let any = false;
-      const all: CalendarEvent[] = [];
-      await Promise.all(list.map(async ({ account, cache }) => {
+      // One slot per account, in list order, so a meeting on two calendars always keeps the same account.
+      const slots: CalendarEvent[][] = list.map(() => []);
+      await Promise.all(list.map(async ({ account, cache }, i) => {
         const key = `${account}|${from}|${to}`;
         let c = copies.get(key);
         // The health key: an unnamed cache uses its file. @req FR:connect-accounts/acct.retry
@@ -84,6 +85,8 @@ export function createAccountsCalendar(o: AccountsCalendarOptions = {}): Calenda
             // Waiting for the retry time: no call, the last copy (if any) serves. A throttled account keeps its state.
             const m = health.get(who);
             if (m) { partial = true; failed.push(m === 'expired' ? 'signin' : m === 'down' ? 'down' : 'other'); }
+            // Throttled with no copy yet: its meetings are missing, so the source is not ok.
+            else if (!c) { partial = true; failed.push('down'); }
           } else {
             // By file: a sign-in that moves an account to its own file gets a new provider.
             const p = providers.get(cache.path) ?? make(account, cache);
@@ -95,15 +98,17 @@ export function createAccountsCalendar(o: AccountsCalendarOptions = {}): Calenda
               health.ok(who, now());
             } catch (e) {
               const kind = health.fail(who, e, now());
-              if (kind !== 'throttled') { partial = true; failed.push(kind); }
+              // A 429 with a copy backs off silently; with no copy the meetings are missing.
+              if (kind !== 'throttled' || !c) { partial = true; failed.push(kind === 'throttled' ? 'down' : kind); }
             }
           }
         }
         if (!c) return;
         any = true;
         oldest = Math.min(oldest, c.at);
-        all.push(...c.events);
+        slots[i] = c.events;
       }));
+      const all = slots.flat();
       // Copies for other ranges age out with the day; keep the map small.
       for (const [k, v] of copies) if (now() - v.at > ttl * 20) copies.delete(k);
       const reason = failed.includes('signin') ? 'signin' : failed.includes('down') ? 'down' : failed.length ? 'error' : undefined;

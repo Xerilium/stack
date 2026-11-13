@@ -66,7 +66,10 @@ function Updates({ u }: { u: SettingsUpdates }) {
   const [saved, setSaved] = useState('');
   if (!u.state) return <p class="set-note">Updates come with the desktop app.</p>;
   const st = u.state;
-  const pick = async (m: UpdateMode) => { setSaved(''); await u.setMode(m); setSaved('Saved'); };
+  const [want, setWant] = useState<UpdateMode | null>(null);
+  // `Saved` only once the host reports the new mode; a failed save shows as a toast.
+  useEffect(() => { if (want && st.mode === want) { setSaved('Saved'); setWant(null); } }, [want, st.mode]);
+  const pick = async (m: UpdateMode) => { setSaved(''); setWant(m); await u.setMode(m); };
   return (
     <>
       <fieldset class="set-modes" data-testid="settings-updates">
