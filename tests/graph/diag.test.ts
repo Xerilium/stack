@@ -28,6 +28,23 @@ describe('Graph diagnostics', () => {
     await expect(graphTransport({ token: 't', fetch: hang, timeoutMs: 20, onFail: (r) => out.push(r) })({ method: 'GET', url: 'https://graph.microsoft.com/v1.0/me/calendar' })).rejects.toThrow();
     expect(out[0]).toMatchObject({ status: 0, code: 'Timeout', requestId: cid, path: '/v1.0/me/calendar' });
   });
+  it('a failed token refresh is logged on the token path, then thrown as is', async () => {
+    const out: Omit<GraphFailureRecord, 'account'>[] = [];
+    const boom = Object.assign(new Error('refresh failed'), { code: 'temporarily_unavailable' });
+    const call = graphTransport({ token: async () => { throw boom; }, fetch: (async () => new Response('{}')) as typeof fetch, onFail: (r) => out.push(r) });
+    await expect(call({ method: 'GET', url: 'https://graph.microsoft.com/v1.0/me/calendar' })).rejects.toBe(boom);
+    expect(out).toEqual([expect.objectContaining({ path: '/oauth2/v2.0/token', status: 0, code: 'temporarily_unavailable' })]);
+  });
+  it('a 401 that a refresh fixes is still logged; each attempt has its own client-request-id', async () => {
+    const ids: string[] = [];
+    let n = 0;
+    const fetch = (async (_u: string | URL | Request, init?: RequestInit) => { ids.push(new Headers(init?.headers).get('client-request-id') ?? ''); return new Response(++n === 1 ? '{"error":{"code":"InvalidAuthenticationToken"}}' : '{}', { status: n === 1 ? 401 : 200 }); }) as typeof globalThis.fetch;
+    const out: Omit<GraphFailureRecord, 'account'>[] = [];
+    await graphTransport({ token: async () => 't', fetch, onFail: (r) => out.push(r) })({ method: 'GET', url: 'https://graph.microsoft.com/v1.0/me/calendar' });
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(out).toEqual([expect.objectContaining({ status: 401, code: 'InvalidAuthenticationToken', requestId: ids[0] })]);
+  });
   it('the log is one JSON line per failure, mode 0600', () => {
     const file = join(mkdtempSync(join(tmpdir(), 'glog-')), '.stack', 'graph.log');
     const log = graphLogger(file);

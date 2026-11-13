@@ -6,7 +6,7 @@
  */
 import { basename } from 'path';
 import { cacheDir as defaultCacheDir, cachePathsWith, FileTokenCache, graphToken, hasScope } from '../graph/auth';
-import { graphTransport, timedFetch } from '../graph/transport';
+import { GRAPH_TIMEOUT_MS, GraphHttpError, graphTransport, timedFetch } from '../graph/transport';
 import { AccountHealth, type GraphFailure } from '../graph/connect';
 import { graphLogger, type GraphFailureRecord } from '../graph/diag';
 import { createGraphCalendar, type CalendarEvent, type CalendarInfo, type CalendarProvider } from './index';
@@ -33,11 +33,21 @@ export interface AccountsCalendarOptions {
   provider?: (account: string, cache: FileTokenCache) => CalendarProvider;
   /** Failure records for `~/.stack/graph.log`; default writes there. @req FR:connect-accounts/acct.diag */
   log?: (r: GraphFailureRecord) => void;
+  /** The most one account read may take, every page included; default 8 s. @req FR:connect-accounts/cal.isolate */
+  accountMs?: number;
+}
+
+/** Ends a read at `ms` as a timeout (`down`); a late answer is dropped. */
+function within<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_ok, no) => { timer = setTimeout(() => no(new GraphHttpError(0, 'Timeout')), ms); (timer as { unref?: () => void }).unref?.(); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
 export function createAccountsCalendar(o: AccountsCalendarOptions = {}): CalendarProvider {
   const now = o.now ?? (() => Date.now());
   const ttl = o.ttlMs ?? ACCOUNT_TTL_MS;
+  const accountMs = o.accountMs ?? GRAPH_TIMEOUT_MS;
   const providers = new Map<string, CalendarProvider>();
   const copies = new Map<string, { at: number; events: CalendarEvent[] }>();
   let last: CalendarInfo | undefined;
@@ -92,7 +102,8 @@ export function createAccountsCalendar(o: AccountsCalendarOptions = {}): Calenda
             const p = providers.get(cache.path) ?? make(account, cache);
             providers.set(cache.path, p);
             try {
-              const list = await p.events(from, to);
+              // A slow account (many pages, or a stall) never holds the others past the cap.
+              const list = await within(p.events(from, to), accountMs);
               c = { at: now(), events: account ? list.map((e) => ({ ...e, account })) : list };
               copies.set(key, c);
               health.ok(who, now());

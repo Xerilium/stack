@@ -309,6 +309,7 @@ export interface TodayProps {
   decisions: Decision[]; agents: Agent[] | null; agentsError: string; onRetryAgents: () => void; inbox: InboxItem[]; p: RowProps; busy: boolean;
   tops: { project: string; title: string; task?: Task; open: number }[]; onProject: (name: string) => void;
   allDay: CalEvent[]; calError: string; onEmail: () => void;
+  /** The whole day's calendar events, past ones too, so badges stay on once a meeting ends. @req FR:connect-accounts/web.label */ dayEvents?: CalEvent[];
   onAct: (a: 'start' | 'done' | 'defer' | 'notnow' | 'delegate', ref: string) => void; onReply: (task: RefText, text: string, label: string) => Promise<boolean>; onAccept: (d: Decision) => void;
   /** The project's agent on each tile. @req FR:agent-team/web.anything */
   tileAgent?: { chip: (project: string, title: string) => ComponentChildren; talk: (project: string, title: string) => ComponentChildren };
@@ -364,7 +365,7 @@ export function TodayView(t: TodayProps) {
   const personal = (t.day.blocks ?? []).filter((b) => b.kind === 'personal' && b.end > t.day.start && b.start < end);
   const nextMeeting = t.plan.meetings.find((m) => m.end > nowMin);
   // Account badges only when the day spans more than one account. @req FR:connect-accounts/web.label
-  const multi = multiAccount(t.plan.meetings.flatMap((m) => m.events));
+  const multi = multiAccount(t.dayEvents ?? t.plan.meetings.flatMap((m) => m.events));
   const joinOf = (m: Busy) => joinable(m.events, t.now, Math.max(10, m.start - nowMin)) ?? m.events.find((e) => e.joinUrl)?.joinUrl;
   const meetingMin = t.plan.meetings.reduce((m, x) => m + Math.max(0, Math.min(x.end, t.day.end) - Math.max(x.start, start)), 0);
   // @req FR:home/myday.timeline

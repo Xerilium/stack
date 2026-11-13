@@ -38,7 +38,10 @@ export function CalendarLink({ cal }: { cal: CalCtl }) {
   };
   return (
     <div class="cal-link" data-testid="cal-link">
-      {cal.canConnect ? (
+      {cal.source?.via === 'graph' ? (
+        // A link is read only when no account has a calendar: saving one now would show nothing. @req FR:connect-accounts/cal.fallback
+        <p class="acct-note" data-testid="cal-link-graph">Your connected accounts feed the calendar. A calendar link is used only when no account has a calendar.</p>
+      ) : cal.canConnect ? (
         <form class="cal-link-form" noValidate onSubmit={(e) => { e.preventDefault(); void save(); }}>
           <label for="cal-ics">Published calendar link (ICS)</label>
           <div class="cal-link-row">

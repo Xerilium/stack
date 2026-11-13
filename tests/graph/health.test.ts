@@ -118,6 +118,17 @@ describe('Graph request cap', () => {
     const busy = (async () => new Response('{"error":{"code":"TooManyRequests"}}', { status: 429, headers: { 'retry-after': '12' } })) as typeof fetch;
     const t = (await graphTransport({ token: 't', fetch: busy })({ method: 'GET', url: 'https://graph.microsoft.com/v1.0/me' }).catch((x: unknown) => x)) as GraphHttpError;
     expect([t.status, t.code, t.retryAfterMs]).toEqual([429, 'TooManyRequests', 12_000]);
+    // A long wait is kept in full, not cut to an hour.
+    const long = (async () => new Response('{}', { status: 429, headers: { 'retry-after': '7200' } })) as typeof fetch;
+    const l = (await graphTransport({ token: 't', fetch: long })({ method: 'GET', url: 'https://graph.microsoft.com/v1.0/me' }).catch((x: unknown) => x)) as GraphHttpError;
+    expect(l.retryAfterMs).toBe(7_200_000);
+  });
+
+  // @req FR:connect-accounts/acct.timeout
+  it('a stalled token refresh ends at the cap as a timeout', async () => {
+    const never = () => new Promise<string>(() => undefined);
+    const e = (await graphTransport({ token: never, fetch: (async () => new Response('{}')) as typeof fetch, timeoutMs: 20 })({ method: 'GET', url: 'https://graph.microsoft.com/v1.0/me' }).catch((x: unknown) => x)) as GraphHttpError;
+    expect([e.status, e.code]).toEqual([0, 'Timeout']);
   });
 
   // @req FR:connect-accounts/acct.timeout

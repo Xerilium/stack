@@ -124,7 +124,7 @@ function Row({ a, busy, now, onSignIn, onDrafts, onRemove }: { a: AccountRow; bu
  * `onChange` runs after an account is added, signed in again, changed or removed, so the caller re-reads its sources.
  * `other` is the published calendar link block shown inside `Other ways to connect`.
  */
-export function ConnectAccounts({ api, onChange, other, now = new Date() }: { api: ConnectApi; onChange?: () => void; other?: ComponentChildren; now?: Date }) {
+export function ConnectAccounts({ api, onChange, other, now = new Date(), refresh, onRetry }: { api: ConnectApi; onChange?: () => void; other?: ComponentChildren; now?: Date; refresh?: unknown; onRetry?: () => Promise<unknown> }) {
   const [info, setInfo] = useState<ConnectInfo | null>(null);
   const [missing, setMissing] = useState(false);
   const [session, setSession] = useState<ConnectSession | null>(null);
@@ -140,7 +140,15 @@ export function ConnectAccounts({ api, onChange, other, now = new Date() }: { ap
   const load = async () => {
     try { setInfo(await api.connect()); } catch { setMissing(true); }
   };
-  useEffect(() => { void load(); }, []);
+  // Read again whenever the calendar reads again (its health moves the rows). @req FR:connect-accounts/web.row
+  useEffect(() => { void load(); }, [refresh]);
+  // An account waiting to retry: read the calendar at its retry time, so `Retrying in` is true while Settings is open. @req FR:connect-accounts/acct.retry
+  const nextRetry = info?.accounts.filter((a) => a.state === 'down' && a.retryAt).map((a) => Date.parse(a.retryAt!)).filter(Number.isFinite).sort((a, b) => a - b)[0];
+  useEffect(() => {
+    if (!onRetry || nextRetry === undefined) return;
+    const t = setTimeout(() => { void onRetry().finally(() => { if (!gone.current) void load(); }); }, Math.max(1000, nextRetry - Date.now() + 500));
+    return () => clearTimeout(t);
+  }, [nextRetry]);
 
   const current = useRef('');
   const follow = async (s: ConnectSession) => {

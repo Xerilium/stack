@@ -228,6 +228,20 @@ test.describe('Settings: entry, agents, updates', () => {
     await expect(page.locator('#settings-updates')).toContainText('Saved');
     await expect(page.locator('#settings-updates')).toContainText('Up to date');
   });
+
+  // @req FR:settings/updates.modes
+  test('Updates: a failed save shows no Saved and keeps the old mode', async ({ page }) => {
+    const state = { running: { version: '0.0.1', sha: 'abc1234', dirty: false, builtAt: '2026-11-12T08:00:00Z' }, available: null, ready: false, mode: 'on-quit', idleMinutes: 30, canRestart: true, last: null };
+    await open(page, { local: true });
+    await page.route('**/api/version', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state) }));
+    await page.route('**/api/version/mode', (r) => r.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Could not save' }) }));
+    await page.reload();
+    const u = page.getByTestId('settings-updates');
+    await u.getByRole('radio', { name: 'Only when I select Restart' }).click();
+    await expect(u.getByRole('radio', { name: 'When I quit Stack (recommended)' })).toBeChecked();
+    await expect(u.getByRole('radio', { name: 'Only when I select Restart' })).not.toBeChecked();
+    await expect(page.locator('#settings-updates .fl-saved')).toHaveText('');
+  });
 });
 
 for (const scheme of ['light', 'dark'] as const) {

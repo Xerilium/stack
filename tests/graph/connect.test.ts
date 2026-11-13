@@ -201,6 +201,16 @@ describe('accounts', () => {
       { account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, state: 'down', lastOkAt: new Date(t0).toISOString(), retryAt: new Date(t0 + 90_000).toISOString() },
     ]);
   });
+  // @req FR:connect-accounts/acct.retry
+  it('an unnamed default cache reads its health by file, the key the calendar uses', async () => {
+    const { c, dir, health } = mk();
+    const p = join(dir, 'graph-token.json');
+    await new FileTokenCache(p).write({ version: 1, tenant: 'consumers', clientId: CLIENT, scopes: ['Calendars.Read', 'offline_access'], refreshToken: 'RT' });
+    health.fail(p, new GraphHttpError(502, 'UnknownError'));
+    expect((await c.accounts()).map((a) => [a.account, a.state])).toEqual([['', 'down']]);
+    await c.remove('');
+    expect(health.get(p)).toBeUndefined();
+  });
   it('the inbox probe reports an expired mark as signin-expired', async () => {
     const { dir, health } = mk();
     await seed(dir, 'me@outlook.com', ['Mail.Read', 'offline_access']);

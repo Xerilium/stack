@@ -326,7 +326,9 @@ export function createConnect(d: ConnectDeps): Connect {
         if (!t) continue;
         const account = (t.account ?? named).toLowerCase();
         const drafts = hasScope(t.scopes, 'Mail.ReadWrite');
-        out.push({ account, type: t.tenant === 'consumers' ? 'personal' : 'work', mail: drafts || hasScope(t.scopes, 'Mail.Read'), calendar: hasScope(t.scopes, 'Calendars.Read'), drafts, state: health.get(account) ?? 'connected', ...times(account) });
+        // The same health key as the calendar: an unnamed cache uses its file. @req FR:connect-accounts/acct.retry
+        const who = account || p;
+        out.push({ account, type: t.tenant === 'consumers' ? 'personal' : 'work', mail: drafts || hasScope(t.scopes, 'Mail.Read'), calendar: hasScope(t.scopes, 'Calendars.Read'), drafts, state: health.get(who) ?? 'connected', ...times(who) });
       } catch {
         out.push({ account: named, type: tenantFor(named) === 'consumers' ? 'personal' : 'work', mail: false, calendar: false, drafts: false, state: 'error' });
       }
@@ -364,7 +366,7 @@ export function createConnect(d: ConnectDeps): Connect {
       return { ok: true };
     },
     /** @req FR:connect-accounts/acct.remove */
-    async remove(account) { await (await cacheFor(account)).clear(); health.clear(account); },
+    async remove(account) { const c = await cacheFor(account); await c.clear(); health.clear(account || c.path); },
     setup: d.setup ?? (() => runSetup()),
   };
 }

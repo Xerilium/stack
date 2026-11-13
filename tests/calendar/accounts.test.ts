@@ -17,13 +17,13 @@ const ev = (id: string, subject: string, h: number): CalendarEvent => ({ id, sub
 const seed = (dir: string, account: string, scopes: string[]) =>
   new FileTokenCache(accountCachePath(account, dir)).write({ version: 1, tenant: 'consumers', clientId: CLIENT, scopes, refreshToken: 'RT', account });
 
-function mk(o: { fallback?: CalendarProvider; by?: Record<string, () => Promise<CalendarEvent[]>> } = {}) {
+function mk(o: { fallback?: CalendarProvider; by?: Record<string, () => Promise<CalendarEvent[]>>; accountMs?: number } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'acal-'));
   let now = Date.parse('2026-11-12T12:00:00Z');
   const reads: string[] = [];
   const health = new AccountHealth();
   const cal = createAccountsCalendar({
-    dir, health, now: () => now, ...(o.fallback ? { fallback: o.fallback } : {}),
+    dir, health, now: () => now, ...(o.fallback ? { fallback: o.fallback } : {}), ...(o.accountMs ? { accountMs: o.accountMs } : {}),
     provider: (account) => ({ events: async () => { reads.push(account); return (o.by?.[account] ?? (async () => []))(); } }),
   });
   return { cal, dir, reads, health, tick: (ms: number) => { now += ms; } };
@@ -213,6 +213,27 @@ describe('accounts calendar: review fixes', () => {
     await seed(dir, 'b@x.test', ['Calendars.Read']);
     await cal.events(...R);
     expect(cal.info?.()).toMatchObject({ partial: true, reason: 'down' });
+  });
+  // @req FR:connect-accounts/acct.retry
+  it('a second read inside the Retry-After window, with no copy, is partial and makes no call', async () => {
+    const { cal, dir, reads, tick } = mk({ by: { 'a@x.test': async () => [ev('1', 'Gym', 9)], 'b@x.test': async () => { throw new GraphHttpError(429, 'TooManyRequests', 60_000); } } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await seed(dir, 'b@x.test', ['Calendars.Read']);
+    await cal.events(...R);
+    const calls = reads.filter((a) => a === 'b@x.test').length;
+    tick(10_000);
+    expect((await cal.events(...R)).map((e) => e.subject)).toEqual(['Gym']);
+    expect(cal.info?.()).toMatchObject({ partial: true, reason: 'down' });
+    expect(reads.filter((a) => a === 'b@x.test')).toHaveLength(calls);
+  });
+  // @req FR:connect-accounts/cal.isolate
+  it('a stalled account read ends at the cap; the others return and it is marked down', async () => {
+    const { cal, dir, health } = mk({ accountMs: 30, by: { 'a@x.test': async () => [ev('1', 'Gym', 9)], 'b@x.test': () => new Promise<CalendarEvent[]>(() => undefined) } });
+    await seed(dir, 'a@x.test', ['Calendars.Read']);
+    await seed(dir, 'b@x.test', ['Calendars.Read']);
+    expect((await cal.events(...R)).map((e) => e.subject)).toEqual(['Gym']);
+    expect(cal.info?.()).toMatchObject({ partial: true, reason: 'down' });
+    expect(health.get('b@x.test')).toBe('down');
   });
   // @req FR:connect-accounts/cal.account
   it('a meeting on two calendars keeps the account listed first, whatever answers first', async () => {

@@ -13,7 +13,8 @@ import { agentsLines, settingsSection, type DeliverySummary } from './settings';
 import { MODE_WORDS, UPDATE_MODES, type BuildStamp, type UpdateMode, type VersionState } from './update';
 import './settings.css';
 
-export interface SettingsUpdates { state: VersionState | null; setMode: (m: UpdateMode) => Promise<void>; restart: () => Promise<void>; restarting: boolean }
+/** `known`: the first `GET /api/version` has answered; until then the section is loading. */
+export interface SettingsUpdates { state: VersionState | null; known: boolean; setMode: (m: UpdateMode) => Promise<boolean>; restart: () => Promise<void>; restarting: boolean }
 export interface SettingsApi extends ConnectApi {
   deliverySummary: () => Promise<DeliverySummary>;
   deliveryLogin: () => Promise<{ started: boolean; step?: string }>;
@@ -67,9 +68,10 @@ function Updates({ u }: { u: SettingsUpdates }) {
   const [want, setWant] = useState<UpdateMode | null>(null);
   // `Saved` only once the host reports the new mode; a failed save shows as a toast.
   useEffect(() => { if (want && u.state?.mode === want) { setSaved('Saved'); setWant(null); } }, [want, u.state?.mode]);
-  if (!u.state) return <p class="set-note">Updates come with the desktop app.</p>;
+  if (!u.state) return u.known ? <p class="set-note">Updates come with the desktop app.</p> : <p class="set-note" role="status">Loading…</p>;
   const st = u.state;
-  const pick = async (m: UpdateMode) => { setSaved(''); setWant(m); await u.setMode(m); };
+  // A failed save forgets the pick, so a later change elsewhere never shows `Saved` here.
+  const pick = async (m: UpdateMode) => { setSaved(''); setWant(m); if (!(await u.setMode(m))) setWant(null); };
   return (
     <>
       <fieldset class="set-modes" data-testid="settings-updates">
@@ -92,10 +94,12 @@ function Updates({ u }: { u: SettingsUpdates }) {
 }
 
 export function SettingsView({ api, cal, updates, onAccounts, now }: { api: SettingsApi; cal: CalCtl; updates: SettingsUpdates; onAccounts?: () => void; now: Date }) {
-  // `#/settings/<section>` scrolls to it once. @req FR:settings/view.route
+  // `#/settings/<section>` scrolls to it: on open, and when the hash moves while Settings stays open (back, forward). @req FR:settings/view.route
   useEffect(() => {
-    const s = settingsSection(location.hash);
-    if (s) document.getElementById(`settings-${s}`)?.scrollIntoView?.({ block: 'start' });
+    const go = () => { const s = settingsSection(location.hash); if (s) document.getElementById(`settings-${s}`)?.scrollIntoView?.({ block: 'start' }); };
+    go();
+    window.addEventListener('hashchange', go);
+    return () => window.removeEventListener('hashchange', go);
   }, []);
   return (
     <div class="settings fl" data-testid="settings">
@@ -103,7 +107,7 @@ export function SettingsView({ api, cal, updates, onAccounts, now }: { api: Sett
       <section id="settings-accounts" class="set-sec" aria-labelledby="set-h-accounts">
         <h2 id="set-h-accounts">Accounts</h2>
         <p class="set-sum">{READ_TEXT} <LearnMore /></p>
-        <ConnectAccounts api={api} now={now} {...(onAccounts ? { onChange: onAccounts } : {})} other={<CalendarLink cal={cal} />} />
+        <ConnectAccounts api={api} now={now} {...(onAccounts ? { onChange: onAccounts } : {})} refresh={cal.source} onRetry={cal.onCheck} other={<CalendarLink cal={cal} />} />
       </section>
       <section id="settings-agents" class="set-sec" aria-labelledby="set-h-agents">
         <h2 id="set-h-agents">Agents</h2>

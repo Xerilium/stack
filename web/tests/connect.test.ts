@@ -16,6 +16,8 @@ describe('connect words', () => {
     expect(DRAFTS_TEXT).toMatch(/never sends/);
     expect(needsFix({ ...row, state: 'expired' })).toBe(true);
     expect(needsFix(row)).toBe(false);
+    // Microsoft not responding: signing in again does not help.
+    expect(needsFix({ ...row, state: 'down' })).toBe(false);
   });
   it('setup results name the single human step, no command box', () => {
     expect(SETUP_RESULT['needs-azure-signin']).toBe('Sign in to Azure once: open PowerShell, run Connect-AzAccount, then click Run setup again.');
