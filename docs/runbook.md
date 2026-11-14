@@ -80,7 +80,7 @@ The host pushes an ask to each paired phone when the ask is due within 1 hour. H
 1. Make VAPID keys once: `npx web-push generate-vapid-keys --json`. Set `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY` and `STACK_VAPID_SUBJECT` as host secrets (portal: Static Web App, Environment variables; the setup script keeps them on re-run). Keep the private key in a password manager.
 2. Add a cron caller. Something must call `POST /api/push/check` (body `{}`) every 5 minutes with a `tasks:write` token, for example a GitHub Actions `schedule` workflow in the data repo with the token in a repo secret. Without it, only ask writes (`POST /api/asks/{key}`) start a check.
 3. Pair the phone (iOS 16.4 or later): create a device as the owner (`POST /api/auth/devices`), open `/#/install?device=<token>` in Safari, Add to Home Screen, open Stack from the Home Screen, then tap `Turn on notifications`.
-4. Optional, for the live Mac view only: use Tailscale Serve (tailnet only). Phone push uses the Azure host and needs no tunnel. Cloudflare Tunnel is not recommended (public hostname, extra account).
+4. Optional, for the live Mac view only: use Tailscale Serve (tailnet only; steps in [phone-access.md](phone-access.md)). Phone push uses the Azure host and needs no tunnel. Cloudflare Tunnel is not recommended (public hostname, extra account).
 
 `.stack/push-sent.json` in the data repo keeps one push per device, ask and deadline. A `404` or `410` from the push service removes that phone's subscription; pair again to restore it.
 

@@ -41,6 +41,8 @@ import { graphCmd } from './graph';
 import { prsCmd } from './prs';
 import { appCmd, realAppDeps } from './app';
 import { findStackDir, userConfig, walkStackDir } from './discover';
+import { devicesCmd } from './devices';
+import { bindMode } from './tailnet';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
 import { runLocal, type Locks, type SetupHandler } from './setup';
 import { BatchedGitStorage } from '../core/storage-batch';
@@ -90,7 +92,8 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
-  web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches)' },
+  web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset', 'bind'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches; --bind tailnet also serves paired devices on your Tailscale addresses)' },
+  devices: { flags: [], usage: 'devices add <name> | list | revoke <id>', help: 'pair a phone with the tailnet host (docs/phone-access.md); add prints a one-time pairing code' },
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
@@ -758,6 +761,8 @@ export function webReportStore(live: boolean, home: string): ReportStore | undef
  */
 async function web(f: Record<string, string | true>, io: IO, here: { dir: string; by: string } | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
+  // @req FR:tailnet-access/bind.@cli
+  const bind = bindMode(f['bind'], userConfig(home).bind);
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
   // --repo, then --dir or the current folder, then env, then user config; config is read again on every restart (setup writes it).
@@ -794,7 +799,9 @@ async function web(f: Record<string, string | true>, io: IO, here: { dir: string
     const ics = (cfg as { ics?: unknown }).ics; // @req FR:first-run-onboarding/step.calendar
     // Demo reads no session store and keeps priorities beside the demo copy. @req FR:status-ingest/host.demo
     const demoLive = live ? {} : { inventory: false as const, pris: new PriStore(join(home, '.config/stack/demo-state')), prPriority: new PrPriorityStore(join(home, '.config/stack/demo-state')) };
-    const server = await startWeb({ dir: target, port: p, webDir, label, info, storage, setup, ...(typeof ics === 'string' ? { ics } : {}), ...(reports ? { reports } : {}), ...demoLive });
+    const server = await startWeb({ dir: target, port: p, webDir, label, info, storage, bind, setup, ...(typeof ics === 'string' ? { ics } : {}), ...(reports ? { reports } : {}), ...demoLive });
+    // @req FR:tailnet-access/bind.startup
+    if (bind === 'tailnet') io.out(`Tailnet (paired devices only): ${server.urls.slice(1).join('  ')}\nHTTPS for the phone: tailscale serve --bg ${new URL(server.url).port}. Pair a phone: stack devices add <name>\n`);
     return { server, dir: target };
   };
   const s = await runLocal({ port, home, env: process.env, webDir, spec, locks, startReal, log: (l) => io.out(`${l}\n`) });
@@ -849,6 +856,8 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
       if (json) io.out(`${JSON.stringify(o.json)}\n`); else if (o.text) (o.code ? io.err : io.out)(`${o.text}\n`);
       return o.code ?? EXIT.ok;
     }
+    // Devices live in ~/.stack (STACK_HOME), not the content repo. @req FR:tailnet-access/pair.@cli
+    if (p.command === 'devices') { const d = await devicesCmd(p.positionals[0], p.positionals.slice(1), stackHome()); io.out(`${json ? JSON.stringify(d.json) : d.text}\n`); return EXIT.ok; }
     const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'feedback' ? await feedbackCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'app' ? await appCmd(p.positionals[0], p.flags, realAppDeps(home)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
