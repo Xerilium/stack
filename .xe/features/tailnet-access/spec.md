@@ -2,7 +2,7 @@
 id: tailnet-access
 title: Tailnet access
 author: flanakin
-description: "The owner's iPhone reaches the Stack host on his Mac over his Tailscale tailnet, at once and in private, with a paired device token on every remote request."
+description: "The owner's iPhone reaches the Stack host on his Mac over his Tailscale tailnet, in private, with a paired device token."
 dependencies: [cli, auth-security, iphone-access, pwa]
 ---
 
@@ -27,7 +27,7 @@ Owner needs the Mac host to listen on his tailnet so that his phone reaches it, 
 
 - **FR:bind.@cli** (P1): Interface: `stack web --bind loopback|tailnet`, and user config `bind` in `~/.config/stack/config.json`. The flag wins over the config. Default `loopback`. Any other value is a usage error (exit 2)
 - **FR:bind.loopback** (P1): With `loopback`, the server MUST listen on `127.0.0.1` only (`FR:cli/web.serve`), as before
-- **FR:bind.tailnet** (P1): With `tailnet`, the server MUST listen on `127.0.0.1` and on each Tailscale address of the machine, all on one port. It MUST NOT listen on `0.0.0.0`, `::` or any other address
+- **FR:bind.tailnet** (P1): With `tailnet`, the server MUST listen on `127.0.0.1` and on each Tailscale address of the machine, all on one port, and on no other address (never `0.0.0.0` or `::`)
 - **FR:bind.detect** (P1): A Tailscale address is a non-internal interface address in `100.64.0.0/10` (IPv4) or `fd7a:115c:a1e0::/48` (IPv6), read from the OS interface list. Detection MUST NOT call the network, the Tailscale API or the `tailscale` CLI. The interface list is injected in tests
 - **FR:bind.refuse** (P1): With `tailnet` and no Tailscale address, the server MUST refuse to start before it listens, with `No Tailscale address found. Start Tailscale and sign in, then retry.`
 - **FR:bind.startup** (P2): The startup output MUST list the loopback URL and one URL per Tailscale address
@@ -44,14 +44,14 @@ Owner needs each remote request checked so that only his paired phone gets data.
   - **FR:gate.token.deny** (P1): No token or a bad, expired or revoked token is `401`. A valid token that is not bound to an active device is `403`
   - **FR:gate.token.page** (P1): A remote `GET` for a page (not `/api/*`, `/events`, `/sessions/*` or `/.auth/*`) without a valid token MUST redirect (`302`) to `/pair`
 - **FR:gate.public** (P1): Only `GET /pair`, `GET /pair.js`, `POST /.auth/pair`, `/.auth/logout`, the manifest and the app icons MUST be served to a remote caller without a token. They hold no task data. The manifest and icons let Add to Home Screen work before pairing
-- **FR:gate.scope** (P1): A paired device is the owner's phone, so a remote `/api` request MUST run as the owner, with the caller's own principal, token and cookie headers dropped. It MUST NOT reach the token or device admin endpoints (`403`): a phone never mints or revokes tokens or devices. Device self endpoints (`FR:iphone-access/sub.@http`) run as its device token through the `auth-security` authorize hook
+- **FR:gate.scope** (P1): A paired device is the owner's phone, so a remote `/api` request MUST run as the owner, with the caller's own principal, token and cookie headers dropped, and gets `403` from the token and device admin endpoints: a phone never mints or revokes tokens or devices. Device self endpoints (`FR:iphone-access/sub.@http`) run as its device token through the `auth-security` authorize hook
 - **FR:gate.csrf** (P1): A remote write MUST be refused (`403`) when its `Origin` names a host other than the request host, or its `Sec-Fetch-Site` is not `same-origin` or `none`
 
 ### FR:proxy: Tailscale Serve
 
 Owner needs HTTPS on his tailnet name so that the installed app is a secure context (Web Push needs it).
 
-- **FR:proxy.trust** (P1): The host MUST read `X-Forwarded-Host` and `X-Forwarded-Proto` only from a loopback peer (`tailscale serve` runs on the Mac). From any other peer it MUST ignore them
+- **FR:proxy.trust** (P1): The host MUST read `X-Forwarded-Host` and `X-Forwarded-Proto` only from a loopback peer (`tailscale serve` runs on the Mac) and ignore them from any other peer
 - **FR:proxy.host** (P1): The request host is the first `X-Forwarded-Host` value when trusted and present, else `Host`
 - **FR:proxy.secure** (P1): The device cookie MUST carry `Secure` when the trusted `X-Forwarded-Proto` is `https`
 
@@ -70,13 +70,19 @@ Owner needs to pair his phone once so that it signs in with no typing after that
 
 ### FR:docs: Phone setup and threat notes
 
+Owner needs short phone setup steps and threat notes so that he can pair his phone safely.
+
 - **FR:docs.phone** (P1): `docs/phone-access.md` MUST give the human steps as one short numbered list: install Tailscale on the Mac and the iPhone, sign in, turn on MagicDNS and HTTPS, run `tailscale serve`, open the URL, Add to Home Screen, then pair inside the installed app (iOS Home Screen apps do not share cookies or storage with Safari)
-- **FR:docs.threat** (P1): The doc MUST hold threat notes of 10 lines or fewer, and `docs/security/threat-model.md` MUST list the tailnet boundary
+- **FR:docs.threat** (P1): The doc MUST hold threat notes of 10 lines or fewer; `docs/security/threat-model.md` lists the tailnet boundary
 
 ### Non-functional Requirements
 
 - **NFR:security** (P1): No new runtime dependency. No listener on an unspecified address. Tokens, cookies and pairing codes MUST NOT appear in logs or errors
 - **NFR:test** (P1): Tests MUST NOT call the network or Tailscale. The interface list, the Tailscale address list and the socket peer are injected
+
+## Data Model
+
+No new entities. Devices and tokens come from `iphone-access` and `auth-security`; the `stack_device` cookie holds a device token.
 
 ## Architecture Constraints
 
