@@ -2,11 +2,15 @@
 /**
  * A fake ACP agent for tests: newline-delimited JSON-RPC 2.0 on stdio, no dependencies, no network, no model.
  * The prompt text picks the behavior: `ask` (tool call + permission request), `slow` (waits for session/cancel),
- * `ask-read` (a read tool), `ask-die` (exits while asking), `stuck` (ignores session/cancel), `crash` (exits), `error` (JSON-RPC error), `refusal` (stop reason), `env` (echoes the environment it was given).
+ * `ask-read` (a read tool), `ask-die` (exits while asking), `stuck` (ignores session/cancel), `crash` (exits), `error` (JSON-RPC error), `refusal` (stop reason), `env` (echoes the environment it was given),
+ * `think` (a thought chunk, a plan and a non-text chunk the driver must ignore) and `big` (a tool call with 5000 chars of output, clipped by the driver).
  * @req FR:acp-driver/test.fake
  */
 'use strict';
 const readline = require('readline');
+
+/** A 1x1 transparent PNG: enough to be a valid non-text content block. */
+const PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
 const out = (m) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...m })}\n`);
 const pending = new Map();
@@ -21,7 +25,16 @@ async function prompt(id, params) {
   const text = (params.prompt[0] && params.prompt[0].text) || '';
   if (text.includes('crash')) { process.stderr.write('fake agent crashed, token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab\n'); process.exit(3); }
   if (text.includes('error')) { out({ id, error: { code: -32603, message: 'Internal error: token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab' } }); return; }
+  if (text.includes('think')) {
+    update(sid, { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Weighing the options.' } });
+    update(sid, { sessionUpdate: 'plan', entries: [{ content: 'Answer the prompt', priority: 'high', status: 'in_progress' }] });
+    update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'image', mimeType: 'image/png', data: PIXEL } });
+  }
   chunk(sid, 'Hello');
+  if (text.includes('big')) {
+    update(sid, { sessionUpdate: 'tool_call', toolCallId: 'big1', title: 'Run: dump', kind: 'execute', status: 'in_progress', rawInput: { command: 'dump' } });
+    update(sid, { sessionUpdate: 'tool_call_update', toolCallId: 'big1', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'x'.repeat(5000) } }] });
+  }
   if (text.includes('env')) chunk(sid, ` GH_TOKEN=${process.env.GH_TOKEN ? 'set' : 'unset'} FAKE_FLAG=${process.env.FAKE_FLAG || 'unset'}`);
   if (text.includes('stuck')) { await new Promise(() => undefined); return; } // ignores session/cancel
   if (text.includes('slow')) {

@@ -108,6 +108,22 @@ describe('run', () => {
     expect(done).toMatchObject({ stopReason: 'end_turn', text: 'Hello permission=opt-allow world', cost: { usd: 0, tokens: 0 } });
   });
 
+  it('ignores update types outside the driver vocabulary: thoughts, plans and non-text chunks never reach the stream', async () => {
+    const d = make();
+    const { updates, done } = await collect(d, 'think');
+    expect(updates.map((u) => u.type)).toEqual(['session', 'message_chunk', 'message_chunk', 'done']);
+    expect(done.text).toBe('Hello world');
+    expect(JSON.stringify(updates)).not.toContain('Weighing the options.');
+    expect(JSON.stringify(updates)).not.toContain('Answer the prompt');
+  });
+
+  it('clips tool output to 4000 characters', async () => {
+    const d = make();
+    const { updates } = await collect(d, 'big');
+    const tool = updates.find((u) => u.type === 'tool_update') as { output: string };
+    expect(tool.output).toHaveLength(4000);
+  });
+
   it('returns the run at once and refuses a second prompt on a busy session', async () => {
     const d = make();
     const run = await d.prompt({ cwd: process.cwd(), text: 'slow', onPermission: async () => ({ optionId: 'allow' }) });
