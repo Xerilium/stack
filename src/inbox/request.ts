@@ -24,5 +24,16 @@ export async function requestAction(item: InboxItem, action: ActionId, d: { file
 
 /** Files the issue with the `gh` CLI. The args are fixed; only title and body vary. */
 export function ghIssueFiler(run: (args: string[]) => Promise<string> = (args) => new Promise((ok, no) => execFile('gh', args, (e, out) => (e ? no(e) : ok(out))))): IssueFiler {
-  return { async file(i) { const out = await run(['issue', 'create', '--repo', i.repo, '--title', i.title, '--body', i.body, ...i.labels.flatMap((l) => ['--label', l])]); return { url: out.trim().split('\n').pop() ?? '' }; } };
+  return {
+    async file(i) {
+      // One open issue per title: a repeat click returns it instead of filing another.
+      try {
+        const open = JSON.parse(await run(['issue', 'list', '--repo', i.repo, '--state', 'open', '--search', `"${i.title}" in:title`, '--json', 'title,url', '--limit', '20'])) as { title?: unknown; url?: unknown }[];
+        const hit = open.find((x) => x.title === i.title && typeof x.url === 'string' && /^https:\/\/github\.com\//.test(x.url));
+        if (hit) return { url: hit.url as string };
+      } catch { /* lookup failed: file a new one */ }
+      const out = await run(['issue', 'create', '--repo', i.repo, '--title', i.title, '--body', i.body, ...i.labels.flatMap((l) => ['--label', l])]);
+      return { url: out.trim().split('\n').pop() ?? '' };
+    },
+  };
 }

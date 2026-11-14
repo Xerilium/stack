@@ -28,7 +28,7 @@ Counts: Critical 0 · High 3 (fixed) · Medium 4 (all fixed; M1, M2 in the follo
 
 - **L1 (fixed).** `src/graph/auth.ts:160` `JSON.parse` of a corrupt token file puts a file snippet in the error, which `emailAll` writes to `run.log` (`src/cli/email.ts`). Fix: catch and throw a fixed message.
 - **L2 (fixed).** `src/graph/auth.ts` `write`: `mkdir mode 0700` does not tighten an existing loose directory. Fix: `chmod` the directory.
-- **L3.** `src/inbox/request.ts:26` "Request this action" files a public issue per click, no dedupe. Owner-only. Fix: look for an open issue with the same title first.
+- **L3 (fixed: reuses an open issue with the same title).** `src/inbox/request.ts:26` "Request this action" files a public issue per click, no dedupe. Owner-only. Fix: look for an open issue with the same title first.
 - **L4.** `src/cli/email.ts:61` plist logs (`run.log`) are created with launchd's default 0644 in a 0700 dir; contents are counts and account names only. Fix: none needed unless logs grow content.
 
 ## Info
@@ -46,8 +46,8 @@ Counts: Critical 0 · High 1 (fixed) · Medium 3 (M1, M2, M5 fixed) · Low 4 (op
 
 ## Fixed in this PR (tests first)
 
-- **M1.** `src/api/brief.ts`: each line's `text` is now the ask's own text; the model sentence moves to `note`. Test: `tests/api/brief-ai.test.ts` (security). Web follow-up: show `note` as a second line (`web/src/briefAi.ts`).
-- **M2.** `src/api/brief.ts`: `?refresh=1` spends at most one model call per 60 s; inside the floor it returns the current result with `cached: true`. Test: `tests/api/brief-ai.test.ts` (security).
+- **M1 (fixed on main: brief lines carry the ask's own title).** `src/api/brief.ts`: each line's `text` is now the ask's own text; the model sentence moves to `note`. Test: `tests/api/brief-ai.test.ts` (security). Web follow-up: show `note` as a second line (`web/src/briefAi.ts`).
+- **M2 (fixed on main: 60 s refresh floor).** `src/api/brief.ts`: `?refresh=1` spends at most one model call per 60 s; inside the floor it returns the current result with `cached: true`. Test: `tests/api/brief-ai.test.ts` (security).
 - **H4. An agent token can rewrite another session's permission prompt.** `src/api/handler.ts` `asks.put` let any `tasks:write` token overwrite `perm-*` asks (title, why, detail, recommend). The owner answers `go` → the broker sends `options[0]` (allow) for the real request. A prompt-injected agent could make the owner approve a misdescribed `Bash` call of another session. Fix: `perm-*` keys are broker-only; a non-owner write is `403`. Test: `tests/security/perm-asks.test.ts`.
 - **M5. A token can overwrite any other agent's ask.** `src/core/asks.ts` `putAsk` merged fields onto an existing ask with no writer check (`from` is free text). Fix: a new ask stores `writer` (`token:<name>` or the core actor); a token that is not the writer gets `403`. The owner may update any ask. Asks written before this change have no `writer` and stay open to any writer. Residual: tokens with the same name share asks; `asks.handle` has no writer check, but a wrong handle only denies or closes. Test: `tests/security/ask-writer.test.ts`.
 
@@ -66,3 +66,6 @@ Counts: Critical 0 · High 1 (fixed) · Medium 3 (M1, M2, M5 fixed) · Low 4 (op
 - Teams: guard pins every request (including `@odata.nextLink`) to `GET https://graph.microsoft.com/v1.0/me/chats`, so the bearer token never leaves Graph. Slack: method allow-list, error text `[a-z_]` only. Pass.
 - Wake files: `wakePath` slug is `[a-z0-9._-]` with an alphanumeric start, then `WAKE_PATH` and the `..` check. Ask keys match `ASK_PATH`. No traversal. Pass.
 - Meetings: `GET /meetings` is owner-only and reads `.stack/meetings.md` only. Pass.
+
+## Status
+Open: L4 only (log file mode; contents are counts and account names). Everything else fixed.
