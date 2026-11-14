@@ -131,6 +131,17 @@ describe('docs', () => {
     for (const c of cmds) expect(doc).toContain(`\`${c}`);
   });
 
+  // @req FR:deploy-docs/docs.asks
+  it('documents every flag in `asks`', () => {
+    const src = read('src/cli/run.ts');
+    const flags = [...src.matchAll(/asks: \{ flags: \[([^\]]*)\]/gm)]
+      .map((m) => [...m[1].matchAll(/'([a-z-]+)'/g)].map((n) => n[1]))
+      .flat();
+    expect(flags.length).toBeGreaterThan(10);
+    const doc = read('docs/asks.md');
+    for (const f of flags) expect(doc).toContain(`--${f}`);
+  });
+
   // @req FR:deploy-docs/docs.cli
   it('documents every flag that `stack --help` lists', async () => {
     let out = '';

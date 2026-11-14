@@ -30,6 +30,7 @@ stack asks put pr-879-approve \
 
 ```bash
 stack asks list --state answered --json
+stack asks list --limit 10          # only the first 10 asks (default caps the list)
 ```
 
 Each item has `answer` (`go`, `no`, `option` with `text`, `reply` with `text`, `ask` with a question in `text`, `done`) and `answered`. Act on it, then close the loop:
