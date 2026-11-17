@@ -63,7 +63,7 @@ test.describe('Ask briefs', () => {
     await expect(brief.getByRole('link', { name: '#130' })).toHaveAttribute('href', 'https://github.com/Xerilium/stack/issues/130');
     await expect(brief.getByRole('link', { name: 'FH 1105' })).toHaveAttribute('href', 'https://github.com/microsoft/finops-toolkit/issues/1105');
     await expect(brief.getByRole('link', { name: 'Xerilium/stack#152' })).toHaveAttribute('target', '_blank');
-    await expect(card.getByRole('button', { name: 'Go with it', exact: true })).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Approve: Approve', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await axe(page, '[data-testid="now-asks"]');
     await page.screenshot({ path: `e2e/screenshots/ask-brief-${info.project.name}.png` });
