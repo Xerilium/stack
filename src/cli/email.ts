@@ -18,7 +18,8 @@ import { CLAUDE_DOWN_TEXT, CLAUDE_LOGIN_ASK, CLAUDE_LOGIN_TEXT, lockPath, MaxExc
 import { learnVoice, loadVoice, renderStyleGuide, saveVoice, voicePath, type SentMessage } from '../email/voice';
 import { accountCachePath, cacheDir as graphCacheDir, defaultCachePath, FileTokenCache, GraphSignInError, GraphSignInRequired, graphToken, hasScope, listCachePaths } from '../graph/auth';
 import { recordSync, type SyncError } from '../inbox/sources';
-import { GraphHttpError, graphTransport } from '../graph/transport';
+import { GraphHttpError, graphTransport, timedFetch } from '../graph/transport';
+import { graphLogger } from '../graph/diag';
 import { UsageError } from './args';
 
 /** `--extra`: a JSON array of `{subject?, body, sentAt?}` objects; anything else is refused. */
@@ -168,7 +169,9 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
   const account = (flag(f, 'account') ?? t.account)?.toLowerCase();
   if (!account) throw new UsageError('Missing --account <mailbox address> (the token cache does not name one)');
   if (t.account && account !== t.account.toLowerCase()) throw new UsageError(`--account ${account} is not the signed-in mailbox (${t.account})`);
-  const transport = d.transport ?? graphTransport({ token: graphToken(cache) });
+  // Failed mail calls go to graph.log too; the token refresh gets the same 8 s cap. @req FR:connect-accounts/acct.diag @req FR:connect-accounts/acct.timeout
+  const log = graphLogger();
+  const transport = d.transport ?? graphTransport({ token: graphToken(cache, { fetch: timedFetch() }), onFail: (r) => log({ ...r, account }) });
   const mode = flag(f, 'mode') ?? (hasScope(t.scopes, 'Mail.ReadWrite') ? 'drafts' : 'observe');
   if (mode !== 'observe' && mode !== 'drafts') throw new UsageError('--mode must be observe or drafts');
 

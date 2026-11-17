@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { ApiFailure, createClient } from './api';
 import { capacityRows } from './capacity';
 import { applyFilters, buildHash, NO_FILTERS, parseHash, type Filters } from './filters';
-import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, Toasts, type GroupName, type Toast } from './parts';
+import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, setRefProjects, Toasts, type GroupName, type Toast } from './parts';
 import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
 import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
@@ -24,7 +24,7 @@ import { AsksView } from './AsksView';
 import { PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
-import { PrsButton, PrsFlyoutHost } from './PrsPanel';
+import { PrsButton, PrsFlyoutHost, PrsNavItem, PrsPage, prsNavNow } from './PrsPanel';
 import { FeedbackButton, FeedbackHost, feedbackActive } from './FeedbackPanel';
 import { actionsFor, CONTEXT_ASK, type AskItem, type DeferChoice, type Send } from './asks';
 import { repoMapOf, setRepoMap } from './autolink';
@@ -44,19 +44,21 @@ import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } 
 import { fromDecisions, fromNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
 import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
+import { SettingsView } from './SettingsView';
 import { briefOf } from './brief';
 import { enrich, expandWeekly, type Rule } from './weekly';
 import { useTeam } from './useTeam';
 import { AgentChip, AgentTalk } from './AgentTalk';
 import { ThreadView } from './ThreadView';
 import { useThread } from './useThread';
-import { agentForAsk, ownerOf } from './team';
+import { agentForAsk } from './team';
+import { pickKeyIn } from './agentpick';
 import { planWeek } from './week';
 import { HomeView, ListView, ProjectsView, TodayView, type RowProps } from './views';
 import { TaskDetail } from './TaskDetail';
 import { displayName } from './detail';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
-import { agentMark, nowOf } from './nowscreen';
+import { agentMark, DONE_MS, nowOf, type NowTask } from './nowscreen';
 import { NowScreen } from './NowView';
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
@@ -124,7 +126,7 @@ export function App() {
   /** The server's ranking: Home draws this and nothing else. @req FR:web-app/now.active */
   const [ranked, setRanked] = useState<RankItem[]>([]);
   /** The same ranking across the whole day's time blocks, for My day and the week. @req FR:web-app/today.plan */
-  const [dayOrder, setDayOrder] = useState<string[]>([]);
+  const [dayOrder, setDayOrder] = useState<string[] | null>(null);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -259,8 +261,13 @@ export function App() {
   const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks]);
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
-  const nowTask = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
-  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const liveNow = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
+  /** A done card stays until its Done finishes: a live reload in the meantime never swaps it out early. @req FR:product-reset/ui.done */
+  const shownNow = useRef<NowTask | null>(null);
+  const held = shownNow.current;
+  const nowTask = held && justDone.has(held.task.ref) && held.task.ref !== liveNow?.task.ref ? held : liveNow;
+  shownNow.current = nowTask;
+  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'sessions' || view === 'inbox' || view === 'prs' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
@@ -307,9 +314,9 @@ export function App() {
     void loadSide();
     try {
       // @req FR:perf/client.paint — the first screen waits for the ranking, tasks, and projects; the all-day order fills in when it arrives.
-      void api.rank(1000, 'any').catch(() => [] as RankItem[]).then((a) => setDayOrder(a.map((x) => x.ref)));
+      void api.rank(1000, 'any').then((a) => setDayOrder(a.map((x) => x.ref)), () => setDayOrder(null));
       const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
-      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setProjects(p); setPhase('ready');
+      setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setRefProjects(p); setProjects(p); setPhase('ready');
       api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
@@ -330,17 +337,19 @@ export function App() {
   /** @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups */
   const pinsCtl = usePins(store());
   /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
-  const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name));
+  const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name), tasks);
   const wantActive = team.active || team.talk !== null || open !== null;
   /** Open a task on its thread with the composer focused (the chip, `a`, the palette); Today keeps the floating composer. @req FR:agent-thread/web.keys */
   const viewRef = useRef(view); viewRef.current = view;
-  /** The Now composer: to the task's most specific agent, else the roll-up; a live session offers its chat. @req FR:now-screen/now.compose */
-  const taskAgent = (t: Task) => ownerOf(team.agentsOf(t), t) ?? null;
+  /** The Now composer: to the task's owning agent (`ownerOf`), or the agent picked for the task; a live session offers its chat. @req FR:now-screen/now.compose @req FR:product-reset/schema.agent */
+  const taskAgent = (t: Task) => team.ownerOf(t) ?? null;
   const nowChat = (t: Task) => ({
-    agent: taskAgent(t),
+    agent: taskAgent(t), team: team.team, pickKey: pickKeyIn(tasks, t),
     agentOf: (who: string) => team.team.find((a) => a.slug === who || a.name === who) ?? { name: who },
-    onSend: (text: string) => delegate(t.ref, text), loadThread: api.thread,
+    onSend: (text: string, agent?: string) => delegate(t.ref, text, agent), loadThread: api.thread,
     onOpenSession: team.openSessionId, tick: threadTick,
+    // @req FR:agent-delivery/state.bubble: the local host reports delivery; the hosted app answers 404 and Now shows no note.
+    ...(local ? { loadDelivery: api.delivery, onSignIn: async () => { try { const r = await api.deliveryLogin(); return r.started ? null : (r.step ?? 'claude auth login'); } catch { return 'claude auth login'; } } } : {}),
   });
   const openThread = useCallback((t: Task) => {
     if (viewRef.current === 'today') { team.toggleTalk({ ref: t.ref, project: t.project, about: t.text }); return; }
@@ -373,7 +382,7 @@ export function App() {
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
   /** Live calendar when it works and is fresh, else the weekly schedule. @req FR:cos-view/meet.layers @req FR:ux-consolidation/cal.fresh */
   const liveCal = calOn && !calError && isFresh(calSource, clockNow);
-  /** When the page last read the calendar: the minute timer reads it again after 15 min. @req FR:ux-consolidation/cal.check */
+  /** When the page last read the calendar: the minute timer reads it again after 5 min. @req FR:ux-consolidation/cal.check @req FR:connect-accounts/cal.page */
   const calReadAt = useRef(Date.now());
   /** Check connection: read the calendar again for today's range. @req FR:ux-consolidation/cal.check */
   const checkCalendar = useCallback(async (): Promise<CalSource | null> => {
@@ -392,7 +401,7 @@ export function App() {
       return null;
     }
   }, [sched]);
-  useEffect(() => { if (calSource && Date.now() - calReadAt.current >= 15 * 60_000) void checkCalendar(); }, [tick, calSource, checkCalendar]);
+  useEffect(() => { if (calSource && Date.now() - calReadAt.current >= 5 * 60_000) void checkCalendar(); }, [tick, calSource, checkCalendar]);
   /** Connect: save the published link in the user config on the local host; wait for its restart. @req FR:ux-consolidation/cal.save */
   const connectCalendar = useCallback(async (ics: string): Promise<string | null> => {
     const f: Fetch = (u, i) => fetch(u, i);
@@ -564,8 +573,9 @@ export function App() {
     if (!ref) return;
     if (a === 'done') {
       markDone(ref);
-      if (await run(() => hold(api.action('complete', ref)), () => '')) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
-      else unmarkDone(ref);
+      const ok = await run(() => hold(api.action('complete', ref)), () => '');
+      unmarkDone(ref);
+      if (ok) toast('Done', 'ok', () => { void run(() => api.set(ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
       return;
     } else await run(() => api.action(a, ref));
   };
@@ -612,7 +622,7 @@ export function App() {
     await api.answerNeed(id, body);
     setNeeds(await api.needs());
     if (live) { toast(body.choice === 'go' ? 'Reopened · the agent will see it' : 'Sent to the agent', 'ok'); return; }
-    toast(body.choice === 'go' ? 'Going with it · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
+    toast(body.choice === 'go' ? 'Approved · Chief of Staff will see it' : body.choice === 'defer' ? 'Deferred' : 'Sent to the Chief of Staff', 'ok', () => { void api.answerNeed(id, { choice: 'undo' }).then(() => api.needs()).then(setNeeds); });
   };
   const answerTask = async (a: AskItem, s: Send) => {
     if (a.source === 'need') return answerNeedItem(a, s);
@@ -634,37 +644,42 @@ export function App() {
     // @req FR:now-screen/now.undo: Undo resumes the row
     if (await run(() => api.action('suspend', ref, { hours: 2 }), () => '')) toast(`Deferred 2h: back at ${back}`, 'ok', () => { void run(() => api.action('resume', ref), () => 'Restored'); });
   };
-  /** `note`: a message to the agent, written to the inbox as an instruction in the same step (the Now composer). @req FR:now-screen/now.compose */
-  const delegate = async (ref = refNow(), note = ''): Promise<boolean> => {
+  /**
+   * `note`: a message to the agent, written to the inbox as an instruction (the Now composer). A message never adds 🪄 and never
+   * edits the row: only Delegate hands the row over. @req FR:now-screen/now.compose @req FR:task-lifecycle/rank.owner
+   */
+  const delegate = async (ref = refNow(), note = '', agent?: string): Promise<boolean> => {
     const t = ref ? tasks.find((x) => x.ref === ref) : undefined;
     if (!t) return false;
     const has = parseRow(t.text).who === 'agent';
     if (has && !note) { toast('Already with an agent'); return true; }
-    const text = agentMark(t.text);
+    const mark = !note; // Delegate marks the row; a message does not
+    const text = mark ? agentMark(t.text) : t.text;
     let id = '';
-    // 🪄 first, so the entry stores `to: agent`; a failed inbox write takes the mark back off.
     const ok = await run(async () => {
-      if (!has) await api.edit(t.ref, text, t.text);
-      if (note) { try { id = (await api.send(t.ref, note, 'instruction', has ? t.text : text)).id; } catch (e) { if (!has) await api.edit(t.ref, t.text, text).catch(() => undefined); throw e; } }
+      if (mark) await api.edit(t.ref, text, t.text);
+      else id = (await api.send(t.ref, note, 'instruction', t.text, agent)).id;
       return true;
     }, () => '');
     if (!ok) return false;
     const who = titles.get(t.project) ?? t.project;
-    toast(note ? `🪄 Sent to ${taskAgent(t)?.name ?? `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { let taken = false; if (id) { taken = !(await api.handled(id, 'Withdrawn by the owner', true)).changed; setWithdrawTick((n) => n + 1); } if (!has) await api.edit(t.ref, t.text, text); return taken; }, (taken) => (taken ? 'Restored; the agent already picked it up' : 'Restored')); });
+    toast(note ? `Sent to ${(agent && team.team.find((a) => a.slug === agent)?.name) || taskAgent(t)?.name || `the ${who} agent`}` : `🪄 Delegated to the ${who} agent`, 'ok', () => { void run(async () => { let taken = false; if (id) { taken = !(await api.handled(id, 'Withdrawn by the owner', true)).changed; setWithdrawTick((n) => n + 1); } if (mark) await api.edit(t.ref, t.text, text); return taken; }, (taken) => (taken ? 'Restored; the agent already picked it up' : 'Restored')); });
     return true;
   };
   type RowAct = 'start' | 'done' | 'defer' | 'notnow' | 'delegate';
   const rowAct = (a: RowAct, ref?: string) => (a === 'defer' ? openDefer(ref) : a === 'notnow' ? void notNow(ref) : a === 'delegate' ? void delegate(ref) : void doAct(a, ref));
 
   /** The check is drawn before the list refreshes: a write never unmounts the row under the animation. */
-  const hold = async <T,>(p: Promise<T>): Promise<T> => { const [r] = await Promise.all([p, new Promise((ok) => setTimeout(ok, 320))]); return r; };
+  const hold = async <T,>(p: Promise<T>): Promise<T> => { const [r] = await Promise.all([p, new Promise((ok) => setTimeout(ok, DONE_MS))]); return r; };
   const unmarkDone = (ref: string) => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; });
-  const markDone = (ref: string) => { setJustDone((s) => new Set(s).add(ref)); setTimeout(() => setJustDone((s) => { const n = new Set(s); n.delete(ref); return n; }), 900); };
+  /** The check stays until the save and the reload finish, so a slow save never shows the done row again. @req FR:product-reset/ui.done */
+  const markDone = (ref: string) => setJustDone((s) => new Set(s).add(ref));
   const toggleDone = async (t: Task) => {
     if (t.done) { await run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Reopened'); return; }
     markDone(t.ref);
-    if (await run(() => hold(api.action('complete', t.ref)), () => '')) toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
-    else unmarkDone(t.ref);
+    const ok = await run(() => hold(api.action('complete', t.ref)), () => '');
+    unmarkDone(t.ref);
+    if (ok) toast('Done', 'ok', () => { void run(() => api.set(t.ref, { checkbox: 'Incomplete' }), () => 'Restored'); });
   };
 
   /** A property change from the task detail: saved with `expect`, the toast offers Undo. @req FR:task-detail-design/detail.save */
@@ -795,7 +810,7 @@ export function App() {
       { id: 'edit', label: 'Edit row text', hint: 'e', run: () => cursor && setEditing(cursor) },
       // @req FR:agent-team/web.keys
       { id: 'talk', label: 'Ask the task agent', hint: 'a', run: () => { const t = taskAt(refNow()); if (t) openThread(t); } },
-      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const t = taskAt(refNow()); if (t) void team.assign(t.ref, ownerOf(team.agentsOf(t), t)?.slug); } },
+      { id: 'assign', label: 'Assign the task to its agent', hint: 'A', run: () => { const t = taskAt(refNow()); if (t) void team.assign(t.ref, team.ownerOf(t)?.slug); } },
       { id: 'review', label: 'Review: can the agent do this task?', hint: 'R', run: () => { const r = refNow(); if (r) void team.review(r); } },
     ] : []),
     ...(view === 'home' ? HAVE.map((m, i) => ({ id: `have-${m}`, label: `I have ${span(m)}`, hint: `h ${i + 1}`, run: () => setHave(m) })) : []),
@@ -810,16 +825,20 @@ export function App() {
     { id: 'signout', label: 'Sign out', run: () => void signOut() },
   ].map((c) => ({ group: 'Actions' as Group, ...c }));
   // grouped: actions first, then places, then every project by name (typing a name ranks it first). @req FR:web-shell/palette.jump @req FR:web-shell/palette.jump.groups
+  const prsNav = () => prsNavNow(api);
   const goTo: Command[] = [
     { id: 'go-now', label: 'Go to Now', hint: HINT.now, group: 'Go to', run: () => go('now') },
     { id: 'go-home', label: `Go to ${LABEL.home}`, hint: HINT.home, group: 'Go to', run: () => go('home') }, // @req FR:ux-consolidation/nav.home
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
     { id: 'go-asks', label: `Go to Needs you${asks.total ? ` (${asks.total})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') },
+    // @req FR:pr-page/nav.phone: the phone reaches Pull requests through More.
+    ...(prsNav().on ? [{ id: 'go-prs', label: `Go to ${LABEL.prs}${prsNav().need ? ` (${prsNav().need})` : prsNav().signIn ? ' (sign in)' : ''}`, hint: HINT.prs, group: 'Go to' as Group, run: () => go('prs') }] : []),
     { id: 'go-inbox', label: 'Go to Inbox', hint: HINT.inbox, group: 'Go to', run: () => go('inbox') },
     { id: 'go-sessions', label: 'Go to Agents', hint: HINT.sessions, group: 'Go to', run: () => go('sessions') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
     { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, group: 'Go to', run: () => go('list') },
+    { id: 'go-settings', label: 'Go to Settings', hint: HINT.settings, group: 'Go to', run: () => go('settings') }, // @req FR:settings/view.entry
   ];
   // @req FR:web-shell/palette.jump.groups
   const projectCmds: Command[] = projects.map((p) => ({ id: `proj-${p.name}`, label: p.title || p.name, group: 'Projects' as Group, run: () => go('list', { ...NO_FILTERS, project: p.name }) }));
@@ -834,7 +853,7 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (document.querySelector('.prs-scrim')) return; // the PR flyout owns the keys while open @req FR:pr-page/flyout.shape
+      if (document.querySelector('.prs-scrim, .prs-sheet-scrim')) return; // the PR flyout and its confirm sheets own the keys while open @req FR:pr-page/flyout.shape
       if (updatesOpen.current) return; // so does the Updates dialog @req FR:devops-installer/notice.dialog
       if (feedbackActive()) return; // so does the feedback flow, also while hidden for capture @req FR:feedback-button/ui.a11y
       if (haveChord.current && !/^[0-4h]$/.test(e.key)) haveChord.current = 0; // any other key disarms h
@@ -878,7 +897,7 @@ export function App() {
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
       if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } else if (k === 'm') { e.preventDefault(); document.getElementById('now-msg')?.focus(); } } return; }
-      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox') return; // these views own their keys
+      if (L.view === 'asks' || L.view === 'sessions' || L.view === 'inbox' || L.view === 'prs') return; // these views own their keys @req FR:pr-page/nav.page
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
@@ -891,7 +910,7 @@ export function App() {
       if ((L.view === 'home' || (L.view === 'today' && L.cursor)) && k === 'n') { e.preventDefault(); void A.notNow(); return; }
       if (L.view === 'home' && k === 'A') { e.preventDefault(); void A.delegate(); return; } // My day has no delegate: its rows message the agent @req FR:task-detail-design/myday.nodelegate
       // @req FR:agent-thread/web.keys: on a list row A assigns the task to its agent (inside the composer the same key does the same)
-      if (k === 'A' && L.cursor && L.view !== 'home' && L.view !== 'today') { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) void teamRef.current.assign(t.ref, ownerOf(teamRef.current.agentsOf(t), t)?.slug); return; }
+      if (k === 'A' && L.cursor && L.view !== 'home' && L.view !== 'today') { e.preventDefault(); const t = L.rows.find((r) => r.ref === L.cursor); if (t) void teamRef.current.assign(t.ref, teamRef.current.ownerOf(t)?.slug); return; }
       // @req FR:web-app/today.meetings: J joins the meeting on now or starting within 10 minutes
       if (L.view === 'today' && k === 'J') { const url = joinable(L.events, new Date()); if (url) { e.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); } return; }
       if (L.view === 'today' && (k === '[' || k === ']')) { e.preventDefault(); if (!L.tomorrowOn) A.setBudget(L.budget + (k === ']' ? STEP : -STEP)); return; } // tomorrow's Available is read-only
@@ -964,7 +983,7 @@ export function App() {
     isOpen: () => team.talk?.askKey !== undefined, close: () => team.setTalk(null),
   };
   const tileAgent = {
-    chip: (project: string, title: string) => { const ag = team.agentsOf({ project, section: '' })[0]; return <AgentChip view={ag ? { text: ag.name, tone: 'plain', title: `Talk to ${ag.name} about ${title}` } : { text: 'No agent', tone: 'muted', title: 'No agent covers this project' }} onClick={() => team.toggleTalk({ project, about: title })} />; },
+    chip: (project: string, title: string) => { const ag = team.ownerOf({ project }); return <AgentChip view={ag ? { text: ag.name, tone: 'plain', title: `Talk to ${ag.name} about ${title}`, agent: ag } : { text: 'No agent', tone: 'muted', title: 'No agent covers this project' }} onClick={() => team.toggleTalk({ project, about: title })} />; },
     talk: (project: string, title: string) => (team.talk && !team.talk.ref && !team.talk.askKey && team.talk.project === project ? <AgentTalk key={project} team={team} talk={{ project, about: title }} agents={team.agentsOf({ project, section: '' })} /> : null),
   };
   const focusTask = focusRef ? tasks.find((t) => t.ref === focusRef) : undefined;
@@ -972,9 +991,10 @@ export function App() {
   const inboxDot = inboxAttention ? <span class="nav-dot" role="img" aria-label="Inbox needs setup" data-testid="inbox-dot" /> : null;
   /** @req FR:inbox-page/web.dot */
   const badge = (v: View) => (v === 'asks' && asks.total > 0 ? <span class="badge" aria-label={`${asks.total} open`}>{asks.total}</span> : v === 'inbox' ? inboxDot : null);
-  /** Each rail item carries its chord as a kbd, shown on hover and on the active item. @req FR:web-shell/nav.keys.hint */
-  const nav = () => RAIL.map((v) => (
-    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span><kbd>{HINT[v]}</kbd></button>
+  /** Each rail item names its chord in the tooltip; no key badge shows. @req FR:web-shell/nav.keys.hint @req FR:task-detail-design/rules.nokeys */
+  // The PR entry renders itself: absent only where the host has no board; the board loads at app start. @req FR:pr-page/nav.rail @req FR:pr-page/icon.absent @req FR:pr-page/nav.load
+  const nav = () => RAIL.map((v) => v === 'prs' ? <PrsNavItem key={v} api={api} active={view === v} label={LABEL[v]} hint={HINT[v]} onGo={() => go(v)} /> : (
+    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} title={`${LABEL[v]} (${HINT[v]})`} onClick={() => go(v)}><span class="tab-label">{LABEL[v]}{badge(v)}</span></button>
   ));
   return (
     <div class="shell">
@@ -983,14 +1003,14 @@ export function App() {
          * The brand is the mark plus Stack; the mode shows in it (`Stack [DEMO]` for a demo copy), the repo path only in its tooltip.
          * @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand
          */}
-        <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</div>
-        <button type="button" class="tab add" onClick={openCapture}>＋ New task <kbd>c</kbd></button>
+        <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}{/* @req FR:pr-page/icon.place */}<PrsButton api={api} where="rail" /></div>
+        <button type="button" class="tab add" title="New task (C)" onClick={openCapture}>＋ New task</button>
         {nav()}
-        {/* @req FR:pr-page/icon.place */}
-        <PrsButton api={api} />
         <div class="spacer" />
-        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette">Commands <kbd aria-hidden="true">⌘K</kbd></button>
-        <button type="button" class="tab" onClick={() => setHelp(true)}>Shortcuts <kbd>?</kbd></button>
+        {/* @req FR:settings/view.entry */}
+        <button type="button" class={`tab set-tab${view === 'settings' ? ' on' : ''}`} aria-current={view === 'settings' ? 'page' : undefined} title="Settings (g ,)" onClick={() => go('settings')}><span class="tab-label"><Gear />Settings</span></button>
+        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette" title="Commands (⌘K)">Commands</button>
+        <button type="button" class="tab" title="Shortcuts (?)" onClick={() => setHelp(true)}>Shortcuts</button>
         {/* @req FR:feedback-button/ui.icon */}
         <FeedbackButton />
         <div class="who">
@@ -1002,20 +1022,24 @@ export function App() {
       </nav>
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
-        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} compact /></div>
-        {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
+        <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} where="phone" /></div>
+        {phase === 'loading' && view !== 'asks' && view !== 'inbox' && view !== 'sessions' && view !== 'prs' && view !== 'settings' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} top={<PrisBlock ctl={prisSessions.pris} />} after={<SessionsBlock ctl={prisSessions.sessions} toast={toast} />} extraCount={prisSessions.sessions.inv?.needsYou.length ?? 0} />}
+        {/* @req FR:pr-page/nav.page */}
+        {view === 'prs' && <PrsPage api={api} toast={toast} />}
         {view === 'inbox' && <InboxView api={api} toast={toast} refresh={`${tick}|${asks.liveTick}`} onStatus={(r) => setInboxAttention(r.summary.attention)} />}
         {view === 'sessions' && <SessionsView s={sessions} enabled={agentsOn} pinsCtl={pinsCtl} team={team.team} projectRank={projectRank} />}
         {phase === 'ready' && view === 'today' && (
-          <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
+          <TodayView allDay={allDay(tmr?.events ?? events)} dayEvents={tmr?.events ?? events} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: !!tmr, toggle: () => void toggleTomorrow() }} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             message={{ name: (t) => { const a = taskAgent(t); return a ? displayName(a) : 'the agent'; }, open: (r) => { setComposeRef(r); setFocusRef(r); } }}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
-          chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} asks={nowAsks} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }}
+        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} done={!!nowTask && justDone.has(nowTask.task.ref)} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
+          chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} asks={nowAsks} cal={{ source: calSource }}
           onOpenAsks={() => go('asks')} />}
+        {/* Settings needs no task data: it shows while tasks load. @req FR:settings/view.route */}
+        {view === 'settings' && <SettingsView api={api} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }} updates={updates} onAccounts={() => void checkCalendar()} now={clockNow} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}
@@ -1110,6 +1134,12 @@ function Mark() {
   return <svg class="mark" viewBox="0 0 512 512" width="18" height="18" aria-hidden="true"><rect width="512" height="512" rx="113" fill="currentColor" opacity=".12" /><g fill="currentColor"><rect x="122" y="120" width="230" height="64" rx="22" opacity=".55" /><rect x="93" y="224" width="287" height="64" rx="22" opacity=".8" /><rect x="122" y="328" width="230" height="64" rx="22" /></g></svg>;
 }
 
+const GEAR = 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2-1.2L14.5 3h-4l-.4 2.6a7.5 7.5 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7.5 7.5 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z';
+/** The Settings gear in the rail footer. @req FR:settings/view.entry */
+function Gear() {
+  return <svg class="set-gear" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d={GEAR} fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>;
+}
+
 /** Line icons for the phone tab bar. @req FR:pwa/install.standalone */
 function TabIcon({ v }: { v: View | 'more' }) {
   const d: Record<string, string> = {
@@ -1122,6 +1152,7 @@ function TabIcon({ v }: { v: View | 'more' }) {
     projects: 'M4 6h16M4 12h16M4 18h10',
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
     more: 'M5 12h.01M12 12h.01M19 12h.01',
+    settings: GEAR,
   };
   return <svg class="tab-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={d[v]} fill="none" stroke="currentColor" stroke-width={v === 'more' ? 3 : 1.7} stroke-linecap="round" stroke-linejoin="round" /></svg>;
 }

@@ -2,7 +2,7 @@
  * Framework-neutral REST handler over the core. Pure (Request) -> Response; storage is injected.
  * @req FR:api/handler.@function
  */
-import { getDefaults, type StackConfig } from '../core/config';
+import { getDefaults, MAILBOX, type StackConfig } from '../core/config';
 import { cleanOverrides, daySchedule, dayScheduleOn, type ScheduleOverrides } from '../core/schedule';
 import {
   addProject, addTask, completeTask, nextTask, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
@@ -15,12 +15,15 @@ import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, rec
 import type { AuxFiles, Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
 import { sourceStatus, type CalendarProvider } from '../calendar';
+import { CalendarNotConnected } from '../calendar/accounts';
+import type { Connect } from '../graph/connect';
 import { ReportInvalid, type ReportStore } from '../core/reports';
 import type { Inventory } from '../core/session-inventory';
 import { PrisInvalid, type PriStore } from '../core/pris';
 import { blockedText, DECISIONS, MOVE_TO, QUEUE_OPS, type PrPriorityStore, type QueueOp } from '../core/pr-priority';
 import { LABELS, sameLabel, type PrRow } from '../core/pr-board';
 import type { PrBoardService } from './pr-board-service';
+import type { PrAuth } from './pr-page';
 import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write';
 import { QueueRefused, QueueUnavailable, type PrQueue } from './pr-queue';
 import { ITEM_OPS, LiveError, type ItemOp, type LiveStore } from '../core/live-lane';
@@ -30,7 +33,7 @@ import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handle
 import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
 import type { AgentRuns } from '../agents/runs';
-import { agentFor, listTeam } from '../core/agents';
+import { agentFor, listTeam, type ScannedAgent } from '../core/agents';
 import { agentPromptOptions, assignTask, listReviews, reviewTask, startAgentRun, taskThread } from '../agents/team';
 import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
@@ -63,6 +66,8 @@ export interface ApiDeps {
   reports?: ReportStore;
   /** Runs the Claude app session inventory; absent means GET /session-inventory is 404. @req FR:session-inventory/api.inventory */
   inventory?: () => Inventory;
+  /** Agents outside the content repo (other repos, user level); absent means the content repo team only. @req FR:agent-team/agent.team.scan */
+  agentScan?: () => Promise<ScannedAgent[]>;
   /** The owner's priorities store (~/.stack/pris.json); absent means /pris is 404. @req FR:session-inventory/api.pris.get */
   pris?: PriStore;
   /** The PR priority store (~/.stack/pr-priority.json); absent means /pr-priority is 404 and GET /agents PRs have priority null. @req FR:pr-priority/api.get */
@@ -83,10 +88,14 @@ export interface ApiDeps {
   mail?: Pick<MailProvider, 'createDraft'>;
   /** This machine's inbox sign-ins (Graph caches, GitHub); absent on the hosted app, which uses sync records only. `fresh` skips any cache. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
+  /** Agent delivery on this machine: per-message state for a row and the Claude sign-in; absent means /inbox/delivery is 404. @req FR:agent-delivery/state.api */
+  delivery?: { status(ref: string): Promise<unknown>; /** `{mode, login}` for Settings. @req FR:settings/agents.api */ summary?(): Promise<unknown> | unknown; login(): Promise<{ started: boolean; step?: string }> | { started: boolean; step?: string } };
   /** Files "Request this action" issues; absent means a Stack task instead. @req FR:inbox-page/action.request */
   issues?: IssueFiler;
   /** Today's meetings for the day plan; absent means no calendar. @req FR:day-inputs/api.calendar */
   calendar?: CalendarProvider;
+  /** In-app Connect for Microsoft accounts; absent (the Azure host) means every /connect route is 404. @req FR:connect-accounts/api.get */
+  connect?: Connect;
   /** Model for the AI daily brief (`claude -p`); absent means `GET /brief/summary` says not configured. @req FR:cos-view/brief.ai.route */
   brief?: ClaudeJson;
   /** The PR page board; absent means GET /prs is 404. @req FR:pr-page/api.get */
@@ -95,6 +104,8 @@ export interface ApiDeps {
   prWrites?: GitHubWrites;
   /** Changes the PR priority queue. @req FR:pr-page/api.queue-client */
   prQueue?: PrQueue;
+  /** The GitHub sign-in of a local host; absent means the board needs GITHUB_TOKEN and /prs/sign-in is 404. @req FR:pr-page/auth.state */
+  prAuth?: PrAuth;
   /** The desktop installer: version probe, update mode, restart. Absent means /version is 404. @req FR:devops-installer/version.get */
   app?: AppUpdater;
   /** The owner feedback store (~/.stack/feedback.jsonl); absent means POST /feedback is 404. @req FR:feedback-button/api.route */
@@ -195,7 +206,7 @@ const RESULT_BODY = {
   required: ['ref', 'outcome', 'summary'],
 };
 const INBOX_BODY = {
-  schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: INBOX_KINDS }, expect: { t: 'str', max: 2000, line: true } } satisfies Record<string, Spec>,
+  schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: INBOX_KINDS }, expect: { t: 'str', max: 2000, line: true }, agent: { t: 'str', max: 64, line: true } } satisfies Record<string, Spec>,
   required: ['ref', 'text'],
 };
 const CAL_Q: Record<string, Spec> = { from: { t: 'str', max: 40 }, to: { t: 'str', max: 40 } };
@@ -232,7 +243,7 @@ async function overridesOf(storage: unknown): Promise<{ value: ScheduleOverrides
   if (!f) return { value: {}, version: null };
   try { return { value: cleanOverrides(JSON.parse(f.content)), version: f.version }; } catch { return { value: {}, version: f.version, broken: true }; }
 }
-const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES } };
+const INBOX_Q: Record<string, Spec> = { project: { t: 'str', max: 200 }, state: { t: 'enum', values: INBOX_STATES }, agent: { t: 'str', max: 64 } };
 const HANDLED_BODY = { schema: { id: { t: 'str', required: true, max: 64, line: true, pattern: /^in-[0-9TZ]+-[0-9a-f]{4,}$/ }, note: { t: 'str', max: 500, line: true }, withdrawn: { t: 'bool' } } satisfies Record<string, Spec>, required: ['id'] };
 const ASK_PUT_BODY = {
   schema: {
@@ -279,6 +290,8 @@ const PR_REPO: Spec = { t: 'str', required: true, max: 140, pattern: /^[A-Za-z0-
 const PR_NUM: Spec = { t: 'int', min: 1, max: 9_999_999 };
 export const PR_QUEUE_OPS = ['top', 'up', 'down', 'move', 'add', 'pin', 'unpin', 'remove', 'undo'] as const;
 const PR_QUEUE_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: PR_QUEUE_OPS }, rank: { t: 'int', min: 1, max: 100 } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
+const PR_RESOLVE_BODY = { schema: { repo: PR_REPO, number: PR_NUM, thread: { t: 'str', required: true, max: 100, pattern: /^[A-Za-z0-9_=-]{1,100}$/ }, op: { t: 'enum', values: ['resolve', 'unresolve'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'thread', 'op'] };
+const PR_GET_Q: Record<string, Spec> = { refresh: { t: 'enum', values: ['1'] } };
 const PR_LABEL_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: ['add', 'remove'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
 const PR_ACK_BODY = {
   schema: { repo: PR_REPO, number: PR_NUM, thread: { t: 'str', required: true, max: 500, line: true, pattern: /^https:\/\/github\.com\/\S+$/ }, note: { t: 'str', required: true, max: 300, line: true }, post: { t: 'bool' }, text: { t: 'str', max: 4000 }, replyTo: { t: 'int', min: 1, max: Number.MAX_SAFE_INTEGER } } satisfies Record<string, Spec>,
@@ -353,10 +366,10 @@ function flatten(doc: Doc): TaskView[] {
   const out: TaskView[] = [];
   const walk = (ts: Task[], section: string, depth: number) => {
     for (const t of ts) {
-      if (t.text.trim() !== '') {
-        out.push({ ref: formatRef({ path: doc.path, line: t.line }), text: t.text, project: doc.name, section, done: t.checked, depth, notes: t.notes });
-      }
-      walk(t.children, section, depth + 1);
+      // An empty row is not listed and is not a level: depth counts listed ancestors, so a client never reads a child as another row's.
+      const listed = t.text.trim() !== '';
+      if (listed) out.push({ ref: formatRef({ path: doc.path, line: t.line }), text: t.text, project: doc.name, section, done: t.checked, depth, notes: t.notes });
+      walk(t.children, section, listed ? depth + 1 : depth);
     }
   };
   for (const s of doc.project.sections) walk(s.tasks, s.heading, 0);
@@ -415,6 +428,7 @@ const prView = (c: Ctx, s: PrPriorityStore) => { const q = s.read(); return { ..
 /** The PR page parts, or 404 where the host has no GitHub token. @req FR:pr-page/api.get */
 const boardOf = (c: Ctx): PrBoardService => { if (!c.deps.prBoard) throw new ApiError('not_found', 'No PR board on this host'); return c.deps.prBoard; };
 const writesOf = (c: Ctx): GitHubWrites => { if (!c.deps.prWrites) throw new ApiError('not_found', 'No GitHub writes on this host'); return c.deps.prWrites; };
+const authOf = (c: Ctx): PrAuth => { if (!c.deps.prAuth) throw new ApiError('not_found', 'No GitHub sign-in on this host'); return c.deps.prAuth; };
 const queueOf = (c: Ctx): PrQueue => { if (!c.deps.prQueue) throw new ApiError('conflict', 'PR priority queue is not installed'); return c.deps.prQueue; };
 /** GitHub writes only reach PRs on the owner's board, even with no repo allow-list. @req FR:pr-page/api.repos */
 async function onBoard(c: Ctx, pr: { repo: string; number: number }): Promise<PrRow> {
@@ -430,10 +444,24 @@ async function prQueueCall(fn: () => Promise<void>): Promise<void> {
 async function ghCall(fn: () => Promise<void>): Promise<void> {
   try { await fn(); } catch (e) {
     if (e instanceof GitHubWriteDenied) throw new ApiError('forbidden', e.message);
-    if (e instanceof Error && /^GitHub \d+$/.test(e.message)) throw new ApiError('conflict', e.message);
+    if (e instanceof Error && /^GitHub (\d+|graphql error)$/.test(e.message)) throw new ApiError('conflict', e.message);
     throw e;
   }
 }
+
+const DELIVERY_Q: Record<string, Spec> = { ref: { t: 'ref' } };
+const ACCOUNT: Spec = { t: 'str', max: 200, line: true, pattern: new RegExp(MAILBOX.source, 'i') };
+const CONNECT_START_BODY = { schema: { account: ACCOUNT, drafts: { t: 'bool' }, method: { t: 'enum', values: ['browser', 'device'] } } satisfies Record<string, Spec>, required: [] as string[] };
+const CONNECT_DRAFTS_BODY = { schema: { account: { ...ACCOUNT, required: true }, on: { t: 'bool' } } satisfies Record<string, Spec>, required: ['account', 'on'] };
+/** Remove also takes no account (or ''): an older sign-in file that names no account. */
+const CONNECT_REMOVE_BODY = { schema: { account: { t: 'str', max: 200, line: true, pattern: new RegExp('^(?:|' + MAILBOX.source.slice(1, -1) + ')$', 'i') } } satisfies Record<string, Spec>, required: [] as string[] };
+/** The connect service, owner only; 404 on a host without one. @req FR:connect-accounts/api.get */
+const connectOf = (c: Ctx): Connect => {
+  if (!c.deps.connect) throw new ApiError('not_found', 'Connect is not available on this host');
+  ownerOnly(c, 'Only the owner can connect accounts');
+  return c.deps.connect;
+};
+const lower = (s: unknown) => (typeof s === 'string' ? s.trim().toLowerCase() : undefined);
 
 const SOURCES_Q: Record<string, Spec> = { fresh: { t: 'enum', values: ['1', 'true'] } };
 /** Sources from the sync records, the config and (local host) this machine's probe. A failing probe reads as none. @req FR:inbox-page/api.sources @req FR:inbox-page/src.fresh */
@@ -502,7 +530,7 @@ export const ROUTES: Route[] = [
       const blocks = q.get('blocks') ?? 'now';
       // readQuery checks names only, not enum values: this check is the only one for `blocks`.
       if (blocks !== 'now' && blocks !== 'any') throw invalid([{ field: 'blocks', message: 'Must be now or any' }]);
-      const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}) }));
+      const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}), ...(t.stale ? { stale: true } : {}) }));
       return json(200, { items });
     },
   },
@@ -696,10 +724,12 @@ export const ROUTES: Route[] = [
     method: 'POST', doc: '/inbox', name: 'inbox.send', body: INBOX_BODY,
     async run(c) {
       noQuery(c);
-      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; kind?: InboxKind; expect?: string }>(await readBody(c.req), INBOX_BODY.schema, INBOX_BODY.required);
+      const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; kind?: InboxKind; expect?: string; agent?: string }>(await readBody(c.req), INBOX_BODY.schema, INBOX_BODY.required);
       // Only the owner speaks in the inbox; an agent token must never write words in the owner's voice.
       if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can write to an agent inbox');
-      return json(201, await sendToInbox(c.life, b.ref, b.text, b.kind ?? 'reply', b.expect));
+      // `agent`: the agent the owner picked in Now; only a runnable team member. @req FR:product-reset/ui.thread
+      if (b.agent !== undefined && !(await listTeam(c.life)).some((a) => a.slug === b.agent)) throw new ApiError('invalid', 'agent is not on the team', [{ field: 'agent', message: 'Not on the team' }]);
+      return json(201, await sendToInbox(c.life, b.ref, b.text, b.kind ?? 'reply', b.expect, undefined, b.agent));
     },
   },
   {
@@ -707,8 +737,8 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/inbox', name: 'inbox.list', query: INBOX_Q,
     async run(c) {
       const q = readQuery(c.url, Object.keys(INBOX_Q));
-      const v = validate<{ project?: string; state?: (typeof INBOX_STATES)[number] }>(Object.fromEntries(q.entries()), INBOX_Q, []);
-      const items = await listInbox(c.life, { project: v.project, state: v.state });
+      const v = validate<{ project?: string; state?: (typeof INBOX_STATES)[number]; agent?: string }>(Object.fromEntries(q.entries()), INBOX_Q, []);
+      const items = await listInbox(c.life, { project: v.project, state: v.state, agent: v.agent });
       const rows = await currentRows(c.life, items);
       return json(200, { items: items.map((e) => { const row = rows.get(e.id); return { ...e, ref: apiRef(e.ref), ...(row ? { row: apiRef(row) } : {}) }; }) });
     },
@@ -899,17 +929,22 @@ export const ROUTES: Route[] = [
   },
   {
     // PR titles and blockers are the owner's: owner only. @req FR:pr-page/api.get @req FR:pr-page/act.owner
-    method: 'GET', doc: '/prs', name: 'prs.get',
+    method: 'GET', doc: '/prs', name: 'prs.get', query: PR_GET_Q,
     async run(c) {
-      noQuery(c);
+      // `refresh=1`: the owner tapped Refresh; poll GitHub first. @req FR:pr-page/api.get @req FR:pr-page/live.poll
+      const refresh = readQuery(c.url, Object.keys(PR_GET_Q)).get('refresh');
+      if (refresh !== null && refresh !== '1') throw invalid([{ field: 'refresh', message: 'Must be 1' }]);
       ownerOnly(c, 'Only the owner can read the PR board');
       // No token: say so with 200, so the page hides the icon without a failing request. @req FR:pr-page/icon.absent
       if (!c.deps.prBoard) return json(200, { off: true });
+      // Signed out: one honest state, never an empty board. @req FR:pr-page/auth.state
+      if (c.deps.prAuth && !(await c.deps.prAuth.ready())) return json(200, { auth: await c.deps.prAuth.status() });
+      if (refresh) await boardOf(c).refresh();
       return json(200, await boardOf(c).get());
     },
   },
   {
-    // @req FR:pr-page/api.queue @req FR:pr-page/act.queue
+    // @req FR:pr-page/api.queue @req FR:pr-page/pin.toggle
     method: 'POST', doc: '/prs/queue', name: 'prs.queue', body: PR_QUEUE_BODY,
     async run(c) {
       noQuery(c);
@@ -926,7 +961,9 @@ export const ROUTES: Route[] = [
           case 'top': case 'up': case 'down': return q.move(ref, b.op);
           case 'move': return q.move(ref, b.rank ?? 1);
           case 'add': return q.add(ref);
-          case 'pin': return q.pin(ref);
+          // Pin adds a PR that is not queued first: the pinned order is the queue order. @req FR:pr-page/pin.toggle
+          // A failed pin after the add takes the add back, so the queue never keeps a PR the owner did not ask for.
+          case 'pin': return cur === null ? q.add(ref).then(() => q.pin(ref).catch(async (e: unknown) => { await q.remove(ref).catch(() => undefined); throw e; })) : q.pin(ref);
           case 'unpin': return q.unpin(ref);
           case 'remove': return q.remove(ref);
           default: return q.undo();
@@ -938,7 +975,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // The label is always Autopilot: the owner's click is the human act. @req FR:pr-page/api.label @req FR:pr-page/act.autopilot @req FR:pr-page/api.repos
+    // The label is always Autopilot: the owner's click is the human act. @req FR:pr-page/api.label @req FR:pr-page/api.repos
     method: 'POST', doc: '/prs/label', name: 'prs.label', body: PR_LABEL_BODY,
     async run(c) {
       noQuery(c);
@@ -954,7 +991,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // Records the owner's ack; posting to GitHub is opt-in and AI-prefixed. @req FR:pr-page/api.ack @req FR:pr-page/act.accept
+    // Records the owner's ack; posting to GitHub is opt-in and AI-prefixed. @req FR:pr-page/api.ack
     method: 'POST', doc: '/prs/ack', name: 'prs.ack', body: PR_ACK_BODY,
     async run(c) {
       noQuery(c);
@@ -974,7 +1011,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // @req FR:pr-page/api.rec @req FR:pr-page/act.rec
+    // @req FR:pr-page/api.rec
     method: 'POST', doc: '/prs/recs/{id}', name: 'prs.rec', body: PRS_REC_BODY,
     async run(c) {
       noQuery(c);
@@ -987,6 +1024,41 @@ export const ROUTES: Route[] = [
       // `accept`, `edit`, `reject` are the `stack pr-pri` decisions. @req FR:pr-page/api.queue-client
       await prQueueCall(() => (b.decision === 'accept' ? q.accept(id) : b.decision === 'edit' ? q.edit(id, { reason: b.reason!, ...(b.rank ? { rank: b.rank } : {}), ...(b.note ? { note: b.note } : {}) }) : q.reject(id, b.reason!)));
       return json(200, { ok: true });
+    },
+  },
+  {
+    // Resolve or reopen a sign-off thread of a PR on the board. @req FR:pr-page/api.resolve @req FR:pr-page/detail.signoff @req FR:pr-page/api.repos
+    method: 'POST', doc: '/prs/resolve', name: 'prs.resolve', body: PR_RESOLVE_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can resolve a thread');
+      const b = validate<{ repo: string; number: number; thread: string; op: 'resolve' | 'unresolve' }>(await readBody(c.req), PR_RESOLVE_BODY.schema, PR_RESOLVE_BODY.required);
+      const w = writesOf(c);
+      const row = await onBoard(c, b);
+      if (!boardOf(c).hasThread?.(row.url, b.thread)) throw new ApiError('not_found', 'No such thread on this PR');
+      await ghCall(() => w.resolveThread(b, b.thread, b.op === 'resolve'));
+      // Resolving does not always change updatedAt: read this PR's threads again.
+      await c.deps.prBoard?.refresh(row.url);
+      return json(200, { ok: true, op: b.op });
+    },
+  },
+  {
+    // The sign-in session: a code and the device link, never a token. @req FR:pr-page/auth.signin
+    method: 'GET', doc: '/prs/sign-in', name: 'prs.signin.get',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can sign in to GitHub');
+      const a = authOf(c);
+      return json(200, a.session() ?? { state: (await a.ready()) ? 'done' : 'none' });
+    },
+  },
+  {
+    // Runs gh auth login --web (the GitHub device flow); one at a time. @req FR:pr-page/auth.signin
+    method: 'POST', doc: '/prs/sign-in', name: 'prs.signin',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can sign in to GitHub');
+      return json(200, await authOf(c).start());
     },
   },
   {
@@ -1030,6 +1102,66 @@ export const ROUTES: Route[] = [
       const src = await inboxSources(c, false);
       // Fresh syncs say nothing about an item file that is missing or unreadable: no zero claim off that. @req FR:inbox-page/src.summary
       return json(200, { items, actions: INBOX_ACTIONS, ...src, summary: { ...src.summary, canClaimZero: src.summary.canClaimZero && verified } });
+    },
+  },
+  {
+    // @req FR:connect-accounts/api.get
+    method: 'GET', doc: '/connect', name: 'connect.get',
+    async run(c) {
+      noQuery(c);
+      const k = connectOf(c);
+      return json(200, { setup: { clientId: k.hasClientId() }, accounts: await k.accounts() });
+    },
+  },
+  {
+    // Runs the one-time app registration script; state codes only. @req FR:connect-accounts/api.setup
+    method: 'POST', doc: '/connect/setup', name: 'connect.setup',
+    async run(c) {
+      noQuery(c);
+      return json(200, await connectOf(c).setup());
+    },
+  },
+  {
+    // @req FR:connect-accounts/api.start
+    method: 'POST', doc: '/connect/sign-in', name: 'connect.start', body: CONNECT_START_BODY,
+    async run(c) {
+      noQuery(c);
+      const k = connectOf(c);
+      const b = validate<{ account?: string; drafts?: boolean; method?: 'browser' | 'device' }>(await readBody(c.req), CONNECT_START_BODY.schema, CONNECT_START_BODY.required);
+      if (!k.hasClientId()) throw new ApiError('conflict', 'One-time setup needed: run setup first');
+      const account = lower(b.account);
+      return json(201, await k.start({ ...(b.drafts !== undefined ? { drafts: b.drafts } : {}), ...(b.method ? { method: b.method } : {}), ...(account ? { account } : {}) }));
+    },
+  },
+  {
+    // @req FR:connect-accounts/api.poll
+    method: 'GET', doc: '/connect/sign-in/{id}', name: 'connect.poll',
+    async run(c) {
+      noQuery(c);
+      const s = connectOf(c).get(c.params[0]);
+      if (!s) throw new ApiError('not_found', 'Sign-in not found');
+      return json(200, s);
+    },
+  },
+  {
+    // @req FR:connect-accounts/api.drafts
+    method: 'POST', doc: '/connect/drafts', name: 'connect.drafts', body: CONNECT_DRAFTS_BODY,
+    async run(c) {
+      noQuery(c);
+      const k = connectOf(c);
+      const b = validate<{ account: string; on: boolean }>(await readBody(c.req), CONNECT_DRAFTS_BODY.schema, CONNECT_DRAFTS_BODY.required);
+      return json(200, await k.setDrafts(lower(b.account)!, b.on));
+    },
+  },
+  {
+    // @req FR:connect-accounts/api.remove
+    method: 'POST', doc: '/connect/remove', name: 'connect.remove', body: CONNECT_REMOVE_BODY,
+    async run(c) {
+      noQuery(c);
+      const k = connectOf(c);
+      const b = validate<{ account?: string }>(await readBody(c.req), CONNECT_REMOVE_BODY.schema, CONNECT_REMOVE_BODY.required);
+      await k.remove(lower(b.account) ?? '');
+      return json(200, { ok: true });
     },
   },
   {
@@ -1158,6 +1290,8 @@ export const ROUTES: Route[] = [
         const items = await cal.events(new Date(from).toISOString(), new Date(to).toISOString());
         return json(200, { configured: true, items, source: sourceStatus(cal, true, at()) });
       } catch (e) {
+        // No account and no feed yet: not connected, not an error. @req FR:connect-accounts/cal.fallback
+        if (e instanceof CalendarNotConnected) return json(200, { configured: false, items: [], source: sourceStatus(undefined, false, at()) });
         c.deps.onError?.(e);
         return json(200, { configured: true, items: [], error: 'Calendar unavailable', source: sourceStatus(cal, false, at()) });
       }
@@ -1172,6 +1306,33 @@ export const ROUTES: Route[] = [
       if (isOwner(c.req)) throw new ApiError('forbidden', 'Only an agent replies as an agent');
       const who = c.token?.name ?? caller(c.req).actor;
       return json(201, await replyFromAgent(c.life, b.ref, b.text, who, b.expect));
+    },
+  },
+  {
+    // @req FR:agent-delivery/state.api: owner only; 404 where this host does not deliver.
+    method: 'GET', doc: '/inbox/delivery', name: 'inbox.delivery', query: DELIVERY_Q,
+    async run(c) {
+      const q = readQuery(c.url, Object.keys(DELIVERY_Q));
+      ownerOnly(c, 'Only the owner can read delivery state');
+      if (!c.deps.delivery) throw new ApiError('not_found', 'Delivery is not available on this host');
+      // No ref: the summary Settings shows. @req FR:settings/agents.api
+      if (q.get('ref') === null) {
+        if (!c.deps.delivery.summary) throw new ApiError('not_found', 'Delivery summary is not available on this host');
+        return json(200, await c.deps.delivery.summary());
+      }
+      const ref = parseRef(q.get('ref'));
+      if (!ref) throw invalid([{ field: 'ref', message: 'Must be project:line' }]);
+      return json(200, await c.deps.delivery.status(formatRef(ref)));
+    },
+  },
+  {
+    // @req FR:agent-delivery/login.signin: starts `claude auth login` on this machine; owner only.
+    method: 'POST', doc: '/inbox/delivery/login', name: 'inbox.deliveryLogin',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can sign in');
+      if (!c.deps.delivery) throw new ApiError('not_found', 'Delivery is not available on this host');
+      return json(200, await c.deps.delivery.login());
     },
   },
   {
@@ -1196,7 +1357,7 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/team', name: 'team.list', query: TEAM_Q,
     async run(c) {
       const q = validate<{ project?: string; section?: string }>(Object.fromEntries(readQuery(c.url, Object.keys(TEAM_Q)).entries()), TEAM_Q, []);
-      const team = await listTeam(c.life);
+      const team = await listTeam(c.life, c.deps.agentScan ? await c.deps.agentScan().catch((e) => { c.deps.onError?.(e); return []; }) : []);
       return json(200, { items: q.project ? agentFor(team, q.project, q.section) : team });
     },
   },

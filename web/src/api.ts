@@ -7,7 +7,7 @@ import type { RankItem } from './home';
 import type { NeedItem } from './needs';
 import type { Pri, PrisFile } from './pris';
 import type { Inventory } from './inventory';
-import type { PrBoard } from './prs';
+import type { PrAuthState, PrBoard, SignInSession } from './prs';
 import type { ReviewItem, TeamAgent } from './team';
 import type { Thread } from './thread';
 import type { UpdateMode, VersionState } from './update';
@@ -60,8 +60,13 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     putPris: (rev: number, pris: Pri[]) => call<PrisFile>('/pris', { rev, pris }),
     /** The Claude app session inventory. @req FR:pris-sessions-ui/sessions.list */
     inventory: () => call<Inventory>('/session-inventory'),
-    /** The PR board; 404 where the host has no GitHub token. @req FR:pr-page/api.get */
-    prs: () => call<PrBoard>('/prs'),
+    /** The PR board; 404 where the host has no GitHub token. `fresh` polls GitHub first (Refresh). @req FR:pr-page/api.get */
+    prs: (fresh = false) => call<PrBoard | { off: true } | { auth: PrAuthState }>(fresh ? '/prs?refresh=1' : '/prs'),
+    /** Resolve or reopen a review thread. @req FR:pr-page/api.resolve */
+    prResolve: (repo: string, number: number, thread: string, op: 'resolve' | 'unresolve') => call<{ ok: true; op: string }>('/prs/resolve', { repo, number, thread, op }),
+    /** @req FR:pr-page/auth.signin */
+    prSignIn: () => call<SignInSession>('/prs/sign-in', {}),
+    prSignInState: () => call<SignInSession>('/prs/sign-in'),
     /** @req FR:pr-page/api.queue */
     prQueue: (repo: string, number: number, op: 'top' | 'up' | 'down' | 'move' | 'add' | 'pin' | 'unpin' | 'remove' | 'undo', rank?: number) => call<{ rank: number | null; was: number | null; pinned: boolean }>('/prs/queue', { repo, number, op, ...(rank ? { rank } : {}) }),
     /** @req FR:pr-page/api.label */
@@ -96,13 +101,27 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     calendar: (from: string, to: string) => call<{ configured: boolean; items: CalEvent[]; error?: string; source?: unknown }>(`/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     agents: async () => (await call<{ items: Agent[] }>('/agents')).items,
     inbox: async () => (await call<{ items: InboxItem[] }>('/inbox')).items,
-    send: (ref: string, text: string, kind: 'reply' | 'decision' | 'instruction', expect?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}) }),
+    /** `agent`: the slug of the agent picked in Now. @req FR:product-reset/ui.thread */
+    send: (ref: string, text: string, kind: 'reply' | 'decision' | 'instruction', expect?: string, agent?: string) => call<{ id: string; path: string }>('/inbox', { ref, text, kind, ...(expect !== undefined ? { expect } : {}), ...(agent ? { agent } : {}) }),
+    /** Delivery state of the row's messages; 404 on hosts that do not deliver. @req FR:agent-delivery/state.api */
+    delivery: (ref: string) => call<import('./delivery').DeliveryInfo>(`/inbox/delivery?ref=${encodeURIComponent(ref)}`),
+    /** Starts the Claude sign-in on the host. @req FR:agent-delivery/login.signin */
+    deliveryLogin: () => call<{ started: boolean; step?: string }>('/inbox/delivery/login', {}),
+    /** Delivery mode and Claude sign-in for Settings; 404 on hosts that do not deliver. @req FR:settings/agents.api */
+    deliverySummary: () => call<import('./settings').DeliverySummary>('/inbox/delivery'),
     /** @req FR:agent-inbox/api.handle */
     handled: (id: string, note?: string, withdrawn?: boolean) => call<{ changed: boolean }>('/inbox/handled', { id, ...(note ? { note } : {}), ...(withdrawn ? { withdrawn } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
     /** The Inbox page: all mail, unread Teams and Slack. @req FR:inbox-page/api.read */
     inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] } & Partial<import('./inbox').SourcesReply>>('/inbox-items'),
+    /** In-app Connect for Microsoft accounts; the server runs every step. @req FR:connect-accounts/api.get */
+    connect: () => call<import('./connect').ConnectInfo>('/connect'),
+    connectSetup: () => call<{ state: import('./connect').SetupState }>('/connect/setup', {}),
+    connectStart: (body: { account?: string; drafts?: boolean; method?: 'browser' | 'device' }) => call<import('./connect').ConnectSession>('/connect/sign-in', body),
+    connectPoll: (id: string) => call<import('./connect').ConnectSession>(`/connect/sign-in/${encodeURIComponent(id)}`),
+    connectDrafts: (account: string, on: boolean) => call<import('./connect').ConnectSession | { ok: true }>('/connect/drafts', { account, on }),
+    connectRemove: (account: string) => call<{ ok: true }>('/connect/remove', { account }),
     /** Each inbox source and the summary; `fresh` asks a local host to probe again. @req FR:inbox-page/api.sources */
     inboxSources: (fresh = false) => call<import('./inbox').SourcesReply>(`/inbox-sources${fresh ? '?fresh=1' : ''}`),
     /** Runs one action; never sends. @req FR:inbox-page/api.act */

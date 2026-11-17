@@ -86,6 +86,8 @@ function lazyStorage(open: () => Promise<Storage>, now: () => number, cooldownMs
     writeAux: async (path, content, opts) => needAux(await get()).writeAux(path, content, opts),
     sync: async () => { const s = (await get()) as { sync?: () => Promise<void> }; if (s.sync) await s.sync(); },
     rev: async () => { const s = (await get()) as { rev?: () => Promise<string> }; return s.rev ? s.rev() : null; },
+    // @req FR:storage-git/git.activity: history passes through when the adapter has it
+    lineActivity: async (path) => (await (await get()).lineActivity?.(path)) ?? [],
   };
 }
 

@@ -1,7 +1,8 @@
 // @req FR:now-screen/now.one @req FR:now-screen/now.why @req FR:now-screen/now.empty
 import { describe, expect, it } from 'vitest';
 import { homeOf, type RankItem } from '../src/home';
-import { agentMark, foldLines, nowOf, tellThread, TELL_MAX, whyLine, WHY_MAX } from '../src/nowscreen';
+import { readFileSync } from 'node:fs';
+import { agentMark, DONE_MS, foldLines, nowOf, tellThread, TELL_MAX, whyLine, WHY_MAX } from '../src/nowscreen';
 import { foldSubtasks, type ThreadItem } from '../src/thread';
 import type { Project, Task } from '../src/types';
 
@@ -78,5 +79,16 @@ describe('agentMark', () => {
     expect(agentMark('Ship it 🟠')).toBe('🪄 Ship it 🟠');
     expect(agentMark('🙋 Ship it 🟠')).toBe('🪄 Ship it 🟠');
     expect(agentMark('Ship 🙋 it')).toBe('🪄 Ship it');
+  });
+});
+
+// @req FR:product-reset/ui.done @req FR:product-reset/ia.now
+describe('Done on Now', () => {
+  it('holds the check for 400 ms before the next task shows', () => {
+    expect(DONE_MS).toBe(400);
+  });
+  it('plays no animation with reduced motion', () => {
+    const css = readFileSync(new URL('../src/nowscreen.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/prefers-reduced-motion: reduce\)[^}]*\.now-card\.done-anim/);
   });
 });

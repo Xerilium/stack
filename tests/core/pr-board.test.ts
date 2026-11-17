@@ -36,7 +36,7 @@ describe('stateOf: the BLOCKED rule (owner me only for Michael-only gates)', () 
   });
   it('3. my own hold on an open thread blocks on me', () => {
     const s = stateOf(pr({ threads: [{ resolved: false, lastAuthor: 'flanakin', lastBody: 'Hold until I test it live', url: 'u' }] }), ctx());
-    expect(s).toMatchObject({ owner: 'me', blocker: 'Hold: Hold until I test it live' });
+    expect(s).toMatchObject({ owner: 'me', blocker: 'Sign-off: Hold until I test it live' });
   });
   it('4. a workflow run that needs approval is an unblock', () => {
     expect(stateOf(pr({ checks: [{ name: 'build', state: 'action' }] }), ctx())).toMatchObject({ owner: 'me', bucket: 'unblock', blocker: 'Approve the workflow run' });
@@ -97,9 +97,9 @@ it('bucketOf: access, approval, secrets, billing, deploy, prod, runner admin are
 
 // @req FR:pr-page/group.@function
 describe('groupOf', () => {
-  it('paused, blocked, processing, waiting, pending, null', () => {
+  it('paused, processing (Autopilot, even when it needs me), waiting, pending, null', () => {
     expect(groupOf(pr({ labels: ['Status: ⏸️ Paused', 'Status: 🤖 Autopilot'] }), ctx())).toBe('paused');
-    expect(groupOf(pr({ labels: ['Status: 🤖 Autopilot', 'Needs: Attention 👋'] }), ctx())).toBe('blocked');
+    expect(groupOf(pr({ labels: ['Status: 🤖 Autopilot', 'Needs: Attention 👋'] }), ctx())).toBe('processing');
     expect(groupOf(pr(), ctx())).toBe('processing');
     expect(groupOf(pr({ author: 'roland', assignees: ['FLANAKIN'] }), ctx())).toBe('processing');
     expect(groupOf(pr({ author: 'roland', labels: [], requested: ['flanakin'] }), ctx())).toBe('waiting');
@@ -142,14 +142,14 @@ describe('buildRows', () => {
     ], ctx({ ranks: new Map([['https://github.com/xerilium/stack/pull/7', 1]]) }));
     expect(rows.map((r) => r.number)).toEqual([5, 4, 3, 2, 7, 6, 1]);
     const by = new Map(rows.map((r) => [r.number, r]));
-    expect(by.get(5)).toMatchObject({ group: 'blocked', bucket: 'decide', project: 'allyte' });
+    expect(by.get(5)).toMatchObject({ group: 'processing', bucket: 'decide', project: 'allyte' });
     expect(by.get(4)).toMatchObject({ group: 'pending', bucket: 'review' });
     expect(by.get(6)).toMatchObject({ group: 'pending', draft: true });
     expect(by.get(6)!.bucket).toBeUndefined();
     expect(by.get(3)).toMatchObject({ group: 'waiting', bucket: 'approve', project: 'ftk' });
     expect(by.get(2)).toMatchObject({ group: 'processing', healthy: true, rank: null, ci: 'passing', autopilot: true });
     expect(by.get(7)!.rank).toBe(1);
-    expect(countRows(rows)).toEqual({ blocked: 1, waiting: 1, processing: 3, pending: 2, paused: 0 });
+    expect(countRows(rows)).toEqual({ waiting: 1, processing: 4, pending: 2, paused: 0 });
     expect(footerOf(rows, 2)).toEqual({ running: 2, waiting: 3, parked: 1 });
   });
   it('projectOfRepo', () => {

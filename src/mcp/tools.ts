@@ -59,7 +59,7 @@ const obj = (body: unknown): Record<string, unknown> => (typeof body === 'object
 /** @req FR:mcp-server/tools.list @req FR:mcp-server/tools.mutate @req FR:mcp-server/tools.next @req FR:mcp-server/tools.list-tool @req FR:ai-triage-assist/mcp.tools @req FR:ai-triage-assist/mcp.actor */
 export const TOOLS: ToolDef[] = [
   { name: 'next', route: 'next', method: 'GET', path: '/next', props: {}, query: { fields: 'ref,text,project,score' },
-    description: 'Top-scored open task.',
+    description: "Top-scored open task in the owner's queue (agent rows are left out).",
     reply: (b) => {
       const t = obj(obj(b).task);
       return Object.keys(t).length ? JSON.stringify({ ref: t.ref, text: t.text, project: t.project, score: t.score }) : 'none';

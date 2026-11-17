@@ -209,16 +209,24 @@ describe('claude agent path', () => {
 describe('parseClaudeAgent', () => {
   it('reads frontmatter and the H1 as the name, the description as the role, the body as the prompt', () => {
     const a = parseClaudeAgent('cos', COS_CLAUDE);
-    expect(a).toMatchObject({ slug: 'cos', name: 'CoS', role: 'Chief of Staff', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash'], scope: [], mode: 'ad-hoc' });
+    expect(a).toMatchObject({ slug: 'cos', name: 'Chief of Staff', role: 'Chief of Staff', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash'], scope: [], mode: 'ad-hoc' });
     expect(a.prompt).toBe("# CoS: Chief of Staff\n\nYou are Michael's Chief of Staff.");
+    expect(a.aliases).toEqual(['CoS']);
+    expect(parseClaudeAgent('lead', '# Team Captain: Project Coordinator\n')).toMatchObject({ name: 'Project Coordinator', aliases: ['Team Captain'] });
+    expect(parseClaudeAgent('lead', '# Project Coordinator\n').aliases).toBeUndefined();
     const b = parseClaudeAgent('allyte-cos', ALLYTE_CLAUDE);
     expect(b).toMatchObject({ name: 'Allyte CoS', role: 'Allyte sub-CoS (solo)', reportsTo: 'cos', scope: ['allyte'], mode: 'long-running' });
     const c = parseClaudeAgent('plain', 'Just a prompt.\n');
-    expect(c).toMatchObject({ name: 'plain', prompt: 'Just a prompt.', scope: [] });
+    expect(c).toMatchObject({ name: 'Plain', prompt: 'Just a prompt.', scope: [] });
+    expect(parseClaudeAgent('fh-release-manager', '---\nname: fh-release-manager\n---\n').name).toBe('FH Release Manager');
+    expect(parseClaudeAgent('sre', '---\nname: sre\n---\n').name).toBe('SRE');
+    expect(parseClaudeAgent('focus-cos', '---\nname: focus-cos\n---\n').name).toBe('Focus CoS');
+    expect(parseClaudeAgent('ask-me', '---\nname: ask-me\n---\n').name).toBe('Ask Me');
+    expect(parseClaudeAgent('constructor', '---\nname: constructor\n---\n').name).toBe('Constructor');
     const d = parseClaudeAgent('x', '---\nname: x\ndescription: ' + 'word '.repeat(40) + '\n---\n');
     expect(d.role!.length).toBeLessThanOrEqual(80);
     expect(parseClaudeAgent('y', '---\nname: y\n---\n# Y\n').name).toBe('Y');
-    expect(parseClaudeAgent('z', '---\nname: z\n---\nRun this:\n\n```sh\n# a comment\n```\n').name).toBe('z'); // a `#` inside the body is not the title
+    expect(parseClaudeAgent('z', '---\nname: z\n---\nRun this:\n\n```sh\n# a comment\n```\n').name).toBe('Z'); // the slug as words; a `#` inside the body is not the title
     // YAML block scalars, wrapped strings and `- item` lists fold onto their key.
     const e = parseClaudeAgent('x', '---\nname: x\ndescription: >\n  Stack lead.\n  Spec first.\ntools:\n  - Read\n  - Grep\nmodel: "opus"\n---\n');
     expect(e).toMatchObject({ role: 'Stack lead', tools: ['Read', 'Grep'], model: 'opus' });
@@ -258,7 +266,7 @@ describe('team with claude files', () => {
       ['sweep-manager', 'metadata', ['flantastic-4'], 'cos'],
       ['pr-sweep-worker-f4-music', 'metadata', ['flantastic-4'], 'cos'],
     ]);
-    expect(team[2]).toMatchObject({ name: 'CoS', defined: true, projects: ['allyte', 'flantastic-4'], model: 'sonnet' });
+    expect(team[2]).toMatchObject({ name: 'Chief of Staff', defined: true, projects: ['allyte', 'flantastic-4'], model: 'sonnet' });
     expect(team[1].defined).toBe(true);
     // A project line naming its own `🧰 CoS` merges into the roll-up and never narrows it.
     await s2write(storage, 'tasks/finops-toolkit.md', '# FTK\n\n- **Agents:**\n  - `🧰 CoS` — prioritizes FTK\n\n## Active\n\n- [ ] z\n');

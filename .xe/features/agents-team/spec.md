@@ -21,9 +21,9 @@ The org tree with every session under every agent is noisy. The owner keeps one 
 
 ### FR:chart: My team chart
 
-- **FR:chart.primary** (P1): A primary agent is the roll-up, or an agent with a definition file that covers a project or has a report. Metadata-only agents and workers with no scope are not primary
-- **FR:chart.tree** (P1): `orgChart` returns the primary agents as a tree by `reportsTo`, the roll-up first. A primary agent whose manager is not primary moves under its nearest primary ancestor, else it is a root. Siblings follow project priority, then team order. A cycle never recurses
-- **FR:chart.card** (P1): Each agent is one card with its own border and gap: name, role, project chips, a state dot (needs you, running) and the chat count. Each card is one button; clicking it selects the agent
+- **FR:chart.primary** (P1): Every team agent is on the chart (the whole team across all projects, `FR:agent-team/agent.team.scan`): files, scanned repos, user level and project `Agents` lines
+- **FR:chart.tree** (P1): `orgChart` returns the team as a tree by `reportsTo` (an agent without one reports by project, `FR:agent-team/agent.team.reports`), the roll-up first. An agent whose manager is missing is a root. Siblings follow project priority, then team order. A cycle never recurses
+- **FR:chart.card** (P1): Each agent is one card with its own border and gap: avatar (Fluent Emoji when `icon` is set, else a monogram), display name, role (hidden when it equals the name), project chips (`home` when the scope has none), a status (needs you, running, idle with chats, none) and the chat count. Each card is one button; clicking it selects the agent
 - **FR:chart.layout** (P1): At 720px and wider the chart is a top-down tree with connector lines; below 720px it is an indented list with a left rail. No horizontal page scroll at 375px
 - **FR:chart.keys** (P2): `j`/`k` or arrows move the selection through the chart in paint order
 
@@ -36,6 +36,6 @@ The org tree with every session under every agent is noisy. The owner keeps one 
 
 ### FR:other: Other sessions
 
-- **FR:other.hidden** (P1): By default no session of a non-primary agent or of no agent appears. `otherSessions` returns every session not matched to a primary agent
+- **FR:other.hidden** (P1): My team lists every agent. `otherSessions` returns every session matched to no agent
 - **FR:other.toggle** (P1): A two-button toggle `My team` / `Other sessions` switches the page. The choice survives a reload (existing `stack.agents.group` key: `team` is My team, anything else is Other sessions)
 - **FR:other.list** (P1): Other sessions is the project-grouped list (existing rows, drawer and pins). Without a team the page shows this list only

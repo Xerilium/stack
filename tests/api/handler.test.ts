@@ -289,6 +289,13 @@ describe('list and get', () => {
     const r = await m.call('GET', '/api/tasks?fields=ref,depth,notes');
     expect(Object.keys(r.json.items[0])).toEqual(['ref', 'depth', 'notes']);
   });
+  // @req FR:api/routes.tasks
+  it('depth skips an empty row, so its children never read as an earlier row\'s', async () => {
+    const m = mk();
+    await m.storage.write('tasks/x.md', '# X\n\n## 🔄 Active\n\n- [ ] Root A\n  - [ ] Child A\n- [ ] \n  - [ ] Child of empty\n');
+    const r = await m.call('GET', '/api/tasks?fields=text,depth&limit=200');
+    expect(r.json.items.map((t: { text: string; depth: number }) => [t.text, t.depth])).toEqual([['Root A', 0], ['Child A', 1], ['Child of empty', 0]]);
+  });
   it('gets one task; 404 on non-task line', async () => {
     const m = mk();
     await seed(m.call);

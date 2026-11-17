@@ -64,6 +64,28 @@ describe('stack rank --explain', () => {
     expect(b.items[0].text).toContain('0.3.4');
     expect(b.items[0].parts.unblock).toBe(4000);
     expect(b.truth.find((t: { item: { project: string } }) => t.item.project === 'catalyst').status).toBe('ranked');
-    expect(stack(d, 'rank', '--explain', '--now', NOW).code).toBe(2);
+    // the stack engine explains too (FR:task-lifecycle/rank.explain)
+    expect(stack(d, 'rank', '--explain', '--now', NOW).code).toBe(0);
+  });
+});
+
+describe('stack rank: owner queue and stale', () => {
+  // @req FR:task-lifecycle/rank.stale @req FR:task-lifecycle/rank.explain @req FR:task-lifecycle/rank.owner @req FR:api/routes.rank
+  it('flags a row overdue 3+ days with no commit in 3+ days, explains why, and drops agent rows', () => {
+    const d = repo();
+    const old = { ...ENV, GIT_AUTHOR_DATE: '2026-11-01T12:00:00Z', GIT_COMMITTER_DATE: '2026-11-01T12:00:00Z' };
+    const add = (text: string, env: NodeJS.ProcessEnv) => spawnSync('node', [join(build, 'cli/index.js'), 'add', 'catalyst', text, '--dir', d], { env, encoding: 'utf8' }).status;
+    expect(add('🙋 📅 Nov 3: Ship the F4 promo post 💰💰', old)).toBe(0);
+    expect(add('🤖 📅 Nov 12: Accept all FOCUS meeting invites 🟢', old)).toBe(0);
+    const at = '2026-11-12T20:00:00Z';
+    const j = JSON.parse(stack(d, 'rank', '--now', at, '--json').out);
+    const promo = j.items.find((x: { text: string }) => x.text.includes('F4 promo'));
+    expect(promo.stale).toBe(true);
+    expect(promo.score).toBeLessThanOrEqual(500);
+    expect(j.items.some((x: { text: string }) => x.text.includes('FOCUS meeting'))).toBe(false);
+    const e = stack(d, 'rank', '--explain', '--now', at);
+    expect(e.code).toBe(0);
+    expect(e.out).toMatch(/F4 promo.*stale: 9d overdue, last commit 2026-11-01; tier 0, cap 500/s);
+    expect(e.out).toMatch(/1 row dropped: not the owner's/);
   });
 });

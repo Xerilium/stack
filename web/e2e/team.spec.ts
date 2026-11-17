@@ -22,25 +22,28 @@ async function open(page: Page, o: { runner?: boolean; review?: boolean } = {}):
 const row = (p: Page, ref: string) => p.locator(`.row[data-ref="${ref}"]`);
 
 test.describe('Agent team', () => {
-  test('every row names its agent (the roll-up, then the specialists in the title) on hover or cursor; a project with no agent says so', async ({ page }) => {
+  // @req FR:product-reset/schema.agent @req FR:product-reset/ui.agentchip: the owner (avatar + name), never the roll-up when a project agent covers the task
+  test('every row names its owning agent (then the rest in the title) on hover or cursor; a project with no agent says so', async ({ page }) => {
     const m = await open(page);
     await row(page, 'alpha:6').hover();
-    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('CoS');
-    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead. Talk to it (a)'); // the stale metadata worker is gone
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('data-agent', 'alpha-lead');
+    await expect(row(page, 'alpha:6').locator('.agent-chip > span:last-child')).toHaveText('Alpha Lead'); // the avatar draws the emoji
+    await expect(row(page, 'alpha:6').locator('.agent-chip .avatar')).toHaveCount(1);
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', '🅰️ Alpha Lead › CoS. Talk to it (a)'); // the stale metadata worker is gone
     await row(page, 'beta:4').hover();
-    await expect(row(page, 'beta:4').locator('.agent-chip')).toHaveText('CoS');
+    await expect(row(page, 'beta:4').locator('.agent-chip > span:last-child')).toHaveText('CoS');
     await expect(row(page, 'beta:4').locator('.agent-chip')).toHaveAttribute('title', 'CoS: Roll-up. Talk to it (a)');
     m.team = [team[1]];
     await page.reload();
     await row(page, 'alpha:6').hover();
-    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('🅰️ Alpha Lead');
+    await expect(row(page, 'alpha:6').locator('.agent-chip > span:last-child')).toHaveText('Alpha Lead');
     await row(page, 'beta:4').hover();
     await expect(row(page, 'beta:4').locator('.agent-chip')).toHaveText('No agent');
     // a metadata-only worker with a recent session is live again
     m.team = team; m.sessions = [{ id: 'a1b2c3d4-0000-0000-0000-000000000009', title: 'PR sweep worker: alpha', project: 'alpha', owner: 'alpha', cwd: '/x/alpha', lastActive: new Date().toISOString(), state: 'idle', cost: { usd: 0, tokens: 10 }, prs: [] }];
     await page.reload();
     await row(page, 'alpha:6').hover();
-    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead › PR sweep worker: alpha. Talk to it (a)');
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', '🅰️ Alpha Lead › CoS › PR sweep worker: alpha. Talk to it (a)');
   });
 
   test('a opens the thread composer on the cursor row: owner chip first, Ask starts a session and the row follows it', async ({ page }) => {
@@ -115,8 +118,8 @@ test.describe('Agent team', () => {
   test('without a runner the chip still shows and the composer says where sessions run', async ({ page }) => {
     await open(page, { runner: false });
     await row(page, 'alpha:6').click();
-    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveText('CoS');
-    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', 'CoS › 🅰️ Alpha Lead › PR sweep worker: alpha. Talk to it (a)'); // no session data: nothing is dropped
+    await expect(row(page, 'alpha:6').locator('.agent-chip > span:last-child')).toHaveText('Alpha Lead');
+    await expect(row(page, 'alpha:6').locator('.agent-chip')).toHaveAttribute('title', '🅰️ Alpha Lead › CoS › PR sweep worker: alpha. Talk to it (a)'); // no session data: nothing is dropped
     await row(page, 'alpha:6').locator('.agent-chip').click();
     const talk = row(page, 'alpha:6').locator('.thread .composer');
     await expect(talk).toBeVisible();
@@ -183,17 +186,18 @@ test.describe('Agent team', () => {
     await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body?.text).toBe('Status?');
   });
 
+  // @req FR:product-reset/schema.agent: the tile names the project owner, not the roll-up
   test('the project tile on Today carries the project agent and opens the composer', async ({ page }) => {
     const m = await open(page);
     await page.goto('/#/today');
     await page.getByTestId('quiet-side').locator('.quiet-toggle').click(); // tiles sit below the timeline, out of the way
     const tile = page.locator('[data-testid="tops"] li').filter({ hasText: 'Alpha' });
-    await expect(tile.locator('.agent-chip')).toHaveText('CoS');
+    await expect(tile.locator('.agent-chip > span:last-child')).toHaveText('Alpha Lead');
     await tile.locator('.agent-chip').click();
     await expect(tile.locator('.agent-talk')).toBeVisible();
     await expect(page.locator('.agent-talk input[type="text"]')).toBeFocused();
     await page.keyboard.type('Where are we?');
     await page.keyboard.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Where are we?', agent: 'cos', project: 'alpha' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Where are we?', agent: 'alpha-lead', project: 'alpha' });
   });
 });

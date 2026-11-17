@@ -56,7 +56,7 @@ test.describe('Agent thread', () => {
     await expect(box).toBeFocused();
     await page.keyboard.type('Is the plan solid?');
     await page.keyboard.press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toEqual({ ref: 'alpha:6', text: 'Is the plan solid?', kind: 'reply' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toEqual({ ref: 'alpha:6', text: 'Is the plan solid?', kind: 'reply', agent: 'alpha-lead' }); // @req FR:product-reset/ui.thread: the composer's agent rides with the message
     await expect.poll(() => m.calls.find((c) => c.path === '/sessions')?.body).toEqual({ text: 'Is the plan solid?', agent: 'alpha-lead', ref: 'alpha:6' });
     await expect(r.locator('.thread .th-text.you')).toHaveText('Is the plan solid?');
     await expect(r.locator('.thread .th-note.live')).toContainText('Working');
@@ -128,7 +128,7 @@ test.describe('Agent thread', () => {
     await th.getByRole('radio', { name: 'Ask' }).click();
     await th.locator('input[type="text"]').fill('Noted, thanks');
     await th.locator('input[type="text"]').press('Enter');
-    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toEqual({ ref: 'alpha:9', text: 'Noted, thanks', kind: 'reply' });
+    await expect.poll(() => m.calls.find((c) => c.path === '/inbox')?.body).toEqual({ ref: 'alpha:9', text: 'Noted, thanks', kind: 'reply', agent: 'alpha-lead' });
     await expect(page.locator('.toast')).toContainText('runs in stack web');
     expect(m.calls.find((c) => c.path === '/sessions')).toBeUndefined();
   });

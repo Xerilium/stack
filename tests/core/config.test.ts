@@ -162,4 +162,12 @@ describe('range and overlap', () => {
     expect(() => parseConfig({ inbox: { accounts: ['not an address'] } })).toThrow(/inbox.accounts\[0\]/);
     expect(() => parseConfig({ inbox: { accounts: ['a@b.com', 'x@y`id`.com'] } })).toThrow(/inbox.accounts\[1\]/);
   });
+
+  // @req FR:agent-team/agent.team.scan
+  it('reads agents.scanRoots', () => {
+    expect(parseConfig().agents).toBeUndefined();
+    expect(parseConfig({ agents: { scanRoots: ['~/dev', '/src'] } }).agents).toEqual({ scanRoots: ['~/dev', '/src'] });
+    expect(() => parseConfig({ agents: { scanRoots: 'x' } })).toThrow(/agents.scanRoots/);
+    expect(() => parseConfig({ agents: { scanRoots: ['rel'] } })).toThrow(/agents.scanRoots\[0\]/);
+  });
 });

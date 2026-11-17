@@ -6,16 +6,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
 import { displayName, modeHint, type Mode } from './detail';
-import { ownerOf, type TeamAgent } from './team';
+import type { TeamAgent } from './team';
 
 /** A thread note is saved through /inbox first: its text limit applies. */
 const MAX = 1000;
 
 export interface ComposerProps {
-  /** Agents for the task, owner first. */
+  /** Agents for the task, owner first (`team.agentsOf` puts `ownerOf` first). */
   agents: TeamAgent[];
-  /** The task: picks the owner by the scope that matched it (`ownerOf`). */
-  task?: { project: string; section?: string };
   /** No runner: Ask saves on the task; Do it is off. */
   offline: boolean;
   busy?: boolean;
@@ -25,14 +23,7 @@ export interface ComposerProps {
   onDo: (text: string, agent: string) => Promise<boolean>;
 }
 
-/** The task's owner (`ownerOf`) first, then the rest in order. */
-export function ownerFirst(agents: TeamAgent[], task?: { project: string; section?: string }): TeamAgent[] {
-  const owner = ownerOf(agents, task);
-  return owner ? [owner, ...agents.filter((a) => a !== owner)] : [];
-}
-
-export function Composer({ agents: raw, task, offline, busy: outer = false, autoFocus = false, onAsk, onDo }: ComposerProps) {
-  const agents = ownerFirst(raw, task);
+export function Composer({ agents, offline, busy: outer = false, autoFocus = false, onAsk, onDo }: ComposerProps) {
   const [to, setTo] = useState(agents[0]?.slug ?? '');
   const [shown, setShown] = useState<string[]>(agents[0] ? [agents[0].slug] : []);
   const [mode, setMode] = useState<Mode>('ask');
