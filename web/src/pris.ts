@@ -8,7 +8,7 @@ import { ApiFailure } from './api';
 export type PriStatus = 'active' | 'paused' | 'blocked' | 'done';
 export type ItemStatus = 'todo' | 'doing' | 'blocked' | 'done';
 export interface PriItem { text: string; status: ItemStatus }
-export interface Pri { id: string; title: string; status: PriStatus; items: PriItem[]; backlog: PriItem[]; weekly: { week: string; text: string }[] }
+export interface Pri { id: string; title: string; status: PriStatus; items: PriItem[]; backlog: PriItem[]; weekly: { week: string; text: string }[]; /** ISO time of the last status note. */ statusAt?: string }
 export interface PrisFile { version: 1; rev: number; updatedAt?: string; pris: Pri[] }
 
 export interface StatusWord { glyph: string; word: string; warn?: boolean }
@@ -68,6 +68,26 @@ const onItem = (id: string, index: number, expect: string, f: (items: PriItem[],
     const items = f(p.items, index);
     return items ? { ...p, items } : null;
   });
+
+const DAY_MS = 86_400_000;
+/** Monday 00:00 UTC of an ISO week `YYYY-Www` (as the server's `weekStart`). */
+function weekStart(week: string): number {
+  const [y, w] = week.split('-W').map(Number);
+  const jan4 = Date.UTC(y, 0, 4);
+  return jan4 - ((new Date(jan4).getUTCDay() + 6) % 7) * DAY_MS + (w - 1) * 7 * DAY_MS;
+}
+/**
+ * How old the newest status is: the newer of `statusAt` and the newest week. Stale past 7 days or with none, as `stack pris gaps`;
+ * a done or paused priority is never stale. @req FR:cos-base-of-ops/compose.pris
+ */
+export function priAge(p: Pick<Pri, 'status' | 'statusAt' | 'weekly'>, now: Date): { text: string; stale: boolean } {
+  const times = [...(p.statusAt ? [Date.parse(p.statusAt)] : []), ...(p.weekly[0] ? [weekStart(p.weekly[0].week)] : [])].filter(Number.isFinite);
+  const live = p.status === 'active' || p.status === 'blocked';
+  if (!times.length) return { text: 'No status', stale: live };
+  const m = Math.max(0, Math.floor((now.getTime() - Math.max(...times)) / 60_000));
+  const age = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
+  return { text: `Updated ${age}`, stale: live && m > 7 * 1440 };
+}
 
 /** @req FR:pris-sessions-ui/pris.edit */
 export const edits = {

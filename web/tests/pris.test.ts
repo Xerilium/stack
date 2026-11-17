@@ -1,7 +1,7 @@
 /** @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.edit @req FR:pris-sessions-ui/pris.limits */
 import { describe, expect, it } from 'vitest';
 import { ApiFailure } from '../src/api';
-import { commitPris, edits, PrisQueue, ITEM_STATUS, LIMITS, nextItem, oneLine, PRI_STATUS, progress, slugId, visiblePris, type Pri, type PrisFile } from '../src/pris';
+import { commitPris, edits, PrisQueue, ITEM_STATUS, LIMITS, nextItem, oneLine, priAge, PRI_STATUS, progress, slugId, visiblePris, type Pri, type PrisFile } from '../src/pris';
 
 const P = (id: string, title: string, o: Partial<Pri> = {}): Pri => ({ id, title, status: 'active', items: [], backlog: [], weekly: [], ...o });
 const file = (pris: Pri[], rev = 3): PrisFile => ({ version: 1, rev, pris });
@@ -227,5 +227,19 @@ describe('move among the shown', () => {
     expect(edits.move('a', 1, ['a', 'b'])(l)!.map((p) => p.id)).toEqual(['b', 'd', 'a']);
     expect(edits.move('b', -1, ['a', 'b'])(l)!.map((p) => p.id)).toEqual(['b', 'd', 'a']);
     expect(edits.move('b', 1, ['a', 'b'])(l)).toBeNull();
+  });
+});
+
+describe('priAge', () => {
+  const base = { id: 'a', title: 'A', status: 'active' as const, items: [], backlog: [], weekly: [] as { week: string; text: string }[] };
+  const now = new Date('2026-11-12T16:00:00Z');
+  // @req FR:cos-base-of-ops/compose.pris
+  it('the newer of statusAt and the newest week; stale past 7 days; no status is stale', () => {
+    expect(priAge(base, now)).toEqual({ text: 'No status', stale: true });
+    expect(priAge({ ...base, statusAt: '2026-11-12T13:00:00Z' }, now)).toEqual({ text: 'Updated 3h ago', stale: false });
+    expect(priAge({ ...base, statusAt: '2026-11-01T13:00:00Z' }, now)).toEqual({ text: 'Updated 11d ago', stale: true });
+    // week 46 of 2026 starts Mon Nov 9
+    expect(priAge({ ...base, statusAt: '2026-11-01T13:00:00Z', weekly: [{ week: '2026-W46', text: 'x' }] }, now)).toEqual({ text: 'Updated 3d ago', stale: false });
+    expect(priAge({ ...base, status: 'done' }, now)).toEqual({ text: 'No status', stale: false });
   });
 });

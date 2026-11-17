@@ -1,0 +1,42 @@
+/* Chief of Staff view: Fluent 2 tokens (fluent2.css). Composed sections keep their own styles. @req FR:cos-base-of-ops/layout.grid @req FR:cos-base-of-ops/layout.look */
+.cos { display: grid; gap: var(--fl-s-xxl); max-width: 1088px; margin-inline: auto; padding-block: var(--fl-s-xxl); min-width: 0; }
+.cos-head { display: grid; gap: var(--fl-s-l); grid-column: 1 / -1; }
+.cos-who { display: flex; align-items: center; gap: var(--fl-s-m); flex-wrap: wrap; }
+.cos-id { flex: 1 1 200px; min-width: 0; }
+.cos-mono { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--fl-brand2); color: var(--fl-brand-fg); font-weight: 600; font-size: var(--fl-caption); }
+.cos-name { margin: 0; font-size: var(--fl-sub1); line-height: var(--fl-sub1-lh); font-weight: 600; }
+.cos-age, .cos-line, .cos-off, .cos-from { margin: 0; color: var(--fl-fg3); font-size: var(--fl-body); line-height: var(--fl-body-lh); }
+.cos-line { color: var(--fl-fg2); font-weight: 600; }
+.cos-age.warn { color: var(--fl-danger); }
+.cos-eyebrow { display: block; margin: 0 0 var(--fl-s-xs); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fl-fg3); }
+.cos-msg-row { display: flex; gap: var(--fl-s-s); align-items: stretch; }
+.cos-msg textarea { flex: 1; min-width: 0; min-height: var(--fl-target); padding: 6px var(--fl-s-m); border: 1px solid var(--fl-stroke1); border-bottom-color: var(--fl-stroke-access); border-radius: var(--fl-r-md); background: var(--fl-bg1); color: var(--fl-fg1); font: inherit; resize: vertical; }
+.cos-msg textarea:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; }
+.cos .fl-btn { font: inherit; font-weight: 600; cursor: pointer; }
+.cos-main, .cos-side { display: grid; gap: var(--fl-s-xxl); align-content: start; min-width: 0; }
+.cos-brief { display: grid; gap: var(--fl-s-l); padding: var(--fl-s-l); border: 1px solid var(--fl-stroke2); border-radius: var(--fl-r-xl); background: var(--fl-bg1); }
+.cos-items { margin: 0; padding-left: 1.2em; display: grid; gap: var(--fl-s-xs); }
+.cos-items.warn li::marker { color: var(--fl-danger); }
+.cos-items.warn { color: var(--fl-fg1); }
+.cos-sec { display: grid; gap: var(--fl-s-s); min-width: 0; }
+.cos-link { color: var(--fl-brand-fg); text-decoration: none; }
+.cos-link:hover { text-decoration: underline; }
+.cos-link.quiet { color: var(--fl-fg2); text-decoration: underline; }
+.cos-see { justify-self: start; display: inline-flex; align-items: center; gap: var(--fl-s-xs); color: var(--fl-brand-fg); font-weight: 600; text-decoration: none; min-height: var(--fl-target); }
+.cos-see:hover { text-decoration: underline; }
+.cos-counts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--fl-s-s); }
+.cos-count { display: grid; gap: 2px; padding: var(--fl-s-s) var(--fl-s-m); min-height: 44px; border: 1px solid var(--fl-stroke1); border-radius: var(--fl-r-lg); background: var(--fl-bg1); color: var(--fl-fg2); text-decoration: none; font-size: var(--fl-caption); }
+.cos-count:hover { background: var(--fl-bg1-hover); border-color: var(--fl-stroke-access); }
+.cos-count-n { font-size: var(--fl-sub1); line-height: var(--fl-sub1-lh); font-weight: 600; color: var(--fl-fg1); font-variant-numeric: tabular-nums; }
+.cos-esc { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--fl-s-s); }
+.cos-esc li { display: grid; gap: 2px; }
+.cos-meta { color: var(--fl-fg3); font-size: var(--fl-caption); }
+.cos .now-side { margin-top: 0; }
+@media (min-width: 1100px) {
+  .cos { grid-template-columns: minmax(0, 640px) minmax(320px, 400px); column-gap: 48px; justify-content: center; }
+}
+@media (max-width: 719px), (hover: none) {
+  .cos { padding-inline: 16px; }
+  .cos-link, .cos-see, .cos-esc a { display: inline-flex; align-items: center; min-height: 44px; }
+  .cos-msg textarea, .cos .fl-btn { min-height: 44px; }
+}

@@ -10,7 +10,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { ApiFailure, type createClient } from './api';
 import {
   ACTION_LABEL, authorText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText,
-  summaryView, TAB_LABEL, tabsOf, toneOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type PrStore, type SignInSession, type Tab,
+  summaryView, TAB_LABEL, tabsOf, toneOf, updatedText, whenText, type Phase, type PrAuthState, type PrBoard, type Prefs, type PrRow, type PrStore, type SignInSession, type Tab,
 } from './prs';
 import type { Toast } from './parts';
 import { store } from './day';
@@ -30,6 +30,12 @@ export function useStore(api: Client) {
 }
 const local = () => store() ?? null;
 const errText = (e: unknown, fallback: string) => (e instanceof ApiFailure ? e.message : fallback);
+
+/** The one PR store, for other views that summarize it (the CoS view). @req FR:cos-base-of-ops/compose.prs */
+export function usePrBoard(api: Client): { board: PrBoard | null; phase: Phase } {
+  const { board, phase } = useStore(api).get();
+  return { board, phase };
+}
 
 function PrIcon() {
   return <svg class="prs-ic" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 4v10m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 0V9a3 3 0 0 0-3-3h-4m0 0 2.5-2.5M11 6l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>;

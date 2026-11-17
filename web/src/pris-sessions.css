@@ -14,6 +14,8 @@
 .pri-next { font-size: var(--fs-secondary); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pri-side { flex: none; display: flex; align-items: center; gap: 10px; font-size: var(--fs-caption); color: var(--ink2); }
 .pri-progress { font-variant-numeric: tabular-nums; color: var(--muted); }
+.pri-age { color: var(--muted); white-space: nowrap; }
+.pri-age.warn { color: var(--ink2); font-weight: 600; } /* calm: warn color stays for blocked and stuck (NFR:pris-sessions-ui/a11y.calm) */
 .pri-status .g, .s-state .g { display: inline-block; width: 1.1em; text-align: center; }
 .pri-status.warn, .item-glyph.warn, .s-state.stuck { color: var(--warn); }
 .pri-panel { padding: 4px 8px 12px 40px; display: flex; flex-direction: column; gap: 6px; }
@@ -64,4 +66,5 @@ a.session-row:hover { background: var(--hover); }
 @media (max-width: 480px) {
   .pri-panel { padding-left: 8px; }
   .pri-side { gap: 6px; }
+  .pri-age:not(.warn) { display: none; }
 }
