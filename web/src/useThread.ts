@@ -55,7 +55,8 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
     if (!ref || busy) return false;
     setBusy(true);
     try {
-      try { await api.send(ref, text, 'reply'); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to send', 'err'); return false; }
+      // The composer's agent rides along, so no other agent on the project claims it. @req FR:product-reset/ui.thread
+      try { await api.send(ref, text, 'reply', undefined, agent); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to send', 'err'); return false; }
       // From here the message is on the task: the box clears even if the session step fails (a retry would write it twice).
       if (cur.current === ref) setThread((t) => ({ ...t, items: [...t.items, { at: new Date().toISOString(), kind: 'owner', id: `local-${Date.now()}`, text, state: 'open' }] }));
       if (team.enabled !== true) { toastRef.current('Saved on the task; it runs in stack web on your machine'); return true; }

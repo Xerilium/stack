@@ -43,8 +43,9 @@ describe('hash state', () => {
     expect(parseHash('#/sessions')).toEqual({ view: 'sessions', filters: F() });
     expect(parseHash('#/agents').view).toBe('sessions');
     expect(parseHash('#/cos').view).toBe('cos'); // @req FR:cos-base-of-ops/route.view
-    expect(parseHash('#/prs?tab=blocked').view).toBe('cos');
     expect(buildHash('cos', F())).toBe('#/cos');
+    // @req FR:pr-page/nav.page
+    expect(parseHash('#/prs')).toEqual({ view: 'prs', filters: F() });
     expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'now', filters: F() });
     expect(parseHash('#/list?state=done').filters.state).toBe('done');
   });

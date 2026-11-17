@@ -2,7 +2,7 @@
  * Row text edit and block move for the web app. Same storage rules as the lifecycle: write with the version read.
  * @req FR:web-app/api.edit @req FR:web-app/api.move
  */
-import { LifecycleError } from '../core/lifecycle';
+import { EFFORT, IMPACT, LifecycleError, PRIORITY, STATUS } from '../core/lifecycle';
 import { ConflictError, type Storage } from '../core/storage';
 
 interface TaskRef { path: string; line: number }
@@ -22,7 +22,7 @@ function rowAt(lines: string[], line: number, expect?: string): RegExpExecArray 
 
 /** End (exclusive) of a row's block: following deeper-indented or blank lines, minus trailing blanks. */
 function blockEnd(lines: string[], i: number): number {
-  const indent = /^\s*/.exec(bare(lines[i]))![0].length;
+  const indent = /^\s*/.exec(unbom(bare(lines[i])))![0].length;
   let j = i + 1;
   while (j < lines.length) {
     const l = bare(lines[j]);
@@ -67,6 +67,85 @@ export async function editTask(storage: Storage, ref: TaskRef, text: string, exp
   lines[ref.line] = `${bom}${m[1]}${text}${cr}`;
   await storage.write(ref.path, lines.join('\n'), { expectedVersion: f.version, message: `Edit: ${brief(text)}` });
   return { changed: true, ref, before, after: text, message: 'Saved' };
+}
+
+const strip = (t: string) => t.replace(/\uFE0F/g, '');
+const CATS = [STATUS, PRIORITY, [...EFFORT, '🔹'], IMPACT].map((l) => l.map(strip));
+const catOf = (t: string) => CATS.findIndex((l) => l.includes(strip(t)));
+const GLYPHS = [...new Set(CATS.flat())].sort((x, y) => y.length - x.length);
+
+/** Leading and trailing mark runs of a row text; marks may touch the title or each other. */
+function markRuns(s: string): { lead: string[]; trail: string[] } {
+  const lead: string[] = [];
+  let i = 0;
+  for (;;) {
+    while (/\s/.test(s[i] ?? '')) i++;
+    const g = GLYPHS.find((m) => s.startsWith(m, i));
+    if (!g) break;
+    const j = i + g.length + (s[i + g.length] === '️' ? 1 : 0);
+    lead.push(s.slice(i, j));
+    i = j;
+  }
+  const trail: string[] = [];
+  let j = s.length;
+  for (;;) {
+    while (j > i && /\s/.test(s[j - 1])) j--;
+    const k = s[j - 1] === '️' ? j - 1 : j;
+    const g = GLYPHS.find((m) => k - m.length >= i && s.slice(0, k).endsWith(m));
+    if (!g) break;
+    trail.unshift(s.slice(k - g.length, j));
+    j = k - g.length;
+  }
+  return { lead, trail };
+}
+
+/** New row text. Old status, priority, effort, and impact marks at the start or end of the row stay unless the new text has a mark of the same kind at that end. */
+export function keepMarks(old: string, text: string): string {
+  const neu = text.trim();
+  const o = markRuns(old.trim());
+  const n = markRuns(neu);
+  // Per end, an old mark stays unless the new text's mark run at that end has a mark of the same kind.
+  const kept = (old: string[], at: string[]) => old.filter((t) => !at.some((a) => catOf(a) === catOf(t)));
+  return [...kept(o.lead, n.lead), neu, ...kept(o.trail, n.trail)].join(' ');
+}
+
+const oneLine = (t: string, what: string): string => {
+  if (!t.trim()) throw new LifecycleError(`${what} needs text`);
+  if (/[\r\n]/.test(t)) throw new LifecycleError(`${what} must be one line`);
+  return t;
+};
+
+/** Edit a row's text in place through `editTask`, keeping the old marks (see `keepMarks`). */
+export async function retitleTask(storage: Storage, ref: TaskRef, text: string, expect?: string): Promise<EditResult> {
+  oneLine(text, 'retitle');
+  if (/^\[[ xX]\]/.test(text.trim())) throw new LifecycleError('retitle must not start with a checkbox');
+  const cur = await rowText(storage, ref);
+  if (expect !== undefined && cur !== expect) throw new ConflictError('Row changed since it was read');
+  return editTask(storage, ref, keepMarks(cur, text), cur);
+}
+
+/** Append `- text` as a nested bullet at the end of a row's block; children and older notes stay. */
+export async function addNote(storage: Storage, ref: TaskRef, text: string, expect?: string): Promise<EditResult> {
+  oneLine(text, 'note');
+  if (/^\[[ xX]\]/.test(text.trim())) throw new LifecycleError('note must not start with a checkbox');
+  const f = await storage.read(ref.path);
+  const lines = f.content.split('\n');
+  const m = rowAt(lines, ref.line, expect);
+  const ws = (l: string) => /^[ \t]*/.exec(unbom(bare(l)))![0];
+  const own = ws(lines[ref.line]);
+  const end = blockEnd(lines, ref.line);
+  // Indent of the shallowest child row in the block; notes and blanks don't count.
+  let pad = '';
+  for (let i = ref.line + 1; i < end; i++) {
+    if (!ROW.test(unbom(bare(lines[i])))) continue;
+    const w = ws(lines[i]);
+    if (w.length > own.length && (!pad || w.length < pad.length)) pad = w;
+  }
+  if (!pad) pad = `${own}  `;
+  const cr = lines[ref.line].endsWith('\r') ? '\r' : '';
+  lines.splice(end, 0, `${pad}- ${text.trim()}${cr}`);
+  await storage.write(ref.path, lines.join('\n'), { expectedVersion: f.version, message: `Note: ${brief(text.trim())}` });
+  return { changed: true, ref, before: m[2], after: m[2], message: 'Saved' };
 }
 
 /** Move a task block before or after another task block in the same file. */

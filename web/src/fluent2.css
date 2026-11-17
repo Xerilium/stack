@@ -69,10 +69,8 @@
 .fl-saved { color: var(--fl-success); font-size: var(--fl-caption); }
 
 /* ---- Global rules: every view, no opt-in ---- */
-/* No key badges on buttons, link buttons, or menu items; chords live in ? help and the palette. The rail keeps its nav hint. */
+/* No key badges on buttons, link buttons, or menu items; chords live in ? help and the palette. The key is in the tooltip, e.g. `Done (D)`. */
 body :is(button, a.btn, [role="menuitem"]) kbd { display: none !important; }
-.rail .tab kbd { display: inline-block !important; }
-@media (max-width: 719px) { .rail .tab kbd { display: none !important; } }
 /* Clickable rows and cards: pointer, hover, focus. */
 [role="button"]:not([aria-disabled="true"]), summary, .top-rows > li, .nofit li, .proj-btn, .tile, .unfit, .ask-row { cursor: pointer; }
 @media (hover: hover) { .top-rows > li:hover, .nofit li:hover, .proj-btn:hover, .tile:hover { background: var(--hover); } }

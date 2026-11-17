@@ -6,7 +6,7 @@ import type { AskItem } from './asks';
 import type { ReviewItem } from './team';
 
 export type ThreadItem =
-  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled'; withdrawn?: true }
+  | { at: string; kind: 'owner'; id: string; text: string; state: 'open' | 'handled'; withdrawn?: true; /** The agent picked for it in Now. */ agent?: string }
   | { at: string; kind: 'agent'; id: string; agent: string; text: string }
   | { at: string; kind: 'ask'; ask: AskItem }
   | { at: string; kind: 'review'; verdict: ReviewItem['verdict']; plan: string; estimate?: string; agent: string }

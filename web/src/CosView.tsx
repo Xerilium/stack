@@ -14,7 +14,7 @@ import { NowAsks, type AskCtl } from './NowAsks';
 import { NowNext, type CalCtl, type Layer } from './NowNext';
 import { PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrBoard } from './PrsPanel';
-import { clip, refOf } from './prs';
+import { ACTION_LABEL, clip, refOf } from './prs';
 import { rollupOf, type TeamAgent } from './team';
 import type { InventoryCtl, PrisCtl } from './usePrisSessions';
 import type { BriefMeeting } from './brief';
@@ -120,14 +120,14 @@ export function CosView(p: CosProps) {
           {board.phase === 'off' ? <p class="cos-off">PR board is off on this host</p> : board.phase === 'loading' ? <p class="cos-off">Loading…</p> : (
             <>
               <ul class="cos-counts">
-                {prs.counts.map((c) => <li key={c.tab}><a class="cos-count" href={`#/prs?tab=${c.tab}`} aria-label={`${c.label}: ${c.n}`}><span class="cos-count-n">{c.n}</span><span>{c.label}</span></a></li>)}
+                {prs.counts.map((c) => <li key={c.tab}><a class="cos-count" href="#/prs" aria-label={`${c.label}: ${c.n}`}><span class="cos-count-n">{c.n}</span><span>{c.label}</span></a></li>)}
               </ul>
-              {prs.esc.length > 0 && (
+              {prs.need.length > 0 && (
                 <ul class="cos-esc">
-                  {prs.esc.map((e) => (
+                  {prs.need.map((e) => (
                     <li key={e.url}>
-                      <a class="cos-link" href="#/prs?tab=escalations">{clip(e.title ?? refOf(e), 70)}</a>
-                      <span class="cos-meta"><a class="cos-link quiet" href={e.url} target="_blank" rel="noopener noreferrer" aria-label={`${refOf(e)} on GitHub`}>{refOf(e)}</a>{e.blocker && <> · {clip(e.blocker, 60)}</>}</span>
+                      <a class="cos-link" href="#/prs">{clip(e.title, 70)}</a>
+                      <span class="cos-meta"><a class="cos-link quiet" href={e.url} target="_blank" rel="noopener noreferrer" aria-label={`${refOf(e)} on GitHub`}>{refOf(e)}</a> · {ACTION_LABEL[e.nextAction!]}</span>
                     </li>
                   ))}
                 </ul>

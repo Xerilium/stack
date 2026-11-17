@@ -46,6 +46,15 @@ describe('homeOf', () => {
     const h = homeOf({ tasks: t2, projects, ranked: [R('alpha:10', 'alpha:9'), R('alpha:2')], now: at, minutesLeft: 600 });
     expect(h.one?.task.ref).toBe('alpha:9');
   });
+  // @req FR:web-app/home.one @req FR:task-lifecycle/rank.owner
+  it('a ranked leaf under an agent or mixed top-level row shows as itself', () => {
+    const t2 = [...tasks, T('alpha:9', '🤖 Agent epic', 'alpha'), { ...T('alpha:10', '🙋 Approve it', 'alpha'), depth: 1 }, { ...T('alpha:11', 'Sign the form', 'alpha'), depth: 2 }];
+    expect(homeOf({ tasks: t2, projects, ranked: [R('alpha:11', 'alpha:9')], now: at, minutesLeft: 600 }).one?.task.ref).toBe('alpha:11');
+    const t3 = [...tasks, T('alpha:9', '🙋 🤖 Mixed epic', 'alpha'), { ...T('alpha:10', 'Sign the form', 'alpha'), depth: 1 }];
+    expect(homeOf({ tasks: t3, projects, ranked: [R('alpha:10', 'alpha:9')], now: at, minutesLeft: 600 }).one?.task.ref).toBe('alpha:10');
+    const t4 = [...tasks, T('alpha:9', '🤖:assist Epic', 'alpha'), { ...T('alpha:10', 'Sign the form', 'alpha'), depth: 1 }];
+    expect(homeOf({ tasks: t4, projects, ranked: [R('alpha:10', 'alpha:9')], now: at, minutesLeft: 600 }).one?.task.ref).toBe('alpha:9');
+  });
   // @req FR:web-app/home.fit
   it('says when the one thing does not fit and offers the best ranked task that does', () => {
     const h = homeOf({ tasks, projects, ranked: next('alpha:1', 'alpha:2', 'beta:1'), now: at, minutesLeft: 45 });

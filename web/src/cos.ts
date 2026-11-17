@@ -3,7 +3,7 @@
  * @req FR:cos-base-of-ops/state.none @req FR:cos-base-of-ops/state.report @req FR:cos-base-of-ops/state.age @req FR:cos-base-of-ops/state.stale
  * @req FR:cos-base-of-ops/state.line @req FR:cos-base-of-ops/msg.anchor @req FR:cos-base-of-ops/compose.prs @req FR:cos-base-of-ops/route.view
  */
-import { countOf, TAB_LABEL, tabsOf, type EscEntry, type PrBoard, type PrGroup, type Tab } from './prs';
+import { countOf, tabsOf, TAB_LABEL, type PrBoard, type PrGroup, type PrRow } from './prs';
 import { agentsFor, ownerOf, rollupOf, type TeamAgent } from './team';
 import type { Task } from './types';
 
@@ -56,21 +56,10 @@ export function anchorFor(tasks: Task[], team: TeamAgent[], slug: string): Task 
   return ordered.find((t) => ownerOf(agentsFor(team, t.project, t.section), t)?.slug === slug) ?? ordered[0];
 }
 
-export type EscKind = 'blocked' | 'enable' | 'live';
-/** Counts per group as the flyout tabs count them, and up to 3 escalation PRs (blocked, enable, live). @req FR:cos-base-of-ops/compose.prs */
-export function prSummary(b: PrBoard | null): { counts: { tab: PrGroup; label: string; n: number }[]; esc: (EscEntry & { kind: EscKind })[] } {
-  if (!b) return { counts: [], esc: [] };
-  const counts = tabsOf(b).filter((t): t is PrGroup => t !== 'escalations').map((tab) => ({ tab, label: TAB_LABEL[tab], n: countOf(b, tab, []) }));
-  const e = b.escalations;
-  const esc = e ? [...e.blocked.map((x) => ({ ...x, kind: 'blocked' as const })), ...e.enable.map((x) => ({ ...x, kind: 'enable' as const })), ...e.live.map((x) => ({ ...x, kind: 'live' as const }))].slice(0, 3) : [];
-  return { counts, esc };
-}
-
-const TABS: Tab[] = ['escalations', 'blocked', 'waiting', 'processing', 'pending', 'paused'];
-/** The flyout tab a `#/prs` hash names (`default` when none or unknown); null for any other hash. @req FR:cos-base-of-ops/route.view */
-export function prsTab(hash: string): Tab | 'default' | null {
-  const m = /^#\/prs(?:\?(.*))?$/.exec(hash);
-  if (!m) return null;
-  const t = new URLSearchParams(m[1] ?? '').get('tab');
-  return t && (TABS as string[]).includes(t) ? (t as Tab) : 'default';
+const GROUPS = new Set<string>(['processing', 'waiting', 'pending', 'paused']);
+/** Counts per group as the PR page tabs count them, and up to 3 PRs with a next action for the owner. @req FR:cos-base-of-ops/compose.prs */
+export function prSummary(b: PrBoard | null): { counts: { tab: PrGroup; label: string; n: number }[]; need: PrRow[] } {
+  if (!b) return { counts: [], need: [] };
+  const counts = tabsOf().filter((t): t is PrGroup => GROUPS.has(t)).map((tab) => ({ tab, label: TAB_LABEL[tab], n: countOf(b, tab, []) }));
+  return { counts, need: b.rows.filter((r) => r.nextAction).slice(0, 3) };
 }

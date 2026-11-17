@@ -187,6 +187,29 @@ describe('access token provider', () => {
     const get = graphToken(cache, { fetch: f.fetch, now: () => 1 });
     expect(await Promise.all([get(), get({ force: true })])).toEqual(['at1', 'at4']);
   });
+  it('a disconnect during a refresh is not undone: the cache stays gone', async () => {
+    const d = tmp();
+    const cache = new FileTokenCache(join(d, 'graph-token.json'));
+    await cache.write(token({ expiresAt: 0 }));
+    const f = fakeLogin([{ access_token: 'at5', refresh_token: 'rt5', expires_in: 3600, scope: 'Calendars.Read offline_access' }]);
+    const fetch = (async (u: string | URL | Request, i?: RequestInit) => { await cache.clear(); return f.fetch(u, i); }) as typeof globalThis.fetch;
+    await expect(graphToken(cache, { fetch, now: () => 1 })()).rejects.toBeInstanceOf(GraphSignInRequired);
+    expect(await cache.read()).toBeNull();
+  });
+  it('a scope change during a refresh wins: the refresh retries from the new record', async () => {
+    const d = tmp();
+    const cache = new FileTokenCache(join(d, 'graph-token.json'));
+    await cache.write(token({ expiresAt: 0, scopes: ['Mail.ReadWrite', 'offline_access'] }));
+    const f = fakeLogin([{ access_token: 'at6', refresh_token: 'rt6', expires_in: 3600, scope: 'Mail.ReadWrite offline_access' }, { access_token: 'at7', refresh_token: 'rt7', expires_in: 3600, scope: 'Mail.Read offline_access' }]);
+    let first = true;
+    const fetch = (async (u: string | URL | Request, i?: RequestInit) => {
+      if (first) { first = false; const t = (await cache.read())!; await cache.write({ ...t, scopes: ['Mail.Read', 'offline_access'] }); }
+      return f.fetch(u, i);
+    }) as typeof globalThis.fetch;
+    expect(await graphToken(cache, { fetch, now: () => 1 })()).toBe('at7');
+    expect(f.hits[1].form.get('scope')).toBe('Mail.Read offline_access');
+    expect(await cache.read()).toMatchObject({ scopes: ['Mail.Read', 'offline_access'], accessToken: 'at7', refreshToken: 'rt7' });
+  });
   it('hasScope matches case-insensitively, with or without the Graph prefix', () => {
     expect(hasScope(['https://graph.microsoft.com/calendars.read'], 'Calendars.Read')).toBe(true);
     expect(hasScope(['Mail.Read'], 'Calendars.Read')).toBe(false);

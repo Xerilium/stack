@@ -47,16 +47,26 @@ export function ifSilent(a: Pick<AskItem, 'reversible' | 'default'>): { text: st
 
 export interface Action { id: string; label: string; key: string; primary?: boolean; send?: Send; open?: boolean; reply?: boolean }
 
+/** The longest primary button label. @req FR:product-reset/ui.askcard */
+export const APPROVE_MAX = 40;
+/** The primary button for a recommendation names it: `Approve: {recommend}` as plain text, clipped; `Approve` with none. @req FR:product-reset/ui.askcard */
+export function approveLabel(recommend: string | undefined): string {
+  const rec = (recommend ?? '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*`]/g, '').replace(/\s+/g, ' ').trim();
+  if (!rec) return 'Approve';
+  const label = `Approve: ${rec}`;
+  return label.length <= APPROVE_MAX ? label : `${label.slice(0, APPROVE_MAX - 1).trimEnd()}…`;
+}
+
 /** Buttons for an ask by kind. `Enter` is always the primary action. */
 export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'>): Action[] {
   const open: Action[] = a.link ? [{ id: 'open', label: 'Open', key: 'o', open: true }] : [];
   const rec = a.recommend?.trim().toLowerCase();
   // A CoS escalation: go with her recommendation, or open the link; Defer and Reply stay as for any ask. @req FR:ask-queue/needs.web.card
-  if (a.source === 'need') return [{ id: 'go', label: 'Go with it', key: 'Enter', primary: true, send: { answer: 'go' } }, ...open];
+  if (a.source === 'need') return [{ id: 'go', label: approveLabel(a.recommend), key: 'Enter', primary: true, send: { answer: 'go' } }, ...open];
   // A 🙋 row: go with the agent's recommendation, or answer it; Details opens the row. @req FR:web-shell/state.needs
   if (a.source === 'task') {
     const details: Action = { id: 'open', label: 'Details', key: 'o', open: true };
-    return a.kind === 'approve' ? [{ id: 'go', label: 'Go with it', key: 'Enter', primary: true, send: { answer: 'go' } }, details] : [details];
+    return a.kind === 'approve' ? [{ id: 'go', label: approveLabel(a.recommend), key: 'Enter', primary: true, send: { answer: 'go' } }, details] : [details];
   }
   switch (a.kind) {
     case 'approve': {

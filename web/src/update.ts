@@ -78,13 +78,15 @@ export interface UpdateApi {
 /** The page's update state: chip text, the dialog, and its actions. Off on hosts with no installer. */
 export function useUpdates(api: UpdateApi, onError: (m: string) => void, enabled: boolean) {
   const [state, setState] = useState<VersionState | null>(null);
+  /** The first `GET /api/version` has answered (or never will on this host). */
+  const [known, setKnown] = useState(!enabled);
   const [later, setLater] = useState<string | null>(loadLater);
   // Read during render, before the app rewrites the hash for its own view.
   const [open, setOpen] = useState(() => typeof location !== 'undefined' && isUpdatesHash(location.hash));
   const [restarting, setRestarting] = useState(false);
   useEffect(() => {
     if (!enabled) return;
-    const w = createUpdateWatch({ get: api.version, onState: setState });
+    const w = createUpdateWatch({ get: () => api.version().finally(() => setKnown(true)), onState: (s) => { setState(s); setKnown(true); } });
     w.start();
     return w.stop;
   }, [enabled]);
@@ -96,13 +98,14 @@ export function useUpdates(api: UpdateApi, onError: (m: string) => void, enabled
     return () => window.removeEventListener('hashchange', on);
   }, [enabled]);
   const dismiss = useCallback(() => { const k = state ? dismissKey(state) : null; setLater(k); saveLater(k); }, [state]);
-  const setMode = useCallback(async (mode: UpdateMode) => {
-    try { setState(await api.setUpdateMode(mode)); } catch (e) { onError(e instanceof Error ? e.message : 'Could not save'); }
+  /** True when the host saved the mode; a failure shows as a toast. */
+  const setMode = useCallback(async (mode: UpdateMode): Promise<boolean> => {
+    try { setState(await api.setUpdateMode(mode)); return true; } catch (e) { onError(e instanceof Error ? e.message : 'Could not save'); return false; }
   }, [api]);
   /** @req FR:devops-installer/notice.restart */
   const restart = useCallback(async () => {
     setRestarting(true);
     try { await api.restartForUpdate(); } catch (e) { setRestarting(false); onError(e instanceof Error ? e.message : 'Restart failed'); }
   }, [api]);
-  return { state, chip: updateChip(state, later), open, setOpen, dismiss, setMode, restart, restarting };
+  return { state, known, chip: updateChip(state, later), open, setOpen, dismiss, setMode, restart, restarting };
 }

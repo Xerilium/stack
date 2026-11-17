@@ -37,7 +37,7 @@ The owner needs the smallest spec change first so that he clears reviews fast.
 - **FR:sort.order** (P1): `sortBySpecLines(rows)` is pure and stable. It drops Autopilot rows, then sorts by `specLines`, fewest first. A row with no count goes last. Ties keep the input order
 - **FR:sort.cache** (P1): The host reads PR facts with `gh` (`STACK_GH` or `gh`): `gh api repos/<repo>/pulls/<n>` (head SHA, body, labels, title, draft) and, only on a cache miss, `gh api --paginate repos/<repo>/pulls/<n>/files`. It caches `{repo, number, url, title, headSha, specLines, labels, live, reasons, at}` in `<home>/pr-facts.json` per PR and head SHA. A new head SHA reads the files again. At most 4 reads run at a time. A PR that `gh` cannot read keeps its prior facts. The browser never gets a GitHub token
 - **FR:sort.cli** (P1): `stack prs [--group g] --sort spec-lines` (`FR:pr-page/cli.prs`) adds `specLines` and `live` from the facts cache to the board rows and sorts them by `FR:pr-review-lane/sort.order`. Each line: `<specLines> <url>[ 🔬] - <title>` (🔬 marks `live`). Another `--sort` exits `2`
-- **FR:sort.api** (P1): `GET /pr-review` (route `prReview.get`, scope `tasks:read`) returns `{facts, briefs}` from the caches only, with no GitHub call. Each fact has the field `specLines`. The PR page reads `specLines` from here for its sort option
+- **FR:sort.api** (P1): `GET /pr-review` (route `prReview.get`, scope `tasks:read`) returns `{facts, briefs}` from the caches only, with no GitHub call. Each fact has the field `specLines`. The PR page cards read spec lines from the board instead (`FR:pr-page/data.row`)
 
 ### FR:flag: Live-validation flag
 

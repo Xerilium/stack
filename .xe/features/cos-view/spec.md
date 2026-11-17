@@ -27,7 +27,7 @@ The owner wants one place: next meeting(s), top messages, top actions, one task.
 
 ### FR:base: Base of ops
 
-- **FR:base.view** (P1): The daily Chief of Staff page is `cos-base-of-ops` (`#/cos`). It composes Now, Needs you, the PR flyout, and Agents; it adds only the CoS brief and the message box
+- **FR:base.view** (P1): The daily Chief of Staff page is `cos-base-of-ops` (`#/cos`). It composes Now, Needs you, the PR summary, and Agents; it adds only the CoS brief and the message box
 
 ## Dependencies
 

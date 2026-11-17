@@ -11,6 +11,9 @@ import type { Task } from './types';
 /** The longest "why now" line. @req FR:now-screen/now.why */
 export const WHY_MAX = 60;
 
+/** How long Done holds the check before the next task shows. @req FR:product-reset/ui.done */
+export const DONE_MS = 400;
+
 export interface NowTask { task: Task; title: string; why: string }
 
 /** The two strongest reasons the task is next, then whether it fits the time left. */

@@ -25,16 +25,16 @@ describe('day plan', () => {
   });
   it('plans only your own actionable leaves, hero first', () => {
     const rows = [t('🤖 agent job'), t('🙋 decide'), t('plain 🟢'), t('📅 Oct 23: due today 🟢'), t('📅 Feb 1, 2027: far 🟢')];
-    const c = planCandidates(rows, at(10), [], rows[2].ref).map((x) => x.text);
+    const c = planCandidates(rows, at(10), null, rows[2].ref).map((x) => x.text);
     expect(c).toEqual(['plain 🟢', '📅 Oct 23: due today 🟢']);
   });
   it('when the server\'s next task is a parent, its first open leaf leads', () => {
     const rows = [t('other 🟢'), t('Ship it'), t('step one 🟢', 1), t('step two 🟢', 1)];
-    expect(planCandidates(rows, at(10), [], rows[1].ref).map((x) => x.text)).toEqual(['step one 🟢', 'other 🟢', 'step two 🟢']);
+    expect(planCandidates(rows, at(10), null, rows[1].ref).map((x) => x.text)).toEqual(['step one 🟢', 'other 🟢', 'step two 🟢']);
   });
   it('never plans reply rows', () => {
     const ask = t('🙋 Pick a color');
-    expect(planCandidates([ask, t('💬 Blue', 1)], at(10), []).map((x) => x.text)).toEqual([]);
+    expect(planCandidates([ask, t('💬 Blue', 1)], at(10), null).map((x) => x.text)).toEqual([]);
   });
 });
 
@@ -43,7 +43,13 @@ describe('the day plan takes the server order', () => {
   const rows = [t('first in file 🟢'), t('second in file 🟢'), t('third in file 🟢')];
   it('orders candidates by GET /rank?blocks=any; a row it left out is excluded, and with no ranking rows keep file order', () => {
     expect(planCandidates(rows, at(10), [rows[2].ref, rows[0].ref]).map((x) => x.text)).toEqual(['third in file 🟢', 'first in file 🟢']);
-    expect(byServerRank(rows, []).map((x) => x.text)).toEqual(rows.map((x) => x.text));
+    expect(byServerRank(rows, null).map((x) => x.text)).toEqual(rows.map((x) => x.text));
+  });
+  // @req FR:task-lifecycle/rank.owner
+  it('an empty ranking stays empty: the unmarked child of an agent row is never planned', () => {
+    const rows2 = [t('🤖 Agent epic'), t('agent step 🟢', 1)];
+    expect(planCandidates(rows2, at(10), [])).toEqual([]);
+    expect(planCandidates(rows2, at(10), null).map((x) => x.text)).toEqual(['agent step 🟢']);
   });
   it('a decision with children is not in the leaf ranking and stays, after the ranked ones', () => {
     const a = t('Pick the vendor 🙋 🟢'); const b = { ...t('Sub step 🟢'), depth: 1 } as typeof a;

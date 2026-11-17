@@ -38,7 +38,7 @@ describe('stack rank --engine pris', () => {
     const a = (await stack('rank', '--engine', 'autopri')).out;
     expect((await stack('rank', '--engine', 'pris')).out).toBe(a);
     expect((await stack('rank', '--engine', 'nope')).code).toBe(2);
-    expect((await stack('rank', '--engine', 'stack', '--explain')).code).toBe(2);
+    expect((await stack('rank', '--engine', 'stack', '--explain')).code).toBe(0); // FR:task-lifecycle/rank.explain
   });
 });
 

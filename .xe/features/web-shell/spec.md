@@ -48,7 +48,7 @@ Owner needs the same few places reachable the same way on every screen so that m
   - **FR:nav.tabbar.glyph** (P2): The `+` glyph MUST be optically centered in its circle (its box center within 1px of the circle's center)
   - Projects and Full stack are reached through More / the palette
 - **FR:nav.keys** (P1): Chords MUST be `g h` Home, `g d` or `g t` My day, `g k` Needs you, `g s` Sessions, `g p` Projects, `g a` Full stack
-  - **FR:nav.keys.hint** (P2): The rail MUST show the chord on hover and on the active item
+  - **FR:nav.keys.hint** (P2): Each rail item MUST name its chord in its tooltip, for example `Now (g n)`; no badge shows
 
 ### FR:palette: Command palette
 

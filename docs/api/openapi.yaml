@@ -32,7 +32,7 @@ paths:
           $ref: "#/components/responses/Error"
   /rank:
     get:
-      summary: "The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. `blocks=any` keeps tasks the current time block would hide"
+      summary: "The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. Only rows the owner must do: agent rows (🤖, 🪄, and unmarked rows under them) are left out. `stale: true` marks a row overdue 3+ days with no commit to it in 3+ days (score at most 500). `blocks=any` keeps tasks the current time block would hide"
       operationId: rank
       parameters:
         - name: limit
@@ -74,6 +74,9 @@ paths:
                           description: The override that applied
                         root:
                           $ref: "#/components/schemas/Ref"
+                        stale:
+                          type: boolean
+                          description: True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500
         default:
           $ref: "#/components/responses/Error"
   /meetings:
@@ -910,6 +913,10 @@ paths:
                   type: string
                   maxLength: 2000
                   description: Expected current row text at ref; 409 conflict when the row differs Single line.
+                agent:
+                  type: string
+                  maxLength: 64
+                  description: "Slug of the agent the message is for (the Now picker); default: the task agent Single line."
       responses:
         "201":
           description: Sent
@@ -940,6 +947,11 @@ paths:
               - open
               - handled
               - all
+        - name: agent
+          in: query
+          schema:
+            type: string
+          description: "Agent slug: messages picked for it in any project, plus the unaddressed ones in project"
       responses:
         "200":
           description: Entries
@@ -1595,8 +1607,15 @@ paths:
           $ref: "#/components/responses/Error"
   /prs:
     get:
-      summary: "Owner only. Open PRs the owner reviews or moves, grouped (blocked, waiting, processing, pending, paused), with who must act, CI, unresolved threads, queue rank, and the escalation set. Taking it renews a 3-minute poll lease. `{off: true}` on hosts with no GitHub token"
+      summary: "Owner only. Open PRs the owner reviews or moves, grouped (processing, waiting, pending, paused), each with its next action for the owner (validate, signoff, publish, approve, autopilot), spec lines, pin, and details; the Summary; who must act, CI, unresolved threads, queue rank, and the escalation set. refresh=1 polls GitHub first. Taking it renews a 3-minute poll lease. `{auth: {state, method, session?}}` when signed out of GitHub; `{off: true}` on hosts with no board"
       operationId: getPrBoard
+      parameters:
+        - name: refresh
+          in: query
+          schema:
+            type: string
+            enum:
+              - "1"
       responses:
         "200":
           description: Board
@@ -1620,6 +1639,25 @@ paths:
                     type: array
                     items:
                       type: object
+                  summary:
+                    type: object
+                    properties:
+                      live:
+                        type: array
+                        items:
+                          type: string
+                      signoff:
+                        type: array
+                        items:
+                          type: string
+                      autopilot:
+                        type: array
+                        items:
+                          type: string
+                      missing:
+                        type: array
+                        items:
+                          type: object
                   escalations:
                     type: object
                   queue:
@@ -1630,11 +1668,13 @@ paths:
                     type: string
                   off:
                     type: boolean
+                  auth:
+                    type: object
         default:
           $ref: "#/components/responses/Error"
   /prs/queue:
     post:
-      summary: "Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin, unpin, remove, undo. 409 when the queue is not installed or refuses"
+      summary: "Owner only. Change the PR priority queue through stack pr-pri: top, up, down, move (to rank), add (at the top), pin (adds the PR first when not queued), unpin, remove, undo. 409 when the queue is not installed or refuses"
       operationId: movePrInQueue
       requestBody:
         required: true
@@ -1829,6 +1869,108 @@ paths:
                 type: object
         default:
           $ref: "#/components/responses/Error"
+  /prs/resolve:
+    post:
+      summary: Owner only. Resolve or reopen a review thread (GraphQL node id) of a PR on the board. 404 when the thread is not on that PR
+      operationId: resolvePrThread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - thread
+                - op
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                thread:
+                  type: string
+                  maxLength: 100
+                  pattern: ^[A-Za-z0-9_=-]{1,100}$
+                  description: Review thread node id from the row detail
+                op:
+                  type: string
+                  enum:
+                    - resolve
+                    - unresolve
+                  description: resolve or unresolve
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  op:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /prs/sign-in:
+    get:
+      summary: "Owner only. The GitHub sign-in session: state (waiting, done, error, none), the one-time code, and the device link. Never a token. 404 on hosts with no sign-in"
+      operationId: getGitHubSignIn
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - waiting
+                      - done
+                      - error
+                      - none
+                  userCode:
+                    type: string
+                  verificationUri:
+                    type: string
+                  error:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: "Owner only. Start the GitHub sign-in (gh auth login --web, the device flow). One at a time: a start while one waits returns it. 404 on hosts with no sign-in"
+      operationId: startGitHubSignIn
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - waiting
+                      - done
+                      - error
+                  userCode:
+                    type: string
+                  verificationUri:
+                    type: string
+                  error:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
   /pr-review:
     get:
       summary: Cached PR facts (specLines, live flag, head SHA) and agent briefs with stale. No GitHub call. 404 on hosts with no store
@@ -1961,7 +2103,7 @@ paths:
                           type: string
                         ready:
                           type: boolean
-                  sources: &a1
+                  sources: &a2
                     type: array
                     items:
                       type: object
@@ -1992,6 +2134,9 @@ paths:
                           type: string
                         command:
                           type: string
+                        connect:
+                          type: boolean
+                          description: The step is the in-app Connect panel, not a command
                         doc:
                           type: string
                         mode:
@@ -2001,7 +2146,7 @@ paths:
                             - drafts
                         planned:
                           type: boolean
-                  summary: &a2
+                  summary: &a3
                     type: object
                     properties:
                       connected:
@@ -2017,6 +2162,218 @@ paths:
                       headline:
                         type: string
                         nullable: true
+        default:
+          $ref: "#/components/responses/Error"
+  /connect:
+    get:
+      summary: "Whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Never a token. Owner session only: 403 for tokens; 404 on a host without Connect"
+      operationId: getConnect
+      responses:
+        "200":
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  setup:
+                    type: object
+                    properties:
+                      clientId:
+                        type: boolean
+                  accounts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        account:
+                          type: string
+                        type:
+                          type: string
+                          enum:
+                            - personal
+                            - work
+                        mail:
+                          type: boolean
+                        calendar:
+                          type: boolean
+                        drafts:
+                          type: boolean
+                        state:
+                          type: string
+                          enum:
+                            - connected
+                            - expired
+                            - down
+                            - error
+                          description: "expired: needs sign-in; down: Microsoft not responding (retries on its own)"
+                        lastOkAt:
+                          type: string
+                          format: date-time
+                          description: The last good live read
+                        retryAt:
+                          type: string
+                          format: date-time
+                          description: The next automatic try, while the account is not connected
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/setup:
+    post:
+      summary: "Run the one-time app registration (scripts/register-stack-app.ps1, Az PowerShell). Returns a state code only: done, needs-azure-signin, needs-pwsh, failed. Owner session only"
+      operationId: runConnectSetup
+      responses:
+        "200":
+          description: Setup state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - done
+                      - needs-azure-signin
+                      - needs-pwsh
+                      - failed
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/sign-in:
+    post:
+      summary: "Start a Microsoft sign-in: the browser opens the sign-in page (PKCE, loopback), or a device code shows in the page. Read-only scopes; drafts opt-in; never send. 409 until setup has run. Owner session only"
+      operationId: startConnect
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$
+                  description: Mailbox address to sign in (login hint) Single line.
+                drafts:
+                  type: boolean
+                  description: Also ask for Mail.ReadWrite (reply drafts)
+                method:
+                  type: string
+                  enum:
+                    - browser
+                    - device
+                  description: browser (default) or device
+      responses:
+        "201":
+          description: Sign-in session
+          content:
+            application/json:
+              schema: &a1
+                type: object
+                properties:
+                  id:
+                    type: string
+                  method:
+                    type: string
+                    enum:
+                      - browser
+                      - device
+                  state:
+                    type: string
+                    enum:
+                      - waiting
+                      - done
+                      - error
+                  url:
+                    type: string
+                  userCode:
+                    type: string
+                  verificationUri:
+                    type: string
+                  expiresAt:
+                    type: string
+                  account:
+                    type: string
+                  error:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/sign-in/{id}:
+    get:
+      summary: "A sign-in session: waiting, done (with the account) or error (an OAuth code). Owner session only"
+      operationId: getConnectSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sign-in session
+          content:
+            application/json:
+              schema: *a1
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/drafts:
+    post:
+      summary: Turn reply drafts on (starts a sign-in that asks for Mail.ReadWrite) or off (read scopes only from the next refresh). Owner session only
+      operationId: setConnectDrafts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - account
+                - on
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$
+                  description: Mailbox address Single line.
+                on:
+                  type: boolean
+                  description: Drafts on or off
+      responses:
+        "200":
+          description: Session or ok
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
+  /connect/remove:
+    post:
+      summary: "Disconnect an account: deletes its token cache. Owner session only"
+      operationId: removeConnect
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^(?:|[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+)$
+                  description: Mailbox address Single line.
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
         default:
           $ref: "#/components/responses/Error"
   /inbox-sources:
@@ -2039,8 +2396,8 @@ paths:
               schema:
                 type: object
                 properties:
-                  sources: *a1
-                  summary: *a2
+                  sources: *a2
+                  summary: *a3
         default:
           $ref: "#/components/responses/Error"
   /inbox-items/{id}/action:
@@ -2465,6 +2822,13 @@ paths:
                         type: string
                         format: date-time
                         description: When the data shown was last read from the source
+                      reason:
+                        type: string
+                        enum:
+                          - signin
+                          - down
+                          - error
+                        description: "Graph only, when state is error: an account needs sign-in, Microsoft is not responding, or another error"
                   items:
                     type: array
                     items:
@@ -2540,6 +2904,80 @@ paths:
                   id:
                     type: string
                   path:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /inbox/delivery:
+    get:
+      summary: "Delivery state of the owner messages on one row (working, delivered, failed, not-delivered), the delivery mode, the Claude login state, and a live session for the agent when there is one (link only). Without ref: only the mode and the login state. Owner session only: 403 for tokens; 404 where the host does not deliver"
+      operationId: getInboxDelivery
+      parameters:
+        - name: ref
+          in: query
+          schema:
+            $ref: "#/components/schemas/Ref"
+          description: The row (project:line); omit for the mode and login only
+      responses:
+        "200":
+          description: Delivery
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - claude
+                      - off
+                  login:
+                    type: string
+                    enum:
+                      - ok
+                      - expired
+                      - unknown
+                  items:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        state:
+                          type: string
+                          enum:
+                            - working
+                            - delivered
+                            - failed
+                            - not-delivered
+                        agent:
+                          type: string
+                        reason:
+                          type: string
+                  live:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      link:
+                        type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /inbox/delivery/login:
+    post:
+      summary: "Start the Claude sign-in (claude auth login) on this machine; when it cannot start, the answer names the one step. Owner session only: 403 for tokens"
+      operationId: startDeliveryLogin
+      responses:
+        "200":
+          description: Started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  started:
+                    type: boolean
+                  step:
                     type: string
         default:
           $ref: "#/components/responses/Error"
@@ -2902,10 +3340,10 @@ paths:
           description: Version state
           content:
             application/json:
-              schema: &a4
+              schema: &a5
                 type: object
                 properties:
-                  running: &a3
+                  running: &a4
                     type: object
                     nullable: true
                     properties:
@@ -2918,7 +3356,7 @@ paths:
                       builtAt:
                         type: string
                         format: date-time
-                  available: *a3
+                  available: *a4
                   ready:
                     type: boolean
                   mode:
@@ -2974,7 +3412,7 @@ paths:
           description: Version state
           content:
             application/json:
-              schema: *a4
+              schema: *a5
         default:
           $ref: "#/components/responses/Error"
   /version/restart:
@@ -4151,6 +4589,14 @@ components:
             - claude
             - metadata
           description: tasks/agents file, .claude/agents file, or a project Agents line
+        home:
+          type: string
+          description: "Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents"
+        aliases:
+          type: array
+          items:
+            type: string
+          description: "Older display names a session title may start with: the H1 text before its colon"
     ThreadItem:
       type: object
       properties:

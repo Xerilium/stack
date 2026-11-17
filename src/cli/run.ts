@@ -10,7 +10,7 @@ import { basename, dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
-  explainAutopri, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
+  explainAutopri, explainStack, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
@@ -20,6 +20,7 @@ import { PrPriConflict, PrPriInvalid, PrPriNotFound, PrPriorityStore } from '../
 import { PR_PRI_USAGE, prPriArgv, prPriCmd } from './pr-pri';
 import { formatGaps, priGaps, registerPrisEngine, setPris, withLinks, withNote } from '../core/pris-rank';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
+import { addNote, retitleTask } from '../api/edit';
 import { currentRows, handleEntry, INBOX_STATES, listInbox, replyFromAgent } from '../core/inbox';
 import { registerAutopriEngine } from '../core/autopri';
 import { captureTask, CaptureError } from '../core/quick-capture';
@@ -33,12 +34,15 @@ import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { inboxSourcesCmd } from './inbox-sources';
+import { inboxRunCmd } from './delivery';
 import { emailCmd } from './email';
 import { agentCmd } from './agent';
 import { graphCmd } from './graph';
 import { prsCmd } from './prs';
 import { appCmd, realAppDeps } from './app';
 import { findStackDir, userConfig, walkStackDir } from './discover';
+import { devicesCmd } from './devices';
+import { bindMode } from './tailnet';
 import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb, type RepoInfo } from './web';
 import { runLocal, type Locks, type SetupHandler } from './setup';
 import { BatchedGitStorage } from '../core/storage-batch';
@@ -82,19 +86,22 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   resume: { flags: ['expect', 'queries', 'no-update'], usage: 'resume [ref] [--expect t] [--queries] [--no-update]', help: 'unpark the first parked task' },
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
+  retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)' },
+  note: { flags: ['text', 'expect'], usage: 'note add <ref> --text t [--expect t]', help: 'append a nested note bullet under a task (children stay)' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
-  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks; pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain (autopri, pris) shows score parts and the priority served; --truth lists ground-truth items to tag or add' },
+  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
-  web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches)' },
+  web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset', 'bind'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches; --bind tailnet also serves paired devices on your Tailscale addresses)' },
+  devices: { flags: [], usage: 'devices add <name> | list | revoke <id>', help: 'pair a phone with the tailnet host (docs/phone-access.md); add prints a one-time pairing code' },
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
-  inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | sources [--json]', help: 'reply on a task as an agent (tasks/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), or show each inbox source and how to connect it' },
+  inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all', 'once', 'watch', 'agent'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--agent slug] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | run [--project p] [--once|--watch] [--json] | sources [--json]', help: 'reply on a task as an agent (tasks/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), deliver open messages to their agents (claude -p), or show each inbox source and how to connect it' },
   agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows' },
   agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
-  prs: { flags: ['group', 'project', 'sort'], usage: 'prs [--group g] [--project p] [--sort spec-lines] [--json]', help: 'open PRs you review or move (--sort spec-lines: no Autopilot rows, fewest spec lines first, 🔬 = needs live validation), by group (blocked, waiting, processing, pending, paused) with who must act; needs GITHUB_TOKEN' },
+  prs: { flags: ['group', 'project', 'sort'], usage: 'prs [--group g] [--project p] [--sort spec-lines] [--json]', help: 'open PRs you review or move (--sort spec-lines: no Autopilot rows, fewest spec lines first, 🔬 = needs live validation), by group (blocked, waiting, processing, pending, paused) with who must act; uses GITHUB_TOKEN or the gh sign-in' },
   feedback: { flags: ['route', 'since'], usage: 'feedback add "<text>" [--route r] | list [--since id] | done <id>', help: 'owner feedback on the app (~/.stack/feedback.jsonl, one JSON line each; docs/feedback.md); done writes feedback.done.jsonl' },
   sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
   pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
@@ -107,7 +114,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
 interface Outcome { json: Record<string, unknown>; text: string; code?: number }
 
 const VERBS: Record<string, string> = {
-  start: 'started', complete: 'completed', skip: 'skipped', park: 'skipped', resume: 'resumed', suspend: 'suspended', set: 'set', add: 'added',
+  start: 'started', complete: 'completed', skip: 'skipped', park: 'skipped', resume: 'resumed', suspend: 'suspended', set: 'set', add: 'added', retitle: 'retitled',
 };
 
 const taskText = (line: string | undefined): string => (line ?? '').replace(/^\s*- \[[ xX]\] ?/, '');
@@ -525,7 +532,7 @@ function buildCtx(f: Record<string, string | true>, dir: string): LifecycleConte
 }
 
 /** Commands after which legacy ran `Update-StackSummary`. @req FR:cli/cmd.refresh */
-const REFRESH = new Set(['start', 'complete', 'skip', 'resume', 'suspend', 'remove-completed', 'add-project']);
+const REFRESH = new Set(['start', 'complete', 'skip', 'resume', 'suspend', 'retitle', 'remove-completed', 'add-project']);
 
 /** @req FR:cli/cmd.refresh @req FR:cli/cmd.refresh.skip @req FR:cli/cmd.refresh.json */
 async function dispatch(cmd: string, p: ReturnType<typeof parseArgs>, dir: string): Promise<Outcome> {
@@ -593,7 +600,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         const ranked = await rankStack(ctx, at, top);
         if (!ranked.length) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
         return {
-          json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}) })) },
+          json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}), ...(n.stale ? { stale: true } : {}) })) },
           text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'),
         };
       }
@@ -617,6 +624,23 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       if (p.positionals.length !== 1) throw new UsageError('set needs exactly one <ref>');
       return describe(cmd, await setProperties(ctx, { ...parseRef(p.positionals[0]), text: flag(f, 'expect') }, props(f)));
     }
+    // @req FR:cli/cmd.retitle
+    case 'retitle': {
+      const text = flag(f, 'text');
+      if (p.positionals.length !== 1) throw new UsageError('retitle needs exactly one <ref>');
+      if (text === undefined) throw new UsageError('retitle needs --text');
+      const r = parseRef(p.positionals[0]);
+      return describe(cmd, await retitleTask(storage, r, text, flag(f, 'expect')));
+    }
+    // @req FR:cli/cmd.note
+    case 'note': {
+      const text = flag(f, 'text');
+      if (p.positionals[0] !== 'add') throw new UsageError('Usage: stack note add <ref> --text t [--expect t]');
+      if (p.positionals.length !== 2) throw new UsageError('note add needs exactly one <ref>');
+      if (text === undefined) throw new UsageError('note add needs --text');
+      const r = await addNote(storage, parseRef(p.positionals[1]), text, flag(f, 'expect'));
+      return { json: { ok: true, command: 'note', changed: true, ref: { path: r.ref.path, line: r.ref.line + 1 }, text: text.trim() }, text: `noted ${formatRef(r.ref)}` };
+    }
     // @req FR:auto-priority/tag.cli
     case 'tag': {
       if (p.positionals.length !== 1) throw new UsageError('tag needs exactly one <ref>');
@@ -633,10 +657,15 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       const engine = flag(f, 'engine') ?? 'stack';
       if (engine !== 'autopri' && engine !== 'pris' && engine !== 'stack') throw new UsageError('--engine must be autopri, pris or stack');
       const explain = f['explain'] === true;
-      if (explain && engine === 'stack') throw new UsageError('--explain needs --engine autopri or pris');
       if (flag(f, 'truth') !== undefined && !explain) throw new UsageError('--truth needs --explain');
+      if (flag(f, 'truth') !== undefined && engine === 'stack') throw new UsageError('--truth needs --engine autopri or pris');
       const top = num(flag(f, 'top'), 'top');
       if (top !== undefined && (!Number.isInteger(top) || top < 1 || top > 50)) throw new UsageError('--top must be a whole number from 1 to 50');
+      // @req FR:task-lifecycle/rank.explain
+      if (explain && engine === 'stack') {
+        const r = await explainStack(ctx, at, { top });
+        return { json: { ok: true, items: r.items, dropped: r.dropped }, text: r.text, code: r.items.length ? EXIT.ok : EXIT.none };
+      }
       registerAutopriEngine();
       // @req FR:pris-aware-ranking/explain.cli @req FR:pris-aware-ranking/explain.json
       const pris = engine === 'pris' ? new PriStore(stackHome()).read().pris : undefined;
@@ -651,7 +680,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       }
       const ranked = await rankStack(rctx, at, top);
       return {
-        json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text })) },
+        json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.stale ? { stale: true } : {}) })) },
         text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'), code: ranked.length ? EXIT.ok : EXIT.none,
       };
     }
@@ -681,13 +710,15 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         extra(1);
         const state = flag(f, 'state');
         if (state !== undefined && !(INBOX_STATES as readonly string[]).includes(state)) throw new UsageError(`--state must be one of ${INBOX_STATES.join(', ')}`);
-        const items = await listInbox(ctx, { project: flag(f, 'project'), state: (state ?? (f.all === true ? 'all' : undefined)) as (typeof INBOX_STATES)[number] | undefined, withdrawn: f.all === true }); // --all: every entry, withdrawn too; --state still narrows
+        const items = await listInbox(ctx, { project: flag(f, 'project'), agent: flag(f, 'agent'), state: (state ?? (f.all === true ? 'all' : undefined)) as (typeof INBOX_STATES)[number] | undefined, withdrawn: f.all === true }); // --all: every entry, withdrawn too; --state still narrows
         const rows = await currentRows(ctx, items);
         const out = items.map((e) => ({ ...e, ...(rows.has(e.id) ? { row: rows.get(e.id)! } : {}) }));
-        return { json: { ok: true, items: out }, text: out.map((e) => `${e.id} ${e.kind} ${e.project} ${e.row ?? e.ref} ${e.text}${e.withdrawn ? ' (withdrawn)' : ''}`).join('\n') };
+        return { json: { ok: true, items: out }, text: out.map((e) => `${e.id} ${e.kind} ${e.project} ${e.row ?? e.ref} ${e.text}${!e.from && e.agent ? ` (to ${e.agent})` : ''}${e.withdrawn ? ' (withdrawn)' : ''}`).join('\n') }; // @req FR:product-reset/ui.thread
       }
       // @req FR:inbox-page/cli.sources
       if (p.positionals[0] === 'sources') { extra(1); return inboxSourcesCmd(ctx); }
+      // @req FR:agent-delivery/cli.run
+      if (p.positionals[0] === 'run') { extra(1); return inboxRunCmd(ctx, f, { repo: dir, config: loadConfig(dir), out: (l) => process.stdout.write(`${l}\n`) }); }
       // @req FR:agent-inbox/cli.handle
       if (p.positionals[0] === 'handle') {
         if (!p.positionals[1]) throw new UsageError('inbox handle needs an id');
@@ -696,7 +727,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         return { json: { ok: true, ...r }, text: r.changed ? 'handled' : 'unchanged' };
       }
       // @req FR:agent-thread/reply.entry
-      if (p.positionals[0] !== 'reply') throw new UsageError('Usage: stack inbox reply <ref> --from <agent> --text t | list | handle <id> | sources');
+      if (p.positionals[0] !== 'reply') throw new UsageError('Usage: stack inbox reply <ref> --from <agent> --text t | list | handle <id> | run | sources');
       if (!p.positionals[1]) throw new UsageError('inbox reply needs a ref');
       extra(2);
       const from = flag(f, 'from'); const text = flag(f, 'text');
@@ -730,6 +761,8 @@ export function webReportStore(live: boolean, home: string): ReportStore | undef
  */
 async function web(f: Record<string, string | true>, io: IO, here: { dir: string; by: string } | null, home: string): Promise<number> {
   const port = num(flag(f, 'port'), 'port') ?? 4173;
+  // @req FR:tailnet-access/bind.@cli
+  const bind = bindMode(f['bind'], userConfig(home).bind);
   const webDir = join(__dirname, '../../web/dist');
   if (!existsSync(join(webDir, 'index.html'))) throw new StorageError(`Web app not built (${webDir}). Run: pnpm build`);
   // --repo, then --dir or the current folder, then env, then user config; config is read again on every restart (setup writes it).
@@ -766,7 +799,9 @@ async function web(f: Record<string, string | true>, io: IO, here: { dir: string
     const ics = (cfg as { ics?: unknown }).ics; // @req FR:first-run-onboarding/step.calendar
     // Demo reads no session store and keeps priorities beside the demo copy. @req FR:status-ingest/host.demo
     const demoLive = live ? {} : { inventory: false as const, pris: new PriStore(join(home, '.config/stack/demo-state')), prPriority: new PrPriorityStore(join(home, '.config/stack/demo-state')) };
-    const server = await startWeb({ dir: target, port: p, webDir, label, info, storage, setup, ...(typeof ics === 'string' ? { ics } : {}), ...(reports ? { reports } : {}), ...demoLive });
+    const server = await startWeb({ dir: target, port: p, webDir, label, info, storage, bind, setup, ...(typeof ics === 'string' ? { ics } : {}), ...(reports ? { reports } : {}), ...demoLive });
+    // @req FR:tailnet-access/bind.startup
+    if (bind === 'tailnet') io.out(`Tailnet (paired devices only): ${server.urls.slice(1).join('  ')}\nHTTPS for the phone: tailscale serve --bg ${new URL(server.url).port}. Pair a phone: stack devices add <name>\n`);
     return { server, dir: target };
   };
   const s = await runLocal({ port, home, env: process.env, webDir, spec, locks, startReal, log: (l) => io.out(`${l}\n`) });
@@ -821,6 +856,8 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
       if (json) io.out(`${JSON.stringify(o.json)}\n`); else if (o.text) (o.code ? io.err : io.out)(`${o.text}\n`);
       return o.code ?? EXIT.ok;
     }
+    // Devices live in ~/.stack (STACK_HOME), not the content repo. @req FR:tailnet-access/pair.@cli
+    if (p.command === 'devices') { const d = await devicesCmd(p.positionals[0], p.positionals.slice(1), stackHome()); io.out(`${json ? JSON.stringify(d.json) : d.text}\n`); return EXIT.ok; }
     const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'feedback' ? await feedbackCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'app' ? await appCmd(p.positionals[0], p.flags, realAppDeps(home)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);

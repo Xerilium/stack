@@ -10,7 +10,10 @@ describe('stack web calendar source', () => {
   it('fixture wins; Graph when signed in with Calendars.Read; nothing otherwise', async () => {
     const d = mkdtempSync(join(tmpdir(), 'cal-src-'));
     const cachePath = join(d, 'graph-token.json');
-    expect(await calendarSource({ cachePath })).toEqual({ source: 'none' });
+    const none = await calendarSource({ cachePath });
+    expect(none.source).toBe('none');
+    // Live: the provider says not connected until an account signs in. @req FR:connect-accounts/cal.fallback
+    await expect(none.provider!.events('2026-11-12T00:00:00Z', '2026-11-13T00:00:00Z')).rejects.toThrow('Calendar not connected');
     await new FileTokenCache(cachePath).write({ ...tok, scopes: ['Mail.Read', 'offline_access'] });
     expect((await calendarSource({ cachePath })).source).toBe('none');
     await new FileTokenCache(cachePath).write({ ...tok, scopes: ['Calendars.Read', 'offline_access'] });
@@ -24,8 +27,8 @@ describe('stack web calendar source', () => {
     const fx = join(d, 'events.json');
     writeFileSync(fx, '[]');
     expect((await calendarSource({ cachePath, fixture: fx, log: (l) => logs.push(l) })).source).toBe('fixture');
-    await calendarSource({ cachePath: join(d, 'none.json'), log: (l) => logs.push(l) });
-    expect(logs).toEqual(['calendar: Graph', 'calendar: fixture']);
+    await calendarSource({ cachePath: join(mkdtempSync(join(tmpdir(), 'cal-none-')), 'none.json'), log: (l) => logs.push(l) });
+    expect(logs).toEqual(['calendar: Graph', 'calendar: fixture', 'calendar: none yet']);
     expect(logs.join(' ')).not.toMatch(/\bat\b|\brt\b/);
   });
 

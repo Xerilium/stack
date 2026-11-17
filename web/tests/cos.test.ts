@@ -1,6 +1,6 @@
 /** @req FR:cos-base-of-ops/state.report @req FR:cos-base-of-ops/state.age @req FR:cos-base-of-ops/state.stale @req FR:cos-base-of-ops/state.line @req FR:cos-base-of-ops/msg.anchor @req FR:cos-base-of-ops/compose.prs @req FR:cos-base-of-ops/route.view */
 import { describe, expect, it } from 'vitest';
-import { anchorFor, cosName, cosReport, prSummary, prsTab, reportState, stateLine, type CosReport } from '../src/cos';
+import { anchorFor, cosName, cosReport, prSummary, reportState, stateLine, type CosReport } from '../src/cos';
 import type { TeamAgent } from '../src/team';
 import type { PrBoard } from '../src/prs';
 import type { Task } from '../src/types';
@@ -64,24 +64,15 @@ describe('anchorFor', () => {
   });
 });
 
-describe('prSummary and prsTab', () => {
-  const e = (n: number) => ({ repo: 'o/r', number: n, url: `https://github.com/o/r/pull/${n}`, title: `PR ${n}` });
-  const board = { at: NOW.toISOString(), user: 'me', agents: { count: 2, source: 'sessions' }, counts: { blocked: 1, waiting: 0, processing: 4, pending: 2, paused: 0 }, footer: { running: 0, waiting: 0, parked: 0 }, queue: true,
-    rows: [{ group: 'blocked', project: 'x' }, { group: 'processing', project: 'x', healthy: false }, { group: 'processing', project: 'x', healthy: true }, { group: 'pending', project: 'x' }],
-    escalations: { blocked: [e(1), e(2)], enable: [e(3), e(4)], live: [e(5)] } } as unknown as PrBoard;
+describe('prSummary', () => {
+  const row = (n: number, group: string, nextAction: string | null) => ({ url: `https://github.com/o/r/pull/${n}`, repo: 'o/r', number: n, title: `PR ${n}`, group, project: 'x', nextAction });
+  const board = { at: NOW.toISOString(), user: 'me', agents: { count: 2, source: 'sessions' }, counts: { waiting: 0, processing: 4, pending: 2, paused: 0 }, footer: { running: 0, waiting: 0, parked: 0 }, queue: true,
+    rows: [row(1, 'waiting', 'signoff'), row(2, 'processing', null), row(3, 'processing', 'validate'), row(4, 'pending', 'approve'), row(5, 'pending', 'publish')] } as unknown as PrBoard;
   // @req FR:cos-base-of-ops/compose.prs
-  it('counts per group as the flyout tabs count them (countOf), in PR page order with its labels; up to 3 escalations, blocked first', () => {
+  it('counts per group as the PR page tabs count them (countOf), in its order with its labels; up to 3 PRs with a next action', () => {
     const s = prSummary(board);
-    expect(s.counts.map((c) => `${c.label}:${c.n}`)).toEqual(['Blocked on me:1', 'Waiting on me:0', 'Processing:1', 'Pending:1', 'Paused:0']);
-    expect(s.esc.map((x) => `${x.number}:${x.kind}`)).toEqual(['1:blocked', '2:blocked', '3:enable']);
-    expect(prSummary(null)).toEqual({ counts: [], esc: [] });
-  });
-  // @req FR:cos-base-of-ops/route.view
-  it('#/prs and #/prs?tab= name the flyout tab; other hashes do not', () => {
-    expect(prsTab('#/prs')).toBe('default');
-    expect(prsTab('#/prs?tab=blocked')).toBe('blocked');
-    expect(prsTab('#/prs?tab=escalations')).toBe('escalations');
-    expect(prsTab('#/prs?tab=bogus')).toBe('default');
-    expect(prsTab('#/cos')).toBeNull();
+    expect(s.counts.map((c) => `${c.label}:${c.n}`)).toEqual(['Processing:2', 'Waiting on me:1', 'Pending:2', 'Paused:0']);
+    expect(s.need.map((x) => x.number)).toEqual([1, 3, 4]);
+    expect(prSummary(null)).toEqual({ counts: [], need: [] });
   });
 });

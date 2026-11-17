@@ -28,7 +28,7 @@ Every section reads one data source through one component. The CoS view keeps no
 | Needs you | Every open ask, with every answer | Top 3 asks as `NowAsks` cards, `{n} more in Needs you` | `useAsks` (`GET /asks`, `GET /needs-you`) |
 | Needs you, Priorities block | Every priority, inline edit | `PrisBlock` (same rows, same inline status edit) | `usePrisSessions` (`GET /pris`) |
 | Needs you, Sessions block | Sessions that wait on the owner or are stuck | `SessionsBlock` | `usePrisSessions` (`GET /session-inventory`) |
-| Pull requests flyout | PR rows per group, escalation set, every PR action | Count per group and the escalation PRs, each a link that opens the flyout | `usePrBoard` (the one shared PR store, `GET /prs`) |
+| Pull requests page | PR rows per group, the details pane, every PR action | Count per group and up to 3 PRs with a next action, each a link to `#/prs` | `usePrBoard` (the one shared PR store, `GET /prs`) |
 | Now | One task, next meetings, top asks | `NowNext` (next 2 meetings) | the App's calendar and weekly schedule |
 | Agents | Team chart, sessions, talk | Link only | `useTeam`, `useSessions` |
 | (new) | — | The CoS's brief: top 3, blockers, progress, report age | `GET /reports` (`~/.stack/reports.json`) |
@@ -38,7 +38,7 @@ Every section reads one data source through one component. The CoS view keeps no
 
 ### FR:route: Route and nav
 
-- **FR:route.view** (P1): `#/cos` opens the Chief of Staff view. `#/prs` and `#/prs?tab={group}` also open it, with the PR flyout open on that tab (`blocked`, `waiting`, `processing`, `pending`, `paused`, `escalations`). Closing the flyout leaves `#/cos`
+- **FR:route.view** (P1): `#/cos` opens the Chief of Staff view. `#/prs` is the PR page (`FR:pr-page/nav.page`), not this view
 - **FR:route.nav** (P1): The rail lists the view first, before Now, named with the CoS's display name (`name` of the roll-up agent, `FR:agent-team/agent.team.rollup`) and avatar; with no roll-up agent the name is `Chief of Staff`. The chord is `g c`. The palette entry is `Go to Chief of Staff`. The phone tab bar does not change; the view is under More
 - **FR:route.landing** (P2): An empty hash still opens Now (`FR:ux-consolidation/one.start`). Reason: Now owns the one task; parallel work depends on that default. The owner can pin `#/cos` as the start page
 
@@ -62,7 +62,7 @@ Every section reads one data source through one component. The CoS view keeps no
 
 - **FR:compose.decisions** (P1): `Decisions` draws the top 3 open asks with `NowAsks` (its head reads `Waiting on you`, as on Now), the same list and order as Now (`FR:ux-consolidation/one.messages`). Every answer (approve, choose, answer, snooze, open) is the card's own (`FR:ux-consolidation/one.expand`, `FR:ux-consolidation/one.answer`). `{n} more in Needs you`, else `Open Needs you`, opens Needs you
 - **FR:compose.pris** (P1): `Priorities` draws `PrisBlock` from the same hook as Needs you: order, status, items done of total, and inline status edit. `PrisBlock` shows the last update age per priority and flags a stale one (no status, or the newest of `statusAt` and the newest weekly note is older than 7 days, the `stack pris gaps` rule `FR:pris-aware-ranking/cos.gaps.kinds`). Needs you shows the same flags, because it is the same component
-- **FR:compose.prs** (P1): `Pull requests` shows, from the one PR store, a count per group in the PR page order with its PR page label (`TAB_LABEL`), and up to 3 escalation PRs (blocked first, then enable, then live validation), each with its title and blocker. Each count and each PR opens the PR flyout on its tab (`#/prs?tab=…`); the PR's own link opens GitHub in a new tab. The actions (Accept, Apply Autopilot, queue moves) stay in the flyout
+- **FR:compose.prs** (P1): `Pull requests` shows, from the one PR store, a count per group in the PR page order with its PR page label (`TAB_LABEL`), and up to 3 PRs that have a next action for the owner (`PrRow.nextAction`), each with its title and the action's label (`ACTION_LABEL`). Each count and each PR opens the PR page (`#/prs`); the PR's own link opens GitHub in a new tab. The actions stay on the PR page
 - **FR:compose.team** (P1): `Agents` draws `SessionsBlock` (sessions that wait on the owner or are stuck, by project) and `{n} running` from the inventory, with `Open Agents`
 - **FR:compose.today** (P1): `Today` draws `NowNext` (next 2 meetings, calendar honesty) and `Open My day`
 

@@ -64,17 +64,20 @@ describe('buildSources', () => {
     expect(g).toMatchObject({ state: 'not-connected', command: 'gh auth login' });
   });
 
-  it('help: the exact sign-in command, read-only by default, drafts kept, and Stack never sends', () => {
+  // @req FR:connect-accounts/web.nocmd
+  it('help: sign-in is the in-app Connect (no command), read-only by default, drafts kept, and Stack never sends', () => {
     const s = build({
       probe: probe({ emails: [{ account: 'b@contoso.test', mode: 'drafts' }], clientId: '11111111-2222-3333-4444-555555555555' }),
       records: [{ kind: 'email', account: 'b@contoso.test', at: ago(10), ok: false, error: 'signin-expired' }], accounts: ['d@outlook.com'],
     });
-    expect(by(s, 'email', 'd@outlook.com').command).toBe('stack graph login --client-id 11111111-2222-3333-4444-555555555555 --account d@outlook.com --with mail');
+    expect(by(s, 'email', 'd@outlook.com')).toMatchObject({ connect: true });
+    expect(by(s, 'email', 'd@outlook.com').command).toBeUndefined();
     expect(by(s, 'email', 'd@outlook.com').needs).toMatch(/read-only/i);
-    expect(by(s, 'email', 'd@outlook.com').needs).toMatch(/mail,drafts/);
+    expect(by(s, 'email', 'd@outlook.com').needs).toMatch(/drafts/i);
     expect(by(s, 'email', 'd@outlook.com').needs).toMatch(/Stack never sends/);
-    expect(by(s, 'email', 'b@contoso.test').command).toBe('stack graph login --client-id 11111111-2222-3333-4444-555555555555 --account b@contoso.test --with mail,drafts');
-    expect(by(build({ probe: probe() }), 'email').command).toBe('stack graph login --client-id <app id> --account <address> --with mail');
+    expect(by(s, 'email', 'b@contoso.test')).toMatchObject({ connect: true, mode: 'drafts' });
+    expect(by(build({ probe: probe() }), 'email')).toMatchObject({ connect: true });
+    expect(by(build({ probe: probe() }), 'email').command).toBeUndefined();
     expect(by(s, 'email', 'd@outlook.com').doc).toMatch(/docs\/inbox-sources\.md#email$/);
   });
 
@@ -94,9 +97,15 @@ describe('buildSources', () => {
     expect(by(s, 'teams').doc).toMatch(/#teams$/);
     expect(by(s, 'slack').doc).toMatch(/#slack$/);
   });
-  it('a client id that is not a GUID never reaches the sign-in command', () => {
+  it('an unreadable token file: error, chmod or sign in again in the app, no command', () => {
     const s = build({ probe: probe({ emails: [{ account: 'a@outlook.com', mode: 'read-only', error: 'token-unreadable' }], clientId: '$(id)' }) });
-    expect(by(s, 'email', 'a@outlook.com').command).toBe('stack graph login --client-id <app id> --account a@outlook.com --with mail');
+    expect(by(s, 'email', 'a@outlook.com')).toMatchObject({ state: 'error', connect: true });
+    expect(by(s, 'email', 'a@outlook.com').command).toBeUndefined();
+  });
+  // @req FR:connect-accounts/acct.sources
+  it('an account a live read marked expired is a sign-in-expired error with Connect', () => {
+    const s = build({ probe: probe({ emails: [{ account: 'a@outlook.com', mode: 'read-only', error: 'signin-expired' }] }), records: [{ kind: 'email', account: 'a@outlook.com', at: ago(1), ok: true }] });
+    expect(by(s, 'email', 'a@outlook.com')).toMatchObject({ state: 'error', error: 'Email sign-in expired: a@outlook.com', connect: true });
   });
   it('an onboarding mail sign-in with no mailbox name is connected, waiting for its first sync', () => {
     const s = build({ probe: probe({ unnamedMail: { mode: 'drafts' } }) });
@@ -109,9 +118,9 @@ describe('buildSources', () => {
     expect(s.filter((x) => x.kind === 'email').map((x) => x.account)).toEqual(['b@x.com']);
   });
 
-  it('no probe: an expired drafts mailbox keeps --with mail,drafts from its record', () => {
+  it('no probe: an expired drafts mailbox keeps drafts mode from its record', () => {
     const s = build({ records: [{ kind: 'email', account: 'b@contoso.test', at: ago(1), ok: false, error: 'signin-expired', mode: 'drafts' }] });
-    expect(by(s, 'email', 'b@contoso.test').command).toMatch(/--with mail,drafts$/);
+    expect(by(s, 'email', 'b@contoso.test')).toMatchObject({ connect: true, mode: 'drafts' });
   });
 
   it('GitHub stays planned (not counted) until its runner reports', () => {

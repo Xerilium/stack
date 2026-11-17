@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { parseInline, type Node } from './markdown';
+import { mdLinks as linksOf, parseInline, refCtxOf, type Node } from './markdown';
 import { EFFORT, IMPACT, PRIORITY, STATUS, type Choice } from './row';
 
 export const GROUPS = {
@@ -29,22 +29,21 @@ const plainNode = (n: Node, i: number): ComponentChildren => {
   return n.t === 'b' ? <b key={i}>{kids}</b> : <i key={i}>{kids}</i>;
 };
 
-/** Markdown subset as elements. `links={false}`: links as text (pair with `TitleLinks` outside the control). @req FR:web-app/edit.preview */
-export function Md({ text, links = true }: { text: string; links?: boolean }) {
-  return <>{parseInline(text).map(links ? renderNode : plainNode)}</>;
+/** Refs resolve against the loaded projects' repos; set when the projects load. @req FR:product-reset/schema.refs */
+let refsOf = refCtxOf([]);
+export const setRefProjects = (projects: Parameters<typeof refCtxOf>[0]): void => { refsOf = refCtxOf(projects); };
+
+/** Markdown subset as elements; PR and issue refs link to GitHub. `links={false}`: links as text (pair with `TitleLinks` outside the control). @req FR:web-app/edit.preview @req FR:product-reset/ui.reflink */
+export function Md({ text, links = true, project }: { text: string; links?: boolean; /** Resolves `#N` and `PR N`. */ project?: string }) {
+  return <>{parseInline(text, refsOf(project)).map(links ? renderNode : plainNode)}</>;
 }
 
-/** The markdown links in a text, in order. */
-export function mdLinks(text: string): { href: string; label: string }[] {
-  const out: { href: string; label: string }[] = [];
-  const walk = (ns: Node[]) => { for (const n of ns) { if (typeof n === 'string' || n.t === 'code') continue; if (n.t === 'a') out.push({ href: n.href, label: n.c }); else walk(n.c); } };
-  walk(parseInline(text));
-  return out;
-}
+/** The links in a text, in order: markdown links, bare urls and resolved refs. */
+export const mdLinks = (text: string, project?: string) => linksOf(text, refsOf(project));
 
 /** A title's markdown links as their own anchors, beside (never inside) the row's open button; a click never opens the row. @req FR:task-detail-design/detail.open */
-export function TitleLinks({ text }: { text: string }) {
-  return <>{mdLinks(text).map((l, i) => <a key={`${i}-${l.href}`} class="tag link" href={l.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{l.label} ↗</a>)}</>;
+export function TitleLinks({ text, project }: { text: string; project?: string }) {
+  return <>{mdLinks(text, project).map((l, i) => <a key={`${i}-${l.href}`} class="tag link" href={l.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{l.label} ↗</a>)}</>;
 }
 
 const vsel = (s: string) => s.replace(/\uFE0F/g, '');

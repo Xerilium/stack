@@ -34,6 +34,7 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 | `STACK_REPO_TOKEN` | Credential for the private task repo |
 | `STACK_REPO_URL` | https URL of the private task repo (no credentials in it). More settings: [Azure host](azure-host.md) |
 | `STACK_CALENDAR_FIXTURE` | `stack web` only: JSON file of calendar events for Today (demo and screenshots); wins over Graph and ICS |
+| `STACK_GRAPH_CLIENT_ID` | `stack web` and the desktop app: the Stack app registration id for in-app Connect. Default `graph.clientId` in `~/.config/stack/config.json`, written by Run setup (see `docs/connect-accounts.md`) |
 | `STACK_GRAPH_CACHE` | `stack graph`, `stack email` and `stack web` only: path of the Graph token file. Default `~/.config/stack/graph-token.json` (mode 0600; never inside a task repo) |
 | `STACK_CALENDAR_ICS` | Published calendar links (ICS), separated by spaces or commas; `stack web` and the Azure host. Outlook on the web: Settings, Calendar, Shared calendars, Publish a calendar, ICS link. Google: Settings, your calendar, Secret address in iCal format. Treat as a secret: anyone with the link reads the calendar. Order: `STACK_CALENDAR_FIXTURE`, then a Graph sign-in, then these feeds |
 | `STACK_TOKEN_STORE` | Optional file path for the token store (needs `STACK_TOKEN_PEPPER`). Default: the data repo (`.stack/tokens.json`) |
@@ -48,8 +49,9 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 | `STACK_WEBHOOK_SECRET`, `STACK_WEBHOOK_ALLOW` | Webhook bot secret and allowed senders |
 | `STACK_IMESSAGE_SECRET`, `STACK_IMESSAGE_ALLOW` | iMessage bridge secret and allowed senders |
 | `STACK_GITHUB_WEBHOOK_SECRET`, `STACK_GITHUB_WEBHOOK_ALLOW` | GitHub comment bot secret and allowed logins |
-| `GITHUB_TOKEN` | `stack web` and the Azure host: read-only GitHub token for pull request state and checks on the AI team panel. Sent only to `api.github.com` |
-| `STACK_GITHUB_REPOS` | Optional comma list of `owner` or `owner/repo`. When set, only PRs in these repos get status, so an agent token cannot read other PRs through `GET /agents`. Unset: every repo the token can see |
+| `GITHUB_TOKEN` | Azure host: GitHub token for pull request state and the PR page. `stack web`, the desktop app, and `stack prs` use it when set, else the `gh` CLI sign-in (`gh auth token`), so no setup is needed; signed out, the PR page offers one-tap Sign in to GitHub (`gh auth login --web`). Sent only to `api.github.com`, never logged |
+| `STACK_GH_AUTH` | `off` stops the local host and `stack prs` from reading the `gh` sign-in (tests set it). Unset: on |
+| `STACK_GITHUB_REPOS` | Optional comma list of `owner` or `owner/repo`. When set, only PRs in these repos get status, so an agent token cannot read other PRs through `GET /agents`. Unset: every repo the token can see. On the local host the token may be the `gh` sign-in (every repo you can see); the local host takes no agent tokens (loopback, owner only), and the Azure host never reads `gh` |
 | `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY`, `STACK_VAPID_SUBJECT` | Optional Web Push VAPID keys (base64url) and contact (`mailto:you@example.com` or an `https:` URL); see [iPhone push](#iphone-push). The public key is served to devices at `GET /api/auth/devices/me/push-key`. The private key is a host secret only: never in a repo, never logged. Push is off unless all three are set and valid |
 | `STACK_PUSH_QUIET` | Optional quiet hours `<start>-<end>` in the config `timezone`, default `21-8`; only `crit` asks push inside them. `off` turns them off |
 | `STACK_REPO`, `STACK_DIR` | Local content repo for the CLI, `stack web`, and `stack-mcp` (when none is found by walking up from the current folder). Content never lives in the Stack repo; see the README "Two repos" |
@@ -78,7 +80,7 @@ The host pushes an ask to each paired phone when the ask is due within 1 hour. H
 1. Make VAPID keys once: `npx web-push generate-vapid-keys --json`. Set `STACK_VAPID_PUBLIC_KEY`, `STACK_VAPID_PRIVATE_KEY` and `STACK_VAPID_SUBJECT` as host secrets (portal: Static Web App, Environment variables; the setup script keeps them on re-run). Keep the private key in a password manager.
 2. Add a cron caller. Something must call `POST /api/push/check` (body `{}`) every 5 minutes with a `tasks:write` token, for example a GitHub Actions `schedule` workflow in the data repo with the token in a repo secret. Without it, only ask writes (`POST /api/asks/{key}`) start a check.
 3. Pair the phone (iOS 16.4 or later): create a device as the owner (`POST /api/auth/devices`), open `/#/install?device=<token>` in Safari, Add to Home Screen, open Stack from the Home Screen, then tap `Turn on notifications`.
-4. Optional, for the live Mac view only: use Tailscale Serve (tailnet only). Phone push uses the Azure host and needs no tunnel. Cloudflare Tunnel is not recommended (public hostname, extra account).
+4. Optional, for the live Mac view only: use Tailscale Serve (tailnet only; steps in [phone-access.md](phone-access.md)). Phone push uses the Azure host and needs no tunnel. Cloudflare Tunnel is not recommended (public hostname, extra account).
 
 `.stack/push-sent.json` in the data repo keeps one push per device, ask and deadline. A `404` or `410` from the push service removes that phone's subscription; pair again to restore it.
 
