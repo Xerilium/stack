@@ -30,3 +30,6 @@ desktop/out/
 web/dist
 web/test-results
 web/playwright-report
+
+# Catalyst
+.xe/runs/
