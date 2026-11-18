@@ -18,6 +18,8 @@ export TZ="${TZ:-America/Los_Angeles}"
 CLOCKS=(${STACK_PARITY_CLOCKS:-2026-10-22T09:00:00-07:00 2026-10-24T15:30:00-07:00 2026-10-26T06:15:00-07:00})
 
 SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/stack-parity.XXXXXX")"
+# Never read the live ~/.stack (pris.json changes the order).
+export STACK_HOME="$SCRATCH/home"
 KEEP=0
 trap '[ "$KEEP" -eq 1 ] || rm -rf "$SCRATCH"' EXIT
 CASE="$SCRATCH/case"; REPO="$SCRATCH/repo"

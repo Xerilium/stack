@@ -126,6 +126,11 @@ describe('GET /api/rank with priorities', () => {
     expect(items[0].text).toMatch(/FOCUS issues triage/);
     expect(items.every((i) => typeof i.ref === 'string' && !/approve the copy/.test(i.text))).toBe(true);
     expect((await get('/api/next')).task.text).toMatch(/FOCUS issues triage/);
+    // A new priority list re-ranks: the memo never reuses the old order. @req FR:pri-first-ranking/api.order
+    writeFileSync(join(home, 'pris.json'), JSON.stringify({ version: 1, rev: 2, pris: [{ id: 'p1', title: 'Cid', status: 'active', items: [], backlog: [], weekly: [], keywords: ['Cid copy'] }] }));
+    expect((await get('/api/rank')).items[0].text).toMatch(/Rewrite Cid copy/);
+    writeFileSync(join(home, 'pris.json'), JSON.stringify({ version: 1, rev: 3, pris: [{ id: 'p1', title: 'Rewrite', status: 'active', items: [], backlog: [], weekly: [], keywords: ['FOCUS issues'] }] }));
+    expect((await get('/api/rank')).items[0].text).toMatch(/FOCUS issues triage/);
     // @req FR:pri-first-ranking/order.overrides
     await storage.writeAux(PRIORITIES_PATH, JSON.stringify({ rules: [{ match: 'FOCUS', effect: 'down' }] }), { expectedVersion: null });
     expect((await get('/api/rank')).items.at(-1)!.text).toMatch(/FOCUS issues triage/);

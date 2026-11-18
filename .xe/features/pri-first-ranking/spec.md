@@ -11,7 +11,7 @@ dependencies: [pris-aware-ranking, task-lifecycle]
 
 ## Purpose
 
-The owner's ordered priorities decide what he does next. Every ranked list shows his priorities first and other work after them.
+The owner's ordered priorities decide what he does next. `stack next`, `stack rank` and the web Home show his priorities first and other work after them. The README summaries are out of scope.
 
 ## Scenarios
 
@@ -21,7 +21,7 @@ Owner needs every ranked list to follow his priority order so that backlog and a
 
 - **FR:order.input** (P1):
   - Priorities (@req FR:pris-aware-ranking/link.model) — the owner's ordered list from `~/.stack/pris.json`
-  - Ranked tasks (string) — the engine order after the owner filter
+  - Ranked tasks (@req FR:task-lifecycle/$ranked-task) — the engine order after the owner filter
 - **FR:order.linked** (P1): Ranker MUST put each linked task above every unlinked task.
   > - @req FR:pris-aware-ranking/link.best
   - **FR:order.linked.rank** (P1): Ranker MUST order linked tasks by priority rank, 1 first.
@@ -30,7 +30,8 @@ Owner needs every ranked list to follow his priority order so that backlog and a
 - **FR:order.overrides** (P1): Ranker MUST apply the owner overrides after the priority order.
   > - @req FR:task-lifecycle/rank.overrides
 - **FR:order.none** (P1): Ranker MUST keep the engine order when no priority links.
-- **FR:order.next** (P1): Ranker MUST give the first ranked task to a lifecycle command with no ref.
+- **FR:order.next** (P1): Ranker MUST give the first ranked task row to a lifecycle command with no ref.
+  - Action rows are not tasks, so `stack start` with no ref starts the first task row below them.
   > - @req FR:task-lifecycle/next.rank
 
 ### FR:action: Show one action per priority
