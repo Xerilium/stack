@@ -47,11 +47,14 @@ export function parseQmPlan(body: unknown): QmPlan {
   if (body.version !== 1) bad('version', 'Must be 1');
   if (typeof body.asOf !== 'string' || !ISO_DT.test(body.asOf) || Number.isNaN(Date.parse(body.asOf))) bad('asOf', 'Must be an ISO date-time with a zone');
   if (!Array.isArray(body.projects) || body.projects.length > MAX_PROJECTS) { bad('projects', `Must be an array of at most ${MAX_PROJECTS}`); throw new QmInvalid(issues); }
+  const seen = new Set<string>();
   const projects = body.projects.map((p, i): QmProject | undefined => {
     const f = `projects[${i}]`;
     if (!isObj(p)) { bad(f, 'Must be an object'); return undefined; }
     only(f, p, ['project', 'agent', 'tasks', 'weeklyTokens', 'preAckMin', 'postReviewMin']);
     const project = text(`${f}.project`, p.project, 80);
+    if (project && seen.has(project.toLowerCase())) bad(`${f}.project`, 'Must be unique in the plan');
+    if (project) seen.add(project.toLowerCase());
     let agent: QmAgent | undefined;
     if (!isObj(p.agent)) bad(`${f}.agent`, 'Must be an object {name, sessionId?, url?}');
     else {

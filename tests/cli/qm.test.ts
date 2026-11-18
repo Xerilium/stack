@@ -36,5 +36,6 @@ describe('stack qm', () => {
     expect(r.code).toBe(2);
     expect(JSON.parse(r.out).issues.map((i: { field: string }) => i.field)).toEqual(expect.arrayContaining(['asOf', 'projects']));
     expect((await stack('qm', 'put')).code).toBe(2);
+    expect((await stack('qm', '--file', f)).code).toBe(2); // --file without put never reads as saved
   });
 });

@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'fs';
+import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createApiHandler } from '../../src/api/handler';
@@ -21,6 +21,8 @@ describe('GET /qm', () => {
     expect(await get(s)).toEqual({ status: 200, json: { plan: null } });
     s.put(PLAN);
     expect(await get(s)).toEqual({ status: 200, json: { plan: PLAN } });
+    writeFileSync(s.file, '{nope');
+    expect(await get(s)).toEqual({ status: 200, json: { plan: null, broken: true } });
   });
 
   it('is owner only and 404 with no store', async () => {

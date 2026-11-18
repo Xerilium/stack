@@ -28,6 +28,7 @@ describe('parseQmPlan', () => {
     expect(issues({ ...PLAN, projects: [p] })).toEqual(expect.arrayContaining(['projects[0].tasks', 'projects[0].weeklyTokens', 'projects[0].preAckMin', 'projects[0].agent.name', 'projects[0].bogus']));
     expect(issues({ ...PLAN, projects: [{ ...PLAN.projects[0], tasks: [{ title: 'a', url: 'http://x' }] }] })).toEqual(['projects[0].tasks[0].url']);
     expect(issues({ version: 1, asOf: PLAN.asOf })).toEqual(['projects']);
+    expect(issues({ ...PLAN, projects: [PLAN.projects[0], { ...PLAN.projects[1], project: 'stack' }] })).toEqual(['projects[1].project']);
   });
 });
 

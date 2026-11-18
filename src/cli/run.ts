@@ -388,6 +388,7 @@ function qmCmd(p: ReturnType<typeof parseArgs>): Outcome {
   const store = new QmStore(stackHome());
   const [sub, ...rest] = p.positionals;
   if (rest.length) throw new UsageError(`Unexpected argument: ${rest[0]}`);
+  if (sub === undefined && flag(p.flags, 'file')) throw new UsageError('--file needs qm put (stack qm put --file plan.json)');
   if (sub === undefined) { const r = store.read(); return { json: { ok: true, ...r }, text: `${qmText(r.plan)}${r.broken ? ' (qm-plan.json is broken)' : ''}` }; }
   if (sub !== 'put') throw new UsageError(`Unknown qm command: ${sub}`);
   const file = flag(p.flags, 'file');

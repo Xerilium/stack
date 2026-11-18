@@ -39,12 +39,16 @@ test('sorts by a column; a second click reverses', async ({ page }) => {
   expect(await projects(page)).toEqual(['Stack', 'FOCUS']);
 });
 
-test('no plan', async ({ page }) => {
+test('no plan, or a broken file', async ({ page }) => {
   await open(page, { plan: null });
   await expect(page.getByText('No plan yet.')).toBeVisible();
+  await page.unroute('**/api/qm');
+  await open(page, { plan: null, broken: true });
+  await page.reload();
+  await expect(page.getByText(/plan file is broken/)).toBeVisible();
 });
 
-test('axe: no violations, light and dark; the page never scrolls sideways', async ({ page }) => {
+test('axe: no violations, light and dark; the page never scrolls sideways', async ({ page, isMobile }) => {
   await open(page);
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
@@ -52,4 +56,5 @@ test('axe: no violations, light and dark; the page never scrolls sideways', asyn
     expect(violations.map((v) => v.id)).toEqual([]);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  if (isMobile) for (const b of await page.locator('.qm button, .qm summary, .qm-back').all()) { const r = await b.boundingBox(); if (r) expect(r.height).toBeGreaterThanOrEqual(44); }
 });
