@@ -58,14 +58,21 @@ The owner needs one table so that the weekly plan is clear at a glance.
 ```jsonc
 {
   "version": 1,
-  "asOf": "2026-11-18T19:00:00Z",          // ISO date-time
-  "projects": [{                            // at most 50
-    "project": "Stack",                     // 1-80 chars
-    "agent": { "name": "stack-architect", "sessionId": "local_…", "url": "https://…" }, // sessionId, url optional
-    "tasks": [{ "title": "…", "url": "https://…" }], // 0-5, priority order; url optional
-    "weeklyTokens": 2000000,                // non-negative integer or null (pending)
-    "preAckMin": 10,                        // non-negative integer or null
-    "postReviewMin": 30                     // non-negative integer or null
-  }]
+  "asOf": "2026-11-18T19:00:00Z", // ISO date-time
+  "projects": [
+    {
+      // at most 50
+      "project": "Stack", // 1-80 chars
+      "agent": {
+        "name": "stack-architect",
+        "sessionId": "local_…",
+        "url": "https://…",
+      }, // sessionId, url optional
+      "tasks": [{ "title": "…", "url": "https://…" }], // 0-5, priority order; url optional
+      "weeklyTokens": 2000000, // non-negative integer or null (pending)
+      "preAckMin": 10, // non-negative integer or null
+      "postReviewMin": 30, // non-negative integer or null
+    },
+  ],
 }
 ```
