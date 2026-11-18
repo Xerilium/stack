@@ -1,4 +1,4 @@
-import { mkdtempSync, existsSync, readFileSync, statSync } from 'fs';
+import { mkdtempSync, existsSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { FEATURES, FileTokenCache, scopesFor } from '../../src/graph/auth';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -111,6 +111,12 @@ describe('stack graph login --account', () => {
       const text = await stack('graph', 'status');
       expect(text.out).toMatch(/sam@outlook\.com · signed in/);
       expect(text.out).toMatch(/sam@contoso\.test · signed in/);
+      const bad = mkdtempSync(join(tmpdir(), 'graph-bad-'));
+      process.env.STACK_GRAPH_CACHE = join(bad, 'graph-token.json');
+      writeFileSync(join(bad, 'graph-token-sam@outlook.com.json'), '{not json', { mode: 0o600 });
+      const broken = await stack('graph', 'status');
+      expect(broken.code).toBe(4);
+      expect(broken.out).toMatch(/graph-token-sam@outlook\.com\.json · unreadable/);
     } finally { if (prev === undefined) delete process.env.STACK_GRAPH_CACHE; else process.env.STACK_GRAPH_CACHE = prev; }
   });
   it('never asks for a send scope', () => {

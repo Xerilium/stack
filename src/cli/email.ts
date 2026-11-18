@@ -169,11 +169,12 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
     if (action === 'status') return emailAll(ctx, action, f, d);
     const mail: string[] = [];
     for (const p of listCachePaths(d.cacheDir)) {
-      const t = p === legacy ? null : await new FileTokenCache(p).read().catch(() => null);
+      const t = await new FileTokenCache(p).read().catch(() => null);
       if (t?.account && (hasScope(t.scopes, 'Mail.Read') || hasScope(t.scopes, 'Mail.ReadWrite'))) mail.push(p);
     }
-    if (mail.length > 1) throw new UsageError('Several mailboxes are signed in: use --account <address> or --all');
-    if (mail.length === 1) return emailOne(ctx, action, f, { ...d, cache: new FileTokenCache(mail[0]) });
+    if (mail.length > 1) throw new UsageError(`Several mailboxes are signed in: use --account <address>${action === 'run' ? ' or --all' : ''}`);
+    // Same project as `--all` gives this mailbox, so a manual pass and a scheduled one file asks in one place.
+    if (mail.length === 1) { const only = await new FileTokenCache(mail[0]).read(); return emailOne(ctx, action, { ...f, project: flag(f, 'project') ?? String(only?.account) }, { ...d, cache: new FileTokenCache(mail[0]) }); }
   }
   const cache = d.cache ?? accountCache(flag(f, 'account'), d.cacheDir) ?? new FileTokenCache(legacy);
   const t = await cache.read();

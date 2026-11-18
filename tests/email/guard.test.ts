@@ -68,6 +68,7 @@ describe('graph guard allowlist', () => {
       ["POST", links[0]],
       ["PATCH", links[0]],
       ["GET", `${G}/me/mailFolders('inbox')/messages`],
+      ["GET", `${G}/me/mailFolders('inbox')/messages/delta`],
       ["GET", `${G}/me/mailFolders('inbox')/messages/delta?$filter=x`],
       ["GET", `${G}/me/mailFolders('in/box')/messages/delta?$skiptoken=p2`],
       ["GET", `${G}/me/mailFolders(inbox)/messages/delta?$skiptoken=p2`],

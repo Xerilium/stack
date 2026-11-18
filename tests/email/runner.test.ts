@@ -497,10 +497,18 @@ describe('stack email --all', () => {
     expect((one.json.accounts as { account: string }[]).map((a) => a.account)).toEqual(['sam@outlook.com']);
     const ran = await emailCmd(ctx, 'run', { 'dry-run': true }, { cacheDir: dir, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
     expect(ran.json).toMatchObject({ account: 'sam@outlook.com' });
+    await cacheAt(dir, 'cal@contoso.test', ['Calendars.Read']);
+    const still = await emailCmd(ctx, 'run', { 'dry-run': true }, { cacheDir: dir, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    expect(still.json).toMatchObject({ account: 'sam@outlook.com' });
     await cacheAt(dir, 'sam@contoso.test', ['Mail.Read']);
     const two = await emailCmd(ctx, 'status', {}, { cacheDir: dir, dataDir: tmp() });
     expect((two.json.accounts as { account: string }[]).map((a) => a.account).sort()).toEqual(['sam@contoso.test', 'sam@outlook.com']);
     await expect(emailCmd(ctx, 'run', { 'dry-run': true }, { cacheDir: dir, dataDir: tmp() })).rejects.toThrow(/--account <address> or --all/);
+    await expect(emailCmd(ctx, 'voice', {}, { cacheDir: dir, dataDir: tmp() })).rejects.toThrow(/use --account <address>$/);
+    // A default cache still wins over the per-mailbox ones.
+    await cacheAt(dir, 'legacy@contoso.test', ['Mail.Read'], 'graph-token.json');
+    const legacy = await emailCmd(ctx, 'status', {}, { cacheDir: dir, dataDir: tmp() });
+    expect(legacy.json).toMatchObject({ ok: true, account: 'legacy@contoso.test' });
   });
   // @req FR:inbox-page/src.probe: an onboarding sign-in (no mailbox name) takes the address of its first real pass
   it('a pass names an unnamed sign-in, so --all finds it next time', async () => {
