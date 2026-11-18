@@ -679,7 +679,7 @@ export async function explainAutopri(ctx: LifecycleContext, at?: Date, opts: { t
  * A task row has `path` and `line`; a priority action row has `pri` instead.
  * @req FR:pri-first-ranking/cli.explain.json
  */
-export interface StackExplainItem { rank: number; ref: string; path?: string; line?: number; project: string; text: string; score: number; why: string; stale?: true; rule?: string; link?: PriLink; pri?: { id: string; rank: number; title: string } }
+export interface StackExplainItem { rank: number; ref?: string; path?: string; line?: number; project: string; text: string; score: number; why: string; stale?: true; rule?: string; link?: PriLink; pri?: { id: string; rank: number; title: string } }
 export interface StackExplained { items: StackExplainItem[]; /** Rows the owner filter dropped. */ dropped: number; text: string }
 
 /** Why a row has its due tier: the tier and the days, or the stale reason. */
@@ -701,7 +701,7 @@ export async function explainStack(ctx: LifecycleContext, at?: Date, opts: Stack
   const ranked = await rankAll(c, when, { ignoreBlocks: opts.ignoreBlocks, owner: opts.owner });
   const dropped = opts.owner === 'any' ? 0 : (await rankAll(c, when, { ignoreBlocks: opts.ignoreBlocks, owner: 'any' })).length - ranked.length;
   // Priority actions first, then the task rows. @req FR:pri-first-ranking/action.first @req FR:pri-first-ranking/cli.explain.action
-  const acts: StackExplainItem[] = priActions(ctx.pris?.() ?? []).map((a) => ({ rank: 0, ref: `pri:${a.rank}`, project: a.title, text: a.text, score: a.score, why: 'priority action', pri: { id: a.id, rank: a.rank, title: a.title } }));
+  const acts: StackExplainItem[] = priActions(ctx.pris?.() ?? []).map((a) => ({ rank: 0, project: a.title, text: a.text, score: a.score, why: 'priority action', pri: { id: a.id, rank: a.rank, title: a.title } }));
   const tasks: StackExplainItem[] = ranked.map((r) => ({
     rank: 0, ref: formatRef(r.next.ref), path: r.next.ref.path, line: r.next.ref.line + 1, project: r.next.project, text: r.next.text,
     score: r.next.score, why: whyOf(r, ctx, when), ...(r.next.stale ? { stale: true as const } : {}), ...(r.next.rule ? { rule: r.next.rule } : {}), ...(r.link ? { link: r.link } : {}),
@@ -710,7 +710,7 @@ export async function explainStack(ctx: LifecycleContext, at?: Date, opts: Stack
   const items = opts.top === undefined ? all : all.slice(0, opts.top);
   // @req FR:pri-first-ranking/cli.explain
   const serves = (x: StackExplainItem) => (x.pri ? ` serves=${x.pri.rank}:${x.pri.id} "${x.pri.title}" via note` : x.link ? ` serves=${x.link.rank}:${x.link.id} "${x.link.title}" via ${x.link.via} "${x.link.term}"` : '');
-  const lines = items.map((x) => `${x.rank}. ${x.ref} ${Number(x.score.toFixed(1))} ${x.project}: ${x.text} | ${x.why}${x.rule ? `; rule ${x.rule}` : ''}${serves(x)}`);
+  const lines = items.map((x) => `${x.rank}. ${x.pri ? `pri:${x.pri.rank}` : x.ref} ${Number(x.score.toFixed(1))} ${x.project}: ${x.text} | ${x.why}${x.rule ? `; rule ${x.rule}` : ''}${serves(x)}`);
   if (dropped > 0) lines.push(`${dropped} ${dropped === 1 ? 'row' : 'rows'} dropped: not the owner's (agent or mixed)`);
   return { items, dropped, text: lines.join('\n') };
 }

@@ -73,6 +73,8 @@ describe('stack next on the owner priorities', () => {
     expect(r.lines[6]).toMatch(/serves=1:p1 "Quota-maxxing \(window ends Thu 10am PT\)" via keyword "PR quality pass"$/);
     const j = JSON.parse((await stack('rank', '--explain', '--top', '7', '--json')).out);
     expect(j.items[6].link).toMatchObject({ id: 'p1', rank: 1, via: 'keyword' });
+    expect(j.items[0]).toMatchObject({ pri: { id: 'p2', rank: 2 } });
+    expect(j.items[0].ref).toBeUndefined();
   });
   // @req FR:pri-first-ranking/order.next
   it('starts the first ranked task when no ref is given', async () => {

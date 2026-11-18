@@ -17,7 +17,7 @@ The owner's ordered priorities decide what he does next. `stack next`, `stack ra
 
 ### FR:order: Rank tasks by priority first
 
-Owner needs every ranked list to follow his priority order so that backlog and agent rows never hide a priority.
+Owner needs `stack next`, `stack rank` and the web Home to follow his priority order so that backlog and agent rows never hide a priority.
 
 - **FR:order.input** (P1):
   - Priorities (@req FR:pris-aware-ranking/link.model) — the owner's ordered list from `~/.stack/pris.json`
@@ -30,8 +30,7 @@ Owner needs every ranked list to follow his priority order so that backlog and a
 - **FR:order.overrides** (P1): Ranker MUST apply the owner overrides after the priority order.
   > - @req FR:task-lifecycle/rank.overrides
 - **FR:order.none** (P1): Ranker MUST keep the engine order when no priority links.
-- **FR:order.next** (P1): Ranker MUST give the first ranked task row to a lifecycle command with no ref.
-  - Action rows are not tasks, so `stack start` with no ref starts the first task row below them.
+- **FR:order.next** (P1): Ranker MUST give the first task row below the action rows to a lifecycle command with no ref.
   > - @req FR:task-lifecycle/next.rank
 
 ### FR:action: Show one action per priority

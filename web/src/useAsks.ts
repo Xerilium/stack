@@ -100,7 +100,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       onChange: (kinds) => {
         setLiveTick((n) => n + 1);
         if (kinds.some((k) => k === 'asks' || k === 'state' || k === 'poll')) void load();
-        if (kinds.some((k) => k === 'tasks' || k === 'poll')) tasksCb.current();
+        // A priority edit re-ranks Home. @req FR:pri-first-ranking/api.order
+        if (kinds.some((k) => k === 'tasks' || k === 'poll' || k === 'pris')) tasksCb.current();
         if (kinds.includes('sync')) syncCb.current?.();
       },
     });
