@@ -505,6 +505,13 @@ describe('stack email --all', () => {
     expect((two.json.accounts as { account: string }[]).map((a) => a.account).sort()).toEqual(['sam@contoso.test', 'sam@outlook.com']);
     await expect(emailCmd(ctx, 'run', { 'dry-run': true }, { cacheDir: dir, dataDir: tmp() })).rejects.toThrow(/--account <address> or --all/);
     await expect(emailCmd(ctx, 'voice', {}, { cacheDir: dir, dataDir: tmp() })).rejects.toThrow(/use --account <address>$/);
+    const text = await emailCmd(ctx, 'status', {}, { cacheDir: dir, dataDir: tmp() });
+    expect(text.text).toMatch(/^sam@outlook\.com · observe · last pass/m);
+    const bad = tmp();
+    writeFileSync(join(bad, 'graph-token-sam@outlook.com.json'), '{not json', { mode: 0o600 });
+    const broken = await emailCmd(ctx, 'run', { 'dry-run': true }, { cacheDir: bad, dataDir: tmp() });
+    expect(broken.code).toBe(4);
+    expect(broken.text).toMatch(/graph-token-sam@outlook\.com\.json/);
     // A default cache still wins over the per-mailbox ones.
     await cacheAt(dir, 'legacy@contoso.test', ['Mail.Read'], 'graph-token.json');
     const legacy = await emailCmd(ctx, 'status', {}, { cacheDir: dir, dataDir: tmp() });

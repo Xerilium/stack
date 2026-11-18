@@ -69,6 +69,8 @@ describe('graph guard allowlist', () => {
       ["PATCH", links[0]],
       ["GET", `${G}/me/mailFolders('inbox')/messages`],
       ["GET", `${G}/me/mailFolders('inbox')/messages/delta`],
+      ["GET", `${G}/me/mailFolders('inbox')/messages/delta?$skiptoken=p2&$top=5`],
+      ["GET", `${G}/me/mailFolders('inbox')/messages/delta?$deltatoken=d1&$select=id`],
       ["GET", `${G}/me/mailFolders('inbox')/messages/delta?$filter=x`],
       ["GET", `${G}/me/mailFolders('in/box')/messages/delta?$skiptoken=p2`],
       ["GET", `${G}/me/mailFolders(inbox)/messages/delta?$skiptoken=p2`],

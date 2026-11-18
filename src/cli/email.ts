@@ -4,7 +4,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { MAILBOX } from '../core/config';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { handleAsk, oneLine, putAsk, readAsk } from '../core/asks';
 import { redact } from '../core/triage';
 import type { LifecycleContext } from '../core/lifecycle';
@@ -94,13 +94,13 @@ async function emailAll(ctx: LifecycleContext, action: string | undefined, f: Re
     if (down) { accounts.push({ account, ok: false, skipped: true, error: down }); continue; }
     try {
       const r = await emailOne(ctx, action, { ...rest, project: flag(f, 'project') ?? account }, { ...d, cache });
-      accounts.push({ ...r.json, account, ok: r.json.ok !== false && !r.code, ...(r.code ? { text: r.text } : {}) });
+      accounts.push({ ...r.json, account, ok: r.json.ok !== false && !r.code, ...(r.code || action === 'status' ? { text: r.text } : {}) });
       if (r.json.modelDown) down = `skipped: ${r.text}`;
     } catch (e) { accounts.push({ account, ok: false, error: e instanceof Error ? e.message : String(e) }); }
   }
   if (!accounts.length) return { json: { ok: false, accounts }, text: 'no signed-in mailbox (run: stack graph login --account <address> --with drafts)', code: 4 };
   const bad = accounts.filter((a) => !a.ok);
-  return { json: { ok: !bad.length, accounts }, text: accounts.map((a) => `${String(a.account ?? a.cache)}: ${a.ok ? 'ok' : String(a.error ?? a.text ?? 'failed')}`).join('\n'), ...(bad.length ? { code: 4 } : {}) };
+  return { json: { ok: !bad.length, accounts }, text: accounts.map((a) => (a.ok && action === 'status' ? String(a.text) : `${String(a.account ?? a.cache)}: ${a.ok ? 'ok' : String(a.error ?? a.text ?? 'failed')}`)).join('\n'), ...(bad.length ? { code: 4 } : {}) };
 }
 
 /** @req FR:email-runner/cli.offline */
@@ -168,10 +168,14 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
   if (!d.cache && !flag(f, 'account') && !existsSync(legacy)) {
     if (action === 'status') return emailAll(ctx, action, f, d);
     const mail: string[] = [];
+    const broken: string[] = [];
     for (const p of listCachePaths(d.cacheDir)) {
-      const t = await new FileTokenCache(p).read().catch(() => null);
+      let t;
+      try { t = await new FileTokenCache(p).read(); } catch (e) { broken.push(`${basename(p)}: ${e instanceof Error ? e.message : String(e)}`); continue; }
       if (t?.account && (hasScope(t.scopes, 'Mail.Read') || hasScope(t.scopes, 'Mail.ReadWrite'))) mail.push(p);
     }
+    // A broken cache is named, so the owner fixes it instead of making a default cache that hides the others.
+    if (!mail.length && broken.length) return { json: { ok: false, signedIn: false, errors: broken }, text: `no readable mail sign-in: ${broken.join('; ')}`, code: 4 };
     if (mail.length > 1) throw new UsageError(`Several mailboxes are signed in: use --account <address>${action === 'run' ? ' or --all' : ''}`);
     // Same project as `--all` gives this mailbox, so a manual pass and a scheduled one file asks in one place.
     if (mail.length === 1) { const only = await new FileTokenCache(mail[0]).read(); return emailOne(ctx, action, { ...f, project: flag(f, 'project') ?? String(only?.account) }, { ...d, cache: new FileTokenCache(mail[0]) }); }
