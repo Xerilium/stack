@@ -11,6 +11,7 @@ import { homedir } from 'os';
 import { PriStore } from '../core/pris';
 import { PrPriorityStore } from '../core/pr-priority';
 import { FeedbackStore } from '../core/feedback';
+import { QmStore } from '../core/qm-plan';
 import { LiveStore } from '../core/live-lane';
 import { BriefStore, FactsStore } from '../core/pr-review';
 import { execFileSync } from 'child_process';
@@ -121,6 +122,8 @@ export interface WebOpts {
   laneHome?: string;
   /** The owner feedback store; default `~/.stack/feedback.jsonl` (or `STACK_HOME`), in demo mode too. @req FR:feedback-button/store.path */
   feedback?: FeedbackStore;
+  /** The weekly QM plan; default `~/.stack/qm-plan.json` (or `STACK_HOME`). @req FR:qm-plan/store.path */
+  qm?: QmStore;
 }
 
 /** A git url is cloned once into `cacheDir`; a path is used as is. */
@@ -296,7 +299,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const dd: DeliveryDeps | undefined = o.delivery === false || o.info?.mode === 'demo' ? undefined : { ctx: { storage, config }, settings: deliverySettings(config, o.dir), store: o.delivery?.store ?? new DeliveryStore(stackHome()), repoDir: o.dir, ...(o.delivery?.run ? { run: o.delivery.run } : {}), ...(o.delivery?.isRepo ? { isRepo: o.delivery.isRepo } : {}) };
   const deliveryLoop = dd && dd.settings.mode === 'claude' ? startDeliveryLoop(dd, { intervalMs: o.delivery ? o.delivery.intervalMs : undefined, onError: (e) => console.error(`delivery: ${e instanceof Error ? e.message : 'error'}`) }) : undefined;
   const delivery = dd ? { status: (ref: string) => deliveryStatus(dd, ref, inventory), summary: () => ({ mode: dd.settings.mode, login: dd.store.read().login.state }), login: () => (o.delivery && o.delivery.login ? o.delivery.login() : startLogin()) } : undefined;
-  const apiDeps = { storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
+  const apiDeps = { storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, qm: o.qm ?? new QmStore(stackHome()), ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
   const api = createApiHandler({ ...apiDeps, authorize: () => true });
   // Device self endpoints (push subscription) run as the device token through the auth-security hook; no owner list, so no session ever matches. @req FR:tailnet-access/gate.scope
   const auth = remoteAuth ? createAuth({ owners: [], tokens: remoteAuth.tokens, devices: remoteAuth.devices, vapidPublicKey: process.env.STACK_VAPID_PUBLIC_KEY?.trim() || undefined }) : undefined;

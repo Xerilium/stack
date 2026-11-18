@@ -828,6 +828,7 @@ export function App() {
     { id: 'go-sessions', label: 'Go to Agents', hint: HINT.sessions, group: 'Go to', run: () => go('sessions') },
     { id: 'go-projects', label: 'Go to Projects', hint: HINT.projects, group: 'Go to', run: () => go('projects') },
     { id: 'go-list', label: 'Go to Full stack', hint: HINT.list, group: 'Go to', run: () => go('list') },
+    { id: 'go-qm', label: 'Go to QM plan', group: 'Go to', run: () => { location.hash = '#/qm'; } }, // @req FR:qm-plan/ui.route: More/palette only, no rail item
     { id: 'go-settings', label: 'Go to Settings', hint: HINT.settings, group: 'Go to', run: () => go('settings') }, // @req FR:settings/view.entry
   ];
   // @req FR:web-shell/palette.jump.groups

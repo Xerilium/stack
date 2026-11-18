@@ -335,6 +335,10 @@ const DOCS: Record<string, RouteDoc> = {
     requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['rev', 'pris'], properties: { rev: { type: 'integer', minimum: 0 }, pris: { type: 'array', maxItems: 30, items: ref('Pri') } } } } } },
     responses: ok('Stored', ref('PrisFile')),
   },
+  'qm.get': {
+    operationId: 'getQmPlan', summary: 'Owner only. The weekly QM (quota-maxxing) plan from ~/.stack/qm-plan.json (.xe/features/qm-plan/spec.md); plan is null when none is stored, broken is true when the file is not a valid plan. Agents write it with stack qm put. 404 on hosts with no store',
+    responses: ok('QM plan', { type: 'object', required: ['plan'], properties: { plan: { allOf: [ref('QmPlan')], nullable: true }, broken: { type: 'boolean' } } }),
+  },
   'prPriority.get': {
     operationId: 'getPrPriority', summary: 'Owner only. The PR priority queue for the Sweep Manager (~/.stack/pr-priority.json), each PR with cached facts, merge-order edges, the newest report record, acks and status, plus the escalation set and open recommendations (by project, oldest first). 404 on hosts with no store',
     responses: ok('PR priorities', ref('PrPriView')),
@@ -656,6 +660,18 @@ export function buildOpenApi(): J {
               },
             },
             escalations: { type: 'object', nullable: true }, recommendations: { type: 'array', items: ref('PrRec') },
+          },
+        },
+        QmPlan: {
+          type: 'object', additionalProperties: false, required: ['version', 'asOf', 'projects'],
+          properties: {
+            version: { type: 'integer', enum: [1] }, asOf: { type: 'string', format: 'date-time' },
+            projects: { type: 'array', maxItems: 50, items: { type: 'object', additionalProperties: false, required: ['project', 'agent', 'tasks', 'weeklyTokens', 'preAckMin', 'postReviewMin'], properties: {
+              project: { type: 'string', minLength: 1, maxLength: 80, description: 'Unique in the plan (case-insensitive)' },
+              agent: { type: 'object', additionalProperties: false, required: ['name'], properties: { name: { type: 'string', minLength: 1, maxLength: 80 }, sessionId: { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,100}$' }, url: { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2000 } } },
+              tasks: { type: 'array', maxItems: 5, items: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', minLength: 1, maxLength: 200 }, url: { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2000 } } } },
+              weeklyTokens: { type: 'integer', minimum: 0, nullable: true, description: 'null = pending' }, preAckMin: { type: 'integer', minimum: 0, nullable: true, description: 'null = pending' }, postReviewMin: { type: 'integer', minimum: 0, nullable: true, description: 'null = pending' },
+            } } },
           },
         },
         PrisFile: {
