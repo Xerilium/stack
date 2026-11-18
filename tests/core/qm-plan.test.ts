@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { parseQmPlan, QmInvalid, QmStore } from '../../src/core/qm-plan';
@@ -40,6 +40,8 @@ describe('QmStore', () => {
     expect(s.read()).toEqual({ plan: null });
     writeFileSync(s.file, '{nope');
     expect(s.read()).toEqual({ plan: null, broken: true });
+    const d = new QmStore(home()); mkdirSync(d.file); // unreadable (EISDIR) is broken, not missing
+    expect(d.read()).toEqual({ plan: null, broken: true });
   });
 
   // @req FR:qm-plan/store.put

@@ -667,9 +667,9 @@ export function buildOpenApi(): J {
           properties: {
             version: { type: 'integer', enum: [1] }, asOf: { type: 'string', format: 'date-time' },
             projects: { type: 'array', maxItems: 50, items: { type: 'object', additionalProperties: false, required: ['project', 'agent', 'tasks', 'weeklyTokens', 'preAckMin', 'postReviewMin'], properties: {
-              project: { type: 'string', maxLength: 80, description: 'Unique in the plan (case-insensitive)' },
-              agent: { type: 'object', additionalProperties: false, required: ['name'], properties: { name: { type: 'string', maxLength: 80 }, sessionId: { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,100}$' }, url: { type: 'string', format: 'uri', description: 'https only' } } },
-              tasks: { type: 'array', maxItems: 5, items: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 200 }, url: { type: 'string', format: 'uri', description: 'https only' } } } },
+              project: { type: 'string', minLength: 1, maxLength: 80, description: 'Unique in the plan (case-insensitive)' },
+              agent: { type: 'object', additionalProperties: false, required: ['name'], properties: { name: { type: 'string', minLength: 1, maxLength: 80 }, sessionId: { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,100}$' }, url: { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2000 } } },
+              tasks: { type: 'array', maxItems: 5, items: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', minLength: 1, maxLength: 200 }, url: { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2000 } } } },
               weeklyTokens: { type: 'integer', minimum: 0, nullable: true, description: 'null = pending' }, preAckMin: { type: 'integer', minimum: 0, nullable: true, description: 'null = pending' }, postReviewMin: { type: 'integer', minimum: 0, nullable: true, description: 'null = pending' },
             } } },
           },

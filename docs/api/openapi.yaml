@@ -3999,6 +3999,7 @@ components:
             properties:
               project:
                 type: string
+                minLength: 1
                 maxLength: 80
                 description: Unique in the plan (case-insensitive)
               agent:
@@ -4009,6 +4010,7 @@ components:
                 properties:
                   name:
                     type: string
+                    minLength: 1
                     maxLength: 80
                   sessionId:
                     type: string
@@ -4016,7 +4018,8 @@ components:
                   url:
                     type: string
                     format: uri
-                    description: https only
+                    pattern: ^https://
+                    maxLength: 2000
               tasks:
                 type: array
                 maxItems: 5
@@ -4028,11 +4031,13 @@ components:
                   properties:
                     title:
                       type: string
+                      minLength: 1
                       maxLength: 200
                     url:
                       type: string
                       format: uri
-                      description: https only
+                      pattern: ^https://
+                      maxLength: 2000
               weeklyTokens:
                 type: integer
                 minimum: 0

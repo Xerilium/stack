@@ -24,6 +24,6 @@
 .qm-sort:hover { background: var(--fl-subtle-hover); }
 .qm-arrow { font-size: 10px; min-width: 10px; }
 .qm-tasks details { display: inline-block; text-align: left; }
-.qm-tasks summary { cursor: pointer; text-align: right; min-height: var(--fl-target); min-width: var(--fl-target); display: flex; align-items: center; justify-content: flex-end; list-style-position: inside; }
+.qm-tasks summary { cursor: pointer; text-align: right; min-width: var(--fl-target); line-height: var(--fl-target); }
 .qm-tasks ol { margin: var(--fl-s-xs) 0 0; padding-left: var(--fl-s-l); min-width: 240px; }
 @media (min-width: 768px) { .qm { padding: var(--fl-s-xxxl) var(--fl-s-xxl); } }

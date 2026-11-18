@@ -91,7 +91,7 @@ export class QmStore {
   /** The stored plan; `null` when missing, plus `broken` when the file is not a valid plan. @req FR:qm-plan/store.read */
   read(): { plan: QmPlan | null; broken?: true } {
     let t: string;
-    try { t = readFileSync(this.file, 'utf8'); } catch { return { plan: null }; }
+    try { t = readFileSync(this.file, 'utf8'); } catch (e) { return (e as NodeJS.ErrnoException).code === 'ENOENT' ? { plan: null } : { plan: null, broken: true }; }
     try { return { plan: parseQmPlan(JSON.parse(t.replace(/^﻿/, ''))) }; } catch { return { plan: null, broken: true }; }
   }
 
