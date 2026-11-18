@@ -47,8 +47,18 @@ export interface NeedItem {
   id: string; title: string; recommendation: string; default?: string; by?: string; link: string; project?: string; ref?: string;
   /** A PR priority recommendation: the route that takes accept, edit or reject. No undo, no defer. @req FR:pr-priority/needs.actions */
   decide?: string;
-  answer?: { choice: 'go' | 'defer' | 'reply'; text?: string; until?: string; at: string };
+  answer?: { choice: 'go' | 'defer' | 'reply' | 'context'; text?: string; until?: string; at: string };
+  /** The asking agent, the kind it sent, and its brief. @req FR:ask-briefs/brief.needs */
+  from?: string; askKind?: string; brief?: import('./AskBrief').Brief;
 }
+
+/**
+ * Open: no answer, a deferral that has passed, or a request for context the agent has now answered with a brief.
+ * @req FR:ask-queue/needs.web @req FR:ask-briefs/context.need
+ */
+const isOpen = (n: NeedItem, now: Date): boolean => !n.answer
+  || (n.answer.choice === 'defer' && !(Date.parse(n.answer.until ?? '') > now.getTime()))
+  || (n.answer.choice === 'context' && !!n.brief);
 
 /**
  * The open escalations as asks from the Chief of Staff, ahead of everything else, in file order.
@@ -56,8 +66,9 @@ export interface NeedItem {
  * @req FR:ask-queue/needs.web @req FR:ask-queue/needs.web.card
  */
 export function fromNeeds(items: NeedItem[], now: Date): AskItem[] {
-  return items.filter((n) => !n.answer || (n.answer.choice === 'defer' && !(Date.parse(n.answer.until ?? '') > now.getTime()))).map((n, i) => ({
-    key: `need:${n.id}`, source: 'need' as const, state: 'open' as const, ask: n.title, kind: 'approve' as const, from: 'Chief of Staff', project: n.project, ref: n.ref,
+  return items.filter((n) => isOpen(n, now)).map((n, i) => ({
+    key: `need:${n.id}`, source: 'need' as const, state: 'open' as const, ask: n.title, kind: 'approve' as const, from: n.from ?? 'Chief of Staff',
+    ...(n.brief ? { brief: n.brief } : {}), ...(n.askKind ? { askKind: n.askKind } : {}), project: n.project, ref: n.ref,
     recommend: n.recommendation, default: n.default, by: n.by, link: n.link, reversible: !n.decide && !n.id.startsWith('lv.'), ...(n.decide ? { decide: n.decide } : {}), priority: 'high' as const, blocks: 0,
     created: '', updated: '', score: 1000 - i, overdue: !!n.by && new Date(n.by).getTime() < now.getTime(),
   }));

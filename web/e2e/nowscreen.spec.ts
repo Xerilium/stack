@@ -1,9 +1,9 @@
 /** Now: one task, one reason, Done / Defer with Undo, a message composer to the task's agent, an empty state. */
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { mockApi, seed, type MockAsk } from './mock';
+import { BRIEF, mockApi, seed, type MockAsk } from './mock';
 
-const ask = (key: string, from: string, score: number, extra: Partial<MockAsk> = {}): MockAsk => ({ key, state: 'open', ask: `Ask ${key}`, kind: 'approve', from, reversible: true, priority: 'normal', blocks: 0, created: '2026-11-05T09:00:00Z', updated: '2026-11-05T09:00:00Z', score, overdue: false, recommend: 'Go ahead', ...extra });
+const ask = (key: string, from: string, score: number, extra: Partial<MockAsk> = {}): MockAsk => ({ brief: BRIEF, key, state: 'open', ask: `Ask ${key}`, kind: 'approve', from, reversible: true, priority: 'normal', blocks: 0, created: '2026-11-05T09:00:00Z', updated: '2026-11-05T09:00:00Z', score, overdue: false, recommend: 'Go ahead', ...extra });
 
 const ten = async (page: import('@playwright/test').Page) => { const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.setFixedTime(d); };
 

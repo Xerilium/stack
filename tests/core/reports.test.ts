@@ -110,8 +110,8 @@ describe('ReportStore', () => {
     await store(dir).put({ agent: 'a', project: 'p', asks: [{ ...ASK, recommend: 'Approve', default: 'Waits' }] });
     await store(dir, new Date('2026-11-11T19:00:00Z')).put({ agent: 'b', project: 'q', asks: [{ ...ASK, id: 'x' }] });
     expect(store(dir).needs()).toEqual([
-      { id: 'rp.b.q.x', title: 'Approve PR 12', recommendation: 'Open the link and decide', link: ASK.link, project: 'q', by: ASK.by },
-      { id: 'rp.a.p.pr-12', title: 'Approve PR 12', recommendation: 'Approve', default: 'Waits', link: ASK.link, project: 'p', by: ASK.by },
+      { id: 'rp.b.q.x', title: 'Approve PR 12', recommendation: 'Open the link and decide', link: ASK.link, project: 'q', by: ASK.by, from: 'b', askKind: 'answer' },
+      { id: 'rp.a.p.pr-12', title: 'Approve PR 12', recommendation: 'Approve', default: 'Waits', link: ASK.link, project: 'p', by: ASK.by, from: 'a', askKind: 'answer' },
     ]);
   });
 

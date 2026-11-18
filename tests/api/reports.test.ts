@@ -85,7 +85,7 @@ describe('Needs you with report asks', () => {
     await call('owner', BODY);
     const list = await call('owner', undefined, '/needs-you', 'GET');
     expect(list.json.items.map((i: { id: string }) => i.id)).toEqual(['pay', 'rp.xe-cos.stack.pr-12']);
-    expect(list.json.items[1]).toEqual({ id: 'rp.xe-cos.stack.pr-12', title: 'Approve PR 12', recommendation: 'Approve', link: ASK.link, project: 'stack', by: ASK.by });
+    expect(list.json.items[1]).toEqual({ id: 'rp.xe-cos.stack.pr-12', title: 'Approve PR 12', recommendation: 'Approve', link: ASK.link, project: 'stack', by: ASK.by, from: 'xe-cos', askKind: 'answer' });
     expect((await call('owner', { choice: 'go' }, '/needs-you/rp.xe-cos.stack.pr-12/answer')).json).toEqual({ changed: true });
     expect(reports!.list()[0].asks[0].answer).toEqual({ choice: 'go', at: NOW.toISOString() });
     expect((await call('owner', undefined, '/needs-you', 'GET')).json.items[1].answer).toEqual({ choice: 'go', at: NOW.toISOString() });

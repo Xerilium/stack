@@ -4,6 +4,7 @@
  * @req FR:pr-priority/$item @req FR:pr-priority/$rec @req FR:pr-priority/queue.model @req FR:pr-priority/rec.model
  */
 import { randomBytes } from 'crypto';
+import { checkBrief, type AskBrief } from './ask-brief';
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, unwatchFile, watchFile } from 'fs';
 import { join } from 'path';
 import { withFileLock, writeAtomic, type LockOptions } from './file-lock';
@@ -46,7 +47,7 @@ export interface PrRecord {
   blocker?: { text: string; threadUrl?: string }; nextAction?: string; headSha?: string; humanOnly?: boolean; bucket?: (typeof ESC_STATUSES)[number];
 }
 export interface Escalations {
-  blockedAutopilot: { pr: string; status: (typeof ESC_STATUSES)[number]; exactBlocker: string; context: string; recommendedAnswer: string }[];
+  blockedAutopilot: { pr: string; status: (typeof ESC_STATUSES)[number]; exactBlocker: string; context: string; recommendedAnswer: string; /** @req FR:ask-briefs/brief.pr */ brief?: AskBrief }[];
   enableAutopilot: { pr: string; whyEasy: string }[];
   liveValidation: { pr: string; why: string }[];
   at?: string;
@@ -169,7 +170,7 @@ export function parseEscalations(body: unknown): Escalations {
       const f = `${name}[${i}]`;
       if (!isObj(o)) { issues.push({ field: f, message: 'Must be an object' }); return []; }
       const n = issues.length;
-      for (const k of Object.keys(o)) if (!['pr', ...fields].includes(k)) issues.push({ field: `${f}.${k}`, message: 'Unknown field' });
+      for (const k of Object.keys(o)) if (!['pr', ...fields, ...(name === 'blockedAutopilot' ? ['brief'] : [])].includes(k)) issues.push({ field: `${f}.${k}`, message: 'Unknown field' });
       if (!prUrlOk(o.pr)) issues.push({ field: `${f}.pr`, message: 'Must be a GitHub PR url' });
       const out: Record<string, unknown> = { pr: o.pr };
       for (const k of fields) {
@@ -183,6 +184,8 @@ export function parseEscalations(body: unknown): Escalations {
   };
   const blockedAutopilot = list<Escalations['blockedAutopilot'][number]>('blockedAutopilot', 3, ['status', 'exactBlocker', 'context', 'recommendedAnswer'], (o, f) => {
     if (!(ESC_STATUSES as readonly unknown[]).includes(o.status)) { issues.push({ field: `${f}.status`, message: `Must be one of ${ESC_STATUSES.join(', ')}` }); return undefined; }
+    // The brief the owner decides from. @req FR:ask-briefs/brief.pr @req FR:ask-briefs/brief.validate
+    if (o.brief !== undefined) { const b = checkBrief(o.brief, `${f}.brief`); if (!b.brief) { issues.push(...b.issues); return undefined; } return { status: o.status as (typeof ESC_STATUSES)[number], brief: b.brief }; }
     return { status: o.status as (typeof ESC_STATUSES)[number] };
   });
   const enableAutopilot = list<Escalations['enableAutopilot'][number]>('enableAutopilot', 3, ['whyEasy'], () => undefined);
@@ -190,7 +193,7 @@ export function parseEscalations(body: unknown): Escalations {
   if (issues.length) throw new PrPriInvalid(issues);
   // Keep a fixed key order so readers see a stable shape.
   return {
-    blockedAutopilot: blockedAutopilot.map((x) => ({ pr: x.pr, status: x.status, exactBlocker: x.exactBlocker, context: x.context, recommendedAnswer: x.recommendedAnswer })),
+    blockedAutopilot: blockedAutopilot.map((x) => ({ pr: x.pr, status: x.status, exactBlocker: x.exactBlocker, context: x.context, recommendedAnswer: x.recommendedAnswer, ...(x.brief ? { brief: x.brief } : {}) })),
     enableAutopilot: enableAutopilot.map((x) => ({ pr: x.pr, whyEasy: x.whyEasy })), liveValidation: liveValidation.map((x) => ({ pr: x.pr, why: x.why })),
   };
 }

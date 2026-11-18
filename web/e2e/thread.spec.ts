@@ -1,6 +1,6 @@
 /** @req FR:agent-thread/web.expand @req FR:agent-thread/web.hero @req FR:agent-thread/thread.ask @req FR:agent-thread/thread.assign @req FR:agent-thread/web.keys @req FR:agent-thread/web.a11y */
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi, type Mock, type MockTeamAgent } from './mock';
+import { BRIEF, mockApi, type Mock, type MockTeamAgent } from './mock';
 
 const team: MockTeamAgent[] = [
   { slug: 'cos', name: 'CoS', role: 'Roll-up', scope: ['*'], mode: 'long-running', prompt: '', defined: true, projects: ['alpha', 'beta'] },
@@ -17,7 +17,7 @@ async function open(page: Page, o: { runner?: boolean } = {}): Promise<Mock> {
     { id: 'in-1', at: iso(30), project: 'alpha', ref: 'alpha:9', task: 'Review pull requests', kind: 'reply', to: 'none', text: 'Can you take this one?', state: 'open', row: 'alpha:9' },
     { id: 'in-2', at: iso(25), project: 'alpha', ref: 'alpha:9', task: 'Review pull requests', kind: 'reply', to: 'human', text: 'Yes. One question first.', state: 'handled', row: 'alpha:9', from: 'agent', agent: 'cos' },
   );
-  m.asks.push({ key: 'q1', state: 'open', ask: 'Merge the docs PRs without a second review?', kind: 'approve', from: 'cos', project: 'alpha', recommend: 'Approve', reversible: true, priority: 'normal', blocks: 1, created: iso(20), updated: iso(20), score: 40, overdue: false, ref: 'alpha:9', row: 'alpha:9', task: 'Review pull requests 🟠' });
+  m.asks.push({ brief: BRIEF, key: 'q1', state: 'open', ask: 'Merge the docs PRs without a second review?', kind: 'approve', from: 'cos', project: 'alpha', recommend: 'Approve', reversible: true, priority: 'normal', blocks: 1, created: iso(20), updated: iso(20), score: 40, overdue: false, ref: 'alpha:9', row: 'alpha:9', task: 'Review pull requests 🟠' });
   m.reviews = [{ ref: 'alpha:9', at: iso(22), verdict: 'partial', plan: 'Merge the docs PRs, hold the schema one', estimate: '1h', agent: 'cos', needs: ['q1'] }];
   await page.route('**/sessions/*/events', (r) => r.fulfill({ status: 200, contentType: 'text/event-stream', body: frames([{ type: 'done', stopReason: 'end_turn', cost: { usd: 0.1, tokens: 10 }, turns: 1, durationMs: 5 }]) }));
   await page.goto('/#/list');

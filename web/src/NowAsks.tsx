@@ -5,7 +5,9 @@
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
-import { actionsFor, deadline, ifSilent, type Action, type AskItem, type DeferChoice, type Send } from './asks';
+import { actionsFor, deadline, ifSilent, needsContext, type Action, type AskItem, type DeferChoice, type Send } from './asks';
+import { BriefBlock, ConfirmAct } from './AskBrief';
+import { repoFor, repoMap } from './autolink';
 import type { AvatarWho } from './avatar';
 import { Md, mdLinks } from './parts';
 
@@ -41,6 +43,7 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
   const field = useRef<HTMLInputElement | null>(null);
   useEffect(() => { if (open && panel === 'reply') field.current?.focus(); }, [open, panel]);
   const id = `now-ask-${i}`;
+  const repo = repoFor(a.link, a.project, repoMap());
   const run = (x: Action) => {
     if (x.send) ctl.answer(a, x.send);
     else if (x.reply) onPanel('reply');
@@ -65,6 +68,7 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
       {open && (
         <div class="now-ask-more" id={id} data-testid="now-ask-more">
           {a.why && <p class="now-ask-why"><Md text={a.why} project={a.project} /></p>}
+          <BriefBlock brief={a.brief} missing={needsContext(a)} from={who.name} repo={repo} />
           <dl class="now-ask-facts">
             {a.recommend && <div><dt>Recommend</dt><dd><Md text={a.recommend} project={a.project} /></dd></div>}
             {a.options && a.options.length > 0 && a.kind !== 'decide' && <div><dt>Options</dt><dd>{a.options.join(' · ')}</dd></div>}
@@ -74,7 +78,9 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
             <div><dt>From</dt><dd class="now-ask-who"><Avatar who={who} size={24} />{who.name}{a.project ? ` · ${a.project}` : ''}</dd></div>
           </dl>
           <div class="now-ask-acts" role="group" aria-label="Respond">
-            {actions.filter((x) => !x.open || a.source === 'task').map((x) => <button key={x.id} type="button" class={`now-act${x.primary ? ' primary' : ''}`} disabled={ctl.busy && !!x.send} onClick={() => run(x)}>{x.label}</button>)}
+            {actions.filter((x) => !x.open || a.source === 'task').map((x) => (x.confirm
+              ? <ConfirmAct key={x.id} label={x.label} confirmLabel="Confirm: no context" cls="now-act quiet" disabled={ctl.busy} onConfirm={() => run(x)} />
+              : <button key={x.id} type="button" class={`now-act${x.primary ? ' primary' : ''}`} disabled={ctl.busy && !!x.send} onClick={() => run(x)}>{x.label}</button>))}
             {!isAnswer && !actions.some((x) => x.reply) && <button type="button" class="now-act quiet" aria-expanded={panel === 'reply'} onClick={() => onPanel(panel === 'reply' ? 'none' : 'reply')}>Reply</button>}
             <button type="button" class="now-act quiet" aria-expanded={panel === 'defer'} onClick={() => onPanel(panel === 'defer' ? 'none' : 'defer')}>Defer</button>
           </div>

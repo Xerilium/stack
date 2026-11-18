@@ -21,7 +21,8 @@ async function stack(stdin: string | null, ...args: string[]) {
 }
 const REPORT = {
   top: [{ text: 'Ship status ingest' }],
-  asks: [{ id: 'pr-12', ask: 'Approve PR 12', link: 'https://github.com/o/r/pull/12', by: '2026-11-12T17:00:00Z', kind: 'approve' }],
+  asks: [{ id: 'pr-12', ask: 'Approve PR 12', link: 'https://github.com/o/r/pull/12', by: '2026-11-12T17:00:00Z', kind: 'approve',
+    brief: { problem: 'PR 12 is ready.', solution: 'Merge it.', risks: ['None known.'], recommendation: 'Approve.' } }],
   blockers: [], progress: [{ text: 'Spec done' }],
 };
 const stored = () => JSON.parse(readFileSync(join(home, 'reports.json'), 'utf8'));

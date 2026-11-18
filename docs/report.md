@@ -33,7 +33,14 @@ stack report --agent <name> --project <p> [--file report.json] [--json] < report
       "by": "2026-11-12T17:00:00Z",
       "kind": "approve",
       "recommend": "Approve",
-      "priority": "high"
+      "priority": "high",
+      "brief": {
+        "problem": "Agents report status in chat. It costs tokens and the owner misses asks.",
+        "solution": "Merge PR 130. Agents then send one JSON report with stack report.",
+        "risks": ["The local store is new.", "A bad report can hide an ask until the next run."],
+        "recommendation": "Approve. CI is green and tests cover the store.",
+        "evidence": ["https://github.com/Xerilium/stack/pull/130/checks"]
+      }
     }
   ],
   "blockers": [{ "text": "Waiting on CI runner" }],
@@ -44,7 +51,9 @@ stack report --agent <name> --project <p> [--file report.json] [--json] < report
 ## Rules
 
 - `top`: at most 3. `blockers`, `progress`: at most 10. Each item is `{text, link?}`; `text` is one line, 1-200 characters.
-- `asks`: at most 10. Required: `id` (`[a-z0-9][a-z0-9-]{0,23}`, unique), `ask` (1-200), `link` (`https`), `by` (ISO date or date-time). Optional: `kind` (`approve`, `review`, `go-do`, `answer`; default `answer`), `recommend`, `why`, `default`, `priority` (`crit`, `high`, `normal`, `low`).
+- `asks`: at most 10. Required: `id` (`[a-z0-9][a-z0-9-]{0,23}`, unique), `ask` (1-200), `link` (`https`), `by` (ISO date or date-time). Optional: `kind` (`approve`, `review`, `go-do`, `answer`; default `answer`), `recommend`, `why`, `default`, `priority` (`crit`, `high`, `normal`, `low`), `brief`.
+- `brief` (send it with every `approve` ask): `{problem, solution, risks, recommendation, evidence?}`. `risks` is 1-5 lines, `evidence` 0-5 `https` links. At most 120 words in all and 25 words per sentence (Simplified Technical English). An `approve` ask without one is stored, but the owner sees **No context yet** and the CLI prints `warning: asks <id> (approve) has no brief` (`warnings` with `--json`). Exit stays `0`.
+- An answer with `choice: "context"` means the owner asked for a brief. Send the ask again with `brief`; it returns to Needs you.
 - `agent` and `project`: `[a-z0-9][a-z0-9-]{0,23}`. Unknown keys, line breaks, and control characters are rejected.
 - Each ask shows in Needs you as `rp.<agent>.<project>.<id>`. Send the same `id` to update it; the owner's answer is kept.
 - A new report replaces the prior one. An ask the new report drops leaves Needs you. Send `{}` for the pair to clear it.

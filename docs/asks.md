@@ -12,13 +12,16 @@ stack asks put pr-879-approve \
   --why "Go-live is Oct 29; Roland re-approved and CI is green" \
   --recommend Approve --default "Merges Oct 29 8:00am" --reversible yes \
   --by 2026-10-29T15:00:00Z --link https://github.com/example/repo/pull/879 \
-  --priority high --effort 2m --blocks 3 [--detail-file notes.md]
+  --priority high --effort 2m --blocks 3 --brief-file brief.json [--detail-file notes.md]
 ```
 
 - `--dir <repo folder>` points at the served folder (`stack web` prints it). Over HTTP: `POST /api/asks/<key>` with the same fields and an API token (`tasks:write`); `from` defaults to the token's name.
 - The key is yours and stable. Writing it again updates the ask. A `done` ask needs `--reopen` to open again.
 - `ask` is one line, at most 200 characters, a decision not a topic ("Approve X", "Pick Y or Z", "Review draft to Dana").
 - `kind`: `approve` (yes/no), `decide` (give `--options "A|B"`, recommend one), `review` (open the link, then "Looks good" or "Needs changes"), `go-do` (a human-only step), `answer` (you need a fact in words).
+- `--brief-file` (JSON; over HTTP `brief`) is required in practice for `approve` and `decide`: `{"problem", "solution", "risks": [1-5], "recommendation", "evidence": [https links]}`, at most 120 words in all and 25 words per sentence, plain words. The owner decides from it without opening the link. Without it the card says **No context yet**, its one action is **Ask <you> for context**, and `put` prints a warning.
+- When the owner asks for context, the answer is `ask` with the text `Send a brief before I decide: …`. Put the ask again with `--brief-file`, then `handle --outcome reopen --reply "Brief added"`.
+- Write references as `PR 879`, `#879`, `owner/repo#879`, or `<alias> 879` (for example `FH 1105`). The page links them to GitHub through the ask link or the project `Repository` and `Aliases`.
 - `recommend` always; `default` and `--reversible yes` only when silence is safe. Irreversible, costly, or external actions never get a default.
 - `by` is the real deadline. `blocks` is how many things wait on this. `priority`: `crit`, `high`, `normal`, `low`.
 - `--from <agent>` is required: it names you on the page and in `waiting on <agent>`.
@@ -69,7 +72,7 @@ Run it at the start of each run (one commit, nothing is lost). The archive is ne
 
 ## For a CoS agent file
 
-> Bring Michael decisions only through `stack asks put` (see `docs/asks.md`). After each state update, upsert the asks for every open decision and `resolve` the ones no longer needed. Read `stack asks list --state answered` at the start of every run and act on the answers, then `stack asks archive`. Do not message him in chat.
+> Bring Michael decisions only through `stack asks put` (see `docs/asks.md`). Every approve or decide ask carries `--brief-file` (problem, solution, risks, recommendation, evidence). After each state update, upsert the asks for every open decision and `resolve` the ones no longer needed. Read `stack asks list --state answered` at the start of every run and act on the answers, then `stack asks archive`. Do not message him in chat.
 
 Use this paragraph instead of "message Michael":
 

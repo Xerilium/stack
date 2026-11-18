@@ -23,7 +23,7 @@ Design and rationale: `docs/design/ask-queue.md`. Agent contract: `docs/asks.md`
 
 ## Ask file format (v1)
 
-One file per ask: `tasks/asks/<key>.md`. `<key>` is chosen by the agent (stable, e.g. `pr-879-approve`), so writing the same key again updates the ask instead of adding another. Fields are `- key: value` lines; an optional `## Detail` section holds long free markdown (hidden until the owner expands the ask); an optional `## Thread` section holds one line per exchange.
+One file per ask: `tasks/asks/<key>.md`. `<key>` is chosen by the agent (stable, e.g. `pr-879-approve`), so writing the same key again updates the ask instead of adding another. Fields are `- key: value` lines; an optional `## Brief` section holds the brief (`FR:ask-briefs/brief.store`); an optional `## Detail` section holds long free markdown (hidden until the owner expands the ask); an optional `## Thread` section holds one line per exchange.
 
 ```markdown
 # Ask: pr-879-approve
@@ -113,7 +113,7 @@ Owner needs the Chief of Staff to put only what truly needs him in front of him,
 - **FR:needs.answer** (P1): `answerNeed(storage, id, answer)` MUST write `answer` (`go`, `defer` with `until`, or `reply` with `text`, stamped with the time) onto the item with the storage's version check, and `undo` MUST clear it
   - **FR:needs.answer.missing** (P1): `answerNeed` MUST throw `NotFoundError` for an unknown id
 - **FR:needs.web** (P1): Needs you MUST list every open item (no `answer`, or a `defer` past its `until`) before agent asks, in file order
-  - **FR:needs.web.card** (P1): An item MUST show its title, the recommendation as the primary action (`Go with it`), `If you do nothing: <default>` when set, and its link as `Open`; `Reply` and `Defer…` stay as for asks
+  - **FR:needs.web.card** (P1): An item MUST show its title, its brief (`FR:ask-briefs/web.brief`), the recommendation as the primary action (`Go with it`; with no brief, `Ask <agent> for context` per `FR:ask-briefs/web.context`), `If you do nothing: <default>` when set, and its link as `Open`; `Reply` and `Defer…` stay as for asks
   - **FR:needs.web.answered** (P1): An answered item MUST leave the list at once and show an Undo toast that clears the answer
 - **FR:needs.dedupe** (P1): A task shown in Needs you (an open item's `ref`, or an open 🙋 row) MUST NOT appear on Home (NOW, Top asks)
 - **FR:needs.api** (P1): `GET /needs-you` MUST return `{items}` (@req FR:$need) and `POST /needs-you/{id}/answer` `{choice,text?,until?}` MUST record the owner's answer (`go`, `defer`, `reply`) or clear it (`undo`), owner only
@@ -146,7 +146,9 @@ Owner needs the Chief of Staff to put only what truly needs him in front of him,
   - `link` (string) — an `https://` url or a repo-relative path that opens
   - `project` (string?) — project name
   - `ref` (string?) — the task row this is about (`project:line`)
-  - `answer` (object?) — `{ choice, text?, until?, at }`; `choice` is go, defer, or reply; written only by Stack
+  - `from` (string?) — the asking agent; `askKind` (string?) — the kind a report ask was sent with
+  - `brief` (Brief?) — `FR:ask-briefs/$brief`
+  - `answer` (object?) — `{ choice, text?, until?, at }`; `choice` is go, defer, reply, or context (`FR:ask-briefs/context.need`); written only by Stack
 
 ## Architecture Constraints
 

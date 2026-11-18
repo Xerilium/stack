@@ -2,19 +2,23 @@
  * The Chief of Staff's escalations: `.stack/needs-you.json`. The CoS writes it; Stack only adds or clears `answer`.
  * @req FR:ask-queue/needs.@json
  */
+import { checkBrief, type AskBrief } from './ask-brief';
 import { ConflictError, NotFoundError, StorageError, type AuxFiles, type Storage } from './storage';
 
 export const NEEDS_PATH = '.stack/needs-you.json';
 
-export interface NeedAnswer { choice: 'go' | 'defer' | 'reply'; text?: string; until?: string; at: string }
+/** `context`: the owner asked the agent for a brief. @req FR:ask-briefs/context.need */
+export interface NeedAnswer { choice: 'go' | 'defer' | 'reply' | 'context'; text?: string; until?: string; at: string }
 /** One escalation. @req FR:ask-queue/$need */
 export interface Need {
   id: string; title: string; recommendation: string; default?: string; by?: string; link: string;
   project?: string; ref?: string; answer?: NeedAnswer;
   /** A decision item (PR priority recommendation): the UI shows `actions` and posts them to `decide`. @req FR:pr-priority/needs.list */
   kind?: 'decision'; actions?: string[]; decide?: string;
+  /** The asking agent, the ask kind, and the brief. @req FR:ask-briefs/brief.needs */
+  from?: string; askKind?: string; brief?: AskBrief;
 }
-export interface NeedAnswerInput { choice: 'go' | 'defer' | 'reply' | 'undo'; text?: string; until?: string }
+export interface NeedAnswerInput { choice: 'go' | 'defer' | 'reply' | 'context' | 'undo'; text?: string; until?: string }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const str = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v.trim() && v.length <= max ? v.trim() : undefined);
@@ -30,7 +34,7 @@ const safeLink = (v: unknown): string | undefined => {
 function parseAnswer(v: unknown): NeedAnswer | undefined {
   if (!v || typeof v !== 'object') return undefined;
   const a = v as Record<string, unknown>;
-  if (a.choice !== 'go' && a.choice !== 'defer' && a.choice !== 'reply') return undefined;
+  if (a.choice !== 'go' && a.choice !== 'defer' && a.choice !== 'reply' && a.choice !== 'context') return undefined;
   const at = str(a.at, 40);
   return at ? { choice: a.choice, at, ...(str(a.text, 2000) ? { text: str(a.text, 2000) } : {}), ...(str(a.until, 40) ? { until: str(a.until, 40) } : {}) } : undefined;
 }
@@ -42,11 +46,15 @@ function parseItem(raw: unknown): Need | undefined {
   const title = str(r.title, 200); const recommendation = str(r.recommendation, 300); const link = safeLink(r.link);
   if (!id || !title || !recommendation || !link) return undefined;
   const answer = parseAnswer(r.answer);
+  // A brief that fails the check is left out; the item still shows. @req FR:ask-briefs/brief.needs
+  const brief = r.brief === undefined ? undefined : checkBrief(r.brief).brief;
   return {
     id, title, recommendation, link,
     ...(str(r.default, 200) ? { default: str(r.default, 200) } : {}), ...(str(r.by, 40) ? { by: str(r.by, 40) } : {}),
     ...(str(r.project, 80) ? { project: str(r.project, 80) } : {}), ...(str(r.ref, 120) ? { ref: str(r.ref, 120) } : {}),
-    ...(answer ? { answer } : {}),
+    ...(answer ? { answer } : {}), ...(brief ? { brief } : {}), ...(str(r.from, 80) ? { from: str(r.from, 80) } : {}),
+    // The kind of ask (default approve): a go-do or answer item needs no brief. @req FR:ask-briefs/brief.needs
+    ...(typeof r.askKind === 'string' && ['approve', 'decide', 'review', 'go-do', 'answer'].includes(r.askKind) ? { askKind: r.askKind } : {}),
   };
 }
 

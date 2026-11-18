@@ -17,11 +17,14 @@ describe('stack asks', () => {
   it('put writes the ask file and prints the key; list ranks; handle closes', async () => {
     const d = dir();
     writeFileSync(join(d, 'detail.md'), 'Remaining risk: keyboard pass.');
-    const put = await stack(d, 'asks', 'put', 'pr-879-approve', '--ask', 'Approve merging PR 879', '--kind', 'approve', '--from', 'allyte-cos', '--recommend', 'Approve', '--default', 'Merges at 8am', '--by', '2026-10-29T15:00:00Z', '--reversible', 'yes', '--link', 'https://github.com/o/r/pull/879', '--priority', 'high', '--effort', '2m', '--blocks', '3', '--detail-file', join(d, 'detail.md'));
+    // @req FR:ask-briefs/brief.cli
+    writeFileSync(join(d, 'brief.json'), JSON.stringify({ problem: 'PR 879 is ready.', solution: 'Merge it.', risks: ['Keyboard pass open.'], recommendation: 'Approve.' }));
+    const put = await stack(d, 'asks', 'put', 'pr-879-approve', '--ask', 'Approve merging PR 879', '--kind', 'approve', '--from', 'allyte-cos', '--recommend', 'Approve', '--default', 'Merges at 8am', '--by', '2026-10-29T15:00:00Z', '--reversible', 'yes', '--link', 'https://github.com/o/r/pull/879', '--priority', 'high', '--effort', '2m', '--blocks', '3', '--detail-file', join(d, 'detail.md'), '--brief-file', join(d, 'brief.json'));
     expect(put).toMatchObject({ code: 0, out: 'pr-879-approve\n' });
     const raw = readFileSync(join(d, 'tasks/asks/pr-879-approve.md'), 'utf8');
     expect(raw).toContain('- ask: Approve merging PR 879');
     expect(raw).toContain('Remaining risk: keyboard pass.');
+    expect(raw).toContain('## Brief\n\n- problem: PR 879 is ready.');
     await stack(d, 'asks', 'put', 'low-one', '--ask', 'Rename the repo', '--kind', 'go-do', '--from', 'cos', '--priority', 'low');
     const list = await stack(d, 'asks', 'list', '--now', '2026-10-28T18:00:00Z');
     const lines = list.out.trim().split('\n');
@@ -60,5 +63,16 @@ describe('stack asks', () => {
     expect((await stack(d, 'asks', 'list', '--state', 'all', '--json')).out).toContain('"total":0');
     expect((await stack(d, 'asks', 'archive', '--days', 'x')).code).toBe(2);
     expect((await stack(d, 'asks', 'archive', 'extra')).code).toBe(2);
+  });
+
+  // @req FR:ask-briefs/brief.lint @req FR:ask-briefs/brief.cli
+  it('put warns on an approve or decide ask with no brief, still exit 0; a bad --brief-file fails', async () => {
+    const d = dir();
+    const r = await stack(d, 'asks', 'put', 'pr-1', '--ask', 'Approve PR 1', '--kind', 'approve', '--from', 'cos');
+    expect(r).toMatchObject({ code: 0, out: expect.stringMatching(/^pr-1\nwarning: pr-1 \(approve\) has no brief/) });
+    expect((await stack(d, 'asks', 'put', 'go-1', '--ask', 'Buy milk', '--kind', 'go-do', '--from', 'cos')).out).toBe('go-1\n');
+    writeFileSync(join(d, 'bad.json'), '{"problem": "x"}');
+    expect((await stack(d, 'asks', 'put', 'pr-2', '--ask', 'Approve PR 2', '--kind', 'approve', '--from', 'cos', '--brief-file', join(d, 'bad.json'))).code).not.toBe(0);
+    expect((await stack(d, 'asks', 'put', 'pr-3', '--ask', 'Approve PR 3', '--kind', 'approve', '--from', 'cos', '--brief-file', join(d, 'missing.json'))).code).toBe(2);
   });
 });

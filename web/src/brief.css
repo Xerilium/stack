@@ -1,0 +1,12 @@
+/* The brief on an expanded ask. @req FR:ask-briefs/web.brief @req FR:ask-briefs/web.none */
+.brief { margin: 12px 0 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); display: grid; gap: 8px; max-width: 64ch; }
+.brief > div { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; align-items: baseline; }
+.brief dt { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.brief dd { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink); overflow-wrap: anywhere; }
+.brief ul { margin: 0; padding-left: 1.1em; }
+.brief a, .ask-card a:not(.btn), .now-ask-more a:not(.now-act), .th-text a, .pr-context a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.brief-none { margin: 12px 0 4px; padding: 10px 14px; border-left: 3px solid var(--warn); border-radius: 8px; background: var(--chip); font-size: 14px; line-height: 1.5; color: var(--ink2); }
+.brief-none strong { color: var(--ink); }
+.confirm-act { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.confirm-act .danger { border-color: var(--warn); color: var(--warn); font-weight: 600; }
+@media (max-width: 560px) { .brief > div { grid-template-columns: 1fr; gap: 2px; } }

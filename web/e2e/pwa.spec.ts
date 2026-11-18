@@ -1,9 +1,9 @@
 /* Mobile PWA, offline reading, notifications, and the week view. */
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi, type MockAsk } from './mock';
+import { BRIEF, mockApi, type MockAsk } from './mock';
 
 const at10 = () => { const d = new Date(); d.setHours(10, 0, 0, 0); return d; };
-const ask = (key: string, text: string): MockAsk => ({ key, ask: text, state: 'open', kind: 'approve', from: 'cos', project: 'alpha', reversible: false, priority: 'normal', blocks: 0, created: new Date().toISOString(), updated: new Date().toISOString(), score: 50, overdue: false });
+const ask = (key: string, text: string): MockAsk => ({ brief: BRIEF, key, ask: text, state: 'open', kind: 'approve', from: 'cos', project: 'alpha', reversible: false, priority: 'normal', blocks: 0, created: new Date().toISOString(), updated: new Date().toISOString(), score: 50, overdue: false });
 const swReady = (page: Page) => page.evaluate(async () => { await navigator.serviceWorker.ready; });
 
 test.describe('install', () => {
