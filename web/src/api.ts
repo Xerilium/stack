@@ -51,6 +51,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
   return {
     next: async () => (await call<{ task: NextTask | null }>('/next')).task,
     /** The one ranking (engine order plus the owner's overrides); Home draws only this. @req FR:api/routes.rank */
+    /** Per project: done today, keyed by project file name. @req FR:pri-first-ranking/daily.web */
+    daily: async () => new Map(((await call<{ daily?: { name?: string; project: string; done: boolean }[] }>('/rank?limit=1&daily=1')).daily ?? []).map((d) => [d.name ?? d.project, d.done] as const)),
     rank: async (limit = 100, blocks: 'now' | 'any' = 'now') => (await call<{ items: RankItem[] }>(`/rank?limit=${limit}${blocks === 'any' ? '&blocks=any' : ''}`)).items,
     /** Owner feedback to ~/.stack/feedback.jsonl. @req FR:feedback-button/api.route */
     feedback: (b: FeedbackBody) => call<{ id: string; at: string; screenshot: boolean }>('/feedback', b),

@@ -5,7 +5,7 @@
  */
 import { autopriRank, autopriParts, type AutopriParts } from './autopri';
 import type { StackConfig } from './config';
-import { PRI_LINKS, type Pri } from './pris';
+import { PRI_DAYS, PRI_LINKS, type Pri } from './pris';
 import { escapeRe, wordsRe } from './regex';
 import { isMessage, legacyEngine, listEngines, registerEngine, type ScoredTask, type ScoringEngine, type ScoringProject } from './scoring';
 
@@ -147,6 +147,26 @@ export function registerPrisEngine(): void {
 }
 
 // ---------------------------------------------------------------- priority first
+
+/** The weekday of `at` in `timeZone` (the system zone when unset). */
+function weekday(at: Date, timeZone?: string): (typeof PRI_DAYS)[number] {
+  const d = new Intl.DateTimeFormat('en-US', { weekday: 'short', ...(timeZone ? { timeZone } : {}) }).format(at).toLowerCase().slice(0, 3);
+  return d as (typeof PRI_DAYS)[number];
+}
+
+/**
+ * The priorities in the order of the day: the weekday slot, else `slot`, else the file position; a weekday entry wins a tie; `off` is left out.
+ * @req FR:pri-first-ranking/day.input @req FR:pri-first-ranking/day.slot @req FR:pri-first-ranking/day.slot.day @req FR:pri-first-ranking/day.slot.base @req FR:pri-first-ranking/day.slot.none @req FR:pri-first-ranking/day.tie @req FR:pri-first-ranking/day.tie.file @req FR:pri-first-ranking/day.off
+ */
+export function priOrder(pris: Pri[], at: Date, timeZone?: string): Pri[] {
+  const day = weekday(at, timeZone);
+  return pris
+    .map((p, i) => ({ p, i, d: p.days?.[day] }))
+    .filter((x) => x.d !== 'off')
+    .map((x) => ({ ...x, k: typeof x.d === 'number' ? x.d : x.p.slot ?? x.i, o: typeof x.d === 'number' ? 0 : 1 }))
+    .sort((a, b) => a.k - b.k || a.o - b.o || a.i - b.i)
+    .map((x) => x.p);
+}
 
 // @req FR:pri-first-ranking/$pri-action @req FR:pri-first-ranking/action.output
 export interface PriAction { id: string; rank: number; title: string; text: string; score: number }

@@ -69,6 +69,39 @@ Owner needs the web Home to show the same priority order so that every screen ag
 - **FR:api.order** (P1): API MUST rank tasks with the priorities of its priority store.
 - **FR:api.tasks** (P1): API MUST return task rows only, no action rows.
 
+### FR:day: Order the priorities for the day
+
+Owner needs the priority order to change by weekday so that each day starts with that day's focus.
+
+- **FR:day.schema** (P1): Day fields on each priority in `pris.json`
+  > - @req FR:$pri-day
+- **FR:day.input** (P1): Clock (string) — the injected `now`, read as a weekday in the configured time zone
+- **FR:day.slot** (P1): Ranker MUST order the priorities by their slot for the day, lowest first.
+  - **FR:day.slot.day** (P1): Ranker MUST use the `days` entry for the weekday as the slot when it exists.
+  - **FR:day.slot.base** (P1): Ranker MUST use `slot` when the weekday has no entry.
+  - **FR:day.slot.none** (P1): Ranker MUST use the file position when a priority has no slot.
+- **FR:day.tie** (P1): Ranker MUST put a priority with a weekday entry above one on the same slot without an entry.
+  - **FR:day.tie.file** (P2): Ranker MUST use the file order for the other ties.
+- **FR:day.off** (P1): Ranker MUST leave out a priority whose weekday entry is `off`.
+- **FR:day.validate** (P1): Parser MUST reject a slot that is not a whole number from 0 to 99.
+  - **FR:day.validate.key** (P1): Parser MUST reject a `days` key that is not `mon`, `tue`, `wed`, `thu`, `fri`, `sat` or `sun`.
+- **FR:day.cli** (P1): Interface: `stack pris put --file <json>`
+  - **FR:day.cli.put** (P1): CLI MUST replace the priority list with the JSON array in the file.
+
+### FR:daily: Track one task per project per day
+
+Owner needs each project's pick for today and whether he finished a task in it today so that he does at least one task in every project each day.
+
+- **FR:daily.@cli** (P1): Interface: `stack next --daily`, `stack rank --daily`
+- **FR:daily.@api** (P1): Interface: `GET /api/rank?daily=1`
+- **FR:daily.pick** (P1): Ranker MUST name the first ranked task of each project as its pick.
+- **FR:daily.done** (P1): Ranker MUST mark a project done when one of its checked rows changed today in the configured time zone.
+  - **FR:daily.done.history** (P2): Ranker MUST mark a project not done when the storage keeps no line history.
+- **FR:daily.order** (P1): Ranker MUST list the projects in the order of their picks, then the projects with no pick.
+- **FR:daily.cli** (P1): CLI MUST print one line per project as `<name> done=yes|no <ref> <text>`, with `-` for no pick.
+- **FR:daily.web** (P1): Home MUST show `done today` or `not yet today` on each project row.
+- **FR:daily.output** (P1): Daily row (@req FR:$daily-row) — one per project
+
 ### FR:proof: Prove the order on the owner's priorities
 
 Owner needs a test on his real priorities so that the order cannot drift.
@@ -79,6 +112,8 @@ Owner needs a test on his real priorities so that the order cannot drift.
 
 ## Data Model
 
+- **FR:$pri-day** (P1): **`Pri` day fields** — `slot` (whole number 0-99, optional), `days` (optional map of `mon`..`sun` to a slot or `off`).
+- **FR:$daily-row** (P1): **`DailyRow`** — `project`, `name` (file name), `done` (done today), `pick` (`ref`, `text`; optional).
 - **FR:$pri-action** (P1): **`PriAction`** — `id` (priority id), `rank` (1 is highest), `title`, `text` (the action), `score` (the priority boost).
 
 ## Architecture Constraints

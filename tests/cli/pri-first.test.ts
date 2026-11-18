@@ -97,3 +97,52 @@ describe('stack next on the owner priorities', () => {
     expect((await stack('rank', '--engine', 'autopri')).out).toBe(a.out);
   });
 });
+
+describe('stack pris put and the day order', () => {
+  const put = () => {
+    const list = JSON.parse(readFileSync(join(__dirname, '../fixtures/pri-first-ranking/pris-current.json'), 'utf8'));
+    for (const p of list) if (p.id === 'qm' || p.id === 'premium') p.weekly = [{ week: '2026-W47', text: `Michael: do ${p.id}` }];
+    const f = join(home, 'in.json');
+    writeFileSync(f, JSON.stringify(list));
+    return f;
+  };
+  async function at(now: string, ...args: string[]) {
+    let out = '';
+    const code = await run([...args, '--dir', dir, '--no-commit', '--now', now], { out: (s) => { out += s; }, err: () => {} });
+    return { code, lines: out.trim().split('\n') };
+  }
+  // @req FR:pri-first-ranking/day.cli @req FR:pri-first-ranking/day.cli.put @req FR:pri-first-ranking/day.input @req FR:pri-first-ranking/day.off
+  it('replaces the list, then ranks the actions in the order of the day', async () => {
+    const r = await stack('pris', 'put', '--file', put());
+    expect(r.code).toBe(0);
+    expect(r.out).toBe('put 14 priorities\n');
+    expect(JSON.parse(readFileSync(join(home, 'pris.json'), 'utf8')).pris.map((p: { id: string }) => p.id)[7]).toBe('qm');
+    const wed = await at('2026-11-18T17:00:00Z', 'next', '--top', '2');
+    expect(wed.lines.map((l) => l.split(' ').slice(0, 1).concat(l.split(' ').slice(-2)).join(' '))).toEqual(['pri:2 do qm', 'pri:3 do premium']);
+    const thu = await at('2026-11-19T17:00:00Z', 'next', '--top', '1');
+    expect(thu.lines[0]).toMatch(/^pri:3 .* do premium$/);
+    expect(thu.lines.join('\n')).not.toMatch(/do qm/);
+  });
+  // @req FR:pri-first-ranking/day.cli.put
+  it('rejects a missing or invalid file', async () => {
+    expect((await stack('pris', 'put')).code).toBe(2);
+    expect((await stack('pris', 'put', '--file', join(home, 'nope.json'))).code).toBe(2);
+    writeFileSync(join(home, 'bad.json'), '[{"id":"x"}]');
+    expect((await stack('pris', 'put', '--file', join(home, 'bad.json'))).code).not.toBe(0);
+  });
+});
+
+describe('stack next --daily', () => {
+  // @req FR:pri-first-ranking/daily.@cli @req FR:pri-first-ranking/daily.cli
+  it('prints one line per project with its pick and done today', async () => {
+    const r = await stack('next', '--daily');
+    expect(r.code).toBe(0);
+    expect(r.lines.length).toBeGreaterThan(3);
+    for (const l of r.lines) expect(l).toMatch(/^\S+ done=(yes|no) (\S+:\d+ .+|-)$/);
+    expect(new Set(r.lines.map((l) => l.split(' ')[0])).size).toBe(r.lines.length);
+    const top = (await stack('next', '--top', '1')).lines[0].split(' ')[0];
+    expect(r.lines[0].split(' ')[2]).toBe(top);
+    const j = JSON.parse((await stack('rank', '--daily', '--json')).out);
+    expect(j.items[0]).toMatchObject({ done: false, pick: { ref: top } });
+  });
+});

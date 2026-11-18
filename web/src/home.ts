@@ -24,7 +24,8 @@ export function countdown(due: string | undefined, now: Date): Countdown | null 
 }
 
 export interface HomeItem { task: Task; minutes: number; assumed: boolean; due: Countdown | null }
-export interface HomeProject { project: string; title: string; top: HomeItem }
+/** `done`: a task in the project was done today (absent when unknown). @req FR:pri-first-ranking/daily.web */
+export interface HomeProject { project: string; title: string; top: HomeItem; done?: boolean }
 export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem | null; projects: HomeProject[] }
 
 /** Expected time is the full effort (30 min assumed when unset), never capped: a 3 h task must not "fit" 2 h. */
@@ -54,7 +55,7 @@ export function topAsksOf(h: Home): { top: HomeItem | null; rows: HomeProject[] 
  * @req FR:web-app/home3.dedupe
  * @req FR:ask-queue/needs.dedupe
  */
-export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem[]; /** Refs shown in Needs you: held back from Home. */ exclude?: Set<string>; now: Date; minutesLeft: number; /** Only rows that belong to the personal block (its emoji or its projects) may use the time. @req FR:home/home.window @req FR:home/day.blocks */ allow?: { emoji: string; projects?: string[] } }): Home {
+export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem[]; /** Refs shown in Needs you: held back from Home. */ exclude?: Set<string>; now: Date; minutesLeft: number; /** Only rows that belong to the personal block (its emoji or its projects) may use the time. @req FR:home/home.window @req FR:home/day.blocks */ allow?: { emoji: string; projects?: string[] }; /** Project name to done today, from `GET /rank?daily=1`. */ done?: Map<string, boolean> }): Home {
   const { tasks, now } = o;
   const byRef = new Map(tasks.map((t) => [t.ref, t]));
   const hidden = o.exclude ?? new Set<string>();
@@ -84,7 +85,7 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
     const mine = tasks.filter((t) => t.project === p.name && !t.done && t.depth === 0 && !hidden.has(t.ref));
     // No arbitrary first row as a fallback: the server may have hidden it (a hide rule). @req FR:web-app/home.projects
     const top = ordered.find((t) => t.project === p.name) ?? mine.find(isUpNext);
-    if (top) projects.push({ project: p.name, title: p.title || p.name, top: item(top, now) });
+    if (top) projects.push({ project: p.name, title: p.title || p.name, top: item(top, now), ...(o.done ? { done: o.done.get(top.project) ?? false } : {}) });
   }
   projects.sort((a, b) => (rankOf.get(a.top.task.ref) ?? Infinity) - (rankOf.get(b.top.task.ref) ?? Infinity));
   return { one, fits, instead, projects };

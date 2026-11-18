@@ -11,7 +11,7 @@ import { rowOwner } from './owner';
 import { applyTags, formatExplain, matchTruth, parseTruth, type ExplainRow, type Tags, type TruthMatch } from './autopri-tags';
 import { autopriEngine, autopriParts, registerAutopriEngine } from './autopri';
 import type { Pri } from './pris';
-import { linkAll, linkCounts, priActions, priFirst, type PriLink, prisEngine, prisParts, registerPrisEngine, setPris } from './pris-rank';
+import { linkAll, linkCounts, priActions, priFirst, priOrder, type PriLink, prisEngine, prisParts, registerPrisEngine, setPris } from './pris-rank';
 import { applyOverrides, matcherFor, parsePriorities, PRIORITIES_PATH } from './priorities';
 import { ConflictError, NotFoundError, Storage, writeAll, type AuxFiles } from './storage';
 
@@ -322,6 +322,11 @@ type Ranked = { next: RankedTask; doc: Doc; task: ScoringTask; context: string; 
 /** The last ranking per storage. Read-only: callers copy what they hand out. @req FR:perf/rank.cache */
 const rankMemo = new WeakMap<object, Map<string, { key: string; config: StackConfig | undefined; engine: string | undefined; value: Ranked }>>();
 
+/** The owner priorities in the order of the day (`at`, else the context clock). @req FR:pri-first-ranking/day.input */
+export function dayPris(ctx: LifecycleContext, at?: Date): Pri[] {
+  return priOrder(ctx.pris?.() ?? [], at ?? clock(ctx), cfg(ctx).timezone);
+}
+
 async function rankAll(ctx: LifecycleContext, at?: Date, opts: StackRankOptions = {}): Promise<Ranked> {
   const docs = await loadDocs(ctx.storage);
   // The ranking is a function of the file versions, the owner's rules, the options, and the clock (to the minute unless the caller pins it).
@@ -330,7 +335,7 @@ async function rankAll(ctx: LifecycleContext, at?: Date, opts: StackRankOptions 
   const when0 = at ?? clock(ctx);
   // An engine that reads other inputs (the pris engine) adds its version. @req FR:pris-aware-ranking/engine.memo
   const ev = getEngine(ctx.engine ?? DEFAULT_ENGINE).version?.() ?? null;
-  const pris = ctx.pris?.() ?? [];
+  const pris = dayPris(ctx, when0);
   const key = JSON.stringify([docs.map((d) => [d.path, d.version]), rules0?.version ?? null, at ? when0.getTime() : Math.floor(when0.getTime() / 60_000), ev, pris]);
   const slot = `${opts.ignoreBlocks ? 'any' : 'now'}:${opts.owner ?? 'me'}`; // the page asks for both
   let mine = rankMemo.get(ctx.storage);
@@ -701,7 +706,7 @@ export async function explainStack(ctx: LifecycleContext, at?: Date, opts: Stack
   const ranked = await rankAll(c, when, { ignoreBlocks: opts.ignoreBlocks, owner: opts.owner });
   const dropped = opts.owner === 'any' ? 0 : (await rankAll(c, when, { ignoreBlocks: opts.ignoreBlocks, owner: 'any' })).length - ranked.length;
   // Priority actions first, then the task rows. @req FR:pri-first-ranking/action.first @req FR:pri-first-ranking/cli.explain.action
-  const acts: StackExplainItem[] = priActions(ctx.pris?.() ?? []).map((a) => ({ rank: 0, project: a.title, text: a.text, score: a.score, why: 'priority action', pri: { id: a.id, rank: a.rank, title: a.title } }));
+  const acts: StackExplainItem[] = priActions(dayPris(ctx, when)).map((a) => ({ rank: 0, project: a.title, text: a.text, score: a.score, why: 'priority action', pri: { id: a.id, rank: a.rank, title: a.title } }));
   const tasks: StackExplainItem[] = ranked.map((r) => ({
     rank: 0, ref: formatRef(r.next.ref), path: r.next.ref.path, line: r.next.ref.line + 1, project: r.next.project, text: r.next.text,
     score: r.next.score, why: whyOf(r, ctx, when), ...(r.next.stale ? { stale: true as const } : {}), ...(r.next.rule ? { rule: r.next.rule } : {}), ...(r.link ? { link: r.link } : {}),
@@ -713,6 +718,32 @@ export async function explainStack(ctx: LifecycleContext, at?: Date, opts: Stack
   const lines = items.map((x) => `${x.rank}. ${x.pri ? `pri:${x.pri.rank}` : x.ref} ${Number(x.score.toFixed(1))} ${x.project}: ${x.text} | ${x.why}${x.rule ? `; rule ${x.rule}` : ''}${serves(x)}`);
   if (dropped > 0) lines.push(`${dropped} ${dropped === 1 ? 'row' : 'rows'} dropped: not the owner's (agent or mixed)`);
   return { items, dropped, text: lines.join('\n') };
+}
+
+/** @req FR:pri-first-ranking/$daily-row */
+export interface DailyRow { project: string; /** File base name. */ name?: string; done: boolean; pick?: { ref: TaskRef; text: string } }
+
+/**
+ * Per project: today's pick (its first ranked task) and whether a checked row changed today; projects in pick order, then the rest.
+ * @req FR:pri-first-ranking/daily.pick @req FR:pri-first-ranking/daily.done @req FR:pri-first-ranking/daily.done.history @req FR:pri-first-ranking/daily.order @req FR:pri-first-ranking/daily.output
+ */
+export async function dailyGoal(ctx: LifecycleContext, at?: Date): Promise<DailyRow[]> {
+  const tz = cfg(ctx).timezone;
+  const day = (t: number) => { const w = wallClock(new Date(t), tz); return `${w.y}-${w.mo}-${w.d}`; };
+  const today = day((at ?? clock(ctx)).getTime());
+  const out = new Map<string, DailyRow>();
+  for (const r of await rankAll(ctx, at)) if (!out.has(r.next.project)) out.set(r.next.project, { project: r.next.project, done: false, pick: { ref: r.next.ref, text: r.next.text } });
+  for (const d of await loadDocs(ctx.storage)) {
+    const name = toScoringProject(d.project, d.name).name;
+    const times = typeof ctx.storage.lineActivity === 'function' ? await ctx.storage.lineActivity(d.path) : [];
+    // An uncommitted change (Infinity) is today's.
+    const done = d.project.lines.some((l, i) => /^\s*- \[[xX]\]/.test(l) && times[i] !== undefined && (times[i] === Infinity || day(times[i]) === today));
+    const row = out.get(name) ?? { project: name, done: false };
+    row.name = d.name;
+    row.done = row.done || done;
+    out.set(name, row);
+  }
+  return [...out.values()];
 }
 
 /** Open tasks linked per priority id, for `stack pris gaps`. @req FR:pris-aware-ranking/cos.gaps.cli */

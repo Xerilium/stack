@@ -795,11 +795,13 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
 .top-live { display: inline-flex; align-items: center; }
 .top-live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 .top-live.poll .dot { background: var(--accent); }
-.top-meta { display: grid; grid-template-columns: 44px 68px; align-items: center; gap: 8px; justify-items: end; white-space: nowrap; font-size: 12.5px; }
+.top-meta { display: grid; grid-template-columns: 44px 68px auto; align-items: center; gap: 8px; justify-items: end; white-space: nowrap; font-size: 12.5px; }
 .top-time { color: var(--muted); font-variant-numeric: tabular-nums; }
 .top-due { color: var(--muted); font-weight: 500; }
 .top-due:empty { display: block; }
 .top-due.soon { color: var(--warn); font-weight: 600; }
+.top-daily { color: var(--muted); }
+.top-daily.done { color: var(--ok); font-weight: 600; }
 .top-due.late { color: var(--warn); font-weight: 600; background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 6px; padding: 1px 6px; }
 .top-rows li.fresh { animation: top-in 1s ease-out; }
 @keyframes top-in { from { background: var(--accent-soft); opacity: .4; } to { background: transparent; opacity: 1; } }

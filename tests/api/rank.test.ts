@@ -136,3 +136,30 @@ describe('GET /api/rank with priorities', () => {
     expect((await get('/api/rank')).items.at(-1)!.text).toMatch(/FOCUS issues triage/);
   });
 });
+
+describe('GET /api/rank?daily=1', () => {
+  // @req FR:pri-first-ranking/daily.@api @req FR:pri-first-ranking/daily.pick @req FR:pri-first-ranking/daily.done @req FR:pri-first-ranking/daily.order @req FR:pri-first-ranking/daily.output @req FR:pri-first-ranking/$daily-row
+  it('lists each project pick and whether a task was done today', async () => {
+    const storage = await seed();
+    await storage.write('tasks/focus.md', '# 👓 FOCUS\n\n- **Project value:** 🌟🌟\n\n## 🔄 Active\n\n- [ ] 🚨 📅 Oct 30: FOCUS issues triage 🟡\n- [x] Old FOCUS task\n');
+    await storage.write('tasks/done.md', '# Done\n\n## 🔄 Active\n\n- [x] All done here\n');
+    const today = NOW.getTime() - 3_600_000; const before = NOW.getTime() - 3 * 86_400_000;
+    Object.assign(storage, { lineActivity: async (p: string) => (p === 'tasks/focus.md' ? [before, before, before, before, before, before, before, today] : p === 'tasks/done.md' ? [before, before, before, before, before] : []) });
+    const h = createApiHandler({ storage, authorize: () => true, now: () => NOW });
+    const get = async (q: string) => (await (await h(new Request(`https://x.test/api/rank${q}`, { headers: { 'x-ms-client-principal': OWNER } }))).json()) as { items: { ref: string; project: string }[]; daily?: { project: string; done: boolean; pick?: { ref: string; text: string } }[] };
+    const r = await get('?daily=1');
+    const first = (p: string) => r.items.find((i) => i.project === p)?.ref;
+    expect(r.daily!.map((d) => d.project)).toEqual([...new Set(r.items.map((i) => i.project))].concat('Done'));
+    expect(r.daily!.find((d) => d.project === '👓 FOCUS')).toMatchObject({ done: true, pick: { ref: first('👓 FOCUS') } });
+    expect(r.daily!.find((d) => d.project === '💰 Finance')).toMatchObject({ done: false, pick: { ref: first('💰 Finance') } });
+    expect(r.daily!.find((d) => d.project === 'Done')).toEqual({ project: 'Done', name: 'done', done: false });
+    expect((await get('')).daily).toBeUndefined();
+  });
+  // @req FR:pri-first-ranking/daily.done.history
+  it('marks no project done when the storage keeps no history', async () => {
+    const h = createApiHandler({ storage: await seed(), authorize: () => true, now: () => NOW });
+    const r = (await (await h(new Request('https://x.test/api/rank?daily=1', { headers: { 'x-ms-client-principal': OWNER } }))).json()) as { daily: { done: boolean }[] };
+    expect(r.daily.length).toBeGreaterThan(0);
+    expect(r.daily.every((d) => !d.done)).toBe(true);
+  });
+});

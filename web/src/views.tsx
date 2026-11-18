@@ -820,6 +820,8 @@ function TopRow({ x, p, detail, onProject, armed }: { armed: boolean; x: HomePro
       <span class="top-meta">
         <span class="top-time" data-testid="top-time">{x.top.assumed ? '~' : ''}{span(x.top.minutes)}</span>
         {x.top.due ? <span class={`top-due ${late ? x.top.due.tone : ''}`} data-testid="countdown">{x.top.due.text}</span> : <span class="top-due" aria-hidden="true" />}
+        {/* @req FR:pri-first-ranking/daily.web */}
+        {x.done !== undefined && <span class={`top-daily${x.done ? ' done' : ''}`} data-testid="daily">{x.done ? 'done today' : 'not yet today'}</span>}
       </span>
       {detail(x.top.task)}
       {p.agent?.talk(x.top.task)}

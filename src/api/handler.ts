@@ -5,7 +5,7 @@
 import { getDefaults, MAILBOX, type StackConfig } from '../core/config';
 import { cleanOverrides, daySchedule, dayScheduleOn, type ScheduleOverrides } from '../core/schedule';
 import {
-  addProject, addTask, completeTask, nextTask, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
+  addProject, addTask, completeTask, dailyGoal, nextTask, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
   type LifecycleContext, type LifecycleResult, type TaskProps,
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
@@ -284,7 +284,7 @@ const PR_DECIDE_BODY = {
   required: ['decision'],
 };
 const PR_DEC_Q: Record<string, Spec> = { agent: { t: 'str', max: 40, line: true } };
-const RANK_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 1000 }, blocks: { t: 'enum', values: ['now', 'any'] } };
+const RANK_Q: Record<string, Spec> = { limit: { t: 'int', min: 1, max: 1000 }, blocks: { t: 'enum', values: ['now', 'any'] }, daily: { t: 'enum', values: ['1'] } };
 const PR_REPO: Spec = { t: 'str', required: true, max: 140, pattern: /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/ };
 const PR_NUM: Spec = { t: 'int', min: 1, max: 9_999_999 };
 export const PR_QUEUE_OPS = ['top', 'up', 'down', 'move', 'add', 'pin', 'unpin', 'remove', 'undo'] as const;
@@ -530,7 +530,10 @@ export const ROUTES: Route[] = [
       // readQuery checks names only, not enum values: this check is the only one for `blocks`.
       if (blocks !== 'now' && blocks !== 'any') throw invalid([{ field: 'blocks', message: 'Must be now or any' }]);
       const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}), ...(t.stale ? { stale: true } : {}) }));
-      return json(200, { items });
+      // Per project: today's pick and done today. @req FR:pri-first-ranking/daily.@api
+      if (q.get('daily') !== '1') return json(200, { items });
+      const daily = (await dailyGoal(c.life)).map((d) => ({ project: d.project, ...(d.name ? { name: d.name } : {}), done: d.done, ...(d.pick ? { pick: { ref: formatRef(d.pick.ref), text: d.pick.text } } : {}) }));
+      return json(200, { items, daily });
     },
   },
   {

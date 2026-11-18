@@ -7,3 +7,5 @@
 - [x] CLI: read pris, action rows in `next` and `rank`, `--explain` serves
 - [x] API: pass the priority store to the ranking
 - [x] Traceability 100%, lint, full test run
+- [x] Day order: `slot`, `days`, `priOrder`, `stack pris put` (`FR:day.*`)
+- [x] Daily goal: `dailyGoal`, `--daily`, `GET /rank?daily=1`, Home tag (`FR:daily.*`)
