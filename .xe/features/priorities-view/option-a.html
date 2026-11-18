@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Priorities: Option A, Day ledger</title>
+<style>
+/* Fluent 2 tokens: copied from web/src/fluent2.css. Mockup only. */
+:root {
+  --fl-bg1:#fff; --fl-bg1-hover:#f5f5f5; --fl-bg1-pressed:#e0e0e0; --fl-bg2:#fafafa; --fl-bg3:#f5f5f5;
+  --fl-fg1:#242424; --fl-fg2:#424242; --fl-fg3:#616161; --fl-stroke1:#d1d1d1; --fl-stroke2:#e0e0e0; --fl-stroke-access:#616161;
+  --fl-brand:#0f6cbd; --fl-brand-hover:#115ea3; --fl-on-brand:#fff; --fl-brand-fg:#0f6cbd; --fl-brand2:#ebf3fc;
+  --fl-subtle-hover:#f5f5f5; --fl-danger:#b10e1c; --fl-success:#0e700e; --fl-warn:#8a5300; --fl-focus:#000;
+  --fl-font:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,Roboto,sans-serif;
+  --fl-r-md:4px; --fl-r-lg:6px; --fl-r-xl:8px; --fl-r-pill:999px;
+  --fl-shadow4:0 0 2px rgb(0 0 0/12%),0 2px 4px rgb(0 0 0/14%); --fl-shadow16:0 0 2px rgb(0 0 0/12%),0 8px 16px rgb(0 0 0/14%);
+  --fl-target:32px; color-scheme:light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fl-bg1:#292929; --fl-bg1-hover:#3d3d3d; --fl-bg1-pressed:#1f1f1f; --fl-bg2:#1f1f1f; --fl-bg3:#141414; --fl-fg1:#fff; --fl-fg2:#d6d6d6; --fl-fg3:#adadad; --fl-stroke1:#666; --fl-stroke2:#525252; --fl-stroke-access:#adadad; --fl-brand:#115ea3; --fl-brand-hover:#0f6cbd; --fl-brand-fg:#479ef5; --fl-brand2:#082338; --fl-subtle-hover:#383838; --fl-danger:#e37d80; --fl-success:#54b054; --fl-warn:#f2c661; --fl-focus:#fff; --fl-shadow4:0 0 2px rgb(0 0 0/24%),0 2px 4px rgb(0 0 0/28%); --fl-shadow16:0 0 2px rgb(0 0 0/24%),0 8px 16px rgb(0 0 0/28%); color-scheme:dark; } }
+:root[data-theme="dark"] { --fl-bg1:#292929; --fl-bg1-hover:#3d3d3d; --fl-bg1-pressed:#1f1f1f; --fl-bg2:#1f1f1f; --fl-bg3:#141414; --fl-fg1:#fff; --fl-fg2:#d6d6d6; --fl-fg3:#adadad; --fl-stroke1:#666; --fl-stroke2:#525252; --fl-stroke-access:#adadad; --fl-brand:#115ea3; --fl-brand-hover:#0f6cbd; --fl-brand-fg:#479ef5; --fl-brand2:#082338; --fl-subtle-hover:#383838; --fl-danger:#e37d80; --fl-success:#54b054; --fl-warn:#f2c661; --fl-focus:#fff; --fl-shadow4:0 0 2px rgb(0 0 0/24%),0 2px 4px rgb(0 0 0/28%); --fl-shadow16:0 0 2px rgb(0 0 0/24%),0 8px 16px rgb(0 0 0/28%); color-scheme:dark; }
+@media (max-width:719px),(hover:none){ :root{ --fl-target:44px; } }
+
+* { box-sizing:border-box; }
+body { margin:0; background:var(--fl-bg2); color:var(--fl-fg1); font:14px/20px var(--fl-font); }
+a { color:var(--fl-brand-fg); }
+:focus-visible { outline:2px solid var(--fl-focus); outline-offset:1px; border-radius:var(--fl-r-md); }
+.mock-bar { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:6px 16px; background:var(--fl-bg3); border-bottom:1px dashed var(--fl-stroke1); font-size:12px; color:var(--fl-fg3); }
+.shell { display:grid; grid-template-columns:200px 1fr; min-height:calc(100vh - 33px); }
+.rail { border-right:1px solid var(--fl-stroke2); background:var(--fl-bg1); padding:12px 8px; display:flex; flex-direction:column; gap:2px; }
+.rail a { display:block; padding:6px 10px; border-radius:var(--fl-r-md); color:var(--fl-fg2); text-decoration:none; }
+.rail a:hover { background:var(--fl-subtle-hover); }
+.rail a[aria-current="page"] { background:var(--fl-brand2); color:var(--fl-brand-fg); font-weight:600; }
+.rail .gone { text-decoration:line-through; opacity:.5; font-size:12px; padding:2px 10px; }
+.main { display:grid; grid-template-columns:minmax(0,1fr) 360px; }
+.main.closed { grid-template-columns:minmax(0,1fr) 0; }
+.content { padding:24px 32px 120px; max-width:1040px; }
+h1 { font-size:28px; line-height:36px; margin:0; font-weight:600; }
+.sub { color:var(--fl-fg3); margin:4px 0 16px; display:flex; flex-wrap:wrap; gap:4px 16px; align-items:center; }
+.sub b { color:var(--fl-fg1); font-weight:600; }
+.goal { display:inline-flex; gap:3px; align-items:center; }
+.goal i { width:10px; height:10px; border-radius:50%; border:1.5px solid var(--fl-stroke-access); display:inline-block; }
+.goal i.y { background:var(--fl-success); border-color:var(--fl-success); }
+.btn { min-height:var(--fl-target); padding:0 12px; border-radius:var(--fl-r-md); border:1px solid var(--fl-stroke1); background:var(--fl-bg1); color:var(--fl-fg1); font:600 14px/20px var(--fl-font); cursor:pointer; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.btn:hover { background:var(--fl-bg1-hover); border-color:var(--fl-stroke-access); }
+.btn.primary { background:var(--fl-brand); color:var(--fl-on-brand); border-color:transparent; }
+.btn.primary:hover { background:var(--fl-brand-hover); }
+.btn.subtle { background:transparent; border-color:transparent; color:var(--fl-fg2); font-weight:400; }
+.btn.subtle:hover { background:var(--fl-subtle-hover); color:var(--fl-fg1); }
+table { width:100%; border-collapse:separate; border-spacing:0; background:var(--fl-bg1); border-radius:var(--fl-r-xl); box-shadow:var(--fl-shadow4); overflow:hidden; }
+th { text-align:left; font-size:12px; line-height:16px; color:var(--fl-fg3); font-weight:600; padding:8px 12px; border-bottom:1px solid var(--fl-stroke2); }
+td { padding:10px 12px; border-bottom:1px solid var(--fl-stroke2); vertical-align:middle; }
+tr:last-child td { border-bottom:0; }
+tbody tr { cursor:pointer; }
+tbody tr:hover td { background:var(--fl-bg1-hover); }
+tbody tr[aria-selected="true"] td { background:var(--fl-brand2); }
+.rank { width:36px; color:var(--fl-fg3); font-variant-numeric:tabular-nums; }
+.proj { font-weight:600; white-space:nowrap; }
+.dayrule { display:block; font-weight:400; font-size:12px; line-height:16px; color:var(--fl-brand-fg); }
+.pick { color:var(--fl-fg1); }
+.pick .none { color:var(--fl-fg3); }
+.you .none { color:var(--fl-fg3); }
+.today { white-space:nowrap; }
+.yes { color:var(--fl-success); font-weight:600; }
+.no { color:var(--fl-fg2); }
+.asof { white-space:nowrap; color:var(--fl-fg3); font-size:12px; font-variant-numeric:tabular-nums; }
+.stale { color:var(--fl-warn); font-weight:600; }
+.then td { background:var(--fl-bg2); }
+.grp td { background:var(--fl-bg3); color:var(--fl-fg3); font-size:12px; font-weight:600; padding:6px 12px; cursor:default; }
+.chev { color:var(--fl-fg3); width:16px; }
+/* Thread pane */
+.pane { border-left:1px solid var(--fl-stroke2); background:var(--fl-bg1); display:flex; flex-direction:column; height:calc(100vh - 33px); position:sticky; top:0; overflow:hidden; }
+.main.closed .pane { display:none; }
+.pane header { padding:16px; border-bottom:1px solid var(--fl-stroke2); }
+.pane h2 { font-size:16px; line-height:22px; margin:0; }
+.pane .scope { font-size:12px; color:var(--fl-fg3); }
+.msgs { flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+.msg { max-width:88%; padding:8px 12px; border-radius:var(--fl-r-xl); background:var(--fl-bg3); }
+.msg.me { align-self:flex-end; background:var(--fl-brand2); }
+.msg .who { font-size:12px; color:var(--fl-fg3); display:flex; gap:6px; align-items:center; }
+.av { width:20px; height:20px; border-radius:50%; background:#c4dbf3; display:inline-grid; place-items:center; font-size:12px; }
+.compose { padding:12px 16px; border-top:1px solid var(--fl-stroke2); display:flex; gap:8px; }
+.input { flex:1; min-height:var(--fl-target); padding:0 10px; border-radius:var(--fl-r-md); border:1px solid var(--fl-stroke1); border-bottom-color:var(--fl-stroke-access); background:var(--fl-bg1); color:var(--fl-fg1); font:14px/20px var(--fl-font); }
+.dock { position:fixed; left:200px; right:360px; bottom:0; padding:12px 32px; background:linear-gradient(transparent, var(--fl-bg2) 30%); }
+.main.closed ~ .dock, .closed + .dock { right:0; }
+.dock .inner { max-width:1040px; display:flex; gap:8px; background:var(--fl-bg1); padding:8px; border-radius:var(--fl-r-xl); box-shadow:var(--fl-shadow16); align-items:center; }
+.hint { font-size:12px; color:var(--fl-fg3); margin:8px 0 0; }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+/* Phone */
+@media (max-width:860px) {
+  .shell { grid-template-columns:1fr; }
+  .rail { display:none; }
+  .main, .main.closed { grid-template-columns:1fr; }
+  .pane { position:fixed; inset:auto 0 0 0; height:70vh; border-left:0; border-top:1px solid var(--fl-stroke2); border-radius:12px 12px 0 0; box-shadow:var(--fl-shadow16); z-index:10; }
+  .content { padding:16px 16px 120px; }
+  thead { display:none; }
+  table, tbody, tr, td { display:block; }
+  tr { display:grid !important; grid-template-columns:28px 1fr auto; gap:2px 8px; padding:10px 12px; border-bottom:1px solid var(--fl-stroke2); }
+  td { padding:0; border:0; background:none !important; }
+  td.rank { grid-row:1 / span 3; }
+  td.proj { grid-column:2; }
+  td.today { grid-column:3; grid-row:1; text-align:right; }
+  td.pick { grid-column:2 / span 2; }
+  td.you { grid-column:2 / span 2; }
+  td.asof { grid-column:2 / span 2; }
+  td.chev { display:none; }
+  .grp td { padding:0; }
+  .dock { left:0; right:0; padding:12px 16px; }
+}
+</style>
+</head>
+<body>
+<div class="mock-bar" role="note">
+  <span>Mockup: Option A, Day ledger. Sample data from Michael's Nov 17 priorities, shown for Wed Nov 18.</span>
+  <button class="btn subtle" id="theme" type="button">Theme: auto</button>
+</div>
+<div class="shell">
+  <nav class="rail" aria-label="Main">
+    <a href="#" aria-current="page">Priorities</a>
+    <a href="#">Now</a>
+    <a href="#">My day</a>
+    <a href="#">Needs you</a>
+    <a href="#">Pull requests</a>
+    <a href="#">Inbox</a>
+    <a href="#">Agents</a>
+    <a href="#">Projects</a>
+    <a href="#">Full stack</a>
+    <span class="gone" title="Replaced by Priorities">Top asks (g h)</span>
+  </nav>
+  <div class="main" id="main">
+    <main class="content">
+      <h1>Priorities</h1>
+      <p class="sub">
+        <span><b>Wed Nov 18</b> · Wed rules: QM is #1</span>
+        <span class="goal" aria-label="Daily goal: 4 of 13 projects done today">Daily goal <b>4/13</b>
+          <i class="y"></i><i class="y"></i><i class="y"></i><i class="y"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <span>As of 9:42 AM · <button class="btn subtle" type="button" style="min-height:24px;padding:0 6px">Recheck all</button></span>
+      </p>
+      <table aria-label="Today's priorities, one row per project">
+        <thead><tr><th>#</th><th>Project</th><th>Today's pick</th><th>Your action</th><th>Today</th><th>Checked</th><th><span class="sr">Open</span></th></tr></thead>
+        <tbody>
+          <tr data-p="Money" tabindex="0"><td class="rank">0</td><td class="proj">Money<span class="dayrule">Always first</span></td><td class="pick">Pay bills due Nov 19</td><td class="you"><button class="btn primary" type="button">Pay Amex F4</button></td><td class="today no">○ Not yet</td><td class="asof">9:38 AM</td><td class="chev">›</td></tr>
+          <tr data-p="QM" tabindex="0"><td class="rank">1</td><td class="proj">QM<span class="dayrule">Wed: #1</span></td><td class="pick">Priorities view options (<a href="#">Stack PR</a>)</td><td class="you"><button class="btn primary" type="button">Pick an option</button></td><td class="today no">○ Not yet</td><td class="asof">9:41 AM</td><td class="chev">›</td></tr>
+          <tr data-p="FH Premium" tabindex="0"><td class="rank">2</td><td class="proj">FH Premium<span class="dayrule">+ AM</span></td><td class="pick">Spend thresholds: <a href="https://github.com/allytehq/finops-hubs/pull/919">919</a> CI green</td><td class="you"><span class="none">None. Agents on it.</span></td><td class="today yes">✓ Done</td><td class="asof">9:40 AM</td><td class="chev">›</td></tr>
+          <tr data-p="FH 0.11" tabindex="0"><td class="rank">3</td><td class="proj">FH 0.11</td><td class="pick">Pick 1 UX + 1 extensibility item</td><td class="you"><button class="btn" type="button">Choose UX item</button></td><td class="today no">○ Not yet</td><td class="asof stale" title="Last checked 2 h 32 min ago">⚠ 7:10 AM</td><td class="chev">›</td></tr>
+          <tr data-p="FTK 16" tabindex="0"><td class="rank">4</td><td class="proj">FTK 16</td><td class="pick">Wed sync: agenda and open threads</td><td class="you"><button class="btn" type="button">Run sync 11:00</button></td><td class="today no">○ Not yet</td><td class="asof">9:39 AM</td><td class="chev">›</td></tr>
+          <tr data-p="FOCUS" tabindex="0"><td class="rank">5</td><td class="proj">FOCUS</td><td class="pick">Scope detail draft PR (2415)</td><td class="you"><span class="none">None until TF2 time</span></td><td class="today yes">✓ Done</td><td class="asof">9:36 AM</td><td class="chev">›</td></tr>
+          <tr data-p="PRs" tabindex="0"><td class="rank">6</td><td class="proj">PRs</td><td class="pick">Catalyst 0.4.1 sweep, all repos</td><td class="you"><button class="btn" type="button">Review 2 specs</button></td><td class="today yes">✓ Done</td><td class="asof">9:42 AM</td><td class="chev">›</td></tr>
+          <tr data-p="Personal" tabindex="0"><td class="rank">7</td><td class="proj">Personal</td><td class="pick">Clyde: Xbox gift card</td><td class="you"><button class="btn" type="button">Buy card</button></td><td class="today no">○ Not yet</td><td class="asof">9:30 AM</td><td class="chev">›</td></tr>
+          <tr class="grp"><td colspan="7">Then</td></tr>
+          <tr class="then" data-p="F4" tabindex="0"><td class="rank">8</td><td class="proj">F4<span class="dayrule" style="color:var(--fl-fg3)">incl. Korr, Cid</span></td><td class="pick">Korr task plan</td><td class="you"><button class="btn" type="button" title="Opens flanakin/f4-music PR 94">Review PR 94</button></td><td class="today no">○ Not yet</td><td class="asof">9:31 AM</td><td class="chev">›</td></tr>
+          <tr class="then" data-p="Printer" tabindex="0"><td class="rank">9</td><td class="proj">Printer</td><td class="pick">Ingest meeting transcript</td><td class="you"><span class="none">None. Agents on it.</span></td><td class="today yes">✓ Done</td><td class="asof">9:33 AM</td><td class="chev">›</td></tr>
+          <tr class="then" data-p="Stack" tabindex="0"><td class="rank">10</td><td class="proj">Stack</td><td class="pick">Day-aware ranking (<a href="https://github.com/Xerilium/stack/pull/179">179</a>)</td><td class="you"><span class="none">None. Xe CoS owns.</span></td><td class="today no">○ Not yet</td><td class="asof">9:35 AM</td><td class="chev">›</td></tr>
+          <tr class="then" data-p="Arc" tabindex="0"><td class="rank">11</td><td class="proj">Arc</td><td class="pick"><span class="none">No pick yet</span></td><td class="you"><button class="btn" type="button">Name next step</button></td><td class="today no">○ Not yet</td><td class="asof stale" title="Last checked yesterday">⚠ Yesterday</td><td class="chev">›</td></tr>
+          <tr class="then" data-p="Catalyst" tabindex="0"><td class="rank">12</td><td class="proj">Catalyst</td><td class="pick">0.4.1 adoption in each repo</td><td class="you"><span class="none">None. Agents on it.</span></td><td class="today no">○ Not yet</td><td class="asof">9:34 AM</td><td class="chev">›</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">Select a row to talk to the CoS about it. ⚠ = not checked in 30 min. A tap on ⚠ rechecks that row.</p>
+    </main>
+    <aside class="pane" aria-label="Conversation with Chief of Staff">
+      <header style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1">
+        <h2 id="pt">FH 0.11</h2>
+        <div class="scope" id="ps">Thread about this row · CoS replies here</div></div><button class="btn subtle" type="button" id="close" aria-label="Close thread">✕</button>
+      </header>
+      <div class="msgs" id="msgs">
+        <div class="msg"><div class="who"><span class="av">👩‍💼</span>Chief of Staff · 7:10 AM</div>3 UX candidates: search fixes (<a href="https://github.com/allytehq/finops-hubs/pull/787">787</a>), hub scope (<a href="https://github.com/allytehq/finops-hubs/pull/773">773</a>), account hierarchy (<a href="https://github.com/allytehq/finops-hubs/pull/523">523</a>). I suggest 773.</div>
+        <div class="msg me"><div class="who">You · 9:41 AM</div>Why not 787?</div>
+        <div class="msg"><div class="who"><span class="av">👩‍💼</span>Chief of Staff · replying…</div><span style="color:var(--fl-fg3)">Checking 787 live…</span></div>
+      </div>
+      <div class="compose"><input class="input" id="pin" placeholder="Message Chief of Staff about FH 0.11…" aria-label="Message Chief of Staff about this row"><button class="btn primary" type="button">Send</button></div>
+    </aside>
+  </div>
+  <div class="dock">
+    <div class="inner"><span class="av">👩‍💼</span><input class="input" placeholder="Message Chief of Staff about today (all rows)…" aria-label="Message Chief of Staff about today"><button class="btn primary" type="button">Send</button></div>
+  </div>
+</div>
+<script>
+(() => {
+  const order = ['auto','light','dark']; let i = 0; const b = document.getElementById('theme');
+  b.onclick = () => { i = (i + 1) % 3; const t = order[i]; if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); b.textContent = 'Theme: ' + t; };
+  const rows = document.querySelectorAll('tbody tr[data-p]');
+  const pick = (r) => { rows.forEach(x => x.removeAttribute('aria-selected')); r.setAttribute('aria-selected','true'); const p = r.dataset.p; document.getElementById('pt').textContent = p; document.getElementById('pin').placeholder = 'Message Chief of Staff about ' + p + '…'; document.getElementById('main').classList.remove('closed'); };
+  rows.forEach(r => { r.onclick = (e) => { if (e.target.closest('a,button')) return; pick(r); }; r.onkeydown = (e) => { if (e.key === 'Enter') pick(r); }; });
+  document.getElementById('close').onclick = () => { document.getElementById('main').classList.add('closed'); rows.forEach(x => x.removeAttribute('aria-selected')); };
+  if (matchMedia('(min-width: 861px)').matches) pick(document.querySelector('tr[data-p="FH 0.11"]')); else document.getElementById('main').classList.add('closed');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Priorities: Option B, Top of Now</title>
+<style>
+/* Fluent 2 tokens: copied from web/src/fluent2.css. Mockup only. */
+:root {
+  --fl-bg1:#fff; --fl-bg1-hover:#f5f5f5; --fl-bg1-pressed:#e0e0e0; --fl-bg2:#fafafa; --fl-bg3:#f5f5f5;
+  --fl-fg1:#242424; --fl-fg2:#424242; --fl-fg3:#616161; --fl-stroke1:#d1d1d1; --fl-stroke2:#e0e0e0; --fl-stroke-access:#616161;
+  --fl-brand:#0f6cbd; --fl-brand-hover:#115ea3; --fl-on-brand:#fff; --fl-brand-fg:#0f6cbd; --fl-brand2:#ebf3fc;
+  --fl-subtle-hover:#f5f5f5; --fl-danger:#b10e1c; --fl-success:#0e700e; --fl-warn:#8a5300; --fl-focus:#000;
+  --fl-font:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,Roboto,sans-serif;
+  --fl-r-md:4px; --fl-r-lg:6px; --fl-r-xl:8px; --fl-r-pill:999px;
+  --fl-shadow4:0 0 2px rgb(0 0 0/12%),0 2px 4px rgb(0 0 0/14%); --fl-shadow16:0 0 2px rgb(0 0 0/12%),0 8px 16px rgb(0 0 0/14%);
+  --fl-target:32px; color-scheme:light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fl-bg1:#292929; --fl-bg1-hover:#3d3d3d; --fl-bg1-pressed:#1f1f1f; --fl-bg2:#1f1f1f; --fl-bg3:#141414; --fl-fg1:#fff; --fl-fg2:#d6d6d6; --fl-fg3:#adadad; --fl-stroke1:#666; --fl-stroke2:#525252; --fl-stroke-access:#adadad; --fl-brand:#115ea3; --fl-brand-hover:#0f6cbd; --fl-brand-fg:#479ef5; --fl-brand2:#082338; --fl-subtle-hover:#383838; --fl-danger:#e37d80; --fl-success:#54b054; --fl-warn:#f2c661; --fl-focus:#fff; --fl-shadow4:0 0 2px rgb(0 0 0/24%),0 2px 4px rgb(0 0 0/28%); --fl-shadow16:0 0 2px rgb(0 0 0/24%),0 8px 16px rgb(0 0 0/28%); color-scheme:dark; } }
+:root[data-theme="dark"] { --fl-bg1:#292929; --fl-bg1-hover:#3d3d3d; --fl-bg1-pressed:#1f1f1f; --fl-bg2:#1f1f1f; --fl-bg3:#141414; --fl-fg1:#fff; --fl-fg2:#d6d6d6; --fl-fg3:#adadad; --fl-stroke1:#666; --fl-stroke2:#525252; --fl-stroke-access:#adadad; --fl-brand:#115ea3; --fl-brand-hover:#0f6cbd; --fl-brand-fg:#479ef5; --fl-brand2:#082338; --fl-subtle-hover:#383838; --fl-danger:#e37d80; --fl-success:#54b054; --fl-warn:#f2c661; --fl-focus:#fff; --fl-shadow4:0 0 2px rgb(0 0 0/24%),0 2px 4px rgb(0 0 0/28%); --fl-shadow16:0 0 2px rgb(0 0 0/24%),0 8px 16px rgb(0 0 0/28%); color-scheme:dark; }
+@media (max-width:719px),(hover:none){ :root{ --fl-target:44px; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--fl-bg2); color:var(--fl-fg1); font:14px/20px var(--fl-font); }
+a { color:var(--fl-brand-fg); }
+:focus-visible { outline:2px solid var(--fl-focus); outline-offset:1px; border-radius:var(--fl-r-md); }
+.mock-bar { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:6px 16px; background:var(--fl-bg3); border-bottom:1px dashed var(--fl-stroke1); font-size:12px; color:var(--fl-fg3); }
+.shell { display:grid; grid-template-columns:200px 1fr; min-height:calc(100vh - 33px); }
+.rail { border-right:1px solid var(--fl-stroke2); background:var(--fl-bg1); padding:12px 8px; display:flex; flex-direction:column; gap:2px; }
+.rail a { display:block; padding:6px 10px; border-radius:var(--fl-r-md); color:var(--fl-fg2); text-decoration:none; }
+.rail a[aria-current="page"] { background:var(--fl-brand2); color:var(--fl-brand-fg); font-weight:600; }
+.content { padding:24px 32px 48px; max-width:760px; }
+.btn { min-height:var(--fl-target); padding:0 12px; border-radius:var(--fl-r-md); border:1px solid var(--fl-stroke1); background:var(--fl-bg1); color:var(--fl-fg1); font:600 14px/20px var(--fl-font); cursor:pointer; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.btn:hover { background:var(--fl-bg1-hover); border-color:var(--fl-stroke-access); }
+.btn.primary { background:var(--fl-brand); color:var(--fl-on-brand); border-color:transparent; }
+.btn.primary:hover { background:var(--fl-brand-hover); }
+.btn.subtle { background:transparent; border-color:transparent; color:var(--fl-fg2); font-weight:400; }
+.btn.subtle:hover { background:var(--fl-subtle-hover); }
+.head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.head h2 { font-size:16px; line-height:22px; margin:0; font-weight:600; }
+.meta { color:var(--fl-fg3); font-size:12px; }
+.meta b { color:var(--fl-fg1); }
+.strip { margin:8px 0 24px; background:var(--fl-bg1); border-radius:var(--fl-r-xl); box-shadow:var(--fl-shadow4); padding:4px; }
+.r { display:grid; grid-template-columns:20px 92px minmax(0,1fr) 64px; gap:8px; align-items:center; padding:6px 8px; border-radius:var(--fl-r-md); cursor:pointer; }
+.r:hover { background:var(--fl-bg1-hover); }
+.r[aria-selected="true"] { background:var(--fl-brand2); }
+.r .d { font-size:14px; text-align:center; }
+.r .d.y { color:var(--fl-success); }
+.r .d.n { color:var(--fl-fg3); }
+.r .p { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.r .p small { display:block; font-weight:400; font-size:11px; line-height:14px; color:var(--fl-brand-fg); }
+.r .w { color:var(--fl-fg2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.r .w b { color:var(--fl-fg1); font-weight:600; }
+.r .w .none { color:var(--fl-fg3); }
+.r .t { font-size:12px; color:var(--fl-fg3); text-align:right; font-variant-numeric:tabular-nums; }
+.r .t.stale { color:var(--fl-warn); font-weight:600; }
+.more { display:block; width:100%; text-align:left; padding:6px 8px; border:0; background:none; color:var(--fl-fg3); font:12px/16px var(--fl-font); cursor:pointer; border-top:1px solid var(--fl-stroke2); margin-top:4px; }
+.focus { background:var(--fl-bg1); border-radius:var(--fl-r-xl); box-shadow:var(--fl-shadow4); padding:20px; }
+.focus .k { font-size:12px; color:var(--fl-fg3); }
+.focus h1 { font-size:28px; line-height:36px; margin:4px 0; font-weight:600; }
+.focus .why { color:var(--fl-fg2); margin:0 0 16px; }
+.acts { display:flex; gap:8px; flex-wrap:wrap; }
+.thread { margin-top:20px; border-top:1px solid var(--fl-stroke2); padding-top:16px; display:flex; flex-direction:column; gap:10px; }
+.msg { max-width:88%; padding:8px 12px; border-radius:var(--fl-r-xl); background:var(--fl-bg3); }
+.msg.me { align-self:flex-end; background:var(--fl-brand2); }
+.msg .who { font-size:12px; color:var(--fl-fg3); display:flex; gap:6px; align-items:center; }
+.av { width:20px; height:20px; border-radius:50%; background:#c4dbf3; display:inline-grid; place-items:center; font-size:12px; }
+.to { display:flex; align-items:center; gap:8px; margin-top:12px; font-weight:600; }
+.seg { display:inline-flex; padding:2px; gap:2px; border-radius:var(--fl-r-lg); background:var(--fl-bg3); border:1px solid var(--fl-stroke2); margin-left:auto; }
+.seg button { min-height:26px; padding:0 10px; border:0; border-radius:var(--fl-r-md); background:none; color:var(--fl-fg2); cursor:pointer; font:12px/16px var(--fl-font); }
+.seg button[aria-checked="true"] { background:var(--fl-bg1); color:var(--fl-fg1); font-weight:600; box-shadow:var(--fl-shadow4); }
+.compose { display:flex; gap:8px; margin-top:8px; }
+.input { flex:1; min-height:var(--fl-target); padding:0 10px; border-radius:var(--fl-r-md); border:1px solid var(--fl-stroke1); border-bottom-color:var(--fl-stroke-access); background:var(--fl-bg1); color:var(--fl-fg1); font:14px/20px var(--fl-font); }
+.hint { font-size:12px; color:var(--fl-fg3); margin:8px 0 0; }
+[hidden] { display:none !important; }
+@media (max-width:860px) {
+  .shell { grid-template-columns:1fr; } .rail { display:none; }
+  .content { padding:16px; }
+  .r { grid-template-columns:20px minmax(0,1fr) auto; grid-template-areas:"d p t" "d w w"; }
+  .r .d { grid-area:d; } .r .p { grid-area:p; } .r .w { grid-area:w; white-space:normal; } .r .t { grid-area:t; }
+  .r .act { display:none; }
+}
+</style>
+</head>
+<body>
+<div class="mock-bar" role="note">
+  <span>Mockup: Option B, Top of Now. Sample data from Michael's Nov 17 priorities, shown for Wed Nov 18.</span>
+  <button class="btn subtle" id="theme" type="button">Theme: auto</button>
+</div>
+<div class="shell">
+  <nav class="rail" aria-label="Main">
+    <a href="#" aria-current="page">Now</a>
+    <a href="#">My day</a>
+    <a href="#">Needs you</a>
+    <a href="#">Pull requests</a>
+    <a href="#">Inbox</a>
+    <a href="#">Agents</a>
+    <a href="#">Projects</a>
+    <a href="#">Full stack</a>
+  </nav>
+  <main class="content">
+    <div class="head">
+      <h2>Today · Wed</h2>
+      <span class="meta">Goal <b>4/13</b> done · QM #1 (Wed) · as of 9:42 AM <button class="btn subtle" type="button" style="min-height:22px;padding:0 6px;font-size:12px">Recheck</button></span>
+    </div>
+    <div class="strip" role="listbox" aria-label="Today's priorities, one row per project" id="strip">
+      <!-- rows: done glyph, project, pick → your action, checked time -->
+    </div>
+
+    <section class="focus" aria-live="polite">
+      <div class="k" id="fk">#3 · FH 0.11 · not done today</div>
+      <h1 id="fh">Choose the FH 0.11 UX item</h1>
+      <p class="why" id="fw">Today's pick: 1 UX + 1 extensibility item. Only you can choose.</p>
+      <div class="acts" id="fa"><button class="btn primary" type="button">Choose UX item</button><button class="btn" type="button">Open candidates ›</button></div>
+      <div class="thread" id="th">
+        <div class="msg"><div class="who"><span class="av">👩‍💼</span>Chief of Staff · 7:10 AM</div>3 UX candidates: <a href="https://github.com/allytehq/finops-hubs/pull/787">787</a>, <a href="https://github.com/allytehq/finops-hubs/pull/773">773</a>, <a href="https://github.com/allytehq/finops-hubs/pull/523">523</a>. I suggest 773.</div>
+        <div class="msg me"><div class="who">You · 9:41 AM</div>Why not 787?</div>
+      </div>
+      <div class="to"><span class="av">👩‍💼</span>Chief of Staff
+        <span class="seg" role="radiogroup" aria-label="Message scope"><button role="radio" aria-checked="true" type="button" id="s1">This row</button><button role="radio" aria-checked="false" type="button" id="s2">Whole day</button></span>
+      </div>
+      <div class="compose"><input class="input" id="ci" placeholder="Message Chief of Staff about FH 0.11…" aria-label="Message Chief of Staff"><button class="btn primary" type="button">Send</button></div>
+    </section>
+    <p class="hint">Tap a row to make it the focus. The message box follows the focus.</p>
+  </main>
+</div>
+<script>
+(() => {
+  const order = ['auto','light','dark']; let ti = 0; const tb = document.getElementById('theme');
+  tb.onclick = () => { ti = (ti + 1) % 3; const t = order[ti]; if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); tb.textContent = 'Theme: ' + t; };
+  const R = [
+    ['Money','Always first','Pay bills due Nov 19','Pay Amex F4',0,'9:38'],
+    ['QM','Wed: #1','Priorities view options','Pick an option',0,'9:41'],
+    ['FH Premium','','919 spend thresholds CI green','',1,'9:40'],
+    ['FH 0.11','','1 UX + 1 extensibility item','Choose UX item',0,'⚠ 7:10'],
+    ['FTK 16','','Wed sync agenda','Run sync 11:00',0,'9:39'],
+    ['FOCUS','','Scope detail draft PR (2415)','',1,'9:36'],
+    ['PRs','','Catalyst 0.4.1 sweep','Review 2 specs',1,'9:42'],
+    ['Personal','','Clyde: Xbox gift card','Buy card',0,'9:30'],
+    ['F4','Then','Korr task plan','Review PR 94',0,'9:31'],
+    ['Printer','Then','Ingest meeting transcript','',1,'9:33'],
+    ['Stack','Then','Day-aware ranking (179)','',0,'9:35'],
+    ['Arc','Then','No pick yet','Name next step',0,'⚠ Yday'],
+    ['Catalyst','Then','0.4.1 adoption','',0,'9:34'],
+  ];
+  const strip = document.getElementById('strip'); let open = false;
+  const draw = () => {
+    strip.innerHTML = '';
+    R.forEach((x, i) => {
+      if (!open && i >= 8) return;
+      const el = document.createElement('div'); el.className = 'r'; el.setAttribute('role','option'); el.tabIndex = 0; el.dataset.i = i;
+      el.innerHTML = `<span class="d ${x[4]?'y':'n'}" aria-label="${x[4]?'Done today':'Not yet today'}">${x[4]?'✓':'○'}</span>`+
+        `<span class="p">${x[0]}${x[1]?`<small>${x[1]}</small>`:''}</span>`+
+        `<span class="w">${x[2]} → ${x[3]?`<b>${x[3]}</b>`:'<span class="none">no action for you</span>'}</span>`+
+        `<span class="t${x[5].startsWith('⚠')?' stale':''}">${x[5]}</span>`;
+      el.onclick = () => sel(i); el.onkeydown = (e) => { if (e.key === 'Enter') sel(i); };
+      if (i === cur) el.setAttribute('aria-selected','true');
+      strip.appendChild(el);
+    });
+    const m = document.createElement('button'); m.className = 'more'; m.type = 'button';
+    m.textContent = open ? 'Hide Then (5)' : 'Then: F4, Printer, Stack, Arc, Catalyst · 1/5 done ›';
+    m.onclick = () => { open = !open; draw(); }; strip.appendChild(m);
+  };
+  let cur = 3; const TH = document.getElementById('th').innerHTML;
+  const sel = (i) => { cur = i; const x = R[i];
+    document.getElementById('fk').textContent = `#${i} · ${x[0]} · ${x[4]?'done today':'not done today'}`;
+    document.getElementById('fh').textContent = x[3] ? x[3] : x[2];
+    document.getElementById('fw').textContent = x[3] ? `Today's pick: ${x[2]}. Only you can do this step.` : `Today's pick: ${x[2]}. Agents on it; nothing for you.`;
+    document.getElementById('fa').innerHTML = x[3] ? `<button class="btn primary" type="button">${x[3]}</button>` : '';
+    document.getElementById('th').innerHTML = i === 3 ? TH : '';
+    document.getElementById('ci').placeholder = `Message Chief of Staff about ${x[0]}…`;
+    draw(); };
+  document.getElementById('s1').onclick = () => { s(1); }; document.getElementById('s2').onclick = () => { s(2); };
+  const s = (n) => { document.getElementById('s1').setAttribute('aria-checked', n===1); document.getElementById('s2').setAttribute('aria-checked', n===2); document.getElementById('ci').placeholder = n===1 ? `Message Chief of Staff about ${R[cur][0]}…` : 'Message Chief of Staff about today…'; };
+  draw();
+})();
+</script>
+</body>
+</html>
