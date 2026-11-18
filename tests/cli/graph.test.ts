@@ -1,5 +1,5 @@
 import { mkdtempSync, existsSync, readFileSync, statSync } from 'fs';
-import { FEATURES, scopesFor } from '../../src/graph/auth';
+import { FEATURES, FileTokenCache, scopesFor } from '../../src/graph/auth';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { run } from '../../src/cli/run';
@@ -93,6 +93,24 @@ describe('stack graph login --account', () => {
     expect(JSON.parse((await stack('graph', 'status', '--account', 'sam@outlook.com', '--json')).out)).toMatchObject({ signedIn: true, account: 'sam@outlook.com' });
     expect((await stack('graph', 'logout', '--account', 'sam@outlook.com')).code).toBe(0);
     expect(existsSync(file)).toBe(false);
+    } finally { if (prev === undefined) delete process.env.STACK_GRAPH_CACHE; else process.env.STACK_GRAPH_CACHE = prev; }
+  });
+  // @req FR:graph-signin/cli.status: no legacy cache, so status reports every per-mailbox sign-in
+  it('status with no --account reports every mailbox when only per-mailbox caches exist', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'graph-home-'));
+    const prev = process.env.STACK_GRAPH_CACHE;
+    try {
+      process.env.STACK_GRAPH_CACHE = join(home, 'graph-token.json');
+      for (const a of ['sam@outlook.com', 'sam@contoso.test']) await new FileTokenCache(join(home, `graph-token-${a}.json`)).write({ version: 1, tenant: 't', clientId: CLIENT, scopes: ['Mail.Read'], refreshToken: 'secret-rt', accessToken: 'secret-at', expiresAt: Date.now() + 3600_000, account: a });
+      const r = await stack('graph', 'status', '--json');
+      expect(r.code).toBe(0);
+      const v = JSON.parse(r.out);
+      expect(v.signedIn).toBe(true);
+      expect(v.accounts.map((a: { account: string }) => a.account)).toEqual(['sam@contoso.test', 'sam@outlook.com']);
+      expect(r.out).not.toMatch(/secret-/);
+      const text = await stack('graph', 'status');
+      expect(text.out).toMatch(/sam@outlook\.com · signed in/);
+      expect(text.out).toMatch(/sam@contoso\.test · signed in/);
     } finally { if (prev === undefined) delete process.env.STACK_GRAPH_CACHE; else process.env.STACK_GRAPH_CACHE = prev; }
   });
   it('never asks for a send scope', () => {

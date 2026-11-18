@@ -487,6 +487,21 @@ describe('stack email --all', () => {
     const r = await emailCmd(ctx, 'status', { account: 'sam@outlook.com' }, { cacheDir: dir, dataDir: tmp() });
     expect(r.json).toMatchObject({ ok: true, account: 'sam@outlook.com', mode: 'observe' });
   });
+  // @req FR:email-runner/cli.status: no default cache, so status serves the per-mailbox sign-ins
+  it('status with no --account and no default cache reports every mailbox; run uses the only one', async () => {
+    const { ctx } = mkCtx();
+    const dir = tmp();
+    await cacheAt(dir, 'sam@outlook.com', ['Mail.Read']);
+    const one = await emailCmd(ctx, 'status', {}, { cacheDir: dir, dataDir: tmp() });
+    expect(one.code).toBeUndefined();
+    expect((one.json.accounts as { account: string }[]).map((a) => a.account)).toEqual(['sam@outlook.com']);
+    const ran = await emailCmd(ctx, 'run', { 'dry-run': true }, { cacheDir: dir, dataDir: tmp(), transport: fakeGraph(delta).transport, llm: fakeLlm(() => ({})).llm });
+    expect(ran.json).toMatchObject({ account: 'sam@outlook.com' });
+    await cacheAt(dir, 'sam@contoso.test', ['Mail.Read']);
+    const two = await emailCmd(ctx, 'status', {}, { cacheDir: dir, dataDir: tmp() });
+    expect((two.json.accounts as { account: string }[]).map((a) => a.account).sort()).toEqual(['sam@contoso.test', 'sam@outlook.com']);
+    await expect(emailCmd(ctx, 'run', { 'dry-run': true }, { cacheDir: dir, dataDir: tmp() })).rejects.toThrow(/--account <address> or --all/);
+  });
   // @req FR:inbox-page/src.probe: an onboarding sign-in (no mailbox name) takes the address of its first real pass
   it('a pass names an unnamed sign-in, so --all finds it next time', async () => {
     const { ctx } = mkCtx();

@@ -2,7 +2,8 @@
  * `stack graph login|status|logout`: the owner's one-time Graph sign-in. Prints the sign-in message and scopes; never a token.
  * @req FR:graph-signin/cli.login @req FR:graph-signin/cli.status @req FR:graph-signin/cli.logout
  */
-import { accountCachePath, defaultCachePath, tenantFor, FileTokenCache, FEATURES, pollDeviceCode, scopesFor, startDeviceCode, type Feature } from '../graph/auth';
+import { existsSync } from 'fs';
+import { accountCachePath, cacheDir, defaultCachePath, listCachePaths, tenantFor, FileTokenCache, FEATURES, pollDeviceCode, scopesFor, startDeviceCode, type Feature } from '../graph/auth';
 import { UsageError } from './args';
 
 export interface GraphIO { out(s: string): void; err(s: string): void }
@@ -30,6 +31,18 @@ export async function graphCmd(action: string | undefined, f: Record<string, str
     return 0;
   }
   if (action === 'status') {
+    // No --account and no default cache: report every per-mailbox sign-in. @req FR:graph-signin/cli.status
+    if (!account && !flag(f, 'cache') && !existsSync(cache.path)) {
+      const rows: { account: string; tenant: string; scopes: string[]; expiresAt: string | null }[] = [];
+      for (const p of listCachePaths(cacheDir())) {
+        const t = await new FileTokenCache(p).read().catch(() => null);
+        if (t?.account) rows.push({ account: t.account, tenant: t.tenant, scopes: t.scopes, expiresAt: t.expiresAt ? new Date(t.expiresAt).toISOString() : null });
+      }
+      if (rows.length) {
+        io.out(json ? `${JSON.stringify({ signedIn: true, accounts: rows })}\n` : rows.map((r) => `${r.account} · signed in · ${r.tenant} · ${r.scopes.join(' ')}${r.expiresAt ? ` · access token until ${r.expiresAt}` : ''}\n`).join(''));
+        return 0;
+      }
+    }
     const t = await cache.read();
     if (!t) { io.out(json ? `${JSON.stringify({ signedIn: false })}\n` : 'not signed in\n'); return 4; }
     const v = { signedIn: true, ...(t.account ? { account: t.account } : {}), tenant: t.tenant, scopes: t.scopes, expiresAt: t.expiresAt ? new Date(t.expiresAt).toISOString() : null };

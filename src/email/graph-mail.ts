@@ -39,8 +39,8 @@ export function createGraphMail(o: { transport: Transport; folder?: string; guar
   const validCursor = (c: string) => {
     let u: URL;
     try { u = new URL(c); } catch { return false; }
-    // Graph returns links as `mailfolders/<folder id>` (lower case, id instead of the well-known name).
-    return u.origin === 'https://graph.microsoft.com' && /^\/v1\.0\/me\/mailfolders\/[A-Za-z0-9_=-]{1,512}\/messages\/delta$/i.test(u.pathname) && !u.hash && !u.username && [...u.searchParams.keys()].every((k) => k === '$deltatoken' || k === '$skiptoken');
+    // Graph returns links as `mailfolders/<folder id>` (lower case, id instead of the well-known name) or `mailFolders('inbox')` (OData key). @req FR:email-triage/safe.allowlist
+    return u.origin === 'https://graph.microsoft.com' && /^\/v1\.0\/me\/mailfolders(\/[A-Za-z0-9_=-]{1,512}|\('[A-Za-z0-9_=-]{1,512}'\))\/messages\/delta$/i.test(u.pathname) && !u.hash && !u.username && [...u.searchParams.keys()].every((k) => k === '$deltatoken' || k === '$skiptoken');
   };
   return {
     async delta(cursor) {

@@ -163,7 +163,19 @@ export async function emailCmd(ctx: LifecycleContext, action: string | undefined
 async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps): Promise<EmailOutcome> {
   if (f.offline !== undefined || f.fixture !== undefined) return emailOffline(ctx, action, f, d);
   // `--account` uses that mailbox's own sign-in (`graph login --account`) when it has one, else the default cache.
-  const cache = d.cache ?? accountCache(flag(f, 'account'), d.cacheDir) ?? new FileTokenCache(process.env.STACK_GRAPH_CACHE ?? defaultCachePath());
+  const legacy = d.cacheDir ? join(d.cacheDir, 'graph-token.json') : process.env.STACK_GRAPH_CACHE ?? defaultCachePath();
+  // No --account and no default cache: status serves every per-mailbox sign-in; other commands use the only one. @req FR:email-runner/cli.status
+  if (!d.cache && !flag(f, 'account') && !existsSync(legacy)) {
+    if (action === 'status') return emailAll(ctx, action, f, d);
+    const mail: string[] = [];
+    for (const p of listCachePaths(d.cacheDir)) {
+      const t = p === legacy ? null : await new FileTokenCache(p).read().catch(() => null);
+      if (t?.account && (hasScope(t.scopes, 'Mail.Read') || hasScope(t.scopes, 'Mail.ReadWrite'))) mail.push(p);
+    }
+    if (mail.length > 1) throw new UsageError('Several mailboxes are signed in: use --account <address> or --all');
+    if (mail.length === 1) return emailOne(ctx, action, f, { ...d, cache: new FileTokenCache(mail[0]) });
+  }
+  const cache = d.cache ?? accountCache(flag(f, 'account'), d.cacheDir) ?? new FileTokenCache(legacy);
   const t = await cache.read();
   if (!t) return { json: { ok: false, signedIn: false }, text: 'not signed in (run: stack graph login --with mail,drafts)', code: 4 };
   const account = (flag(f, 'account') ?? t.account)?.toLowerCase();
