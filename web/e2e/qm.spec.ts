@@ -39,6 +39,15 @@ test('sorts by a column; a second click reverses', async ({ page }) => {
   expect(await projects(page)).toEqual(['Stack', 'FOCUS']);
 });
 
+test('a long plan scrolls inside the page (the shell body never scrolls)', async ({ page }) => {
+  const projects = Array.from({ length: 50 }, (_, i) => ({ ...PLAN.projects[1], project: `P${String(i).padStart(2, '0')}` }));
+  await open(page, { plan: { ...PLAN, projects } });
+  const last = page.getByRole('rowheader', { name: 'P49' });
+  await page.mouse.move(100, 300);
+  await page.mouse.wheel(0, 20000);
+  await expect(last).toBeInViewport();
+});
+
 test('no plan, or a broken file', async ({ page }) => {
   await open(page, { plan: null });
   await expect(page.getByText('No plan yet.')).toBeVisible();
