@@ -89,7 +89,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)' },
   note: { flags: ['text', 'expect'], usage: 'note add <ref> --text t [--expect t]', help: 'append a nested note bullet under a task (children stay)' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
-  rank: { flags: ['engine', 'explain', 'truth', 'top', 'daily'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]] [--daily]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add' },
+  rank: { flags: ['engine', 'explain', 'truth', 'top', 'daily'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]] [--daily]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add; --daily lists each project with its pick and done today' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset', 'bind'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches; --bind tailnet also serves paired devices on your Tailscale addresses)' },
@@ -434,8 +434,7 @@ async function prisCmd(p: ReturnType<typeof parseArgs>, ctxOf: () => LifecycleCo
     if (!file) throw new UsageError('pris put needs --file <json>');
     let body: unknown;
     try { body = JSON.parse(readFileSync(resolve(file), 'utf8')); } catch { throw new UsageError(`Cannot read JSON --file: ${file}`); }
-    const list = Array.isArray(body) ? body : (body as { pris?: unknown } | null)?.pris;
-    const w = await store.put(store.read().rev, list);
+    const w = await store.put(store.read().rev, body);
     return { json: { ok: true, ...w }, text: `put ${w.pris.length} priorities` };
   }
   if (sub === 'seed') {
@@ -557,7 +556,9 @@ function ownerPris(): () => Pri[] {
  * One line per project: `<project> done=yes|no <ref> <text>`, `-` for no pick.
  * @req FR:pri-first-ranking/daily.@cli @req FR:pri-first-ranking/daily.cli
  */
-async function dailyOut(ctx: LifecycleContext, at: Date | undefined): Promise<Outcome> {
+async function dailyOut(ctx: LifecycleContext, at: Date | undefined, f: Record<string, string | true>): Promise<Outcome> {
+  // @req FR:pri-first-ranking/daily.cli.alone
+  for (const k of ['top', 'engine', 'explain', 'truth']) if (f[k] !== undefined) throw new UsageError(`--daily does not take --${k}`);
   const rows = await dailyGoal(ctx, at);
   return {
     json: { ok: true, items: rows.map((d) => ({ project: d.project, ...(d.name ? { name: d.name } : {}), done: d.done, ...(d.pick ? { pick: { ref: formatRef(d.pick.ref), text: d.pick.text } } : {}) })) },
@@ -640,7 +641,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     }
     case 'next': {
       extra(0);
-      if (f['daily'] === true) return dailyOut(ctx, at);
+      if (f['daily'] === true) return dailyOut(ctx, at, f);
       // @req FR:cli/cmd.next
       const top = num(flag(f, 'top'), 'top');
       if (top !== undefined) {
@@ -702,7 +703,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     // @req FR:auto-priority/explain.cli @req FR:auto-priority/truth.report
     case 'rank': {
       extra(0);
-      if (f['daily'] === true) return dailyOut(ctx, at);
+      if (f['daily'] === true) return dailyOut(ctx, at, f);
       const engine = flag(f, 'engine') ?? 'stack';
       if (engine !== 'autopri' && engine !== 'pris' && engine !== 'stack') throw new UsageError('--engine must be autopri, pris or stack');
       const explain = f['explain'] === true;

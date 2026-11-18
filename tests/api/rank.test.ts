@@ -155,6 +155,21 @@ describe('GET /api/rank?daily=1', () => {
     expect(r.daily!.find((d) => d.project === 'Done')).toEqual({ project: 'Done', name: 'done', done: false });
     expect((await get('')).daily).toBeUndefined();
   });
+  // @req FR:pri-first-ranking/daily.done @req FR:pri-first-ranking/daily.done.edit @req FR:pri-first-ranking/daily.done.day
+  it('counts Stack commits of today; never agent rows', async () => {
+    const storage = await seed();
+    await storage.write('tasks/finance.md', '# 💰 Finance\n\n- **Project value:** 💰💰💰\n\n## 🔄 Active\n\n- [ ] ‼️ 📅 Nov 2: Pay bills 💰💰💰💰 ⬆️\n- [x] 🤖 Agent reconciled the ledger\n');
+    const since: Date[] = [];
+    Object.assign(storage, {
+      lineActivity: async (p: string) => (p === 'tasks/finance.md' ? Array<number>(8).fill(NOW.getTime()) : []),
+      commitSubjects: async (p: string, s: Date) => { since.push(s); return p === 'tasks/other.md' ? ['Roll: Rewrite Cid copy', 'Update notes'] : p === 'tasks/focus.md' ? ['Retitle: FOCUS'] : []; },
+    });
+    const h = createApiHandler({ storage, authorize: () => true, now: () => NOW });
+    const r = (await (await h(new Request('https://x.test/api/rank?daily=1', { headers: { 'x-ms-client-principal': OWNER } }))).json()) as { daily: { project: string; done: boolean }[] };
+    const done = Object.fromEntries(r.daily.map((d) => [d.project, d.done]));
+    expect(done).toEqual({ '💰 Finance': false, '👓 FOCUS': false, Other: true });
+    expect(since[0].toISOString()).toBe('2026-11-01T07:00:00.000Z'); // midnight PT on Nov 1
+  });
   // @req FR:pri-first-ranking/daily.done.history
   it('marks no project done when the storage keeps no history', async () => {
     const h = createApiHandler({ storage: await seed(), authorize: () => true, now: () => NOW });

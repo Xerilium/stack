@@ -720,6 +720,20 @@ export async function explainStack(ctx: LifecycleContext, at?: Date, opts: Stack
   return { items, dropped, text: lines.join('\n') };
 }
 
+/** Ancestor row texts of every line, nearest first, by indent. */
+function ancestorsAll(lines: string[]): string[][] {
+  const stack: { indent: number; text: string }[] = [];
+  return lines.map((l) => {
+    const m = ROW.exec(l);
+    if (!m) return [];
+    const indent = m[1].length;
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    const up = stack.map((x) => x.text).reverse();
+    stack.push({ indent, text: m[3] });
+    return up;
+  });
+}
+
 /** @req FR:pri-first-ranking/$daily-row */
 export interface DailyRow { project: string; /** File base name. */ name?: string; done: boolean; pick?: { ref: TaskRef; text: string } }
 
@@ -729,15 +743,26 @@ export interface DailyRow { project: string; /** File base name. */ name?: strin
  */
 export async function dailyGoal(ctx: LifecycleContext, at?: Date): Promise<DailyRow[]> {
   const tz = cfg(ctx).timezone;
+  const now = at ?? clock(ctx);
   const day = (t: number) => { const w = wallClock(new Date(t), tz); return `${w.y}-${w.mo}-${w.d}`; };
-  const today = day((at ?? clock(ctx)).getTime());
+  const today = day(now.getTime());
+  // Midnight in the time zone. @req FR:pri-first-ranking/daily.done.day
+  const w = wallClock(now, tz);
+  const utc = Date.UTC(w.y, w.mo - 1, w.d);
+  let t = utc;
+  for (let i = 0; i < 2; i++) { const g = wallClock(new Date(t), tz); t -= Date.UTC(g.y, g.mo - 1, g.d, g.h, g.mi, g.s) - utc; } // DST-safe
+  const midnight = new Date(t);
   const out = new Map<string, DailyRow>();
   for (const r of await rankAll(ctx, at)) if (!out.has(r.next.project)) out.set(r.next.project, { project: r.next.project, done: false, pick: { ref: r.next.ref, text: r.next.text } });
   for (const d of await loadDocs(ctx.storage)) {
     const name = toScoringProject(d.project, d.name).name;
-    const times = typeof ctx.storage.lineActivity === 'function' ? await ctx.storage.lineActivity(d.path) : [];
-    // An uncommitted change (Infinity) is today's.
-    const done = d.project.lines.some((l, i) => /^\s*- \[[xX]\]/.test(l) && times[i] !== undefined && (times[i] === Infinity || day(times[i]) === today));
+    // A Stack commit of today that completes, rolls or removes a task. @req FR:pri-first-ranking/daily.done
+    const subjects = typeof ctx.storage.commitSubjects === 'function' ? await ctx.storage.commitSubjects(d.path, midnight) : [];
+    const committed = subjects.some((s) => /^(Complete|Roll|Remove): /.test(s));
+    // Or a checked owner row changed today; an uncommitted change (Infinity) is today's. @req FR:pri-first-ranking/daily.done.edit
+    const times = committed || typeof ctx.storage.lineActivity !== 'function' ? [] : await ctx.storage.lineActivity(d.path);
+    const up = times.length ? ancestorsAll(d.project.lines) : [];
+    const done = committed || d.project.lines.some((l, i) => /^\s*- \[[xX]\]/.test(l) && times[i] !== undefined && (times[i] === Infinity || day(times[i]) === today) && rowOwner(ROW.exec(l)?.[3] ?? l, up[i] ?? []) === 'me');
     const row = out.get(name) ?? { project: name, done: false };
     row.name = d.name;
     row.done = row.done || done;

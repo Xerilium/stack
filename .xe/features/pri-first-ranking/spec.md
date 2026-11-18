@@ -95,10 +95,13 @@ Owner needs each project's pick for today and whether he finished a task in it t
 - **FR:daily.@cli** (P1): Interface: `stack next --daily`, `stack rank --daily`
 - **FR:daily.@api** (P1): Interface: `GET /api/rank?daily=1`
 - **FR:daily.pick** (P1): Ranker MUST name the first ranked task of each project as its pick.
-- **FR:daily.done** (P1): Ranker MUST mark a project done when one of its checked rows changed today in the configured time zone.
+- **FR:daily.done** (P1): Ranker MUST mark a project done when a Stack commit of today completes, rolls or removes one of its tasks.
+  - **FR:daily.done.edit** (P1): Ranker MUST mark a project done when one of its checked owner rows changed today.
+  - **FR:daily.done.day** (P1): Ranker MUST start today at midnight in the configured time zone.
   - **FR:daily.done.history** (P2): Ranker MUST mark a project not done when the storage keeps no line history.
 - **FR:daily.order** (P1): Ranker MUST list the projects in the order of their picks, then the projects with no pick.
 - **FR:daily.cli** (P1): CLI MUST print one line per project as `<name> done=yes|no <ref> <text>`, with `-` for no pick.
+  - **FR:daily.cli.alone** (P2): CLI MUST reject `--daily` with `--top`, `--engine` or `--explain`.
 - **FR:daily.web** (P1): Home MUST show `done today` or `not yet today` on each project row.
 - **FR:daily.output** (P1): Daily row (@req FR:$daily-row) — one per project
 

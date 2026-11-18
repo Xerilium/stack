@@ -146,3 +146,12 @@ describe('stack next --daily', () => {
     expect(j.items[0]).toMatchObject({ done: false, pick: { ref: top } });
   });
 });
+
+describe('stack next --daily flags', () => {
+  // @req FR:pri-first-ranking/daily.cli.alone
+  it('rejects --daily with --top, --engine or --explain', async () => {
+    expect((await stack('next', '--daily', '--top', '2')).code).toBe(2);
+    expect((await stack('rank', '--daily', '--engine', 'autopri')).code).toBe(2);
+    expect((await stack('rank', '--daily', '--explain')).code).toBe(2);
+  });
+});
