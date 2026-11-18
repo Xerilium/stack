@@ -1566,7 +1566,11 @@ function decide(d: unknown): ApiError | null {
 /** @req FR:api/handler.@function @req FR:api/handler.storage @req FR:api/handler.base @req FR:api/auth.deny @req FR:api/auth.noleak */
 export function createApiHandler(deps: ApiDeps): (req: Request) => Promise<Response> {
   const base = (deps.basePath ?? '/api').replace(/\/+$/, '');
-  const life: LifecycleContext = { storage: deps.storage, config: deps.config, now: deps.now, engine: deps.engine };
+  // The ranking reads the owner priorities: linked tasks first.
+  // @req FR:pri-first-ranking/api.@api @req FR:pri-first-ranking/api.order @req FR:pri-first-ranking/api.tasks
+  const store = deps.pris;
+  const pris = store ? () => { try { return store.read().pris; } catch { return []; } } : undefined;
+  const life: LifecycleContext = { storage: deps.storage, config: deps.config, now: deps.now, engine: deps.engine, ...(pris ? { pris } : {}) };
   const briefCache = createBriefCache();
 
   return async (req) => {

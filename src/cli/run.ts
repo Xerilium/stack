@@ -18,7 +18,7 @@ import { runInventory } from '../core/session-inventory';
 import { PRI_LINKS, PrisInvalid, PriStore, type Pri } from '../core/pris';
 import { PrPriConflict, PrPriInvalid, PrPriNotFound, PrPriorityStore } from '../core/pr-priority';
 import { PR_PRI_USAGE, prPriArgv, prPriCmd } from './pr-pri';
-import { formatGaps, priGaps, registerPrisEngine, setPris, withLinks, withNote } from '../core/pris-rank';
+import { formatGaps, priActions, priGaps, registerPrisEngine, setPris, withLinks, withNote, type PriAction } from '../core/pris-rank';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
 import { addNote, retitleTask } from '../api/edit';
 import { currentRows, handleEntry, INBOX_STATES, listInbox, replyFromAgent } from '../core/inbox';
@@ -528,7 +528,32 @@ function buildCtx(f: Record<string, string | true>, dir: string): LifecycleConte
   const nowFlag = flag(f, 'now');
   const at = nowFlag ? new Date(nowFlag) : undefined;
   if (at && Number.isNaN(at.getTime())) throw new UsageError(`--now must be an ISO date: ${nowFlag}`);
-  return { storage, config: loadConfig(dir), now: () => at ?? new Date() };
+  return { storage, config: loadConfig(dir), now: () => at ?? new Date(), pris: ownerPris() };
+}
+
+/**
+ * The owner priorities, read once; a missing or invalid file means none.
+ * @req FR:pri-first-ranking/cli.@cli @req FR:pri-first-ranking/cli.read @req FR:pri-first-ranking/cli.read.bad
+ */
+function ownerPris(): () => Pri[] {
+  let pris: Pri[] | undefined;
+  return () => {
+    if (!pris) { try { pris = new PriStore(stackHome()).read().pris; } catch { pris = []; } }
+    return pris;
+  };
+}
+
+/**
+ * Ranked rows: the priority actions, then the tasks.
+ * @req FR:pri-first-ranking/action.first @req FR:pri-first-ranking/cli.rows @req FR:pri-first-ranking/cli.json @req FR:pri-first-ranking/cli.rows.score @req FR:pri-first-ranking/proof.top @req FR:pri-first-ranking/proof.backlog
+ */
+async function rankRows(ctx: LifecycleContext, at: Date | undefined, top: number | undefined): Promise<{ json: object[]; text: string[] }> {
+  const acts: PriAction[] = priActions(ctx.pris?.() ?? []);
+  const tasks = await rankStack(ctx, at, top);
+  const a = acts.map((x) => ({ json: { pri: { id: x.id, rank: x.rank, title: x.title }, project: x.title, score: x.score, text: x.text }, text: `pri:${x.rank} ${Number(x.score.toFixed(1))} ${x.title} ${x.text}` }));
+  const t = tasks.map((n) => ({ json: { ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}), ...(n.stale ? { stale: true } : {}) }, text: `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}` }));
+  const all = [...a, ...t].slice(0, top);
+  return { json: all.map((x) => x.json), text: all.map((x) => x.text) };
 }
 
 /** Commands after which legacy ran `Update-StackSummary`. @req FR:cli/cmd.refresh */
@@ -597,13 +622,13 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       const top = num(flag(f, 'top'), 'top');
       if (top !== undefined) {
         if (!Number.isInteger(top) || top < 1 || top > 50) throw new UsageError('--top must be a whole number from 1 to 50');
-        const ranked = await rankStack(ctx, at, top);
-        if (!ranked.length) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
-        return {
-          json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}), ...(n.stale ? { stale: true } : {}) })) },
-          text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'),
-        };
+        const ranked = await rankRows(ctx, at, top);
+        if (!ranked.json.length) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
+        return { json: { ok: true, items: ranked.json }, text: ranked.text.join('\n') };
       }
+      // A priority action comes before any task. @req FR:pri-first-ranking/action.first
+      const act = priActions(ctx.pris?.() ?? [])[0];
+      if (act) return { json: { ok: true, pri: { id: act.id, rank: act.rank, title: act.title }, project: act.title, score: act.score, text: act.text }, text: `pri:${act.rank} ${Number(act.score.toFixed(1))} ${act.title} ${act.text}` };
       const n = await nextTask(ctx, at);
       if (!n) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
       const score = Number(n.score.toFixed(1));
@@ -670,7 +695,8 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       // @req FR:pris-aware-ranking/explain.cli @req FR:pris-aware-ranking/explain.json
       const pris = engine === 'pris' ? new PriStore(stackHome()).read().pris : undefined;
       if (pris) { registerPrisEngine(); setPris(pris); }
-      const rctx = { ...ctx, engine };
+      // An explicit engine keeps its own order (bake-offs). @req FR:pri-first-ranking/order.none
+      const rctx = { ...ctx, engine, pris: undefined };
       if (explain) {
         const tf = flag(f, 'truth');
         let truth: string | undefined;
@@ -678,11 +704,8 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         const r = await explainAutopri(rctx, at, { top, truth, ...(pris ? { pris } : {}) });
         return { json: { ok: true, items: r.items, ...(r.truth ? { truth: r.truth } : {}) }, text: r.text, code: r.items.length ? EXIT.ok : EXIT.none };
       }
-      const ranked = await rankStack(rctx, at, top);
-      return {
-        json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.stale ? { stale: true } : {}) })) },
-        text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'), code: ranked.length ? EXIT.ok : EXIT.none,
-      };
+      const ranked = await rankRows(engine === 'stack' ? ctx : rctx, at, top);
+      return { json: { ok: true, items: ranked.json }, text: ranked.text.join('\n'), code: ranked.json.length ? EXIT.ok : EXIT.none };
     }
     case 'triage': {
       if (p.positionals.length !== 1) throw new UsageError('triage needs exactly one <ref>');

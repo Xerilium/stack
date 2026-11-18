@@ -1,3 +1,7 @@
+import { mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { PriStore } from '../../src/core/pris';
 import { createApiHandler } from '../../src/api/handler';
 import { MemoryStorage } from '../../src/core/storage';
 import { NEEDS_PATH } from '../../src/core/needs-you';
@@ -107,5 +111,23 @@ describe('needs-you routes', () => {
   it('no file means an empty list', async () => {
     const { call } = await mk();
     expect((await call('GET', '/api/needs-you')).json).toEqual({ items: [] });
+  });
+});
+
+describe('GET /api/rank with priorities', () => {
+  // @req FR:pri-first-ranking/api.@api @req FR:pri-first-ranking/api.order @req FR:pri-first-ranking/api.tasks
+  it('ranks tasks linked to a priority first and returns task rows only', async () => {
+    const storage = await seed();
+    const home = mkdtempSync(join(tmpdir(), 'stack-home-'));
+    writeFileSync(join(home, 'pris.json'), JSON.stringify({ version: 1, rev: 1, pris: [{ id: 'p1', title: 'Rewrite', status: 'active', items: [], backlog: [], weekly: [{ week: '2026-W44', text: 'Michael: approve the copy' }], keywords: ['FOCUS issues'] }] }));
+    const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, pris: new PriStore(home) });
+    const get = async (p: string) => (await (await h(new Request(`https://x.test${p}`, { headers: { 'x-ms-client-principal': OWNER } }))).json()) as { items: { ref: string; text: string }[]; task: { text: string } };
+    const { items } = await get('/api/rank');
+    expect(items[0].text).toMatch(/FOCUS issues triage/);
+    expect(items.every((i) => typeof i.ref === 'string' && !/approve the copy/.test(i.text))).toBe(true);
+    expect((await get('/api/next')).task.text).toMatch(/FOCUS issues triage/);
+    // @req FR:pri-first-ranking/order.overrides
+    await storage.writeAux(PRIORITIES_PATH, JSON.stringify({ rules: [{ match: 'FOCUS', effect: 'down' }] }), { expectedVersion: null });
+    expect((await get('/api/rank')).items.at(-1)!.text).toMatch(/FOCUS issues triage/);
   });
 });

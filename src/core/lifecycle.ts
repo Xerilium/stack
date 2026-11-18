@@ -11,7 +11,7 @@ import { rowOwner } from './owner';
 import { applyTags, formatExplain, matchTruth, parseTruth, type ExplainRow, type Tags, type TruthMatch } from './autopri-tags';
 import { autopriEngine, autopriParts, registerAutopriEngine } from './autopri';
 import type { Pri } from './pris';
-import { linkCounts, prisEngine, prisParts, registerPrisEngine, setPris } from './pris-rank';
+import { linkAll, linkCounts, priActions, priFirst, type PriLink, prisEngine, prisParts, registerPrisEngine, setPris } from './pris-rank';
 import { applyOverrides, matcherFor, parsePriorities, PRIORITIES_PATH } from './priorities';
 import { ConflictError, NotFoundError, Storage, writeAll, type AuxFiles } from './storage';
 
@@ -31,6 +31,11 @@ export interface LifecycleContext {
   now?: () => Date;
   /** Scoring engine id; defaults to `stack` (legacy score plus due-date lens). */
   engine?: string;
+  /**
+   * The owner's ordered priorities; when set, linked tasks rank first.
+   * @req FR:pri-first-ranking/order.input
+   */
+  pris?: () => Pri[];
 }
 
 /** @req FR:task-lifecycle/doc.result */
@@ -313,7 +318,7 @@ export interface RankedTask extends NextTask {
 /** `owner: 'any'` keeps rows of every owner; the default is the owner queue. @req FR:task-lifecycle/rank.owner */
 export interface StackRankOptions extends Omit<RankOptions, 'activity'> { owner?: 'me' | 'any' }
 
-type Ranked = { next: RankedTask; doc: Doc; task: ScoringTask; context: string; dueTier?: number }[];
+type Ranked = { next: RankedTask; doc: Doc; task: ScoringTask; context: string; dueTier?: number; link?: PriLink }[];
 /** The last ranking per storage. Read-only: callers copy what they hand out. @req FR:perf/rank.cache */
 const rankMemo = new WeakMap<object, Map<string, { key: string; config: StackConfig | undefined; engine: string | undefined; value: Ranked }>>();
 
@@ -325,13 +330,14 @@ async function rankAll(ctx: LifecycleContext, at?: Date, opts: StackRankOptions 
   const when0 = at ?? clock(ctx);
   // An engine that reads other inputs (the pris engine) adds its version. @req FR:pris-aware-ranking/engine.memo
   const ev = getEngine(ctx.engine ?? DEFAULT_ENGINE).version?.() ?? null;
-  const key = JSON.stringify([docs.map((d) => [d.path, d.version]), rules0?.version ?? null, at ? when0.getTime() : Math.floor(when0.getTime() / 60_000), ev]);
+  const pris = ctx.pris?.() ?? [];
+  const key = JSON.stringify([docs.map((d) => [d.path, d.version]), rules0?.version ?? null, at ? when0.getTime() : Math.floor(when0.getTime() / 60_000), ev, pris]);
   const slot = `${opts.ignoreBlocks ? 'any' : 'now'}:${opts.owner ?? 'me'}`; // the page asks for both
   let mine = rankMemo.get(ctx.storage);
   if (!mine) rankMemo.set(ctx.storage, (mine = new Map()));
   const memo = mine.get(slot);
   if (memo && memo.key === key && memo.config === ctx.config && memo.engine === ctx.engine) return memo.value;
-  const value = await rankDocs(ctx, docs, rules0, when0, opts);
+  const value = await rankDocs(ctx, docs, rules0, when0, opts, pris);
   mine.set(slot, { key, config: ctx.config, engine: ctx.engine, value });
   return value;
 }
@@ -370,7 +376,7 @@ async function activityOf(ctx: LifecycleContext, projects: ScoringProject[], doc
   return out;
 }
 
-async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: string } | null, when: Date, opts: StackRankOptions): Promise<Ranked> {
+async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: string } | null, when: Date, opts: StackRankOptions, pris: Pri[] = []): Promise<Ranked> {
   const projects = docs.map((d) => toScoringProject(d.project, d.name));
   const where = new Map<ScoringTask, { doc: Doc; line: number }>();
   projects.forEach((p, i) => {
@@ -401,6 +407,10 @@ async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: str
     const extra = rankTasks(engine, projects, cfg(ctx), when, { ...ropts, ignoreBlocks: true }).filter(mine).map(rowOf).filter((r) => !have.has(r.task) && match(r)?.rule.effect === 'top');
     rows = [...rows, ...extra].sort((a, b) => b.next.score - a.next.score);
   }
+  // Priority order first, then the owner's overrides.
+  // @req FR:pri-first-ranking/order.linked @req FR:pri-first-ranking/order.linked.rank @req FR:pri-first-ranking/order.linked.score @req FR:pri-first-ranking/order.overrides @req FR:pri-first-ranking/order.next
+  const links = pris.length ? linkAll(projects.flatMap((p) => p.tasks.map((task) => ({ task }))), projects, pris) : new Map<string, PriLink>();
+  if (links.size) rows = priFirst(rows, (r) => links.get(r.task.id));
   const ordered = applyOverrides(rows, rules, when, names, cfg(ctx).timezone);
   for (const o of ordered) {
     const rootLine = above.get(o.doc)?.get(o.next.ref.line)?.root;
@@ -408,7 +418,7 @@ async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: str
     const m = match(o);
     if (m) o.next.rule = m.rule.match;
   }
-  return ordered.map(({ doc, next, task, context, dueTier }) => ({ doc, next, task, context, dueTier }));
+  return ordered.map(({ doc, next, task, context, dueTier }) => ({ doc, next, task, context, dueTier, ...(links.has(task.id) ? { link: links.get(task.id) } : {}) }));
 }
 
 async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextTask; doc: Doc } | null> {
@@ -665,7 +675,11 @@ export async function explainAutopri(ctx: LifecycleContext, at?: Date, opts: { t
   return { items, truth, text: formatExplain(items, truth) };
 }
 
-export interface StackExplainItem { rank: number; ref: string; path: string; line: number; project: string; text: string; score: number; why: string; stale?: true; rule?: string }
+/**
+ * A task row has `path` and `line`; a priority action row has `pri` instead.
+ * @req FR:pri-first-ranking/cli.explain.json
+ */
+export interface StackExplainItem { rank: number; ref: string; path?: string; line?: number; project: string; text: string; score: number; why: string; stale?: true; rule?: string; link?: PriLink; pri?: { id: string; rank: number; title: string } }
 export interface StackExplained { items: StackExplainItem[]; /** Rows the owner filter dropped. */ dropped: number; text: string }
 
 /** Why a row has its due tier: the tier and the days, or the stale reason. */
@@ -686,12 +700,17 @@ export async function explainStack(ctx: LifecycleContext, at?: Date, opts: Stack
   const when = at ?? clock(ctx);
   const ranked = await rankAll(c, when, { ignoreBlocks: opts.ignoreBlocks, owner: opts.owner });
   const dropped = opts.owner === 'any' ? 0 : (await rankAll(c, when, { ignoreBlocks: opts.ignoreBlocks, owner: 'any' })).length - ranked.length;
-  const all: StackExplainItem[] = ranked.map((r, i) => ({
-    rank: i + 1, ref: formatRef(r.next.ref), path: r.next.ref.path, line: r.next.ref.line + 1, project: r.next.project, text: r.next.text,
-    score: r.next.score, why: whyOf(r, ctx, when), ...(r.next.stale ? { stale: true as const } : {}), ...(r.next.rule ? { rule: r.next.rule } : {}),
+  // Priority actions first, then the task rows. @req FR:pri-first-ranking/action.first @req FR:pri-first-ranking/cli.explain.action
+  const acts: StackExplainItem[] = priActions(ctx.pris?.() ?? []).map((a) => ({ rank: 0, ref: `pri:${a.rank}`, project: a.title, text: a.text, score: a.score, why: 'priority action', pri: { id: a.id, rank: a.rank, title: a.title } }));
+  const tasks: StackExplainItem[] = ranked.map((r) => ({
+    rank: 0, ref: formatRef(r.next.ref), path: r.next.ref.path, line: r.next.ref.line + 1, project: r.next.project, text: r.next.text,
+    score: r.next.score, why: whyOf(r, ctx, when), ...(r.next.stale ? { stale: true as const } : {}), ...(r.next.rule ? { rule: r.next.rule } : {}), ...(r.link ? { link: r.link } : {}),
   }));
+  const all = [...acts, ...tasks].map((x, i) => ({ ...x, rank: i + 1 }));
   const items = opts.top === undefined ? all : all.slice(0, opts.top);
-  const lines = items.map((x) => `${x.rank}. ${x.ref} ${Number(x.score.toFixed(1))} ${x.project}: ${x.text} | ${x.why}${x.rule ? `; rule ${x.rule}` : ''}`);
+  // @req FR:pri-first-ranking/cli.explain
+  const serves = (x: StackExplainItem) => (x.pri ? ` serves=${x.pri.rank}:${x.pri.id} "${x.pri.title}" via note` : x.link ? ` serves=${x.link.rank}:${x.link.id} "${x.link.title}" via ${x.link.via} "${x.link.term}"` : '');
+  const lines = items.map((x) => `${x.rank}. ${x.ref} ${Number(x.score.toFixed(1))} ${x.project}: ${x.text} | ${x.why}${x.rule ? `; rule ${x.rule}` : ''}${serves(x)}`);
   if (dropped > 0) lines.push(`${dropped} ${dropped === 1 ? 'row' : 'rows'} dropped: not the owner's (agent or mixed)`);
   return { items, dropped, text: lines.join('\n') };
 }
