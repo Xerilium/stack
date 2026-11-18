@@ -99,13 +99,20 @@ The owner needs the phone to show and change the same tasks so that work does no
 
 ### FR:backup: Snapshot backup and restore
 
-The owner needs a copy of the store so that a bad write or a lost disk costs at most one interval.
+The owner needs an off-device copy of the store so that a dead Mac or a new device recovers in minutes.
 
-- **FR:backup.snap** (P1): The host MUST write a snapshot every 60 minutes and on host stop, with `VACUUM INTO`, to `$STACK_HOME/backups/stack-{yyyyMMdd-HHmm}.db`. It MUST skip the snapshot when nothing changed.
-- **FR:backup.copy** (P2): When `backup.dir` is set (for example iCloud Drive), the host MUST also copy the snapshot there.
-- **FR:backup.keep** (P2): The host MUST keep the last 48 snapshots and delete older ones.
-- **FR:backup.restore** (P1): `stack restore [file]` MUST stop writes, keep the current file as `stack.db.before-restore`, and put the latest (or given) snapshot in place.
-- **FR:backup.list** (P2): `stack backups` MUST list snapshots with time and task count.
+- **FR:backup.snap** (P1): The host MUST write a snapshot 5 minutes after the last write (debounced; each write restarts the timer) and on host stop. It MUST use `VACUUM INTO` to `$STACK_HOME/backups/stack-{yyyyMMdd-HHmm}.db`. It MUST skip the snapshot when nothing changed.
+- **FR:backup.remote** (P1): After each snapshot the host MUST push it to the private GitHub repo in config `backup.remote` (default `{owner}/stack-data`). Method, with git only:
+  - Make a new orphan commit that holds one file, `stack.db`.
+  - Force-push it to branch `snapshots`. The branch always has one commit. No history accrues.
+  - The push uses the owner's existing `gh` git credentials.
+- **FR:backup.remote.private** (P1): The host MUST refuse to push when the repo is public (`gh repo view --json visibility`).
+- **FR:backup.remote.size** (P1): The host MUST warn at 50 MB and refuse to push at 95 MB (GitHub limit: 100 MB per file). The local snapshot still lands.
+- **FR:backup.remote.fail** (P2): A failed push MUST keep the local snapshot, retry on the next snapshot, and show `Backup failed at h:mm` in the app.
+- **FR:backup.keep** (P2): The host MUST keep the last 48 local snapshots and delete older ones. Local snapshots are the undo for bad writes; the remote holds the latest only.
+- **FR:backup.restore** (P1): `stack restore [file | --remote]` MUST stop writes, keep the current file as `stack.db.before-restore`, and put the snapshot in place. With no argument it uses the latest local snapshot. `--remote` fetches `stack.db` from `backup.remote` branch `snapshots`.
+- **FR:backup.device** (P1): On a device with no `stack.db`, `stack setup` MUST offer `stack restore --remote`. A new Mac or a second device recovers this way.
+- **FR:backup.list** (P2): `stack backups` MUST list local snapshots and the remote one, with time and task count.
 
 ### FR:import: One-time md import
 
@@ -149,7 +156,7 @@ The owner needs the app to be good enough before md stops so that he never loses
   | `G3 find`      | The app shows all tasks by project with search and filters, so the owner never opens md to find a task.            |
   | `G4 agents`    | Every CoS and worker agent file uses CLI or MCP with `--json`. A scan of agent files finds no `tasks/*.md` path.   |
   | `G5 roundtrip` | `export md` then `import md` on the live data gives the same tasks (`FR:export.roundtrip`).                        |
-  | `G6 restore`   | A restore drill from the latest snapshot works in under 2 minutes.                                                 |
+  | `G6 restore`   | A restore drill with `stack restore --remote` on a clean device works in under 2 minutes.                          |
   | `G7 owner`     | The owner says go.                                                                                                 |
 
 - **FR:cutover.final** (P1): Stage 2 MUST start with one final `import md`, a snapshot, and the md read-only check, in that order.
@@ -166,7 +173,7 @@ The owner needs a fast undo so that a bad change or a bad cutover is cheap.
 
 - **NFR:perf.read** (P1): `list` and `next` on 2,000 tasks MUST answer in under 100 ms on the Mac.
 - **NFR:perf.write** (P1): A single write MUST finish in under 20 ms.
-- **NFR:privacy** (P1): Logs MUST NOT hold task text. Snapshots stay on the owner's devices and the configured backup dir.
+- **NFR:privacy** (P1): Logs MUST NOT hold task text. Snapshots stay on the owner's devices and the private `backup.remote` repo.
 
 ## Data Model
 
@@ -203,13 +210,13 @@ The owner needs a fast undo so that a bad change or a bad cutover is cheap.
 
 ## Risks
 
-| Risk                                                                                                                                      | Mitigation                                                                                                   |
-| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| R1 The Mac is the only writer. When it sleeps or is off, the phone is read-only, and the deployed host (`stack.xerilium.com`) goes stale. | Accept for now. Keep the Mac awake as host. A later spec can push a read-only snapshot to the deployed host. |
-| R2 No history. A bad agent write is lost until the next snapshot, up to 60 minutes of work.                                               | `expectRev` on agent writes; hourly snapshots; restore drill `G6`.                                           |
-| R3 Agents still read or write `tasks/*.md` after cutover and drift from the store.                                                        | Gate `G4`; md read-only check in Stage 2.                                                                    |
-| R4 `node:sqlite` is marked experimental in Node 22.                                                                                       | Pin Node 22.13 or later; the contract suite runs in CI on each Node upgrade.                                 |
-| R5 Import maps some md rows wrong (odd markers, deep notes).                                                                              | `--dry-run` report; shadow stage; round-trip gate `G5`.                                                      |
+| Risk                                                                                                                                                                                                                                               | Mitigation                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| R1 The Mac is the only writer. When the Mac is off or asleep, the phone and web cannot change tasks. They show the last list, read-only. The deployed host (`stack.xerilium.com`) does not read the store. The GitHub backup does not change this. | Accept for now. Keep the Mac awake as host. A dead Mac costs at most 5 minutes of writes: `stack restore --remote` on any device. |
+| R2 The remote holds the latest snapshot only. A bad write reaches GitHub 5 minutes later and replaces the good copy. Undo needs a local snapshot, so it fails when the Mac is lost too.                                                            | `expectRev` on agent writes; 48 local snapshots; restore drill `G6`.                                                              |
+| R3 Agents still read or write `tasks/*.md` after cutover and drift from the store.                                                                                                                                                                 | Gate `G4`; md read-only check in Stage 2.                                                                                         |
+| R4 `node:sqlite` is marked experimental in Node 22.                                                                                                                                                                                                | Pin Node 22.13 or later; the contract suite runs in CI on each Node upgrade.                                                      |
+| R5 Import maps some md rows wrong (odd markers, deep notes).                                                                                                                                                                                       | `--dry-run` report; shadow stage; round-trip gate `G5`.                                                                           |
 
 ## External Dependencies
 

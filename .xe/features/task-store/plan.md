@@ -13,7 +13,7 @@
 | 3   | store-io       | `stack import md`, `stack export md`, `stack export json`. Round-trip test on the anonymized fixtures.                                      | 0 Build   |
 | 4   | store-surfaces | CLI, MCP and API on `TaskStore` behind the `store` flag. `--json` on every read. Actor and `expectRev`.                                     | 0 Build   |
 | 5   | store-rank     | Ranker reads the store; `updatedAt` replaces `git blame`. Parity test md vs store. Needs [179](https://github.com/Xerilium/stack/pull/179). | 0 Build   |
-| 6   | store-backup   | Hourly snapshot, keep 48, `backup.dir`, `stack backups`, `stack restore`.                                                                   | 0 Build   |
+| 6   | store-backup   | Debounced snapshot (5 min), keep 48 local, force-push to `backup.remote` branch `snapshots`, `stack backups`, `stack restore [--remote]`.   | 0 Build   |
 | 7   | store-shadow   | `store: "shadow"`: re-import after each md commit. App and agents read the store.                                                           | 1 Shadow  |
 | 8   | agents-cli     | Agent files move from md paths to CLI or MCP `--json` (`G4`). Data change in the todo repo, plus a scan test.                               | 1 Shadow  |
 | 9   | cutover        | `store: "sqlite"`: final import, snapshot, md read-only check (CI rejects `tasks/*.md` edits).                                              | 2 Cutover |

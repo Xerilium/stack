@@ -15,6 +15,7 @@ One PR per group. Tests first in each PR. `@req FR:task-store/...` on every test
 - Round-trip test: fixtures `import md` then `export md` then `import md` give equal tasks (`FR:export.roundtrip`).
 - Parity test: same fixture ranks the same on md and on the store (`FR:rank.parity`).
 - Restore test: snapshot, bad write, restore, data equals snapshot (`FR:backup.restore`).
+- Remote test on a local bare repo: two pushes leave `snapshots` with one commit; `restore --remote` on an empty `STACK_HOME` gives the same tasks (`FR:backup.remote`, `FR:backup.device`).
 - CLI and MCP tests: every read gives `--json` in the `Task` shape (`FR:write.json`).
 - Perf test: 2,000 tasks, `list` and `next` under 100 ms (`NFR:perf.read`).
 
@@ -50,8 +51,9 @@ One PR per group. Tests first in each PR. `@req FR:task-store/...` on every test
 
 ## 6: store-backup
 
-- [ ] Snapshot, skip when unchanged, keep 48, `backup.dir` (`FR:backup.snap`, `FR:backup.copy`, `FR:backup.keep`)
-- [ ] `stack backups`, `stack restore` (`FR:backup.list`, `FR:backup.restore`)
+- [ ] Debounced snapshot, skip when unchanged, keep 48 local (`FR:backup.snap`, `FR:backup.keep`)
+- [ ] Orphan commit force-push to `backup.remote`; private check; size warn and refuse; failure state (`FR:backup.remote*`)
+- [ ] `stack backups`, `stack restore [--remote]`, setup offers remote restore (`FR:backup.list`, `FR:backup.restore`, `FR:backup.device`)
 
 ## 7-10: Stages
 
