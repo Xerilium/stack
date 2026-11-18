@@ -4,6 +4,8 @@ import { App } from './App';
 import { InstallView } from './InstallView';
 import { LivePanel } from './LivePanel';
 import { Onboarding } from './OnboardingView';
+import { QmView } from './QmView';
+import { isQmHash } from './qm';
 import { authSaysSetup, isLocalHost, loadSetup, wantsSetup, type SetupStatus } from './onboarding';
 import './styles.css';
 import './polish.css';
@@ -13,13 +15,16 @@ import './fluent2.css';
 const onInstall = () => location.hash.startsWith('#/install');
 /** `#/live` shows the live validation checklist in place of the shell. @req FR:pr-review-lane/panel.view */
 const onLane = () => /^#\/live(\?|$)/.test(location.hash);
+/** `#/qm` shows the weekly QM plan in place of the shell. @req FR:qm-plan/ui.route */
+const onQm = () => isQmHash(location.hash);
 /** A local host that marks the page needs setup; anything else shows the app at once. @req FR:first-run-onboarding/web.gate */
 const ask = wantsSetup(document, location.hostname);
 function Root() {
   const [install, setInstall] = useState(onInstall);
   const [lane, setLane] = useState(onLane);
+  const [qm, setQm] = useState(onQm);
   const [setup, setSetup] = useState<SetupStatus | null | undefined>(ask ? undefined : null);
-  useEffect(() => { const on = () => { setInstall(onInstall()); setLane(onLane()); }; window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
+  useEffect(() => { const on = () => { setInstall(onInstall()); setLane(onLane()); setQm(onQm()); }; window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
   useEffect(() => {
     const f = (u: string, i?: RequestInit) => fetch(u, i);
     if (ask) void loadSetup(f).then(setSetup);
@@ -28,6 +33,7 @@ function Root() {
   }, []);
   if (install) return <InstallView />;
   if (lane) return <LivePanel />;
+  if (qm) return <QmView />;
   if (setup === undefined) return null; // one loopback round trip, only on a page marked for setup
   if (setup?.needed) return <Onboarding initial={setup} onDone={(hash) => { location.hash = hash; setSetup(null); }} />;
   return <App />;

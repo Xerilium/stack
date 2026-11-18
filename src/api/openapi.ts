@@ -335,6 +335,10 @@ const DOCS: Record<string, RouteDoc> = {
     requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['rev', 'pris'], properties: { rev: { type: 'integer', minimum: 0 }, pris: { type: 'array', maxItems: 30, items: ref('Pri') } } } } } },
     responses: ok('Stored', ref('PrisFile')),
   },
+  'qm.get': {
+    operationId: 'getQmPlan', summary: 'Owner only. The weekly QM (quota-maxxing) plan from ~/.stack/qm-plan.json (.xe/features/qm-plan/spec.md); plan is null when none is stored, broken is true when the file is not a valid plan. Agents write it with stack qm put. 404 on hosts with no store',
+    responses: ok('QM plan', { type: 'object', required: ['plan'], properties: { plan: { type: 'object', nullable: true, description: 'version 1 plan: asOf, projects[] with project, agent {name, sessionId?, url?}, tasks (0-5 {title, url?}), weeklyTokens, preAckMin, postReviewMin (integer or null = pending)' }, broken: { type: 'boolean' } } }),
+  },
   'prPriority.get': {
     operationId: 'getPrPriority', summary: 'Owner only. The PR priority queue for the Sweep Manager (~/.stack/pr-priority.json), each PR with cached facts, merge-order edges, the newest report record, acks and status, plus the escalation set and open recommendations (by project, oldest first). 404 on hosts with no store',
     responses: ok('PR priorities', ref('PrPriView')),

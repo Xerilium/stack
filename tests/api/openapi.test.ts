@@ -12,6 +12,7 @@ import { ReportStore } from '../../src/core/reports';
 import { PriStore } from '../../src/core/pris';
 import { PrPriorityStore } from '../../src/core/pr-priority';
 import { FeedbackStore } from '../../src/core/feedback';
+import { QmStore } from '../../src/core/qm-plan';
 import { LiveStore } from '../../src/core/live-lane';
 import { BriefStore, FactsStore } from '../../src/core/pr-review';
 import { runInventory } from '../../src/core/session-inventory';
@@ -248,7 +249,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
   const laneStore = new LiveStore(laneHome, { now: () => NOW });
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
   const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))),
-    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), live: laneStore, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), feedback: new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), app: oaApp(),
+    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), live: laneStore, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), feedback: new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), qm: new QmStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))), app: oaApp(),
     // Connect with fakes: no listener port, no browser, no network. @req FR:connect-accounts/api.get
     connect: createConnect({ clientId: () => '11111111-2222-3333-4444-555555555555', cacheDir: mkdtempSync(join(tmpdir(), 'stack-oa-')), listen: async () => ({ port: 50000, close: () => undefined }), openUrl: async () => undefined, setup: async () => ({ state: 'needs-azure-signin' }) }) });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
@@ -375,6 +376,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('pris.put', 'POST', '/pris', { rev: 0, pris: [] }, 409);
     await go('pris.put', 'POST', '/pris', { rev: 1, pris: [{ id: 'X' }] }, 400);
     // @req FR:pr-priority/api.get @req FR:pr-priority/api.put @req FR:pr-priority/api.recommend @req FR:pr-priority/api.decisions @req FR:pr-priority/api.decide
+    await go('qm.get', 'GET', '/qm', undefined, 200);
     await go('prPriority.get', 'GET', '/pr-priority', undefined, 200);
     await go('prPriority.put', 'POST', '/pr-priority', { rev: 0, op: 'add', ref: 'o/r#1' }, 200);
     await go('prPriority.put', 'POST', '/pr-priority', { rev: 0, op: 'add', ref: 'o/r#2' }, 409);

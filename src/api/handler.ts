@@ -10,6 +10,7 @@ import {
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
+import type { QmStore } from '../core/qm-plan';
 import { FeedbackError, MAX_TEXT as FEEDBACK_MAX_TEXT, type FeedbackStore } from '../core/feedback';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { AuxFiles, Storage } from '../core/storage';
@@ -109,6 +110,8 @@ export interface ApiDeps {
   app?: AppUpdater;
   /** The owner feedback store (~/.stack/feedback.jsonl); absent means POST /feedback is 404. @req FR:feedback-button/api.route */
   feedback?: FeedbackStore;
+  /** The weekly QM plan (~/.stack/qm-plan.json); absent means GET /qm is 404. @req FR:qm-plan/api.get */
+  qm?: QmStore;
   /** Called with unexpected errors (they are never sent to the caller). */
   onError?: (e: unknown) => void;
 }
@@ -852,6 +855,16 @@ export const ROUTES: Route[] = [
         if (e instanceof PrisInvalid) throw new ApiError('bad_request', 'Validation failed', e.issues.map((i) => ({ ...i, field: i.field === 'pris' ? 'pris' : `pris${i.field}` })));
         throw e;
       }
+    },
+  },
+  {
+    // The weekly QM plan; owner only. Agents write it with `stack qm put`. @req FR:qm-plan/api.get
+    method: 'GET', doc: '/qm', name: 'qm.get',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can read the QM plan');
+      if (!c.deps.qm) throw new ApiError('not_found', 'No QM plan store on this host');
+      return json(200, c.deps.qm.read());
     },
   },
   {

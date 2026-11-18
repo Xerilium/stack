@@ -1,0 +1,28 @@
+/* QM plan (#/qm). Fluent 2 tokens (docs/design-system.md); light and dark come from fluent2.css. @req FR:qm-plan/ui.style */
+.qm { max-width: 1040px; margin: 0 auto; padding: var(--fl-s-l); box-sizing: border-box; min-height: 100vh; background: var(--fl-bg1); color: var(--fl-fg1); font-family: var(--fl-font); font-size: var(--fl-body); line-height: var(--fl-body-lh); }
+.qm-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--fl-s-xs) var(--fl-s-m); }
+.qm-title { font-size: var(--fl-sub2); line-height: var(--fl-sub2-lh); font-weight: 600; margin: 0; }
+.qm-stamp, .qm-hint, .qm-sub, .qm-empty { color: var(--fl-fg2); }
+.qm-stamp, .qm-sub { font-size: var(--fl-caption); line-height: var(--fl-caption-lh); margin: 0; }
+.qm-hint { margin: var(--fl-s-s) 0 var(--fl-s-l); }
+.qm-error { color: var(--fl-danger); }
+.qm-back { flex-basis: 100%; color: var(--fl-brand-fg); min-height: var(--fl-target); display: inline-flex; align-items: center; }
+.qm a { color: var(--fl-brand-fg); }
+.qm a:focus-visible, .qm-sort:focus-visible, .qm-scroll:focus-visible, .qm summary:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 2px; }
+/* The table scrolls sideways in its own box on a phone; the page never does. */
+.qm-scroll { overflow-x: auto; border: 1px solid var(--fl-stroke2); border-radius: var(--fl-r-xl); background: var(--fl-bg1); }
+.qm-table { width: 100%; min-width: 680px; border-collapse: collapse; }
+.qm-table th, .qm-table td { text-align: left; vertical-align: top; padding: var(--fl-s-s) var(--fl-s-m); border-bottom: 1px solid var(--fl-stroke2); }
+.qm-table tbody tr:last-child > * { border-bottom: 0; }
+.qm-table tbody th { font-weight: 600; }
+.qm-table thead th { padding: 0; background: var(--fl-bg2); font-weight: 600; white-space: nowrap; }
+.qm-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.qm-table td.pending { color: var(--fl-fg3); }
+.qm-sort { all: unset; box-sizing: border-box; display: flex; width: 100%; gap: var(--fl-s-xs); align-items: center; min-height: var(--fl-target); padding: var(--fl-s-s) var(--fl-s-m); cursor: pointer; }
+.num .qm-sort { justify-content: flex-end; }
+.qm-sort:hover { background: var(--fl-subtle-hover); }
+.qm-arrow { font-size: 10px; min-width: 10px; }
+.qm-tasks details { display: inline-block; text-align: left; }
+.qm-tasks summary { cursor: pointer; text-align: right; }
+.qm-tasks ol { margin: var(--fl-s-xs) 0 0; padding-left: var(--fl-s-l); min-width: 240px; }
+@media (min-width: 768px) { .qm { padding: var(--fl-s-xxxl) var(--fl-s-xxl); } }
