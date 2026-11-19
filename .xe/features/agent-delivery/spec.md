@@ -3,19 +3,7 @@ id: agent-delivery
 title: Agent Delivery
 author: flanakin
 description: "Run the agent headlessly on owner messages, post its reply in the thread, and show when delivery is down"
-dependencies:
-  [
-    agent-inbox,
-    agent-thread,
-    agent-team,
-    acp-driver,
-    ask-queue,
-    session-inventory,
-    email-runner,
-    config,
-    cli,
-    now-screen,
-  ]
+dependencies: [agent-inbox, agent-thread, agent-team, acp-driver, ask-queue, session-inventory, email-runner, config, cli, now-screen]
 ---
 
 <!-- markdownlint-disable single-title -->
