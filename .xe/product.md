@@ -60,7 +60,7 @@ Owner needs the same scoring, formats, and files as the legacy system so that mi
 
 ### FR:needs-you: Needs you
 
-Owner needs one ranked list of what only the owner can decide so that agents and messages never bury a decision. Features: [ask-queue](features/ask-queue/spec.md), [cos-view](features/cos-view/spec.md), [now-screen](features/now-screen/spec.md).
+Owner needs one ranked list of what only the owner can decide so that agents and messages never bury a decision. Features: [ask-queue](features/ask-queue/spec.md), [cos-view](features/cos-view/spec.md), [pris-sessions-ui](features/pris-sessions-ui/spec.md), [session-inventory](features/session-inventory/spec.md).
 
 ### FR:my-day: My day
 

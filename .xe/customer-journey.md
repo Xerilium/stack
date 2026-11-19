@@ -44,12 +44,12 @@ sequenceDiagram
     Owner->>Stack: open Needs you
     Stack-->>Owner: priorities, ranked asks, sessions that wait
     Owner->>Stack: open My day
-    Stack-->>Owner: schedule from wake to bed, meetings out
+    Stack-->>Owner: schedule from wake to bed, meetings on it, tasks that fit
 ```
 
 ## Answer an ask
 
-An agent or the mail triage raises a decision. Owner answers it in one step. The answer goes back to the agent as a file; the ask moves to Answered until the agent acts. Scenarios: `FR:needs-you`, `FR:inbox-zero`.
+An agent or the mail triage raises a decision. Owner answers it in one step. Stack wakes the agent; the agent reads the answer. The ask shows as Answered until the agent acts. Scenarios: `FR:needs-you`, `FR:inbox-zero`.
 
 ```mermaid
 sequenceDiagram
@@ -59,14 +59,14 @@ sequenceDiagram
     Agent->>Stack: raise ask (recommendation, deadline, link)
     Stack-->>Owner: ask ranked in Needs you
     Owner->>Stack: pick an option, or reply
-    Stack->>Agent: answer file in the agent inbox
+    Stack->>Agent: wake line in tasks/wake
     Stack-->>Owner: ask moves to Answered
-    Agent->>Stack: act on the answer
+    Agent->>Stack: read answered asks, act
 ```
 
 ## Agent escalation via CoS
 
-A worker agent hits a decision it cannot make. The CoS agent checks it, decides what it can, and escalates only the rest. Owner sees one ask, not the agent traffic. Scenarios: `FR:needs-you`, `FR:sessions`, `FR:pr-review`.
+A worker agent hits a decision it cannot make. The CoS agent checks it, decides what it can, and escalates only the rest. Owner sees one ask, not the agent traffic. Scenarios: `FR:needs-you`, `FR:sessions`.
 
 ```mermaid
 sequenceDiagram
@@ -75,10 +75,10 @@ sequenceDiagram
     actor Owner as Owner
     participant Stack as Stack System
     Worker->>CoS: blocked: needs a decision
-    CoS->>CoS: decide, or keep for the owner
-    CoS->>Stack: raise one ask
+    CoS->>CoS: decide what it can, keep the rest
+    CoS->>Stack: raise one ask for the rest
     Stack-->>Owner: ask in Needs you
     Owner->>Stack: answer
-    Stack->>CoS: answer file
+    Stack->>CoS: answer on the ask item
     CoS->>Worker: continue
 ```
