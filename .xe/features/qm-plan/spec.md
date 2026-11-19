@@ -43,6 +43,13 @@ An agent needs a CLI with no server so that it can read and write the plan.
 - **FR:cli.get** (P1): `stack qm [--json]` prints the plan; no repo needed
 - **FR:cli.put** (P1): `stack qm put --file f.json [--json]` validates and writes the plan. Bad input exits 2 and lists the issues
 
+### FR:live: Live
+
+The owner needs the open page to show the plan an agent just wrote so that the plan is never old.
+
+- **FR:live.event** (P1): The web host sends the change event `{kinds: ['qm']}` once after each plan write: a write by the host (`QmStore.onWrite`) or by another process such as `stack qm put` (`QmStore.watch` polls the file mtime). Host shutdown stops the watch
+- **FR:live.reload** (P1): The `#/qm` page reads the plan again on a `qm` change, on a full refresh (stream reconnect), and on each poll when the host has no event stream
+
 ### FR:ui: Page
 
 The owner needs one table so that the weekly plan is clear at a glance.

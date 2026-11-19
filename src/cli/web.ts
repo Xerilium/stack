@@ -302,6 +302,11 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const laneHome = o.laneHome ?? stackHome();
   const live = new LiveStore(laneHome);
   const offLive = live.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'live'] }); });
+  // qm-plan.json is outside the repo too; agents write it from the CLI. One change per write: skip the poll for this host's own write. @req FR:qm-plan/live.event
+  const qm = o.qm ?? new QmStore(stackHome());
+  const tellQm = () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['qm'] }); };
+  const offQm = qm.onWrite(() => { own.set(qm.file, mtime(qm.file)); tellQm(); });
+  const unwatchQm = qm.watch((m) => { if (own.get(qm.file) !== m) tellQm(); });
   // @req FR:connect-accounts/flow.browser
   const connect = o.connect === false ? undefined : o.connect ?? createConnect({ clientId: () => readClientId(), health, ...(o.openUrl ? { openUrl: o.openUrl } : {}) });
   // @req FR:agent-delivery/host.loop @req FR:agent-delivery/state.api: state is always readable here; the loop starts only when the config opts in.
@@ -309,7 +314,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const dd: DeliveryDeps | undefined = o.delivery === false || o.info?.mode === 'demo' ? undefined : { ctx: { storage, config }, settings: deliverySettings(config, o.dir), store: o.delivery?.store ?? new DeliveryStore(stackHome()), repoDir: o.dir, ...(rawScan ? { agentScan: rawScan } : {}), ...(o.delivery?.run ? { run: o.delivery.run } : {}), ...(o.delivery?.isRepo ? { isRepo: o.delivery.isRepo } : {}) };
   const deliveryLoop = dd && dd.settings.mode === 'claude' ? startDeliveryLoop(dd, { intervalMs: o.delivery ? o.delivery.intervalMs : undefined, onError: (e) => console.error(`delivery: ${e instanceof Error ? e.message : 'error'}`) }) : undefined;
   const delivery = dd ? { status: (ref: string) => deliveryStatus(dd, ref, inventory), summary: () => ({ mode: dd.settings.mode, login: dd.store.read().login.state }), login: () => (o.delivery && o.delivery.login ? o.delivery.login() : startLogin()) } : undefined;
-  const apiDeps = { storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, qm: o.qm ?? new QmStore(stackHome()), designReview: o.designReview ?? createDesignReview({ filer: ghIssueFiler() }), ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
+  const apiDeps = { storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, qm, designReview: o.designReview ?? createDesignReview({ filer: ghIssueFiler() }), ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
   const api = createApiHandler({ ...apiDeps, authorize: () => true });
   // Device self endpoints (push subscription) run as the device token through the auth-security hook; no owner list, so no session ever matches. @req FR:tailnet-access/gate.scope
   const auth = remoteAuth ? createAuth({ owners: [], tokens: remoteAuth.tokens, devices: remoteAuth.devices, vapidPublicKey: process.env.STACK_VAPID_PUBLIC_KEY?.trim() || undefined }) : undefined;
@@ -518,7 +523,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     port = (server.address() as { port: number }).port;
     for (const a of addrs) { const s = createServer(handler); servers.push(s); await listen(s, port, a); }
   } catch (e) {
-    await stopAll(); offPending?.(); offReports(); watcher.close();
+    await stopAll(); offPending?.(); offReports(); offQm(); unwatchQm(); watcher.close();
     throw e;
   }
   // @req FR:cli/web.batch.shutdown
@@ -528,6 +533,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     offPris();
     prPage?.prBoard.stop();
     offLive();
+    offQm(); unwatchQm();
     offDelivery?.();
     watcher.close();
     await deliveryLoop?.close();

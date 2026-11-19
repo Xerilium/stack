@@ -56,3 +56,36 @@ describe('QmStore', () => {
     expect(s.read().plan?.projects).toEqual([]);
   });
 });
+
+describe('QmStore live', () => {
+  // @req FR:qm-plan/live.event
+  it('tells onWrite listeners after a put, never on a failed put, and unhooks', () => {
+    const s = new QmStore(home()); let n = 0;
+    const off = s.onWrite(() => { n++; });
+    s.onWrite(() => { throw new Error('a listener never fails a write'); });
+    expect(() => s.put({ version: 1 })).toThrow(QmInvalid);
+    expect(n).toBe(0);
+    s.put(PLAN);
+    expect(n).toBe(1);
+    off(); s.put(PLAN);
+    expect(n).toBe(1);
+  });
+
+  // @req FR:qm-plan/live.event
+  it('watch hears a write by another process (another store) and stops', async () => {
+    const dir = home(); const s = new QmStore(dir); const seen: number[] = [];
+    // Node shares one stat poll per file: a second watcher hearing a write proves the first one would have heard it too.
+    const next = () => new Promise<void>((ok) => { const off = new QmStore(dir).watch(() => { off(); ok(); }, 20); });
+    const stop = s.watch((m) => seen.push(m), 20);
+    try {
+      const heard = next();
+      new QmStore(dir).put(PLAN);
+      await heard;
+      expect(seen).toEqual([statSync(s.file).mtimeMs]);
+    } finally { stop(); }
+    const heard = next();
+    new QmStore(dir).put({ ...PLAN, projects: [] });
+    await heard;
+    expect(seen).toHaveLength(1);
+  });
+});
