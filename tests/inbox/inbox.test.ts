@@ -1,8 +1,9 @@
 import { asksPath, parseAsk, putAsk } from '../../src/core/asks';
 import { ACTIONS, fromTriage, orderItems, requestAction, runAction } from '../../src/inbox';
+import { parseItems } from '../../src/inbox/store';
 import type { InboxItem } from '../../src/inbox';
 import { chatToAsk, slackUnread, teamsUnread, createChatGuard, ChatDenied } from '../../src/inbox';
-import { mailKey } from '../../src/email/to-ask';
+import { groupKey, mailKey, recordResult } from '../../src/email/to-ask';
 import type { TriageResult } from '../../src/email/types';
 import { mkCtx, msg } from '../email/fixtures';
 
@@ -82,6 +83,19 @@ describe('ask actions', () => {
     expect(a.snoozed).toContain('2026-11-01');
     await expect(runAction(fromTriage(res(), 'a'), { action: 'snooze' }, { ctx })).rejects.toThrow(/until/);
     expect(await runAction(fromTriage(res(), 'a'), { action: 'ask-me-later' }, { ctx })).toEqual({ ok: true });
+  });
+  // @req FR:email-triage/ask.group.resolve
+  it('acts on the grouped ask for a decide or sensitive mail; the item id stays per thread', async () => {
+    const { storage, ctx } = mkCtx();
+    const d = res({ class: 'needs_decision', options: ['A', 'B'] });
+    await recordResult(ctx, d);
+    const item = fromTriage(d, 'a');
+    expect(item).toMatchObject({ id: mailKey('conv-1'), askKey: groupKey(msg()) });
+    expect(fromTriage(res(), 'a').askKey).toBeUndefined();
+    // the stored item keeps its ask key; a bad one is dropped
+    expect(parseItems(JSON.parse(JSON.stringify([item, { ...item, askKey: '../x' }]))).map((i) => i.askKey)).toEqual([groupKey(msg()), undefined]);
+    await runAction(item, { action: 'mark-done' }, { ctx });
+    expect(parseAsk(groupKey(msg()), (await storage.read(asksPath(groupKey(msg())))).content).state).toBe('done');
   });
   it('create-task adds a task from the subject', async () => {
     const { ctx } = mkCtx();
