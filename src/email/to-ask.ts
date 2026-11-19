@@ -33,6 +33,7 @@ export const askKey = (r: TriageResult): string => (grouped(r) ? groupKey(r.mess
 /** The last detail line of a grouped ask: the mail count, and short ids of the threads it holds (a thread seen again never counts twice). */
 const MAILS = /^Mails: (\d+) \(([0-9a-f ]*)\)$/;
 const MAX_IDS = 50;
+const RANK: Record<AskPriority, number> = { low: 0, normal: 1, high: 2, crit: 3 };
 const threadId = (conversationId: string) => createHash('sha1').update(conversationId).digest('hex').slice(0, 8);
 function mailsOf(detail: string): { n: number; ids: string[] } {
   const hit = MAILS.exec(detail.split('\n').pop() ?? '');
@@ -108,7 +109,7 @@ export async function existingDraft(ctx: LifecycleContext, m: Message): Promise<
 /**
  * Writes the ask for a result; the same conversation twice updates one ask. A handled ask is left alone.
  * A grouped ask counts each new mail once, shows `(n mails)` and keeps the newest link; a new mail opens a handled one again.
- * @req FR:email-triage/ask.quiet @req FR:email-triage/ask.group @req FR:email-triage/ask.group.count @req FR:email-triage/ask.group.dedupe @req FR:email-triage/ask.group.reopen
+ * @req FR:email-triage/ask.quiet @req FR:email-triage/ask.group @req FR:email-triage/ask.group.count @req FR:email-triage/ask.group.dedupe @req FR:email-triage/ask.group.reopen @req FR:email-triage/ask.group.done @req FR:email-triage/ask.group.refresh @req FR:email-triage/ask.group.priority
  */
 export async function recordResult(ctx: LifecycleContext, r: TriageResult, opts: { project?: string } = {}): Promise<{ key: string; created: boolean } | null> {
   const input = toAsk(r, opts);
@@ -119,13 +120,17 @@ export async function recordResult(ctx: LifecycleContext, r: TriageResult, opts:
     const cur = (await readAsk(ctx, key))?.ask;
     const seen: { n: number; ids: string[] } = cur ? mailsOf(cur.detail) : { n: 0, ids: [] };
     const id = threadId(r.message.conversationId);
-    if (cur && seen.ids.includes(id)) return cur.state === 'done' ? null : { key, created: false };
-    // A handled group starts again at one mail; it keeps the threads it has seen, so none of them counts again.
-    const reopen = cur?.state === 'done';
-    const n = reopen ? 1 : Math.max(seen.n, cur ? 1 : 0) + 1;
-    const ids = [...seen.ids, id].slice(-MAX_IDS);
+    const listed = !!cur && seen.ids.includes(id);
+    // A handled group stays handled for a thread it lists; a new thread opens it again at one mail, keeping the listed threads.
+    if (listed && cur!.state === 'done') return null;
+    const reopen = !listed && cur?.state === 'done';
+    // A newer mail in a listed thread refreshes the ask but does not count again.
+    const n = reopen ? 1 : listed ? Math.max(seen.n, 1) : Math.max(seen.n, cur ? 1 : 0) + 1;
+    const ids = listed ? seen.ids : [...seen.ids, id].slice(-MAX_IDS);
     const suffix = n > 1 ? ` (${n} mails)` : '';
-    put = { ...input, ask: `${clip(input.ask!, 200 - suffix.length)}${suffix}`, detail: [input.detail, `Mails: ${n} (${ids.join(' ')})`].filter(Boolean).join('\n\n'), ...(reopen ? { reopen: true } : {}) };
+    // A routine copy never lowers the group's priority.
+    const priority = cur && cur.state !== 'done' && RANK[cur.priority] > RANK[input.priority ?? 'normal'] ? cur.priority : input.priority;
+    put = { ...input, ...(priority ? { priority } : {}), ask: `${clip(input.ask!, 200 - suffix.length)}${suffix}`, detail: [input.detail, `Mails: ${n} (${ids.join(' ')})`].filter(Boolean).join('\n\n'), ...(reopen ? { reopen: true } : {}) };
   }
   try { return await putAsk(ctx, key, put, ACTOR); }
   catch (e) { if (e instanceof ConflictError && /Ask is done/.test(e.message)) return null; throw e; }
@@ -136,9 +141,13 @@ export async function recordResult(ctx: LifecycleContext, r: TriageResult, opts:
  * sender and subject is resolved too. False when there was nothing to close. @req FR:email-triage/ask.resolve @req FR:email-triage/ask.group.resolve
  */
 export async function resolveAsk(ctx: LifecycleContext, m: Message): Promise<boolean> {
-  const keys = [mailKey(m.conversationId), ...(m.from?.address && typeof m.subject === 'string' ? [groupKey(m)] : [])];
-  let changed = false;
-  for (const key of keys) if (await resolveKey(ctx, key)) changed = true;
+  let changed = await resolveKey(ctx, mailKey(m.conversationId));
+  // Only a group that lists this thread: a reply elsewhere leaves the group's other mails open.
+  if (m.from?.address && typeof m.subject === 'string') {
+    const key = groupKey(m);
+    const a = (await readAsk(ctx, key))?.ask;
+    if (a && a.state !== 'done' && mailsOf(a.detail).ids.includes(threadId(m.conversationId)) && await resolveKey(ctx, key)) changed = true;
+  }
   return changed;
 }
 

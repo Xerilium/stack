@@ -40,6 +40,17 @@ describe('grouped decide asks', () => {
   });
 
   // @req FR:email-triage/ask.group.dedupe
+  // @req FR:email-triage/ask.group.refresh @req FR:email-triage/ask.group.priority
+  it('a newer mail in a listed thread refreshes the ask without counting again; priority never drops', async () => {
+    const { storage, ctx } = mkCtx();
+    const key = groupKey(decide('a').message);
+    await recordResult(ctx, { ...decide('a'), urgency: 2 });
+    await recordResult(ctx, decide('b'));
+    await recordResult(ctx, { ...decide('a', { id: 'a2', webLink: 'https://outlook.example.test/mail/id/a2' }), options: ['Remove the app', 'Keep it'] });
+    const a = await read(storage, key);
+    expect(a).toMatchObject({ ask: expect.stringMatching(/\(2 mails\)$/), options: ['Remove the app', 'Keep it'], link: 'https://outlook.example.test/mail/id/a2', priority: 'high' });
+  });
+
   it('the same mail seen again does not count twice', async () => {
     const { storage, ctx } = mkCtx();
     const key = groupKey(decide('a').message);
@@ -77,7 +88,7 @@ describe('grouped decide asks', () => {
     expect((await storage.listAsks!()).sort()).toEqual([asksPath(mailKey('conv-a')), asksPath(mailKey('conv-b'))].sort());
   });
 
-  // @req FR:email-triage/ask.group.reopen
+  // @req FR:email-triage/ask.group.reopen @req FR:email-triage/ask.group.done
   it('a handled group ask stays handled for a mail it has seen; a new mail opens it again at 1', async () => {
     const { storage, ctx } = mkCtx();
     const key = groupKey(decide('a').message);
@@ -96,9 +107,11 @@ describe('grouped decide asks', () => {
   });
 
   // @req FR:email-triage/ask.group.resolve
-  it('an owner reply in one of the threads resolves the group ask', async () => {
+  it('an owner reply in one of the threads resolves the group ask; a thread the group does not list leaves it open', async () => {
     const { storage, ctx } = mkCtx();
     await recordResult(ctx, decide('a'));
+    expect(await resolveAsk(ctx, decide('z').message)).toBe(false);
+    expect((await read(storage, groupKey(decide('a').message))).state).toBe('open');
     expect(await resolveAsk(ctx, decide('a').message)).toBe(true);
     expect((await read(storage, groupKey(decide('a').message))).state).toBe('done');
   });
