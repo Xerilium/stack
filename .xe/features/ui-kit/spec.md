@@ -45,7 +45,9 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 Owner needs every view to show the same placeholder while it loads so that he knows the content is on its way.
 
-- **FR:skeleton** (P2): `Skeleton` MUST show placeholder rows in a busy box (`aria-busy`), named `label`, and a status when `status` is set
+- **FR:skeleton** (P2): `Skeleton` MUST show placeholder rows in a busy box (`aria-busy`)
+  - **FR:skeleton.label** (P2): `Skeleton` MUST name the box `label` when `label` is set
+  - **FR:skeleton.status** (P2): `Skeleton` MUST announce the box as a status when `status` is set
   - **FR:skeleton.shape** (P3): `Skeleton` MUST take the shape of the content it stands for: rows, a list (`ol`), or lines of text
 
 ### FR:tabs: Tabs

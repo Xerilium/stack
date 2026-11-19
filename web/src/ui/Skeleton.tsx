@@ -3,10 +3,14 @@
  * `as` is the shape of the content it stands for: a block of rows (the box is `skeleton`), a list (`ol`), or lines of text.
  * For a list or lines, `class` is the view's list or pane class, so the rows sit where the content will.
  * @req FR:ui-kit/skeleton
+ * @req FR:ui-kit/skeleton.label
+ * @req FR:ui-kit/skeleton.status
  * @req FR:ui-kit/skeleton.shape
  * @owns class:sk
  * @owns class:skeleton
  */
+import './ui.css';
+
 export type SkeletonRow = '' | 'big' | 'short';
 
 export function Skeleton({ class: cls, rows, as = 'div', label, status = false, testId }: {

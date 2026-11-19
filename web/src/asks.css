@@ -113,9 +113,8 @@ a.btn.primary { color: #fff; }
 .asks-empty .big { margin: 0; font-size: 20px; font-weight: 650; color: var(--ink); letter-spacing: -.01em; }
 .asks-empty .sub { margin: 6px 0 0; font-size: 14px; }
 .asks-error { text-align: center; padding: 56px 16px; color: var(--ink2); }
-.sk { height: 44px; border-radius: 10px; background: linear-gradient(90deg, var(--chip), var(--hover), var(--chip)); background-size: 200% 100%; animation: sk 1.4s linear infinite; list-style: none; }
+.sk { height: 44px; }
 .sk.big { height: 196px; border-radius: 16px; margin-bottom: 8px; }
-@keyframes sk { to { background-position: -200% 0; } }
 @keyframes ask-in { from { opacity: 0; transform: translateY(6px); } }
 
 @media (max-width: 719px) {
@@ -160,7 +159,7 @@ a.btn.primary { color: #fff; }
   .banner { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ask-li.fresh, .asks-empty .tick-art, .sk { animation: none !important; }
+  .ask-li.fresh, .asks-empty .tick-art { animation: none !important; }
   .ask-li { transition: none; }
 }
 
