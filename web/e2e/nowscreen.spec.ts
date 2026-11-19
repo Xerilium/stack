@@ -26,7 +26,7 @@ test.describe('Now screen', () => {
     await page.screenshot({ path: `e2e/screenshots/now-${info.project.name}.png` });
   });
 
-  // @req FR:now-screen/now.action @req FR:now-screen/now.action.then @req FR:now-screen/now.action.none @req FR:pri-first-ranking/api.next
+  // @req FR:now-screen/now.action @req FR:now-screen/now.action.card @req FR:now-screen/now.action.then @req FR:now-screen/now.action.none @req FR:pri-first-ranking/api.next
   test('a priority action from GET /next is the one thing, as in stack next; the first task waits under it', async ({ page }) => {
     await ten(page);
     const m = await mockApi(page, { tasks: seed() });

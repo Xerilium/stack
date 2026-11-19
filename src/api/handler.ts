@@ -540,7 +540,7 @@ export const ROUTES: Route[] = [
     async run(c) {
       const q = readQuery(c.url, Object.keys(FIELDS_Q));
       const fields = parseFields(q.get('fields'), ['ref', 'text', 'project', 'score']) ?? ['ref', 'text', 'project', 'score'];
-      // The answer of `stack next`: the first priority action, and the first owner task. @req FR:pri-first-ranking/api.next @req FR:pri-first-ranking/api.next.one
+      // The answer of `stack next`: the first priority action, and the first owner task. @req FR:pri-first-ranking/api.next @req FR:pri-first-ranking/api.next.one @req FR:api/routes.next.action
       const { action: a, task: n } = await nextStep(c.life);
       return json(200, {
         task: n ? pick({ ref: formatRef(n.ref), text: n.text, project: n.project, score: n.score }, fields) : null,

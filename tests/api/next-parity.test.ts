@@ -1,5 +1,5 @@
 /** `GET /api/next` and `stack next` give one answer: the first priority action, else the first owner task. */
-/* @req FR:pri-first-ranking/api.next @req FR:pri-first-ranking/api.next.one @req FR:pri-first-ranking/api.next.owner @req FR:api/routes.next */
+/* @req FR:pri-first-ranking/api.next @req FR:pri-first-ranking/api.next.one @req FR:pri-first-ranking/api.next.owner @req FR:api/routes.next @req FR:api/routes.next.action */
 import { appendFileSync, cpSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

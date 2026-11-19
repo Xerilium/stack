@@ -20,7 +20,7 @@ export type NowAct = 'done' | 'defer';
 export type { Layer };
 export function NowScreen({ n: task, action = null, done = false, b, layer, busy, onAct, pri, send, cal, now, chat }: {
   n: NowTask | null;
-  /** The first priority action of `GET /next`: it shows in place of the task, as `stack next` prints it first. @req FR:now-screen/now.action */ action?: NextAction | null;
+  /** The first priority action of `GET /next`: it shows in place of the task, as `stack next` prints it first. @req FR:now-screen/now.action @req FR:now-screen/now.action.card */ action?: NextAction | null;
   /** Done just ran on this task: the card plays the check, then the next task replaces it. @req FR:product-reset/ui.done */ done?: boolean; b: Brief; layer: Layer; busy: boolean; onAct: (a: NowAct) => void;
   /** The message composer under the task. */ chat?: Omit<NowChatProps, 'taskRef' | 'busy'>;
   /** The priorities tables; null hides them (loading, or no store on this host). */ pri: PrioritiesView | null;
