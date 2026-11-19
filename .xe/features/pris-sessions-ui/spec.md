@@ -2,7 +2,7 @@
 id: pris-sessions-ui
 title: Priorities and Sessions UI
 author: flanakin
-description: "A Priorities page with the owner's priorities, and a Sessions page with the Claude sessions that wait on him, ranked by project, with a deep link each. The desktop tray shows the count. It updates by itself."
+description: "A Priorities block in Settings with the owner's priorities, and a Sessions page with the Claude sessions that wait on him, ranked by project, with a deep link each. The desktop tray shows the count. It updates by itself."
 dependencies: [session-inventory, ask-queue, web-shell, desktop-shell]
 ---
 
@@ -12,7 +12,7 @@ dependencies: [session-inventory, ask-queue, web-shell, desktop-shell]
 
 ## Purpose
 
-The owner has ordered priorities and hundreds of Claude sessions. He needs two answers: "what matters most" and "which session waits on me". The Priorities page shows his priorities. The Sessions page shows the sessions that wait on him or are stuck (`FR:notifications/pris.route`, `FR:notifications/sessions.route`). Each session opens in the Claude app with one tap. The desktop tray shows how many sessions need him, so he does not have to open the window.
+The owner has ordered priorities and hundreds of Claude sessions. He needs two answers: "what matters most" and "which session waits on me". The Priorities block in Settings shows his priorities, each with links to its context (`FR:settings/priorities.place`). The Sessions page shows the sessions that wait on him or are stuck (`FR:notifications/sessions.route`). Each session opens in the Claude app with one tap. The desktop tray shows how many sessions need him, so he does not have to open the window.
 
 ## Scope
 
@@ -25,11 +25,13 @@ The owner has ordered priorities and hundreds of Claude sessions. He needs two a
 
 The owner needs his priorities above everything else so that each ask is read against them.
 
-- **FR:pris.block** (P1): The Priorities page (`#/priorities`, `FR:notifications/pris.route`) shows the **Priorities** section. It lists the priorities in stored order, each with its number, title, status, item progress (`2/5`), and its first open item (`doing` before `todo`, else `blocked`). The first 5 priorities that are not `done` show; a `Show n more` button shows the rest. The section is absent when `GET /pris` returns `404`
+- **FR:pris.block** (P1): Settings (`#/settings/priorities`, `FR:settings/priorities.place`) shows the **Priorities** section. It lists the priorities in stored order, each with its number, title, status, item progress (`2/5`), and its first open item (`doing` before `todo`, else `blocked`). The first 5 priorities that are not `done` show; a `Show n more` button shows the rest. The section is absent when `GET /pris` returns `404`
 - **FR:pris.status** (P1): A priority status shows as a status chip (`FR:ui-kit/chip`) with a sentence-case word: `Active`, `Paused`, `Blocked`, `Done`. `Blocked` uses the warn tone; the others use the neutral tone. The status select in an open priority lists the same words, with no glyph. A session state uses the same chip markup and class (@req FR:pris-sessions-ui/sessions.row)
 - **FR:pris.item-status** (P1): An item status shows as a glyph and a word: todo `○`, doing `◐`, blocked `⛔`, done `✓`. The glyph and the word carry the status; `blocked` also uses the warning color
 - **FR:pris.expand** (P1): A tap on a priority opens it in place to show every item and the edit controls. One priority is open at a time; a second tap closes it. The toggle has `aria-expanded`
-- **FR:pris.edit** (P1): In an open priority the owner can edit the title, set the priority status, edit item text, set item status, add an item, remove an item, and move the priority up or down. Text edits start on a tap of the text, save on `Enter` or blur, and cancel on `Escape`. An add field also adds its text on blur. After Remove, focus goes to the add field of that priority. An empty or unchanged text saves nothing. With no priorities, the section shows `No priorities yet` and `Add priority`; `Add priority` is also at the end of the list
+- **FR:pris.edit** (P1): In an open priority the owner can edit the title, set the priority status, edit item text, set item status, add an item, remove an item, and move the priority up or down. Text edits start on a tap of the text or of its Rename control (`FR:pris-sessions-ui/pris.rename`), save on `Enter` or blur, and cancel on `Escape`. An add field also adds its text on blur. After Remove, focus goes to the add field of that priority. An empty or unchanged text saves nothing. With no priorities, the section shows `No priorities yet` and `Add priority`; `Add priority` is also at the end of the list
+- **FR:pris.rename** (P1): An open priority has a `Rename` button (name `Rename priority`). Each item has a `Rename` icon button (name `Rename item <text>`). Each opens the text field with the current text and focus in it. Choice: a tap on the text alone was not found
+- **FR:pris.context** (P1): An open priority shows one `Context` line of links, built by `contextOf(pri, report)` (pure) from the priorities report (`GET /priorities`). In order: each project task file of its report rows (`Tasks: <project>`, to `#/list?project=<file>`); the agent of its first report row with a link, else the priority `session` (`Agent: <name>` or `Agent session`, a `claude://claude.ai/epitaxy/<id>` link); each PR or issue link in its report actions; each report PR that links to it (`PR <n>: <next action>`, `FR:priorities-tables/pr.cols.pri`); each URL in its title or items. Each target shows once. Only links that pass `safeHref` show. Web links open in a new tab. With no link, the line is absent. The line uses the shared `LinkList` (`FR:ui-kit/links`)
 - **FR:pris.save** (P1): Each edit shows at once (optimistic) and sends `POST /pris` with the `rev` last read and the whole list. Success adopts the returned file. Edits made while one is in flight queue and go one after another
 - **FR:pris.conflict** (P1): On `409`, the page reads `GET /pris`, applies the same edit to the new list, and sends it once more. When that also fails, or the edit no longer applies (its priority or item is gone), the page shows the server list and the toast `Priorities changed elsewhere. Reloaded.`
 - **FR:pris.invalid** (P1): On `400` the page shows the last server list and the first issue as a toast. On a network error it shows the last server list and `Not saved: <message>`
@@ -62,14 +64,14 @@ The owner needs the sessions that wait on him in one place, with a way to open e
 
 ### NFR:a11y: Design and access
 
-- **NFR:a11y.axe** (P1): The Priorities and Sessions pages, with archive candidates open, have no axe violations (WCAG 2.2 AA tags, color contrast included) at 375 px and 1280 px, in light and dark
+- **NFR:a11y.axe** (P1): Settings with a priority open, and the Sessions page with archive candidates open, have no axe violations (WCAG 2.2 AA tags, color contrast included) at 375 px and 1280 px, in light and dark
 - **NFR:a11y.targets** (P1): Every control is at least 44 px tall on touch and at least 24 px on desktop. No horizontal scroll at 375 px
 - **NFR:a11y.keys** (P1): Every control works by keyboard with a visible focus ring. View keys (`j`, `k`, `z`, `r`, ...) do not fire while a priority text field has focus
 - **NFR:a11y.calm** (P2): Per `.xe/features/stack-app/design-principles.md`: neutral base, one accent, no red except blocked or stuck, no motion with `prefers-reduced-motion`
 
 ## Architecture Constraints
 
-- The web reads and writes only through `/api/pris` and `/api/session-inventory`; it never reads `~/.stack` itself
+- The web reads and writes only through `/api/pris`, `/api/priorities` (context links, read only) and `/api/session-inventory`; it never reads `~/.stack` itself
 - The shell reads the count over the host's loopback HTTP API; it adds no new IPC or preload
 
 ## Dependencies

@@ -1,7 +1,8 @@
 /**
- * The owner's Priorities (inline edit) and the Claude sessions that wait on him, each on its own page.
+ * The owner's Priorities (inline edit, a Settings section) and the Claude sessions that wait on him (the Sessions page).
  * @req FR:notifications/pris.route @req FR:notifications/sessions.route
  * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.item-status @req FR:pris-sessions-ui/pris.expand @req FR:pris-sessions-ui/pris.edit
+ * @req FR:pris-sessions-ui/pris.rename @req FR:pris-sessions-ui/pris.context @req FR:settings/priorities.place
  * @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.line @req FR:pris-sessions-ui/sessions.name @req FR:pris-sessions-ui/sessions.link @req FR:pris-sessions-ui/sessions.archive
  * @req NFR:pris-sessions-ui/a11y.targets @req NFR:pris-sessions-ui/a11y.keys @req NFR:pris-sessions-ui/a11y.calm @req NFR:pris-sessions-ui/a11y.axe
  */
@@ -9,7 +10,9 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { groupNeeds, idsText, PROJECT_LABEL, reasonText, rowLine, safeLink, sessionLabel, stateChip, ago, type SessionItem } from './inventory';
 import { Md } from './parts';
 import { StatusChip } from './ui/StatusChip';
-import { edits, ITEM_STATUS, LIMITS, nextItem, PRI_STATUS, progress, visiblePris, type ItemStatus, type Pri, type PriStatus } from './pris';
+import { contextOf, edits, ITEM_STATUS, LIMITS, nextItem, PRI_STATUS, progress, visiblePris, type ItemStatus, type Pri, type PriStatus } from './pris';
+import type { PrioritiesView } from './priorities';
+import { LinkList } from './ui/LinkList';
 import type { InventoryCtl, PrisCtl } from './usePrisSessions';
 import './pris-sessions.css';
 
@@ -17,7 +20,7 @@ import './pris-sessions.css';
  * A text that turns into a field on tap. Enter or blur saves, Escape cancels; the parent drops an empty or unchanged text.
  * @req FR:pris-sessions-ui/pris.edit
  */
-function InlineText({ value, label, editLabel, max, onSave, onEditing, cls, shown }: { value: string; label: string; editLabel: string; max: number; onSave: (t: string) => void; onEditing: (on: boolean) => void; cls: string; /** Button text when it is not the value itself. */ shown?: string }) {
+function InlineText({ value, label, editLabel, max, onSave, onEditing, cls, shown, opener }: { value: string; label: string; editLabel: string; max: number; onSave: (t: string) => void; onEditing: (on: boolean) => void; cls: string; /** Button text when it is not the value itself. */ shown?: string; /** Gets the function that opens the field, for a Rename control beside it. */ opener?: { current: (() => void) | null } }) {
   const [on, setOn] = useState(false);
   const [text, setText] = useState(value);
   // Enter or Escape closes first; the blur that follows the unmount must not save again.
@@ -25,7 +28,9 @@ function InlineText({ value, label, editLabel, max, onSave, onEditing, cls, show
   // A field that unmounts while open (the list re-renders) must not leave re-reads paused.
   useEffect(() => () => { if (live.current) { live.current = false; onEditing(false); } }, []);
   const close = (save: boolean) => { if (!live.current) return; live.current = false; setOn(false); onEditing(false); if (save) onSave(text); };
-  if (!on) return <button type="button" class={`inline-text ${cls}`} aria-label={editLabel} onClick={() => { setText(value); live.current = true; setOn(true); onEditing(true); }}>{shown ?? value}</button>;
+  const start = () => { setText(value); live.current = true; setOn(true); onEditing(true); };
+  if (opener) opener.current = start;
+  if (!on) return <button type="button" class={`inline-text ${cls}`} aria-label={editLabel} onClick={start}>{shown ?? value}</button>;
   return (
     <input class={`inline-input ${cls}`} type="text" value={text} maxLength={max} aria-label={label}
       ref={(el) => { if (el && document.activeElement !== el) el.focus(); }}
@@ -67,7 +72,23 @@ function StatusSelect<S extends string>({ value, label, words, glyphs = true, on
   );
 }
 
-function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /** Ids on screen, in order: Up and Down move among these. */ ids: string[]; open: boolean; onToggle: () => void; ctl: PrisCtl }) {
+/** One item: its text (tap to edit), an explicit Rename, its status, and Remove. @req FR:pris-sessions-ui/pris.edit @req FR:pris-sessions-ui/pris.rename */
+function PriItemRow({ pri, it, i, ctl }: { pri: Pri; it: Pri['items'][number]; i: number; ctl: PrisCtl }) {
+  const rename = useRef<(() => void) | null>(null);
+  return (
+    <li class="pri-item" data-status={it.status}>
+      <span class={`item-glyph${ITEM_STATUS[it.status].warn ? ' warn' : ''}`} aria-hidden="true">{ITEM_STATUS[it.status].glyph}</span>
+      <InlineText cls={`item-text${it.status === 'done' ? ' done' : ''}`} value={it.text} label="Item text" editLabel={`Edit item ${it.text}`} max={LIMITS.item} opener={rename} onEditing={ctl.setEditing} onSave={(t) => ctl.apply(edits.itemText(pri.id, i, it.text, t))} />
+      <button type="button" class="icon-btn" aria-label={`Rename item ${it.text}`} title="Rename" onClick={() => rename.current?.()}>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Zm10-14 4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>
+      </button>
+      <StatusSelect<ItemStatus> value={it.status} label={`Status of item ${it.text}`} words={ITEM_STATUS} onChange={(s) => ctl.apply(edits.itemStatus(pri.id, i, it.text, s))} />
+      <button type="button" class="icon-btn" aria-label={`Remove item ${it.text}`} title="Remove" onClick={(e) => { const li = (e.currentTarget as HTMLElement).closest('.pri'); ctl.apply(edits.removeItem(pri.id, i, it.text)); setTimeout(() => (li?.querySelector<HTMLElement>('.add-line') ?? li?.querySelector<HTMLElement>('.pri-toggle'))?.focus(), 0); }}>×</button>
+    </li>
+  );
+}
+
+function PriRow({ pri, n, ids, open, onToggle, ctl, report }: { pri: Pri; n: number; /** Ids on screen, in order: Up and Down move among these. */ ids: string[]; open: boolean; onToggle: () => void; ctl: PrisCtl; /** The priorities report, for the context links. */ report: PrioritiesView | null }) {
   const st = PRI_STATUS[pri.status];
   const pr = progress(pri);
   const next = nextItem(pri);
@@ -87,19 +108,14 @@ function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /**
       </button>
       {open && (
         <div class="pri-panel" id={panel}>
+          {/* @req FR:pris-sessions-ui/pris.context */}
+          <LinkList label="Context" items={contextOf(pri, report)} />
           <div class="pri-edit-row">
             <InlineText cls="pri-title-edit" shown="Rename" value={pri.title} label="Priority title" editLabel="Rename priority" max={LIMITS.title} onEditing={ctl.setEditing} onSave={(t) => ctl.apply(edits.title(pri.id, t))} />
             <StatusSelect<PriStatus> value={pri.status} label={`Status of ${pri.title}`} words={PRI_STATUS} glyphs={false} onChange={(s) => ctl.apply(edits.status(pri.id, s))} />
           </div>
           <ul class="pri-items">
-            {pri.items.map((it, i) => (
-              <li class="pri-item" key={`${i}:${it.text}`} data-status={it.status}>
-                <span class={`item-glyph${ITEM_STATUS[it.status].warn ? ' warn' : ''}`} aria-hidden="true">{ITEM_STATUS[it.status].glyph}</span>
-                <InlineText cls={`item-text${it.status === 'done' ? ' done' : ''}`} value={it.text} label="Item text" editLabel={`Edit item ${it.text}`} max={LIMITS.item} onEditing={ctl.setEditing} onSave={(t) => ctl.apply(edits.itemText(pri.id, i, it.text, t))} />
-                <StatusSelect<ItemStatus> value={it.status} label={`Status of item ${it.text}`} words={ITEM_STATUS} onChange={(s) => ctl.apply(edits.itemStatus(pri.id, i, it.text, s))} />
-                <button type="button" class="icon-btn" aria-label={`Remove item ${it.text}`} title="Remove" onClick={(e) => { const li = (e.currentTarget as HTMLElement).closest('.pri'); ctl.apply(edits.removeItem(pri.id, i, it.text)); setTimeout(() => (li?.querySelector<HTMLElement>('.add-line') ?? li?.querySelector<HTMLElement>('.pri-toggle'))?.focus(), 0); }}>×</button>
-              </li>
-            ))}
+            {pri.items.map((it, i) => <PriItemRow key={`${i}:${it.text}`} pri={pri} it={it} i={i} ctl={ctl} />)}
           </ul>
           {pri.items.length < LIMITS.items && <AddLine label="New item" placeholder="Add item" max={LIMITS.item} onEditing={ctl.setEditing} onAdd={(t) => ctl.apply(edits.addItem(pri.id, t))} />}
           <div class="pri-move">
@@ -113,7 +129,7 @@ function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /**
 }
 
 /**
- * What a Priorities or Sessions page shows while its data is not ready: loading, failed, or not on this host.
+ * What the Sessions page shows while its data is not ready: loading, failed, or not on this host.
  * @req FR:notifications/pris.states
  */
 export function PageNote({ phase, what }: { phase: 'loading' | 'ready' | 'absent' | 'error'; what: string }) {
@@ -123,8 +139,8 @@ export function PageNote({ phase, what }: { phase: 'loading' | 'ready' | 'absent
   return null;
 }
 
-/** `bare` drops the section heading: the page heading (`#page-h`) names it. @req FR:pris-sessions-ui/pris.block */
-export function PrisBlock({ ctl, bare = false }: { ctl: PrisCtl; bare?: boolean }) {
+/** `labelledBy` drops the section heading: the heading with that id names it (the Settings section). @req FR:pris-sessions-ui/pris.block */
+export function PrisBlock({ ctl, labelledBy, report = null }: { ctl: PrisCtl; labelledBy?: string; /** The priorities report, for the context links. */ report?: PrioritiesView | null }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -132,12 +148,12 @@ export function PrisBlock({ ctl, bare = false }: { ctl: PrisCtl; bare?: boolean 
   const { shown, more } = visiblePris(ctl.pris, showAll);
   const canAdd = ctl.pris.length < LIMITS.pris;
   return (
-    <section class="pris" data-testid="pris" aria-labelledby={bare ? 'page-h' : 'pris-h'}>
-      {!bare && <h2 class="pris-h" id="pris-h">Priorities</h2>}
+    <section class="pris" data-testid="pris" aria-labelledby={labelledBy ?? 'pris-h'}>
+      {!labelledBy && <h2 class="pris-h" id="pris-h">Priorities</h2>}
       {ctl.pris.length === 0 && <p class="pris-empty">No priorities yet</p>}
       {shown.length > 0 && (
         <ol class="pri-list">
-          {shown.map(({ n, pri }) => <PriRow key={pri.id} pri={pri} n={n} ids={shown.map((x) => x.pri.id)} open={openId === pri.id} onToggle={() => setOpenId(openId === pri.id ? null : pri.id)} ctl={ctl} />)}
+          {shown.map(({ n, pri }) => <PriRow key={pri.id} pri={pri} n={n} ids={shown.map((x) => x.pri.id)} open={openId === pri.id} onToggle={() => setOpenId(openId === pri.id ? null : pri.id)} ctl={ctl} report={report} />)}
         </ol>
       )}
       <div class="pris-foot">

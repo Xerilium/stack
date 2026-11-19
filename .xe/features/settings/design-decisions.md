@@ -56,3 +56,17 @@
 **Rejected**:
 
 - _Add `User.Read` or `Prefer: outlook.timezone`._ Neither changes a call that fails before Exchange answers, and the other app's token has `User.Read` and fails too.
+
+## Priorities is a Settings section, not a page
+
+**Date**: 2026-11-19
+
+**Decision**: The Priorities list (`pris.json`) is the second section of Settings. The rail has no Priorities item. `#/priorities` opens `#/settings/priorities`. Each open priority shows a `Context` line of links and explicit Rename controls.
+
+**Why**: The owner said the page had no clear purpose and its list had no context or links. The list is set once and then ranks tasks and the Now report, so it is a setting. The Now report already shows the day view of the same priorities.
+
+**Rejected**:
+
+- _Keep the page and add a summary line._ It still takes a rail slot for a list he changes rarely.
+- _A new host route for the links._ `GET /priorities` already links each priority to its project file, agent and PRs; one new field (`pri` on a PR row) was enough.
+- _Rename in a `⋯` menu._ One more tap for the most common edit; a labelled button and an icon button are direct.

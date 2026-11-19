@@ -3,8 +3,8 @@
  * @req FR:settings/view.route @req FR:settings/agents.state @req FR:settings/agents.off @req FR:connect-accounts/web.label
  */
 
-export type SettingsSection = 'accounts' | 'agents' | 'updates';
-const SECTIONS: readonly SettingsSection[] = ['accounts', 'agents', 'updates'];
+export type SettingsSection = 'accounts' | 'priorities' | 'agents' | 'updates';
+const SECTIONS: readonly SettingsSection[] = ['accounts', 'priorities', 'agents', 'updates'];
 
 /** The section `#/settings/<section>` names, or null. @req FR:settings/view.route */
 export function settingsSection(hash: string): SettingsSection | null {

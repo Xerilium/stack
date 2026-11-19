@@ -38,7 +38,7 @@ Where this spec and `web-shell` or `cos-view` disagree on the nav, this spec win
 
 ### FR:nav: One nav
 
-- **FR:nav.rail** (P1): The desktop rail lists, in order: New task, Now, My day, Notifications (count badge), Priorities, Pull requests, Inbox, Agents, Projects, Full stack (`FR:notifications/nav.rail`). No `Experimental` tag
+- **FR:nav.rail** (P1): The desktop rail lists, in order: New task, Now, My day, Notifications (count badge), Pull requests, Inbox, Agents, Projects, Full stack (`FR:notifications/nav.rail`). No `Experimental` tag
 - **FR:nav.tabbar** (P1): The phone tab bar: Now, My day, New task (centre), Notifications (count badge), More (`FR:notifications/nav.tabbar`)
 - **FR:nav.brief** (P1): The Brief view is gone: no rail entry, no tab, no `g b`, no palette entry. `#/brief` opens Now. The web AI summary section is gone with it; the server route `GET /brief/summary` is unchanged
 - **FR:nav.home** (P1): Home stays at `#/home` and `g h`, named `Top asks` in the palette (`Go to Top asks`). It is not in the rail or the tab bar

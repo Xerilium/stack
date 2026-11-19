@@ -1,7 +1,8 @@
 /**
- * Settings: the one place for things the owner sets once. Accounts first, then Agents delivery, then Updates.
+ * Settings: the one place for things the owner sets once. Accounts first, then Priorities, Agents delivery, then Updates.
  * Fluent 2 (`.fl`); one line of summary per section; no empty sections.
  * @req FR:settings/view.route @req FR:settings/view.sections @req FR:settings/view.fit
+ * @req FR:settings/priorities.place @req FR:settings/priorities.absent @req FR:settings/priorities.states
  * @req FR:settings/agents.state @req FR:settings/agents.off @req FR:settings/updates.modes @req FR:settings/updates.builds @req FR:settings/updates.none
  * @req FR:connect-accounts/web.where @req FR:connect-accounts/web.learn
  */
@@ -9,7 +10,10 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { CalendarLink, type CalCtl } from './CalendarLink';
 import { ConnectAccounts } from './ConnectAccounts';
 import { LEARN_TEXT, READ_TEXT, type ConnectApi } from './connect';
+import type { PrioritiesView } from './priorities';
+import { PrisBlock } from './PrisSessions';
 import { agentsLines, settingsSection, type DeliverySummary } from './settings';
+import type { PrisCtl } from './usePrisSessions';
 import { MODE_WORDS, UPDATE_MODES, type BuildStamp, type UpdateMode, type VersionState } from './update';
 import './settings.css';
 
@@ -93,14 +97,20 @@ function Updates({ u }: { u: SettingsUpdates }) {
   );
 }
 
-export function SettingsView({ api, cal, updates, onAccounts, now }: { api: SettingsApi; cal: CalCtl; updates: SettingsUpdates; onAccounts?: () => void; now: Date }) {
+/** The owner's priorities and the report that gives each one its context links. */
+export interface SettingsPriorities { ctl: PrisCtl; report: PrioritiesView | null }
+export const PRIORITIES_SUMMARY = 'Your goals, in order. They rank your tasks and the Now report.';
+
+export function SettingsView({ api, cal, updates, onAccounts, now, priorities }: { api: SettingsApi; cal: CalCtl; updates: SettingsUpdates; onAccounts?: () => void; now: Date; priorities?: SettingsPriorities }) {
+  const priPhase = priorities?.ctl.phase ?? 'absent';
   // `#/settings/<section>` scrolls to it: on open, and when the hash moves while Settings stays open (back, forward). @req FR:settings/view.route
   useEffect(() => {
     const go = () => { const s = settingsSection(location.hash); if (s) document.getElementById(`settings-${s}`)?.scrollIntoView?.({ block: 'start' }); };
     go();
     window.addEventListener('hashchange', go);
     return () => window.removeEventListener('hashchange', go);
-  }, []);
+    // The Priorities section mounts after its first read: scroll to it then.
+  }, [priPhase === 'absent']);
   return (
     <div class="settings fl" data-testid="settings">
       <h1 class="set-title">Settings</h1>
@@ -109,6 +119,16 @@ export function SettingsView({ api, cal, updates, onAccounts, now }: { api: Sett
         <p class="set-sum">{READ_TEXT} <LearnMore /></p>
         <ConnectAccounts api={api} now={now} {...(onAccounts ? { onChange: onAccounts } : {})} refresh={cal.source} onRetry={cal.onCheck} other={<CalendarLink cal={cal} />} />
       </section>
+      {/* No store on this host: no section. @req FR:settings/priorities.absent */}
+      {priorities && priPhase !== 'absent' && (
+        <section id="settings-priorities" class="set-sec" aria-labelledby="set-h-priorities">
+          <h2 id="set-h-priorities">Priorities</h2>
+          <p class="set-sum">{PRIORITIES_SUMMARY}</p>
+          {priPhase === 'loading' && <p class="set-note" role="status">Loading…</p>}
+          {priPhase === 'error' && <p class="set-note" role="alert">Cannot load priorities. It tries again by itself.</p>}
+          <PrisBlock ctl={priorities.ctl} report={priorities.report} labelledBy="set-h-priorities" />
+        </section>
+      )}
       <section id="settings-agents" class="set-sec" aria-labelledby="set-h-agents">
         <h2 id="set-h-agents">Agents</h2>
         <p class="set-sum">Agents answer your messages in task threads.</p>

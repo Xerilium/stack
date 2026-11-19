@@ -1,6 +1,6 @@
 /**
  * Notifications: a bell nav item with a count, one page of only the things to act on.
- * Priorities gets its own page; Sessions sits in More (the palette).
+ * Priorities lives in Settings; Sessions sits in More (the palette).
  * @req FR:notifications/list.route @req FR:notifications/list.what @req FR:notifications/list.not @req FR:notifications/list.empty @req FR:notifications/list.words
  * @req FR:notifications/bell.item @req FR:notifications/bell.count @req FR:notifications/pris.route
  * @req FR:notifications/sessions.route @req FR:notifications/sessions.more @req FR:notifications/nav.rail @req FR:notifications/nav.tabbar
@@ -78,13 +78,18 @@ test.describe('Notifications', () => {
 });
 
 test.describe('Priorities and Sessions', () => {
-  test('Priorities has its own page', async ({ page }, info) => {
+  // @req FR:notifications/pris.route @req FR:settings/priorities.place
+  test('Priorities is a Settings section: the old address and the palette open it', async ({ page }) => {
     await setup(page);
+    await page.goto('/#/priorities');
+    await expect(page).toHaveURL(/#\/settings\/priorities$/);
+    await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Priorities', level: 2 })).toBeVisible();
     await page.goto('/#/now');
-    if (info.project.name !== 'mobile') await page.locator('.rail').getByRole('button', { name: /^Priorities/ }).click();
-    else await page.goto('/#/priorities');
-    await expect(page).toHaveURL(/#\/priorities$/);
-    await expect(page.getByRole('heading', { name: 'Priorities', level: 1 })).toBeVisible();
+    await page.keyboard.press('Control+k');
+    await page.getByRole('option', { name: /Go to Priorities/ }).click();
+    await expect(page).toHaveURL(/#\/settings\/priorities$/);
+    await expect(page.getByRole('heading', { name: 'Priorities', level: 2 })).toBeVisible();
     await expect(page.locator('.pri[data-id="p1"]')).toContainText('Quota-maxxing');
     await expect(page.locator('.ask-li')).toHaveCount(0);
     expect((await axe(page)).violations).toEqual([]);
@@ -123,7 +128,8 @@ test.describe('Priorities and Sessions', () => {
       await expect(page.locator('.tabbar .tab')).toHaveText([/Now/, /My day/, '', /Notifications/, /More/]);
       return;
     }
-    await expect(page.locator('.rail .tab-label')).toContainText(['Now', 'My day', /Notifications/, 'Priorities']);
+    await expect(page.locator('.rail .tab-label')).toContainText(['Now', 'My day', /Notifications/]);
+    await expect(page.locator('.rail').getByRole('button', { name: /^Priorities/ })).toHaveCount(0);
     await expect(page.locator('.rail').getByRole('button', { name: /^Sessions/ })).toHaveCount(0);
   });
 });

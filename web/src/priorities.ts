@@ -9,7 +9,7 @@ export interface Agent { name: string; link: string | null; file: string | null;
 export interface PriRow { id: string; project: string; file: string | null; agent: Agent | null; more: number; status: AgentStatus | null; action: string; gap: boolean; /** Gap rows: the CoS who must add the task, and the text to send to it. */ cos: Agent | null; request: string | null; ref: string | null; at: string; stale: boolean }
 export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string; today: boolean }
-export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; action: string; minutes: number; server: string | null; details: string | null }
+export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; /** The priority the PR links to. @req FR:priorities-tables/pr.cols.pri */ pri?: string | null; action: string; minutes: number; server: string | null; details: string | null }
 export interface PrTable { at: string; stale: boolean; verified: boolean; manager: Agent | null; rows: PrRow[] }
 export interface PrioritiesView { at: string; timeZone?: string; qm: QmTable | null; now: PriTable; prs: PrTable; today: PriTable; next: PriTable }
 

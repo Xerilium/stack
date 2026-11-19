@@ -2,10 +2,12 @@
 id: settings
 title: Settings
 author: flanakin
-description: "One view for accounts, agent delivery and updates. Work views never manage them."
+description: "One view for accounts, priorities, agent delivery and updates. Work views never manage them."
 dependencies:
   [
     connect-accounts,
+    pris-sessions-ui,
+    priorities-tables,
     agent-delivery,
     devops-installer,
     web-shell,
@@ -19,11 +21,11 @@ dependencies:
 
 ## Purpose
 
-The owner has 6 Microsoft accounts. He wants to see all of them, and their state, on one screen. Now is for the next thing to do, not for setup. Settings is the one place for accounts, agent delivery and updates. Other views show at most one quiet line that links here.
+The owner has 6 Microsoft accounts. He wants to see all of them, and their state, on one screen. Now is for the next thing to do, not for setup. Settings is the one place for accounts, priorities, agent delivery and updates. Other views show at most one quiet line that links here.
 
 ## Scope
 
-- In: the Settings view and its entry points, the Accounts section (`FR:connect-accounts/web.*`), Agents delivery, Updates.
+- In: the Settings view and its entry points, the Accounts section (`FR:connect-accounts/web.*`), the Priorities section, Agents delivery, Updates.
 - Later (not built): a Notifications section. Until it exists, Settings shows no empty section and no placeholder.
 
 ## Architecture Constraints
@@ -38,10 +40,19 @@ The owner has 6 Microsoft accounts. He wants to see all of them, and their state
 
 The owner needs one place to set things up, so the views that do work stay small.
 
-- **FR:view.route** (P1): `#/settings` opens Settings. `#/settings/accounts`, `#/settings/agents` and `#/settings/updates` open it scrolled to that section, also when the hash changes while Settings is open.
+- **FR:view.route** (P1): `#/settings` opens Settings. `#/settings/accounts`, `#/settings/priorities`, `#/settings/agents` and `#/settings/updates` open it scrolled to that section, also when the hash changes while Settings is open.
 - **FR:view.entry** (P1): The desktop rail footer has a `Settings` item with a gear icon, above `Commands`. On a phone, `More` opens the command palette, which has `Go to Settings`. The chord is `g ,`.
-- **FR:view.sections** (P1): Sections, in order: `Accounts`, `Agents`, `Updates`. Each is an `h2` with a one-line summary under it. Accounts is first.
+- **FR:view.sections** (P1): Sections, in order: `Accounts`, `Priorities`, `Agents`, `Updates`. Each is an `h2` with a one-line summary under it. Accounts is first.
 - **FR:view.fit** (P1): At 375 px and at 1280 px wide the view has no horizontal scroll. Touch targets are 44 px high on touch screens. axe finds no violations in light or dark.
+
+### FR:priorities: Priorities
+
+The owner sets his priorities once and changes them rarely, so the list is a setting, not a work page.
+
+- **FR:priorities.place** (P1): The `Priorities` section shows the Priorities block (`FR:pris-sessions-ui/pris.*`) with its context links (`FR:pris-sessions-ui/pris.context`). The summary says what the list does: `Your goals, in order. They rank your tasks and the Now report.`
+- **FR:priorities.absent** (P1): When `GET /pris` is 404 (no priority store on this host), Settings shows no Priorities section.
+- **FR:priorities.states** (P1): Until the first answer the section says `Loading…`. A failed first read says `Cannot load priorities. It tries again by itself.`
+- **FR:priorities.live** (P1): Settings reads `GET /pris` and `GET /priorities` only while it is open.
 
 ### FR:agents: Agents delivery
 
@@ -62,7 +73,7 @@ The owner needs to pick when updates install from Settings, so he does not wait 
 ## Data Model
 
 - **Delivery summary**: `{mode: claude|off, login: ok|expired|unknown}`.
-- **Section**: `accounts`, `agents` or `updates`, from `#/settings/<section>`.
+- **Section**: `accounts`, `priorities`, `agents` or `updates`, from `#/settings/<section>`.
 
 ## External Dependencies
 
@@ -70,4 +81,4 @@ The owner needs to pick when updates install from Settings, so he does not wait 
 
 ## Dependencies
 
-- connect-accounts (the Accounts section), agent-delivery (delivery summary and Claude sign-in), devops-installer (update modes and restart), web-shell (nav and chords), task-detail-design (design rules).
+- connect-accounts (the Accounts section), pris-sessions-ui (the Priorities block), priorities-tables (the context links), agent-delivery (delivery summary and Claude sign-in), devops-installer (update modes and restart), web-shell (nav and chords), task-detail-design (design rules).

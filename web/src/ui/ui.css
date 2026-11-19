@@ -111,3 +111,9 @@
 .ui-grid .ui-grid-now { position: absolute; left: calc(var(--ui-gutter) - 4px); right: 0; top: calc(var(--top) * var(--ui-slot)); height: 0; margin: 0; border-top: 1px solid var(--accent); pointer-events: none; z-index: 2; }
 .ui-grid .ui-grid-now::before { content: ''; position: absolute; left: -3px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 @media (max-width: 800px), (hover: none) { .ui-grid { --ui-slot: 112px; --ui-gutter: 44px; } .ui-slot-when { padding-right: 6px; } }
+/* Link list: a muted label, then links that wrap. @req FR:ui-kit/links */
+.ui-links { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; margin: 0; font-size: 13px; line-height: 20px; }
+.ui-links-h { color: var(--ink2); font-size: 12px; font-weight: 600; }
+.ui-links a { display: inline-flex; align-items: center; min-height: 24px; color: var(--accent); overflow-wrap: anywhere; }
+.ui-links a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--fl-r-sm); }
+@media (pointer: coarse), (max-width: 719px) { .ui-links a { min-height: var(--tap); } }

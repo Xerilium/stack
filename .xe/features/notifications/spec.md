@@ -2,7 +2,7 @@
 id: notifications
 title: Notifications
 author: flanakin
-description: "Needs you becomes Notifications: a bell nav item with a count and one page of only the things that need action. Priorities gets its own page; Sessions moves to More."
+description: "Needs you becomes Notifications: a bell nav item with a count and one page of only the things that need action. Priorities lives in Settings; Sessions moves to More."
 dependencies:
   [product-reset, ux-consolidation, ask-queue, pris-sessions-ui, web-shell]
 ---
@@ -13,7 +13,7 @@ dependencies:
 
 ## Purpose
 
-Needs you mixes three things: Priorities, the asks, and the Claude session inventory (issue [152](https://github.com/Xerilium/stack/issues/152), section B). The owner wants one list of things that ask him to act, with a count he sees from anywhere. Priorities stays, on its own page. Sessions stays, behind More.
+Needs you mixes three things: Priorities, the asks, and the Claude session inventory (issue [152](https://github.com/Xerilium/stack/issues/152), section B). The owner wants one list of things that ask him to act, with a count he sees from anywhere. Priorities stays, as a section of Settings (`FR:settings/priorities.place`). Sessions stays, behind More.
 
 This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:product-reset/ia.notifications` on the current ask list. Stage 9 of `product-reset` later adds the `AskCard` brief and the mail, needs-context, and stale items. Where this spec and `pris-sessions-ui`, `ux-consolidation`, or `web-shell` disagree on placement, this spec wins. Behavior inside the moved blocks does not change.
 
@@ -33,11 +33,11 @@ This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:p
 - **FR:bell.item** (P1): Notifications is a nav item in the desktop rail and the phone tab bar (`FR:nav.rail`, `FR:nav.tabbar`). It shows a bell icon and the label `Notifications`
 - **FR:bell.count** (P1): The item shows a count badge with the number of open notifications (`FR:list.what`), the expired sign-in included. The badge is absent at 0. The accessible name includes the count (`Notifications, 3 open`)
 
-### FR:pris: Priorities page
+### FR:pris: Priorities in Settings
 
-- **FR:pris.route** (P1): `#/priorities` opens the page, heading `Priorities`, with the Priorities block of `FR:pris-sessions-ui/pris.block`. Its behavior does not change (expand, inline edit, save, conflict, live re-read). The palette says `Go to Priorities`
+- **FR:pris.route** (P1): There is no Priorities page. The old address `#/priorities` opens `#/settings/priorities` and the address changes to match. The palette says `Go to Priorities` and opens the same section. Choice: the owner sets the list once; as a page it had no clear purpose
 
-- **FR:pris.states** (P1): While its data loads, the Priorities or Sessions page says `Loading priorities…` or `Loading sessions…`. A failed read says `Cannot load priorities.` (or sessions) and that it tries again by itself. A host without the store says `Priorities are not on this host.` (or Sessions)
+- **FR:pris.states** (P1): While its data loads, the Sessions page says `Loading sessions…`. A failed read says `Cannot load sessions.` and that it tries again by itself. A host without the store says `Sessions are not on this host.` The Priorities states are `FR:settings/priorities.states`
 
 ### FR:sessions: Sessions in More
 
@@ -46,12 +46,12 @@ This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:p
 
 ### FR:nav: Nav order
 
-- **FR:nav.rail** (P1): The desktop rail: New task, Now, My day, Notifications, Priorities, Pull requests, Inbox, Agents, Projects, Full stack. Settings, Commands, and Shortcuts stay at the bottom. `product-reset` Stage 6 replaces Inbox, Projects, and Full stack
-- **FR:nav.tabbar** (P1): The phone tab bar: Now, My day, New task (centre), Notifications, More (`FR:product-reset/ia.nav`). More holds Priorities, Pull requests, Inbox, Agents, Projects, Full stack, and Sessions
+- **FR:nav.rail** (P1): The desktop rail: New task, Now, My day, Notifications, Pull requests, Inbox, Agents, Projects, Full stack. Settings, Commands, and Shortcuts stay at the bottom. `product-reset` Stage 6 replaces Inbox, Projects, and Full stack
+- **FR:nav.tabbar** (P1): The phone tab bar: Now, My day, New task (centre), Notifications, More (`FR:product-reset/ia.nav`). More holds Pull requests, Inbox, Agents, Projects, Full stack, Sessions, and Priorities (in Settings)
 
 ## Non-functional
 
-- **NFR:a11y.axe** (P1): Notifications, Priorities, and Sessions have no axe violations (WCAG 2.2 AA) at 375 px and 1280 px
+- **NFR:a11y.axe** (P1): Notifications, Sessions, and Settings with Priorities have no axe violations (WCAG 2.2 AA) at 375 px and 1280 px
 - **NFR:calm** (P1): The count badge uses the accent color, never red
 
 ## Dependencies

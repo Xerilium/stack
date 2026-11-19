@@ -110,6 +110,7 @@ Owner needs one PR table, quickest first, so that he clears PRs in short gaps.
   - **FR:pr.cols.time** (P1): Time MUST be the minutes the owner needs: 5 for promote, approve and sign off, 10 for publish review, 15 for live validate, plus 1 for each 20 changed spec lines.
   - **FR:pr.cols.agent** (P1): Agent MUST be the session of the priority the PR links to, else the agent of that priority's project row, else `--`.
   - **FR:pr.cols.emoji** (P1): Repo emoji MUST come from the repo name: 🏦 finops-hubs, 🧰 finops-toolkit, 👓 FOCUS_Spec, 🎧 f4-music, 🖨️ printer, 🥞 stack, ⚛️ catalyst, 🌐 allyte-web, 🏭 prime; else none.
+  - **FR:pr.cols.pri** (P1): A PR row MUST name the priority the PR links to (`pri`: its id, or null), so that Settings can list the PRs of a priority (`FR:pris-sessions-ui/pris.context`).
   - **FR:pr.cols.live** (P1): A live validate row MUST link the test server and the details (agent thread or comment): `Live: [server](url), [details](url)`.
 - **FR:pr.order** (P1): Report MUST sort PR rows by Time, then the board order.
 - **FR:pr.manager** (P1): Report MUST link the Sweep Manager session (title contains `Sweep Manager`) above the PR table, when the inventory has one.
@@ -143,7 +144,7 @@ Agents need the same rows in JSON so that they report the owner's priorities wit
 
 Owner needs the report on the Now page so that he sees it without a new screen.
 
-- **FR:web.place** (P1): Now MUST show the report in place of the Waiting on you block, with no new nav item, rail item or card (the Priorities page item is `FR:notifications/nav.rail`).
+- **FR:web.place** (P1): Now MUST show the report in place of the Waiting on you block, with no new nav item, rail item or card.
 - **FR:web.tabs** (P1): Now MUST show the sections as tabs, one table at a time, in this order: QM (when the list has one), **Now**, **PRs**, **Today**, **Next 3 days**.
   - **FR:web.tabs.count** (P1): Each tab title MUST end with its count of real rows (`Now (3)`). Gap rows MUST NOT count.
   - **FR:web.tabs.default** (P1): The first tab shown MUST be QM when QM is a priority today, else Now.
@@ -188,7 +189,7 @@ Owner needs the report on the Now page so that he sees it without a new screen.
 - **FR:$window** (P1): **`PriWindow`** — `days` (optional list of `mon`..`sun`), `from` and `to` (optional `HH:MM`, local time). A `pris.json` priority gets `windows` (optional, at most 7), `label` (optional, at most 40 characters), `cos` (optional CoS name, at most 40 characters), `action` (optional, at most 200 characters), `session` (optional session id) and `perProject` (optional boolean).
 - **FR:$tiered** (P1): **`TieredTask`** — `path`, `line` (0-based), `project`, `aliases`, `tier` (1, 2 or 3), `text`, `agent` (string or null), `more` (count of more agents), `status` (`working`, `pairing`, `done`, `idle`, `blocked`, `queued`, `unknown`, or null with no agent), `repo` (`owner/repo` or null).
 - **FR:$row** (P1): **`PriRow`** — `id`, `project`, `file` (project task file or null), `agent` (`{ name, link, file, session }`: session link or null, agent file or null, session id to prompt or null; or null), `status` (as in `TieredTask`), `action`, `gap` (boolean), `cos` (the CoS as an agent; null unless a gap row), `request` (the text for the CoS; null unless a gap row), `ref` (`path:line` or null), `at`, `stale`.
-- **FR:$pr** (P1): **`PrRow`** — `emoji`, `number`, `url`, `agent` (as in `PriRow`), `action`, `minutes`, `server` and `details` (links, null unless a live row).
+- **FR:$pr** (P1): **`PrRow`** — `emoji`, `number`, `url`, `agent` (as in `PriRow`), `pri` (priority id or null), `action`, `minutes`, `server` and `details` (links, null unless a live row).
 - **FR:$view** (P1): **`PrioritiesView`** — `at` (the clock), `timeZone` (optional IANA zone), `qm` (a `PriTable` with `title` and `today`, or null), `now`, `today`, `next` (each a `PriTable`: `at`, `stale`, `rows`) and `prs` (a `PrTable`: `at`, `stale`, `verified`, `manager`, `rows`).
 
 ## Architecture Constraints

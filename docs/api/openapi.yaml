@@ -4138,6 +4138,7 @@ components:
         - number
         - url
         - agent
+        - pri
         - action
         - minutes
         - server
@@ -4151,6 +4152,10 @@ components:
           type: string
         agent:
           $ref: "#/components/schemas/PriAgent"
+        pri:
+          type: string
+          nullable: true
+          description: The id of the priority the PR links to
         action:
           type: string
           enum:

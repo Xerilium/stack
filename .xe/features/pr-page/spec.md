@@ -114,7 +114,7 @@ The owner needs a glance count so that he knows agents are moving.
 
 The owner needs the PRs in the main nav so that he finds them without a hidden icon.
 
-- **FR:nav.rail** (P1): The rail has `Pull requests` after `Priorities` (`FR:notifications/nav.rail`), chord `g r`. It opens the `#/prs` page
+- **FR:nav.rail** (P1): The rail has `Pull requests` after `Notifications` (`FR:notifications/nav.rail`), chord `g r`. It opens the `#/prs` page
 - **FR:nav.badge** (P1): The nav entry shows the count of rows with an actionable next action (`FR:pr-page/card.action`, `FR:pr-page/check.none`) when above 0, name `n need you`. Signed out, it shows a dot, name `Sign in to GitHub`
 - **FR:nav.phone** (P1): The phone tab bar keeps its five slots. `More` (the command palette) lists `Go to Pull requests` with the same count. The top bar icon opens the flyout full screen
 - **FR:nav.page** (P1): `#/prs` shows the flyout content as a page: the same tabs, cards, details, and sign-in state, with no scrim and no Close

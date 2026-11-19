@@ -18,6 +18,7 @@ describe('settings route', () => {
     expect(parseHash('#/settings/accounts').view).toBe('settings');
     expect(buildHash('settings', parseHash('#/settings').filters)).toBe('#/settings');
     expect(settingsSection('#/settings/accounts')).toBe('accounts');
+    expect(settingsSection('#/settings/priorities')).toBe('priorities');
     expect(settingsSection('#/settings/agents')).toBe('agents');
     expect(settingsSection('#/settings/updates')).toBe('updates');
     expect(settingsSection('#/settings/nope')).toBeNull();
