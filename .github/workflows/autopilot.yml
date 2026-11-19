@@ -11,7 +11,8 @@ on:
   issue_comment:
     types: [created]
   workflow_run:
-    workflows: [CI, E2E]
+    # CI holds the test and e2e jobs; the run completes only after both, and the merge gate waits on every check run.
+    workflows: [CI]
     types: [completed]
   # Resolving a thread starts no workflow, and a review event would run the PR's own copy of this file.
   # The sweep catches both within 10 minutes.

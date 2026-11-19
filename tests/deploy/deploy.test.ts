@@ -117,11 +117,18 @@ describe('workflows', () => {
     expect(up?.if).toBe('failure()');
     expect(up?.with?.path).toBe('coverage');
   });
-  it('e2e runs Playwright on pull requests and guards on web/', () => {
-    const text = read('.github/workflows/e2e.yml');
-    expect(parse(text).on.pull_request).not.toBeUndefined();
-    expect(text).toContain('playwright');
-    expect(text).toContain('web/package.json');
+  it('the e2e job in ci.yml runs Playwright on pull requests, once', () => {
+    const ci = parse(read('.github/workflows/ci.yml'));
+    expect(ci.on.pull_request).not.toBeUndefined();
+    const steps = ci.jobs.e2e.steps as Array<{ run?: string; uses?: string; if?: string; with?: { name?: string; path?: string } }>;
+    expect(steps.some((s) => /playwright install/.test(s.run ?? ''))).toBe(true);
+    expect(steps.some((s) => /stack-web e2e/.test(s.run ?? ''))).toBe(true);
+    const report = steps.find((s) => s.with?.name === 'playwright-report');
+    expect(report?.if).toBe('failure()');
+    expect(report?.with?.path).toBe('web/playwright-report');
+    // One Playwright run per PR: no other workflow runs it.
+    for (const [f] of docs) if (f !== 'ci.yml') expect(read(`.github/workflows/${f}`)).not.toMatch(/playwright/i);
+    expect(existsSync(join(root, '.github/workflows/e2e.yml'))).toBe(false);
   });
 });
 

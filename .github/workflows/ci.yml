@@ -1,5 +1,6 @@
 # @req FR:web-app/arch.ci (web unit tests, lint, build, and a separate e2e job)
 # @req FR:deploy-docs/ci.coverage (Jest runs with coverage; the src/core/ threshold in jest.config.js fails the job)
+# @req FR:deploy-docs/ci.valid @req FR:deploy-docs/ci.e2e (the e2e job is the one Playwright run per PR)
 name: CI
 on:
   pull_request:
@@ -46,3 +47,8 @@ jobs:
         with:
           name: e2e-screenshots
           path: web/e2e/screenshots
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report

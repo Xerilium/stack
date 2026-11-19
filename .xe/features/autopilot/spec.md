@@ -65,7 +65,7 @@ The agent certifies one commit, so that a push after certification cannot ride t
 
 ### FR:triggers: Triggers
 
-- **FR:triggers.events** (P1): The workflow MUST reconcile one PR on `pull_request_target` (opened, reopened, ready for review, converted to draft, synchronize, and labels in the set), `issue_comment` that is a certification comment on a PR from an owner, member, or collaborator, and `workflow_run` completion of CI and E2E
+- **FR:triggers.events** (P1): The workflow MUST reconcile one PR on `pull_request_target` (opened, reopened, ready for review, converted to draft, synchronize, and labels in the set), `issue_comment` that is a certification comment on a PR from an owner, member, or collaborator, and `workflow_run` completion of CI (which holds the `test` and `e2e` jobs)
 - **FR:triggers.sweep** (P1): It MUST also reconcile every open PR labeled Autopilot every 10 minutes and on manual dispatch, because resolving a thread starts no workflow, and a review event would run the PR's own copy of the workflow file
 - **FR:triggers.serial** (P1): Event runs for one PR MUST be serialized and never cancelled mid-merge, and a run the trigger filter skips MUST NOT enter the group (the concurrency group is on the job, after the filter)
   - A sweep runs in its own group and may overlap an event run for the same PR; the head pin and the per-attempt re-read make that safe, and `byUs` keeps it to one deploy dispatch
