@@ -3,6 +3,7 @@
  * `(agent: ...)`. The priorities report reads only these. Pure, except `readTaskFiles`, which only reads storage.
  * @req FR:priorities-tables/tasks.@function @req FR:priorities-tables/$tiered
  */
+import { frontmatterAliases, readFrontmatter } from './parser';
 import type { Storage } from './storage';
 
 export const AGENT_STATUSES = ['working', 'pairing', 'done', 'idle', 'blocked', 'queued', 'unknown'] as const;
@@ -42,14 +43,17 @@ export function projectFile(path: string, src: string): ProjectFile {
   const title = lines.find((l) => l.startsWith('# '))?.slice(2).replace(EMOJI, '').trim();
   const project = title || (path.split('/').pop() ?? path).replace(/\.md$/, '');
   const al = lines.map((l) => /^- \*\*Aliases:\*\*\s*(.*)$/.exec(l)).find(Boolean);
-  const aliases = al ? al[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+  // @req FR:goal-model/front.bullets: frontmatter aliases win over the bullet.
+  const aliases = frontmatterAliases(readFrontmatter(src)) ?? (al ? al[1].split(',').map((s) => s.trim()).filter(Boolean) : []);
   const rp = lines.map((l) => /^- \*\*Repository:\*\*.*?github\.com\/([\w.-]+\/[\w.-]+)/.exec(l)).find(Boolean);
   return { path, project, aliases, repo: rp ? rp[1].replace(/\.git$/, '') : null };
 }
 
 export const TIERS: Record<string, 1 | 2 | 3> = { '1️⃣': 1, '2️⃣': 2, '3️⃣': 3 };
-/** An optional bullet or open checkbox, then a tier. A checked box never matches. @req FR:priorities-tables/tasks.tier @req FR:priorities-tables/tasks.tier.skip */
-const LINE = /^\s*(?:[-*]\s+(?:\[ \]\s+)?)?(1️⃣|2️⃣|3️⃣)\s*(.*)$/u;
+/** @req FR:goal-model/pri.tiers: ⭐️ (Now) counts as today; the tiers are still read but never required. */
+const NOW_MARK = /^⭐️?$/u;
+/** An optional bullet or open checkbox, then a tier or ⭐️. A checked box never matches. @req FR:priorities-tables/tasks.tier @req FR:priorities-tables/tasks.tier.skip */
+const LINE = /^\s*(?:[-*]\s+(?:\[ \]\s+)?)?(1️⃣|2️⃣|3️⃣|⭐️?)\s*(.*)$/u;
 export const AGENT_TAG = /\(agent:\s*([^)]*)\)/i;
 /** Glyph or word to status, first match wins. @req FR:priorities-tables/tasks.status */
 const STATUS: [RegExp, AgentStatus][] = [[/🤝|\bpairing\b/iu, 'pairing'], [/🔄/u, 'working'], [/🚫|🔴/u, 'blocked'], [/⏸️?/u, 'idle'], [/🕓/u, 'queued'], [/✅/u, 'done']];
@@ -81,15 +85,17 @@ export function tieredTasks(path: string, src: string): TieredTask[] {
   const lines = src.replace(/^﻿/, '').split('\n').map((l) => l.replace(/\r$/, ''));
   const { project, aliases, repo } = projectFile(path, src);
   const out: TieredTask[] = [];
+  const fmLines = readFrontmatter(src)?.lines ?? 0;
   lines.forEach((l, line) => {
-    if (/^\s*#/.test(l)) return;
+    // @req FR:goal-model/pri.tiers: frontmatter lines (a legend `⭐️: Now`) are never rows.
+    if (line < fmLines || /^\s*#/.test(l)) return;
     const m = LINE.exec(l);
     if (!m) return;
     const rest = m[2];
     const { agent, more } = agentOf(rest);
     const status = agent ? (STATUS.find(([re]) => re.test(rest))?.[1] ?? 'unknown') : null;
     const text = linkRefs(rest.replace(AGENT_TAG, ' ').replace(GLYPHS, ' ').replace(/\s+/g, ' ').trim(), repo);
-    out.push({ path, line, project, aliases, tier: TIERS[m[1]], text, agent, more, status, repo });
+    out.push({ path, line, project, aliases, tier: NOW_MARK.test(m[1]) ? 1 : TIERS[m[1]], text, agent, more, status, repo });
   });
   return out;
 }

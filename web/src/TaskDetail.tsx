@@ -9,7 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { children } from './now';
 import { ACTION_HINT, dueLabel, dueValue, EFFORT_OPTIONS, effortOf, nearestEffort, PRIORITY_OPTIONS, priorityOf, withDue, type Option } from './detail';
 import { Md } from './parts';
-import { parseRow } from './row';
+import { legendOf, parseRow } from './row';
 import type { SetProps, Task } from './types';
 import './detail.css';
 
@@ -139,8 +139,10 @@ export function PropertyBar({ t, onSave, onSet }: { t: Task; onSave: SaveText; o
 const plainSection = (name: string) => name.replace(/[\p{Extended_Pictographic}️‍]/gu, '').trim();
 
 /** The full-screen detail (focus mode): one task, its properties, actions, subtasks, then the thread. */
-export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, onSet, onBack, extra }: {
+export function TaskDetail({ task, all, busy, project, legend, onToggle, onAct, onSave, onSet, onBack, extra }: {
   task: Task; all: Task[]; busy: boolean; project?: string; onToggle: (t: Task) => void; onAct: (a: 'start' | 'defer') => void; onSave: SaveText; onSet: SetPropsFn; onBack: () => void;
+  /** The goal file's emoji legend. @req FR:goal-model/front.legend */
+  legend?: Record<string, string>;
   /** Rendered under the actions (the task's agent thread). @req FR:agent-thread/web.hero */
   extra?: ComponentChildren;
 }) {
@@ -180,6 +182,8 @@ export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, 
       <div class="focus-inner">
         <p class="fl-facts">{project ?? task.project} · {plainSection(task.section)}{status ? ` · ${status}` : ''}</p>
         <h1><Md text={r.title || task.text} project={task.project} /></h1>
+        {/* @req FR:goal-model/front.legend: each legend emoji in the row, with its meaning. */}
+        {legendOf(task.text, legend).map(([e, meaning]) => <p key={e} class="fl-facts" data-testid="legend">{e} {meaning}</p>)}
         {/* Bare URLs parseRow lifts out of the title stay usable here. @req FR:task-detail-design/detail.facts */}
         {r.links.length > 0 && <p class="fl-links">{r.links.map((l) => <a key={l.href} class="fl-link" href={l.href} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}</p>}
         <PropertyBar t={task} onSave={onSave} onSet={onSet} />

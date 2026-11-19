@@ -17,7 +17,8 @@ import { checkTask } from '../core/quality';
 import { formatCount, formatIssue, isError, lintProject, lintRow, lintTitle, type LintIssue } from '../core/task-lint';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, importAsks, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
-import { runInventory } from '../core/session-inventory';
+import { defaultSessionsDir, runInventory } from '../core/session-inventory';
+import { lintAgents, readFolderAgents, type LocalSession } from '../core/goal-model';
 import { PRI_LINKS, PrisInvalid, PriStore, type Pri } from '../core/pris';
 import { PrPriConflict, PrPriInvalid, PrPriNotFound, PrPriorityStore } from '../core/pr-priority';
 import { PR_PRI_USAGE, prPriArgv, prPriCmd } from './pr-pri';
@@ -119,7 +120,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string; s
   qm: { flags: ['file'], usage: 'qm [--json] | qm put --file plan.json [--json]', help: 'the weekly QM (quota-maxxing) plan (~/.stack/qm-plan.json, never git; schema in .xe/features/qm-plan/spec.md); agents write it with put', summary: 'the weekly QM (quota-maxxing) plan' },
   feedback: { flags: ['route', 'since'], usage: 'feedback add "<text>" [--route r] | list [--since id] | done <id>', help: 'owner feedback on the app (~/.stack/feedback.jsonl, one JSON line each; docs/feedback.md); done writes feedback.done.jsonl', summary: 'owner feedback on the app' },
   sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json', summary: 'Claude app sessions and what needs you' },
-  priorities: { flags: [], usage: 'priorities [--json]', help: 'the owner priorities report as markdown: QM (per project), Now (top 3), PRs (live, quickest first), Today, Next 3 days; project rows show project, agent, agent status and the owner next action from tiered tasks (1️⃣ 2️⃣ 3️⃣ with (agent: ...)) in tasks/*.md; a priority with no tiered task shows a gap; each section is stamped as of its last live check (stale after 30 min); read live from ~/.stack/pris.json, the task files, the session store and GitHub', summary: 'the owner priorities report as markdown' },
+  priorities: { flags: [], usage: 'priorities [--json]', help: 'the owner priorities report as markdown: QM (per project), Now (top 3), PRs (live, quickest first), Today, Next 3 days; project rows show project, agent, agent status and the owner next action from tiered tasks (⭐️, or 1️⃣ 2️⃣ 3️⃣, with (agent: ...)) in tasks/*.md; a priority with no tiered task shows a gap; each section is stamped as of its last live check (stale after 30 min); read live from ~/.stack/pris.json, the task files, the session store and GitHub', summary: 'the owner priorities report as markdown' },
   pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris put --file <json> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; put replaces the list (slot and days set the order of each weekday); link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks', summary: 'the owner priorities in order' },
   'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md', summary: 'the PR priority queue for the Sweep Manager' },
   app: { flags: ['check', 'install', 'no-build', 'source'], usage: 'app install [--no-build] | update [--check | --install] [--no-build] | status [--source dir]', help: 'build Stack.app from the source checkout (STACK_SOURCE or ~/.local/share/stack) and install or update it in /Applications; update never quits a running app unless --install (docs/desktop-install.md)', summary: 'build and install or update Stack.app' },
@@ -134,7 +135,15 @@ interface Outcome { json: Record<string, unknown>; text: string; code?: number; 
  * @req FR:task-lint/cli.lint
  * @req FR:task-lint/cli.lint.unknown
  */
-async function lintFiles(storage: Storage, project?: string): Promise<LintIssue[]> {
+/** The sessions on this machine, or null when the session store cannot be read (the dead-link check is then skipped). @req FR:goal-model/lint.dead */
+function localSessions(): LocalSession[] | null {
+  try {
+    if (!existsSync(defaultSessionsDir())) return null;
+    return runInventory({ home: stackHome() }).sessions.map((s) => ({ id: s.id, ...(s.cli ? { cli: s.cli } : {}) }));
+  } catch { return null; }
+}
+
+async function lintFiles(storage: Storage, project?: string, dir?: string): Promise<LintIssue[]> {
   const paths = (await storage.list()).filter((p) => !isReadme(p) && (project === undefined || p === projectPath(project)));
   if (project !== undefined && !paths.length) throw new UsageError(`Project not found: ${project}`);
   const out: LintIssue[] = [];
@@ -142,6 +151,16 @@ async function lintFiles(storage: Storage, project?: string): Promise<LintIssue[
   // ID lint reads every file (refs cross files) and reports on the linted ones. @req FR:task-ids/lint.duplicate @req FR:task-ids/lint.dangling
   const all = await Promise.all((await storage.list()).filter((p) => !isReadme(p)).map(async (path) => ({ path, content: (await storage.read(path)).content })));
   out.push(...lintIds(all, new Set(paths)));
+  // @req FR:goal-model/lint.lead @req FR:goal-model/lint.duplicate @req FR:goal-model/lint.dead @req FR:goal-model/lint.agent-def
+  // Agent lint: goal files and folder defaults; repo paths and the session list are local reads (no network).
+  const folders = [...(await readFolderAgents(storage, all.map((f) => f.path)))].map(([path, content]) => ({ path, content }));
+  const files = [...all, ...folders];
+  const linked = files.some((f) => /\]\(#local_/.test(f.content));
+  out.push(...lintAgents(files, {
+    only: new Set([...paths, ...(project === undefined ? folders.map((f) => f.path) : [])]),
+    ...(dir ? { exists: (p: string) => existsSync(join(dir, p)) } : {}),
+    sessions: linked ? localSessions() : null,
+  }));
   return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line));
 }
 
@@ -807,7 +826,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     // @req FR:task-lint/cli.lint @req FR:task-lint/cli.lint.out @req FR:task-lint/cli.lint.exit @req FR:task-lint/cli.lint.json
     case 'lint': {
       extra(0);
-      const issues = await lintFiles(storage, flag(f, 'project'));
+      const issues = await lintFiles(storage, flag(f, 'project'), dir);
       return {
         json: { ok: !issues.some(isError), command: 'lint', issues },
         text: issues.length ? [...issues.map(formatIssue), formatCount(issues)].join('\n') : 'no issues',
@@ -934,7 +953,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       if (engine !== undefined && engine !== 'legacy' && engine !== 'stack') throw new UsageError('--engine must be legacy or stack');
       const u = await update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true, engine: engine as 'legacy' | 'stack' | undefined });
       // The summaries are written first, so a lint issue never stops them. @req FR:task-lint/cli.update @req FR:task-lint/cli.update.refresh
-      const issues = await lintFiles(storage);
+      const issues = await lintFiles(storage, undefined, dir);
       if (!issues.length) return u;
       // @req FR:task-lint/cli.update: the daily loop never stops on lint; issues go to stderr.
       return { ...u, json: { ...u.json, lint: issues }, err: [...issues.map(formatIssue), formatCount(issues)].join('\n') };

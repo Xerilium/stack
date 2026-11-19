@@ -109,7 +109,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
       const rest = await Promise.all(Array.from({ length: Math.ceil((first.total - 200) / 200) }, (_, i) => page(200 * (i + 1))));
       return [...first.items, ...rest.flatMap((r) => r.items)];
     },
-    projects: async () => (await call<{ items: Project[] }>('/projects?fields=name,title,open,done,metadata')).items,
+    projects: async () => (await call<{ items: Project[] }>('/projects?fields=name,title,open,done,metadata,legend')).items,
     action: (name: ActionName, ref?: string, extra: Record<string, unknown> = {}) => call<Mutation>(`/tasks/${name}`, { ...(ref ? { ref } : {}), ...extra }),
     set: (ref: string, props: SetProps, expect?: string) => call<Mutation>('/tasks/set', { ref, ...props, ...(expect !== undefined ? { expect } : {}) }),
     edit: (ref: string, text: string, expect?: string) => call<Mutation>('/tasks/edit', { ref, text, ...(expect !== undefined ? { expect } : {}) }),

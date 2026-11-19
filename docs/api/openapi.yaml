@@ -5198,6 +5198,14 @@ components:
           items:
             type: string
           description: "Older display names a session title may start with: the H1 text before its colon"
+        session:
+          type: string
+          description: The session id of the agent link (local_<id>) a goal file or folder default names
+        leads:
+          type: array
+          items:
+            type: string
+          description: "Projects this agent leads: their goal file frontmatter agent, else a .stack/agent.md folder default, links to it"
     ThreadItem:
       type: object
       properties:
@@ -5432,3 +5440,8 @@ components:
                 type: integer
               done:
                 type: integer
+        legend:
+          type: object
+          additionalProperties:
+            type: string
+          description: Emoji to meaning, from the goal file frontmatter `legend`; empty when none

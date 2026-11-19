@@ -66,7 +66,7 @@ describe('api client', () => {
     const { client, calls } = rec((url) => res(200, url.includes('/projects') ? { items: [] } : url.includes('/next') ? { task: null } : { changed: true }));
     await client.next(); await client.projects(); await client.action('start', 'a:1'); await client.edit('a:1', 'x');
     await client.move('a:1', 'a:2', 'after'); await client.capture('x', { project: 'a', dryRun: true });
-    expect(calls.map((c) => c.url)).toEqual(['/api/next', '/api/projects?fields=name,title,open,done,metadata', '/api/tasks/start', '/api/tasks/edit', '/api/tasks/move', '/api/capture']);
+    expect(calls.map((c) => c.url)).toEqual(['/api/next', '/api/projects?fields=name,title,open,done,metadata,legend', '/api/tasks/start', '/api/tasks/edit', '/api/tasks/move', '/api/capture']);
     expect(JSON.parse(calls[5].init.body as string)).toEqual({ text: 'x', project: 'a', dryRun: true });
   });
   it('sends the expected row text with edit and move', async () => {

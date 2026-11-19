@@ -5,7 +5,7 @@ import { gapsOf, writeGaps } from '../../src/core/priorities-gaps';
 import type { PrioritiesView, PriRow } from '../../src/core/priorities-view';
 
 const AT = '2026-11-18T19:00:00.000Z';
-const row = (id: string, gap: boolean, o: Partial<PriRow> = {}): PriRow => ({ id, project: id.toUpperCase(), file: `tasks/${id}.md`, agent: null, more: 0, status: null, action: gap ? `CoS will add a task today: 1️⃣/2️⃣/3️⃣ in tasks/${id}.md with (agent: ...)` : 'Ship', gap, cos: gap ? { name: 'Xe CoS', link: null, file: null, session: null } : null, ref: null, at: AT, stale: false, ...o });
+const row = (id: string, gap: boolean, o: Partial<PriRow> = {}): PriRow => ({ id, project: id.toUpperCase(), file: `tasks/${id}.md`, agent: null, more: 0, status: null, action: gap ? `CoS will add a task today: ⭐️ in tasks/${id}.md with (agent: ...)` : 'Ship', gap, cos: gap ? { name: 'Xe CoS', link: null, file: null, session: null } : null, ref: null, at: AT, stale: false, ...o });
 const table = (rows: PriRow[]) => ({ at: AT, stale: false, rows });
 const view = (o: Partial<PrioritiesView> = {}): PrioritiesView => ({ at: AT, qm: null, now: table([]), prs: { at: AT, stale: false, verified: true, manager: null, rows: [] }, today: table([]), next: table([]), ...o });
 const entry = (id: string, section: string) => ({ id, project: id.toUpperCase(), file: `tasks/${id}.md`, cos: 'Xe CoS', section, action: row(id, true).action });

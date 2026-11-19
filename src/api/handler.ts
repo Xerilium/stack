@@ -9,6 +9,7 @@ import {
   type LifecycleContext, type LifecycleResult, type TaskProps,
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
+import { goalMeta } from '../core/goal-model';
 import { isReadme, projectId } from '../core/task-paths';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import type { QmStore } from '../core/qm-plan';
@@ -405,7 +406,7 @@ function flatten(doc: Doc): TaskView[] {
 }
 
 const counts = (ts: TaskView[]) => ({ open: ts.filter((t) => !t.done).length, done: ts.filter((t) => t.done).length });
-const PROJECT_FIELDS = ['name', 'title', 'open', 'done', 'aliases', 'metadata', 'sections'] as const;
+const PROJECT_FIELDS = ['name', 'title', 'open', 'done', 'aliases', 'metadata', 'sections', 'legend'] as const;
 const PROJECT_DEFAULT = ['name', 'title', 'open', 'done'];
 
 function projectView(doc: Doc) {
@@ -415,6 +416,8 @@ function projectView(doc: Doc) {
     name: doc.name, title: doc.project.title, ...counts(all),
     aliases: (doc.project.metadata['Aliases'] ?? '').split(',').map((a) => a.trim()).filter(Boolean),
     metadata: doc.project.metadata, sections,
+    // @req FR:goal-model/front.legend: the file's emoji legend (emoji to meaning), so the page can show the meaning next to the emoji.
+    legend: goalMeta(doc.content)?.legend ?? {},
   };
 }
 

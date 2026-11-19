@@ -1,5 +1,6 @@
 import type { StackConfig } from './config';
-import { parseProject } from './parser';
+import { START_ISO } from './goal-model';
+import { bodyStart, parseProject } from './parser';
 import { askLines } from './owner';
 import { matcherFor, parsePriorities } from './priorities';
 import {
@@ -288,7 +289,9 @@ function parseCapacity(content: string, config: StackConfig): Map<string, number
 
 function projectIdentity(fileName: string, content: string): { name: string; displayName: string; emoji: string | null } {
   const base = fileName.replace(/\.md$/i, '');
-  const first = trim(content.split('\n')[0] ?? '');
+  // @req FR:goal-model/front.parse: the H1 is the first line after any frontmatter.
+  const all = content.split('\n');
+  const first = trim(all[bodyStart(all)] ?? '');
   const h1 = /^# (.+)$/s.exec(first);
   if (h1) {
     const full = trim(h1[1]);
@@ -856,6 +859,9 @@ const MY_DAY_EFFORT: Record<string, number> = { '🔹': 0.1, '🟢': 0.5, '🟡'
 
 /** The ⏰ start-date test of legacy my-day: true when the task starts in the future (or the date is invalid). */
 function startsLater(text: string, clock: Clock): boolean {
+  // @req FR:goal-model/pri.hide: `⏰ <yyyy-mm-dd>` starts on its day too.
+  const day0 = `${clock.y}-${String(clock.mo).padStart(2, "0")}-${String(clock.d).padStart(2, "0")}`;
+  if ([...text.matchAll(START_ISO)].some((m) => m[1] > day0)) return true;
   const m = /⏰\s+([A-Z][a-z]{2})\s+(\d{1,2}):/i.exec(text);
   if (!m) return false;
   const month = MONTHS.indexOf(m[1].toLowerCase()) + 1;

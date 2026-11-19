@@ -81,7 +81,7 @@ it('writes the gap list for the CoS to gaps.json in the store folder, and only w
   expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 1, at: NOW.toISOString(), gaps: [] });
   await storage.write('tasks/stack.md', '# 🥞 Stack\n\n## Active\n\n- [ ] Ship the report\n');
   const r = await call('owner', '/priorities');
-  const gaps = [{ id: 'stack', project: 'Stack', file: 'tasks/stack.md', cos: 'CoS', section: 'now', action: 'CoS will add a task today: 1️⃣/2️⃣/3️⃣ in tasks/stack.md with (agent: ...)' }];
+  const gaps = [{ id: 'stack', project: 'Stack', file: 'tasks/stack.md', cos: 'CoS', section: 'now', action: 'CoS will add a task today: ⭐️ in tasks/stack.md with (agent: ...)' }];
   expect(r.json.now.rows[0]).toMatchObject({ gap: true, action: gaps[0].action });
   expect(r.json.now.rows[0]).not.toHaveProperty('request');
   expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 1, at: NOW.toISOString(), gaps });

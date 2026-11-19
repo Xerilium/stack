@@ -16,7 +16,7 @@ const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
 const prow = (num: number, nextAction: BoardInput['rows'][number]['nextAction'], o: Partial<BoardInput['rows'][number]> = {}): BoardInput['rows'][number] => ({
   url: `https://github.com/o/r/pull/${num}`, repo: 'o/r', number: num, title: `PR ${num}`, project: 'other', nextAction, ...o,
 });
-const gapText = (cos: string, by: string, file: string) => `${cos} will add a task ${by}: 1️⃣/2️⃣/3️⃣ in ${file} with (agent: ...)`;
+const gapText = (cos: string, by: string, file: string) => `${cos} will add a task ${by}: ⭐️ in ${file} with (agent: ...)`;
 
 describe('pris.json fields', () => {
   // @req FR:priorities-tables/$window

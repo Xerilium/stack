@@ -5,6 +5,7 @@
  * whose projects strictly contain its own, else the roll-up), and the roll-up (scope `*`; `cos` by convention) is first on every task.
  * @req FR:agent-team/agent.path @req FR:agent-team/agent.path.claude @req FR:agent-team/agent.format @req FR:agent-team/agent.format.claude @req FR:agent-team/agent.team @req FR:agent-team/agent.resolve @req FR:agent-team/review.read
  */
+import { projectLead, readFolderAgents } from './goal-model';
 import { LifecycleError, type LifecycleContext, type TaskRef } from './lifecycle';
 import { parseProject } from './parser';
 import { NotFoundError } from './storage';
@@ -38,6 +39,10 @@ export interface TeamAgent extends Omit<AgentDef, 'extra'> {
   projects: string[];
   /** Where a scanned agent lives: the Stack project that owns its repo, else the folder name; `user` for `~/.claude/agents`. @req FR:agent-team/agent.team.scan */
   home?: string;
+  /** @req FR:goal-model/agent.link: the session id of the agent's link (`local_<id>`), when a goal file or folder default names it. */
+  session?: string;
+  /** @req FR:goal-model/agent.inherit: projects this agent leads (resolved from frontmatter or a folder default); it wins there. */
+  leads?: string[];
 }
 /**
  * An agent found outside the content repo (`scanAgents`). `file` and `dir` stay on the server: `GET /team` never returns them.
@@ -233,7 +238,7 @@ const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1).replace(/\.md$/,
  * @req FR:agent-team/agent.team @req FR:agent-team/agent.team.order @req FR:agent-team/agent.team.rollup @req FR:agent-team/agent.team.reports
  */
 export async function listTeam(ctx: LifecycleContext, scanned: ScannedAgent[] = []): Promise<TeamAgent[]> {
-  const projects: { name: string; agents: { name: string; role?: string }[] }[] = [];
+  const projects: { name: string; agents: { name: string; role?: string }[]; path: string; content: string }[] = [];
   for (const path of await ctx.storage.list()) {
     if (isReadme(path)) continue;
     const name = projectId(path);
@@ -244,7 +249,7 @@ export async function listTeam(ctx: LifecycleContext, scanned: ScannedAgent[] = 
     const items: string[] = [];
     const at = lines.findIndex((l) => /^- \*\*Agents:\*\*/.test(l));
     if (at >= 0) for (let i = at + 1; i < lines.length && /^\s+- /.test(lines[i]); i++) items.push(lines[i]);
-    projects.push({ name, agents: parseAgentsMeta(p.metadata['Agents'], items) });
+    projects.push({ name, agents: parseAgentsMeta(p.metadata['Agents'], items), path, content });
   }
   const all = projects.map((p) => p.name);
   const team: TeamAgent[] = [];
@@ -269,6 +274,18 @@ export async function listTeam(ctx: LifecycleContext, scanned: ScannedAgent[] = 
       if (have) { if (!have.defined && !have.scope.includes(p.name)) { have.scope.push(p.name); have.projects = resolveProjects(have.scope, all); } continue; }
       team.push({ slug, name: x.name, ...(x.role ? { role: x.role } : {}), scope: [p.name], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: [p.name] });
     }
+  }
+  // @req FR:goal-model/agent.inherit: each project's lead link (goal frontmatter, else the nearest folder default) joins the team and leads it.
+  const folders = await readFolderAgents(ctx.storage, projects.map((p) => p.path));
+  for (const p of projects) {
+    const lead = projectLead(p.path, p.content, folders);
+    if (!lead) continue;
+    const { name, id } = lead.link;
+    let a = team.find((t) => t.session === id) ?? team.find((t) => t.name === name || t.slug === slugOf(name));
+    if (!a) team.push((a = { slug: slugOf(name), name, scope: [], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: [] }));
+    a.session ??= id;
+    a.leads = [...new Set([...(a.leads ?? []), p.name])];
+    if (!a.scope.includes('*') && !a.scope.some((s) => scopeCovers(s, p.name))) { a.scope.push(p.name); a.projects = resolveProjects(a.scope, all); }
   }
   return withReports(team);
 }
@@ -329,11 +346,14 @@ function specificity(scope: string, project: string, section?: string): number {
   return section !== undefined && wordPrefix(want, section) ? 4 : 0;
 }
 
-/** Agents that cover a task: the roll-up first, then most specific first; the first is the active agent. @req FR:agent-team/agent.resolve */
+/**
+ * Agents that cover a task: the roll-up first, then the project's resolved lead, then most specific first; the first is the active agent.
+ * @req FR:agent-team/agent.resolve @req FR:goal-model/agent.inherit
+ */
 export function agentFor(team: TeamAgent[], project: string, section?: string): TeamAgent[] {
   const rollup = rollupOf(team);
   return team
-    .map((a, i) => ({ a, i, s: a === rollup ? 5 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
+    .map((a, i) => ({ a, i, s: a === rollup ? 5 : a.leads?.includes(project) ? 4.5 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
     .filter((x) => x.s > 0)
     .sort((x, y) => y.s - x.s || x.i - y.i)
     .map((x) => x.a);
