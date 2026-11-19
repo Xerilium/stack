@@ -22,10 +22,10 @@ export const PAGE_GOALS: Record<PageId, PageGoals> = {
 /** Old and alternate hash names the web app also serves (web/src/filters.ts ALIAS). @req FR:design-review/goals.route.alias */
 const ALIAS: Record<string, PageId> = { next: 'home', focus: 'home', brief: 'now', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions' };
 
-/** The page a route shows, read from its hash (`#/asks`, `#asks`, `/#/list?x=1`), as the web app reads it. @req FR:design-review/goals.route */
+/** The page a route shows, read from its hash (`#/asks`, `/#/list?x=1`), as the web app reads it. @req FR:design-review/goals.route */
 export function pageFromRoute(route: string): PageId {
-  const hash = route.includes('#') ? route.slice(route.indexOf('#') + 1) : '';
-  const name = /^\/?([a-z]*)/.exec(hash)?.[1] ?? '';
+  // Same pattern as `parseHash` in web/src/filters.ts: `#/name`, then an optional `/section` and `?query`.
+  const name = /#\/([a-z]+)(?:\/[a-z]+)?(?:\?.*)?$/.exec(route)?.[1] ?? '';
   // @req FR:design-review/goals.route.empty
   if (!name) return 'now';
   if (Object.prototype.hasOwnProperty.call(ALIAS, name)) return ALIAS[name];

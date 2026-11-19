@@ -28,7 +28,7 @@ The reviewer needs each page's purpose so that its feedback judges the page agai
 - **FR:goals.file** (P1): Interface: `src/core/page-goals.ts`, the goals of every page with the feedback panel
   - **FR:goals.file.pages** (P1): Goals file MUST list `now`, `home`, `today`, `asks`, `prs`, `inbox`, `sessions`, `projects`, `list`, `settings`
   - **FR:goals.file.entry** (P1): Goals file MUST give each page a name and 2 to 5 goals
-- **FR:goals.route** (P1): Resolver MUST take the page from the route hash (`#/asks`, `#asks`, `/#/asks?x=1`)
+- **FR:goals.route** (P1): Resolver MUST take the page from the route hash (`#/asks`, `/#/asks?x=1`)
   - **FR:goals.route.empty** (P1): Resolver MUST treat no hash as `now`
   - **FR:goals.route.alias** (P1): Resolver MUST map the web app hash aliases to their page (`#/agents` is `sessions`)
   - **FR:goals.route.unknown** (P1): Resolver MUST treat any other name as `now`
@@ -87,6 +87,7 @@ The owner needs a fresh opinion per page so that one page's feedback never color
 The owner needs one issue per review so that findings can be triaged later, one page at a time.
 
 - **FR:issue.repo** (P1): Issue writer MUST file in `STACK_DESIGN_REVIEW_REPO`, default `Xerilium/stack`
+- **FR:issue.label** (P2): Issue writer MUST add the label in `STACK_DESIGN_REVIEW_LABEL` when it is set
 - **FR:issue.title** (P1): Output: title `design(<page>): Design review of <Page name>`
 - **FR:issue.body** (P1): Output: body that starts with `🤖 [AI] `, then goals, viewport, theme, model, and reply
   - **FR:issue.body.cap** (P1): Issue writer MUST cut the reply, with a note, to keep the body at most 60,000 characters

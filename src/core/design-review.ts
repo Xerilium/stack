@@ -162,9 +162,9 @@ export function createDesignReview(o: { reviewer?: Reviewer; filer: DesignIssueF
         throw e instanceof DesignReviewError ? e : new DesignReviewError('down', 'ChatGPT review failed');
       }
       const issue = issueFor({ page, viewport: r.viewport, theme: r.theme, model: reviewer.model(), reply });
-      // @req FR:design-review/issue.repo @req FR:design-review/api.issue
+      // An optional label (it must exist in the repo) groups all reviews for triage. @req FR:design-review/issue.repo @req FR:design-review/api.issue
       try {
-        const { url } = await o.filer.file({ repo, ...issue, labels: [] });
+        const { url } = await o.filer.file({ repo, ...issue, labels: env.STACK_DESIGN_REVIEW_LABEL ? [env.STACK_DESIGN_REVIEW_LABEL] : [] });
         return { page, url };
       } catch { throw new DesignReviewError('issue', 'Could not file the GitHub issue (is gh signed in?)'); }
     },

@@ -1,4 +1,5 @@
 import { setPageCapture } from '../../src/core/feedback';
+import { ALIAS, VIEWS } from '../../web/src/filters';
 import { PAGE_GOALS, PAGE_IDS, pageFromRoute } from '../../src/core/page-goals';
 import { createDesignReview, createOpenAiReviewer, DesignReviewError, ghRepoVisibility, issueFor, MAX_BODY, reviewPrompt } from '../../src/core/design-review';
 
@@ -26,7 +27,7 @@ describe('page goals', () => {
   // @req FR:design-review/goals.route @req FR:design-review/goals.route.empty @req FR:design-review/goals.route.alias @req FR:design-review/goals.route.unknown
   it('takes the page from the route hash', () => {
     expect(pageFromRoute('/#/asks')).toBe('asks');
-    expect(pageFromRoute('#asks')).toBe('asks');
+    expect(pageFromRoute('#asks')).toBe('now');
     expect(pageFromRoute('/#/list?state=open')).toBe('list');
     expect(pageFromRoute('/#/prs/review')).toBe('prs');
     expect(pageFromRoute('/#/agents')).toBe('sessions');
@@ -191,4 +192,12 @@ describe('design review', () => {
 // @req FR:design-review/review.private
 it('tells ChatGPT not to repeat page content', () => {
   expect(reviewPrompt({ page: 'now', name: 'Now', goals: ['a', 'b'] })).toMatch(/Do not quote, name, or describe any task, person, project, message/);
+});
+
+describe('page goals match the web app routes', () => {
+  // @req FR:design-review/goals.route.alias
+  it('has goals for every web view and resolves every alias like the app', () => {
+    for (const v of VIEWS) expect(PAGE_IDS).toContain(v);
+    for (const [name, view] of Object.entries(ALIAS)) expect(pageFromRoute(`/#/${name}`)).toBe(view);
+  });
 });
