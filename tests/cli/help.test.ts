@@ -21,6 +21,8 @@ describe('stack help', () => {
     expect(rows.length).toBeGreaterThan(20);
     for (const [, , summary] of rows) expect(summary.length).toBeLessThanOrEqual(60);
     expect((await cli('help')).out).toBe(top.out);
+    expect(await cli('help', 'help')).toEqual({ code: 0, out: top.out, err: '' });
+    expect(top.out).toContain('Docs: https://github.com/Xerilium/stack/blob/main/docs/cli.md\n');
     expect((await cli()).out).toBe(top.out);
   });
 

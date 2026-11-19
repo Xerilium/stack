@@ -157,17 +157,17 @@ function pkgVersion(): string {
   }
 }
 
+const CLI_DOCS = 'https://github.com/Xerilium/stack/blob/main/docs/cli.md';
+
 /** The command list: one short line per command. @req FR:cli/run.help @req FR:cli/run.help.short @req FR:cli/run.help.width */
 function helpText(): string {
   const lines = ['Usage: stack <command> [options]', '', 'Commands:'];
   for (const [n, c] of Object.entries(COMMANDS)) if (n !== 'park') lines.push(`  ${n.padEnd(17)} ${c.summary ?? c.help}`);
-  lines.push('', 'Run stack <command> --help or stack help <command> for its flags. Docs: docs/cli.md');
+  lines.push('', 'Run stack <command> --help or stack help <command> for its flags.', `Docs: ${CLI_DOCS}`);
   lines.push('global: --dir <path> --json --no-commit --remote <name> --branch <name> --now <ISO>');
   lines.push('refs: tasks/<file>.md:<line> (1-based). exit: 0 ok, 1 failure, 2 usage, 3 conflict, 4 nothing to do');
   return lines.join('\n');
 }
-
-const CLI_DOCS = 'https://github.com/Xerilium/stack/blob/main/docs/cli.md';
 
 /** One command: usage, full help, and its docs anchor. @req FR:cli/run.help.cmd */
 function commandHelp(name: string): string {
@@ -953,8 +953,9 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     // @req FR:cli/run.help @req FR:cli/run.help.cmd
     if (p.command === 'help' || !p.command) {
       const name = p.positionals[0];
-      if (name && !COMMANDS[name]) throw unknownCommand(name);
-      io.out(`${name ? commandHelp(name) : helpText()}\n`);
+      const one = name && name !== 'help' ? name : undefined;
+      if (one && !COMMANDS[one]) throw unknownCommand(one);
+      io.out(`${one ? commandHelp(one) : helpText()}\n`);
       return EXIT.ok;
     }
     const spec = COMMANDS[p.command];
