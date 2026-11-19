@@ -21,7 +21,7 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 ## Add a component
 
 1. Write the requirement in `.xe/features/ui-kit/spec.md`.
-2. Write the tests in `web/tests/ui-kit.test.tsx`.
+2. Write the tests in a `web/tests/ui-*.test.tsx` file.
 3. Write the component as its own file in `web/src/ui/`. Put its styles in `web/src/ui/ui.css`.
 4. Name the classes and roles it owns with `@owns` tags in the file comment.
 5. Add a row to the catalog above.
