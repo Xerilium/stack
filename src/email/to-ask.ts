@@ -25,20 +25,18 @@ export const mailKey = (conversationId: string): string => `mail-${createHash('s
 export const normSubject = (subject: string): string => { let t = subject.trim().toLowerCase(); for (let p = ''; p !== t;) { p = t; t = t.replace(/^(?:re|fwd?)\s*:\s*/, ''); } return t; };
 /** `mail-` plus 12 hex of the sha1 of sender address and normalized subject: one ask for the same notice in many threads. @req FR:email-triage/ask.group */
 export const groupKey = (m: Message): string => `mail-${createHash('sha1').update(`${m.from.address.trim().toLowerCase()}\n${normSubject(m.subject)}`).digest('hex').slice(0, 12)}`;
-/** Decide and sensitive asks are grouped; reply asks stay per thread (each draft is per thread). @req FR:email-triage/ask.group */
+/** Decide and sensitive asks are grouped; reply asks stay per thread (each draft is per thread). @req FR:email-triage/ask.group @req FR:email-triage/ask.group.reply */
 const grouped = (r: TriageResult): boolean => r.class === 'needs_decision' || r.class === 'sensitive';
 /** The ask key for a result. */
 export const askKey = (r: TriageResult): string => (grouped(r) ? groupKey(r.message) : mailKey(r.message.conversationId));
 
-/** The last detail line of a grouped ask: how many mails, and short ids of the latest ones (so a mail seen again never counts twice). */
+/** The last detail line of a grouped ask: the mail count, and short ids of the threads it holds (a thread seen again never counts twice). */
 const MAILS = /^Mails: (\d+) \(([0-9a-f ]*)\)$/;
 const MAX_IDS = 50;
-const mailId = (m: Message) => createHash('sha1').update(m.id).digest('hex').slice(0, 8);
-function mailsOf(detail: string): { n: number; ids: string[]; rest: string } {
-  const lines = detail.split('\n');
-  const hit = MAILS.exec(lines[lines.length - 1] ?? '');
-  if (!hit) return { n: 0, ids: [], rest: detail };
-  return { n: Number(hit[1]), ids: hit[2].split(' ').filter(Boolean), rest: lines.slice(0, -1).join('\n').trimEnd() };
+const threadId = (conversationId: string) => createHash('sha1').update(conversationId).digest('hex').slice(0, 8);
+function mailsOf(detail: string): { n: number; ids: string[] } {
+  const hit = MAILS.exec(detail.split('\n').pop() ?? '');
+  return hit ? { n: Number(hit[1]), ids: hit[2].split(' ').filter(Boolean) } : { n: 0, ids: [] };
 }
 
 /** Plain `...` so the core's NFKC folding cannot lengthen it. */
@@ -110,7 +108,7 @@ export async function existingDraft(ctx: LifecycleContext, m: Message): Promise<
 /**
  * Writes the ask for a result; the same conversation twice updates one ask. A handled ask is left alone.
  * A grouped ask counts each new mail once, shows `(n mails)` and keeps the newest link; a new mail opens a handled one again.
- * @req FR:email-triage/ask.quiet @req FR:email-triage/ask.group @req FR:email-triage/ask.group.count @req FR:email-triage/ask.group.reopen
+ * @req FR:email-triage/ask.quiet @req FR:email-triage/ask.group @req FR:email-triage/ask.group.count @req FR:email-triage/ask.group.dedupe @req FR:email-triage/ask.group.reopen
  */
 export async function recordResult(ctx: LifecycleContext, r: TriageResult, opts: { project?: string } = {}): Promise<{ key: string; created: boolean } | null> {
   const input = toAsk(r, opts);
@@ -120,12 +118,12 @@ export async function recordResult(ctx: LifecycleContext, r: TriageResult, opts:
   if (grouped(r)) {
     const cur = (await readAsk(ctx, key))?.ask;
     const seen: { n: number; ids: string[] } = cur ? mailsOf(cur.detail) : { n: 0, ids: [] };
-    const id = mailId(r.message);
+    const id = threadId(r.message.conversationId);
     if (cur && seen.ids.includes(id)) return cur.state === 'done' ? null : { key, created: false };
-    // A handled group starts again at one mail.
+    // A handled group starts again at one mail; it keeps the threads it has seen, so none of them counts again.
     const reopen = cur?.state === 'done';
     const n = reopen ? 1 : Math.max(seen.n, cur ? 1 : 0) + 1;
-    const ids = [...(reopen ? [] : seen.ids), id].slice(-MAX_IDS);
+    const ids = [...seen.ids, id].slice(-MAX_IDS);
     const suffix = n > 1 ? ` (${n} mails)` : '';
     put = { ...input, ask: `${clip(input.ask!, 200 - suffix.length)}${suffix}`, detail: [input.detail, `Mails: ${n} (${ids.join(' ')})`].filter(Boolean).join('\n\n'), ...(reopen ? { reopen: true } : {}) };
   }
@@ -140,11 +138,31 @@ export async function recordResult(ctx: LifecycleContext, r: TriageResult, opts:
 export async function resolveAsk(ctx: LifecycleContext, m: Message): Promise<boolean> {
   const keys = [mailKey(m.conversationId), ...(m.from?.address && typeof m.subject === 'string' ? [groupKey(m)] : [])];
   let changed = false;
-  for (const key of keys) {
-    try { if ((await handleAsk(ctx, key, { outcome: 'resolved', note: 'Owner replied in the thread' }, ACTOR)).changed) changed = true; }
-    catch (e) { if (!(e instanceof NotFoundError)) throw e; }
-  }
+  for (const key of keys) if (await resolveKey(ctx, key)) changed = true;
   return changed;
+}
+
+async function resolveKey(ctx: LifecycleContext, key: string): Promise<boolean> {
+  try { return (await handleAsk(ctx, key, { outcome: 'resolved', note: 'Owner replied in the thread' }, ACTOR)).changed; }
+  catch (e) { if (e instanceof NotFoundError) return false; throw e; }
+}
+
+/**
+ * Owner replies seen in Sent Items (only the thread is known): resolves each thread's own ask, and each open grouped ask
+ * that holds one of the threads. Returns how many asks it closed. @req FR:email-triage/ask.resolve @req FR:email-triage/ask.group.resolve
+ */
+export async function resolveThreads(ctx: LifecycleContext, conversationIds: string[]): Promise<number> {
+  let n = 0;
+  for (const c of conversationIds) if (await resolveKey(ctx, mailKey(c))) n++;
+  const threads = new Set(conversationIds.map(threadId));
+  if (!threads.size || !ctx.storage.listAsks) return n;
+  for (const path of await ctx.storage.listAsks()) {
+    const key = /(mail-[0-9a-f]{12})\.md$/.exec(path)?.[1];
+    const a = key ? (await readAsk(ctx, key))?.ask : undefined;
+    if (!a || a.state === 'done' || a.from !== ACTOR || !mailsOf(a.detail).ids.some((id) => threads.has(id))) continue;
+    if (await resolveKey(ctx, key!)) n++;
+  }
+  return n;
 }
 
 export interface RunSummary {

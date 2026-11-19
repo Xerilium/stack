@@ -11,7 +11,7 @@ const SUGGEST: Record<TriageClass, ActionId> = {
 const OTHERS: ActionId[] = ['mark-done', 'snooze', 'create-task', 'archive', 'unsubscribe', 'delegate', 'schedule', 'forward-draft'];
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 3).trimEnd()}...` : s);
 
-/** Every result becomes an item, quiet classes included. @req FR:inbox-page/item.email @req FR:email-triage/ask.group.resolve */
+/** Every result becomes an item, quiet classes included. @req FR:inbox-page/item.email @req FR:email-triage/ask.group.inbox */
 export function fromTriage(r: TriageResult, account: string): InboxItem {
   const m = r.message;
   const suggested = SUGGEST[r.class];

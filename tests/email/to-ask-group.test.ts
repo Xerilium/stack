@@ -3,7 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { asksPath, handleAsk, parseAsk } from '../../src/core/asks';
 import { emailCmd } from '../../src/cli/email';
-import { groupKey, mailKey, newSummary, recordResult, resolveAsk, tally } from '../../src/email/to-ask';
+import { groupKey, mailKey, newSummary, recordResult, resolveAsk, resolveThreads, tally } from '../../src/email/to-ask';
 import type { TriageResult } from '../../src/email/types';
 import { FileTokenCache } from '../../src/graph/auth';
 import { mkCtx, msg, NOW } from './fixtures';
@@ -39,6 +39,7 @@ describe('grouped decide asks', () => {
     expect(await storage.listAsks!()).toHaveLength(1);
   });
 
+  // @req FR:email-triage/ask.group.dedupe
   it('the same mail seen again does not count twice', async () => {
     const { storage, ctx } = mkCtx();
     const key = groupKey(decide('a').message);
@@ -68,6 +69,7 @@ describe('grouped decide asks', () => {
     expect((await read(storage, groupKey(s('a').message))).ask).toBe(`Sensitive mail from ${ms.name}: Payroll update (2 mails)`);
   });
 
+  // @req FR:email-triage/ask.group.reply
   it('needs_reply results in two threads still give two review asks', async () => {
     const { storage, ctx } = mkCtx();
     const draft = { text: 'Thanks', webLink: 'https://outlook.example.test/mail/drafts/D' };
@@ -86,6 +88,11 @@ describe('grouped decide asks', () => {
     expect((await read(storage, key)).state).toBe('done');
     expect(await recordResult(ctx, decide('c'))).toEqual({ key, created: false });
     expect(await read(storage, key)).toMatchObject({ state: 'open', ask: `Decide on ${ms.name}: ${NOTICE}`, link: 'https://outlook.example.test/mail/id/c' });
+    // a thread counted before the reopen never counts again
+    await recordResult(ctx, decide('a'));
+    expect((await read(storage, key)).ask).toBe(`Decide on ${ms.name}: ${NOTICE}`);
+    await recordResult(ctx, decide('d'));
+    expect((await read(storage, key)).ask).toMatch(/\(2 mails\)$/);
   });
 
   // @req FR:email-triage/ask.group.resolve
@@ -94,6 +101,21 @@ describe('grouped decide asks', () => {
     await recordResult(ctx, decide('a'));
     expect(await resolveAsk(ctx, decide('a').message)).toBe(true);
     expect((await read(storage, groupKey(decide('a').message))).state).toBe('done');
+  });
+
+  // @req FR:email-triage/ask.group.resolve @req FR:email-triage/ask.resolve
+  it('an owner reply seen only by thread (Sent Items) resolves the grouped ask that holds the thread', async () => {
+    const { storage, ctx } = mkCtx();
+    const draft = { text: 'Thanks', webLink: 'https://outlook.example.test/mail/drafts/D' };
+    await recordResult(ctx, decide('a'));
+    await recordResult(ctx, decide('b'));
+    await recordResult(ctx, { ...decide('x', { subject: 'Other' }), class: 'needs_reply', draft });
+    await recordResult(ctx, decide('y', { subject: 'Untouched' }));
+    expect(await resolveThreads(ctx, ['conv-b', 'conv-x', 'conv-none'])).toBe(2);
+    expect((await read(storage, groupKey(decide('a').message))).state).toBe('done');
+    expect((await read(storage, mailKey('conv-x'))).state).toBe('done');
+    expect((await read(storage, groupKey(decide('y', { subject: 'Untouched' }).message))).state).toBe('open');
+    expect(await resolveThreads(ctx, [])).toBe(0);
   });
 
   // @req FR:email-triage/ask.group.summary

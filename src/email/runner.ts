@@ -13,7 +13,7 @@ import { createClaudeJson, type ClaudeJson } from './llm';
 import { createClassifier, createDrafter, createJudge, newUsage } from './models';
 import { DEFAULT_RULES, type RulesConfig } from './rules';
 import { runTriage } from './run';
-import { resolveAsk, type RunSummary } from './to-ask';
+import { resolveThreads, type RunSummary } from './to-ask';
 import type { Classifier, MailProvider, Message, TriageResult } from './types';
 import { loadVoice, voicePath } from './voice';
 
@@ -202,7 +202,7 @@ export async function runPass(o: PassOptions): Promise<PassSummary> {
   const answered = new Map<string, string>();
   for (const m of sent.messages) if (!answered.has(m.conversationId) || answered.get(m.conversationId)! < m.receivedAt) answered.set(m.conversationId, m.receivedAt);
   let resolved = 0;
-  if (!o.dryRun) for (const conv of answered.keys()) if (await resolveAsk(o.ctx, { conversationId: conv } as Message)) resolved++;
+  if (!o.dryRun) resolved += await resolveThreads(o.ctx, [...answered.keys()]);
   const inbox = createGraphMail({ transport: o.transport, ...(st.cursor ? {} : { since: lookback }) });
   const marked: MailProvider = { ...inbox, async delta(c) { const r = await inbox.delta(c); return { ...r, messages: r.messages.map((m) => (answered.has(m.conversationId) && answered.get(m.conversationId)! >= m.receivedAt ? { ...m, threadLastFrom: o.account } : m)) }; } };
   const provider = withDetails(marked, (id) => messageDetails({ transport: o.transport }, id), o.max ?? DEFAULT_MAX);

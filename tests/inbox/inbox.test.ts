@@ -84,7 +84,7 @@ describe('ask actions', () => {
     await expect(runAction(fromTriage(res(), 'a'), { action: 'snooze' }, { ctx })).rejects.toThrow(/until/);
     expect(await runAction(fromTriage(res(), 'a'), { action: 'ask-me-later' }, { ctx })).toEqual({ ok: true });
   });
-  // @req FR:email-triage/ask.group.resolve
+  // @req FR:email-triage/ask.group.inbox
   it('acts on the grouped ask for a decide or sensitive mail; the item id stays per thread', async () => {
     const { storage, ctx } = mkCtx();
     const d = res({ class: 'needs_decision', options: ['A', 'B'] });

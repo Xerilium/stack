@@ -29,7 +29,7 @@ export async function runAction(item: InboxItem, req: { action: ActionId; text?:
       return { ok: true, link: r.webLink };
     }
     case 'mark-done':
-      await quiet(handleAsk(d.ctx, item.askKey ?? item.id, { outcome: 'resolved', note: 'Marked done in Inbox' }, 'inbox'));
+      await quiet(handleAsk(d.ctx, item.askKey ?? item.id /* @req FR:email-triage/ask.group.inbox */, { outcome: 'resolved', note: 'Marked done in Inbox' }, 'inbox'));
       return { ok: true };
     case 'snooze':
       if (!req.until) throw new Error('until is required to snooze');
