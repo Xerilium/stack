@@ -66,7 +66,12 @@ Stack System needs every write to be a direct commit on the task repo so that hi
   - **FR:git.failure.rollback** (P1): A failed commit MUST roll back the path while keeping the user's own staged edit of it
   - **FR:git.failure.mask** (P1): A failed post-rollback resync MUST NOT mask the original error
 - **FR:git.branch** (P1): With a remote or explicit `branch`, `write` and `sync` MUST throw `StorageError` when the configured branch is not checked out
-- **FR:git.concurrency** (P2): Serialization is per adapter instance; multiple instances or processes on one repo MAY fail on `index.lock` with `StorageError`
+- **FR:git.concurrency** (P2): `GitStorage` `write`, `writeMany`, `writeAux` and `sync` MUST serialize across adapter instances and processes on one repo
+  - **FR:git.concurrency.lock** (P2): Each such call MUST hold `<git-dir>/stack-write.lock`, which holds the writer pid, for the whole check, write, commit and push
+  - **FR:git.concurrency.busy** (P2): When the lock stays held past the wait (`lockWaitMs`, default 10 s), `GitStorage` MUST throw `StorageError` `Another Stack process is writing; try again`
+  - **FR:git.concurrency.busy.clean** (P2): A busy write MUST leave every file and commit as it was
+  - **FR:git.concurrency.stale** (P2): `GitStorage` MUST take over a lock whose writer process is gone
+  - **FR:git.concurrency.turn** (P2): After it lets go of the lock, a `GitStorage` writer MUST wait 50 ms before it takes the lock again
 - **FR:git.env** (P1): `GitStorage` MUST take an optional base environment for spawned git (default `process.env`) and never mutate the process environment
 - **FR:git.activity** (P1): `GitStorage.lineActivity(path)` MUST give, per 0-based line of the file, the time of the last commit that changed the line (`git blame`); a line not yet committed counts as now. It MUST cache the answer per HEAD revision and file version, so git reads one revision once. A file git does not track gives an empty list. Adapters without history leave `lineActivity` out
 - **FR:git.exec** (P1): Git MUST run via argument arrays (no shell)
