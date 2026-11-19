@@ -38,6 +38,63 @@ export function Md({ text, links = true, project }: { text: string; links?: bool
   return <>{parseInline(text, refsOf(project)).map(links ? renderNode : plainNode)}</>;
 }
 
+export type MdBlockNode = { t: 'p'; text: string } | { t: 'h'; text: string } | { t: 'pre'; text: string } | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[] } | { t: 'hr' };
+
+/**
+ * Split a text into markdown blocks: paragraphs, `#` headings, `-` and `1.` lists, `---` rules, fenced code. No HTML.
+ * @req FR:agent-sessions/web.drawer.md
+ */
+export function mdBlocks(text: string): MdBlockNode[] {
+  const out: MdBlockNode[] = [];
+  const lines = text.split('\n');
+  let para: string[] = [];
+  const flush = () => { if (para.length) out.push({ t: 'p', text: para.join('\n') }); para = []; };
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^\s*```/.test(l)) {
+      flush();
+      const code: string[] = [];
+      for (i++; i < lines.length && !/^\s*```\s*$/.test(lines[i]); i++) code.push(lines[i]);
+      out.push({ t: 'pre', text: code.join('\n') });
+      continue;
+    }
+    if (!l.trim()) { flush(); continue; }
+    if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(l)) { flush(); out.push({ t: 'hr' }); continue; }
+    const h = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(l);
+    if (h) { flush(); out.push({ t: 'h', text: h[1] }); continue; }
+    const li = /^\s*(?:([-*+])|\d{1,9}[.)])\s+(.*)$/.exec(l);
+    if (li) {
+      flush();
+      const t = li[1] ? 'ul' : 'ol';
+      const prev = out[out.length - 1];
+      if (prev && prev.t === t) prev.items.push(li[2]); else out.push({ t, items: [li[2]] });
+      continue;
+    }
+    para.push(l);
+  }
+  flush();
+  return out;
+}
+
+/**
+ * Block markdown as elements: headings as bold text (not page headings), lists, rules, code blocks, inline marks and links.
+ * Never an HTML string. @req FR:agent-sessions/web.drawer.md
+ */
+export function MdBlock({ text, project }: { text: string; project?: string }) {
+  return (
+    <div class="md">
+      {mdBlocks(text).map((b, i) => {
+        if (b.t === 'hr') return <hr key={i} />;
+        if (b.t === 'pre') return <pre key={i}><code>{b.text}</code></pre>;
+        if (b.t === 'h') return <p key={i} class="md-h"><b><Md text={b.text} project={project} /></b></p>;
+        if (b.t === 'p') return <p key={i}><Md text={b.text} project={project} /></p>;
+        const items = b.items.map((it, j) => <li key={j}><Md text={it} project={project} /></li>);
+        return b.t === 'ul' ? <ul key={i}>{items}</ul> : <ol key={i}>{items}</ol>;
+      })}
+    </div>
+  );
+}
+
 /** The links in a text, in order: markdown links, bare urls and resolved refs. */
 export const mdLinks = (text: string, project?: string) => linksOf(text, refsOf(project));
 

@@ -18,6 +18,7 @@ import { barWidths, dayLabel, fmtTokens, groupTurns, localDay, orderSessions, pr
 import { local, matchAgent, nameKey, rollupOf, type TeamAgent } from './team';
 import type { Sessions } from './useSessions';
 import { feedbackActive } from './FeedbackPanel';
+import { MdBlock } from './parts';
 import './sessions.css';
 
 const TOP = 20;
@@ -76,20 +77,20 @@ function Chart({ nodes, sel, chatsOf, onPick }: { nodes: ChartNode[]; sel: strin
   );
 }
 
-/** A text turn; long ones (a session's opening brief) clamp to six lines with Show more. */
+/** A text turn as markdown; long ones (a session's opening brief) clamp to six lines with Show more. @req FR:agent-sessions/web.drawer.md */
 function Bubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
   const [more, setMore] = useState(false);
-  const long = text.length > 480;
+  const long = text.length > 480 || text.split('\n').length > 6;
   return (
     <div class={`turn ${role}`}>
-      <p class={`tl ${role}${long && !more ? ' clamp' : ''}`}>{text}</p>
+      <div class={`tl ${role}${long && !more ? ' clamp' : ''}`}><MdBlock text={text} /></div>
       {long && <button type="button" class="more-link" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}
     </div>
   );
 }
 
 function TranscriptLine({ l }: { l: Line }) {
-  if (l.kind === 'text') return <p class={`tl ${l.role}`}>{l.text}</p>;
+  if (l.kind === 'text') return <div class={`tl ${l.role}`}><MdBlock text={l.text} /></div>;
   return <p class={`tl tool ${l.status}`} title={l.output}><span class="mark" aria-hidden="true">⚙</span><span class="tool-title">{l.title}</span><span class="status">{MARK[l.status]}</span></p>;
 }
 

@@ -65,6 +65,15 @@
 .turns, .stream { display: flex; flex-direction: column; gap: 6px; }
 .tl { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 60ch; }
 .tl.clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; padding-bottom: 0; margin-bottom: 6px; }
+/* Block markdown (`MdBlock`): tight spacing for chat turns. @req FR:agent-sessions/web.drawer.md */
+.md > * { margin: 0; }
+.md > * + * { margin-top: 6px; }
+.md ul, .md ol { padding-left: 20px; white-space: normal; }
+.md li + li { margin-top: 2px; }
+.md .md-h { font-weight: 600; }
+.md hr { border: 0; border-top: 1px solid var(--line); }
+.md pre { padding: 8px 10px; border-radius: 8px; background: var(--chip); font-size: 12px; overflow-x: auto; white-space: pre; }
+.md code { font-size: .92em; }
 .turn { display: flex; flex-direction: column; gap: 2px; }
 .turn.user { align-items: flex-end; }
 .turn .more-link { margin: 0; font-size: 12px; min-height: 24px; }
