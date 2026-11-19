@@ -72,7 +72,7 @@ The page must never say "Inbox zero" when nothing is connected or nothing synced
 - **FR:src.planned** (P1): Teams and Slack are listed as `not-connected` with `planned: true` until their connectors ship. GitHub shows its sign-in state but is `planned` until its runner writes a record. A planned source is never counted, never sets the dot, and never changes the headline.
 - **FR:src.multi** (P1): Each email account is its own source with its own state. Sources sort email (by account), then GitHub, Teams, Slack.
 - **FR:src.summary** (P1): The summary has `connected` (counted sources in `ok`, `stale` or `connecting`), `total` (counted sources), `fresh` (counted sources `ok`), `attention` (any counted source `not-connected` or `error`), `canClaimZero` (`fresh >= 1` and every counted source is `ok`; on `GET /inbox-items` also the item file read cleanly), and `headline`. Headline, first match wins: no counted source connected is "No inboxes connected"; one error is its message ("Email sign-in expired: a@x.com"); more errors is "N inboxes need attention"; no fresh source is "Last synced 3h ago" (newest sync) or "Waiting for the first sync"; some stale is "N of M inboxes up to date"; some still waiting is "N of M inboxes synced; waiting for the first sync"; some not connected is "N of M sources connected"; else none.
-- **FR:src.help** (P1): Each non-`ok` source has `needs`, one plain sentence with the exact human step, and `command` when a terminal step exists. Email sign-in (not connected, expired, unreadable token file) has no command: it has `connect: true`, and its button opens the in-app Connect panel (`FR:connect-accounts/web.panel`); `needs` says read-only by default, drafts are opt-in per account, and "Stack never sends". An expired drafts account keeps its mode (from the probe, else from its record; a record keeps the sign-in mode, not the pass `--mode`). An unreadable token file: `chmod 600` if it is readable by others, else sign in again. A usage error (`--max` typo) writes no record. Connecting: `stack email run --account <addr>`. Stale: `stack email run --all`. Model down: `claude`. GitHub: `gh auth login`. Teams and Slack: what token or app they need, and `doc` links to `docs/inbox-sources.md`.
+- **FR:src.help** (P1): Each non-`ok` source has `needs`, one plain sentence with the exact human step, and `command` when a terminal step exists. Email sign-in (not connected, expired, unreadable token file) has no command: it has `connect: true`, and Settings > Accounts signs it in (`FR:connect-accounts/web.where`); `needs` says read-only by default, drafts are opt-in per account, and "Stack never sends". An expired drafts account keeps its mode (from the probe, else from its record; a record keeps the sign-in mode, not the pass `--mode`). An unreadable token file: `chmod 600` if it is readable by others, else sign in again. A usage error (`--max` typo) writes no record. Connecting: `stack email run --account <addr>`. Stale: `stack email run --all`. Model down: `claude`. GitHub: `gh auth login`. Teams and Slack: what token or app they need, and `doc` links to `docs/inbox-sources.md`.
 - **FR:src.safe** (P1): No token, secret, token file content or message text appears in a source, a record, a log or the UI. An email account that is not a plain mailbox address (letters, digits, `._%+-`, one `@`, a dotted domain) is dropped, from records, the probe and the config, so no shell text reaches a copyable command. Other kinds use an empty account.
 
 ### FR:cli: CLI
@@ -81,13 +81,27 @@ The page must never say "Inbox zero" when nothing is connected or nothing synced
 
 ### FR:web: Page
 
+The owner needs to scan mail and act on it. Inbox holds mail and messages only. Setup lives in Settings > Accounts (`FR:settings/view.sections`).
+
 - **FR:web.view** (P1): `#/inbox` lists items. Each row: source, sender, subject, summary, one primary button for the suggested action, a menu of other actions. Missing actions show "Request this action".
+  - **FR:web.view.unread** (P1): Row MUST mark an unread item with a bold subject and a small dot.
+  - **FR:web.view.border** (P1): Row MUST use the same border on every side.
+  - **FR:web.view.button** (P1): Row MUST draw its primary action in the default button style.
 - **FR:web.draft** (P1): `reply-draft` opens an editable text area first. Confirming creates the draft and shows an "Open in Outlook" link. The page has no send button.
 - **FR:web.phone** (P1): At 375 px width rows stack and nothing scrolls sideways. Every control is at least 44 px tall on a phone.
-- **FR:web.empty** (P1): With no items, the page says "Inbox zero. Nothing needs you." only when `canClaimZero`. Otherwise the empty state is the headline ("No inboxes connected", "Last synced 3h ago", "Email sign-in expired: a@x.com") and points to the sources panel. An open page reads the items and summary again every minute, when the tab comes back, and on live changes.
-- **FR:web.sources** (P1): A sources panel inside Inbox lists every source with its state and last sync, and a progress line `N of M sources connected`. Each source that is not `ok` has a Connect (or Fix) button that shows `needs`, the in-app Connect panel when `connect` is set, else the `command` with a Copy button, and the `doc` link. Email shows its mode. The panel says "Stack never sends." The panel is open when `attention` or `headline` is set, else collapsed to one line.
-- **FR:web.check** (P1): "Check connection" re-reads `GET /inbox-sources?fresh=1`, then `GET /inbox-items`, and redraws the items, the panel and the dot together. It announces the new progress line to a screen reader.
-- **FR:web.dot** (P1): The Inbox rail item, and on a phone the More tab, carry a dot when `attention` is true. The dot has an accessible name ("Inbox needs setup").
+- **FR:web.empty** (P1): Page MUST say "Inbox zero. Nothing needs you." with no items only when `canClaimZero`.
+  - **FR:web.empty.headline** (P1): Page MUST show the headline as the empty state when it cannot claim zero ("No inboxes connected", "Last synced 3h ago", "Email sign-in expired: a@x.com").
+  - **FR:web.empty.unknown** (P1): Page MUST say "Inbox status unknown" when it has no summary (a failed read).
+  - **FR:web.empty.fix** (P1): Page MUST add a `Fix in Settings` link to `#/settings/accounts` under the empty state when `attention` is true and a source has `connect` set. A failure Settings cannot fix (`model-down`, `sync-failed`) shows the headline only.
+  - **FR:web.empty.refresh** (P1): Page MUST read the items and summary again every minute, when the tab comes back, and on live changes.
+- **FR:web.accounts** (P1): Page header MUST show one quiet `Manage accounts` link to `#/settings/accounts`.
+  > - @req FR:connect-accounts/web.where
+- **FR:web.status** (P1): Page MUST show the headline as one quiet line above the list when items show and `headline` is set.
+  - **FR:web.status.fix** (P1): The line MUST end with a `Fix in Settings` link to `#/settings/accounts` when `attention` is true and a source has `connect` set.
+- **FR:web.nocmd** (P1): Every Inbox string passes `FR:product-reset/connect.rule.test`.
+  > - @req FR:product-reset/connect.rule
+  - **FR:web.nocmd.fields** (P1): From the sources reply, the page reads `summary` and each source's `connect` flag. `needs`, `command` and `doc` serve the CLI (`FR:cli.sources`).
+- **FR:web.dot** (P1): The Inbox rail item, and on a phone the More tab, carry a dot when `attention` is true. The dot has an accessible name ("Inbox: an account needs attention").
 
 ### FR:api: API
 

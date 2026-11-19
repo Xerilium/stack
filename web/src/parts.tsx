@@ -78,7 +78,7 @@ export function EmptyState({ what, next }: { what: ComponentChildren; next?: Com
   return <div class="empty-state" data-testid="empty-state"><p class="empty-what">{what}</p>{next && <p class="empty-next">{next}</p>}</div>;
 }
 
-/** A terminal command with a Copy button. Shared by first-run setup and the Inbox sources panel. @req FR:first-run-onboarding/step.email @req FR:inbox-page/web.sources */
+/** A terminal command with a Copy button. Used by first-run setup. @req FR:first-run-onboarding/step.email */
 export function CopyCommand({ cmd, testId, label = 'Copy' }: { cmd: string; testId?: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (

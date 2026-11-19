@@ -19,4 +19,4 @@
 8. Source status (`src/inbox/sources.ts` pure, `src/inbox/probe.ts` local): records, probe, state, summary, help. `stack email run` writes records.
 9. API: `sources` and `summary` on `GET /inbox-items`, `GET /inbox-sources`. Local host passes the probe.
 10. CLI: `stack inbox sources [--json]`.
-11. Web: sources panel, empty state from the headline, Check connection, rail and More dot. e2e and axe at 1280 and 375 px.
+11. Web: empty state from the headline, one quiet status line, a link to Settings > Accounts, rail and More dot. e2e and axe at 1280 and 375 px.

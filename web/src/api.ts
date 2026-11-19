@@ -124,8 +124,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     connectPoll: (id: string) => call<import('./connect').ConnectSession>(`/connect/sign-in/${encodeURIComponent(id)}`),
     connectDrafts: (account: string, on: boolean) => call<import('./connect').ConnectSession | { ok: true }>('/connect/drafts', { account, on }),
     connectRemove: (account: string) => call<{ ok: true }>('/connect/remove', { account }),
-    /** Each inbox source and the summary; `fresh` asks a local host to probe again. @req FR:inbox-page/api.sources */
-    inboxSources: (fresh = false) => call<import('./inbox').SourcesReply>(`/inbox-sources${fresh ? '?fresh=1' : ''}`),
+    /** Each inbox source and the summary. @req FR:inbox-page/api.sources */
+    inboxSources: () => call<import('./inbox').SourcesReply>('/inbox-sources'),
     /** Runs one action; never sends. @req FR:inbox-page/api.act */
     inboxAct: (id: string, body: { action: string; text?: string; until?: string; request?: boolean }) => call<import('./inbox').ActResult>(`/inbox-items/${encodeURIComponent(id)}/action`, body),
     sessions: () => call<SessionList>('/sessions?limit=200'),

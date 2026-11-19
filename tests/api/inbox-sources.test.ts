@@ -58,7 +58,7 @@ describe('GET /inbox-sources and sources on /inbox-items', () => {
     expect(JSON.stringify(r.json)).not.toMatch(/refresh|accessToken|Bearer/i);
   });
 
-  it('Check connection asks the probe for a fresh read', async () => {
+  it('fresh=1 asks the probe for a fresh read', async () => {
     const seen: unknown[] = [];
     const { get } = await mk({ inboxProbe: async (o) => { seen.push(o); return { emails: [], github: false }; } });
     await get('/inbox-sources');
