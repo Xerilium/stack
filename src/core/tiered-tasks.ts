@@ -47,10 +47,10 @@ export function projectFile(path: string, src: string): ProjectFile {
   return { path, project, aliases, repo: rp ? rp[1].replace(/\.git$/, '') : null };
 }
 
-const TIERS: Record<string, 1 | 2 | 3> = { '1️⃣': 1, '2️⃣': 2, '3️⃣': 3 };
+export const TIERS: Record<string, 1 | 2 | 3> = { '1️⃣': 1, '2️⃣': 2, '3️⃣': 3 };
 /** An optional bullet or open checkbox, then a tier. A checked box never matches. @req FR:priorities-tables/tasks.tier @req FR:priorities-tables/tasks.tier.skip */
 const LINE = /^\s*(?:[-*]\s+(?:\[ \]\s+)?)?(1️⃣|2️⃣|3️⃣)\s*(.*)$/u;
-const AGENT = /\(agent:\s*([^)]*)\)/i;
+export const AGENT_TAG = /\(agent:\s*([^)]*)\)/i;
 /** Glyph or word to status, first match wins. @req FR:priorities-tables/tasks.status */
 const STATUS: [RegExp, AgentStatus][] = [[/🤝|\bpairing\b/iu, 'pairing'], [/🔄/u, 'working'], [/🚫|🔴/u, 'blocked'], [/⏸️?/u, 'idle'], [/🕓/u, 'queued'], [/✅/u, 'done']];
 const GLYPHS = /\s*(?:🤝|🔄|🚫|🔴|⏸️?|🕓|✅)\s*/gu;
@@ -61,7 +61,7 @@ const EMOJI = /^[\p{Extended_Pictographic}\p{Regional_Indicator}️‍\s]+/u;
  * @req FR:priorities-tables/tasks.agent
  */
 function agentOf(text: string): { agent: string | null; more: number } {
-  const m = AGENT.exec(text);
+  const m = AGENT_TAG.exec(text);
   if (!m) return { agent: null, more: 0 };
   const body = m[1];
   const names = body.split(';')[0];
@@ -88,7 +88,7 @@ export function tieredTasks(path: string, src: string): TieredTask[] {
     const rest = m[2];
     const { agent, more } = agentOf(rest);
     const status = agent ? (STATUS.find(([re]) => re.test(rest))?.[1] ?? 'unknown') : null;
-    const text = linkRefs(rest.replace(AGENT, ' ').replace(GLYPHS, ' ').replace(/\s+/g, ' ').trim(), repo);
+    const text = linkRefs(rest.replace(AGENT_TAG, ' ').replace(GLYPHS, ' ').replace(/\s+/g, ' ').trim(), repo);
     out.push({ path, line, project, aliases, tier: TIERS[m[1]], text, agent, more, status, repo });
   });
   return out;

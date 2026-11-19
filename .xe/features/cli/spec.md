@@ -99,7 +99,7 @@ Owner needs one command per core operation so that the terminal can do everythin
   - **FR:cmd.init.json** (P2): JSON output MUST include `dir`, the absolute repo path
 - **FR:cmd.add-project** (P1): `stack add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=hours,...] [--weekly-capacity n] [--file name] [--force]` MUST call `addProject` and print the new path
   > - @req FR:task-lifecycle/project.file
-- **FR:cmd.add** (P1): `stack add <project> <text...> [--section name] [--parent ref]` MUST call `addTask` and print the new task ref
+- **FR:cmd.add** (P1): `stack add <project> <text...> [--section name] [--parent ref]` MUST call `addTask` and print the new task ref; a title that breaks a task lint title rule is refused first (`task-lint`, `FR:cli.write`)
   > - @req FR:task-lifecycle/add.insert
 - **FR:cmd.next** (P1): `stack next [--top n]` MUST print `ref score project text` for each of the first `n` ranked tasks (default 1, max 50), or nothing and exit 4 when there is none; the order is `rankStack`'s, so the `/next` skill and the web Home cannot drift
   > - @req FR:task-lifecycle/rank.order
@@ -117,12 +117,12 @@ Owner needs one command per core operation so that the terminal can do everythin
 - **FR:cmd.set** (P1): `stack set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis]` MUST call `setProperties`
   > - @req FR:task-lifecycle/set.props
   - An emoji flag takes an emoji or `none`
-- **FR:cmd.retitle** (P1): `stack retitle <ref> --text t [--expect t] [--no-update]` MUST replace the row text in place through the web edit path (`editTask`): checkbox, indent, children, notes, and history stay. Old status, priority, effort, and impact marks at the start or end of the row stay unless the new text has a mark of the same kind at that end (tags after the marks, such as `📅 Nov 5`, are part of the text: pass them in `--text`). Summaries refresh like `FR:cmd.refresh`. Missing ref or `--text` is exit 2; a changed row (`--expect`) is exit 3
+- **FR:cmd.retitle** (P1): `stack retitle <ref> --text t [--expect t] [--no-update]` MUST replace the row text in place through the web edit path (`editTask`): checkbox, indent, children, notes, and history stay. Old status, priority, effort, and impact marks at the start or end of the row stay unless the new text has a mark of the same kind at that end (tags after the marks, such as `📅 Nov 5`, are part of the text: pass them in `--text`). Summaries refresh like `FR:cmd.refresh`. Missing ref or `--text` is exit 2; a changed row (`--expect`) is exit 3; a title that breaks a task lint title rule is exit 2 (`task-lint`, `FR:cli.write`)
   > - @req FR:web-app/api.edit
 - **FR:cmd.note** (P1): `stack note add <ref> --text t [--expect t]` MUST append `- <t>` as a nested bullet at the end of the task block, children and older notes kept; it copies a child's indent when there is one and never refreshes summaries. A changed row (`--expect`) is exit 3. Empty, multi-line, or checkbox-like text is exit 2
 - **FR:cmd.remove-completed** (P1): `stack remove-completed [--project name]` MUST call `removeCompleted` and print the removed count
   > - @req FR:task-lifecycle/remove.blocks
-- **FR:cmd.update** (P1): `stack update [--sweep] [--engine legacy|stack]` MUST regenerate README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writing only files whose text changed
+- **FR:cmd.update** (P1): `stack update [--sweep] [--engine legacy|stack]` MUST regenerate README.md, stack.md, projects.md, and my-day.md with `generateSummaries` (previous README/projects passed in), writing only files whose text changed; it then runs the task lint (`task-lint`, `FR:cli.update`)
   > - @req FR:summaries/generate.@function
   - **FR:cmd.update.engine** (P1): `--engine stack` MUST generate the files with the `stack` engine and the overrides in `.stack/priorities.json`, so their scores and order match `stack next`; the default is `stack`, so the README top is the row a no-ref `start`, `complete`, or `skip` acts on (`FR:ref.default`); `--engine legacy` MUST write the PowerShell output byte-for-byte (parity)
     > - @req FR:summaries/engine.@option

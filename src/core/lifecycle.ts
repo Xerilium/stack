@@ -62,7 +62,7 @@ export const IMPACT = ['⬆️', '↔️', '⬇️'] as const;
 export const SPECIAL = ['💤', '☀️', '🅿️', '🏷️'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const SUSPEND_MARK = /💤\s+(?:[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}|[A-Za-z]{3}\s+\d{1,2}|\d{1,2}:\d{2}):\s*/gi;
+export const SUSPEND_MARK = /💤\s+(?:[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}|[A-Za-z]{3}\s+\d{1,2}|\d{1,2}:\d{2}):\s*/gi;
 const SUSPEND_SCAN = /💤\s+(?:([A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2})|([A-Za-z]{3}\s+\d{1,2})|(\d{1,2}:\d{2})):\s*/g;
 const START_SCAN = /⏰\s+([A-Z][a-z]{2})\s+(\d{1,2}):\s+/g;
 const ROW = /^(\s*- )(\[[ xX]\] )(.+)$/;

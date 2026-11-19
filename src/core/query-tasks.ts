@@ -29,7 +29,7 @@ export interface QueryFailure { line: number; source: string; identifier: string
 export interface ExpandOptions { now: Date; timeZone?: string }
 export interface ExpandResult { content: string; processed: number; skipped: number; failures: QueryFailure[] }
 
-const TRIGGER = /🔎\s+@([A-Za-z0-9_-]+)\/(\S+?)(?::(\w+))?\s+\(([^)]*)\)/u;
+export const TRIGGER = /🔎\s+@([A-Za-z0-9_-]+)\/(\S+?)(?::(\w+))?\s+\(([^)]*)\)/u;
 const CHECKBOX = /^(\s*)-\s*\[[ x]\]/;
 const GATE = /💤|⛔️?|🅿️|⏳/u;
 

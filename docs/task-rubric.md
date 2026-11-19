@@ -20,6 +20,11 @@ Task rubric (apply to every task you create or touch)
 14. Parent rows are outcomes; leaf rows are actions.
 15. Run the quality gate (stack check <ref>); fix until score 4.
 16. If you cannot reach score 4, set Next: "Owner: give <missing>" and stop.
+17. Title: the action only, 120 characters or less. No status, no date, no detail.
+18. Status and dates go in nested bullets, never in the title (no "done", "waiting", "blocked", "as of Nov 18", "PR 12 merged").
+19. Title: at most 1 parenthetical. The (agent: ...) tag and the 1️⃣ 2️⃣ 3️⃣ markers do not count.
+20. Every detail is a nested bullet ("- ") under the row. No text after a dash in the title, no plain lines under the row.
+21. Run the lint (stack lint); fix every line it prints.
 ```
 
 ## Fields
@@ -32,6 +37,30 @@ Fields are nested bullets under the row: `- Next: ...` or `- **Next:** ...`. Bul
   - Done when: Each thread has a reply and the PR has no open threads
   - Context: The acks decide the cut of Shchedryk and two remakes. Roland set the date.
   - Owner: me
+```
+
+## Lint
+
+`stack lint` fails on bloated rows. No model call. It reads open rows only, and skips `🌐` query rows. `stack check <ref>` and `stack update` run it too. `stack add`, `stack capture`, and `stack retitle` refuse a title that breaks a title rule.
+
+| Rule             | Fails when                                                                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title-length`   | The title has more than 120 characters                                                                                                               |
+| `title-status`   | The title holds `done`, `waiting`, `blocked`, `merged`, `landed`, `shipped`, `parked`, `on hold`, `as of`, or a date (`Nov 18`, `2026-11-18`)        |
+| `title-parens`   | The title has more than 1 parenthetical                                                                                                              |
+| `detail-nesting` | The title has text after a dash (`--`, `—`, `–`), or a line under the row is not a bullet (a numbered item, a `>` quote line, and a code fence pass) |
+
+The rules do not read: A link URL (only its label), `(agent: ...)`, the tier markers `1️⃣` `2️⃣` `3️⃣`, the date marks `📅 Nov 5:`, `⏰ Apr 1:`, and `💤 Nov 5:`, and a `🔎` query trigger.
+
+```markdown
+<!-- Fails: title-status, title-parens, detail-nesting -->
+
+- [ ] 1️⃣ Portal extension (PR 12 merged) (agent: portal) -- waiting on the reviewer (as of Nov 18)
+
+<!-- Passes -->
+
+- [ ] 1️⃣ Ship the portal extension (agent: portal)
+  - Status: PR 12 merged. Waiting on the reviewer, as of Nov 18.
 ```
 
 ## Quality gate

@@ -161,6 +161,11 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
   14. Parent rows are outcomes; leaf rows are actions.
   15. Run the quality gate (stack check <ref>); fix until score 4.
   16. If you cannot reach score 4, set Next: "Owner: give <missing>" and stop.
+  17. Title: the action only, 120 characters or less. No status, no date, no detail.
+  18. Status and dates go in nested bullets, never in the title (no "done", "waiting", "blocked", "as of Nov 18", "PR 12 merged").
+  19. Title: at most 1 parenthetical. The (agent: ...) tag and the 1️⃣ 2️⃣ 3️⃣ markers do not count.
+  20. Every detail is a nested bullet ("- ") under the row. No text after a dash in the title, no plain lines under the row.
+  21. Run the lint (stack lint); fix every line it prints.
   ```
 
 ### FR:rank: Owner queue
@@ -274,7 +279,7 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
 - **FR:api.enrich.batch** (P1): `POST /tasks/enrich` with `{refs}` does a bulk enrich (`FR:quality.enrich.batch`).
 - **FR:api.expect** (P1): Each request that changes a task sends `expect: { text, ancestors }`, copied from the `text` and ancestor titles of its last read. Before it writes, the server compares them with the row at the ref. When they differ, it never writes that row; it runs `FR:api.moved` with the expected values. The UI and the CLI always send `expect`.
 - **FR:api.moved** (P2): When a ref no longer points at its row (`FR:api.expect` fails), the server looks for a row with the expected text and the same ancestor titles in the same file. It acts only when exactly one row matches. With no match or more than one, the response is `404` with code `moved`, and the page shows `This task moved or is done` and a link to Tasks.
-- **FR:cli.check** (P1): `stack check <ref>` prints the quality score and the missing checks. It exits 0 at score 4, else 1. `--json` prints `{ ok, ref, score, actionable, missing }`. Agents use it; the owner never sees it.
+- **FR:cli.check** (P1): `stack check <ref>` prints the quality score and the missing checks. It exits 0 at score 4, else 1. `--json` prints `{ ok, ref, score, actionable, missing }`. It also runs the task lint on the row (`task-lint`, `FR:cli.check`). Agents use it; the owner never sees it.
 
 ### FR:ui: One component set
 
