@@ -264,7 +264,7 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
   const entries = pending.filter((e) => done0[e.id]?.state !== 'failed' && done0[e.id]?.state !== 'delivered');
   const out: DeliveryResult[] = [];
   const perms = d.store.read().perms ?? {};
-  // Open permission asks wait for the owner: they alone never start a process (the login check included). @req FR:agent-delivery/run.approved
+  // Open permission asks wait for the owner: they alone never start a process (the login check included). @req FR:agent-delivery/run.approved @req FR:agent-delivery/login.check
   if (!entries.length && await allOpen(d, perms)) return { login: d.store.read().login.state, items: out };
   let login = await checkLogin(d);
   d.store.setLogin(login);

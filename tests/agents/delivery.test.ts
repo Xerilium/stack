@@ -359,7 +359,7 @@ describe('approved permission asks', () => {
     expect(m.prompts()).toHaveLength(2); // never twice
   });
 
-  /** @req FR:agent-delivery/run.approved */
+  /** @req FR:agent-delivery/run.approved @req FR:agent-delivery/login.check */
   it('starts no process while every permission ask is still open', async () => {
     const denials = [{ tool_name: 'Edit', tool_use_id: 't1', tool_input: { file_path: 'src/a.ts' } }];
     const m = await mk({ replies: [{ stdout: JSON.stringify({ subtype: 'success', is_error: false, result: 'Needs you: allow the edit.', permission_denials: denials }) }] });
