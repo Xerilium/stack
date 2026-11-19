@@ -8,23 +8,26 @@ import './ui.css';
 
 /** Minutes in one row. */
 export const SLOT_MIN = 30;
-/** The least height of an item, in rows (15 minutes): its target stays 24 px, 48 px on touch. */
-export const MIN_SIZE = 0.5;
+/** The least height of an item, in rows (12 minutes, the shortest effort): at the row heights in `ui.css` its target stays 24 px, 44 px on touch. */
+export const MIN_SIZE = 0.4;
 
 export interface GridSpan { /** Start, in minutes after midnight. */ start: number; /** End, in minutes after midnight. */ end: number }
 export interface GridItem extends GridSpan { key: string; node: ComponentChild }
 export interface GridBand extends GridSpan { label: string; /** Tint the band's rows (time that is not for work). */ muted?: boolean }
-/** Where an item sits: `top` and `size` in rows (30 minutes is 1, never under `MIN_SIZE`); `lane` of `lanes` when items overlap in time. */
-export interface Placed<T> { item: T; top: number; size: number; lane: number; lanes: number; /** Drawn higher than its length: it sits above the item after it, so its whole height takes a tap. */ raised?: true }
+/** Where an item sits: `top` and `size` in rows (30 minutes is 1); `lane` of `lanes` when items overlap. */
+export interface Placed<T> { item: T; top: number; size: number; lane: number; lanes: number }
 
 /**
  * Lay items out on the span `from` to `to`: clip each to the span, drop the ones outside it, sort by start,
- * and put items that overlap in time side by side. Pure.
+ * and put items that overlap side by side. An item under 12 minutes is drawn 12 minutes high (never past the last row),
+ * and overlap is judged on the drawn height, so no item ever covers another. Pure.
  */
 export function placeItems<T extends GridSpan>(items: T[], from: number, to: number): Placed<T>[] {
   const shown = items
     .map((item) => ({ item, a: Math.max(item.start, from), z: Math.min(item.end, to) }))
     .filter((x) => x.z > x.a)
+    // Only an item that is short by itself gets the least height; one cut by the span keeps its cut size.
+    .map((x) => (x.item.end - x.item.start < MIN_SIZE * SLOT_MIN ? { ...x, z: Math.min(to, Math.max(x.z, x.a + MIN_SIZE * SLOT_MIN)) } : x))
     .sort((x, y) => x.a - y.a || y.z - x.z);
   const out: Placed<T>[] = [];
   let group: { p: Placed<T>; z: number }[] = [];
@@ -35,10 +38,7 @@ export function placeItems<T extends GridSpan>(items: T[], from: number, to: num
     const taken = new Set(group.filter((g) => g.z > x.a).map((g) => g.p.lane));
     let lane = 0;
     while (taken.has(lane)) lane++;
-    // Only an item that is short by itself gets the least height; one cut by the span keeps its cut size. Never past the last row.
-    const size = (x.z - x.a) / SLOT_MIN;
-    const short = x.item.end - x.item.start < MIN_SIZE * SLOT_MIN && size < MIN_SIZE;
-    const p: Placed<T> = { item: x.item, top: (x.a - from) / SLOT_MIN, size: short ? Math.min(MIN_SIZE, (to - x.a) / SLOT_MIN) : size, lane, lanes: 1, ...(short ? { raised: true as const } : {}) };
+    const p: Placed<T> = { item: x.item, top: (x.a - from) / SLOT_MIN, size: (x.z - x.a) / SLOT_MIN, lane, lanes: 1 };
     group.push({ p, z: x.z });
     groupEnd = Math.max(groupEnd, x.z);
     out.push(p);
@@ -78,7 +78,7 @@ export function DayGrid({ label, from, to, items, bands = [], now, testid }: {
       </ol>
       <ol class="ui-grid-items" aria-label={label} data-testid={testid}>
         {placeItems(items, start, end).map((p) => (
-          <li key={p.item.key} class={`ui-grid-item${p.raised ? ' raised' : ''}`} style={{ '--top': p.top, '--size': p.size, '--lane': p.lane, '--lanes': p.lanes }}>{p.item.node}</li>
+          <li key={p.item.key} class="ui-grid-item" style={{ '--top': p.top, '--size': p.size, '--lane': p.lane, '--lanes': p.lanes }}>{p.item.node}</li>
         ))}
       </ol>
       {now !== undefined && now >= start && now < end && <div class="now-line ui-grid-now" role="img" aria-label={`Now ${clock(now)}`} style={{ '--top': (now - start) / SLOT_MIN }} />}

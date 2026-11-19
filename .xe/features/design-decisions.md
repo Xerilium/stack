@@ -308,10 +308,10 @@
 
 ## My day: a day grid with equal 30-minute rows
 
-**Decision**: My day draws the plan on `DayGrid` (`FR:ui-kit/daygrid`): rows of 30 minutes, all one height (48 px; 96 px on touch), from now to bed. A block's height is its length (60 minutes is exactly two rows). The header keeps the date, the headline, Available, and one line of what needs action.
+**Decision**: My day draws the plan on `DayGrid` (`FR:ui-kit/daygrid`): rows of 30 minutes, all one height (60 px; 112 px on touch), from now to bed. A block's height is its length (60 minutes is exactly two rows). The header keeps the date, the headline, Available, and one line of what needs action.
 
 **Date**: 2026-11-19
 
 **Why**: The owner said My day was cluttered and its time slots were uneven. The old timeline sized rows by their content, and added band headers, `free` rows, a day bar and totals.
 
-**Trade-offs**: The touch row is 96 px so a 30-minute task keeps its one-tap actions at 44 px (`FR:home/myday.actions`); a phone shows about 3 hours. A block under 30 minutes is one line (Done and open); under 14 minutes its target is below 44 px on touch. The grid starts at now, not at wake, so there are no dead rows and no scroll jump. Rejected: snap blocks to rows (a 20-minute email block would push every later block off its time); a 56 px touch row with the row actions only in the task detail.
+**Trade-offs**: The row height comes from the shortest effort: a 12-minute task (🔹) must keep a 24 px target (44 px on touch), so 30 minutes is 60 px (112 px on touch). A 30-minute task then also keeps its one-tap actions at 44 px (`FR:home/myday.actions`). A phone shows about 3 hours. A block under 30 minutes is one line (Done and open). Rejected: a least height above the true length (the next block covers it, or sits beside it at half width; both tested, both poor at 375 px). The grid starts at now, not at wake, so there are no dead rows and no scroll jump. Rejected: snap blocks to rows (a 20-minute email block would push every later block off its time); a 56 px touch row with the row actions only in the task detail.

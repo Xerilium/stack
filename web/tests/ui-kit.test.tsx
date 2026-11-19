@@ -169,17 +169,20 @@ describe('DayGrid', () => {
   const it30 = { key: 'a', start: 600, end: 630 }, it60 = { key: 'b', start: 660, end: 720 }, it15 = { key: 'c', start: 735, end: 750 }, it12 = { key: 'd', start: 750, end: 762 };
   it('placeItems: size is in proportion to length, top to start', () => {
     const p = placeItems([it60, it30, it15, it12], 600, 780);
-    // an item under 15 minutes keeps the height of 15 minutes, so its target stays usable; lanes follow real times
-    expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['a', 0, 1], ['b', 2, 2], ['c', 4.5, 0.5], ['d', 5, 0.5]]);
+    expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['a', 0, 1], ['b', 2, 2], ['c', 4.5, 0.5], ['d', 5, 0.4]]);
     expect(p.every((x) => x.lane === 0 && x.lanes === 1)).toBe(true);
-    expect(p.map((x) => x.raised ?? false)).toEqual([false, false, false, true]); // only the one drawn higher than its length sits above the next
   });
   it('placeItems: clips to the span and drops items outside it', () => {
     const p = placeItems([{ key: 'early', start: 540, end: 630 }, { key: 'late', start: 760, end: 840 }, { key: 'out', start: 900, end: 930 }], 600, 780);
     expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['early', 0, 1], ['late', 16 / 3, 2 / 3]]);
     // an item cut by the span keeps its cut size; a short one at the end stops at the last row
-    expect(placeItems([{ key: 'cut', start: 560, end: 605 }, { key: 'end', start: 775, end: 780 }], 600, 780).map((x) => [x.item.key, x.size, x.raised ?? false])).toEqual([['cut', 5 / 30, false], ['end', 5 / 30, true]]);
-    expect(placeItems([{ key: 'x', start: 600, end: 612 }, { key: 'y', start: 612, end: 642 }], 600, 780).map((x) => [x.lane, x.lanes])).toEqual([[0, 1], [0, 1]]);
+    expect(placeItems([{ key: 'cut', start: 560, end: 605 }, { key: 'end', start: 775, end: 780 }], 600, 780).map((x) => [x.item.key, x.size])).toEqual([['cut', 5 / 30], ['end', 5 / 30]]);
+    // back to back, 12 minutes and up: one under the other, full width
+    expect(placeItems([{ key: 'x', start: 600, end: 612 }, { key: 'y', start: 612, end: 642 }, { key: 'z', start: 642, end: 672 }], 600, 780).map((x) => [x.size, x.lane, x.lanes])).toEqual([[0.4, 0, 1], [1, 0, 1], [1, 0, 1]]);
+    // an item under 12 minutes is drawn 12 minutes high; overlap is judged on the drawn height, so the next item sits beside it, never under it
+    expect(placeItems([{ key: 'x', start: 600, end: 605 }, { key: 'y', start: 605, end: 635 }], 600, 780).map((x) => [x.size, x.lane, x.lanes])).toEqual([[0.4, 0, 2], [1, 1, 2]]);
+    expect(placeItems([{ key: 'x', start: 600, end: 605 }, { key: 'y', start: 605, end: 610 }], 600, 780).map((x) => [x.lane, x.lanes])).toEqual([[0, 2], [1, 2]]);
+
   });
   it('placeItems: items that overlap sit side by side; later ones get the full width again', () => {
     const p = placeItems([{ key: 'a', start: 600, end: 660 }, { key: 'b', start: 630, end: 690 }, { key: 'c', start: 660, end: 690 }, { key: 'd', start: 720, end: 750 }], 600, 780);
@@ -198,7 +201,6 @@ describe('DayGrid', () => {
     const list = r.querySelector('[data-testid="plan"]')!;
     expect(list.tagName).toBe('OL');
     expect(list.getAttribute('aria-label')).toBe('Day');
-    expect(mount(<DayGrid label="Day" from={600} to={780} items={[{ key: 's', start: 600, end: 612, node: <b>Short</b> }]} />).querySelector('.ui-grid-item')!.classList.contains('raised')).toBe(true);
     const items = [...list.querySelectorAll<HTMLElement>(':scope > li.ui-grid-item')];
     expect(items.map((x) => x.textContent)).toEqual(['Thirty', 'Sixty']);
     expect(items.map((x) => [x.style.getPropertyValue('--top'), x.style.getPropertyValue('--size')])).toEqual([['0', '1'], ['2', '2']]);
