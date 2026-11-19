@@ -174,3 +174,9 @@
   .dialog:not(.sheet) { width: calc(100vw - 16px); margin-top: 8vh; align-self: flex-start; }
   .scrim:has(.dialog:not(.sheet)) { align-items: flex-start; padding-top: 8px; }
 }
+
+/* Skeleton: the shared box and shimmer. Views set the row heights. @req FR:ui-kit/skeleton */
+.skeleton { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
+.sk { border-radius: 10px; background: linear-gradient(90deg, var(--chip), var(--hover), var(--chip)); background-size: 200% 100%; animation: sk 1.4s linear infinite; list-style: none; }
+@keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none !important; } }

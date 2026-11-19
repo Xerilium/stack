@@ -12,6 +12,7 @@ import { PageHeader } from '../src/ui/PageHeader';
 import { EmptyState, ErrorState, Loading } from '../src/ui/States';
 import { SelectCard } from '../src/ui/SelectCard';
 import { SourceLink, sourceOf } from '../src/ui/SourceLink';
+import { Skeleton } from '../src/ui/Skeleton';
 import { SplitView } from '../src/ui/SplitView';
 import { StatusChip } from '../src/ui/StatusChip';
 import { Tabs } from '../src/ui/Tabs';
@@ -367,4 +368,30 @@ describe('ErrorState', () => {
     expect(n).toBe(1);
   });
   it('has no button without onRetry', () => expect(mount(<ErrorState what="Cannot load." />).querySelector('button')).toBeNull());
+});
+
+// Each case is the markup the view had before it used the component, so the pages look the same.
+describe('Skeleton', () => {
+  const html = (node: preact.ComponentChild) => mount(node).innerHTML;
+  // @req FR:ui-kit/skeleton
+  it('is a busy box of placeholder rows', () => {
+    expect(html(<Skeleton rows={2} />)).toBe('<div class="skeleton" aria-busy="true"><div class="sk"></div><div class="sk"></div></div>');
+  });
+  // @req FR:ui-kit/skeleton.label
+  // @req FR:ui-kit/skeleton.status
+  it('is a status named by the label when the view sets them', () => {
+    expect(html(<Skeleton status label="Loading" rows={['big', '', '', '']} />))
+      .toBe('<div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>');
+    expect(html(<Skeleton class="prs-sk" status label="Loading pull requests" rows={4} testId="prs-skeleton" />))
+      .toBe('<div class="skeleton prs-sk" role="status" aria-busy="true" aria-label="Loading pull requests" data-testid="prs-skeleton"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>');
+  });
+  // @req FR:ui-kit/skeleton.shape
+  it('takes the shape of the content it stands for: a list or lines of text', () => {
+    expect(html(<Skeleton as="ol" class="asks" label="Loading asks" rows={['big', '', '']} />))
+      .toBe('<ol class="asks" aria-busy="true" aria-label="Loading asks"><li class="sk big"></li><li class="sk"></li><li class="sk"></li></ol>');
+    expect(html(<Skeleton as="ol" class="sess-list" label="Loading agents" rows={3} />))
+      .toBe('<ol class="sess-list" aria-busy="true" aria-label="Loading agents"><li class="sk"></li><li class="sk"></li><li class="sk"></li></ol>');
+    expect(html(<Skeleton as="lines" class="turns" label="Loading transcript" rows={['', 'short', '']} />))
+      .toBe('<div class="turns" aria-busy="true" aria-label="Loading transcript"><p class="sk"></p><p class="sk short"></p><p class="sk"></p></div>');
+  });
 });

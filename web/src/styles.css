@@ -578,10 +578,8 @@ button.expected:hover { background: var(--line); }
 .unfit-why { color: var(--warn); }
 .unfit .grow { flex: 1; }
 .unfit .btn { min-height: 28px; font-size: 12.5px; }
-.skeleton { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
-.skeleton .sk { height: 36px; border-radius: 10px; background: linear-gradient(90deg, var(--chip), var(--hover), var(--chip)); background-size: 200% 100%; animation: sk 1.4s linear infinite; }
+.skeleton .sk { height: 36px; }
 .skeleton .sk.big { height: 150px; border-radius: 14px; }
-@keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 .cmds { max-height: 56vh; overflow: auto; padding-bottom: 8px; }
 .cmd-group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 10px 10px 2px; cursor: default; }
 .cmd-group:first-child { padding-top: 2px; }
