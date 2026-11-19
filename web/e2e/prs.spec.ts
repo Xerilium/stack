@@ -148,8 +148,11 @@ test('first open shows a skeleton, never zero counts, until the board answers', 
   const sk = page.getByTestId('prs-skeleton');
   await expect(sk).toHaveAttribute('aria-busy', 'true');
   await expect(page.getByTestId('prs-page').getByRole('tab')).toHaveCount(0);
+  // @req FR:pr-page/flyout.header.total: no count before the board.
+  await expect(page.getByTestId('prs-page').getByRole('heading', { level: 2 })).toHaveText('Pull requests');
   await expect(icon(page, mobile)).toHaveAccessibleName('Pull requests: loading');
   await expect(page.getByTestId('prs-page').getByRole('tab', { name: /Summary/ })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('prs-page').getByRole('heading', { level: 2 })).toHaveText('Pull requests (10)');
 });
 
 test('signed out: Sign in to GitHub, the device code, then the board', async ({ page }) => {
@@ -500,7 +503,7 @@ test('a move under a project filter sends the queue rank of the target place, no
   for (const r of b.rows) { if (r.number === 101) Object.assign(r, { pinned: true, rank: 1 }); if (r.number === 1105) Object.assign(r, { pinned: true, rank: 2 }); if (r.number === 109) Object.assign(r, { pinned: true, rank: 3 }); }
   const { posts } = await setup(page, { board: b });
   const pg = await openPage(page);
-  await pg.getByRole('button', { name: 'Xerilium', exact: true }).click();
+  await pg.getByRole('group', { name: 'Filter by project' }).getByRole('button', { name: /^Xerilium/ }).click();
   await pg.getByRole('tab', { name: /Pinned/ }).click();
   await expect(pg.locator('.pr-card')).toHaveCount(2);
   await pg.getByRole('button', { name: 'Reorder Xerilium/stack#101' }).focus();
@@ -524,14 +527,22 @@ test('no automatic reload; Refresh asks the host to poll; the age ticks', async 
   await expect.poll(() => gets.slice(n)).toEqual(['?refresh=1']);
 });
 
-test('project chips filter the Summary and are remembered', async ({ page }) => {
+// @req FR:pr-page/flyout.filter.pills @req FR:pr-page/flyout.filter.count @req FR:pr-page/flyout.header.total
+test('project chips show counts, filter the Summary and the header total, and are remembered', async ({ page }) => {
   await setup(page);
   const pg = await openPage(page);
-  await pg.getByRole('button', { name: 'Allyte', exact: true }).click();
+  await expect(pg.getByRole('heading', { level: 2 })).toHaveText('Pull requests (10)');
+  const chips = pg.getByRole('group', { name: 'Filter by project' }).getByRole('button');
+  await expect(chips).toHaveText(['Allyte 1', 'FTK 2', 'Xerilium 7']);
+  await pg.getByRole('button', { name: 'Allyte 1' }).click();
   await expect(pg.getByRole('tab', { name: /Summary/ })).toHaveText('Summary 1');
+  await expect(pg.getByRole('heading', { level: 2 })).toHaveText('Pull requests (1)');
   await expect(pg.locator('section.pr-sec').nth(1).locator('.pr-card')).toHaveCount(1);
+  // The chip counts do not follow the selection or the tab.
+  await pg.getByRole('tab', { name: /Paused/ }).click();
+  await expect(chips).toHaveText(['Allyte 1', 'FTK 2', 'Xerilium 7']);
   await page.reload();
-  await expect(pg.getByRole('button', { name: 'Allyte', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(pg.getByRole('button', { name: 'Allyte 1' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 for (const scheme of ['light', 'dark'] as const) {

@@ -2,7 +2,7 @@
  * The PR page: a top bar icon with the active agent count, and a flyout (full screen on a phone) and a `#/prs` page with a Summary tab,
  * one PR card shape, a details pane, and a Pinned tab sorted by drag. No merge, un-draft, close, or approve control exists here.
  * @req FR:pr-page/icon.place @req FR:pr-page/icon.absent @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape @req FR:pr-page/flyout.tabs @req FR:pr-page/flyout.header
- * @req FR:pr-page/flyout.filter @req FR:pr-page/flyout.empty @req FR:pr-page/act.list @req FR:pr-page/act.never @req FR:pr-page/auth.state @req FR:pr-page/auth.signin
+ * @req FR:pr-page/flyout.filter @req FR:pr-page/flyout.filter.pills @req FR:pr-page/flyout.filter.count @req FR:pr-page/flyout.header.total @req FR:pr-page/flyout.empty @req FR:pr-page/act.list @req FR:pr-page/act.never @req FR:pr-page/auth.state @req FR:pr-page/auth.signin
  * @req FR:pr-page/nav.badge @req FR:pr-page/nav.page @req FR:pr-page/nav.load @req FR:pr-page/summary.layout @req FR:pr-page/card.fields @req FR:pr-page/card.select
  * @req FR:pr-page/check.view @req FR:pr-page/check.none @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
  * @req FR:pr-page/detail.layout @req FR:pr-page/pin.toggle @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys @req FR:pr-page/live.age
@@ -12,12 +12,13 @@ import { ApiFailure, type createClient } from './api';
 import { errText } from './errtext';
 import {
   actionable, actionsOf, authorText, flagText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText,
-  summaryView, TAB_LABEL, tabsOf, toneOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type LiveCheck, type PrStore, type QuickAction, type SignInSession, type Tab,
+  summaryView, TAB_LABEL, tabsOf, toneOf, totalOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type LiveCheck, type PrStore, type QuickAction, type SignInSession, type Tab,
 } from './prs';
 import type { Toast } from './parts';
 import { store } from './day';
 import { ActionBar, ActionMenu, type ActionItem } from './ui/ActionMenu';
 import { CountBadge } from './ui/CountBadge';
+import { FilterPills } from './ui/FilterPills';
 import { Flag } from './ui/Flag';
 import { SelectCard } from './ui/SelectCard';
 import { Skeleton } from './ui/Skeleton';
@@ -532,7 +533,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
         if (e.key === 'Escape') { e.preventDefault(); onClose(); }
       }}>
       <header class="prs-head">
-        <h2 id={hid}>Pull requests</h2>
+        <h2 id={hid}>{board ? `Pull requests (${totalOf(board, sel)})` : 'Pull requests'}</h2>
         <span class="prs-age" role="status" aria-live="off" data-testid="prs-age">{updatedText(board, now)}</span>
         {board && <button type="button" class={`prs-refresh${loading ? ' spin' : ''}`} aria-label="Refresh pull requests" title="Refresh pull requests" disabled={loading} onClick={() => void s.reload(true)}><RefreshIcon /></button>}
         {!page && <button type="button" class="fl-btn prs-close" onClick={onClose} aria-label="Close pull requests">Close</button>}
@@ -545,9 +546,8 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
         {board.error && board.at && <p class="prs-note" role="status">{board.error}. Showing the last good copy.</p>}
         {board.truncated && <p class="prs-note">Some PRs may be missing: a search hit its 50-PR limit.</p>}
         {projects.length > 1 && (
-          <div class="prs-chips" role="group" aria-label="Filter by project">
-            {projects.map((p) => <button type="button" key={p} class="fl-chip prs-chip" aria-pressed={sel.includes(p)} onClick={() => setPrefs({ ...prefs, projects: sel.includes(p) ? sel.filter((x) => x !== p) : [...sel, p] })}>{PROJECT_LABEL[p] ?? p}</button>)}
-          </div>
+          <FilterPills label="Filter by project" items={projects.map((p) => ({ key: p, label: PROJECT_LABEL[p] ?? p, count: totalOf(board, [p]) }))} selected={sel}
+            onToggle={(p) => setPrefs({ ...prefs, projects: sel.includes(p) ? sel.filter((x) => x !== p) : [...sel, p] })} />
         )}
         <div class="prs-tabs" role="tablist" aria-label="PR groups" onKeyDown={tabKeys}>
           {tabs.map((t) => (

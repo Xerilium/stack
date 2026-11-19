@@ -70,6 +70,17 @@ Owner needs every view to show the same placeholder while it loads so that he kn
 
 - **FR:tabs** (P1): `Tabs` is a tab bar (ARIA tabs pattern: one selected tab with `tabIndex` 0, arrow keys, Home and End pick and focus). An optional `aside` sits small at the right end of the bar
 
+### FR:pills: Filter pills
+
+Owner needs filters that look like filters, not like action buttons, so that he sees at a glance what the list shows.
+
+- **FR:pills** (P1): `FilterPills` MUST show a group of toggle pills (`role="group"`, named `label`) that filter a list; any number can be on
+  - **FR:pills.toggle** (P1): Each pill MUST be a toggle button (`aria-pressed`) that calls `onToggle` with its key on a tap, Enter or Space
+  - **FR:pills.count** (P1): A pill with a `count` MUST show it after the word as a quiet secondary label (muted, tabular figures, no bubble)
+  - **FR:pills.look** (P1): Off, a pill MUST have no fill and a thin line border; on, it MUST have the accent soft fill, an accent border, and a check mark, so the state does not rely on color alone. All pills have one height, padding and full radius. No shadow and no button fill, so a pill never looks like an action
+  - **FR:pills.wrap** (P2): Pills MUST wrap at 375 px with no sideways scroll
+  - **FR:pills.target** (P1): A pill MUST be at least 44 px high on touch and 32 px on desktop
+
 ### FR:split: Split view
 
 - **FR:split** (P1): `SplitView` shows a list and a detail pane. Wide (`useWide(query)`), they sit side by side and the pane shows `empty` until a card is picked. Narrow, the open detail replaces the list, with `‹ Back`, and its heading gets focus

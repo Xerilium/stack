@@ -48,6 +48,26 @@
 .ui-chip.t-warn { --c: var(--warn); }
 .ui-chip.t-bad { --c: var(--danger, var(--warn)); }
 
+/* Filter pills: toggles that filter a list. Off: no fill, a thin line. On: the accent soft fill, an accent line and a check. A quiet count. No shadow. @req FR:ui-kit/pills.look @req FR:ui-kit/pills.wrap @req FR:ui-kit/pills.target */
+/* The pill shape is a ::before layer: one 32 px look everywhere, while the button grows to 44 px on touch. */
+.ui-pills { display: flex; flex-wrap: wrap; gap: var(--fl-s-s); }
+.ui-pill { position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 6px; min-height: var(--fl-target); padding: 0 var(--fl-s-m); border: 0; background: transparent; color: var(--ink2); font: 500 13px/1 var(--fl-font); white-space: nowrap; cursor: pointer; }
+.ui-pill::before { content: ''; position: absolute; inset: 0; z-index: -1; border: 1px solid var(--line-strong); border-radius: var(--fl-r-pill); background: transparent; transition: background var(--t-feedback) var(--ease), border-color var(--t-feedback) var(--ease); }
+@media (hover: hover) { .ui-pill:hover { color: var(--ink); } .ui-pill:hover::before { background: var(--hover); } }
+.ui-pill:focus-visible { outline: none; }
+.ui-pill:focus-visible::before { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ui-pill[aria-pressed="true"] { color: var(--ink); }
+.ui-pill[aria-pressed="true"]::before { background: var(--accent-soft); border-color: var(--accent); }
+.ui-pill-check { flex: none; margin-inline-start: -2px; color: var(--accent-fg); }
+.ui-pill-count { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.ui-pill[aria-pressed="true"] .ui-pill-count { color: var(--muted-on-soft); }
+@media (prefers-reduced-motion: reduce) { .ui-pill::before { transition: none; } }
+@media (pointer: coarse), (max-width: 719px) {
+  .ui-pills { row-gap: 0; }
+  .ui-pill { min-height: var(--tap); }
+  .ui-pill::before { inset: 6px 0; }
+}
+
 /* Actions menu: one quiet button, the menu under it (or above it near the bottom). @req FR:ui-kit/menu */
 .ui-more { position: relative; }
 .ui-more-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 1px solid transparent; border-radius: var(--fl-r-md); background: transparent; color: var(--ui-ink2, var(--ink2)); cursor: pointer; }

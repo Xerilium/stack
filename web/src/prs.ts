@@ -67,6 +67,9 @@ export function summaryView(b: PrBoard | null, sel: string[]): SummaryView {
   };
 }
 
+/** Board rows under the project filter, whatever the tab: the header total, and with one project its chip count. @req FR:pr-page/flyout.header.total @req FR:pr-page/flyout.filter.count */
+export const totalOf = (b: PrBoard | null, sel: string[]): number => b?.rows.filter((r) => inProjects(r.project, sel)).length ?? 0;
+
 /** Counts that follow the filter; Summary counts the distinct PRs it lists. */
 export function countOf(b: PrBoard | null, tab: Tab, sel: string[]): number {
   if (!b) return 0;

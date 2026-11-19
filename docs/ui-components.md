@@ -16,6 +16,7 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 | `ActionMenu` | `web/src/ui/ActionMenu.tsx` | The `⋯` button and its menu of actions for one item. |
 | `ActionBar` | `web/src/ui/ActionMenu.tsx` | The same actions as plain buttons, under a heading, in a detail pane. |
 | `Tabs` | `web/src/ui/Tabs.tsx` | A tab bar in a view (ARIA tabs), with an optional note at the right end. |
+| `FilterPills` | `web/src/ui/FilterPills.tsx` | Toggle pills that filter a list (`aria-pressed`, any number on), each with an optional quiet count. Never an action. |
 | `SplitView` | `web/src/ui/SplitView.tsx` | A list with a detail pane: side by side when wide, one at a time on a phone. |
 | `DayGrid` | `web/src/ui/DayGrid.tsx` | A day as rows of 30 minutes: each item sits at its start time, with a height for its length. |
 | `MessageBox` | `web/src/ui/MessageBox.tsx` | One message from a detail pane: a heading, a text box and one send button. |
