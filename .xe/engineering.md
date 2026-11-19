@@ -19,7 +19,7 @@
 
 ## Technical Standards
 
-See `.xe/standards/typescript.md` for coding standards.
+See `.xe/standards/typescript.md` for coding standards and `.xe/standards/content.md` for UI and CLI text (voice, style, glossary).
 
 - **Agents never block on a human**: Agents choose the next task, work within its autonomy level, and move on. They never merge or deploy.
 - **Tooling**: pnpm, TypeScript, Jest
