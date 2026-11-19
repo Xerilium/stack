@@ -94,9 +94,8 @@ a.btn.primary { color: #fff; }
 .more-link:hover { color: var(--ink); }
 .ask-detail { margin: 10px 0 0; padding: 12px 14px; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 14px; line-height: 1.55; color: var(--ink2); background: var(--rail); border-radius: 10px; }
 
-.more-btn, .foot-btn { background: none; border: 0; color: var(--muted); font-size: 12px; padding: 6px 22px; min-height: 32px; border-radius: 8px; display: inline-flex; gap: 8px; align-items: center; }
-.more-btn:hover, .foot-btn:hover { background: var(--hover); color: var(--ink2); }
-.more-btn { margin-top: 4px; }
+.foot-btn { background: none; border: 0; color: var(--muted); font-size: 12px; padding: 6px 22px; min-height: 32px; border-radius: 8px; display: inline-flex; gap: 8px; align-items: center; }
+.foot-btn:hover { background: var(--hover); color: var(--ink2); }
 .foot-btn .hint { margin: 0; font-weight: 400; }
 .keys-hint { margin: 14px 22px 0; font-size: 12px; color: var(--muted); }
 .asks-foot { margin-top: 22px; padding-top: 10px; border-top: 1px solid var(--line2); display: flex; flex-direction: column; gap: 2px; }
@@ -148,12 +147,12 @@ a.btn.primary { color: #fff; }
   .ask-row .proj { width: auto; max-width: 100%; text-align: left; }
   .ask-row .verb:empty, .ask-row .proj:empty, .ask-row .dl.empty { display: none; }
   .foot-list, .keys-hint { padding-left: 17px; padding-right: 17px; margin-left: 0; margin-right: 0; }
-  .more-btn, .foot-btn { padding-left: 17px; }
+  .foot-btn { padding-left: 17px; }
   .foot-list li { flex-wrap: wrap; row-gap: 2px; min-height: 0; padding: 8px 0; }
   .foot-list .f-t { flex: 1 1 100%; white-space: normal; }
   .foot-list .f-what { flex: 1 1 auto; }
   .foot-list .link { min-height: var(--tap); display: inline-flex; align-items: center; }
-  .more-btn, .foot-btn, .foot-list li, .more-link { min-height: var(--tap); }
+  .foot-btn, .foot-list li, .more-link { min-height: var(--tap); }
   .keys-hint { display: none; }
   kbd { display: none; }
   .banner { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

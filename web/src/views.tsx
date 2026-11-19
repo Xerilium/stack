@@ -678,7 +678,7 @@ function MoreMenu({ busy, owned, onAct, onOpen }: { busy: boolean; owned: boolea
   const pick = (fn: () => void) => () => { close(true); fn(); };
   return (
     <div class="more" ref={box}>
-      <button type="button" ref={btn} class="btn more-btn" aria-haspopup="menu" aria-expanded={open} aria-label="More actions" title="More actions" data-testid="more" onClick={() => setOpen((o) => !o)}>…</button>
+      <button type="button" ref={btn} class="btn menu-btn" aria-haspopup="menu" aria-expanded={open} aria-label="More actions" title="More actions" data-testid="more" onClick={() => setOpen((o) => !o)}>…</button>
       {open && (
         <div class="menu" role="menu" aria-label="More actions" data-testid="more-menu">
           <button type="button" role="menuitem" class="menu-item" title="Back in 2 hours (n)" disabled={busy} onClick={pick(() => onAct('notnow'))}>Defer 2h <kbd>n</kbd></button>

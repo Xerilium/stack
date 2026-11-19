@@ -17,8 +17,8 @@ import type { Asks } from './useAsks';
 import { Skeleton as LoadingRows } from './ui/Skeleton';
 import type { ComponentChildren } from 'preact';
 import { feedbackActive } from './FeedbackPanel';
-import './asks.css';
 import { MoreButton } from './ui/MoreButton';
+import './asks.css';
 
 const TOP = 5;
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));

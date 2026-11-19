@@ -14,8 +14,8 @@ import { contextOf, edits, ITEM_STATUS, LIMITS, nextItem, PRI_STATUS, progress, 
 import type { PrioritiesView } from './priorities';
 import { LinkList } from './ui/LinkList';
 import type { InventoryCtl, PrisCtl } from './usePrisSessions';
-import './pris-sessions.css';
 import { MoreButton } from './ui/MoreButton';
+import './pris-sessions.css';
 
 /**
  * A text that turns into a field on tap. Enter or blur saves, Escape cancels; the parent drops an empty or unchanged text.
@@ -159,7 +159,7 @@ export function PrisBlock({ ctl, labelledBy, report = null }: { ctl: PrisCtl; la
       )}
       <div class="pris-foot">
         {more > 0 && <MoreButton count={more} onMore={() => setShowAll(true)} />}
-        {canAdd && !adding && <button type="button" class="more-btn" onClick={() => setAdding(true)}>+ Add priority</button>}
+        {canAdd && !adding && <button type="button" class="pris-add" onClick={() => setAdding(true)}>+ Add priority</button>}
       </div>
       {adding && <AddLine label="New priority" placeholder="New priority" max={LIMITS.title} autoFocus onEditing={(on) => { ctl.setEditing(on); if (!on) setAdding(false); }} onAdd={(t) => { ctl.apply(edits.addPri(t)); setAdding(false); ctl.setEditing(false); }} />}
     </section>

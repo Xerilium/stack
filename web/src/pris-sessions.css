@@ -33,7 +33,9 @@
 .pri-move { display: flex; gap: 8px; }
 .pri-move .btn { min-height: var(--tap); }
 .pris-foot { display: flex; gap: 4px; flex-wrap: wrap; }
-.pris .more-btn, .archive .foot-btn { min-height: var(--tap); padding: 6px 8px; color: var(--ink2); }
+.pris .pris-add { background: none; border: 0; font-size: 12px; border-radius: 8px; display: inline-flex; gap: 8px; align-items: center; margin-top: 4px; min-width: 40px; font-weight: 700; letter-spacing: .08em; }
+.pris .pris-add:hover { background: var(--hover); color: var(--ink2); }
+.pris .more-btn, .pris .pris-add, .archive .foot-btn { min-height: var(--tap); padding: 6px 8px; color: var(--ink2); }
 
 .sessions-need { margin: 24px 0 8px; }
 .s-group + .s-group { margin-top: 8px; }
@@ -53,11 +55,11 @@ a.session-row:hover { background: var(--hover); }
 .a-meta { font-size: var(--fs-caption); color: var(--muted); }
 .archive .btn { margin: 4px 8px; min-height: var(--tap); }
 
-.pri-toggle:focus-visible, .inline-text:focus-visible, .inline-input:focus-visible, .status-select:focus-visible, .icon-btn:focus-visible, .session-row:focus-visible, .archive-list a:focus-visible, .pris .more-btn:focus-visible, .archive .foot-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pri-toggle:focus-visible, .inline-text:focus-visible, .inline-input:focus-visible, .status-select:focus-visible, .icon-btn:focus-visible, .session-row:focus-visible, .archive-list a:focus-visible, .pris .more-btn:focus-visible, .pris .pris-add:focus-visible, .archive .foot-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* Desktop: denser rows, still 24 px or more. @req NFR:pris-sessions-ui/a11y.targets */
 @media (hover: hover) and (pointer: fine) {
-  .pri-toggle, .session-row, .inline-text, .inline-input, .status-select, .pri-move .btn, .pris .more-btn, .archive .foot-btn, .archive .btn, .archive-list li, .archive-list a { min-height: 32px; }
+  .pri-toggle, .session-row, .inline-text, .inline-input, .status-select, .pri-move .btn, .pris .more-btn, .pris .pris-add, .archive .foot-btn, .archive .btn, .archive-list li, .archive-list a { min-height: 32px; }
   .icon-btn { min-width: 32px; min-height: 32px; }
 }
 @media (max-width: 480px) {

@@ -35,16 +35,18 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ### FR:badge: Count badge
 
-Owner needs every count on a nav item to look the same so that he reads it at a glance.
+Owner needs every count on a nav item or an icon button to look the same so that he reads it at a glance.
 
-- **FR:badge** (P2): `CountBadge` MUST show the count and say what it counts (`label`)
+- **FR:badge** (P2): `CountBadge` MUST show the count
+  - **FR:badge.label** (P2): `CountBadge` MUST say what it counts when it has a `label`
   - **FR:badge.hidden** (P3): `CountBadge` MUST hide from assistive tech when it has no `label`
 
 ### FR:more: Show more
 
 Owner needs one button that shows the rest of a short list so that it works the same in every view.
 
-- **FR:more** (P2): `MoreButton` MUST say how many more rows there are and call `onMore` on a tap
+- **FR:more** (P2): `MoreButton` MUST say how many more rows there are
+  - **FR:more.tap** (P2): `MoreButton` MUST call `onMore` on a tap
   - **FR:more.key** (P3): `MoreButton` MUST show the view's shortcut key (`keyHint`), hidden from assistive tech
 
 ### FR:menu: Actions menu

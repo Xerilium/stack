@@ -22,8 +22,8 @@ import type { Sessions } from './useSessions';
 import { Skeleton } from './ui/Skeleton';
 import { feedbackActive } from './FeedbackPanel';
 import { MdBlock } from './parts';
-import './sessions.css';
 import { MoreButton } from './ui/MoreButton';
+import './sessions.css';
 
 const TOP = 20;
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
