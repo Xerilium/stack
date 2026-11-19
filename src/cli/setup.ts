@@ -86,7 +86,7 @@ const localPath = (spec: string | undefined) => (spec && !isUrl(spec) ? resolve(
 
 /**
  * Validates and saves one step. `restart` is true when the host must restart to apply it (repo, mode, or calendar changed).
- * @req FR:first-run-onboarding/host.apply @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.mode
+ * @req FR:first-run-onboarding/host.apply @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.repo.copy @req FR:first-run-onboarding/step.mode
  * @req FR:first-run-onboarding/step.mode.tasks @req FR:first-run-onboarding/step.calendar @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone
  */
 export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unknown; locks?: Locks; spec?: string }): ApplyResult {

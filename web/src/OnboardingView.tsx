@@ -1,7 +1,7 @@
 /**
  * First-run setup: one step per screen, at most 5, resumable. Replaces the app shell until done.
  * @req FR:first-run-onboarding/web.gate @req FR:first-run-onboarding/web.a11y @req FR:first-run-onboarding/web.phone
- * @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.mode @req FR:first-run-onboarding/step.calendar
+ * @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.repo.copy @req FR:first-run-onboarding/step.mode @req FR:first-run-onboarding/step.calendar
  * @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone @req FR:first-run-onboarding/state.resume
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
