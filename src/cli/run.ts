@@ -157,7 +157,7 @@ function pkgVersion(): string {
   }
 }
 
-/** The command list: one short line per command. @req FR:cli/run.help @req FR:cli/run.help.short */
+/** The command list: one short line per command. @req FR:cli/run.help @req FR:cli/run.help.short @req FR:cli/run.help.width */
 function helpText(): string {
   const lines = ['Usage: stack <command> [options]', '', 'Commands:'];
   for (const [n, c] of Object.entries(COMMANDS)) if (n !== 'park') lines.push(`  ${n.padEnd(17)} ${c.summary ?? c.help}`);
@@ -167,10 +167,12 @@ function helpText(): string {
   return lines.join('\n');
 }
 
+const CLI_DOCS = 'https://github.com/Xerilium/stack/blob/main/docs/cli.md';
+
 /** One command: usage, full help, and its docs anchor. @req FR:cli/run.help.cmd */
 function commandHelp(name: string): string {
   const c = COMMANDS[name];
-  return `Usage: stack ${c.usage}\n\n${c.help}\n\nSee docs/cli.md#${name}`;
+  return `Usage: stack ${c.usage}\n\n${c.help}\n\nSee ${CLI_DOCS}#${name}`;
 }
 
 /** Edit distance, for the "Did you mean" hint. */
@@ -184,9 +186,10 @@ function distance(a: string, b: string): number {
   return prev[b.length];
 }
 
-/** @req FR:cli/run.help.unknown */
+/** A short typo has few letters to go on, so the hint allows at most half the typed length. @req FR:cli/run.help.unknown @req FR:cli/run.help.near */
 function unknownCommand(name: string): UsageError {
-  const near = Object.keys(COMMANDS).map((c) => ({ c, d: distance(name, c) })).filter((x) => x.d <= 2).sort((a, b) => a.d - b.d)[0];
+  const max = Math.min(2, Math.floor(name.length / 2));
+  const near = [...Object.keys(COMMANDS), 'help'].map((c) => ({ c, d: distance(name, c) })).filter((x) => x.d <= max).sort((a, b) => a.d - b.d)[0];
   return new UsageError(`Unknown command: ${name}. Run stack --help to see commands.${near ? ` Did you mean: ${near.c}?` : ''}`);
 }
 
