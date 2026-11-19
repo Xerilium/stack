@@ -2,11 +2,11 @@
  * The Inbox page: all mail, unread Teams and Slack. Each row has a summary, one suggested action, and a menu of the rest.
  * A reply opens an editable draft first; the page can only create a draft, never send.
  * Mail only: no setup UI. Never says Inbox zero unless every source synced recently; a problem is one quiet line linked to Settings > Accounts.
- * @req FR:inbox-page/web.view @req FR:inbox-page/web.view.unread @req FR:inbox-page/web.view.border @req FR:inbox-page/web.view.button @req FR:inbox-page/web.draft @req FR:inbox-page/web.phone @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.nocmd @req FR:inbox-page/web.accounts
+ * @req FR:inbox-page/web.view @req FR:inbox-page/web.view.unread @req FR:inbox-page/web.view.border @req FR:inbox-page/web.view.button @req FR:inbox-page/web.draft @req FR:inbox-page/web.phone @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.nocmd @req FR:inbox-page/web.accounts @req FR:inbox-page/web.toast
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
-import { actionsFor, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesReply } from './inbox';
+import { actionsFor, doneText, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesReply } from './inbox';
 import { EmptyState, type Toast } from './parts';
 import './inbox.css';
 
@@ -36,7 +36,7 @@ function Row({ row, catalog, api, toast, done }: { row: InboxRow; catalog: Actio
     setBusy(true);
     try {
       await api.inboxAct(row.id, { action: a.id, ...(a.id === 'snooze' ? { until: tomorrow() } : {}) });
-      toast(`${a.label}: done`);
+      toast(doneText(a));
       done(row.id);
     } catch (e) { toast(e instanceof ApiFailure ? e.message : `${a.label} failed`, 'err'); }
     setBusy(false);

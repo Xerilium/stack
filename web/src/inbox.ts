@@ -16,6 +16,11 @@ export function actionsFor(row: InboxRow, catalog: ActionInfo[]): { primary: Act
   return { primary, more: ids.filter((id) => id !== row.suggested).map((id) => by.get(id)!) };
 }
 
+/** The result words for the actions the page knows. @req FR:inbox-page/web.toast */
+const DONE_TEXT: Record<string, string> = { 'mark-done': 'Marked done', snooze: 'Snoozed until tomorrow', 'ask-me-later': 'Deferred until tomorrow', 'create-task': 'Task created' };
+/** The toast after an action ran: the result in plain words, never the button label twice. @req FR:inbox-page/web.toast @req FR:inbox-page/web.toast.other */
+export const doneText = (a: ActionInfo): string => DONE_TEXT[a.id] ?? 'Done';
+
 /** Next 9:00 local, as an ISO date for snooze. */
 export const tomorrow = (now = new Date()): string => { const d = new Date(now.getTime() + 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
