@@ -25,6 +25,10 @@ This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:p
 - **FR:list.what** (P1): The page shows only things that need the owner to act, as one ranked list: agent asks, Chief of Staff escalations, and 🙋 decision rows (`FR:web-shell/state.needs`). An expired sign-in (`FR:web-shell/state.live`, state `signin`) shows first as the notification `Sign-in expired` with `Sign in`
 - **FR:list.not** (P1): The page has no Priorities block and no Sessions or Archive candidates lists
 - **FR:list.actions** (P1): Each notification keeps its direct actions, keys, defer, reply, and Undo (`FR:ask-queue/web.actions`)
+- **FR:list.context** (P1): Every notification, selected or not, shows who sent it, what it asks, and why. A notification with no reason says `No reason given`
+- **FR:list.source** (P1): A notification with a link shows it as a source link (`FR:ui-kit/source`): `PR stack#158`, `Issue stack#152`, `Session`, `Email`, or the site name. The link opens in a new tab and does not select the row. A 🙋 row shows `Task`, which opens the task
+- **FR:list.rowactions** (P1): Every row that is not selected has an actions menu (`FR:ui-kit/menu`, named `Actions for {ask}`) with the actions for its state: the actions of its kind (`FR:ask-queue/web.actions`: for example Approve, Reject, Open), then Reply (`Answer` for an `answer` ask) and Defer. An ask with no reason, no link and no detail also has `Ask for context`, which asks the sender. An action selects the row, then runs. The selected notification is the details: it shows the same actions as buttons with their keys
+- **FR:list.drop** (P1): A notification with no possible action is not shown and not counted: an open ask that is not an `answer` ask and whose kind gives no action (for example a `decide` ask with no options)
 - **FR:list.empty** (P1): With nothing open: `You're all caught up.` and one muted line that says what was checked. No red
 - **FR:list.words** (P1): Owner-facing text that named Needs you names Notifications (`{n} more in Notifications`, `Open in Notifications`)
 

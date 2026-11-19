@@ -6,7 +6,9 @@
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { actionsFor, deadline, freshness, ifSilent, loudRow, splitTop, type Action, type AskItem } from './asks';
+import { actionsFor, CONTEXT_ASK, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AskItem, type RowAction } from './asks';
+import { ActionMenu } from './ui/ActionMenu';
+import { SourceLink } from './ui/SourceLink';
 import { blockedHelp } from './notify';
 import { Md } from './parts';
 import { parseRow } from './row';
@@ -69,15 +71,27 @@ function verbOf(a: AskItem): string | undefined {
   return { approve: 'Approve', decide: 'Decide', review: 'Review', 'go-do': 'Do', answer: 'Answer' }[a.kind];
 }
 
-function Row({ a, n, now, fresh, leaving, loud, onPick }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; loud?: boolean; onPick: () => void }) {
+/**
+ * A notification that is not selected: what it asks, then who sent it, why, and its source; its actions are in the menu.
+ * @req FR:notifications/list.context @req FR:notifications/list.source @req FR:notifications/list.rowactions
+ */
+function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; loud?: boolean; onPick: () => void; onAct?: (x: RowAction) => void; onOpenTask?: (ref: string) => void }) {
   const verb = verbOf(a);
+  const taskRef = a.source === 'task' ? a.ref : a.row;
   return (
-    <li class={`ask-li${fresh ? ' fresh' : ''}${leaving ? ' leaving' : ''}`} data-key={a.key}>
+    <li class={`ask-li ask-li-row${fresh ? ' fresh' : ''}${leaving ? ' leaving' : ''}`} data-key={a.key}>
       <button type="button" class="ask-row" onClick={onPick} aria-label={[`${n}. ${a.ask}`, verb, rowDeadline(deadline(a.by, now)), a.project].filter(Boolean).join(', ')}>
         <span class="row-title">{a.ask}</span>
         {fresh && <span class="new" aria-label="New">New</span>}
         <span class="row-meta"><span class="verb">{verb ?? ''}</span>{a.by ? <DeadlineChip by={a.by} now={now} quiet={!loud} /> : <span class="dl empty" aria-hidden="true" />}<span class="proj">{a.project ?? ''}</span></span>
       </button>
+      <p class="ask-ctx">
+        <span class="ask-who">{a.from}</span>
+        <span class={`ask-ctx-why${a.why ? '' : ' none'}`}>{a.why ? <Md text={a.why} project={a.project} links={false} /> : 'No reason given'}</span>
+        {a.source !== 'task' && <SourceLink href={a.link} />}
+        {taskRef && onOpenTask && <button type="button" class="ui-source ask-task-link" onClick={() => onOpenTask(taskRef)}>Task<span aria-hidden="true"> ↗</span></button>}
+      </p>
+      {onAct && <ActionMenu name={`Actions for ${a.ask}`} items={rowActions(a).map((x) => ({ id: x.id, label: x.label, ...(x.action?.open && a.source !== 'task' && a.link ? { href: a.link } : { onSelect: () => onAct(x) }) }))} />}
     </li>
   );
 }
@@ -216,6 +230,13 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
 
   useEffect(() => { document.querySelector('.ask-card[data-kind]')?.scrollIntoView({ block: 'nearest' }); }, [asks.cursor]);
 
+  /** A row menu action: select the row, then act on it. @req FR:notifications/list.rowactions */
+  const act = (a: AskItem, x: RowAction) => {
+    asks.setCursor(a.key); asks.setDetail(false);
+    if (x.context) { asks.setPanel('none'); void asks.reply(a, CONTEXT_ASK); return; }
+    asks.setPanel(x.panel ?? 'none');
+    if (x.action) run(x.action);
+  };
   const run = (x: Action) => {
     const a = asks.itemsRef.current.find((i) => i.key === asks.cursorRef.current) ?? asks.current;
     if (!a) return;
@@ -305,7 +326,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
       )}
       {(items.length > 0 || ghosts.length > 0) && (
         <ol class="asks" aria-label="Asks, highest score first">
-          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.total} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} loud={a.key === loud} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} />))}
+          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.total} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} loud={a.key === loud} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} onAct={(x) => act(a, x)} onOpenTask={asks.openTask} />))}
           {ghosts.map((g) => <Row key={`gone-${g.key}`} a={g} n={g.rank ?? 0} now={asks.now} fresh={false} leaving onPick={() => undefined} />)}
         </ol>
       )}

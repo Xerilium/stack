@@ -180,3 +180,21 @@ a.btn.primary { color: #fff; }
 @media (max-width: 719px) { .ask-actions:has(.btn.will) { flex-direction: column; } .ask-actions:has(.btn.will) .btn { width: 100%; min-height: var(--tap); } }
 .ask-row-target { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
 .ask-row-target span { color: var(--ink2); }
+
+/* A row that is not selected: the ask, then who, why and the source; its actions menu at the right.
+ * @req FR:notifications/list.context @req FR:notifications/list.source @req FR:notifications/list.rowactions */
+.ask-li-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'row menu' 'ctx menu'; align-items: center; border-radius: 10px; }
+.ask-li-row > .ask-row { grid-area: row; min-height: 36px; padding-bottom: 2px; }
+.ask-li-row > .ui-more { grid-area: menu; margin-right: 10px; }
+.ask-li-row:has(.ui-menu) { z-index: 30; }
+.ask-ctx { grid-area: ctx; margin: 0; padding: 0 22px 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; min-width: 0; font-size: 12px; line-height: 18px; color: var(--ink2); }
+.ask-who { flex: none; font-weight: 600; }
+.ask-ctx-why { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-ctx-why.none { color: var(--muted); }
+.ask-task-link { border: 0; background: none; padding: 0; cursor: pointer; font-family: inherit; }
+@media (max-width: 719px) {
+  .ask-li-row > .ask-row { min-height: 44px; }
+  .ask-ctx { padding: 0 17px 6px; }
+  .ask-ctx-why { flex-basis: 100%; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .ask-li-row > .ui-more { margin-right: 6px; }
+}

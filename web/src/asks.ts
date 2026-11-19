@@ -116,6 +116,26 @@ export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | '
   }
 }
 
+/** A notification the owner can act on: an `answer` ask, or a kind that gives an action. @req FR:notifications/list.drop */
+export const actionable = (a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'>): boolean => a.kind === 'answer' || actionsFor(a).length > 0;
+
+/** What `Ask for context` sends to the sender. It ends in `?`, so it goes as a question. @req FR:notifications/list.rowactions */
+export const CONTEXT_ASK = 'What is the context? Say why, link the source, and say what you need from me?';
+/** One item of a row's actions menu: an action of the kind, a panel to open, or the context question. */
+export interface RowAction { id: string; label: string; action?: Action; panel?: 'reply' | 'defer'; context?: boolean }
+
+/**
+ * The actions for a notification's state, for its row menu: the actions of its kind, then Reply (`Answer` for an `answer` ask) and Defer.
+ * An ask with no reason, no link and no detail can ask the sender for context.
+ * @req FR:notifications/list.rowactions
+ */
+export function rowActions(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source' | 'why' | 'detail'>): RowAction[] {
+  const out: RowAction[] = actionsFor(a).map((x) => (x.reply ? { id: x.id, label: x.label, panel: 'reply' as const } : { id: x.id, label: x.label, action: x }));
+  out.push({ id: 'reply', label: a.kind === 'answer' ? 'Answer' : 'Reply', panel: 'reply' }, { id: 'defer', label: 'Defer', panel: 'defer' });
+  if (!a.why && !a.link && !a.detail && a.source !== 'task') out.push({ id: 'context', label: 'Ask for context', context: true });
+  return out;
+}
+
 /** A question goes to the agent as `ask` (it answers back); anything else is an instruction (`reply`). */
 export const replyKind = (text: string): 'ask' | 'reply' => (text.trim().endsWith('?') ? 'ask' : 'reply');
 

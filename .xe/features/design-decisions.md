@@ -315,3 +315,13 @@
 **Why**: The owner said My day was cluttered and its time slots were uneven. The old timeline sized rows by their content, and added band headers, `free` rows, a day bar and totals.
 
 **Trade-offs**: The row height comes from the shortest effort: a 12-minute task (🔹) must keep a 24 px target (44 px on touch), so 30 minutes is 60 px (112 px on touch). A 30-minute task then also keeps its one-tap actions at 44 px (`FR:home/myday.actions`). A phone shows about 3 hours. A block under 30 minutes is one line (Done and open). Rejected: a least height above the true length (the next block covers it, or sits beside it at half width; both tested, both poor at 375 px). The grid starts at now, not at wake, so there are no dead rows and no scroll jump. Rejected: snap blocks to rows (a 20-minute email block would push every later block off its time); a 56 px touch row with the row actions only in the task detail.
+
+## Notifications: context and actions on every row
+
+**Decision**: Every notification row shows who sent it, why, and a source link (`SourceLink`, `FR:ui-kit/source`), and has an actions menu with the actions for its state. The selected notification stays the details, with the same actions as buttons and keys. An ask with no possible action is not shown and not counted.
+
+**Date**: 2026-11-19
+
+**Why**: The owner said no notification was actionable and none had context: a row showed only a title, a verb and a project.
+
+**Trade-offs**: The drop rule uses only what the ask says (its kind, options and link), so a go-do ask with no reason stays and gets `Ask for context`; Stack cannot know that its source is closed. Rejected: one button per action on every row (too much chrome at 375 px); a rewrite on `SelectCard` and `SplitView` (large; `product-reset` Stage 9 owns `AskCard`).

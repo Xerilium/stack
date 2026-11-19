@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
-import { deferChoices, keepCursor, newKeys, pageTitle, replyKind, type AskItem, type Send } from './asks';
+import { actionable, deferChoices, keepCursor, newKeys, pageTitle, replyKind, type AskItem, type Send } from './asks';
 import { errText } from './errtext';
 import { connectLive, type LiveHandle, type LiveStatus } from './live';
 import { mergeNeeds } from './needs';
@@ -72,7 +72,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     try {
       const [o, a, s] = await Promise.all([api.asks('open'), api.asks('answered'), api.asks('snoozed')]);
       if (mine !== seq.current) return;
-      const next = o.items.filter((i) => !held(i.key));
+      // A notification with no possible action is not shown and not counted. @req FR:notifications/list.drop
+      const next = o.items.filter((i) => !held(i.key) && actionable(i));
       const prev = serverRef.current;
       const gone = prev.filter((p) => !next.some((i) => i.key === p.key) && !held(p.key));
       const added = newKeys(prevKeys.current, next, new Set([...hold.current.keys()].filter(held)));

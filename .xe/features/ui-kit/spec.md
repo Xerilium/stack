@@ -30,6 +30,10 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 - **FR:flag** (P1): `Flag` notes something about an item: a 12 px flag icon and the word in muted text. It is a `span`: no fill, no border, no hover state, default cursor, not focusable, no role. `hidden` hides it from assistive tech when the same words are read elsewhere. In a card top line it sits at the right
 
+### FR:source: Source link
+
+- **FR:source** (P1): `SourceLink` is a link to where an item came from, named by its kind: `PR {repo}#{n}` and `Issue {repo}#{n}` for GitHub, `Session` for a Claude session, `Email` for a mail link, else the site name without `www.`. It opens in a new tab (`noopener`), ends in `↗`, and a click on it does not reach the row under it. Text that is not a link draws nothing. `sourceOf` is the pure naming
+
 ### FR:chip: Status chip
 
 - **FR:chip** (P1): `StatusChip` shows a state word: a dot and the word on a light tint of the tone (`neutral`, `info`, `ok`, `warn`, `bad`). It is a `span`: no border, no hover state, default cursor, not focusable. It is never a button. Text meets WCAG AA in light and dark
