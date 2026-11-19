@@ -46,9 +46,11 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
     else if (x.reply) onPanel('reply');
     else if (x.open && a.source === 'task') ctl.openTask(a);
   };
+  // The whole card is the click target: a click outside its controls toggles it, like the body. @req FR:ux-consolidation/one.expand
+  const onCard = (e: MouseEvent) => { if (!(e.target as Element).closest('button, a, input, form, .now-ask-more')) onToggle(); };
   const send = () => { const t = text.trim(); if (!t || ctl.busy) return; ctl.reply(a, t); setText(''); };
   return (
-    <li class={`now-ask${open ? ' open' : ''}`} data-key={a.key}>
+    <li class={`now-ask${open ? ' open' : ''}`} data-key={a.key} onClick={onCard}>
       <div class="now-ask-head">
         <button type="button" class="now-ask-body" aria-expanded={open} aria-controls={id} onClick={onToggle}>
           <span class="now-ask-title">{a.ask}</span>
@@ -59,7 +61,7 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
           </span>
         </button>
         {!open && (primary
-          ? <button type="button" class="now-mini" disabled={ctl.busy} onClick={() => ctl.answer(a, primary.send!)}>{primary.label}</button>
+          ? <button type="button" class="now-mini" disabled={ctl.busy} title={primary.label} aria-label={primary.label} onClick={() => ctl.answer(a, primary.send!)}><span class="now-mini-label">{primary.label}</span></button>
           : <button type="button" class="now-mini" onClick={() => onPanel('reply')}>Reply</button>)}
       </div>
       {open && (
