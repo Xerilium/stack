@@ -4,7 +4,7 @@
  */
 import { listTeam } from '../core/agents';
 import { currentRows, listInbox, sendToInbox } from '../core/inbox';
-import { LifecycleError, type LifecycleContext, type TaskRef } from '../core/lifecycle';
+import type { LifecycleContext, TaskRef } from '../core/lifecycle';
 import { parseProject } from '../core/parser';
 import { checkTask, type Check } from '../core/quality';
 import { ConflictError, NotFoundError } from '../core/storage';
@@ -29,7 +29,7 @@ export async function enrichTask(ctx: LifecycleContext, ref: TaskRef): Promise<E
   if (q.actionable) throw new ConflictError('Task is already actionable');
   const c = await taskContext(ctx, ref);
   const agent = deliveryAgent(await listTeam(ctx), c.project, c.section);
-  if (!agent) throw new LifecycleError(`No agent for ${c.project}`);
+  if (!agent) throw new NotFoundError(`No agent for ${c.project}`);
   const here = `${ref.path}:${ref.line + 1}`;
   const open = (await listInbox(ctx, { project: baseName(ref.path) })).filter((e) => e.kind === 'enrich');
   if (open.length) {
