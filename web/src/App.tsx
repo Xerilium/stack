@@ -319,9 +319,10 @@ export function App() {
       // @req FR:perf/client.paint — the first screen waits for the ranking, tasks, and projects; the all-day order fills in when it arrives.
       void api.rank(1000, 'any').then((a) => setDayOrder(a.map((x) => x.ref)), () => setDayOrder(null));
       void api.daily().then(setDoneToday, () => setDoneToday(undefined)); // @req FR:pri-first-ranking/daily.web
+      // The CoS file is optional and never blocks the page; it starts first so a failed task read never holds the count back. @req FR:ask-queue/web.home.count
+      void api.needs().then(setNeeds, () => setNeeds([])).finally(() => setNeedsRead(true));
       const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
       setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setRefProjects(p); setProjects(p); setPhase('ready');
-      api.needs().then(setNeeds, () => setNeeds([])).finally(() => setNeedsRead(true)); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 401) { toLogin(); return; }
