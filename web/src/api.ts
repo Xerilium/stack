@@ -12,6 +12,8 @@ import type { PrAuthState, PrBoard, SignInSession } from './prs';
 import type { ReviewItem, TeamAgent } from './team';
 import type { Thread } from './thread';
 import type { UpdateMode, VersionState } from './update';
+import type { QmPlan } from './qm';
+import type { ItemOp, Lane, LiveItem } from './live-lane';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
 
 /** @req FR:web-app/api.client */
@@ -82,6 +84,12 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     prLabel: (repo: string, number: number, op: 'add' | 'remove') => call<{ ok: true }>('/prs/label', { repo, number, op }),
     /** @req FR:pr-page/api.ack */
     prAck: (b: { repo: string; number: number; thread: string; note: string; post?: boolean; text?: string; replyTo?: number }) => call<{ ok: true; posted: boolean; recorded: boolean; message?: string }>('/prs/ack', b),
+    /** The weekly QM plan; `plan` is null when none is written yet. @req FR:qm-plan/ui.route @req FR:web-app/api.client */
+    qm: () => call<{ plan: QmPlan | null; broken?: boolean }>('/qm'),
+    /** The live review lane. @req FR:pr-review-lane/panel.view @req FR:web-app/api.client */
+    live: () => call<Lane>('/live'),
+    /** One checklist op on the live PR. @req FR:pr-review-lane/panel.check @req FR:web-app/api.client */
+    liveItem: (pr: { repo: string; number: number }, op: ItemOp, o: { id?: string; text?: string } = {}) => call<{ changed: boolean; item: LiveItem }>('/live/items', { op, repo: pr.repo, number: pr.number, ...o }),
     /** @req FR:pr-page/api.rec */
     prRec: (id: string, b: { decision: 'accept' | 'edit' | 'reject'; rank?: number; note?: string; reason?: string }) => call<{ ok: true }>(`/prs/recs/${encodeURIComponent(id)}`, b),
     /** The Chief of Staff's escalations. @req FR:ask-queue/needs.api */

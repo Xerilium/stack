@@ -1,5 +1,5 @@
 /**
- * The weekly QM (quota-maxxing) plan page: types, sort, and the read client for `/qm`.
+ * The weekly QM (quota-maxxing) plan page: types and sort. Reads go through the shared client (`createClient().qm()`).
  * @req FR:qm-plan/ui.route @req FR:qm-plan/ui.sort @req FR:qm-plan/ui.table
  */
 import { fmtTokens } from './sessions';
@@ -39,11 +39,3 @@ export const numText = (v: number | null): string => (v === null ? 'Pending' : v
 
 /** Compact token count, as the Agents view shows it: `25000000` → `25M`; null → `Pending`. @req FR:qm-plan/ui.table */
 export const tokText = (v: number | null): string => (v === null ? 'Pending' : fmtTokens(v));
-
-export async function loadQm(fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<{ plan: QmPlan | null; broken?: boolean }> {
-  const res = await fetchFn('/api/qm', { credentials: 'same-origin' });
-  const t = await res.text();
-  const j = t ? JSON.parse(t) : undefined;
-  if (!res.ok) throw new Error((j as { error?: { message?: string } } | undefined)?.error?.message ?? `HTTP ${res.status}`);
-  return j;
-}
