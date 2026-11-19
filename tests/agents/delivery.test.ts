@@ -358,6 +358,18 @@ describe('approved permission asks', () => {
     await runDeliveryPass(m.d);
     expect(m.prompts()).toHaveLength(2); // never twice
   });
+
+  /** @req FR:agent-delivery/run.approved */
+  it('starts no process while every permission ask is still open', async () => {
+    const denials = [{ tool_name: 'Edit', tool_use_id: 't1', tool_input: { file_path: 'src/a.ts' } }];
+    const m = await mk({ replies: [{ stdout: JSON.stringify({ subtype: 'success', is_error: false, result: 'Needs you: allow the edit.', permission_denials: denials }) }] });
+    await sendToInbox(m.ctx, ref(6), 'Fix it', 'instruction');
+    await runDeliveryPass(m.d);
+    expect(Object.keys(m.store.read().perms ?? {})).toHaveLength(1);
+    const before = m.calls.length;
+    for (let i = 0; i < 3; i++) await runDeliveryPass(m.d); // the host loop, every 20 s, while the owner has not answered
+    expect(m.calls.length).toBe(before);
+  });
 });
 
 describe('login health', () => {
