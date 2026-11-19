@@ -99,17 +99,22 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   }, [api, listen]);
 
   const setComposing = useCallback((on: boolean, agent?: string) => { setComposingState(on); setComposeAgent(on ? (agent ?? null) : null); setSendError(''); }, []);
-  const closeDrawer = useCallback(() => { closeStream(); setOpen(null); setComposingState(false); setComposeAgent(null); }, [closeStream]);
+  /** Counts every close (Esc, the scrim, a page change). */
+  const closes = useRef(0);
+  const closeDrawer = useCallback(() => { closes.current++; closeStream(); setOpen(null); setComposingState(false); setComposeAgent(null); }, [closeStream]);
+  /** For an open that follows a wait (a session start): call before the wait, open with the result. When a close came first, no drawer shows on the page the user went to meanwhile; a toast (`late`) says the start landed, unless the caller already said it. @req FR:agent-sessions/web.drawer.nav.late @req FR:agent-sessions/web.drawer.nav.late.toast */
+  const openLater = useCallback(() => { const at = closes.current; return (id: string, late?: string) => { if (at === closes.current) void openDrawer(id); else if (late) toastRef.current(late); }; }, [openDrawer]);
 
   const send = useCallback(async (text: string) => {
     const t = text.trim();
     if (!open || !t) return false;
     setSendError('');
+    const at = closes.current;
     try {
       await api.promptSession(open, t);
       setTurns((x) => [...x, { at: new Date().toISOString(), role: 'user', text: t }]);
       setTranscript(emptyTranscript());
-      listen(open);
+      if (at === closes.current) listen(open); // closed while it sent (a page change): the run goes on, with no stream for a closed drawer @req FR:agent-sessions/web.drawer.nav
       setItems((l) => l.map((s) => (s.id === open ? { ...s, state: 'running' } : s)));
       return true;
     } catch (e) {
@@ -121,8 +126,11 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   /** Starts a session: plain in a folder, or for an agent (its persona, its project, an optional folder). @req FR:agent-team/compose.after */
   const start = useCallback(async (cwd: string | undefined, text: string, extra?: { agent?: string; project?: string }) => {
     setSendError('');
+    const at = closes.current;
     try {
       const r = await api.newSession(cwd, text.trim(), extra ?? {});
+      // Closed while it started (a page change): the session runs, no drawer opens over the new page, and a toast says it started. @req FR:agent-sessions/web.drawer.nav.late
+      if (at !== closes.current) { toastRef.current(extra?.agent ? `Sent to ${r.agent ?? extra.agent}` : 'Session started'); void load(); return true; } // @req FR:agent-sessions/web.drawer.nav.late.toast
       setComposingState(false); setComposeAgent(null);
       setOpen(r.sessionId ?? r.runId); setTurns([{ at: new Date().toISOString(), role: 'user', text: text.trim() }]); setTranscript(emptyTranscript());
       listen(r.sessionId ?? r.runId);
@@ -140,7 +148,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   useEffect(() => () => closeStream(), [closeStream]);
 
   return {
-    items, total, cost, phase, error, cursor, setCursor, open, openDrawer, closeDrawer, turns, turnsError, turnsLoading, transcript, streaming, sendError, send, start, stop,
+    items, total, cost, phase, error, cursor, setCursor, open, openDrawer, openLater, closeDrawer, turns, turnsError, turnsLoading, transcript, streaming, sendError, send, start, stop,
     showCosts, setShowCosts, showAll, setShowAll, composing, setComposing, composeAgent, now, reload: load, note: (text: string) => toastRef.current(text),
   };
 }

@@ -2,7 +2,7 @@
  * @req FR:agent-team/org.tree @req FR:agent-team/org.tree.row @req FR:agent-team/org.tree.sessions @req FR:agent-team/org.tree.unmatched @req FR:agent-team/org.tree.pinned @req FR:agent-team/org.tree.phone @req FR:agent-team/org.order @req FR:agent-team/org.order.scope @req FR:agent-team/org.match @req FR:agent-team/org.keys @req FR:agent-team/org.a11y
  * @req FR:agent-team/compose.agent @req FR:agent-team/compose.agent.default @req FR:agent-team/compose.agent.filter @req FR:agent-team/compose.folder @req FR:agent-team/compose.prompt @req FR:agent-team/compose.after */
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi, type Mock, type MockSession, type MockTeamAgent } from './mock';
+import { mockApi, seed as taskSeed, type Mock, type MockSession, type MockTeamAgent } from './mock';
 
 const iso = (minAgo: number) => new Date(Date.now() - minAgo * 60_000).toISOString();
 const id = (n: number) => `a1b2c3d4-0000-0000-0000-00000000000${n}`;
@@ -298,10 +298,13 @@ test.describe('Sessions', () => {
   });
 
   // @req FR:agent-team/agent.team.scan.run
-  test('a scanned agent runs: New opens the composer with it chosen', async ({ page }) => {
+  test('a scanned agent runs: New opens the composer with it chosen', async ({ page }, info) => {
     await open(page, teamSeed(), true);
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief'); // the chart settles on its first chat
     await page.locator('.agent-card[data-agent="lonely"]').click();
-    await page.keyboard.press('n');
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('Lonely · tests');
+    if (info.project.name === 'mobile') await page.locator('.sess-tools').getByRole('button', { name: /^New/ }).click(); // a phone taps New: the tap opens the chat, whose box can take the key
+    else await page.keyboard.press('n');
     const d = drawer(page);
     await expect(d.getByRole('heading', { level: 2 })).toHaveText('New session');
     await expect(d.getByRole('combobox', { name: 'Agent' })).toHaveValue('Lonely');
@@ -324,12 +327,165 @@ test.describe('Sessions', () => {
   test('j and k move the selection through the chart', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keyboard flow');
     await open(page, teamSeed(), true);
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief'); // the chart settles on its first chat
     await page.keyboard.press('j');
     await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Alpha Lead');
     await page.keyboard.press('j');
     await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Beta CoS');
     await page.keyboard.press('k');
     await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Alpha Lead');
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav
+  test('leaving Agents closes the chat it showed: no sheet stays over the next page', async ({ page }) => {
+    await open(page, teamSeed(), true);
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief');
+    await page.getByTestId('nav-notifications').filter({ visible: true }).click(); // the rail on wide screens, the tab bar on phones
+    await expect(page).toHaveURL(/#\/notifications/);
+    await expect(page.getByRole('region', { name: 'Agents', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.sess-scrim')).toHaveCount(0);
+    await page.evaluate(() => { location.hash = '#/sessions'; }); // back on Agents the chat is under the chart again
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav @req FR:agent-sessions/web.drawer.nav.compose
+  test('leaving Agents closes an open drawer and the composer', async ({ page }) => {
+    await open(page);
+    await page.locator('.sess-row').nth(1).click();
+    await expect(drawer(page)).toBeVisible();
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.getByRole('region', { name: 'Agents', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.evaluate(() => { location.hash = '#/sessions'; });
+    await page.locator('.sess-tools').getByRole('button', { name: /^New/ }).click();
+    await expect(drawer(page).getByRole('heading', { level: 2 })).toHaveText('New session');
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.getByRole('region', { name: 'Agents', exact: true })).toHaveCount(0);
+    await page.evaluate(() => { location.hash = '#/sessions'; });
+    await expect(page.locator('.sess-row').first()).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav.late
+  test('a session start that ends after a page change opens no drawer there', async ({ page }) => {
+    const m = await open(page);
+    let answer = () => {};
+    const held = new Promise<void>((ok) => { answer = ok; });
+    await page.route('**/api/sessions', async (r) => { if (r.request().method() === 'POST') await held; await r.fallback(); });
+    await page.locator('.sess-tools').getByRole('button', { name: /^New/ }).click();
+    const d = drawer(page);
+    await d.getByLabel('Folder').fill('/x/stack');
+    await d.getByLabel('First prompt').fill('Write the release notes');
+    await d.getByLabel('First prompt').press('ControlOrMeta+Enter');
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.getByRole('region', { name: 'Agents', exact: true })).toHaveCount(0);
+    const listed = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/sessions' && r.request().method() === 'GET'); // the list is read again once the start lands
+    answer();
+    await expect.poll(() => m.calls.some((c) => c.path === '/sessions')).toBe(true); // the session still starts
+    await listed;
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.toast', { hasText: 'Session started' })).toBeVisible(); // @req FR:agent-sessions/web.drawer.nav.late.toast
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav
+  test('a drawer opened on another page shows there and closes on the next page change', async ({ page }) => {
+    const at = new Date(); at.setHours(10, 0, 0, 0); await page.clock.setFixedTime(at); // inside the work day, so Now has a task
+    const m = await mockApi(page, { tasks: taskSeed() });
+    m.team = [{ slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] }];
+    m.sessions = [mk(1, { title: 'Ada Lead · alpha:6', project: 'alpha', owner: 'alpha', cwd: '/x/alpha', lastActive: new Date().toISOString(), state: 'active' })];
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: 'Open live chat' }).click();
+    await expect(drawer(page).getByRole('heading', { level: 2 })).toHaveText('Ada Lead · alpha:6');
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.getByTestId('now')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.sess-scrim')).toHaveCount(0);
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav @req FR:agent-sessions/web.drawer.nav.here
+  test('a drawer opened on Now closes on Agents, and the chart shows its chat inline', async ({ page }) => {
+    const at = new Date(); at.setHours(10, 0, 0, 0); await page.clock.setFixedTime(at); // inside the work day, so Now has a task
+    const m = await mockApi(page, { tasks: taskSeed() });
+    m.team = [{ slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] }];
+    m.sessions = [mk(1, { title: 'Ada Lead · alpha:6', project: 'alpha', owner: 'alpha', cwd: '/x/alpha', lastActive: new Date().toISOString(), state: 'active' })];
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: 'Open live chat' }).click();
+    await expect(drawer(page).getByRole('heading', { level: 2 })).toHaveText('Ada Lead · alpha:6');
+    await page.evaluate(() => { location.hash = '#/agents'; });
+    await expect(page.getByTestId('chat-pane')).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.sess-scrim')).toHaveCount(0);
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav @req FR:agent-sessions/web.drawer.nav.here
+  test('a drawer opened on one project list closes on the next project list', async ({ page }) => {
+    const m = await mockApi(page);
+    m.team = [team[1]]; m.sessions = [];
+    await page.goto('/#/list?project=alpha');
+    const r = page.locator('.row[data-ref="alpha:6"]');
+    await r.click();
+    await r.locator('.agent-chip').click();
+    const box = page.getByRole('textbox', { name: 'Message 🅰️ Alpha Lead' });
+    await box.fill('Where are we?');
+    await box.press('Enter');
+    await page.getByRole('button', { name: 'Open the session' }).click();
+    await expect(drawer(page)).toBeVisible(); // opened here, on the alpha list
+    await page.evaluate(() => { location.hash = '#/list?project=beta'; });
+    await expect(page.locator('.row[data-ref="beta:4"]')).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.sess-scrim')).toHaveCount(0);
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav
+  test('a message that lands after a page change opens no stream for the closed drawer', async ({ page }) => {
+    await open(page);
+    await showAll(page);
+    await page.locator('.sess-row').nth(3).click();
+    let answer = () => {};
+    const held = new Promise<void>((ok) => { answer = ok; });
+    let posted = false;
+    await page.route(`**/api/sessions/${id(4)}/prompt`, async (r) => { posted = true; await held; await r.fallback(); });
+    const streams: string[] = [];
+    page.on('request', (r) => { if (r.url().includes(`/sessions/${id(4)}/events`)) streams.push(r.url()); });
+    await drawer(page).getByLabel(/^Message/).fill('Add tests for the parser');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => posted).toBe(true);
+    await page.evaluate(() => { location.hash = '#/notifications'; }); // the scrim covers the nav while the drawer is open
+    await expect(page).toHaveURL(/#\/notifications/);
+    const before = streams.length;
+    const sent = page.waitForResponse((x) => x.url().includes(`/sessions/${id(4)}/prompt`));
+    answer();
+    await sent;
+    await page.waitForTimeout(300); // the stream would open right after the reply
+    expect(streams.length).toBe(before);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav.late
+  test('a kept-open composer start that ends after a page change opens no drawer there', async ({ page }) => {
+    const m = await mockApi(page);
+    m.team = [{ ...team[1], mode: 'long-running' }]; m.sessions = []; // long-running: Keep open is on
+    m.asks = [{ key: 'pr-1', state: 'open', ask: 'Approve merging PR 879', kind: 'approve', from: 'alpha-lead', project: 'alpha', reversible: false, priority: 'normal', blocks: 0, created: new Date().toISOString(), updated: new Date().toISOString(), score: 30, rank: 1, overdue: false }];
+    let answer = () => {};
+    const held = new Promise<void>((ok) => { answer = ok; });
+    let posted = false;
+    await page.route('**/api/sessions', async (r) => { if (r.request().method() === 'POST') { posted = true; await held; } await r.fallback(); });
+    await page.goto('/#/notifications');
+    await page.locator('.ask-card .agent-chip').click();
+    const box = page.locator('.ask-card .agent-talk input[type="text"]');
+    await box.fill('What changed since the last review?');
+    await box.press('Enter');
+    await expect.poll(() => posted).toBe(true);
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.locator('.ask-card')).toHaveCount(0);
+    const listed = page.waitForResponse((x) => new URL(x.url()).pathname === '/api/sessions' && x.request().method() === 'GET'); // the start reads the list again before it would open
+    answer();
+    await listed;
+    await expect.poll(() => m.calls.some((c) => c.path === '/sessions')).toBe(true); // the session still starts
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.toast', { hasText: 'Sent to alpha-lead' })).toBeVisible(); // @req FR:agent-sessions/web.drawer.nav.late.toast
   });
 
   // @req FR:agents-team/chart.layout

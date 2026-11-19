@@ -6,7 +6,7 @@
  * @req FR:web-app/ux.feedback @req FR:web-app/ux.responsive
  */
 import { Fragment } from 'preact';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, createClient } from './api';
 import { errText, UserError } from './errtext';
 import { capacityRows } from './capacity';
@@ -340,6 +340,10 @@ export function App() {
   const [teamActive, setTeamActive] = useState(false);
   /** @req FR:agent-sessions/web.view */
   const sessions = useSessions(api, toast, agentsOn, view === 'sessions' || teamActive);
+  // A page change (another view, or another project's list) closes the open session and the composer. A layout effect, so it runs before the next page opens its own chat. @req FR:agent-sessions/web.drawer.nav @req FR:agent-sessions/web.drawer.nav.compose @req FR:agent-sessions/web.drawer.nav.here
+  const pageKey = view === 'list' ? `list:${filters.project}` : view;
+  const shownPage = useRef(pageKey);
+  useLayoutEffect(() => { if (shownPage.current === pageKey) return; shownPage.current = pageKey; sessions.closeDrawer(); }, [pageKey]);
   /** @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups */
   const pinsCtl = usePins(store());
   /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */

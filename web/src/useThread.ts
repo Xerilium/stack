@@ -55,6 +55,7 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
   const ask = useCallback(async (text: string, agent?: string, keepOpen = false): Promise<boolean> => {
     if (!ref || busy) return false;
     setBusy(true);
+    const open = sessions.openLater();
     try {
       // The composer's agent rides along, so no other agent on the project claims it. @req FR:product-reset/ui.thread
       try { await api.send(ref, text, 'reply', undefined, agent); } catch (e) { toastRef.current(errText(e, 'send the reply'), 'err'); return false; }
@@ -65,11 +66,11 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
         const same = followUpSession(thread, agent ? team.team.find((a) => a.slug === agent)?.name : undefined);
         if (same) {
           await api.promptSession(same.id, text, { ref, ...(agent ? { agent } : {}) }); // the persona rides along: a resumed session has none
-          if (keepOpen) void sessions.openDrawer(same.id);
+          if (keepOpen) open(same.id, `Sent to ${agent ?? 'the agent'}`);
         } else {
           const r = await api.newSession(undefined, text, { agent, ref });
           if (r.sessionId) team.noteStarted(ref, r.sessionId);
-          if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
+          if (keepOpen) open(r.sessionId ?? r.runId, `Sent to ${r.agent ?? agent ?? 'the agent'}`);
         }
       } catch (e) {
         // The message is already on the task: never say "try again" here, or a resend writes it twice.
