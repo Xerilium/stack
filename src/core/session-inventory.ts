@@ -180,7 +180,8 @@ export function classify(f: SessionFacts, now: number): { state: SessionState; r
 }
 
 interface CacheEntry { mtimeMs: number; size: number; tx?: string; txMtimeMs?: number; facts: SessionFacts | null }
-interface SessionsFile { version: 1; at: string; projectsDir: string; cache: Record<string, CacheEntry>; inventory: Inventory }
+/** `<home>/sessions.json`: the facts cache only. An older file may also hold `at` and `inventory`; nothing reads them. */
+interface SessionsFile { version: 1; projectsDir: string; cache: Record<string, CacheEntry> }
 
 const listDirs = (d: string): string[] => { try { return readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(d, e.name)); } catch { return []; } };
 /** The newest file mtime in a folder, or undefined. */
@@ -201,7 +202,7 @@ function scheduledNames(folders: string[]): Map<string, string> {
 
 /**
  * Reads the session store (read-only), classifies each session, ranks Needs you, and lists archive candidates.
- * Writes `<home>/sessions.json` (best effort). @req FR:session-inventory/read.files @req FR:session-inventory/read.cache
+ * Writes `<home>/sessions.json` only when the cache changed (best effort). @req FR:session-inventory/read.files @req FR:session-inventory/read.cache
  * @req FR:session-inventory/needs.list @req FR:session-inventory/needs.rank @req FR:session-inventory/archive.list
  * @req FR:session-inventory/archive.superseded @req FR:session-inventory/store.result @req FR:session-inventory/store.write
  */
@@ -212,8 +213,10 @@ export function runInventory(o: InventoryOptions): Inventory {
   const projectsDir = o.projectsDir ?? defaultProjectsDir();
   const cacheFile = join(o.home, 'sessions.json');
   let old: Record<string, CacheEntry> = {};
+  // A cold cache (none, broken, another version or transcripts folder) is always written.
+  let changed = true;
   // Another version or transcripts folder means cached paths and facts may not fit: start cold.
-  try { const j = JSON.parse(readFileSync(cacheFile, 'utf8')) as Partial<SessionsFile>; if (j.version === 1 && j.projectsDir === projectsDir && j.cache && typeof j.cache === 'object') old = j.cache; } catch { /* cold cache */ }
+  try { const j = JSON.parse(readFileSync(cacheFile, 'utf8')) as Partial<SessionsFile>; if (j.version === 1 && j.projectsDir === projectsDir && j.cache && typeof j.cache === 'object') { old = j.cache; changed = false; } } catch { /* cold cache */ }
   // Read-only: only stat, readdir and read on the app store. @req FR:session-inventory/read.files
   const folders = listDirs(sessionsDir).flatMap(listDirs);
   const cache: Record<string, CacheEntry> = {};
@@ -229,6 +232,7 @@ export function runInventory(o: InventoryOptions): Inventory {
       // A file whose stats did not change is not read again; one warm run reads no session file. @req FR:session-inventory/read.cache @req FR:session-inventory/read.fast
       if (prev && prev.mtimeMs === st.mtimeMs && prev.size === st.size) entry = prev;
       else {
+        changed = true;
         let raw: unknown;
         try { raw = JSON.parse(readFileSync(path, 'utf8')); } catch { raw = null; }
         const facts = sessionFacts(raw);
@@ -237,6 +241,7 @@ export function runInventory(o: InventoryOptions): Inventory {
       }
       // The transcript tail is read again only when its mtime moves; archived sessions skip it.
       if (entry.facts && !entry.facts.archived && entry.tx) {
+        const was = { tail: entry.facts.tail, txMtimeMs: entry.txMtimeMs };
         const tx = statOf(entry.tx);
         if (!tx) { const rest = { ...entry.facts }; delete rest.tail; delete rest.txMtimeMs; entry = { ...entry, facts: rest, txMtimeMs: undefined }; }
         else if (tx.mtimeMs !== entry.txMtimeMs || entry.facts.tail === undefined) {
@@ -245,6 +250,7 @@ export function runInventory(o: InventoryOptions): Inventory {
           if (tail) entry = { ...entry, txMtimeMs: tx.mtimeMs, facts: { ...entry.facts, tail, txMtimeMs: tx.mtimeMs } };
           else { const rest = { ...entry.facts }; delete rest.tail; delete rest.txMtimeMs; entry = { ...entry, facts: rest, txMtimeMs: undefined }; }
         }
+        if (entry.facts!.tail !== was.tail || entry.txMtimeMs !== was.txMtimeMs) changed = true;
       }
       // A pending tool call may be a subagent that writes only its own transcript: its writes count as activity (not cached).
       if (entry.facts) {
@@ -256,6 +262,8 @@ export function runInventory(o: InventoryOptions): Inventory {
     }
   }
 
+  // A dropped entry (its file is gone) changes the cache too.
+  if (!changed && Object.keys(old).some((p) => !(p in cache))) changed = true;
   const sched = scheduledNames(folders);
   // @req FR:session-inventory/state.archived
   const facts = Object.values(cache).map((e) => e.facts).filter((f): f is SessionFacts => !!f && !f.archived);
@@ -283,9 +291,10 @@ export function runInventory(o: InventoryOptions): Inventory {
     .sort((a, b) => rank(a.project) - rank(b.project) || (a.state === b.state ? 0 : a.state === 'waiting' ? -1 : 1) || b.at - a.at).map(strip);
   const archive = items.filter((i) => i.state === 'done' || i.superseded).map(strip);
   const inventory: Inventory = { at: now.toISOString(), total: items.length, counts, needsYou, archive, sessions: items.map(strip) };
-  try {
+  // An unchanged cache is not written again: the page polls every 15 s. @req FR:session-inventory/store.write
+  if (changed) try {
     mkdirSync(o.home, { recursive: true, mode: 0o700 });
-    writeAtomic(cacheFile, `${JSON.stringify({ version: 1, at: inventory.at, projectsDir, cache, inventory } satisfies SessionsFile)}\n`);
+    writeAtomic(cacheFile, `${JSON.stringify({ version: 1, projectsDir, cache } satisfies SessionsFile)}\n`);
   } catch { /* the cache is best effort: a failed write never fails the inventory */ }
   return inventory;
 }

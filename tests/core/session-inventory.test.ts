@@ -161,7 +161,8 @@ describe('runInventory', () => {
     const file = join(e.home, 'sessions.json');
     expect(statSync(file).mode & 0o777).toBe(0o600);
     const stored = JSON.parse(readFileSync(file, 'utf8'));
-    expect(stored).toMatchObject({ version: 1, inventory: { total: 2 } });
+    expect(Object.keys(stored).sort()).toEqual(['cache', 'projectsDir', 'version']);
+    expect(Object.keys(stored.cache)).toHaveLength(2);
     // a change the cache cannot see (same size, same mtime) is not read again
     writeFileSync(f1, readFileSync(f1, 'utf8').replace('"interruptedAwaitingPerson":true', '"interruptedAwaitingPerson":null'));
     utimesSync(f1, m, m);
@@ -177,6 +178,56 @@ describe('runInventory', () => {
     unlinkSync(join(e.acct, 'local_s2.json'));
     e.run();
     expect(Object.keys(JSON.parse(readFileSync(file, 'utf8')).cache)).toHaveLength(1);
+  });
+
+  // @req FR:session-inventory/store.write @req FR:session-inventory/read.cache
+  it('writes sessions.json only when the cache changed', () => {
+    const e = setup();
+    e.put('local_s1', { interruptedAwaitingPerson: true }, [{ type: 'assistant', message: { content: [{ type: 'text' }] } }]);
+    e.put('local_s2', {});
+    const file = join(e.home, 'sessions.json');
+    e.run();
+    const old = new Date('2026-01-01T00:00:00Z');
+    const mark = () => utimesSync(file, old, old);
+    const written = () => statSync(file).mtimeMs !== old.getTime();
+    // unchanged session files: no write
+    mark(); e.run();
+    expect(written()).toBe(false);
+    // a changed session file: the next run writes
+    const later = new Date(T - MIN);
+    utimesSync(join(e.acct, 'local_s1.json'), later, later);
+    e.run();
+    expect(written()).toBe(true);
+    // a new transcript tail writes
+    mark(); utimesSync(join(e.projects, '-Users-u-dev-todo', 'cli-local_s1.jsonl'), later, later);
+    e.run();
+    expect(written()).toBe(true);
+    // a new session writes; a dropped one writes
+    mark(); e.put('local_s3', {}); e.run();
+    expect(written()).toBe(true);
+    mark(); unlinkSync(join(e.acct, 'local_s3.json')); e.run();
+    expect(written()).toBe(true);
+    // a removed transcript writes
+    mark(); unlinkSync(join(e.projects, '-Users-u-dev-todo', 'cli-local_s1.jsonl')); e.run();
+    expect(written()).toBe(true);
+    mark(); e.run();
+    expect(written()).toBe(false);
+  });
+
+  // @req FR:session-inventory/read.cache
+  it('an old sessions.json that still holds inventory loads as a warm cache', () => {
+    const e = setup();
+    e.put('local_s1', { interruptedAwaitingPerson: true });
+    const f1 = join(e.acct, 'local_s1.json');
+    const m = new Date('2026-11-11T17:00:00Z');
+    utimesSync(f1, m, m);
+    e.run();
+    const file = join(e.home, 'sessions.json');
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), at: NOW.toISOString(), inventory: { total: 1 } }));
+    // a change the cache cannot see (same size, same mtime) is not read: the old cache was used
+    writeFileSync(f1, readFileSync(f1, 'utf8').replace('"interruptedAwaitingPerson":true', '"interruptedAwaitingPerson":null'));
+    utimesSync(f1, m, m);
+    expect(e.run().counts.waiting).toBe(1);
   });
 
   // @req FR:session-inventory/state.activity
