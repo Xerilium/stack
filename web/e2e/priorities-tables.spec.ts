@@ -197,7 +197,7 @@ test.describe('Priorities report', () => {
     if (info.project.name === 'mobile') for (const t of await page.getByRole('tab').all()) expect((await t.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   });
 
-  // @req FR:priorities-tables/web.card.open @req FR:priorities-tables/web.tabs.head @req FR:ui-kit/card @req FR:ui-kit/tabs
+  // @req FR:priorities-tables/web.card.open @req FR:priorities-tables/web.tabs.head @req FR:ui-kit/card.chev @req FR:ui-kit/tabs
   test('the chevron is large and centred on the card height; the stamp has space after it', async ({ page }) => {
     await open(page, view(), '#/now?pri=now');
     for (const c of await cards(page, 'now').all()) {

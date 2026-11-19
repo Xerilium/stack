@@ -151,7 +151,7 @@ Owner needs the report on the Now page so that he sees it without a new screen.
   - **FR:web.status.chip** (P1): Status MUST be a `StatusChip` (`FR:ui-kit/chip`: a dot and one word on a tint); a row with no agent MUST show no chip.
   - **FR:web.card.agent** (P1): The card MUST show the agent name as plain text, with no added emoji and no link.
   - **FR:web.card.project** (P1): The card MUST show the project as plain text.
-  - **FR:web.card.open** (P1): The whole card MUST open its detail (one target, ending in a `›` centred on the card height); links on the card MUST stay links.
+  - **FR:web.card.open** (P1): The whole card MUST open its detail (one target, ending in `›`, `FR:ui-kit/card.chev`); links on the card MUST stay links.
 - **FR:web.detail** (P1): The detail pane MUST show the project (linked), status chip, full next action (linked refs), agent (linked) with `+ N more on this goal`, source `path:line` and the stamp. Wide (900 px or more) it MUST sit beside the list; narrow it MUST replace the list, with Back.
   - **FR:web.table.gap** (P1): A gap row MUST show its action in muted text with the word `Gap:` first.
   - **FR:web.table.empty** (P1): An empty tab MUST show one card `Nothing here`.
@@ -159,7 +159,7 @@ Owner needs the report on the Now page so that he sees it without a new screen.
   - **FR:web.links.project** (P1): In the detail pane, the project MUST link to its project page (`#/list?project=<file>`).
   - **FR:web.links.agent** (P1): In the detail pane, the agent MUST link to its session, else to its agent file in the Agents view.
   - **FR:web.links.refs** (P1): Each PR, issue and URL in the action MUST be a link; no bare `#12` or `PR 12` MUST show.
-  - **FR:web.links.gap** (P1): In the detail pane, a project or agent with no link target MUST show the gap marker `⚠ no link`, never plain text alone.
+  - **FR:web.links.gap** (P1): In the detail pane, a project or agent with no link target MUST show the gap marker `⚠ no link`.
   - **FR:web.links.none** (P1): `--` MUST be plain text.
 - **FR:web.live** (P1): Now MUST read `GET /priorities` on load, on each live change and every 60 s while visible.
   - **FR:web.live.absent** (P2): Now MUST hide the report when `GET /priorities` answers 404.
