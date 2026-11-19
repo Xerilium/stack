@@ -68,7 +68,7 @@ Why Cosmos DB wins:
 Known costs of the pick (accepted):
 
 - No offline writes for tasks. Mitigated by `FR:offline`.
-- No local emulator on every dev box. The contract suite runs on the in-memory adapter; the Cosmos adapter runs the same suite in CI on the Linux emulator.
+- No local emulator on every dev box. The contract suite runs on the in-memory adapter; the Cosmos adapter runs the same suite in CI on the Linux (vNext) emulator, which also runs on Apple Silicon in Docker. PR 2 MUST pick an emulator version that supports transactional batch, ETag conditions, patch, TTL and the change feed, and pin it. The emulator does not meter RU (`NFR:ru`).
 - A restore from Cosmos backup has a small per-GB charge [C6]. At < 10 MB it is under $0.01. The primary restore is our free JSON snapshot.
 
 ## Scenarios
@@ -91,7 +91,7 @@ The owner needs a shape that cannot grow into giant lists so that "what is next"
 
 The owner needs only clear actions in the queue so that every task can be done as written.
 
-- **FR:gate.inbox** (P1): Connectors (email, PR, calendar), agents and quick capture MUST write `inbox` items, not tasks. An inbox item holds `title` (the captured text), `source`, `links` and `capturedAt`.
+- **FR:gate.inbox** (P1): Connectors (email, PR, calendar), agents and quick capture MUST write `inbox` items, not tasks. An inbox item holds `title` (the captured text), `source` and `links`. `createdAt` is the capture time.
 - **FR:gate.fields** (P1): The store MUST check these rules on every task write. Each rule is checkable by code:
 
   | Field      | Rule                                                                     |
@@ -112,7 +112,7 @@ The owner needs only clear actions in the queue so that every task can be done a
 Agents and the owner need IDs that survive edits and moves so that refs never break.
 
 - **FR:id.form** (P1): An ID MUST be kebab-case `[a-z0-9-]`, at most 60 characters, unique in the store. It MUST NOT hold the project, so a move never changes it.
-- **FR:id.make** (P1): `add` MUST make the ID from the first 6 words of the title. On a clash it MUST add `-2`, `-3`, and so on. A title with no `[a-z0-9]` word MUST get `item-{base36 time}`.
+- **FR:id.make** (P1): `add` MUST make the ID from the first 6 words of the title. On a clash it MUST add `-2`, `-3`, and so on. A title with no `[a-z0-9]` word (for example only emoji) MUST get `item-{first 6 hex of the SHA-256 of the title}`, so import stays the same on every run.
 - **FR:id.stable** (P1): A title edit or a move MUST NOT change the ID.
 - **FR:id.reserve** (P1): A deleted item's ID MUST stay reserved for 90 days (`FR:done.tombstone`), so `add` never reuses it for a new item while old refs may exist.
 - **FR:id.client** (P1): A create MAY give its own ID. A create that hits an existing item with the same ID and the same `title` MUST return that item, not an error. A create that hits a tombstone with the same ID MUST return `{clarified: true}` and write nothing. This makes retries and queued captures idempotent.
@@ -126,7 +126,7 @@ Every surface needs one store contract so that the app, CLI, MCP and agents agre
 - **FR:store.adapters** (P1): The store MUST have an in-memory adapter (tests) and a Cosmos DB adapter. Both MUST pass one contract suite.
 - **FR:store.container** (P1): The Cosmos adapter MUST use one container with partition key `/ownerId`. The container MUST set `defaultTtl: -1`, so per-item TTL works and items without `ttl` never expire. All of one owner's items share one logical partition, so a move or cascade runs as one transactional batch [C3].
 - **FR:store.atomic** (P1): Each call that fits one transactional batch MUST be atomic (limits: 100 operations and 2 MB [C3]). A failed call changes nothing.
-- **FR:store.bulk** (P1): A call that does not fit one batch (restore, import, a large cascade) MUST run under the store lock (`FR:store.lock`) in chunks of at most 100 operations and 1.5 MB. It MUST save progress in `meta.bulk` (`{op, chunk}`). On failure the lock stays set, and the same command run again MUST resume from `meta.bulk.chunk`.
+- **FR:store.bulk** (P1): A call that does not fit one batch (restore, import, a large cascade) MUST run under the store lock (`FR:store.lock`) in chunks of at most 100 operations and 1.5 MB. It MUST save progress in `meta.bulk` (`{op, source, chunk}`). On failure the lock stays set, and the same command run again MUST resume from `meta.bulk.chunk` when `source` matches.
 - **FR:store.lock** (P1): The store MUST hold one `meta` item with `readOnly` (bool) and `reason`. Every write MUST read it first and throw `ReadOnlyError` when set. A bulk call MUST set it, wait 10 seconds for in-flight writes to drain, run, then clear it.
 - **FR:store.schema** (P1): Each item MUST hold `schemaVersion`. The adapter MUST upgrade older items on read and write. An unknown newer version MUST throw `StoreError`.
 
@@ -187,17 +187,18 @@ The owner needs capture and reads with no network so that a dead link loses noth
 
 The owner needs the store to cost $0 forever so that it never becomes a bill.
 
-- **FR:cost.tier** (P1): The account MUST be created with the free tier discount, one region, provisioned throughput, and no analytical store. Setup MUST stop when the subscription already has a free-tier account (one per subscription [C1]).
+- **FR:cost.tier** (P1): The account MUST be created with the free tier discount, one region, provisioned throughput, and no analytical store. Setup MUST stop when the subscription already has another free-tier account (one per subscription [C1]); `stack store check` MUST check the same.
 - **FR:cost.limit** (P1): The account total throughput limit MUST be set to the free tier amount (1,000 RU/s) [C4]. The database MUST use shared throughput of at most 1,000 RU/s.
 - **FR:cost.backup** (P1): Backup MUST be continuous, 7-day tier [C6].
 - **FR:cost.check** (P1): `stack store check` MUST verify `FR:cost.tier`, `FR:cost.limit` and `FR:cost.backup`, and fail when any drifts. It runs on the weekly CoS sweep.
+- **FR:cost.actions** (P2): `stack store check` MUST warn when the owner's monthly Actions minutes pass 1,500. The backup job then moves to every 2 hours.
 - **FR:cost.alert** (P2): The subscription MUST have a budget alert at $1 per month.
 
 ### FR:backup: Snapshot and restore
 
 The owner needs a copy outside Azure so that a lost account or a bad write recovers in minutes.
 
-- **FR:backup.snap** (P1): A scheduled GitHub Actions job in the `backup.remote` repo MUST export the partition as one JSON file every hour, with Entra ID through OIDC and a read-only data role. About 720 runs a month fits the 2,000 free Actions minutes for private repos. It MUST skip the commit when nothing changed. (SWA managed Functions cannot run timers.)
+- **FR:backup.snap** (P1): A scheduled GitHub Actions job in the `backup.remote` repo MUST export the partition as one JSON file every hour, with Entra ID through OIDC and a read-only data role. About 720 runs a month, each rounded up to 1 minute plus setup, use roughly 1,000 of the 2,000 free Actions minutes that all of the owner's private repos share (`FR:cost.actions`). It MUST skip the commit when nothing changed. (SWA managed Functions cannot run timers.)
 - **FR:backup.mac** (P2): When awake, the Mac host MUST also export 15 minutes after the last write (debounced).
 - **FR:backup.remote** (P1): Each export MUST be a commit of `stack.json` on branch `snapshots` of the private repo in config `backup.remote` (default `{owner}/stack-data`). Commits accrue; the file is text, so git keeps it small.
 - **FR:backup.private** (P1): The export MUST refuse to push when the repo is public.
@@ -219,7 +220,7 @@ The owner needs current tasks moved once so that nothing is lost at cutover.
   - `updatedAt` MUST come from the row's `git blame` date, so ranking on activity matches md (`G1`).
 - **FR:import.ids** (P1): Import MUST make the same ID for the same md row on every run (file, then slug from title, clash order by line).
 - **FR:import.epoch** (P1): A change of `meta.epoch` MUST make every cache and view drop its data and reload the full partition, because hard deletes do not reach the change feed. `restore` MUST also set a new epoch.
-- **FR:import.report** (P1): Import MUST print counts per project, rows sent to inbox, and renamed IDs. `--dry-run` writes nothing.
+- **FR:import.report** (P1): Import MUST print counts per project, the expected inbox count (rows sent to inbox), and renamed IDs. Only 0.1% of rows carry typed context (`research.md` section 1), so an agent clarify pass MUST run before Stage 2 (`G9`). `--dry-run` writes nothing.
 - **FR:import.once** (P1): Import into a store that holds items MUST refuse, unless `--replace` is given. `--replace` MUST hard-delete every item and tombstone except `meta` (no ID reserve), then import, then set a new `meta.epoch`. It is for the shadow stage and the final import only.
 - **FR:import.done** (P1): Import MUST skip done rows (`- [x]`).
 
@@ -276,7 +277,7 @@ The owner needs a fast undo so that a bad change or a bad cutover is cheap.
 
 - **NFR:perf.read** (P1): `list`, `tree` and `next` on 2,000 tasks MUST answer in under 300 ms from the Azure host and under 100 ms from the Mac cache.
 - **NFR:perf.write** (P1): A single write MUST finish in under 200 ms at p95.
-- **NFR:ru** (P1): A full partition read MUST cost under 100 RU. Normal use MUST stay under 200 RU/s at peak.
+- **NFR:ru** (P1): A full partition read MUST cost under 100 RU. PR 3 MUST measure it once on the real account with a 2,000-task, 64 KB-body fixture and set the limit from the result (RU grows with bytes read). Normal use MUST stay under 200 RU/s at peak.
 - **NFR:privacy** (P1): Logs MUST NOT hold task text. Data stays in the owner's Cosmos account and the private `backup.remote` repo.
 
 ## Data Model
@@ -287,7 +288,7 @@ The owner needs a fast undo so that a bad change or a bad cutover is cheap.
   - `ownerId` (string): partition key
   - `parentId` (string?): area for a project; project for a sub-project or task. This is the task's project.
   - `order` (number): sort among siblings
-  - `title` (string), `body` (markdown?)
+  - `title` (string; a `dayplan` uses its date), `body` (markdown?)
   - `links` (Link[])
   - `schemaVersion` (number), `createdAt`, `updatedAt` (IsoDateTime), `updatedBy` (string), `rev` (string, `_etag`)
 - **FR:$task** (P1): **`Task`** extends `Item`:
@@ -299,10 +300,10 @@ The owner needs a fast undo so that a bad change or a bad cutover is cheap.
   - `steps` ({id, text, done}[])
 - **FR:$project** (P1): **`Project`** extends `Item`: `doneWhen` (string), `mode` (`sequential` | `parallel`), `aliases`, `repos` (string[]), `reviewEvery` (days).
 - **FR:$area** (P1): **`Area`** extends `Item`: `weekdays` (weight per weekday).
-- **FR:$inbox** (P1): **`InboxItem`** extends `Item`: `source` (`email` | `pr` | `calendar` | `agent` | `capture` | `import`), `capturedAt`.
+- **FR:$inbox** (P1): **`InboxItem`** extends `Item`: `source` (`email` | `pr` | `calendar` | `agent` | `capture` | `import`).
 - **FR:$dayplan** (P1): **`DayPlan`** extends `Item`: `date`, `picks` (task ID[]), `doneByArea` (map), `note` (string?), `ttl` (2 days).
 - **FR:$priority** (P1): **`Priority`** extends `Item`: one item per ranked focus, with `rank`, `slot` and `days` as defined in [179](https://github.com/Xerilium/stack/pull/179). `parentId` is the area or project it ranks.
-- **FR:$meta** (P1): **`Meta`**: one item, ID `meta`, with `readOnly`, `reason`, `epoch` (string), `bulk` ({op, chunk}?), `schemaVersion`. Not an `Item` subtype; never listed.
+- **FR:$meta** (P1): **`Meta`**: one item, ID `meta`, with `readOnly`, `reason`, `epoch` (string), `bulk` ({op, source, chunk}?; `source` is the snapshot commit or import run), `schemaVersion`. Not an `Item` subtype; never listed.
 - **FR:$tombstone** (P1): **`Tombstone`**: `id`, `ownerId`, `type`, `deleted: true`, `ttl` (90 days).
 - **FR:$link** (P1): **`Link`**: `{kind, target}`.
   - `kind` (`blocks` | `pr` | `issue` | `email` | `req` | `url`)

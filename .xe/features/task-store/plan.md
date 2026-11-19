@@ -23,7 +23,7 @@
 
 Spec sync: PR 1 also updates `task-model` (shape, item types), `task-lifecycle` (tombstone delete, clarify) and `azure-host` (Cosmos instead of git storage; key auth) to point here. Each later PR updates any spec it changes.
 
-App work for gates `G1`-`G3` lives in `product-reset` (its own stages 4-6, not the cutover stages here). This plan adds no UI.
+App work for gates `G1`-`G3` lives in `product-reset` (its own "product-reset Stages 4-6", not the Stage 0-3 cutover stages here). This plan adds no UI.
 
 ## Order rationale
 

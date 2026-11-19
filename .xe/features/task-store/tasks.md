@@ -30,7 +30,13 @@ One PR per group. Tests first in each PR. `@req FR:task-store/...` on every test
 - Sandbox test: a sandbox write never reaches md or the shadow container (`FR:cutover.sandbox`).
 - Privacy test: logs from every write path hold no task title or body (`NFR:privacy`).
 - Perf test in CI: 2,000 tasks; read under target (`NFR:perf.*`).
-- RU test: nightly job on the real account (the emulator does not meter RU); full read under 100 RU (`NFR:ru`).
+- RU check: once, in PR 3, on the real free account (the emulator does not meter RU); full read under 100 RU, then set `NFR:ru` from the result.
+- Model test: sequential project offers only its first open task; a project with 8 available tasks warns and still writes (`FR:model.sequential`, `FR:model.cap`).
+- Rank pool test: only owner `me`, available, unblocked, not waiting, first-in-sequence tasks enter; projects, steps and inbox never rank (`FR:rank.pool`).
+- Import once test: import into a non-empty store refuses; `--replace` works for shadow and final; done rows skipped (`FR:import.once`, `FR:import.done`).
+- Throttle test: a `429` retries with back-off and surfaces only after 30 seconds (`FR:write.throttle`).
+- Sync test: change feed to SSE within 5 seconds; Azure host `changes(since)` poll returns tombstones (`FR:sync.live`, `FR:sync.poll`).
+- Output test: `complete --json` returns the deleted item (`FR:done.output`).
 
 ## 1: store-contract
 
@@ -47,8 +53,9 @@ One PR per group. Tests first in each PR. `@req FR:task-store/...` on every test
 ## 3: store-infra
 
 - [ ] Free tier account, throughput limit, 7-day backup, budget alert (`FR:cost.*`)
-- [ ] Entra data-plane role for the Mac; key in Azure host settings (`FR:write.keys`, `FR:write.auth`)
-- [ ] `stack store check` (`FR:cost.check`)
+- [ ] Entra data-plane roles for the Mac and the read-only OIDC role for the Actions backup; key in Azure host settings (`FR:write.auth`, `FR:write.keys`)
+- [ ] `stack store check` incl. no second free-tier account and Actions minutes (`FR:cost.check`, `FR:cost.tier`, `FR:cost.actions`)
+- [ ] One RU measurement on the real account; set `NFR:ru` (`NFR:ru`)
 
 ## 4: store-io
 

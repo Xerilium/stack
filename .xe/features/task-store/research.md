@@ -9,7 +9,7 @@ Evidence for `spec.md`. Inputs: `product-reset` ([159](https://github.com/Xerili
   1. **Fixed shape**: Area > Project > (sub-project) > Task > Step. Only a leaf task can be "next". Deeper trees become a new project; free text goes to a markdown `body`.
   2. **Inbox is not the task list**: email, PRs, calendar and agents write inbox items. Nothing becomes a task until it passes clarify (one action, done-when, link, owner).
   3. **Day plan is the only "history"**: one row per day holds the plan and done-today per project. It is deleted after the next day closes. Done tasks are deleted.
-- Store: the data is tiny (~1,100 rows). The hard need is many writers while the Mac is off. That rules out Mac-hosted SQLite. Always-on agent traffic rules out the Azure SQL free offer (monthly vCore quota). Pick: Cosmos DB free tier.
+- Store: the data is tiny (~1,100 rows). The hard need is many writers while the Mac is off. That rules out Mac-hosted SQLite. Always-on agent traffic rules out the Azure SQL free offer (monthly vCore quota; up to 10 free databases per subscription, but the 100k vCore-seconds limit applies to each database, so the decision holds). Pick: Cosmos DB free tier.
 
 ## 1. Evidence from the owner's data
 
