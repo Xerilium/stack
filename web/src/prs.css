@@ -11,20 +11,11 @@
 .brand .prs-btn.compact .badge { top: -2px; right: -4px; }
 .rail .prs-btn .prs-ic { width: 18px; height: 18px; }
 
-/* Card tones: owner kind x strength. Text on each meets 4.5:1 (light and dark). @req FR:pr-page/card.color */
-.prs-fly {
-  --pr-auto: #e3eefa; --pr-auto-soft: #f5f8fc; --pr-auto-edge: #0f6cbd;
-  --pr-mine: #e2f3e5; --pr-mine-soft: #f5faf6; --pr-mine-edge: #0e700e;
-  --pr-other: #fbebd6; --pr-other-soft: #fcf8f2; --pr-other-edge: #a35200;
-  --pr-ink: #1d1d1f; --pr-ink2: #47474d;
-}
-@media (prefers-color-scheme: dark) {
-  .prs-fly {
-    --pr-auto: #133150; --pr-auto-soft: #1b222b; --pr-auto-edge: #479ef5;
-    --pr-mine: #163a1e; --pr-mine-soft: #1b241d; --pr-mine-edge: #54b054;
-    --pr-other: #3d2a10; --pr-other-soft: #262019; --pr-other-edge: #e8a24a;
-    --pr-ink: #f2f2f3; --pr-ink2: #cdcdd2;
-  }
+/* Card owner edges: muted mixes of app tokens, so light and dark both work and no second brand color shows. @req FR:pr-page/card.color */
+:root {
+  --pr-auto-edge: color-mix(in srgb, var(--accent) 60%, var(--panel));
+  --pr-mine-edge: color-mix(in srgb, var(--ok) 50%, var(--panel));
+  --pr-other-edge: color-mix(in srgb, var(--warn) 50%, var(--panel));
 }
 
 .prs-scrim { position: fixed; inset: 0; z-index: 60; background: rgb(0 0 0 / 28%); display: flex; justify-content: flex-end; }
@@ -63,16 +54,21 @@
 .pr-sec + .pr-sec { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
 .pr-sec-h { margin: 0; font-size: 15px; font-weight: 650; color: var(--ink); }
 
-/* One card: the shared SelectCard (ui/ui.css) with PR tones. @req FR:pr-page/card.fields @req FR:pr-page/card.space @req FR:pr-page/card.color */
-.pr-card { --ui-ink: var(--pr-ink); --ui-ink2: var(--pr-ink2); }
-.pr-card.tone-auto { --ui-edge: var(--pr-auto-edge); --ui-soft: var(--pr-auto-soft); --ui-strong: var(--pr-auto); }
-.pr-card.tone-mine { --ui-edge: var(--pr-mine-edge); --ui-soft: var(--pr-mine-soft); --ui-strong: var(--pr-mine); }
-.pr-card.tone-other { --ui-edge: var(--pr-other-edge); --ui-soft: var(--pr-other-soft); --ui-strong: var(--pr-other); }
+/* One card: the shared SelectCard (ui/ui.css) on the neutral panel; the owner is a 3 px muted edge, strong is elevation only. @req FR:pr-page/card.fields @req FR:pr-page/card.space @req FR:pr-page/card.color */
+.ui-card.pr-card { --ui-soft: var(--panel); --ui-strong: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--ui-edge, var(--line)); }
+.pr-card.tone-auto { --ui-edge: var(--pr-auto-edge); }
+.pr-card.tone-mine { --ui-edge: var(--pr-mine-edge); }
+.pr-card.tone-other { --ui-edge: var(--pr-other-edge); }
+/* Phone: the tools join the top row, so the title uses the full width. @req FR:pr-page/card.color.phone */
+@media (max-width: 719px) {
+  .ui-card.pr-card { grid-template-areas: "top tools" "open open"; }
+  .pr-card .ui-card-tools { flex-direction: row; align-self: start; }
+}
 .pr-card.dragging { box-shadow: var(--fl-shadow16); opacity: .92; }
 .pr-repo { overflow-wrap: anywhere; }
-.pr-num { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 24px; color: var(--pr-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.pr-num { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 24px; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .pr-spec { font-size: 11.5px; }
-.pr-pin[aria-pressed="true"] { color: var(--pr-ink); }
+.pr-pin[aria-pressed="true"] { color: var(--ink); }
 .pr-grip { cursor: grab; touch-action: none; }
 .pr-card.dragging .pr-grip { cursor: grabbing; outline: 2px solid var(--focus); }
 
