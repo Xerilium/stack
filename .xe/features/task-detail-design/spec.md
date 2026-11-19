@@ -41,7 +41,7 @@ Owner feedback (Nov 11): My day feels like a mess. Rows do not look clickable (o
 - **FR:compose.text** (P1): The box placeholder is `Message <Name>…`. Enter sends
 - **FR:compose.mode** (P1): A segmented control `Ask` | `Do it` replaces Assign, Review, and Keep open. One line under it explains the choice: `Ask: <Name> answers here; nothing changes on the task.` / `Do it: <Name> takes the task and starts work; your note goes with it.` The send button says `Ask` or `Do it`
 - **FR:compose.doit** (P1): Do it assigns the task to the chosen agent with the note (if any) in the assign prompt (`POST /tasks/{ref}/assign` with `note`, at most 1000 characters), so the agent reads it at the start. Once assigned, the note is recorded on the task as a handled instruction, so the thread shows it and the inbox never hands it out again. A refused or failed assign writes nothing. Without a runner Do it is disabled with the reason (`Runs in stack web on your machine`); Ask still saves on the task
-- **FR:compose.keep** (P1): A send clears the box only when it succeeds and only if the text did not change while it was in flight; text typed during the send stays
+- **FR:compose.draft** (P1): The composer keeps the user's draft: a successful send clears the box only when its text is unchanged since the send started
 - **FR:compose.nokeep** (P2): There is no `Keep open` toggle: the reply lands in the thread above; `Open the session` reaches the live run
 
 ### FR:myday: My day rows
