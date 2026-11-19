@@ -156,6 +156,9 @@ test.describe('My day v2', () => {
     expect(await h('.block.short', 'Quick reply')).toBe(slot / 2); // 12 min draws as 15: the target stays 24 px (48 px on touch)
     await expect(plan.locator('.block').filter({ hasText: 'Loose end' }).locator('.what-meta')).toContainText('~30m'); // an estimate keeps its mark @req FR:web-app/today.plan
     await expect(plan.locator('.block.short .row-acts')).toBeHidden();
+    await expect(plan.locator('.block.short .what-meta .at')).toHaveText('10:45a'); // a start off the half hour shows, on a short block too
+    // The whole height of the short block takes a tap: the block after it does not cover its bottom edge.
+    expect(await plan.locator('.block.short').evaluate((el) => { const r = el.getBoundingClientRect(); return !!document.elementFromPoint(r.left + r.width / 2, r.bottom - 3)?.closest('.block.short'); })).toBe(true);
     // A block sits at its real time: Standup starts 2 rows below the 10:00a grid top.
     const top = (await page.locator('.ui-slot').first().boundingBox())!.y;
     expect(Math.round((await plan.locator('.ui-grid-item').filter({ hasText: 'Standup' }).boundingBox())!.y - top)).toBe(slot * 2);

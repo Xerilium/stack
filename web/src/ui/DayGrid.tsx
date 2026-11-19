@@ -15,7 +15,7 @@ export interface GridSpan { /** Start, in minutes after midnight. */ start: numb
 export interface GridItem extends GridSpan { key: string; node: ComponentChild }
 export interface GridBand extends GridSpan { label: string; /** Tint the band's rows (time that is not for work). */ muted?: boolean }
 /** Where an item sits: `top` and `size` in rows (30 minutes is 1, never under `MIN_SIZE`); `lane` of `lanes` when items overlap in time. */
-export interface Placed<T> { item: T; top: number; size: number; lane: number; lanes: number }
+export interface Placed<T> { item: T; top: number; size: number; lane: number; lanes: number; /** Drawn higher than its length: it sits above the item after it, so its whole height takes a tap. */ raised?: true }
 
 /**
  * Lay items out on the span `from` to `to`: clip each to the span, drop the ones outside it, sort by start,
@@ -35,7 +35,10 @@ export function placeItems<T extends GridSpan>(items: T[], from: number, to: num
     const taken = new Set(group.filter((g) => g.z > x.a).map((g) => g.p.lane));
     let lane = 0;
     while (taken.has(lane)) lane++;
-    const p: Placed<T> = { item: x.item, top: (x.a - from) / SLOT_MIN, size: Math.max(MIN_SIZE, (x.z - x.a) / SLOT_MIN), lane, lanes: 1 };
+    // Only an item that is short by itself gets the least height; one cut by the span keeps its cut size. Never past the last row.
+    const size = (x.z - x.a) / SLOT_MIN;
+    const short = x.item.end - x.item.start < MIN_SIZE * SLOT_MIN && size < MIN_SIZE;
+    const p: Placed<T> = { item: x.item, top: (x.a - from) / SLOT_MIN, size: short ? Math.min(MIN_SIZE, (to - x.a) / SLOT_MIN) : size, lane, lanes: 1, ...(short ? { raised: true as const } : {}) };
     group.push({ p, z: x.z });
     groupEnd = Math.max(groupEnd, x.z);
     out.push(p);
@@ -75,7 +78,7 @@ export function DayGrid({ label, from, to, items, bands = [], now, testid }: {
       </ol>
       <ol class="ui-grid-items" aria-label={label} data-testid={testid}>
         {placeItems(items, start, end).map((p) => (
-          <li key={p.item.key} class="ui-grid-item" style={{ '--top': p.top, '--size': p.size, '--lane': p.lane, '--lanes': p.lanes }}>{p.item.node}</li>
+          <li key={p.item.key} class={`ui-grid-item${p.raised ? ' raised' : ''}`} style={{ '--top': p.top, '--size': p.size, '--lane': p.lane, '--lanes': p.lanes }}>{p.item.node}</li>
         ))}
       </ol>
       {now !== undefined && now >= start && now < end && <div class="now-line ui-grid-now" role="img" aria-label={`Now ${clock(now)}`} style={{ '--top': (now - start) / SLOT_MIN }} />}

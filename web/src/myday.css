@@ -101,8 +101,9 @@ section.today .ui-grid .block, section.today .ui-grid .meeting, section.today .u
 section.today .ui-grid .when { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; padding: 0; }
 section.today .ui-grid .what { box-sizing: border-box; height: 100%; min-height: 0; margin: 0; overflow: hidden; border: 1px solid var(--line2); border-left: 3px solid var(--line); border-radius: 6px; background: var(--panel); }
 section.today .ui-grid .block .what { align-content: start; align-items: center; padding: 9px 4px 0 6px; }
-section.today .ui-grid .block.short .what { align-content: center; padding-top: 0; padding-bottom: 0; grid-template-columns: 22px minmax(0, 1fr) 16px; grid-template-areas: 'tick title chev'; }
-section.today .ui-grid .block.short .what-meta, section.today .ui-grid .block.short .row-acts { display: none; }
+section.today .ui-grid .block.short .what { align-content: center; padding-top: 0; padding-bottom: 0; grid-template-columns: 22px minmax(0, 1fr) auto 16px; grid-template-areas: 'tick title meta chev'; }
+section.today .ui-grid .block.short .row-acts, section.today .ui-grid .block.short .what-meta > :not(.at) { display: none; }
+section.today .ui-grid .block.short .what-meta > .at::before { content: none; }
 section.today .ui-grid .block.short .tick, section.today .ui-grid .block.short .row-open { min-height: 0; height: 100%; max-height: var(--tap); }
 section.today .ui-grid .block.short .what-title { white-space: nowrap; }
 section.today .ui-grid .what-meta { overflow: hidden; }
@@ -118,6 +119,6 @@ section.today .ui-grid .when.off small { display: none; }
   section.today .ui-grid .block:not(.short) .what-title { white-space: nowrap; }
   section.today .ui-grid .block .tick { align-self: start; margin-top: 0; }
   section.today .ui-grid .block.short .tick { align-self: center; }
-  section.today .ui-grid .block.short .what { grid-template-columns: 44px minmax(0, 1fr) 16px; }
+  section.today .ui-grid .block.short .what { grid-template-columns: 44px minmax(0, 1fr) auto 16px; grid-template-areas: 'tick title meta chev'; }
   section.today .ui-grid .block .chev { justify-self: end; padding-right: 6px; }
 }

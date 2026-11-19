@@ -92,6 +92,8 @@
 .ui-slot-band { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-grid-items { position: absolute; inset: 0 0 0 var(--ui-gutter); pointer-events: none; }
 .ui-grid-item { position: absolute; box-sizing: border-box; top: calc(var(--top) * var(--ui-slot)); height: calc(var(--size) * var(--ui-slot)); left: calc(var(--lane) * 100% / var(--lanes)); width: calc(100% / var(--lanes)); padding: 1px 0 1px 2px; pointer-events: auto; }
+/* An item drawn higher than its length sits above the next one, so its whole height takes a tap. */
+.ui-grid-item.raised { z-index: 1; }
 .ui-grid .ui-grid-now { position: absolute; left: calc(var(--ui-gutter) - 4px); right: 0; top: calc(var(--top) * var(--ui-slot)); height: 0; margin: 0; border-top: 1px solid var(--accent); pointer-events: none; z-index: 2; }
 .ui-grid .ui-grid-now::before { content: ''; position: absolute; left: -3px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 @media (max-width: 800px), (hover: none) { .ui-grid { --ui-slot: 96px; --ui-gutter: 44px; } .ui-slot-when { padding-right: 6px; } }

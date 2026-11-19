@@ -172,10 +172,13 @@ describe('DayGrid', () => {
     // an item under 15 minutes keeps the height of 15 minutes, so its target stays usable; lanes follow real times
     expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['a', 0, 1], ['b', 2, 2], ['c', 4.5, 0.5], ['d', 5, 0.5]]);
     expect(p.every((x) => x.lane === 0 && x.lanes === 1)).toBe(true);
+    expect(p.map((x) => x.raised ?? false)).toEqual([false, false, false, true]); // only the one drawn higher than its length sits above the next
   });
   it('placeItems: clips to the span and drops items outside it', () => {
     const p = placeItems([{ key: 'early', start: 540, end: 630 }, { key: 'late', start: 760, end: 840 }, { key: 'out', start: 900, end: 930 }], 600, 780);
     expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['early', 0, 1], ['late', 16 / 3, 2 / 3]]);
+    // an item cut by the span keeps its cut size; a short one at the end stops at the last row
+    expect(placeItems([{ key: 'cut', start: 560, end: 605 }, { key: 'end', start: 775, end: 780 }], 600, 780).map((x) => [x.item.key, x.size, x.raised ?? false])).toEqual([['cut', 5 / 30, false], ['end', 5 / 30, true]]);
     expect(placeItems([{ key: 'x', start: 600, end: 612 }, { key: 'y', start: 612, end: 642 }], 600, 780).map((x) => [x.lane, x.lanes])).toEqual([[0, 1], [0, 1]]);
   });
   it('placeItems: items that overlap sit side by side; later ones get the full width again', () => {
@@ -195,6 +198,7 @@ describe('DayGrid', () => {
     const list = r.querySelector('[data-testid="plan"]')!;
     expect(list.tagName).toBe('OL');
     expect(list.getAttribute('aria-label')).toBe('Day');
+    expect(mount(<DayGrid label="Day" from={600} to={780} items={[{ key: 's', start: 600, end: 612, node: <b>Short</b> }]} />).querySelector('.ui-grid-item')!.classList.contains('raised')).toBe(true);
     const items = [...list.querySelectorAll<HTMLElement>(':scope > li.ui-grid-item')];
     expect(items.map((x) => x.textContent)).toEqual(['Thirty', 'Sixty']);
     expect(items.map((x) => [x.style.getPropertyValue('--top'), x.style.getPropertyValue('--size')])).toEqual([['0', '1'], ['2', '2']]);
