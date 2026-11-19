@@ -495,9 +495,9 @@ a.tag.link:hover { background: var(--accent-soft); }
 html, body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
 
 /* ---- Week capacity */
-.week { margin-bottom: 36px; }
+.week { margin-bottom: var(--fl-s-xxxl); }
 .week-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; }
-.week-head .h1 { margin-bottom: 6px; }
+.week-head .ui-h2 { margin-bottom: 0; }
 .week-sum { margin: 0; display: flex; gap: 0; font-size: 13px; color: var(--ink2); }
 .week-sum > span + span::before { content: "·"; margin: 0 8px; color: var(--muted); }
 .week-sum .warn { color: var(--warn); font-weight: 600; }

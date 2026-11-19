@@ -1,3 +1,4 @@
+import { PageHeader } from './ui/PageHeader';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { approveLabel } from './asks';
 import type { CapacityRow } from './capacity';
@@ -110,7 +111,8 @@ export function ListView(p: ListProps) {
   const counts = new Map<string, number>();
   for (const t of p.rows) counts.set(`${t.project}/${t.section}`, (counts.get(`${t.project}/${t.section}`) ?? 0) + 1);
   return (
-    <section aria-label="Task list">
+    <section aria-labelledby="list-h">
+      <PageHeader title={<span id="list-h">Full stack</span>} meta={<span aria-live="polite" data-testid="list-count">{p.total} task{p.total === 1 ? '' : 's'}</span>} />
       <div class="filters" role="search">
         <input ref={(el) => { p.searchRef.current = el; }} type="search" aria-label="Search tasks" placeholder="Search" value={f.q} onInput={(e) => p.onFilters({ q: (e.target as HTMLInputElement).value })}
           onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
@@ -134,7 +136,6 @@ export function ListView(p: ListProps) {
           {chips.map(([k, v, rm]) => <button type="button" class="chip removable" key={k} aria-label={`Remove filter ${k}: ${v}`} onClick={rm}>{k}: {v} ×</button>)}
         </div>
       )}
-      <p class="count" aria-live="polite">{p.total} task{p.total === 1 ? '' : 's'}</p>
       {p.total === 0 && <EmptyState what="No tasks match." next={<button type="button" class="btn" onClick={() => p.onFilters({ ...NO_FILTERS })}>Clear filters</button>} />}
       <ul class="rows" data-testid="rows">
         {p.rows.map((t) => {
@@ -234,10 +235,11 @@ function Editor({ text, onSave, onCancel }: { text: string; onSave: (t: string) 
 /** @req FR:web-app/projects.glance */
 export function ProjectsView({ rows, week, onOpen }: { rows: (CapacityRow & { top?: Task })[]; week?: Week; onOpen: (p: string) => void }) {
   return (
-    <section aria-label="Projects">
+    <section aria-labelledby="proj-h">
+      <PageHeader title={<span id="proj-h">Projects</span>} meta={`${rows.length} project${rows.length === 1 ? '' : 's'}`} />
       {week && <WeekView w={week} />}
-      <h1 class="h1">Projects</h1>
-      <ul class="proj-list">
+      <h2 class="ui-h2" id="proj-all-h">All projects</h2>
+      <ul class="proj-list" aria-labelledby="proj-all-h">
         {rows.map((r) => (
           <li key={r.project} class={`prow${r.over ? ' over' : ''}${r.capacity === null ? ' nocap' : ''}`} data-testid={`cap-${r.project}`}>
             <button type="button" class="proj-btn" onClick={() => onOpen(r.project)}>
@@ -619,7 +621,7 @@ export function WeekView({ w }: { w: Week }) {
   return (
     <section class="week" aria-label="This week" data-testid="week">
       <div class="week-head">
-        <h1 class="h1">This week</h1>
+        <h2 class="ui-h2">This week</h2>
         <p class="week-sum"><span>{hrs(w.available)} available</span><span>{hrs(w.planned)} planned</span>{w.leftover > 0 && <span class="warn">{hrs(w.leftover)} won't fit</span>}</p>
       </div>
       <ol class="week-days">
