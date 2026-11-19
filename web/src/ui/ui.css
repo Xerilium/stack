@@ -131,6 +131,8 @@
 .ui-head-meta { font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--muted); }
 .ui-head-sub { flex-basis: 100%; margin: 0; font-size: var(--fl-body); line-height: var(--fl-body-lh); color: var(--ink2); }
 .ui-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fl-s-s); }
+/* Section heading under the page header: subtitle size. */
+.ui-h2 { margin: 0 0 var(--fl-s-s); font: 600 var(--fl-sub2)/var(--fl-sub2-lh) var(--fl-font); color: var(--ink); }
 
 /* Loading: gray bars in place of rows. @req FR:ui-kit/loading */
 .ui-loading { display: grid; gap: var(--fl-s-s); padding: var(--fl-s-s) 0; }

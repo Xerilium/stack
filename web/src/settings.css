@@ -1,17 +1,4 @@
 /* Settings (Fluent 2). Compact: 6 account rows, Add account and Other ways to connect fit on one 1280x800 screen. */
-:root {
-  --set-ok: #0e700e; --set-signin: #bc4b09; --set-down: #c19c00; --set-bad: #b10e1c;
-  --set-t0-bg: #ebf3fc; --set-t0-fg: #0c3b5e; --set-t1-bg: #f1faf1; --set-t1-fg: #094509; --set-t2-bg: #fdf6f3; --set-t2-fg: #8a3707;
-  --set-t3-bg: #f7f4fb; --set-t3-fg: #46236e; --set-t4-bg: #fdf3f4; --set-t4-fg: #750b1c; --set-t5-bg: #f0fafa; --set-t5-fg: #00474f;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --set-ok: #54b054; --set-signin: #f98845; --set-down: #fde300; --set-bad: #e37d80;
-    --set-t0-bg: #0c3b5e; --set-t0-fg: #ebf3fc; --set-t1-bg: #094509; --set-t1-fg: #f1faf1; --set-t2-bg: #6f2c06; --set-t2-fg: #fdf6f3;
-    --set-t3-bg: #46236e; --set-t3-fg: #f7f4fb; --set-t4-bg: #750b1c; --set-t4-fg: #fdf3f4; --set-t5-bg: #00474f; --set-t5-fg: #f0fafa;
-  }
-}
-
 .settings { max-width: 760px; margin: 0 auto; padding: var(--fl-s-xl) var(--fl-s-l) var(--fl-s-xxxl); box-sizing: border-box; }
 .set-title { margin: 0 0 var(--fl-s-m); font-size: var(--fl-title); line-height: var(--fl-title-lh); font-weight: 600; }
 .set-sec { padding: var(--fl-s-l) 0; border-top: 1px solid var(--fl-stroke2); scroll-margin-top: var(--fl-s-l); }

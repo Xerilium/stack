@@ -14,6 +14,10 @@
   --muted-on-soft: #5d5d65; --accent-on-soft: var(--accent-fg);
   /* State: use only for state, never for decoration. */
   --ok: #15803d; --warn: #c2410c; --danger: #b10e1c;
+  /* Account colors: the state dots in Settings and the six account badge tints on meetings. @req FR:connect-accounts/web.row */
+  --set-ok: #0e700e; --set-signin: #bc4b09; --set-down: #c19c00; --set-bad: #b10e1c;
+  --set-t0-bg: #ebf3fc; --set-t0-fg: #0c3b5e; --set-t1-bg: #f1faf1; --set-t1-fg: #094509; --set-t2-bg: #fdf6f3; --set-t2-fg: #8a3707;
+  --set-t3-bg: #f7f4fb; --set-t3-fg: #46236e; --set-t4-bg: #fdf3f4; --set-t4-fg: #750b1c; --set-t5-bg: #f0fafa; --set-t5-fg: #00474f;
   /* cards: rest and hover/focus. @req FR:product-reset/ui.taskcard */
   --card-bg: #ffffff; --card-hover: #f3f3f1;
   --shadow: 0 12px 40px rgb(20 20 30 / 14%), 0 2px 6px rgb(20 20 30 / 6%);
@@ -45,6 +49,9 @@
     --ink: #f2f2f3; --ink2: #c4c4c8; --muted: #8a8a92; --line: #2c2c31; --line2: #232327; --line-strong: #4a4a52;
     --accent: #8b8ff5; --accent-hover: #a3a6ff; --accent-pressed: #7478e0; --accent-ink: #12121c; --accent-fg: #a3a6ff; --accent-soft: #23233a; --focus: #a3a6ff; --muted-on-soft: #a0a0a8; --accent-on-soft: var(--accent);
     --ok: #4ade80; --warn: #fb923c; --danger: #f08a8d;
+    --set-ok: #54b054; --set-signin: #f98845; --set-down: #fde300; --set-bad: #e37d80;
+    --set-t0-bg: #0c3b5e; --set-t0-fg: #ebf3fc; --set-t1-bg: #094509; --set-t1-fg: #f1faf1; --set-t2-bg: #6f2c06; --set-t2-fg: #fdf6f3;
+    --set-t3-bg: #46236e; --set-t3-fg: #f7f4fb; --set-t4-bg: #750b1c; --set-t4-fg: #fdf3f4; --set-t5-bg: #00474f; --set-t5-fg: #f0fafa;
     --card-bg: #161618; --card-hover: #212125;
     --shadow: 0 12px 40px rgb(0 0 0 / 55%), 0 2px 6px rgb(0 0 0 / 40%);
     --fl-shadow4: 0 0 2px rgb(0 0 0 / 24%), 0 2px 4px rgb(0 0 0 / 28%); --fl-shadow16: 0 0 2px rgb(0 0 0 / 24%), 0 8px 16px rgb(0 0 0 / 28%); }

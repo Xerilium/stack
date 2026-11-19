@@ -51,7 +51,7 @@ describe('one token file', () => {
     expect(main).toMatch(/import '\.\/ui\/tokens\.css';/);
     expect(main.indexOf("./ui/tokens.css")).toBeLessThan(main.indexOf("./styles.css"));
   });
-  it.each(['styles.css', 'fluent2.css'])('%s sets no color token on :root', (f) => {
+  it.each(['styles.css', 'fluent2.css', 'polish.css', 'settings.css'])('%s sets no color token on :root', (f) => {
     for (const m of src(f).matchAll(/:root\s*\{([^}]*)\}/g)) expect(m[1]).not.toMatch(/--[\w-]+:\s*#/);
   });
   it('the Fluent color names are aliases: one accent, one ink scale, one focus color', () => {
