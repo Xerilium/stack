@@ -70,14 +70,16 @@ function eomOrigin(shown: Date): Date | null {
 }
 
 /**
- * The year of a year-less date, read the way ranking reads it: the next occurrence, counting up to
- * `OVERDUE_WINDOW_DAYS` past as overdue (so Dec 15 done on Jan 5 is last December, Jan 4 done on Dec 30 is next January).
+ * The year of a year-less date: today's year, unless the date sits just across the new year, within
+ * `OVERDUE_WINDOW_DAYS` (the window ranking uses): Dec 15 done on Jan 5 is last December, Jan 4 done on Dec 30 is next January.
  * @req FR:recurring-rows/roll.yearless
  */
-function nearestYear(mon: number, day: number, today: Date): number {
-  const t = mk(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()).getTime();
+function yearlessYear(mon: number, day: number, today: Date): number {
   const y = today.getUTCFullYear();
-  return [y - 1, y, y + 1].find((c) => (mk(c, mon, day).getTime() - t) / DAY_MS >= -OVERDUE_WINDOW_DAYS)!;
+  const days = (c: number) => (mk(c, mon, day).getTime() - mk(y, today.getUTCMonth(), today.getUTCDate()).getTime()) / DAY_MS;
+  if (days(y - 1) >= -OVERDUE_WINDOW_DAYS) return y - 1;
+  if (days(y + 1) <= OVERDUE_WINDOW_DAYS) return y + 1;
+  return y;
 }
 
 function parseLine(line: string, today: Date): Parsed | null {
@@ -122,7 +124,7 @@ function parseLine(line: string, today: Date): Parsed | null {
   if (mon < 0) return null;
   const day = Number(g.day);
   // @req FR:recurring-rows/roll.yearless (year-less rows take the marker year, else the nearest occurrence)
-  const year = p.hasYear ? Number(g.year) : markerDate ? markerDate.getUTCFullYear() : nearestYear(mon, day, today);
+  const year = p.hasYear ? Number(g.year) : markerDate ? markerDate.getUTCFullYear() : yearlessYear(mon, day, today);
   const shown = mk(year, mon, day);
   if (shown.getUTCMonth() !== mon || shown.getUTCDate() !== day) return null;
   p.dateText = `${g.mon} ${g.day}${p.hasYear ? ', ' + g.year : ''}`;
