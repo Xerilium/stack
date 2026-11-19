@@ -260,6 +260,32 @@ test.describe('Sessions', () => {
     expect(await page.evaluate(() => (window as unknown as { overlays: number }).overlays)).toBe(0);
   });
 
+  // A chat started from the chart for no agent (or another agent) is not the selected agent's: it stays an overlay after the list knows it, and Esc closes it.
+  // @req FR:agents-team/chat.show
+  test('a chat started from the chart for another agent stays open after the list reloads', async ({ page }) => {
+    let listed = false;
+    page.on('response', async (r) => {
+      if (r.request().method() !== 'GET' || new URL(r.url()).pathname !== '/api/sessions') return;
+      const b = (await r.json().catch(() => null)) as { items?: { title: string }[] } | null;
+      if (b?.items?.some((i) => i.title === 'Write the release notes')) listed = true;
+    });
+    await open(page, teamSeed(), true);
+    await page.keyboard.press('n');
+    const d = drawer(page);
+    await expect(d.getByRole('heading', { level: 2 })).toHaveText('New session');
+    await d.getByRole('combobox', { name: 'Agent' }).click();
+    await d.getByRole('option', { name: /No agent/ }).click();
+    await d.getByLabel('Folder').fill('/x/stack');
+    await d.getByLabel('First prompt').fill('Write the release notes');
+    await d.getByLabel('First prompt').press('ControlOrMeta+Enter');
+    await expect.poll(() => listed).toBe(true);
+    await expect(d.locator('.turns .tl.user')).toHaveText('Write the release notes');
+    await page.waitForTimeout(300); // a re-render after the list lands must not hide it
+    await expect(d).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(d).toHaveCount(0);
+  });
+
   // @req FR:agents-team/chat.empty
   test('an agent with no chat says so and Start chat opens the composer with it chosen', async ({ page }) => {
     await open(page, teamSeed(), true);
