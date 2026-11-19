@@ -239,8 +239,8 @@ describe('quit', () => {
     expect(e.shortcuts.size).toBe(0);
     expect(log.some((l) => l.startsWith('shell: '))).toBe(false); // the build and its timers never ran
   });
-  // @req FR:desktop-shell/quit.early @req FR:desktop-shell/host.fail
-  it('a quit while the host starts still quits once when the start fails', async () => {
+  // @req FR:desktop-shell/quit.early @req FR:desktop-shell/host.fail @req FR:desktop-shell/host.fail.show
+  it('a quit while the host starts still quits once, with no error box, when the start fails', async () => {
     const p = pendingHost();
     const { e, shell } = setup({ startHost: p.startHost });
     const started = shell.start();
@@ -253,6 +253,7 @@ describe('quit', () => {
     expect(e.windows).toHaveLength(0);
     expect(e.trays).toHaveLength(0);
     expect(e.shortcuts.size).toBe(0);
+    expect(e.errors).toEqual([]);
   });
   // @req FR:desktop-shell/quit.early
   it('a start that never finishes still quits after the close bound', async () => {
@@ -303,6 +304,27 @@ describe('host failure', () => {
     expect(e.windows).toHaveLength(0);
     expect(e.trays).toHaveLength(0);
     expect(e.quitCount).toBe(1);
+  });
+  // @req FR:desktop-shell/host.fail.show
+  it('shows the reason in an error box before it quits', async () => {
+    const order: string[] = [];
+    const { e, shell } = setup({ startHost: async () => { throw new Error('Web app not built. Run: pnpm build'); } });
+    e.dialog!.showErrorBox = (title, content) => { order.push(`box ${title}: ${content}`); expect(e.quitCount).toBe(0); };
+    await shell.start();
+    expect(order).toEqual(['box Stack cannot start: Web app not built. Run: pnpm build']);
+    expect(e.quitCount).toBe(1);
+  });
+  // @req FR:desktop-shell/host.fail.show
+  it('still quits when the error box throws or Electron has none', async () => {
+    const a = setup({ startHost: async () => { throw new Error('no repo'); } });
+    a.e.dialog!.showErrorBox = () => { throw new Error('no display'); };
+    await a.shell.start();
+    expect(a.e.quitCount).toBe(1);
+    expect(a.log).toContain('host: no repo');
+    const b = setup({ startHost: async () => { throw new Error('no repo'); } });
+    delete b.e.dialog;
+    await b.shell.start();
+    expect(b.e.quitCount).toBe(1);
   });
   // @req NFR:desktop-shell/shell.log
   it('logs the host url on start', async () => {
