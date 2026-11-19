@@ -2,7 +2,7 @@
 id: ui-kit
 title: Shared UI components
 author: flanakin
-description: "One component set for list views: a selectable card, a flag, a status chip, an actions menu, and an actions bar."
+description: "One component set for views: a selectable card, a flag, a status chip, an actions menu, an actions bar, and a day grid."
 dependencies: [web-shell]
 ---
 
@@ -16,7 +16,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ## Scope
 
-- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `useWide`) and `web/src/ui/ui.css`.
+- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `DayGrid`, `useWide`) and `web/src/ui/ui.css`.
 - Out: what a view puts in them (its words, tones, and actions), and the written UI rule (`ux-consolidation`).
 
 ## Scenarios
@@ -48,6 +48,10 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 ### FR:split: Split view
 
 - **FR:split** (P1): `SplitView` shows a list and a detail pane. Wide (`useWide(query)`), they sit side by side and the pane shows `empty` until a card is picked. Narrow, the open detail replaces the list, with `‹ Back`, and its heading gets focus
+
+### FR:daygrid: Day grid
+
+- **FR:daygrid** (P1): `DayGrid` shows a span of a day as rows of 30 minutes. Every row has the same height (`--ui-slot`: 48 px, 96 px on touch), and a row with no item is empty. The time column names each hour (`10a`). An item sits at its start time with a height in proportion to its length, so 30 minutes is one row and 60 minutes is exactly two; an item is clipped to the grid span. Items that overlap in time sit side by side in lanes. A band labels a time range in the time column at its first row; a `muted` band tints its rows. `now` draws one line at that time when it is inside the span. Items are a list in time order; the rows are decoration, hidden from assistive tech. `placeItems` is the pure layout
 
 ### FR:a11y: Access
 

@@ -8,7 +8,7 @@ import { clock, estimate, nowMinutes, span, type Block, type Day, type Decision,
 import { joinable, type Busy, type CalEvent } from './meetings';
 import { AcctBadge } from './CalendarLink';
 import { multiAccount } from './settings';
-import { timelineOf } from './timeline';
+import { DayGrid, SLOT_MIN, type GridItem } from './ui/DayGrid';
 import { countdown, HAVE, topAsksOf, type Home, type HomeProject, type Window } from './home';
 import type { LiveStatus } from './live';
 import { ago, AGENT_LABEL, attention, lastLine, repliesFor, unescapeMd } from './agents';
@@ -352,6 +352,7 @@ function DayTimes({ day, weekday, onSave }: { day: Day; weekday: string; onSave?
 
 /**
  * The day plan sized to the time you have, then what needs you, then what your agents are doing.
+ * My day is a day grid with a short header. @req FR:home/myday.timeline @req FR:home/myday.header
  * @req FR:web-app/today.plan @req FR:web-app/today.capacity @req FR:web-app/today.fit @req FR:web-app/today.needs @req FR:web-app/today.reply @req FR:web-app/today.agents @req FR:web-app/today.projects
  */
 export function TodayView(t: TodayProps) {
@@ -362,20 +363,20 @@ export function TodayView(t: TodayProps) {
   const start = Math.max(t.day.start, Math.ceil(nowMin / 15) * 15);
   const lastEnd = Math.max(0, ...t.plan.blocks.map((b) => b.end), t.plan.email?.end ?? 0, ...t.plan.meetings.filter((m) => m.start < t.day.end + 120).map((m) => m.end));
   const end = Math.min(t.day.origin ? 48 * 60 : 24 * 60, Math.max(t.day.end, start + t.budget.minutes, lastEnd));
-  const personal = (t.day.blocks ?? []).filter((b) => b.kind === 'personal' && b.end > t.day.start && b.start < end);
   const nextMeeting = t.plan.meetings.find((m) => m.end > nowMin);
   // Account badges only when the day spans more than one account. @req FR:connect-accounts/web.label
   const multi = multiAccount(t.dayEvents ?? t.plan.meetings.flatMap((m) => m.events));
   const joinOf = (m: Busy) => joinable(m.events, t.now, Math.max(10, m.start - nowMin)) ?? m.events.find((e) => e.joinUrl)?.joinUrl;
-  const meetingMin = t.plan.meetings.reduce((m, x) => m + Math.max(0, Math.min(x.end, t.day.end) - Math.max(x.start, start)), 0);
-  // @req FR:home/myday.timeline
-  const { rows: timeline, earlier } = timelineOf(t.plan, t.day, start, end, nowMin);
-  const total = Math.max(1, end - t.day.start);
-  const pct = (m: number) => Math.max(0, Math.min(100, ((m - t.day.start) / total) * 100));
-  const markAt = pct(Math.max(nowMin, t.day.start)); // the time label hugs the bar ends so it never clips
+  // The grid starts at the half hour that holds now; before wake (or tomorrow) at wake. @req FR:home/myday.timeline
+  const gridFrom = t.day.asleep || nowMin < t.day.start ? t.day.start : Math.min(nowMin, start);
+  const gridItems: GridItem[] = [
+    ...t.plan.meetings.filter((m) => m.start < end).map((m) => ({ key: `m${m.start}`, start: m.start, end: m.end, node: <MeetingRow m={m} multi={multi} /> })),
+    ...(t.plan.email ? [{ key: 'email', start: t.plan.email.start, end: t.plan.email.end, node: <div class="email-block"><time class={`when${t.plan.email.start % SLOT_MIN ? ' off' : ''}`}>{clock(t.plan.email.start)}<small>{span(t.plan.email.end - t.plan.email.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {t.plan.email.count} ask{t.plan.email.count === 1 ? '' : 's'}</button></div></div> }] : []),
+    ...t.plan.blocks.map((b) => ({ key: b.task.ref, start: b.start, end: b.end, node: <PlanBlock b={b} p={t.p} busy={t.busy} onAct={t.onAct} message={t.message} /> })),
+  ];
+  const gridBands = (t.day.blocks ?? []).map((b) => ({ start: b.start, end: b.end, label: b.label ?? b.name, muted: b.kind === 'personal' }));
   const sameDate = !!t.day.origin && t.day.origin.toDateString() === t.now.toDateString();
   const date = t.tomorrow?.on ? (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) : t.day.asleep ? `${sameDate ? 'Today' : 'Tomorrow'} from ${clock(t.day.start)}` : (t.day.origin ?? t.now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }); // @req FR:home/day.asleep
-  const jump = (id: string) => document.getElementById(id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   const repliesOf = (x: RowKey) => repliesFor(t.inbox, x);
   const sorted = [...t.decisions].sort((a, b) => Number(repliesOf(a.task).length > 0) - Number(repliesOf(b.task).length > 0));
   const needs = moreNeeds ? sorted : sorted.slice(0, 4);
@@ -437,40 +438,21 @@ export function TodayView(t: TodayProps) {
             {!t.budget.isDefault && t.onBudget && <button type="button" class="link-btn" onClick={() => t.onBudget?.(null)}>Reset</button>}
           </div>
         </div>
+        {/* Only what needs action. @req FR:home/myday.header */}
+        {(t.plan.atRisk.length > 0 || t.calendar === false || nextMeeting) && (
         <p class="t-sub">
-          {t.plan.atRisk.length > 0 ? <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span> : <span>{span(t.plan.free)} free</span>}
-          {meetingMin > 0 && <span>{span(meetingMin)} in meetings</span>}
+          {t.plan.atRisk.length > 0 && <span class="warn">{t.plan.atRisk.length} at-risk task{t.plan.atRisk.length === 1 ? '' : 's'} don't fit ({span(t.plan.riskShort)})</span>}
           {t.calendar === false && <span class="quiet" data-testid="nocal">No calendar · <a class="quiet-link" href="https://github.com/Xerilium/stack/blob/main/docs/runbook.md" target="_blank" rel="noopener noreferrer">Connect</a></span>}
           {nextMeeting && <span class="next-meeting">{nextMeeting.titles[0]} {nextMeeting.start <= nowMin ? 'now' : `in ${span(nextMeeting.start - nowMin)}`}{joinOf(nextMeeting) && <> · <a href={joinOf(nextMeeting)} target="_blank" rel="noopener noreferrer">Join{joinable(nextMeeting.events, t.now) && <kbd>J</kbd>}</a></>}</span>}
-          {t.plan.assumed > 0 && <span class="quiet" title="No effort set; 30 min assumed">{t.plan.assumed} estimated</span>}
-          {t.decisions.length > 0 && <button type="button" class="jump" onClick={() => jump('needs-you')}>{t.decisions.length} to decide</button>}
-          {heads.length > 0 && <button type="button" class="jump" onClick={() => jump('ai-team')}>{heads.join(' · ')}</button>}
         </p>
-        <div class="day-bar" role="img" aria-label={`${span(t.plan.busy)} planned of ${span(t.budget.minutes)} available${meetingMin ? ` · ${span(meetingMin)} in meetings` : ''}${t.plan.email ? ` · email at ${clock(t.plan.email.start)}` : ''}`}>
-          <s style={{ left: `${pct(start)}%`, width: `${pct(start + t.budget.minutes) - pct(start)}%` }} />
-          {personal.map((b) => <u key={`p${b.start}`} class="personal" title={`${clock(b.start)}-${clock(b.end)} ${b.label ?? b.name}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}
-          {t.plan.meetings.filter((m) => m.start < end).map((m) => <u key={`m${m.start}`} title={`${clock(m.start)} ${m.titles.join(', ')}`} style={{ left: `${pct(m.start)}%`, width: `${pct(m.end) - pct(m.start)}%` }} />)}
-          {t.plan.email && <i class="mail" title={`${clock(t.plan.email.start)} Email`} style={{ left: `${pct(t.plan.email.start)}%`, width: `${pct(t.plan.email.end) - pct(t.plan.email.start)}%` }} />}
-          {t.plan.blocks.map((b) => <i key={b.task.ref} title={`${clock(b.start)} ${parseRow(b.task.text).title}`} style={{ left: `${pct(b.start)}%`, width: `${pct(b.end) - pct(b.start)}%` }} />)}
-          {!t.day.asleep && <b class={markAt < 8 ? 'edge-l' : markAt > 92 ? 'edge-r' : undefined} style={{ left: `${markAt}%` }}><em>{clock(Math.max(nowMin, t.day.start))}</em></b>}
-        </div>
-        <p class="day-ends"><span>{clock(t.day.start)}</span><span>{clock(end)}</span></p>
+        )}
       </header>
 
       <div class="t-cols one">
         <div class="t-plan">
           {t.calError && <p class="cal-note">{t.calError}; meetings are not counted.</p>}
           {t.plan.blocks.length === 0 && (t.budget.minutes === 0 ? <EmptyState what="No time set for today." next={<>Add some with <kbd>+</kbd> or <kbd>]</kbd>.</>} /> : <EmptyState what="Nothing left that fits." next={<>Add something with <kbd>c</kbd>.</>} />)}
-          {earlier && <p class="earlier" data-testid="earlier">Earlier · {clock(earlier.from)}–{clock(earlier.to)}</p>}
-          <ol class="plan" data-testid="plan">
-            {timeline.map((r) => r.kind === 'block'
-              ? <PlanBlock key={r.b.task.ref} b={r.b} p={t.p} busy={t.busy} onAct={t.onAct} message={t.message} />
-              : r.kind === 'meeting' ? <MeetingRow key={`m${r.m.start}`} m={r.m} multi={multi} />
-                : r.kind === 'band' ? <li key={`band${r.at}`} class={`band${r.personal ? ' personal' : ''}`} data-testid="band"><span><i class="band-glyph" aria-hidden="true">{r.emoji}</i>{r.name}</span><span class="band-time">{clock(r.from)}–{clock(r.to)}</span></li>
-                  : r.kind === 'gap' ? <li key={`gap${r.at}`} class="gap"><time class="when">{clock(r.at)}</time><span>{span(r.min)} free</span></li>
-                    : r.kind === 'now' ? <li key="now" class="now-line" aria-label={`Now ${clock(r.at)}`}><time>{clock(r.at)}</time></li>
-                      : <li key="email" class="email-block"><time class="when">{clock(r.e.start)}<small>{span(r.e.end - r.e.start)}</small></time><div class="what"><button type="button" class="email-open" onClick={t.onEmail}>Email · {r.e.count} ask{r.e.count === 1 ? '' : 's'}</button><kbd>g k</kbd></div></li>)}
-          </ol>
+          <DayGrid label="Your day" testid="plan" from={gridFrom} to={end} items={gridItems} bands={gridBands} now={t.day.asleep ? undefined : nowMin} />
           {over && (
             // The +30m button sits beside the summary, not in it: no button inside a button (axe nested-interactive).
             <div class="nofit-wrap" data-testid="nofit">
@@ -567,8 +549,8 @@ export function TodayView(t: TodayProps) {
 /** Meetings: fixed time, not tasks; overlapping ones stack, each with its own Join. @req FR:web-app/today.meetings */
 function MeetingRow({ m, multi }: { m: Busy; multi: boolean }) {
   return (
-    <li class="meeting">
-      <time class="when">{clock(m.start)}<small>{clock(m.end)}</small></time>
+    <div class="meeting">
+      <time class={`when${m.start % SLOT_MIN ? ' off' : ''}`}>{clock(m.start)}<small>{clock(m.end)}</small></time>
       <div class="what">
         {m.events.map((e) => (
           <p key={e.id} class="m-line">
@@ -578,7 +560,7 @@ function MeetingRow({ m, multi }: { m: Busy; multi: boolean }) {
           </p>
         ))}
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -595,8 +577,8 @@ function PlanBlock({ b, p, busy, onAct, message }: { b: Block; p: RowProps; busy
   const open = () => { p.onCursor(ref); p.onOpen(ref); };
   const who = message?.name(b.task) ?? 'the agent';
   return (
-    <li class={`block${isCursor ? ' cursor' : ''}`} data-ref={ref} style={{ '--min': b.end - b.start }}>
-      <time class="when">{clock(b.start)}<small title={b.assumed ? 'No effort set; 30 min assumed' : undefined}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</small></time>
+    <div class={`block${isCursor ? ' cursor' : ''}${b.end - b.start < SLOT_MIN ? ' short' : ''}`} data-ref={ref}>
+      <time class={`when${b.start % SLOT_MIN ? ' off' : ''}`}>{clock(b.start)}<small title={b.assumed ? 'No effort set; 30 min assumed' : undefined}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</small></time>
       <div class="what" onClick={(e) => { if ((e.target as HTMLElement).closest('a')) return; open(); }} onDblClick={open}>
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', ref); }}><span class="box" /></button>
         <div class="what-body">
@@ -615,7 +597,7 @@ function PlanBlock({ b, p, busy, onAct, message }: { b: Block; p: RowProps; busy
         </span>
         <span class="chev" aria-hidden="true">›</span>
       </div>
-    </li>
+    </div>
   );
 }
 

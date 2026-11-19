@@ -3,6 +3,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ActionBar, ActionMenu, type ActionItem } from '../src/ui/ActionMenu';
+import { DayGrid, placeItems } from '../src/ui/DayGrid';
 import { Flag } from '../src/ui/Flag';
 import { SelectCard } from '../src/ui/SelectCard';
 import { SplitView } from '../src/ui/SplitView';
@@ -160,5 +161,47 @@ describe('Tabs and SplitView', () => {
     expect(backs).toBe(1);
     const closed = mount(<SplitView wide={false} open={false} list={<p>L</p>} detail={<h3>D</h3>} label="X" empty="Pick one" onBack={() => {}} />);
     expect(closed.querySelector('.ui-split-detail')).toBeNull();
+  });
+});
+
+// @req FR:ui-kit/daygrid
+describe('DayGrid', () => {
+  const it30 = { key: 'a', start: 600, end: 630 }, it60 = { key: 'b', start: 660, end: 720 }, it15 = { key: 'c', start: 735, end: 750 };
+  it('placeItems: size is in proportion to length, top to start', () => {
+    const p = placeItems([it60, it30, it15], 600, 780);
+    expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['a', 0, 1], ['b', 2, 2], ['c', 4.5, 0.5]]);
+    expect(p.every((x) => x.lane === 0 && x.lanes === 1)).toBe(true);
+  });
+  it('placeItems: clips to the span and drops items outside it', () => {
+    const p = placeItems([{ key: 'early', start: 540, end: 630 }, { key: 'late', start: 760, end: 840 }, { key: 'out', start: 900, end: 930 }], 600, 780);
+    expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['early', 0, 1], ['late', 16 / 3, 2 / 3]]);
+  });
+  it('placeItems: items that overlap sit side by side; later ones get the full width again', () => {
+    const p = placeItems([{ key: 'a', start: 600, end: 660 }, { key: 'b', start: 630, end: 690 }, { key: 'c', start: 660, end: 690 }, { key: 'd', start: 720, end: 750 }], 600, 780);
+    expect(p.map((x) => [x.item.key, x.lane, x.lanes])).toEqual([['a', 0, 2], ['b', 1, 2], ['c', 0, 2], ['d', 0, 1]]);
+  });
+  it('draws one row per 30 minutes, hour labels, bands, items in time order, and a now line', () => {
+    const r = mount(<DayGrid label="Day" from={605} to={770} now={640} testid="plan"
+      bands={[{ start: 480, end: 660, label: 'Work' }, { start: 660, end: 780, label: 'Family', muted: true }]}
+      items={[{ ...it60, node: <b>Sixty</b> }, { ...it30, node: <b>Thirty</b> }]} />);
+    const slots = [...r.querySelectorAll('.ui-slot')];
+    expect(slots).toHaveLength(6); // 10:00a to 1:00p
+    expect(slots.map((x) => x.querySelector('time')?.textContent ?? '')).toEqual(['10a', '', '11a', '', '12p', '']);
+    expect(slots.map((x) => x.querySelector('.ui-slot-band')?.textContent ?? '')).toEqual(['Work', '', 'Family', '', '', '']);
+    expect(slots.map((x) => x.classList.contains('muted'))).toEqual([false, false, true, true, true, true]);
+    expect(r.querySelector('.ui-slots')!.getAttribute('aria-hidden')).toBe('true');
+    const list = r.querySelector('[data-testid="plan"]')!;
+    expect(list.tagName).toBe('OL');
+    expect(list.getAttribute('aria-label')).toBe('Day');
+    const items = [...list.querySelectorAll<HTMLElement>(':scope > li.ui-grid-item')];
+    expect(items.map((x) => x.textContent)).toEqual(['Thirty', 'Sixty']);
+    expect(items.map((x) => [x.style.getPropertyValue('--top'), x.style.getPropertyValue('--size')])).toEqual([['0', '1'], ['2', '2']]);
+    const now = r.querySelector<HTMLElement>('.now-line')!;
+    expect(now.getAttribute('aria-label')).toBe('Now 10:40a');
+    expect(Number(now.style.getPropertyValue('--top'))).toBeCloseTo(4 / 3);
+  });
+  it('draws no now line when now is outside the span or not given', () => {
+    expect(mount(<DayGrid label="Day" from={600} to={780} now={900} items={[]} />).querySelector('.now-line')).toBeNull();
+    expect(mount(<DayGrid label="Day" from={600} to={780} items={[]} />).querySelector('.now-line')).toBeNull();
   });
 });

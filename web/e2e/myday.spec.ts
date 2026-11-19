@@ -129,4 +129,48 @@ test.describe('My day v2', () => {
       await page.getByTestId('tomorrow').click();
     }
   });
+
+  // @req FR:home/myday.timeline @req FR:home/myday.header @req FR:home/myday.short @req FR:ui-kit/daygrid
+  test('day grid: every 30-minute row has one height; a 60-minute block is exactly double; empty slots stay', async ({ page }, info) => {
+    const ev = (id: string, h: number, m: number, min: number) => ({ id, subject: id, start: at(h, m).toISOString(), end: new Date(at(h, m).getTime() + min * 60_000).toISOString(), allDay: false, showAs: 'busy', cancelled: false, online: id === 'Standup', ...(id === 'Standup' ? { joinUrl: 'https://teams.example.test/j' } : {}) });
+    await page.clock.install({ time: at(10, 10) });
+    const tasks = [row('allyte:1', 'Allyte deck 🟢', 'allyte'), row('allyte:2', 'Quick reply 🔹', 'allyte'), row('stack:1', 'Stack fix 🟢', 'stack')];
+    const m = await mockApi(page, { tasks, projects: PROJECTS as never });
+    m.schedule = schedule();
+    m.events = [ev('Standup', 11, 0, 30), ev('Design review', 13, 0, 60), ev('Budget', 14, 30, 90)] as never;
+    await page.goto('/#/today');
+    await page.clock.resume();
+    const plan = page.getByTestId('plan');
+    await expect(plan.locator('.meeting')).toHaveCount(3);
+    const h = async (sel: string, text?: string) => (await (text ? plan.locator(sel).filter({ hasText: text }) : plan.locator(sel)).first().evaluate((el) => (el.closest('.ui-grid-item') ?? el).getBoundingClientRect().height));
+    // Rows: 10:00a to 2:00a is 32 rows, all one height.
+    const rows = await page.locator('.ui-slot').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+    expect(rows).toHaveLength(32);
+    expect(new Set(rows).size).toBe(1);
+    const slot = rows[0];
+    expect(slot).toBe(info.project.name === 'mobile' ? 96 : 48);
+    expect(await h('.meeting', 'Standup')).toBe(slot);
+    expect(await h('.meeting', 'Design review')).toBe(slot * 2);
+    expect(await h('.meeting', 'Budget')).toBe(slot * 3);
+    expect(await h('.block', 'Allyte deck')).toBe(slot);
+    expect(await h('.block.short', 'Quick reply')).toBeCloseTo(slot * 0.4, 1); // 12 min: one line
+    await expect(plan.locator('.block.short .row-acts')).toBeHidden();
+    // A block sits at its real time: Standup starts 2 rows below the 10:00a grid top.
+    const top = (await page.locator('.ui-slot').first().boundingBox())!.y;
+    expect(Math.round((await plan.locator('.ui-grid-item').filter({ hasText: 'Standup' }).boundingBox())!.y - top)).toBe(slot * 2);
+    // Minimal chrome: no day bar, no totals, no jump links, no band rows, no free-gap rows.
+    await expect(page.locator('.day-bar, .day-ends, .t-sub .jump, .band, .gap, .earlier')).toHaveCount(0);
+    await expect(page.locator('.t-sub')).not.toContainText(/free|in meetings|estimated/);
+    await expect(page.locator('.next-meeting')).toContainText('Standup in 50m');
+    await expect(page.locator('.ui-slot-band').first()).toHaveText('Work');
+    await expect(page.locator('.now-line')).toHaveCount(1);
+    // Nothing is cut off sideways or spills out of its block.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const spills = await plan.locator('.ui-grid-item').evaluateAll((els) => els.filter((el) => { const b = el.getBoundingClientRect(); return [...el.querySelectorAll('button, a')].some((x) => { const r = x.getBoundingClientRect(); return r.height > 0 && (r.top < b.top - 1 || r.bottom > b.bottom + 1); }); }).map((el) => el.textContent));
+    expect(spills).toEqual([]);
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.screenshot({ path: `e2e/screenshots/myday-grid-${scheme}-${info.project.name}.png`, fullPage: true });
+    }
+  });
 });

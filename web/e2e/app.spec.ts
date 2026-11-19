@@ -850,7 +850,7 @@ test.describe('today view', () => {
   test('My day: header, blocks in order, one-tap row actions, done circle completes', async ({ page }, info) => {
     const m = await setup(page, day());
     await expect(page.getByRole('region', { name: 'Today' }).getByRole('heading', { level: 1 })).toContainText('of 8h');
-    await expect(page.locator('.t-sub')).toContainText('free');
+    await expect(page.locator('.t-sub')).not.toContainText(/free|in meetings/); // only what needs action @req FR:home/myday.header
     const blocks = page.locator('[data-testid="plan"] .block');
     await expect(blocks.first().locator('.what-title')).toContainText('Plain priority'); // the server's next task leads
     await expect(blocks.nth(1).locator('.what-title')).toContainText('Due soon'); // then due-soon before file order
@@ -1017,7 +1017,6 @@ test.describe('today view', () => {
     await expect(panel.locator('.agent.waiting')).toContainText('Needs you');
     await expect(panel.locator('.agent.waiting')).toContainText('needs-human: Pick a budget');
     await expect(panel.locator('.agent.working')).toContainText('claimed');
-    await expect(page.locator('.t-sub')).toContainText('1 CI failing');
     const w = panel.locator('.agent.working');
     await w.getByRole('button', { name: 'Reply' }).click();
     await w.getByLabel('Reply').fill('Keep it short');
@@ -1060,11 +1059,9 @@ test.describe('today view', () => {
     await expect(meeting).toContainText('Allyte sync');
     await expect(meeting).toContainText('10:30a');
     await expect(meeting.getByRole('link', { name: 'Join' })).toHaveAttribute('href', 'https://teams.example.test/join/1');
-    await expect(page.locator('.t-sub')).toContainText('1h in meetings');
     await expect(page.locator('.next-meeting')).toContainText('Allyte sync in 30m');
     await expect(page.getByTestId('available')).toContainText('7h');
     await expect(page.locator('.allday')).toContainText('Offsite');
-    await expect(page.locator('.day-bar u')).toHaveCount(1);
     const blocks = page.locator('[data-testid="plan"] .block');
     await expect(blocks.nth(0).locator('.when')).toContainText('10:00a');
     await expect(blocks.nth(1).locator('.when')).toContainText('11:30a'); // the 1h lead task would cross the meeting, so a 30m task fills the gap first
@@ -1104,7 +1101,7 @@ test.describe('today view', () => {
     await page.goto('/#/today');
     await page.clock.resume();
     await expect(page.getByTestId('available')).toContainText('2h 15m'); // 11:15p-2:00a minus the 30m call
-    await expect(page.locator('.day-ends')).toContainText('2:00a');
+    await expect(page.getByTestId('day-times')).toContainText('2:00a');
     await expect(page.locator('[data-testid="plan"] .meeting')).toContainText('APAC call');
     await expect(page.locator('[data-testid="plan"] .block').first().locator('.when')).toContainText('11:15p');
     await shot(page, 'today-schedule-late', info);
