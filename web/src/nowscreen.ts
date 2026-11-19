@@ -14,7 +14,8 @@ export const WHY_MAX = 60;
 /** How long Done holds the check before the next task shows. @req FR:product-reset/ui.done */
 export const DONE_MS = 400;
 
-export interface NowTask { task: Task; title: string; why: string }
+/** `context`: the top-level row the task sits under, shown as one muted line (`in Release FTK v16`). @req FR:now-screen/now.one */
+export interface NowTask { task: Task; title: string; why: string; context?: string }
 
 /** The two strongest reasons the task is next, then whether it fits the time left. */
 export function whyLine(item: HomeItem, minutesLeft: number, agentHasIt = false): string {
@@ -31,12 +32,18 @@ export function whyLine(item: HomeItem, minutesLeft: number, agentHasIt = false)
   return line.length <= WHY_MAX ? line : top.join(' · ').slice(0, WHY_MAX);
 }
 
-/** The one task now: what Home shows as NOW (the task that fits when the first does not). null = nothing to do. */
+/**
+ * The one task now: what Home shows as NOW (the task that fits when the first does not). null = nothing to do.
+ * Now shows the ranked leaf, not its top-level row, so Done never checks off a parent with open children; the root is context.
+ * @req FR:now-screen/now.one
+ */
 export function nowOf(h: Home, minutesLeft: number, agentHasIt: (t: Task) => boolean = () => false): NowTask | null {
-  const item = topAsksOf(h).top;
-  if (!item) return null;
+  const top = topAsksOf(h).top;
+  if (!top) return null;
+  const item = top.leaf ?? top;
   const r = parseRow(item.task.text);
-  return { task: item.task, title: r.title || item.task.text, why: whyLine(item, minutesLeft, agentHasIt(item.task)) };
+  const context = top.leaf ? parseRow(top.task.text).title || top.task.text : undefined;
+  return { task: item.task, title: r.title || item.task.text, why: whyLine(item, minutesLeft, agentHasIt(item.task)), ...(context ? { context } : {}) };
 }
 
 /** Inbox text is one line, at most 1000 characters. @req FR:now-screen/now.compose */

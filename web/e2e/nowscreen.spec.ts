@@ -26,6 +26,28 @@ test.describe('Now screen', () => {
     await page.screenshot({ path: `e2e/screenshots/now-${info.project.name}.png` });
   });
 
+  // @req FR:now-screen/now.one @req FR:now-screen/now.actions
+  test('a ranked leaf shows with its root as context; Done completes the leaf, not the root', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.ranked = [{ ref: 'alpha:7', root: 'alpha:6' }, { ref: 'alpha:9' }];
+    await page.goto('/#/now');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Write docs');
+    await expect(page.getByTestId('task-context')).toHaveText('in Ship the web app');
+    await page.getByRole('button', { name: /^Done/ }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/tasks/complete')?.body.ref).toBe('alpha:7');
+    expect(m.calls.some((c) => c.path === '/tasks/complete' && c.body.ref === 'alpha:6')).toBe(false);
+  });
+
+  // @req FR:now-screen/now.one
+  test('a ranked top-level row shows no context line', async ({ page }) => {
+    await ten(page);
+    await mockApi(page, { tasks: seed() });
+    await page.goto('/#/now');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ship the web app');
+    await expect(page.getByTestId('task-context')).toHaveCount(0);
+  });
+
   // @req FR:now-screen/now.actions @req FR:now-screen/now.undo @req FR:now-screen/now.next
   test('Done completes, shows the next task, and Undo brings the first back', async ({ page }) => {
     await ten(page);
