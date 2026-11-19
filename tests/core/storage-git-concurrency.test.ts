@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from 'child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as ts from 'typescript';
@@ -7,12 +7,16 @@ import { StorageError } from '../../src/core/storage';
 import { GitStorage } from '../../src/core/storage-git';
 
 // Cross-process writes on one repo. Temp repos only; children run a CommonJS build of the storage modules.
-const tmp = () => mkdtempSync(join(tmpdir(), 'stack-git-xproc-'));
+const dirs: string[] = [];
+const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'stack-git-xproc-')); dirs.push(d); return d; };
+afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 const GIT_ENV = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8', env: GIT_ENV });
 const freshRepo = () => {
   const d = tmp();
   git(d, 'init', '-q', '-b', 'main');
+  // A repo-local identity: CI has no global one, and GitStorage runs git with the process env.
+  git(d, 'config', 'user.name', 't'); git(d, 'config', 'user.email', 't@t');
   writeFileSync(join(d, 'README.md'), 'r\n');
   git(d, 'add', '.'); git(d, 'commit', '-q', '-m', 'init');
   return d;
@@ -80,7 +84,7 @@ describe('GitStorage across processes', () => {
     expect(git(d, 'show', 'HEAD:tasks/x.md')).toBe('x');
   });
 
-  // @req FR:storage-git/git.concurrency.busy
+  // @req FR:storage-git/git.concurrency.busy @req FR:storage-git/git.concurrency.busy.clean
   it('fails with StorageError when another live writer holds the lock past the wait', async () => {
     const d = freshRepo();
     writeFileSync(join(d, '.git', 'stack-write.lock'), String(process.ppid));
