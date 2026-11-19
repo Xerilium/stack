@@ -15,6 +15,10 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 | `ActionBar` | `web/src/ui/ActionMenu.tsx` | The same actions as plain buttons, under a heading, in a detail pane. |
 | `Tabs` | `web/src/ui/Tabs.tsx` | A tab bar in a view (ARIA tabs), with an optional note at the right end. |
 | `SplitView` | `web/src/ui/SplitView.tsx` | A list with a detail pane: side by side when wide, one at a time on a phone. |
+| `DayGrid` | `web/src/ui/DayGrid.tsx` | A day as rows of 30 minutes: each item sits at its start time, with a height for its length. |
+| `MessageBox` | `web/src/ui/MessageBox.tsx` | One message from a detail pane: a heading, a text box and one send button. |
+| `LinkList` | `web/src/ui/LinkList.tsx` | One labelled line of links that wrap. Web links open in a new tab. |
+| `SourceLink` | `web/src/ui/SourceLink.tsx` | A link to where an item came from, named by its kind (PR, issue, session, email, site). |
 
 `useWide` (`web/src/ui/useWide.ts`) is the hook that tells `SplitView` when the screen is wide. CSS helpers in `web/src/ui/ui.css`: `ui-cards` (the list around cards) and `ui-tool` (an icon button in a card's tools).
 

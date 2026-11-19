@@ -2,6 +2,7 @@
  * A day grid: rows of 30 minutes, all one height; items sit at their start time with a height in proportion to their length.
  * The rows are decoration; the items are the list. A consumer draws what is in an item.
  * @req FR:ui-kit/daygrid
+ * @owns class:ui-grid
  */
 import type { ComponentChild } from 'preact';
 import { clock } from '../wall';
