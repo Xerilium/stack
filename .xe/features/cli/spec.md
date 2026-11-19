@@ -74,6 +74,7 @@ Owner needs a short, stable way to name a task so that a command acts on exactly
 
 - **FR:ref.format** (P1): A task MUST be addressed as `tasks/<file>.md:<line>` with a 1-based line number
   - `next` and every result print refs in this form; JSON refs are `{ path, line }` with the same 1-based line
+  - **FR:ref.docs** (P2): Every task ref example in `docs/cli.md` MUST use the `tasks/<file>.md:<line>` form
 - **FR:ref.default** (P1): `start`, `complete`, `skip`, `suspend`, and `resume` MUST accept an optional ref and act on the top task when it is omitted (`resume`: first parked task), as in legacy
 - **FR:ref.expect** (P1): Commands that take a ref MUST accept `--expect <text>` and fail with exit 3, changing nothing, when the task text on that line differs
 - **FR:ref.invalid** (P1): A malformed ref MUST be a usage error (exit 2)
