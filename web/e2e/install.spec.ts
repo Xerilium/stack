@@ -72,12 +72,19 @@ test.describe('install screen', () => {
     await page.screenshot({ path: info.outputPath('install-on-375.png'), fullPage: true });
   });
 
+  // @req FR:iphone-access/install.back
+  test('Back to Stack opens Now, the page Stack starts on', async ({ page }) => {
+    await phone(page, { standalone: true, grant: 'denied', device: 'sk_dev.tok' });
+    await page.goto('/#/install');
+    await expect(page.getByRole('link', { name: 'Back to Stack' })).toHaveAttribute('href', '#/now');
+  });
+
   // @req FR:iphone-access/install.subscribe
   test('denied shows the Settings path and saves nothing', async ({ page }, info) => {
     const p = await phone(page, { standalone: true, grant: 'denied', device: 'sk_dev.tok' });
     await page.goto('/#/install');
     await page.getByRole('button', { name: 'Turn on notifications' }).click();
-    await expect(page.getByText('Blocked: allow notifications for Stack in Settings > Notifications')).toBeVisible();
+    await expect(page.getByText('Blocked: Allow notifications for Stack in Settings > Notifications', { exact: true })).toBeVisible();
     expect(p.saved).toEqual([]);
     await page.screenshot({ path: info.outputPath('install-blocked-375.png'), fullPage: true });
   });
