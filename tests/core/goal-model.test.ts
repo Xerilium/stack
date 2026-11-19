@@ -312,3 +312,82 @@ describe('FR:lint agent lint', () => {
     } finally { if (prev === undefined) delete process.env.STACK_SESSIONS_DIR; else process.env.STACK_SESSIONS_DIR = prev; }
   });
 });
+
+describe('review gaps', () => {
+  const restartDriver = (listed: string[] = []) => {
+    const prompts: string[] = [];
+    const driver: AgentDriver = {
+      listSessions: async () => listed.map((id) => ({ id, title: '', project: '', cwd: '', lastActive: NOW.toISOString(), active: false, cost: { usd: 0, tokens: 0 }, prs: [] })),
+      getMessages: async () => [], cancel: async () => false,
+      async prompt(req): Promise<Run> {
+        prompts.push(req.text);
+        const ups: Update[] = [{ type: 'session', sessionId: `new-${prompts.length}` }, { type: 'done', stopReason: 'end_turn', cost: { usd: 0, tokens: 0 }, turns: 1, durationMs: 1 }];
+        return { id: `run-${prompts.length}`, sessionId: null, updates: (async function* () { for (const u of ups) yield u; })() };
+      },
+    };
+    return { driver, prompts };
+  };
+  const def = async () => '# Lead';
+  const tagLine = GOAL.split('\n').findIndex((l) => l.includes('Tag the release'));
+
+  // @req FR:goal-model/agent.restart.live
+  it('a session in the driver list is live; one link restarts at most once a process', async () => {
+    const live = restartDriver(['5c1e0a']);
+    const a = mk({ 'tasks/stack.md': GOAL });
+    expect(await restartLead(a.ctx, { runs: createRunManager({ driver: live.driver, ctx: a.ctx }), inventory: () => ({ sessions: [] }), readDef: def }, { path: 'tasks/stack.md', line: tagLine })).toEqual({ restarted: false });
+    expect(live.prompts).toHaveLength(0);
+    const gone = restartDriver();
+    const b = mk({ 'tasks/stack.md': GOAL });
+    const deps = { runs: createRunManager({ driver: gone.driver, ctx: b.ctx }), inventory: () => ({ sessions: [] }), readDef: def };
+    expect((await restartLead(b.ctx, deps, { path: 'tasks/stack.md', line: tagLine })).restarted).toBe(true);
+    expect((await restartLead(b.ctx, deps, { path: 'tasks/stack.md', line: tagLine })).restarted).toBe(false);
+    expect(gone.prompts).toHaveLength(1);
+  });
+
+  // @req FR:goal-model/agent.restart.level
+  it('two goal files under one folder default start one session', async () => {
+    const folder = '---\nagent: "[Xe lead](#local_xe1)"\nagent-def: .claude/agents/xe.md\n---\n';
+    const bare = '# Bare\n\n## 🔄 Active\n\n- [ ] Do it\n';
+    const gone = restartDriver();
+    const { storage, ctx } = mk({ 'tasks/xe/.stack/agent.md': folder, 'tasks/xe/a.md': bare, 'tasks/xe/b.md': bare });
+    const runs = createRunManager({ driver: gone.driver, ctx });
+    const seen = new Set<string>();
+    // Two deps objects: only the pass guard (keyed on the level file) stops the second start.
+    await restartLead(ctx, { runs, inventory: () => ({ sessions: [] }), readDef: def }, { path: 'tasks/xe/a.md', line: 4 }, { seen });
+    await restartLead(ctx, { runs, inventory: () => ({ sessions: [] }), readDef: def }, { path: 'tasks/xe/b.md', line: 4 }, { seen });
+    expect(gone.prompts).toHaveLength(1);
+    expect((await storage.read('tasks/xe/.stack/agent.md')).content).toBe(folder.replace('local_xe1', 'local_new-1'));
+  });
+
+  // @req FR:goal-model/agent.restart.to
+  it('restarts only when the work goes to the lead', async () => {
+    const gone = restartDriver();
+    const { ctx } = mk({ 'tasks/stack.md': GOAL });
+    const deps = { runs: createRunManager({ driver: gone.driver, ctx }), inventory: () => ({ sessions: [] }), readDef: def };
+    expect(await restartLead(ctx, deps, { path: 'tasks/stack.md', line: tagLine }, { to: { name: 'CoS' } })).toEqual({ restarted: false });
+    expect(gone.prompts).toHaveLength(0);
+    expect((await restartLead(ctx, deps, { path: 'tasks/stack.md', line: tagLine }, { to: { name: 'Stack architect', session: 'local_5c1e0a' } })).restarted).toBe(true);
+  });
+
+  // @req FR:goal-model/pri.tiers
+  it('frontmatter lines are never tiered rows', () => {
+    const src = '---\nlegend:\n  ⭐️: Now\n  1️⃣: today\n---\n# A\n\n- [ ] ⭐️ Plan it (agent: bob)\n';
+    expect(tieredTasks('tasks/a.md', src).map((t) => t.text)).toEqual(['Plan it']);
+  });
+
+  // @req FR:goal-model/front.strict
+  it('a leading --- block with a non-key line is not frontmatter', () => {
+    expect(readFrontmatter('---\nJust a note\n---\n')).toBeNull();
+    const p = parseProject('---\n# A\n\n## 🔄 Active\n\n- [ ] Do it\n---\n');
+    expect(p.sections.flatMap((s) => s.tasks).map((t) => t.text)).toEqual(['Do it']);
+    expect(readFrontmatter('---\nagent: x\nlegend:\n  🧪: test\n---\n')).not.toBeNull();
+  });
+
+  // @req FR:goal-model/pri.sweep-rows
+  it('the date sweep touches only open task rows', async () => {
+    const src = '---\nnote: "⛔️ 2026-11-01 keep"\n---\n# A\n\n## 🔄 Active\n\n- [x] ⛔️ 2026-11-18 Done it\n- [ ] Open it\n  ⏰ 2026-11-18 a note\n- [ ] ⏰ 2026-11-18 Start it\n';
+    const { ctx, storage } = mk({ 'tasks/a.md': src });
+    await sweep(ctx);
+    expect((await storage.read('tasks/a.md')).content).toBe(src.replace('- [ ] ⏰ 2026-11-18 Start it', '- [ ] Start it'));
+  });
+});

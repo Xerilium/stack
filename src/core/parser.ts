@@ -47,16 +47,18 @@ export function readFrontmatter(src: string): Frontmatter | null {
   const data: Record<string, FmValue> = {};
   let open: string | null = null;
   for (const l of lines.slice(1, end)) {
-    if (!l.trim() || l.trim().startsWith('#')) continue;
-    if (/^\s/.test(l) && open) {
+    if (!l.trim()) continue;
+    if (/^\s/.test(l)) {
+      if (!open) continue;
       const item = /^\s+-\s+(.*)$/.exec(l);
       if (item) { const cur = data[open]; data[open] = [...(Array.isArray(cur) ? cur : []), unquote(item[1])]; continue; }
       const kv = /^\s+(.+?):\s+(.*)$/.exec(l);
       if (kv) { const cur = data[open]; data[open] = { ...(cur && typeof cur === 'object' && !Array.isArray(cur) ? cur : {}), [unquote(kv[1])]: unquote(kv[2]) }; }
       continue;
     }
+    // @req FR:goal-model/front.strict: a top-level line that is not `key:` means the block is markdown, not frontmatter.
     const m = /^([A-Za-z][A-Za-z0-9_-]*):(?:\s+(.*))?$/.exec(l);
-    if (!m) { open = null; continue; }
+    if (!m) return null;
     open = m[1];
     data[m[1]] = m[2] === undefined || m[2].trim() === '' ? '' : scalar(m[2]);
   }

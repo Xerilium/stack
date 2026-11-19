@@ -1143,10 +1143,13 @@ async function sweepDocs(ctx: LifecycleContext, starts: boolean, suspends: boole
           return '';
         });
         // @req FR:goal-model/pri.start @req FR:goal-model/pri.blocked-until: `⏰ <yyyy-mm-dd>` starts and `⛔️ <yyyy-mm-dd>` unblocks on its day.
-        const today = `${w.y}-${String(w.mo).padStart(2, '0')}-${String(w.d).padStart(2, '0')}`;
-        line = line.replace(START_ISO_SCAN, (m, d: string) => (d <= today ? (out.activated++, '') : m));
-        const r = releaseBlocks(line, today);
-        if (r.count) { line = r.line; out.activated += r.count; }
+        // @req FR:goal-model/pri.sweep-rows: open `- [ ]` rows only (never checked rows, notes, or frontmatter).
+        if (/^\s*- \[ \] /.test(stripBom(line))) {
+          const today = `${w.y}-${String(w.mo).padStart(2, '0')}-${String(w.d).padStart(2, '0')}`;
+          line = line.replace(START_ISO_SCAN, (m, d: string) => (d <= today ? (out.activated++, '') : m));
+          const r = releaseBlocks(line, today);
+          if (r.count) { line = r.line; out.activated += r.count; }
+        }
       }
       if (suspends && /^\s*- \[ \] /.test(stripBom(line)) && line.includes('💤')) {
         let guard = 0;

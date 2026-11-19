@@ -29,6 +29,13 @@ describe('dated marks', () => {
     expect(r).toMatchObject({ status: '⛔️', blockedUntil: '2026-12-01', title: 'Ship it' });
     expect(actionable(task('⛔️ 2026-12-01 Ship it'), NOW)).toBe(false);
   });
+
+  // @req FR:goal-model/pri.hide
+  it('a ⛔ date of today or earlier never hides the row; a bare ⛔ does', () => {
+    expect(actionable(task('⛔️ 2026-11-19 Ship it'), NOW)).toBe(true);
+    expect(actionable(task('⛔️ 2026-11-01 Ship it'), NOW)).toBe(true);
+    expect(actionable(task('⛔️ Ship it'), NOW)).toBe(false);
+  });
 });
 
 describe('legend', () => {

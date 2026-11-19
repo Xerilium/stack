@@ -85,8 +85,10 @@ export function tieredTasks(path: string, src: string): TieredTask[] {
   const lines = src.replace(/^﻿/, '').split('\n').map((l) => l.replace(/\r$/, ''));
   const { project, aliases, repo } = projectFile(path, src);
   const out: TieredTask[] = [];
+  const fmLines = readFrontmatter(src)?.lines ?? 0;
   lines.forEach((l, line) => {
-    if (/^\s*#/.test(l)) return;
+    // @req FR:goal-model/pri.tiers: frontmatter lines (a legend `⭐️: Now`) are never rows.
+    if (line < fmLines || /^\s*#/.test(l)) return;
     const m = LINE.exec(l);
     if (!m) return;
     const rest = m[2];

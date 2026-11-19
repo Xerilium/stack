@@ -100,7 +100,9 @@ export function actionable(t: Task, now = new Date()): boolean {
   const r = parseRow(t.text);
   // @req FR:goal-model/pri.hide: a future ⏰ (or ⛔) date hides the row; there is no early mode.
   if (r.suspend || (r.start && (dueDays(r.start, now) ?? 0) > 0)) return false;
-  if (/🅿️?/u.test(t.text) || (r.status && vsx(r.status) === '⛔')) return false;
+  // @req FR:goal-model/pri.hide: a ⛔ date of today or earlier no longer blocks (web Now reads the date directly).
+  const blockDone = !!r.blockedUntil && (dueDays(r.blockedUntil, now) ?? 1) <= 0;
+  if (/🅿️?/u.test(t.text) || (r.status && vsx(r.status) === '⛔' && !blockDone)) return false;
   const d = dueDays(r.due, now);
   return d === null || d <= HORIZON_DAYS;
 }
