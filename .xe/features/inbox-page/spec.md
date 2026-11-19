@@ -81,13 +81,17 @@ The page must never say "Inbox zero" when nothing is connected or nothing synced
 
 ### FR:web: Page
 
+The owner needs to scan mail and act on it. Inbox holds mail and messages only. Setup lives in Settings > Accounts (`FR:settings/view.sections`).
+
 - **FR:web.view** (P1): `#/inbox` lists items. Each row: source, sender, subject, summary, one primary button for the suggested action, a menu of other actions. Missing actions show "Request this action".
+  - **FR:web.view.calm** (P1): Rows MUST use neutral colors only. An unread row shows a bold subject and a small accent dot, not a colored border. The primary button uses the default button style, so a list of rows is not a column of accent buttons.
 - **FR:web.draft** (P1): `reply-draft` opens an editable text area first. Confirming creates the draft and shows an "Open in Outlook" link. The page has no send button.
 - **FR:web.phone** (P1): At 375 px width rows stack and nothing scrolls sideways. Every control is at least 44 px tall on a phone.
-- **FR:web.empty** (P1): With no items, the page says "Inbox zero. Nothing needs you." only when `canClaimZero`. Otherwise the empty state is the headline ("No inboxes connected", "Last synced 3h ago", "Email sign-in expired: a@x.com") and points to the sources panel. An open page reads the items and summary again every minute, when the tab comes back, and on live changes.
-- **FR:web.sources** (P1): A sources panel inside Inbox lists every source with its state and last sync, and a progress line `N of M sources connected`. Each source that is not `ok` has a Connect (or Fix) button that shows `needs`, the in-app Connect panel when `connect` is set, else the `command` with a Copy button, and the `doc` link. Email shows its mode. The panel says "Stack never sends." The panel is open when `attention` or `headline` is set, else collapsed to one line.
-- **FR:web.check** (P1): "Check connection" re-reads `GET /inbox-sources?fresh=1`, then `GET /inbox-items`, and redraws the items, the panel and the dot together. It announces the new progress line to a screen reader.
+- **FR:web.empty** (P1): With no items, the page says "Inbox zero. Nothing needs you." only when `canClaimZero`. Otherwise the empty state is the headline ("No inboxes connected", "Last synced 3h ago", "Email sign-in expired: a@x.com") with a `Manage accounts` link to `#/settings/accounts`. With no summary (a failed read), it says "Inbox status unknown". An open page reads the items and summary again every minute, when the tab comes back, and on live changes.
+- **FR:web.status** (P1): Inbox MUST hold no setup UI: no source list, no per-source steps, no Copy command, no Check connection. When items show and `headline` is set, one quiet line above the list shows the headline and a `Manage accounts` link to `#/settings/accounts`. With no `headline`, the line is absent.
+- **FR:web.nocmd** (P1): No Inbox string names a CLI command, a script, an environment variable, a terminal or a docs path (`FR:product-reset/connect.rule`). `needs`, `command` and `doc` serve the CLI (`FR:cli.sources`); the page never shows them.
 - **FR:web.dot** (P1): The Inbox rail item, and on a phone the More tab, carry a dot when `attention` is true. The dot has an accessible name ("Inbox needs setup").
+- **FR:web.components** (P2): When the shared components ship (`FR:product-reset/ui.askcard`, Stage 4), Inbox rows draw with `AskCard`. Until then, rows keep their own markup.
 
 ### FR:api: API
 
