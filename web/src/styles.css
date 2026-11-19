@@ -36,7 +36,6 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
 .main { --measure: 960px; padding: 28px 48px 120px; width: 100%; min-width: 0; }
 .main > * { max-width: var(--measure); }
 .tab-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.badge { font-size: 11px; font-weight: 650; line-height: 1; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 3px 6px; min-width: 18px; text-align: center; }
 
 .banner { background: var(--accent-soft); color: var(--accent); border-radius: 6px; padding: 4px 10px; margin-bottom: 18px; font-size: 11.5px; }
 .banner.live { background: #fde8e6; color: #b42318; }
@@ -689,7 +688,8 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
 .focus-block .context .late { color: var(--danger, #c2410c); font-weight: 600; }
 .focus-block .context .owned { color: var(--accent-ink, var(--accent)); }
 .more { position: relative; display: inline-block; }
-.more-btn { min-width: 40px; font-weight: 700; letter-spacing: .08em; }
+.menu-btn { min-width: 40px; font-weight: 700; letter-spacing: .08em; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.menu-btn:hover { color: var(--ink2); }
 .menu { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 190px; padding: 6px; background: var(--panel, var(--bg)); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.22); display: flex; flex-direction: column; }
 .menu-item { display: flex; justify-content: space-between; gap: 18px; align-items: center; width: 100%; text-align: left; padding: 9px 10px; background: transparent; border: 0; border-radius: 7px; color: inherit; font: inherit; cursor: pointer; }
 .menu-item:hover, .menu-item:focus-visible { background: var(--chip); }
@@ -698,7 +698,7 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
   .focus-block .actions { flex-wrap: nowrap; }
   .focus-block .actions .btn { flex: 1 1 0; }
   .focus-block .actions .more { flex: 0 0 auto; }
-  .focus-block .actions .more .more-btn { flex: 0 0 auto; min-width: var(--tap); padding: 0 14px; }
+  .focus-block .actions .more .menu-btn { flex: 0 0 auto; min-width: var(--tap); padding: 0 14px; }
 }
 
 /* ---- Top asks: one row per other project, live. @req FR:top-asks/top.row @req FR:top-asks/top.live @req FR:top-asks/top.status */

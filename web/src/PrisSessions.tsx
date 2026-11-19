@@ -14,6 +14,7 @@ import { contextOf, edits, ITEM_STATUS, LIMITS, nextItem, PRI_STATUS, progress, 
 import type { PrioritiesView } from './priorities';
 import { LinkList } from './ui/LinkList';
 import type { InventoryCtl, PrisCtl } from './usePrisSessions';
+import { MoreButton } from './ui/MoreButton';
 import './pris-sessions.css';
 
 /**
@@ -157,8 +158,8 @@ export function PrisBlock({ ctl, labelledBy, report = null }: { ctl: PrisCtl; la
         </ol>
       )}
       <div class="pris-foot">
-        {more > 0 && <button type="button" class="more-btn" onClick={() => setShowAll(true)}>Show {more} more</button>}
-        {canAdd && !adding && <button type="button" class="more-btn" onClick={() => setAdding(true)}>+ Add priority</button>}
+        {more > 0 && <MoreButton count={more} onMore={() => setShowAll(true)} />}
+        {canAdd && !adding && <button type="button" class="pris-add" onClick={() => setAdding(true)}>+ Add priority</button>}
       </div>
       {adding && <AddLine label="New priority" placeholder="New priority" max={LIMITS.title} autoFocus onEditing={(on) => { ctl.setEditing(on); if (!on) setAdding(false); }} onAdd={(t) => { ctl.apply(edits.addPri(t)); setAdding(false); ctl.setEditing(false); }} />}
     </section>

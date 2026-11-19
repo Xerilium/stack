@@ -11,6 +11,8 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 | `SelectCard` | `web/src/ui/SelectCard.tsx` | One item in a list that opens a detail pane: top line, title, sub line, tools, chevron. |
 | `StatusChip` | `web/src/ui/StatusChip.tsx` | A state word with a dot on a light tint (`neutral`, `info`, `ok`, `warn`, `bad`). Never a button. |
 | `Flag` | `web/src/ui/Flag.tsx` | A small note on an item: a flag icon and a muted word. Never a control. |
+| `CountBadge` | `web/src/ui/CountBadge.tsx` | A count on a nav item or an icon button. With no label, assistive tech does not read it. |
+| `MoreButton` | `web/src/ui/MoreButton.tsx` | The button under a short list that shows the rest: `Show 4 more`. |
 | `ActionMenu` | `web/src/ui/ActionMenu.tsx` | The `⋯` button and its menu of actions for one item. |
 | `ActionBar` | `web/src/ui/ActionMenu.tsx` | The same actions as plain buttons, under a heading, in a detail pane. |
 | `Tabs` | `web/src/ui/Tabs.tsx` | A tab bar in a view (ARIA tabs), with an optional note at the right end. |

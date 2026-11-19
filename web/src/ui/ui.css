@@ -74,6 +74,14 @@
 .ui-msg-hint { font-size: 12px; line-height: 16px; color: var(--ink2); overflow-wrap: anywhere; }
 .ui-msg-hint.bad { color: var(--ink); font-weight: 600; }
 
+/* Count badge: the count on a nav item or an icon button. A view places it. @req FR:ui-kit/badge */
+.badge { font-size: 11px; font-weight: 650; line-height: 1; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 3px 6px; min-width: 18px; text-align: center; }
+
+/* Show more: the quiet button under a short list. A view sets its offset. @req FR:ui-kit/more */
+.more-btn { background: none; border: 0; color: var(--muted); font-size: 12px; padding: 6px 22px; min-height: 32px; border-radius: 8px; display: inline-flex; gap: 8px; align-items: center; margin-top: 4px; min-width: 40px; font-weight: 700; letter-spacing: .08em; }
+.more-btn:hover { background: var(--hover); color: var(--ink2); }
+@media (max-width: 719px) { .more-btn { padding-left: 17px; min-height: var(--tap); } }
+
 /* Touch: 44 px targets. */
 @media (pointer: coarse), (max-width: 719px) {
   .ui-tool, .ui-more-btn, .ui-menu .menu-item, .ui-bar .fl-btn, .ui-msg .fl-btn { min-height: var(--tap); min-width: var(--tap); }

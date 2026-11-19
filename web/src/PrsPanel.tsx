@@ -17,6 +17,7 @@ import {
 import type { Toast } from './parts';
 import { store } from './day';
 import { ActionBar, ActionMenu, type ActionItem } from './ui/ActionMenu';
+import { CountBadge } from './ui/CountBadge';
 import { Flag } from './ui/Flag';
 import { SelectCard } from './ui/SelectCard';
 import { Skeleton } from './ui/Skeleton';
@@ -73,7 +74,7 @@ export function PrsNavItem({ api, active, label, hint, onGo }: { api: Client; ac
 /** The nav badge: rows with a next action; a dot when signed out. @req FR:pr-page/nav.badge */
 export function PrsNavBadge({ nav: { need, signIn } }: { nav: { need: number; signIn: boolean } }) {
   if (signIn) return <span class="nav-dot" role="img" aria-label="Sign in to GitHub" data-testid="prs-nav-dot" />;
-  return need > 0 ? <span class="badge" aria-label={`${need} need you`} data-testid="prs-nav-badge">{need}</span> : null;
+  return need > 0 ? <CountBadge count={need} label={`${need} need you`} testId="prs-nav-badge" /> : null;
 }
 
 /** The top bar icon: the active agent count; it opens the flyout. @req FR:pr-page/icon.place @req FR:pr-page/icon.absent */
@@ -86,7 +87,7 @@ export function PrsButton({ api, where }: { api: Client; where: 'rail' | 'phone'
   return (
     <button type="button" class="prs-btn compact" data-testid={where === 'rail' ? 'prs-btn' : 'prs-btn-phone'} aria-haspopup="dialog" aria-expanded={open} aria-label={label} title={label}
       onClick={(e) => { opener = e.currentTarget as HTMLElement; s.setOpen(true); }}>
-      <PrIcon />{n > 0 && <span class="badge" aria-hidden="true">{n}</span>}
+      <PrIcon />{n > 0 && <CountBadge count={n} />}
     </button>
   );
 }
