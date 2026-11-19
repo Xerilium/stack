@@ -1,9 +1,7 @@
 /* Sessions view: a quiet list, one drawer. Tokens from styles.css; sizes 20 / 14 / 12. */
 .sess-view { --muted: #6b6b73; --fill: var(--accent); max-width: 760px; margin: 0 auto; position: relative; }
 @media (prefers-color-scheme: dark) { .sess-view { --muted: #9a9aa3; --fill: #5558d4; } }
-.sess-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.sess-head .h1 { margin: 0 0 4px; }
-.cost-strip { margin: 0; font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
+.cost-strip { margin: 0; font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
 .cost-strip strong { color: var(--ink2); font-weight: 600; }
 .sess-tools { display: flex; gap: 6px; flex: none; }
 .sess-tools .btn { min-height: 34px; }
@@ -45,10 +43,6 @@
 .sess-when, .sess-cost { text-align: right; }
 .sess-view .more-btn, .sess-view .keys-hint { margin-left: 12px; }
 .sess-view .keys-hint { margin-top: 14px; font-size: 12px; color: var(--muted); }
-.sess-empty, .sess-error { text-align: center; padding: 72px 16px; color: var(--muted); }
-.sess-empty .big { margin: 0; font-size: 20px; font-weight: 650; color: var(--ink); letter-spacing: -.01em; }
-.sess-empty .sub { margin: 6px 0 0; font-size: 14px; }
-.sess-list .sk { height: 44px; border-radius: 10px; background: linear-gradient(90deg, var(--chip), var(--hover), var(--chip)); background-size: 200% 100%; animation: sk 1.4s linear infinite; }
 
 /* drawer */
 .sess-scrim { position: fixed; inset: 0; background: rgb(20 20 30 / 18%); z-index: 20; animation: fade .15s var(--ease); }
@@ -101,7 +95,6 @@
   @keyframes rise { from { transform: translateY(16px); opacity: 0; } }
 }
 @media (max-width: 799px) {
-  .sess-head { flex-direction: column; }
   .sess-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; row-gap: 2px; min-height: 56px; padding: 6px 10px; }
   .sess-row .sess-state { grid-row: 2; grid-column: 1; }
   .sess-row .sess-title { grid-row: 1; grid-column: 1 / span 2; }
@@ -119,7 +112,7 @@
   .sess-view .keys-hint { display: none; }
   .sess-view kbd { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .sess-drawer, .sess-scrim, .sess-list .sk, .cost-days .bar span { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .sess-drawer, .sess-scrim, .cost-days .bar span { animation: none !important; transition: none !important; } }
 
 /* scope and usage (agents-org) */
 .scope-note { margin: 10px 0 0 12px; font-size: 12px; color: var(--muted); }

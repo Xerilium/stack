@@ -10,6 +10,8 @@
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { Fragment } from 'preact';
+import { PageHeader } from './ui/PageHeader';
+import { EmptyState, ErrorState, Loading } from './ui/States';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { agentStatus, chartOrder, chatsFor, orgChart, otherSessions, type ChartNode } from './chart';
 import { composeDefault, folderFor, orderAgents, repoRoot } from './org';
@@ -144,7 +146,8 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent, 
   /** Choosing an agent sets the folder from its project. @req FR:agent-team/compose.folder */
   const setAgent = (slug: string) => { setAgentState(slug); const a = team.find((x) => x.slug === slug); setCwd(a ? folderFor(a, s.items, team) : (cursorItem?.cwd ?? '')); setEditCwd(!a); box.current?.focus(); };
   useEffect(() => { if (!inline) box.current?.focus(); }, []);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [s.turns, s.transcript]);
+  // The newest turn shows: scroll the transcript, never the page, so the page header stays in view. @req FR:agent-sessions/web.drawer.latest
+  useEffect(() => { const b = end.current?.closest<HTMLElement>('.drawer-body'); if (b) b.scrollTop = b.scrollHeight; }, [s.turns, s.transcript]);
   const trap = (e: KeyboardEvent) => {
     if (e.key !== 'Tab' || !ref.current) return;
     const f = [...ref.current.querySelectorAll<HTMLElement>('button, a[href], textarea, input')].filter((x) => !x.hasAttribute('disabled'));
@@ -335,8 +338,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
   const ready = enabled !== false && s.phase === 'ready';
   return (
     <section class={`sess-view${chartMode ? ' team' : ''}`} aria-label="Agents">
-      <header class="sess-head">
-        <div><h1 class="h1">Agents</h1>{strip && <p class="cost-strip" data-testid="cost-strip"><strong>{strip.today}</strong><span class="sep">·</span><span>{strip.window}</span></p>}</div>
+      <PageHeader title="Agents" sub={strip ? <span class="cost-strip" data-testid="cost-strip"><strong>{strip.today}</strong><span class="sep">·</span><span>{strip.window}</span></span> : undefined} actions={
         <div class="sess-tools" role="group" aria-label="View">
           {hasTeam && (
             <div class="seg" role="group" aria-label="Show">
@@ -347,7 +349,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
           <button type="button" class="btn quiet" onClick={() => s.setShowCosts(!s.showCosts)} aria-expanded={s.showCosts}>Usage<kbd aria-hidden="true">c</kbd></button>
           <button type="button" class="btn" onClick={() => compose()}>New<kbd aria-hidden="true">n</kbd></button>
         </div>
-      </header>
+      } />
       {s.showCosts && s.cost && (
         <section class="costs" aria-label="Usage, last 7 days" data-testid="costs">
           <ol class="cost-days">
@@ -360,9 +362,9 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
           <p class="price-line" data-testid="price-line">{priceLine(s.cost)}</p>
         </section>
       )}
-      {enabled === false && <div class="sess-empty" data-testid="sessions-unavailable"><p class="big">Not available on this host.</p><p class="sub">Agents live on the machine that runs them. Open Stack with <code>stack web</code> there.</p></div>}
-      {enabled !== false && s.phase === 'loading' && <ol class="sess-list" aria-busy="true" aria-label="Loading agents"><li class="sk" /><li class="sk" /><li class="sk" /></ol>}
-      {enabled !== false && s.phase === 'error' && <div class="sess-error" role="alert"><p>Cannot load agents: {s.error}</p><button type="button" class="btn primary" onClick={() => void s.reload()}>Retry</button></div>}
+      {enabled === false && <div data-testid="sessions-unavailable"><EmptyState what="Not available on this host." next={<Fragment>Agents live on the machine that runs them. Open Stack with <code>stack web</code> there.</Fragment>} /></div>}
+      {enabled !== false && s.phase === 'loading' && <Loading what="agents" />}
+      {enabled !== false && s.phase === 'error' && <ErrorState what={`Cannot load agents: ${s.error}`} onRetry={() => void s.reload()} />}
       {ready && chartMode && (
         <Fragment>
           <nav class="chart-wrap" aria-label="My team: every agent by who they report to"><Chart nodes={chart} sel={sel} chatsOf={chatsOf} onPick={pick} /></nav>
@@ -389,8 +391,8 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
       )}
       {empty && !chartMode && (
         <div class="sess-empty" data-testid="sessions-empty">
-          <p class="big">{hidden > 0 ? 'No sessions for your projects yet.' : hasTeam ? 'No other sessions.' : 'No sessions on this machine yet.'}</p>
-          <p class="sub">{hidden > 0 ? <Fragment><button type="button" class="link" onClick={() => s.setShowAll(true)}>Show all</button> · {hidden} from other repos, or start one with <kbd aria-hidden="true">n</kbd> New.</Fragment> : <Fragment>Start one with <kbd aria-hidden="true">n</kbd> New.</Fragment>}</p>
+          <EmptyState what={hidden > 0 ? 'No sessions for your projects yet.' : hasTeam ? 'No other sessions.' : 'No sessions on this machine yet.'}
+            next={hidden > 0 ? <Fragment><button type="button" class="link" onClick={() => s.setShowAll(true)}>Show all</button> · {hidden} from other repos, or start one with <kbd aria-hidden="true">n</kbd> New.</Fragment> : <Fragment>Start one with <kbd aria-hidden="true">n</kbd> New.</Fragment>} />
         </div>
       )}
       {!chartMode && count > 0 && (
