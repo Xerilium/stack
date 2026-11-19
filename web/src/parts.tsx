@@ -130,13 +130,7 @@ export function Chip({ group, value, onPick }: { group: GroupName; value: string
   );
 }
 
-/**
- * One shape for every empty state: what is empty, then the next step (a key, a button, or a link).
- * @req FR:first-run-onboarding/polish.empty
- */
-export function EmptyState({ what, next }: { what: ComponentChildren; next?: ComponentChildren }) {
-  return <div class="empty-state" data-testid="empty-state"><p class="empty-what">{what}</p>{next && <p class="empty-next">{next}</p>}</div>;
-}
+export { EmptyState } from './ui/States';
 
 /** A terminal command with a Copy button. Used by first-run setup. @req FR:first-run-onboarding/step.email */
 export function CopyCommand({ cmd, testId, label = 'Copy' }: { cmd: string; testId?: string; label?: string }) {

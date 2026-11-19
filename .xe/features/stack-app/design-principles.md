@@ -21,7 +21,7 @@ Evidence: `research-ux.md` (S-numbers). Extends `web/src/styles.css` tokens. Pro
 | ------------------------- | --------------------------------- | --------------------------------- | ------------------------------------------------------------------------- |
 | `bg`                      | `#fbfbfa`                         | `#111113`                         | Keep light value from styles.css; dark value proposed                     |
 | `surface` / `surface-2`   | `#ffffff` / `#f4f4f2`             | `#1a1a1d` / `#222226`             | Dark: raise with lighter surface, not shadow                              |
-| `ink` / `ink-2` / `muted` | `#1d1d1f` / `#4b4b50` / `#6e6e76` | `#f2f2f3` / `#c4c4c8` / `#8a8a92` | Fix: current light `#8a8a92` is 3.3:1 on `bg` (fails). `#6e6e76` is 4.9:1 |
+| `ink` / `ink-2` / `muted` | `#1d1d1f` / `#4b4b50` / `#6e6e76` | `#f2f2f3` / `#c4c4c8` / `#9a9aa2` | Fix: current light `#8a8a92` is 3.3:1 on `bg` (fails). `#6e6e76` is 4.9:1 |
 | `line`                    | `#e7e7e4`                         | `#2c2c31`                         | Hairlines only; no boxes in boxes                                         |
 | `accent`                  | `#5b5fe0`                         | `#8b8ff5`                         | One accent. Focus ring = accent                                           |
 | `warn` / `ok`             | `#c2410c` / `#15803d`             | `#fb923c` / `#4ade80`             | State only: overdue, blocked, done                                        |

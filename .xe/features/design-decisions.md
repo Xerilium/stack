@@ -336,3 +336,13 @@
 **Why**: The owner multitasks across projects and wants one plain view of what each project needs from him, and which PRs he can promote in a short review. Spec: `.xe/features/priorities-tables/spec.md`.
 
 **Rejected**: Cards, a ledger or a rail item (PR 182 mockups): too much chrome.
+
+## One design language: one token file, one accent
+
+**Decision**: `web/src/ui/tokens.css` is the only file that sets token values. The `--fl-*` color names are aliases of the base roles. The one accent is Stack indigo. The rules are in `.xe/standards/design.md`.
+
+**Date**: 2026-11-19
+
+**Why**: Two token sets gave two accents (indigo shell, blue pages), two ink scales, and two focus colors on one screen. One source makes every page read as one app, and old names keep working, so no view file changes.
+
+**Rejected**: Fluent blue as the accent (the app icon and shell are indigo); a third token prefix (more names, same values); a rename of every token (large diff while other work is open on the pages).

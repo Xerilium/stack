@@ -19,7 +19,7 @@ Show the owner the single highest-value task and nothing else. Evidence: `.xe/fe
 ### FR:tokens: Design tokens
 
 - **FR:tokens.contrast** (P1): Every text token reaches 4.5:1 on `--bg` and `--panel`, light and dark. Light `--muted` is `#6e6e76` (was `#8a8a92`, 3.3:1). The focus ring and `--accent` reach 3:1
-- **FR:tokens.scale** (P1): `styles.css` defines the space scale (4, 8, 12, 16, 24, 32, 48), the radius scale (6, 10, 16), and the type scale (title 28, screen 22, body 17, secondary 15, caption 13 on touch; 28, 20, 13, 12, 11 on desktop)
+- **FR:tokens.scale** (P1): `web/src/ui/tokens.css` defines the space scale (4, 8, 12, 16, 24, 32, 48), the radius scale (6, 10, 16), and the type scale (title 28, screen 22, body 17, secondary 15, caption 13 on touch; 28, 20, 13, 12, 11 on desktop)
 - **FR:tokens.motion** (P1): Motion tokens `--t-feedback` 120 ms, `--t-enter` 200 ms, `--t-sheet` 280 ms use `--ease`. With `prefers-reduced-motion` all three become 0 ms and Now swaps with no slide
 - **FR:tokens.theme** (P1): Light and dark values follow the design principles table; dark follows the system setting
 

@@ -1,12 +1,14 @@
-// @req FR:now-screen/tokens.contrast @req FR:now-screen/tokens.scale @req FR:now-screen/tokens.motion
+// @req FR:ui-kit/tokens.contrast @req FR:now-screen/tokens.contrast @req FR:now-screen/tokens.scale @req FR:now-screen/tokens.motion
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../src/ui/tokens.css', import.meta.url), 'utf8');
 /** Custom properties of the first `:root` block and of the dark `:root` block. */
 const vars = (block: string) => Object.fromEntries([...block.matchAll(/--([\w-]+):\s*([^;]+?)\s*;/g)].map((m) => [m[1], m[2]]));
-const light = vars(/:root\s*\{([^}]*)\}/.exec(css)![1]);
-const dark = { ...light, ...vars(/prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}/.exec(css)![1]) };
+const deref = (t: Record<string, string>) => { const get = (v: string, n = 0): string => { const m = /^var\(--([\w-]+)\)$/.exec(v); return m && n < 9 ? get(t[m[1]], n + 1) : v; }; return Object.fromEntries(Object.entries(t).map(([k, v]) => [k, get(v)])); };
+const rawLight = vars(/:root\s*\{([^}]*)\}/.exec(css)![1]);
+const light = deref(rawLight);
+const dark = deref({ ...rawLight, ...vars(/prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}/.exec(css)![1]) });
 
 const lum = (h: string) => {
   const hex = h.length === 4 ? `#${[...h.slice(1)].map((x) => x + x).join('')}` : h;
@@ -39,4 +41,38 @@ it('defines the type scale for touch and desktop', () => {
 });
 it('reduced motion zeroes the motion tokens', () => {
   expect(css).toMatch(/prefers-reduced-motion:\s*reduce\)\s*\{\s*:root\s*\{[^}]*--t-enter:\s*0ms/);
+});
+
+// @req FR:ui-kit/tokens.source @req FR:ui-kit/tokens.alias @req FR:ui-kit/tokens.contrast
+describe('one token file', () => {
+  const src = (f: string) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
+  it('is loaded first by the app entry', () => {
+    const main = src('main.tsx');
+    expect(main).toMatch(/import '\.\/ui\/tokens\.css';/);
+    expect(main.indexOf("./ui/tokens.css")).toBeLessThan(main.indexOf("./styles.css"));
+  });
+  it.each(['styles.css', 'fluent2.css', 'polish.css', 'settings.css'])('%s sets no color token on :root', (f) => {
+    for (const m of src(f).matchAll(/:root\s*\{([^}]*)\}/g)) expect(m[1]).not.toMatch(/--[\w-]+:\s*#/);
+  });
+  it('the Fluent color names are aliases: one accent, one ink scale, one focus color', () => {
+    expect(rawLight['fl-brand']).toBe('var(--accent)');
+    expect(rawLight['fl-fg1']).toBe('var(--ink)');
+    expect(rawLight['fl-fg3']).toBe('var(--muted)');
+    expect(rawLight['fl-bg1']).toBe('var(--panel)');
+    expect(rawLight['fl-focus']).toBe('var(--focus)');
+  });
+  it.each([['light', light], ['dark', dark]] as const)('%s: danger and the accent text color are 4.5:1 on panel and on the soft accent', (_, t) => {
+    expect(ratio(t.danger, t.panel)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(t['accent-fg'], t.panel)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(t['accent-fg'], t['accent-soft'])).toBeGreaterThanOrEqual(4.5);
+  });
+  it('dark control borders keep the old Fluent weight: at least 2.5:1 on panel', () => {
+    expect(ratio(dark['line-strong'], dark.panel)).toBeGreaterThanOrEqual(2.5);
+  });
+  it('dark hover is visible: at least 1.34:1 on panel, the old Fluent hover', () => {
+    expect(ratio(dark.hover, dark.panel)).toBeGreaterThanOrEqual(1.34);
+  });
+  it.each([['light', light], ['dark', dark]] as const)('%s: text stays 4.5:1 on a hovered row', (_, t) => {
+    for (const k of ['ink', 'ink2', 'muted']) expect(ratio(t[k], t.hover), k).toBeGreaterThanOrEqual(4.5);
+  });
 });

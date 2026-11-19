@@ -2,7 +2,7 @@
 id: ui-kit
 title: Shared UI components
 author: flanakin
-description: "One component set for views: a selectable card, a flag, a status chip, an actions menu, an actions bar, and a day grid."
+description: "One token file and one component set for every view: cards, chips, actions, tabs, split view, day grid, header, states."
 dependencies: [web-shell]
 ---
 
@@ -16,7 +16,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ## Scope
 
-- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `MessageBox`, `DayGrid`, `useWide`) and `web/src/ui/ui.css`.
+- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `MessageBox`, `DayGrid`, `useWide`, `PageHeader`, `EmptyState`, `Loading`, `ErrorState`), `web/src/ui/ui.css`, and the design tokens in `web/src/ui/tokens.css`.
 - Out: what a view puts in them (its words, tones, and actions), and the written UI rule (`ux-consolidation`).
 
 ## Scenarios
@@ -75,6 +75,42 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 ### FR:message: Message box
 
 - **FR:message** (P1): `MessageBox` sends one message from a details pane: a heading, a text box named `Message <to>` (at most 4000 characters, optional start text), and one button (`Send`, or `send`). The button is off while the text is empty or a send runs. After `onSend` resolves it clears the text and says `Sent to <to>` in a status line; after it rejects it keeps the text and says the error. With `off` (a reason), the box and button are off and the reason shows
+
+### FR:tokens: Design tokens
+
+The owner needs one palette and one type ramp on every page so that the app reads as one product.
+
+- **FR:tokens.source** (P1): `web/src/ui/tokens.css` is the only stylesheet that sets color, type, space, radius, elevation, and motion values
+- **FR:tokens.alias** (P1): Each `--fl-*` color name is a `var()` alias of a base role token
+- **FR:tokens.contrast** (P1): Text tokens reach 4.5:1 on each surface token, light and dark
+
+### FR:header: Page header
+
+The owner needs every page to start the same way so that the owner finds the title and actions in one place.
+
+- **FR:header** (P1): `PageHeader` shows an `h1` title, an optional muted `meta`, an optional `sub` line, and optional `actions` at the right
+- **FR:header.wrap** (P1): On a narrow screen `PageHeader` wraps the actions under the title
+
+### FR:empty: Empty state
+
+The owner needs an empty view to say what to do next so that the owner never stares at a blank pane.
+
+- **FR:empty** (P1): `EmptyState` shows left-aligned text with no art: what is empty (`what`), then the next step (`next`)
+
+### FR:loading: Loading state
+
+The owner needs to see that data is on the way so that a slow load does not look like an empty view.
+
+- **FR:loading** (P1): `Loading` is a `role="status"` block whose text, `Loading {what}`, only assistive tech reads
+- **FR:loading.bars** (P1): `Loading` shows `rows` gray bars, 3 by default, hidden from assistive tech
+- **FR:loading.motion** (P1): The `Loading` bars stay still when the user asks for reduced motion
+
+### FR:error: Error state
+
+The owner needs a failed load to say what happened so that the owner can fix it or try again.
+
+- **FR:error** (P1): `ErrorState` is a `role="alert"` block that shows what happened (`what`) and an optional next step (`next`)
+- **FR:error.retry** (P1): With `onRetry`, `ErrorState` shows a `Retry` button that calls `onRetry`
 
 ### FR:a11y: Access
 

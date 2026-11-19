@@ -123,3 +123,26 @@
 .ui-links a { display: inline-flex; align-items: center; min-height: 24px; color: var(--accent); overflow-wrap: anywhere; }
 .ui-links a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--fl-r-sm); }
 @media (pointer: coarse), (max-width: 719px) { .ui-links a { min-height: var(--tap); } }
+
+/* Page header: one title size and one top edge on every page. @req FR:ui-kit/header @req FR:ui-kit/header.wrap */
+.ui-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--fl-s-s) var(--fl-s-l); margin: 0 0 var(--fl-s-xl); }
+.ui-head-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--fl-s-m); min-width: 0; }
+.ui-head-title { margin: 0; font: 650 var(--fl-sub1)/var(--fl-sub1-lh) var(--fl-font); letter-spacing: -.01em; color: var(--ink); }
+.ui-head-meta { font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--muted); }
+.ui-head-sub { flex-basis: 100%; margin: 0; font-size: var(--fl-body); line-height: var(--fl-body-lh); color: var(--ink2); }
+.ui-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fl-s-s); }
+/* Section heading under the page header: subtitle size. */
+.ui-h2 { margin: 0 0 var(--fl-s-s); font: 600 var(--fl-sub2)/var(--fl-sub2-lh) var(--fl-font); color: var(--ink); }
+
+/* Loading: gray bars in place of rows, still with reduced motion. @req FR:ui-kit/loading.bars @req FR:ui-kit/loading.motion */
+.ui-loading { display: grid; gap: var(--fl-s-s); padding: var(--fl-s-s) 0; }
+.ui-sk { height: 44px; border-radius: var(--fl-r-xl); background: linear-gradient(90deg, var(--chip), var(--panel), var(--chip)); background-size: 200% 100%; animation: ui-sk 1.4s linear infinite; }
+.ui-sk:last-child { width: 60%; }
+@keyframes ui-sk { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .ui-sk { animation: none; } }
+
+/* Error: what happened, the next step, Retry. @req FR:ui-kit/error @req FR:ui-kit/error.retry */
+.ui-error { display: flex; flex-direction: column; align-items: flex-start; gap: var(--fl-s-s); padding: var(--fl-s-l); border: 1px solid var(--line); border-left: 4px solid var(--danger); border-radius: var(--fl-r-xl); background: var(--panel); }
+.ui-error p { margin: 0; }
+.ui-error-what { font-weight: 600; color: var(--ink); }
+.ui-error-next { color: var(--ink2); }

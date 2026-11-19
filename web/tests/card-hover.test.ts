@@ -13,7 +13,7 @@ describe('card hover and focus', () => {
     expect(css('myday.css')).toMatch(/\.today \.block:focus-within \.what \{ background: var\(--card-hover\); \}/);
   });
   it('dark cards rest a shade below the panel and lift on hover; light hover differs from rest', () => {
-    const s = css('styles.css');
+    const s = css('ui/tokens.css');
     expect(lum(token(s, 'card-bg', true))).toBeLessThan(lum(token(s, 'panel', true)));
     expect(lum(token(s, 'card-hover', true))).toBeGreaterThan(lum(token(s, 'card-bg', true)));
     expect(token(s, 'card-hover', false)).not.toBe(token(s, 'card-bg', false));

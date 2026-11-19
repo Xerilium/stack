@@ -2,7 +2,7 @@
 
 <!-- @req FR:task-detail-design/rules.doc -->
 
-Applies to every view. Audit and follow-ups: `.xe/features/task-detail-design/audit.md`.
+Applies to every view. The design language (color, type, space, components): `.xe/standards/design.md`. Audit and follow-ups: `.xe/features/task-detail-design/audit.md`.
 
 ## Global rules
 
@@ -18,13 +18,9 @@ Applies to every view. Audit and follow-ups: `.xe/features/task-detail-design/au
 10. 44 px targets on touch; 4.5:1 text contrast; light and dark.
 11. Reuse the shared components (`web/src/ui/`); never build a card, chip, tab bar or detail pane from scratch. See `.xe/standards/ui.md`.
 
-## Today (before this change)
-
-`web/src/styles.css` tokens: `--bg --panel --ink --ink2 --muted --line --accent (#5b5fe0) --chip --hover`, 4 pt spacing (`--s-*`), radius 6/10/16, a touch and desktop type scale, 120/200/280 ms motion. Indigo accent, system font, chips for both facts and actions, kbd badges on most buttons.
-
 ## Fluent 2 basis
 
-`web/src/fluent2.css`, imported once by `main.tsx`. Tokens on `:root` (`--fl-*`), dark values under `prefers-color-scheme: dark`. A page opts in with class `fl`; other pages are unchanged.
+Controls: `web/src/fluent2.css`. Token values: `web/src/ui/tokens.css` (the one token file; dark values under `prefers-color-scheme: dark`). The `--fl-*` color names are aliases of the base roles (`--ink`, `--accent`, ...), so the one accent is Stack indigo on every page. A page opts in to the controls with class `fl`.
 
 | Group     | Tokens                                                                                                |
 | --------- | ----------------------------------------------------------------------------------------------------- |
@@ -41,5 +37,5 @@ Controls (all under `.fl`): `.fl-btn` (default), `.fl-btn.primary`, `.fl-btn.sub
 
 - Size: the v3 components plus `@fluentui/tokens` add the FAST element runtime plus per-control JS and styles (est. 60-100 KB min for the 6 controls used, on a 255 KB app bundle); the Fluent CSS is 9 KB raw, 2.4 KB gzipped.
 - Runtime: the components need JS theme setup (`setTheme`) and custom elements inside Preact (events, form state, SSR-free hydration quirks). Plain CSS on native `<button>`, `<input>`, and `role` markup has none of that.
-- Fidelity: values are the Fluent 2 web light/dark token values, so pages read as Fluent. No network at runtime.
+- Fidelity: type, radius, space and elevation are the Fluent 2 web values; color is the Stack palette. No network at runtime.
 - Revisit if a page needs a complex control (date grid, combobox with search) that the browser does not provide.

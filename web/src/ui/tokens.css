@@ -1,0 +1,65 @@
+/*
+ * Design tokens: the one file that sets a token value. Light first, dark below. Rules: .xe/standards/design.md.
+ * Base names (--ink, --accent, --s-*) are the source; the --fl-* color names are aliases of them, so every view shows one palette.
+ * @req FR:ui-kit/tokens.source @req FR:ui-kit/tokens.alias @req FR:ui-kit/tokens.contrast @req FR:now-screen/tokens.scale @req FR:now-screen/tokens.motion @req FR:task-detail-design/rules.tokens
+ */
+:root {
+  /* Surfaces: page, raised panel, nav rail, sunken well. */
+  --bg: #fbfbfa; --panel: #ffffff; --rail: #f4f4f2; --sunken: #f5f5f4; --chip: #f1f1ee; --hover: #f3f3f1; --pressed: #e6e6e3;
+  /* Ink: primary, secondary, muted. Lines: divider, faint divider, control border. */
+  --ink: #1d1d1f; --ink2: #4b4b50; --muted: #6e6e76; --line: #e7e7e4; --line2: #efefec; --line-strong: #d1d1ce;
+  /* The one accent (Stack indigo): fill, fill hover and pressed, text on the fill, accent text, soft fill. */
+  --accent: #5b5fe0; --accent-hover: #4a4ed6; --accent-pressed: #3a3da8; --accent-ink: #ffffff; --accent-fg: #4a4ed6; --accent-soft: #eeeefc; --focus: #5b5fe0;
+  /* On the soft accent fill (chosen nav item, cursor row): muted and accent text at 4.5:1. */
+  --muted-on-soft: #5d5d65; --accent-on-soft: var(--accent-fg);
+  /* State: use only for state, never for decoration. */
+  --ok: #15803d; --warn: #c2410c; --danger: #b10e1c;
+  /* Account colors: the state dots in Settings and the six account badge tints on meetings. @req FR:connect-accounts/web.row */
+  --set-ok: #0e700e; --set-signin: #bc4b09; --set-down: #c19c00; --set-bad: #b10e1c;
+  --set-t0-bg: #ebf3fc; --set-t0-fg: #0c3b5e; --set-t1-bg: #f1faf1; --set-t1-fg: #094509; --set-t2-bg: #fdf6f3; --set-t2-fg: #8a3707;
+  --set-t3-bg: #f7f4fb; --set-t3-fg: #46236e; --set-t4-bg: #fdf3f4; --set-t4-fg: #750b1c; --set-t5-bg: #f0fafa; --set-t5-fg: #00474f;
+  /* cards: rest and hover/focus. @req FR:product-reset/ui.taskcard */
+  --card-bg: #ffffff; --card-hover: #f3f3f1;
+  --shadow: 0 12px 40px rgb(20 20 30 / 14%), 0 2px 6px rgb(20 20 30 / 6%);
+  --railw: 208px; --tap: 44px; --row: 34px; --ease: cubic-bezier(.2,.7,.2,1);
+  /* Space: 4 px grid. */
+  --s-4: 4px; --s-8: 8px; --s-12: 12px; --s-16: 16px; --s-24: 24px; --s-32: 32px; --s-48: 48px;
+  --fl-s-xs: 4px; --fl-s-s: 8px; --fl-s-m: 12px; --fl-s-l: 16px; --fl-s-xl: 20px; --fl-s-xxl: 24px; --fl-s-xxxl: 32px;
+  /* Type ramp: caption, body, subtitle, heading, title. One font. */
+  --fl-font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, sans-serif;
+  --fl-caption: 12px; --fl-caption-lh: 16px; --fl-body: 14px; --fl-body-lh: 20px; --fl-sub2: 16px; --fl-sub2-lh: 22px; --fl-sub1: 20px; --fl-sub1-lh: 28px; --fl-title: 28px; --fl-title-lh: 36px;
+  /* Radius: 4 px controls and chips, 8 px cards and panes, pill for counts. */
+  --fl-r-sm: 2px; --fl-r-md: 4px; --fl-r-lg: 6px; --fl-r-xl: 8px; --fl-r-pill: 999px;
+  /* Elevation: 4 for cards, 16 for popovers. */
+  --fl-shadow4: 0 0 2px rgb(0 0 0 / 12%), 0 2px 4px rgb(0 0 0 / 14%); --fl-shadow16: 0 0 2px rgb(0 0 0 / 12%), 0 8px 16px rgb(0 0 0 / 14%);
+  /* Motion. */
+  --fl-fast: 100ms; --fl-normal: 200ms; --fl-ease: cubic-bezier(.33, 0, .67, 1); --fl-target: 32px;
+  --t-feedback: 120ms; --t-enter: 200ms; --t-sheet: 280ms;
+  /* Fluent color names: aliases only. */
+  --fl-bg1: var(--panel); --fl-bg1-hover: var(--hover); --fl-bg1-pressed: var(--pressed); --fl-bg2: var(--bg); --fl-bg3: var(--sunken);
+  --fl-fg1: var(--ink); --fl-fg2: var(--ink2); --fl-fg3: var(--muted); --fl-stroke1: var(--line-strong); --fl-stroke2: var(--line); --fl-stroke-access: var(--muted);
+  --fl-brand: var(--accent); --fl-brand-hover: var(--accent-hover); --fl-brand-pressed: var(--accent-pressed); --fl-on-brand: var(--accent-ink); --fl-brand-fg: var(--accent-fg); --fl-brand2: var(--accent-soft);
+  --fl-subtle-hover: var(--hover); --fl-subtle-pressed: var(--pressed); --fl-danger: var(--danger); --fl-success: var(--ok); --fl-focus: var(--focus);
+  /* Older names, kept for views not yet moved to the ramp and radius above. Do not use in new code. */
+  --r-chip: 6px; --r-row: 10px; --r-card: 16px;
+  --fs-title: 28px; --fs-screen: 22px; --fs-body: 17px; --fs-secondary: 15px; --fs-caption: 13px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111113; --panel: #1a1a1d; --rail: #0e0e10; --sunken: #141416; --chip: #26262b; --hover: #323237; --pressed: #2c2c31;
+    --ink: #f2f2f3; --ink2: #c4c4c8; --muted: #9a9aa2; --line: #2c2c31; --line2: #232327; --line-strong: #5c5c64;
+    --accent: #8b8ff5; --accent-hover: #a3a6ff; --accent-pressed: #7478e0; --accent-ink: #12121c; --accent-fg: #a3a6ff; --accent-soft: #23233a; --focus: #a3a6ff; --muted-on-soft: #a0a0a8; --accent-on-soft: var(--accent);
+    --ok: #4ade80; --warn: #fb923c; --danger: #f08a8d;
+    --set-ok: #54b054; --set-signin: #f98845; --set-down: #fde300; --set-bad: #e37d80;
+    --set-t0-bg: #0c3b5e; --set-t0-fg: #ebf3fc; --set-t1-bg: #094509; --set-t1-fg: #f1faf1; --set-t2-bg: #6f2c06; --set-t2-fg: #fdf6f3;
+    --set-t3-bg: #46236e; --set-t3-fg: #f7f4fb; --set-t4-bg: #750b1c; --set-t4-fg: #fdf3f4; --set-t5-bg: #00474f; --set-t5-fg: #f0fafa;
+    --card-bg: #161618; --card-hover: #212125;
+    --shadow: 0 12px 40px rgb(0 0 0 / 55%), 0 2px 6px rgb(0 0 0 / 40%);
+    --fl-shadow4: 0 0 2px rgb(0 0 0 / 24%), 0 2px 4px rgb(0 0 0 / 28%); --fl-shadow16: 0 0 2px rgb(0 0 0 / 24%), 0 8px 16px rgb(0 0 0 / 28%); }
+}
+@media (hover: hover) and (pointer: fine) {
+  :root { --fs-title: 28px; --fs-screen: 20px; --fs-body: 13px; --fs-secondary: 12px; --fs-caption: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-feedback: 0ms; --t-enter: 0ms; --t-sheet: 0ms; --fl-fast: 0ms; --fl-normal: 0ms; }
+}
+@media (max-width: 719px), (hover: none) { :root { --fl-target: 44px; } }

@@ -1,32 +1,8 @@
 /*
  * Fluent 2 tokens and controls, plus the global design rules. Imported once by main.tsx; a page opts in to the look with class `fl`.
- * Values: Fluent 2 web light/dark themes. Rules: docs/design-system.md.
+ * Token values: ui/tokens.css. Rules: docs/design-system.md and .xe/standards/design.md.
  * @req FR:task-detail-design/rules.tokens @req FR:task-detail-design/rules.clickable @req FR:task-detail-design/rules.nokeys @req FR:task-detail-design/rules.facts
  */
-:root {
-  --fl-bg1: #ffffff; --fl-bg1-hover: #f5f5f5; --fl-bg1-pressed: #e0e0e0; --fl-bg2: #fafafa; --fl-bg3: #f5f5f5;
-  --fl-fg1: #242424; --fl-fg2: #424242; --fl-fg3: #616161; --fl-stroke1: #d1d1d1; --fl-stroke2: #e0e0e0; --fl-stroke-access: #616161;
-  --fl-brand: #0f6cbd; --fl-brand-hover: #115ea3; --fl-brand-pressed: #0c3b5e; --fl-on-brand: #ffffff; --fl-brand-fg: #0f6cbd; --fl-brand2: #ebf3fc;
-  --fl-subtle-hover: #f5f5f5; --fl-subtle-pressed: #e0e0e0; --fl-danger: #b10e1c; --fl-success: #0e700e; --fl-focus: #000000;
-  --fl-font: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
-  --fl-caption: 12px; --fl-caption-lh: 16px; --fl-body: 14px; --fl-body-lh: 20px; --fl-sub2: 16px; --fl-sub2-lh: 22px; --fl-sub1: 20px; --fl-sub1-lh: 28px; --fl-title: 28px; --fl-title-lh: 36px;
-  --fl-r-sm: 2px; --fl-r-md: 4px; --fl-r-lg: 6px; --fl-r-xl: 8px; --fl-r-pill: 999px;
-  --fl-s-xs: 4px; --fl-s-s: 8px; --fl-s-m: 12px; --fl-s-l: 16px; --fl-s-xl: 20px; --fl-s-xxl: 24px; --fl-s-xxxl: 32px;
-  --fl-shadow4: 0 0 2px rgb(0 0 0 / 12%), 0 2px 4px rgb(0 0 0 / 14%); --fl-shadow16: 0 0 2px rgb(0 0 0 / 12%), 0 8px 16px rgb(0 0 0 / 14%);
-  --fl-fast: 100ms; --fl-normal: 200ms; --fl-ease: cubic-bezier(.33, 0, .67, 1); --fl-target: 32px;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --fl-bg1: #292929; --fl-bg1-hover: #3d3d3d; --fl-bg1-pressed: #1f1f1f; --fl-bg2: #1f1f1f; --fl-bg3: #141414;
-    --fl-fg1: #ffffff; --fl-fg2: #d6d6d6; --fl-fg3: #adadad; --fl-stroke1: #666666; --fl-stroke2: #525252; --fl-stroke-access: #adadad;
-    --fl-brand: #115ea3; --fl-brand-hover: #0f6cbd; --fl-brand-pressed: #0c3b5e; --fl-on-brand: #ffffff; --fl-brand-fg: #479ef5; --fl-brand2: #082338;
-    --fl-subtle-hover: #383838; --fl-subtle-pressed: #2e2e2e; --fl-danger: #e37d80; --fl-success: #54b054; --fl-focus: #ffffff;
-    --fl-shadow4: 0 0 2px rgb(0 0 0 / 24%), 0 2px 4px rgb(0 0 0 / 28%); --fl-shadow16: 0 0 2px rgb(0 0 0 / 24%), 0 8px 16px rgb(0 0 0 / 28%);
-  }
-}
-@media (prefers-reduced-motion: reduce) { :root { --fl-fast: 0ms; --fl-normal: 0ms; } }
-@media (max-width: 719px), (hover: none) { :root { --fl-target: 44px; } }
-
 /* ---- Opt-in look: everything under .fl ---- */
 .fl { font-family: var(--fl-font); font-size: var(--fl-body); line-height: var(--fl-body-lh); color: var(--fl-fg1); }
 .fl :focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; border-radius: var(--fl-r-md); }
