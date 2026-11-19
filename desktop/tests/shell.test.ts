@@ -206,6 +206,39 @@ describe('quit', () => {
     await shell.stopped();
     expect(e.quitCount).toBe(1);
   });
+  // @req FR:desktop-shell/quit.early
+  it('a quit while the host starts waits for it, closes it, and builds no window, tray, or hotkey', async () => {
+    let ready: () => void = () => { /* set below */ };
+    let closes = 0;
+    const startHost: ShellDeps['startHost'] = () => new Promise((ok) => { ready = () => ok({ url: URL_, close: async () => { closes++; } }); });
+    const { e, shell } = setup({ startHost });
+    const started = shell.start();
+    await Promise.resolve(); // past whenReady: startHost is pending
+    e.app.quit();
+    expect(e.quitCount).toBe(0); // held until the host is closed
+    ready();
+    await started;
+    await shell.stopped();
+    expect(closes).toBe(1);
+    expect(e.quitCount).toBe(1);
+    expect(e.windows).toHaveLength(0);
+    expect(e.trays).toHaveLength(0);
+    expect(e.shortcuts.size).toBe(0);
+  });
+  // @req FR:desktop-shell/quit.early @req FR:desktop-shell/host.fail
+  it('a quit while the host starts still quits once when the start fails', async () => {
+    let fail: () => void = () => { /* set below */ };
+    const startHost: ShellDeps['startHost'] = () => new Promise((_ok, no) => { fail = () => no(new Error('no repo')); });
+    const { e, shell } = setup({ startHost });
+    const started = shell.start();
+    await Promise.resolve();
+    e.app.quit();
+    fail();
+    await started;
+    await shell.stopped();
+    expect(e.quitCount).toBe(1);
+    expect(e.windows).toHaveLength(0);
+  });
 });
 
 describe('host failure', () => {

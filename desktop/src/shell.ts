@@ -47,6 +47,8 @@ export function createShell(deps: ShellDeps): Shell {
   const log = deps.log ?? ((l: string) => console.log(l));
   const closeTimeoutMs = deps.closeTimeoutMs ?? 15_000;
   let host: HostHandle | undefined;
+  // @req FR:desktop-shell/quit.early: a quit before the host is up closes the host this start returns.
+  let starting: Promise<HostHandle> | undefined;
   let win: WindowLike | undefined;
   let tray: TrayLike | undefined;
   let stopping: Promise<void> | undefined;
@@ -104,10 +106,14 @@ export function createShell(deps: ShellDeps): Shell {
       if (idleTimer) clearInterval(idleTimer);
       globalShortcut.unregisterAll();
       tray?.destroy();
-      if (host) {
-        const h = host;
+      if (host || starting) {
+        // @req FR:desktop-shell/quit.early: a start in flight is awaited inside the same bound; a start that fails has nothing to close.
+        const closeHost = async () => {
+          const h = host ?? (await starting!.catch(() => undefined));
+          await h?.close().catch((e: unknown) => log(`host: close failed: ${e instanceof Error ? e.message : String(e)}`));
+        };
         const timeout = new Promise<void>((ok) => setTimeout(() => { log('host: close timed out'); ok(); }, closeTimeoutMs).unref?.());
-        await Promise.race([h.close().catch((e: unknown) => log(`host: close failed: ${e instanceof Error ? e.message : String(e)}`)), timeout]);
+        await Promise.race([closeHost(), timeout]);
       }
       // The host has stopped (its batch is committed); starting the helper is the only added work, and it never blocks quit.
       // @req FR:devops-installer/quit.flush @req FR:devops-installer/quit.spawn @req FR:devops-installer/quit.fast
@@ -147,7 +153,9 @@ export function createShell(deps: ShellDeps): Shell {
     app.on('before-quit', (e: PreventableEvent) => { if (!done) { e.preventDefault(); if (!stopping) void stop().then(() => app.quit()); } });
     await app.whenReady();
     // @req FR:desktop-shell/host.fail
-    try { host = await deps.startHost(); } catch (e) { log(`host: ${e instanceof Error ? e.message : String(e)}`); done = true; app.quit(); return; }
+    try { starting = deps.startHost(); host = await starting; } catch (e) { log(`host: ${e instanceof Error ? e.message : String(e)}`); if (!stopping) { done = true; app.quit(); } return; }
+    // @req FR:desktop-shell/quit.early: quit came first; stop() closes the host, and nothing is built.
+    if (stopping) return;
     log(`shell: ${host.url}`);
     Menu.setApplicationMenu(Menu.buildFromTemplate(appMenu()));
     // @req FR:desktop-shell/tray.icon
