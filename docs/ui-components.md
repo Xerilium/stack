@@ -22,6 +22,7 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 | `PageHeader` | `web/src/ui/PageHeader.tsx` | The top of a page: an `h1` title, a muted note, a sub line and actions at the right. |
 | `EmptyState` | `web/src/ui/States.tsx` | What is empty, then the next step. Text only. |
 | `Loading` | `web/src/ui/States.tsx` | Gray bars with a loading note for assistive tech. |
+| `Skeleton` | `web/src/ui/Skeleton.tsx` | The older loading rows in the shape of a list or of text lines. A new view uses `Loading`. |
 | `ErrorState` | `web/src/ui/States.tsx` | What failed, a next step and an optional Retry button. |
 
 `useWide` (`web/src/ui/useWide.ts`) is the hook that tells `SplitView` when the screen is wide. CSS helpers in `web/src/ui/ui.css`: `ui-cards` (the list around cards) and `ui-tool` (an icon button in a card's tools).
