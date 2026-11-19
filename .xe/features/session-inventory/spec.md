@@ -36,11 +36,12 @@ The owner needs Stack to see every session so that no session is lost, without r
 The owner needs one state per session so that he knows where to look.
 
 - **FR:state.archived** (P1): A session with `isArchived` true is left out of the inventory
-- **FR:state.waiting** (P1): A session is `waiting` when one of these is true: the last event is a `question`; `interruptedAwaitingPerson` is true; `turnWrapUp.needsUser` is set; the turn is closed and the current `postTurnSummary` (it summarizes `lastAssistantUuid`) has `status_category` `blocked`; or the last event is a pending `tool`, no activity for 5 minutes, and the session can ask for permission (`permissionMode` is not `bypassPermissions`) and is not a scheduled run
+- **FR:state.waiting** (P1): A session is `waiting` when one of these is true: the last event is a `question`; `interruptedAwaitingPerson` is true; `turnWrapUp.needsUser` is set; the turn is closed and the current `postTurnSummary` (it summarizes `lastAssistantUuid`) has `status_category` `blocked` and its ask is not a wrap-up (`FR:session-inventory/state.wrap-up`); or the last event is a pending `tool`, no activity for 5 minutes, and the session can ask for permission (`permissionMode` is not `bypassPermissions`) and is not a scheduled run
 - **FR:state.stuck** (P1): A session is `stuck` when it is not waiting and one of these is true: `error` is set and `errorAt` is after the last turn edge; `lastTurnCutShort` is true and the last event is not `turn-end`; the last event is `api-error` with no activity for 5 minutes; or the turn is open (`tool`, `tool-result`, `user`) with no activity for 30 minutes. A scheduled run at a pending `tool` with no activity for 5 minutes is also stuck (no person sees its prompt)
 - **FR:state.running** (P1): A session is `running` when its turn is open and it had activity in the last 30 minutes, and it is not waiting or stuck
 - **FR:state.done** (P1): A session is `done` when its turn is closed, it is not pinned, and it has a PR that is not dismissed, and every such PR is `MERGED` or `CLOSED`, with at least one `MERGED`
 - **FR:state.pinned** (P1): A pinned session (`isStarred` true) that is otherwise idle is `pinned`. Every session has `pinned` true or false
+- **FR:state.wrap-up** (P1): An ask is a wrap-up when it starts with `Anything else` (any case) and offers no choice but `done` or `close` (for example `Anything else, or **done**?`). A closed turn with a `blocked` summary and a wrap-up ask is `idle` (or `pinned`) with reason `wrap-up`. An ask with another choice (for example `Anything else, or **go** to run the cleanup?`) stays `waiting`
 - **FR:state.idle** (P1): Every other session is `idle`
 - **FR:state.activity** (P1): Activity time is the latest of `lastActivityAt`, the transcript mtime, and, while a `tool` call is pending, the newest file mtime in `<transcript without .jsonl>/subagents/`. A turn is open when the last event is `tool`, `tool-result` or `user`. With no transcript, a turn is open when `lastActivityAt` is more than 1 s after `lastTurnEdgeAt`
 
@@ -48,17 +49,18 @@ The owner needs one state per session so that he knows where to look.
 
 The owner needs one ranked list so that he acts on the most important session first.
 
-- **FR:needs.list** (P1): Needs you holds every `waiting` and `stuck` session, except a superseded scheduled run (`FR:session-inventory/archive.superseded`)
+- **FR:needs.list** (P1): Needs you holds every `waiting` and `stuck` session, except a superseded scheduled run (`FR:session-inventory/archive.superseded`) and a stale session (`FR:session-inventory/archive.stale`)
 - **FR:needs.rank** (P1): Needs you is ordered by project rank, then `waiting` before `stuck`, then newest activity first. Project rank: `allyte` (Allyte and FinOps hubs), `ftk`, `focus`, `f4`, `xerilium` (Stack, Catalyst, Printer, Prime), then `other`
 - **FR:needs.project** (P1): The project comes from the first folder under `dev/` in the session `cwd` (any `.worktrees`, `-wt` or other suffix is ignored): `finops-hubs*` and `allyte*` are `allyte`; `finops-toolkit*` is `ftk`; `focus*` (any case) is `focus`; `f4*` is `f4`; `todo*`, `stack*`, `catalyst*`, `printer*`, `prime*` and `pr-sweep*` are `xerilium`; any other is `other`
 - **FR:needs.item** (P1): Each session item has `id` (the `sessionId`), `title`, `project`, `state`, `reason`, `pinned`, `lastActivityAt` (ISO), `link` = `claude://claude.ai/epitaxy/<sessionId>`, `prs` (`{url, state}`), and when set `ask` (the summary `needs_action`, one line, at most 200 characters) and `scheduled` (`{id, name}` from `scheduled-tasks.json`)
-- **FR:needs.reason** (P1): `reason` names the rule that set the state: `question`, `permission`, `needs-user`, `blocked`, `error`, `cut-short`, `api-error`, `dead-turn`, `pr-merged`, `superseded`, `turn-open`, or `idle`
+- **FR:needs.reason** (P1): `reason` names the rule that set the state: `question`, `permission`, `needs-user`, `blocked`, `error`, `cut-short`, `api-error`, `dead-turn`, `pr-merged`, `superseded`, `stale`, `turn-open`, `wrap-up`, or `idle`
 
 ### FR:archive: Archive candidates
 
 The owner needs a short list of sessions to archive so that the sidebar stays small, and Stack must not edit the app's files.
 
-- **FR:archive.list** (P1): Archive candidates are every `done` session and every superseded scheduled run. Stack only lists them; it never changes a session file
+- **FR:archive.list** (P1): Archive candidates are every `done` session, every superseded scheduled run, and every stale session. Stack only lists them; it never changes a session file
+- **FR:archive.stale** (P1): A `waiting` or `stuck` session that is not pinned and has no activity for 7 days or more (`STALE_MS`) is stale. It keeps its state and gets reason `stale`. A pinned session stays in Needs you
 - **FR:archive.superseded** (P1): A scheduled run is superseded when a newer run of the same `scheduledTaskId` exists (archived or not) and the run is not pinned and not running
 
 ### FR:store: Inventory result
