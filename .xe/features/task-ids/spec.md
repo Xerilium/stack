@@ -31,7 +31,7 @@ Line numbers break on every edit. A task needs one stable, readable ID that peop
 ```markdown
 - [ ] 🚧 1️⃣ Ship v2 🔴
   > id: ship-v2
-  > owner: stack-architect
+  > agent: [Stack architect](#local_abc)
   > pr: https://github.com/Xerilium/stack/pull/313
   - [ ] 🙋 Approve the release plan
     > id: approve-release-plan

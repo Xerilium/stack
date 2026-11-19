@@ -8,9 +8,9 @@ import { lintProject } from '../../src/core/task-lint';
 // @req FR:task-ids/meta.fields @req FR:task-ids/meta.retired
 describe('metadata keys', () => {
   it('accepts typed links and blocked, and flags underscores and retired keys', () => {
-    const src = ['# G', '', '## A', '', '- [ ] One', '  > id: one', '  > owner: me', '  > blocked: T:g.two', '  > pr: https://github.com/o/r/pull/1', '  > issue: https://github.com/o/r/issues/2',
+    const src = ['# G', '', '## A', '', '- [ ] One', '  > id: one', '  > agent: [Bea](#local_1)', '  > owner: me', '  > blocked: T:g.two', '  > pr: https://github.com/o/r/pull/1', '  > issue: https://github.com/o/r/issues/2',
       '  > mail: m-1', '  > session: s-1', '  > doc: https://x.y/d', '  > link: https://x.y', '  > blocked_by: T:g.two', '  > next: call', '  > req: FR:x', '  > due: 2026-12-01', '- [ ] Two', '  > id: two', ''].join('\n');
-    expect(lintIds([{ path: 'tasks/g.md', content: src }]).map((i) => `${i.line} ${i.rule}`)).toEqual(['15 meta-key', '16 meta-key', '17 meta-key', '18 meta-emoji']);
+    expect(lintIds([{ path: 'tasks/g.md', content: src }]).map((i) => `${i.line} ${i.rule}`)).toEqual(['8 meta-key', '16 meta-key', '17 meta-key', '18 meta-key', '19 meta-emoji']);
   });
 });
 

@@ -15,9 +15,9 @@ export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Metadata keys of fields that are emoji in Stack; the emoji stays the source of truth. @req FR:task-ids/meta.emoji */
 export const EMOJI_KEYS = ['priority', 'status', 'due', 'start', 'effort', 'impact', 'tier', 'parked', 'suspended', 'human', 'autonomy'] as const;
 /** @req FR:task-ids/meta.fields: known metadata keys (typed links one per line); others are kept as unknown. */
-export const META_KEYS = ['id', 'owner', 'blocked', 'pr', 'issue', 'mail', 'session', 'doc', 'link'] as const;
+export const META_KEYS = ['id', 'agent', 'blocked', 'pr', 'issue', 'mail', 'session', 'doc', 'link'] as const;
 /** @req FR:task-ids/meta.retired: keys the owner retired. */
-export const RETIRED_KEYS = ['next', 'req', 'blocked_by'] as const;
+export const RETIRED_KEYS = ['owner', 'next', 'req', 'blocked_by'] as const;
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A `T:` ref in text: the project is greedy, so it splits at the last `.` that a valid slug follows. */
@@ -203,7 +203,7 @@ export function lintIds(files: TaskFile[], only?: Set<string>): LintIssue[] {
           seen.add(v);
         }
         if ((EMOJI_KEYS as readonly string[]).includes(k)) out.push({ path: f.path, line, rule: 'meta-emoji', message: `"${k}" is an emoji field. Use the emoji on the task row.` });
-        if (k.includes('_') || (RETIRED_KEYS as readonly string[]).includes(k)) out.push({ path: f.path, line, rule: 'meta-key', message: `"${k}" is not a metadata key (no "_"; next, req, and blocked_by are retired).` });
+        if (k.includes('_') || (RETIRED_KEYS as readonly string[]).includes(k)) out.push({ path: f.path, line, rule: 'meta-key', message: `"${k}" is not a metadata key (no "_"; owner, next, req, and blocked_by are retired).` });
       });
     }
     project.lines.forEach((l, i) => {
