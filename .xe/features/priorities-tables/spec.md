@@ -16,7 +16,7 @@ The owner runs many projects at once. He needs one report that says, per project
 ## Scope
 
 - In: tier tags and agent tags in task files, the day order of rows, the QM section, project rows, the PR table, the freshness stamp, gap rows, `stack priorities`, `GET /priorities`, the report on the Now page.
-- Out: the day slots (`FR:pri-first-ranking/day.*`), the PR next action (`FR:pr-page/card.action`), the session inventory (`FR:session-inventory/*`), task scoring. The asks stay in Needs you (`FR:ask-queue/web.*`).
+- Out: the day slots (`FR:pri-first-ranking/day.*`), the PR next action (`FR:pr-page/card.action`), the session inventory (`FR:session-inventory/*`), task scoring. The asks stay in Notifications (`FR:ask-queue/web.*`).
 
 ## Scenarios
 

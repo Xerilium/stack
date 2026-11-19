@@ -384,7 +384,7 @@ test.describe('Now screen', () => {
   });
 
   // @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.focus @req FR:ux-consolidation/one.layout
-  test('the one place: next meetings under the task; asks stay in Needs you', async ({ page }, info) => {
+  test('the one place: next meetings under the task; asks stay in Notifications', async ({ page }, info) => {
     const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.install({ time: d });
     const m = await mockApi(page, { tasks: seed() });
     const at = (h: number, mi = 0) => { const x = new Date(d); x.setHours(h, mi, 0, 0); return x.toISOString(); };
