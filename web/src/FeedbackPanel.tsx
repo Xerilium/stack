@@ -123,7 +123,7 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
       // @req FR:design-review/ui.result.focus
       setTimeout(() => ref.current?.querySelector<HTMLElement>('a[href]')?.focus(), 0);
     } catch (e) {
-      // @req FR:design-review/ui.error @req FR:design-review/ui.error.focus
+      // @req FR:design-review/ui.error @req FR:design-review/ui.error.open @req FR:design-review/ui.error.focus
       fail(e instanceof Error ? e.message : 'Could not run the review');
     }
   };

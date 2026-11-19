@@ -35,6 +35,6 @@ Each page's goals are in [`src/core/page-goals.ts`](../src/core/page-goals.ts). 
 
 ## Privacy
 
-The screenshot and goals go to OpenAI only when you select `Design review`. The request is not stored (`store: false`). ChatGPT is told not to quote or name page content. Token-like strings are removed and `@` mentions are broken before the reply goes into the issue.
+The screenshot and goals go to OpenAI only when you select `Design review`. The request is not stored (`store: false`). ChatGPT is told not to quote or name page content. Token-like strings are removed and `@` mentions and `#` references are broken (outside code) before the reply goes into the issue.
 
 A public repo (the default `Xerilium/stack` is public) is refused unless `STACK_DESIGN_REVIEW_PUBLIC=1`. Set it only when you accept that a review can describe what was on screen. Otherwise point `STACK_DESIGN_REVIEW_REPO` at a private repo.

@@ -106,6 +106,7 @@ describe('issue', () => {
     const m = issueFor({ page: 'now', model: 'gpt-5', reply: 'Ask @octocat about #12' });
     expect(m.body).not.toMatch(/@octocat|#12/);
     expect(m.body).toContain('@\u200boctocat about #\u200b12');
+    expect(issueFor({ page: 'now', model: 'm', reply: 'Use `#333` and `@media`, see #4' }).body).toContain('Use `#333` and `@media`, see #\u200b4');
   });
   // @req FR:design-review/issue.body.cap
   it('cuts a long reply with a note', () => {
@@ -143,6 +144,14 @@ describe('design review', () => {
     await expect(mk({ visibility: async () => { throw new Error('gh'); } }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'issue' });
     expect((await mk({ filer: fl, visibility: async () => 'PUBLIC', env: { STACK_DESIGN_REVIEW_PUBLIC: '1' } }).run({ route: '#/now', png: PNG })).page).toBe('now');
     expect((await mk({ visibility: async () => 'INTERNAL' }).run({ route: '#/now', png: PNG })).page).toBe('now');
+    // Refused before the window is captured; visibility read once per repo.
+    let captured = 0;
+    let reads = 0;
+    setPageCapture(async () => { captured++; return PNG; });
+    const pub = mk({ visibility: async () => { reads++; return 'PUBLIC'; } });
+    await expect(pub.capture()).rejects.toMatchObject({ code: 'public' });
+    await expect(pub.capture()).rejects.toMatchObject({ code: 'public' });
+    expect([captured, reads]).toEqual([0, 1]);
     const args: string[][] = [];
     expect(await ghRepoVisibility(async (a) => { args.push(a); return 'private\n'; })('me/repo')).toBe('PRIVATE');
     expect(args[0]).toEqual(['repo', 'view', 'me/repo', '--json', 'visibility', '-q', '.visibility']);

@@ -103,7 +103,8 @@ export function issueFor(i: { page: PageId; viewport?: string; theme?: 'light' |
   ].join('\n');
   // @req FR:design-review/issue.redact
   // @req FR:design-review/issue.mentions: no @mentions in a public issue: a zero-width space after each @ keeps the text and pings no one.
-  let reply = redactSecrets(i.reply).replace(/@(?=[A-Za-z0-9])/g, '@\u200b').replace(/#(?=\d)/g, '#\u200b');
+  // Code spans are left alone: GitHub links nothing there, and colors (`#333`) or `@media` must copy as written.
+  let reply = redactSecrets(i.reply).split(/(`[^`\n]*`)/).map((part, n) => (n % 2 ? part : part.replace(/@(?=[A-Za-z0-9])/g, '@\u200b').replace(/#(?=\d)/g, '#\u200b'))).join('');
   // @req FR:design-review/issue.body.cap
   const note = '\n\n_Reply cut to fit the issue size limit._';
   if (head.length + reply.length > MAX_BODY) reply = reply.slice(0, MAX_BODY - head.length - note.length) + note;
@@ -111,7 +112,7 @@ export function issueFor(i: { page: PageId; viewport?: string; theme?: 'light' |
 }
 
 /** `gh repo view`: the repo visibility (`PUBLIC`, `PRIVATE`, `INTERNAL`). */
-export function ghRepoVisibility(run: (args: string[]) => Promise<string> = (args) => new Promise((ok, no) => execFile('gh', args, (e, out) => (e ? no(e) : ok(out))))): (repo: string) => Promise<string> {
+export function ghRepoVisibility(run: (args: string[]) => Promise<string> = (args) => new Promise((ok, no) => execFile('gh', args, { timeout: 15_000 }, (e, out) => (e ? no(e) : ok(out))))): (repo: string) => Promise<string> {
   return async (repo) => (await run(['repo', 'view', repo, '--json', 'visibility', '-q', '.visibility'])).trim().toUpperCase();
 }
 
@@ -126,11 +127,24 @@ export function createDesignReview(o: { reviewer?: Reviewer; filer: DesignIssueF
   const now = o.now ?? Date.now;
   /** Host captures waiting for their review: one use each, newest few, short-lived. @req FR:design-review/api.capture */
   const shots = new Map<string, { png: Buffer; at: number }>();
+  const seen = new Map<string, string>();
+  /** The issue repo, refused when public without an explicit yes; visibility read once per repo. Runs before any capture. @req FR:design-review/issue.public */
+  const checkRepo = async (): Promise<string> => {
+    const repo = env.STACK_DESIGN_REVIEW_REPO || DEFAULT_REPO;
+    if (!seen.has(repo)) {
+      try { seen.set(repo, await visibility(repo)); } catch { throw new DesignReviewError('issue', `Could not read ${repo} (is gh signed in?)`); }
+    }
+    const vis = seen.get(repo);
+    // Page text can be private: a public repo needs an explicit yes.
+    if (vis !== 'PRIVATE' && vis !== 'INTERNAL' && env.STACK_DESIGN_REVIEW_PUBLIC !== '1') throw new DesignReviewError('public', `${repo} is public: set STACK_DESIGN_REVIEW_PUBLIC=1 to file reviews there`);
+    return repo;
+  };
   const notConnected = () => new DesignReviewError('down', 'ChatGPT is not connected: set STACK_OPENAI_API_KEY');
   return {
     async capture() {
       // Before the capture, so a host with no key fails at once. @req FR:design-review/api.down.first
       if (!reviewer.connected()) throw notConnected();
+      await checkRepo();
       const png = await capturePageNow();
       if (!png) throw new DesignReviewError('shot', 'This host cannot capture the page');
       for (const [k, v] of shots) if (now() - v.at > SHOT_TTL_MS) shots.delete(k);
@@ -143,6 +157,7 @@ export function createDesignReview(o: { reviewer?: Reviewer; filer: DesignIssueF
       const page = pageFromRoute(r.route);
       // @req FR:design-review/api.down @req FR:design-review/api.down.first
       if (!reviewer.connected()) throw notConnected();
+      const repo = await checkRepo();
       // @req FR:design-review/api.shot
       let png = r.png && isPng(r.png) ? r.png : null;
       if (!png && r.shot) {
@@ -151,11 +166,6 @@ export function createDesignReview(o: { reviewer?: Reviewer; filer: DesignIssueF
         if (held && now() - held.at <= SHOT_TTL_MS) png = held.png;
       }
       if (!png) throw new DesignReviewError('shot', 'A screenshot is needed');
-      const repo = env.STACK_DESIGN_REVIEW_REPO || DEFAULT_REPO;
-      // Page text can be private: a public repo needs an explicit yes. @req FR:design-review/issue.public
-      let vis: string;
-      try { vis = await visibility(repo); } catch { throw new DesignReviewError('issue', `Could not read ${repo} (is gh signed in?)`); }
-      if (vis !== 'PRIVATE' && vis !== 'INTERNAL' && env.STACK_DESIGN_REVIEW_PUBLIC !== '1') throw new DesignReviewError('public', `${repo} is public: set STACK_DESIGN_REVIEW_PUBLIC=1 to file reviews there`);
       const g = PAGE_GOALS[page];
       let reply: string;
       try { reply = await reviewer.review({ page, name: g.name, goals: g.goals, viewport: r.viewport, theme: r.theme, png }); } catch (e) {

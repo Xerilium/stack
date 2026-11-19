@@ -2,7 +2,7 @@
  * The Design review action in the feedback panel: desktop capture, issue link, errors, and the browser with no screenshot.
  * @req FR:design-review/ui.button @req FR:design-review/ui.button.text @req FR:design-review/ui.shot @req FR:design-review/ui.no-shot
  * @req FR:design-review/ui.shot.hide @req FR:design-review/ui.no-shot.message @req FR:design-review/ui.progress
- * @req FR:design-review/ui.result @req FR:design-review/ui.result.focus @req FR:design-review/ui.error @req FR:design-review/ui.error.focus
+ * @req FR:design-review/ui.result @req FR:design-review/ui.result.focus @req FR:design-review/ui.error @req FR:design-review/ui.error.open @req FR:design-review/ui.error.focus
  */
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi } from './mock';
@@ -27,8 +27,7 @@ async function setup(page: Page, o: { desktop?: boolean; fail?: boolean; slow?: 
     return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ page: 'asks', url: 'https://github.com/Xerilium/stack/issues/999' }) });
   });
   await page.goto('/#/asks');
-  (setup as { captures?: number[] }).captures = captures;
-  return posts;
+  return { posts, captures };
 }
 const open = async (page: Page, mobile: boolean) => {
   await page.getByTestId(mobile ? 'feedback-btn-phone' : 'feedback-btn').click();
@@ -36,7 +35,7 @@ const open = async (page: Page, mobile: boolean) => {
 };
 
 test('desktop app: one click captures, files, and links the issue', async ({ page }, info) => {
-  const posts = await setup(page, { desktop: true });
+  const { posts, captures } = await setup(page, { desktop: true });
   const panel = await open(page, info.project.name === 'mobile');
   const btn = panel.getByRole('button', { name: 'Design review' });
   await expect(btn).toBeEnabled();
@@ -45,7 +44,7 @@ test('desktop app: one click captures, files, and links the issue', async ({ pag
   await expect(panel.getByRole('link', { name: /issues\/999/ })).toBeFocused();
   await expect(panel.getByRole('link', { name: /issues\/999/ })).toHaveAttribute('href', 'https://github.com/Xerilium/stack/issues/999');
   expect(posts).toEqual([expect.objectContaining({ route: '/#/asks', shot: 'a'.repeat(24) })]);
-  expect((setup as { captures?: number[] }).captures).toEqual([0]);
+  expect(captures).toEqual([0]);
   expect(posts[0].png).toBeUndefined();
 });
 
@@ -58,7 +57,7 @@ test('desktop app: a failure shows the error and keeps the panel', async ({ page
 });
 
 test('browser with no screenshot sends nothing', async ({ page }, info) => {
-  const posts = await setup(page);
+  const { posts } = await setup(page);
   const panel = await open(page, info.project.name === 'mobile');
   await panel.getByRole('button', { name: 'Design review' }).click();
   await expect(panel.getByRole('alert')).toHaveText('A screenshot is needed');

@@ -48,7 +48,8 @@ The owner needs one click per page so that a review never needs a manual screens
   - **FR:ui.no-shot.message** (P1): Feedback panel MUST show `A screenshot is needed`
 - **FR:ui.result** (P1): Feedback panel MUST show `Filed` with the issue link on success
   - **FR:ui.result.focus** (P1): Feedback panel MUST move focus to the issue link
-- **FR:ui.error** (P1): Feedback panel MUST show the error and stay open on failure
+- **FR:ui.error** (P1): Feedback panel MUST show the error on failure
+  - **FR:ui.error.open** (P1): Feedback panel MUST stay open on failure
   - **FR:ui.error.focus** (P1): Feedback panel MUST move focus to the text box
 
 ### FR:api: API
@@ -65,7 +66,7 @@ The page needs one owner-only route so that the web app and the desktop app run 
 - **FR:api.shot** (P1): Route MUST answer 422 when there is no screenshot
   - No `png`, and no host capture
 - **FR:api.down** (P1): Route MUST answer 503 when ChatGPT is not connected or fails
-  - **FR:api.down.first** (P1): Route MUST check the connection before the capture
+  - **FR:api.down.first** (P1): Route MUST check the connection and the repo before the capture
 - **FR:api.issue** (P1): Route MUST answer 502 when the issue fails
 
 ### FR:review: ChatGPT review

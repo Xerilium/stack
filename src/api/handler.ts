@@ -182,7 +182,6 @@ const FEEDBACK_BODY = {
   } satisfies Record<string, Spec>,
   required: ['text'],
 };
-/** Same field rules as feedback, with the route required and no text. @req FR:design-review/api.route */
 /** Design review failures as API errors. @req FR:design-review/api.shot @req FR:design-review/api.down @req FR:design-review/api.issue @req FR:design-review/issue.public */
 const designReviewError = (e: unknown): unknown => {
   if (!(e instanceof DesignReviewError)) return e;
@@ -190,6 +189,7 @@ const designReviewError = (e: unknown): unknown => {
   if (e.code === 'public') return new ApiError('conflict', e.message);
   return new ApiError(e.code === 'issue' ? 'bad_gateway' : 'unavailable', e.message);
 };
+/** Same field rules as feedback, with the route required and no text. @req FR:design-review/api.route */
 const DESIGN_REVIEW_BODY = {
   schema: { route: { ...FEEDBACK_BODY.schema.route, required: true }, viewport: FEEDBACK_BODY.schema.viewport, theme: FEEDBACK_BODY.schema.theme, shot: { t: 'str', max: 24, pattern: /^[0-9a-f]{24}$/ }, png: FEEDBACK_BODY.schema.png } satisfies Record<string, Spec>,
   required: ['route'],
