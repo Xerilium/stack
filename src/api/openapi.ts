@@ -414,6 +414,12 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { thread: 'Review thread node id from the row detail', op: 'resolve or unresolve' },
     responses: ok('Done', { type: 'object', properties: { ok: { type: 'boolean' }, op: { type: 'string' } } }),
   },
+  // @req FR:pr-page/api.server
+  'prs.server': {
+    operationId: 'setPrServer', summary: 'Owner only. Start or stop the test server of a PR on the board: a worktree of the local clone, built and run on a free local port. 404 on hosts that cannot start one; 409 when 3 run',
+    desc: { op: 'start or stop' },
+    responses: ok('The server, or null after a stop', { type: 'object', properties: { server: { type: 'object', nullable: true, properties: { state: { type: 'string', enum: ['starting', 'running', 'failed'] }, step: { type: 'string', enum: ['checkout', 'build', 'run'] }, url: { type: 'string' }, error: { type: 'string' }, at: { type: 'string' } } } } }),
+  },
   // @req FR:pr-page/auth.signin
   'prs.signin.get': {
     operationId: 'getGitHubSignIn', summary: 'Owner only. The GitHub sign-in session: state (waiting, done, error, none), the one-time code, and the device link. Never a token. 404 on hosts with no sign-in',

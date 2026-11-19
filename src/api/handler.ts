@@ -30,6 +30,7 @@ import { writeGaps } from '../core/priorities-gaps';
 import { readTaskFiles } from '../core/tiered-tasks';
 import type { PrBoardService } from './pr-board-service';
 import type { PrAuth } from './pr-page';
+import type { PrServers } from './pr-server';
 import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write';
 import { QueueRefused, QueueUnavailable, type PrQueue } from './pr-queue';
 import { ITEM_OPS, LiveError, type ItemOp, type LiveStore } from '../core/live-lane';
@@ -110,6 +111,8 @@ export interface ApiDeps {
   prWrites?: GitHubWrites;
   /** Changes the PR priority queue. @req FR:pr-page/api.queue-client */
   prQueue?: PrQueue;
+  /** Test servers for PRs on the local host; absent means POST /prs/server is 404. @req FR:pr-page/server.host */
+  prServers?: PrServers;
   /** The GitHub sign-in of a local host; absent means the board needs GITHUB_TOKEN and /prs/sign-in is 404. @req FR:pr-page/auth.state */
   prAuth?: PrAuth;
   /** The desktop installer: version probe, update mode, restart. Absent means /version is 404. @req FR:devops-installer/version.get */
@@ -315,6 +318,7 @@ const PR_NUM: Spec = { t: 'int', min: 1, max: 9_999_999 };
 export const PR_QUEUE_OPS = ['top', 'up', 'down', 'move', 'add', 'pin', 'unpin', 'remove', 'undo'] as const;
 const PR_QUEUE_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: PR_QUEUE_OPS }, rank: { t: 'int', min: 1, max: 100 } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
 const PR_RESOLVE_BODY = { schema: { repo: PR_REPO, number: PR_NUM, thread: { t: 'str', required: true, max: 100, pattern: /^[A-Za-z0-9_=-]{1,100}$/ }, op: { t: 'enum', values: ['resolve', 'unresolve'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'thread', 'op'] };
+const PR_SERVER_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: ['start', 'stop'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
 const PR_GET_Q: Record<string, Spec> = { refresh: { t: 'enum', values: ['1'] } };
 const PR_LABEL_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: ['add', 'remove'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
 const PR_ACK_BODY = {
@@ -1123,6 +1127,21 @@ export const ROUTES: Route[] = [
       // Resolving does not always change updatedAt: read this PR's threads again.
       await c.deps.prBoard?.refresh(row.url);
       return json(200, { ok: true, op: b.op });
+    },
+  },
+  {
+    // Starts or stops the test server of a PR on the board; local hosts only. @req FR:pr-page/api.server @req FR:pr-page/server.host
+    method: 'POST', doc: '/prs/server', name: 'prs.server', body: PR_SERVER_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can start a test server');
+      const b = validate<{ repo: string; number: number; op: 'start' | 'stop' }>(await readBody(c.req), PR_SERVER_BODY.schema, PR_SERVER_BODY.required);
+      const s = c.deps.prServers;
+      if (!s) throw new ApiError('not_found', 'This host cannot start a test server');
+      const row = await onBoard(c, b);
+      if (b.op === 'stop') { await s.stop(row.repo, row.number); return json(200, { server: null }); }
+      // The command is the Server line of the check file, when it has one. @req FR:pr-page/server.plan
+      return json(200, { server: await s.start(row.repo, row.number, row.detail.check?.server) });
     },
   },
   {

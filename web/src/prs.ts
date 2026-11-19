@@ -1,7 +1,7 @@
 /**
  * The PR page model on the page side: tabs, the Summary, card words and tones, the Pinned order, and the shared board store. No DOM.
  * @req FR:pr-page/flyout.tabs @req FR:pr-page/flyout.filter @req FR:pr-page/card.fields @req FR:pr-page/card.color @req FR:pr-page/live.age @req FR:pr-page/live.event
- * @req FR:pr-page/summary.layout @req FR:pr-page/pin.tab @req FR:pr-page/pin.drag
+ * @req FR:pr-page/summary.layout @req FR:pr-page/pin.tab @req FR:pr-page/pin.drag @req FR:pr-page/server.pane @req FR:pr-page/server.poll
  */
 
 export type PrGroup = 'processing' | 'waiting' | 'pending' | 'paused';
@@ -14,17 +14,19 @@ export type StepsDetail = { source: 'lane'; state: string; serverUrl?: string; i
 /** The sweeper's live check file, parsed by the host. @req FR:pr-page/check.parse */
 export interface LiveCheck { ask?: string; server?: string; at?: string; steps: string[]; pass: string[]; fail: string[] }
 export interface PrDetail { check?: LiveCheck; signoff?: SignoffDetail[]; review?: { url: string; body: string; comments: { path: string; body: string }[] }; steps?: StepsDetail; notes?: { body: string; url: string; at?: string }[] }
+/** The test server of a PR on the local host. @req FR:pr-page/server.view */
+export interface PrServer { state: 'starting' | 'running' | 'failed'; step?: 'checkout' | 'build' | 'run'; url?: string; error?: string; at: string }
 export interface PrRow {
   url: string; repo: string; number: number; title: string; author: string; mine: boolean; project: string; group: PrGroup; draft: boolean;
   createdAt: string; updatedAt: string; ci: 'passing' | 'failing' | 'pending' | 'none'; unresolved: number; labels: string[]; state: PrState; bucket?: Bucket;
   healthy: boolean; agent: boolean; after: string[]; rank: number | null; pinned: boolean; rec?: { id: string; agent: string; reason: string; toRank?: number }; autopilot: boolean;
-  nextAction: NextAction | null; specLines: number | null; detail: PrDetail;
+  nextAction: NextAction | null; specLines: number | null; detail: PrDetail; server?: PrServer;
 }
 export interface PrSummary { live: string[]; signoff: string[]; autopilot: string[]; missing: { url: string; reason: string }[] }
 export interface PrBoard {
   at: string | null; user: string; agents: { count: number; source: 'sessions' | 'wip-label' }; counts: Record<PrGroup, number>;
   footer: { running: number; waiting: number; parked: number }; rows: PrRow[]; summary?: PrSummary;
-  queue: boolean; rate?: { until: string }; error?: string; truncated?: boolean;
+  queue: boolean; /** The host can start a test server. @req FR:pr-page/server.host */ servers?: boolean; rate?: { until: string }; error?: string; truncated?: boolean;
 }
 export type Tab = 'summary' | PrGroup | 'pinned';
 /** The host has no GitHub token: one honest state. @req FR:pr-page/auth.state */
@@ -56,14 +58,15 @@ export function rowsOf(b: PrBoard | null, tab: Tab, sel: string[]): PrRow[] {
 }
 
 export interface SummaryView { live: PrRow[]; signoff: PrRow[]; autopilot: PrRow[]; missing: { row: PrRow; reason: string }[] }
-/** The Summary sections as rows, under the project filter. @req FR:pr-page/summary.layout */
+/** The Summary sections as rows, under the project filter. A row the owner cannot act on is in no section. @req FR:pr-page/summary.layout @req FR:pr-page/summary.live @req FR:pr-page/check.none */
 export function summaryView(b: PrBoard | null, sel: string[]): SummaryView {
   const by = new Map((b?.rows ?? []).map((r) => [r.url, r]));
-  const rows = (urls: string[] = []) => urls.map((u) => by.get(u)).filter((r): r is PrRow => !!r && inProjects(r.project, sel));
+  const ok = (r: PrRow) => !r.nextAction || actionable(r, b);
+  const rows = (urls: string[] = []) => urls.map((u) => by.get(u)).filter((r): r is PrRow => !!r && inProjects(r.project, sel) && ok(r));
   const s = b?.summary;
   return {
     live: rows(s?.live), signoff: rows(s?.signoff), autopilot: rows(s?.autopilot),
-    missing: (s?.missing ?? []).flatMap((m) => { const row = by.get(m.url); return row && inProjects(row.project, sel) ? [{ row, reason: m.reason }] : []; }),
+    missing: (s?.missing ?? []).flatMap((m) => { const row = by.get(m.url); return row && inProjects(row.project, sel) && ok(row) ? [{ row, reason: m.reason }] : []; }),
   };
 }
 
@@ -80,19 +83,23 @@ export function countOf(b: PrBoard | null, tab: Tab, sel: string[]): number {
 
 /** `My Autopilot`, `You`, or the login. @req FR:pr-page/card.fields */
 export const authorText = (r: PrRow) => (r.mine ? (r.autopilot ? 'My Autopilot' : 'You') : r.author);
-/** The card tone: owner kind, strong when it has a next action. @req FR:pr-page/card.color */
-export const toneOf = (r: PrRow) => `${r.mine ? (r.autopilot ? 'auto' : 'mine') : 'other'}${r.nextAction ? ' strong' : ''}`;
+/** The card tone: owner kind, strong when it has a next action the owner can do. @req FR:pr-page/card.color @req FR:pr-page/check.none */
+export const toneOf = (r: PrRow, b?: PrBoard | null) => `${r.mine ? (r.autopilot ? 'auto' : 'mine') : 'other'}${actionable(r, b) ? ' strong' : ''}`;
 /** Small muted text, only when known. */
 export const specText = (r: PrRow) => (r.specLines === null || r.specLines === undefined ? '' : `${r.specLines} spec ${r.specLines === 1 ? 'line' : 'lines'}`);
 
 /** The Catalyst sweep command for one PR: update my own, review others. Run it in a checkout of the repo. @req FR:pr-page/menu.@function */
 export const sweepCommand = (r: Pick<PrRow, 'number' | 'mine'>) => `/catalyst:pr-sweep ${r.number} ${r.mine ? 'update' : 'review'}`;
 
-export type QuickId = 'sweep' | 'autopilot-on' | 'autopilot-off' | 'open' | 'copy';
-export interface QuickAction { id: QuickId; label: string; title: string; op?: 'add' | 'top' | 'remove'; href?: string; text?: string }
+export type QuickId = 'sweep' | 'autopilot-on' | 'autopilot-off' | 'server-open' | 'server-start' | 'server-stop' | 'pin' | 'unpin' | 'open' | 'copy';
+export interface QuickAction { id: QuickId; label: string; title: string; op?: 'add' | 'top' | 'remove' | 'pin' | 'unpin' | 'start' | 'stop'; href?: string; text?: string }
+/** The server URL as a link: a local `http` URL only. @req FR:pr-page/server.view */
+export const serverHref = (r: Pick<PrRow, 'server'>): string | null => (r.server?.state === 'running' && /^http:\/\/(localhost|127\.0\.0\.1):\d{2,5}$/.test(r.server.url ?? '') ? r.server.url! : null);
+/** A row has a server that still starts: the page then reloads the board. @req FR:pr-page/server.poll */
+export const starting = (b: PrBoard | null): boolean => !!b?.rows.some((r) => r.server?.state === 'starting');
 /**
  * The quick actions that fit a row, in menu order. Only existing routes and commands: the queue (`prs.queue`), the Autopilot label
- * (`prs.label`), the PR link, and the Catalyst sweep command. No Ready: the Autopilot workflow derives it. @req FR:pr-page/menu.@function
+ * (`prs.label`), the test server (`prs.server`), Pin (`prs.queue`), the PR link, and the Catalyst sweep command. No Ready: the Autopilot workflow derives it. @req FR:pr-page/menu.@function
  */
 export function actionsOf(r: PrRow, b: PrBoard | null): QuickAction[] {
   const out: QuickAction[] = [];
@@ -103,6 +110,13 @@ export function actionsOf(r: PrRow, b: PrBoard | null): QuickAction[] {
   }
   if (r.mine && !r.autopilot && !r.draft && r.group !== 'paused') out.push({ id: 'autopilot-on', label: 'Enable Autopilot', title: 'Add the Status: 🤖 Autopilot label', op: 'add' });
   if (r.autopilot && (r.mine || r.group === 'processing')) out.push({ id: 'autopilot-off', label: 'Remove Autopilot', title: 'Remove the Status: 🤖 Autopilot label', op: 'remove' });
+  // @req FR:pr-page/server.pane
+  const href = serverHref(r);
+  if (href) out.push({ id: 'server-open', label: 'Open test server', title: `Open ${href.replace(/^http:\/\//, '')}`, href });
+  if (r.server && r.server.state !== 'failed') out.push({ id: 'server-stop', label: 'Stop server', title: 'Stop the test server of this PR', op: 'stop' });
+  else if (b?.servers) out.push({ id: 'server-start', label: 'Start server', title: 'Check out, build, and run this PR on a free local port', op: 'start' });
+  // @req FR:pr-page/pin.toggle
+  if (b?.queue) out.push(r.pinned ? { id: 'unpin', label: 'Unpin', title: 'Unpin: drop it from the Pinned order', op: 'unpin' } : { id: 'pin', label: 'Pin', title: 'Pin: the Sweep Manager works pinned PRs first', op: 'pin' });
   out.push({ id: 'open', label: 'Open on GitHub', title: 'Open the PR on GitHub', href: r.url });
   out.push({ id: 'copy', label: 'Copy sweep command', title: `Copy ${sweepCommand(r)}; run it in a checkout of ${r.repo}`, text: sweepCommand(r) });
   return out;
@@ -136,13 +150,12 @@ export const whenText = (iso?: string) => { const t = Date.parse(iso ?? ''); ret
 export const ITEM_WORD: Record<string, string> = { open: 'Open', passed: 'Passed', failed: 'Failed', 'needs-fix': 'Needs a fix', 'fixed-pending-revalidation': 'Fixed, check again', blocked: 'Needs you' };
 export const LANE_WORD: Record<string, string> = { preparing: 'The agent is preparing the server.', working: 'The agent is working on a fix.', 'ready-for-michael': 'Ready for you.', revalidating: 'Ready for you to check the fixes.' };
 
-/** A live check with no file or no steps is not a task. @req FR:pr-page/check.none */
-export const NOT_ACTIONABLE = 'Not actionable: no server/steps yet';
-export const actionable = (r: PrRow) => !!r.nextAction && (r.nextAction !== 'validate' || !!r.detail.check?.steps.length);
-/** The card flag and details heading words. @req FR:pr-page/card.flag @req FR:pr-page/check.none */
-export const flagText = (r: PrRow) => (!r.nextAction ? '' : actionable(r) ? ACTION_LABEL[r.nextAction] : NOT_ACTIONABLE);
+/** A live check is a task when it has steps, a test server, or a host that can start one. @req FR:pr-page/check.none */
+export const actionable = (r: PrRow, b?: PrBoard | null) => !!r.nextAction && (r.nextAction !== 'validate' || !!r.detail.check?.steps.length || !!r.server || !!b?.servers);
+/** The card flag and details heading words; none for a row the owner cannot act on. @req FR:pr-page/card.flag @req FR:pr-page/check.none */
+export const flagText = (r: PrRow, b?: PrBoard | null) => (r.nextAction && actionable(r, b) ? ACTION_LABEL[r.nextAction] : '');
 /** The nav count: rows with an actionable next action. @req FR:pr-page/nav.badge @req FR:pr-page/check.none */
-export const needCount = (b: PrBoard | null): number => (b ? b.rows.filter(actionable).length : 0);
+export const needCount = (b: PrBoard | null): number => (b ? b.rows.filter((r) => actionable(r, b)).length : 0);
 /** The one signed-out state. @req FR:pr-page/auth.state */
 export function signInText(a: PrAuthState): { title: string; action?: string; detail?: string; note?: string } {
   if (a.method === 'none') return { title: 'Install the GitHub CLI, or set GITHUB_TOKEN.', detail: 'Then reopen this page. Stack reads the gh sign-in; it never stores a token.' };

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ACTION_LABEL, actionsOf, authorText, flagText, NOT_ACTIONABLE, countOf, createPrStore, loadPrefs, moveTo, needCount, projectsOf, rowsOf, savePrefs, signInText, specText, summaryView, sweepCommand, tabsOf, TAB_LABEL, toneOf, totalOf, updatedText,
+  ACTION_LABEL, actionable, actionsOf, authorText, flagText, countOf, serverHref, starting, createPrStore, loadPrefs, moveTo, needCount, projectsOf, rowsOf, savePrefs, signInText, specText, summaryView, sweepCommand, tabsOf, TAB_LABEL, toneOf, totalOf, updatedText,
   type PrBoard, type PrRow,
 } from '../src/prs';
 
@@ -11,7 +11,7 @@ const row = (o: Partial<PrRow>): PrRow => ({
 });
 const board = (rows: PrRow[], o: Partial<PrBoard> = {}): PrBoard => ({
   at: '2026-11-11T12:00:00Z', user: 'me', agents: { count: 0, source: 'sessions' }, counts: { waiting: 0, processing: 0, pending: 0, paused: 0 }, footer: { running: 0, waiting: 0, parked: 0 }, rows,
-  summary: { live: [], signoff: [], autopilot: [], missing: [] }, queue: true, ...o,
+  summary: { live: [], signoff: [], autopilot: [], missing: [] }, queue: true, servers: false, ...o,
 });
 
 // @req FR:pr-page/flyout.tabs @req FR:pr-page/flyout.filter @req FR:pr-page/pin.tab
@@ -19,7 +19,7 @@ describe('tabs, counts, and filters', () => {
   const b = board([
     row({ url: 'a', project: 'allyte', nextAction: 'validate', pinned: true, rank: 2 }), row({ url: 'b', nextAction: 'signoff', pinned: true, rank: 1 }),
     row({ url: 'c', group: 'waiting', project: 'ftk', mine: false, author: 'roland', nextAction: 'approve' }), row({ url: 'd', group: 'pending', autopilot: false }),
-  ], { summary: { live: ['a'], signoff: ['b'], autopilot: [], missing: [{ url: 'c', reason: 'Approve' }, { url: 'a', reason: 'Live check failed: Login' }] } });
+  ], { servers: true, summary: { live: ['a'], signoff: ['b'], autopilot: [], missing: [{ url: 'c', reason: 'Approve' }, { url: 'a', reason: 'Live check failed: Login' }] } });
   it('Summary first, then the groups, then Pinned; clear names', () => {
     expect(tabsOf()).toEqual(['summary', 'processing', 'waiting', 'pending', 'paused', 'pinned']);
     expect(tabsOf().map((t) => TAB_LABEL[t])).toEqual(['Summary', 'Processing', 'Waiting on me', 'Pending', 'Paused', 'Pinned']);
@@ -185,19 +185,19 @@ describe('actionsOf: quick actions that fit the PR', () => {
   const ids = (r: PrRow, b: PrBoard | null = board([r])) => actionsOf(r, b).map((a) => a.id);
   it('my Autopilot PR: Sweep next, Remove Autopilot, Open, Copy; never Ready, merge, or approve', () => {
     const r = row({ url: 'https://github.com/o/r/pull/7', number: 7 });
-    expect(ids(r)).toEqual(['sweep', 'autopilot-off', 'open', 'copy']);
-    expect(actionsOf(r, board([r])).map((a) => a.label)).toEqual(['Sweep next', 'Remove Autopilot', 'Open on GitHub', 'Copy sweep command']);
+    expect(ids(r)).toEqual(['sweep', 'autopilot-off', 'pin', 'open', 'copy']);
+    expect(actionsOf(r, board([r])).map((a) => a.label)).toEqual(['Sweep next', 'Remove Autopilot', 'Pin', 'Open on GitHub', 'Copy sweep command']);
     expect(actionsOf(r, board([r])).map((a) => a.label).join(' ')).not.toMatch(/ready|merge|approve|close|draft/i);
   });
   it('my PR with no Autopilot: Enable Autopilot; not on a draft or a paused PR', () => {
-    expect(ids(row({ autopilot: false, group: 'pending' }))).toEqual(['sweep', 'autopilot-on', 'open', 'copy']);
-    expect(ids(row({ autopilot: false, group: 'pending', draft: true }))).toEqual(['sweep', 'open', 'copy']);
-    expect(ids(row({ autopilot: false, group: 'paused' }))).toEqual(['sweep', 'open', 'copy']);
+    expect(ids(row({ autopilot: false, group: 'pending' }))).toEqual(['sweep', 'autopilot-on', 'pin', 'open', 'copy']);
+    expect(ids(row({ autopilot: false, group: 'pending', draft: true }))).toEqual(['sweep', 'pin', 'open', 'copy']);
+    expect(ids(row({ autopilot: false, group: 'paused' }))).toEqual(['sweep', 'pin', 'open', 'copy']);
   });
   it('someone else\'s PR: no Autopilot change unless it is in Processing (assigned to me)', () => {
-    expect(ids(row({ mine: false, author: 'roland', group: 'waiting', autopilot: false }))).toEqual(['sweep', 'open', 'copy']);
-    expect(ids(row({ mine: false, author: 'roland', group: 'waiting', autopilot: true }))).toEqual(['sweep', 'open', 'copy']);
-    expect(ids(row({ mine: false, author: 'roland', group: 'processing', autopilot: true }))).toEqual(['sweep', 'autopilot-off', 'open', 'copy']);
+    expect(ids(row({ mine: false, author: 'roland', group: 'waiting', autopilot: false }))).toEqual(['sweep', 'pin', 'open', 'copy']);
+    expect(ids(row({ mine: false, author: 'roland', group: 'waiting', autopilot: true }))).toEqual(['sweep', 'pin', 'open', 'copy']);
+    expect(ids(row({ mine: false, author: 'roland', group: 'processing', autopilot: true }))).toEqual(['sweep', 'autopilot-off', 'pin', 'open', 'copy']);
   });
   it('Sweep next: add when not queued, top when queued; hidden when first in its part or with no queue', () => {
     const a = row({ url: 'a', rank: 1, pinned: true });
@@ -224,16 +224,84 @@ describe('actionsOf: quick actions that fit the PR', () => {
   });
 });
 
-// @req FR:pr-page/check.none @req FR:pr-page/nav.badge
-describe('a live check with no steps is not actionable', () => {
+// @req FR:pr-page/check.none @req FR:pr-page/nav.badge @req FR:pr-page/summary.live @req FR:pr-page/summary.missing
+describe('a Validate row the owner cannot act on never shows as a task', () => {
   const check = { ask: 'Check it', server: 'pnpm web', steps: ['Open it'], pass: [], fail: [] };
-  it('the flag says Not actionable; the badge skips it', () => {
-    expect(NOT_ACTIONABLE).toBe('Not actionable: no server/steps yet');
-    expect(flagText(row({ nextAction: 'validate' }))).toBe('Not actionable: no server/steps yet');
-    expect(flagText(row({ nextAction: 'validate', detail: { check: { ...check, steps: [] } } }))).toBe('Not actionable: no server/steps yet');
-    expect(flagText(row({ nextAction: 'validate', detail: { check } }))).toBe('Validate');
-    expect(flagText(row({ nextAction: 'signoff' }))).toBe('Sign off');
-    expect(flagText(row({}))).toBe('');
-    expect(needCount(board([row({ nextAction: 'validate' }), row({ nextAction: 'validate', detail: { check } }), row({ nextAction: 'approve' })]))).toBe(2);
+  const off = board([], { servers: false });
+  const on = board([], { servers: true });
+  it('actionable: steps, a server, or a host that can start one', () => {
+    expect(actionable(row({ nextAction: 'validate' }), off)).toBe(false);
+    expect(actionable(row({ nextAction: 'validate', detail: { check: { ...check, steps: [] } } }), off)).toBe(false);
+    expect(actionable(row({ nextAction: 'validate', detail: { check } }), off)).toBe(true);
+    expect(actionable(row({ nextAction: 'validate', server: { state: 'running', url: 'http://localhost:5180', at: '' } }), off)).toBe(true);
+    expect(actionable(row({ nextAction: 'validate' }), on)).toBe(true);
+    expect(actionable(row({ nextAction: 'signoff' }), off)).toBe(true);
+    expect(actionable(row({}), on)).toBe(false);
+  });
+  it('no flag, no badge count, and never the words Not actionable', () => {
+    expect(flagText(row({ nextAction: 'validate' }), off)).toBe('');
+    expect(flagText(row({ nextAction: 'validate' }), on)).toBe('Validate');
+    expect(flagText(row({ nextAction: 'validate', detail: { check } }), off)).toBe('Validate');
+    expect(flagText(row({ nextAction: 'signoff' }), off)).toBe('Sign off');
+    expect(flagText(row({}), on)).toBe('');
+    expect(toneOf(row({ nextAction: 'validate' }), off)).toBe('auto');
+    expect(toneOf(row({ nextAction: 'validate' }), on)).toBe('auto strong');
+    const rows = [row({ url: 'a', nextAction: 'validate' }), row({ url: 'b', nextAction: 'validate', detail: { check } }), row({ url: 'c', nextAction: 'approve' })];
+    expect(needCount(board(rows, { servers: false }))).toBe(2);
+    expect(needCount(board(rows, { servers: true }))).toBe(3);
+  });
+  it('the Summary lists only actionable rows', () => {
+    const rows = [row({ url: 'a', nextAction: 'validate' }), row({ url: 'c', nextAction: 'approve' })];
+    const summary = { live: ['a'], signoff: [], autopilot: [], missing: [{ url: 'a', reason: 'Validate' }, { url: 'c', reason: 'Approve' }, { url: 'a', reason: 'Live check failed: Login' }] };
+    const no = summaryView(board(rows, { servers: false, summary }), []);
+    expect(no.live).toEqual([]);
+    expect(no.missing.map((m) => m.reason)).toEqual(['Approve']);
+    expect(countOf(board(rows, { servers: false, summary }), 'summary', [])).toBe(1);
+    const yes = summaryView(board(rows, { servers: true, summary }), []);
+    expect(yes.live.map((r) => r.url)).toEqual(['a']);
+    expect(yes.missing).toHaveLength(3);
+  });
+});
+
+// @req FR:pr-page/menu.@function @req FR:pr-page/pin.toggle @req FR:pr-page/server.pane
+describe('actionsOf: Pin and the test server', () => {
+  const find = (r: PrRow, b: PrBoard) => actionsOf(r, b).map((a) => a.id);
+  it('Pin or Unpin sits before Open, only with a queue', () => {
+    const r = row({ url: 'a', rank: 1 });
+    expect(find(r, board([r]))).toEqual(['autopilot-off', 'pin', 'open', 'copy']);
+    expect(actionsOf(r, board([r])).find((a) => a.id === 'pin')).toMatchObject({ label: 'Pin', op: 'pin' });
+    const p = row({ url: 'a', rank: 1, pinned: true });
+    expect(actionsOf(p, board([p])).find((a) => a.id === 'unpin')).toMatchObject({ label: 'Unpin', op: 'unpin' });
+    expect(find(r, board([r], { queue: false }))).toEqual(['autopilot-off', 'open', 'copy']);
+  });
+  it('Start server with no server or a failed one; Stop while it starts or runs; Open when it runs', () => {
+    const b = (r: PrRow, servers = true) => board([r], { queue: false, servers });
+    const none = row({});
+    expect(find(none, b(none))).toEqual(['autopilot-off', 'server-start', 'open', 'copy']);
+    expect(find(none, b(none, false))).toEqual(['autopilot-off', 'open', 'copy']);
+    const starting = row({ server: { state: 'starting', step: 'build', at: '' } });
+    expect(find(starting, b(starting))).toEqual(['autopilot-off', 'server-stop', 'open', 'copy']);
+    const running = row({ server: { state: 'running', url: 'http://localhost:5180', at: '' } });
+    expect(find(running, b(running))).toEqual(['autopilot-off', 'server-open', 'server-stop', 'open', 'copy']);
+    expect(actionsOf(running, b(running)).find((a) => a.id === 'server-open')).toMatchObject({ label: 'Open test server', href: 'http://localhost:5180' });
+    const failed = row({ server: { state: 'failed', error: 'Build failed', at: '' } });
+    expect(find(failed, b(failed))).toEqual(['autopilot-off', 'server-start', 'open', 'copy']);
+    expect(actionsOf(none, b(none)).map((a) => a.label)).toContain('Start server');
+    expect(actionsOf(running, b(running)).map((a) => a.label)).toContain('Stop server');
+  });
+  it('a server URL that is not local is never a link', () => {
+    const r = row({ server: { state: 'running', url: 'https://evil.example/x', at: '' } });
+    expect(find(r, board([r], { queue: false, servers: true }))).not.toContain('server-open');
+    expect(serverHref(r)).toBeNull();
+    expect(serverHref(row({ server: { state: 'running', url: 'http://localhost:5180', at: '' } }))).toBe('http://localhost:5180');
+  });
+});
+
+// @req FR:pr-page/server.poll @req FR:pr-page/live.event
+describe('the board reloads only while a test server starts', () => {
+  it('starting: true while a row has a starting server', () => {
+    expect(starting(board([row({ server: { state: 'starting', at: '' } })]))).toBe(true);
+    expect(starting(board([row({ server: { state: 'running', at: '' } }), row({})]))).toBe(false);
+    expect(starting(null)).toBe(false);
   });
 });

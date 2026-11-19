@@ -14,6 +14,7 @@ import { ApiError } from './errors';
 import type { GitHubAuth, GitHubAuthStatus, GitHubSignIn } from './github-auth';
 import type { LiveLane } from '../core/pr-board';
 import type { LaneView } from '../core/live-lane';
+import type { PrServers } from './pr-server';
 
 /** The live lane view as the board needs it. @req FR:pr-page/summary.live */
 export const laneOf = (v: LaneView): LiveLane | undefined => (v.active ? { url: v.active.url, state: v.active.state, ...(v.active.serverUrl ? { serverUrl: v.active.serverUrl } : {}), items: v.items.map((i) => ({ text: i.text, state: i.state })) } : undefined);
@@ -38,6 +39,8 @@ export function createPrPage(o: {
   onChange?: () => void; fetch?: typeof fetch; queue?: PrQueue;
   /** The live lane view (`stack live`). */
   live?: () => LaneView;
+  /** Test servers on the local host. @req FR:pr-page/server.host */
+  servers?: PrServers;
 }): PrPage {
   const g = o.config?.github ?? {};
   // My repos: the explicit list (env, then config), else the owner plus admin orgs. Writes check only an explicit list. @req FR:pr-page/auth.repos
@@ -47,7 +50,7 @@ export function createPrPage(o: {
   const source = createGitHubBoard({ token: o.token, repos, user: g.user, fetch: o.fetch, adminOrgs: !repos?.length && !!o.adminOrgs });
   const prQueue = o.queue ?? cliPrQueue();
   return {
-    prBoard: createPrBoardService({ source, inventory: o.inventory, files: queueFiles(o.home), check: readCheck(o.home), ...(o.live ? { live: () => laneOf(o.live!()) } : {}), myRepos: repos, exclude: g.exclude, queue: async () => (prQueue.available ? prQueue.available() : true), intervalMs: g.pollSeconds ? g.pollSeconds * 1000 : undefined, onChange: o.onChange }),
+    prBoard: createPrBoardService({ source, inventory: o.inventory, files: queueFiles(o.home), check: readCheck(o.home), ...(o.servers ? { server: o.servers.view } : {}), ...(o.live ? { live: () => laneOf(o.live!()) } : {}), myRepos: repos, exclude: g.exclude, queue: async () => (prQueue.available ? prQueue.available() : true), intervalMs: g.pollSeconds ? g.pollSeconds * 1000 : undefined, onChange: o.onChange }),
     prWrites: createGitHubWrites({ token: o.token, repos, fetch: o.fetch }),
     prQueue,
   };

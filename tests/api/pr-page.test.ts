@@ -12,6 +12,8 @@ import { cliPrQueue, storePrQueue, noQueue, QueueRefused, QueueUnavailable, type
 import type { PrFacts } from '../../src/core/pr-board';
 import { parseConfig } from '../../src/core/config';
 import { createPrPage, readCheck } from '../../src/api/pr-page';
+import type { PrServers } from '../../src/api/pr-server';
+import type { PrServerView } from '../../src/core/pr-server';
 
 const NOW = Date.parse('2026-11-11T12:00:00Z');
 const OWNER = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ userDetails: 'me', identityProvider: 'github', userRoles: ['authenticated'] })).toString('base64') };
@@ -405,15 +407,22 @@ describe('queue client', () => {
 
 // @req FR:pr-page/api.get @req FR:pr-page/api.queue @req FR:pr-page/api.label @req FR:pr-page/api.ack @req FR:pr-page/api.rec @req FR:pr-page/act.owner @req FR:pr-page/api.repos @req FR:pr-page/act.never
 describe('PR routes', () => {
-  function mk(o: { board?: boolean; queue?: PrQueue | null; ranks?: Record<string, number>; ghStatus?: number; labels?: string[]; threads?: PrFacts['threads'] } = {}) {
+  function mk(o: { board?: boolean; servers?: boolean; check?: string; queue?: PrQueue | null; ranks?: Record<string, number>; ghStatus?: number; labels?: string[]; threads?: PrFacts['threads'] } = {}) {
     const ghCalls: string[] = [];
     const qCalls: string[] = [];
     const push = (s: string) => async () => { qCalls.push(s); };
     const prQueue: PrQueue = { move: async (r, to) => { qCalls.push(`move ${r} ${to}`); }, add: async (r) => { qCalls.push(`add ${r}`); }, pin: async (r) => { qCalls.push(`pin ${r}`); }, unpin: async (r) => { qCalls.push(`unpin ${r}`); }, remove: async (r) => { qCalls.push(`remove ${r}`); }, undo: push('undo'), ack: async (r, t, n) => { qCalls.push(`ack ${r} ${t} ${n}`); }, accept: async (id) => { qCalls.push(`accept ${id}`); }, edit: async (id, d) => { qCalls.push(`edit ${id} ${d.reason}`); }, reject: async (id, why) => { qCalls.push(`reject ${id} ${why}`); } };
     const src = fakeSource(() => [facts(1, { ...(o.labels ? { labels: o.labels } : {}), ...(o.threads ? { threads: o.threads } : {}) }), facts(2)]);
-    const prBoard = createPrBoardService({ source: src, now: () => NOW, timers: clock().timers, queue: async () => true, files: () => ({ queue: { items: Object.entries(o.ranks ?? {}).map(([u, rank]) => ({ url: u, rank })) } }) });
+    const srvCalls: string[] = [];
+    const views = new Map<string, PrServerView>();
+    const prServers: PrServers = {
+      view: (r, n) => views.get(`${r}#${n}`),
+      start: async (r, n, s) => { srvCalls.push(`start ${r}#${n} ${s ?? '-'}`); const v: PrServerView = { state: 'starting', step: 'checkout', at: new Date(NOW).toISOString() }; views.set(`${r}#${n}`, v); return v; },
+      stop: async (r, n) => { srvCalls.push(`stop ${r}#${n}`); views.delete(`${r}#${n}`); }, stopAll: async () => undefined,
+    };
+    const prBoard = createPrBoardService({ source: src, now: () => NOW, timers: clock().timers, queue: async () => true, ...(o.servers ? { server: prServers.view } : {}), ...(o.check ? { check: () => o.check! } : {}), files: () => ({ queue: { items: Object.entries(o.ranks ?? {}).map(([u, rank]) => ({ url: u, rank })) } }) });
     const prWrites = createGitHubWrites({ token: TOKEN, fetch: fakeFetch((c) => { ghCalls.push(`${c.method} ${c.url}`); return { status: o.ghStatus ?? 200, body: { data: {} } }; }).fetch, repos: ['o'] });
-    const deps = { storage: new MemoryStorage(), ...(o.board === false ? {} : { prBoard, prWrites, ...(o.queue === null ? {} : { prQueue: o.queue ?? prQueue }) }) };
+    const deps = { storage: new MemoryStorage(), ...(o.board === false ? {} : { prBoard, prWrites, ...(o.queue === null ? {} : { prQueue: o.queue ?? prQueue }), ...(o.servers ? { prServers } : {}) }) };
     const tokens = createTokenService({ store: new MemoryTokenStore(), now: () => new Date(NOW) });
     const auth = createAuth({ owners: [], tokens });
     const token = auth.wrap(createApiHandler({ ...deps, authorize: auth.authorize }));
@@ -424,12 +433,12 @@ describe('PR routes', () => {
       const t = await res.text();
       return { status: res.status, json: t ? JSON.parse(t) : undefined, text: t };
     };
-    return { call, tokens, ghCalls, qCalls, src };
+    return { call, tokens, ghCalls, qCalls, src, srvCalls };
   }
   it('routes are registered with scopes and documented', () => {
     for (const n of ['prs.get']) expect(routeScope(n)).toBe('tasks:read');
-    for (const n of ['prs.queue', 'prs.label', 'prs.ack', 'prs.rec', 'prs.resolve']) expect(routeScope(n)).toBe('tasks:write');
-    expect(ROUTES.filter((r) => r.name.startsWith('prs.')).map((r) => `${r.method} ${r.doc}`)).toEqual(['GET /prs', 'POST /prs/queue', 'POST /prs/label', 'POST /prs/ack', 'POST /prs/recs/{id}', 'POST /prs/resolve', 'GET /prs/sign-in', 'POST /prs/sign-in']);
+    for (const n of ['prs.queue', 'prs.label', 'prs.ack', 'prs.rec', 'prs.resolve', 'prs.server']) expect(routeScope(n)).toBe('tasks:write');
+    expect(ROUTES.filter((r) => r.name.startsWith('prs.')).map((r) => `${r.method} ${r.doc}`)).toEqual(['GET /prs', 'POST /prs/queue', 'POST /prs/label', 'POST /prs/ack', 'POST /prs/recs/{id}', 'POST /prs/resolve', 'POST /prs/server', 'GET /prs/sign-in', 'POST /prs/sign-in']);
     const y = readFileSync(join(__dirname, '../../docs/api/openapi.yaml'), 'utf8');
     expect(y).toContain('/prs:');
     expect(y).toContain('/prs/recs/{id}:');
@@ -548,6 +557,31 @@ describe('PR routes', () => {
     expect((await m.call('owner', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_kw1', op: 'merge' })).status).toBe(422);
     const t = (await m.tokens.create({ name: 'cos', scopes: ['tasks:read', 'tasks:write'] as never })).token;
     expect((await m.call(t, 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_kw1', op: 'resolve' })).status).toBe(403);
+  });
+  // @req FR:pr-page/api.server @req FR:pr-page/server.host @req FR:pr-page/data.board @req FR:pr-page/data.row
+  it('POST /prs/server starts and stops the test server of a PR on the board; the board shows it', async () => {
+    const m = mk({ servers: true, check: '- Server: `pnpm web --port 5180`\n\n## Steps\n\n1. Open it' });
+    const before = (await m.call('owner', 'GET', '/prs')).json;
+    expect(before.servers).toBe(true);
+    expect(before.rows[0].server).toBeUndefined();
+    const started = await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'start' });
+    expect(started.json).toEqual({ server: { state: 'starting', step: 'checkout', at: new Date(NOW).toISOString() } });
+    // The Server line of the check file is the command.
+    expect(m.srvCalls).toEqual(['start o/r#1 pnpm web --port 5180']);
+    expect((await m.call('owner', 'GET', '/prs')).json.rows.find((r: { number: number }) => r.number === 1).server).toMatchObject({ state: 'starting' });
+    expect((await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'stop' })).json).toEqual({ server: null });
+    expect(m.srvCalls[1]).toBe('stop o/r#1');
+    // Not on the board, a bad op, a token.
+    expect((await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 99, op: 'start' })).status).toBe(403);
+    expect((await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'restart' })).status).toBe(422);
+    const t = (await m.tokens.create({ name: 'cos', scopes: ['tasks:read', 'tasks:write'] as never })).token;
+    expect((await m.call(t, 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'start' })).status).toBe(403);
+    expect(m.srvCalls).toHaveLength(2);
+  });
+  it('a host that cannot start servers: servers false and 404', async () => {
+    const m = mk();
+    expect((await m.call('owner', 'GET', '/prs')).json.servers).toBe(false);
+    expect((await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'start' })).status).toBe(404);
   });
   it('POST /prs/recs/{id}: edit and reject need a reason', async () => {
     const m = mk();

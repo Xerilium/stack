@@ -32,12 +32,12 @@ Bullets under 10 words. Max 16 KB. At most 20 items a list.
 | Part | Rule |
 | --- | --- |
 | `- Ask:` | What the owner must decide or check, one line |
-| `- Server:` | The command that starts the server; the page has a Copy button |
+| `- Server:` | The command that starts the server; the page has a Copy button. `Start server` runs it in a worktree of the PR, on a free port |
 | `- As of:` | ISO time the sweeper last checked the file |
 | `## Steps` | Numbered steps, in order |
 | `## Pass`, `## Fail` | What a pass and a fail look like |
 
-Other lines are ignored. A PR whose next action is Validate with no file, or no steps, shows `Not actionable: no server/steps yet`.
+Other lines are ignored. On the owner's machine, a PR whose next action is Validate has `Start server` in its details and its `⋯` menu (`FR:server.*`). With no `Server` line, Stack runs the first `package.json` script of `web`, `dev`, `start`, `preview`. On a host that cannot start servers, a Validate PR with no file, or no steps, does not show as a task.
 
 ## Lifecycle
 

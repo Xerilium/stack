@@ -24,6 +24,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/prs/label` | POST (owner only) add or remove the Autopilot label (no other label) |
 | `/prs/ack` | POST (owner only) record an answer on a thread (`thread`, `note`); `post: true` first posts the `🤖 [AI]` text on GitHub |
 | `/prs/recs/{id}` | POST (owner only) accept, edit, or reject a PR priority recommendation |
+| `/prs/server` | POST (owner only, local hosts) start or stop the test server of a PR on the board (`op` `start` or `stop`) |
 | `/prs/resolve` | POST (owner only) resolve or reopen a review thread (`thread` node id, `op`) of a PR on the board |
 | `/prs/sign-in` | GET (owner only) the GitHub sign-in session (code and device link, never a token); POST starts `gh auth login --web`; 404 where the host has no sign-in |
 | `/pris` | GET or POST (owner only) the owner priorities with sub-items, backlog and weekly progress; POST sends `{rev, pris}`, a stale rev is 409 |

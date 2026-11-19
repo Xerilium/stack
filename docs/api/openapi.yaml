@@ -2071,6 +2071,68 @@ paths:
                     type: string
         default:
           $ref: "#/components/responses/Error"
+  /prs/server:
+    post:
+      summary: "Owner only. Start or stop the test server of a PR on the board: a worktree of the local clone, built and run on a free local port. 404 on hosts that cannot start one; 409 when 3 run"
+      operationId: setPrServer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - repo
+                - number
+                - op
+              properties:
+                repo:
+                  type: string
+                  maxLength: 140
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$
+                number:
+                  type: integer
+                  minimum: 1
+                  maximum: 9999999
+                op:
+                  type: string
+                  enum:
+                    - start
+                    - stop
+                  description: start or stop
+      responses:
+        "200":
+          description: The server, or null after a stop
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  server:
+                    type: object
+                    nullable: true
+                    properties:
+                      state:
+                        type: string
+                        enum:
+                          - starting
+                          - running
+                          - failed
+                      step:
+                        type: string
+                        enum:
+                          - checkout
+                          - build
+                          - run
+                      url:
+                        type: string
+                      error:
+                        type: string
+                      at:
+                        type: string
+        default:
+          $ref: "#/components/responses/Error"
   /prs/sign-in:
     get:
       summary: "Owner only. The GitHub sign-in session: state (waiting, done, error, none), the one-time code, and the device link. Never a token. 404 on hosts with no sign-in"

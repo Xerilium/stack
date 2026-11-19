@@ -4,7 +4,7 @@
 
 /* Card: the whole card selects; links and tools sit above the stretched target. @req FR:ui-kit/card */
 .ui-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
-.ui-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "top tools" "open tools"; gap: 6px 8px; padding: 14px 44px 14px 16px; border-radius: var(--fl-r-xl); border-left: 4px solid var(--ui-edge, var(--line)); background: var(--ui-soft, var(--panel)); color: var(--ui-ink, var(--ink)); transition: background var(--fl-fast) var(--fl-ease), box-shadow var(--fl-fast); }
+.ui-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "top tools" "open tools"; gap: 6px 8px; padding: 14px 52px 14px 16px; border-radius: var(--fl-r-xl); border-left: 4px solid var(--ui-edge, var(--line)); background: var(--ui-soft, var(--panel)); color: var(--ui-ink, var(--ink)); transition: background var(--fl-fast) var(--fl-ease), box-shadow var(--fl-fast); }
 .ui-card.strong { background: var(--ui-strong, var(--ui-soft, var(--panel))); box-shadow: var(--fl-shadow4); }
 .ui-card[data-selected="true"] { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ui-card-top { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: 12px; color: var(--ui-ink2, var(--ink2)); }
@@ -16,8 +16,9 @@
 .ui-card:hover .ui-card-title { text-decoration: underline; }
 .ui-card-title { grid-area: title; font-size: 15px; font-weight: 600; line-height: 21px; overflow-wrap: anywhere; }
 .ui-card-sub { grid-area: sub; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-ink2, var(--ink2)); }
-/* The chevron: 28 px, in a 44 px column at the right edge, centred on the full card height (the card is its containing block). @req FR:ui-kit/card.chev */
-.ui-card-chev { position: absolute; inset: 0 0 0 auto; width: 44px; display: flex; align-items: center; justify-content: center; padding-bottom: 4px; font-size: 28px; line-height: 1; color: var(--ui-ink2, var(--ink2)); pointer-events: none; }
+/* The chevron: a 44 px strip at the right edge, as tall as the card (the card is its containing block): a hairline, a tint on hover, the 28 px glyph centred. @req FR:ui-kit/card.chev */
+.ui-card-chev { position: absolute; inset: 0 0 0 auto; width: 44px; display: flex; align-items: center; justify-content: center; padding-bottom: 4px; border-left: 1px solid rgb(127 127 127 / 22%); border-radius: 0 var(--fl-r-xl) var(--fl-r-xl) 0; font-size: 28px; line-height: 1; color: var(--ui-ink2, var(--ink2)); pointer-events: none; transition: background var(--fl-fast) var(--fl-ease); }
+.ui-card:hover .ui-card-chev, .ui-card[data-selected="true"] .ui-card-chev { background: rgb(127 127 127 / 10%); color: var(--ui-ink, var(--ink)); }
 /* With `label`: title and sub line outside the button, so their links stay links above the stretched target. */
 .ui-card-body { grid-area: open; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "sub"; gap: 4px 8px; align-items: center; min-width: 0; }
 .ui-card-body a { position: relative; z-index: 1; }
@@ -105,7 +106,7 @@
 
 /* Touch: 44 px targets. */
 @media (pointer: coarse), (max-width: 719px) {
-  .ui-tool, .ui-more-btn, .ui-menu .menu-item, .ui-bar .fl-btn, .ui-msg .fl-btn { min-height: var(--tap); min-width: var(--tap); }
+  .ui-tool, .ui-more-btn, .ui-menu .menu-item, .ui-bar .fl-btn, .ui-msg .fl-btn, .ui-server .fl-btn { min-height: var(--tap); min-width: var(--tap); }
   .ui-card-open { min-height: var(--tap); }
 }
 
@@ -219,3 +220,9 @@
 .tabbar .tab .ui-nav-ic { width: 22px; height: 22px; color: inherit; }
 .fab .ui-nav-ic { color: inherit; }
 .fab .ui-nav-ic path { stroke-width: 2.2; }
+
+/* Server status: a chip and a note, the link, one button. @req FR:ui-kit/server */
+.ui-server { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
+.ui-server-state { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; flex: 1 1 180px; min-width: 0; font-size: 13px; }
+.ui-server-none, .ui-server-note { color: var(--ink2); overflow-wrap: anywhere; }
+.ui-server a.fl-btn { text-decoration: none; }

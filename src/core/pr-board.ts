@@ -6,6 +6,7 @@
 import { PROJECTS, RULES, type SessionProject } from './session-inventory';
 import { isSpecPath, needsLiveValidation } from './pr-review';
 import type { LiveCheck } from './pr-check';
+import type { PrServerView } from './pr-server';
 
 export const PR_GROUPS = ['processing', 'waiting', 'pending', 'paused'] as const;
 export type PrGroup = (typeof PR_GROUPS)[number];
@@ -50,6 +51,8 @@ export interface PrRow {
   url: string; repo: string; number: number; title: string; author: string; project: SessionProject; group: PrGroup; draft: boolean;
   createdAt: string; updatedAt: string; ci: CiState; unresolved: number; labels: string[]; state: PrState; bucket?: Bucket;
   healthy: boolean; agent: boolean; after: string[]; rank: number | null; pinned: boolean; rec?: PrRec; autopilot: boolean;
+  /** The test server of the PR, while the host holds one. @req FR:pr-page/server.view */
+  server?: PrServerView;
   mine: boolean; nextAction: NextAction | null; specLines: number | null; detail: PrDetail;
 }
 export interface BoardCtx {

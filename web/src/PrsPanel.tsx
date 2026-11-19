@@ -6,13 +6,14 @@
  * @req FR:pr-page/nav.badge @req FR:pr-page/nav.page @req FR:pr-page/nav.load @req FR:pr-page/summary.layout @req FR:pr-page/card.fields @req FR:pr-page/card.select
  * @req FR:pr-page/check.view @req FR:pr-page/check.none @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
  * @req FR:pr-page/detail.layout @req FR:pr-page/pin.toggle @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys @req FR:pr-page/live.age
+ * @req FR:pr-page/server.pane @req FR:pr-page/server.poll @req FR:pr-page/check.none @req FR:pr-page/summary.missing
  */
 import { NavItem } from './ui/Nav';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
 import { errText } from './errtext';
 import {
-  actionable, actionsOf, authorText, flagText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText,
+  actionable, actionsOf, authorText, flagText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText, starting,
   summaryView, TAB_LABEL, tabsOf, toneOf, totalOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type LiveCheck, type PrStore, type QuickAction, type SignInSession, type Tab,
 } from './prs';
 import type { Toast } from './parts';
@@ -23,6 +24,7 @@ import { FilterPills } from './ui/FilterPills';
 import { Flag } from './ui/Flag';
 import { SelectCard } from './ui/SelectCard';
 import { Skeleton } from './ui/Skeleton';
+import { ServerStatus } from './ui/ServerStatus';
 import { useWide } from './ui/useWide';
 import './prs.css';
 
@@ -45,9 +47,6 @@ function PrIcon() {
 }
 function RefreshIcon() {
   return <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>;
-}
-function PinIcon({ on }: { on: boolean }) {
-  return <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Zm3 11v7" fill={on ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" /></svg>;
 }
 
 /** The board phase for the nav: the PR entry is absent only where the host has no board. @req FR:pr-page/icon.absent @req FR:pr-page/nav.badge */
@@ -152,27 +151,23 @@ const WIDE = '(min-width: 1100px)';
 /** The shared split rule, wide only on the page. */
 const useWidePage = (page: boolean) => useWide(WIDE, page);
 
-interface Ctx { board: PrBoard; selected: string | null; select: (r: PrRow) => void; pin: (r: PrRow) => void; quick: (r: PrRow, a: QuickAction) => void; busy: boolean }
+interface Ctx { board: PrBoard; selected: string | null; select: (r: PrRow) => void; quick: (r: PrRow, a: QuickAction) => void; busy: boolean }
 
 /** The quick actions of a row as shared action items. @req FR:pr-page/menu.@function @req FR:pr-page/menu.run */
 const itemsOf = (r: PrRow, c: Ctx): ActionItem[] => actionsOf(r, c.board).map((a) => ({ id: a.id, label: a.label, title: a.title, ...(a.href ? { href: a.href } : { disabled: c.busy && a.id !== 'copy', onSelect: () => c.quick(r, a) }) }));
 
-/** One card everywhere: repo, # link, title, author, one next action flag, spec lines, Pin, and the actions menu. Built on the shared SelectCard.
+/** One card everywhere: repo, # link, title, author, one next action flag, spec lines, and the actions menu (Pin is in it). Built on the shared SelectCard.
  * @req FR:pr-page/card.fields @req FR:pr-page/card.color @req FR:pr-page/card.select @req FR:pr-page/card.flag @req FR:pr-page/menu.shape */
 function Card({ r, c, sort }: { r: PrRow; c: Ctx; sort?: { onDown: (e: PointerEvent) => void; onKey: (e: KeyboardEvent) => void; dragging: boolean } }) {
   const spec = specText(r);
+  const flag = flagText(r, c.board);
   return (
-    <SelectCard class={`pr-card tone-${toneOf(r)}${sort?.dragging ? ' dragging' : ''}`} data={{ number: r.number, url: r.url }} selected={c.selected === r.url} onSelect={() => c.select(r)}
-      top={<><span class="pr-repo">{r.repo}</span><a class="pr-num" href={r.url} target="_blank" rel="noopener noreferrer">#{r.number}</a>{r.nextAction && <Flag text={flagText(r)} hidden />}</>}
-      title={clip(r.title, 120)} {...(r.nextAction ? { sr: `, next: ${flagText(r)}` } : {})}
+    <SelectCard class={`pr-card tone-${toneOf(r, c.board)}${sort?.dragging ? ' dragging' : ''}`} data={{ number: r.number, url: r.url }} selected={c.selected === r.url} onSelect={() => c.select(r)}
+      top={<><span class="pr-repo">{r.repo}</span><a class="pr-num" href={r.url} target="_blank" rel="noopener noreferrer">#{r.number}</a>{flag && <Flag text={flag} hidden />}</>}
+      title={clip(r.title, 120)} {...(flag ? { sr: `, next: ${flag}` } : {})}
       sub={<><span class="pr-author">{authorText(r)}</span>{spec && <span class="pr-spec">{spec}</span>}</>}
       tools={<>
         <ActionMenu name={`Actions for ${refOf(r)}`} items={itemsOf(r, c)} />
-        {c.board.queue && (
-          <button type="button" class="ui-tool pr-pin" aria-pressed={r.pinned} aria-label={`${r.pinned ? 'Unpin' : 'Pin'} ${refOf(r)}`} title={r.pinned ? 'Unpin: drop it from the Pinned order' : 'Pin: the Sweep Manager works pinned PRs first'} disabled={c.busy} onClick={() => c.pin(r)}>
-            <PinIcon on={r.pinned} />
-          </button>
-        )}
         {sort && (
           <button type="button" class="ui-tool pr-grip" aria-label={`Reorder ${refOf(r)}`} aria-describedby="prs-sort-help" title="Drag to reorder, or press Space then the arrow keys"
             onPointerDown={(e) => sort.onDown(e as unknown as PointerEvent)} onKeyDown={(e) => sort.onKey(e as unknown as KeyboardEvent)}>
@@ -277,24 +272,25 @@ function CheckView({ c, onCopy }: { c: LiveCheck; onCopy: (text: string) => void
 }
 
 /** The details for the selected card: only what its next action needs. No AI call. @req FR:pr-page/detail.validate @req FR:pr-page/detail.signoff @req FR:pr-page/detail.approve @req FR:pr-page/detail.publish @req FR:pr-page/detail.autopilot @req FR:pr-page/detail.none */
-function Detail({ r, back, busy, onResolve, onCopy }: { r: PrRow; back?: () => void; busy: boolean; onResolve: (r: PrRow, id: string) => void; onCopy: (text: string) => void }) {
+function Detail({ r, board, back, busy, onResolve, onCopy, onServer }: { r: PrRow; board: PrBoard; back?: () => void; busy: boolean; onResolve: (r: PrRow, id: string) => void; onCopy: (text: string) => void; onServer: (r: PrRow, op: 'start' | 'stop') => void }) {
   const [i, setI] = useState(0);
   const h = useRef<HTMLHeadingElement>(null);
   useEffect(() => { setI(0); }, [r.url]);
   useLayoutEffect(() => { if (back) h.current?.focus(); }, [r.url]);
-  const a = r.nextAction;
+  const a = actionable(r, board) ? r.nextAction : null;
+  // The test server: on a Validate row with no live lane server, and on any row that has one. @req FR:pr-page/server.pane
+  const laneUrl = r.detail.steps?.source === 'lane' ? r.detail.steps.serverUrl : undefined;
+  const server = r.server || (a === 'validate' && board.servers && !laneUrl) ? <ServerStatus server={r.server} busy={busy} onStart={() => onServer(r, 'start')} onStop={() => onServer(r, 'stop')} /> : null;
   const ext = { target: '_blank', rel: 'noopener noreferrer' } as const;
   const head = (
     <>
       {back && <button type="button" class="fl-btn subtle prs-back" onClick={back}>‹ Back</button>}
-      <h3 ref={h} tabIndex={-1} class="pr-d-h">{a ? flagText(r) : 'No action'}</h3>
+      <h3 ref={h} tabIndex={-1} class="pr-d-h">{a ? flagText(r, board) : 'No action'}</h3>
       <p class="pr-d-pr"><a href={r.url} {...ext}>{refOf(r)}</a> {r.title}</p>
+      {server}
       {r.detail.check && <CheckView c={r.detail.check} onCopy={onCopy} />}
     </>
   );
-  if (a === 'validate' && !actionable(r)) {
-    return <div class="pr-d">{head}<p class="pr-d-none">The sweeper has not written the server command and steps yet.</p><p><a class="fl-btn" href={r.url} {...ext}>Open PR</a></p></div>;
-  }
   if (a === 'validate') {
     const s = r.detail.steps;
     return (
@@ -373,7 +369,7 @@ function Detail({ r, back, busy, onResolve, onCopy }: { r: PrRow; back?: () => v
   return <div class="pr-d">{head}<p class="pr-d-none">Nothing for you now.</p><p><a class="fl-btn" href={r.url} {...ext}>Open PR</a></p></div>;
 }
 
-/** "Am I missing anything?" stays short. @req FR:pr-page/summary.missing */
+/** `Also needs you` stays short. @req FR:pr-page/summary.missing */
 const MISS_MAX = 10;
 const moreText = (rest: PrRow[]) => {
   const where = (['processing', 'waiting', 'pending', 'paused'] as const).filter((g) => rest.some((r) => r.group === g)).map((g) => TAB_LABEL[g]);
@@ -405,6 +401,9 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
   useEffect(() => { if (s.get().board) void s.reload(); }, []);
   useLayoutEffect(() => { if (!page) (ref.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? ref.current?.querySelector<HTMLElement>('button'))?.focus(); }, []);
   useEffect(() => { if (selected && board && !row) setSelected(null); }, [board]);
+  // While a test server starts, the board loads every 3 s; never else. @req FR:pr-page/server.poll
+  const boots = starting(board);
+  useEffect(() => { if (!boots) return; const t = setInterval(() => void s.reload(), 3000); return () => clearInterval(t); }, [boots]);
 
   /** The focus trap: the flyout plus the toasts, whose Undo must stay in reach by keyboard. */
   const closeRef = useRef(onClose);
@@ -442,6 +441,11 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
     try { await api.prQueue(r.repo, r.number, r.pinned ? 'unpin' : 'pin'); toast(r.pinned ? `Unpinned ${refOf(r)}` : `Pinned ${refOf(r)}`); reload(); }
     catch (e) { toast(errText(e, 'pin the PR'), 'err'); }
   });
+  /** Starts or stops the test server of a PR. @req FR:pr-page/server.pane @req FR:pr-page/menu.run */
+  const server = (r: PrRow, op: 'start' | 'stop') => void run(async () => {
+    try { await api.prServer(r.repo, r.number, op); toast(op === 'start' ? `Starting a test server for ${refOf(r)}` : `Stopped the test server for ${refOf(r)}`); reload(); }
+    catch (e) { toast(errText(e, op === 'start' ? 'Could not start the server' : 'Could not stop the server'), 'err'); reload(); }
+  });
   /** A drop in Pinned: the new rank (pinned items lead the queue). @req FR:pr-page/pin.drag */
   const moveRow = (r: PrRow, rank: number) => void run(async () => {
     try { await api.prQueue(r.repo, r.number, 'move', rank); reload(); }
@@ -461,6 +465,8 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
   /** A quick action: a queue move, an Autopilot label change with Undo, or a copy. @req FR:pr-page/menu.run */
   const quick = (r: PrRow, a: QuickAction) => {
     if (a.id === 'copy') return copyText(a.text ?? '');
+    if (a.id === 'pin' || a.id === 'unpin') return pin(r);
+    if (a.id === 'server-start' || a.id === 'server-stop') return server(r, a.id === 'server-start' ? 'start' : 'stop');
     if (a.id === 'sweep') return void run(async () => {
       try { await api.prQueue(r.repo, r.number, a.op === 'add' ? 'add' : 'top'); toast(`${refOf(r)} is next for the Sweep Manager`); reload(); }
       catch (e) { toast(errText(e, 'move the PR'), 'err'); }
@@ -482,7 +488,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
     setSelected(null);
     setTimeout(() => { const q = CSS.escape(u ?? ''); (ref.current?.querySelector<HTMLElement>(`.pr-card[data-url="${q}"] .ui-card-open`) ?? ref.current?.querySelector<HTMLElement>(`.pr-miss-open[data-url="${q}"]`))?.focus(); }, 0);
   };
-  const c: Ctx | null = board ? { board, selected, select, pin, quick, busy } : null;
+  const c: Ctx | null = board ? { board, selected, select, quick, busy } : null;
 
   const tabKeys = (e: KeyboardEvent) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -505,10 +511,10 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
       {section('Needs live validation', sum.live)}
       {section('Needs your sign-off', sum.signoff)}
       {section('Ready for Autopilot', sum.autopilot)}
-      <section class="pr-sec" aria-label="Am I missing anything?">
-        <h3 class="pr-sec-h">Am I missing anything?</h3>
-        {sum.missing.length === 0 ? <p class="prs-empty">Nothing else.</p> : (
-          <ul class="pr-miss">
+      {/* Rows past the section caps and owner gates with no card action; no section when there are none. @req FR:pr-page/summary.missing */}
+      {sum.missing.length > 0 && <section class="pr-sec" aria-label="Also needs you">
+        <h3 class="pr-sec-h">Also needs you</h3>
+        <ul class="pr-miss">
             {sum.missing.slice(0, MISS_MAX).map((m, k) => (
               <li key={`${m.row.url}-${k}`}>
                 <a class="pr-num" href={m.row.url} target="_blank" rel="noopener noreferrer">{refOf(m.row)}</a>
@@ -517,9 +523,8 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
               </li>
             ))}
           </ul>
-        )}
         {sum.missing.length > MISS_MAX && <p class="prs-hint" data-testid="prs-miss-more">{moreText(sum.missing.slice(MISS_MAX).map((m) => m.row))}</p>}
-      </section>
+      </section>}
     </>
   );
 
@@ -568,7 +573,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
           </div>
           {(wide || showDetail) && (
             <aside class="pr-detail-col" data-testid="prs-detail" aria-label="PR details">
-              {row && c ? <><Detail r={row} busy={busy} onResolve={resolve} onCopy={copyText} {...(wide ? {} : { back })} /><ActionBar heading="Quick actions" items={itemsOf(row, c)} /></> : <p class="prs-empty">Select a PR to see its next step.</p>}
+              {row && c ? <><Detail r={row} board={board} busy={busy} onResolve={resolve} onCopy={copyText} onServer={server} {...(wide ? {} : { back })} /><ActionBar heading="Quick actions" items={itemsOf(row, c)} /></> : <p class="prs-empty">Select a PR to see its next step.</p>}
             </aside>
           )}
         </div>
