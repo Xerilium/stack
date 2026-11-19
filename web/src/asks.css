@@ -44,7 +44,8 @@
 .dl.late { color: var(--warn); font-weight: 650; }
 .dl .rel { color: inherit; opacity: .85; }
 /* a late row that is not the loud one: ink, a clock, no warn color. @req FR:ask-queue/web.card */
-.dl.late.quiet { color: var(--ink2); font-weight: 450; }
+/* rows: a soon deadline is muted too; only the loud late row is orange. */
+.ask-row .dl.soon, .dl.late.quiet { color: var(--ink2); font-weight: 450; }
 .dl.quiet svg { flex: none; width: 12px; height: 12px; color: var(--muted); }
 
 /* the focal card */
@@ -165,7 +166,7 @@ a.btn.primary { color: #fff; }
 }
 
 /* the verb is a muted chip in sentence case, not a button. @req FR:ask-queue/web.card */
-.row-meta .verb { flex: none; font-size: 12px; font-weight: 500; color: var(--ink2); background: var(--chip); border-radius: 6px; padding: 1px 7px;; min-width: 72px; text-align: center; box-sizing: border-box; }
+.row-meta .verb { flex: none; font-size: 12px; font-weight: 500; color: var(--ink2); background: var(--chip); border-radius: 6px; padding: 1px 7px; min-width: 72px; text-align: center; box-sizing: border-box; }
 @media (max-width: 719px) { .row-meta .verb { min-width: 0; } }
 .row-meta .verb:empty { display: none; }
 

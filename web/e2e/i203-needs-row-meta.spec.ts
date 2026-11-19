@@ -11,6 +11,8 @@ const seed = () => [
   need('a3', 'Approve the Allyte site copy', 'Approve', 'allyte-web'),
   need('a4', 'Open the link and decide on the venue', 'Open the link and decide', 'flantastic'),
   need('a5', 'Pick the launch day', 'Monday', 'flantastic', iso(-30)),
+  need('a6', 'Sign the lease renewal', 'Sign it', 'home', iso(3)),
+  need('a7', 'Book the venue', 'Book it', 'home', iso(5)),
 ];
 
 async function open(page: Page) {
@@ -30,7 +32,7 @@ test.describe('Needs you rows: quiet meta that fits a phone (i203)', () => {
     await expect(page.locator('.ask-row .verb').first()).toHaveCSS('text-transform', 'none');
   });
 
-  test('at most one overdue row uses the warn color', async ({ page }) => {
+  test('at most one row uses the warn color for its deadline', async ({ page }) => {
     await open(page);
     const warn = await page.evaluate(() => {
       const probe = document.createElement('span');
@@ -40,8 +42,9 @@ test.describe('Needs you rows: quiet meta that fits a phone (i203)', () => {
       probe.remove();
       return c;
     });
-    const colors = await page.locator('.ask-row .dl.late').evaluateAll((els) => els.map((e) => getComputedStyle(e).color));
-    expect(colors.length).toBeGreaterThan(1);
+    await page.getByRole('button', { name: /Show 2 more/ }).click();
+    const colors = await page.locator('.ask-row .dl').evaluateAll((els) => els.map((e) => getComputedStyle(e).color));
+    expect(colors.length).toBeGreaterThan(3);
     expect(colors.filter((c) => c === warn)).toHaveLength(1);
   });
 

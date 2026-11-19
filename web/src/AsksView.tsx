@@ -93,8 +93,8 @@ function Btn({ a, act, run, panel }: { a: Action; act: AskItem; run: (x: Action)
   if (a.open && act.source !== 'task') return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer" aria-keyshortcuts="o">{a.label} {Icon.out}<kbd aria-hidden="true">{a.key}</kbd></a>;
   if (a.open) return <button type="button" class="btn quiet" onClick={() => run(a)} aria-keyshortcuts="o">{a.label}<kbd aria-hidden="true">{a.key}</kbd></button>;
   // one line: a long primary label ends in an ellipsis; the full text is in the title. @req FR:ask-queue/web.responsive
-  if (a.primary) return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key} title={a.label}><span class="btn-label">{a.label}</span>{tag}{!(panel === 'reply') && <kbd aria-hidden="true">{key}</kbd>}</button>;
-  return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd aria-hidden="true">{key}</kbd>}</button>;
+  if (a.primary) return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key} title={a.label}><span class="btn-label">{a.label}</span>{tag}{panel !== 'reply' && <kbd aria-hidden="true">{key}</kbd>}</button>;
+  return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}<kbd aria-hidden="true">{key}</kbd></button>;
 }
 
 function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: number; asks: Asks; run: (x: Action) => void; talk?: TalkSlot }) {
