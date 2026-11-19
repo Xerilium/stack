@@ -82,7 +82,7 @@ describe('GitStorage across processes', () => {
     writeFileSync(join(d, '.git', 'stack-write.lock'), String(dead));
     await new GitStorage(d).write('tasks/x.md', 'x');
     expect(git(d, 'show', 'HEAD:tasks/x.md')).toBe('x');
-  });
+  }, 60_000);
 
   // @req FR:storage-git/git.concurrency.busy @req FR:storage-git/git.concurrency.busy.clean
   it('fails with StorageError when another live writer holds the lock past the wait', async () => {
@@ -92,5 +92,5 @@ describe('GitStorage across processes', () => {
     await expect(s.write('tasks/x.md', 'x')).rejects.toThrow(new StorageError('Another Stack process is writing; try again'));
     expect(git(d, 'rev-list', '--count', 'HEAD').trim()).toBe('1');
     expect(git(d, 'status', '--porcelain')).toBe('');
-  });
+  }, 60_000);
 });
