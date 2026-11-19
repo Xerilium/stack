@@ -67,6 +67,19 @@ describe('whyLine', () => {
     expect(line.length).toBeLessThanOrEqual(WHY_MAX);
     expect(line).toMatch(/^priority 12: Ship the .*… · /u);
   });
+  it('names the priority of a leaf shown as its top-level row', () => {
+    const tasks = [T('alpha:1', 'Release FTK v16 🟢'), { ...T('alpha:2', 'Tag the build 🟢'), depth: 1 }];
+    const h = homeOf({ tasks, projects: [P('alpha')], ranked: [{ ...R('alpha:2'), root: 'alpha:1', pri: { rank: 4, title: 'FTK 16' } }], now: at, minutesLeft: 120 });
+    expect(h.one?.task.ref).toBe('alpha:1');
+    expect(whyLine(h.one!, 120)).toBe('priority 4: FTK 16 · fits your 2h');
+  });
+  it('names the priority of the task that fits when the first does not', () => {
+    const tasks = [T('alpha:1', 'Big job 🔴'), T('alpha:2', 'Small job 🟢')];
+    const h = homeOf({ tasks, projects: [P('alpha')], ranked: [R('alpha:1'), { ...R('alpha:2'), pri: { rank: 2, title: 'Ship' } }], now: at, minutesLeft: 45 });
+    expect(h.instead?.task.ref).toBe('alpha:2');
+    expect(whyLine(h.instead!, 45)).toBe('priority 2: Ship · fits your 45m');
+    expect(h.one?.pri).toBeUndefined();
+  });
   it('is at most 60 characters with a priority', () => {
     for (const title of ['x', 'y'.repeat(80)]) for (const m of [0, 45, 600]) expect(whyPri('🚨 🚧 📅 Oct 1: x 🔴', { rank: 99, title }, m).length).toBeLessThanOrEqual(WHY_MAX);
   });

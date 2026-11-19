@@ -65,7 +65,7 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
   const seen = new Set<string>();
   const rows: Task[] = [];
   const leafOf = new Map<string, Task>(); // root ref -> the first ranked leaf under it
-  const priOf = new Map<string, RankPri>(); // shown row and ranked leaf -> the priority it ranked under
+  const priOf = new Map<string, RankPri>(); // shown row -> the priority its first ranked row ranked under
   for (const r of o.ranked) {
     // A leaf shows as its top-level row, unless that row is an agent's or mixed: then the owner's leaf shows.
     const root = r.root ? byRef.get(r.root) : undefined;
@@ -74,7 +74,7 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
     seen.add(t.ref); rows.push(t);
     const leaf = byRef.get(r.ref);
     if (leaf && leaf !== t && !leaf.done) leafOf.set(t.ref, leaf);
-    if (r.pri) { priOf.set(t.ref, r.pri); priOf.set(r.ref, r.pri); }
+    if (r.pri) priOf.set(t.ref, r.pri);
   }
   // NOW is the server's first; under it, in-progress (🚧) rows come first, then the server's order.
   const oneTask = rows[0] ?? null;
