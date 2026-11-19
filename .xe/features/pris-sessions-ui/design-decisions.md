@@ -43,3 +43,9 @@
 **Decision**: Archive candidates only copy ids (one per line).
 
 **Why**: The app archive call is not public yet. The owner can paste ids to an agent that archives them.
+
+## One status chip, no glyph
+
+**Decision**: Priority status and session state use the shared `StatusChip` (`FR:ui-kit/chip`) with a sentence-case word. Only stuck or blocked use the warn tone.
+
+**Why**: Two glyph-plus-word styles side by side read as noise. The word carries the meaning, so color is never the only cue.
