@@ -107,7 +107,7 @@ Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
 ### FR:week: Week capacity
 
-- **FR:week.days** (P1): The Projects view opens with **This week**: one column per day from today through Sunday (at least 5 days; when today is Saturday or Sunday the next week through Friday is added). Each day shows available time (the work day, 9:00-18:00, for Monday to Friday; 0 on Saturday and Sunday; today uses the Today budget: the time left minus today's meetings, or the budget set on Today; other days do not subtract meetings because only today's calendar is read) and planned time
+- **FR:week.days** (P1): Under its page header (`FR:ui-kit/header`: `Projects` and the project count), the Projects view opens with **This week** (an `h2`): one column per day from today through Sunday (at least 5 days; when today is Saturday or Sunday the next week through Friday is added). Each day shows available time (the work day, 9:00-18:00, for Monday to Friday; 0 on Saturday and Sunday; today uses the Today budget: the time left minus today's meetings, or the budget set on Today; other days do not subtract meetings because only today's calendar is read) and planned time
 - **FR:week.plan** (P1): Planned time per day comes from `planWeek`: tasks with a due date in the week land on their due day (overdue land on today); the rest of your actionable ranked work (the Today plan rules) fills the remaining available time day by day in rank order, a task at most 2 h per day. Planned time above available is shown as over (warning color) on that day
 - **FR:week.summary** (P1): A header line says `<available> available · <planned> planned` for the week, and `<n> h won't fit` when ranked work is left over
 - **FR:week.bars** (P1): Each day is a vertical bar: available is the track, planned fills it, over spills above in the warning color, and today is marked. Bars have a text label (`3h / 9h`) and an accessible name, so color is never the only signal; on phones the days are a horizontal row that fits 375 px without scrolling
@@ -118,7 +118,7 @@ Design: `docs/design/web-ux.md`. Journeys J1-J5.
 
 ### FR:list: Full list
 
-- **FR:list.view** (P1): The list shows tasks as single-line rows (about 32px) grouped by project then section. Section headers collapse; Active and Up next start open, others closed. Subtasks and notes are hidden until the row is expanded (`→` / `←`, or the `▸ n/m` control). Done rows are muted
+- **FR:list.view** (P1): The page header (`FR:ui-kit/header`) shows `Full stack` and the count of tasks that match the filters. The list shows tasks as single-line rows (about 32px) grouped by project then section. Section headers collapse; Active and Up next start open, others closed. Subtasks and notes are hidden until the row is expanded (`→` / `←`, or the `▸ n/m` control). Done rows are muted
 - **FR:list.filters** (P1): Filters: text (`/`), project, state (open, done, all), status, priority, effort. Filters combine with AND, appear as removable chips, and are kept in the URL hash so a reload or share keeps the view
 - **FR:list.nav** (P1): `j`/`k` or arrow keys move the cursor, `Enter` opens focus mode, `e` or double click edits, `x` toggles selection, `Esc` clears cursor and selection. The cursor row stays in view
 
