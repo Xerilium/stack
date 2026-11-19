@@ -5,7 +5,7 @@
  * @req FR:agent-delivery/pick.entries @req FR:agent-delivery/run.cli @req FR:agent-delivery/state.file @req NFR:agent-delivery/delivery.seam
  */
 import { spawn } from 'child_process';
-import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from 'fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { agentFor, listTeam, type ScannedAgent, type TeamAgent } from '../core/agents';
@@ -13,7 +13,7 @@ import { handleAsk, putAsk, readAsk } from '../core/asks';
 import type { StackConfig } from '../core/config';
 import { currentRows, handleEntry, listInbox, replyFromAgent, type ListedEntry } from '../core/inbox';
 import type { LifecycleContext, TaskRef } from '../core/lifecycle';
-import { pidAlive } from '../core/file-lock';
+import { pidAlive, writeAtomic } from '../core/file-lock';
 import { projectRepos } from '../core/repos';
 import type { Inventory } from '../core/session-inventory';
 import { redact } from '../core/triage';
@@ -107,9 +107,7 @@ export class DeliveryStore {
     const cut = this.now().getTime() - KEEP_MS;
     const items = Object.fromEntries(Object.entries(f.items).filter(([, r]) => Date.parse(r.at) >= cut));
     mkdirSync(this.home, { recursive: true });
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify({ ...f, items }, null, 2)}\n`, { mode: 0o600 });
-    renameSync(tmp, this.file);
+    writeAtomic(this.file, `${JSON.stringify({ ...f, items }, null, 2)}\n`);
   }
   /**
    * Read-modify-write under `delivery.lock` (O_EXCL, holding the pid), so the host loop and `stack inbox run` never lose each other's writes.
