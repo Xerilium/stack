@@ -1,9 +1,9 @@
 /**
  * Now's priorities report: tabs (QM, Now, PRs, Today, Next 3 days, each with its count of real rows) over a list of muted
- * cards and a detail pane, built from the shared components (`web/src/ui/`). The whole card opens its detail; the agent link lives in
+ * cards and a detail pane, built from the shared components (`web/src/ui/`). The whole card opens its detail; the project and agent links live in
  * the detail only. The stamp sits at the right end of the tab bar. The tab is kept in the hash.
  * @req FR:priorities-tables/web.place @req FR:priorities-tables/web.tabs @req FR:priorities-tables/web.tabs.count @req FR:priorities-tables/web.tabs.default
- * @req FR:priorities-tables/web.tabs.hash @req FR:priorities-tables/web.tabs.head @req FR:priorities-tables/web.table @req FR:priorities-tables/web.table.line
+ * @req FR:priorities-tables/web.card.project @req FR:priorities-tables/web.tabs.hash @req FR:priorities-tables/web.tabs.head @req FR:priorities-tables/web.table @req FR:priorities-tables/web.table.line
  * @req FR:priorities-tables/web.table.gap @req FR:priorities-tables/web.table.empty @req FR:priorities-tables/web.links @req FR:priorities-tables/web.live @req FR:priorities-tables/web.live.absent
  * @req NFR:priorities-tables/a11y.axe @req NFR:priorities-tables/a11y.tokens @req NFR:priorities-tables/a11y.keys @req NFR:priorities-tables/a11y.target @req NFR:priorities-tables/a11y.mobile
  */
@@ -117,7 +117,7 @@ export function PrioritiesTables({ v }: { v: PrioritiesView }) {
         )))
         : (!n ? <Only text="Nothing here" /> : s.t.rows.map((r, i) => (
           <SelectCard key={`${r.id}:${r.ref ?? r.project}`} class={`pri-card${r.gap ? ' pri-gap' : ''}`} label={`Details: ${r.project}`} selected={at === i} onSelect={() => setSel(i)}
-            top={<><LinkOr href={projectHref(r.file)} text={r.project} />{r.stale && <span class="pri-stale"> stale</span>}</>}
+            top={<>{r.project}{r.stale && <span class="pri-stale"> stale</span>}</>}
             tools={r.status ? <Status s={r.status} /> : undefined}
             title={r.gap ? <span class="pri-muted">{actionText(r)}</span> : <Rich text={r.action} />}
             sub={<AgentName a={r.agent} more={0} />} />

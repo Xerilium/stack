@@ -4,23 +4,25 @@
 
 /* Card: the whole card selects; links and tools sit above the stretched target. @req FR:ui-kit/card */
 .ui-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
-.ui-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "top tools" "open tools"; gap: 6px 8px; padding: 14px 14px 14px 16px; border-radius: var(--fl-r-xl); border-left: 4px solid var(--ui-edge, var(--line)); background: var(--ui-soft, var(--panel)); color: var(--ui-ink, var(--ink)); transition: background var(--fl-fast) var(--fl-ease), box-shadow var(--fl-fast); }
+.ui-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "top tools" "open tools"; gap: 6px 8px; padding: 14px 44px 14px 16px; border-radius: var(--fl-r-xl); border-left: 4px solid var(--ui-edge, var(--line)); background: var(--ui-soft, var(--panel)); color: var(--ui-ink, var(--ink)); transition: background var(--fl-fast) var(--fl-ease), box-shadow var(--fl-fast); }
 .ui-card.strong { background: var(--ui-strong, var(--ui-soft, var(--panel))); box-shadow: var(--fl-shadow4); }
 .ui-card[data-selected="true"] { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ui-card-top { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: 12px; color: var(--ui-ink2, var(--ink2)); }
 .ui-card-top a { position: relative; z-index: 1; }
-.ui-card-open { grid-area: open; position: static; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title chev" "sub chev"; gap: 4px 8px; align-items: center; min-height: 32px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ui-card-open { grid-area: open; position: static; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "sub"; gap: 4px 8px; align-items: center; min-height: 32px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .ui-card-open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
 .ui-card-open:focus-visible { outline: none; }
 .ui-card-open:focus-visible::after { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--fl-r-xl); }
 .ui-card:hover .ui-card-title { text-decoration: underline; }
 .ui-card-title { grid-area: title; font-size: 15px; font-weight: 600; line-height: 21px; overflow-wrap: anywhere; }
 .ui-card-sub { grid-area: sub; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-ink2, var(--ink2)); }
-.ui-card-chev { grid-area: chev; font-size: 20px; color: var(--ui-ink2, var(--ink2)); }
+/* The chevron: 28 px, in a 44 px column at the right edge, centred on the full card height (the card is its containing block). */
+.ui-card-chev { position: absolute; inset: 0 0 0 auto; width: 44px; display: flex; align-items: center; justify-content: center; font-size: 28px; line-height: 1; color: var(--ui-ink2, var(--ink2)); pointer-events: none; }
 /* With `label`: title and sub line outside the button, so their links stay links above the stretched target. */
-.ui-card-body { grid-area: open; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title chev" "sub chev"; gap: 4px 8px; align-items: center; min-width: 0; }
+.ui-card-body { grid-area: open; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "sub"; gap: 4px 8px; align-items: center; min-width: 0; }
 .ui-card-body a { position: relative; z-index: 1; }
-.ui-card-open.ui-card-chev-btn { grid-area: chev; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; }
+/* The button holds only the chevron: it takes no room of its own; its stretched target covers the card. */
+.ui-card-open.ui-card-chev-btn { grid-area: 1 / 1 / -1 / -1; display: block; }
 .ui-card-tools { grid-area: tools; position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; align-items: center; }
 /* An open menu lifts its card's tools above the cards below. */
 .ui-card-tools:has(.ui-menu) { z-index: 30; }
@@ -70,7 +72,7 @@
 .ui-tab:hover { color: var(--fl-fg1); }
 .ui-tab[aria-selected="true"] { color: var(--fl-fg1); font-weight: 600; border-bottom-color: var(--fl-brand); }
 .ui-tab:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: -2px; border-radius: var(--fl-r-sm); }
-.ui-tabbar-aside { flex: none; font-size: 12px; line-height: 16px; color: var(--fl-fg3); white-space: nowrap; }
+.ui-tabbar-aside { flex: none; padding-inline-end: var(--fl-s-m); font-size: 12px; line-height: 16px; color: var(--fl-fg3); white-space: nowrap; }
 
 /* Split view: list and detail side by side when wide; detail replaces the list when narrow. @req FR:ui-kit/split */
 .ui-split { display: block; }

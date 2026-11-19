@@ -46,6 +46,8 @@ const shot = async (page: Page, name: string) => {
   await page.setViewportSize({ width: page.viewportSize()!.width, height: 1400 });
   await page.getByTestId('pri-tables').screenshot({ path: `e2e/screenshots/priorities-report-${name}.png` });
 };
+/** Narrow: the open detail hides the list; go back to it. */
+const back = async (page: Page) => { const b = page.getByRole('button', { name: '‹ Back' }); if (await b.count()) await b.click(); };
 /** Text outside links that still looks like a PR or issue ref. */
 const bareRefs = (page: Page) => page.getByTestId('pri-tables').evaluate((el) => [...el.querySelectorAll('.ui-card-title, .ui-card-top, .pri-d')].flatMap((c) => {
   const x = c.cloneNode(true) as HTMLElement;
@@ -84,15 +86,21 @@ test.describe('Priorities report', () => {
     }
     await page.getByTestId('pri-tab-now').click();
     const fh = cards(page, 'now').nth(1);
-    await expect(fh.getByRole('link', { name: 'FH Premium' })).toHaveAttribute('href', '#/list?project=allyte');
-    // no agent link on the card; it lives in the detail pane
+    // no project or agent link on the card; they live in the detail pane. @req FR:priorities-tables/web.card.project
+    await expect(fh.locator('.ui-card-top')).toHaveText('FH Premium');
+    expect(await fh.locator('.ui-card-top a').count()).toBe(0);
     expect(await fh.locator('.ui-card-sub a').count()).toBe(0);
     await expect(fh.getByRole('link', { name: '430' })).toHaveAttribute('href', U(430));
     const gap = cards(page, 'now').nth(2);
-    await expect(gap.locator('.ui-card-top')).toHaveText('FH 0.11 ⚠ no link');
+    await expect(gap.locator('.ui-card-top')).toHaveText('FH 0.11');
     expect(await gap.getByRole('link').count()).toBe(0);
+    await gap.getByRole('button', { name: 'Details: FH 0.11' }).click();
+    await expect(detail(page).getByRole('heading')).toHaveText('FH 0.11 ⚠ no link');
+    await back(page);
     await fh.getByRole('button', { name: 'Details: FH Premium' }).click();
+    await expect(detail(page).getByRole('link', { name: 'FH Premium' })).toHaveAttribute('href', '#/list?project=allyte');
     await expect(detail(page).getByRole('link', { name: 'FH backend' })).toHaveAttribute('href', 'claude://claude.ai/epitaxy/s1');
+    await back(page);
     await page.getByTestId('pri-tab-qm').click();
     await cards(page, 'qm').nth(1).getByRole('button').click();
     await expect(detail(page).getByRole('link', { name: 'qm-planner' })).toHaveAttribute('href', '#/agents?file=.claude%2Fagents%2Fqm-planner.md');
@@ -187,6 +195,24 @@ test.describe('Priorities report', () => {
     expect(await c.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await c.evaluate((el) => { const p = document.createElement('div'); p.style.background = 'var(--fl-bg1)'; el.parentElement!.appendChild(p); const b = getComputedStyle(p).backgroundColor; p.remove(); return b; }));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     if (info.project.name === 'mobile') for (const t of await page.getByRole('tab').all()) expect((await t.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  });
+
+  // @req FR:priorities-tables/web.card.open @req FR:priorities-tables/web.tabs.head @req FR:ui-kit/card @req FR:ui-kit/tabs
+  test('the chevron is large and centred on the card height; the stamp has space after it', async ({ page }) => {
+    await open(page, view(), '#/now?pri=now');
+    for (const c of await cards(page, 'now').all()) {
+      const [card, chev] = [(await c.boundingBox())!, (await c.locator('.ui-card-chev').boundingBox())!];
+      expect(Math.abs((chev.y + chev.height / 2) - (card.y + card.height / 2))).toBeLessThanOrEqual(1);
+      expect(chev.height).toBeGreaterThanOrEqual(card.height - 1);
+      expect(chev.width).toBeGreaterThanOrEqual(44);
+      expect(card.x + card.width - (chev.x + chev.width)).toBeLessThanOrEqual(1);
+      expect(await c.locator('.ui-card-chev').evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(28);
+      // the status chip stays clear of the chevron
+      const tools = await c.locator('.ui-card-tools').count() ? await c.locator('.ui-card-tools').boundingBox() : null;
+      if (tools) expect(tools.x + tools.width).toBeLessThanOrEqual(chev.x + 1);
+    }
+    const [bar, stamp] = [(await page.locator('.pri-head .ui-tabbar').boundingBox())!, (await page.getByTestId('pri-stamp').boundingBox())!];
+    expect(bar.x + bar.width - (stamp.x + stamp.width)).toBeGreaterThanOrEqual(12);
   });
 
   for (const scheme of ['light', 'dark'] as const) {

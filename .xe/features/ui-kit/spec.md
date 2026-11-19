@@ -23,7 +23,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ### FR:card: Selectable card
 
-- **FR:card** (P1): `SelectCard` is one list item: an optional top line (links, flags, chips), a title, an optional sub line, an optional tools column, and a chevron (`›`). One button covers the card; a tap or click anywhere that is not a link or a tool selects it, and Enter or Space on it does the same. Links and tools sit above it. `selected` sets `aria-current` and a focus-colored outline. `sr` is text read after the title by assistive tech only. With `label`, the title and sub line sit outside the button, so links in them stay links, and the button (the chevron, stretched over the card) is named `label`. A view sets the tone with the CSS variables `--ui-edge`, `--ui-soft`, `--ui-strong`, `--ui-ink`, `--ui-ink2`, and the class `strong`. Cards in a `ui-cards` list have 14 px between them and 14 px padding inside
+- **FR:card** (P1): `SelectCard` is one list item: an optional top line (links, flags, chips), a title, an optional sub line, an optional tools column, and a chevron (`›`). The chevron is 28 px, in a 44 px column at the right edge, centred on the full card height. One button covers the card; a tap or click anywhere that is not a link or a tool selects it, and Enter or Space on it does the same. Links and tools sit above it. `selected` sets `aria-current` and a focus-colored outline. `sr` is text read after the title by assistive tech only. With `label`, the title and sub line sit outside the button, so links in them stay links, and the button (the chevron, stretched over the card) is named `label`. A view sets the tone with the CSS variables `--ui-edge`, `--ui-soft`, `--ui-strong`, `--ui-ink`, `--ui-ink2`, and the class `strong`. Cards in a `ui-cards` list have 14 px between them and 14 px padding inside
 
 ### FR:flag: Flag
 
@@ -43,7 +43,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ### FR:tabs: Tabs
 
-- **FR:tabs** (P1): `Tabs` is a tab bar (ARIA tabs pattern: one selected tab with `tabIndex` 0, arrow keys, Home and End pick and focus). An optional `aside` sits small at the right end of the bar
+- **FR:tabs** (P1): `Tabs` is a tab bar (ARIA tabs pattern: one selected tab with `tabIndex` 0, arrow keys, Home and End pick and focus). An optional `aside` sits small at the right end of the bar, with 12 px of space after it
 
 ### FR:split: Split view
 
