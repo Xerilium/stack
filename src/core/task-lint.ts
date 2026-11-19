@@ -9,7 +9,7 @@ import { parseProject, type Task } from './parser';
 import { TRIGGER } from './query-tasks';
 import { AGENT_TAG, TIERS } from './tiered-tasks';
 
-export const LINT_RULES = ['title-length', 'title-status', 'title-parens', 'detail-nesting', 'id-duplicate', 'id-dangling', 'id-slug', 'meta-emoji'] as const;
+export const LINT_RULES = ['title-length', 'title-status', 'title-parens', 'detail-nesting', 'id-duplicate', 'id-dangling', 'id-slug', 'meta-emoji', 'meta-key', 'note-status'] as const;
 export type LintRule = (typeof LINT_RULES)[number];
 export interface LintFinding { rule: LintRule; message: string }
 /** `line` is 1-based. */
@@ -78,7 +78,7 @@ const width = (l: string) => l.slice(0, l.length - l.trimStart().length).replace
  * The lines in the block of `task` that are not bullets, 0-based. Child rows and their blocks are not read.
  * @req FR:task-lint/rule.nesting.prose @req FR:task-lint/rule.nesting.allowed
  */
-function proseLines(lines: string[], task: Pick<Task, 'line' | 'depth'>, fenced: Set<number>): number[] {
+function proseLines(lines: string[], task: Pick<Task, 'line' | 'depth'>, fenced: Set<number>, all = false): number[] {
   const out: number[] = [];
   let child = -1; // indent of the child row whose block is skipped
   for (let i = task.line + 1; i < lines.length; i++) {
@@ -90,7 +90,7 @@ function proseLines(lines: string[], task: Pick<Task, 'line' | 'depth'>, fenced:
     child = -1;
     const body = l.trim();
     if (ROW.test(l)) { child = indent; continue; }
-    if (body.startsWith('>') || /^(?:[-*+]|\d+[.)])\s/.test(body)) continue;
+    if (!all && (body.startsWith('>') || /^(?:[-*+]|\d+[.)])\s/.test(body))) continue;
     out.push(i);
   }
   return out;
@@ -114,7 +114,20 @@ function rowIssues(path: string, lines: string[], task: Task, fenced: Set<number
   return [
     ...lintTitle(task.text).map((f) => ({ path, line: task.line + 1, ...f })),
     ...proseLines(lines, task, fenced).map((i) => ({ path, line: i + 1, rule: 'detail-nesting' as const, message: 'Detail line is not a bullet. Start it with "- ".' })),
+    ...proseLines(lines, task, fenced, true).flatMap((i) => { const s = noteStatus(lines[i]); return s ? [{ path, line: i + 1, rule: 'note-status' as const, message: `Note holds status text "${s}". State lives in the emoji, git history, and the app.` }] : []; }),
   ];
+}
+
+/** @req FR:task-ids/lint.status-note: progress claims such as `50%` or `3/5`. */
+const PROGRESS = /(?<![\p{L}\p{N}_/.-])(?:\d{1,3}%|\d{1,3}\/\d{1,3})(?![\p{L}\p{N}_/-])/u;
+/** Status text in one nested line (an `id` line never counts), or null. */
+function noteStatus(line: string): string | null {
+  const raw = line.replace(/\r$/, '').trim().replace(/^>\s*/, '').replace(/^(?:[-*+]|\d+[.)])\s+/, '');
+  if (/^id:/.test(raw)) return null;
+  // A field label (`Done when:`, `Next:`) is not status; its value still counts.
+  const body = raw.replace(/^[A-Za-z][A-Za-z ]{0,20}:\s+/, '');
+  const words = prose(measuredTitle(body));
+  return [STATUS_WORDS.exec(words), STATUS_DATE.exec(words), PROGRESS.exec(words)].filter((m): m is RegExpExecArray => m !== null).sort((a, b) => a.index - b.index)[0]?.[0] ?? null;
 }
 
 const walk = (tasks: Task[], f: (t: Task) => void): void => { for (const t of tasks) { f(t); walk(t.children, f); } };

@@ -3,6 +3,25 @@ import { MemoryStorage } from '../../src/core/storage';
 import { assignIds, EMOJI_KEYS, formatTaskId, lintIds, moveProject, parseTaskId, slugOf, TASK_ID_PREFIX, taskIndex } from '../../src/core/task-ids';
 import { run } from '../../src/cli/run';
 import { cleanFormatter, emojiFormatter } from '../../src/core/formatter';
+import { lintProject } from '../../src/core/task-lint';
+
+// @req FR:task-ids/meta.fields @req FR:task-ids/meta.retired
+describe('metadata keys', () => {
+  it('accepts typed links and blocked, and flags underscores and retired keys', () => {
+    const src = ['# G', '', '## A', '', '- [ ] One', '  > id: one', '  > owner: me', '  > blocked: T:g.two', '  > pr: https://github.com/o/r/pull/1', '  > issue: https://github.com/o/r/issues/2',
+      '  > mail: m-1', '  > session: s-1', '  > doc: https://x.y/d', '  > link: https://x.y', '  > blocked_by: T:g.two', '  > next: call', '  > req: FR:x', '  > due: 2026-12-01', '- [ ] Two', '  > id: two', ''].join('\n');
+    expect(lintIds([{ path: 'tasks/g.md', content: src }]).map((i) => `${i.line} ${i.rule}`)).toEqual(['15 meta-key', '16 meta-key', '17 meta-key', '18 meta-emoji']);
+  });
+});
+
+// @req FR:task-ids/lint.status-note
+describe('status notes', () => {
+  it('flags status prose in nested lines of open tasks only', () => {
+    const src = ['# G', '', '## A', '', '- [ ] One', '  > id: done-one', '  - Merged the API as of Nov 3', '  > owner: me', '  - 3/5 steps', '  - Use the 50% rule? no: plain text ok', '  - Plan the release', '  - Done when: all threads answered',
+      '- [x] Closed', '  - shipped Nov 3', ''].join('\n');
+    expect(lintProject('tasks/g.md', src).filter((i) => i.rule === 'note-status').map((i) => i.line)).toEqual([7, 9, 10]);
+  });
+});
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -145,7 +164,7 @@ describe('stack mv', () => {
     s.seed('tasks/.stack/logs/stack.md', '## x\n- ref: tasks/stack.md:5\n');
     s.seed('tasks/.stack/logs/stack.2.md', '## y\n- ref: tasks/stack.md:5\n');
     s.seed('tasks/.stack/inbox/stack.md', '## in-1\n- ref: tasks/stack.md:5\n');
-    s.seed('tasks/other.md', '# O\n\n## A\n\n- [ ] Two\n  > blocked_by: T:stack.one\n  > req: T:stackish.one\n');
+    s.seed('tasks/other.md', '# O\n\n## A\n\n- [ ] Two\n  > blocked: T:stack.one\n  > req: T:stackish.one\n');
     s.seed('tasks/.stack/asks/k.md', '# Ask: k\n\n- ref: stack:4\n');
     const r = await moveProject({ storage: s }, 'stack', 'xerilium/stack/goal');
     expect(r.refs).toBe(5);
@@ -154,7 +173,7 @@ describe('stack mv', () => {
     expect((await s.read('tasks/xerilium/stack/.stack/logs/goal.md')).content).toContain('- ref: tasks/xerilium/stack/goal.md:5');
     expect((await s.read('tasks/xerilium/stack/.stack/logs/goal.2.md')).content).toContain('tasks/xerilium/stack/goal.md:5');
     expect((await s.read('tasks/xerilium/stack/.stack/inbox/goal.md')).content).toContain('tasks/xerilium/stack/goal.md:5');
-    expect((await s.read('tasks/other.md')).content).toContain('> blocked_by: T:xerilium/stack/goal.one\n  > req: T:stackish.one');
+    expect((await s.read('tasks/other.md')).content).toContain('> blocked: T:xerilium/stack/goal.one\n  > req: T:stackish.one');
     expect((await s.read('tasks/.stack/asks/k.md')).content).toContain('- ref: xerilium/stack/goal:4');
     await expect(s.read('tasks/.stack/logs/stack.md')).rejects.toThrow();
   });
@@ -198,7 +217,7 @@ describe('ID lint', () => {
   it('flags duplicate slugs, dangling refs, and bad slugs', () => {
     const files = [
       { path: 'tasks/a.md', content: '# A\n\n## S\n\n- [ ] One\n  > id: one\n- [ ] Two\n  > id: one\n- [ ] Three\n  > id: Bad Slug\n' },
-      { path: 'tasks/b.md', content: '# B\n\n## S\n\n- [ ] Uses T:a.one and T:a.gone\n  > blocked_by: T:c.x\n' },
+      { path: 'tasks/b.md', content: '# B\n\n## S\n\n- [ ] Uses T:a.one and T:a.gone\n  > blocked: T:c.x\n' },
     ];
     expect(lintIds(files).map((i) => `${i.path}:${i.line} ${i.rule}`)).toEqual([
       'tasks/a.md:8 id-duplicate', 'tasks/a.md:10 id-slug', 'tasks/b.md:5 id-dangling', 'tasks/b.md:6 id-dangling',

@@ -7,6 +7,7 @@
 | 1 | Recursive list, `.stack/` system folders, path-based project IDs | This PR |
 | 2 | `T:` task IDs, `stack ids assign`, blockquote metadata, `stack mv`, lint (`task-ids`) | Next |
 | 3 | Asks as nested 🙋 tasks (`task-asks`) | After PR 2 |
+| 4 | ⭐️ Now, goal frontmatter, agent name resolution (`goal-model`) | After PR 3 |
 
 ## PR 1 approach
 
