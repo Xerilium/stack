@@ -126,6 +126,10 @@ describe('GET /api/rank with priorities', () => {
     expect(items[0].text).toMatch(/FOCUS issues triage/);
     expect(items.every((i) => typeof i.ref === 'string' && !/approve the copy/.test(i.text))).toBe(true);
     expect((await get('/api/next')).task.text).toMatch(/FOCUS issues triage/);
+    // The priority the row ranked under; an unlinked row has none. @req FR:pri-first-ranking/api.pri @req FR:api/routes.rank
+    const withPri = items as { text: string; pri?: { rank: number; title: string } }[];
+    expect(withPri[0].pri).toEqual({ rank: 1, title: 'Rewrite' });
+    expect(withPri.slice(1).every((i) => i.pri === undefined)).toBe(true);
     // A new priority list re-ranks: the memo never reuses the old order. @req FR:pri-first-ranking/api.order
     writeFileSync(join(home, 'pris.json'), JSON.stringify({ version: 1, rev: 2, pris: [{ id: 'p1', title: 'Cid', status: 'active', items: [], backlog: [], weekly: [], keywords: ['Cid copy'] }] }));
     expect((await get('/api/rank')).items[0].text).toMatch(/Rewrite Cid copy/);

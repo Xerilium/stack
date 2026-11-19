@@ -17,19 +17,28 @@ export const DONE_MS = 400;
 /** `context`: the top-level row the task sits under, shown as one muted line (`in Release FTK v16`). @req FR:now-screen/now.one */
 export interface NowTask { task: Task; title: string; why: string; context?: string }
 
-/** The two strongest reasons the task is next, then whether it fits the time left. */
+/** The two strongest reasons the task is next (the owner priority it serves first), then whether it fits the time left. */
 export function whyLine(item: HomeItem, minutesLeft: number, agentHasIt = false): string {
   const r = parseRow(item.task.text);
   const factors: string[] = [];
+  const priHead = item.pri ? `priority ${item.pri.rank}: ` : '';
+  if (item.pri) factors.push(priHead + item.pri.title);
   if (item.due && item.due.tone !== 'calm') factors.push(item.due.tone === 'late' ? item.due.text : `due ${item.due.text}`);
   else if (item.due) factors.push(`due ${item.due.text}`);
-  if (r.priority && /^(🚨|‼)/u.test(r.priority)) factors.push(r.priority.startsWith('🚨') ? 'critical' : 'high priority');
+  if (r.priority && /^(🚨|‼)/u.test(r.priority)) factors.push(r.priority.startsWith('🚨') ? 'critical' : item.pri ? 'urgent' : 'high priority');
   if (r.status && r.status.startsWith('🚧')) factors.push('in progress');
   if (agentHasIt) factors.push('agent has it');
   const top = factors.slice(0, 2);
   const fit = minutesLeft <= 0 ? null : item.minutes <= minutesLeft ? `fits your ${span(minutesLeft)}` : `needs ${span(item.minutes)}, ${span(minutesLeft)} left`;
-  const line = [...(top.length ? top : ['top of your stack']), ...(fit ? [fit] : [])].join(' · ');
-  return line.length <= WHY_MAX ? line : top.join(' · ').slice(0, WHY_MAX);
+  const join = (parts: string[]) => [...(parts.length ? parts : ['top of your stack']), ...(fit ? [fit] : [])].join(' · ');
+  const line = join(top);
+  if (line.length <= WHY_MAX) return line;
+  // A long priority title is clipped with … so the other factor and the fit still show.
+  if (item.pri) {
+    const room = item.pri.title.length - (line.length - WHY_MAX) - 1;
+    if (room >= 3) return join([`${priHead}${item.pri.title.slice(0, room).trimEnd()}…`, ...top.slice(1)]);
+  }
+  return top.join(' · ').slice(0, WHY_MAX);
 }
 
 /**

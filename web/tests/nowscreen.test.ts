@@ -57,6 +57,33 @@ describe('whyLine', () => {
   it('falls back to top of stack', () => expect(why('Ship it 🟢')).toBe('top of your stack · fits your 2h'));
   it('says what is missing when it does not fit', () => expect(why('📅 Oct 29: Ship it 🟠', 45)).toBe('due today · needs 2h, 45m left'));
   it('skips fit when there is no window', () => expect(why('📅 Oct 29: Ship it 🟠', 0)).toBe('due today'));
+  // @req FR:now-screen/now.why: the owner priority comes first
+  const whyPri = (text: string, pri: RankItem['pri'], minutes = 120) =>
+    whyLine(homeOf({ tasks: [T('alpha:1', text)], projects: [P('alpha')], ranked: [{ ...R('alpha:1'), pri }], now: at, minutesLeft: minutes }).one!, minutes);
+  it('names the owner priority first', () => expect(whyPri('Release FTK v16 🟢', { rank: 4, title: 'FTK 16' })).toBe('priority 4: FTK 16 · fits your 2h'));
+  it('keeps one more factor after the priority', () => expect(whyPri('‼️ 📅 Oct 27: Ship it 🟡', { rank: 1, title: 'FTK 16' })).toBe('priority 1: FTK 16 · 2d late · fits your 2h'));
+  it('says urgent, not high priority, next to an owner priority', () => expect(whyPri('‼️ Ship it 🟢', { rank: 1, title: 'FTK 16' })).toBe('priority 1: FTK 16 · urgent · fits your 2h'));
+  it('clips a long priority title to fit', () => {
+    const line = whyPri('‼️ 📅 Oct 27: Ship it 🟡', { rank: 12, title: 'Ship the very long named priority that goes on and on forever' }, 45);
+    expect(line.length).toBeLessThanOrEqual(WHY_MAX);
+    expect(line).toMatch(/^priority 12: Ship the .*… · /u);
+  });
+  it('names the priority of a leaf shown as its top-level row', () => {
+    const tasks = [T('alpha:1', 'Release FTK v16 🟢'), { ...T('alpha:2', 'Tag the build 🟢'), depth: 1 }];
+    const h = homeOf({ tasks, projects: [P('alpha')], ranked: [{ ...R('alpha:2'), root: 'alpha:1', pri: { rank: 4, title: 'FTK 16' } }], now: at, minutesLeft: 120 });
+    expect(h.one?.task.ref).toBe('alpha:1');
+    expect(whyLine(h.one!, 120)).toBe('priority 4: FTK 16 · fits your 2h');
+  });
+  it('names the priority of the task that fits when the first does not', () => {
+    const tasks = [T('alpha:1', 'Big job 🔴'), T('alpha:2', 'Small job 🟢')];
+    const h = homeOf({ tasks, projects: [P('alpha')], ranked: [R('alpha:1'), { ...R('alpha:2'), pri: { rank: 2, title: 'Ship' } }], now: at, minutesLeft: 45 });
+    expect(h.instead?.task.ref).toBe('alpha:2');
+    expect(whyLine(h.instead!, 45)).toBe('priority 2: Ship · fits your 45m');
+    expect(h.one?.pri).toBeUndefined();
+  });
+  it('is at most 60 characters with a priority', () => {
+    for (const title of ['x', 'y'.repeat(80)]) for (const m of [0, 45, 600]) expect(whyPri('🚨 🚧 📅 Oct 1: x 🔴', { rank: 99, title }, m).length).toBeLessThanOrEqual(WHY_MAX);
+  });
   it('is at most 60 characters', () => {
     for (const text of ['🚨 🚧 📅 Oct 1: x 🔴', '‼️ 📅 Oct 27: x ⚫️', 'x']) for (const m of [0, 45, 600]) expect(why(text, m, true).length).toBeLessThanOrEqual(WHY_MAX);
   });

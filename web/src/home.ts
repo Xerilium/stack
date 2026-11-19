@@ -23,8 +23,8 @@ export function countdown(due: string | undefined, now: Date): Countdown | null 
   return { text: `in ${d}d`, tone: 'calm' };
 }
 
-/** `leaf`: the ranked leaf when the row shows as its top-level root (Now shows the leaf). @req FR:now-screen/now.one */
-export interface HomeItem { task: Task; minutes: number; assumed: boolean; due: Countdown | null; leaf?: HomeItem }
+/** `leaf`: the ranked leaf when the row shows as its top-level root (Now shows the leaf). `pri`: the owner priority the row ranked under (`GET /rank`). @req FR:now-screen/now.one @req FR:now-screen/now.why */
+export interface HomeItem { task: Task; minutes: number; assumed: boolean; due: Countdown | null; leaf?: HomeItem; pri?: RankPri }
 /** `done`: a task in the project was done today (absent when unknown). @req FR:pri-first-ranking/daily.web */
 export interface HomeProject { project: string; title: string; top: HomeItem; done?: boolean }
 export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem | null; projects: HomeProject[] }
@@ -36,7 +36,9 @@ const doing = (t: Task) => /🚧/u.test(t.text);
 const agentRow = (t: Task) => /🪄|🤖(?!:)/u.test(t.text);
 
 /** One ranked task from `GET /rank`: a leaf names the top-level row it sits under. @req FR:task-lifecycle/rank.output */
-export interface RankItem { ref: string; text: string; project: string; score: number; rule?: string; root?: string }
+export interface RankItem { ref: string; text: string; project: string; score: number; rule?: string; root?: string; pri?: RankPri }
+/** The owner priority a ranked row serves, with its rank for the day. @req FR:pri-first-ranking/api.pri */
+export interface RankPri { rank: number; title: string }
 
 /**
  * Top asks: the task on top, and one row for every other project. The top project is not repeated.
@@ -63,6 +65,7 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
   const seen = new Set<string>();
   const rows: Task[] = [];
   const leafOf = new Map<string, Task>(); // root ref -> the first ranked leaf under it
+  const priOf = new Map<string, RankPri>(); // shown row -> the priority its first ranked row ranked under
   for (const r of o.ranked) {
     // A leaf shows as its top-level row, unless that row is an agent's or mixed: then the owner's leaf shows.
     const root = r.root ? byRef.get(r.root) : undefined;
@@ -71,6 +74,7 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
     seen.add(t.ref); rows.push(t);
     const leaf = byRef.get(r.ref);
     if (leaf && leaf !== t && !leaf.done) leafOf.set(t.ref, leaf);
+    if (r.pri) priOf.set(t.ref, r.pri);
   }
   // NOW is the server's first; under it, in-progress (🚧) rows come first, then the server's order.
   const oneTask = rows[0] ?? null;
@@ -78,7 +82,7 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
   const rest = [...tail.filter(doing), ...tail.filter((t) => !doing(t))];
   const ordered = oneTask ? [oneTask, ...rest] : [];
   // A row shown for its ranked leaf takes the leaf's time: fit and the "needs" text are about the step the owner will do. @req FR:now-screen/now.one
-  const withLeaf = (t: Task): HomeItem => { const i = item(t, now); const l = leafOf.get(t.ref); if (!l) return i; const leaf = item(l, now); return { ...i, minutes: leaf.minutes, assumed: leaf.assumed, leaf }; };
+  const withLeaf = (t: Task): HomeItem => { const base = item(t, now); const p = priOf.get(t.ref); const i = p ? { ...base, pri: p } : base; const l = leafOf.get(t.ref); if (!l) return i; const leaf = item(l, now); return { ...i, minutes: leaf.minutes, assumed: leaf.assumed, leaf }; };
   const one = oneTask ? withLeaf(oneTask) : null;
   const vs = (s: string) => s.replace(/\uFE0F/g, '');
   const may = (i: HomeItem) => !o.allow || vs(i.task.text).includes(vs(o.allow.emoji)) || !!o.allow.projects?.includes(i.task.project);
