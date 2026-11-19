@@ -7,6 +7,7 @@ import { join } from 'path';
 import { answerAsk, archiveAsks, formatAsk, formatAskRow, handleAsk, importAsks, listAsks, putAsk, readAsk, readAskRows, type Ask } from '../../src/core/asks';
 import { wakePath } from '../../src/core/ask-wake';
 import { lintIds } from '../../src/core/task-ids';
+import { lintProject } from '../../src/core/task-lint';
 import { MemoryStorage, type FileWrite } from '../../src/core/storage';
 import { run } from '../../src/cli/run';
 
@@ -76,6 +77,17 @@ describe('ask rows', () => {
   it('rows in a code fence are examples, not asks', () => {
     const src = ['# A', '', '## S', '', '```markdown', '- [ ] 🙋 Example', '  > id: ex', '  > kind: approve', '```', ''].join('\n');
     expect(readAskRows(src)).toEqual([]);
+  });
+});
+
+// @req FR:task-asks/format.row
+describe('ask rows and the task lint', () => {
+  it('passes the lint with a long ask, dated fields, detail, and thread', async () => {
+    const { storage, ctx } = mk();
+    await putAsk(ctx, 'k1', { ...base, ask: `Approve ${'the long plan '.repeat(12)}`.trim(), by: '2026-10-29T15:00:00.000Z', detail: 'Done as of Oct 3; 3/5 merged' }, 'cos');
+    await answerAsk(ctx, 'k1', { answer: 'reply', text: 'shipped 50%' });
+    const p = (await storage.list())[0];
+    expect(lintProject(p, await read(storage, p))).toEqual([]);
   });
 });
 
