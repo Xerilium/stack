@@ -66,7 +66,7 @@ The owner needs a short list of sessions to archive so that the sidebar stays sm
 The owner needs one stored inventory result so that the CLI, the API and the CoS read the same data.
 
 - **FR:store.result** (P1): The inventory result is `{at, total, counts, needsYou, archive, sessions}`. `counts` has one number per state; `needsYou` and `archive` are session items; `sessions` is every item, newest activity first
-- **FR:store.write** (P1): Each inventory writes `<home>/sessions.json` (`{version, at, projectsDir, cache, inventory}`) with a temp file and a rename, mode `0600`. `<home>` is `STACK_HOME` or `~/.stack`. A failed write never fails the inventory. Nothing is written to the content repo
+- **FR:store.write** (P1): An inventory writes `<home>/sessions.json` (`{version, projectsDir, cache}`) with a temp file and a rename, mode `0600`, only when the cache changed: a new, changed or dropped entry, or a new transcript tail. A run over unchanged session files writes nothing. An older file that also holds `at` and `inventory` still loads as a warm cache. `<home>` is `STACK_HOME` or `~/.stack`. A failed write never fails the inventory. Nothing is written to the content repo
 
 ### FR:pris: Priorities
 
