@@ -36,7 +36,9 @@ This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:p
   - **FR:list.source.row** (P1): A 🙋 row shows no source link
 - **FR:list.rowactions** (P1): Every row that is not selected has an actions menu (`FR:ui-kit/menu`) named `Actions for {ask}`
   - **FR:list.rowactions.items** (P1): The menu lists the actions of the notification's kind (`FR:ask-queue/web.actions`: for example Approve, Reject, Open), then Reply (`Answer` for an `answer` ask), then Defer
-  - **FR:list.rowactions.context** (P1): An ask with no reason, no link and no detail also has `Ask for context`, which selects the notification and opens its reply box with a question as the text. It MUST NOT send: the owner can change the text, then sends it (`FR:ui-kit/send.box.fill`)
+  - **FR:list.rowactions.context** (P1): An ask with no reason, no link and no detail also has `Ask for context`
+    - **FR:list.rowactions.context.fill** (P1): `Ask for context` MUST select the notification and open its reply box with a question as the text
+    - **FR:list.rowactions.context.nosend** (P1): `Ask for context` MUST NOT send; the owner can change the text, then sends it (`FR:ui-kit/send.box.fill`)
   - **FR:list.rowactions.nocontext** (P1): A 🙋 row and an `answer` ask never have `Ask for context`
   - **FR:list.rowactions.select** (P1): Reply and Defer select their row, then open the reply box or the defer choices
   - **FR:list.rowactions.keep** (P1): An action that answers the notification (for example Approve, Reject, or Done) keeps the selected notification and does not scroll the page. The row leaves the list
