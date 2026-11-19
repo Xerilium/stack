@@ -5,17 +5,16 @@ import './ui.css';
 const MAX = 4000;
 
 /**
- * One message from a details pane: a heading, a text box and one send button. After a send it clears the text and says
+ * One message from a details pane: a heading, a text box and one send button, `Send to <to>`. The text in the box is the text that
+ * goes; start text waits in the box until the owner sends it. After a send it clears the text and says
  * `Sent to <to>`; on an error it keeps the text and says the error. With `off` (a reason) the box and button are off.
- * @req FR:ui-kit/message
+ * @req FR:ui-kit/message @req FR:ui-kit/message.label @req FR:ui-kit/message.exact @req FR:ui-kit/send.box
  * @owns class:ui-msg
  */
-export function MessageBox({ heading, to, send = 'Send', text: start = '', off, onSend }: {
+export function MessageBox({ heading, to, text: start = '', off, onSend }: {
   heading: string;
-  /** Who gets the message: names the text box and the result. */
+  /** Who gets the message: names the text box, the button and the result. */
   to: string;
-  /** The button label. */
-  send?: string;
   /** The text the box starts with. */
   text?: string;
   /** Why the box cannot send; shown under it. */
@@ -44,7 +43,7 @@ export function MessageBox({ heading, to, send = 'Send', text: start = '', off, 
       <textarea class="ui-msg-box" rows={3} maxLength={MAX} value={text} disabled={!!off} aria-label={`Message ${to}`} placeholder={off ? undefined : `Message ${to}…`}
         onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} />
       <div class="ui-msg-row">
-        <button type="submit" class="fl-btn" disabled={!!off || busy || !text.trim()}>{send}</button>
+        <button type="submit" class="fl-btn" disabled={!!off || busy || !text.trim()}>Send to {to}</button>
         {off ? <span class="ui-msg-hint">{off}</span> : <span class={`ui-msg-hint${note?.bad ? ' bad' : ''}`} role="status">{note?.text ?? ''}</span>}
       </div>
       </form>

@@ -26,6 +26,7 @@ import { PrisInvalid, type PriStore } from '../core/pris';
 import { blockedText, DECISIONS, MOVE_TO, QUEUE_OPS, type PrPriorityStore, type QueueOp } from '../core/pr-priority';
 import { LABELS, sameLabel, type PrRow } from '../core/pr-board';
 import { boardInput, prioritiesView, type BoardInput, type SessionsInput } from '../core/priorities-view';
+import { writeGaps } from '../core/priorities-gaps';
 import { readTaskFiles } from '../core/tiered-tasks';
 import type { PrBoardService } from './pr-board-service';
 import type { PrAuth } from './pr-page';
@@ -905,7 +906,10 @@ export const ROUTES: Route[] = [
       try { if (c.deps.prBoard && (!c.deps.prAuth || await c.deps.prAuth.ready())) { const b = await Promise.race([c.deps.prBoard.get(), new Promise<undefined>((ok) => { setTimeout(() => ok(undefined), BOARD_WAIT_MS).unref?.(); })]); if (b) board = boardInput(b); } } catch { board = undefined; }
       const now = (c.deps.now ?? (() => new Date()))();
       const files = await readTaskFiles(c.deps.storage);
-      return json(200, prioritiesView({ pris: c.deps.pris.read().pris, ...files, now, timeZone: c.deps.config?.timezone, ...(sessions ? { sessions } : {}), ...(board ? { board } : {}) }));
+      const view = prioritiesView({ pris: c.deps.pris.read().pris, ...files, now, timeZone: c.deps.config?.timezone, ...(sessions ? { sessions } : {}), ...(board ? { board } : {}) });
+      // The CoS reads the gaps from a file: no message goes to any session. @req FR:priorities-tables/gaps.file @req FR:priorities-tables/gaps.silent
+      writeGaps(c.deps.pris.dir, view);
+      return json(200, view);
     },
   },
   {

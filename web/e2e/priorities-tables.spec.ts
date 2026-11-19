@@ -8,11 +8,10 @@ const iso = (minsAgo = 0) => new Date(at().getTime() - minsAgo * 60_000).toISOSt
 const CLI = { s1: '11111111-1111-4111-8111-111111111111', cos: '22222222-2222-4222-8222-222222222222' } as Record<string, string>;
 const S = (id: string, name: string) => ({ name, link: `claude://claude.ai/epitaxy/${id}`, file: null as string | null, session: CLI[id] ?? null });
 const F = (name: string, file: string | null) => ({ name, link: null as string | null, file, session: null as string | null });
-const GAP = 'Allyte CoS, today: add a 1️⃣/2️⃣/3️⃣ task in tasks/fh11.md with (agent: ...)';
-const REQUEST = 'Priority "FH 0.11" has no tiered task. Add a 1️⃣/2️⃣/3️⃣ task in tasks/fh11.md with (agent: ...) today.';
+const GAP = 'Allyte CoS will add a task today: 1️⃣/2️⃣/3️⃣ in tasks/fh11.md with (agent: ...)';
 const U = (n: number, repo = 'allytehq/finops-hubs') => `https://github.com/${repo}/issues/${n}`;
-const row = (id: string, project: string, o: Record<string, unknown> = {}) => ({ id, project, file: `tasks/${id}.md` as string | null, agent: null as unknown, status: null as string | null, action: GAP, gap: true, cos: S('cos', 'Allyte CoS') as unknown, request: REQUEST as string | null, ref: null as string | null, at: iso(), stale: false, ...o });
-const task = (id: string, project: string, action: string, o: Record<string, unknown> = {}) => row(id, project, { action, gap: false, cos: null, request: null, ref: `tasks/${id}.md:4`, ...o });
+const row = (id: string, project: string, o: Record<string, unknown> = {}) => ({ id, project, file: `tasks/${id}.md` as string | null, agent: null as unknown, status: null as string | null, action: GAP, gap: true, cos: S('cos', 'Allyte CoS') as unknown, ref: null as string | null, at: iso(), stale: false, ...o });
+const task = (id: string, project: string, action: string, o: Record<string, unknown> = {}) => row(id, project, { action, gap: false, cos: null, ref: `tasks/${id}.md:4`, ...o });
 const pr = (n: number, emoji: string, action: string, minutes: number, o: Record<string, unknown> = {}) => ({ emoji, number: n, url: `https://github.com/allytehq/finops-hubs/pull/${n}`, agent: null as unknown, action, minutes, server: null as string | null, details: null as string | null, ...o });
 const view = () => ({
   at: iso(),
@@ -218,23 +217,24 @@ test.describe('Priorities report', () => {
     expect(bar.x + bar.width - (stamp.x + stamp.width)).toBeGreaterThanOrEqual(12);
   });
 
-  // @req FR:priorities-tables/web.message@req FR:priorities-tables/web.message.off @req FR:priorities-tables/web.message.result @req FR:ui-kit/message
+  // @req FR:priorities-tables/web.message @req FR:priorities-tables/web.message.off @req FR:priorities-tables/web.message.result @req FR:ui-kit/message @req FR:ui-kit/message.label
   test('Message agent: sends the text to the agent session; off with no session', async ({ page }, info) => {
     const m = await open(page, view(), '#/now?pri=now');
     await cards(page, 'now').nth(1).getByRole('button', { name: 'Details: FH Premium' }).click();
     const box = detail(page).getByRole('group', { name: 'Message agent' });
-    await expect(box.getByRole('button', { name: 'Send' })).toBeDisabled();
+    await expect(box.getByRole('button', { name: 'Send to FH backend' })).toBeDisabled();
+    expect(m.calls.filter((c) => c.path.endsWith('/prompt'))).toEqual([]); // opening the detail sends nothing
     await box.getByRole('textbox', { name: 'Message FH backend' }).fill('What happened to 430?');
     await shot(page, 'message-agent-' + info.project.name);
     expect((await new AxeBuilder({ page }).include('[data-testid="pri-tables"]').analyze()).violations).toEqual([]);
-    await box.getByRole('button', { name: 'Send' }).click();
+    await box.getByRole('button', { name: 'Send to FH backend' }).click();
     await expect(box.getByRole('status')).toHaveText('Sent to FH backend');
     await expect(box.getByRole('textbox')).toHaveValue('');
     expect(m.calls.filter((c) => c.path.endsWith('/prompt')).map((c) => [c.path, c.body])).toEqual([['/sessions/' + CLI.s1 + '/prompt', { text: 'What happened to 430?' }]]);
     // an error keeps the text
     m.promptFail = 'The session is busy';
     await box.getByRole('textbox').fill('again');
-    await box.getByRole('button', { name: 'Send' }).click();
+    await box.getByRole('button', { name: 'Send to FH backend' }).click();
     await expect(box.getByRole('status')).toHaveText('The session is busy');
     await expect(box.getByRole('textbox')).toHaveValue('again');
     // no agent: no box. An agent with no session: off, with the reason.
@@ -249,29 +249,21 @@ test.describe('Priorities report', () => {
     await expect(off).toContainText('No live session for this agent');
   });
 
-  // @req FR:priorities-tables/web.askcos @req FR:priorities-tables/web.askcos.off @req FR:priorities-tables/web.table.gap
-  test('a gap row says who, when and what; Ask CoS sends the request to the CoS session', async ({ page }, info) => {
-    const v = view();
-    v.today.rows.push(row('arc', 'Arc', { action: 'CoS, by 3 PM: add a 1️⃣/2️⃣/3️⃣ task in tasks/arc.md with (agent: ...)', cos: F('CoS', null), request: 'r' }) as never);
-    const m = await open(page, v, '#/now?pri=now');
+  // @req FR:priorities-tables/web.gap @req FR:priorities-tables/web.table.gap @req FR:priorities-tables/gaps.silent @req FR:ui-kit/send.box
+  test('a gap row says who will add the task and by when; it has no box, no button and sends nothing', async ({ page }, info) => {
+    const m = await open(page, view(), '#/now?pri=now');
     const gap = cards(page, 'now').nth(2);
     await expect(gap.locator('.ui-card-title .pri-muted')).toHaveText(GAP);
     await gap.getByRole('button', { name: 'Details: FH 0.11' }).click();
     await expect(detail(page)).toContainText(GAP);
+    await expect(detail(page)).toContainText('Allyte CoS will add a task. No action for you.');
     await expect(detail(page).getByRole('link', { name: 'Allyte CoS' })).toHaveAttribute('href', 'claude://claude.ai/epitaxy/cos');
-    const box = detail(page).getByRole('group', { name: 'Ask CoS' });
-    await expect(box.getByRole('textbox', { name: 'Message Allyte CoS' })).toHaveValue(REQUEST);
-    await shot(page, 'ask-cos-' + info.project.name);
+    await expect(detail(page).getByRole('textbox')).toHaveCount(0);
+    await expect(detail(page).getByRole('button')).toHaveCount(0);
+    await expect(detail(page).getByText('Ask CoS')).toHaveCount(0);
+    await shot(page, 'gap-detail-' + info.project.name);
     expect((await new AxeBuilder({ page }).include('[data-testid="pri-tables"]').analyze()).violations).toEqual([]);
-    await box.getByRole('button', { name: 'Ask CoS' }).click();
-    await expect(box.getByRole('status')).toHaveText('Sent to Allyte CoS');
-    expect(m.calls.filter((c) => c.path.endsWith('/prompt')).map((c) => [c.path, c.body])).toEqual([['/sessions/' + CLI.cos + '/prompt', { text: REQUEST }]]);
-    await back(page);
-    await page.getByTestId('pri-tab-today').click();
-    await cards(page, 'today').nth(2).getByRole('button').click();
-    const off = detail(page).getByRole('group', { name: 'Ask CoS' });
-    await expect(off.getByRole('button', { name: 'Ask CoS' })).toBeDisabled();
-    await expect(off).toContainText('No live session for CoS');
+    expect(m.calls.filter((c) => /\/(prompt|sessions|inbox)/.test(c.path))).toEqual([]); // every POST is recorded
   });
 
   for (const scheme of ['light', 'dark'] as const) {

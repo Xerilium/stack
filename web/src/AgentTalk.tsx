@@ -37,15 +37,14 @@ export function AgentTalk({ team, talk, agents, float = false }: { team: Team; t
   const none = agents.length === 0;
   const offline = team.enabled !== true;
   const close = () => { team.setTalk(null); setTimeout(() => (talk.ref ? document.querySelector<HTMLElement>(`.row[data-ref="${CSS.escape(talk.ref)}"]`) : null)?.focus?.(), 0); };
-  const send = async (t = text) => {
+  const send = async () => {
+    const t = text;
     if (busy || none || !t.trim()) return;
     setBusy(true);
     try { if (await team.start(talk, agent, t.trim(), keep)) setText(''); } finally { setBusy(false); }
   };
-  const quick = (id: 'review' | 'do' | 'plan') => {
-    if (id === 'review') { if (talk.ref) void team.review(talk.ref, agent); return; }
-    void send(QUICK.find((q) => q.id === id)!.text);
-  };
+  /** Ready text goes into the box and waits: the owner reads it, can change it, then sends it. @req FR:ui-kit/send.box.fill @req FR:ui-kit/send.decision */
+  const fill = (id: 'do' | 'plan') => { setText(QUICK.find((q) => q.id === id)!.text); box.current?.focus(); };
   return (
     <div ref={root} class={`agent-talk${float ? ' float' : ''}`} role="group" aria-label={`Talk to ${chosen?.name ?? 'an agent'} about ${talk.about}`}
       onClick={(e) => e.stopPropagation()}
@@ -69,7 +68,8 @@ export function AgentTalk({ team, talk, agents, float = false }: { team: Team; t
       </form>
       {(talk.ref || offline) && <div class="talk-row quick">
         {QUICK.filter(() => !!talk.ref).map((q) => (
-          <button type="button" key={q.id} class="btn" disabled={none || offline || busy} title={q.id === 'review' ? 'Can the agent do this task? What does it need from you?' : q.id === 'do' ? 'Hand the task to the agent' : 'Steps and estimates, no work yet'} onClick={() => quick(q.id)}>{q.label}</button>
+          <button type="button" key={q.id} class="btn" disabled={none || offline || busy} title={q.id === 'review' ? 'Starts a review: can the agent do this task? What does it need from you?' : q.id === 'do' ? 'Writes the message that hands the task to the agent. Send it when it is right.' : 'Writes the message that asks for steps and estimates. Send it when it is right.'}
+            onClick={() => { if (q.id !== 'review') fill(q.id); else if (talk.ref) void team.review(talk.ref, agent); }}>{q.label}</button>
         ))}
         {offline && <span class="talk-note">Runs in <code>stack web</code> on your machine</span>}
       </div>}

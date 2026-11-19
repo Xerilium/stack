@@ -66,10 +66,8 @@ export type SendToSession = (session: string, text: string) => Promise<void>;
 const MessageAgent = ({ a, send }: { a: Agent; send: SendToSession }) => (
   <MessageBox heading="Message agent" to={a.name} off={a.session ? undefined : 'No live session for this agent'} onSend={(t) => send(a.session!, t)} />
 );
-/** The Ask CoS box of a gap row: the request goes to the CoS session; the owner can change the text first. @req FR:priorities-tables/web.askcos @req FR:priorities-tables/web.askcos.off */
-const AskCos = ({ cos, request, send }: { cos: Agent; request: string; send: SendToSession }) => (
-  <MessageBox heading="Ask CoS" send="Ask CoS" to={cos.name} text={request} off={cos.session ? undefined : `No live session for ${cos.name}`} onSend={(t) => send(cos.session!, t)} />
-);
+/** A gap is the CoS's job: the pane says who will add the task. No box, no button, no message. @req FR:priorities-tables/web.gap @req FR:priorities-tables/gaps.silent */
+const GapNote = ({ cos }: { cos: Agent }) => <p class="pri-gap-note pri-muted">{cos.name} will add a task. No action for you.</p>;
 
 function PriDetail({ r, tz, send }: { r: PriRow; tz?: string; send: SendToSession }) {
   return (
@@ -84,7 +82,7 @@ function PriDetail({ r, tz, send }: { r: PriRow; tz?: string; send: SendToSessio
         <dt>Checked</dt><dd>{stampText(r, tz)}</dd>
       </dl>
       {r.agent && <MessageAgent a={r.agent} send={send} />}
-      {r.gap && r.cos && r.request && <AskCos cos={r.cos} request={r.request} send={send} />}
+      {r.gap && r.cos && <GapNote cos={r.cos} />}
     </div>
   );
 }

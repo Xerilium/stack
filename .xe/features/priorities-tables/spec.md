@@ -15,7 +15,7 @@ The owner runs many projects at once. He needs one report that says, per project
 
 ## Scope
 
-- In: tier tags and agent tags in task files, the day order of rows, the QM section, project rows, the PR table, the freshness stamp, gap rows, `stack priorities`, `GET /priorities`, the report on the Now page.
+- In: tier tags and agent tags in task files, the day order of rows, the QM section, project rows, the PR table, the freshness stamp, gap rows, the gap file for the CoS, `stack priorities`, `GET /priorities`, the report on the Now page.
 - Out: the day slots (`FR:pri-first-ranking/day.*`), the PR next action (`FR:pr-page/card.action`), the session inventory (`FR:session-inventory/*`), task scoring. The asks stay in Notifications (`FR:ask-queue/web.*`).
 
 ## Scenarios
@@ -59,8 +59,8 @@ Owner needs one row per priority so that each project shows once with his next s
 - **FR:rows.gap** (P1): A priority with no linked tiered task MUST show a gap row: no agent and no status. Report MUST NOT fill it from other data.
   - **FR:rows.gap.cos** (P1): A gap row MUST name the Chief of Staff (CoS) who must act: the priority `cos`, else `CoS`, linked as an agent (@req FR:agent.link).
   - **FR:rows.gap.by** (P1): A gap row MUST say by when: `today`, else `by` and the start of the row (`by 3 PM`, `by Thu 3 PM`).
-  - **FR:rows.gap.action** (P1): The gap action MUST say who, when and what: `<CoS>, <by when>: add a 1️⃣/2️⃣/3️⃣ task in <project file> with (agent: ...)`. With no project file it MUST name `tasks/<project>.md`.
-  - **FR:rows.gap.request** (P1): A gap row MUST carry the request to send to the CoS: the project, the gap, the same task to add and by when.
+  - **FR:rows.gap.action** (P1): The gap action MUST say who will act, by when and what the owner can expect: `<CoS> will add a task <by when>: 1️⃣/2️⃣/3️⃣ in <project file> with (agent: ...)`. With no project file it MUST name `tasks/<project>.md`.
+  - **FR:rows.gap.silent** (P1): A gap row MUST NOT carry text to send. The report MUST NOT send a message for a gap.
 - **FR:rows.words** (P1): Report MUST keep each cell at most 20 words and end a cut cell with `…`.
 
 ### FR:qm: Show QM first
@@ -140,6 +140,17 @@ Agents need the same rows in JSON so that they report the owner's priorities wit
 - **FR:api.read** (P1): API MUST build the report from its priority store, task storage, inventory and PR board.
   - **FR:api.read.none** (P1): API MUST answer 404 when the host has no priority store.
 
+### FR:gaps: Give the gaps to the CoS
+
+CoS needs the gap list in a file so that it adds the tasks with no message from the owner.
+
+- **FR:gaps.@function** (P1): Interface: `gapsOf(view): Gap[]`, pure, and `writeGaps(dir, view): boolean`
+- **FR:gaps.list** (P1): The gap list MUST have one entry per gap row of QM, Now, Today and Next 3 days, in that order: `{ id, project, file, cos, section, action }`.
+- **FR:gaps.file** (P1): Each build of the report (`GET /priorities`, `stack priorities`) MUST write the list to `gaps.json` in the priority store folder (`~/.stack/gaps.json`): `{ version: 1, at, gaps }`, atomically.
+  - **FR:gaps.file.change** (P2): The file MUST be written only when the list changes, so `at` is when the list last changed.
+  - **FR:gaps.file.safe** (P1): A failed write MUST NOT fail the report.
+- **FR:gaps.silent** (P1): Stack MUST NOT send a message to any session or agent for a gap.
+
 ### FR:web: Show the report on Now
 
 Owner needs the report on the Now page so that he sees it without a new screen.
@@ -161,8 +172,7 @@ Owner needs the report on the Now page so that he sees it without a new screen.
 - **FR:web.message** (P1): The detail pane of a row with an agent MUST show a `Message agent` box (`MessageBox`, `FR:ui-kit/message`) that sends the text to the agent session (@req FR:agent-sessions/run.prompt).
   - **FR:web.message.off** (P1): With no session id, the box MUST be off and say `No live session for this agent`.
   - **FR:web.message.result** (P1): The box MUST say `Sent to <agent>` after a send, else the error, and keep the text on an error.
-- **FR:web.askcos** (P1): The detail pane of a gap row MUST show an `Ask CoS` box (`MessageBox`) with the row request as its text, which sends it to the CoS session.
-  - **FR:web.askcos.off** (P1): With no CoS session id, the box MUST be off and say `No live session for <CoS>`.
+- **FR:web.gap** (P1): The detail pane of a gap row MUST say `<CoS> will add a task. No action for you.` and MUST show no text box and no button.
 - **FR:web.detail** (P1): The detail pane MUST show the project (linked), status chip, full next action (linked refs), agent (linked) with `+ N more on this goal`, source `path:line` and the stamp. Wide (900 px or more) it MUST sit beside the list; narrow it MUST replace the list, with Back.
   - **FR:web.table.gap** (P1): A gap row MUST show its action in muted text.
   - **FR:web.table.empty** (P1): An empty tab MUST show one card `Nothing here`.

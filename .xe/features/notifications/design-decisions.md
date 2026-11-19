@@ -1,6 +1,6 @@
 ## A row action that answers keeps the open notification
 
-**Decision**: Approve, Reject, Done, and `Ask for context` from a row menu answer that row and keep the selected notification. Only Reply and Defer select their row.
+**Decision**: Approve, Reject, and Done from a row menu answer that row and keep the selected notification. Reply, Defer and `Ask for context` select their row. `Ask for context` opens the reply box with the question as text and never sends it: no text goes out that the owner did not read (`FR:ui-kit/send.box.fill`).
 
 **Date**: 2026-11-19
 

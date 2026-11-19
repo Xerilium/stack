@@ -6,7 +6,7 @@
 export type AgentStatus = 'working' | 'pairing' | 'done' | 'idle' | 'blocked' | 'queued' | 'unknown';
 /** `session`: the id a prompt takes (`POST /sessions/{id}/prompt`), or null. @req FR:priorities-tables/agent.session */
 export interface Agent { name: string; link: string | null; file: string | null; session: string | null }
-export interface PriRow { id: string; project: string; file: string | null; agent: Agent | null; more: number; status: AgentStatus | null; action: string; gap: boolean; /** Gap rows: the CoS who must add the task, and the text to send to it. */ cos: Agent | null; request: string | null; ref: string | null; at: string; stale: boolean }
+export interface PriRow { id: string; project: string; file: string | null; agent: Agent | null; more: number; status: AgentStatus | null; action: string; gap: boolean; /** Gap rows: the CoS who will add the task. */ cos: Agent | null; ref: string | null; at: string; stale: boolean }
 export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string; today: boolean }
 export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; /** The priority the PR links to. @req FR:priorities-tables/pr.cols.pri */ pri?: string | null; action: string; minutes: number; server: string | null; details: string | null }

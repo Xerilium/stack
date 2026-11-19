@@ -36,10 +36,10 @@ This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:p
   - **FR:list.source.row** (P1): A 🙋 row shows no source link
 - **FR:list.rowactions** (P1): Every row that is not selected has an actions menu (`FR:ui-kit/menu`) named `Actions for {ask}`
   - **FR:list.rowactions.items** (P1): The menu lists the actions of the notification's kind (`FR:ask-queue/web.actions`: for example Approve, Reject, Open), then Reply (`Answer` for an `answer` ask), then Defer
-  - **FR:list.rowactions.context** (P1): An ask with no reason, no link and no detail also has `Ask for context`, which sends the sender a question
+  - **FR:list.rowactions.context** (P1): An ask with no reason, no link and no detail also has `Ask for context`, which selects the notification and opens its reply box with a question as the text. It MUST NOT send: the owner can change the text, then sends it (`FR:ui-kit/send.box.fill`)
   - **FR:list.rowactions.nocontext** (P1): A 🙋 row and an `answer` ask never have `Ask for context`
   - **FR:list.rowactions.select** (P1): Reply and Defer select their row, then open the reply box or the defer choices
-  - **FR:list.rowactions.keep** (P1): An action that answers the notification (for example Approve, Reject, Done, or `Ask for context`) keeps the selected notification and does not scroll the page. The row leaves the list
+  - **FR:list.rowactions.keep** (P1): An action that answers the notification (for example Approve, Reject, or Done) keeps the selected notification and does not scroll the page. The row leaves the list
   - **FR:list.rowactions.focus** (P1): After a menu action, keyboard focus moves to the selected notification
   - **FR:list.rowactions.card** (P1): The selected notification shows the same actions as buttons: the kind's actions with their keys, Defer, Reply, and `Ask for context` when the ask has it
 - **FR:list.drop** (P1): A notification with no possible action is not shown: an open ask that is not an `answer` ask and whose kind gives no action (for example a `decide` ask with no options)

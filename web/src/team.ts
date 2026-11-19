@@ -14,7 +14,7 @@ export interface ReviewItem { ref: string; at: string; verdict: 'can' | 'partial
 export type Talk = { ref: string; project: string; about: string; askKey?: never } | { ref?: never; project: string; about: string; askKey?: string };
 
 export const QUICK: { id: 'review' | 'do' | 'plan'; label: string; text: string }[] = [
-  { id: 'review', label: 'Review', text: '' },
+  { id: 'review', label: 'Start review', text: '' },
   { id: 'do', label: 'Do it', text: 'Do this task. Bring me anything you need as an ask (`stack asks put`, see docs/asks.md); never wait in chat.' },
   { id: 'plan', label: 'Plan', text: 'Plan this task in steps with a rough estimate each; do not start it.' },
 ];

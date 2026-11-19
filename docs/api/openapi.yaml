@@ -4064,7 +4064,6 @@ components:
         - action
         - gap
         - cos
-        - request
         - ref
         - at
         - stale
@@ -4099,13 +4098,9 @@ components:
           description: The owner next action, at most 20 words; ⏳ first for tier 2 or 3
         gap:
           type: boolean
-          description: "No tiered task linked: the action says who must add one, by when"
+          description: "No tiered task linked: the action says who will add one, by when. The gap list also goes to gaps.json in the store folder for the CoS; no message is sent"
         cos:
           $ref: "#/components/schemas/PriAgent"
-        request:
-          type: string
-          nullable: true
-          description: "Gap rows: the text to send to the CoS; else null"
         ref:
           type: string
           nullable: true
