@@ -123,11 +123,15 @@ describe('workflows', () => {
     const steps = ci.jobs.e2e.steps as Array<{ run?: string; uses?: string; if?: string; with?: { name?: string; path?: string } }>;
     expect(steps.some((s) => /playwright install/.test(s.run ?? ''))).toBe(true);
     expect(steps.some((s) => /stack-web e2e/.test(s.run ?? ''))).toBe(true);
-    const report = steps.find((s) => s.with?.name === 'playwright-report');
+    const report = steps.find((s) => s.with?.name === 'playwright-results');
     expect(report?.if).toBe('failure()');
-    expect(report?.with?.path).toBe('web/playwright-report');
+    expect(report?.with?.path).toBe('web/test-results');
     // One Playwright run per PR: no other workflow runs it.
-    for (const [f] of docs) if (f !== 'ci.yml') expect(read(`.github/workflows/${f}`)).not.toMatch(/playwright/i);
+    for (const [f, d] of docs) {
+      if (f === 'ci.yml') continue;
+      const runs = Object.values((d.jobs ?? {}) as Record<string, { steps?: { run?: string }[] }>).flatMap((j) => (j.steps ?? []).map((s) => s.run ?? ''));
+      expect(runs.filter((r) => /playwright|\be2e\b/i.test(r))).toEqual([]);
+    }
     expect(existsSync(join(root, '.github/workflows/e2e.yml'))).toBe(false);
   });
 });
