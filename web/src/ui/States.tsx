@@ -1,6 +1,9 @@
 /**
  * Page states: empty, loading, and error. Every view shows these three the same way.
  * @req FR:ui-kit/empty @req FR:ui-kit/loading @req FR:ui-kit/error
+ * @owns class:empty-state
+ * @owns class:ui-loading
+ * @owns class:ui-error
  */
 import type { ComponentChildren } from 'preact';
 import './ui.css';

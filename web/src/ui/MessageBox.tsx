@@ -8,6 +8,7 @@ const MAX = 4000;
  * One message from a details pane: a heading, a text box and one send button. After a send it clears the text and says
  * `Sent to <to>`; on an error it keeps the text and says the error. With `off` (a reason) the box and button are off.
  * @req FR:ui-kit/message
+ * @owns class:ui-msg
  */
 export function MessageBox({ heading, to, send = 'Send', text: start = '', off, onSend }: {
   heading: string;

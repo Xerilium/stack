@@ -1,6 +1,7 @@
 /**
  * A flag: a small icon and a muted word that notes something. Not a control: no fill, no border, no hover, not focusable.
- * @req FR:ui-kit/flag
+ * @req FR:ui-kit/flag @req FR:ui-kit/guard.owns
+ * @owns class:ui-flag
  */
 import './ui.css';
 

@@ -2,6 +2,7 @@
  * One labelled line of links: a small muted label, then the links, which wrap. Web links open in a new tab; app links open in place.
  * Shows nothing with no items. The caller checks each target.
  * @req FR:ui-kit/links
+ * @owns class:ui-links
  */
 import './ui.css';
 

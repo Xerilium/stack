@@ -16,7 +16,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ## Scope
 
-- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `MessageBox`, `DayGrid`, `useWide`, `PageHeader`, `EmptyState`, `Loading`, `ErrorState`), `web/src/ui/ui.css`, and the design tokens in `web/src/ui/tokens.css`.
+- In: every component in `web/src/ui/` `web/src/ui/ui.css`, and the design tokens in `web/src/ui/tokens.css`. The list is `docs/ui-components.md`.
 - Out: what a view puts in them (its words, tones, and actions), and the written UI rule (`ux-consolidation`).
 
 ## Scenarios
@@ -24,19 +24,10 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 ### FR:card: Selectable card
 
 - **FR:card** (P1): `SelectCard` is one list item: an optional top line (links, flags, chips), a title, an optional sub line, an optional tools column, and a chevron (`›`). One button covers the card; a tap or click anywhere that is not a link or a tool selects it, and Enter or Space on it does the same. Links and tools sit above it. `selected` sets `aria-current` and a focus-colored outline. `sr` is text read after the title by assistive tech only. With `label`, the title and sub line sit outside the button, so links in them stay links, and the button (the chevron, stretched over the card) is named `label`. A view sets the tone with the CSS variables `--ui-edge`, `--ui-soft`, `--ui-strong`, `--ui-ink`, `--ui-ink2`, and the class `strong`. Cards in a `ui-cards` list have 14 px between them and 14 px padding inside
-  - **FR:card.chev** (P1): The 28 px chevron MUST sit centred in a 44 px column at the right edge, over the card height.
 
 ### FR:flag: Flag
 
 - **FR:flag** (P1): `Flag` notes something about an item: a 12 px flag icon and the word in muted text. It is a `span`: no fill, no border, no hover state, default cursor, not focusable, no role. `hidden` hides it from assistive tech when the same words are read elsewhere. In a card top line it sits at the right
-
-### FR:source: Source link
-
-- **FR:source** (P1): A source link opens where an item came from
-  - **FR:source.name** (P1): The link is named by its kind: `PR {repo}#{n}` and `Issue {repo}#{n}` for GitHub, `Session` for a Claude session, `Email` for a mail web app or `mailto:` link, else the site name without `www.`
-  - **FR:source.tab** (P1): The link opens in a new tab with no opener and ends in `↗`
-  - **FR:source.click** (P1): A click on the link does not reach the row under it
-  - **FR:source.empty** (P1): Text that is not a link draws nothing
 
 ### FR:chip: Status chip
 
@@ -52,7 +43,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ### FR:tabs: Tabs
 
-- **FR:tabs** (P1): `Tabs` is a tab bar (ARIA tabs pattern: one selected tab with `tabIndex` 0, arrow keys, Home and End pick and focus). An optional `aside` sits small at the right end of the bar, with 12 px of space after it
+- **FR:tabs** (P1): `Tabs` is a tab bar (ARIA tabs pattern: one selected tab with `tabIndex` 0, arrow keys, Home and End pick and focus). An optional `aside` sits small at the right end of the bar
 
 ### FR:split: Split view
 
@@ -116,7 +107,23 @@ The owner needs a failed load to say what happened so that the owner can fix it 
 
 - **FR:a11y** (P1): Every target is at least 44 px on touch and 24 px on desktop. Axe finds no serious or critical violation where a view uses them
 
+### FR:guard: Reuse guard
+
+Developer needs a failing test when a view builds markup a shared component owns, so that one-off copies never reach the owner.
+
+- **FR:guard.owns** (P2): Each component file in `web/src/ui/` MUST name the classes and roles it owns with `@owns` tags (`@owns class:ui-chip`, `@owns role:tablist`)
+- **FR:guard.fail** (P2): Guard MUST fail when a view file outside `web/src/ui/` writes an owned class or role in its markup
+  - **FR:guard.fail.legacy** (P3): Guard MUST allow a view the count its `legacy:` entry on the tag names (`legacy: PrsPanel.tsx=1`)
+  - **FR:guard.fail.message** (P3): Guard MUST name the file, the markup, and the component to use
+
+### FR:catalog: Component catalog
+
+Developer needs one page that says which component to use so that he finds it before he builds a copy.
+
+- **FR:catalog** (P3): `docs/ui-components.md` MUST say what each shared component is for
+  - **FR:catalog.current** (P3): Catalog MUST name only components that exist in `web/src/ui/`
+
 ## Architecture Constraints
 
-- Each component is its own file in `web/src/ui/` with tests in `web/tests/ui-kit.test.tsx`. Styles live in `web/src/ui/ui.css`, tokens only.
+- Each component is its own file in `web/src/ui/` with tests in `web/tests/ui-*.test.tsx`. The reuse guard is `web/tests/ui-reuse.test.ts`. Styles live in `web/src/ui/ui.css`, tokens only.
 - A view adds a component here when it needs new UI that another view could use. Only UI that no other view could use stays in the view.

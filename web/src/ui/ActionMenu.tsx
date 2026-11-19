@@ -1,7 +1,11 @@
 /**
  * Actions for one item: a quiet `⋯` button with a menu, and the same actions as a bar for a details pane.
  * Arrow keys, Home, End; Escape or a tap outside closes and returns focus. Opens upward when there is no room below.
- * @req FR:ui-kit/menu @req FR:ui-kit/bar
+ * @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/guard.owns
+ * @owns role:menu legacy: InboxView.tsx=1 Composer.tsx=1 ConnectAccounts.tsx=1 views.tsx=1
+ * @owns class:ui-more
+ * @owns class:ui-menu
+ * @owns class:ui-bar
  */
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import './ui.css';

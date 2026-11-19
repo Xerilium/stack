@@ -2,7 +2,8 @@
  * One card shape: a top line, a title, a sub line, and tools. A tap anywhere on the card (not on a link or a tool) selects it;
  * Enter or Space on the focused card does the same. It ends in a chevron and shows the selected state with `aria-current`.
  * With `label`, the title and sub line sit outside the button (so links in them stay links) and the button is named `label`.
- * @req FR:ui-kit/card
+ * @req FR:ui-kit/card @req FR:ui-kit/guard.owns
+ * @owns class:ui-card legacy: PrioritiesTables.tsx=1
  */
 import type { ComponentChildren } from "preact";
 import "./ui.css";

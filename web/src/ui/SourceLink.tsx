@@ -1,6 +1,7 @@
 /**
  * A link to where an item came from, named by its kind: a pull request, an issue, a session, an email, or a site.
  * @req FR:ui-kit/source
+ * @owns class:ui-source legacy: AsksView.tsx=1
  */
 import './ui.css';
 

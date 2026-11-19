@@ -1,6 +1,7 @@
 /**
  * A status chip: a state word on a light tint with a dot. Not a control: a span, no border, no hover, default cursor.
- * @req FR:ui-kit/chip
+ * @req FR:ui-kit/chip @req FR:ui-kit/guard.owns
+ * @owns class:ui-chip
  */
 import './ui.css';
 
