@@ -40,6 +40,20 @@ export function deadline(by: string | undefined, now: Date): { label: string; re
   return { label: `${day} ${clock(d)}`, rel: ms < 0 ? `${span} overdue` : `in ${span}`, tone: ms < 0 ? 'late' : ms < DAY ? 'soon' : 'calm' };
 }
 
+/**
+ * The one overdue row that keeps the warn color: the most recently late (ties: the first in rank order). Other late rows stay quiet.
+ * @req FR:ask-queue/web.card
+ */
+export function loudLate(items: Pick<AskItem, 'key' | 'by'>[], now: Date): string | null {
+  let best: { key: string; t: number } | null = null;
+  for (const a of items) {
+    const t = a.by ? new Date(a.by).getTime() : NaN;
+    if (Number.isNaN(t) || t >= now.getTime()) continue;
+    if (!best || t > best.t) best = { key: a.key, t };
+  }
+  return best?.key ?? null;
+}
+
 /** The silent-default line. The default is shown only when it is safe to apply: reversible and stated. */
 export function ifSilent(a: Pick<AskItem, 'reversible' | 'default'>): { text: string; waits: boolean } {
   return a.reversible && a.default ? { text: `If silent: ${a.default}`, waits: false } : { text: 'No default: waits for you', waits: true };
@@ -49,11 +63,15 @@ export interface Action { id: string; label: string; key: string; primary?: bool
 
 /** The longest primary button label. @req FR:product-reset/ui.askcard */
 export const APPROVE_MAX = 40;
-/** The primary button for a recommendation names it: `Approve: {recommend}` as plain text, clipped; `Approve` with none. @req FR:product-reset/ui.askcard */
+/**
+ * The primary button for a recommendation names it: `Approve: {recommend}` as plain text, clipped; `Approve` with none.
+ * A recommendation that already starts with the word `approve` is the label as is, first letter capital (never `Approve: Approve`).
+ * @req FR:product-reset/ui.askcard
+ */
 export function approveLabel(recommend: string | undefined): string {
   const rec = (recommend ?? '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*`]/g, '').replace(/\s+/g, ' ').trim();
   if (!rec) return 'Approve';
-  const label = `Approve: ${rec}`;
+  const label = /^approve\b/i.test(rec) ? rec[0].toUpperCase() + rec.slice(1) : `Approve: ${rec}`;
   return label.length <= APPROVE_MAX ? label : `${label.slice(0, APPROVE_MAX - 1).trimEnd()}…`;
 }
 
