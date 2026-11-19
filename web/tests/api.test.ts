@@ -115,34 +115,44 @@ describe('sync', () => {
 });
 
 // @req FR:web-app/api.client
-describe("api client: QM plan and live lane", () => {
-  const html = () => new Response("<html><body>502 Bad Gateway</body></html>", { status: 502, headers: { "content-type": "text/html" } });
-  it("reads /qm and /live, and posts /live/items", async () => {
-    const { client, calls } = rec((url) => res(200, url.endsWith("/qm") ? { plan: null } : url.endsWith("/live") ? { state: "idle", rev: 1, items: [], done: [] } : { changed: true, item: { id: "li-00000001" } }));
+describe('api client: QM plan and live lane', () => {
+  const html = () => new Response('<html><body>502 Bad Gateway</body></html>', { status: 502, headers: { 'content-type': 'text/html' } });
+  it('reads /qm and /live, and posts /live/items', async () => {
+    const { client, calls } = rec((url) => res(200, url.endsWith('/qm') ? { plan: null } : url.endsWith('/live') ? { state: 'idle', rev: 1, items: [], done: [] } : { changed: true, item: { id: 'li-00000001' } }));
     expect(await client.qm()).toEqual({ plan: null });
     expect((await client.live()).rev).toBe(1);
-    await client.liveItem({ repo: "o/r", number: 1 }, "check", { id: "li-00000001" });
-    expect(calls.map((c) => c.url)).toEqual(["/api/qm", "/api/live", "/api/live/items"]);
-    expect(JSON.parse(String(calls[2].init.body))).toEqual({ op: "check", repo: "o/r", number: 1, id: "li-00000001" });
+    await client.liveItem({ repo: 'o/r', number: 1 }, 'check', { id: 'li-00000001' });
+    expect(calls.map((c) => c.url)).toEqual(['/api/qm', '/api/live', '/api/live/items']);
+    expect(JSON.parse(String(calls[2].init.body))).toEqual({ op: 'check', repo: 'o/r', number: 1, id: 'li-00000001' });
   });
-  it("a 502 text/html body rejects with ApiFailure 502, not SyntaxError", async () => {
+  it('a 502 text/html body rejects with ApiFailure 502, not SyntaxError', async () => {
     for (const read of [(c: ReturnType<typeof createClient>) => c.qm(), (c: ReturnType<typeof createClient>) => c.live()]) {
       const err = await read(rec(() => html()).client).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiFailure);
       expect((err as ApiFailure).status).toBe(502);
     }
   });
-  it("a rejected fetch gives ApiFailure network with the unreachable text", async () => {
-    const client = createClient((async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch);
+  it('a rejected fetch gives ApiFailure network with the unreachable text', async () => {
+    const client = createClient((async () => { throw new TypeError('Failed to fetch'); }) as typeof fetch);
     for (const p of [client.qm(), client.live()]) {
       const err = await p.catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiFailure);
-      expect((err as ApiFailure).code).toBe("network");
+      expect((err as ApiFailure).code).toBe('network');
       expect((err as ApiFailure).message).toBe(unreachable());
     }
   });
-  it("keeps the API error message for the live lane", async () => {
-    const err = await rec(() => res(404, { error: { code: "not_found", message: "o/r#1 is not the live PR" } })).client.liveItem({ repo: "o/r", number: 1 }, "check").catch((e: unknown) => e);
-    expect((err as ApiFailure).message).toBe("o/r#1 is not the live PR");
+  it('keeps the API error message for the live lane', async () => {
+    const err = await rec(() => res(404, { error: { code: 'not_found', message: 'o/r#1 is not the live PR' } })).client.liveItem({ repo: 'o/r', number: 1 }, 'check').catch((e: unknown) => e);
+    expect((err as ApiFailure).message).toBe('o/r#1 is not the live PR');
+  });
+  it('a live write while offline rejects with code offline and sends nothing', async () => {
+    const { client, calls } = rec(() => res(200, {}));
+    const was = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    Object.defineProperty(globalThis, 'navigator', { value: { onLine: false }, configurable: true });
+    try {
+      const err = await client.liveItem({ repo: 'o/r', number: 1 }, 'check').catch((e: unknown) => e);
+      expect((err as ApiFailure).code).toBe('offline');
+      expect(calls).toHaveLength(0);
+    } finally { if (was) Object.defineProperty(globalThis, 'navigator', was); else delete (globalThis as { navigator?: unknown }).navigator; }
   });
 });
