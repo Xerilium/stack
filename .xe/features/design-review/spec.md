@@ -26,11 +26,11 @@ Get an outside design opinion on every Stack page with no manual screenshots or 
 The reviewer needs each page's purpose so that its feedback judges the page against what the page is for.
 
 - **FR:goals.file** (P1): Page goals file MUST list the goals of every page in `src/core/page-goals.ts`
-  - **FR:goals.file.pages** (P1): Page goals file MUST list `now`, `home`, `today`, `asks`, `priorities`, `prs`, `inbox`, `sessions`, `inventory`, `projects`, `list`, `settings`
+  - **FR:goals.file.pages** (P1): Page goals file MUST list `now`, `home`, `today`, `asks`, `prs`, `inbox`, `sessions`, `inventory`, `projects`, `list`, `settings`
   - **FR:goals.file.entry** (P1): Page goals file MUST give each page a name and 2 to 5 goals
 - **FR:goals.route** (P1): Resolver MUST take the page from the route hash (`#/asks`, `/#/asks?x=1`)
   - **FR:goals.route.empty** (P1): Resolver MUST treat no hash as `now`
-  - **FR:goals.route.alias** (P1): Resolver MUST map the web app hash aliases to their page (`#/agents` is `sessions`)
+  - **FR:goals.route.alias** (P1): Resolver MUST map the web app hash aliases to their page (`#/agents` is `sessions`, `#/priorities` is `settings`)
   - **FR:goals.route.unknown** (P1): Resolver MUST treat any other name as `now`
 
 ### FR:ui: Action

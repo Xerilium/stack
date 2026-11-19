@@ -6,6 +6,7 @@ import { ActionBar, ActionMenu, type ActionItem } from '../src/ui/ActionMenu';
 import { DayGrid, placeItems } from '../src/ui/DayGrid';
 import { Flag } from '../src/ui/Flag';
 import { MessageBox } from '../src/ui/MessageBox';
+import { LinkList } from '../src/ui/LinkList';
 import { SelectCard } from '../src/ui/SelectCard';
 import { SplitView } from '../src/ui/SplitView';
 import { StatusChip } from '../src/ui/StatusChip';
@@ -250,5 +251,20 @@ describe('DayGrid', () => {
   it('draws no now line when now is outside the span or not given', () => {
     expect(mount(<DayGrid label="Day" from={600} to={780} now={900} items={[]} />).querySelector('.now-line')).toBeNull();
     expect(mount(<DayGrid label="Day" from={600} to={780} items={[]} />).querySelector('.now-line')).toBeNull();
+  });
+});
+
+// @req FR:ui-kit/links
+describe('LinkList', () => {
+  it('shows a label and its links; web links open in a new tab, app links in place', () => {
+    const r = mount(<LinkList label="Context" items={[{ text: 'Tasks: FH', href: '#/list?project=fh' }, { text: 'PR 12', href: 'https://github.com/o/r/pull/12' }]} />);
+    const box = r.querySelector('.ui-links')!;
+    expect(box.querySelector('.ui-links-h')!.textContent).toBe('Context');
+    const [a, b] = [...box.querySelectorAll('a')];
+    expect([a.textContent, a.getAttribute('href'), a.getAttribute('target')]).toEqual(['Tasks: FH', '#/list?project=fh', null]);
+    expect([b.textContent, b.getAttribute('target'), b.getAttribute('rel')]).toEqual(['PR 12', '_blank', 'noopener noreferrer']);
+  });
+  it('shows nothing with no items', () => {
+    expect(mount(<LinkList label="Context" items={[]} />).querySelector('.ui-links')).toBeNull();
   });
 });

@@ -69,3 +69,13 @@ a.session-row:hover { background: var(--hover); }
 .sessions-empty { margin: 8px 0; color: var(--muted); }
 .nav-bell { flex: none; }
 .page-note { margin: 8px 0; color: var(--muted); }
+/* The context links of an open priority. @req FR:pris-sessions-ui/pris.context */
+.pri-panel .ui-links { padding: 0 8px; }
+/* Rename reads as a button, not as text. @req FR:pris-sessions-ui/pris.rename */
+.inline-text.pri-title-edit { border-color: var(--line); cursor: pointer; }
+/* Phone: the item text gets the row; its controls sit under it. */
+@media (max-width: 480px) {
+  .pri-item { flex-wrap: wrap; }
+  .pri-item .item-text { flex: 1 1 calc(100% - 2.5em); }
+  .pri-item .item-text + .icon-btn { margin-left: auto; }
+}

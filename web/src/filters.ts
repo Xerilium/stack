@@ -5,12 +5,12 @@ import type { Task, View } from './types';
 export interface Filters { q: string; project: string; state: 'open' | 'done' | 'all'; status: string; priority: string; effort: string }
 
 export const NO_FILTERS: Filters = { q: '', project: '', state: 'open', status: '', priority: '', effort: '' };
-export const VIEWS: View[] = ['now', 'home', 'asks', 'priorities', 'prs', 'inbox', 'sessions', 'inventory', 'today', 'projects', 'list', 'settings'];
+export const VIEWS: View[] = ['now', 'home', 'asks', 'prs', 'inbox', 'sessions', 'inventory', 'today', 'projects', 'list', 'settings'];
 /**
- * Old view names still open their view; Brief folded into Now; Needs you is Notifications; `#/inventory` is the Sessions page (`#/sessions` stays Agents).
+ * Old view names still open their view; `#/priorities` opens Settings (`FR:notifications/pris.route`); Brief folded into Now; Needs you is Notifications; `#/inventory` is the Sessions page (`#/sessions` stays Agents).
  * @req FR:web-shell/nav.views @req FR:ux-consolidation/nav.brief @req FR:notifications/list.route @req FR:notifications/sessions.route
  */
-export const ALIAS: Record<string, View> = { next: 'home', focus: 'home', brief: 'now', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions', notifications: 'asks', needs: 'asks' };
+export const ALIAS: Record<string, View> = { next: 'home', focus: 'home', brief: 'now', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions', notifications: 'asks', needs: 'asks', priorities: 'settings' };
 /** The address of a view, where it differs from its id. */
 const SLUG: Partial<Record<View, string>> = { sessions: 'agents', asks: 'notifications' };
 const STATES = ['open', 'done', 'all'];
@@ -54,7 +54,8 @@ export function parseHash(hash: string): { view: View; filters: Filters } {
   return { view, filters };
 }
 
-/** The new address for an old Needs you address (`#/asks`, `#/needs`), else null. @req FR:notifications/list.route @req FR:product-reset/ia.removed */
+/** The new address for an old Needs you address (`#/asks`, `#/needs`) or the old Priorities page, else null. @req FR:notifications/list.route @req FR:notifications/pris.route @req FR:product-reset/ia.removed */
 export function redirectHash(hash: string): string | null {
+  if (/^#\/priorities(\?.*)?$/.test(hash)) return '#/settings/priorities';
   return /^#\/(asks|needs)(\?.*)?$/.test(hash) ? buildHash('asks', NO_FILTERS) : null;
 }

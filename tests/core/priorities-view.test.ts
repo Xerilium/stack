@@ -206,6 +206,12 @@ describe('PRs', () => {
     const v = view([p], [], { board: board(rows), sessions: { at: AT, sessions: [{ id: 's2', title: 'FH backend', link: 'claude://claude.ai/epitaxy/s2' }] } });
     expect(v.prs.rows.map((r) => [r.number, r.emoji, r.agent])).toEqual([[9, '🏦', { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2', file: null, session: null }], [8, '', null]]);
   });
+  // @req FR:priorities-tables/pr.cols.pri
+  it('names the priority each PR links to, or null', () => {
+    const p = pri('fh', { refs: ['allytehq/finops-hubs'] });
+    const rows = [prow(9, 'approve', { repo: 'allytehq/finops-hubs', url: 'https://github.com/allytehq/finops-hubs/pull/9' }), prow(8, 'approve', { repo: 'x/unknown' })];
+    expect(view([p], [], { board: board(rows) }).prs.rows.map((r) => [r.number, r.pri])).toEqual([[9, 'fh'], [8, null]]);
+  });
   // @req FR:priorities-tables/pr.live.none @req FR:priorities-tables/fresh.table
   it('lists no PRs without a good board poll; marks an old poll stale', () => {
     for (const b of [undefined, { at: null, rows: [prow(1, 'approve')] }]) expect(view([], [], { board: b }).prs).toMatchObject({ verified: false, stale: true, rows: [] });

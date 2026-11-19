@@ -1,5 +1,6 @@
 /**
- * The Priorities page, and the Sessions page (Claude sessions and archive candidates). Neither is in Notifications.
+ * The Priorities block in Settings, and the Sessions page (Claude sessions and archive candidates). Neither is in Notifications.
+ * @req FR:settings/priorities.place @req FR:settings/priorities.absent @req FR:pris-sessions-ui/pris.rename @req FR:pris-sessions-ui/pris.context
  * @req FR:notifications/pris.route @req FR:notifications/sessions.route @req FR:notifications/list.not
  * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.expand @req FR:pris-sessions-ui/pris.edit @req FR:pris-sessions-ui/pris.save
  * @req FR:pris-sessions-ui/pris.conflict @req FR:pris-sessions-ui/pris.invalid @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row
@@ -32,8 +33,9 @@ async function open(page: Page, o: { pris?: MockPri[] | null; needs?: MockSessio
   m.pris = o.pris === null ? null : { version: 1, rev: 4, pris: o.pris ?? pris() };
   m.inventory = o.inventory === false ? null : inventory(o.needs ?? [S('a1', 'allyte'), S('a2', 'allyte', { state: 'stuck', reason: 'dead-turn' }), S('x1', 'xerilium', { reason: 'permission', ask: 'Approve the push' })], o.archive ?? [S('d1', 'ftk', { state: 'done', reason: 'pr-merged' }), S('d2', 'other', { state: 'done', reason: 'superseded' })]);
   m.asks = o.asks ?? [ask('k1', 'Register the npm trusted publisher')];
-  await page.goto(`/#/${at}`);
-  await expect(page.getByRole('heading', { name: new RegExp(`^${{ priorities: 'Priorities', inventory: 'Sessions', notifications: 'Notifications' }[at]}`), level: 1 })).toBeVisible();
+  await page.goto(`/#/${at === 'priorities' ? 'settings/priorities' : at}`);
+  await expect(page.getByRole('heading', { name: new RegExp(`^${{ priorities: 'Settings', inventory: 'Sessions', notifications: 'Notifications' }[at]}`), level: 1 })).toBeVisible();
+  if (at === 'priorities' && o.pris !== null) await expect(page.getByRole('heading', { name: 'Priorities', level: 2 })).toBeVisible();
   return m;
 }
 const block = (p: Page) => p.getByTestId('pris');
@@ -41,9 +43,10 @@ const row = (p: Page, id: string) => p.locator(`.pri[data-id="${id}"]`);
 const lastPut = (m: Mock) => m.calls.filter((c) => c.path === '/pris').at(-1);
 
 test.describe('Priorities', () => {
-  test('own page: number, title, status word, progress, next item; first 5 open, the rest behind a count; no asks', async ({ page }) => {
+  test('in Settings: number, title, status word, progress, next item; first 5 open, the rest behind a count; no asks', async ({ page }) => {
     await open(page);
     await expect(block(page)).toHaveAccessibleName('Priorities');
+    await expect(page.locator('#settings-priorities .set-sum')).toHaveText('Your goals, in order. They rank your tasks and the Now report.');
     await expect(page.locator('.ask-li')).toHaveCount(0);
     await expect(page.locator('.pri')).toHaveCount(5);
     await expect(row(page, 'p4')).toHaveCount(0); // done: behind the count
@@ -98,6 +101,11 @@ test.describe('Priorities', () => {
     await row(page, 'p1').getByLabel('Item text').fill('Stack v2 UI');
     await row(page, 'p1').getByLabel('Item text').blur(); // blur saves too
     await expect.poll(() => m.pris!.pris[0].items[1].text).toBe('Stack v2 UI');
+    // An explicit Rename opens the same field. @req FR:pris-sessions-ui/pris.rename
+    await row(page, 'p1').getByRole('button', { name: 'Rename item Anything below' }).click();
+    await expect(row(page, 'p1').getByLabel('Item text')).toBeFocused();
+    await expect(row(page, 'p1').getByLabel('Item text')).toHaveValue('Anything below');
+    await row(page, 'p1').getByLabel('Item text').press('Escape');
     await row(page, 'p1').getByLabel('New item').fill('Ship chunk 3');
     await row(page, 'p1').getByLabel('New item').press('Enter');
     await expect(row(page, 'p1').locator('.pri-item')).toHaveCount(4);
@@ -142,6 +150,44 @@ test.describe('Priorities', () => {
     await expect(row(page, 'p1').locator('.pri-toggle .ui-chip')).toHaveText('Active');
   });
 
+  // @req FR:pris-sessions-ui/pris.context @req FR:priorities-tables/pr.cols.pri
+  test('an open priority links its project, agent, PRs and URLs; one with no context shows no line', async ({ page }, info) => {
+    const m = await mockApi(page);
+    m.pris = { version: 1, rev: 4, pris: [{ ...P('p1', 'FH 0.11', { items: [{ text: 'Plan: https://example.test/plan', status: 'todo' }] }), session: 's9' } as MockPri, P('p2', 'Personal')] };
+    const t = { at: new Date().toISOString(), stale: false };
+    const r = { id: 'p1', project: 'FinOps hubs', file: 'tasks/finops-hubs.md', agent: { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2', file: null }, more: 0, status: 'working', action: 'Ship [119](https://github.com/o/r/pull/119)', gap: false, ref: 'tasks/finops-hubs.md:4', ...t };
+    m.priorities = { at: t.at, qm: null, now: { ...t, rows: [r] }, today: { ...t, rows: [] }, next: { ...t, rows: [] }, prs: { ...t, verified: true, manager: null, rows: [{ emoji: '', number: 120, url: 'https://github.com/o/r/pull/120', agent: null, pri: 'p1', action: 'Approve', minutes: 5, server: null, details: null }] } };
+    await page.goto('/#/settings/priorities');
+    await row(page, 'p1').locator('.pri-toggle').click();
+    const links = row(page, 'p1').locator('.ui-links');
+    await expect(links.locator('.ui-links-h')).toHaveText('Context');
+    await expect(links.getByRole('link')).toHaveText(['Tasks: FinOps hubs', 'Agent: FH backend', 'PR 119', 'PR 120: Approve', 'example.test/plan']);
+    await expect(links.getByRole('link', { name: 'Tasks: FinOps hubs' })).toHaveAttribute('href', '#/list?project=finops-hubs');
+    await expect(links.getByRole('link', { name: 'Agent: FH backend' })).toHaveAttribute('href', 'claude://claude.ai/epitaxy/s2');
+    await expect(links.getByRole('link', { name: 'PR 120: Approve' })).toHaveAttribute('target', '_blank');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.locator('#settings-priorities').screenshot({ path: `e2e/screenshots/settings-priorities-${info.project.name}.png` });
+    await row(page, 'p2').locator('.pri-toggle').click();
+    await expect(row(page, 'p2').locator('.ui-links')).toHaveCount(0);
+  });
+
+  // @req FR:settings/priorities.states @req FR:settings/priorities.live
+  test('a failed first read says so in the section; other views read no priorities', async ({ page }) => {
+    const m = await mockApi(page);
+    m.pris = { version: 1, rev: 1, pris: pris() };
+    const reads: string[] = [];
+    page.on('request', (r) => { if (/\/api\/pris$/.test(r.url())) reads.push(r.url()); });
+    await page.goto('/#/inbox');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(reads).toEqual([]);
+    m.fail.set('/pris', { status: 500, code: 'internal', message: 'Disk gone' });
+    await page.goto('/#/settings/priorities');
+    await expect(page.locator('#settings-priorities [role="alert"]')).toHaveText('Cannot load priorities. It tries again by itself.');
+    await expect(block(page)).toHaveCount(0);
+    expect(reads.length).toBeGreaterThan(0);
+  });
+
   test('no priorities yet: one line and Add priority; a new one saves with a slug id', async ({ page }) => {
     const m = await open(page, { pris: [] });
     await expect(block(page)).toContainText('No priorities yet');
@@ -169,7 +215,7 @@ test.describe('Priorities', () => {
   test('a host with no store shows no Priorities and no Sessions', async ({ page }) => {
     await open(page, { pris: null, inventory: false });
     await expect(block(page)).toHaveCount(0);
-    await expect(page.getByTestId('page-note')).toHaveText('Priorities are not on this host.'); // @req FR:notifications/pris.states
+    await expect(page.locator('.set-sec h2')).toHaveText(['Accounts', 'Agents', 'Updates']); // @req FR:settings/priorities.absent
     await open(page, { pris: null, inventory: false }, 'inventory');
     await expect(page.getByTestId('sessions')).toHaveCount(0);
     await expect(page.getByTestId('page-note')).toHaveText('Sessions are not on this host.');
@@ -288,7 +334,7 @@ test.describe('Design', () => {
   for (const scheme of ['light', 'dark'] as const) {
     test(`axe: no violations, contrast included (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
-      const scan = async () => (await new AxeBuilder({ page }).include('.page-view').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+      const scan = async () => (await new AxeBuilder({ page }).include('.page-view, #settings-priorities').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
       await open(page);
       await row(page, 'p1').locator('.pri-toggle').click();
       expect(await scan()).toEqual([]);

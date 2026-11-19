@@ -27,7 +27,7 @@ export interface Agent { name: string; link: string | null; file: string | null;
 export interface PriRow { id: string; project: string; /** The project task file. */ file: string | null; agent: Agent | null; /** More agents on the same goal (`+N` in the task). @req FR:priorities-tables/rows.cols.more */ more: number; status: AgentStatus | null; action: string; gap: boolean; /** Gap rows: the Chief of Staff who must add the task. @req FR:priorities-tables/rows.gap.cos */ cos: Agent | null; /** Gap rows: the text to send to the CoS. @req FR:priorities-tables/rows.gap.request */ request: string | null; ref: string | null; at: string; stale: boolean }
 export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string; /** QM is a priority today (its day order and windows keep it in). @req FR:priorities-tables/qm.today */ today: boolean }
-export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; action: string; minutes: number; server: string | null; details: string | null }
+export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; /** The id of the priority the PR links to. @req FR:priorities-tables/pr.cols.pri */ pri: string | null; action: string; minutes: number; server: string | null; details: string | null }
 export interface PrTable { at: string; stale: boolean; verified: boolean; /** The Sweep Manager session, shown above the table. */ manager: Agent | null; rows: PrRow[] }
 export interface PrioritiesView { at: string; /** IANA zone the report was built in; stamps show times in it. */ timeZone?: string; qm: QmTable | null; now: PriTable; prs: PrTable; today: PriTable; next: PriTable }
 
@@ -213,7 +213,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
 
   /**
    * PRs that need the owner, from the live board only, quickest first.
-   * @req FR:priorities-tables/pr.live @req FR:priorities-tables/pr.live.none @req FR:priorities-tables/pr.cols @req FR:priorities-tables/pr.cols.agent @req FR:priorities-tables/pr.order
+   * @req FR:priorities-tables/pr.live @req FR:priorities-tables/pr.live.none @req FR:priorities-tables/pr.cols @req FR:priorities-tables/pr.cols.agent @req FR:priorities-tables/pr.cols.pri @req FR:priorities-tables/pr.order
    */
   const prsOf = (): PrTable => {
     // @req FR:priorities-tables/pr.manager
@@ -233,7 +233,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
         const ts = !s && top?.agent ? sessionOf(top.agent, p!) : undefined;
         const row: PrRow = {
           emoji: REPO_EMOJI[(r.repo.split('/').pop() ?? '').toLowerCase()] ?? '', number: r.number, url: r.url,
-          agent: s ? agentOf(s.title, s) : top?.agent ? agentOf(top.agent, ts) : null, action: a.text,
+          agent: s ? agentOf(s.title, s) : top?.agent ? agentOf(top.agent, ts) : null, pri: p?.id ?? null, action: a.text,
           minutes: a.minutes + Math.floor((typeof r.specLines === 'number' ? r.specLines : 0) / SPEC_LINES_PER_MIN),
           // @req FR:priorities-tables/pr.cols.live
           server: r.nextAction === 'validate' ? r.server ?? null : null, details: r.nextAction === 'validate' ? r.details ?? null : null,

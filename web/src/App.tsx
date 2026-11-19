@@ -22,7 +22,7 @@ import { calendarRange, dayFrame, needsRefresh, wallMinutes, withProjects, type 
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
-import { PageNote, PrisBlock, SessionsBlock } from './PrisSessions';
+import { PageNote, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
 import { PrsButton, PrsFlyoutHost, PrsNavItem, PrsPage, prsNavNow } from './PrsPanel';
@@ -269,7 +269,7 @@ export function App() {
   const held = shownNow.current;
   const nowTask = held && justDone.has(held.task.ref) && held.task.ref !== liveNow?.task.ref ? held : liveNow;
   shownNow.current = nowTask;
-  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'priorities' || view === 'inventory' || view === 'sessions' || view === 'inbox' || view === 'prs' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'inventory' || view === 'sessions' || view === 'inbox' || view === 'prs' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
@@ -385,7 +385,7 @@ export function App() {
   /** Open notifications: the asks, plus an expired sign-in. The badge uses the accent, never red. @req FR:notifications/bell.count @req FR:notifications/list.what @req NFR:notifications/calm */
   const notices = asks.total + (asks.status === 'signin' ? 1 : 0);
   /** Priorities and Sessions, each on its own page; both re-read on live changes and every 15 s while shown. @req FR:pris-sessions-ui/live.inventory @req FR:pris-sessions-ui/live.pris @req FR:notifications/pris.route @req FR:notifications/sessions.route */
-  const prisSessions = usePrisSessions(api, toast, asks.liveTick, view === 'priorities' || view === 'inventory');
+  const prisSessions = usePrisSessions(api, toast, asks.liveTick, view === 'settings' || view === 'inventory');
   /** The open task's thread; re-read on every live change and whenever a session's state moves. @req FR:agent-thread/web.live */
   const threadTick = `${withdrawTick}|${asks.liveTick}|${tasks.length}|${sessions.items.map((x) => `${x.id}:${x.state}`).join(',')}`;
   const thread = useThread(api, toast, team, sessions, focusRef ?? open, threadTick); // focus mode carries the thread of its task
@@ -420,7 +420,8 @@ export function App() {
     return null;
   }, []);
   // The priorities tables on Now: read while Now is open. @req FR:priorities-tables/web.live
-  const pri = usePriorities(api, asks.liveTick, view === 'now');
+  // Settings draws the context links from the same report; nothing is read on other views. @req FR:settings/priorities.live
+  const pri = usePriorities(api, asks.liveTick, view === 'now' || view === 'settings');
   /** A message from the priorities report resumes the agent session. @req FR:priorities-tables/web.message */
   const sendToSession = useCallback(async (session: string, text: string) => { await api.promptSession(session, text); }, [api]);
   const briefBusy = useMemo(() => {
@@ -826,7 +827,7 @@ export function App() {
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
     { id: 'go-asks', label: `Go to ${LABEL.asks}${asks.countReady && notices ? ` (${notices})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') }, // @req FR:notifications/list.route
-    { id: 'go-priorities', label: `Go to ${LABEL.priorities}`, group: 'Go to', run: () => go('priorities') }, // @req FR:notifications/pris.route
+    { id: 'go-priorities', label: 'Go to Priorities', group: 'Go to', run: () => { location.hash = '#/settings/priorities'; } }, // @req FR:notifications/pris.route: a Settings section
     // @req FR:pr-page/nav.phone: the phone reaches Pull requests through More.
     ...(prsNav().on ? [{ id: 'go-prs', label: `Go to ${LABEL.prs}${prsNav().need ? ` (${prsNav().need})` : prsNav().signIn ? ' (sign in)' : ''}`, hint: HINT.prs, group: 'Go to' as Group, run: () => go('prs') }] : []),
     { id: 'go-inbox', label: 'Go to Inbox', hint: HINT.inbox, group: 'Go to', run: () => go('inbox') },
@@ -894,7 +895,7 @@ export function App() {
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
       if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } else if (k === 'm') { e.preventDefault(); document.getElementById('now-msg')?.focus(); } } return; }
-      if (L.view === 'asks' || L.view === 'priorities' || L.view === 'inventory' || L.view === 'sessions' || L.view === 'inbox' || L.view === 'prs') return; // these views own their keys @req FR:pr-page/nav.page
+      if (L.view === 'asks' || L.view === 'settings' || L.view === 'inventory' || L.view === 'sessions' || L.view === 'inbox' || L.view === 'prs') return; // these views own their keys @req FR:pr-page/nav.page
       if (L.focusRef) {
         if (k === 's') void A.doAct('start'); else if (k === 'd') { const ft = L.rows.find((r) => r.ref === L.focusRef) ?? undefined; void A.doAct('done').then(() => { if (ft) setFocusRef(null); }); } else if (k === 'z') A.openDefer();
         return;
@@ -1020,10 +1021,9 @@ export function App() {
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
         <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} where="phone" /></div>
-        {phase === 'loading' && view !== 'asks' && view !== 'priorities' && view !== 'inventory' && view !== 'inbox' && view !== 'sessions' && view !== 'prs' && view !== 'settings' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
+        {phase === 'loading' && view !== 'asks' && view !== 'inventory' && view !== 'inbox' && view !== 'sessions' && view !== 'prs' && view !== 'settings' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {/* Pages with one h1 and a labelled region each. @req FR:notifications/pris.route @req FR:notifications/sessions.route @req NFR:notifications/a11y.axe */}
-        {view === 'priorities' && <section class="page-view" aria-labelledby="page-h"><h1 class="h1" id="page-h">{LABEL.priorities}</h1><PageNote phase={prisSessions.pris.phase} what="Priorities" /><PrisBlock ctl={prisSessions.pris} bare /></section>}
         {view === 'inventory' && <section class="page-view" aria-labelledby="page-h"><h1 class="h1" id="page-h">{LABEL.inventory}</h1><PageNote phase={prisSessions.sessions.phase} what="Sessions" /><SessionsBlock ctl={prisSessions.sessions} toast={toast} label="Waiting on you" /></section>}
         {/* @req FR:pr-page/nav.page */}
         {view === 'prs' && <PrsPage api={api} toast={toast} />}
@@ -1038,7 +1038,7 @@ export function App() {
         {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} done={!!nowTask && justDone.has(nowTask.task.ref)} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))} send={sendToSession}
           chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} pri={pri} cal={{ source: calSource }} />}
         {/* Settings needs no task data: it shows while tasks load. @req FR:settings/view.route */}
-        {view === 'settings' && <SettingsView api={api} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }} updates={updates} onAccounts={() => void checkCalendar()} now={clockNow} />}
+        {view === 'settings' && <SettingsView api={api} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }} updates={updates} priorities={{ ctl: prisSessions.pris, report: pri }} onAccounts={() => void checkCalendar()} now={clockNow} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}
         {phase === 'ready' && view === 'list' && (
           <ListView {...rowProps} rows={listRows} total={filtered.length} filters={filters} projects={projects} collapsed={collapsed} searchRef={searchRef}

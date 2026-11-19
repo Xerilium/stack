@@ -4,11 +4,12 @@
  * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.edit @req FR:pris-sessions-ui/pris.save @req FR:pris-sessions-ui/pris.conflict
  */
 import { ApiFailure } from './api';
+import { linkParts, projectHref, safeHref, type PrioritiesView, type PriRow as ReportRow } from './priorities';
 
 export type PriStatus = 'active' | 'paused' | 'blocked' | 'done';
 export type ItemStatus = 'todo' | 'doing' | 'blocked' | 'done';
 export interface PriItem { text: string; status: ItemStatus }
-export interface Pri { id: string; title: string; status: PriStatus; items: PriItem[]; backlog: PriItem[]; weekly: { week: string; text: string }[] }
+export interface Pri { id: string; title: string; status: PriStatus; items: PriItem[]; backlog: PriItem[]; weekly: { week: string; text: string }[]; /** The Claude session id of its agent. */ session?: string }
 export interface PrisFile { version: 1; rev: number; updatedAt?: string; pris: Pri[] }
 
 export interface StatusWord { glyph: string; word: string; warn?: boolean }
@@ -40,6 +41,29 @@ export const progress = (p: Pri): { done: number; total: number } => ({ done: p.
 export function nextItem(p: Pri): PriItem | undefined {
   for (const s of ['doing', 'todo', 'blocked'] as const) { const i = p.items.find((x) => x.status === s); if (i) return i; }
   return undefined;
+}
+
+export interface ContextLink { text: string; href: string }
+const URL_RE = /https?:\/\/[^\s<>()[\]]+/g;
+/** `PR 12` or `Issue 12` for a GitHub link, else the given text. */
+const refText = (href: string, text: string): string => { const m = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(pull|issues)\/(\d+)/.exec(href); return m ? `${m[1] === 'pull' ? 'PR' : 'Issue'} ${m[2]}` : text; };
+/**
+ * The context links of one priority, from the priorities report: project task files, the agent, the refs in its report actions,
+ * the PRs that link to it, and the URLs in its own text. Each target once; only safe targets.
+ * @req FR:pris-sessions-ui/pris.context
+ */
+export function contextOf(p: Pri, report: PrioritiesView | null): ContextLink[] {
+  const out: ContextLink[] = [];
+  const add = (text: string, href: string | null | undefined) => { if (safeHref(href) && !out.some((x) => x.href === href)) out.push({ text, href }); };
+  const rows: ReportRow[] = report ? [...(report.qm?.rows ?? []), ...report.now.rows, ...report.today.rows, ...report.next.rows].filter((r) => r.id === p.id) : [];
+  for (const r of rows) add(`Tasks: ${r.project}`, projectHref(r.file));
+  const agent = rows.find((r) => safeHref(r.agent?.link))?.agent;
+  if (agent) add(`Agent: ${agent.name}`, agent.link);
+  else if (p.session) add('Agent session', `claude://claude.ai/epitaxy/${p.session}`);
+  for (const r of rows) for (const part of linkParts(r.action)) if (part.href) add(refText(part.href, part.text), part.href);
+  for (const r of report?.prs.rows ?? []) if (r.pri === p.id) add(`PR ${r.number}: ${r.action}`, r.url);
+  for (const t of [p.title, ...p.items.map((i) => i.text)]) for (const u of t.match(URL_RE) ?? []) { const href = u.replace(/[.,;:!?]+$/, ''); add(refText(href, href.replace(/^https?:\/\//, '').replace(/\/$/, '')), href); }
+  return out;
 }
 
 /** A unique id from a title: `[a-z0-9-]`, at most 24 characters. @req FR:pris-sessions-ui/pris.limits */

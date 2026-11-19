@@ -52,8 +52,10 @@ describe('hash state', () => {
     expect(parseHash('#/asks').view).toBe('asks');
     expect(parseHash('#/needs').view).toBe('asks');
     expect(buildHash('asks', F())).toBe('#/notifications');
-    expect(parseHash('#/priorities').view).toBe('priorities');
-    expect(buildHash('priorities', F())).toBe('#/priorities');
+    // @req FR:notifications/pris.route: the old page address opens Settings > Priorities
+    expect(parseHash('#/priorities').view).toBe('settings');
+    expect(redirectHash('#/priorities')).toBe('#/settings/priorities');
+    expect(redirectHash('#/settings/priorities')).toBeNull();
     expect(parseHash('#/inventory').view).toBe('inventory');
     expect(buildHash('inventory', F())).toBe('#/inventory');
     expect(parseHash('#/sessions').view).toBe('sessions'); // Agents keeps its old address
