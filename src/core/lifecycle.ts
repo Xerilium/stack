@@ -6,6 +6,7 @@
 import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
 import { isReadme, projectId } from './task-paths';
+import { isNow, releaseBlocks, START_ISO } from './goal-model';
 import { rollRecurring } from './recurring';
 import { DEFAULT_ENGINE, daysUntilDue, getEngine, parseAliases, rankTasks, STALE_CAP, STALE_DAYS, type RankOptions, type ScoredTask, ScoringTask, type ScoringProject, type StaleInfo, toScoringProject } from './scoring';
 import { askLines, isAskRow, rowOwner } from './owner';
@@ -66,6 +67,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export const SUSPEND_MARK = /💤\s+(?:[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}|[A-Za-z]{3}\s+\d{1,2}|\d{1,2}:\d{2}):\s*/gi;
 const SUSPEND_SCAN = /💤\s+(?:([A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2})|([A-Za-z]{3}\s+\d{1,2})|(\d{1,2}:\d{2})):\s*/g;
 const START_SCAN = /⏰\s+([A-Z][a-z]{2})\s+(\d{1,2}):\s+/g;
+const START_ISO_SCAN = new RegExp(`${START_ISO.source}\\s*`, 'gu');
 const ROW = /^(\s*- )(\[[ xX]\] )(.+)$/;
 const ACTIVE = /^🔄 Active/i;
 const TASK_LINE = /^(\s*)- \[ \] (.+)$/;
@@ -419,8 +421,17 @@ async function rankDocs(ctx: LifecycleContext, docs: Doc[], file: { content: str
   // Priority order first, then the owner's overrides.
   // @req FR:pri-first-ranking/order.linked @req FR:pri-first-ranking/order.linked.rank @req FR:pri-first-ranking/order.linked.score @req FR:pri-first-ranking/order.overrides @req FR:pri-first-ranking/order.next
   const links = pris.length ? linkAll(projects.flatMap((p) => p.tasks.map((task) => ({ task }))), projects, pris) : new Map<string, PriLink>();
+  // @req FR:goal-model/pri.now: a ⭐️ row (or a row under one) is Now: first in the list and in its project, whatever the time block.
+  const byId = new Map(projects.flatMap((p) => p.tasks).map((t) => [t.id, t] as const));
+  const anyStar = [...byId.values()].some((t) => isNow(t.text));
+  const starred = (t: ScoringTask): boolean => { for (let c: ScoringTask | undefined = t, n = 0; c && n < 100; c = c.parent ? byId.get(c.parent) : undefined, n++) if (isNow(c.text)) return true; return false; };
+  if (!opts.ignoreBlocks && anyStar) {
+    const have = new Set(rows.map((r) => r.task));
+    rows = [...rows, ...rankTasks(engine, projects, cfg(ctx), when, { ...ropts, ignoreBlocks: true }).filter(mine).map(rowOf).filter((r) => !have.has(r.task) && starred(r.task))];
+  }
   if (links.size) rows = priFirst(rows, (r) => links.get(r.task.id));
-  const ordered = applyOverrides(rows, rules, when, names, cfg(ctx).timezone);
+  const sorted = applyOverrides(rows, rules, when, names, cfg(ctx).timezone);
+  const ordered = anyStar ? [...sorted.filter((o) => starred(o.task)), ...sorted.filter((o) => !starred(o.task))] : sorted;
   for (const o of ordered) {
     const rootLine = above.get(o.doc)?.get(o.next.ref.line)?.root;
     if (rootLine !== undefined) o.next.root = { path: o.doc.path, line: rootLine, text: rowText(o.doc, rootLine) };
@@ -1131,6 +1142,11 @@ async function sweepDocs(ctx: LifecycleContext, starts: boolean, suspends: boole
           out.activated++;
           return '';
         });
+        // @req FR:goal-model/pri.start @req FR:goal-model/pri.blocked-until: `⏰ <yyyy-mm-dd>` starts and `⛔️ <yyyy-mm-dd>` unblocks on its day.
+        const today = `${w.y}-${String(w.mo).padStart(2, '0')}-${String(w.d).padStart(2, '0')}`;
+        line = line.replace(START_ISO_SCAN, (m, d: string) => (d <= today ? (out.activated++, '') : m));
+        const r = releaseBlocks(line, today);
+        if (r.count) { line = r.line; out.activated += r.count; }
       }
       if (suspends && /^\s*- \[ \] /.test(stripBom(line)) && line.includes('💤')) {
         let guard = 0;

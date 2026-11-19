@@ -77,11 +77,14 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 export const OVERDUE_WINDOW_DAYS = 60;
 /** Calendar days from `now` to a `Oct 23` / `Feb 1, 2027` date; null when it is not a plain date. */
 export function dueDays(due: string | undefined, now = new Date()): number | null {
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  // @req FR:goal-model/pri.start: a `yyyy-mm-dd` date too.
+  const d = due && /^(\d{4})-(\d{2})-(\d{2})$/.exec(due);
+  if (d) return Math.round((Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3])) - today) / 864e5);
   const m = due && /^([A-Za-z]{3})[a-z]*\s+(\d{1,2})(?:,\s*(\d{4}))?/.exec(due);
   if (!m) return null;
   const mo = MONTHS.indexOf(m[1].toLowerCase());
   if (mo < 0) return null;
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   const at = (y: number) => Math.round((Date.UTC(y, mo, Number(m[2])) - today) / 864e5);
   if (m[3]) return at(Number(m[3]));
   return [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(at).find((d) => d >= -OVERDUE_WINDOW_DAYS)!;
@@ -95,6 +98,7 @@ const vsx = (s: string) => s.replace(/️/g, '');
 export function actionable(t: Task, now = new Date()): boolean {
   if (t.done || isMessage(t)) return false;
   const r = parseRow(t.text);
+  // @req FR:goal-model/pri.hide: a future ⏰ (or ⛔) date hides the row; there is no early mode.
   if (r.suspend || (r.start && (dueDays(r.start, now) ?? 0) > 0)) return false;
   if (/🅿️?/u.test(t.text) || (r.status && vsx(r.status) === '⛔')) return false;
   const d = dueDays(r.due, now);

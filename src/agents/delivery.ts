@@ -20,6 +20,8 @@ import { redact } from '../core/triage';
 import { childEnv, spawnRunner, type Runner } from '../email/llm';
 import { formatRef, parseRef } from '../api/validate';
 import { personaOf, runnableAgent, taskContext, type AgentScan } from './team';
+import { formatAgentLink, sessionAlive, setFrontmatterValue, taskAgent, type LocalSession } from '../core/goal-model';
+import type { AgentRuns } from './runs';
 
 // @req NFR:agent-delivery/delivery.lazy: nothing runs at import; the loop starts only from startDeliveryLoop.
 export type DeliveryState = 'working' | 'delivered' | 'failed' | 'not-delivered';
@@ -46,6 +48,51 @@ export interface DeliveryDeps {
   isRepo?: (dir: string) => boolean;
   /** Agents outside the content repo; a Now pick may name one. @req FR:agent-team/agent.team.scan.run */
   agentScan?: AgentScan;
+  /** Restarts a gone lead agent from its `agent-def` before work goes to it; absent: never. @req FR:goal-model/agent.restart */
+  leads?: LeadRestart;
+}
+
+/** What a lead restart needs: the agent runs (a new session), the local session list, and a reader for a repo file. @req FR:goal-model/agent.restart */
+export interface LeadRestart {
+  runs: Pick<AgentRuns, 'prompt' | 'subscribe'>;
+  inventory: () => { sessions: LocalSession[] };
+  /** A repo file by its path from the repo root; null when it is missing. */
+  readDef: (path: string) => Promise<string | null>;
+  /** How long to wait for the new session id. */
+  waitMs?: number;
+}
+
+/**
+ * When the lead agent of a task (goal frontmatter or folder default) has no session on this machine and its level names `agent-def`,
+ * starts a new session from that definition and rewrites the link at that level (the value only). No `agent-def`: nothing starts.
+ * A session list that cannot be read starts nothing.
+ * @req FR:goal-model/agent.restart
+ */
+export async function restartLead(ctx: LifecycleContext, deps: LeadRestart, ref: TaskRef): Promise<{ restarted: boolean; path?: string; id?: string }> {
+  const no = { restarted: false };
+  const lead = await taskAgent(ctx.storage, ref).catch(() => null);
+  if (!lead || (lead.level !== 'goal' && lead.level !== 'folder') || !lead.agentDef) return no;
+  let sessions: LocalSession[];
+  try { sessions = deps.inventory().sessions; } catch { return no; }
+  if (sessionAlive(lead.link, sessions)) return no;
+  if (lead.agentDef.startsWith('/') || lead.agentDef.split('/').includes('..')) return no;
+  const def = await deps.readDef(lead.agentDef).catch(() => null);
+  if (!def) return no;
+  const { runId, sessionId } = await deps.runs.prompt({
+    text: `You are ${lead.link.name}, restarted as the lead agent for ${lead.path}. Your last session is gone. Read the goal files you lead and continue the work.`,
+    options: { title: lead.link.name, systemPrompt: def },
+  });
+  const sid = sessionId ?? await new Promise<string | null>((ok) => {
+    const timer = setTimeout(() => { stop?.(); ok(null); }, deps.waitMs ?? 30_000);
+    const stop = deps.runs.subscribe(runId, (u) => { if (u.type === 'session') { clearTimeout(timer); ok(u.sessionId); } }, () => { clearTimeout(timer); ok(null); });
+    if (!stop) { clearTimeout(timer); ok(null); }
+  });
+  if (!sid) return no;
+  const id = sid.startsWith('local_') ? sid : `local_${sid}`;
+  const cur = await ctx.storage.read(lead.path);
+  const next = setFrontmatterValue(cur.content, 'agent', formatAgentLink({ name: lead.link.name, id }));
+  await ctx.storage.write(lead.path, next, { expectedVersion: cur.version, message: `Restart agent ${lead.link.name}` });
+  return { restarted: true, path: lead.path, id };
 }
 
 /** The repo rules every delivery run starts with. @req FR:agent-delivery/safe.prefix */
@@ -282,6 +329,7 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
     out.push(res);
     return res;
   };
+  const restarted = new Set<string>();
   for (const e of entries) {
     const prev = d.store.read().items[e.id];
     if (prev && (prev.state === 'failed' || prev.state === 'delivered')) continue;
@@ -301,6 +349,8 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
     // The entries list is a snapshot: the owner may have withdrawn this one since (or another run handled it).
     if (!(await stillOpen(d, e))) continue;
     if (!d.store.claim(e.id, t.agent.slug, fresh)) continue;
+    // @req FR:goal-model/agent.restart: work goes to this task now; a gone lead with an agent-def gets a new session first (once a pass per file).
+    if (d.leads && !restarted.has(t.ref.path)) { restarted.add(t.ref.path); await restartLead(d.ctx, d.leads, t.ref).catch(() => undefined); }
     const r = await deliverOne(d, e, t, now);
     record(e, r);
     if (r.state === 'not-delivered') { login = 'expired'; d.store.setLogin(login); await syncLoginAsk(d.ctx, login); }

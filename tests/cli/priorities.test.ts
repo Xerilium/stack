@@ -33,7 +33,7 @@ describe('stack priorities', () => {
       '| [Allyte](tasks/allyte.md) | [qm-planner](.claude/agents/qm-planner.md) | ❓ Unknown | QM: approve plan |', '',
       '---', '## Now (as of 11:00 AM)', '', '| Project | Agent | 🤖 Status | 👱‍♂️ Next action |', '| --- | --- | --- | --- |',
       '| [FH.com](tasks/allyte.md) | [FH backend](#s1) | 🔄 Working | Live-validate 430 |',
-      '| Arc ⚠ no link | -- | -- | CoS will add a task today: 1️⃣/2️⃣/3️⃣ in tasks/<project>.md with (agent: ...) |', '',
+      '| Arc ⚠ no link | -- | -- | CoS will add a task today: ⭐️ in tasks/<project>.md with (agent: ...) |', '',
       '---', '## PRs (as of 11:00 AM)', '', '| PR | Agent | 👱‍♂️ Next action | Time |', '| --- | --- | --- | --- |',
       '| 🏦 [1142](https://github.com/allytehq/finops-hubs/pull/1142) | [FH backend](#s1) | Autopilot: promote | 5m |', '',
       '---', '## Today (as of 11:00 AM)', '', 'Nothing here', '',

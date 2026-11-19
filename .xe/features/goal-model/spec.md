@@ -10,7 +10,7 @@ dependencies: [task-structure, task-ids, agent-team, priorities-tables, task-lin
 
 # Feature: Goal Model
 
-> Status: planned (PR 4; after `task-asks`). The end-to-end validation issue is filed separately and is not part of this feature.
+> Status: built (PR 4). The end-to-end validation issue is filed separately and is not part of this feature.
 
 ## Purpose
 
@@ -86,3 +86,16 @@ No key has `_`. The parser still reads today's `- **Aliases:** a, b` bullets.
 
 - One frontmatter reader in the parser; no new YAML dependency (a small reader for the keys above is enough).
 - Session lookup is local to the machine (the session store Stack already reads).
+
+## Decisions
+
+Closest safe versions, taken while building:
+
+- **Dates hide through the marks that already park a row.** Rank already parks every ⛔️ and ⏰ row. The sweep (`stack update --sweep`, and the refresh after each CLI write) now removes a due `⛔️ <yyyy-mm-dd>` and a due `⏰ <yyyy-mm-dd>`, as it already did for `⏰ Nov 12:`; the row shows from that day. My day, the priorities report, and the web Now read the date directly. A bare ⛔️ is never removed.
+- **⏰ takes both forms.** `⏰ <yyyy-mm-dd>` (a colon may follow) and the older `⏰ Nov 12:`. The lint does not read either date as status text.
+- **⭐️ orders; it does not score.** ⭐️ rows, and rows under a ⭐️ parent, move to the front of the rank and of their project, in score order. Scores do not change. A ⭐️ row shows outside its time block (like a `top` rule); a parked or dated row stays hidden. In the priorities report, a ⭐️ line counts as a today task.
+- **Restart writes the driver's session ID.** The agent driver returns a Claude Code session ID, not an app `local_` ID. Stack writes `[Name](#local_<that id>)`. A link is live when an app session has its ID, or when `local_<Claude Code id>` of a session is equal to it.
+- **`agent-def` belongs to a lead level only.** Restart reads `agent-def` from the goal frontmatter or the folder default that gave the link. A task `> agent:` link has no restart. The definition path must stay inside the repo.
+- **Restart runs only where Stack delivers work.** The delivery pass restarts a gone lead (once per file per pass) just before it runs a message for a task of that lead. It runs only on a host with agent runs (`stack web`). Reads never restart.
+- **The lead warning hits every file with no lead.** Each goal file with no frontmatter `agent` and no folder default warns once (`agent-lead`). One `tasks/.stack/agent.md` with `agent` clears every file below it.
+- **Tests never read the developer's session store.** `tests/setup-env.ts` points `STACK_SESSIONS_DIR` at a missing folder, so the dead-link check skips unless a test sets a folder.

@@ -20,6 +20,65 @@ export interface Project {
   setChecked(task: Task, checked: boolean): void;
 }
 
+export type FmValue = string | string[] | Record<string, string>;
+/** A frontmatter block: its values, and the number of lines it takes (both `---` lines included). */
+export interface Frontmatter { data: Record<string, FmValue>; lines: number }
+
+const unquote = (v: string) => { const t = v.trim(); return /^(["']).*\1$/.test(t) ? t.slice(1, -1).replace(/\\"/g, '"') : t; };
+const LINK_VALUE = /^\[[^\]]*\]\([^)]*\)$/;
+/** One value: a quoted or plain string, or a flow list `[a, b]` (a markdown link stays a string). */
+function scalar(raw: string): string | string[] {
+  const v = raw.trim();
+  if (v.startsWith('[') && v.endsWith(']') && !LINK_VALUE.test(v)) return v.slice(1, -1).split(',').map(unquote).filter(Boolean);
+  return unquote(/^["']/.test(v) ? v : v.replace(/\s+#.*$/, ''));
+}
+
+/**
+ * The YAML frontmatter at the start of a file (after a BOM), or null. The one reader, and a small one: `key: value`, `key: [a, b]`,
+ * and a key with an indented `- item` list or `k: v` map. Unknown keys are kept; nothing is written.
+ * @req FR:goal-model/front.parse @req FR:goal-model/front.roundtrip
+ */
+export function readFrontmatter(src: string): Frontmatter | null {
+  if (!/^﻿?---\r?\n/.test(src)) return null;
+  const lines = src.replace(/^﻿/, '').split('\n').map((l) => l.replace(/\r$/, ''));
+  if (lines[0] !== '---') return null;
+  const end = lines.findIndex((l, i) => i > 0 && (l === '---' || l === '...'));
+  if (end < 0) return null;
+  const data: Record<string, FmValue> = {};
+  let open: string | null = null;
+  for (const l of lines.slice(1, end)) {
+    if (!l.trim() || l.trim().startsWith('#')) continue;
+    if (/^\s/.test(l) && open) {
+      const item = /^\s+-\s+(.*)$/.exec(l);
+      if (item) { const cur = data[open]; data[open] = [...(Array.isArray(cur) ? cur : []), unquote(item[1])]; continue; }
+      const kv = /^\s+(.+?):\s+(.*)$/.exec(l);
+      if (kv) { const cur = data[open]; data[open] = { ...(cur && typeof cur === 'object' && !Array.isArray(cur) ? cur : {}), [unquote(kv[1])]: unquote(kv[2]) }; }
+      continue;
+    }
+    const m = /^([A-Za-z][A-Za-z0-9_-]*):(?:\s+(.*))?$/.exec(l);
+    if (!m) { open = null; continue; }
+    open = m[1];
+    data[m[1]] = m[2] === undefined || m[2].trim() === '' ? '' : scalar(m[2]);
+  }
+  return { data, lines: end + 1 };
+}
+
+/** The first line of the markdown body: 0 without frontmatter, else the first non-blank line after it. @req FR:goal-model/front.parse */
+export function bodyStart(lines: string[]): number {
+  if (!/^﻿?---\r?$/.test(lines[0] ?? '')) return 0;
+  const n = readFrontmatter(lines.join('\n'))?.lines ?? 0;
+  let i = n;
+  while (n && i < lines.length && !lines[i].trim()) i++;
+  return i;
+}
+
+/** Frontmatter `aliases` as a list, or undefined. @req FR:goal-model/front.bullets */
+export function frontmatterAliases(fm: Frontmatter | null): string[] | undefined {
+  const a = fm?.data.aliases;
+  if (Array.isArray(a)) return a;
+  return typeof a === 'string' && a ? a.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+}
+
 /** Indent width with tabs counted as 4 columns. */
 const width = (ws: string) => ws.replace(/\t/g, '    ').length;
 const TASK = /^(\s*)- \[([ xX])\] ?(.*)$/;
@@ -44,7 +103,10 @@ export function parseProject(src: string): Project {
   const stack: Task[] = [];
   /** The row whose metadata block is still open (only right after the row). @req FR:task-ids/meta.parse */
   let metaOf: Task | null = null;
+  // @req FR:goal-model/front.bullets: frontmatter lines are not markdown; its `aliases` win over the `- **Aliases:**` bullet.
+  const fm = readFrontmatter(src);
   lines.forEach((raw, i) => {
+    if (fm && i < fm.lines) return;
     const l = clean(raw);
     if (metaOf) {
       const m = META_LINE.exec(l);
@@ -85,6 +147,8 @@ export function parseProject(src: string): Project {
       if (owner) owner.notes.push(l.trim());
     }
   });
+  const aliases = frontmatterAliases(fm);
+  if (aliases) project.metadata['Aliases'] = aliases.join(', ');
   return project;
 }
 

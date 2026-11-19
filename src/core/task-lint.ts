@@ -9,15 +9,17 @@ import { HUMAN_MARK } from './owner';
 import { parseProject, type Task } from './parser';
 import { TRIGGER } from './query-tasks';
 import { AGENT_TAG, TIERS } from './tiered-tasks';
+import { BLOCKED_UNTIL, START_ISO } from './goal-model';
 
-export const LINT_RULES = ['title-length', 'title-status', 'title-parens', 'detail-nesting', 'id-duplicate', 'id-dangling', 'id-slug', 'meta-emoji', 'meta-key', 'note-status'] as const;
+export const LINT_RULES = ['title-length', 'title-status', 'title-parens', 'detail-nesting', 'id-duplicate', 'id-dangling', 'id-slug', 'meta-emoji', 'meta-key', 'note-status', 'agent-lead', 'agent-duplicate', 'agent-dead', 'agent-def'] as const;
 export type LintRule = (typeof LINT_RULES)[number];
 export interface LintFinding { rule: LintRule; message: string }
 /** `line` is 1-based. */
 export interface LintIssue extends LintFinding { path: string; line: number }
 
 /** @req FR:task-lint/cli.lint.exit: rules that flag existing content; they warn and never fail a command. */
-export const WARN_RULES: readonly LintRule[] = ['note-status', 'meta-key', 'meta-emoji'];
+// @req FR:goal-model/lint.lead @req FR:goal-model/lint.dead @req FR:goal-model/lint.agent-def: agent warnings never fail a command either.
+export const WARN_RULES: readonly LintRule[] = ['note-status', 'meta-key', 'meta-emoji', 'agent-lead', 'agent-dead', 'agent-def'];
 export const isError = (i: LintFinding): boolean => !WARN_RULES.includes(i.rule);
 
 /** @req FR:task-lint/rule.length */
@@ -26,7 +28,7 @@ const MAX_PARENS = 1;
 
 const all = (re: RegExp) => new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
 /** Marks the rules do not read. @req FR:task-lint/title.exempt */
-const EXEMPT = [TRIGGER, AGENT_TAG, DUE_MARK, /📅\s*[A-Za-z]{3}[a-z]*\s+\d{1,2}\b/u, SUSPEND_MARK, /⏰\s+[A-Za-z]{3}\s+\d{1,2}:\s*/u, new RegExp(Object.keys(TIERS).join('|'), 'u')].map(all);
+const EXEMPT = [TRIGGER, AGENT_TAG, DUE_MARK, /📅\s*[A-Za-z]{3}[a-z]*\s+\d{1,2}\b/u, SUSPEND_MARK, /⏰\s+[A-Za-z]{3}\s+\d{1,2}:\s*/u, BLOCKED_UNTIL, START_ISO, new RegExp(Object.keys(TIERS).join('|'), 'u')].map(all);
 
 /** The title the rules read: links as their labels, no bare URLs, no exempt marks. @req FR:task-lint/title.links @req FR:task-lint/title.exempt */
 export function measuredTitle(text: string): string {

@@ -11,8 +11,10 @@ afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true 
 function mk(bloat = true): string {
   const d = mkdtempSync(join(tmpdir(), 'stack-lint-'));
   dirs.push(d);
-  mkdirSync(join(d, 'tasks'));
+  mkdirSync(join(d, 'tasks/.stack'), { recursive: true });
   writeFileSync(join(d, 'tasks/alpha.md'), CLEAN);
+  // A folder default lead: the files are not the owner's, so the agent-lead warning stays out. @req FR:goal-model/lint.lead
+  writeFileSync(join(d, 'tasks/.stack/agent.md'), '---\nagent: "[CoS](#local_cos1)"\n---\n');
   if (bloat) copyFileSync(resolve(__dirname, '../fixtures/task-lint/bloated.md'), join(d, 'tasks/bloat.md'));
   return d;
 }

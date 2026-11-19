@@ -30,6 +30,8 @@ export const ASK_PATH = sys('asks', `${NOT_README}[a-z0-9][a-z0-9._-]{0,79}`);
 export const ARCHIVE_PATH = sys('asks/archive', '[a-z0-9][a-z0-9._-]{0,79}');
 /** Agent definitions. @req FR:agent-team/agent.path */
 export const AGENT_PATH = sys('agents', `${NOT_README}[a-z0-9][a-z0-9._-]{0,39}`);
+/** @req FR:goal-model/agent.inherit: a folder's default agent, `<folder>/.stack/agent.md` (frontmatter `agent`, `agent-def`). */
+export const FOLDER_AGENT_PATH = new RegExp(`^${DIRS}\\${SYSTEM}/agent\\.md$`);
 
 /** A project ID: one or more plain segments joined by `/`, no `:` (refs use it as the separator). @req FR:task-structure/id.ref */
 export const PROJECT_ID = '(?:[^/\\\\:\\0.][^/\\\\:\\0]*/)*[^/\\\\:\\0.][^/\\\\:\\0]*';
@@ -56,4 +58,4 @@ export const logFile = (path: string, n: number): string => `${systemDir(path)}/
 export const inboxFile = (path: string): string => `${systemDir(path)}/inbox/${logName(path)}.md`;
 
 /** @req FR:task-ids/mv.refs: any file Stack keeps in a `.stack/` folder. */
-export const SYSTEM_PATH = new RegExp([LOG_PATH, INBOX_PATH, WAKE_PATH, ASK_PATH, ARCHIVE_PATH, AGENT_PATH].map((re) => `(?:${re.source})`).join('|'));
+export const SYSTEM_PATH = new RegExp([LOG_PATH, INBOX_PATH, WAKE_PATH, ASK_PATH, ARCHIVE_PATH, AGENT_PATH, FOLDER_AGENT_PATH].map((re) => `(?:${re.source})`).join('|'));

@@ -26,13 +26,13 @@ Owner needs the report to use only what each project owner wrote so that no row 
 
 - **FR:tasks.@function** (P1): Interface: `tieredTasks(path, src): TieredTask[]`, pure
 - **FR:tasks.store** (P1): Report MUST read rows only from `tasks/*.md` (not `tasks/.stack/asks/`, not `tasks/.stack/agents/`), and MUST NOT write them.
-- **FR:tasks.tier** (P1): A tiered task (@req FR:$tiered) is a line whose first token, after an optional `- `, `* ` or `- [ ] `, is `1️⃣` (today), `2️⃣` (this week) or `3️⃣` (this month).
+- **FR:tasks.tier** (P1): A tiered task (@req FR:$tiered) is a line whose first token, after an optional `- `, `* ` or `- [ ] `, is `⭐️` (Now; it counts as today), `1️⃣` (today), `2️⃣` (this week) or `3️⃣` (this month). No tier is required: `⭐️` alone is enough (goal-model FR:pri.tiers). A row with a future `⛔️ <date>` or `⏰ <date>` is left out of Now, Today and Next until that date (goal-model FR:pri.hide).
   - **FR:tasks.tier.goal** (P1): Tiers are goals, not due dates: the report MUST NOT read a date as a tier.
   - **FR:tasks.tier.skip** (P1): Report MUST skip checked lines (`- [x]`), headings and lines with no tier.
 - **FR:tasks.agent** (P1): Report MUST take the agent from the first `(agent: ...)`: the text up to the first `,`, `+`, `;` or `)`. A `+N` counts N more agents; else each more name after a `,` or `+` (before a `;`) counts one.
 - **FR:tasks.status** (P1): Report MUST take the agent status from the line: `🤝` or the word `pairing` is Pairing; `🔄` is Working; `🚫` or `🔴` is Blocked; `⏸️` is Idle; `🕓` is Queued; `✅` is Done; else Unknown. A line with no agent has no status.
 - **FR:tasks.text** (P1): Report MUST take the action from the line with the tier, the status glyphs and the `(agent: ...)` text removed.
-- **FR:tasks.project** (P1): Report MUST name the project of a file by its `# ` title with leading emoji removed, and MUST use its `**Aliases:**` to link it.
+- **FR:tasks.project** (P1): Report MUST name the project of a file by its `# ` title with leading emoji removed, and MUST use its `**Aliases:**` to link it (frontmatter `aliases` win; goal-model FR:front.bullets).
 - **FR:tasks.refs** (P1): Report MUST turn each PR or issue mention in the action (`#12`, `PR 12`, `PRs 12, 13`, `issue 12`) into a full markdown link to its GitHub URL, with the repo from the file's `**Repository:**`. Existing links and URLs MUST stay.
   - **FR:tasks.refs.gap** (P1): With no repo, each mention MUST end with the gap marker `⚠ no link`.
 
@@ -59,7 +59,7 @@ Owner needs one row per priority so that each project shows once with his next s
 - **FR:rows.gap** (P1): A priority with no linked tiered task MUST show a gap row: no agent and no status. Report MUST NOT fill it from other data.
   - **FR:rows.gap.cos** (P1): A gap row MUST name the Chief of Staff (CoS) who must act: the priority `cos`, else `CoS`, linked as an agent (@req FR:agent.link).
   - **FR:rows.gap.by** (P1): A gap row MUST say by when: `today`, else `by` and the start of the row (`by 3 PM`, `by Thu 3 PM`).
-  - **FR:rows.gap.action** (P1): The gap action MUST say who will act, by when and what the owner can expect: `<CoS> will add a task <by when>: 1️⃣/2️⃣/3️⃣ in <project file> with (agent: ...)`
+  - **FR:rows.gap.action** (P1): The gap action MUST say who will act, by when and what the owner can expect: `<CoS> will add a task <by when>: ⭐️ in <project file> with (agent: ...)` (never a 1️⃣/2️⃣/3️⃣ tier; see goal-model FR:pri.tiers)
     - **FR:rows.gap.action.file** (P1): With no project file, the gap action MUST name `tasks/<project>.md`
   - **FR:rows.gap.silent** (P1): A gap row MUST NOT carry text to send
     - **FR:rows.gap.silent.send** (P1): Report MUST NOT send a message for a gap

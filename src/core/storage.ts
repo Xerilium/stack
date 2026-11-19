@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
 import { dirname, join } from 'path';
-import { AGENT_PATH, ARCHIVE_PATH, ASK_PATH, INBOX_PATH, LOG_PATH, SYSTEM, SYSTEM_PATH, TASK_PATH, TASKS_DIR, WAKE_PATH } from './task-paths';
+import { AGENT_PATH, ARCHIVE_PATH, ASK_PATH, FOLDER_AGENT_PATH, INBOX_PATH, LOG_PATH, SYSTEM, SYSTEM_PATH, TASK_PATH, TASKS_DIR, WAKE_PATH } from './task-paths';
 
 /** @req FR:storage-git/$errors */
 export class StorageError extends Error {}
@@ -97,7 +97,7 @@ export interface AuxFiles {
 
 /** @req FR:storage-git/interface.paths @req FR:ai-triage-assist/result.path */
 export function validatePath(path: string): string {
-  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || WAKE_PATH.test(path) || ASK_PATH.test(path) || ARCHIVE_PATH.test(path) || AGENT_PATH.test(path) || CLAUDE_AGENT_PATH.test(path)) || path.split('/').includes('..')) {
+  if (typeof path !== 'string' || !(TASK_PATH.test(path) || SUMMARY_PATH.test(path) || LOG_PATH.test(path) || INBOX_PATH.test(path) || WAKE_PATH.test(path) || ASK_PATH.test(path) || ARCHIVE_PATH.test(path) || AGENT_PATH.test(path) || FOLDER_AGENT_PATH.test(path) || CLAUDE_AGENT_PATH.test(path)) || path.split('/').includes('..')) {
     throw new PathError(`Invalid task path: ${JSON.stringify(path)}`);
   }
   return path;

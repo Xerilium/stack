@@ -5,7 +5,7 @@
  */
 import type { SessionItem } from './sessions';
 
-export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** Where a scanned agent lives (project, folder, or `user`). @req FR:agent-team/agent.team.scan */ home?: string; /** The manager's slug; absent on the roll-up. */ reportsTo?: string; /** Emoji or same-origin image path. @req FR:agent-team/agent.icon */ icon?: string; /** Older names a session title may start with. @req FR:agent-team/org.match */ aliases?: string[] }
+export interface TeamAgent { slug: string; name: string; role?: string; scope: string[]; model?: string; mode: 'long-running' | 'ad-hoc'; prompt: string; defined: boolean; source: 'stack' | 'claude' | 'metadata'; projects: string[]; /** The session of the agent's link. @req FR:goal-model/agent.link */ session?: string; /** Projects it leads (goal frontmatter or folder default). @req FR:goal-model/agent.inherit */ leads?: string[]; /** Where a scanned agent lives (project, folder, or `user`). @req FR:agent-team/agent.team.scan */ home?: string; /** The manager's slug; absent on the roll-up. */ reportsTo?: string; /** Emoji or same-origin image path. @req FR:agent-team/agent.icon */ icon?: string; /** Older names a session title may start with. @req FR:agent-team/org.match */ aliases?: string[] }
 /** The first agent whose scope is `*`. */
 export const rollupOf = (team: TeamAgent[]): TeamAgent | undefined => team.find((a) => a.scope.includes('*'));
 /** How long a metadata-only agent stays on tasks after its last session. @req FR:agent-team/web.chip.live */
@@ -39,6 +39,12 @@ export function ownerNote(notes: string[] = []): string | undefined {
   return undefined;
 }
 
+/** The `> agent: [Name](#local_<id>)` session link in a task's notes, if any. @req FR:goal-model/agent.link */
+export function agentLinkNote(notes: string[] = []): { name: string; id: string } | undefined {
+  for (const n of notes) { const m = /^\s*>\s*agent:\s*\[([^\]\n]+)\]\(#(local_[A-Za-z0-9_-]+)\)\s*$/.exec(n); if (m) return { name: m[1].trim(), id: m[2] }; }
+  return undefined;
+}
+
 /**
  * The task's owning agent: the one agent every chip, composer, tile and Now talks to.
  * 1. `Owner:` on the task, else on the nearest ancestor that names `me` or an agent (`ancestors`: nearest first). `me` stops the walk.
@@ -51,6 +57,9 @@ export function ownerNote(notes: string[] = []): string | undefined {
 export function ownerOf(team: TeamAgent[], task?: OwnerTask, ancestors: OwnerTask[] = []): TeamAgent | undefined {
   if (task) {
     for (const t of [task, ...ancestors]) {
+      // @req FR:goal-model/agent.inherit: a `> agent:` session link on the task or a parent wins.
+      const link = agentLinkNote(t.notes);
+      if (link) return team.find((a) => a.session === link.id) ?? team.find((a) => a.name === link.name || a.slug === nameKey(link.name)) ?? { slug: nameKey(link.name) || 'agent', name: link.name, scope: [task.project], mode: 'ad-hoc', prompt: '', defined: false, source: 'metadata', projects: [task.project], session: link.id };
       const v = ownerNote(t.notes);
       if (!v) continue;
       if (/^me$/i.test(v)) break;
@@ -58,6 +67,9 @@ export function ownerOf(team: TeamAgent[], task?: OwnerTask, ancestors: OwnerTas
       const hit = team.find((a) => (a.slug === v || a.name === v || a.slug === key || nameKey(a.name) === key));
       if (hit) return hit;
     }
+    // @req FR:goal-model/agent.inherit: then the project's lead (goal frontmatter, else a folder default), resolved by the server.
+    const lead = team.find((a) => a.leads?.includes(task.project));
+    if (lead) return lead;
   }
   const rollup = rollupOf(team.filter(local)); // a scanned `*` agent is never the roll-up
   const fit = (a: TeamAgent) => Math.max(0, ...a.scope.filter((x) => x !== '*').map((x) => (task ? specificity(x, task.project, task.section) : 2)));

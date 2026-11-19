@@ -5,6 +5,7 @@
  * Pure: the caller reads the stores and hands them in.
  * @req FR:priorities-tables/rows.@function @req FR:priorities-tables/rows.input @req FR:priorities-tables/$view @req FR:priorities-tables/$row @req FR:priorities-tables/$pr
  */
+import { isHeld, todayIn } from './goal-model';
 import type { NextAction, PrDetail } from './pr-board';
 import type { Pri, PriDay, PriWindow } from './pris';
 import { linker, priOrder, type LinkRow } from './pris-rank';
@@ -39,7 +40,8 @@ const DAY_MS = 86_400_000;
 /** The CoS when the priority names none: the roll-up. */
 export const COS = 'CoS';
 /** What the owner can expect from the CoS on a gap row. @req FR:priorities-tables/rows.gap.action */
-const gapTask = (file: string | null) => `1️⃣/2️⃣/3️⃣ in ${file ?? 'tasks/<project>.md'} with (agent: ...)`;
+// @req FR:goal-model/pri.tiers: the gap never asks for a 1️⃣/2️⃣/3️⃣ tier; ⭐️ marks Now.
+const gapTask = (file: string | null) => `⭐️ in ${file ?? 'tasks/<project>.md'} with (agent: ...)`;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const OFF_TODAY = 'Not a priority today';
 
@@ -116,7 +118,9 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
   const linkRest = linker(rest, names);
   const linkOf = (r: LinkRow) => linkQm(r) ?? linkRest(r);
   const byPri = new Map<string, TieredTask[]>();
-  for (const t of input.tasks) {
+  // @req FR:goal-model/pri.hide: a row with a future ⛔️ or ⏰ date stays out of Now, Today and Next.
+  const day0 = todayIn(now, timeZone);
+  for (const t of input.tasks.filter((x) => !isHeld(x.text, day0))) {
     const l = linkOf({ text: t.text, project: t.project, aliases: t.aliases });
     if (l) byPri.set(l.id, [...(byPri.get(l.id) ?? []), t]);
   }

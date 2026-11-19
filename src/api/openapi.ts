@@ -865,7 +865,7 @@ export function buildOpenApi(): J {
           properties: {
             slug: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, scope: { type: 'array', items: { type: 'string' } }, model: { type: 'string' },
             tools: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['long-running', 'ad-hoc'] }, prompt: { type: 'string' }, defined: { type: 'boolean' }, projects: { type: 'array', items: { type: 'string' } },
-            reportsTo: { type: 'string', description: 'Slug of the agent this one reports to; absent on the roll-up' }, icon: { type: 'string', description: 'Avatar: an emoji, fluent:<name> (a Fluent Emoji file name), or a same-origin image path; absent means a monogram' }, source: { type: 'string', enum: ['stack', 'claude', 'metadata'], description: 'tasks/.stack/agents file, .claude/agents file, or a project Agents line' }, home: { type: 'string', description: 'Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents' }, aliases: { type: 'array', items: { type: 'string' }, description: 'Older display names a session title may start with: the H1 text before its colon' },
+            reportsTo: { type: 'string', description: 'Slug of the agent this one reports to; absent on the roll-up' }, icon: { type: 'string', description: 'Avatar: an emoji, fluent:<name> (a Fluent Emoji file name), or a same-origin image path; absent means a monogram' }, source: { type: 'string', enum: ['stack', 'claude', 'metadata'], description: 'tasks/.stack/agents file, .claude/agents file, or a project Agents line' }, home: { type: 'string', description: 'Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents' }, aliases: { type: 'array', items: { type: 'string' }, description: 'Older display names a session title may start with: the H1 text before its colon' }, session: { type: 'string', description: 'The session id of the agent link (local_<id>) a goal file or folder default names' }, leads: { type: 'array', items: { type: 'string' }, description: 'Projects this agent leads: their goal file frontmatter agent, else a .stack/agent.md folder default, links to it' },
           },
         },
         ThreadItem: {
@@ -929,6 +929,7 @@ export function buildOpenApi(): J {
               type: 'array',
               items: { type: 'object', properties: { heading: { type: 'string' }, open: { type: 'integer' }, done: { type: 'integer' } } },
             },
+            legend: { type: 'object', additionalProperties: { type: 'string' }, description: 'Emoji to meaning, from the goal file frontmatter `legend`; empty when none' },
           },
         },
       },

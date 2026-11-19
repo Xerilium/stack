@@ -27,6 +27,7 @@ export const effortMinutes = (e: string | undefined): number => (e ? MIN_BY_KEY.
 export interface Row {
   status?: string; priority?: string; effort?: string; impact?: string;
   due?: string; recurrence?: string; suspend?: string; start?: string;
+  /** `yyyy-mm-dd` of a dated ⛔. */ blockedUntil?: string;
   /** 🎯 outcome row. */ outcome?: boolean;
   /** Who does it: 🤖/🪄 an agent, 🙋 the human. */ who?: 'agent' | 'human';
   /** Links lifted out of the title. */ links: { href: string; label: string }[];
@@ -43,6 +44,12 @@ function pull(s: string, set: Choice[]): { value?: string; rest: string } {
   return { value, rest };
 }
 
+/** The goal file's legend entries whose emoji is in the row: `[emoji, meaning]`, in legend order. @req FR:goal-model/front.legend */
+export function legendOf(text: string, legend: Record<string, string> | undefined): [string, string][] {
+  const t = vs(text);
+  return Object.entries(legend ?? {}).filter(([e]) => vs(e) && t.includes(vs(e)));
+}
+
 export function parseRow(text: string): Row {
   let s = vs(text);
   const row: Row = { title: '', links: [] };
@@ -51,6 +58,9 @@ export function parseRow(text: string): Row {
   };
   take(/💤\s*([A-Za-z]{3}\s+\d{1,2}(?:\s+\d{1,2}:\d{2})?|\d{1,2}:\d{2}):/g, 'suspend');
   take(/⏰\s*([A-Za-z]{3}\s+\d{1,2}(?:,\s*\d{4})?):/g, 'start');
+  take(/⏰\s*(\d{4}-\d{2}-\d{2})\b:?/g, 'start'); // @req FR:goal-model/pri.start
+  // @req FR:goal-model/pri.blocked-until: `⛔ <date>` is blocked until that date; the ⛔ stays the status.
+  s = s.replace(/⛔\s*(\d{4}-\d{2}-\d{2})\b/g, (_m, d: string) => { row.blockedUntil ??= d; return '⛔ '; });
   take(/📅\s*([^:]+?):/g, 'due');
   take(/🔄\s*([^:]+?):/g, 'recurrence');
   for (const [key, set] of [['status', STATUS], ['priority', PRIORITY], ['effort', [...EFFORT, { e: '🔹', name: '12 min' }]], ['impact', IMPACT]] as const) {

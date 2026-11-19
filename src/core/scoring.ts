@@ -1,6 +1,6 @@
 import type { StackConfig } from './config';
 import { escapeRe } from './regex';
-import type { Project, Task as ParsedTask } from './parser';
+import { bodyStart, frontmatterAliases, readFrontmatter, type Project, type Task as ParsedTask } from './parser';
 import { isAskRow } from './owner';
 
 export class ScoringError extends Error {}
@@ -107,6 +107,9 @@ const present = (text: string, list: string[]): string[] => {
   if (!low) lowered.set(list, (low = list.map(e => e.toLowerCase())));
   return list.filter((_, i) => t.includes(low![i]));
 };
+
+/** ⭐️ (Now), with or without the variation selector. @req FR:goal-model/pri.now */
+const STAR = /⭐️?/u;
 
 const BASE_MAX = 20_000;
 const baseCache = new Map<string, Omit<TaskEmojis, 'TimeBlocks'>>();
@@ -641,7 +644,11 @@ function stackRank(all: ScoredTask[], projects: ScoringProject[], config: StackC
     if (l.stale) score = Math.min(score, STALE_CAP);
     out.push(from === undefined ? { ...s, score, ...extra } : { ...s, score, ...extra, breakdown: { ...s.breakdown, inheritedFrom: from } });
   }
-  return byScore(out);
+  // @req FR:goal-model/pri.now: ⭐️ rows (and rows under one) lead, in score order; the score itself is unchanged.
+  const starred = (t: ScoringTask): boolean => { for (let c: ScoringTask | undefined = t, n = 0; c && n < 100; c = c.parent ? byId.get(c.parent)?.task : undefined, n++) if (STAR.test(c.text)) return true; return false; };
+  const ranked = byScore(out);
+  if (!all.some((s) => STAR.test(s.task.text))) return ranked;
+  return [...ranked.filter((s) => starred(s.task)), ...ranked.filter((s) => !starred(s.task))];
 }
 
 export const stackEngine: ScoringEngine = {
@@ -696,9 +703,12 @@ const ACTIVE = /^🔄 Active/i;
 const TASK_LINE = /^(\s*)- \[ \] (.+)$/;
 const CAPACITY_LINE = /^-\s+\*\*(.+?)\s+capacity:\*\*\s+(\d+(?:\.\d+)?)h\s*$/i;
 
-/** Names from the first `**Aliases:**` line (comma-separated). */
+/** Names from the frontmatter `aliases`, else the first `**Aliases:**` line (comma-separated). @req FR:goal-model/front.bullets */
 export function parseAliases(lines: string[]): string[] {
-  const line = lines.map(l => /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean);
+  const fm = /^\uFEFF?---\r?$/.test(lines[0] ?? '') ? readFrontmatter(lines.join('\n')) : null;
+  const own = frontmatterAliases(fm);
+  if (own) return own;
+  const line = lines.slice(fm?.lines ?? 0).map(l => /^\s*[-*]?\s*\*\*Aliases:\*\*\s*(.+)$/.exec(l)?.[1]).find(Boolean);
   return line?.split(',').map(a => a.trim()).filter(Boolean) ?? [];
 }
 
@@ -707,8 +717,8 @@ export function parseAliases(lines: string[]): string[] {
  * @req FR:scoring-engine/load.tasks @req FR:scoring-engine/filter.capacity
  */
 export function toScoringProject(project: Project, fallbackName = ''): ScoringProject {
-  // Legacy: H1 on the first line only; otherwise the file base name with '-' as ' '.
-  const first = project.lines[0]?.replace(/^﻿/, '').replace(/\r$/, '').trim() ?? '';
+  // Legacy: H1 on the first line only (the first after any frontmatter); otherwise the file base name with '-' as ' '. @req FR:goal-model/front.parse
+  const first = project.lines[bodyStart(project.lines)]?.replace(/^﻿/, '').replace(/\r$/, '').trim() ?? '';
   const h1 = /^# (.+)$/.exec(first)?.[1].trim();
   const name = h1 || fallbackName.replace(/-/g, ' ');
   const lines = project.lines.map(l => l.replace(/^﻿/, '').replace(/\r$/, ''));

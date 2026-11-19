@@ -1,6 +1,6 @@
 /** Api shapes the client uses. Kept here so the client never imports from `src/`. */
 export interface Task { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
-export interface Project { name: string; title: string; open: number; done: number; metadata: Record<string, string> }
+export interface Project { name: string; title: string; open: number; done: number; metadata: Record<string, string>; /** Emoji to meaning, from the goal file frontmatter. @req FR:goal-model/front.legend */ legend?: Record<string, string> }
 export interface NextTask { ref: string; text: string; project: string; score: number }
 /** The first priority action of `GET /next`: the owner's own next step on a priority. It comes before any task. @req FR:now-screen/now.action */
 export interface NextAction { pri: { id: string; rank: number; title: string }; text: string; score: number }
