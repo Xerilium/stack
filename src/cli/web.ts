@@ -515,7 +515,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         const body = o.setup && file === join(root, 'index.html') && o.setup.status().needed ? withSetupMeta(readFileSync(file)) : readFileSync(file);
         send(200, body, TYPES[extname(file)] ?? 'application/octet-stream', hashed ? { 'cache-control': 'public, max-age=31536000, immutable' } : {});
       } catch (e) {
-        // @req FR:cli/web.serve.body
+        // @req FR:cli/web.serve.body @req FR:cli/web.serve.body.quiet
         if (e instanceof BodyTooLarge) { if (!res.headersSent) send(413, 'body too large', 'text/plain', { connection: 'close' }); else res.end(); return; }
         console.error(e);
         if (!res.headersSent) send(500, 'internal error', 'text/plain'); else res.end();

@@ -49,7 +49,7 @@ describe('stack web local gate', () => {
     expect(errors).not.toHaveBeenCalled();
   });
 
-  // @req FR:cli/web.serve.body
+  // @req FR:cli/web.serve.body @req FR:cli/web.serve.body.quiet
   it('answers 413 for a body over 1 MB, with no error stack', async () => {
     const r = await post('/api/tasks', { 'sec-fetch-site': 'same-origin' }, 'x'.repeat(1_100_000));
     expect(r.status).toBe(413);
