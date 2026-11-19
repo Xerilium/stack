@@ -38,7 +38,7 @@ export function Md({ text, links = true, project }: { text: string; links?: bool
   return <>{parseInline(text, refsOf(project)).map(links ? renderNode : plainNode)}</>;
 }
 
-export type MdBlockNode = { t: 'p'; text: string } | { t: 'h'; text: string } | { t: 'pre'; text: string } | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[] } | { t: 'hr' };
+export type MdBlockNode = { t: 'p'; text: string } | { t: 'h'; text: string } | { t: 'pre'; text: string } | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[]; start: number } | { t: 'hr' };
 
 /**
  * Split a text into markdown blocks: paragraphs, `#` headings, `-` and `1.` lists, `---` rules, fenced code. No HTML.
@@ -60,14 +60,14 @@ export function mdBlocks(text: string): MdBlockNode[] {
     }
     if (!l.trim()) { flush(); continue; }
     if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(l)) { flush(); out.push({ t: 'hr' }); continue; }
-    const h = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(l);
+    const h = /^\s{0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$/.exec(l);
     if (h) { flush(); out.push({ t: 'h', text: h[1] }); continue; }
-    const li = /^\s*(?:([-*+])|\d{1,9}[.)])\s+(.*)$/.exec(l);
+    const li = /^\s*(?:([-*+])|(\d{1,9})[.)])\s+(.*)$/.exec(l);
     if (li) {
       flush();
-      const t = li[1] ? 'ul' : 'ol';
       const prev = out[out.length - 1];
-      if (prev && prev.t === t) prev.items.push(li[2]); else out.push({ t, items: [li[2]] });
+      if (prev && prev.t === (li[1] ? 'ul' : 'ol') && 'items' in prev) prev.items.push(li[3]);
+      else out.push(li[1] ? { t: 'ul', items: [li[3]] } : { t: 'ol', items: [li[3]], start: Number(li[2]) });
       continue;
     }
     para.push(l);
@@ -89,7 +89,7 @@ export function MdBlock({ text, project }: { text: string; project?: string }) {
         if (b.t === 'h') return <p key={i} class="md-h"><b><Md text={b.text} project={project} /></b></p>;
         if (b.t === 'p') return <p key={i}><Md text={b.text} project={project} /></p>;
         const items = b.items.map((it, j) => <li key={j}><Md text={it} project={project} /></li>);
-        return b.t === 'ul' ? <ul key={i}>{items}</ul> : <ol key={i}>{items}</ol>;
+        return b.t === 'ul' ? <ul key={i}>{items}</ul> : <ol key={i} start={b.start === 1 ? undefined : b.start}>{items}</ol>;
       })}
     </div>
   );

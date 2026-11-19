@@ -41,5 +41,8 @@ describe('MdBlock', () => {
     expect(mdBlocks('```\na\nb')).toEqual([{ t: 'pre', text: 'a\nb' }]);
     expect(mdBlocks('')).toEqual([]);
     expect(mdBlocks('#nohash')).toEqual([{ t: 'p', text: '#nohash' }]);
+    expect(mdBlocks('## Use C#\n### Done ##')).toEqual([{ t: 'h', text: 'Use C#' }, { t: 'h', text: 'Done' }]);
+    expect(mdBlocks('1. a\n```\nx\n```\n3. c')).toEqual([{ t: 'ol', items: ['a'], start: 1 }, { t: 'pre', text: 'x' }, { t: 'ol', items: ['c'], start: 3 }]);
+    expect(mount('3. c').querySelector('ol')!.getAttribute('start')).toBe('3');
   });
 });

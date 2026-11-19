@@ -32,14 +32,16 @@ const plain = (s: string, n: number) => cut(s.replace(CTRL, ' ').replace(/\s+/g,
 // eslint-disable-next-line no-control-regex
 const CTRL_BUT_NL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]/g;
 const INVISIBLE = /[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g;
-/** Harness wrappers the CLI writes into a transcript: never the owner's or the agent's words. @req FR:agent-sessions/sessions.messages.text */
-const WRAPPERS = /<(system-reminder|ide_opened_file|side-sessions-event|task-notification|tool-use-id|local-command-[a-z-]+|command-[a-z-]+)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
+/** Context the harness injects into any turn. */
+const REMINDERS = /<(system-reminder|ide_opened_file)>[\s\S]*?<\/\1>/g;
+/** Harness wrappers the CLI writes as user turns: never the owner's words. An agent may quote them, so its turns keep them. @req FR:agent-sessions/sessions.messages.text */
+const WRAPPERS = /<(side-sessions-event|task-notification|tool-use-id|local-command-[a-z-]+|command-[a-z-]+)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
 /**
  * Turn text for the transcript: harness wrappers gone, redacted, line breaks kept so markdown survives; other control characters become spaces.
  * @req FR:agent-sessions/sessions.messages @req FR:agent-sessions/sessions.messages.text
  */
-export function turnText(s: string, n = MAX_TEXT): string {
-  const t = redact(s.replace(WRAPPERS, '').replace(INVISIBLE, '')).replace(/\r\n?/g, '\n').replace(CTRL_BUT_NL, ' ');
+export function turnText(s: string, user = true, n = MAX_TEXT): string {
+  const t = redact((user ? s.replace(WRAPPERS, '') : s).replace(REMINDERS, '').replace(INVISIBLE, '')).replace(/\r\n?/g, '\n').replace(CTRL_BUT_NL, ' ');
   return cut(t.split('\n').map((l) => l.trimEnd()).join('\n').replace(/\n{3,}/g, '\n\n').trim(), n);
 }
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -103,7 +105,7 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
       if (!m) continue;
       const at = typeof r.timestamp === 'string' ? r.timestamp : '';
       const role = r.type === 'assistant' ? 'assistant' : 'user';
-      const own = (t: string) => turnText(t);
+      const own = (t: string) => turnText(t, role === 'user');
       if (typeof m.content === 'string') { const t = own(m.content); if (t) out.push({ at, role, text: t }); continue; }
       if (!Array.isArray(m.content)) continue;
       for (const b of m.content as Record<string, unknown>[]) {
