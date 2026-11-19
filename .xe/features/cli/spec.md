@@ -47,6 +47,10 @@ Owner needs `stack web` to serve the app over a task repo on their own machine s
   - The content repo comes from `--repo`, else discovery (cwd walk, `$STACK_REPO`, `$STACK_DIR`, user config `repo`); a git url is cloned once into `~/.config/stack/clones`
   - **FR:web.serve.local** (P1): The server MUST answer `/.auth/me` with a local sign-in stub (no Azure) whose single user is the owner
   - **FR:web.serve.loopback** (P1): The server MUST serve only loopback Host names and accept writes only from its own origin
+    - **FR:web.serve.loopback.reads** (P1): The server MUST answer 403 to a local `/api/*`, `/events`, or `/sessions/<id>/events` request whose `Sec-Fetch-Site` is `cross-site` or `same-site`, for every method
+    - **FR:web.serve.loopback.origin** (P1): The server MUST answer 403 to a local write whose `Origin` is `null` or does not parse
+  - **FR:web.serve.body** (P2): The server MUST answer 413 to a request whose body is over 1 MB
+    - **FR:web.serve.body.quiet** (P3): The server MUST log no error stack for that 413
   - Stack never holds content: tasks live in a separate content repo
 - **FR:web.demo** (P1): By default `stack web` MUST serve a copy: the content repo's `tasks/` (and `.xe/config/stack.json`, and `.claude/agents/` when present) copied into `~/.config/stack/demo` as a fresh repo with no history or remote
   - **FR:web.demo.untouched** (P1): Demo mode MUST never write to the real repo
