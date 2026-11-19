@@ -2,6 +2,8 @@
 export interface Task { ref: string; text: string; project: string; section: string; done: boolean; depth: number; notes: string[] }
 export interface Project { name: string; title: string; open: number; done: number; metadata: Record<string, string> }
 export interface NextTask { ref: string; text: string; project: string; score: number }
+/** The first priority action of `GET /next`: the owner's own next step on a priority. It comes before any task. @req FR:now-screen/now.action */
+export interface NextAction { pri: { id: string; rank: number; title: string }; text: string; score: number }
 export interface Mutation { changed: boolean; ref?: string; before?: string; after?: string; message?: string }
 export interface CaptureSpec { title: string; due?: string; effort?: { minutes: number; emoji: string }; project?: string; recurrence?: unknown }
 export interface CaptureResult extends Mutation { spec: CaptureSpec }

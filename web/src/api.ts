@@ -14,7 +14,7 @@ import type { Thread } from './thread';
 import type { UpdateMode, VersionState } from './update';
 import type { QmPlan } from './qm';
 import type { ItemOp, Lane, LiveItem } from './live-lane';
-import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextTask, Position, Project, SetProps, Task } from './types';
+import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextAction, NextTask, Position, Project, SetProps, Task } from './types';
 
 /** @req FR:web-app/api.client */
 export class ApiFailure extends Error {
@@ -53,6 +53,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
   }
   return {
     next: async () => (await call<{ task: NextTask | null }>('/next')).task,
+    /** The answer of `stack next`: the first priority action, then the first owner task. @req FR:now-screen/now.action */
+    nextStep: async (): Promise<{ task: NextTask | null; action: NextAction | null }> => { const r = await call<{ task: NextTask | null; action?: NextAction | null }>('/next'); return { task: r.task, action: r.action ?? null }; },
     /** The one ranking (engine order plus the owner's overrides); Home draws only this. @req FR:api/routes.rank */
     /** Per project: done today, keyed by project file name. @req FR:pri-first-ranking/daily.web */
     daily: async () => new Map(((await call<{ daily?: { name?: string; project: string; done: boolean }[] }>('/rank?limit=1&daily=1')).daily ?? []).map((d) => [d.name ?? d.project, d.done] as const)),

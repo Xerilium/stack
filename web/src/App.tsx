@@ -14,7 +14,7 @@ import { applyFilters, buildHash, NO_FILTERS, parseHash, redirectHash, type Filt
 import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, setRefProjects, Toasts, type GroupName, type Toast } from './parts';
 import { filterCommands } from './palette';
 import { keyboardMove, moveTarget, type RowPos } from './reorder';
-import type { Agent, CaptureSpec, InboxItem, NextTask, Project, SetProps, Task, View } from './types';
+import type { Agent, CaptureSpec, InboxItem, NextAction, NextTask, Project, SetProps, Task, View } from './types';
 import { DEFER, progress, startsOpen, topTask, visibleRows } from './now';
 import { buildPlan, clock, decisions as decisionsOf, DEFAULT_DAY, nowMinutes, planCandidates, span, type Decision } from './plan';
 import { parseRow, taskText } from './row';
@@ -122,6 +122,7 @@ export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [next, setNext] = useState<NextTask | null>(null);
+  const [nowAction, setNowAction] = useState<NextAction | null>(null);
   /** The server's ranking: Home draws this and nothing else. @req FR:web-app/now.active */
   const [ranked, setRanked] = useState<RankItem[]>([]);
   const [doneToday, setDoneToday] = useState<Map<string, boolean> | undefined>(undefined);
@@ -271,7 +272,7 @@ export function App() {
   const held = shownNow.current;
   const nowTask = held && justDone.has(held.task.ref) && held.task.ref !== liveNow?.task.ref ? held : liveNow;
   shownNow.current = nowTask;
-  const rows = view === 'now' ? (nowTask ? [nowTask.task] : []) : view === 'asks' || view === 'inventory' || view === 'sessions' || view === 'inbox' || view === 'prs' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
+  const rows = view === 'now' ? (nowTask && !nowAction ? [nowTask.task] : []) : view === 'asks' || view === 'inventory' || view === 'sessions' || view === 'inbox' || view === 'prs' ? [] : view === 'today' ? plan.blocks.map((b) => b.task) : view === 'home' ? (home.instead ? [home.instead.task, home.one?.task] : [home.one?.task]).concat(topAsksOf(home).rows.map((x) => x.top.task)).filter((t): t is Task => !!t) : listRows; // the task shown as NOW is first
   const prog = useMemo(() => new Map(tasks.map((t, i) => [t.ref, progress(tasks, i)])), [tasks]);
   const positions: RowPos[] = useMemo(() => rows.map((t) => ({ ref: t.ref, project: t.project, depth: t.depth })), [rows]);
   const week = useMemo(() => planWeek(tasks, clockNow, budget.minutes, DEFAULT_DAY, dayOrder), [tasks, clockNow, budget.minutes, dayOrder]);
@@ -321,6 +322,8 @@ export function App() {
     try {
       // @req FR:perf/client.paint — the first screen waits for the ranking, tasks, and projects; the all-day order fills in when it arrives.
       void api.rank(1000, 'any').then((a) => setDayOrder(a.map((x) => x.ref)), () => setDayOrder(null));
+      // The first answer of `stack next`: a priority action comes before any task. An older host has none. @req FR:now-screen/now.action
+      void api.nextStep().then((s) => setNowAction(s.action), () => setNowAction(null));
       void api.daily().then(setDoneToday, () => setDoneToday(undefined)); // @req FR:pri-first-ranking/daily.web
       // The CoS file is optional and never blocks the page; it starts first so a failed task read never holds the count back. @req FR:ask-queue/web.home.count
       void api.needs().then(setNeeds, () => setNeeds([])).finally(() => setNeedsRead(true));
@@ -1042,7 +1045,7 @@ export function App() {
             message={{ name: (t) => { const a = taskAgent(t); return a ? displayName(a) : 'the agent'; }, open: (r) => { setComposeRef(r); setFocusRef(r); } }}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} done={!!nowTask && justDone.has(nowTask.task.ref)} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))} send={sendToSession}
+        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} action={nowAction} done={!!nowTask && justDone.has(nowTask.task.ref)} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))} send={sendToSession}
           chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} pri={pri} cal={{ source: calSource }} />}
         {/* Settings needs no task data: it shows while tasks load. @req FR:settings/view.route */}
         {view === 'settings' && <SettingsView api={api} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }} updates={updates} priorities={{ ctl: prisSessions.pris, report: pri }} onAccounts={() => void checkCalendar()} now={clockNow} />}

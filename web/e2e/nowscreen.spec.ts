@@ -26,6 +26,23 @@ test.describe('Now screen', () => {
     await page.screenshot({ path: `e2e/screenshots/now-${info.project.name}.png` });
   });
 
+  // @req FR:now-screen/now.action @req FR:now-screen/now.action.then @req FR:now-screen/now.action.none @req FR:pri-first-ranking/api.next
+  test('a priority action from GET /next is the one thing, as in stack next; the first task waits under it', async ({ page }) => {
+    await ten(page);
+    const m = await mockApi(page, { tasks: seed() });
+    m.nextAction = { pri: { id: 'fh011', rank: 4, title: 'FH 0.11' }, text: 'answer the interview https://github.com/allytehq/finops-hubs/pull/430', score: 2400 };
+    await page.goto('/#/now');
+    const now = page.getByTestId('now');
+    await expect(now.getByRole('heading', { level: 1 })).toHaveText(/^answer the interview/);
+    await expect(now.getByRole('heading', { level: 1 }).getByRole('link')).toHaveAttribute('href', 'https://github.com/allytehq/finops-hubs/pull/430');
+    await expect(page.getByTestId('now-why')).toHaveText('priority 4: FH 0.11');
+    await expect(page.getByTestId('now-then')).toHaveText('Then: Ship the web app');
+    await expect(now.getByRole('group', { name: 'Actions' })).toHaveCount(0);
+    await expect(page.getByTestId('now-chat')).toHaveCount(0);
+    expect((await new AxeBuilder({ page }).include('[data-testid="now-focus"]').analyze()).violations).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
   // @req FR:now-screen/now.one @req FR:now-screen/now.actions
   test('a ranked leaf shows with its root as context; Done completes the leaf, not the root', async ({ page }) => {
     await ten(page);
