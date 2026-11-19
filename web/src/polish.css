@@ -13,13 +13,9 @@
 .nofit-wrap .nofit-head { padding-right: 96px; } /* the summary never runs under the button */
 
 /* Muted text and the active tab on the soft accent (cursor row, active tab) clear 4.5:1. */
-:root { --muted-on-soft: #5d5d65; --accent-on-soft: #4a4ed6; }
 .tab.on, .row.cursor { --muted: var(--muted-on-soft); }
 .tab.on { color: var(--accent-on-soft); }
 .tab.on kbd { color: inherit; }
-@media (prefers-color-scheme: dark) {
-  :root { --muted-on-soft: #a0a0a8; --accent-on-soft: var(--accent); }
-}
 
 /* Touch: every control a finger must hit is at least 44 px tall. Text controls in rows grow their hit area, not the row. */
 @media (pointer: coarse) {

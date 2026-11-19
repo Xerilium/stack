@@ -2,7 +2,7 @@
 id: ui-kit
 title: Shared UI components
 author: flanakin
-description: "One component set for views: a selectable card, a flag, a status chip, an actions menu, an actions bar, and a day grid."
+description: "One token file and one component set for every view: card, flag, status chip, actions, tabs, split view, day grid, page header, and page states."
 dependencies: [web-shell]
 ---
 
@@ -16,7 +16,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ## Scope
 
-- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `MessageBox`, `DayGrid`, `useWide`) and `web/src/ui/ui.css`.
+- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `MessageBox`, `DayGrid`, `useWide`, `PageHeader`, `EmptyState`, `Loading`, `ErrorState`), `web/src/ui/ui.css`, and the design tokens in `web/src/ui/tokens.css`.
 - Out: what a view puts in them (its words, tones, and actions), and the written UI rule (`ux-consolidation`).
 
 ## Scenarios
@@ -75,6 +75,26 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 ### FR:message: Message box
 
 - **FR:message** (P1): `MessageBox` sends one message from a details pane: a heading, a text box named `Message <to>` (at most 4000 characters, optional start text), and one button (`Send`, or `send`). The button is off while the text is empty or a send runs. After `onSend` resolves it clears the text and says `Sent to <to>` in a status line; after it rejects it keeps the text and says the error. With `off` (a reason), the box and button are off and the reason shows
+
+### FR:tokens: Design tokens
+
+- **FR:tokens** (P1): `web/src/ui/tokens.css` is the one file that sets design token values: color, type, space, radius, elevation, and motion, in light and dark. No other stylesheet sets a token value on `:root`. The `--fl-*` color names are aliases of the base names, so every view shows one accent, one ink scale, and one focus color. Text tokens are 4.5:1 on each surface token; the accent and the focus ring are 3:1 on the page
+
+### FR:header: Page header
+
+- **FR:header** (P1): `PageHeader` is the top of a page: an `h1` title (20 px, 28 px line), an optional muted `meta` after it, an optional `sub` line under it, and optional `actions` at the right. On a narrow screen the actions wrap under the title
+
+### FR:empty: Empty state
+
+- **FR:empty** (P1): `EmptyState` says what is empty (`what`) and then the next step (`next`: a key, a button, or a link). It is left-aligned text with no art
+
+### FR:loading: Loading state
+
+- **FR:loading** (P1): `Loading` is a block with `role="status"`, `aria-busy="true"`, and the name `Loading {what}`. It shows `rows` gray bars (3 by default) that do not move when the user asks for reduced motion
+
+### FR:error: Error state
+
+- **FR:error** (P1): `ErrorState` is a block with `role="alert"`: what happened (`what`), an optional next step (`next`), and, with `onRetry`, a `Try again` button
 
 ### FR:a11y: Access
 

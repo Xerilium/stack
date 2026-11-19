@@ -4,8 +4,11 @@ import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(new URL('../src/fluent2.css', import.meta.url), 'utf8');
 const vars = (block: string) => Object.fromEntries([...block.matchAll(/--([\w-]+):\s*([^;]+?)\s*;/g)].map((m) => [m[1], m[2]]));
-const light = vars(/:root\s*\{([^}]*)\}/.exec(css)![1]);
-const dark = { ...light, ...vars(/prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}/.exec(css)![1]) };
+const tok = readFileSync(new URL('../src/ui/tokens.css', import.meta.url), 'utf8');
+const deref = (t: Record<string, string>) => { const get = (v: string, n = 0): string => { const m = /^var\(--([\w-]+)\)$/.exec(v); return m && n < 9 ? get(t[m[1]], n + 1) : v; }; return Object.fromEntries(Object.entries(t).map(([k, v]) => [k, get(v)])); };
+const rawLight = vars(/:root\s*\{([^}]*)\}/.exec(tok)![1]);
+const light = deref(rawLight);
+const dark = deref({ ...rawLight, ...vars(/prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}/.exec(tok)![1]) });
 const lum = (h: string) => {
   const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
   return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
@@ -25,7 +28,7 @@ describe.each([['light', light], ['dark', dark]] as const)('Fluent 2 %s tokens',
 
 it('defines the type ramp, radius, spacing, elevation, and motion', () => {
   for (const k of ['fl-caption', 'fl-body', 'fl-sub2', 'fl-sub1', 'fl-title', 'fl-r-sm', 'fl-r-md', 'fl-r-lg', 'fl-r-xl', 'fl-s-xs', 'fl-s-s', 'fl-s-m', 'fl-s-l', 'fl-s-xxl', 'fl-shadow4', 'fl-shadow16', 'fl-fast', 'fl-normal']) expect(light[k], k).toBeTruthy();
-  expect(css).toMatch(/prefers-reduced-motion:\s*reduce\)\s*\{\s*:root\s*\{[^}]*--fl-normal:\s*0ms/);
+  expect(tok).toMatch(/prefers-reduced-motion:\s*reduce\)\s*\{\s*:root\s*\{[^}]*--fl-normal:\s*0ms/);
 });
 it('is loaded once by the app entry, with no network', () => {
   expect(readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')).toMatch(/import '\.\/fluent2\.css';/);

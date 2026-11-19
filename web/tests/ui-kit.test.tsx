@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,6 +8,8 @@ import { DayGrid, placeItems } from '../src/ui/DayGrid';
 import { Flag } from '../src/ui/Flag';
 import { MessageBox } from '../src/ui/MessageBox';
 import { LinkList } from '../src/ui/LinkList';
+import { PageHeader } from '../src/ui/PageHeader';
+import { EmptyState, ErrorState, Loading } from '../src/ui/States';
 import { SelectCard } from '../src/ui/SelectCard';
 import { SourceLink, sourceOf } from '../src/ui/SourceLink';
 import { SplitView } from '../src/ui/SplitView';
@@ -296,4 +299,64 @@ describe('LinkList', () => {
   it('shows nothing with no items', () => {
     expect(mount(<LinkList label="Context" items={[]} />).querySelector('.ui-links')).toBeNull();
   });
+});
+
+// @req FR:ui-kit/header
+describe('PageHeader', () => {
+  it('is an h1 title with optional meta, sub line and actions', () => {
+    const r = mount(<PageHeader title="Sessions" meta="139 waiting" sub="Every agent session." actions={<button type="button">Refresh</button>} />);
+    const h = r.querySelector('header.ui-head')!;
+    expect(h.querySelector('h1.ui-head-title')!.textContent).toBe('Sessions');
+    expect(h.querySelector('.ui-head-meta')!.textContent).toBe('139 waiting');
+    expect(h.querySelector('.ui-head-sub')!.textContent).toBe('Every agent session.');
+    expect(h.querySelector('.ui-head-actions button')!.textContent).toBe('Refresh');
+  });
+  it('draws only the title when given only a title', () => {
+    const h = mount(<PageHeader title="Projects" />).querySelector('.ui-head')!;
+    expect(h.querySelector('.ui-head-meta, .ui-head-sub, .ui-head-actions')).toBeNull();
+  });
+});
+
+// @req FR:ui-kit/empty
+describe('EmptyState', () => {
+  it('says what is empty, then the next step', () => {
+    const e = mount(<EmptyState what="No projects." next={<a href="#/list">Open Full stack</a>} />).querySelector('[data-testid="empty-state"]')!;
+    expect(e.className).toBe('empty-state');
+    expect(e.querySelector('.empty-what')!.textContent).toBe('No projects.');
+    expect(e.querySelector('.empty-next a')!.textContent).toBe('Open Full stack');
+    expect(e.querySelector('svg, img')).toBeNull();
+    expect(mount(<EmptyState what="None." />).querySelector('.empty-next')).toBeNull();
+  });
+});
+
+// @req FR:ui-kit/loading
+describe('Loading', () => {
+  it('is a busy status named for what loads, with gray bars', () => {
+    const l = mount(<Loading what="sessions" />).querySelector('.ui-loading')!;
+    expect(l.getAttribute('role')).toBe('status');
+    expect(l.getAttribute('aria-busy')).toBe('true');
+    expect(l.getAttribute('aria-label')).toBe('Loading sessions');
+    expect(l.querySelectorAll('.ui-sk')).toHaveLength(3);
+    expect(mount(<Loading what="x" rows={5} />).querySelectorAll('.ui-sk')).toHaveLength(5);
+  });
+  it('does not move with reduced motion', () => {
+    const css = readFileSync('src/ui/ui.css', 'utf8');
+    expect(css).toMatch(/prefers-reduced-motion: reduce\) \{ \.ui-sk \{ animation: none; \} \}/);
+  });
+});
+
+// @req FR:ui-kit/error
+describe('ErrorState', () => {
+  it('is an alert: what happened, the next step, and Try again', () => {
+    let n = 0;
+    const e = mount(<ErrorState what="Cannot load sessions." next="Check that Stack is open on your Mac." onRetry={() => { n += 1; }} />).querySelector('.ui-error')!;
+    expect(e.getAttribute('role')).toBe('alert');
+    expect(e.querySelector('.ui-error-what')!.textContent).toBe('Cannot load sessions.');
+    expect(e.querySelector('.ui-error-next')!.textContent).toBe('Check that Stack is open on your Mac.');
+    const b = e.querySelector('button')!;
+    expect(b.textContent).toBe('Try again');
+    act(() => b.click());
+    expect(n).toBe(1);
+  });
+  it('has no button without onRetry', () => expect(mount(<ErrorState what="Cannot load." />).querySelector('button')).toBeNull());
 });

@@ -7,6 +7,7 @@ import { Onboarding } from './OnboardingView';
 import { QmView } from './QmView';
 import { isQmHash } from './qm';
 import { authSaysSetup, isLocalHost, loadSetup, wantsSetup, type SetupStatus } from './onboarding';
+import './ui/tokens.css';
 import './styles.css';
 import './polish.css';
 import './fluent2.css';
