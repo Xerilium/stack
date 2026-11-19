@@ -119,6 +119,8 @@ The owner needs the PRs in the main nav so that he finds them without a hidden i
 - **FR:nav.phone** (P1): The phone tab bar keeps its five slots. `More` (the command palette) lists `Go to Pull requests` with the same count. The top bar icon opens the flyout full screen
 - **FR:nav.page** (P1): `#/prs` shows the flyout content as a page: the same tabs, cards, details, and sign-in state, with no scrim and no Close
 - **FR:nav.load** (P1): The first open polls GitHub before it answers (`FR:pr-page/live.poll`). Until it answers, the page and the flyout show a skeleton (`aria-busy`), never a zero count
+- **FR:nav.accent** (P1): The PR page and flyout MUST use only the app accent (`--accent`) as the action color: primary buttons, the selected tab, chips
+  - **FR:nav.accent.contrast** (P1): Accent text on the PR page MUST meet WCAG AA (4.5:1) on its background, light and dark
 
 ### FR:flyout: Flyout
 
@@ -155,7 +157,11 @@ The owner needs one card shape everywhere so that he reads each PR the same way,
   5. `autopilot` (`Enable Autopilot`): I am the author, no Autopilot label, no Paused label, not a draft, and either every thread is resolved or exactly one unresolved thread waits for me (its last comment is not a human comment of mine; an agent note under my login waits for me)
   6. Else null
 - **FR:card.flag** (P1): The next action is the shared `Flag` (`FR:ui-kit/flag`), not a control: a small icon and the action word in muted text. No fill, no pill, no border, no hover state, and the default cursor. It is not focusable and has no role of a button. Choice: the owner read the old filled chip as a button
-- **FR:card.color** (P1): The card background shows the owner: my Autopilot PR, my other PR, or someone else's PR. Each has two strengths: strong when the card has a next action, subdued when not. Text on every background meets WCAG AA (4.5:1), light and dark. The color is never the only signal: the author text says the same
+- **FR:card.color** (P1): Every card MUST have the neutral panel background and line border, light and dark. Choice: the owner read the full tinted fills as the loudest thing in the app
+  - **FR:card.color.edge** (P1): A 3 px left edge in a muted tone MUST show the owner: my Autopilot PR, my other PR, or someone else's PR. The author text says the same, so the edge is never the only signal
+  - **FR:card.color.strong** (P1): A card with a next action MUST be strong: elevation (`--fl-shadow4`) only, no fill
+  - **FR:card.color.contrast** (P1): Text on every card MUST meet WCAG AA (4.5:1), light and dark
+- **FR:card.phone** (P1): On a phone (under 720 px) the card tools (Pin, Actions, the drag handle) MUST sit in the top row, so the title spans the whole card except the shared chevron column (`FR:ui-kit/card.chev`)
 - **FR:card.space** (P1): Cards have at least 12 px between them and 12 px padding inside
 - **FR:card.select** (P1): A tap or click on the card (not on the PR link or Pin) selects it and shows its details (`FR:pr-page/detail.*`). Enter or Space on the focused card does the same. The card ends in a chevron (`›`). The selected card shows a selected state (`aria-current`)
 
