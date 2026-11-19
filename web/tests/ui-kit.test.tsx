@@ -40,6 +40,8 @@ describe('SourceLink', () => {
     expect(sourceOf('https://claude.ai/code/session_1')).toEqual({ kind: 'session', label: 'Session' });
     expect(sourceOf('https://outlook.office.com/mail/id/1')).toEqual({ kind: 'email', label: 'Email' });
     expect(sourceOf('mailto:a@example.test')).toEqual({ kind: 'email', label: 'Email' });
+    expect(sourceOf('https://mail.google.com/mail/u/0/#inbox/1')).toEqual({ kind: 'email', label: 'Email' });
+    for (const [href, site] of [['https://www.office.com/launch', 'office.com'], ['https://onedrive.live.com/x', 'onedrive.live.com'], ['https://drive.proton.me/u/0', 'drive.proton.me']]) expect(sourceOf(href)).toEqual({ kind: 'site', label: site });
     expect(sourceOf('https://www.npmjs.com/settings')).toEqual({ kind: 'site', label: 'npmjs.com' });
     expect(sourceOf('https://github.com/Xerilium/stack')).toEqual({ kind: 'site', label: 'github.com' });
     for (const bad of [undefined, '', 'not a link', 'javascript:alert(1)']) expect(sourceOf(bad)).toBeNull();

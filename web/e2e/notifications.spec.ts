@@ -83,7 +83,7 @@ test.describe('Notifications: context and actions on every row', () => {
     { ...ask('top', 'Pick the launch date', 90), kind: 'answer', from: 'allyte-cos', why: 'Marketing needs a date' },
     { ...ask('pr', 'Approve merging PR 158 into main', 80), kind: 'approve', from: 'stack-architect', project: 'stack', why: 'CI is green; one review is in', link: 'https://github.com/Xerilium/stack/pull/158' },
     { ...ask('mail', 'Review draft reply to Dana', 70), kind: 'review', from: 'email-triage', why: 'Dana asked for the contract terms', link: 'https://outlook.office.com/mail/id/1' },
-    { ...ask('sess', 'Unblock the deploy session', 60), from: 'cos', why: 'It waits on a permission', link: 'claude://claude.ai/epitaxy/s1' },
+    { ...ask('sess', 'Unblock the deploy session', 60), from: 'cos', why: 'It waits on a permission', link: 'https://claude.ai/code/session_1' },
     { ...ask('bare', 'Rename the repo', 50) },
     { ...ask('dead', 'Pick one', 40), kind: 'decide' }, // no options: nothing to do
   ];
@@ -104,6 +104,11 @@ test.describe('Notifications: context and actions on every row', () => {
     await expect(row(page, 'sess').getByRole('link', { name: /Session/ })).toBeVisible();
     await expect(row(page, 'bare').locator('.ask-ctx-why')).toHaveText('No reason given');
     await expect(row(page, 'bare').locator('.ui-source')).toHaveCount(0);
+    // the selected notification (the details) has Ask for context too, when it has none; an answer ask never has it
+    await expect(page.locator('.ask-card').getByRole('button', { name: 'Ask for context' })).toHaveCount(0);
+    await row(page, 'bare').locator('.ask-ctx-why').click();
+    await expect(row(page, 'bare').locator('.ask-card').getByRole('button', { name: 'Ask for context' })).toBeVisible();
+    await row(page, 'top').locator('.ask-row').click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect((await axe(page)).violations).toEqual([]);
     for (const scheme of ['light', 'dark'] as const) {

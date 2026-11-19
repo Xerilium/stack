@@ -187,11 +187,12 @@ a.btn.primary { color: #fff; }
 .ask-li-row > .ask-row { grid-area: row; min-height: 36px; padding-bottom: 2px; }
 .ask-li-row > .ui-more { grid-area: menu; margin-right: 10px; }
 .ask-li-row:has(.ui-menu) { z-index: 30; }
-.ask-ctx { grid-area: ctx; margin: 0; padding: 0 22px 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; min-width: 0; font-size: 12px; line-height: 18px; color: var(--ink2); }
+.ask-ctx { grid-area: ctx; cursor: pointer; margin: 0; padding: 0 22px 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; min-width: 0; font-size: 12px; line-height: 18px; color: var(--ink2); }
 .ask-who { flex: none; font-weight: 600; }
 .ask-ctx-why { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ask-ctx-why.none { color: var(--muted); }
 .ask-task-link { border: 0; background: none; padding: 0; cursor: pointer; font-family: inherit; }
+@media (hover: none) { .ask-li-row > .ask-row { min-height: 44px; } }
 @media (max-width: 719px) {
   .ask-li-row > .ask-row { min-height: 44px; }
   .ask-ctx { padding: 0 17px 6px; }

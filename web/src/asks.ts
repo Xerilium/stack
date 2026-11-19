@@ -120,7 +120,13 @@ export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | '
 export const actionable = (a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'>): boolean => a.kind === 'answer' || actionsFor(a).length > 0;
 
 /** What `Ask for context` sends to the sender. It ends in `?`, so it goes as a question. @req FR:notifications/list.rowactions */
-export const CONTEXT_ASK = 'What is the context? Say why, link the source, and say what you need from me?';
+export const CONTEXT_ASK = 'What is the context: why is this needed, where is the source, and what do you need from me?';
+/**
+ * True when an ask gives no reason, no link and no detail, so the owner can only ask the sender for context.
+ * Never for a 🙋 row (the task is its context) or an `answer` ask (its reply is written under the task, not sent as a question).
+ * @req FR:notifications/list.rowactions
+ */
+export const needsContext = (a: Pick<AskItem, 'kind' | 'link' | 'source' | 'why' | 'detail'>): boolean => !a.why && !a.link && !a.detail && a.source !== 'task' && a.kind !== 'answer';
 /** One item of a row's actions menu: an action of the kind, a panel to open, or the context question. */
 export interface RowAction { id: string; label: string; action?: Action; panel?: 'reply' | 'defer'; context?: boolean }
 
@@ -132,7 +138,7 @@ export interface RowAction { id: string; label: string; action?: Action; panel?:
 export function rowActions(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source' | 'why' | 'detail'>): RowAction[] {
   const out: RowAction[] = actionsFor(a).map((x) => (x.reply ? { id: x.id, label: x.label, panel: 'reply' as const } : { id: x.id, label: x.label, action: x }));
   out.push({ id: 'reply', label: a.kind === 'answer' ? 'Answer' : 'Reply', panel: 'reply' }, { id: 'defer', label: 'Defer', panel: 'defer' });
-  if (!a.why && !a.link && !a.detail && a.source !== 'task') out.push({ id: 'context', label: 'Ask for context', context: true });
+  if (needsContext(a)) out.push({ id: 'context', label: 'Ask for context', context: true });
   return out;
 }
 

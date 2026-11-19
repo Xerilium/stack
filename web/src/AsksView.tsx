@@ -6,7 +6,7 @@
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { actionsFor, CONTEXT_ASK, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AskItem, type RowAction } from './asks';
+import { actionsFor, CONTEXT_ASK, needsContext, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AskItem, type RowAction } from './asks';
 import { ActionMenu } from './ui/ActionMenu';
 import { SourceLink } from './ui/SourceLink';
 import { blockedHelp } from './notify';
@@ -85,11 +85,11 @@ function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask }: { a
         {fresh && <span class="new" aria-label="New">New</span>}
         <span class="row-meta"><span class="verb">{verb ?? ''}</span>{a.by ? <DeadlineChip by={a.by} now={now} quiet={!loud} /> : <span class="dl empty" aria-hidden="true" />}<span class="proj">{a.project ?? ''}</span></span>
       </button>
-      <p class="ask-ctx">
+      <p class="ask-ctx" onClick={(e) => { if (!(e.target as HTMLElement).closest('a, button')) onPick(); }}>
         <span class="ask-who">{a.from}</span>
         <span class={`ask-ctx-why${a.why ? '' : ' none'}`}>{a.why ? <Md text={a.why} project={a.project} links={false} /> : 'No reason given'}</span>
         {a.source !== 'task' && <SourceLink href={a.link} />}
-        {taskRef && onOpenTask && <button type="button" class="ui-source ask-task-link" onClick={() => onOpenTask(taskRef)}>Task<span aria-hidden="true"> ↗</span></button>}
+        {taskRef && onOpenTask && <button type="button" class="ui-source ask-task-link" onClick={() => onOpenTask(taskRef)}>Task</button>}
       </p>
       {onAct && <ActionMenu name={`Actions for ${a.ask}`} items={rowActions(a).map((x) => ({ id: x.id, label: x.label, ...(x.action?.open && a.source !== 'task' && a.link ? { href: a.link } : { onSelect: () => onAct(x) }) }))} />}
     </li>
@@ -160,6 +160,8 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
               <span class="grow" />
               <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>
               <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply<kbd aria-hidden="true">r</kbd></button>
+              {/* The selected notification has the row's actions too. @req FR:notifications/list.rowactions */}
+              {needsContext(a) && <button type="button" class="btn quiet" onClick={() => void asks.reply(a, CONTEXT_ASK)}>Ask for context</button>}
             </div>
           )
         )}

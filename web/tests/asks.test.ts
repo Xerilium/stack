@@ -186,6 +186,7 @@ describe('row actions', () => {
     expect(labels({ kind: 'go-do' })).toEqual(['Done', 'Reply', 'Defer', 'Ask for context']);
     expect(rowActions(ask({ kind: 'go-do' })).at(-1)).toMatchObject({ id: 'context', context: true });
     expect(CONTEXT_ASK.trim().endsWith('?')).toBe(true); // goes to the agent as a question
+    expect(labels({ kind: 'answer' })).toEqual(['Answer', 'Defer']); // its reply is written under the task, never sent as a question
     expect(labels({ kind: 'go-do', why: 'w' })).not.toContain('Ask for context');
     expect(labels({ kind: 'approve', source: 'task', ref: 'a:1', recommend: 'Ship it' })).not.toContain('Ask for context'); // a task row is its own context
   });
