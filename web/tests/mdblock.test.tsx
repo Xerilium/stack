@@ -1,0 +1,59 @@
+// @vitest-environment jsdom
+/** @req FR:agent-sessions/web.drawer.md */
+import { render } from 'preact';
+import { act } from 'preact/test-utils';
+import { afterEach, describe, expect, it } from 'vitest';
+import { mdBlocks, MdBlock, setRefProjects } from '../src/parts';
+
+const mount = (text: string, project?: string) => { const root = document.createElement('div'); document.body.append(root); act(() => render(<MdBlock text={text} project={project} />, root)); return root.firstElementChild as HTMLElement; };
+afterEach(() => { document.body.innerHTML = ''; setRefProjects([]); });
+
+// @req FR:agent-sessions/web.drawer.md
+describe('MdBlock', () => {
+  it('renders a heading as bold text, a list, and a link', () => {
+    const r = mount('## Title\n- a\n- b\n[x](https://x.test)');
+    expect(r.querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
+    expect(r.querySelector('.md-h b')!.textContent).toBe('Title');
+    expect([...r.querySelectorAll('ul > li')].map((li) => li.textContent)).toEqual(['a', 'b']);
+    const a = r.querySelector('a')!;
+    expect(a.getAttribute('href')).toBe('https://x.test');
+    expect(a.textContent).toBe('x');
+    expect(r.textContent).not.toMatch(/##|\]\(/);
+  });
+
+  it('paragraphs, numbered lists, a rule, fenced code, inline marks', () => {
+    const r = mount('First line\nsecond line\n\n1. one\n2. **two**\n\n---\n```ts\nconst x = `y`;\n```\nAfter');
+    const ps = r.querySelectorAll(':scope > p');
+    expect(ps[0].textContent).toBe('First line\nsecond line');
+    expect([...r.querySelectorAll('ol > li')].map((li) => li.innerHTML)).toEqual(['one', '<b>two</b>']);
+    expect(r.querySelectorAll('hr')).toHaveLength(1);
+    expect(r.querySelector('pre > code')!.textContent).toBe('const x = `y`;');
+    expect(ps[ps.length - 1].textContent).toBe('After');
+  });
+
+  it('never parses HTML: tags stay text', () => {
+    const r = mount('<img src=x onerror=alert(1)> **b**');
+    expect(r.querySelector('img')).toBeNull();
+    expect(r.textContent).toBe('<img src=x onerror=alert(1)> b');
+  });
+
+  it('an open fence runs to the end; an empty text is no block', () => {
+    expect(mdBlocks('```\na\nb')).toEqual([{ t: 'pre', text: 'a\nb' }]);
+    expect(mdBlocks('')).toEqual([]);
+    expect(mdBlocks('#nohash')).toEqual([{ t: 'p', text: '#nohash' }]);
+    expect(mdBlocks('## Use C#\n### Done ##')).toEqual([{ t: 'h', text: 'Use C#' }, { t: 'h', text: 'Done' }]);
+    expect(mdBlocks('1. a\n```\nx\n```\n3. c')).toEqual([{ t: 'ol', items: ['a'], start: 1 }, { t: 'pre', text: 'x' }, { t: 'ol', items: ['c'], start: 3 }]);
+    expect(mdBlocks('````md\n```ts\nx\n```\n````\nafter')).toEqual([{ t: 'pre', text: '```ts\nx\n```' }, { t: 'p', text: 'after' }]);
+    expect(mdBlocks('Run ```pnpm test``` now\nnext')).toEqual([{ t: 'p', text: 'Run ```pnpm test``` now\nnext' }]);
+    expect(mdBlocks('```pnpm test```')).toEqual([{ t: 'p', text: '```pnpm test```' }]);
+    expect(mount('3. c').querySelector('ol')!.getAttribute('start')).toBe('3');
+  });
+
+  it('links PR and issue refs against the given project', () => {
+    setRefProjects([{ name: 'stack', metadata: { Repository: '[Xerilium/stack](https://github.com/Xerilium/stack)' } }]);
+    expect(mount('See PR 184 and #12').querySelectorAll('a')).toHaveLength(0);
+    document.body.innerHTML = '';
+    const links = [...mount('See PR 184 and #12', 'stack').querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    expect(links).toEqual(['https://github.com/Xerilium/stack/pull/184', 'https://github.com/Xerilium/stack/issues/12']);
+  });
+});

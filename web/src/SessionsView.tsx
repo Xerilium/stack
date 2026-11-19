@@ -18,6 +18,7 @@ import { barWidths, dayLabel, fmtTokens, groupTurns, localDay, orderSessions, pr
 import { local, matchAgent, nameKey, rollupOf, type TeamAgent } from './team';
 import type { Sessions } from './useSessions';
 import { feedbackActive } from './FeedbackPanel';
+import { MdBlock } from './parts';
 import './sessions.css';
 
 const TOP = 20;
@@ -76,20 +77,20 @@ function Chart({ nodes, sel, chatsOf, onPick }: { nodes: ChartNode[]; sel: strin
   );
 }
 
-/** A text turn; long ones (a session's opening brief) clamp to six lines with Show more. */
-function Bubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
+/** A text turn as markdown; long ones (a session's opening brief) clamp to six lines with Show more. @req FR:agent-sessions/web.drawer.md @req FR:agent-sessions/web.drawer.md.clamp */
+function Bubble({ role, text, project }: { role: 'user' | 'assistant'; text: string; project?: string }) {
   const [more, setMore] = useState(false);
-  const long = text.length > 480;
+  const long = text.length > 480 || text.split('\n').length > 6;
   return (
     <div class={`turn ${role}`}>
-      <p class={`tl ${role}${long && !more ? ' clamp' : ''}`}>{text}</p>
+      <div class={`tl ${role}${long && !more ? ' clamp' : ''}`}><MdBlock text={text} project={project} /></div>
       {long && <button type="button" class="more-link" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}
     </div>
   );
 }
 
-function TranscriptLine({ l }: { l: Line }) {
-  if (l.kind === 'text') return <p class={`tl ${l.role}`}>{l.text}</p>;
+function TranscriptLine({ l, project }: { l: Line; project?: string }) {
+  if (l.kind === 'text') return <div class={`tl ${l.role}`}><MdBlock text={l.text} project={project} /></div>;
   return <p class={`tl tool ${l.status}`} title={l.output}><span class="mark" aria-hidden="true">⚙</span><span class="tool-title">{l.title}</span><span class="status">{MARK[l.status]}</span></p>;
 }
 
@@ -200,10 +201,10 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent, 
             {s.turnsError && <p class="drawer-note err">{s.turnsError}</p>}
             {s.turnsLoading && s.turns.length === 0 && <div class="turns" aria-busy="true"><p class="sk" /><p class="sk short" /><p class="sk" /></div>}
             <div class="turns">
-              {groupTurns(s.turns).map((t, i) => (t.kind === 'tools' ? <p key={i} class="tl tools" title={t.titles.join('\n')}><span class="mark" aria-hidden="true">⚙</span><span class="count">{t.count} tool {t.count === 1 ? 'call' : 'calls'}</span><span class="tools-list"> · {t.summary}</span></p> : <Bubble key={i} role={t.role} text={t.text} />))}
+              {groupTurns(s.turns).map((t, i) => (t.kind === 'tools' ? <p key={i} class="tl tools" title={t.titles.join('\n')}><span class="mark" aria-hidden="true">⚙</span><span class="count">{t.count} tool {t.count === 1 ? 'call' : 'calls'}</span><span class="tools-list"> · {t.summary}</span></p> : <Bubble key={i} role={t.role} text={t.text} project={item?.owner ?? undefined} />))}
             </div>
             <div class="stream" aria-live="off">
-              {s.transcript.lines.map((l, i) => <TranscriptLine key={i} l={l} />)}
+              {s.transcript.lines.map((l, i) => <TranscriptLine key={i} l={l} project={item?.owner ?? undefined} />)}
             </div>
             <p class="sr-only" role="status" aria-live="polite">{s.transcript.lines.filter((l) => l.kind === 'tool').map((l) => (l.kind === 'tool' ? `${l.title} ${l.status}` : '')).slice(-1)[0] ?? ''}</p>
             {s.transcript.waiting && <p class="drawer-note wait" role="status">Waiting for you: {s.transcript.waiting.title} · <a href="#/notifications">Open in Notifications</a></p>}

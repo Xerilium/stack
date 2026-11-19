@@ -6,6 +6,7 @@
 import { homedir } from 'os';
 import { join } from 'path';
 import { oneLine } from '../core/asks';
+import { redact } from '../core/triage';
 import { createStoreIndex, type StoreIndex } from './store';
 import { SessionBusy, toolKind, type AgentDriver, type PermissionAnswer, type PermissionRequest, type PromptRequest, type Run, type Session, type Turn, type Update } from './driver';
 
@@ -28,6 +29,21 @@ const clean = (s: string, n: number) => cut(oneLine(s), n);
 const CTRL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 /** Tool input for display: one line, no control characters; paths and commands stay readable (the secret redactor flags long paths). */
 const plain = (s: string, n: number) => cut(s.replace(CTRL, ' ').replace(/\s+/g, ' ').trim(), n);
+// eslint-disable-next-line no-control-regex
+const CTRL_BUT_NL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]/g;
+const INVISIBLE = /[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g;
+/** Context the harness injects into any turn. */
+const REMINDERS = /<(system-reminder|ide_opened_file)>[\s\S]*?<\/\1>/g;
+/** Harness wrappers the CLI writes as user turns: never the owner's words. An agent may quote them, so its turns keep them. @req FR:agent-sessions/sessions.messages.text.wrappers */
+const WRAPPERS = /<(side-sessions-event|task-notification|tool-use-id|local-command-[a-z-]+|command-[a-z-]+)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
+/**
+ * Turn text for the transcript: harness wrappers gone, redacted, line breaks and tabs kept so markdown and code survive; other control characters become spaces.
+ * @req FR:agent-sessions/sessions.messages @req FR:agent-sessions/sessions.messages.text @req FR:agent-sessions/sessions.messages.text.ctrl @req FR:agent-sessions/sessions.messages.text.reminders @req FR:agent-sessions/sessions.messages.text.wrappers @req FR:agent-sessions/sessions.messages.text.empty
+ */
+export function turnText(s: string, user = true, n = MAX_TEXT): string {
+  const t = redact((user ? s.replace(WRAPPERS, '') : s).replace(REMINDERS, '').replace(INVISIBLE, '')).replace(/\r\n?/g, '\n').replace(CTRL_BUT_NL, ' ');
+  return cut(t.split('\n').map((l) => l.trimEnd()).join('\n').replace(/\n{3,}/g, '\n\n').trim(), n);
+}
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** What a tool call is about, in a few words: the command, the path, else the input as JSON. */
@@ -89,7 +105,7 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
       if (!m) continue;
       const at = typeof r.timestamp === 'string' ? r.timestamp : '';
       const role = r.type === 'assistant' ? 'assistant' : 'user';
-      const own = (t: string) => clean(t.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').replace(/<ide_opened_file>[\s\S]*?<\/ide_opened_file>/g, ''), MAX_TEXT);
+      const own = (t: string) => turnText(t, role === 'user');
       if (typeof m.content === 'string') { const t = own(m.content); if (t) out.push({ at, role, text: t }); continue; }
       if (!Array.isArray(m.content)) continue;
       for (const b of m.content as Record<string, unknown>[]) {

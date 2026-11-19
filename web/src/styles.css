@@ -817,3 +817,12 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
 .update-builds { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 14px; font-size: 12.5px; color: var(--ink2); }
 .update-builds dd { margin: 0; overflow-wrap: anywhere; }
 .update-actions { display: flex; gap: 8px; justify-content: flex-end; }
+/* Block markdown (`MdBlock`): tight spacing for chat turns. @req FR:agent-sessions/web.drawer.md */
+.md > * { margin: 0; }
+.md > * + * { margin-top: 6px; }
+.md ul, .md ol { padding-left: 20px; white-space: normal; }
+.md li + li { margin-top: 2px; }
+.md .md-h { font-weight: 600; }
+.md hr { border: 0; border-top: 1px solid var(--line); }
+.md pre { padding: 8px 10px; border-radius: 8px; background: var(--chip); font-size: 12px; overflow-x: auto; white-space: pre; }
+.md code { font-size: .92em; }

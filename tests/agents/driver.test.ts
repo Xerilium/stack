@@ -1,4 +1,4 @@
-/** @req FR:agent-sessions/driver.interface @req FR:agent-sessions/driver.sdk @req FR:agent-sessions/driver.active */
+/** @req FR:agent-sessions/driver.interface @req FR:agent-sessions/driver.sdk @req FR:agent-sessions/driver.active @req FR:agent-sessions/sessions.messages.text @req FR:agent-sessions/sessions.messages.text.ctrl @req FR:agent-sessions/sessions.messages.text.reminders @req FR:agent-sessions/sessions.messages.text.wrappers @req FR:agent-sessions/sessions.messages.text.empty */
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -87,12 +87,31 @@ describe('createSdkDriver', () => {
     expect(s[2].title).toBe(('Plan my week and (link)(http://x.test) ' + 'word '.repeat(30)).slice(0, 80));
     expect(s[2].branch).toBeUndefined();
   });
-  it('getMessages collapses tool calls to one line, cuts and redacts text', async () => {
+  it('getMessages collapses tool calls to one line, cuts and redacts text (the mark stays markdown-safe text)', async () => {
     const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
     const m = await d.getMessages('a1b2c3d4-0000-0000-0000-000000000002', { limit: 10 });
-    expect((await d.getMessages('a1b2c3d4-0000-0000-0000-000000000002', { limit: 2 })).map((x) => x.text)).toEqual(['⚙ Bash: git status --short', 'Done. (redacted) leaked.']);
+    expect((await d.getMessages('a1b2c3d4-0000-0000-0000-000000000002', { limit: 2 })).map((x) => x.text)).toEqual(['⚙ Bash: git status --short', 'Done. [redacted] leaked.']);
     expect(m.map((x) => [x.role, x.text])).toEqual([
-      ['user', 'Fix the parser'], ['assistant', 'Looking.'], ['assistant', '⚙ Bash: git status --short'], ['assistant', 'Done. (redacted) leaked.'],
+      ['user', 'Fix the parser'], ['assistant', 'Looking.'], ['assistant', '⚙ Bash: git status --short'], ['assistant', 'Done. [redacted] leaked.'],
+    ]);
+  });
+  // @req FR:agent-sessions/sessions.messages.text @req FR:agent-sessions/sessions.messages.text.ctrl @req FR:agent-sessions/sessions.messages.text.reminders @req FR:agent-sessions/sessions.messages.text.wrappers @req FR:agent-sessions/sessions.messages.text.empty
+  it('getMessages keeps line breaks and markdown, strips harness wrappers from user turns, and drops a wrapper-only turn', async () => {
+    const msg = (type: string, content: unknown) => ({ type, uuid: 'x', session_id: 's', parent_tool_use_id: null, parent_agent_id: null, message: { role: type, content } });
+    const d = createSdkDriver({
+      sdk: fakeSdk({ getSessionMessages: async () => [
+        msg('user', '<side-sessions-event>\n{"kind":"done"}\n</side-sessions-event>'),
+        msg('user', '<task-notification>\n<task-id>t1</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<status>completed</status>\n</task-notification>'),
+        msg('user', [{ type: 'text', text: '<local-command-stdout>ok</local-command-stdout>' }, { type: 'text', text: '<command-name>/clear</command-name>\n<command-args></command-args>' }]),
+        msg('user', '<system-reminder>noise</system-reminder>Ship\u0007it now'),
+        msg('assistant', 'Use <command-name>/clear</command-name> to reset'),
+        msg('assistant', [{ type: 'text', text: '---\n## Title\n\n\n\n- a\n- `b`\n\tindented\n[x](https://x.test) token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab' }]),
+      ] }), configDir: home, now: () => NOW,
+    });
+    expect((await d.getMessages('a1b2c3d4-0000-0000-0000-000000000002')).map((x) => [x.role, x.text])).toEqual([
+      ['user', 'Ship it now'],
+      ['assistant', 'Use <command-name>/clear</command-name> to reset'],
+      ['assistant', '---\n## Title\n\n- a\n- `b`\n\tindented\n[x](https://x.test) [redacted]'],
     ]);
   });
   it('getMessages: an id the SDK and the store do not know is not found; an empty transcript the store knows is a session', async () => {
