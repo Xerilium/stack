@@ -67,7 +67,11 @@ Owner needs the web Home to show the same priority order so that every screen ag
 
 - **FR:api.@api** (P1): Interface: `GET /api/rank`, `GET /api/next`
 - **FR:api.order** (P1): API MUST rank tasks with the priorities of its priority store.
-- **FR:api.tasks** (P1): API MUST return task rows only, no action rows.
+- **FR:api.tasks** (P1): `GET /api/rank` MUST return task rows only, no action rows.
+- **FR:api.next** (P1): `GET /api/next` MUST return the answer of `stack next`: `action` (the first action row, else `null`) and `task` (the first task row, else `null`).
+  - **FR:api.next.one** (P1): `GET /api/next` and `stack next` MUST call one core function (`nextStep`).
+  - **FR:api.next.owner** (P1): `GET /api/next` MUST return owner rows only: no agent row and no mixed row.
+    > - @req FR:task-lifecycle/rank.owner
 - **FR:api.pri** (P1): API MUST give each task row linked to a priority `pri: { rank, title }`: the priority it ranked under, with its rank for the day.
   > - @req FR:order.linked
 

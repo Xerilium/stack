@@ -9,7 +9,7 @@ import { existsSync, realpathSync, mkdirSync, readFileSync, writeFileSync } from
 import { basename, dirname, join, resolve } from 'path';
 import { getDefaults, loadConfig } from '../core/config';
 import {
-  addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
+  addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextStep,
   dailyGoal, dayPris, explainAutopri, explainStack, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { parseProject } from '../core/parser';
@@ -738,9 +738,9 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         return { json: { ok: true, items: ranked.json }, text: ranked.text.join('\n') };
       }
       // A priority action comes before any task. @req FR:pri-first-ranking/action.first
-      const act = priActions(dayPris(ctx, at))[0];
+      // One function with `GET /next`. @req FR:pri-first-ranking/api.next.one
+      const { action: act, task: n } = await nextStep(ctx, at);
       if (act) return { json: { ok: true, pri: { id: act.id, rank: act.rank, title: act.title }, project: act.title, score: act.score, text: act.text }, text: `pri:${act.rank} ${Number(act.score.toFixed(1))} ${act.title} ${act.text}` };
-      const n = await nextTask(ctx, at);
       if (!n) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
       const score = Number(n.score.toFixed(1));
       return { json: { ok: true, ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text }, text: `${formatRef(n.ref)} ${score} ${n.project} ${n.text}` };

@@ -5,7 +5,7 @@
 import { getDefaults, MAILBOX, type StackConfig } from '../core/config';
 import { cleanOverrides, daySchedule, dayScheduleOn, type ScheduleOverrides } from '../core/schedule';
 import {
-  addProject, addTask, completeTask, dailyGoal, nextTask, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
+  addProject, addTask, completeTask, dailyGoal, nextStep, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
   type LifecycleContext, type LifecycleResult, type TaskProps,
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
@@ -540,8 +540,12 @@ export const ROUTES: Route[] = [
     async run(c) {
       const q = readQuery(c.url, Object.keys(FIELDS_Q));
       const fields = parseFields(q.get('fields'), ['ref', 'text', 'project', 'score']) ?? ['ref', 'text', 'project', 'score'];
-      const n = await nextTask(c.life);
-      return json(200, { task: n ? pick({ ref: formatRef(n.ref), text: n.text, project: n.project, score: n.score }, fields) : null });
+      // The answer of `stack next`: the first priority action, and the first owner task. @req FR:pri-first-ranking/api.next @req FR:pri-first-ranking/api.next.one
+      const { action: a, task: n } = await nextStep(c.life);
+      return json(200, {
+        task: n ? pick({ ref: formatRef(n.ref), text: n.text, project: n.project, score: n.score }, fields) : null,
+        action: a ? { pri: { id: a.id, rank: a.rank, title: a.title }, text: a.text, score: a.score } : null,
+      });
     },
   },
   {

@@ -12,13 +12,13 @@ security:
 paths:
   /next:
     get:
-      summary: Top-ranked task
+      summary: "What the owner does next: the answer of `stack next`"
       operationId: next
       parameters:
         - $ref: "#/components/parameters/fields"
       responses:
         "200":
-          description: "`task` is null when nothing is active."
+          description: "`action` is the first priority action (it comes before any task), null with none. `task` is the first owner task, null when nothing is active."
           content:
             application/json:
               schema:
@@ -28,6 +28,31 @@ paths:
                     allOf:
                       - $ref: "#/components/schemas/NextTask"
                     nullable: true
+                  action:
+                    type: object
+                    nullable: true
+                    required:
+                      - pri
+                      - text
+                      - score
+                    properties:
+                      pri:
+                        type: object
+                        required:
+                          - id
+                          - rank
+                          - title
+                        properties:
+                          id:
+                            type: string
+                          rank:
+                            type: integer
+                          title:
+                            type: string
+                      text:
+                        type: string
+                      score:
+                        type: number
         default:
           $ref: "#/components/responses/Error"
   /rank:
