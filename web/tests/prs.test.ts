@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ACTION_LABEL, authorText, countOf, createPrStore, loadPrefs, moveTo, needCount, projectsOf, rowsOf, savePrefs, signInText, specText, summaryView, tabsOf, TAB_LABEL, toneOf, updatedText,
+  ACTION_LABEL, actionsOf, authorText, flagText, NOT_ACTIONABLE, countOf, createPrStore, loadPrefs, moveTo, needCount, projectsOf, rowsOf, savePrefs, signInText, specText, summaryView, sweepCommand, tabsOf, TAB_LABEL, toneOf, updatedText,
   type PrBoard, type PrRow,
 } from '../src/prs';
 
@@ -169,5 +169,63 @@ describe('signed out and loading', () => {
   it('the sign-in words', () => {
     expect(signInText({ state: 'signed-out', method: 'gh' })).toEqual({ title: 'Sign in to GitHub to see your PRs.', action: 'Sign in to GitHub' });
     expect(signInText({ state: 'signed-out', method: 'gh', session: { state: 'error', error: 'expired' } }).note).toBe('The code expired. Try again.');
+  });
+});
+
+// @req FR:pr-page/menu.@function
+describe('actionsOf: quick actions that fit the PR', () => {
+  const ids = (r: PrRow, b: PrBoard | null = board([r])) => actionsOf(r, b).map((a) => a.id);
+  it('my Autopilot PR: Sweep next, Remove Autopilot, Open, Copy; never Ready, merge, or approve', () => {
+    const r = row({ url: 'https://github.com/o/r/pull/7', number: 7 });
+    expect(ids(r)).toEqual(['sweep', 'autopilot-off', 'open', 'copy']);
+    expect(actionsOf(r, board([r])).map((a) => a.label)).toEqual(['Sweep next', 'Remove Autopilot', 'Open on GitHub', 'Copy sweep command']);
+    expect(actionsOf(r, board([r])).map((a) => a.label).join(' ')).not.toMatch(/ready|merge|approve|close|draft/i);
+  });
+  it('my PR with no Autopilot: Enable Autopilot; not on a draft or a paused PR', () => {
+    expect(ids(row({ autopilot: false, group: 'pending' }))).toEqual(['sweep', 'autopilot-on', 'open', 'copy']);
+    expect(ids(row({ autopilot: false, group: 'pending', draft: true }))).toEqual(['sweep', 'open', 'copy']);
+    expect(ids(row({ autopilot: false, group: 'paused' }))).toEqual(['sweep', 'open', 'copy']);
+  });
+  it('someone else\'s PR: no Autopilot change unless it is in Processing (assigned to me)', () => {
+    expect(ids(row({ mine: false, author: 'roland', group: 'waiting', autopilot: false }))).toEqual(['sweep', 'open', 'copy']);
+    expect(ids(row({ mine: false, author: 'roland', group: 'waiting', autopilot: true }))).toEqual(['sweep', 'open', 'copy']);
+    expect(ids(row({ mine: false, author: 'roland', group: 'processing', autopilot: true }))).toEqual(['sweep', 'autopilot-off', 'open', 'copy']);
+  });
+  it('Sweep next: add when not queued, top when queued; hidden when first in its part or with no queue', () => {
+    const a = row({ url: 'a', rank: 1, pinned: true });
+    const b2 = row({ url: 'b', rank: 2, pinned: false });
+    const c = row({ url: 'c', rank: 3, pinned: false });
+    const d = row({ url: 'd', rank: null });
+    const b = board([a, b2, c, d]);
+    expect(ids(a, b)).not.toContain('sweep');
+    expect(ids(b2, b)).not.toContain('sweep');
+    expect(actionsOf(c, b).find((x) => x.id === 'sweep')?.op).toBe('top');
+    expect(actionsOf(d, b).find((x) => x.id === 'sweep')?.op).toBe('add');
+    expect(ids(row({ rank: 2, pinned: true }), board([row({ rank: 1, pinned: true }), row({ rank: 2, pinned: true })]))).toContain('sweep');
+    expect(ids(d, board([d], { queue: false }))).not.toContain('sweep');
+    expect(ids(d, null)).not.toContain('sweep');
+  });
+  it('Open links the PR; Copy holds the Catalyst sweep command for the role', () => {
+    const r = row({ url: 'https://github.com/o/r/pull/7', number: 7 });
+    expect(actionsOf(r, board([r])).find((a) => a.id === 'open')?.href).toBe('https://github.com/o/r/pull/7');
+    expect(sweepCommand(r)).toBe('/catalyst:pr-sweep 7 update');
+    expect(sweepCommand(row({ number: 9, mine: false }))).toBe('/catalyst:pr-sweep 9 review');
+    expect(actionsOf(r, board([r])).find((a) => a.id === 'copy')?.text).toBe('/catalyst:pr-sweep 7 update');
+    expect(actionsOf(r, board([r])).find((a) => a.id === 'autopilot-off')?.op).toBe('remove');
+    expect(actionsOf(row({ autopilot: false }), null).find((a) => a.id === 'autopilot-on')?.op).toBe('add');
+  });
+});
+
+// @req FR:pr-page/check.none @req FR:pr-page/nav.badge
+describe('a live check with no steps is not actionable', () => {
+  const check = { ask: 'Check it', server: 'pnpm web', steps: ['Open it'], pass: [], fail: [] };
+  it('the flag says Not actionable; the badge skips it', () => {
+    expect(NOT_ACTIONABLE).toBe('Not actionable: no server/steps yet');
+    expect(flagText(row({ nextAction: 'validate' }))).toBe('Not actionable: no server/steps yet');
+    expect(flagText(row({ nextAction: 'validate', detail: { check: { ...check, steps: [] } } }))).toBe('Not actionable: no server/steps yet');
+    expect(flagText(row({ nextAction: 'validate', detail: { check } }))).toBe('Validate');
+    expect(flagText(row({ nextAction: 'signoff' }))).toBe('Sign off');
+    expect(flagText(row({}))).toBe('');
+    expect(needCount(board([row({ nextAction: 'validate' }), row({ nextAction: 'validate', detail: { check } }), row({ nextAction: 'approve' })]))).toBe(2);
   });
 });

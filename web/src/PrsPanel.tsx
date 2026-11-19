@@ -4,16 +4,20 @@
  * @req FR:pr-page/icon.place @req FR:pr-page/icon.absent @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape @req FR:pr-page/flyout.tabs @req FR:pr-page/flyout.header
  * @req FR:pr-page/flyout.filter @req FR:pr-page/flyout.empty @req FR:pr-page/act.list @req FR:pr-page/act.never @req FR:pr-page/auth.state @req FR:pr-page/auth.signin
  * @req FR:pr-page/nav.badge @req FR:pr-page/nav.page @req FR:pr-page/nav.load @req FR:pr-page/summary.layout @req FR:pr-page/card.fields @req FR:pr-page/card.select
+ * @req FR:pr-page/check.view @req FR:pr-page/check.none @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
  * @req FR:pr-page/detail.layout @req FR:pr-page/pin.toggle @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys @req FR:pr-page/live.age
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
 import {
-  ACTION_LABEL, authorText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText,
-  summaryView, TAB_LABEL, tabsOf, toneOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type PrStore, type SignInSession, type Tab,
+  actionable, actionsOf, authorText, flagText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText,
+  summaryView, TAB_LABEL, tabsOf, toneOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type LiveCheck, type PrStore, type QuickAction, type SignInSession, type Tab,
 } from './prs';
 import type { Toast } from './parts';
 import { store } from './day';
+import { ActionBar, ActionMenu, type ActionItem } from './ui/ActionMenu';
+import { Flag } from './ui/Flag';
+import { SelectCard } from './ui/SelectCard';
 import './prs.css';
 
 type Client = ReturnType<typeof createClient>;
@@ -153,38 +157,34 @@ function useWide(page: boolean): boolean {
   return wide;
 }
 
-interface Ctx { board: PrBoard; selected: string | null; select: (r: PrRow) => void; pin: (r: PrRow) => void; busy: boolean }
+interface Ctx { board: PrBoard; selected: string | null; select: (r: PrRow) => void; pin: (r: PrRow) => void; quick: (r: PrRow, a: QuickAction) => void; busy: boolean }
 
-/** One card everywhere: repo, # link, title, author, one next action, spec lines, Pin. @req FR:pr-page/card.fields @req FR:pr-page/card.color @req FR:pr-page/card.select */
+/** The quick actions of a row as shared action items. @req FR:pr-page/menu.@function @req FR:pr-page/menu.run */
+const itemsOf = (r: PrRow, c: Ctx): ActionItem[] => actionsOf(r, c.board).map((a) => ({ id: a.id, label: a.label, title: a.title, ...(a.href ? { href: a.href } : { disabled: c.busy && a.id !== 'copy', onSelect: () => c.quick(r, a) }) }));
+
+/** One card everywhere: repo, # link, title, author, one next action flag, spec lines, Pin, and the actions menu. Built on the shared SelectCard.
+ * @req FR:pr-page/card.fields @req FR:pr-page/card.color @req FR:pr-page/card.select @req FR:pr-page/card.flag @req FR:pr-page/menu.shape */
 function Card({ r, c, sort }: { r: PrRow; c: Ctx; sort?: { onDown: (e: PointerEvent) => void; onKey: (e: KeyboardEvent) => void; dragging: boolean } }) {
   const spec = specText(r);
   return (
-    <li class={`pr-card tone-${toneOf(r)}${sort?.dragging ? ' dragging' : ''}`} data-number={r.number} data-url={r.url} data-selected={c.selected === r.url ? 'true' : undefined}>
-      <div class="pr-card-top">
-        <span class="pr-repo">{r.repo}</span>
-        <a class="pr-num" href={r.url} target="_blank" rel="noopener noreferrer">#{r.number}</a>
-        {r.nextAction && <span class="pr-act">{ACTION_LABEL[r.nextAction]}</span>}
-      </div>
-      <button type="button" class="pr-open" aria-current={c.selected === r.url ? 'true' : undefined} onClick={() => c.select(r)}>
-        <span class="pr-title">{clip(r.title, 120)}</span>
-        {r.nextAction && <span class="sr-only">, next: {ACTION_LABEL[r.nextAction]}</span>}
-        <span class="pr-sub"><span class="pr-author">{authorText(r)}</span>{spec && <span class="pr-spec">{spec}</span>}</span>
-        <span class="pr-chev" aria-hidden="true">›</span>
-      </button>
-      <div class="pr-card-tools">
+    <SelectCard class={`pr-card tone-${toneOf(r)}${sort?.dragging ? ' dragging' : ''}`} data={{ number: r.number, url: r.url }} selected={c.selected === r.url} onSelect={() => c.select(r)}
+      top={<><span class="pr-repo">{r.repo}</span><a class="pr-num" href={r.url} target="_blank" rel="noopener noreferrer">#{r.number}</a>{r.nextAction && <Flag text={flagText(r)} hidden />}</>}
+      title={clip(r.title, 120)} {...(r.nextAction ? { sr: `, next: ${flagText(r)}` } : {})}
+      sub={<><span class="pr-author">{authorText(r)}</span>{spec && <span class="pr-spec">{spec}</span>}</>}
+      tools={<>
+        <ActionMenu name={`Actions for ${refOf(r)}`} items={itemsOf(r, c)} />
         {c.board.queue && (
-          <button type="button" class="pr-pin" aria-pressed={r.pinned} aria-label={`${r.pinned ? 'Unpin' : 'Pin'} ${refOf(r)}`} title={r.pinned ? 'Unpin: drop it from the Pinned order' : 'Pin: the Sweep Manager works pinned PRs first'} disabled={c.busy} onClick={() => c.pin(r)}>
+          <button type="button" class="ui-tool pr-pin" aria-pressed={r.pinned} aria-label={`${r.pinned ? 'Unpin' : 'Pin'} ${refOf(r)}`} title={r.pinned ? 'Unpin: drop it from the Pinned order' : 'Pin: the Sweep Manager works pinned PRs first'} disabled={c.busy} onClick={() => c.pin(r)}>
             <PinIcon on={r.pinned} />
           </button>
         )}
         {sort && (
-          <button type="button" class="pr-grip" aria-label={`Reorder ${refOf(r)}`} aria-describedby="prs-sort-help" title="Drag to reorder, or press Space then the arrow keys"
+          <button type="button" class="ui-tool pr-grip" aria-label={`Reorder ${refOf(r)}`} aria-describedby="prs-sort-help" title="Drag to reorder, or press Space then the arrow keys"
             onPointerDown={(e) => sort.onDown(e as unknown as PointerEvent)} onKeyDown={(e) => sort.onKey(e as unknown as KeyboardEvent)}>
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg>
           </button>
         )}
-      </div>
-    </li>
+      </>} />
   );
 }
 
@@ -262,13 +262,27 @@ function Pinned({ rows, c, onMove }: { rows: PrRow[]; c: Ctx; onMove: (r: PrRow,
     <>
       <p id="prs-sort-help" class="prs-hint">Drag a handle to set the order. Keyboard: Space to pick up, arrow keys to move, Space to drop, Escape to cancel.</p>
       <p class="sr-only" role="status" aria-live="polite" data-testid="prs-sort-status">{say}</p>
-      <ul ref={listRef} class="pr-cards" aria-label="Pinned, in order">{shown.map((u) => by.get(u)).filter((r): r is PrRow => !!r).map((r) => <Card key={r.url} r={r} c={c} sort={{ onDown: onDown(r), onKey: onKey(r), dragging: held === r.url }} />)}</ul>
+      <ul ref={listRef} class="ui-cards" aria-label="Pinned, in order">{shown.map((u) => by.get(u)).filter((r): r is PrRow => !!r).map((r) => <Card key={r.url} r={r} c={c} sort={{ onDown: onDown(r), onKey: onKey(r), dragging: held === r.url }} />)}</ul>
     </>
   );
 }
 
+/** The sweeper's live check: Ask, Server with Copy, numbered Steps, Pass, Fail, As of. @req FR:pr-page/check.view */
+function CheckView({ c, onCopy }: { c: LiveCheck; onCopy: (text: string) => void }) {
+  return (
+    <section class="pr-check" aria-label="Live check">
+      {c.ask && <><h4 class="pr-d-sub">Ask</h4><p class="pr-check-ask">{c.ask}</p></>}
+      {c.server && <><h4 class="pr-d-sub">Server</h4><div class="pr-check-srv"><code class="pr-check-cmd">{c.server}</code><button type="button" class="fl-btn" aria-label="Copy server command" onClick={() => onCopy(c.server!)}>Copy</button></div></>}
+      {c.steps.length > 0 && <><h4 class="pr-d-sub">Steps</h4><ol class="pr-d-steps">{c.steps.map((x, k) => <li key={k}>{x}</li>)}</ol></>}
+      {c.pass.length > 0 && <><h4 class="pr-d-sub">Pass</h4><ul class="pr-d-log pr-check-pass">{c.pass.map((x, k) => <li key={k}>{x}</li>)}</ul></>}
+      {c.fail.length > 0 && <><h4 class="pr-d-sub">Fail</h4><ul class="pr-d-log pr-check-fail">{c.fail.map((x, k) => <li key={k}>{x}</li>)}</ul></>}
+      {c.at && <p class="pr-check-at">As of {whenText(c.at) || c.at}</p>}
+    </section>
+  );
+}
+
 /** The details for the selected card: only what its next action needs. No AI call. @req FR:pr-page/detail.validate @req FR:pr-page/detail.signoff @req FR:pr-page/detail.approve @req FR:pr-page/detail.publish @req FR:pr-page/detail.autopilot @req FR:pr-page/detail.none */
-function Detail({ r, back, busy, onResolve }: { r: PrRow; back?: () => void; busy: boolean; onResolve: (r: PrRow, id: string) => void }) {
+function Detail({ r, back, busy, onResolve, onCopy }: { r: PrRow; back?: () => void; busy: boolean; onResolve: (r: PrRow, id: string) => void; onCopy: (text: string) => void }) {
   const [i, setI] = useState(0);
   const h = useRef<HTMLHeadingElement>(null);
   useEffect(() => { setI(0); }, [r.url]);
@@ -278,10 +292,14 @@ function Detail({ r, back, busy, onResolve }: { r: PrRow; back?: () => void; bus
   const head = (
     <>
       {back && <button type="button" class="fl-btn subtle prs-back" onClick={back}>‹ Back</button>}
-      <h3 ref={h} tabIndex={-1} class="pr-d-h">{a ? ACTION_LABEL[a] : 'No action'}</h3>
+      <h3 ref={h} tabIndex={-1} class="pr-d-h">{a ? flagText(r) : 'No action'}</h3>
       <p class="pr-d-pr"><a href={r.url} {...ext}>{refOf(r)}</a> {r.title}</p>
+      {r.detail.check && <CheckView c={r.detail.check} onCopy={onCopy} />}
     </>
   );
+  if (a === 'validate' && !actionable(r)) {
+    return <div class="pr-d">{head}<p class="pr-d-none">The sweeper has not written the server command and steps yet.</p><p><a class="fl-btn" href={r.url} {...ext}>Open PR</a></p></div>;
+  }
   if (a === 'validate') {
     const s = r.detail.steps;
     return (
@@ -350,8 +368,7 @@ function Detail({ r, back, busy, onResolve }: { r: PrRow; back?: () => void; bus
     return (
       <div class="pr-d">
         {head}
-        <p>Every thread is resolved, or only one waits for your reply. Add the Autopilot label on GitHub when it is ready.</p>
-        <p><a class="fl-btn primary" href={r.url} {...ext}>Open PR</a></p>
+        <p>Every thread is resolved, or only one waits for your reply. Enable Autopilot in Quick actions when it is ready.</p>
         <h4 class="pr-d-sub">Your earlier comments</h4>
         {notes.length === 0 ? <p class="pr-d-none">No earlier comments from you.</p>
           : <ul class="pr-d-log">{notes.map((x, n) => <li key={n}>{x.at && <span class="pr-d-when">{whenText(x.at)}</span>} <a href={x.url} {...ext}>{clip(x.body.replace(/\s+/g, ' '), 300)}</a></li>)}</ul>}
@@ -444,13 +461,33 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
     } catch (e) { toast(errText(e, 'Could not resolve the thread'), 'err'); }
   });
 
+  /** Copies, or shows the text when the clipboard fails. @req FR:pr-page/menu.run @req FR:pr-page/check.view */
+  const copyText = (t: string) => void (async () => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch { toast(`Copy this: ${t}`); } })();
+  /** A quick action: a queue move, an Autopilot label change with Undo, or a copy. @req FR:pr-page/menu.run */
+  const quick = (r: PrRow, a: QuickAction) => {
+    if (a.id === 'copy') return copyText(a.text ?? '');
+    if (a.id === 'sweep') return void run(async () => {
+      try { await api.prQueue(r.repo, r.number, a.op === 'add' ? 'add' : 'top'); toast(`${refOf(r)} is next for the Sweep Manager`); reload(); }
+      catch (e) { toast(errText(e, 'Could not move it'), 'err'); }
+    });
+    if (a.id === 'autopilot-on' || a.id === 'autopilot-off') {
+      const op = a.id === 'autopilot-on' ? 'add' : 'remove';
+      return void run(async () => {
+        try {
+          await api.prLabel(r.repo, r.number, op);
+          toast(op === 'add' ? `Autopilot on for ${refOf(r)}` : `Autopilot off for ${refOf(r)}`, 'ok', () => { void api.prLabel(r.repo, r.number, op === 'add' ? 'remove' : 'add').then(reload, (e) => toast(errText(e, 'Undo failed'), 'err')); });
+          reload();
+        } catch (e) { toast(errText(e, 'Could not change the label'), 'err'); }
+      });
+    }
+  };
   const select = (r: PrRow) => setSelected(r.url);
   const back = () => {
     const u = selected;
     setSelected(null);
-    setTimeout(() => { const q = CSS.escape(u ?? ''); (ref.current?.querySelector<HTMLElement>(`.pr-card[data-url="${q}"] .pr-open`) ?? ref.current?.querySelector<HTMLElement>(`.pr-miss-open[data-url="${q}"]`))?.focus(); }, 0);
+    setTimeout(() => { const q = CSS.escape(u ?? ''); (ref.current?.querySelector<HTMLElement>(`.pr-card[data-url="${q}"] .ui-card-open`) ?? ref.current?.querySelector<HTMLElement>(`.pr-miss-open[data-url="${q}"]`))?.focus(); }, 0);
   };
-  const c: Ctx | null = board ? { board, selected, select, pin, busy } : null;
+  const c: Ctx | null = board ? { board, selected, select, pin, quick, busy } : null;
 
   const tabKeys = (e: KeyboardEvent) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -461,7 +498,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
     setTimeout(() => ref.current?.querySelector<HTMLElement>(`#${px}-tab-${next}`)?.focus(), 0);
   };
 
-  const cards = (list: PrRow[], label: string) => <ul class="pr-cards" aria-label={label}>{list.map((r) => <Card key={r.url} r={r} c={c!} />)}</ul>;
+  const cards = (list: PrRow[], label: string) => <ul class="ui-cards" aria-label={label}>{list.map((r) => <Card key={r.url} r={r} c={c!} />)}</ul>;
   const section = (title: string, list: PrRow[]) => (
     <section class="pr-sec" aria-label={title}>
       <h3 class="pr-sec-h">{title}</h3>
@@ -537,7 +574,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
           </div>
           {(wide || showDetail) && (
             <aside class="pr-detail-col" data-testid="prs-detail" aria-label="PR details">
-              {row ? <Detail r={row} busy={busy} onResolve={resolve} {...(wide ? {} : { back })} /> : <p class="prs-empty">Select a PR to see its next step.</p>}
+              {row && c ? <><Detail r={row} busy={busy} onResolve={resolve} onCopy={copyText} {...(wide ? {} : { back })} /><ActionBar heading="Quick actions" items={itemsOf(row, c)} /></> : <p class="prs-empty">Select a PR to see its next step.</p>}
             </aside>
           )}
         </div>

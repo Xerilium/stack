@@ -5,6 +5,7 @@
  */
 import { PROJECTS, RULES, type SessionProject } from './session-inventory';
 import { isSpecPath, needsLiveValidation } from './pr-review';
+import type { LiveCheck } from './pr-check';
 
 export const PR_GROUPS = ['processing', 'waiting', 'pending', 'paused'] as const;
 export type PrGroup = (typeof PR_GROUPS)[number];
@@ -26,7 +27,7 @@ export interface LiveLane { url: string; state: string; serverUrl?: string; item
 export interface SignoffDetail { id: string; url: string; path?: string; ask: PrComment; after: PrComment[]; commits: PrCommit[] }
 export type StepsDetail = { source: 'lane'; state: string; serverUrl?: string; items: { text: string; state: string }[] } | { source: 'body'; items: { text: string }[] };
 /** @req FR:pr-page/detail.data */
-export interface PrDetail { signoff?: SignoffDetail[]; review?: PrPendingReview; steps?: StepsDetail; notes?: { body: string; url: string; at?: string }[] }
+export interface PrDetail { signoff?: SignoffDetail[]; review?: PrPendingReview; steps?: StepsDetail; check?: LiveCheck; notes?: { body: string; url: string; at?: string }[] }
 /** @req FR:pr-page/summary.@function */
 export interface PrSummary { live: string[]; signoff: string[]; autopilot: string[]; missing: { url: string; reason: string }[] }
 /** What GitHub says about one open PR, normalized. */
@@ -53,6 +54,8 @@ export interface PrRow {
 }
 export interface BoardCtx {
   user: string; now: Date;
+  /** The live check for a PR (`<home>/pr/<owner>/<repo>/<n>.md`, parsed). @req FR:pr-page/check.file */
+  check?: (repo: string, number: number) => LiveCheck | null | undefined;
   /** Lowercase PR urls that an active agent links. */
   agentPrs: Set<string>;
   /** `owner` or `owner/repo` entries; undefined means repos the owner owns. */
@@ -336,6 +339,9 @@ function detailOf(pr: PrFacts, ctx: BoardCtx, action: NextAction | null): PrDeta
     });
   }
   if (pr.pendingReview) d.review = pr.pendingReview;
+  // The sweeper's live check file for this PR. @req FR:pr-page/check.file
+  const check = ctx.check?.(pr.repo, pr.number);
+  if (check) d.check = check;
   if (action === 'validate') {
     if (ctx.live && same(ctx.live.url, pr.url)) d.steps = { source: 'lane', state: ctx.live.state, ...(ctx.live.serverUrl ? { serverUrl: ctx.live.serverUrl } : {}), items: ctx.live.items };
     else d.steps = { source: 'body', items: validationSteps(pr.body).map((text) => ({ text })) };

@@ -16,14 +16,14 @@
   --pr-auto: #e3eefa; --pr-auto-soft: #f5f8fc; --pr-auto-edge: #0f6cbd;
   --pr-mine: #e2f3e5; --pr-mine-soft: #f5faf6; --pr-mine-edge: #0e700e;
   --pr-other: #fbebd6; --pr-other-soft: #fcf8f2; --pr-other-edge: #a35200;
-  --pr-ink: #1d1d1f; --pr-ink2: #47474d; --pr-act: #0f5aa0; --pr-act-ink: #ffffff;
+  --pr-ink: #1d1d1f; --pr-ink2: #47474d;
 }
 @media (prefers-color-scheme: dark) {
   .prs-fly {
     --pr-auto: #133150; --pr-auto-soft: #1b222b; --pr-auto-edge: #479ef5;
     --pr-mine: #163a1e; --pr-mine-soft: #1b241d; --pr-mine-edge: #54b054;
     --pr-other: #3d2a10; --pr-other-soft: #262019; --pr-other-edge: #e8a24a;
-    --pr-ink: #f2f2f3; --pr-ink2: #cdcdd2; --pr-act: #479ef5; --pr-act-ink: #0b1a2b;
+    --pr-ink: #f2f2f3; --pr-ink2: #cdcdd2;
   }
 }
 
@@ -63,35 +63,26 @@
 .pr-sec + .pr-sec { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
 .pr-sec-h { margin: 0; font-size: 15px; font-weight: 650; color: var(--ink); }
 
-/* One card. @req FR:pr-page/card.fields @req FR:pr-page/card.space */
-.pr-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
-.pr-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "top tools" "open tools"; gap: 6px 8px; padding: 14px 14px 14px 16px; border-radius: var(--fl-r-xl); border-left: 4px solid var(--edge); background: var(--soft); color: var(--pr-ink); transition: background var(--fl-fast) var(--fl-ease), box-shadow var(--fl-fast); }
-.pr-card.strong { background: var(--bg-strong); box-shadow: var(--fl-shadow4); }
-.pr-card.tone-auto { --edge: var(--pr-auto-edge); --soft: var(--pr-auto-soft); --bg-strong: var(--pr-auto); }
-.pr-card.tone-mine { --edge: var(--pr-mine-edge); --soft: var(--pr-mine-soft); --bg-strong: var(--pr-mine); }
-.pr-card.tone-other { --edge: var(--pr-other-edge); --soft: var(--pr-other-soft); --bg-strong: var(--pr-other); }
-.pr-card[data-selected="true"] { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* One card: the shared SelectCard (ui/ui.css) with PR tones. @req FR:pr-page/card.fields @req FR:pr-page/card.space @req FR:pr-page/card.color */
+.pr-card { --ui-ink: var(--pr-ink); --ui-ink2: var(--pr-ink2); }
+.pr-card.tone-auto { --ui-edge: var(--pr-auto-edge); --ui-soft: var(--pr-auto-soft); --ui-strong: var(--pr-auto); }
+.pr-card.tone-mine { --ui-edge: var(--pr-mine-edge); --ui-soft: var(--pr-mine-soft); --ui-strong: var(--pr-mine); }
+.pr-card.tone-other { --ui-edge: var(--pr-other-edge); --ui-soft: var(--pr-other-soft); --ui-strong: var(--pr-other); }
 .pr-card.dragging { box-shadow: var(--fl-shadow16); opacity: .92; }
-.pr-card-top { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: 12px; color: var(--pr-ink2); }
 .pr-repo { overflow-wrap: anywhere; }
 .pr-num { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 24px; color: var(--pr-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-.pr-act { margin-left: auto; padding: 2px 10px; border-radius: var(--fl-r-pill); background: var(--pr-act); color: var(--pr-act-ink); font-weight: 600; font-size: 12px; white-space: nowrap; }
-/* The whole card selects; the link and Pin sit above the stretched target. @req FR:pr-page/card.select */
-.pr-open { grid-area: open; position: static; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title chev" "sub chev"; gap: 4px 8px; align-items: center; min-height: 32px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.pr-open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
-.pr-open:focus-visible { outline: none; }
-.pr-open:focus-visible::after { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--fl-r-xl); }
-.pr-card:hover .pr-title { text-decoration: underline; }
-.pr-title { grid-area: title; font-size: 15px; font-weight: 600; line-height: 21px; overflow-wrap: anywhere; }
-.pr-sub { grid-area: sub; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--pr-ink2); }
 .pr-spec { font-size: 11.5px; }
-.pr-chev { grid-area: chev; font-size: 20px; color: var(--pr-ink2); }
-.pr-card-tools { grid-area: tools; position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; align-items: center; }
-.pr-pin, .pr-grip { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 1px solid transparent; border-radius: var(--fl-r-md); background: transparent; color: var(--pr-ink2); cursor: pointer; }
-.pr-pin:hover:not(:disabled), .pr-grip:hover { background: rgb(127 127 127 / 14%); color: var(--pr-ink); }
 .pr-pin[aria-pressed="true"] { color: var(--pr-ink); }
 .pr-grip { cursor: grab; touch-action: none; }
 .pr-card.dragging .pr-grip { cursor: grabbing; outline: 2px solid var(--focus); }
+
+/* The sweeper's live check. @req FR:pr-page/check.view */
+.pr-check { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--fl-r-xl); background: var(--chip); }
+.pr-check .pr-d-sub { margin: 4px 0 0; }
+.pr-check .pr-d-sub:first-child { margin-top: 0; }
+.pr-check-srv { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pr-check-cmd { padding: 4px 8px; border-radius: var(--fl-r-md); background: var(--panel); font-size: 12.5px; overflow-wrap: anywhere; }
+.pr-check-at { color: var(--muted); font-size: 12px; }
 
 /* Am I missing anything? A short list. @req FR:pr-page/summary.missing */
 .pr-miss { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -160,7 +151,6 @@ body:has(.prs-scrim) .toasts { z-index: 70; }
 .pr-d a:not(.fl-btn) { display: inline-flex; align-items: center; min-height: 24px; }
 /* Touch: 44 px targets. @req FR:pr-page/flyout.a11y */
 @media (pointer: coarse), (max-width: 719px) {
-  .prs-tab, .prs-refresh, .prs-close, .pr-pin, .pr-grip, .pr-num, .pr-miss-open, .prs-fly .fl-btn, .prs-chip { min-height: var(--tap); min-width: var(--tap); }
-  .pr-open { min-height: var(--tap); }
+  .prs-tab, .prs-refresh, .prs-close, .pr-num, .pr-miss-open, .prs-fly .fl-btn, .prs-chip { min-height: var(--tap); min-width: var(--tap); }
   .pr-d a:not(.fl-btn) { display: inline-flex; align-items: center; min-height: var(--tap); }
 }

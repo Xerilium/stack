@@ -6,6 +6,8 @@
  * @req FR:pr-page/summary.live @req FR:pr-page/summary.signoff @req FR:pr-page/summary.autopilot @req FR:pr-page/summary.missing @req FR:pr-page/summary.layout
  * @req FR:pr-page/card.fields @req FR:pr-page/card.action @req FR:pr-page/card.color @req FR:pr-page/card.space @req FR:pr-page/card.select
  * @req FR:pr-page/detail.layout @req FR:pr-page/detail.validate @req FR:pr-page/detail.signoff @req FR:pr-page/detail.approve @req FR:pr-page/detail.publish @req FR:pr-page/detail.autopilot @req FR:pr-page/detail.none
+ * @req FR:ui-kit/a11y @req FR:ui-kit/card @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/flag
+ * @req FR:pr-page/check.view @req FR:pr-page/check.none @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
  * @req FR:pr-page/pin.toggle @req FR:pr-page/pin.tab @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys @req FR:pr-page/state.view
  */
 import AxeBuilder from '@axe-core/playwright';
@@ -28,7 +30,7 @@ const BOARD = () => ({
   at: new Date(Date.now() - 12_000).toISOString(), user: 'me', agents: { count: 3, source: 'sessions' },
   counts: { waiting: 2, processing: 4, pending: 3, paused: 1 }, footer: { running: 3, waiting: 4, parked: 2 }, queue: true,
   rows: [
-    row(109, { title: 'Tailnet access for the app', nextAction: 'validate', specLines: 12, pinned: true, rank: 2, detail: { steps: { source: 'lane', state: 'ready-for-michael', serverUrl: 'http://localhost:5174', items: [{ text: 'Open the app on the phone', state: 'open' }, { text: 'Sign in works', state: 'failed' }] } } }),
+    row(109, { title: 'Tailnet access for the app', nextAction: 'validate', specLines: 12, pinned: true, rank: 2, detail: { steps: { source: 'lane', state: 'ready-for-michael', serverUrl: 'http://localhost:5174', items: [{ text: 'Open the app on the phone', state: 'open' }, { text: 'Sign in works', state: 'failed' }] }, check: { ask: 'Check the app on the phone', server: 'pnpm web', steps: ['Open the app'], pass: [], fail: [] } } }),
     row(101, { title: 'Pick the API shape for task comments', nextAction: 'signoff', specLines: 40, pinned: true, rank: 1, state: st('me', 'Sign-off: wait for my ack', `${U(101)}#discussion_r9`), detail: { signoff: [hold('PRRT_one', 101, 'Wait for my ack before you merge'), { ...hold('PRRT_two', 101, 'Hold: test it live first'), after: [], commits: [] }] } }),
     row(1105, { repo: 'allytehq/finops-hubs', url: U(1105, 'allytehq/finops-hubs'), project: 'allyte', title: 'FTK spec approval', nextAction: 'signoff', specLines: 8, detail: { signoff: [hold('PRRT_three', 1105, 'wait for my ack')] } }),
     row(106, { title: 'Ready for Autopilot', group: 'pending', autopilot: false, labels: [], nextAction: 'autopilot', specLines: 3, detail: { notes: [{ body: 'Not yet: the copy is wrong', url: `${U(106)}#issuecomment-4`, at: ago(48) }] } }),
@@ -220,32 +222,139 @@ test('Summary: four clearly separated sections; Nothing else when empty', async 
   await expect(pg.locator('section.pr-sec').nth(0)).toContainText('None now.');
 });
 
-test('one card: repo, # link, title, author, one action chip, spec lines, Pin; nothing else; owner colors', async ({ page }) => {
+test('one card: repo, # link, title, author, one action flag, spec lines, Pin, Actions; nothing else; owner colors', async ({ page }) => {
   await setup(page);
   const pg = await openPage(page);
   const c = card(pg, 1105);
   await expect(c.locator('.pr-repo')).toHaveText('allytehq/finops-hubs');
   await expect(c.getByRole('link', { name: '#1105' })).toHaveAttribute('href', U(1105, 'allytehq/finops-hubs'));
   await expect(c.getByRole('link', { name: '#1105' })).toHaveAttribute('target', '_blank');
-  await expect(c.locator('.pr-title')).toHaveText('FTK spec approval');
+  await expect(c.locator('.ui-card-title')).toHaveText('FTK spec approval');
   await expect(c.locator('.pr-author')).toHaveText('My Autopilot');
-  await expect(c.locator('.pr-act')).toHaveText('Sign off');
+  await expect(c.locator('.ui-flag')).toHaveText('Sign off');
+  // A flag, not a control: no fill, no border, default cursor, not focusable, no button role. @req FR:pr-page/card.flag
+  const flag = await c.locator('.ui-flag').evaluate((e) => { const cs = getComputedStyle(e); return { bg: cs.backgroundColor, border: cs.borderTopWidth, cursor: cs.cursor, tab: (e as HTMLElement).tabIndex, role: e.getAttribute('role'), tag: e.tagName, icon: !!e.querySelector('svg') }; });
+  expect(flag).toEqual({ bg: 'rgba(0, 0, 0, 0)', border: '0px', cursor: 'default', tab: -1, role: null, tag: 'SPAN', icon: true });
   await expect(c.locator('.pr-spec')).toHaveText('8 spec lines');
-  await expect(c.getByRole('button')).toHaveCount(2); // select + Pin
+  await expect(c.getByRole('button')).toHaveCount(3); // select + Pin + Actions
+  await expect(c.getByRole('button', { name: 'Actions for allytehq/finops-hubs#1105' })).toHaveAttribute('aria-haspopup', 'menu');
   await expect(c.getByRole('button', { name: 'Pin allytehq/finops-hubs#1105' })).toHaveAttribute('aria-pressed', 'false');
   await expect(c).toHaveClass(/tone-auto strong/);
   await pg.getByRole('tab', { name: /Waiting on me/ }).click();
   await expect(card(pg, 102).locator('.pr-author')).toHaveText('roland');
   await expect(card(pg, 102)).toHaveClass(/tone-other strong/);
-  await expect(card(pg, 103).locator('.pr-act')).toHaveText('Publish review');
+  await expect(card(pg, 103).locator('.ui-flag')).toHaveText('Publish review');
   await pg.getByRole('tab', { name: /Pending/ }).click();
   await expect(card(pg, 106).locator('.pr-author')).toHaveText('You');
-  await expect(card(pg, 106).locator('.pr-act')).toHaveText('Enable Autopilot');
+  await expect(card(pg, 106).locator('.ui-flag')).toHaveText('Enable Autopilot');
   await expect(card(pg, 107)).toHaveClass(/tone-mine(?! strong)/);
-  await expect(card(pg, 107).locator('.pr-act')).toHaveCount(0);
+  await expect(card(pg, 107).locator('.ui-flag')).toHaveCount(0);
   // Generous spacing.
   const boxes = await pg.locator('.pr-card').evaluateAll((els) => els.slice(0, 2).map((e) => e.getBoundingClientRect()).map((r) => ({ y: r.y, h: r.height })));
   expect(boxes[1].y - (boxes[0].y + boxes[0].h)).toBeGreaterThanOrEqual(12);
+});
+
+test('quick actions: one ⋯ menu per card, only what fits, keyboard, and the same actions in the details', async ({ page }, info) => {
+  const mobile = info.project.name === 'mobile';
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const { posts } = await setup(page);
+  const pg = await openPage(page);
+  await pg.getByRole('tab', { name: /Pending/ }).click();
+  const btn = card(pg, 106).getByRole('button', { name: 'Actions for Xerilium/stack#106' });
+  await expect(btn).toHaveAttribute('aria-expanded', 'false');
+  await btn.click();
+  await expect(btn).toHaveAttribute('aria-expanded', 'true');
+  const menu = pg.getByRole('menu', { name: 'Actions for Xerilium/stack#106' });
+  await expect(menu.getByRole('menuitem')).toHaveText(['Sweep next', 'Enable Autopilot', 'Open on GitHub', 'Copy sweep command']);
+  await expect(menu.getByRole('menuitem', { name: 'Open on GitHub' })).toHaveAttribute('href', U(106));
+  await expect(menu.getByRole('menuitem').first()).toBeFocused();
+  // Keyboard: arrows move, End jumps, Escape closes and returns focus.
+  await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('menuitem', { name: 'Enable Autopilot' })).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(menu.getByRole('menuitem', { name: 'Copy sweep command' })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('menuitem', { name: 'Sweep next' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(btn).toBeFocused();
+  // One menu at a time; a tap outside closes it.
+  await card(pg, 107).getByRole('button', { name: /^Actions for/ }).click();
+  await expect(pg.getByRole('menu').getByRole('menuitem')).toHaveText(['Sweep next', 'Open on GitHub', 'Copy sweep command']);
+  await btn.click();
+  await expect(pg.getByRole('menu')).toHaveCount(1);
+  await expect(pg.getByRole('menu')).toHaveAccessibleName('Actions for Xerilium/stack#106');
+  await pg.getByRole('heading', { name: 'Pull requests' }).click();
+  await expect(pg.getByRole('menu')).toHaveCount(0);
+  // Enable Autopilot: the label route, a toast with Undo.
+  await btn.click();
+  await pg.getByRole('menuitem', { name: 'Enable Autopilot' }).click();
+  await expect.poll(() => posts.filter((p) => p.path === '/prs/label').map((p) => p.body)).toEqual([{ repo: 'Xerilium/stack', number: 106, op: 'add' }]);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(() => posts.filter((p) => p.path === '/prs/label').map((p) => p.body.op)).toEqual(['add', 'remove']);
+  // Sweep next: not queued, so add (top of the unpinned queue).
+  await btn.click();
+  await pg.getByRole('menuitem', { name: 'Sweep next' }).click();
+  await expect.poll(() => posts.filter((p) => p.path === '/prs/queue').map((p) => p.body)).toEqual([{ repo: 'Xerilium/stack', number: 106, op: 'add' }]);
+  await expect(page.locator('.toasts')).toContainText('Xerilium/stack#106 is next for the Sweep Manager');
+  // Copy: the Catalyst sweep command for my PR.
+  await btn.click();
+  await pg.getByRole('menuitem', { name: 'Copy sweep command' }).click();
+  await expect(page.locator('.toasts')).toContainText('Copied');
+  if (!mobile) expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('/catalyst:pr-sweep 106 update');
+  // Someone else's PR: review, and no Autopilot change.
+  await pg.getByRole('tab', { name: /Waiting on me/ }).click();
+  await card(pg, 102).getByRole('button', { name: /^Actions for/ }).click();
+  await expect(pg.getByRole('menu').getByRole('menuitem')).toHaveText(['Sweep next', 'Open on GitHub', 'Copy sweep command']);
+  await page.keyboard.press('Escape');
+  // The details pane ends with the same actions.
+  await pg.getByRole('tab', { name: /Processing/ }).click();
+  await card(pg, 101).locator('.ui-card-open').click();
+  const d = pg.getByTestId('prs-detail');
+  await expect(d.getByRole('heading', { name: 'Quick actions' })).toBeVisible();
+  await expect(d.locator('.ui-bar').getByRole('button')).toHaveText(['Remove Autopilot', 'Copy sweep command']);
+  await expect(d.locator('.ui-bar').getByRole('link')).toHaveText(['Open on GitHub']);
+  await d.locator('.ui-bar').getByRole('button', { name: 'Remove Autopilot' }).click();
+  await expect.poll(() => posts.filter((p) => p.path === '/prs/label').map((p) => p.body).at(-1)).toEqual({ repo: 'Xerilium/stack', number: 101, op: 'remove' });
+});
+
+test('live check: Ask, Server with Copy, numbered Steps, Pass, Fail, As of; no file is Not actionable', async ({ page }, info) => {
+  const mobile = info.project.name === 'mobile';
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const b = BOARD();
+  const at = '2026-11-18T18:00:00Z';
+  (b.rows[0] as any).detail.check = { ask: 'Check sign-in on the phone', server: 'pnpm web --port 5180', steps: ['Open the app', 'Sign in'], pass: ['Home shows tasks'], fail: ['An error toast'], at };
+  (b.rows[3] as any).detail.check = { ask: 'Check the label copy', steps: [], pass: [], fail: [] };
+  await setup(page, { board: b });
+  const pg = await openPage(page);
+  await card(pg, 109).locator('.ui-card-open').click();
+  const d = pg.getByTestId('prs-detail');
+  const c = d.locator('.pr-check');
+  await expect(c.locator('.pr-check-ask')).toHaveText('Check sign-in on the phone');
+  await expect(c.locator('code.pr-check-cmd')).toHaveText('pnpm web --port 5180');
+  await expect(c.locator('ol li')).toHaveText(['Open the app', 'Sign in']);
+  await expect(c.locator('.pr-check-pass li')).toHaveText(['Home shows tasks']);
+  await expect(c.locator('.pr-check-fail li')).toHaveText(['An error toast']);
+  await expect(c.locator('.pr-check-at')).toContainText('As of');
+  await c.getByRole('button', { name: 'Copy server command' }).click();
+  await expect(page.locator('.toasts')).toContainText('Copied');
+  // A check with no steps still shows its Ask on any PR.
+  if (mobile) await d.getByRole('button', { name: 'Back' }).click();
+  await pg.getByRole('tab', { name: /Pending/ }).click();
+  await card(pg, 106).locator('.ui-card-open').click();
+  await expect(d.locator('.pr-check-ask')).toHaveText('Check the label copy');
+  await expect(d.locator('.pr-check ol')).toHaveCount(0);
+  // Validate with no file: never a bare Validate.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  const none = BOARD();
+  delete (none.rows[0] as any).detail.check;
+  await setup(page, { board: none });
+  await page.reload();
+  if (mobile && await d.getByRole('button', { name: 'Back' }).isVisible()) await d.getByRole('button', { name: 'Back' }).click();
+  await pg.getByRole('tab', { name: /Summary/ }).click();
+  await expect(card(pg, 109).locator('.ui-flag')).toHaveText('Not actionable: no server/steps yet');
+  await card(pg, 109).locator('.ui-card-open').click();
+  await expect(d.getByRole('heading', { level: 3 })).toHaveText('Not actionable: no server/steps yet');
 });
 
 test('details: wide shows a pane on the right; narrow replaces the list with Back', async ({ page }, info) => {
@@ -253,29 +362,30 @@ test('details: wide shows a pane on the right; narrow replaces the list with Bac
   await setup(page);
   const pg = await openPage(page);
   if (!mobile) await expect(pg.getByTestId('prs-detail')).toContainText('Select a PR to see its next step.');
-  await expect(card(pg, 109).locator('.pr-open')).toHaveAccessibleName(/next: Validate/);
-  await card(pg, 109).locator('.pr-open').click();
+  await expect(card(pg, 109).locator('.ui-card-open')).toHaveAccessibleName(/next: Validate/);
+  await card(pg, 109).locator('.ui-card-open').click();
   const d = pg.getByTestId('prs-detail');
   await expect(d).toBeVisible();
   await expect(d.getByRole('heading', { level: 3 })).toHaveText('Validate');
-  await expect(d.locator('ol li')).toHaveText([/Open the app on the phone/, /Sign in works.*Failed/]);
+  await expect(d.locator('.pr-d > ol li')).toHaveText([/Open the app on the phone/, /Sign in works.*Failed/]);
   await expect(d.getByRole('link', { name: /localhost:5174/ })).toHaveAttribute('href', 'http://localhost:5174');
   await expect(d.getByRole('link', { name: 'Open the checklist to tick items' })).toHaveAttribute('href', '#/live');
-  await expect(card(pg, 109).locator('.pr-open')).toHaveAttribute('aria-current', 'true');
+  await expect(card(pg, 109).locator('.ui-card-open')).toHaveAttribute('aria-current', 'true');
   if (mobile) {
     await expect(pg.locator('.pr-list-col')).toBeHidden();
     await d.getByRole('button', { name: 'Back' }).click();
-    await expect(card(pg, 109).locator('.pr-open')).toBeFocused();
+    await expect(card(pg, 109).locator('.ui-card-open')).toBeFocused();
   } else {
     const [l, r] = [await pg.locator('.pr-list-col').boundingBox(), await d.boundingBox()];
     expect(r!.x).toBeGreaterThan(l!.x + l!.width - 1);
     await expect(d.getByRole('button', { name: 'Back' })).toHaveCount(0);
   }
   // Keyboard: Enter on the focused card selects it.
-  await card(pg, 106).locator('.pr-open').focus();
+  await card(pg, 106).locator('.ui-card-open').focus();
   await page.keyboard.press('Enter');
   await expect(d.getByRole('heading', { level: 3 })).toHaveText('Enable Autopilot');
-  await expect(d.getByRole('link', { name: 'Open PR' })).toHaveAttribute('href', U(106));
+  await expect(d.getByRole('link', { name: 'Open on GitHub' })).toHaveAttribute('href', U(106));
+  await expect(d.locator('.ui-bar').getByRole('button', { name: 'Enable Autopilot' })).toBeVisible();
   await expect(d).toContainText('Not yet: the copy is wrong');
 });
 
@@ -294,7 +404,7 @@ test('phone: Back from a missing line returns focus to that line', async ({ page
 test('Sign off: one thread at a time, how it was addressed, Resolve thread with Undo, Re-review', async ({ page }) => {
   const { posts } = await setup(page);
   const pg = await openPage(page);
-  await card(pg, 101).locator('.pr-open').click();
+  await card(pg, 101).locator('.ui-card-open').click();
   const d = pg.getByTestId('prs-detail');
   await expect(d.getByRole('heading', { level: 3 })).toHaveText('Sign off');
   await expect(d).toContainText('Thread 1 of 2');
@@ -317,12 +427,12 @@ test('Approve and Publish review: links only, findings when simple', async ({ pa
   await setup(page);
   const pg = await openPage(page);
   await pg.getByRole('tab', { name: /Waiting on me/ }).click();
-  await card(pg, 102).locator('.pr-open').click();
+  await card(pg, 102).locator('.ui-card-open').click();
   const d = pg.getByTestId('prs-detail');
   await expect(d.getByRole('link', { name: 'Open PR files' })).toHaveAttribute('href', `${U(102, 'microsoft/finops-toolkit')}/files`);
   await expect(d.getByRole('button', { name: /approve/i })).toHaveCount(0);
   if (await d.getByRole('button', { name: 'Back' }).isVisible()) await d.getByRole('button', { name: 'Back' }).click();
-  await card(pg, 103).locator('.pr-open').click();
+  await card(pg, 103).locator('.ui-card-open').click();
   await expect(d.getByRole('link', { name: 'Open your draft review' })).toHaveAttribute('href', `${U(103, 'microsoft/finops-toolkit')}#pullrequestreview-7`);
   await expect(d).toContainText('docs/a.md');
   await expect(d).toContainText('Use the short name');
@@ -438,7 +548,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.screenshot({ path: `e2e/screenshots/prs-${name}-${info.project.name}-${scheme}.png`, fullPage: true });
     };
     await check('summary');
-    await card(pg, 101).locator('.pr-open').click();
+    await card(pg, 101).locator('.ui-card-open').click();
     await check('detail');
     if (mobile) await pg.getByTestId('prs-detail').getByRole('button', { name: 'Back' }).click();
     await pg.getByRole('tab', { name: /Pinned/ }).click();
@@ -450,7 +560,7 @@ test('flyout: axe clean, tap size, details replace the list with Back', async ({
   const mobile = info.project.name === 'mobile';
   await setup(page);
   const fly = await openFly(page, mobile);
-  await card(fly, 109).locator('.pr-open').click();
+  await card(fly, 109).locator('.ui-card-open').click();
   await expect(fly.getByTestId('prs-detail').getByRole('button', { name: 'Back' })).toBeVisible();
   await page.waitForTimeout(300);
   const { violations } = await new AxeBuilder({ page }).include('[data-testid="prs-flyout"]').analyze();

@@ -11,7 +11,9 @@ export interface PrState { owner: 'me' | 'reviewer' | 'ci' | 'runner' | 'none'; 
 export interface PrComment { author: string; body: string; url?: string; at?: string }
 export interface SignoffDetail { id: string; url: string; path?: string; ask: PrComment; after: PrComment[]; commits: { sha: string; title: string; url: string; at: string }[] }
 export type StepsDetail = { source: 'lane'; state: string; serverUrl?: string; items: { text: string; state: string }[] } | { source: 'body'; items: { text: string; state?: string }[] };
-export interface PrDetail { signoff?: SignoffDetail[]; review?: { url: string; body: string; comments: { path: string; body: string }[] }; steps?: StepsDetail; notes?: { body: string; url: string; at?: string }[] }
+/** The sweeper's live check file, parsed by the host. @req FR:pr-page/check.parse */
+export interface LiveCheck { ask?: string; server?: string; at?: string; steps: string[]; pass: string[]; fail: string[] }
+export interface PrDetail { check?: LiveCheck; signoff?: SignoffDetail[]; review?: { url: string; body: string; comments: { path: string; body: string }[] }; steps?: StepsDetail; notes?: { body: string; url: string; at?: string }[] }
 export interface PrRow {
   url: string; repo: string; number: number; title: string; author: string; mine: boolean; project: string; group: PrGroup; draft: boolean;
   createdAt: string; updatedAt: string; ci: 'passing' | 'failing' | 'pending' | 'none'; unresolved: number; labels: string[]; state: PrState; bucket?: Bucket;
@@ -80,6 +82,29 @@ export const toneOf = (r: PrRow) => `${r.mine ? (r.autopilot ? 'auto' : 'mine') 
 /** Small muted text, only when known. */
 export const specText = (r: PrRow) => (r.specLines === null || r.specLines === undefined ? '' : `${r.specLines} spec ${r.specLines === 1 ? 'line' : 'lines'}`);
 
+/** The Catalyst sweep command for one PR: update my own, review others. Run it in a checkout of the repo. @req FR:pr-page/menu.@function */
+export const sweepCommand = (r: Pick<PrRow, 'number' | 'mine'>) => `/catalyst:pr-sweep ${r.number} ${r.mine ? 'update' : 'review'}`;
+
+export type QuickId = 'sweep' | 'autopilot-on' | 'autopilot-off' | 'open' | 'copy';
+export interface QuickAction { id: QuickId; label: string; title: string; op?: 'add' | 'top' | 'remove'; href?: string; text?: string }
+/**
+ * The quick actions that fit a row, in menu order. Only existing routes and commands: the queue (`prs.queue`), the Autopilot label
+ * (`prs.label`), the PR link, and the Catalyst sweep command. No Ready: the Autopilot workflow derives it. @req FR:pr-page/menu.@function
+ */
+export function actionsOf(r: PrRow, b: PrBoard | null): QuickAction[] {
+  const out: QuickAction[] = [];
+  if (b?.queue) {
+    // First in its part of the queue: rank 1 when pinned, the first rank after the pinned rows when not.
+    const first = r.pinned ? 1 : b.rows.filter((x) => x.pinned).length + 1;
+    if (r.rank !== first) out.push({ id: 'sweep', label: 'Sweep next', title: 'Move it to the top of the Sweep Manager queue', op: r.rank === null ? 'add' : 'top' });
+  }
+  if (r.mine && !r.autopilot && !r.draft && r.group !== 'paused') out.push({ id: 'autopilot-on', label: 'Enable Autopilot', title: 'Add the Status: 🤖 Autopilot label', op: 'add' });
+  if (r.autopilot && (r.mine || r.group === 'processing')) out.push({ id: 'autopilot-off', label: 'Remove Autopilot', title: 'Remove the Status: 🤖 Autopilot label', op: 'remove' });
+  out.push({ id: 'open', label: 'Open on GitHub', title: 'Open the PR on GitHub', href: r.url });
+  out.push({ id: 'copy', label: 'Copy sweep command', title: `Copy ${sweepCommand(r)}; run it in a checkout of ${r.repo}`, text: sweepCommand(r) });
+  return out;
+}
+
 /** Moves `id` to place `to` (0 first). Null when nothing moves. The rank is the new place, 1 first. @req FR:pr-page/pin.drag */
 export function moveTo(order: string[], id: string, to: number): { order: string[]; rank: number } | null {
   const from = order.indexOf(id);
@@ -108,8 +133,13 @@ export const whenText = (iso?: string) => { const t = Date.parse(iso ?? ''); ret
 export const ITEM_WORD: Record<string, string> = { open: 'Open', passed: 'Passed', failed: 'Failed', 'needs-fix': 'Needs a fix', 'fixed-pending-revalidation': 'Fixed, check again', blocked: 'Needs you' };
 export const LANE_WORD: Record<string, string> = { preparing: 'The agent is preparing the server.', working: 'The agent is working on a fix.', 'ready-for-michael': 'Ready for you.', revalidating: 'Ready for you to check the fixes.' };
 
-/** The nav count: rows with a next action. @req FR:pr-page/nav.badge */
-export const needCount = (b: PrBoard | null): number => (b ? b.rows.filter((r) => r.nextAction).length : 0);
+/** A live check with no file or no steps is not a task. @req FR:pr-page/check.none */
+export const NOT_ACTIONABLE = 'Not actionable: no server/steps yet';
+export const actionable = (r: PrRow) => !!r.nextAction && (r.nextAction !== 'validate' || !!r.detail.check?.steps.length);
+/** The card flag and details heading words. @req FR:pr-page/card.flag @req FR:pr-page/check.none */
+export const flagText = (r: PrRow) => (!r.nextAction ? '' : actionable(r) ? ACTION_LABEL[r.nextAction] : NOT_ACTIONABLE);
+/** The nav count: rows with an actionable next action. @req FR:pr-page/nav.badge @req FR:pr-page/check.none */
+export const needCount = (b: PrBoard | null): number => (b ? b.rows.filter(actionable).length : 0);
 /** The one signed-out state. @req FR:pr-page/auth.state */
 export function signInText(a: PrAuthState): { title: string; action?: string; detail?: string; note?: string } {
   if (a.method === 'none') return { title: 'Install the GitHub CLI, or set GITHUB_TOKEN.', detail: 'Then reopen this page. Stack reads the gh sign-in; it never stores a token.' };

@@ -1,0 +1,59 @@
+/* The shared component set: card, flag, status chip, actions menu and bar. Tokens only, light and dark.
+ * A consumer sets the card tone with --ui-edge, --ui-soft, --ui-strong, --ui-ink, --ui-ink2.
+ * @req FR:ui-kit/card @req FR:ui-kit/flag @req FR:ui-kit/chip @req FR:ui-kit/menu @req FR:ui-kit/bar */
+
+/* Card: the whole card selects; links and tools sit above the stretched target. @req FR:ui-kit/card */
+.ui-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.ui-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "top tools" "open tools"; gap: 6px 8px; padding: 14px 14px 14px 16px; border-radius: var(--fl-r-xl); border-left: 4px solid var(--ui-edge, var(--line)); background: var(--ui-soft, var(--panel)); color: var(--ui-ink, var(--ink)); transition: background var(--fl-fast) var(--fl-ease), box-shadow var(--fl-fast); }
+.ui-card.strong { background: var(--ui-strong, var(--ui-soft, var(--panel))); box-shadow: var(--fl-shadow4); }
+.ui-card[data-selected="true"] { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ui-card-top { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: 12px; color: var(--ui-ink2, var(--ink2)); }
+.ui-card-top a { position: relative; z-index: 1; }
+.ui-card-open { grid-area: open; position: static; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title chev" "sub chev"; gap: 4px 8px; align-items: center; min-height: 32px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ui-card-open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+.ui-card-open:focus-visible { outline: none; }
+.ui-card-open:focus-visible::after { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--fl-r-xl); }
+.ui-card:hover .ui-card-title { text-decoration: underline; }
+.ui-card-title { grid-area: title; font-size: 15px; font-weight: 600; line-height: 21px; overflow-wrap: anywhere; }
+.ui-card-sub { grid-area: sub; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-ink2, var(--ink2)); }
+.ui-card-chev { grid-area: chev; font-size: 20px; color: var(--ui-ink2, var(--ink2)); }
+.ui-card-tools { grid-area: tools; position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+/* An open menu lifts its card's tools above the cards below. */
+.ui-card-tools:has(.ui-menu) { z-index: 30; }
+.ui-tool { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 1px solid transparent; border-radius: var(--fl-r-md); background: transparent; color: var(--ui-ink2, var(--ink2)); cursor: pointer; }
+.ui-tool:hover:not(:disabled) { background: rgb(127 127 127 / 14%); color: var(--ui-ink, var(--ink)); }
+
+/* Flag: icon + muted word. No fill, no border, no hover. @req FR:ui-kit/flag */
+.ui-flag { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--ui-ink2, var(--ink2)); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: default; user-select: none; }
+.ui-card-top .ui-flag { margin-left: auto; }
+.ui-flag-ic { flex: none; }
+
+/* Status chip: a tint and a dot, no border, no hover. @req FR:ui-kit/chip */
+.ui-chip { --c: var(--ink2); display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border: 0; border-radius: var(--fl-r-md); background: color-mix(in srgb, var(--c) 12%, transparent); color: var(--ink); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: default; user-select: none; }
+.ui-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c); flex: none; }
+.ui-chip.t-info { --c: var(--accent); }
+.ui-chip.t-ok { --c: var(--ok); }
+.ui-chip.t-warn { --c: var(--warn); }
+.ui-chip.t-bad { --c: var(--danger, var(--warn)); }
+
+/* Actions menu: one quiet button, the menu under it (or above it near the bottom). @req FR:ui-kit/menu */
+.ui-more { position: relative; }
+.ui-more-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 1px solid transparent; border-radius: var(--fl-r-md); background: transparent; color: var(--ui-ink2, var(--ink2)); cursor: pointer; }
+.ui-more-btn:hover, .ui-more-btn[aria-expanded="true"] { background: rgb(127 127 127 / 14%); color: var(--ui-ink, var(--ink)); }
+.ui-menu { left: auto; right: 0; top: calc(100% + 4px); min-width: 210px; z-index: 30; color: var(--ink); }
+.ui-menu.up { top: auto; bottom: calc(100% + 4px); }
+.ui-menu a.menu-item { text-decoration: none; color: inherit; }
+.ui-menu .menu-item:disabled { opacity: .5; cursor: default; }
+.ui-menu .menu-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* Actions bar: the same actions in a details pane. @req FR:ui-kit/bar */
+.ui-bar { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.ui-bar-h { margin: 0; font-size: 13px; font-weight: 650; color: var(--ink); }
+.ui-bar-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ui-bar a.fl-btn { text-decoration: none; }
+
+/* Touch: 44 px targets. */
+@media (pointer: coarse), (max-width: 719px) {
+  .ui-tool, .ui-more-btn, .ui-menu .menu-item, .ui-bar .fl-btn { min-height: var(--tap); min-width: var(--tap); }
+  .ui-card-open { min-height: var(--tap); }
+}

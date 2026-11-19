@@ -2,7 +2,8 @@
  * Wires the PR page from the host's GitHub config: the board, the writes, and the queue client. Never logs the token.
  * @req FR:github-pr-status/wire.token @req FR:pr-page/live.poll @req FR:pr-page/data.report @req FR:pr-page/data.recs
  */
-import { readFileSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
+import { checkPath } from '../core/pr-check';
 import { join } from 'path';
 import type { StackConfig } from '../core/config';
 import { createGitHubBoard } from './github-board';
@@ -20,6 +21,13 @@ export const laneOf = (v: LaneView): LiveLane | undefined => (v.active ? { url: 
 const readJson = (path: string): unknown => { try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return undefined; } };
 /** The pr-priority files under `<home>`, read on each board build. */
 export const queueFiles = (home: string) => () => ({ queue: readJson(join(home, 'pr-priority.json')), state: readJson(join(home, 'pr-priority-state.json')), config: readJson(join(home, 'pr-priority.config.json')) });
+
+/** Reads `<home>/pr/<owner>/<repo>/<n>.md`; null when missing, over 16 KB, or a bad path. @req FR:pr-page/check.file */
+export const readCheck = (home: string) => (repo: string, number: number): string | null => {
+  const p = checkPath(home, repo, number);
+  if (!p) return null;
+  try { return statSync(p).size > 16_384 ? null : readFileSync(p, 'utf8'); } catch { return null; }
+};
 
 export interface PrPage { prBoard: PrBoardService; prWrites: GitHubWrites; prQueue: PrQueue }
 export function createPrPage(o: {
@@ -39,7 +47,7 @@ export function createPrPage(o: {
   const source = createGitHubBoard({ token: o.token, repos, user: g.user, fetch: o.fetch, adminOrgs: !repos?.length && !!o.adminOrgs });
   const prQueue = o.queue ?? cliPrQueue();
   return {
-    prBoard: createPrBoardService({ source, inventory: o.inventory, files: queueFiles(o.home), ...(o.live ? { live: () => laneOf(o.live!()) } : {}), myRepos: repos, exclude: g.exclude, queue: async () => (prQueue.available ? prQueue.available() : true), intervalMs: g.pollSeconds ? g.pollSeconds * 1000 : undefined, onChange: o.onChange }),
+    prBoard: createPrBoardService({ source, inventory: o.inventory, files: queueFiles(o.home), check: readCheck(o.home), ...(o.live ? { live: () => laneOf(o.live!()) } : {}), myRepos: repos, exclude: g.exclude, queue: async () => (prQueue.available ? prQueue.available() : true), intervalMs: g.pollSeconds ? g.pollSeconds * 1000 : undefined, onChange: o.onChange }),
     prWrites: createGitHubWrites({ token: o.token, repos, fetch: o.fetch }),
     prQueue,
   };
