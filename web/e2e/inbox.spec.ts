@@ -60,3 +60,40 @@ test('no sideways scroll; screenshot', async ({ page }, info) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `e2e/screenshots/inbox-${info.project.name}.png` });
 });
+
+// @req FR:inbox-page/web.phone
+test('375px: no horizontal scroll with a long sender/subject, menu, and draft; actions are tap-sized', async ({ page }, info) => {
+  test.skip(info.project.name !== 'mobile', 'touch layout');
+  const m = await mockApi(page);
+  m.inboxItems = [
+    { id: 'mail-aaaaaaaaaaaa', source: 'email', account: 'me@example.test', from: 'Alexandra Richardson-Whitfield', subject: 'Quarterly planning and budget reconciliation for the next fiscal year', receivedAt: at(1), unread: true, urgency: 2, summary: 'Alex wants your review of the plan by Friday and asks if the budget line is final.', suggested: 'reply-draft', actions: ['reply-draft', 'mark-done', 'snooze', 'create-task', 'archive', 'unsubscribe', 'delegate', 'schedule', 'forward-draft'], link: 'https://outlook.example.test/m/1', kind: 'needs_reply' },
+  ];
+  await page.goto('/#/inbox');
+  await expect(page.locator('.in-row').first()).toBeVisible();
+
+  // Nothing scrolls sideways, and every visible row button is tap-sized, in each state.
+  const noSideways = async () => expect(await page.evaluate(() => document.documentElement.scrollWidth <= 375)).toBe(true);
+  const tapSized = async () => {
+    for (const b of await page.locator('.in-row button:visible').all()) {
+      expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+  };
+
+  // rows only
+  await noSideways();
+  await tapSized();
+
+  // action menu open (the widest state: .in-menu has min-width 220px)
+  const row = page.locator('.in-row').first();
+  await row.getByRole('button', { name: 'More' }).click();
+  await expect(page.locator('.in-menu')).toBeVisible();
+  await noSideways();
+  await tapSized();
+  await page.keyboard.press('Escape');
+
+  // reply draft open (the draft textarea)
+  await row.getByRole('button', { name: 'Draft reply' }).click();
+  await expect(row.getByRole('textbox', { name: 'Draft reply' })).toBeVisible();
+  await noSideways();
+  await tapSized();
+});

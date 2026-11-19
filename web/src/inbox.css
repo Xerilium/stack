@@ -30,7 +30,7 @@
 .btn.link { background: none; border-color: transparent; color: var(--accent); }
 @media (max-width: 719px) {
   .in-row { padding: 12px; }
-  .in-actions .btn, .in-draft-actions .btn { min-height: var(--tap); }
+  .in-actions .btn, .in-draft-actions .btn, .in-menu button { min-height: var(--tap); }
 }
 /* One quiet status line; setup lives in Settings > Accounts. @req FR:inbox-page/web.status */
 .in-status { margin: 0 0 12px; font-size: 13px; color: var(--ink2); }
