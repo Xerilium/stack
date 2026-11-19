@@ -123,6 +123,8 @@ const PROGRESS = /(?<![\p{L}\p{N}_/.-])(?:\d{1,3}%|\d{1,3}\/\d{1,3})(?![\p{L}\p{
 /** Status text in one nested line (an `id` line never counts), or null. */
 function noteStatus(line: string): string | null {
   const raw = line.replace(/\r$/, '').trim().replace(/^>\s*/, '').replace(/^(?:[-*+]|\d+[.)])\s+/, '');
+  // Metadata (`> key: value`) is data, not prose.
+  if (/^>\s*[a-z][a-z0-9_-]*:/.test(line.trim())) return null;
   if (/^id:/.test(raw)) return null;
   // A field label (`Done when:`, `Next:`) is not status; its value still counts.
   const body = raw.replace(/^[A-Za-z][A-Za-z ]{0,20}:\s+/, '');

@@ -17,7 +17,7 @@ describe('metadata keys', () => {
 // @req FR:task-ids/lint.status-note
 describe('status notes', () => {
   it('flags status prose in nested lines of open tasks only', () => {
-    const src = ['# G', '', '## A', '', '- [ ] One', '  > id: done-one', '  - Merged the API as of Nov 3', '  > owner: me', '  - 3/5 steps', '  - Use the 50% rule? no: plain text ok', '  - Plan the release', '  - Done when: all threads answered',
+    const src = ['# G', '', '## A', '', '- [ ] One', '  > id: done-one', '  - Merged the API as of Nov 3', '  > owner: me', '  - 3/5 steps', '  - Use the 50% rule? no: plain text ok', '  - Plan the release', '  - Done when: all threads answered', '  > created: 2026-10-01',
       '- [x] Closed', '  - shipped Nov 3', ''].join('\n');
     expect(lintProject('tasks/g.md', src).filter((i) => i.rule === 'note-status').map((i) => i.line)).toEqual([7, 9, 10]);
   });
