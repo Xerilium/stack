@@ -71,21 +71,19 @@ describe('QmStore live', () => {
     expect(n).toBe(1);
   });
 
-  // @req FR:qm-plan/live.event
-  it('watch hears a write by another process (another store) and stops', async () => {
-    const dir = home(); const s = new QmStore(dir); const seen: number[] = [];
-    // Node shares one stat poll per file: a second watcher hearing a write proves the first one would have heard it too.
-    const next = () => new Promise<void>((ok) => { const off = new QmStore(dir).watch(() => { off(); ok(); }, 20); });
-    const stop = s.watch((m) => seen.push(m), 20);
-    try {
-      const heard = next();
-      new QmStore(dir).put(PLAN);
-      await heard;
-      expect(seen).toEqual([statSync(s.file).mtimeMs]);
-    } finally { stop(); }
-    const heard = next();
-    new QmStore(dir).put({ ...PLAN, projects: [] });
-    await heard;
-    expect(seen).toHaveLength(1);
+  // @req FR:qm-plan/live.event @req FR:qm-plan/live.event.stop
+  it('watch reports a changed mtime (a write by another process) and stops', () => {
+    const s = new QmStore(home()); const seen: number[] = [];
+    let hook: ((cur: { mtimeMs: number }, prev: { mtimeMs: number }) => void) | undefined; let opts: unknown; let unhooked: unknown;
+    const poll = { watchFile: (f: string, o: unknown, fn: typeof hook) => { expect(f).toBe(s.file); opts = o; hook = fn; }, unwatchFile: (f: string, fn: unknown) => { expect(f).toBe(s.file); unhooked = fn; } };
+    const stop = s.watch((m) => seen.push(m), 20, poll);
+    expect(opts).toEqual({ persistent: false, interval: 20 }); // never keeps the process alive
+    hook!({ mtimeMs: 0 }, { mtimeMs: 0 }); // a missing file's first poll: not news
+    hook!({ mtimeMs: 5 }, { mtimeMs: 0 });
+    hook!({ mtimeMs: 5 }, { mtimeMs: 5 });
+    hook!({ mtimeMs: 0 }, { mtimeMs: 5 }); // deleted
+    expect(seen).toEqual([5, 0]);
+    stop();
+    expect(unhooked).toBe(hook);
   });
 });

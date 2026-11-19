@@ -83,6 +83,13 @@ export function parseQmPlan(body: unknown): QmPlan {
   return { version: 1, asOf: body.asOf as string, projects: projects as QmProject[] };
 }
 
+type StatListener = (cur: { mtimeMs: number }, prev: { mtimeMs: number }) => void;
+/** The file poll `QmStore.watch` uses; tests pass a fake, so they never wait on the clock. */
+export interface FilePoll {
+  watchFile(file: string, o: { persistent: boolean; interval: number }, fn: StatListener): void;
+  unwatchFile(file: string, fn: StatListener): void;
+}
+
 /** The plan file `<dir>/qm-plan.json`. A put replaces it whole, so no lock: an atomic write is enough. */
 export class QmStore {
   readonly file: string;
@@ -109,10 +116,10 @@ export class QmStore {
   onWrite(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
 
   /** Hears writes by other processes (`stack qm put`) by polling the file mtime; returns a stop function. @req FR:qm-plan/live.event */
-  watch(fn: (mtimeMs: number) => void, intervalMs = 2000): () => void {
+  watch(fn: (mtimeMs: number) => void, intervalMs = 2000, poll: FilePoll = { watchFile, unwatchFile }): () => void {
     // A missing file reports zeroed stats on the first poll: only a changed mtime (a write, or a delete) is news.
     const h = (cur: { mtimeMs: number }, prev: { mtimeMs: number }) => { if (cur.mtimeMs !== prev.mtimeMs) fn(cur.mtimeMs); };
-    watchFile(this.file, { persistent: false, interval: intervalMs }, h);
-    return () => unwatchFile(this.file, h);
+    poll.watchFile(this.file, { persistent: false, interval: intervalMs }, h);
+    return () => poll.unwatchFile(this.file, h);
   }
 }
