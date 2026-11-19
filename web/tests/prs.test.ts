@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ACTION_LABEL, actionsOf, authorText, countOf, createPrStore, loadPrefs, moveTo, needCount, projectsOf, rowsOf, savePrefs, signInText, specText, summaryView, sweepCommand, tabsOf, TAB_LABEL, toneOf, updatedText,
+  ACTION_LABEL, actionsOf, authorText, flagText, NOT_ACTIONABLE, countOf, createPrStore, loadPrefs, moveTo, needCount, projectsOf, rowsOf, savePrefs, signInText, specText, summaryView, sweepCommand, tabsOf, TAB_LABEL, toneOf, updatedText,
   type PrBoard, type PrRow,
 } from '../src/prs';
 
@@ -213,5 +213,19 @@ describe('actionsOf: quick actions that fit the PR', () => {
     expect(actionsOf(r, board([r])).find((a) => a.id === 'copy')?.text).toBe('/catalyst:pr-sweep 7 update');
     expect(actionsOf(r, board([r])).find((a) => a.id === 'autopilot-off')?.op).toBe('remove');
     expect(actionsOf(row({ autopilot: false }), null).find((a) => a.id === 'autopilot-on')?.op).toBe('add');
+  });
+});
+
+// @req FR:pr-page/check.none @req FR:pr-page/nav.badge
+describe('a live check with no steps is not actionable', () => {
+  const check = { ask: 'Check it', server: 'pnpm web', steps: ['Open it'], pass: [], fail: [] };
+  it('the flag says Not actionable; the badge skips it', () => {
+    expect(NOT_ACTIONABLE).toBe('Not actionable: no server/steps yet');
+    expect(flagText(row({ nextAction: 'validate' }))).toBe('Not actionable: no server/steps yet');
+    expect(flagText(row({ nextAction: 'validate', detail: { check: { ...check, steps: [] } } }))).toBe('Not actionable: no server/steps yet');
+    expect(flagText(row({ nextAction: 'validate', detail: { check } }))).toBe('Validate');
+    expect(flagText(row({ nextAction: 'signoff' }))).toBe('Sign off');
+    expect(flagText(row({}))).toBe('');
+    expect(needCount(board([row({ nextAction: 'validate' }), row({ nextAction: 'validate', detail: { check } }), row({ nextAction: 'approve' })]))).toBe(2);
   });
 });

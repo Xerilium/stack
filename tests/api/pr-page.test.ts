@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PrPriorityStore } from '../../src/core/pr-priority';
@@ -11,7 +11,7 @@ import { clampInterval, createPrBoardService } from '../../src/api/pr-board-serv
 import { cliPrQueue, storePrQueue, noQueue, QueueRefused, QueueUnavailable, type PrQueue } from '../../src/api/pr-queue';
 import type { PrFacts } from '../../src/core/pr-board';
 import { parseConfig } from '../../src/core/config';
-import { createPrPage } from '../../src/api/pr-page';
+import { createPrPage, readCheck } from '../../src/api/pr-page';
 
 const NOW = Date.parse('2026-11-11T12:00:00Z');
 const OWNER = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ userDetails: 'me', identityProvider: 'github', userRoles: ['authenticated'] })).toString('base64') };
@@ -327,6 +327,21 @@ describe('board service', () => {
     expect(src.n).toBe(n + 1);
     expect(b.at).toBe(new Date(c.now()).toISOString());
     svc.stop();
+  });
+  // @req FR:pr-page/check.file @req FR:pr-page/check.parse
+  it('detail.check comes from <home>/pr/<owner>/<repo>/<n>.md; no file, no check', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'prc-'));
+    mkdirSync(join(home, 'pr', 'o', 'r'), { recursive: true });
+    writeFileSync(join(home, 'pr', 'o', 'r', '1.md'), '- Ask: Check it\n- Server: `pnpm web`\n## Steps\n1. Open it\n');
+    writeFileSync(join(home, 'pr', 'o', 'r', '3.md'), 'x'.repeat(17_000));
+    const svc = createPrBoardService({ source: fakeSource(() => [facts(1), facts(2), facts(3)]), now: () => NOW, timers: clock().timers, check: readCheck(home) });
+    const b = await svc.get();
+    expect(b.rows.find((r) => r.number === 1)!.detail.check).toEqual({ ask: 'Check it', server: 'pnpm web', steps: ['Open it'], pass: [], fail: [] });
+    expect(b.rows.find((r) => r.number === 2)!.detail.check).toBeUndefined();
+    expect(b.rows.find((r) => r.number === 3)!.detail.check).toBeUndefined();
+    expect(readCheck(home)('o/r', 1)).toContain('Ask');
+    expect(readCheck(home)('o/r', 3)).toBeNull();
+    expect(readCheck(home)('../r', 1)).toBeNull();
   });
   it('queue is true only when the queue commands exist', async () => {
     const on = createPrBoardService({ source: fakeSource(() => []), now: () => NOW, timers: clock().timers, queue: async () => true });

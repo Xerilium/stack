@@ -115,7 +115,7 @@ The owner needs a glance count so that he knows agents are moving.
 The owner needs the PRs in the main nav so that he finds them without a hidden icon.
 
 - **FR:nav.rail** (P1): The rail has `Pull requests` after `Needs you`, chord `g r`. It opens the `#/prs` page
-- **FR:nav.badge** (P1): The nav entry shows the count of rows with a next action (`FR:pr-page/card.action`) when above 0, name `n need you`. Signed out, it shows a dot, name `Sign in to GitHub`
+- **FR:nav.badge** (P1): The nav entry shows the count of rows with an actionable next action (`FR:pr-page/card.action`, `FR:pr-page/check.none`) when above 0, name `n need you`. Signed out, it shows a dot, name `Sign in to GitHub`
 - **FR:nav.phone** (P1): The phone tab bar keeps its five slots. `More` (the command palette) lists `Go to Pull requests` with the same count. The top bar icon opens the flyout full screen
 - **FR:nav.page** (P1): `#/prs` shows the flyout content as a page: the same tabs, cards, details, and sign-in state, with no scrim and no Close
 - **FR:nav.load** (P1): The first open polls GitHub before it answers (`FR:pr-page/live.poll`). Until it answers, the page and the flyout show a skeleton (`aria-busy`), never a zero count
@@ -164,7 +164,7 @@ The owner needs one card shape everywhere so that he reads each PR the same way,
 The owner needs the facts for the next action next to the list so that he acts without opening each PR first.
 
 - **FR:detail.layout** (P1): On the page at 1100 px wide or more, the details show in a pane on the right of the list. Below 1100 px, and in the flyout, the details replace the list, with a `Back` button that returns to the list and the same card focus. With no card selected, the pane says `Select a PR to see its next step.`
-- **FR:detail.data** (P1): The host builds `detail` with no AI call: `signoff` (each sign-off thread, oldest first: `{id, url, path?, ask: {author, body, url, at}, after: [{author, body, url, at}], commits: [{sha, title, url, at}]}`: `after` is the thread comments after my ask, `commits` the PR commits after it, newest 10), `review` (`{url, body, comments: [{path, body}]}` of my pending review), `steps` (`FR:pr-page/detail.validate`), and `notes` (up to 5 human comments of mine on the PR, newest first, `{body, url, at}`). A field is present only when it has data
+- **FR:detail.data** (P1): The host builds `detail` with no AI call: `signoff` (each sign-off thread, oldest first: `{id, url, path?, ask: {author, body, url, at}, after: [{author, body, url, at}], commits: [{sha, title, url, at}]}`: `after` is the thread comments after my ask, `commits` the PR commits after it, newest 10), `review` (`{url, body, comments: [{path, body}]}` of my pending review), `steps` (`FR:pr-page/detail.validate`), `check` (`FR:pr-page/check.parse`), and `notes` (up to 5 human comments of mine on the PR, newest first, `{body, url, at}`). A field is present only when it has data
 - **FR:detail.validate** (P1): `Validate` shows what to validate and numbered steps. With the PR in the live lane: the lane state, the server link when ready, each checklist item (`stack live checklist`) with its state, and a link to the checklist page (`#/live`, `FR:pr-review-lane/panel.view`) to tick items. Else the list items under the first PR body heading that contains `validat` (no case). Else `No steps listed.` and a link to the PR
 - **FR:detail.signoff** (P1): `Sign off` shows one sign-off thread at a time: the file path, my ask (full text), how it was addressed (the replies after my ask, then the commits after it, or `No reply or commit since your ask.`), and two actions: `Resolve thread` (`FR:pr-page/api.resolve`; a toast with Undo, which reopens it) and `Re-review` (opens the PR files on GitHub). With more than one thread, `Previous` and `Next` and `Thread n of m` move between them
 - **FR:detail.approve** (P1): `Approve` shows a link to the PR files on GitHub. No approve control (`FR:pr-page/act.never`)
@@ -187,6 +187,15 @@ The owner needs the few routine moves for a PR one tap away so that he does not 
 - **FR:menu.shape** (P1): Each card ends its tools with one icon button `⋯` (name `Actions for <repo>#<n>`, `aria-haspopup="menu"`, `aria-expanded`). It opens a menu (`role=menu`) under the button, or above it when the screen bottom or the phone tab bar leaves no room, with one `menuitem` per action. Focus moves to the first item. ArrowUp and ArrowDown move, Home and End jump, Enter or Space runs, Escape or a tap outside closes and returns focus to the button. One menu is open at a time. The button is quiet: no fill until hover or open
 - **FR:menu.detail** (P1): The details pane ends with a `Quick actions` heading and the same actions as plain buttons and links, in the same order
 - **FR:menu.run** (P1): A label change or a queue move runs, then shows a toast and reloads the board. `Enable Autopilot` and `Remove Autopilot` toasts have Undo (the other op). `Sweep next` says `<repo>#<n> is next for the Sweep Manager`. `Copy sweep command` says `Copied`; when the clipboard fails, it shows the command in the toast. A failure shows the host message. Only the owner sees the menu (`FR:pr-page/act.owner`)
+
+### FR:check: Live check file
+
+The owner needs the ask, the server command, and the steps for a PR in one place so that he validates it without a hunt.
+
+- **FR:check.file** (P1): Sweepers write one file per PR: `<home>/pr/<owner>/<repo>/<number>.md` (`<home>` is `STACK_HOME` or `~/.stack`). The format is in `docs/pr-check.md`. The host reads it on each board build, read only. A path part that is not a GitHub name, or a file over 16 KB, is no file
+- **FR:check.parse** (P1): `parseCheck(text)` is pure. It returns `{ask?, server?, steps, pass, fail, at?}` or null when it finds none of them. `- Ask:`, `- Server:` (backticks dropped), and `- As of:` lines; then list items under `## Steps`, `## Pass`, and `## Fail` (no case). At most 20 items a list, each cut to 200 characters. Any other line is ignored
+- **FR:check.view** (P1): A PR with a check shows, at the top of its details: `Ask`, `Server` with the command in code and a `Copy` button (toast `Copied`), numbered `Steps`, `Pass` and `Fail` lists, and `As of <time>`. Empty parts do not show. The live lane checklist (`FR:pr-page/detail.validate`) still shows below it
+- **FR:check.none** (P1): A row whose next action is `validate` with no check or no steps is not actionable. Its card flag and its details heading say `Not actionable: no server/steps yet`, never a bare `Validate`. It does not count in the nav badge. Choice: a live check with no server and no steps is not a task the owner can do
 
 ### FR:pin: Pin and the Pinned tab
 

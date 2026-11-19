@@ -4,14 +4,14 @@
  * @req FR:pr-page/icon.place @req FR:pr-page/icon.absent @req FR:pr-page/icon.open @req FR:pr-page/flyout.shape @req FR:pr-page/flyout.tabs @req FR:pr-page/flyout.header
  * @req FR:pr-page/flyout.filter @req FR:pr-page/flyout.empty @req FR:pr-page/act.list @req FR:pr-page/act.never @req FR:pr-page/auth.state @req FR:pr-page/auth.signin
  * @req FR:pr-page/nav.badge @req FR:pr-page/nav.page @req FR:pr-page/nav.load @req FR:pr-page/summary.layout @req FR:pr-page/card.fields @req FR:pr-page/card.select
- * @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
+ * @req FR:pr-page/check.view @req FR:pr-page/check.none @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
  * @req FR:pr-page/detail.layout @req FR:pr-page/pin.toggle @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys @req FR:pr-page/live.age
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
 import {
-  ACTION_LABEL, actionsOf, authorText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText,
-  summaryView, TAB_LABEL, tabsOf, toneOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type PrStore, type QuickAction, type SignInSession, type Tab,
+  actionable, actionsOf, authorText, flagText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText,
+  summaryView, TAB_LABEL, tabsOf, toneOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type LiveCheck, type PrStore, type QuickAction, type SignInSession, type Tab,
 } from './prs';
 import type { Toast } from './parts';
 import { store } from './day';
@@ -233,11 +233,11 @@ function Card({ r, c, sort }: { r: PrRow; c: Ctx; sort?: { onDown: (e: PointerEv
         <span class="pr-repo">{r.repo}</span>
         <a class="pr-num" href={r.url} target="_blank" rel="noopener noreferrer">#{r.number}</a>
         {/* A flag, not a control. @req FR:pr-page/card.flag */}
-        {r.nextAction && <span class="pr-flag" aria-hidden="true"><FlagIcon />{ACTION_LABEL[r.nextAction]}</span>}
+        {r.nextAction && <span class="pr-flag" aria-hidden="true"><FlagIcon />{flagText(r)}</span>}
       </div>
       <button type="button" class="pr-open" aria-current={c.selected === r.url ? 'true' : undefined} onClick={() => c.select(r)}>
         <span class="pr-title">{clip(r.title, 120)}</span>
-        {r.nextAction && <span class="sr-only">, next: {ACTION_LABEL[r.nextAction]}</span>}
+        {r.nextAction && <span class="sr-only">, next: {flagText(r)}</span>}
         <span class="pr-sub"><span class="pr-author">{authorText(r)}</span>{spec && <span class="pr-spec">{spec}</span>}</span>
         <span class="pr-chev" aria-hidden="true">›</span>
       </button>
@@ -338,8 +338,22 @@ function Pinned({ rows, c, onMove }: { rows: PrRow[]; c: Ctx; onMove: (r: PrRow,
   );
 }
 
+/** The sweeper's live check: Ask, Server with Copy, numbered Steps, Pass, Fail, As of. @req FR:pr-page/check.view */
+function CheckView({ c, onCopy }: { c: LiveCheck; onCopy: (text: string) => void }) {
+  return (
+    <section class="pr-check" aria-label="Live check">
+      {c.ask && <><h4 class="pr-d-sub">Ask</h4><p class="pr-check-ask">{c.ask}</p></>}
+      {c.server && <><h4 class="pr-d-sub">Server</h4><div class="pr-check-srv"><code class="pr-check-cmd">{c.server}</code><button type="button" class="fl-btn" aria-label="Copy server command" onClick={() => onCopy(c.server!)}>Copy</button></div></>}
+      {c.steps.length > 0 && <><h4 class="pr-d-sub">Steps</h4><ol class="pr-d-steps">{c.steps.map((x, k) => <li key={k}>{x}</li>)}</ol></>}
+      {c.pass.length > 0 && <><h4 class="pr-d-sub">Pass</h4><ul class="pr-d-log pr-check-pass">{c.pass.map((x, k) => <li key={k}>{x}</li>)}</ul></>}
+      {c.fail.length > 0 && <><h4 class="pr-d-sub">Fail</h4><ul class="pr-d-log pr-check-fail">{c.fail.map((x, k) => <li key={k}>{x}</li>)}</ul></>}
+      {c.at && <p class="pr-check-at">As of {whenText(c.at) || c.at}</p>}
+    </section>
+  );
+}
+
 /** The details for the selected card: only what its next action needs. No AI call. @req FR:pr-page/detail.validate @req FR:pr-page/detail.signoff @req FR:pr-page/detail.approve @req FR:pr-page/detail.publish @req FR:pr-page/detail.autopilot @req FR:pr-page/detail.none */
-function Detail({ r, back, busy, onResolve }: { r: PrRow; back?: () => void; busy: boolean; onResolve: (r: PrRow, id: string) => void }) {
+function Detail({ r, back, busy, onResolve, onCopy }: { r: PrRow; back?: () => void; busy: boolean; onResolve: (r: PrRow, id: string) => void; onCopy: (text: string) => void }) {
   const [i, setI] = useState(0);
   const h = useRef<HTMLHeadingElement>(null);
   useEffect(() => { setI(0); }, [r.url]);
@@ -349,10 +363,14 @@ function Detail({ r, back, busy, onResolve }: { r: PrRow; back?: () => void; bus
   const head = (
     <>
       {back && <button type="button" class="fl-btn subtle prs-back" onClick={back}>‹ Back</button>}
-      <h3 ref={h} tabIndex={-1} class="pr-d-h">{a ? ACTION_LABEL[a] : 'No action'}</h3>
+      <h3 ref={h} tabIndex={-1} class="pr-d-h">{a ? flagText(r) : 'No action'}</h3>
       <p class="pr-d-pr"><a href={r.url} {...ext}>{refOf(r)}</a> {r.title}</p>
+      {r.detail.check && <CheckView c={r.detail.check} onCopy={onCopy} />}
     </>
   );
+  if (a === 'validate' && !actionable(r)) {
+    return <div class="pr-d">{head}<p class="pr-d-none">The sweeper has not written the server command and steps yet.</p><p><a class="fl-btn" href={r.url} {...ext}>Open PR</a></p></div>;
+  }
   if (a === 'validate') {
     const s = r.detail.steps;
     return (
@@ -514,13 +532,11 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
     } catch (e) { toast(errText(e, 'Could not resolve the thread'), 'err'); }
   });
 
+  /** Copies, or shows the text when the clipboard fails. @req FR:pr-page/menu.run @req FR:pr-page/check.view */
+  const copyText = (t: string) => void (async () => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch { toast(`Copy this: ${t}`); } })();
   /** A quick action: a queue move, an Autopilot label change with Undo, or a copy. @req FR:pr-page/menu.run */
   const quick = (r: PrRow, a: QuickAction) => {
-    if (a.id === 'copy') {
-      const t = a.text ?? '';
-      void (async () => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch { toast(`Copy this: ${t}`); } })();
-      return;
-    }
+    if (a.id === 'copy') return copyText(a.text ?? '');
     if (a.id === 'sweep') return void run(async () => {
       try { await api.prQueue(r.repo, r.number, a.op === 'add' ? 'add' : 'top'); toast(`${refOf(r)} is next for the Sweep Manager`); reload(); }
       catch (e) { toast(errText(e, 'Could not move it'), 'err'); }
@@ -629,7 +645,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
           </div>
           {(wide || showDetail) && (
             <aside class="pr-detail-col" data-testid="prs-detail" aria-label="PR details">
-              {row && c ? <><Detail r={row} busy={busy} onResolve={resolve} {...(wide ? {} : { back })} /><QuickBar r={row} c={c} /></> : <p class="prs-empty">Select a PR to see its next step.</p>}
+              {row && c ? <><Detail r={row} busy={busy} onResolve={resolve} onCopy={copyText} {...(wide ? {} : { back })} /><QuickBar r={row} c={c} /></> : <p class="prs-empty">Select a PR to see its next step.</p>}
             </aside>
           )}
         </div>

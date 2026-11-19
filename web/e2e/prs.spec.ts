@@ -6,7 +6,7 @@
  * @req FR:pr-page/summary.live @req FR:pr-page/summary.signoff @req FR:pr-page/summary.autopilot @req FR:pr-page/summary.missing @req FR:pr-page/summary.layout
  * @req FR:pr-page/card.fields @req FR:pr-page/card.action @req FR:pr-page/card.color @req FR:pr-page/card.space @req FR:pr-page/card.select
  * @req FR:pr-page/detail.layout @req FR:pr-page/detail.validate @req FR:pr-page/detail.signoff @req FR:pr-page/detail.approve @req FR:pr-page/detail.publish @req FR:pr-page/detail.autopilot @req FR:pr-page/detail.none
- * @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
+ * @req FR:pr-page/check.view @req FR:pr-page/check.none @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
  * @req FR:pr-page/pin.toggle @req FR:pr-page/pin.tab @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys @req FR:pr-page/state.view
  */
 import AxeBuilder from '@axe-core/playwright';
@@ -29,7 +29,7 @@ const BOARD = () => ({
   at: new Date(Date.now() - 12_000).toISOString(), user: 'me', agents: { count: 3, source: 'sessions' },
   counts: { waiting: 2, processing: 4, pending: 3, paused: 1 }, footer: { running: 3, waiting: 4, parked: 2 }, queue: true,
   rows: [
-    row(109, { title: 'Tailnet access for the app', nextAction: 'validate', specLines: 12, pinned: true, rank: 2, detail: { steps: { source: 'lane', state: 'ready-for-michael', serverUrl: 'http://localhost:5174', items: [{ text: 'Open the app on the phone', state: 'open' }, { text: 'Sign in works', state: 'failed' }] } } }),
+    row(109, { title: 'Tailnet access for the app', nextAction: 'validate', specLines: 12, pinned: true, rank: 2, detail: { steps: { source: 'lane', state: 'ready-for-michael', serverUrl: 'http://localhost:5174', items: [{ text: 'Open the app on the phone', state: 'open' }, { text: 'Sign in works', state: 'failed' }] }, check: { ask: 'Check the app on the phone', server: 'pnpm web', steps: ['Open the app'], pass: [], fail: [] } } }),
     row(101, { title: 'Pick the API shape for task comments', nextAction: 'signoff', specLines: 40, pinned: true, rank: 1, state: st('me', 'Sign-off: wait for my ack', `${U(101)}#discussion_r9`), detail: { signoff: [hold('PRRT_one', 101, 'Wait for my ack before you merge'), { ...hold('PRRT_two', 101, 'Hold: test it live first'), after: [], commits: [] }] } }),
     row(1105, { repo: 'allytehq/finops-hubs', url: U(1105, 'allytehq/finops-hubs'), project: 'allyte', title: 'FTK spec approval', nextAction: 'signoff', specLines: 8, detail: { signoff: [hold('PRRT_three', 1105, 'wait for my ack')] } }),
     row(106, { title: 'Ready for Autopilot', group: 'pending', autopilot: false, labels: [], nextAction: 'autopilot', specLines: 3, detail: { notes: [{ body: 'Not yet: the copy is wrong', url: `${U(106)}#issuecomment-4`, at: ago(48) }] } }),
@@ -317,6 +317,45 @@ test('quick actions: one ⋯ menu per card, only what fits, keyboard, and the sa
   await expect.poll(() => posts.filter((p) => p.path === '/prs/label').map((p) => p.body).at(-1)).toEqual({ repo: 'Xerilium/stack', number: 101, op: 'remove' });
 });
 
+test('live check: Ask, Server with Copy, numbered Steps, Pass, Fail, As of; no file is Not actionable', async ({ page }, info) => {
+  const mobile = info.project.name === 'mobile';
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const b = BOARD();
+  const at = '2026-11-18T18:00:00Z';
+  (b.rows[0] as any).detail.check = { ask: 'Check sign-in on the phone', server: 'pnpm web --port 5180', steps: ['Open the app', 'Sign in'], pass: ['Home shows tasks'], fail: ['An error toast'], at };
+  (b.rows[3] as any).detail.check = { ask: 'Check the label copy', steps: [], pass: [], fail: [] };
+  await setup(page, { board: b });
+  const pg = await openPage(page);
+  await card(pg, 109).locator('.pr-open').click();
+  const d = pg.getByTestId('prs-detail');
+  const c = d.locator('.pr-check');
+  await expect(c.locator('.pr-check-ask')).toHaveText('Check sign-in on the phone');
+  await expect(c.locator('code.pr-check-cmd')).toHaveText('pnpm web --port 5180');
+  await expect(c.locator('ol li')).toHaveText(['Open the app', 'Sign in']);
+  await expect(c.locator('.pr-check-pass li')).toHaveText(['Home shows tasks']);
+  await expect(c.locator('.pr-check-fail li')).toHaveText(['An error toast']);
+  await expect(c.locator('.pr-check-at')).toContainText('As of');
+  await c.getByRole('button', { name: 'Copy server command' }).click();
+  await expect(page.locator('.toasts')).toContainText('Copied');
+  // A check with no steps still shows its Ask on any PR.
+  if (mobile) await d.getByRole('button', { name: 'Back' }).click();
+  await pg.getByRole('tab', { name: /Pending/ }).click();
+  await card(pg, 106).locator('.pr-open').click();
+  await expect(d.locator('.pr-check-ask')).toHaveText('Check the label copy');
+  await expect(d.locator('.pr-check ol')).toHaveCount(0);
+  // Validate with no file: never a bare Validate.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  const none = BOARD();
+  delete (none.rows[0] as any).detail.check;
+  await setup(page, { board: none });
+  await page.reload();
+  if (mobile && await d.getByRole('button', { name: 'Back' }).isVisible()) await d.getByRole('button', { name: 'Back' }).click();
+  await pg.getByRole('tab', { name: /Summary/ }).click();
+  await expect(card(pg, 109).locator('.pr-flag')).toHaveText('Not actionable: no server/steps yet');
+  await card(pg, 109).locator('.pr-open').click();
+  await expect(d.getByRole('heading', { level: 3 })).toHaveText('Not actionable: no server/steps yet');
+});
+
 test('details: wide shows a pane on the right; narrow replaces the list with Back', async ({ page }, info) => {
   const mobile = info.project.name === 'mobile';
   await setup(page);
@@ -327,7 +366,7 @@ test('details: wide shows a pane on the right; narrow replaces the list with Bac
   const d = pg.getByTestId('prs-detail');
   await expect(d).toBeVisible();
   await expect(d.getByRole('heading', { level: 3 })).toHaveText('Validate');
-  await expect(d.locator('ol li')).toHaveText([/Open the app on the phone/, /Sign in works.*Failed/]);
+  await expect(d.locator('.pr-d > ol li')).toHaveText([/Open the app on the phone/, /Sign in works.*Failed/]);
   await expect(d.getByRole('link', { name: /localhost:5174/ })).toHaveAttribute('href', 'http://localhost:5174');
   await expect(d.getByRole('link', { name: 'Open the checklist to tick items' })).toHaveAttribute('href', '#/live');
   await expect(card(pg, 109).locator('.pr-open')).toHaveAttribute('aria-current', 'true');

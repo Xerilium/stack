@@ -3,6 +3,7 @@
  * @req FR:pr-page/live.poll @req FR:pr-page/live.event @req FR:pr-page/live.backoff @req FR:pr-page/data.board
  */
 import { activeAgents, buildRows, countRows, footerOf, isWip, parseQueue, summaryOf, type BoardCounts, type Escalations, type LiveLane, type PrFacts, type PrRow, type PrSummary } from '../core/pr-board';
+import { parseCheck } from '../core/pr-check';
 import { GitHubRateLimit, type GitHubBoard } from './github-board';
 
 /** @req FR:pr-page/$board */
@@ -33,6 +34,8 @@ export interface PrBoardServiceOptions {
   inventory?: () => { sessions: { state: string; prs: { url: string; state: string }[] }[] };
   /** The pr-priority store files, parsed JSON or undefined. */
   files?: () => { queue?: unknown; state?: unknown; config?: unknown };
+  /** The raw live check file of a PR, or null (`FR:pr-page/check.file`). */
+  check?: (repo: string, number: number) => string | null;
   /** The live lane (`stack live`); absent on hosts without one. */
   live?: () => LiveLane | undefined;
   myRepos?: string[]; exclude?: string[];
@@ -81,7 +84,9 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
     // Excludes: config `github.exclude` plus the store's `pr-priority.config.json`.
     let live: LiveLane | undefined;
     try { live = o.live?.(); } catch { live = undefined; }
-    const ctx = { user, now: new Date(now()), agentPrs, myRepos: o.myRepos ?? derived, exclude: [...(o.exclude ?? []), ...q.exclude], reports: q.reports, ranks: q.ranks, pinned: q.pinned, recs: q.recs, acks: q.acks, ...(live ? { live } : {}), ...(q.escalations?.live[0] ? { liveFirst: q.escalations.live[0].url } : {}) };
+    // A bad or unreadable check file is no check. @req FR:pr-page/check.file
+    const check = o.check ? (repo: string, n: number) => { try { const t = o.check!(repo, n); return t ? parseCheck(t) : null; } catch { return null; } } : undefined;
+    const ctx = { user, now: new Date(now()), ...(check ? { check } : {}), agentPrs, myRepos: o.myRepos ?? derived, exclude: [...(o.exclude ?? []), ...q.exclude], reports: q.reports, ranks: q.ranks, pinned: q.pinned, recs: q.recs, acks: q.acks, ...(live ? { live } : {}), ...(q.escalations?.live[0] ? { liveFirst: q.escalations.live[0].url } : {}) };
     const rows = facts ? buildRows(facts, ctx) : [];
     return {
       at: at === null ? null : new Date(at).toISOString(), user, agents, counts: countRows(rows), footer: footerOf(rows, agents.count), rows, summary: summaryOf(rows, ctx),

@@ -109,6 +109,14 @@
 .pr-qa .pr-d-sub { margin: 0; }
 .pr-qa a.fl-btn { text-decoration: none; }
 
+/* The sweeper's live check. @req FR:pr-page/check.view */
+.pr-check { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--fl-r-xl); background: var(--chip); }
+.pr-check .pr-d-sub { margin: 4px 0 0; }
+.pr-check .pr-d-sub:first-child { margin-top: 0; }
+.pr-check-srv { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pr-check-cmd { padding: 4px 8px; border-radius: var(--fl-r-md); background: var(--panel); font-size: 12.5px; overflow-wrap: anywhere; }
+.pr-check-at { color: var(--muted); font-size: 12px; }
+
 /* Am I missing anything? A short list. @req FR:pr-page/summary.missing */
 .pr-miss { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .pr-miss li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: 13px; }
