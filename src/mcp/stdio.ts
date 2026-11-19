@@ -3,13 +3,13 @@
  * `stack-mcp`: MCP over stdio for a local project directory. stdout is protocol frames only.
  * @req FR:mcp-server/stdio.entry @req FR:mcp-server/stdio.quiet
  */
-import { existsSync, readFileSync } from 'fs';
+import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 import type { Readable, Writable } from 'stream';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createApiHandler } from '../api/handler';
 import { SCOPES } from '../api/auth';
-import { getDefaults, parseConfig, type StackConfig } from '../core/config';
+import { loadConfig } from '../core/config';
 import { FsStorage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { createMcpServer } from './server';
@@ -20,12 +20,6 @@ const USAGE = 'Usage: stack-mcp [--dir <path>] [--scopes <a,b>]\nScopes: ' + SCO
 export function resolveScopes(raw: string | undefined): string[] {
   if (raw === undefined) return ['read', 'write'];
   return raw.split(',').map((s) => s.trim()).filter((s) => (SCOPES as readonly string[]).includes(s));
-}
-
-function loadConfig(dir: string): StackConfig {
-  const p = join(dir, '.xe/config/stack.json');
-  if (!existsSync(p)) return getDefaults();
-  return parseConfig(JSON.parse(readFileSync(p, 'utf8').replace(/^﻿/, '')));
 }
 
 export interface StdioIo { argv: string[]; env: Record<string, string | undefined>; stdin: Readable; stdout: Writable; stderr: Writable }

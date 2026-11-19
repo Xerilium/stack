@@ -8,6 +8,7 @@ import { liveLine, redact, prepareDemo, prepareLive, resolveRepo, startWeb } fro
 import { BatchedGitStorage } from '../../src/core/storage-batch';
 import { ReportStore } from '../../src/core/reports';
 import { PriStore } from '../../src/core/pris';
+import { ConfigError } from '../../src/core/config';
 
 const ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 Object.assign(process.env, ENV);
@@ -117,6 +118,17 @@ describe('demo delivery', () => {
 
 describe('static caching', () => {
   // @req FR:perf/serve.assets
+  // @req FR:config/load.file @req FR:config/load.file.invalid
+  it('refuses to start on an invalid stack.json and names the file', async () => {
+    const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
+    const p = join(dest, '.xe/config/stack.json');
+    writeFileSync(p, '{"startOfDay":"06:00",}');
+    const web = tmp(); writeFileSync(join(web, 'index.html'), '<html>app</html>');
+    const err = await startWeb({ ...quiet, dir: dest, port: 0, webDir: web }).then(async (s) => { await s.close(); return null; }, (e: unknown) => e);
+    expect(err).toBeInstanceOf(ConfigError);
+    expect((err as Error).message.startsWith(`${p}: `)).toBe(true);
+  });
+
   it('keeps hashed assets for a year and leaves the page and api uncached', async () => {
     const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
     const web = tmp(); mkdirSync(join(web, 'assets')); writeFileSync(join(web, 'index.html'), '<html>app</html>'); writeFileSync(join(web, 'assets/index-abc.js'), 'x');
