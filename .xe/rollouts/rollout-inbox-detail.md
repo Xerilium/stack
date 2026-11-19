@@ -48,7 +48,7 @@ Michael: Inbox "doesn't feel like email". Part 1 of 3: an item detail view (full
 #### inbox-page
 
 - [x] Spec `FR:detail.*`
-- [x] Tests first: `tests/email/read-thread.test.ts`, `tests/api/inbox-detail.test.ts`, `web/tests`, `web/e2e/inbox-detail.spec.ts`
+- [x] Tests first: `tests/email/read-thread.test.ts`, `tests/inbox/readers.test.ts`, `tests/api/inbox-detail.test.ts`, `web/tests`, `web/e2e/inbox-detail.spec.ts`
 - [x] `readThread` (guarded GET only), `GET /inbox-items/{id}/detail`, host wiring
 - [x] Web: split view, detail pane
 - [x] Screenshots at 375 px and desktop

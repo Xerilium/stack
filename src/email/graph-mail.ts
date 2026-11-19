@@ -5,8 +5,7 @@
 import { createReplyRequest } from './draft';
 import { createGraphGuard, GRAPH_BASE, type GraphGuard, type Transport } from './guard';
 import type { MailActions } from './hygiene';
-import type { MailMessage, MailThread } from '../inbox/detail';
-import type { Address, MailProvider, Message } from './types';
+import type { Address, MailMessage, MailProvider, MailThread, Message } from './types';
 import type { SentMessage } from './voice';
 
 const SELECT = 'id,conversationId,subject,from,receivedDateTime,bodyPreview,webLink,isRead';

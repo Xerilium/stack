@@ -4,9 +4,9 @@
  */
 import { accountCachePath, cacheDir, FileTokenCache, graphToken, hasScope } from '../graph/auth';
 import { graphTransport, timedFetch } from '../graph/transport';
-import type { MailReader } from '../inbox/detail';
-import { readThread } from './graph-mail';
-import { createGraphGuard } from './guard';
+import { readThread } from '../email/graph-mail';
+import { createGraphGuard } from '../email/guard';
+import type { MailReader } from './detail';
 
 /** `account` to its reader; undefined when the account has no sign-in with a mail scope on this machine. */
 export function createMailReaders(o: { dir?: string; fetch?: typeof fetch } = {}): (account: string) => Promise<MailReader | undefined> {

@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createMailReaders } from '../../src/email/readers';
+import { createMailReaders } from '../../src/inbox/readers';
 import { accountCachePath, FileTokenCache } from '../../src/graph/auth';
 
 const tok = { version: 1 as const, tenant: 'organizations', clientId: '11111111-1111-1111-1111-111111111111', refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000 };

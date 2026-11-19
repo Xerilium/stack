@@ -24,7 +24,7 @@ import { dirname, extname, join, normalize, relative, resolve, sep } from 'path'
 import { createApiHandler } from '../api/handler';
 import type { AppUpdater } from '../core/app-update';
 import { createClaudeJson } from '../email/llm';
-import { createMailReaders } from '../email/readers';
+import { createMailReaders } from '../inbox/readers';
 import type { MailReader } from '../inbox/detail';
 import { createGitHubPrs, githubRepos } from '../api/github';
 import { createLazyPrPage, createPrPage } from '../api/pr-page';
