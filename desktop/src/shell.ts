@@ -93,7 +93,8 @@ export function createShell(deps: ShellDeps): Shell {
     setPageCapture(async () => { if (w.isDestroyed() || !w.webContents.capturePage) return null; const img = await w.webContents.capturePage(); return img.isEmpty?.() ? null : img.toPNG(); });
     return w;
   };
-  const show = () => { if (!host) { showPending = true; return; } const w = window(); w.show(); w.focus(); };
+  // @req FR:desktop-shell/quit.build: no window once a quit has started.
+  const show = () => { if (stopping) return; if (!host) { showPending = true; return; } const w = window(); w.show(); w.focus(); };
   const hide = () => { win?.hide(); };
   /** @req FR:desktop-shell/window.toggle */
   const toggle = () => { if (win && win.isVisible() && win.isFocused()) hide(); else show(); };
@@ -152,9 +153,11 @@ export function createShell(deps: ShellDeps): Shell {
     app.on('window-all-closed', () => { /* tray app: keep running */ });
     app.on('before-quit', (e: PreventableEvent) => { if (!done) { e.preventDefault(); if (!stopping) void stop().then(() => app.quit()); } });
     await app.whenReady();
+    // @req FR:desktop-shell/quit.build: a quit before ready starts no host.
+    if (stopping) return;
     // @req FR:desktop-shell/host.fail
     try { starting = deps.startHost(); host = await starting; } catch (e) { log(`host: ${e instanceof Error ? e.message : String(e)}`); if (!stopping) { done = true; app.quit(); } return; }
-    // @req FR:desktop-shell/quit.early: quit came first; stop() closes the host, and nothing is built.
+    // @req FR:desktop-shell/quit.early @req FR:desktop-shell/quit.build: quit came first; stop() closes the host, and nothing is built.
     if (stopping) return;
     log(`shell: ${host.url}`);
     Menu.setApplicationMenu(Menu.buildFromTemplate(appMenu()));

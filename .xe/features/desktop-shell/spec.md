@@ -67,7 +67,8 @@ The Stack host must run on the owner's Mac to spawn agents (`.xe/features/stack-
 
 - **FR:quit.stop** (P1): The first `before-quit` is prevented; the shell unregisters shortcuts, destroys the tray, closes the host (bounded by 15 s), then calls `app.quit()` again, which passes. `window-all-closed` never quits
 - **FR:quit.once** (P1): Quit is idempotent: a second `before-quit` while the host closes does nothing extra, and a host that throws on close still lets the app quit
-- **FR:quit.early** (P1): A quit before the host has started MUST wait for the start, inside the same 15 s bound, then close the host it returns. The shell creates no window, tray, or hotkey after a quit
+- **FR:quit.early** (P1): A quit during host start MUST wait for the start, within the 15 s bound, then close that host
+- **FR:quit.build** (P1): After a quit, the shell MUST NOT start a host or create a window, tray, hotkey, or timer
 
 ### FR:safe: Renderer hardening
 

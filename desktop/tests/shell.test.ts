@@ -206,36 +206,79 @@ describe('quit', () => {
     await shell.stopped();
     expect(e.quitCount).toBe(1);
   });
-  // @req FR:desktop-shell/quit.early
-  it('a quit while the host starts waits for it, closes it, and builds no window, tray, or hotkey', async () => {
-    let ready: () => void = () => { /* set below */ };
-    let closes = 0;
-    const startHost: ShellDeps['startHost'] = () => new Promise((ok) => { ready = () => ok({ url: URL_, close: async () => { closes++; } }); });
-    const { e, shell } = setup({ startHost });
+  /** A host start that waits for the test: `called` resolves once the shell has asked for the host. */
+  const pendingHost = () => {
+    const p: { ready(): void; fail(): void; closes: number; called: Promise<void>; startHost: ShellDeps['startHost'] } = { ready: () => {}, fail: () => {}, closes: 0, called: Promise.resolve(), startHost: async () => { throw new Error('unset'); } };
+    let calledOk: () => void = () => {};
+    p.called = new Promise<void>((ok) => { calledOk = ok; });
+    p.startHost = () => new Promise((ok, no) => {
+      p.ready = () => ok({ url: URL_, close: async () => { p.closes++; } });
+      p.fail = () => no(new Error('no repo'));
+      calledOk();
+    });
+    return p;
+  };
+  // @req FR:desktop-shell/quit.early @req FR:desktop-shell/quit.build
+  it('a quit while the host starts waits for it, closes it, and builds no window, tray, hotkey, or timer', async () => {
+    const p = pendingHost();
+    const { e, shell, log } = setup({ startHost: p.startHost });
     const started = shell.start();
-    await Promise.resolve(); // past whenReady: startHost is pending
+    await p.called;
     e.app.quit();
+    e.emit('activate'); // a Dock click during the quit
+    e.emit('second-instance');
     expect(e.quitCount).toBe(0); // held until the host is closed
-    ready();
+    p.ready();
     await started;
     await shell.stopped();
-    expect(closes).toBe(1);
+    e.emit('activate'); // after the quit, until the process exits
+    expect(p.closes).toBe(1);
+    expect(e.quitCount).toBe(1);
+    expect(e.windows).toHaveLength(0);
+    expect(e.trays).toHaveLength(0);
+    expect(e.shortcuts.size).toBe(0);
+    expect(log.some((l) => l.startsWith('shell: '))).toBe(false); // the build and its timers never ran
+  });
+  // @req FR:desktop-shell/quit.early @req FR:desktop-shell/host.fail
+  it('a quit while the host starts still quits once when the start fails', async () => {
+    const p = pendingHost();
+    const { e, shell } = setup({ startHost: p.startHost });
+    const started = shell.start();
+    await p.called;
+    e.app.quit();
+    p.fail();
+    await started;
+    await shell.stopped();
     expect(e.quitCount).toBe(1);
     expect(e.windows).toHaveLength(0);
     expect(e.trays).toHaveLength(0);
     expect(e.shortcuts.size).toBe(0);
   });
-  // @req FR:desktop-shell/quit.early @req FR:desktop-shell/host.fail
-  it('a quit while the host starts still quits once when the start fails', async () => {
-    let fail: () => void = () => { /* set below */ };
-    const startHost: ShellDeps['startHost'] = () => new Promise((_ok, no) => { fail = () => no(new Error('no repo')); });
-    const { e, shell } = setup({ startHost });
+  // @req FR:desktop-shell/quit.early
+  it('a start that never finishes still quits after the close bound', async () => {
+    const p = pendingHost();
+    const { e, shell, log } = setup({ startHost: p.startHost, closeTimeoutMs: 20 });
     const started = shell.start();
-    await Promise.resolve();
+    await p.called;
     e.app.quit();
-    fail();
+    await shell.stopped();
+    expect(e.quitCount).toBe(1);
+    expect(log).toContain('host: close timed out');
+    p.ready(); // the late host is still closed, and nothing is built
+    await started;
+    await new Promise((ok) => setImmediate(ok));
+    expect(p.closes).toBe(1);
+    expect(e.windows).toHaveLength(0);
+  });
+  // @req FR:desktop-shell/quit.build
+  it('a quit before the app is ready starts no host', async () => {
+    let calls = 0;
+    const { e, shell } = setup({ startHost: async () => { calls++; return { url: URL_, close: async () => {} }; } });
+    const started = shell.start();
+    e.app.quit(); // start() is still awaiting whenReady
     await started;
     await shell.stopped();
+    expect(calls).toBe(0);
     expect(e.quitCount).toBe(1);
     expect(e.windows).toHaveLength(0);
   });
