@@ -42,7 +42,7 @@ The owner needs one place to set things up, so the views that do work stay small
 
 - **FR:view.route** (P1): `#/settings` opens Settings. `#/settings/accounts`, `#/settings/priorities`, `#/settings/agents` and `#/settings/updates` open it scrolled to that section, also when the hash changes while Settings is open.
 - **FR:view.entry** (P1): The desktop rail footer has a `Settings` item with a gear icon, above `Commands`. On a phone, `More` opens the command palette, which has `Go to Settings`. The chord is `g ,`.
-- **FR:view.sections** (P1): Sections, in order: `Accounts`, `Priorities`, `Agents`, `Updates`. Each is an `h2` with a one-line summary under it. Accounts is first.
+- **FR:view.sections** (P1): The page starts with the page header `Settings` (`FR:ui-kit/header`). Sections, in order: `Accounts`, `Priorities`, `Agents`, `Updates`. Each is an `h2` with a one-line summary under it. Accounts is first.
 - **FR:view.fit** (P1): At 375 px and at 1280 px wide the view has no horizontal scroll. Touch targets are 44 px high on touch screens. axe finds no violations in light or dark.
 
 ### FR:priorities: Priorities

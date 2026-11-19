@@ -107,11 +107,11 @@ The owner needs every account and its state on one screen in Settings, so he see
 
 - **FR:web.where** (P1): Accounts are managed in Settings > Accounts (`FR:settings/view.sections`); the first-run email step (`FR:first-run-onboarding`) shows the same list. Now and Inbox never embed the list; they link to `#/settings/accounts`.
 - **FR:web.panel** (P1): One compact list, one row per account, sorted by address. `Add account` is a button at the top of the list. No paragraph per row.
-- **FR:web.row** (P1): A row shows, on one line: the kind icon (`Work` briefcase or `Personal` person, with that word as its accessible name), the address, and a status dot plus one short word:
-  - `connected`: green dot, `Connected`.
-  - `expired`: orange dot, `Needs sign-in`.
-  - `down`: yellow dot, `Microsoft not responding`.
-  - `error`: red dot, `Not working`.
+- **FR:web.row** (P1): A row shows, on one line: the kind icon (`Work` briefcase or `Personal` person, with that word as its accessible name), the address, and a status chip (`FR:ui-kit/chip`) with one short word:
+  - `connected`: `ok` tone, `Connected`.
+  - `expired`: `warn` tone, `Needs sign-in`.
+  - `down`: `warn` tone, `Microsoft not responding`.
+  - `error`: `bad` tone, `Not working`.
   - The status has a tooltip (`title`) with the last good read (`Last synced 9:41 AM`, or `Never synced`) and, for `down`, `Retrying in 2 min`.
   - The rows are read again after each calendar read. While Settings is open, a `down` row's retry time triggers a calendar read, then the rows are read again.
 - **FR:web.fix** (P1): An `expired` or `error` row has one `Fix` button that starts a sign-in for that account (drafts kept on when on). A `down` row has no `Fix`: Stack retries on its own.

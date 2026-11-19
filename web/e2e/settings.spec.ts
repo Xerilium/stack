@@ -48,7 +48,12 @@ test.describe('Settings > Accounts', () => {
     const rows = page.locator('.acct-row');
     await expect(rows).toHaveCount(6);
     await expect(page.locator('.set-sec h2')).toHaveText(['Accounts', 'Agents', 'Updates']);
+    await expect(page.locator('h1.ui-head-title')).toHaveText('Settings');
     await expect(row(page, 'michael@xerilium.com')).toContainText('Connected');
+    // One status chip per row, one tone per state.
+    await expect(row(page, 'michael@xerilium.com').locator('.acct-status .ui-chip')).toHaveClass(/t-ok/);
+    await expect(row(page, 'flanakin@outlook.com').locator('.acct-status .ui-chip')).toHaveClass(/t-warn/);
+    await expect(row(page, 'm@contoso.test').locator('.acct-status .ui-chip')).toHaveClass(/t-bad/);
     await expect(row(page, 'michael@xerilium.com').getByRole('img', { name: 'Work' })).toBeVisible();
     await expect(row(page, 'mf@hotmail.com').getByRole('img', { name: 'Personal' })).toBeVisible();
     await expect(row(page, 'flanakin@outlook.com')).toContainText('Needs sign-in');

@@ -7,7 +7,13 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { createClient } from './api';
 import { byWord, CHIP, ITEM_WORD, newerLane, toggleOp, type ItemOp, type Lane, type LiveItem } from './live-lane';
+import { PageHeader } from './ui/PageHeader';
+import { EmptyState, Loading } from './ui/States';
+import { StatusChip, type ChipTone } from './ui/StatusChip';
 import './live-lane.css';
+
+/** One tone per lane state: your turn is the accent, agent work is neutral. @req FR:pr-review-lane/panel.chip */
+const CHIP_TONE: Record<Lane['state'], ChipTone> = { idle: 'neutral', preparing: 'neutral', working: 'neutral', 'ready-for-michael': 'info', revalidating: 'info' };
 
 function Item({ item, busy, run }: { item: LiveItem; busy: boolean; run: (op: ItemOp, o?: { id?: string; text?: string }) => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
@@ -79,13 +85,10 @@ export function LivePanel({ fetchFn }: { fetchFn?: typeof fetch } = {}) {
   const a = lane?.active;
   return (
     <main class="lv" aria-labelledby="lv-h">
-      <header class="lv-head">
-        <h1 id="lv-h" class="lv-title">Live validation</h1>
-        {lane && <span class={`lv-chip c-${lane.state}`} data-testid="lane-chip" role="status" aria-live="polite">{CHIP[lane.state]}</span>}
-      </header>
+      <PageHeader title={<span id="lv-h">Live validation</span>} actions={lane && <span data-testid="lane-chip" role="status" aria-live="polite"><StatusChip label={CHIP[lane.state]} tone={CHIP_TONE[lane.state]} /></span>} />
       {error && <p class="lv-error" role="alert">{error}</p>}
-      {!lane && !error && <p class="lv-empty" role="status">Loading…</p>}
-      {lane && !a && <p class="lv-empty">No PR in live validation.</p>}
+      {!lane && !error && <Loading what="live validation" />}
+      {lane && !a && <EmptyState what="No PR in live validation." next="An agent puts a PR here when it is ready for your check." />}
       {a && (
         <>
           <section class="lv-pr" aria-label="Live PR">

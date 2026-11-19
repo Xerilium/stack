@@ -6,6 +6,8 @@
  * @req FR:settings/agents.state @req FR:settings/agents.off @req FR:settings/updates.modes @req FR:settings/updates.builds @req FR:settings/updates.none
  * @req FR:connect-accounts/web.where @req FR:connect-accounts/web.learn
  */
+import { PageHeader } from './ui/PageHeader';
+import { Loading } from './ui/States';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { CalendarLink, type CalCtl } from './CalendarLink';
 import { ConnectAccounts } from './ConnectAccounts';
@@ -45,7 +47,7 @@ function Agents({ api }: { api: SettingsApi }) {
   const [s, setS] = useState<DeliverySummary | null | 'none'>(null);
   const [note, setNote] = useState('');
   useEffect(() => { api.deliverySummary().then(setS, () => setS('none')); }, []);
-  if (s === null) return <p class="set-note" role="status">Loading…</p>;
+  if (s === null) return <Loading what="agent settings" rows={2} />;
   if (s === 'none') return <p class="set-note">Agents answer from Stack on your Mac.</p>;
   const l = agentsLines(s);
   const signIn = async () => {
@@ -72,7 +74,7 @@ function Updates({ u }: { u: SettingsUpdates }) {
   const [want, setWant] = useState<UpdateMode | null>(null);
   // `Saved` only once the host reports the new mode; a failed save shows as a toast.
   useEffect(() => { if (want && u.state?.mode === want) { setSaved('Saved'); setWant(null); } }, [want, u.state?.mode]);
-  if (!u.state) return u.known ? <p class="set-note">Updates come with the desktop app.</p> : <p class="set-note" role="status">Loading…</p>;
+  if (!u.state) return u.known ? <p class="set-note">Updates come with the desktop app.</p> : <Loading what="update settings" rows={2} />;
   const st = u.state;
   // A failed save forgets the pick, so a later change elsewhere never shows `Saved` here.
   const pick = async (m: UpdateMode) => { setSaved(''); setWant(m); if (!(await u.setMode(m))) setWant(null); };
@@ -113,7 +115,7 @@ export function SettingsView({ api, cal, updates, onAccounts, now, priorities }:
   }, [priPhase === 'absent']);
   return (
     <div class="settings fl" data-testid="settings">
-      <h1 class="set-title">Settings</h1>
+      <PageHeader title="Settings" />
       <section id="settings-accounts" class="set-sec" aria-labelledby="set-h-accounts">
         <h2 id="set-h-accounts">Accounts</h2>
         <p class="set-sum">{READ_TEXT} <LearnMore /></p>
