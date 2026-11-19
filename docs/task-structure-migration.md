@@ -47,7 +47,7 @@ Spec: `.xe/features/task-structure/spec.md`. This is a breaking change. Stack ha
 
 6. Commit, then start `stack web`.
 
-`stack ids assign` is not in this release. It comes with `#id` task refs, which wait for an owner decision.
+`stack ids assign` and `stack mv` come in the next release (`.xe/features/task-ids/spec.md`). Until then, move files by hand as above.
 
 ## What breaks
 

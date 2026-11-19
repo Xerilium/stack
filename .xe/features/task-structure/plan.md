@@ -5,7 +5,8 @@
 | PR | Content | State |
 | --- | --- | --- |
 | 1 | Recursive list, `.stack/` system folders, path-based project IDs | This PR |
-| 2 | `#id` refs, `stack ids assign`, nested task metadata | Proposed; waits for owner go |
+| 2 | `T:` task IDs, `stack ids assign`, blockquote metadata, `stack mv`, lint (`task-ids`) | Next |
+| 3 | Asks as nested 🙋 tasks (`task-asks`) | After PR 2 |
 
 ## PR 1 approach
 

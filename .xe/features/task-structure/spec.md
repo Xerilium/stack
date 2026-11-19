@@ -17,7 +17,7 @@ The owner groups goals by company and product in folders (`tasks/xerilium/stack/
 ## Scope
 
 - In: recursive task listing, `.stack/` system folders at any level, path-based project IDs, refs and agent scopes with nested IDs, repo discovery.
-- Out (this slice): `#id` task refs, `stack ids assign`, nested task metadata (see Proposed), frontmatter scoring, Catalyst spec mapping, a derived aggregate cache, UI redesign.
+- Out (this slice): task IDs, `stack ids assign`, task metadata (see Next slices), frontmatter scoring, Catalyst spec mapping, a derived aggregate cache, UI redesign.
 - No compatibility with the old plain folders (`tasks/asks`, `tasks/agents`, `tasks/logs`, `tasks/inbox`, `tasks/wake`). Migration: `docs/task-structure-migration.md`.
 
 ## Scenarios
@@ -48,12 +48,11 @@ The owner groups goals by company and product in folders (`tasks/xerilium/stack/
 - **FR:system.ask-key** (P1): An ask key MUST resolve to its file at any level; a key in more than one folder resolves to the first path in sort order. Archive moves an ask to `archive/` in its own `.stack/` folder
 - **FR:system.watch** (P2): The file watcher MUST report a change under any `tasks/**/.stack/asks/` folder as `asks`
 
-## Proposed (not in this slice; waits for owner decision)
+## Next slices
 
-- Task refs as an inline short ID at the end of a task line: `#a3f9` (lowercase base36, 4+ characters, unique in the repo, never reused). They replace every `tasks/<file>.md:<line>` and `project:line` ref.
-- `stack ids assign`: adds an ID to each task that has none. Idempotent; keeps all nested content.
-- An ID-to-`path:line` index built on read.
-- Task metadata as nested `key: value` bullets under the task (`owner`, `due`, `ask`, `next`, `blocked_by`, `links`). Parsed into the task model; unknown keys kept.
+- PR 2: task IDs, `stack ids assign`, blockquote metadata, `stack mv`, lint (`.xe/features/task-ids/spec.md`).
+- PR 3: asks as nested 🙋 tasks (`.xe/features/task-asks/spec.md`).
+- Until PR 3, asks stay files in `.stack/asks/` (a stopgap).
 
 ## Architecture Constraints
 
