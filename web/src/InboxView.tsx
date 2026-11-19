@@ -2,7 +2,7 @@
  * The Inbox page: all mail, unread Teams and Slack. Each row has a summary, one suggested action, and a menu of the rest.
  * A reply opens an editable draft first; the page can only create a draft, never send.
  * Mail only: no setup UI. Never says Inbox zero unless every source synced recently; a problem is one quiet line linked to Settings > Accounts.
- * @req FR:inbox-page/web.view @req FR:inbox-page/web.view.unread @req FR:inbox-page/web.view.border @req FR:inbox-page/web.view.button @req FR:inbox-page/web.draft @req FR:inbox-page/web.phone @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.status.setup @req FR:inbox-page/web.nocmd @req FR:inbox-page/web.accounts
+ * @req FR:inbox-page/web.view @req FR:inbox-page/web.view.unread @req FR:inbox-page/web.view.border @req FR:inbox-page/web.view.button @req FR:inbox-page/web.draft @req FR:inbox-page/web.phone @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.nocmd @req FR:inbox-page/web.accounts
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
@@ -12,7 +12,7 @@ import './inbox.css';
 
 type ToastFn = (text: string, kind?: Toast['kind'], undo?: () => void) => void;
 
-/** One item. Keeps its own markup until `AskCard` ships (product-reset Stage 4). @req FR:inbox-page/web.components */
+/** One item. Keeps its own markup until `AskCard` ships (product-reset Stage 4; issue 169). */
 function Row({ row, catalog, api, toast, done }: { row: InboxRow; catalog: ActionInfo[]; api: Client; toast: ToastFn; done: (id: string) => void }) {
   const { primary, more } = actionsFor(row, catalog);
   const [drafting, setDrafting] = useState(false);
@@ -118,8 +118,8 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
   const unread = items.filter((i) => i.unread).length;
   const empty = emptyText(src?.summary);
   const line = statusLine(src?.summary);
-  /** Only a problem the owner can fix in Settings gets a link; a sync that is behind has nothing to fix there. @req FR:inbox-page/web.status.fix @req FR:inbox-page/web.empty.fix */
-  const fix = src?.summary.attention ? <a class="in-manage" href="#/settings/accounts">Fix in Settings</a> : null;
+  /** Only a sign-in the owner can fix in Settings gets a link; a sync that is behind, or a failed model or sync, has nothing to fix there. @req FR:inbox-page/web.status.fix @req FR:inbox-page/web.empty.fix */
+  const fix = src?.summary.attention && src.sources.some((x) => x.connect) ? <a class="in-manage" href="#/settings/accounts">Fix in Settings</a> : null;
   return (
     <section class="inbox-view" aria-labelledby="inbox-h">
       <div class="in-head"><h1 class="h1" id="inbox-h">Inbox{unread > 0 && <span class="count">{unread}</span>}</h1><a class="in-manage in-accounts" href="#/settings/accounts">Manage accounts</a></div>

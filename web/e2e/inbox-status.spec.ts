@@ -1,7 +1,7 @@
 /**
  * Inbox status: mail only, no setup UI, honest empty states, one quiet link to Settings > Accounts, and the nav dot.
  * Runs at 1280 (desktop) and 375 (mobile): axe clean, no sideways scroll, 44 px targets on a phone.
- * @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.nocmd @req FR:inbox-page/web.dot @req FR:inbox-page/web.phone @req FR:inbox-page/web.view.unread @req FR:inbox-page/web.view.border @req FR:inbox-page/web.view.button @req FR:inbox-page/web.accounts @req FR:inbox-page/web.status.fix @req FR:inbox-page/web.empty.fix @req FR:inbox-page/web.status.setup
+ * @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.nocmd @req FR:inbox-page/web.dot @req FR:inbox-page/web.phone @req FR:inbox-page/web.view.unread @req FR:inbox-page/web.view.border @req FR:inbox-page/web.view.button @req FR:inbox-page/web.accounts @req FR:inbox-page/web.status.fix @req FR:inbox-page/web.empty.fix
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -115,6 +115,13 @@ test('an open tab drops Inbox zero once the sync goes stale', async ({ page }) =
   await expect(main(page).getByRole('link', { name: 'Fix in Settings' })).toHaveCount(0);
 });
 
+// A failure Settings cannot fix gets the headline only. @req FR:inbox-page/web.status.fix @req FR:inbox-page/web.empty.fix
+test('a failed sync shows the headline with no Fix link', async ({ page }) => {
+  await open(page, { sources: [{ kind: 'email', account: 'a@outlook.com', state: 'error', mode: 'read-only', lastSyncAt: ago(5), error: 'Email sync failed: a@outlook.com' }, ...planned], summary: { connected: 1, total: 1, fresh: 0, attention: true, canClaimZero: false, headline: 'Email sync failed: a@outlook.com' } });
+  await expect(page.getByTestId('empty-state')).toContainText('Email sync failed');
+  await expect(main(page).getByRole('link', { name: 'Fix in Settings' })).toHaveCount(0);
+});
+
 test('a failed read never claims Inbox zero', async ({ page }) => {
   const m = await mockApi(page);
   m.fail.set('/inbox-items', { status: 500, code: 'internal', message: 'boom' });
@@ -140,8 +147,8 @@ test('the dot shows on the Inbox rail item (desktop) or the More tab (phone) fro
   const m = await mockApi(page);
   m.inboxSources = nothing();
   await page.goto('/#/today');
-  if (info.project.name === 'mobile') await expect(page.getByRole('button', { name: /More: open command palette\. Inbox needs setup/ })).toBeVisible();
-  else await expect(page.locator('.rail').getByRole('img', { name: 'Inbox needs setup' })).toBeVisible();
+  if (info.project.name === 'mobile') await expect(page.getByRole('button', { name: /More: open command palette\. Inbox: an account needs attention/ })).toBeVisible();
+  else await expect(page.locator('.rail').getByRole('img', { name: 'Inbox: an account needs attention' })).toBeVisible();
 });
 
 for (const scheme of ['light', 'dark'] as const) {

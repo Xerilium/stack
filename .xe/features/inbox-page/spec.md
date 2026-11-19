@@ -92,20 +92,16 @@ The owner needs to scan mail and act on it. Inbox holds mail and messages only. 
 - **FR:web.empty** (P1): Page MUST say "Inbox zero. Nothing needs you." with no items only when `canClaimZero`.
   - **FR:web.empty.headline** (P1): Page MUST show the headline as the empty state when it cannot claim zero ("No inboxes connected", "Last synced 3h ago", "Email sign-in expired: a@x.com").
   - **FR:web.empty.unknown** (P1): Page MUST say "Inbox status unknown" when it has no summary (a failed read).
-  - **FR:web.empty.fix** (P1): Page MUST add a `Fix in Settings` link to `#/settings/accounts` under the empty state when `attention` is true.
+  - **FR:web.empty.fix** (P1): Page MUST add a `Fix in Settings` link to `#/settings/accounts` under the empty state when `attention` is true and a source has `connect` set. A failure Settings cannot fix (`model-down`, `sync-failed`) shows the headline only.
   - **FR:web.empty.refresh** (P1): Page MUST read the items and summary again every minute, when the tab comes back, and on live changes.
 - **FR:web.accounts** (P1): Page header MUST show one quiet `Manage accounts` link to `#/settings/accounts`.
   > - @req FR:connect-accounts/web.where
 - **FR:web.status** (P1): Page MUST show the headline as one quiet line above the list when items show and `headline` is set.
-  - **FR:web.status.fix** (P1): The line MUST end with a `Fix in Settings` link to `#/settings/accounts` when `attention` is true.
-  - **FR:web.status.setup** (P1): Settings > Accounts MUST hold every setup control; Inbox shows only the headline and links.
-    - Rationale: Setup on a work page is noise. Settings is the one place for accounts (`FR:settings/view.sections`).
-- **FR:web.nocmd** (P1): Page MUST show only owner words from a source: the headline and the links.
+  - **FR:web.status.fix** (P1): The line MUST end with a `Fix in Settings` link to `#/settings/accounts` when `attention` is true and a source has `connect` set.
+- **FR:web.nocmd** (P1): Every Inbox string passes `FR:product-reset/connect.rule.test`.
   > - @req FR:product-reset/connect.rule
-  - `needs`, `command` and `doc` serve the CLI (`FR:cli.sources`).
-- **FR:web.dot** (P1): The Inbox rail item, and on a phone the More tab, carry a dot when `attention` is true. The dot has an accessible name ("Inbox needs setup").
-- **FR:web.components** (P2): Row SHOULD draw with `AskCard` once the shared components ship.
-  > - @req FR:product-reset/ui.askcard
+  - **FR:web.nocmd.fields** (P1): From the sources reply, the page reads `summary` and each source's `connect` flag. `needs`, `command` and `doc` serve the CLI (`FR:cli.sources`).
+- **FR:web.dot** (P1): The Inbox rail item, and on a phone the More tab, carry a dot when `attention` is true. The dot has an accessible name ("Inbox: an account needs attention").
 
 ### FR:api: API
 
