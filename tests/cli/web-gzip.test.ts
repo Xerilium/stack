@@ -49,7 +49,7 @@ describe('stack web gzip', () => {
     expect(gunzipSync(z.body).toString()).toBe(plain.body.toString());
   });
 
-  // @req FR:perf/serve.gzip @req FR:perf/serve.gzip.cache
+  // @req FR:perf/serve.gzip @req FR:perf/serve.gzip.budget @req FR:perf/serve.gzip.cache
   it('gzips the main JS bundle to at least 60% smaller', async () => {
     const a = await raw('/assets/index-abc.js', { 'accept-encoding': 'gzip' });
     const b = await raw('/assets/index-abc.js', { 'accept-encoding': 'gzip' });
