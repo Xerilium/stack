@@ -21,7 +21,7 @@ async function open(page: Page) {
   await expect(page.locator('[data-testid="plan"] .block .what').first()).toBeVisible();
 }
 
-// @req FR:home/myday.timeline.phone @req FR:home/myday.timeline.start @req FR:home/myday.timeline.estimate
+// @req FR:home/myday.timeline.phone @req FR:home/myday.timeline.phone.cut @req FR:home/myday.timeline.start @req FR:home/myday.timeline.estimate
 test('on a phone a row keeps its start time and estimate in view', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'phone layout');
   await open(page);
