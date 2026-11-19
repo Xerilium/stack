@@ -545,7 +545,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // @req FR:api/routes.rank
+    // @req FR:api/routes.rank @req FR:pri-first-ranking/api.pri
     // The one ranking: engine order plus the overrides.
     method: 'GET', doc: '/rank', name: 'rank', query: RANK_Q,
     async run(c) {
@@ -554,7 +554,7 @@ export const ROUTES: Route[] = [
       const blocks = q.get('blocks') ?? 'now';
       // readQuery checks names only, not enum values: this check is the only one for `blocks`.
       if (blocks !== 'now' && blocks !== 'any') throw invalid([{ field: 'blocks', message: 'Must be now or any' }]);
-      const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}), ...(t.stale ? { stale: true } : {}) }));
+      const items = (await rankStack(c.life, undefined, limit, { ignoreBlocks: blocks === 'any' })).map((t) => ({ ref: formatRef(t.ref), text: t.text, project: t.project, score: t.score, ...(t.rule ? { rule: t.rule } : {}), ...(t.root ? { root: formatRef(t.root) } : {}), ...(t.stale ? { stale: true } : {}), ...(t.pri ? { pri: t.pri } : {}) }));
       // Per project: today's pick and done today. @req FR:pri-first-ranking/daily.@api
       if (q.get('daily') !== '1') return json(200, { items });
       const daily = (await dailyGoal(c.life)).map((d) => ({ project: d.project, ...(d.name ? { name: d.name } : {}), done: d.done, ...(d.pick ? { pick: { ref: formatRef(d.pick.ref), text: d.pick.text } } : {}) }));

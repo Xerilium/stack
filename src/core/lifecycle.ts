@@ -313,6 +313,8 @@ export interface RankedTask extends NextTask {
   root?: TaskRef;
   /** Set when the row is stale. @req FR:task-lifecycle/rank.stale */
   stale?: StaleInfo;
+  /** The owner priority the row ranked under, with its rank for the day. @req FR:pri-first-ranking/api.pri */
+  pri?: { rank: number; title: string };
 }
 
 /** `owner: 'any'` keeps rows of every owner; the default is the owner queue. @req FR:task-lifecycle/rank.owner */
@@ -435,7 +437,8 @@ async function findNext(ctx: LifecycleContext, at?: Date): Promise<{ next: NextT
  * @req FR:task-lifecycle/rank.@function @req FR:task-lifecycle/rank.order @req FR:task-lifecycle/rank.limit @req FR:task-lifecycle/rank.output @req FR:task-lifecycle/rank.blocks
  */
 export async function rankStack(ctx: LifecycleContext, at?: Date, limit?: number, opts: StackRankOptions = {}): Promise<RankedTask[]> {
-  const all = (await rankAll(ctx, at, opts)).map((r) => r.next);
+  // Copies: the memo is read-only. @req FR:pri-first-ranking/api.pri
+  const all = (await rankAll(ctx, at, opts)).map((r) => (r.link ? { ...r.next, pri: { rank: r.link.rank, title: r.link.title } } : r.next));
   return limit !== undefined ? all.slice(0, limit) : all;
 }
 

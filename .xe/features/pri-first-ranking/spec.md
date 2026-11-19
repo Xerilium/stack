@@ -68,6 +68,7 @@ Owner needs the web Home to show the same priority order so that every screen ag
 - **FR:api.@api** (P1): Interface: `GET /api/rank`, `GET /api/next`
 - **FR:api.order** (P1): API MUST rank tasks with the priorities of its priority store.
 - **FR:api.tasks** (P1): API MUST return task rows only, no action rows.
+- **FR:api.pri** (P1): API MUST give each task row linked to a priority `pri: { rank, title }`: the priority it ranked under (`FR:order.linked`), with its rank for the day. An unlinked row has no `pri`.
 
 ### FR:day: Order the priorities for the day
 

@@ -135,6 +135,7 @@ Owner needs one ranked list of what to do next so that the CLI, the API, the `/n
   - `score` (number) — the engine score
   - `rule` (string?) — the matching override's `match`, when one applied
   - `root` (TaskRef?) — the top-level row it sits under
+  - `pri` ({ rank, title }?) — the owner priority the row ranked under (`FR:pri-first-ranking/api.pri`)
   - `stale` ({ overdueDays, lastActivity }?) — set when the row is stale (`FR:rank.stale`); `lastActivity` is the ISO time of the last commit that changed the row. CLI and API rank items show it as `stale: true`
 
 ## Architecture Constraints

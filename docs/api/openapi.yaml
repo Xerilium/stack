@@ -83,6 +83,15 @@ paths:
                         stale:
                           type: boolean
                           description: True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500
+                        pri:
+                          type: object
+                          description: The owner priority the row ranked under; absent for an unlinked row
+                          properties:
+                            rank:
+                              type: integer
+                              description: Its rank for the day, 1 first
+                            title:
+                              type: string
                   daily:
                     type: array
                     description: "With daily=1: per project, its first ranked task and whether a task in it was done today"
