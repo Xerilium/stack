@@ -286,7 +286,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
         )}
       </header>
       <p class="sr-only" role="status" aria-live="polite">{announce}</p>
-      {!offline && asks.phase === 'loading' && <Skeleton />}
+      {!offline && (asks.phase === 'loading' || (asks.phase === 'ready' && !asks.countReady && items.length === 0)) && <Skeleton />}
       {offline && asks.phase !== 'ready' && <div class="asks-error offline" role="status"><p>Offline. Asks load when you're back online.</p></div>}
       {!offline && asks.phase === 'error' && (
         <div class="asks-error" role="alert"><p>Cannot load asks: {asks.error}</p><button type="button" class="btn primary" onClick={() => void asks.retry()}>Retry</button></div>
@@ -296,7 +296,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
        * @req FR:web-shell/state.needs.empty
        */}
       {signin && <SignInNotice onSignIn={onSignIn} />}
-      {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && !signin && (
+      {asks.phase === 'ready' && asks.countReady && items.length === 0 && ghosts.length === 0 && !signin && (
         <div class="asks-empty" data-testid="asks-empty">
           <div class="tick-art">{Icon.check}</div>
           <p class="big">You're all caught up.</p>

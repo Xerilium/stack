@@ -1,6 +1,6 @@
 /**
  * The Needs you count shows one value on a cold load: it waits for the server asks and the task asks.
- * @req FR:ask-queue/web.home.count @req FR:ask-queue/web.home.count.once @req FR:ask-queue/web.home.count.live
+ * @req FR:ask-queue/web.home.count @req FR:ask-queue/web.home.count.live
  */
 import { expect, test } from '@playwright/test';
 import { mockApi, type MockAsk } from './mock';
@@ -56,4 +56,23 @@ test('after the first count, a live change shows at once', async ({ page }) => {
   m.rev = null; // the next probe reloads
   await expect(page.locator('[data-testid="nav-notifications"]:visible .badge')).toHaveText('2', { timeout: 20_000 });
   await expect(page).toHaveTitle('(2) Stack');
+});
+
+test('Notifications page: no empty state and no heading count until the CoS items load', async ({ page }) => {
+  const m = await mockApi(page);
+  m.asks = [];
+  m.needs = [{ id: 'n1', title: 'Approve the plan', recommendation: 'Go', link: 'https://example.com/1' }];
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  await page.route('**/api/needs-you', async (route) => { await gate; await route.fallback(); });
+  const asksIn = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/asks');
+  await page.goto('/#/notifications');
+  await asksIn;
+  await page.waitForTimeout(200);
+  await expect(page.getByTestId('asks-empty')).toHaveCount(0);
+  await expect(page.locator('h1 .count')).toHaveCount(0);
+  release();
+  await expect(page.locator('.ask-card')).toContainText('Approve the plan');
+  await expect(page.locator('h1 .count')).toHaveText('1');
+  await expect(page.getByTestId('asks-empty')).toHaveCount(0);
 });
