@@ -34,7 +34,7 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 - [x] `src/core/verbs.ts`; checks and score (`FR:quality.rules`, `FR:quality.score`)
 - [x] `stack check` (`FR:cli.check`)
 - [x] Single enrich route (`FR:api.enrich`, `FR:quality.enrich`)
-- [ ] Bulk enrich route and batching (`FR:api.enrich`, `FR:quality.enrich.batch`)
+- [ ] Bulk enrich route and batching (`FR:api.enrich.batch`, `FR:quality.enrich.batch`)
 - [x] `docs/task-rubric.md`; link from agent instructions
 - [ ] Link `docs/task-rubric.md` from CoS agent files (`FR:quality.rubric`)
 - [ ] Ranker: owner field, gate, blocked, `Checked:` and activity sources (`FR:rank.*`); `GET /rank` fields (`FR:api.rank`)

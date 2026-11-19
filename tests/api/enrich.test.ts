@@ -5,7 +5,7 @@ import { createApiHandler, ROUTES } from '../../src/api/handler';
 import { createAuth, createTokenService, MemoryTokenStore, routeScope } from '../../src/api';
 import { pendingDeliveries } from '../../src/agents/delivery';
 import { putAgent } from '../../src/core/agents';
-import { listInbox } from '../../src/core/inbox';
+import { handleEntry, listInbox } from '../../src/core/inbox';
 import { MemoryStorage } from '../../src/core/storage';
 
 const NOW = new Date('2026-11-18T18:00:00Z');
@@ -63,6 +63,20 @@ describe('POST /tasks/{ref}/enrich', () => {
     expect(b.status).toBe(202);
     expect(b.json.id).toBe(a.json.id);
     expect(await listInbox(ctx, { project: 'flantastic-4' })).toHaveLength(1);
+  });
+
+  // @req FR:product-reset/quality.enrich @req FR:agent-inbox/inbox.kinds
+  it('keeps one open message per row; a handled one lets a new request through; POST /inbox cannot send enrich', async () => {
+    const { ctx, storage, call } = await mk();
+    await storage.write('tasks/flantastic-4.md', F4 + '- [ ] 🙋 Plan the tour\n', { expectedVersion: (await storage.read('tasks/flantastic-4.md')).version });
+    const a = await call('owner', '/tasks/flantastic-4:6/enrich');
+    const b = await call('owner', '/tasks/flantastic-4:8/enrich');
+    expect(b.status).toBe(202);
+    expect(b.json.id).not.toBe(a.json.id);
+    await handleEntry(ctx, a.json.id, 'cid-manager');
+    const c = await call('owner', '/tasks/flantastic-4:6/enrich');
+    expect(c.json.id).not.toBe(a.json.id);
+    expect((await call('owner', '/inbox', { ref: 'flantastic-4:6', text: 'x', kind: 'enrich' })).status).toBe(422);
   });
 
   // @req FR:product-reset/api.enrich @req FR:product-reset/quality.enrich

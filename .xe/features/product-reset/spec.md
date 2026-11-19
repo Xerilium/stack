@@ -128,10 +128,10 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
   | `single`   | The owner is not `mixed`, and the title does not join two verbs with `and`, `;` or `then`            |
   - The title for the checks is the row text without owner marks (`🙋`, `🤖`, `🪄`, `🤖:level`), the `📅` due mark, and the leading emoji and punctuation.
   - A leaf has no child task rows.
-  - A note is a nested line that is not a child task row, not a field, and not inside a field. Lines under `Notes:` are notes (`FR:schema.grammar`).
+  - A note is a nested line of the row itself: a plain line, or a line under `Notes:`. Child task rows, fields, and lines inside other fields are not notes (`FR:schema.grammar`).
   - A ref counts only when it resolves to a repo (`FR:schema.refs`). Refs are counted from the title and the `Links:` field.
 
-- **FR:quality.check** (P1): `checkTask(project, ref)` in `src/core/quality.ts` runs the checks on the row at `ref` with its fields, notes, children, ancestors and project metadata. It is a pure function of the file text. It never writes.
+- **FR:quality.check** (P1): The gate runs the checks on one row with its fields, notes, children, ancestors and project metadata. It is a pure function of the file text. It never writes.
 - **FR:quality.score** (P1): `score` is the count of checks that pass (0-4). `actionable` is `score === 4`. `missing` lists the failed checks in table order.
 - **FR:quality.ui** (P1): A task that is not actionable shows `Needs context` and the names of the missing checks. Its main action is `Ask {agent} to fill it in`. Start and Done are not main actions on it.
 - **FR:quality.enrich** (P1): `Ask {agent} to fill it in` sends one thread message of kind `enrich` to the task's agent. The message names the missing checks. The agent edits the row fields per `FR:quality.rubric` and replies in the thread. The card updates when the file changes.
@@ -269,7 +269,8 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
   - `?owner=any` adds rows of all owners. `?quality=any` adds rows that fail the gate.
   - The `blocks` parameter keeps its meaning: it controls schedule time blocks, not task blockers. Rows with an open `Blocked by:` stay out of the list in both `blocks=now` and `blocks=any`.
   - The defaults are `owner=me`, `quality=actionable`, `blocks=now`.
-- **FR:api.enrich** (P1): `POST /tasks/{ref}/enrich` sends the `enrich` message (`FR:quality.enrich`). It returns `202` with `{ id, agent, missing }`; `id` is the thread message id. Owner only. A row that scores 4 is `409` with code `conflict`. `POST /tasks/enrich` with `{refs}` does a bulk enrich (`FR:quality.enrich.batch`).
+- **FR:api.enrich** (P1): `POST /tasks/{ref}/enrich` sends the `enrich` message (`FR:quality.enrich`). It returns `202` with `{ id, agent, missing }`; `id` is the thread message id. Owner only. A row that scores 4 is `409` with code `conflict`.
+- **FR:api.enrich.batch** (P1): `POST /tasks/enrich` with `{refs}` does a bulk enrich (`FR:quality.enrich.batch`).
 - **FR:api.expect** (P1): Each request that changes a task sends `expect: { text, ancestors }`, copied from the `text` and ancestor titles of its last read. Before it writes, the server compares them with the row at the ref. When they differ, it never writes that row; it runs `FR:api.moved` with the expected values. The UI and the CLI always send `expect`.
 - **FR:api.moved** (P2): When a ref no longer points at its row (`FR:api.expect` fails), the server looks for a row with the expected text and the same ancestor titles in the same file. It acts only when exactly one row matches. With no match or more than one, the response is `404` with code `moved`, and the page shows `This task moved or is done` and a link to Tasks.
 - **FR:cli.check** (P1): `stack check <ref>` prints the quality score and the missing checks. It exits 0 at score 4, else 1. `--json` prints `{ ok, ref, score, actionable, missing }`. Agents use it; the owner never sees it.

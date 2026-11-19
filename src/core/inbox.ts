@@ -14,6 +14,8 @@ export type InboxKind = 'reply' | 'decision' | 'instruction' | 'enrich';
 export type InboxTo = 'agent' | 'human' | 'none';
 export type InboxState = 'open' | 'handled';
 export const INBOX_KINDS = ['reply', 'decision', 'instruction', 'enrich'] as const;
+/** Kinds the owner sends with `POST /inbox`; `enrich` comes only from the enrich route, after the quality check. @req FR:product-reset/quality.enrich */
+export const SEND_KINDS = ['reply', 'decision', 'instruction'] as const;
 export const INBOX_STATES = ['open', 'handled', 'all'] as const;
 
 export type InboxFrom = 'owner' | 'agent';

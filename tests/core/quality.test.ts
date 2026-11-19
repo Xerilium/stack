@@ -134,6 +134,14 @@ describe('checkTask', () => {
   });
 
   // @req FR:product-reset/quality.rules
+  it('a title that is a markdown link reads as its label; the link still counts as a ref', () => {
+    const src = '# X\n\n## A\n\n- [ ] [Review the spec](https://github.com/o/r/pull/5)\n';
+    const pp = parseProject(src);
+    expect(checkTitle(pp.sections[0].tasks[0].text)).toBe('Review the spec');
+    expect(checkTask(pp, 4)).toEqual({ score: 4, actionable: true, missing: [] });
+  });
+
+  // @req FR:product-reset/quality.rules
   it('a note passes context', () => {
     expect(q('Ship the logo').missing).toEqual(['doneWhen']);
   });

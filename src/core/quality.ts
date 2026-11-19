@@ -66,7 +66,7 @@ const DUE_MARK = /📅\s*[A-Za-z]{3}[a-z]*\s+\d{1,2}(?:,\s*\d{4})?\s*(?:-\s*\d{1
 
 /** The row title the checks read: no owner marks, no due mark, no leading emoji or punctuation. @req FR:product-reset/quality.rules */
 export function checkTitle(text: string): string {
-  return text.replace(/🤖:\S*/gu, ' ').replace(/[🤖🪄🙋]/gu, ' ').replace(DUE_MARK, ' ').replace(/^[^\p{L}\p{N}[]+/u, '').replace(/\s+/g, ' ').trim();
+  return text.replace(/\[([^\]]*)\]\([^)]*\)/gu, (_m, label: string) => label).replace(/🤖:\S*/gu, ' ').replace(/[🤖🪄🙋]/gu, ' ').replace(DUE_MARK, ' ').replace(/^[^\p{L}\p{N}[]+/u, '').replace(/\s+/g, ' ').trim();
 }
 
 const OWNER_REPO = /^[A-Za-z0-9][\w.-]*\/[\w.-]+$/;
@@ -126,11 +126,11 @@ const ownerFor = (fields: RowFields, task: Task, ancestors: Task[]): RowOwner =>
 export function checkRow(project: Pick<Project, 'lines' | 'metadata'>, task: Task, ancestors: Task[] = []): Quality {
   const { fields, notes } = readFields(project, task);
   const title = checkTitle(task.text);
-  const refs = rowRefs([title, ...fields.links].join(' \n '), project.metadata);
+  const refs = rowRefs([task.text, ...fields.links].join(' \n '), project.metadata);
   const pass: Record<Check, boolean> = {
     next: fields.next !== undefined || (task.children.length === 0 && isVerb(firstWord(title))),
     doneWhen: fields.doneWhen !== undefined || refs.length === 1,
-    context: fields.context.length > 0 || fields.links.length > 0 || rowRefs(title, project.metadata).length > 0 || notes.length > 0,
+    context: fields.context.length > 0 || fields.links.length > 0 || rowRefs(task.text, project.metadata).length > 0 || notes.length > 0,
     single: ownerFor(fields, task, ancestors) !== 'mixed' && !joinsVerbs(title),
   };
   const missing = CHECKS.filter((c) => !pass[c]);

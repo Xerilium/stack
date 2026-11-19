@@ -909,7 +909,6 @@ paths:
                     - reply
                     - decision
                     - instruction
-                    - enrich
                 expect:
                   type: string
                   maxLength: 2000
