@@ -53,7 +53,7 @@ describe('rollRecurring', () => {
     expect(rollRecurring('- [ ] 📅 Dec 10: 🔄 Monthly: X', new Date(Date.UTC(2026, 5, 1)))).toBe('- [ ] 📅 Jan 11: 🔄 Monthly: X <!--nominal:2027-01-10-->');
   });
   // @req FR:recurring-rows/roll.yearless
-  it('reads a year-less date as its nearest occurrence across the new year, as ranking does', () => {
+  it('reads a year-less date across the new year in the right year', () => {
     // Done late, on Jan 5 2027: the row meant Dec 15 2026, so next is Fri Jan 15 2027 (not Sat Jan 15 2028)
     expect(rollRecurring('- [x] 📅 Dec 15: 🔄 Monthly: Pay rent', new Date(Date.UTC(2027, 0, 5)))).toBe('- [ ] 📅 Jan 15: 🔄 Monthly: Pay rent');
     expect(parseRecurringRow('- [ ] 📅 Dec 15: 🔄 Monthly: Pay rent', new Date(Date.UTC(2027, 0, 5)))?.dueDate).toBe('2026-12-15');
