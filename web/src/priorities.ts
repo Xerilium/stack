@@ -10,7 +10,7 @@ export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string }
 export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; action: string; minutes: number; server: string | null; details: string | null }
 export interface PrTable { at: string; stale: boolean; verified: boolean; manager: Agent | null; rows: PrRow[] }
-export interface PrioritiesView { at: string; qm: QmTable | null; now: PriTable; prs: PrTable; today: PriTable; next: PriTable }
+export interface PrioritiesView { at: string; timeZone?: string; qm: QmTable | null; now: PriTable; prs: PrTable; today: PriTable; next: PriTable }
 
 /** @req FR:priorities-tables/web.sections.cols */
 export const PRI_COLS = ['Project', 'Agent', '🤖 Status', '👱‍♂️ Next action'] as const;
@@ -36,7 +36,7 @@ export const actionText = (r: Pick<PriRow, 'action' | 'gap'>): string => (r.gap 
 export const safeHref = (h: string | null | undefined): h is string => !!h && (/^https?:\/\//i.test(h) || /^claude:\/\/claude\.ai\/epitaxy\/[A-Za-z0-9_-]{1,128}$/.test(h));
 
 /** `as of 11:05 AM`, plus `, stale` when stale. @req FR:priorities-tables/web.sections.head */
-export function stampText(t: { at: string; stale: boolean }): string {
-  const time = new Date(t.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s/g, ' ');
+export function stampText(t: { at: string; stale: boolean }, timeZone?: string): string {
+  const time = new Date(t.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(timeZone ? { timeZone } : {}) }).replace(/\s/g, ' ');
   return `as of ${time}${t.stale ? ', stale' : ''}`;
 }

@@ -134,11 +134,13 @@ Owner needs the report on the Now page so that he sees it without a new screen.
 
 - **FR:web.place** (P1): Now MUST show the report in place of the Waiting on you block, with no new nav item, rail item or card.
 - **FR:web.sections** (P1): Now MUST show the sections in this order: QM (when the list has one), **Now**, **PRs**, **Today**, **Next 3 days**.
-  - **FR:web.sections.head** (P1): Each section MUST start with a rule (`hr`), then an `h2` and its stamp `as of <time>` (`, stale` when stale).
+  - **FR:web.sections.head** (P1): Each section MUST have an `h2` and its stamp `as of <time>` (`, stale` when stale), with the time in the report's configured time zone.
+  - **FR:web.tables.rule** (P1): Each section MUST start with a rule (`hr`).
   - **FR:web.sections.cols** (P1): Project sections MUST have the columns **Project**, **Agent**, **🤖 Status**, **👱‍♂️ Next action**; the PR section **PR**, **Agent**, **👱‍♂️ Next action**, **Time**.
   - **FR:web.sections.gap** (P1): A gap row MUST show its action in muted text with the word `Gap:` first.
   - **FR:web.sections.empty** (P1): An empty section MUST show one row `Nothing here`.
-- **FR:web.links** (P1): Each linked agent and each PR number MUST be a link; `--` MUST be plain text.
+- **FR:web.links** (P1): Each linked agent and each PR number MUST be a link.
+  - **FR:web.links.none** (P1): `--` MUST be plain text.
 - **FR:web.live** (P1): Now MUST read `GET /priorities` on load, on each live change and every 60 s while visible.
   - **FR:web.live.absent** (P2): Now MUST hide the report when `GET /priorities` answers 404.
 
@@ -155,7 +157,7 @@ Owner needs the report on the Now page so that he sees it without a new screen.
 - **FR:$tiered** (P1): **`TieredTask`** — `path`, `line` (0-based), `project`, `aliases`, `tier` (1, 2 or 3), `text`, `agent` (string or null), `more` (count of more agents), `status` (`working`, `pairing`, `done`, `idle`, `blocked`, `queued`, `unknown`, or null with no agent).
 - **FR:$row** (P1): **`PriRow`** — `id`, `project`, `agent` (`{ name, link }`, link null when unlinked, or null), `status` (as in `TieredTask`), `action`, `gap` (boolean), `ref` (`path:line` or null), `at`, `stale`.
 - **FR:$pr** (P1): **`PrRow`** — `emoji`, `number`, `url`, `agent` (as in `PriRow`), `action`, `minutes`, `server` and `details` (links, null unless a live row).
-- **FR:$view** (P1): **`PrioritiesView`** — `at` (the clock), `qm` (a `PriTable` with `title`, or null), `now`, `today`, `next` (each a `PriTable`: `at`, `stale`, `rows`) and `prs` (a `PrTable`: `at`, `stale`, `verified`, `manager`, `rows`).
+- **FR:$view** (P1): **`PrioritiesView`** — `at` (the clock), `timeZone` (optional IANA zone), `qm` (a `PriTable` with `title`, or null), `now`, `today`, `next` (each a `PriTable`: `at`, `stale`, `rows`) and `prs` (a `PrTable`: `at`, `stale`, `verified`, `manager`, `rows`).
 
 ## Architecture Constraints
 

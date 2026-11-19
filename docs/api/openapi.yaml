@@ -4155,6 +4155,8 @@ components:
         at:
           type: string
           format: date-time
+        timeZone:
+          type: string
         qm:
           $ref: "#/components/schemas/QmTable"
         now:

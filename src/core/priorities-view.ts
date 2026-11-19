@@ -24,7 +24,7 @@ export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string }
 export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; action: string; minutes: number; server: string | null; details: string | null }
 export interface PrTable { at: string; stale: boolean; verified: boolean; /** The Sweep Manager session, shown above the table. */ manager: Agent | null; rows: PrRow[] }
-export interface PrioritiesView { at: string; qm: QmTable | null; now: PriTable; prs: PrTable; today: PriTable; next: PriTable }
+export interface PrioritiesView { at: string; /** IANA zone the report was built in; stamps show times in it. */ timeZone?: string; qm: QmTable | null; now: PriTable; prs: PrTable; today: PriTable; next: PriTable }
 
 const NOW_ROWS = 3;
 const NEXT_DAYS = 3;
@@ -165,7 +165,8 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
   }
   const next: PriRow[] = [];
   for (let d = 1; d <= NEXT_DAYS; d++) {
-    const at = new Date(now.getTime() + d * DAY_MS);
+    // Probe at local noon so a 23 or 25 hour DST day still lands on the next calendar day.
+    const at = new Date(now.getTime() + (12 * 60 - min) * 60_000 + d * DAY_MS);
     const dd = wall(at, timeZone).day;
     for (const p of priOrder(rest, at, timeZone)) {
       if (shown.has(p.id)) continue;
@@ -211,7 +212,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
     return { ...stamp(now, [Date.parse(board.at)]), verified: true, manager, rows };
   };
 
-  return { at: now.toISOString(), qm, now: table(open), prs: prsOf(), today: table(today), next: table(next) };
+  return { at: now.toISOString(), ...(timeZone ? { timeZone } : {}), qm, now: table(open), prs: prsOf(), today: table(today), next: table(next) };
 }
 
 /** The PR board as the report needs it: rows and the last good poll. */

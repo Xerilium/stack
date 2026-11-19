@@ -76,7 +76,7 @@ export function PrioritiesTables({ v }: { v: PrioritiesView }) {
         return (
           <div class={`pri-section pri-${s.key === 'prs' ? 'prs' : 'pri'}`} data-testid={`pri-${s.key}`} key={s.key}>
             <hr class="pri-rule" />
-            <h2 class="pri-h2" id={id}>{s.title} <span class={`pri-stamp${s.t.stale ? ' stale' : ''}`}>{stampText(s.t)}</span></h2>
+            <h2 class="pri-h2" id={id}>{s.title} <span class={`pri-stamp${s.t.stale ? ' stale' : ''}`}>{stampText(s.t, v.timeZone)}</span></h2>
             {s.key === 'prs' && s.t.manager && safeHref(s.t.manager.link) && <p class="pri-manager"><span aria-hidden="true">👩‍💻 </span><Link href={s.t.manager.link} text={s.t.manager.name} /></p>}
             <table class="pri-table" role="table" aria-labelledby={id}>
               <thead role="rowgroup"><tr role="row">{cols.map((c) => <th role="columnheader" scope="col" key={c}>{c}</th>)}</tr></thead>
