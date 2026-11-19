@@ -77,14 +77,13 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
   const tail = rows.slice(1);
   const rest = [...tail.filter(doing), ...tail.filter((t) => !doing(t))];
   const ordered = oneTask ? [oneTask, ...rest] : [];
-  const withLeaf = (t: Task): HomeItem => { const i = item(t, now); const l = leafOf.get(t.ref); return l ? { ...i, leaf: item(l, now) } : i; };
+  // A row shown for its ranked leaf takes the leaf's time: fit and the "needs" text are about the step the owner will do. @req FR:now-screen/now.one
+  const withLeaf = (t: Task): HomeItem => { const i = item(t, now); const l = leafOf.get(t.ref); if (!l) return i; const leaf = item(l, now); return { ...i, minutes: leaf.minutes, assumed: leaf.assumed, leaf }; };
   const one = oneTask ? withLeaf(oneTask) : null;
   const vs = (s: string) => s.replace(/\uFE0F/g, '');
   const may = (i: HomeItem) => !o.allow || vs(i.task.text).includes(vs(o.allow.emoji)) || !!o.allow.projects?.includes(i.task.project);
-  // Fit is measured on the step the owner will do: the ranked leaf when there is one. @req FR:now-screen/now.one
-  const need = (i: HomeItem) => (i.leaf ?? i).minutes;
-  const fits = !one || (need(one) <= o.minutesLeft && may(one));
-  const instead = !fits && o.minutesLeft > 0 ? (rest.map(withLeaf).find((i) => need(i) <= o.minutesLeft && may(i)) ?? null) : null;
+  const fits = !one || (one.minutes <= o.minutesLeft && may(one));
+  const instead = !fits && o.minutesLeft > 0 ? (rest.map(withLeaf).find((i) => i.minutes <= o.minutesLeft && may(i)) ?? null) : null;
   // projects in the order of their top ranked row. @req FR:web-app/home2.order
   const rankOf = new Map(ordered.map((t, i) => [t.ref, i]));
   const projects: HomeProject[] = [];

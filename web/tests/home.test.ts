@@ -97,6 +97,17 @@ describe('homeOf', () => {
 });
 
 // @req FR:web-app/home3.dedupe @req FR:ask-queue/needs.dedupe
+// @req FR:now-screen/now.one
+describe('a row shown for its ranked leaf', () => {
+  it('takes the leaf time, so the needs text and fit agree', () => {
+    const h = homeOf({ tasks: [T('alpha:1', 'Release FTK v16'), T('alpha:2', 'FOCUS 1.4 🟠', 'alpha', '🔄 Active', 1)], projects: [P('alpha')], ranked: [R('alpha:2', 'alpha:1')], now: at, minutesLeft: 45 });
+    expect(h.one?.task.ref).toBe('alpha:1');
+    expect(h.one?.minutes).toBe(120);
+    expect(h.one?.assumed).toBe(false);
+    expect(h.fits).toBe(false);
+  });
+});
+
 describe('no duplicates between Needs you and Home', () => {
   const tasks = [T('alpha:1', 'Decide the vendor 🟡'), T('alpha:2', 'Write docs 🟢'), T('alpha:3', 'Fix the build 🔹'), T('beta:1', 'Plan the trip 🟢', 'beta')];
   const projects = [P('alpha'), P('beta')];
