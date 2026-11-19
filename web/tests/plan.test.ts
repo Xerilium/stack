@@ -32,6 +32,24 @@ describe('day plan', () => {
     const rows = [t('other 🟢'), t('Ship it'), t('step one 🟢', 1), t('step two 🟢', 1)];
     expect(planCandidates(rows, at(10), null, rows[1].ref).map((x) => x.text)).toEqual(['step one 🟢', 'other 🟢', 'step two 🟢']);
   });
+  // @req FR:web-app/today.plan.field
+  it('a checkbox row that holds a field is not a leaf: its parent is', () => {
+    const rows = [t('Call the IRS 🟢'), t('Context: first log in at irs.gov', 1), t('Help Clyde iron a patch 🟢'), t('**Needs:** Done? The date has passed.', 1), t('Ship it'), t('step one 🟢', 1), t('Done when: it is live', 1)];
+    expect(openLeaves(rows).map((x) => x.text)).toEqual(['Call the IRS 🟢', 'Help Clyde iron a patch 🟢', 'step one 🟢']);
+  });
+  it('a field row with no parent, and a title that only has a colon later, stay tasks', () => {
+    const rows = [t('Context: write the context doc 🟢'), t('Parent'), t('Fix the Needs: label 🟢', 1), t('Contextualize: the report 🟢', 1)];
+    expect(openLeaves(rows).map((x) => x.text)).toEqual(['Context: write the context doc 🟢', 'Fix the Needs: label 🟢', 'Contextualize: the report 🟢']);
+  });
+  it('the plan shows the parent in the place the ranking gave its field row, once', () => {
+    const rows = [t('other 🟢'), t('Call the IRS 🟢'), t('Context: first log in at irs.gov', 1), t('Needs: which year?', 1), t('last 🟢')];
+    expect(planCandidates(rows, at(10), [rows[2].ref, rows[4].ref, rows[3].ref, rows[0].ref]).map((x) => x.text)).toEqual(['Call the IRS 🟢', 'last 🟢', 'other 🟢']);
+    // The server's next task is a field row: its parent leads.
+    expect(planCandidates(rows, at(10), [rows[0].ref, rows[2].ref], rows[2].ref).map((x) => x.text)).toEqual(['Call the IRS 🟢', 'other 🟢']);
+    // A parent that is not yours (an agent row) is not planned for its field row.
+    const agent = [t('🤖 Agent job'), t('Context: the agent knows', 1)];
+    expect(planCandidates(agent, at(10), [agent[1].ref])).toEqual([]);
+  });
   it('never plans reply rows', () => {
     const ask = t('🙋 Pick a color');
     expect(planCandidates([ask, t('💬 Blue', 1)], at(10), null).map((x) => x.text)).toEqual([]);
