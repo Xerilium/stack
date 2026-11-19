@@ -1,6 +1,6 @@
 /**
  * PR cards are quiet: a neutral panel, a muted 3 px owner edge, strong = elevation, one accent. On a phone the title uses the full width.
- * @req FR:pr-page/card.color @req FR:pr-page/card.color.edge @req FR:pr-page/card.color.strong @req FR:pr-page/card.color.contrast @req FR:pr-page/nav.accent @req FR:pr-page/card.phone
+ * @req FR:pr-page/card.color @req FR:pr-page/card.color.edge @req FR:pr-page/card.color.strong @req FR:pr-page/card.color.contrast @req FR:pr-page/nav.accent @req FR:pr-page/nav.accent.contrast @req FR:pr-page/card.phone
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';

@@ -119,7 +119,8 @@ The owner needs the PRs in the main nav so that he finds them without a hidden i
 - **FR:nav.phone** (P1): The phone tab bar keeps its five slots. `More` (the command palette) lists `Go to Pull requests` with the same count. The top bar icon opens the flyout full screen
 - **FR:nav.page** (P1): `#/prs` shows the flyout content as a page: the same tabs, cards, details, and sign-in state, with no scrim and no Close
 - **FR:nav.load** (P1): The first open polls GitHub before it answers (`FR:pr-page/live.poll`). Until it answers, the page and the flyout show a skeleton (`aria-busy`), never a zero count
-- **FR:nav.accent** (P1): The PR page and flyout MUST use only the app accent (`--accent`) as the action color: primary buttons, the selected tab, chips. Accent text meets WCAG AA (4.5:1) on its background
+- **FR:nav.accent** (P1): The PR page and flyout MUST use only the app accent (`--accent`) as the action color: primary buttons, the selected tab, chips
+  - **FR:nav.accent.contrast** (P1): Accent text on the PR page MUST meet WCAG AA (4.5:1) on its background, light and dark
 
 ### FR:flyout: Flyout
 
