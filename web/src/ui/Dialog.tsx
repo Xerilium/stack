@@ -11,7 +11,7 @@ import './ui.css';
  * @req FR:ui-kit/dialog.close
  * @req FR:ui-kit/dialog.sheet
  * @req FR:web-app/ux.a11y
- * @owns role:dialog legacy: FeedbackPanel.tsx=1 TaskDetail.tsx=2 NowChat.tsx=1
+ * @owns role:dialog legacy: FeedbackPanel.tsx=1 TaskDetail.tsx=2 NowChat.tsx=1 SessionsView.tsx=1
  * @owns class:dialog legacy: FeedbackPanel.tsx=1
  * @owns class:scrim legacy: FeedbackPanel.tsx=1
  */
