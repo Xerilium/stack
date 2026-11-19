@@ -38,6 +38,7 @@ Make Stack deployable by its owner and understandable by everyone else. Agents o
 
 - **FR:docs.links** (P1): Every relative link in README, CONTRIBUTING, and `docs/**/*.md` resolves to a file
 - **FR:docs.cli** (P1): Every CLI command, and every flag `stack --help` lists, is documented in `docs/cli.md`
+- **FR:docs.asks** (P1): Every flag in `COMMANDS.asks.flags` appears as `--<flag>` in `docs/asks.md`
 - **FR:docs.mcp** (P1): Every MCP tool and its scope is documented in `docs/mcp.md`
 - **FR:docs.api** (P1): Every OpenAPI path is listed in `docs/api/README.md`, which links `openapi.yaml`
 - **FR:docs.env** (P2): Every `STACK_*` environment variable read by the code is documented in the runbook
