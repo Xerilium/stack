@@ -9,7 +9,7 @@ import type { Readable, Writable } from 'stream';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createApiHandler } from '../api/handler';
 import { SCOPES } from '../api/auth';
-import { loadConfig } from '../core/config';
+import { ConfigError, loadConfig } from '../core/config';
 import { FsStorage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { createMcpServer } from './server';
@@ -44,7 +44,8 @@ export async function runStdio(io: StdioIo): Promise<number> {
     await closed;
     return 0;
   } catch (e) {
-    io.stderr.write(`stack-mcp: ${e instanceof Error ? e.constructor.name : 'Error'}\n`);
+    // A config error names only the file and the parse problem, never task data. @req FR:config/load.file.invalid
+    io.stderr.write(`stack-mcp: ${e instanceof ConfigError ? e.message : e instanceof Error ? e.constructor.name : 'Error'}\n`);
     return 1;
   }
 }

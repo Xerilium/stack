@@ -84,4 +84,16 @@ describe('runStdio', () => {
     expect(code).toBe(2);
     expect(err).toMatch(/Usage: stack-mcp/);
   });
+
+  // @req FR:config/load.file @req FR:config/load.file.invalid
+  it('names stack.json on stderr when it is invalid', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stack-mcp-'));
+    mkdirSync(join(dir, '.xe/config'), { recursive: true });
+    writeFileSync(join(dir, '.xe/config/stack.json'), '{"startOfDay":"06:00",}');
+    const stderr = new PassThrough(); let err = '';
+    stderr.on('data', (d) => { err += d; });
+    const code = await runStdio({ argv: ['--dir', dir], env: {}, stdin: new PassThrough(), stdout: new PassThrough(), stderr });
+    expect(code).toBe(1);
+    expect(err).toContain(`stack-mcp: ${join(dir, '.xe/config/stack.json')}: `);
+  });
 });

@@ -117,7 +117,6 @@ describe('demo delivery', () => {
 });
 
 describe('static caching', () => {
-  // @req FR:perf/serve.assets
   // @req FR:config/load.file @req FR:config/load.file.invalid
   it('refuses to start on an invalid stack.json and names the file', async () => {
     const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
@@ -129,6 +128,7 @@ describe('static caching', () => {
     expect((err as Error).message.startsWith(`${p}: `)).toBe(true);
   });
 
+  // @req FR:perf/serve.assets
   it('keeps hashed assets for a year and leaves the page and api uncached', async () => {
     const dest = join(tmp(), 'demo'); prepareDemo(source(), dest);
     const web = tmp(); mkdirSync(join(web, 'assets')); writeFileSync(join(web, 'index.html'), '<html>app</html>'); writeFileSync(join(web, 'assets/index-abc.js'), 'x');
