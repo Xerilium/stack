@@ -2378,6 +2378,36 @@ paths:
                         nullable: true
         default:
           $ref: "#/components/responses/Error"
+  /inbox-items/{id}/detail:
+    get:
+      summary: "One inbox item with its full message and thread, read live from the mailbox (read only) and never stored. live is false when this host cannot read the mailbox. Owner session only: 403 for tokens"
+      operationId: inboxItemDetail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item:
+                    type: object
+                  live:
+                    type: boolean
+                  message:
+                    type: object
+                  thread:
+                    type: array
+                    items:
+                      type: object
+        default:
+          $ref: "#/components/responses/Error"
   /connect:
     get:
       summary: "Whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Never a token. Owner session only: 403 for tokens; 404 on a host without Connect"

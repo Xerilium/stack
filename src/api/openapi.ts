@@ -294,6 +294,10 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'listInboxItems', summary: 'All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog and the source status (as GET /inbox-sources). Owner session only: 403 for tokens',
     responses: ok('Inbox', { type: 'object', properties: { items: { type: 'array', items: { type: 'object' } }, actions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, ready: { type: 'boolean' } } } }, ...SOURCES_PROPS } }),
   },
+  'inboxItems.detail': {
+    operationId: 'inboxItemDetail', summary: 'One inbox item with its full message and thread, read live from the mailbox (read only) and never stored. live is false when this host cannot read the mailbox. Owner session only: 403 for tokens',
+    responses: ok('Detail', { type: 'object', properties: { item: { type: 'object' }, live: { type: 'boolean' }, message: { type: 'object' }, thread: { type: 'array', items: { type: 'object' } } } }),
+  },
   'inboxSources.list': {
     operationId: 'listInboxSources', summary: 'Each inbox source (every email account, GitHub, and planned Teams and Slack) with its state, last sync and the exact step to connect it, plus a summary (N of M connected, whether Inbox zero may be claimed, a headline). fresh=1 re-probes this machine. Never a token. Owner session only: 403 for tokens',
     responses: ok('Sources', { type: 'object', properties: SOURCES_PROPS }),

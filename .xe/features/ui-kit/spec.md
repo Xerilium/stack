@@ -87,6 +87,7 @@ Owner needs filters that look like filters, not like action buttons, so that he 
 ### FR:split: Split view
 
 - **FR:split** (P1): `SplitView` shows a list and a detail pane. Wide (`useWide(query)`), they sit side by side and the pane shows `empty` until a card is picked. Narrow, the open detail replaces the list, with `‹ Back`, and its heading gets focus
+  - **FR:split.reader** (P2): `SplitView` MUST give the detail pane the larger share of the width when `reader` is set.
 
 ### FR:daygrid: Day grid
 
@@ -109,6 +110,14 @@ Owner needs filters that look like filters, not like action buttons, so that he 
     - **FR:message.label.fixed** (P1): A caller MUST NOT give the button a different label
   - **FR:message.exact** (P1): `MessageBox` MUST send the box text as shown, and only on the button or Enter in the form
     - **FR:message.exact.start** (P1): Start text MUST NOT go out until the owner sends it
+
+### FR:thread: Thread message
+
+The owner needs every mail and chat message to look the same so that he reads a thread the same way in each view.
+
+- **FR:thread.show** (P1): `ThreadMessage` MUST show one message: the sender, the time and the text as plain text with its line breaks.
+- **FR:thread.fold** (P1): `ThreadMessage` MUST fold the text under a summary line (sender and time) when `fold` is set.
+- **FR:thread.meta** (P2): `ThreadMessage` MUST show the optional `meta` line under the sender.
 
 ### FR:tokens: Design tokens
 

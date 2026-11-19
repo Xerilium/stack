@@ -146,6 +146,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     /** Each inbox source and the summary. @req FR:inbox-page/api.sources */
     inboxSources: () => call<import('./inbox').SourcesReply>('/inbox-sources'),
     /** Runs one action; never sends. @req FR:inbox-page/api.act */
+    /** @req FR:inbox-page/detail.api */
+    inboxDetail: (id: string) => call<import('./inbox').DetailReply>(`/inbox-items/${encodeURIComponent(id)}/detail`),
     inboxAct: (id: string, body: { action: string; text?: string; until?: string; request?: boolean }) => call<import('./inbox').ActResult>(`/inbox-items/${encodeURIComponent(id)}/action`, body),
     sessions: () => call<SessionList>('/sessions?limit=200'),
     sessionCost: (days = 7) => call<CostReport>(`/sessions/cost?days=${days}`),

@@ -226,3 +226,23 @@
 .ui-server-state { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; flex: 1 1 180px; min-width: 0; font-size: 13px; }
 .ui-server-none, .ui-server-note { color: var(--ink2); overflow-wrap: anywhere; }
 .ui-server a.fl-btn { text-decoration: none; }
+
+/* Reader: the detail takes the larger share and scrolls inside the window. @req FR:ui-kit/split.reader */
+.ui-split.wide.reader { grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr); }
+.ui-split.wide.reader .ui-split-detail { max-height: calc(100vh - 72px); overflow-y: auto; }
+
+/* Thread message: sender, time, meta and plain text. @req FR:ui-kit/thread.show @req FR:ui-kit/thread.fold */
+.ui-tmsg { display: block; margin: 0; padding: 12px 0; border-top: 1px solid var(--fl-stroke2); min-width: 0; }
+.ui-tmsg-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; }
+.ui-tmsg-from { font-weight: 600; color: var(--fl-fg1); overflow-wrap: anywhere; }
+.ui-tmsg-when { flex: none; font-size: 12px; color: var(--fl-fg3); }
+.ui-tmsg-meta { margin: 2px 0 0; font-size: 12px; color: var(--fl-fg3); overflow-wrap: anywhere; }
+.ui-tmsg-body { margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fl-fg1); line-height: 1.5; }
+.ui-tmsg.fold > summary { cursor: pointer; list-style: none; min-height: 24px; align-items: center; justify-content: flex-start; gap: 2px 8px; }
+.ui-tmsg.fold > summary::-webkit-details-marker { display: none; }
+.ui-tmsg.fold > summary::before { content: '›'; flex: none; width: 10px; color: var(--fl-fg3); transition: transform var(--fl-fast); }
+.ui-tmsg.fold[open] > summary::before { transform: rotate(90deg); }
+.ui-tmsg.fold .ui-tmsg-when { margin-left: auto; }
+.ui-tmsg.fold > summary:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 2px; border-radius: var(--fl-r-sm); }
+.ui-tmsg.fold .ui-tmsg-from { font-weight: 500; }
+@media (pointer: coarse), (max-width: 719px) { .ui-tmsg.fold > summary { min-height: var(--tap); } }

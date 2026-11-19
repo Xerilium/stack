@@ -1,6 +1,6 @@
 /** @req FR:inbox-page/web.view */
 import { describe, expect, it } from 'vitest';
-import { actionsFor, doneText, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesSummary } from '../src/inbox';
+import { actionsFor, openLabel, person, when, doneText, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesSummary } from '../src/inbox';
 
 const cat: ActionInfo[] = [{ id: 'reply-draft', label: 'Draft reply', ready: true }, { id: 'mark-done', label: 'Mark done', ready: true }, { id: 'unsubscribe', label: 'Unsubscribe', ready: false }];
 const row = (o: Partial<InboxRow>): InboxRow => ({ id: 'mail-a', source: 'email', account: 'a', from: 'x', subject: 's', receivedAt: '2026-01-01', unread: true, summary: '', suggested: 'unsubscribe', actions: ['unsubscribe', 'reply-draft', 'mark-done'], ...o });
@@ -50,5 +50,22 @@ describe('inbox toast words', () => {
   // @req FR:inbox-page/web.toast.other
   it('says Done for an action it does not know', () => {
     expect(doneText({ id: 'archive', label: 'Archive', ready: true })).toBe('Done');
+  });
+});
+
+/** @req FR:inbox-page/detail.head @req FR:inbox-page/detail.thread.mine @req FR:inbox-page/detail.offline */
+describe('inbox detail helpers', () => {
+  it('names a person with the address, and the owner as You', () => {
+    expect(person({ name: 'Ann', address: 'ann@x.test' })).toBe('Ann <ann@x.test>');
+    expect(person({ address: 'ann@x.test' })).toBe('ann@x.test');
+    expect(person({ name: 'Me', address: 'me@x.test' }, true)).toBe('You');
+  });
+  it('names the open link by source', () => {
+    expect(openLabel('email')).toBe('Open in Outlook');
+    expect(openLabel('teams')).toBe('Open in Teams');
+  });
+  it('formats a time, and keeps a bad one as it is', () => {
+    expect(when('2026-10-28T16:00:00Z')).toMatch(/Oct 28/);
+    expect(when('soon')).toBe('soon');
   });
 });

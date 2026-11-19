@@ -51,7 +51,7 @@ import { editTask, moveTask } from './edit';
 import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
-import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type SourceProbe } from '../inbox';
+import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type MailReader, type SourceProbe } from '../inbox';
 import { createBriefCache } from './brief';
 import type { ClaudeJson } from '../email/llm';
 import { IDLE_MINUTES, UPDATE_MODES, UpdateRefused, type AppUpdater, type UpdateMode } from '../core/app-update';
@@ -94,6 +94,8 @@ export interface ApiDeps {
   agents?: AgentRuns;
   /** Mail drafts for the Inbox page; absent means reply drafts answer 409. Never sends. @req FR:inbox-page/api.act */
   mail?: Pick<MailProvider, 'createDraft'>;
+  /** Reads one mailbox for the item detail; absent (or no reader for the account) means the detail shows the summary only. Read only. @req FR:inbox-page/detail.read */
+  mailReader?: (account: string) => Promise<MailReader | undefined>;
   /** This machine's inbox sign-ins (Graph caches, GitHub); absent on the hosted app, which uses sync records only. `fresh` skips any cache. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
   /** Agent delivery on this machine: per-message state for a row and the Claude sign-in; absent means /inbox/delivery is 404. @req FR:agent-delivery/state.api */
@@ -1215,6 +1217,21 @@ export const ROUTES: Route[] = [
       const src = await inboxSources(c, false);
       // Fresh syncs say nothing about an item file that is missing or unreadable: no zero claim off that. @req FR:inbox-page/src.summary
       return json(200, { items, actions: INBOX_ACTIONS, ...src, summary: { ...src.summary, canClaimZero: src.summary.canClaimZero && verified } });
+    },
+  },
+  {
+    // The text is read live and returned; nothing is stored. @req FR:inbox-page/detail.api @req FR:inbox-page/detail.private
+    method: 'GET', doc: '/inbox-items/{id}/detail', name: 'inboxItems.detail',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can read the inbox'); // @req FR:inbox-page/detail.api.owner
+      const item = (await readInbox(c.deps.storage)).find((i) => i.id === c.params[0]);
+      if (!item) throw new ApiError('not_found', 'Inbox item not found'); // @req FR:inbox-page/detail.api.missing
+      // Any failure reads as "not live": the page falls back to the summary. No error text leaves the host. @req FR:inbox-page/detail.offline.cause
+      const read = item.source === 'email' && item.messageId && c.deps.mailReader
+        ? await c.deps.mailReader(item.account).then((r) => r?.thread(item.messageId!)).catch(() => undefined)
+        : undefined;
+      return json(200, read ? { item, live: true, message: read.message, thread: read.thread } : { item, live: false });
     },
   },
   {

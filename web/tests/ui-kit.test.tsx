@@ -16,6 +16,7 @@ import { EmptyState, ErrorState, Loading } from '../src/ui/States';
 import { CountBadge } from '../src/ui/CountBadge';
 import { MoreButton } from '../src/ui/MoreButton';
 import { SelectCard } from '../src/ui/SelectCard';
+import { ThreadMessage } from '../src/ui/ThreadMessage';
 import { SourceLink, sourceOf } from '../src/ui/SourceLink';
 import { Skeleton } from '../src/ui/Skeleton';
 import { ServerStatus } from '../src/ui/ServerStatus';
@@ -567,5 +568,36 @@ describe('NavItem and NavIcon', () => {
   it('App.tsx draws no nav icon by hand', () => {
     const app = readFileSync('src/App.tsx', 'utf8');
     for (const one of ['function Bell', 'function Gear', 'function TabIcon', 'class="nav-bell"', 'class="set-gear"', 'class="tab-ic"']) expect(app, one).not.toContain(one);
+  });
+});
+
+// @req FR:ui-kit/thread.show @req FR:ui-kit/thread.fold @req FR:ui-kit/thread.meta
+describe('ThreadMessage', () => {
+  it('shows the sender, the time and the text as plain text', () => {
+    const r = mount(<ThreadMessage from="Ann" when="Oct 28, 9:00 AM" meta="To: me@example.test" body={'Hi,\n<b>not bold</b>'} />);
+    const m = r.querySelector('.ui-tmsg')!;
+    expect(m.tagName).toBe('ARTICLE');
+    expect(m.querySelector('.ui-tmsg-from')?.textContent).toBe('Ann');
+    expect(m.querySelector('.ui-tmsg-when')?.textContent).toBe('Oct 28, 9:00 AM');
+    expect(m.querySelector('.ui-tmsg-meta')?.textContent).toBe('To: me@example.test');
+    expect(m.querySelector('.ui-tmsg-body')?.textContent).toBe('Hi,\n<b>not bold</b>');
+    expect(m.querySelector('b')).toBeNull();
+    expect(mount(<ThreadMessage from="Ann" when="now" body="x" />).querySelector('.ui-tmsg-meta')).toBeNull();
+  });
+  it('fold: the text sits under a summary line until opened', () => {
+    const r = mount(<ThreadMessage from="You" when="Oct 27" body="My answer" fold />);
+    const d = r.querySelector('details.ui-tmsg') as HTMLDetailsElement;
+    expect(d.open).toBe(false);
+    expect(d.querySelector('summary')?.textContent).toBe('YouOct 27');
+    expect(d.querySelector('.ui-tmsg-body')?.textContent).toBe('My answer');
+  });
+});
+
+// @req FR:ui-kit/split.reader
+describe('SplitView reader', () => {
+  it('marks the split so the detail takes the larger share', () => {
+    const r = mount(<SplitView wide open reader list={<p>L</p>} detail={<h3>D</h3>} label="X" empty="Pick" onBack={() => {}} />);
+    expect(r.querySelector('.ui-split')?.className).toBe('ui-split wide reader');
+    expect(mount(<SplitView wide open list={<p>L</p>} detail={<h3>D</h3>} label="X" empty="Pick" onBack={() => {}} />).querySelector('.ui-split')?.className).toBe('ui-split wide');
   });
 });

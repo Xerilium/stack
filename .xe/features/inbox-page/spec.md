@@ -105,6 +105,30 @@ The owner needs to scan mail and act on it. Inbox holds mail and messages only. 
   - **FR:web.nocmd.fields** (P1): From the sources reply, the page reads `summary` and each source's `connect` flag. `needs`, `command` and `doc` serve the CLI (`FR:cli.sources`).
 - **FR:web.dot** (P1): The Inbox rail item, and on a phone the More tab, carry a dot when `attention` is true. The dot has an accessible name ("Inbox: an account needs attention").
 
+### FR:detail: Item detail
+
+The owner needs to read a whole message with its thread in Stack so that the Inbox works as a mail reader.
+
+- **FR:detail.web** (P1): Interface: a click on a row subject on `#/inbox` opens the detail pane of that item.
+- **FR:detail.api** (P1): Interface: `GET /inbox-items/{id}/detail` returns `{ item, live, message?, thread? }`.
+  - **FR:detail.api.owner** (P1): API MUST answer 403 to a token.
+  - **FR:detail.api.missing** (P1): API MUST answer 404 for an id that is not in the item file.
+- **FR:detail.split** (P1): Page MUST show the list and the detail side by side at 900 px width and more.
+  - **FR:detail.split.phone** (P1): Page MUST replace the list with the detail and a `Back` button below 900 px.
+- **FR:detail.head** (P1): Detail MUST show the subject, the sender name and address, the account and the received time.
+- **FR:detail.body** (P1): Detail MUST show the full plain text of the message.
+- **FR:detail.thread** (P1): Detail MUST list the other messages of the thread, newest first, each with its sender and time.
+  - **FR:detail.thread.mine** (P1): Detail MUST name the sender `You` on a message the owner sent.
+  - **FR:detail.thread.fold** (P2): Detail MUST fold each earlier message until the owner opens it.
+- **FR:detail.read** (P1): Reader MUST read the message and its thread with `GET` requests that pass the email guard in `observe` mode.
+  > - @req FR:email-triage/safe.allowlist
+  - **FR:detail.read.thread** (P1): Reader MUST find the thread by `conversationId` in Inbox, Sent Items and Archive, at most 25 messages per folder.
+  - **FR:detail.read.partial** (P1): Reader MUST return the message without a thread when a thread read fails.
+- **FR:detail.private** (P1): API MUST return the message text without a write to the data repo.
+- **FR:detail.offline** (P1): Detail MUST show the summary and an `Open in Outlook` link when `live` is false.
+  - **FR:detail.offline.cause** (P1): API MUST answer `live: false` when the host cannot read the mailbox of the item.
+- **FR:detail.safe** (P1): Detail MUST render message text as plain text.
+
 ### FR:api: API
 
 - **FR:api.read** (P1): `GET /inbox-items` returns `{ items, actions, sources, summary }`.
@@ -113,7 +137,7 @@ The owner needs to scan mail and act on it. Inbox holds mail and messages only. 
 
 ## Interfaces
 
-`InboxStore { read(): Promise<InboxItem[]>; write(items): Promise<void> }`, `ChatConnector`, `IssueFiler { file(issue): Promise<{ url }> }`, `InboxSource`, `SyncRecord`, `SourcesSummary`, `SourceProbe { emails, github, clientId? }`.
+`InboxStore { read(): Promise<InboxItem[]>; write(items): Promise<void> }`, `ChatConnector`, `IssueFiler { file(issue): Promise<{ url }> }`, `InboxSource`, `SyncRecord`, `SourcesSummary`, `SourceProbe { emails, github, clientId? }`, `MailReader { thread(messageId): Promise<{ message, thread }> }` (`MailMessage`: `id`, `from`, `to`, `subject`, `receivedAt`, `body`, `mine`).
 
 ## Dependencies
 
