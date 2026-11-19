@@ -1,9 +1,9 @@
 /**
  * The weekly QM (quota-maxxing) plan: per project, the lead agent, its top 5 autonomous tasks, and token and human-time
  * estimates. One JSON file under ~/.stack (live state, never git); agents write it, the page and CLI read it.
- * @req FR:qm-plan/store.path @req FR:qm-plan/store.schema @req FR:qm-plan/store.put @req FR:qm-plan/store.read
+ * @req FR:qm-plan/store.path @req FR:qm-plan/store.schema @req FR:qm-plan/store.put @req FR:qm-plan/store.read @req FR:qm-plan/live.event
  */
-import { mkdirSync, readFileSync } from 'fs';
+import { mkdirSync, readFileSync, unwatchFile, watchFile } from 'fs';
 import { join } from 'path';
 import { writeAtomic } from './file-lock';
 
@@ -83,9 +83,17 @@ export function parseQmPlan(body: unknown): QmPlan {
   return { version: 1, asOf: body.asOf as string, projects: projects as QmProject[] };
 }
 
+type StatListener = (cur: { mtimeMs: number }, prev: { mtimeMs: number }) => void;
+/** The file poll `QmStore.watch` uses; tests pass a fake, so they never wait on the clock. */
+export interface FilePoll {
+  watchFile(file: string, o: { persistent: boolean; interval: number }, fn: StatListener): void;
+  unwatchFile(file: string, fn: StatListener): void;
+}
+
 /** The plan file `<dir>/qm-plan.json`. A put replaces it whole, so no lock: an atomic write is enough. */
 export class QmStore {
   readonly file: string;
+  private readonly listeners = new Set<() => void>();
   constructor(readonly dir: string) { this.file = join(dir, 'qm-plan.json'); }
 
   /** The stored plan; `null` when missing, plus `broken` when the file is not a valid plan. @req FR:qm-plan/store.read */
@@ -100,6 +108,18 @@ export class QmStore {
     const plan = parseQmPlan(body);
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     writeAtomic(this.file, `${JSON.stringify(plan, null, 2)}\n`);
+    for (const fn of this.listeners) { try { fn(); } catch { /* a listener never fails a write */ } }
     return plan;
+  }
+
+  /** Hears each successful put in this process; returns an unhook. @req FR:qm-plan/live.event */
+  onWrite(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
+
+  /** Hears writes by other processes (`stack qm put`) by polling the file mtime; returns a stop function. @req FR:qm-plan/live.event */
+  watch(fn: (mtimeMs: number) => void, intervalMs = 2000, poll: FilePoll = { watchFile, unwatchFile }): () => void {
+    // A missing file reports zeroed stats on the first poll: only a changed mtime (a write, or a delete) is news.
+    const h = (cur: { mtimeMs: number }, prev: { mtimeMs: number }) => { if (cur.mtimeMs !== prev.mtimeMs) fn(cur.mtimeMs); };
+    poll.watchFile(this.file, { persistent: false, interval: intervalMs }, h);
+    return () => poll.unwatchFile(this.file, h);
   }
 }

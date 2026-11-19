@@ -56,3 +56,34 @@ describe('QmStore', () => {
     expect(s.read().plan?.projects).toEqual([]);
   });
 });
+
+describe('QmStore live', () => {
+  // @req FR:qm-plan/live.event
+  it('tells onWrite listeners after a put, never on a failed put, and unhooks', () => {
+    const s = new QmStore(home()); let n = 0;
+    const off = s.onWrite(() => { n++; });
+    s.onWrite(() => { throw new Error('a listener never fails a write'); });
+    expect(() => s.put({ version: 1 })).toThrow(QmInvalid);
+    expect(n).toBe(0);
+    s.put(PLAN);
+    expect(n).toBe(1);
+    off(); s.put(PLAN);
+    expect(n).toBe(1);
+  });
+
+  // @req FR:qm-plan/live.event @req FR:qm-plan/live.event.stop
+  it('watch reports a changed mtime (a write by another process) and stops', () => {
+    const s = new QmStore(home()); const seen: number[] = [];
+    let hook: ((cur: { mtimeMs: number }, prev: { mtimeMs: number }) => void) | undefined; let opts: unknown; let unhooked: unknown;
+    const poll = { watchFile: (f: string, o: unknown, fn: typeof hook) => { expect(f).toBe(s.file); opts = o; hook = fn; }, unwatchFile: (f: string, fn: unknown) => { expect(f).toBe(s.file); unhooked = fn; } };
+    const stop = s.watch((m) => seen.push(m), 20, poll);
+    expect(opts).toEqual({ persistent: false, interval: 20 }); // never keeps the process alive
+    hook!({ mtimeMs: 0 }, { mtimeMs: 0 }); // a missing file's first poll: not news
+    hook!({ mtimeMs: 5 }, { mtimeMs: 0 });
+    hook!({ mtimeMs: 5 }, { mtimeMs: 5 });
+    hook!({ mtimeMs: 0 }, { mtimeMs: 5 }); // deleted
+    expect(seen).toEqual([5, 0]);
+    stop();
+    expect(unhooked).toBe(hook);
+  });
+});
