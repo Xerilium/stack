@@ -15,7 +15,7 @@ const dirs: string[] = [];
 let configured: string;
 
 const tmp = (): string => { const d = realpathSync(mkdtempSync(join(tmpdir(), 'stack-init-'))); dirs.push(d); return d; };
-const git = (dir: string, ...a: string[]) => execFileSync('git', a, { cwd: dir, encoding: 'utf8' }).trim();
+const git = (dir: string, ...a: string[]) => execFileSync('git', a, { cwd: dir, env: process.env, encoding: 'utf8' }).trim();
 const commits = (dir: string) => Number(git(dir, 'rev-list', '--count', 'HEAD'));
 
 async function cli(cwd: string, ...args: string[]) {
