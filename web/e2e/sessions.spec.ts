@@ -254,10 +254,13 @@ test.describe('Sessions', () => {
   });
 
   // @req FR:agent-team/agent.team.scan.run
-  test('a scanned agent runs: New opens the composer with it chosen', async ({ page }) => {
+  test('a scanned agent runs: New opens the composer with it chosen', async ({ page }, info) => {
     await open(page, teamSeed(), true);
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief'); // the chart settles on its first chat
     await page.locator('.agent-card[data-agent="lonely"]').click();
-    await page.keyboard.press('n');
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('Lonely · tests');
+    if (info.project.name === 'mobile') await page.locator('.sess-tools').getByRole('button', { name: /^New/ }).click(); // a phone taps New: the tap opens the chat, whose box can take the key
+    else await page.keyboard.press('n');
     const d = drawer(page);
     await expect(d.getByRole('heading', { level: 2 })).toHaveText('New session');
     await expect(d.getByRole('combobox', { name: 'Agent' })).toHaveValue('Lonely');
@@ -280,6 +283,7 @@ test.describe('Sessions', () => {
   test('j and k move the selection through the chart', async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'keyboard flow');
     await open(page, teamSeed(), true);
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief'); // the chart settles on its first chat
     await page.keyboard.press('j');
     await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Alpha Lead');
     await page.keyboard.press('j');
