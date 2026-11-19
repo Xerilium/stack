@@ -19,7 +19,8 @@ The owner's first real use: at 11:12 PM the plan said the day ended at 11:15 PM;
 ### FR:day: Schedule-aware day plan
 
 - **FR:day.frame** (P1): The web app reads `GET /schedule` (`FR:schedule/api.schedule`) and plans on the waking day it returns: minutes are wall-clock minutes after local midnight of the day's `date`, so a 2:00 AM bed is minute 1560 and 1:00 AM on the next calendar date still belongs to the day. The plan starts at now (rounded up to 15 min), never before wake, and ends at bed. When the route fails, the plan falls back to 9:00-18:00 on the current date
-- **FR:day.personal** (P1): Personal blocks are not task time: a task is planned inside a personal block only when its row carries that block's emoji (`🏠 Mow the lawn` can go in Family time). Such a task goes in its own block first, where it does not count against Available; when that block has no room it can use focus time like any task. Sleep is never planned. Personal blocks show on the day grid with a muted tint (`FR:myday.timeline`)
+- **FR:day.personal** (P1): Personal blocks are not task time: a task is planned inside a personal block only when its row carries that block's emoji (`🏠 Mow the lawn` can go in Family time). Such a task goes in its own block first, where it does not count against Available; when that block has no room it can use focus time like any task. Sleep is never planned. Personal blocks show on the day grid with a muted tint
+  > - @req FR:home/myday.timeline.bands
 - **FR:day.available** (P1): The default Available is the focus time left: from the plan start to bed, minus personal blocks and busy meetings (overlaps counted once). `−`/`+` and `[`/`]` still adjust it for today
 - **FR:day.calendar** (P1): Today asks `GET /calendar` for the waking day (`wake` to `bed`), so meetings after midnight are on the plan, and meetings outside the day are not
 - **FR:day.asleep** (P2): When the schedule says the owner is asleep, the plan shows the next waking day from wake, and the header says `Tomorrow from 8:00a` (`Today from 8:00a` after midnight, when that day is today's date)
@@ -39,11 +40,22 @@ Home itself (the one thing, fit, up next, projects, countdowns) is `FR:web-app/h
 
 ### FR:myday: My day (the schedule)
 
-- **FR:myday.timeline** (P1): My day (`g t`) is a day grid (`FR:ui-kit/daygrid`) of 30-minute rows, from the half hour that holds now (wake when the day has not started) to bed or the last planned end. Every row has the same height, and an empty slot is an empty row. Meetings, planned tasks and the email block sit at their real start, with a height in proportion to their length: 30 minutes is one row, 60 minutes is exactly two. A row under way starts at the top of the grid. The time column names each hour; a schedule block's label (`Work`, `Family`) sits in the time column at its first row, and personal time has a muted tint. A now line marks the current time. A block shows its own start time only when it does not start on a half hour, and a task block keeps its estimate mark (`~30m`, `2h+`; `FR:web-app/today.plan`). Assistive tech reads every block's start and length
+- **FR:myday.timeline** (P1): My day (`g t`) is a day grid of 30-minute rows, where every row has the same height and an empty slot is an empty row
+  > - @req FR:ui-kit/daygrid
+  - **FR:myday.timeline.range** (P1): The grid runs from the half hour that holds now (wake when the day has not started) to bed or the last planned end, whichever is later
+  - **FR:myday.timeline.size** (P1): Meetings, planned tasks and the email block sit at their real start, with a height in proportion to their length: 30 minutes is one row, 60 minutes is exactly two. A row under way starts at the top of the grid
+  - **FR:myday.timeline.bands** (P2): The time column names each hour. A schedule block's label (`Work`, `Family`) sits in the time column at its first row, and personal time has a muted tint over its own minutes
+  - **FR:myday.timeline.now** (P2): A now line marks the current time
+  - **FR:myday.timeline.start** (P1): A block shows its own start time when it starts off the half hour (`10:15a`)
+  - **FR:myday.timeline.estimate** (P1): A task block keeps its estimate mark (`~30m`, `2h+`)
+    > - @req FR:web-app/today.plan
+  - **FR:myday.timeline.a11y** (P1): Assistive tech reads every block's start, length, and schedule block
 - **FR:myday.short** (P2): A task block shorter than 30 minutes is one line: the done circle and the title. Its other actions are in the task detail.
-- **FR:myday.header** (P1): The My day header is the date line, the headline (`{planned} of {available}`), the Available control, and one line that shows only what needs action: at-risk tasks that do not fit, `No calendar`, and the next meeting with `Join`. It has no day bar, no free or meeting totals, and no jump links
+- **FR:myday.header** (P1): The My day header is the date line, the headline (`{planned} of {available}`), the Available control, and one line that shows only what needs action: at-risk tasks that do not fit, `No calendar`, and the next meeting with `Join`
 - **FR:myday.overflow** (P1): What does not fit is one collapsed line at the end (`{n} don't fit`, plus `· {k} due soon` in the warning color when any are at risk); expanded it lists at-risk tasks first (12 at most) then `{n} later`
-- **FR:myday.actions** (P1): Every task row of 30 minutes or more has one-tap Done, Start, Defer 2h, and Message `<agent>`; a shorter one has Done (`FR:myday.short`) (icon buttons with labels and no key badges; 44 px targets on touch). One click or tap on the row opens the task detail (`FR:task-detail-design/detail.open`). Keys work on the cursor row: `s`, `d`, `n`, `z`, `a`, Enter
+- **FR:myday.actions** (P1): Every task row of 30 minutes or more has one-tap Done, Start, Defer 2h, and Message `<agent>`; a shorter one has Done (icon buttons with labels and no key badges; 44 px targets on touch). One click or tap on the row opens the task detail. Keys work on the cursor row: `s`, `d`, `n`, `z`, `a`, Enter
+  > - @req FR:home/myday.short
+  > - @req FR:task-detail-design/detail.open
 - **FR:myday.quiet** (P2): Needs-you cards and AI team leave the top of the view: they sit below the timeline behind one summary line (`2 to decide · 1 CI failing`) until the Asks view carries them
 
 ## Dependencies

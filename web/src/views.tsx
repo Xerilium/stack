@@ -362,7 +362,7 @@ export function TodayView(t: TodayProps) {
   const nowMin = nowMinutes(t.now, t.day); // @req FR:home/day.frame
   const start = Math.max(t.day.start, Math.ceil(nowMin / 15) * 15);
   const lastEnd = Math.max(0, ...t.plan.blocks.map((b) => b.end), t.plan.email?.end ?? 0, ...t.plan.meetings.filter((m) => m.start < t.day.end + 120).map((m) => m.end));
-  const end = Math.min(t.day.origin ? 48 * 60 : 24 * 60, Math.max(t.day.end, start + t.budget.minutes, lastEnd));
+  const end = Math.min(t.day.origin ? 48 * 60 : 24 * 60, Math.max(t.day.end, lastEnd)); // to bed or the last planned end, never empty rows past both @req FR:home/myday.timeline.range
   const nextMeeting = t.plan.meetings.find((m) => m.end > nowMin);
   // Account badges only when the day spans more than one account. @req FR:connect-accounts/web.label
   const multi = multiAccount(t.dayEvents ?? t.plan.meetings.flatMap((m) => m.events));

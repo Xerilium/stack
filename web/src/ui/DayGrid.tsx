@@ -4,6 +4,7 @@
  * @req FR:ui-kit/daygrid
  */
 import type { ComponentChild } from 'preact';
+import { clock } from '../wall';
 import './ui.css';
 
 /** Minutes in one row. */
@@ -48,7 +49,6 @@ export function placeItems<T extends GridSpan>(items: T[], from: number, to: num
 }
 
 const hour = (m: number) => { const h = Math.floor(m / 60) % 24; return `${h % 12 || 12}${h < 12 ? 'a' : 'p'}`; };
-const clock = (m: number) => { const h = Math.floor(m / 60) % 24; return `${h % 12 || 12}:${String(Math.floor(m % 60)).padStart(2, '0')}${h < 12 ? 'a' : 'p'}`; };
 
 export function DayGrid({ label, from, to, items, bands = [], now, testid }: {
   /** The list name for assistive tech. */ label: string;
@@ -62,24 +62,26 @@ export function DayGrid({ label, from, to, items, bands = [], now, testid }: {
   const start = Math.floor(from / SLOT_MIN) * SLOT_MIN;
   const end = Math.max(start + SLOT_MIN, Math.ceil(to / SLOT_MIN) * SLOT_MIN);
   const slots = Array.from({ length: (end - start) / SLOT_MIN }, (_, i) => start + i * SLOT_MIN);
-  const bandAt = (m: number) => bands.find((b) => b.start < m + SLOT_MIN && b.end > m);
+  // A band is clipped to the span; its label sits in the row that holds its (clipped) start.
+  const shown = bands.map((b) => ({ b, a: Math.max(b.start, start), z: Math.min(b.end, end) })).filter((x) => x.z > x.a);
+  const bandOf = (m: number) => bands.find((b) => b.start <= m && b.end > m);
   return (
     <div class="ui-grid">
       <ol class="ui-slots" aria-hidden="true">
-        {slots.map((m, i) => {
-          const band = bandAt(m);
-          const first = band && (i === 0 || bandAt(m - SLOT_MIN) !== band);
-          return (
-            <li key={m} class={`ui-slot${m % 60 === 0 ? ' hour' : ''}${band?.muted ? ' muted' : ''}`}>
-              <span class="ui-slot-when">{m % 60 === 0 && <time>{hour(m)}</time>}{first && <span class="ui-slot-band">{band.label}</span>}</span>
-            </li>
-          );
-        })}
-      </ol>
-      <ol class="ui-grid-items" aria-label={label} data-testid={testid}>
-        {placeItems(items, start, end).map((p) => (
-          <li key={p.item.key} class="ui-grid-item" style={{ '--top': p.top, '--size': p.size, '--lane': p.lane, '--lanes': p.lanes }}>{p.item.node}</li>
+        {slots.map((m) => (
+          <li key={m} class={`ui-slot${m % 60 === 0 ? ' hour' : ''}`}>
+            <span class="ui-slot-when">{m % 60 === 0 && <time>{hour(m)}</time>}{shown.filter((x) => x.a >= m && x.a < m + SLOT_MIN).map((x) => <span key={x.b.label} class="ui-slot-band">{x.b.label}</span>)}</span>
+          </li>
         ))}
+      </ol>
+      <div class="ui-grid-bands" aria-hidden="true">
+        {shown.filter((x) => x.b.muted).map((x) => <div key={`${x.b.label}${x.a}`} class="ui-grid-band muted" style={{ '--top': (x.a - start) / SLOT_MIN, '--size': (x.z - x.a) / SLOT_MIN }} />)}
+      </div>
+      <ol class="ui-grid-items" aria-label={label} data-testid={testid}>
+        {placeItems(items, start, end).map((p) => {
+          const band = bandOf(Math.max(p.item.start, start));
+          return <li key={p.item.key} class="ui-grid-item" style={{ '--top': p.top, '--size': p.size, '--lane': p.lane, '--lanes': p.lanes }}>{p.item.node}{band && <span class="ui-sr">{band.label}</span>}</li>;
+        })}
       </ol>
       {now !== undefined && now >= start && now < end && <div class="now-line ui-grid-now" role="img" aria-label={`Now ${clock(now)}`} style={{ '--top': (now - start) / SLOT_MIN }} />}
     </div>

@@ -183,5 +183,10 @@ test.describe('My day v2', () => {
       await page.emulateMedia({ colorScheme: scheme });
       await page.screenshot({ path: `e2e/screenshots/myday-grid-${scheme}-${info.project.name}.png`, fullPage: true });
     }
+    // More Available than the time to bed adds no empty rows past bed: the grid ends at bed or the last planned end. @req FR:home/myday.timeline.range
+    const more = page.getByRole('button', { name: 'More time', exact: true });
+    for (let i = 0; i < 40 && (await more.isEnabled()); i++) await more.click({ force: true });
+    await expect(more).toBeDisabled();
+    await expect(page.locator('.ui-slot')).toHaveCount(32);
   });
 });

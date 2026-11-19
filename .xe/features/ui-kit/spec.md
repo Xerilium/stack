@@ -51,7 +51,14 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ### FR:daygrid: Day grid
 
-- **FR:daygrid** (P1): `DayGrid` shows a span of a day as rows of 30 minutes. Every row has the same height (`--ui-slot`: 60 px, 112 px on touch), and a row with no item is empty. The time column names each hour (`10a`). An item sits at its start time with a height in proportion to its length, so 30 minutes is one row and 60 minutes is exactly two; an item is clipped to the grid span. An item under 12 minutes (the shortest effort) has the height of 12 minutes, so a target is never under 24 px (44 px on touch); an item cut by the span keeps its cut size. Items that overlap sit side by side in lanes; overlap is judged on the drawn height, so no item covers another. A band labels a time range in the time column at its first row; a `muted` band tints its rows. `now` draws one line at that time when it is inside the span. Items are a list in time order; the rows are decoration, hidden from assistive tech. `placeItems` is the pure layout
+- **FR:daygrid** (P1): `DayGrid` shows a span of a day as rows of 30 minutes
+  - **FR:daygrid.rows** (P1): Every row has the same height (60 px, 112 px on touch), and a row with no item is empty. The time column names each hour (`10a`)
+  - **FR:daygrid.items** (P1): An item sits at its start time with a height in proportion to its length, so 30 minutes is one row and 60 minutes is exactly two. An item is clipped to the grid span and keeps its cut size
+    - **FR:daygrid.items.least** (P1): An item under 12 minutes (the shortest effort) has the height of 12 minutes, so a target is at least 24 px (44 px on touch)
+  - **FR:daygrid.lanes** (P1): Items that overlap sit side by side in lanes. Overlap is judged on the drawn height, so each item stays clear of the others
+  - **FR:daygrid.bands** (P2): A band labels a time range in the time column, in the row that holds its start. A `muted` band tints its own minutes
+  - **FR:daygrid.now** (P2): `now` draws one line at that time when it is inside the span
+  - **FR:daygrid.a11y** (P1): Items are a list in time order, and each item names the band it starts in. The rows, the tint and the hour labels are decoration, hidden from assistive tech
 
 ### FR:a11y: Access
 

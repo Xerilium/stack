@@ -41,8 +41,6 @@ section.today { max-width: 860px; }
 .today .block .what-body { display: contents; }
 .today .block .tick { grid-area: tick; } .today .block .what-title { grid-area: title; margin: 0; } .today .block .what-meta { grid-area: meta; margin: 0; flex-wrap: nowrap; white-space: nowrap; } .today .block .row-acts { grid-area: acts; }
 .today .what-meta > span + span::before, .today .what-meta > span + .due::before { content: '·'; margin-right: 6px; color: var(--muted); }
-.plan .meeting .what { border-left: 3px solid var(--line); background: var(--chip); border-radius: 0 8px 8px 0; }
-.plan .meeting .what::after { display: none; }
 .today .what::before { display: none; }
 /* Hover and focus change the row background. @req FR:product-reset/ui.taskcard */
 @media (hover: hover) { .today .what:hover { background: var(--card-hover); } }
