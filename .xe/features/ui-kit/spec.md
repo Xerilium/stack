@@ -2,7 +2,7 @@
 id: ui-kit
 title: Shared UI components
 author: flanakin
-description: "One component set for list views: a selectable card, a flag, a status chip, an actions menu, and an actions bar."
+description: "One component set for views: a selectable card, a flag, a status chip, an actions menu, an actions bar, and a day grid."
 dependencies: [web-shell]
 ---
 
@@ -16,7 +16,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ## Scope
 
-- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `useWide`) and `web/src/ui/ui.css`.
+- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `DayGrid`, `useWide`) and `web/src/ui/ui.css`.
 - Out: what a view puts in them (its words, tones, and actions), and the written UI rule (`ux-consolidation`).
 
 ## Scenarios
@@ -49,6 +49,17 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 ### FR:split: Split view
 
 - **FR:split** (P1): `SplitView` shows a list and a detail pane. Wide (`useWide(query)`), they sit side by side and the pane shows `empty` until a card is picked. Narrow, the open detail replaces the list, with `‹ Back`, and its heading gets focus
+
+### FR:daygrid: Day grid
+
+- **FR:daygrid** (P1): `DayGrid` shows a span of a day as rows of 30 minutes
+  - **FR:daygrid.rows** (P1): Every row has the same height (60 px, 112 px on touch), and a row with no item is empty. The time column names each hour (`10a`)
+  - **FR:daygrid.items** (P1): An item sits at its start time with a height in proportion to its length, so 30 minutes is one row and 60 minutes is exactly two. An item is clipped to the grid span and keeps its cut size
+    - **FR:daygrid.items.least** (P1): An item under 12 minutes (the shortest effort) has the height of 12 minutes, so a target is at least 24 px (44 px on touch)
+  - **FR:daygrid.lanes** (P1): Items that overlap sit side by side in lanes. Overlap is judged on the drawn height, so each item stays clear of the others
+  - **FR:daygrid.bands** (P2): A band labels a time range in the time column, in the row that holds its start. A `muted` band tints its own minutes
+  - **FR:daygrid.now** (P2): `now` draws one line at that time when it is inside the span
+  - **FR:daygrid.a11y** (P1): Items are a list in time order, and each item names the band it starts in. The rows, the tint and the hour labels are decoration, hidden from assistive tech
 
 ### FR:a11y: Access
 

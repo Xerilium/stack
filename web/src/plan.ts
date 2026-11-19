@@ -2,7 +2,7 @@ import { actionable, children, dueDays, isActive, isMessage } from './now';
 import { effortMinutes, parseRow } from './row';
 import type { Task } from './types';
 import { busyWithin, emailMinutes, mergeSpans, type Busy } from './meetings';
-import { wallMinutes } from './wall';
+import { clock, wallMinutes } from './wall';
 
 /** Day plan and decisions. Pure; the views only draw it. @req FR:web-app/today.plan @req FR:web-app/today.fit @req FR:web-app/today.needs */
 /** A block of the schedule, in day minutes. @req FR:home/day.personal */
@@ -162,7 +162,7 @@ export function buildPlan(candidates: Task[], now: Date, day: Day = DEFAULT_DAY,
   return { meetings, ...(email ? { email } : {}), blocks, overflow: [...atRisk, ...rest], atRisk, left, busy: booked, budget: cap, free: cap - booked, short, riskShort, assumed: blocks.filter((b) => b.assumed).length };
 }
 
-export const clock = (m: number) => { const h = Math.floor(m / 60) % 24; return `${h % 12 || 12}:${String(m % 60).padStart(2, '0')}${h < 12 ? 'a' : 'p'}`; };
+export { clock };
 export const span = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`);
 
 const strip = (s: string) => s.replace(/^\s*>\s?/, '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();

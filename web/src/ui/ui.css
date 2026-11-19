@@ -1,6 +1,6 @@
 /* The shared component set: card, flag, status chip, actions menu and bar. Tokens only, light and dark.
  * A consumer sets the card tone with --ui-edge, --ui-soft, --ui-strong, --ui-ink, --ui-ink2.
- * @req FR:ui-kit/card @req FR:ui-kit/flag @req FR:ui-kit/chip @req FR:ui-kit/menu @req FR:ui-kit/bar */
+ * @req FR:ui-kit/card @req FR:ui-kit/flag @req FR:ui-kit/chip @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/daygrid */
 
 /* Card: the whole card selects; links and tools sit above the stretched target. @req FR:ui-kit/card */
 .ui-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
@@ -81,3 +81,23 @@
 .ui-split.wide .ui-split-detail { position: sticky; top: 56px; }
 .ui-split-empty { margin: 0; color: var(--fl-fg3); }
 .ui-back { margin-bottom: var(--fl-s-s); }
+
+/* Day grid: every 30-minute row is --ui-slot high; an item's top and height are its start and length in rows. @req FR:ui-kit/daygrid */
+.ui-grid { position: relative; --ui-slot: 60px; --ui-gutter: 56px; }
+.ui-slots, .ui-grid-items { list-style: none; margin: 0; padding: 0; }
+.ui-slot { box-sizing: border-box; height: var(--ui-slot); display: grid; grid-template-columns: var(--ui-gutter) minmax(0, 1fr); }
+.ui-slot::after { content: ''; border-top: 1px dashed var(--line2); }
+.ui-slot.hour::after { border-top: 1px solid var(--line); }
+/* A band tints its real time, not whole rows. */
+.ui-grid-bands { position: absolute; inset: 0 0 0 var(--ui-gutter); pointer-events: none; }
+.ui-grid-band { position: absolute; left: 0; right: 0; top: calc(var(--top) * var(--ui-slot)); height: calc(var(--size) * var(--ui-slot)); }
+.ui-grid-band.muted { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 14%, transparent) 0 1px, transparent 1px 7px); }
+.ui-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ui-slot-when { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 0 10px 0 0; margin-top: -1px; font-size: 11px; line-height: 14px; color: var(--muted); min-width: 0; }
+.ui-slot-when time { font-weight: 600; color: var(--ink2); }
+.ui-slot-band { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-grid-items { position: absolute; inset: 0 0 0 var(--ui-gutter); pointer-events: none; }
+.ui-grid-item { position: absolute; box-sizing: border-box; top: calc(var(--top) * var(--ui-slot)); height: calc(var(--size) * var(--ui-slot)); left: calc(var(--lane) * 100% / var(--lanes)); width: calc(100% / var(--lanes)); padding: 1px 0 1px 2px; pointer-events: auto; }
+.ui-grid .ui-grid-now { position: absolute; left: calc(var(--ui-gutter) - 4px); right: 0; top: calc(var(--top) * var(--ui-slot)); height: 0; margin: 0; border-top: 1px solid var(--accent); pointer-events: none; z-index: 2; }
+.ui-grid .ui-grid-now::before { content: ''; position: absolute; left: -3px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+@media (max-width: 800px), (hover: none) { .ui-grid { --ui-slot: 112px; --ui-gutter: 44px; } .ui-slot-when { padding-right: 6px; } }
