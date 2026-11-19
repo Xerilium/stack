@@ -22,13 +22,13 @@ export function Loading({ what, rows = 3 }: { /** The plural noun that loads, fo
   );
 }
 
-/** An alert: what happened, the next step, and `Try again` when the view can retry. @req FR:ui-kit/error */
+/** An alert: what happened, the next step, and `Retry` when the view can retry. @req FR:ui-kit/error */
 export function ErrorState({ what, next, onRetry }: { what: ComponentChildren; next?: ComponentChildren; onRetry?: () => void }) {
   return (
     <div class="ui-error" role="alert" data-testid="ui-error">
       <p class="ui-error-what">{what}</p>
       {next && <p class="ui-error-next">{next}</p>}
-      {onRetry && <button type="button" class="fl-btn" onClick={onRetry}>Try again</button>}
+      {onRetry && <button type="button" class="fl-btn" onClick={onRetry}>Retry</button>}
     </div>
   );
 }

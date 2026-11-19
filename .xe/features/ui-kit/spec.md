@@ -94,7 +94,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ### FR:error: Error state
 
-- **FR:error** (P1): `ErrorState` is a block with `role="alert"`: what happened (`what`), an optional next step (`next`), and, with `onRetry`, a `Try again` button
+- **FR:error** (P1): `ErrorState` is a block with `role="alert"`: what happened (`what`), an optional next step (`next`), and, with `onRetry`, a `Retry` button
 
 ### FR:a11y: Access
 

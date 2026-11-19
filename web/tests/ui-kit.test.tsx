@@ -347,14 +347,14 @@ describe('Loading', () => {
 
 // @req FR:ui-kit/error
 describe('ErrorState', () => {
-  it('is an alert: what happened, the next step, and Try again', () => {
+  it('is an alert: what happened, the next step, and Retry', () => {
     let n = 0;
     const e = mount(<ErrorState what="Cannot load sessions." next="Check that Stack is open on your Mac." onRetry={() => { n += 1; }} />).querySelector('.ui-error')!;
     expect(e.getAttribute('role')).toBe('alert');
     expect(e.querySelector('.ui-error-what')!.textContent).toBe('Cannot load sessions.');
     expect(e.querySelector('.ui-error-next')!.textContent).toBe('Check that Stack is open on your Mac.');
     const b = e.querySelector('button')!;
-    expect(b.textContent).toBe('Try again');
+    expect(b.textContent).toBe('Retry');
     act(() => b.click());
     expect(n).toBe(1);
   });

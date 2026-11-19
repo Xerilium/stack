@@ -74,7 +74,7 @@ One font (`--fl-font`, the system font). Five sizes. Weights: 400 body, 600 emph
 | List and detail              | `SplitView`                 | Side by side when wide. The detail replaces the list when narrow.                             |
 | Nothing to show              | `EmptyState`                | What is empty, then the next step. Left-aligned text, no art.                                 |
 | Data on the way              | `Loading`                   | Gray bars where rows will be. Not the word "Loading" alone.                                   |
-| Load failed                  | `ErrorState`                | What happened, what to do, and `Try again`.                                                   |
+| Load failed                  | `ErrorState`                | What happened, what to do, and `Retry`.                                                   |
 
 - A status word has one tone on every page: the same word never shows in two colors.
 - A row in a plain list (a table of projects, a task list) is one target too: the row has the hover state and the pointer, not only its title.

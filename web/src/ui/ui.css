@@ -141,7 +141,7 @@
 @keyframes ui-sk { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .ui-sk { animation: none; } }
 
-/* Error: what happened, the next step, Try again. @req FR:ui-kit/error */
+/* Error: what happened, the next step, Retry. @req FR:ui-kit/error */
 .ui-error { display: flex; flex-direction: column; align-items: flex-start; gap: var(--fl-s-s); padding: var(--fl-s-l); border: 1px solid var(--line); border-left: 4px solid var(--danger); border-radius: var(--fl-r-xl); background: var(--panel); }
 .ui-error p { margin: 0; }
 .ui-error-what { font-weight: 600; color: var(--ink); }
