@@ -158,6 +158,14 @@ Owner needs the result of each action in one place so that he sees it and can un
   - **FR:toasts.dismiss** (P2): `Toasts` MUST give each toast a Dismiss button
   - **FR:toasts.undo** (P2): `Toasts` MUST give a toast an Undo button when the toast has an undo
 
+### FR:nav: Nav item and nav icons
+
+- **FR:nav** (P1): `NavItem` MUST be one nav button: a line icon (`NavIcon`), then its label, then an optional badge
+  - **FR:nav.icon** (P1): `NavIcon` MUST draw every nav icon from one set: a 24 px grid, a 1.7 px stroke with round ends, no fill, the current text color, hidden from assistive tech
+  - **FR:nav.icon.all** (P1): The icon set MUST have one icon for each view, and for New task, Commands, Shortcuts, and More
+  - **FR:nav.icon.muted** (P2): The icon MUST show in the muted color; on the current item it takes the item's color
+  - **FR:nav.current** (P1): `NavItem` MUST mark the current item with `aria-current="page"` and the class `on`
+
 ### FR:a11y: Access
 
 - **FR:a11y** (P1): Every target is at least 44 px on touch and 24 px on desktop. Axe finds no serious or critical violation where a view uses them

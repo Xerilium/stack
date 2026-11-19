@@ -79,6 +79,7 @@ One font (`--fl-font`, the system font). Five sizes. Weights: 400 body, 600 emph
 - A status word has one tone on every page: the same word never shows in two colors.
 - A row in a plain list (a table of projects, a task list) is one target too: the row has the hover state and the pointer, not only its title.
 - Counts in navigation are a pill. Counts in content are plain text.
+- Every nav item is a `NavItem`: a muted line icon from the one icon set (`NavIcon`), then the label. Add a new icon to the set; do not draw one in a view.
 
 ## Access
 

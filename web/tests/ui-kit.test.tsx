@@ -9,6 +9,8 @@ import { FilterPills } from '../src/ui/FilterPills';
 import { Flag } from '../src/ui/Flag';
 import { MessageBox } from '../src/ui/MessageBox';
 import { LinkList } from '../src/ui/LinkList';
+import { NAV_ICONS, NavIcon, NavItem } from '../src/ui/Nav';
+import { RAIL, TABBAR } from '../src/nav';
 import { PageHeader } from '../src/ui/PageHeader';
 import { EmptyState, ErrorState, Loading } from '../src/ui/States';
 import { CountBadge } from '../src/ui/CountBadge';
@@ -454,5 +456,53 @@ describe('Skeleton', () => {
       .toBe('<ol class="sess-list" aria-busy="true" aria-label="Loading agents"><li class="sk"></li><li class="sk"></li><li class="sk"></li></ol>');
     expect(html(<Skeleton as="lines" class="turns" label="Loading transcript" rows={['', 'short', '']} />))
       .toBe('<div class="turns" aria-busy="true" aria-label="Loading transcript"><p class="sk"></p><p class="sk short"></p><p class="sk"></p></div>');
+  });
+});
+
+// @req FR:ui-kit/nav @req FR:ui-kit/nav.icon @req FR:ui-kit/nav.icon.all @req FR:ui-kit/nav.current
+describe('NavItem and NavIcon', () => {
+  it('every icon is one path on a 24 px grid: 1.7 px round stroke, no fill, hidden from assistive tech', () => {
+    for (const name of Object.keys(NAV_ICONS) as (keyof typeof NAV_ICONS)[]) {
+      const svg = mount(<NavIcon name={name} />).querySelector('svg.ui-nav-ic')!;
+      expect(svg.getAttribute('viewBox'), name).toBe('0 0 24 24');
+      expect(svg.getAttribute('aria-hidden'), name).toBe('true');
+      const path = svg.querySelectorAll('path');
+      expect(path, name).toHaveLength(1);
+      expect(path[0].getAttribute('fill'), name).toBe('none');
+      expect(path[0].getAttribute('stroke'), name).toBe('currentColor');
+      expect(path[0].getAttribute('stroke-linecap'), name).toBe('round');
+      expect(path[0].getAttribute('stroke-width'), name).toBe(name === 'more' ? '3' : '1.7');
+      expect(path[0].getAttribute('d')!.length, name).toBeGreaterThan(5);
+    }
+  });
+  it('the set has an icon for each view on the rail and the tab bar, and for New task, Settings, Commands, Shortcuts and More', () => {
+    for (const v of [...RAIL, ...TABBAR, 'home', 'inventory', 'settings', 'commands', 'shortcuts']) expect(NAV_ICONS[v as keyof typeof NAV_ICONS], v).toBeTruthy();
+    expect(new Set(Object.values(NAV_ICONS)).size).toBe(Object.keys(NAV_ICONS).length); // no two items share an icon
+  });
+  it('is a button: icon, label, badge; the current item has aria-current and the class on', () => {
+    let n = 0;
+    const r = mount(<NavItem icon="asks" label="Notifications" title="Notifications (g k)" badge={<span class="badge">2</span>} current testid="nav-x" onClick={() => { n += 1; }} />);
+    const b = r.querySelector('button')!;
+    expect(b.className).toBe('tab on');
+    expect(b.getAttribute('aria-current')).toBe('page');
+    expect(b.getAttribute('title')).toBe('Notifications (g k)');
+    expect(b.getAttribute('data-testid')).toBe('nav-x');
+    expect(b.firstElementChild!.matches('svg.ui-nav-ic')).toBe(true);
+    expect(b.querySelector('.tab-label')!.textContent).toBe('Notifications2');
+    act(() => b.click());
+    expect(n).toBe(1);
+    const off = mount(<NavItem icon="now" label="Now" class="add" name="New" onClick={() => undefined} />).querySelector('button')!;
+    expect(off.className).toBe('tab add');
+    expect(off.getAttribute('aria-current')).toBeNull();
+    expect(off.getAttribute('aria-label')).toBe('New');
+  });
+  it('the icon is muted, and takes the item color on the current item', () => {
+    const css = readFileSync('src/ui/ui.css', 'utf8');
+    expect(css).toMatch(/\.ui-nav-ic \{[^}]*color: var\(--muted\)/);
+    expect(css).toMatch(/\.tab\.on \.ui-nav-ic \{ color: inherit; \}/);
+  });
+  it('App.tsx draws no nav icon by hand', () => {
+    const app = readFileSync('src/App.tsx', 'utf8');
+    for (const one of ['function Bell', 'function Gear', 'function TabIcon', 'class="nav-bell"', 'class="set-gear"', 'class="tab-ic"']) expect(app, one).not.toContain(one);
   });
 });

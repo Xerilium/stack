@@ -5,6 +5,7 @@
  * @req FR:web-app/edit.notes @req FR:web-app/host.auth @req FR:web-app/host.nosecrets
  * @req FR:web-app/ux.feedback @req FR:web-app/ux.responsive
  */
+import { NavIcon, NavItem } from './ui/Nav';
 import { Fragment, type ComponentChildren } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, createClient } from './api';
@@ -1019,7 +1020,7 @@ export function App() {
   /** There the offline banner and the phone brand need a landmark of their own: a header. */
   const shellHead = (c: ComponentChildren) => (qm ? <header class="shell-head">{c}</header> : c);
   const nav = () => RAIL.map((v) => v === 'prs' ? <PrsNavItem key={v} api={api} active={at(v)} label={LABEL[v]} hint={HINT[v]} onGo={() => go(v)} /> : (
-    <button type="button" key={v} class={`tab${at(v) ? ' on' : ''}`} aria-current={at(v) ? 'page' : undefined} title={HINT[v] ? `${LABEL[v]} (${HINT[v]})` : LABEL[v]} data-testid={v === 'asks' ? 'nav-notifications' : undefined} onClick={() => go(v)}><span class="tab-label">{v === 'asks' && <Bell />}{LABEL[v]}{badge(v)}</span></button>
+    <NavItem key={v} icon={v} label={LABEL[v]} current={at(v)} title={HINT[v] ? `${LABEL[v]} (${HINT[v]})` : LABEL[v]} testid={v === 'asks' ? 'nav-notifications' : undefined} badge={badge(v)} onClick={() => go(v)} />
   ));
   return (
     <div class="shell">
@@ -1029,13 +1030,13 @@ export function App() {
          * @req FR:cli/web.demo.pill @req FR:web-shell/nav.rail.brand
          */}
         <div class="brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark />Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}{/* @req FR:pr-page/icon.place */}<PrsButton api={api} where="rail" /></div>
-        <button type="button" class="tab add" title="New task (C)" onClick={openCapture}>＋ New task</button>
+        <NavItem icon="new" label="New task" class="add" title="New task (C)" onClick={openCapture} />
         {nav()}
         <div class="spacer" />
         {/* @req FR:settings/view.entry */}
-        <button type="button" class={`tab set-tab${view === 'settings' ? ' on' : ''}`} aria-current={view === 'settings' ? 'page' : undefined} title="Settings (g ,)" onClick={() => go('settings')}><span class="tab-label"><Gear />Settings</span></button>
-        <button type="button" class="tab" onClick={() => setPalette(true)} aria-label="Commands: open command palette" title="Commands (⌘K)">Commands</button>
-        <button type="button" class="tab" title="Shortcuts (?)" onClick={() => setHelp(true)}>Shortcuts</button>
+        <NavItem icon="settings" label="Settings" class="set-tab" current={view === 'settings'} title="Settings (g ,)" onClick={() => go('settings')} />
+        <NavItem icon="commands" label="Commands" name="Commands: open command palette" title="Commands (⌘K)" onClick={() => setPalette(true)} />
+        <NavItem icon="shortcuts" label="Shortcuts" title="Shortcuts (?)" onClick={() => setHelp(true)} />
         {/* @req FR:feedback-button/ui.icon */}
         <FeedbackButton />
         <div class="who">
@@ -1094,10 +1095,10 @@ export function App() {
       {/* @req FR:web-shell/nav.tabbar */}
       <nav class="tabbar" aria-label="Views (mobile)">
         {TABBAR.map((slot) => slot === 'new'
-          ? <button type="button" key="new" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg></span></button>
+          ? <button type="button" key="new" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true"><NavIcon name="new" /></span></button>
           : slot === 'more'
-            ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label={`More: open command palette${inboxAttention ? '. Inbox: an account needs attention' : ''}`}><TabIcon v="more" /><span>More</span>{inboxDot}</button>
-            : <button type="button" key={slot} class={`tab${at(slot) ? ' on' : ''}`} aria-current={at(slot) ? 'page' : undefined} data-testid={slot === 'asks' ? 'nav-notifications' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
+            ? <NavItem key="more" icon="more" label="More" name={`More: open command palette${inboxAttention ? '. Inbox: an account needs attention' : ''}`} badge={inboxDot} onClick={() => setPalette(true)} />
+            : <NavItem key={slot} icon={slot} label={LABEL[slot]} current={at(slot)} testid={slot === 'asks' ? 'nav-notifications' : undefined} badge={badge(slot)} onClick={() => go(slot)} />)}
       </nav>
       {focusTask && <TaskDetail task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, focusTask.text, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
@@ -1164,30 +1165,3 @@ function Mark() {
   return <svg class="mark" viewBox="0 0 512 512" width="18" height="18" aria-hidden="true"><rect width="512" height="512" rx="113" fill="currentColor" opacity=".12" /><g fill="currentColor"><rect x="122" y="120" width="230" height="64" rx="22" opacity=".55" /><rect x="93" y="224" width="287" height="64" rx="22" opacity=".8" /><rect x="122" y="328" width="230" height="64" rx="22" /></g></svg>;
 }
 
-const GEAR = 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2-1.2L14.5 3h-4l-.4 2.6a7.5 7.5 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7.5 7.5 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z';
-/** The Settings gear in the rail footer. @req FR:settings/view.entry */
-function Gear() {
-  return <svg class="set-gear" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d={GEAR} fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>;
-}
-
-/** Line icons for the phone tab bar. @req FR:pwa/install.standalone */
-/** The bell on the Notifications rail item. @req FR:notifications/bell.item @req NFR:notifications/a11y.axe */
-function Bell() {
-  return <svg class="nav-bell" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" /></svg>;
-}
-
-function TabIcon({ v }: { v: View | 'more' }) {
-  const d: Record<string, string> = {
-    asks: 'M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0Z',
-    today: 'M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 5h16M8 3v4m8-4v4',
-    now: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z',
-    home: 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z',
-    inbox: 'M4 13h4l1.5 3h5L16 13h4M4 13l2-7h12l2 7v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z',
-    sessions: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Zm4 13h8M8 8l2.5 2.5L8 13m4 0h4',
-    projects: 'M4 6h16M4 12h16M4 18h10',
-    list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
-    more: 'M5 12h.01M12 12h.01M19 12h.01',
-    settings: GEAR,
-  };
-  return <svg class="tab-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={d[v]} fill="none" stroke="currentColor" stroke-width={v === 'more' ? 3 : 1.7} stroke-linecap="round" stroke-linejoin="round" /></svg>;
-}
