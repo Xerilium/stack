@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
-import { errText } from './errtext';
+import { errCause, errText } from './errtext';
 import type { Toast } from './parts';
 import { emptyThread, followUpSession, type Thread } from './thread';
 import type { Sessions } from './useSessions';
@@ -71,7 +71,11 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
           if (r.sessionId) team.noteStarted(ref, r.sessionId);
           if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
         }
-      } catch (e) { toastRef.current(`Saved on the task, but the agent did not start: ${errText(e)}`, 'err'); }
+      } catch (e) {
+        // The message is already on the task: never say "try again" here, or a resend writes it twice.
+        const why = errCause(e);
+        toastRef.current(`Saved on the task, but the agent did not start${why ? ` (${why.replace(/\.$/, '')})` : ''}. Start it from the task; do not send the message again.`, 'err');
+      }
       void sessions.reload();
       void load(ref, true);
       return true;

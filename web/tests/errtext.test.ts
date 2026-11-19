@@ -1,7 +1,7 @@
 /** @req FR:web-shell/state.errors */
 import { describe, expect, it } from 'vitest';
 import { ApiFailure } from '../src/api';
-import { errText, UserError } from '../src/errtext';
+import { errCause, errText, UserError } from '../src/errtext';
 
 const f = (code: string, message: string, details?: { field: string; message: string }[], status = 400) => new ApiFailure(status, code, message, details);
 
@@ -62,5 +62,16 @@ describe('errText', () => {
     for (const code of ['conflict', 'not_found', 'invalid', 'internal', 'bad_request', 'unavailable']) {
       expect(errText(f(code, 'Failed'), 'do it')).not.toBe('Failed');
     }
+  });
+});
+
+describe('errCause', () => {
+  // @req FR:web-shell/state.errors.specific
+  it('the cause only when the error names one', () => {
+    expect(errCause(f('internal', 'Internal error', undefined, 500))).toBe('');
+    expect(errCause(f('conflict', 'Conflict', undefined, 409))).toBe('');
+    expect(errCause(new Error('x'))).toBe('');
+    expect(errCause(f('not_found', 'No live lane on this host', undefined, 404))).toBe('No live lane on this host');
+    expect(errCause(new UserError('Reply with a reason to reject'))).toBe('Reply with a reason to reject');
   });
 });
