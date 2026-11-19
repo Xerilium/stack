@@ -578,13 +578,15 @@ function PlanBlock({ b, p, busy, onAct, message }: { b: Block; p: RowProps; busy
   const who = message?.name(b.task) ?? 'the agent';
   return (
     <div class={`block${isCursor ? ' cursor' : ''}${b.end - b.start < SLOT_MIN ? ' short' : ''}`} data-ref={ref}>
-      <time class={`when${b.start % SLOT_MIN ? ' off' : ''}`}>{clock(b.start)}<small title={b.assumed ? 'No effort set; 30 min assumed' : undefined}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</small></time>
+      <time class="when">{clock(b.start)}<small title={b.assumed ? 'No effort set; 30 min assumed' : undefined}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</small></time>
       <div class="what" onClick={(e) => { if ((e.target as HTMLElement).closest('a')) return; open(); }} onDblClick={open}>
         <button type="button" class="tick" aria-label="Mark done" disabled={busy} onClick={(e) => { e.stopPropagation(); onAct('done', ref); }}><span class="box" /></button>
         <div class="what-body">
           <p class="what-title"><button type="button" class="row-open" aria-label={`Open ${r.title || b.task.text}`} onClick={(e) => { e.stopPropagation(); open(); }} onFocus={() => p.onCursor(ref)}><Md text={r.title || b.task.text} links={false} /></button><TitleLinks text={r.title || b.task.text} project={b.task.project} /></p>
           <p class="what-meta">
             <span>{p.titles.get(b.task.project) ?? b.task.project}</span>
+            {b.start % SLOT_MIN > 0 && <span aria-hidden="true">{clock(b.start)}</span>}
+            {(b.assumed || b.partial) && <span aria-hidden="true" title={b.assumed ? 'No effort set; 30 min assumed' : 'Capped at 2 h'}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</span>}
             <DueNote due={r.due} />
             {chipsOf(b.task.text).filter((c) => c.group === 'status').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([ref], g)} />)}
             <Tags r={r} />

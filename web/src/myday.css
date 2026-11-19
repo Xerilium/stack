@@ -113,7 +113,6 @@ section.today .ui-grid .m-line .join { font-weight: 600; text-decoration: none; 
 /* A start that is not on a half hour shows in the block. */
 section.today .ui-grid .when.off { position: static; width: auto; height: auto; clip-path: none; float: right; display: block; font-size: 11px; font-weight: 500; color: var(--muted); padding: 5px 8px 0 0; }
 section.today .ui-grid .when.off small { display: none; }
-section.today .ui-grid .block .when.off { display: none; }
 @media (max-width: 800px), (hover: none) {
   section.today .ui-grid .block .what { padding: 2px 2px 0 2px; }
   section.today .ui-grid .block:not(.short) .what-title { white-space: nowrap; }

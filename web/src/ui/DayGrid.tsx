@@ -8,11 +8,13 @@ import './ui.css';
 
 /** Minutes in one row. */
 export const SLOT_MIN = 30;
+/** The least height of an item, in rows (15 minutes): its target stays 24 px, 48 px on touch. */
+export const MIN_SIZE = 0.5;
 
 export interface GridSpan { /** Start, in minutes after midnight. */ start: number; /** End, in minutes after midnight. */ end: number }
 export interface GridItem extends GridSpan { key: string; node: ComponentChild }
 export interface GridBand extends GridSpan { label: string; /** Tint the band's rows (time that is not for work). */ muted?: boolean }
-/** Where an item sits: `top` and `size` in rows (30 minutes is 1); `lane` of `lanes` when items overlap. */
+/** Where an item sits: `top` and `size` in rows (30 minutes is 1, never under `MIN_SIZE`); `lane` of `lanes` when items overlap in time. */
 export interface Placed<T> { item: T; top: number; size: number; lane: number; lanes: number }
 
 /**
@@ -33,7 +35,7 @@ export function placeItems<T extends GridSpan>(items: T[], from: number, to: num
     const taken = new Set(group.filter((g) => g.z > x.a).map((g) => g.p.lane));
     let lane = 0;
     while (taken.has(lane)) lane++;
-    const p: Placed<T> = { item: x.item, top: (x.a - from) / SLOT_MIN, size: (x.z - x.a) / SLOT_MIN, lane, lanes: 1 };
+    const p: Placed<T> = { item: x.item, top: (x.a - from) / SLOT_MIN, size: Math.max(MIN_SIZE, (x.z - x.a) / SLOT_MIN), lane, lanes: 1 };
     group.push({ p, z: x.z });
     groupEnd = Math.max(groupEnd, x.z);
     out.push(p);
@@ -59,7 +61,7 @@ export function DayGrid({ label, from, to, items, bands = [], now, testid }: {
   const slots = Array.from({ length: (end - start) / SLOT_MIN }, (_, i) => start + i * SLOT_MIN);
   const bandAt = (m: number) => bands.find((b) => b.start < m + SLOT_MIN && b.end > m);
   return (
-    <div class="ui-grid" style={{ '--slots': slots.length }}>
+    <div class="ui-grid">
       <ol class="ui-slots" aria-hidden="true">
         {slots.map((m, i) => {
           const band = bandAt(m);

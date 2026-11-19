@@ -166,15 +166,17 @@ describe('Tabs and SplitView', () => {
 
 // @req FR:ui-kit/daygrid
 describe('DayGrid', () => {
-  const it30 = { key: 'a', start: 600, end: 630 }, it60 = { key: 'b', start: 660, end: 720 }, it15 = { key: 'c', start: 735, end: 750 };
+  const it30 = { key: 'a', start: 600, end: 630 }, it60 = { key: 'b', start: 660, end: 720 }, it15 = { key: 'c', start: 735, end: 750 }, it12 = { key: 'd', start: 750, end: 762 };
   it('placeItems: size is in proportion to length, top to start', () => {
-    const p = placeItems([it60, it30, it15], 600, 780);
-    expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['a', 0, 1], ['b', 2, 2], ['c', 4.5, 0.5]]);
+    const p = placeItems([it60, it30, it15, it12], 600, 780);
+    // an item under 15 minutes keeps the height of 15 minutes, so its target stays usable; lanes follow real times
+    expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['a', 0, 1], ['b', 2, 2], ['c', 4.5, 0.5], ['d', 5, 0.5]]);
     expect(p.every((x) => x.lane === 0 && x.lanes === 1)).toBe(true);
   });
   it('placeItems: clips to the span and drops items outside it', () => {
     const p = placeItems([{ key: 'early', start: 540, end: 630 }, { key: 'late', start: 760, end: 840 }, { key: 'out', start: 900, end: 930 }], 600, 780);
     expect(p.map((x) => [x.item.key, x.top, x.size])).toEqual([['early', 0, 1], ['late', 16 / 3, 2 / 3]]);
+    expect(placeItems([{ key: 'x', start: 600, end: 612 }, { key: 'y', start: 612, end: 642 }], 600, 780).map((x) => [x.lane, x.lanes])).toEqual([[0, 1], [0, 1]]);
   });
   it('placeItems: items that overlap sit side by side; later ones get the full width again', () => {
     const p = placeItems([{ key: 'a', start: 600, end: 660 }, { key: 'b', start: 630, end: 690 }, { key: 'c', start: 660, end: 690 }, { key: 'd', start: 720, end: 750 }], 600, 780);

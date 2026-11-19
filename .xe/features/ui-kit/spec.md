@@ -51,7 +51,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ### FR:daygrid: Day grid
 
-- **FR:daygrid** (P1): `DayGrid` shows a span of a day as rows of 30 minutes. Every row has the same height (`--ui-slot`: 48 px, 96 px on touch), and a row with no item is empty. The time column names each hour (`10a`). An item sits at its start time with a height in proportion to its length, so 30 minutes is one row and 60 minutes is exactly two; an item is clipped to the grid span. Items that overlap in time sit side by side in lanes. A band labels a time range in the time column at its first row; a `muted` band tints its rows. `now` draws one line at that time when it is inside the span. Items are a list in time order; the rows are decoration, hidden from assistive tech. `placeItems` is the pure layout
+- **FR:daygrid** (P1): `DayGrid` shows a span of a day as rows of 30 minutes. Every row has the same height (`--ui-slot`: 48 px, 96 px on touch), and a row with no item is empty. The time column names each hour (`10a`). An item sits at its start time with a height in proportion to its length, so 30 minutes is one row and 60 minutes is exactly two; an item is clipped to the grid span. An item under 15 minutes has the height of 15 minutes, so its target is never under 24 px (48 px on touch). Items that overlap in time sit side by side in lanes. A band labels a time range in the time column at its first row; a `muted` band tints its rows. `now` draws one line at that time when it is inside the span. Items are a list in time order; the rows are decoration, hidden from assistive tech. `placeItems` is the pure layout
 
 ### FR:a11y: Access
 
