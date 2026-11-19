@@ -35,7 +35,10 @@ This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:p
 - **FR:list.source** (P1): A notification with a link shows it as a source link (`FR:ui-kit/source`)
   - **FR:list.source.task** (P1): A notification about a task (a 🙋 row, or an ask with a task row) shows `Task`, which opens the task in the app
   - **FR:list.source.row** (P1): A 🙋 row shows no source link
-  - **FR:list.source.session** (P1): A permission ask from a session (`perm-<session8>-<request>`, `FR:acp-driver/perm.flow`) shows `Session`, which opens that session in the app (`FR:agent-sessions/web.drawer`). The session is the one whose id starts with `<session8>`. When no session matches, a toast says so. A host that runs no sessions shows no `Session` link
+  - **FR:list.source.session** (P1): A permission ask from a session (`perm-<session8>-<request>`, `FR:acp-driver/perm.flow`) shows `Session`, which opens that session in the app (`FR:agent-sessions/web.drawer`)
+    - **FR:list.source.session.match** (P1): `Session` opens the session whose id starts with `<session8>`
+    - **FR:list.source.session.none** (P1): When no session matches, a toast tells the owner that the session is not found
+    - **FR:list.source.session.host** (P1): A host that runs no sessions shows no `Session` link
 - **FR:list.rowactions** (P1): Every row that is not selected has an actions menu (`FR:ui-kit/menu`) named `Actions for {ask}`
   - **FR:list.rowactions.items** (P1): The menu lists the actions of the notification's kind (`FR:ask-queue/web.actions`: for example Approve, Reject, Open), then Reply (`Answer` for an `answer` ask), then Defer
   - **FR:list.rowactions.context** (P1): An ask with no reason, no link and no detail also has `Ask for context`, which sends the sender a question
