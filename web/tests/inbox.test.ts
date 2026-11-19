@@ -47,8 +47,8 @@ describe('inbox toast words', () => {
     expect(doneText({ id: 'ask-me-later', label: 'Ask me later', ready: true })).toBe('Deferred until tomorrow');
     expect(doneText({ id: 'create-task', label: 'Create task', ready: true })).toBe('Task created');
   });
-  it('falls back to the label for an action it does not know, and never says "Mark done: done"', () => {
-    expect(doneText({ id: 'archive', label: 'Archive', ready: true })).toBe('Archive: Done');
-    expect(cat.map(doneText)).not.toContain('Mark done: done');
+  // @req FR:inbox-page/web.toast.other
+  it('says Done for an action it does not know', () => {
+    expect(doneText({ id: 'archive', label: 'Archive', ready: true })).toBe('Done');
   });
 });
