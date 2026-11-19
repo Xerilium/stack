@@ -50,10 +50,10 @@ test.describe('Priorities', () => {
     const r1 = row(page, 'p1');
     await expect(r1.locator('.pri-n')).toHaveText('1');
     await expect(r1).toContainText('Quota-maxxing');
-    await expect(r1.locator('.pri-status')).toHaveText(/Active/);
+    await expect(r1.locator('.pri-toggle .ui-chip')).toHaveText('Active');
     await expect(r1.locator('.pri-progress')).toHaveText('1/3');
     await expect(r1.locator('.pri-next')).toHaveText('Stack v2');
-    await expect(row(page, 'p2').locator('.pri-status')).toHaveText(/Blocked/);
+    await expect(row(page, 'p2').locator('.pri-toggle .ui-chip')).toHaveText('Blocked');
     await expect(row(page, 'p6').locator('.pri-n')).toHaveText('6');
     await block(page).getByRole('button', { name: 'Show 2 more' }).click();
     await expect(page.locator('.pri')).toHaveCount(7);
@@ -88,8 +88,9 @@ test.describe('Priorities', () => {
   test('status, item text and status, add, remove, and move all save the whole list with the latest rev', async ({ page }) => {
     const m = await open(page);
     await row(page, 'p1').locator('.pri-toggle').click();
+    await expect(row(page, 'p1').getByLabel('Status of Quota-maxxing').locator('option')).toHaveText(['Active', 'Paused', 'Blocked', 'Done']); // word only, as on the chip
     await row(page, 'p1').getByLabel('Status of Quota-maxxing').selectOption('paused');
-    await expect(row(page, 'p1').locator('.pri-status')).toHaveText(/Paused/);
+    await expect(row(page, 'p1').locator('.pri-toggle .ui-chip')).toHaveText('Paused');
     await expect.poll(() => m.pris!.pris[0].status).toBe('paused');
     await row(page, 'p1').getByLabel('Status of item Anything below').selectOption('doing');
     await expect.poll(() => m.pris!.pris[0].items[2].status).toBe('doing');
@@ -134,11 +135,11 @@ test.describe('Priorities', () => {
     await row(page, 'p1').locator('.pri-toggle').click();
     await row(page, 'p1').getByLabel('Status of Quota-maxxing').selectOption('paused');
     await expect(page.locator('.toast')).toContainText('pris[0].title: Too long');
-    await expect(row(page, 'p1').locator('.pri-status')).toHaveText(/Active/);
+    await expect(row(page, 'p1').locator('.pri-toggle .ui-chip')).toHaveText('Active');
     m.fail.set('POST /pris', { status: 500, code: 'internal', message: 'Disk full' });
     await row(page, 'p1').getByLabel('Status of Quota-maxxing').selectOption('done');
     await expect(page.locator('.toast').last()).toContainText('Not saved: Disk full');
-    await expect(row(page, 'p1').locator('.pri-status')).toHaveText(/Active/);
+    await expect(row(page, 'p1').locator('.pri-toggle .ui-chip')).toHaveText('Active');
   });
 
   test('no priorities yet: one line and Add priority; a new one saves with a slug id', async ({ page }) => {
@@ -198,6 +199,34 @@ test.describe('Sessions', () => {
     await expect(links.nth(1)).toContainText('No activity for 30 min');
     await expect(links.nth(2)).toContainText('Approve the push');
     await expect(links.nth(0)).toHaveAccessibleName(/^Session a1, Waiting, Asked a question, 12m ago$/);
+  });
+
+  // @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.line @req FR:pris-sessions-ui/sessions.name @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/pris.status
+  test('the row line renders markdown as text inside the link; state is the same chip as Priorities; oldest wait first', async ({ page }) => {
+    const ask = 'Anything else, **done**, or **next** to the `finops-pmm` review? See [PR](https://github.com/x/y/pull/1)';
+    await open(page, { needs: [S('n1', 'allyte', { lastActivityAt: iso(5) }), S('o1', 'allyte', { lastActivityAt: iso(90), ask })] }, 'inventory');
+    const links = page.getByTestId('sessions').locator('a.session-row');
+    await expect(links.nth(0)).toHaveAttribute('href', 'claude://claude.ai/epitaxy/o1');
+    const line = links.nth(0).locator('.s-line');
+    await expect(line).toHaveText('Anything else, done, or next to the finops-pmm review? See PR');
+    await expect(line.locator('b')).toHaveText(['done', 'next']);
+    await expect(line.locator('code')).toHaveText('finops-pmm');
+    await expect(links.nth(0).locator('a')).toHaveCount(0);
+    await expect(links.nth(0).locator('.ui-chip')).toHaveText('Waiting');
+    await expect(links.nth(0).locator('.ui-chip')).toHaveClass(/t-neutral/);
+    await expect(links.nth(0)).toHaveAccessibleName(/^Session o1, Waiting, Anything else, done, or next to the finops-pmm review\? See PR, 1h ago$/);
+  });
+
+  // @req FR:pris-sessions-ui/pris.status
+  test('Sessions and Priorities share one chip; only stuck and blocked use the warn tone', async ({ page }) => {
+    await open(page, {}, 'inventory');
+    await expect(page.locator('a.session-row .ui-chip')).toHaveText(['Waiting', 'Stuck', 'Waiting']);
+    await expect(page.locator('a.session-row').nth(1).locator('.ui-chip')).toHaveClass(/t-warn/);
+    await expect(page.locator('a.session-row .ui-chip.t-warn')).toHaveCount(1);
+    await page.goto('about:blank');
+    await open(page);
+    await expect(row(page, 'p1').locator('.pri-toggle .ui-chip')).toHaveClass(/t-neutral/);
+    await expect(row(page, 'p2').locator('.pri-toggle .ui-chip')).toHaveClass(/t-warn/);
   });
 
   test('a session link that is not an epitaxy link is plain text', async ({ page }) => {
@@ -273,10 +302,9 @@ test.describe('Design', () => {
   test('calm: the warning color only on blocked and stuck, nothing moves with reduced motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await open(page);
-    const warn = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--warn').trim());
-    const hotColor = await page.locator('.pri-status.warn').first().evaluate((e) => getComputedStyle(e).color);
-    const hotIn = (sel: string) => page.locator(sel).evaluateAll((els, c) => els.filter((e) => e.children.length === 0 && getComputedStyle(e).color === c).map((e) => e.closest('.pri, li')?.textContent?.slice(0, 20)), hotColor);
-    expect(warn).toBeTruthy();
+    const hotColor = await page.locator('.ui-chip.t-warn .ui-chip-dot').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+    const hotIn = (sel: string) => page.locator(sel).evaluateAll((els, c) => els.filter((e) => getComputedStyle(e).color === c || getComputedStyle(e).backgroundColor === c).map((e) => e.closest('.pri, li')?.textContent?.slice(0, 20)), hotColor);
+    expect(hotColor).toBeTruthy();
     expect(new Set(await hotIn('[data-testid="pris"] *'))).toEqual(new Set([await row(page, 'p2').textContent().then((t) => t!.slice(0, 20))]));
     expect(await row(page, 'p1').locator('.pri-toggle').evaluate((e) => getComputedStyle(e).transitionDuration)).toBe('0s');
     await open(page, {}, 'inventory');

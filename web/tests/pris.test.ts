@@ -1,4 +1,4 @@
-/** @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.edit @req FR:pris-sessions-ui/pris.limits */
+/** @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.item-status @req FR:pris-sessions-ui/pris.edit @req FR:pris-sessions-ui/pris.limits */
 import { describe, expect, it } from 'vitest';
 import { ApiFailure } from '../src/api';
 import { commitPris, edits, PrisQueue, ITEM_STATUS, LIMITS, nextItem, oneLine, PRI_STATUS, progress, slugId, visiblePris, type Pri, type PrisFile } from '../src/pris';
@@ -30,7 +30,7 @@ describe('progress and nextItem', () => {
 });
 
 describe('status words', () => {
-  // @req FR:pris-sessions-ui/pris.status
+  // @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.item-status
   it('every status has a glyph and a word; only blocked warns', () => {
     for (const s of Object.values({ ...PRI_STATUS, ...ITEM_STATUS })) { expect(s.glyph).toBeTruthy(); expect(s.word).toMatch(/^[A-Z][a-z]+$/); }
     expect(Object.entries(PRI_STATUS).filter(([, v]) => v.warn).map(([k]) => k)).toEqual(['blocked']);

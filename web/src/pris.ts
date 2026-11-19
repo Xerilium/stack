@@ -12,8 +12,9 @@ export interface Pri { id: string; title: string; status: PriStatus; items: PriI
 export interface PrisFile { version: 1; rev: number; updatedAt?: string; pris: Pri[] }
 
 export interface StatusWord { glyph: string; word: string; warn?: boolean }
-/** Glyph plus word, never color alone. @req FR:pris-sessions-ui/pris.status */
+/** Priority status words: the row shows the word in a chip. @req FR:pris-sessions-ui/pris.status */
 export const PRI_STATUS: Record<PriStatus, StatusWord> = { active: { glyph: '●', word: 'Active' }, paused: { glyph: '‖', word: 'Paused' }, blocked: { glyph: '⛔', word: 'Blocked', warn: true }, done: { glyph: '✓', word: 'Done' } };
+/** Item status: glyph plus word. @req FR:pris-sessions-ui/pris.item-status */
 export const ITEM_STATUS: Record<ItemStatus, StatusWord> = { todo: { glyph: '○', word: 'Todo' }, doing: { glyph: '◐', word: 'Doing' }, blocked: { glyph: '⛔', word: 'Blocked', warn: true }, done: { glyph: '✓', word: 'Done' } };
 
 /** @req FR:pris-sessions-ui/pris.limits */

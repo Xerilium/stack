@@ -1,12 +1,14 @@
 /**
  * The owner's Priorities (inline edit) and the Claude sessions that wait on him, each on its own page.
  * @req FR:notifications/pris.route @req FR:notifications/sessions.route
- * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.expand @req FR:pris-sessions-ui/pris.edit
- * @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.archive
+ * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.item-status @req FR:pris-sessions-ui/pris.expand @req FR:pris-sessions-ui/pris.edit
+ * @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.line @req FR:pris-sessions-ui/sessions.name @req FR:pris-sessions-ui/sessions.link @req FR:pris-sessions-ui/sessions.archive
  * @req NFR:pris-sessions-ui/a11y.targets @req NFR:pris-sessions-ui/a11y.keys @req NFR:pris-sessions-ui/a11y.calm @req NFR:pris-sessions-ui/a11y.axe
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { groupNeeds, idsText, PROJECT_LABEL, reasonText, rowLine, safeLink, sessionLabel, STATE_WORD, ago, type SessionItem } from './inventory';
+import { groupNeeds, idsText, PROJECT_LABEL, reasonText, rowLine, safeLink, sessionLabel, stateChip, ago, type SessionItem } from './inventory';
+import { Md } from './parts';
+import { StatusChip } from './ui/StatusChip';
 import { edits, ITEM_STATUS, LIMITS, nextItem, PRI_STATUS, progress, visiblePris, type ItemStatus, type Pri, type PriStatus } from './pris';
 import type { InventoryCtl, PrisCtl } from './usePrisSessions';
 import './pris-sessions.css';
@@ -57,10 +59,10 @@ function AddLine({ label, placeholder, max, onAdd, onEditing, autoFocus }: { lab
   );
 }
 
-function StatusSelect<S extends string>({ value, label, words, onChange }: { value: S; label: string; words: Record<S, { glyph: string; word: string }>; onChange: (s: S) => void }) {
+function StatusSelect<S extends string>({ value, label, words, glyphs = true, onChange }: { value: S; label: string; words: Record<S, { glyph: string; word: string }>; /** Item statuses show a glyph; a priority status is the word only, as on its chip. */ glyphs?: boolean; onChange: (s: S) => void }) {
   return (
     <select class="status-select" aria-label={label} value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value as S)}>
-      {(Object.keys(words) as S[]).map((k) => <option key={k} value={k}>{words[k].glyph} {words[k].word}</option>)}
+      {(Object.keys(words) as S[]).map((k) => <option key={k} value={k}>{glyphs ? `${words[k].glyph} ${words[k].word}` : words[k].word}</option>)}
     </select>
   );
 }
@@ -80,14 +82,14 @@ function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /**
         </span>
         <span class="pri-side" aria-hidden="true">
           {pr.total > 0 && <span class="pri-progress">{pr.done}/{pr.total}</span>}
-          <span class={`pri-status${st.warn ? ' warn' : ''}`}><span class="g">{st.glyph}</span> {st.word}</span>
+          <StatusChip label={st.word} tone={st.warn ? 'warn' : 'neutral'} />
         </span>
       </button>
       {open && (
         <div class="pri-panel" id={panel}>
           <div class="pri-edit-row">
             <InlineText cls="pri-title-edit" shown="Rename" value={pri.title} label="Priority title" editLabel="Rename priority" max={LIMITS.title} onEditing={ctl.setEditing} onSave={(t) => ctl.apply(edits.title(pri.id, t))} />
-            <StatusSelect<PriStatus> value={pri.status} label={`Status of ${pri.title}`} words={PRI_STATUS} onChange={(s) => ctl.apply(edits.status(pri.id, s))} />
+            <StatusSelect<PriStatus> value={pri.status} label={`Status of ${pri.title}`} words={PRI_STATUS} glyphs={false} onChange={(s) => ctl.apply(edits.status(pri.id, s))} />
           </div>
           <ul class="pri-items">
             {pri.items.map((it, i) => (
@@ -148,12 +150,12 @@ export function PrisBlock({ ctl, bare = false }: { ctl: PrisCtl; bare?: boolean 
 }
 
 function SessionRow({ s, now }: { s: SessionItem; now: Date }) {
-  const st = STATE_WORD[s.state] ?? { glyph: '·', word: s.state };
+  const st = stateChip(s.state);
   const href = safeLink(s.link);
   const body = (
     <>
-      <span class={`s-state ${s.state}`} aria-hidden="true"><span class="g">{st.glyph}</span> {st.word}</span>
-      <span class="s-main" aria-hidden="true"><span class="s-title">{s.title}</span><span class="s-line">{rowLine(s)}</span></span>
+      <span class="s-main" aria-hidden="true"><span class="s-title">{s.title}</span><span class="s-line"><Md text={rowLine(s)} links={false} /></span></span>
+      <span class="s-state" aria-hidden="true"><StatusChip label={st.word} tone={st.tone} /></span>
       <span class="s-time" aria-hidden="true">{ago(s.lastActivityAt, now)}</span>
     </>
   );

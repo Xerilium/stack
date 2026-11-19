@@ -14,8 +14,7 @@
 .pri-next { font-size: var(--fs-secondary); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pri-side { flex: none; display: flex; align-items: center; gap: 10px; font-size: var(--fs-caption); color: var(--ink2); }
 .pri-progress { font-variant-numeric: tabular-nums; color: var(--muted); }
-.pri-status .g, .s-state .g { display: inline-block; width: 1.1em; text-align: center; }
-.pri-status.warn, .item-glyph.warn, .s-state.stuck { color: var(--warn); }
+.item-glyph.warn { color: var(--warn); }
 .pri-panel { padding: 4px 8px 12px 40px; display: flex; flex-direction: column; gap: 6px; }
 .pri-edit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .pri-item { display: flex; align-items: center; gap: 8px; }
@@ -41,7 +40,7 @@
 .s-proj { margin: 8px 0 2px; font-size: var(--fs-caption); font-weight: 600; color: var(--muted); }
 .session-row { display: flex; align-items: center; gap: 12px; min-height: var(--tap); padding: 6px 8px; border-radius: var(--r-row); color: var(--ink); text-decoration: none; transition: background var(--t-feedback) var(--ease); }
 a.session-row:hover { background: var(--hover); }
-.s-state { flex: none; width: 72px; font-size: var(--fs-caption); font-weight: 600; color: var(--ink2); }
+.s-state { flex: none; display: inline-flex; }
 .s-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .s-title { font-weight: 500; overflow-wrap: anywhere; }
 .s-line { font-size: var(--fs-secondary); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -43,3 +43,15 @@
 **Decision**: Archive candidates only copy ids (one per line).
 
 **Why**: The app archive call is not public yet. The owner can paste ids to an agent that archives them.
+
+## One status chip, no glyph
+
+**Decision**: Priority status and session state use the shared `StatusChip` (`FR:ui-kit/chip`) with a sentence-case word. Only stuck or blocked use the warn tone.
+
+**Why**: Two glyph-plus-word styles side by side read as noise. The word carries the meaning, so color is never the only cue.
+
+## Oldest wait first on the page
+
+**Decision**: The page keeps the server project order but sorts each project's sessions by oldest wait first. The server rank (`FR:session-inventory/needs.rank`) stays as is for the CLI.
+
+**Why**: On the page the owner clears the longest wait first. The CLI rank serves a different reader and is out of this feature's scope.
