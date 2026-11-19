@@ -5,7 +5,7 @@
  * @req FR:agent-team/org.tree.pinned @req FR:agent-team/org.order @req FR:agent-team/org.order.scope @req FR:agent-team/compose.agent.default @req FR:agent-team/compose.folder
  */
 import { orderSessions, type SessionItem } from './sessions';
-import { matchAgent, rollupOf, type TeamAgent } from './team';
+import { local, matchAgent, rollupOf, type TeamAgent } from './team';
 
 export const UNASSIGNED = 'Unassigned';
 export type OrgRow =
@@ -79,7 +79,8 @@ export function composeDefault(cursor: string | null, team: TeamAgent[], items: 
   if (cursor?.startsWith('agent:')) { const slug = cursor.slice(6); if (team.some((a) => a.slug === slug)) return slug; }
   const s = cursor ? items.find((x) => x.id === cursor) : undefined;
   const hit = s ? matchAgent(s, team) : undefined;
-  return (hit ?? rollupOf(team) ?? team[0])?.slug ?? '';
+  // The fallback is never a scanned agent: one runs only when picked. @req FR:agent-team/agent.team.scan.run.pick
+  return (hit ?? rollupOf(team.filter(local)) ?? team.find(local))?.slug ?? '';
 }
 
 /** A session folder trimmed to its repo: `<repo>/.claude/worktrees/<x>` → `<repo>`, `<dir>/<repo>.worktrees/<x>` → `<dir>/<repo>`, `<repo>-wt-<x>/…` → `<repo>`; each form resolves from any depth. */
@@ -98,6 +99,8 @@ export function repoRoot(cwd: string): string {
 export function folderFor(agent: TeamAgent, items: SessionItem[], team: TeamAgent[] = [agent]): string {
   const mine = items.filter((s) => matchAgent(s, team) === agent).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
   if (mine) return repoRoot(mine.cwd);
+  // A scanned agent with no session of its own runs in its repo: the server knows the folder, so none is sent. @req FR:agent-team/agent.team.scan.run.cwd
+  if (agent.home) return '';
   for (const p of agent.projects) {
     const s = items.filter((x) => x.owner === p).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
     if (s) return repoRoot(s.cwd);

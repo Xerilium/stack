@@ -8,7 +8,7 @@ import { spawn } from 'child_process';
 import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
-import { agentFor, listTeam, type TeamAgent } from '../core/agents';
+import { agentFor, listTeam, type ScannedAgent, type TeamAgent } from '../core/agents';
 import { handleAsk, putAsk, readAsk } from '../core/asks';
 import type { StackConfig } from '../core/config';
 import { currentRows, handleEntry, listInbox, replyFromAgent, type ListedEntry } from '../core/inbox';
@@ -19,7 +19,7 @@ import type { Inventory } from '../core/session-inventory';
 import { redact } from '../core/triage';
 import { childEnv, spawnRunner, type Runner } from '../email/llm';
 import { formatRef, parseRef } from '../api/validate';
-import { personaOf, taskContext } from './team';
+import { personaOf, runnableAgent, taskContext, type AgentScan } from './team';
 
 // @req NFR:agent-delivery/delivery.lazy: nothing runs at import; the loop starts only from startDeliveryLoop.
 export type DeliveryState = 'working' | 'delivered' | 'failed' | 'not-delivered';
@@ -44,6 +44,8 @@ export interface DeliveryDeps {
   repoDir: string;
   /** A folder is a git checkout; default checks for `.git`. */
   isRepo?: (dir: string) => boolean;
+  /** Agents outside the content repo; a Now pick may name one. @req FR:agent-team/agent.team.scan.run */
+  agentScan?: AgentScan;
 }
 
 /** The repo rules every delivery run starts with. @req FR:agent-delivery/safe.prefix */
@@ -244,7 +246,9 @@ async function cwdFor(d: DeliveryDeps, project: string): Promise<string> {
   return d.repoDir;
 }
 
-interface Target { ref: TaskRef; apiRef: string; agent: TeamAgent; context: string; title: string; project: string }
+interface Target { ref: TaskRef; apiRef: string; agent: TeamAgent; context: string; title: string; project: string; /** A scanned agent's repo folder. */ cwd?: string }
+/** The team and the scan it came from (a scanned agent reads its whole file when it runs). */
+interface Crew { team: TeamAgent[]; scanned: ScannedAgent[]; /** The scan failed: a named agent missing from the team may be a scanned one. */ scanFailed?: boolean }
 
 /**
  * One pass: check the login, then deliver every pending message, one at a time per agent, oldest first.
@@ -267,7 +271,9 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
   const capHit = () => d.store.spentToday() >= d.settings.dailyCapUsd;
   await syncCapAsk(d, capHit());
   const rows = await currentRows(d.ctx, entries);
-  const team = await listTeam(d.ctx);
+  let scanFailed = false;
+  const scanned = d.agentScan ? await d.agentScan().catch((err: unknown) => { scanFailed = true; console.error(`delivery: agent scan failed (${err instanceof Error ? err.message : 'error'})`); return [] as ScannedAgent[]; }) : [];
+  const team: Crew = { team: await listTeam(d.ctx, scanned), scanned, scanFailed };
   const recs = d.store.read().items;
   const fresh = d.settings.timeoutMs + 60_000;
   const busy = new Set(Object.entries(recs).filter(([, r]) => r.state === 'working' && now().getTime() - Date.parse(r.at) < fresh).map(([, r]) => r.agent));
@@ -281,7 +287,7 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
     const prev = d.store.read().items[e.id];
     if (prev && (prev.state === 'failed' || prev.state === 'delivered')) continue;
     const t = await targetOf(d, e, rows.get(e.id), team);
-    if (t === 'human') continue;
+    if (t === 'human' || t === 'wait') continue;
     if (!t) { record(e, { state: 'failed', agent: '', reason: 'No agent for this task' }); d.store.log({ entry: e.id, agent: '', project: e.project, state: 'failed', ms: 0, usd: 0, reason: 'No agent for this task' }); continue; }
     // Re-read before each run: another process (the host loop, the CLI) may have started this agent since the pass began.
     const live = d.store.read().items;
@@ -308,7 +314,7 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
  * Answered permission asks: a `go` re-runs the agent once with exactly that rule added and the owner's approval in the prompt;
  * any other answer closes the ask. Open asks wait. @req FR:agent-delivery/run.approved
  */
-async function runApprovals(d: DeliveryDeps, perms: Record<string, PendingPerm>, team: TeamAgent[], now: () => Date, capHit: () => boolean, record: (e: ListedEntry, r: Omit<DeliveryResult, 'id'>) => void): Promise<void> {
+async function runApprovals(d: DeliveryDeps, perms: Record<string, PendingPerm>, team: Crew, now: () => Date, capHit: () => boolean, record: (e: ListedEntry, r: Omit<DeliveryResult, 'id'>) => void): Promise<void> {
   const byEntry = new Map<string, { keys: string[]; rules: string[]; tools: string[] }>();
   for (const [key, p] of Object.entries(perms)) {
     const a = await readAsk(d.ctx, key).catch(() => null);
@@ -327,6 +333,7 @@ async function runApprovals(d: DeliveryDeps, perms: Record<string, PendingPerm>,
     if (!g.rules.length) { await close('Denied'); continue; }
     const e = all.find((x) => x.id === id);
     const t = e ? await targetOf(d, e, rows.get(id), team) : null;
+    if (t === 'wait') continue; // the scan failed: the approval waits for the next pass
     if (!e || !t || t === 'human') { await close('Task gone'); continue; }
     if (capHit()) { await syncCapAsk(d, true); continue; } // waits for the next day with the asks still answered
     if (!d.store.claim(e.id, t.agent.slug, d.settings.timeoutMs + 60_000, { rerun: true })) continue; // the agent is busy: the asks wait for the next pass
@@ -342,16 +349,22 @@ export function deliveryAgent(team: TeamAgent[], project: string, section?: stri
   return all.find((a, i) => !(i === 0 && a.scope.includes('*')) && fits(a)) ?? all[0];
 }
 
-async function targetOf(d: DeliveryDeps, e: ListedEntry, row: string | undefined, team: TeamAgent[]): Promise<Target | 'human' | null> {
+async function targetOf(d: DeliveryDeps, e: ListedEntry, row: string | undefined, crew: Crew): Promise<Target | 'human' | 'wait' | null> {
   const ref = row ? toRef(row) : null;
   if (!ref) return null;
   const c = await taskContext(d.ctx, ref).catch(() => null);
   if (c?.human) return 'human'; // the owner's own row: never delivered
   if (!c) return null;
   // The recipient Now named (the pick, else the owner) wins when Stack can run it. @req FR:agent-delivery/pick.agent @req FR:product-reset/ui.thread
-  const named = !e.from && e.agent ? team.find((a) => a.slug === e.agent && !a.home) : undefined;
-  const agent = named ?? deliveryAgent(team, c.project, c.section);
-  return agent ? { ref, apiRef: formatRef(ref), agent, context: c.text, title: c.title, project: c.project } : null;
+  // A scanned agent runs only when named; the automatic pick stays in the content repo. @req FR:agent-team/agent.team.scan.run.pick
+  const named = !e.from && e.agent ? crew.team.find((a) => a.slug === e.agent) : undefined;
+  // A named agent missing while the scan failed may be a scanned one: wait for the next pass, never run a different agent unattended.
+  if (!e.from && e.agent && !named && crew.scanFailed) return 'wait';
+  const found = named ?? deliveryAgent(crew.team.filter((a) => a.home === undefined), c.project, c.section);
+  if (!found) return null;
+  // Its whole file and its repo (@req FR:agent-team/agent.team.scan.run.prompt @req FR:agent-team/agent.team.scan.run.cwd); a file gone since the scan is no agent.
+  const run = await runnableAgent(found, crew.scanned).catch(() => null);
+  return run ? { ref, apiRef: formatRef(ref), agent: run.agent, context: c.text, title: c.title, project: c.project, ...(run.cwd ? { cwd: run.cwd } : {}) } : null;
 }
 
 /** The thread so far on this row, the task, and the message to answer. @req FR:agent-delivery/run.prompt */
@@ -382,7 +395,7 @@ async function deliverOne(d: DeliveryDeps, e: ListedEntry, t: Target, now: () =>
     const systemFile = join(dir, 'system.txt');
     writeFileSync(systemFile, `${PREFIX}\n\n${personaOf(t.agent, t.context)}`, { mode: 0o600 });
     const args = deliveryArgs({ model: t.agent.model, tools: t.agent.tools, maxUsd: d.settings.maxUsd, systemFile, ...(extra.approved ? { approved: extra.approved } : {}) });
-    r = await (d.run ?? spawnRunner)(d.bin ?? process.env.STACK_CLAUDE_BIN ?? 'claude', args, await userText(d, e, t, extra.note), { timeoutMs: d.settings.timeoutMs, cwd: await cwdFor(d, t.project) });
+    r = await (d.run ?? spawnRunner)(d.bin ?? process.env.STACK_CLAUDE_BIN ?? 'claude', args, await userText(d, e, t, extra.note), { timeoutMs: d.settings.timeoutMs, cwd: t.cwd ?? await cwdFor(d, t.project) });
   } catch (err) {
     return done('failed', err instanceof Error && /timed out/i.test(err.message) ? 'Timed out' : 'Agent run failed');
   } finally { rmSync(dir, { recursive: true, force: true }); }

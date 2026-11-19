@@ -1,10 +1,11 @@
 /**
  * The whole team outside the content repo: `~/.claude/agents/*.md` and `<root>/<repo>/.claude/agents/*.md`, read-only and frontmatter only.
- * @req FR:agent-team/agent.team.scan
+ * @req FR:agent-team/agent.team.scan @req FR:agent-team/agent.team.scan.run.prompt
  */
 import { promises as fs } from 'fs';
 import { join, resolve } from 'path';
 import { parseClaudeAgent, type AgentDef, type ScannedAgent } from './agents';
+import { NotFoundError } from './storage';
 import { ownerOf, repoOf, type RepoMap } from './repos';
 
 export interface ScanOptions {
@@ -20,6 +21,8 @@ export interface ScanOptions {
 const MAX_FOLDERS = 400;
 const MAX_FILES = 50;
 const HEAD_BYTES = 8192;
+/** The most of an agent file read at run start. */
+const MAX_FILE_BYTES = 256 * 1024;
 const FILE = /^(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,39}\.md$/;
 const cache = new Map<string, { mtimeMs: number; size: number; def: AgentDef | null }>();
 
@@ -49,11 +52,12 @@ async function readDef(path: string, slug: string): Promise<AgentDef | null> {
   return def;
 }
 
-async function agentsIn(dir: string, home: string, out: ScannedAgent[]): Promise<void> {
+async function agentsIn(dir: string, home: string, out: ScannedAgent[], repo?: string): Promise<void> {
   const files = (await dirents(dir)).filter((e) => (e.isFile() || e.isSymbolicLink()) && FILE.test(e.name)).map((e) => e.name).sort().slice(0, MAX_FILES);
   for (const f of files) {
-    const def = await readDef(join(dir, f), f.slice(0, -3));
-    if (def) out.push({ def, home });
+    const file = join(dir, f);
+    const def = await readDef(file, f.slice(0, -3));
+    if (def) out.push({ def, home, file, ...(repo ? { dir: repo } : {}) });
   }
 }
 
@@ -91,8 +95,24 @@ export async function scanAgents(o: ScanOptions): Promise<ScannedAgent[]> {
       const remote = await remoteOf(dir);
       if (remote && remotes.has(remote)) continue;
       if (remote) remotes.add(remote);
-      await agentsIn(join(dir, '.claude/agents'), (o.repos && ownerOf(name, o.repos)) || name, out);
+      await agentsIn(join(dir, '.claude/agents'), (o.repos && ownerOf(name, o.repos)) || name, out, dir);
     }
   }
   return out;
+}
+
+/**
+ * The whole agent file, read at run start (the scan reads frontmatter only): a regular file of at most 256 KB, its body the prompt.
+ * Anything else (gone, a folder, a FIFO, too large) is a 404: no session starts on a persona Stack could not read.
+ * @req FR:agent-team/agent.team.scan.run.prompt
+ */
+export async function readScannedAgent(x: Pick<ScannedAgent, 'def' | 'file'>): Promise<AgentDef> {
+  const gone = () => new NotFoundError(`Agent file for ${x.def.slug} is gone`);
+  let st;
+  try { st = await fs.stat(x.file); } catch { throw gone(); }
+  if (!st.isFile() || st.size > MAX_FILE_BYTES) throw gone();
+  let text: string;
+  try { text = await fs.readFile(x.file, 'utf8'); } catch { throw gone(); }
+  if (Buffer.byteLength(text) > MAX_FILE_BYTES) throw gone();
+  return parseClaudeAgent(x.def.slug, text);
 }

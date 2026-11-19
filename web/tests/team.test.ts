@@ -1,6 +1,6 @@
 /** @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live @req FR:agent-team/web.chip.title @req FR:agent-team/web.talk @req FR:agent-team/web.review @req FR:agent-team/web.anything @req FR:agent-team/org.match */
 import { describe, expect, it } from 'vitest';
-import { agentForAsk, agentsFor, ancestorsOf, runnable, chipFor, liveAgents, matchAgent, ownerOf, sessionFor, verdictLabel, type ReviewItem, type TeamAgent } from '../src/team';
+import { agentForAsk, agentsFor, ancestorsOf, chipFor, liveAgents, matchAgent, ownerOf, sessionFor, verdictLabel, type ReviewItem, type TeamAgent } from '../src/team';
 import type { SessionItem } from '../src/sessions';
 
 const ag = (slug: string, scope: string[], o: Partial<TeamAgent> = {}): TeamAgent => ({ slug, name: slug, scope, mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: [], ...o });
@@ -8,22 +8,22 @@ const team = [ag('cos', ['*']), ag('labels', ['f4/Labels']), ag('cid', ['f4'], {
 const sess = (o: Partial<SessionItem>): SessionItem => ({ id: 'a', title: 't', project: 'f4', cwd: '/x', lastActive: '2026-10-29T10:00:00Z', state: 'idle', cost: { usd: 0, tokens: 0 }, prs: [], ...o });
 const review = (o: Partial<ReviewItem> = {}): ReviewItem => ({ ref: 'f4:7', at: '2026-10-29T10:00:00Z', verdict: 'can', plan: 'Upload it', estimate: '2h', agent: 'cid', needs: [], ...o });
 
-// @req FR:agent-team/agent.team.scan.view
-describe('view-only scanned agents', () => {
+// @req FR:agent-team/agent.team.scan.run
+describe('scanned agents run', () => {
   const base: TeamAgent = { slug: 'cos', name: 'CoS', scope: ['*'], mode: 'ad-hoc', prompt: '', defined: true, source: 'stack', projects: ['f4'] };
   const away: TeamAgent = { slug: 'fh-dev', name: 'FH Dev', scope: ['f4'], mode: 'ad-hoc', prompt: '', defined: true, source: 'claude', projects: ['f4'], home: 'finops-hubs' };
-  const user: TeamAgent = { ...away, slug: 'helper', name: 'Helper', home: 'user' };
-  it('is not runnable when it has a home', () => {
-    expect(runnable(base)).toBe(true);
-    expect(runnable(away)).toBe(false);
-    expect(runnable(user)).toBe(false);
+  const user: TeamAgent = { ...away, slug: 'helper', name: 'Helper', scope: [], projects: [], home: 'user' };
+  it('are offered to assign, review and talk like any agent', () => {
+    expect(agentsFor([base, away, user], 'f4').map((a) => a.slug)).toEqual(['cos', 'fh-dev']);
   });
-  it('is never offered to assign, review or talk', () => {
-    expect(agentsFor([base, away, user], 'f4').map((a) => a.slug)).toEqual(['cos']);
+  it('answer an ask from their name', () => {
+    expect(agentForAsk([base, away], { from: 'fh-dev', project: 'f4' })?.slug).toBe('fh-dev');
+    expect(agentForAsk([away], { from: 'FH Dev' })?.slug).toBe('fh-dev');
   });
-  it('never answers an ask from its name; the project agent does', () => {
-    expect(agentForAsk([base, away], { from: 'fh-dev', project: 'f4' })?.slug).toBe('cos');
-    expect(agentForAsk([away], { from: 'FH Dev' })).toBeUndefined();
+  // @req FR:agent-team/agent.team.scan.run.pick
+  it('are never the fallback agent of an ask', () => {
+    expect(agentForAsk([away], { from: 'someone', project: 'f4' })).toBeUndefined();
+    expect(agentForAsk([base, away], { from: 'someone', project: 'f4' })?.slug).toBe('cos');
   });
 });
 
@@ -161,13 +161,16 @@ describe('ownerOf: the owning agent', () => {
     expect(ownerOf(crew, { ...f4, notes: ['Ownership moved to allyte-cos'] })?.slug).toBe('cid-manager');
     expect(ownerOf(crew, f4, [{ ...f4, notes: ['Owner me'] }, { ...f4, notes: ['Owner: allyte-cos'] }])?.slug).toBe('allyte-cos');
   });
-  it('never falls back to a view-only * agent: the runnable roll-up takes it, else no agent', () => {
+  // @req FR:agent-team/agent.team.scan.run.pick
+  it('never falls back to a scanned * agent: the content repo roll-up takes it, else no agent', () => {
     const away = ag('away-cos', ['*'], { home: 'other' });
     expect(ownerOf([away, ag('cos', ['*'])], { project: 'house' })?.slug).toBe('cos');
     expect(ownerOf([away, cid], { project: 'house' })).toBeUndefined();
   });
-  it('never picks a view-only agent from Owner:', () => {
-    expect(ownerOf([...crew, ag('away', ['x'], { home: 'other' })], { project: 'f4', notes: ['Owner: away'] })?.slug).toBe('cid-manager');
+  // @req FR:agent-team/agent.team.scan.run.pick
+  it('picks a scanned agent only when Owner: names it', () => {
+    expect(ownerOf([...crew, ag('away', ['x'], { home: 'other' })], { project: 'f4', notes: ['Owner: away'] })?.slug).toBe('away');
+    expect(ownerOf([...crew, ag('away', ['f4/Labels'], { home: 'other' })], { project: 'f4', section: 'Labels' })?.slug).not.toBe('away');
   });
 });
 

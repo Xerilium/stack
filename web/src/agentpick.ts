@@ -3,7 +3,7 @@
  * The pick never writes the task file and never adds 🪄.
  * @req FR:product-reset/ui.thread @req FR:product-reset/ui.agentchip
  */
-import { ancestorsOf, nameKey, runnable, type TeamAgent } from './team';
+import { ancestorsOf, nameKey, type TeamAgent } from './team';
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export const PICK_KEY = 'stack.now.pick';
@@ -55,10 +55,10 @@ export function savePick(s: Store | undefined, ref: string, slug: string | undef
   } catch { /* storage is a convenience */ }
 }
 
-/** The runnable team for the picker: recent first (in recent order), then by name; `query` matches name, slug or role words. */
+/** The whole team for the picker, scanned agents included (FR:agent-team/agent.team.scan.run): recent first (in recent order), then by name; `query` matches name, slug or role words. */
 export function pickerList(team: TeamAgent[], o: { recent: string[]; query: string }): TeamAgent[] {
   const q = nameKey(o.query);
-  const all = team.filter((a) => runnable(a) && (!q || [a.name, a.slug, a.role ?? ''].some((x) => nameKey(x).includes(q))));
+  const all = team.filter((a) => !q || [a.name, a.slug, a.role ?? ''].some((x) => nameKey(x).includes(q)));
   const top = o.recent.map((slug) => all.find((a) => a.slug === slug)).filter((a): a is TeamAgent => !!a);
   const label = (a: TeamAgent) => nameKey(a.name) || a.slug;
   return [...top, ...all.filter((a) => !top.includes(a)).sort((a, b) => label(a).localeCompare(label(b)))];

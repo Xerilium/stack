@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, utimesSync, writeFileSync } from '
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { listTeam } from '../../src/core/agents';
-import { scanAgents } from '../../src/core/agent-scan';
+import { readScannedAgent, scanAgents } from '../../src/core/agent-scan';
 import { MemoryStorage } from '../../src/core/storage';
 
 const md = (fm: string, body = '# Title\n\nSECRET_BODY token=abc\n') => `---\n${fm}\n---\n\n${body}`;
@@ -111,7 +111,32 @@ describe('scanAgents limits', () => {
   it('a scanned cos never becomes the roll-up', async () => {
     const storage = new MemoryStorage();
     await storage.write('tasks/allyte.md', '# Allyte\n\n## Active\n\n- [ ] x\n');
-    const team = await listTeam({ storage }, [{ def: { slug: 'cos', name: 'Cos', scope: [], mode: 'ad-hoc', prompt: '', extra: [] }, home: 'user' }]);
+    const team = await listTeam({ storage }, [{ def: { slug: 'cos', name: 'Cos', scope: [], mode: 'ad-hoc', prompt: '', extra: [] }, home: 'user', file: '/u/cos.md' }]);
     expect(team[0].scope).toEqual([]);
+  });
+});
+
+// @req FR:agent-team/agent.team.scan.run @req FR:agent-team/agent.team.scan.run.prompt
+describe('scanned agents can run', () => {
+  it('keep their file and repo folder (none at user level)', async () => {
+    const { home, dev } = tree();
+    const got = await scanAgents({ home, roots: [dev], repos, skip: [join(dev, 'todo')] });
+    expect(got.map((g) => [g.def.slug, g.file, g.dir ?? null])).toEqual([
+      ['helper', join(home, '.claude/agents/helper.md'), null],
+      ['cid-divine-manager', join(dev, 'f4-music/.claude/agents/cid-divine-manager.md'), join(dev, 'f4-music')],
+      ['sre', join(dev, 'finops-hubs/.claude/agents/sre.md'), join(dev, 'finops-hubs')],
+    ]);
+  });
+  it('readScannedAgent reads the whole file at run start; gone, odd, or huge files are refused', async () => {
+    const { home, dev, put } = tree();
+    const got = await scanAgents({ home, roots: [dev], repos, skip: [join(dev, 'todo')] });
+    const cid = got.find((g) => g.def.slug === 'cid-divine-manager')!;
+    const def = await readScannedAgent(cid);
+    expect(def.prompt).toContain('SECRET_BODY');
+    expect(def).toMatchObject({ slug: 'cid-divine-manager', icon: 'fluent:headphone' });
+    put('dev/f4-music/.claude/agents/cid-divine-manager.md', md('name: cid-divine-manager', `# Cid\n\n${'y'.repeat(300 * 1024)}`));
+    await expect(readScannedAgent(cid)).rejects.toThrow(/Agent file for cid-divine-manager is gone/);
+    await expect(readScannedAgent({ ...cid, file: join(dev, 'f4-music/.claude/agents') })).rejects.toThrow(/is gone/);
+    await expect(readScannedAgent({ ...cid, file: join(dev, 'nope.md') })).rejects.toThrow(/is gone/);
   });
 });

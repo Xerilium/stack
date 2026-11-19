@@ -2576,7 +2576,7 @@ paths:
                 cwd:
                   type: string
                   maxLength: 1000
-                  description: "Absolute path to an existing folder; default: the served folder (also with agent, ref, or project: an agent can be started in its project repo) Single line."
+                  description: "Absolute path to an existing folder; default: a scanned agent repo, else the served folder (also with agent, ref, or project: an agent can be started in its project repo) Single line."
                 text:
                   type: string
                   maxLength: 4000
@@ -2585,7 +2585,7 @@ paths:
                   type: string
                   maxLength: 40
                   pattern: ^[a-z0-9][a-z0-9._-]{0,39}$
-                  description: "Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project Single line."
+                  description: "Agent slug (any team agent, scanned agents included); default: the active content repo agent for the task or project Single line."
                 ref:
                   $ref: "#/components/schemas/Ref"
                   description: "The task the session is about: its row, notes, and subtasks become context and the agent persona is applied"

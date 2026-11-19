@@ -432,7 +432,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'sessions.new': {
     operationId: 'newSession', summary: 'Start a new agent session in a folder and send it a prompt. Owner session only: 403 for tokens',
-    desc: { cwd: 'Absolute path to an existing folder; default: the served folder (also with agent, ref, or project: an agent can be started in its project repo)', text: 'The prompt', agent: 'Agent slug (tasks/agents/<slug>.md); default: the active agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task (404 when it has no file)' },
+    desc: { cwd: 'Absolute path to an existing folder; default: a scanned agent repo, else the served folder (also with agent, ref, or project: an agent can be started in its project repo)', text: 'The prompt', agent: 'Agent slug (any team agent, scanned agents included); default: the active content repo agent for the task or project', ref: 'The task the session is about: its row, notes, and subtasks become context and the agent persona is applied', project: 'Project when there is no task (404 when it has no file)' },
     responses: ok('Run started', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string', description: 'Set for a task or project session' }, title: { type: 'string', description: 'Set for a task or project session: `<agent> · <task> · <ref>`' } } }, '202'),
   },
   'inbox.delivery': {

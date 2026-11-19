@@ -12,8 +12,9 @@ function mem(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & { data: Ma
 }
 
 describe('pickerList', () => {
-  it('lists the whole runnable team: recent first, then by name', () => {
-    expect(pickerList(team, { recent: ['zed', 'gone'], query: '' }).map((a) => a.slug)).toEqual(['zed', 'allyte-cos', 'cid-manager', 'cos']);
+  it('lists the whole team, scanned agents included: recent first, then by name', () => {
+    // @req FR:agent-team/agent.team.scan.run
+    expect(pickerList(team, { recent: ['zed', 'gone'], query: '' }).map((a) => a.slug)).toEqual(['zed', 'allyte-cos', 'away', 'cid-manager', 'cos']);
   });
   it('filters by name, slug or role, ignoring case and emoji', () => {
     expect(pickerList(team, { recent: [], query: 'cid' }).map((a) => a.slug)).toEqual(['cid-manager']);

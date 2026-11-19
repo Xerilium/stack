@@ -318,7 +318,7 @@ const COST_Q: Record<string, Spec> = { days: { t: 'int', min: 1, max: 90 } };
 const SLUG: Spec = { t: 'str', max: 40, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,39}$/ };
 /** `ref`/`agent` on a follow-up re-apply the task persona. @req FR:agent-thread/thread.ask */
 const PROMPT_BODY = { schema: { text: { t: 'str', required: true, max: 4000 }, ref: REF, agent: SLUG } satisfies Record<string, Spec>, required: ['text'] };
-/** `cwd` is optional since agent-team: a session for a task runs in the served folder unless a folder is given. @req FR:agent-team/talk.api */
+/** `cwd` is optional since agent-team: a session for a task runs in the given folder, else a scanned agent's repo, else the served folder. @req FR:agent-team/talk.api */
 const NEW_SESSION_BODY = { schema: { cwd: { t: 'str', max: 1000, line: true }, text: { t: 'str', required: true, max: 4000 }, agent: SLUG, ref: REF, project: { t: 'str', max: 200, line: true, noReadme: true } } satisfies Record<string, Spec>, required: ['text'] };
 const TEAM_Q: Record<string, Spec> = { project: { t: 'str', max: 200, line: true }, section: { t: 'str', max: 200, line: true } };
 const REVIEWS_Q: Record<string, Spec> = { project: { t: 'str', required: true, max: 200, line: true } };
@@ -402,6 +402,8 @@ const fmtEdit = (r: { changed: boolean; ref: Parameters<typeof formatRef>[0]; be
   ({ changed: r.changed, ref: formatRef(r.ref), before: r.before, after: r.after, message: r.message });
 
 const noQuery = (c: Ctx) => { readQuery(c.url, []); };
+/** The scanned team for an execution path: a failed scan is reported and leaves only the content repo team. @req FR:agent-team/agent.team.scan.run */
+const scanOf = (c: Ctx): (() => Promise<ScannedAgent[]>) | undefined => (c.deps.agentScan ? () => c.deps.agentScan!().catch((e: unknown) => { c.deps.onError?.(e); return []; }) : undefined);
 /** The agent runs for this host, or 404 (the route does not exist where no agent can run). @req FR:agent-sessions/driver.interface */
 const agentsOf = (c: Ctx): AgentRuns => { if (!c.deps.agents) throw new ApiError('not_found', 'Not found'); return c.deps.agents; };
 const sessionId = (c: Ctx): string => { const id = c.params[0]; const bad = validate<{ id: string }>({ id }, { id: UUID }, ['id']); return bad.id; };
@@ -731,8 +733,8 @@ export const ROUTES: Route[] = [
       const b = validate<{ ref: NonNullable<ReturnType<typeof parseRef>>; text: string; kind?: InboxKind; expect?: string; agent?: string }>(await readBody(c.req), INBOX_BODY.schema, INBOX_BODY.required);
       // Only the owner speaks in the inbox; an agent token must never write words in the owner's voice.
       if (!isOwner(c.req)) throw new ApiError('forbidden', 'Only the owner can write to an agent inbox');
-      // `agent`: the agent the owner picked in Now; only a runnable team member. @req FR:product-reset/ui.thread
-      if (b.agent !== undefined && !(await listTeam(c.life)).some((a) => a.slug === b.agent)) throw new ApiError('invalid', 'agent is not on the team', [{ field: 'agent', message: 'Not on the team' }]);
+      // `agent`: the agent the owner picked in Now; any team member, scanned agents included. @req FR:agent-team/agent.team.scan.run @req FR:product-reset/ui.thread
+      if (b.agent !== undefined && !(await listTeam(c.life, await scanOf(c)?.() ?? [])).some((a) => a.slug === b.agent)) throw new ApiError('invalid', 'agent is not on the team', [{ field: 'agent', message: 'Not on the team' }]);
       return json(201, await sendToInbox(c.life, b.ref, b.text, b.kind ?? 'reply', b.expect, undefined, b.agent));
     },
   },
@@ -1252,7 +1254,7 @@ export const ROUTES: Route[] = [
       if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
       // @req FR:agent-team/talk.api: a task or project session gets its agent's persona and context.
       if (b.ref || b.project || b.agent) {
-        return json(202, await startAgentRun(agents, c.life, { agent: b.agent, ref: b.ref ? formatRef(b.ref) : undefined, project: b.project, ...(b.cwd ? { cwd: b.cwd } : {}), text: b.text }));
+        return json(202, await startAgentRun(agents, c.life, { agent: b.agent, ref: b.ref ? formatRef(b.ref) : undefined, project: b.project, ...(b.cwd ? { cwd: b.cwd } : {}), text: b.text, scan: scanOf(c) }));
       }
       if (b.cwd === undefined && !agents.cwd) throw invalid([{ field: 'cwd', message: 'Required' }]);
       return json(202, await agents.prompt({ ...(b.cwd ? { cwd: b.cwd } : {}), text: b.text }));
@@ -1269,7 +1271,7 @@ export const ROUTES: Route[] = [
       ownerOnly(c, 'Only the owner can message an agent');
       if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Required' }]);
       // A follow-up on a task carries the persona again (a resumed session gets no system prompt otherwise). @req FR:agent-thread/thread.ask
-      const options = b.ref || b.agent ? (await agentPromptOptions(c.life, { ...(b.ref ? { ref: formatRef(b.ref) } : {}), ...(b.agent ? { agent: b.agent } : {}) })).options : undefined;
+      const options = b.ref || b.agent ? (await agentPromptOptions(c.life, { ...(b.ref ? { ref: formatRef(b.ref) } : {}), ...(b.agent ? { agent: b.agent } : {}), scan: scanOf(c) })).options : undefined;
       return json(202, await agents.prompt({ sessionId: id, text: b.text, ...(options ? { options } : {}) }));
     },
   },
@@ -1360,7 +1362,7 @@ export const ROUTES: Route[] = [
       const agents = agentsOf(c);
       ownerOnly(c, 'Only the owner assigns a task');
       const b = validate<{ agent?: string; note?: string }>(await readBody(c.req), ASSIGN_BODY.schema, ASSIGN_BODY.required);
-      return json(202, await assignTask(agents, c.life, formatRef(ref), b.agent, b.note));
+      return json(202, await assignTask(agents, c.life, formatRef(ref), b.agent, b.note, scanOf(c)));
     },
   },
   {
@@ -1378,7 +1380,7 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/team', name: 'team.list', query: TEAM_Q,
     async run(c) {
       const q = validate<{ project?: string; section?: string }>(Object.fromEntries(readQuery(c.url, Object.keys(TEAM_Q)).entries()), TEAM_Q, []);
-      const team = await listTeam(c.life, c.deps.agentScan ? await c.deps.agentScan().catch((e) => { c.deps.onError?.(e); return []; }) : []);
+      const team = await listTeam(c.life, await scanOf(c)?.() ?? []);
       return json(200, { items: q.project ? agentFor(team, q.project, q.section) : team });
     },
   },
@@ -1398,7 +1400,7 @@ export const ROUTES: Route[] = [
       const agents = agentsOf(c);
       ownerOnly(c, 'Only the owner can ask for a review');
       const b = validate<{ ref: ReturnType<typeof parseRef>; agent?: string }>(await readBody(c.req), REVIEW_BODY.schema, REVIEW_BODY.required);
-      return json(202, await reviewTask(agents, c.life, formatRef(b.ref!), b.agent));
+      return json(202, await reviewTask(agents, c.life, formatRef(b.ref!), b.agent, undefined, scanOf(c)));
     },
   },
   {

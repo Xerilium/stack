@@ -231,14 +231,14 @@ test.describe('Sessions', () => {
     await expect(d.getByRole('combobox', { name: 'Agent' })).toHaveValue('Beta CoS');
   });
 
-  // @req FR:agent-team/agent.team.scan.view
-  test('a scanned agent is view only: New never starts a chat with it', async ({ page }) => {
+  // @req FR:agent-team/agent.team.scan.run
+  test('a scanned agent runs: New opens the composer with it chosen', async ({ page }) => {
     await open(page, teamSeed(), true);
     await page.locator('.agent-card[data-agent="lonely"]').click();
     await page.keyboard.press('n');
     const d = drawer(page);
     await expect(d.getByRole('heading', { level: 2 })).toHaveText('New session');
-    await expect(d.getByRole('combobox', { name: 'Agent' })).not.toHaveValue('Lonely');
+    await expect(d.getByRole('combobox', { name: 'Agent' })).toHaveValue('Lonely');
   });
 
   // @req FR:agents-team/other.toggle @req FR:agents-team/other.list @req FR:agents-team/other.hidden
