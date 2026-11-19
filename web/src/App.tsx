@@ -350,6 +350,13 @@ export function App() {
   const pinsCtl = usePins(store());
   /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */
   const team = useTeam(api, toast, sessions, agentsOn, phase === 'ready', projects.map((p) => p.name), tasks);
+  /** Opens the session whose id starts with `idStart`: a permission ask keeps only the first 8 characters of the id. @req FR:notifications/list.source.session */
+  const openSessionByStart = useCallback(async (idStart: string) => {
+    const pick = (list: { id: string }[]) => list.find((s) => s.id.toLowerCase().startsWith(idStart));
+    let s = pick(sessions.items);
+    if (!s) { try { s = pick((await api.sessions()).items); } catch { /* the toast says it */ } }
+    if (s) team.openSessionId(s.id); else toast('Stack cannot find that session. Look for it in Agents.');
+  }, [api, sessions.items, team.openSessionId, toast]);
   const wantActive = team.active || team.talk !== null || open !== null;
   /** Open a task on its thread with the composer focused (the chip, `a`, the palette); Today keeps the floating composer. @req FR:agent-thread/web.keys */
   const viewRef = useRef(view); viewRef.current = view;
@@ -387,6 +394,7 @@ export function App() {
     stale: staleAsks,
     onTask: (a, s) => answerTask(a, s),
     onOpenTask: (ref) => { setFocusRef(ref); },
+    ...(agentsOn ? { onOpenSession: (idStart: string) => { void openSessionByStart(idStart); } } : {}),
     onSync: () => void unsaved.check(),
   });
   /** Open notifications: the asks, plus an expired sign-in. The badge uses the accent, never red. @req FR:notifications/bell.count @req FR:notifications/list.what @req NFR:notifications/calm */
