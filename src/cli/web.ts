@@ -177,6 +177,12 @@ function headersFrom(webDir: string): Record<string, string> {
   try { return (JSON.parse(readFileSync(join(webDir, 'staticwebapp.config.json'), 'utf8')) as { globalHeaders?: Record<string, string> }).globalHeaders ?? {}; } catch { return {}; }
 }
 
+/** A request body over the 1 MB limit; answered 413. @req FR:cli/web.serve.body */
+class BodyTooLarge extends Error {}
+
+/** Paths that read owner data: cross-site and same-site pages may not read them. @req FR:cli/web.serve.loopback.reads */
+const isOwnerData = (path: string): boolean => path === '/api' || path.startsWith('/api/') || path === '/events' || /^\/sessions\/[^/]+\/events$/.test(path);
+
 /** Headers a remote caller may not pass to the api: identity and credentials are set by the gate only. */
 const REMOTE_DROP = new Set(['x-ms-client-principal', 'authorization', 'x-stack-token', 'cookie']);
 
@@ -187,7 +193,7 @@ const REMOTE_DROP = new Set(['x-ms-client-principal', 'authorization', 'x-stack-
 async function toRequest(req: IncomingMessage, origin: string, remote?: { token?: string }): Promise<Request> {
   const method = req.method ?? 'GET';
   const chunks: Buffer[] = [];
-  if (method !== 'GET' && method !== 'HEAD') { let n = 0; for await (const c of req) { n += (c as Buffer).length; if (n > 1_000_000) throw new Error('body too large'); chunks.push(c as Buffer); } }
+  if (method !== 'GET' && method !== 'HEAD') { let n = 0; for await (const c of req) { n += (c as Buffer).length; if (n > 1_000_000) throw new BodyTooLarge('body too large'); chunks.push(c as Buffer); } }
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !(remote && REMOTE_DROP.has(k))) headers.set(k, Array.isArray(v) ? v.join(', ') : v);
   if (remote?.token !== undefined) {
@@ -424,8 +430,14 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           const origin = req.headers.origin;
           const site = req.headers['sec-fetch-site'];
           const unsafe = req.method !== 'GET' && req.method !== 'HEAD';
-          // @req FR:cli/web.serve.loopback
-          if (unsafe && ((origin && !hostOk(new URL(origin).host)) || (site && site !== 'same-origin' && site !== 'none'))) return send(403, 'forbidden', 'text/plain');
+          // Another site may not read owner data either: an <img> or fetch from a page the owner visits must not run the api. @req FR:cli/web.serve.loopback.reads
+          if ((site === 'cross-site' || site === 'same-site') && isOwnerData((req.url ?? '/').split('?')[0])) return send(403, 'forbidden', 'text/plain');
+          // @req FR:cli/web.serve.loopback @req FR:cli/web.serve.loopback.origin
+          if (unsafe) {
+            let originHost: string | null = null;
+            try { originHost = origin ? new URL(origin).host : null; } catch { return send(403, 'forbidden', 'text/plain'); }
+            if ((originHost !== null && !hostOk(originHost)) || (site && site !== 'same-origin' && site !== 'none')) return send(403, 'forbidden', 'text/plain');
+          }
         }
         const path = (req.url ?? '/').split('?')[0];
         // @req FR:cli/web.serve.local @req FR:tailnet-access/pair.me
@@ -503,6 +515,8 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         const body = o.setup && file === join(root, 'index.html') && o.setup.status().needed ? withSetupMeta(readFileSync(file)) : readFileSync(file);
         send(200, body, TYPES[extname(file)] ?? 'application/octet-stream', hashed ? { 'cache-control': 'public, max-age=31536000, immutable' } : {});
       } catch (e) {
+        // @req FR:cli/web.serve.body
+        if (e instanceof BodyTooLarge) { if (!res.headersSent) send(413, 'body too large', 'text/plain', { connection: 'close' }); else res.end(); return; }
         console.error(e);
         if (!res.headersSent) send(500, 'internal error', 'text/plain'); else res.end();
       }
