@@ -370,6 +370,8 @@ describe('ErrorState', () => {
     expect(n).toBe(1);
   });
   it('has no button without onRetry', () => expect(mount(<ErrorState what="Cannot load." />).querySelector('button')).toBeNull());
+});
+
 describe('CountBadge', () => {
   // @req FR:ui-kit/badge
   it('shows the count; the markup is the one the views had', () => {
