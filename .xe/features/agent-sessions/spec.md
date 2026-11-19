@@ -96,9 +96,9 @@ Owner needs one page of his agents' sessions, ordered by what matters now, so th
   - **FR:web.drawer.md.clamp** (P1): Drawer MUST clamp a long turn to six lines with `Show more`
 - **FR:web.drawer.nav** (P1): App MUST close the open session when the page changes
   - **FR:web.drawer.nav.compose** (P1): App MUST close the composer when the page changes
-  - **FR:web.drawer.nav.late** (P1): App MUST keep the drawer closed when a session start ends after the page changes
-    - The session still runs
-  - A drawer opens on the page where the owner asks for it (`Open live chat` on Now, a task's agent chip)
+  - **FR:web.drawer.nav.late** (P1): App MUST start the session without its drawer when the start ends after the page changes
+  - **FR:web.drawer.nav.here** (P1): App MUST show a drawer on the page where it was opened (`Open live chat` on Now, a task's agent chip)
+  - A page is a view; each project's list is its own page
 - **FR:web.message** (P1): In the drawer `Enter` sends the text (`Shift+Enter` newline); the box clears and the stream opens. `Stop` cancels; `Esc` only closes the drawer (the run keeps going and its updates replay when the drawer reopens). A `409` shows inline `This session is active in another window; message it there or through its inbox`. A `needs-you` row's action is `Answer in Asks` (jumps to the ask)
 - ~~**FR:web.cost**~~: [deprecated: FR:web.usage]
 - **FR:web.usage** (P1): Agents view MUST present spend as token usage: the strip reads `Today 1.2M tokens · 6 sessions`, then `7 days 31M`; rows and drawer facts show tokens (`fmtTokens`), never dollars

@@ -108,11 +108,12 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
     const t = text.trim();
     if (!open || !t) return false;
     setSendError('');
+    const at = closes.current;
     try {
       await api.promptSession(open, t);
       setTurns((x) => [...x, { at: new Date().toISOString(), role: 'user', text: t }]);
       setTranscript(emptyTranscript());
-      listen(open);
+      if (at === closes.current) listen(open); // closed while it sent (a page change): the run goes on, with no stream for a closed drawer @req FR:agent-sessions/web.drawer.nav
       setItems((l) => l.map((s) => (s.id === open ? { ...s, state: 'running' } : s)));
       return true;
     } catch (e) {
