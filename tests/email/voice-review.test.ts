@@ -1,6 +1,7 @@
-import { mkdtempSync, statSync, chmodSync } from 'fs';
+const fs = jest.requireActual<typeof import('fs')>('fs');
+import { mkdtempSync, readdirSync, statSync, chmodSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { createHash } from 'crypto';
 import { asksPath, parseAsk } from '../../src/core/asks';
 import { DEFAULT_RULES } from '../../src/email/rules';
@@ -96,6 +97,24 @@ describe('profile store', () => {
     chmodSync(path, 0o644);
     expect(() => loadVoice(path)).toThrow(/readable by others/);
     expect(() => voicePath('../etc', base)).toThrow(/Not a mailbox/);
+  });
+
+  // @req FR:email-voice/learn.store.atomic
+  it('keeps the old profile when a save fails part way (disk full, crash)', () => {
+    const base = mkdtempSync(join(tmpdir(), 'voice-'));
+    const path = voicePath('sam@example.test', base);
+    saveVoice(path, voice);
+    const spy = jest.spyOn(fs, 'writeFileSync').mockImplementation((file) => {
+      const fd = fs.openSync(file as string, 'w'); fs.writeSync(fd, '{"version":1,"exam'); fs.closeSync(fd); // a torn write, then the disk fills
+      throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+    });
+    try {
+      expect(() => saveVoice(path, { ...voice, examples: [] })).toThrow(/ENOSPC/);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(loadVoice(path)).toEqual(voice);
+    expect(readdirSync(dirname(path))).toEqual(['voice.json']);
   });
 });
 
