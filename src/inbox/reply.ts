@@ -4,7 +4,6 @@
  */
 import { handleAsk } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
-import { NotFoundError } from '../core/storage';
 import { updateInbox } from './runner';
 import type { InboxItem } from './types';
 
@@ -35,8 +34,9 @@ export async function sendItemReply(ctx: LifecycleContext, item: InboxItem, text
   if (item.source !== 'email' || !item.messageId) throw new SendOff();
   if (!box?.canSend) throw new SendOff();
   try { await box.send(item.messageId, text); } catch { throw new SendFailed(); }
+  // The mail is out. The draft goes first, so a second click finds no draft to send; a cleanup step that fails must not report the send as failed.
   box.remove(item.id);
-  await updateInbox(ctx, (cur) => cur.filter((i) => i.id !== item.id));
-  try { await handleAsk(ctx, item.askKey ?? item.id, { outcome: 'resolved', note: 'Reply sent from Stack' }, 'inbox'); } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
+  await updateInbox(ctx, (cur) => cur.filter((i) => i.id !== item.id)).catch(() => undefined);
+  await handleAsk(ctx, item.askKey ?? item.id, { outcome: 'resolved', note: 'Reply sent from Stack' }, 'inbox').catch(() => undefined);
   return { ok: true };
 }

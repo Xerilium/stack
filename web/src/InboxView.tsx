@@ -118,10 +118,13 @@ function Reply({ row, draft, api, toast, onSent }: { row: InboxRow; draft: Reply
     if (text === saved) return;
     try { await api.inboxDraft(row.id, text); setSaved(text); } catch { /* the text stays in the box; Send carries it */ }
   };
+  /** A send in flight: a ref, so a second click in the same frame cannot send twice. */
+  const sending = useRef(false);
   const send = async () => {
-    setBusy(true);
+    if (sending.current) return;
+    sending.current = true; setBusy(true);
     try { await api.inboxSend(row.id, text); toast(`Reply sent to ${row.from}`); onSent(row.id); }
-    catch (e) { toast(e instanceof ApiFailure ? e.message : 'Could not send. The draft is kept.', 'err'); setBusy(false); }
+    catch (e) { toast(e instanceof ApiFailure ? e.message : 'Could not send. The draft is kept.', 'err'); sending.current = false; setBusy(false); }
   };
   return (
     <section class="in-reply" aria-labelledby={`rp-${row.id}`}>
