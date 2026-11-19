@@ -483,7 +483,7 @@ paths:
           $ref: "#/components/responses/Error"
   /design-review:
     post:
-      summary: Owner only. Send the page screenshot and its goals to ChatGPT in a new request and file the reply as a GitHub issue (docs/design-review.md). 404 on hosts with no reviewer; 422 for an unknown page or no screenshot; 503 when ChatGPT is not connected or fails; 502 when the issue fails
+      summary: Owner only. Send the page screenshot and its goals to ChatGPT in a new request and file the reply as a GitHub issue (docs/design-review.md). 404 on hosts with no reviewer; 422 with no screenshot; 503 when ChatGPT is not connected or fails; 502 when the issue fails
       operationId: designReview
       requestBody:
         required: true

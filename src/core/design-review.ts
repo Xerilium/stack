@@ -5,7 +5,7 @@
 import { capturePageNow, isPng, redactSecrets } from './feedback';
 import { PAGE_GOALS, pageFromRoute, type PageId } from './page-goals';
 
-export type DesignReviewCode = 'page' | 'shot' | 'down' | 'issue';
+export type DesignReviewCode = 'shot' | 'down' | 'issue';
 export class DesignReviewError extends Error { constructor(readonly code: DesignReviewCode, m: string) { super(m); this.name = 'DesignReviewError'; } }
 
 export interface ReviewInput { page: PageId; name: string; goals: string[]; viewport?: string; theme?: 'light' | 'dark'; png: Buffer }
@@ -91,7 +91,8 @@ export function issueFor(i: { page: PageId; viewport?: string; theme?: 'light' |
     '',
   ].join('\n');
   // @req FR:design-review/issue.redact
-  let reply = redactSecrets(i.reply);
+  // @req FR:design-review/issue.mentions: no @mentions in a public issue: a zero-width space after each @ keeps the text and pings no one.
+  let reply = redactSecrets(i.reply).replace(/@(?=[A-Za-z0-9])/g, '@\u200b');
   // @req FR:design-review/issue.body.cap
   const note = '\n\n_Reply cut to fit the issue size limit._';
   if (head.length + reply.length > MAX_BODY) reply = reply.slice(0, MAX_BODY - head.length - note.length) + note;
@@ -105,20 +106,19 @@ export function createDesignReview(o: { reviewer?: Reviewer; filer: DesignIssueF
   return {
     async run(r) {
       const page = pageFromRoute(r.route);
-      if (!page) throw new DesignReviewError('page', 'No goals for this page');
+      // Before the capture, so a host with no key fails at once. @req FR:design-review/api.down @req FR:design-review/api.down.first
+      if (!reviewer.connected()) throw new DesignReviewError('down', 'ChatGPT is not connected: set STACK_OPENAI_API_KEY');
       // @req FR:design-review/api.shot
       let png = r.png && isPng(r.png) ? r.png : null;
       if (!png && r.capture) png = await capturePageNow();
       if (!png) throw new DesignReviewError('shot', 'A screenshot is needed');
-      // @req FR:design-review/api.down
-      if (!reviewer.connected()) throw new DesignReviewError('down', 'ChatGPT is not connected: set STACK_OPENAI_API_KEY');
       const g = PAGE_GOALS[page];
       let reply: string;
       try { reply = await reviewer.review({ page, name: g.name, goals: g.goals, viewport: r.viewport, theme: r.theme, png }); } catch (e) {
         throw e instanceof DesignReviewError ? e : new DesignReviewError('down', 'ChatGPT review failed');
       }
       const issue = issueFor({ page, viewport: r.viewport, theme: r.theme, model: reviewer.model(), reply });
-      // @req FR:design-review/issue.repo @req FR:design-review/api.down.issue
+      // @req FR:design-review/issue.repo @req FR:design-review/api.issue
       try {
         const { url } = await o.filer.file({ repo: env.STACK_DESIGN_REVIEW_REPO || DEFAULT_REPO, ...issue, labels: [] });
         return { page, url };

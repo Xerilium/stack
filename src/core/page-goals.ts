@@ -20,12 +20,16 @@ export const PAGE_GOALS: Record<PageId, PageGoals> = {
   qm: { name: 'QM plan', goals: ['Show the weekly quota-maxxing plan per project in one table', 'Show token and human-time estimates so the owner can judge the plan', 'Make it easy to sort and compare projects'] },
 };
 
-/** The page in a route's hash (`#/asks`, `#asks`, `/#/list?x=1`); no hash is `now`; an unknown page is null. @req FR:design-review/goals.route */
-export function pageFromRoute(route: string): PageId | null {
+/** Old and alternate hash names the web app also serves (web/src/filters.ts ALIAS). @req FR:design-review/goals.route.alias */
+const ALIAS: Record<string, PageId> = { next: 'home', focus: 'home', brief: 'now', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions' };
+
+/** The page a route shows, read from its hash (`#/asks`, `#asks`, `/#/list?x=1`), as the web app reads it. @req FR:design-review/goals.route */
+export function pageFromRoute(route: string): PageId {
   const hash = route.includes('#') ? route.slice(route.indexOf('#') + 1) : '';
   const name = /^\/?([a-z]*)/.exec(hash)?.[1] ?? '';
   // @req FR:design-review/goals.route.empty
   if (!name) return 'now';
-  // @req FR:design-review/goals.route.unknown
-  return (PAGE_IDS as readonly string[]).includes(name) ? (name as PageId) : null;
+  if (Object.prototype.hasOwnProperty.call(ALIAS, name)) return ALIAS[name];
+  // The app shows Now for any other name. @req FR:design-review/goals.route.unknown
+  return (PAGE_IDS as readonly string[]).includes(name) ? (name as PageId) : 'now';
 }

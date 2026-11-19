@@ -12,7 +12,7 @@ dependencies: [api, desktop-shell, feedback-button, inbox-page, web-shell]
 
 ## Purpose
 
-Get an outside design opinion on every Stack page with no manual screenshots or copy and paste. Each review lands as one GitHub issue so the work can be triaged later. Issue 170.
+Get an outside design opinion on every Stack page with no manual screenshots or copy and paste. Each review lands as one GitHub issue so the work can be triaged later.
 
 ## Scope
 
@@ -28,9 +28,10 @@ The reviewer needs each page's purpose so that its feedback judges the page agai
 - **FR:goals.file** (P1): `src/core/page-goals.ts` lists the goals of every page
   - **FR:goals.file.pages** (P1): Pages: `now`, `home`, `today`, `asks`, `prs`, `inbox`, `sessions`, `projects`, `list`, `settings`, `qm`
   - **FR:goals.file.entry** (P1): Each page has a name and 2 to 5 goals
-- **FR:goals.route** (P1): Resolver MUST take the page from the route hash (`#/asks`, `#asks`, `/#/asks?x=1`)
+- **FR:goals.route** (P1): Resolver MUST take the page from the route hash (`#/asks`, `#asks`, `/#/asks?x=1`) the way the web app reads it
   - **FR:goals.route.empty** (P1): Resolver MUST treat no hash as `now`
-  - **FR:goals.route.unknown** (P1): Resolver MUST reject a hash with no goals entry
+  - **FR:goals.route.alias** (P1): Resolver MUST map the web app hash aliases to their page (`#/agents` is `sessions`)
+  - **FR:goals.route.unknown** (P1): Resolver MUST treat any other name as `now`, the page the app shows
 
 ### FR:ui: Action
 
@@ -38,12 +39,17 @@ The owner needs one click per page so that a review never needs a manual screens
 
 - **FR:ui.button** (P1): Feedback panel MUST show a `Design review` button next to `Send`
   - **FR:ui.button.text** (P1): Feedback panel MUST enable the button with no text
-- **FR:ui.shot** (P1): Feedback panel MUST hide and capture the page as feedback does
+- **FR:ui.shot** (P1): Feedback panel MUST capture the page as feedback does
   - Desktop app: `capture: true`. Browser: the Screen Capture API
   > - @req FR:feedback-button/ui.shot
-- **FR:ui.no-shot** (P1): Feedback panel MUST show `A screenshot is needed` and send nothing when the browser gives no screenshot
+  - **FR:ui.shot.hide** (P1): Feedback panel MUST stay hidden until the capture is done
+- **FR:ui.progress** (P1): Feedback panel MUST show `Reviewing with ChatGPT…` while the review runs
+- **FR:ui.no-shot** (P1): Feedback panel MUST send nothing when the browser gives no screenshot
+  - **FR:ui.no-shot.message** (P1): Feedback panel MUST show `A screenshot is needed`
 - **FR:ui.result** (P1): Feedback panel MUST show `Filed` with the issue link on success
-  - **FR:ui.result.error** (P1): Feedback panel MUST show the error and stay open on failure
+  - **FR:ui.result.focus** (P1): Feedback panel MUST move focus to the issue link
+- **FR:ui.error** (P1): Feedback panel MUST show the error and stay open on failure
+  - **FR:ui.error.focus** (P1): Feedback panel MUST move focus to the text box
 
 ### FR:api: API
 
@@ -54,11 +60,11 @@ The page needs one owner-only route so that the web app and the desktop app run 
   > - @req FR:feedback-button/api.route
 - **FR:api.owner** (P1): Route MUST answer 403 to anyone but the owner
 - **FR:api.absent** (P1): Route MUST answer 404 when the host has no reviewer
-- **FR:api.page** (P1): Route MUST answer 422 when the route names a page with no goals
 - **FR:api.shot** (P1): Route MUST answer 422 when there is no screenshot
   - No `png`, and no host capture
 - **FR:api.down** (P1): Route MUST answer 503 when ChatGPT is not connected or fails
-  - **FR:api.down.issue** (P1): Route MUST answer 502 when the issue fails
+  - **FR:api.down.first** (P1): Route MUST check the connection before the capture
+- **FR:api.issue** (P1): Route MUST answer 502 when the issue fails
 
 ### FR:review: ChatGPT review
 
@@ -83,16 +89,17 @@ The owner needs one issue per review so that findings can be triaged later, one 
   - **FR:issue.body.cap** (P1): Issue writer MUST cut the reply, with a note, to keep the body at most 60,000 characters
 - **FR:issue.redact** (P1): Issue writer MUST remove token-like strings from the reply before filing
   > - @req FR:feedback-button/store.redact
+- **FR:issue.mentions** (P1): Issue writer MUST break each `@` mention in the reply
 
 ## Data Model
 
-- Page goals: `{name: string; goals: string[]}` keyed by page id. See `FR:goals.file`.
-- Review result: `{page, url}`. See `FR:api.route`.
+- Page goals: `{name: string; goals: string[]}` keyed by page id.
+- Review result: `{page, url}`.
 
 ## Architecture Constraints
 
 - The screenshot and goals go to OpenAI only on the owner's click. Nothing runs on a timer.
-- The OpenAI API is the ChatGPT connection. Stack does not script the chatgpt.com web app: that breaks on UI changes and its terms forbid it.
+- The OpenAI API is the ChatGPT connection. Stack does not script the chatgpt.com web app.
 - The issue uses the host's existing GitHub issue filer (`gh issue create`).
 - No new dependency: `fetch` only.
 

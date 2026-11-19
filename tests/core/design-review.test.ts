@@ -23,17 +23,20 @@ describe('page goals', () => {
       expect(PAGE_GOALS[id].goals.length).toBeLessThanOrEqual(5);
     }
   });
-  // @req FR:design-review/goals.route @req FR:design-review/goals.route.empty @req FR:design-review/goals.route.unknown
+  // @req FR:design-review/goals.route @req FR:design-review/goals.route.empty @req FR:design-review/goals.route.alias @req FR:design-review/goals.route.unknown
   it('takes the page from the route hash', () => {
     expect(pageFromRoute('/#/asks')).toBe('asks');
     expect(pageFromRoute('#asks')).toBe('asks');
     expect(pageFromRoute('/#/list?state=open')).toBe('list');
-    expect(pageFromRoute('/#/sessions/team')).toBe('sessions');
+    expect(pageFromRoute('/#/prs/review')).toBe('prs');
+    expect(pageFromRoute('/#/agents')).toBe('sessions');
+    expect(pageFromRoute('#/next')).toBe('home');
+    expect(pageFromRoute('#/stack')).toBe('list');
     expect(pageFromRoute('#/qm')).toBe('qm');
     expect(pageFromRoute('/')).toBe('now');
     expect(pageFromRoute('')).toBe('now');
-    expect(pageFromRoute('/#/nope')).toBeNull();
-    expect(pageFromRoute('/#/constructor')).toBeNull();
+    expect(pageFromRoute('/#/nope')).toBe('now');
+    expect(pageFromRoute('/#/constructor')).toBe('now');
   });
 });
 
@@ -88,7 +91,7 @@ describe('OpenAI reviewer', () => {
 });
 
 describe('issue', () => {
-  // @req FR:design-review/issue.title @req FR:design-review/issue.body @req FR:design-review/issue.redact
+  // @req FR:design-review/issue.title @req FR:design-review/issue.body @req FR:design-review/issue.redact @req FR:design-review/issue.mentions
   it('titles by page and starts the body with the AI prefix', () => {
     const i = issueFor({ page: 'asks', viewport: '375x812', theme: 'light', model: 'gpt-5', reply: 'Use ghp_abcdefghijklmnopqrstuvwxyz0123 less.' });
     expect(i.title).toBe('design(asks): Design review of Needs you');
@@ -99,6 +102,9 @@ describe('issue', () => {
     expect(i.body).toContain('gpt-5');
     expect(i.body).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123');
     expect(i.body).toContain('[redacted]');
+    const m = issueFor({ page: 'now', model: 'gpt-5', reply: 'Ask @octocat, mail a@b.c' });
+    expect(m.body).not.toMatch(/@octocat/);
+    expect(m.body).toContain('@\u200boctocat');
   });
   // @req FR:design-review/issue.body.cap
   it('cuts a long reply with a note', () => {
@@ -136,11 +142,13 @@ describe('design review', () => {
     expect((await d.run({ route: '#/now', capture: true })).page).toBe('now');
   });
 
-  // @req FR:design-review/api.page @req FR:design-review/api.down @req FR:design-review/api.down.issue
-  it('maps page, reviewer, and issue failures', async () => {
-    await expect(createDesignReview({ reviewer: reviewer(), filer: filer(), env: {} }).run({ route: '#/nope', png: PNG })).rejects.toMatchObject({ code: 'page' });
+  // @req FR:design-review/api.down @req FR:design-review/api.down.first @req FR:design-review/api.issue
+  it('maps reviewer and issue failures, and checks the key before the capture', async () => {
     const off = { ...reviewer(), connected: () => false };
-    await expect(createDesignReview({ reviewer: off, filer: filer(), env: {} }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'down' });
+    let captured = 0;
+    setPageCapture(async () => { captured++; return PNG; });
+    await expect(createDesignReview({ reviewer: off, filer: filer(), env: {} }).run({ route: '#/now', capture: true })).rejects.toMatchObject({ code: 'down' });
+    expect(captured).toBe(0);
     const bad = { file: async () => { throw new Error('gh failed'); } };
     await expect(createDesignReview({ reviewer: reviewer(), filer: bad, env: {} }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'issue' });
     const throws = { ...reviewer(), review: async () => { throw new Error('raw'); } };

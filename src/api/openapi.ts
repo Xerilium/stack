@@ -71,7 +71,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
   // @req FR:design-review/api.route
   designReview: {
-    operationId: 'designReview', summary: 'Owner only. Send the page screenshot and its goals to ChatGPT in a new request and file the reply as a GitHub issue (docs/design-review.md). 404 on hosts with no reviewer; 422 for an unknown page or no screenshot; 503 when ChatGPT is not connected or fails; 502 when the issue fails',
+    operationId: 'designReview', summary: 'Owner only. Send the page screenshot and its goals to ChatGPT in a new request and file the reply as a GitHub issue (docs/design-review.md). 404 on hosts with no reviewer; 422 with no screenshot; 503 when ChatGPT is not connected or fails; 502 when the issue fails',
     desc: {
       route: 'The app route; its hash names the page', viewport: 'Width x height, such as 1280x800', theme: 'The app theme',
       capture: 'Ask the desktop host to capture the window as the screenshot', png: 'A base64 PNG screenshot (browser), at most 700 KB decoded',

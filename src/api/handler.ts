@@ -681,9 +681,8 @@ export const ROUTES: Route[] = [
       try {
         return json(201, await c.deps.designReview.run({ route: b.route, viewport: b.viewport, theme: b.theme, capture: b.capture, png: b.png ? Buffer.from(b.png, 'base64') : undefined }));
       } catch (e) {
-        // @req FR:design-review/api.page @req FR:design-review/api.shot @req FR:design-review/api.down @req FR:design-review/api.down.issue
+        // @req FR:design-review/api.shot @req FR:design-review/api.down @req FR:design-review/api.issue
         if (e instanceof DesignReviewError) {
-          if (e.code === 'page') throw invalid([{ field: 'route', message: e.message }]);
           if (e.code === 'shot') throw invalid([{ field: 'png', message: e.message }]);
           throw new ApiError(e.code === 'issue' ? 'bad_gateway' : 'unavailable', e.message);
         }

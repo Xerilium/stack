@@ -42,9 +42,8 @@ describe('POST /design-review', () => {
     expect((await call({ route: '#/now', extra: 1 })).status).toBe(422);
   });
 
-  // @req FR:design-review/api.page @req FR:design-review/api.shot @req FR:design-review/api.down @req FR:design-review/api.down.issue
+  // @req FR:design-review/api.shot @req FR:design-review/api.down @req FR:design-review/api.issue
   it('maps failures to status codes', async () => {
-    expect((await mk(fails('page'))({ route: '#/x', png: PNG })).status).toBe(422);
     expect((await mk(fails('shot'))({ route: '#/now' })).status).toBe(422);
     const down = await mk(fails('down'))({ route: '#/now', png: PNG });
     expect(down.status).toBe(503);

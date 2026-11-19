@@ -24,7 +24,7 @@ Issue 170: one-click design review of each page by ChatGPT, filed as a GitHub is
 #### design-review
 
 - [x] Spec
-- [x] Tests: `tests/core/design-review.test.ts`, `tests/api/design-review.test.ts`, `web/tests/design-review.test.ts`
+- [x] Tests: `tests/core/design-review.test.ts`, `tests/api/design-review.test.ts`, `web/e2e/design-review.spec.ts`
 - [x] Code: `src/core/page-goals.ts`, `src/core/design-review.ts`, route, OpenAPI, web host wiring, panel button
 - [x] Docs: `docs/design-review.md`
 

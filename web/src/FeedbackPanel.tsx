@@ -61,6 +61,7 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
   const [error, setError] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
   const [filed, setFiled] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => { ref.current?.querySelector<HTMLElement>('textarea')?.focus(); }, []);
   useEffect(() => { if (phase !== 'sent') return; const t = setTimeout(onClose, 1200); return () => clearTimeout(t); }, [phase]);
@@ -87,30 +88,41 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
     }
   };
 
-  /** One click: capture this page, send it with its goals to ChatGPT, show the issue link. @req FR:design-review/ui.shot @req FR:design-review/ui.result */
+  /** One click, no text needed: capture this page, send it with its goals to ChatGPT, show the issue link. @req FR:design-review/ui.shot @req FR:design-review/ui.result @req FR:design-review/ui.button.text */
   const review = async () => {
     if (phase === 'sending') return;
     setError(null);
     setPhase('sending');
     const desktop = isDesktopApp();
     const grab = desktop ? null : await startShot();
-    const fail = (m: string) => { setHidden(false); setError(m); setPhase('open'); };
-    // @req FR:design-review/ui.no-shot
+    const fail = (m: string) => {
+      setHidden(false); setReviewing(false); setError(m); setPhase('open');
+      setTimeout(() => ref.current?.querySelector<HTMLElement>('textarea')?.focus(), 0);
+    };
+    // Back in view with progress once the screenshot is taken: at once for a browser png, after a short pause for the
+    // host capture (it runs when the request lands, well under the pause). @req FR:design-review/ui.progress
+    const show = () => { setHidden(false); setReviewing(true); };
+    // @req FR:design-review/ui.no-shot @req FR:design-review/ui.no-shot.message @req FR:design-review/ui.shot.hide
     if (!desktop && !grab) return fail('A screenshot is needed');
     setHidden(true);
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
     const png = grab ? await grab() : null;
     if (!desktop && !png) return fail('A screenshot is needed');
+    let shown: ReturnType<typeof setTimeout> | undefined;
+    if (png) show(); else shown = setTimeout(show, 800);
     try {
       const ctx = pageContext();
       const r = await api.designReview({ ...ctx, route: ctx.route ?? '/', ...(desktop ? { capture: true } : {}), ...(png ? { png } : {}) });
       setHidden(false);
+      setReviewing(false);
       setFiled(r.url);
       setPhase('filed');
+      // @req FR:design-review/ui.result.focus
+      setTimeout(() => ref.current?.querySelector<HTMLElement>('a[href]')?.focus(), 0);
     } catch (e) {
-      // @req FR:design-review/ui.result.error
+      // @req FR:design-review/ui.error @req FR:design-review/ui.error.focus
       fail(e instanceof Error ? e.message : 'Could not run the review');
-    }
+    } finally { clearTimeout(shown); }
   };
 
   if (hidden) return null;
@@ -130,6 +142,8 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
         }}>
         {phase === 'sent'
           ? <p class="fb-sent" role="status" tabIndex={-1}>Sent</p>
+          : reviewing
+          ? <p class="fb-sent" role="status">Reviewing with ChatGPT…</p>
           : phase === 'filed' && filed
           ? <p class="fb-sent" role="status">Filed: <a href={filed} target="_blank" rel="noopener noreferrer">{filed.replace(/^https:\/\/github\.com\//, '')}</a></p>
           : (
