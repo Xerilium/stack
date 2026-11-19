@@ -63,7 +63,8 @@ describe('stack triage', () => {
 
   it('is additive: help lists it and existing commands still work', () => {
     const d = repo();
-    expect(stack(d, '--help').out).toContain('triage <ref>');
+    expect(stack(d, '--help').out).toMatch(/^ {2}triage /m);
+    expect(stack(d, 'triage', '--help').out).toContain('triage <ref>');
     expect(stack(d, 'next').code).toBe(0);
   });
 });
