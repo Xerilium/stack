@@ -33,7 +33,7 @@ describe('stack priorities', () => {
       '| [Allyte](tasks/allyte.md) | [qm-planner](.claude/agents/qm-planner.md) | ❓ Unknown | QM: approve plan |', '',
       '---', '## Now (as of 11:00 AM)', '', '| Project | Agent | 🤖 Status | 👱‍♂️ Next action |', '| --- | --- | --- | --- |',
       '| [FH.com](tasks/allyte.md) | [FH backend](#s1) | 🔄 Working | Live-validate 430 |',
-      '| Arc ⚠ no link | -- | -- | Gap: No tiered task in tasks/ |', '',
+      '| Arc ⚠ no link | -- | -- | Gap: CoS, today: add a 1️⃣/2️⃣/3️⃣ task in tasks/<project>.md with (agent: ...) |', '',
       '---', '## PRs (as of 11:00 AM)', '', '| PR | Agent | 👱‍♂️ Next action | Time |', '| --- | --- | --- | --- |',
       '| 🏦 [1142](https://github.com/allytehq/finops-hubs/pull/1142) | [FH backend](#s1) | Autopilot: promote | 5m |', '',
       '---', '## Today (as of 11:00 AM)', '', 'Nothing here', '',
@@ -46,8 +46,8 @@ describe('stack priorities', () => {
     const j = r.json as { ok: boolean; at: string; qm: { rows: unknown[] }; now: { rows: unknown[] }; prs: { rows: unknown[] } };
     expect(j.ok).toBe(true);
     expect(j.at).toBe(NOW);
-    expect(j.now.rows[0]).toMatchObject({ id: 'fh', project: 'FH.com', file: 'tasks/allyte.md', agent: { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s1', file: null }, status: 'working', stale: false });
-    expect(j.prs.rows).toEqual([{ emoji: '🏦', number: 1142, url: 'https://github.com/allytehq/finops-hubs/pull/1142', agent: { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s1', file: null }, action: 'Autopilot: promote', minutes: 5, server: null, details: null }]);
+    expect(j.now.rows[0]).toMatchObject({ id: 'fh', project: 'FH.com', file: 'tasks/allyte.md', agent: { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s1', file: null, session: null }, status: 'working', stale: false });
+    expect(j.prs.rows).toEqual([{ emoji: '🏦', number: 1142, url: 'https://github.com/allytehq/finops-hubs/pull/1142', agent: { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s1', file: null, session: null }, action: 'Autopilot: promote', minutes: 5, server: null, details: null }]);
   });
   // @req FR:priorities-tables/cli.read.board @req FR:priorities-tables/pr.live.none
   it('builds the report with no board when there is no GitHub sign-in', async () => {

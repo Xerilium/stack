@@ -5,7 +5,7 @@
  */
 import { closeSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'fs';
 import { homedir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { writeAtomic } from './file-lock';
 
 export const SESSION_STATES = ['running', 'waiting', 'stuck', 'done', 'pinned', 'idle'] as const;
@@ -32,7 +32,7 @@ export interface SessionFacts {
 /** One session as Stack shows it. @req FR:session-inventory/needs.item */
 export interface SessionItem {
   id: string; title: string; project: SessionProject; state: SessionState; reason: SessionReason; pinned: boolean;
-  lastActivityAt: string; link: string; prs: { url: string; state: string }[]; ask?: string; scheduled?: { id: string; name: string };
+  lastActivityAt: string; link: string; /** The Claude Code session id (`cliSessionId`): the id a prompt resumes. */ cli?: string; prs: { url: string; state: string }[]; ask?: string; scheduled?: { id: string; name: string };
 }
 export interface Inventory {
   at: string; total: number; counts: Record<SessionState, number>;
@@ -289,6 +289,8 @@ export function runInventory(o: InventoryOptions): Inventory {
   // An archived newer run still supersedes older runs.
   for (const f of Object.values(cache).map((e) => e.facts)) if (f?.scheduledTaskId) latestRun.set(f.scheduledTaskId, Math.max(latestRun.get(f.scheduledTaskId) ?? -Infinity, f.createdAt ?? f.lastActivityAt));
   const counts = Object.fromEntries(SESSION_STATES.map((s) => [s, 0])) as Record<SessionState, number>;
+  // The transcript is `<cliSessionId>.jsonl`: its name is the id a prompt resumes. @req FR:session-inventory/needs.item
+  const cliOf = new Map(Object.values(cache).flatMap((e) => (e.facts && e.tx ? [[e.facts.id, basename(e.tx, '.jsonl')] as const] : [])));
   const items: (SessionItem & { at: number; candidate: boolean })[] = facts.map((f) => {
     const { state, reason } = classify(f, T);
     counts[state]++;
@@ -299,7 +301,7 @@ export function runInventory(o: InventoryOptions): Inventory {
     return {
       // @req FR:session-inventory/needs.reason
       id: f.id, title: f.title, project: projectOf(f.cwd), state, reason: superseded ? 'superseded' : stale ? 'stale' : reason, pinned: f.pinned,
-      lastActivityAt: new Date(at).toISOString(), link: sessionLink(f.id), prs: f.prs.filter((p) => !p.dismissed).map((p) => ({ url: p.url, state: p.state })),
+      lastActivityAt: new Date(at).toISOString(), link: sessionLink(f.id), ...(cliOf.has(f.id) ? { cli: cliOf.get(f.id)! } : {}), prs: f.prs.filter((p) => !p.dismissed).map((p) => ({ url: p.url, state: p.state })),
       ...(f.summary?.ask && (state === 'waiting' || state === 'stuck') ? { ask: f.summary.ask } : {}),
       ...(f.scheduledTaskId ? { scheduled: { id: f.scheduledTaskId, name: sched.get(f.scheduledTaskId) ?? f.scheduledTaskId } } : {}),
       at, candidate: superseded || stale,

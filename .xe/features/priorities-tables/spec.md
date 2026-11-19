@@ -56,7 +56,11 @@ Owner needs one row per priority so that each project shows once with his next s
   - **FR:rows.cols.action** (P1): The priority `action` MUST win over the task text (`work with FOCUS CoS`).
   - **FR:rows.cols.later** (P1): A task with tier `2️⃣` or `3️⃣` MUST start its action with `⏳ `.
   - **FR:rows.cols.more** (P1): A task with more than one agent MUST end its action with `+ N more`.
-- **FR:rows.gap** (P1): A priority with no linked tiered task MUST show a gap row: no agent, no status, and the action `No tiered task in tasks/`. Report MUST NOT fill it from other data.
+- **FR:rows.gap** (P1): A priority with no linked tiered task MUST show a gap row: no agent and no status. Report MUST NOT fill it from other data.
+  - **FR:rows.gap.cos** (P1): A gap row MUST name the Chief of Staff (CoS) who must act: the priority `cos`, else `CoS`, linked as an agent (@req FR:agent.link).
+  - **FR:rows.gap.by** (P1): A gap row MUST say by when: `today`, else `by` and the start of the row (`by 3 PM`, `by Thu 3 PM`).
+  - **FR:rows.gap.action** (P1): The gap action MUST say who, when and what: `<CoS>, <by when>: add a 1️⃣/2️⃣/3️⃣ task in <project file> with (agent: ...)`. With no project file it MUST name `tasks/<project>.md`.
+  - **FR:rows.gap.request** (P1): A gap row MUST carry the request to send to the CoS: the project, the gap, the same task to add and by when.
 - **FR:rows.words** (P1): Report MUST keep each cell at most 20 words and end a cut cell with `…`.
 
 ### FR:qm: Show QM first
@@ -93,6 +97,7 @@ Owner needs each agent one tap away so that he can talk to it.
 - **FR:agent.link** (P1): Report MUST link the agent to the inventory session whose title matches the agent name (case, emoji and punctuation ignored), else to the session in the priority `session`.
 - **FR:agent.file** (P1): With no session, Report MUST name the agent file (`tasks/agents/<slug>.md` or `.claude/agents/<slug>.md`) whose slug matches the agent name.
 - **FR:agent.plain** (P1): Report MUST show the agent name with no link when no session matches.
+- **FR:agent.session** (P1): With a session, Report MUST give the id that `POST /sessions/{id}/prompt` takes (@req FR:agent-sessions/run.prompt): the inventory `cli` id (@req FR:session-inventory/needs.item) when it is a UUID, else null.
 
 ### FR:pr: List the PRs that need the owner
 
@@ -145,15 +150,20 @@ Owner needs the report on the Now page so that he sees it without a new screen.
   - **FR:web.tabs.hash** (P1): The chosen tab MUST be kept in the URL hash (`#/now?pri=prs`) and restored on load.
   - **FR:web.tabs.keys** (P1): Tabs MUST follow the ARIA tabs pattern: arrow keys, Home and End move between tabs.
   - **FR:web.tabs.head** (P1): The stamp `as of <time>` (`, stale` when stale) of the chosen tab MUST sit small at the right end of the tab bar with 12 px of space after it, and the bar MUST stay in view on scroll, with the time in the report's configured time zone.
-- **FR:web.kit** (P1): The report MUST be built from the shared components (`FR:ui-kit`, `web/src/ui/`: `Tabs`, `SelectCard`, `StatusChip`, `SplitView`, `useWide`), which the PR page also uses (`.xe/standards/ui.md`).
+- **FR:web.kit** (P1): The report MUST be built from the shared components (`FR:ui-kit`, `web/src/ui/`: `Tabs`, `SelectCard`, `StatusChip`, `SplitView`, `MessageBox`, `useWide`), which the PR page also uses (`.xe/standards/ui.md`).
 - **FR:web.table** (P1): Each row MUST be a muted card: project and status on line 1, next action on line 2, agent on line 3. A PR card MUST show PR and Time on line 1, the next action on line 2 and the agent on line 3.
   - **FR:web.table.line** (P1): Each line MUST show one line and end a cut line with `…`.
   - **FR:web.status.chip** (P1): Status MUST be a `StatusChip` (`FR:ui-kit/chip`: a dot and one word on a tint); a row with no agent MUST show no chip.
   - **FR:web.card.agent** (P1): The card MUST show the agent name as plain text, with no added emoji and no link.
   - **FR:web.card.project** (P1): The card MUST show the project as plain text.
   - **FR:web.card.open** (P1): The whole card MUST open its detail (one target, ending in `›`, `FR:ui-kit/card.chev`); links on the card MUST stay links.
+- **FR:web.message** (P1): The detail pane of a row with an agent MUST show a `Message agent` box (`MessageBox`, `FR:ui-kit/message`) that sends the text to the agent session (@req FR:agent-sessions/run.prompt).
+  - **FR:web.message.off** (P1): With no session id, the box MUST be off and say `No live session for this agent`.
+  - **FR:web.message.result** (P1): The box MUST say `Sent to <agent>` after a send, else the error, and keep the text on an error.
+- **FR:web.askcos** (P1): The detail pane of a gap row MUST show an `Ask CoS` box (`MessageBox`) with the row request as its text, which sends it to the CoS session.
+  - **FR:web.askcos.off** (P1): With no CoS session id, the box MUST be off and say `No live session for <CoS>`.
 - **FR:web.detail** (P1): The detail pane MUST show the project (linked), status chip, full next action (linked refs), agent (linked) with `+ N more on this goal`, source `path:line` and the stamp. Wide (900 px or more) it MUST sit beside the list; narrow it MUST replace the list, with Back.
-  - **FR:web.table.gap** (P1): A gap row MUST show its action in muted text with the word `Gap:` first.
+  - **FR:web.table.gap** (P1): A gap row MUST show its action in muted text.
   - **FR:web.table.empty** (P1): An empty tab MUST show one card `Nothing here`.
 - **FR:web.links** (P1): Every row MUST link its targets.
   - **FR:web.links.project** (P1): In the detail pane, the project MUST link to its project page (`#/list?project=<file>`).
@@ -175,16 +185,17 @@ Owner needs the report on the Now page so that he sees it without a new screen.
 
 ## Data Model
 
-- **FR:$window** (P1): **`PriWindow`** — `days` (optional list of `mon`..`sun`), `from` and `to` (optional `HH:MM`, local time). A `pris.json` priority gets `windows` (optional, at most 7), `label` (optional, at most 40 characters), `action` (optional, at most 200 characters), `session` (optional session id) and `perProject` (optional boolean).
+- **FR:$window** (P1): **`PriWindow`** — `days` (optional list of `mon`..`sun`), `from` and `to` (optional `HH:MM`, local time). A `pris.json` priority gets `windows` (optional, at most 7), `label` (optional, at most 40 characters), `cos` (optional CoS name, at most 40 characters), `action` (optional, at most 200 characters), `session` (optional session id) and `perProject` (optional boolean).
 - **FR:$tiered** (P1): **`TieredTask`** — `path`, `line` (0-based), `project`, `aliases`, `tier` (1, 2 or 3), `text`, `agent` (string or null), `more` (count of more agents), `status` (`working`, `pairing`, `done`, `idle`, `blocked`, `queued`, `unknown`, or null with no agent), `repo` (`owner/repo` or null).
-- **FR:$row** (P1): **`PriRow`** — `id`, `project`, `file` (project task file or null), `agent` (`{ name, link, file }`: session link or null, agent file or null; or null), `status` (as in `TieredTask`), `action`, `gap` (boolean), `ref` (`path:line` or null), `at`, `stale`.
+- **FR:$row** (P1): **`PriRow`** — `id`, `project`, `file` (project task file or null), `agent` (`{ name, link, file, session }`: session link or null, agent file or null, session id to prompt or null; or null), `status` (as in `TieredTask`), `action`, `gap` (boolean), `cos` (the CoS as an agent; null unless a gap row), `request` (the text for the CoS; null unless a gap row), `ref` (`path:line` or null), `at`, `stale`.
 - **FR:$pr** (P1): **`PrRow`** — `emoji`, `number`, `url`, `agent` (as in `PriRow`), `action`, `minutes`, `server` and `details` (links, null unless a live row).
 - **FR:$view** (P1): **`PrioritiesView`** — `at` (the clock), `timeZone` (optional IANA zone), `qm` (a `PriTable` with `title` and `today`, or null), `now`, `today`, `next` (each a `PriTable`: `at`, `stale`, `rows`) and `prs` (a `PrTable`: `at`, `stale`, `verified`, `manager`, `rows`).
 
 ## Architecture Constraints
 
 - `tasks/*.md` is the only task store. The report only reads it.
-- Windows, labels, fixed actions, sessions and `perProject` live in `pris.json`, never in code.
+- Windows, labels, CoS names, fixed actions, sessions and `perProject` live in `pris.json`, never in code.
+- The web sends messages only through `POST /sessions/{id}/prompt`. The report adds no send route.
 - The report is a pure function of its inputs. The CLI and the API share it.
 - The web reads only `GET /priorities`.
 

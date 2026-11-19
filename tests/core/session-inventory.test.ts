@@ -158,7 +158,7 @@ describe('runInventory', () => {
     expect(r.counts).toEqual({ running: 0, waiting: 5, stuck: 1, done: 1, pinned: 1, idle: 0 });
     expect(r.needsYou.map((s) => s.id)).toEqual(['local_a2', 'local_a1', 'local_x1', 'local_new']);
     const a2 = r.needsYou[0];
-    expect(a2).toMatchObject({ project: 'allyte', state: 'waiting', reason: 'blocked', ask: 'Approve the plan', link: 'claude://claude.ai/epitaxy/local_a2', pinned: false, prs: [] });
+    expect(a2).toMatchObject({ project: 'allyte', state: 'waiting', reason: 'blocked', ask: 'Approve the plan', link: 'claude://claude.ai/epitaxy/local_a2', cli: 'cli-local_a2', pinned: false, prs: [] });
     expect(a2.lastActivityAt).toBe(new Date(T - 5 * MIN).toISOString());
     expect(r.needsYou[3].scheduled).toEqual({ id: 'daily', name: 'Daily check-in' });
     expect(r.archive.map((s) => [s.id, s.reason])).toEqual([['local_f1', 'pr-merged'], ['local_old', 'superseded'], ['local_w1', 'superseded']]);

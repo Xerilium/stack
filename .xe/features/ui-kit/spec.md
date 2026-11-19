@@ -16,7 +16,7 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ## Scope
 
-- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `DayGrid`, `useWide`) and `web/src/ui/ui.css`.
+- In: `web/src/ui/` (`SelectCard`, `Flag`, `StatusChip`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `MessageBox`, `DayGrid`, `useWide`) and `web/src/ui/ui.css`.
 - Out: what a view puts in them (its words, tones, and actions), and the written UI rule (`ux-consolidation`).
 
 ## Scenarios
@@ -60,6 +60,10 @@ The owner needs every list view to look and act the same so that he reads a PR, 
   - **FR:daygrid.bands** (P2): A band labels a time range in the time column, in the row that holds its start. A `muted` band tints its own minutes
   - **FR:daygrid.now** (P2): `now` draws one line at that time when it is inside the span
   - **FR:daygrid.a11y** (P1): Items are a list in time order, and each item names the band it starts in. The rows, the tint and the hour labels are decoration, hidden from assistive tech
+
+### FR:message: Message box
+
+- **FR:message** (P1): `MessageBox` sends one message from a details pane: a heading, a text box named `Message <to>` (at most 4000 characters, optional start text), and one button (`Send`, or `send`). The button is off while the text is empty or a send runs. After `onSend` resolves it clears the text and says `Sent to <to>` in a status line; after it rejects it keeps the text and says the error. With `off` (a reason), the box and button are off and the reason shows
 
 ### FR:a11y: Access
 

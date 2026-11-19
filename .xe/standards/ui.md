@@ -4,7 +4,7 @@ Applies to every view in `web/`. See also `docs/design-system.md`.
 
 ## Rule: reuse components, never build UI from scratch
 
-- Every view MUST build on the shared components in `web/src/ui/` (`FR:ui-kit`): `SelectCard`, `StatusChip`, `Flag`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `useWide`. Styles live in `web/src/ui/ui.css`.
+- Every view MUST build on the shared components in `web/src/ui/` (`FR:ui-kit`): `SelectCard`, `StatusChip`, `Flag`, `ActionMenu`, `ActionBar`, `Tabs`, `SplitView`, `MessageBox`, `useWide`. Styles live in `web/src/ui/ui.css`.
 - New UI MUST be a new reusable component in `web/src/ui/`, with tests in `web/tests/ui-kit.test.tsx`. Then the view uses it.
 - When a view needs a change to a shared component, change the component (for every view), not a copy.
 - Exception: an element that is truly unique and can never be reused elsewhere. Say why in a comment on it.

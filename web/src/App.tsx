@@ -420,6 +420,8 @@ export function App() {
   }, []);
   // The priorities tables on Now: read while Now is open. @req FR:priorities-tables/web.live
   const pri = usePriorities(api, asks.liveTick, view === 'now');
+  /** A message from the priorities report resumes the agent session. @req FR:priorities-tables/web.message */
+  const sendToSession = useCallback(async (session: string, text: string) => { await api.promptSession(session, text); }, [api]);
   const briefBusy = useMemo(() => {
     const d0 = day.origin ?? clockNow, n = day.origin ? 2 : 1;
     return liveCal ? busyTime.map((b) => ({ ...b, events: enrich(b.events, rules) })) : busyIntervals(expandWeekly(rules, d0, n), d0, n);
@@ -1032,7 +1034,7 @@ export function App() {
             message={{ name: (t) => { const a = taskAgent(t); return a ? displayName(a) : 'the agent'; }, open: (r) => { setComposeRef(r); setFocusRef(r); } }}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
-        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} done={!!nowTask && justDone.has(nowTask.task.ref)} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
+        {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} done={!!nowTask && justDone.has(nowTask.task.ref)} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))} send={sendToSession}
           chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} pri={pri} cal={{ source: calSource }} />}
         {/* Settings needs no task data: it shows while tasks load. @req FR:settings/view.route */}
         {view === 'settings' && <SettingsView api={api} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }} updates={updates} onAccounts={() => void checkCalendar()} now={clockNow} />}

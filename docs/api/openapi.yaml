@@ -3822,6 +3822,9 @@ components:
         link:
           type: string
           description: claude://claude.ai/epitaxy/<id>
+        cli:
+          type: string
+          description: The Claude Code session id (cliSessionId); absent when the session has none
         prs:
           type: array
           items:
@@ -3958,6 +3961,11 @@ components:
           minLength: 1
           maxLength: 40
           description: Project name in the priorities tables
+        cos:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: The Chief of Staff who owns the project task file (an agent name); CoS when absent
         action:
           type: string
           minLength: 1
@@ -4003,6 +4011,7 @@ components:
         - name
         - link
         - file
+        - session
       properties:
         name:
           type: string
@@ -4014,6 +4023,10 @@ components:
           type: string
           nullable: true
           description: Agent file when no session matches
+        session:
+          type: string
+          nullable: true
+          description: The id POST /sessions/{id}/prompt takes; null when the session has none
     PriRow:
       type: object
       required:
@@ -4025,6 +4038,8 @@ components:
         - status
         - action
         - gap
+        - cos
+        - request
         - ref
         - at
         - stale
@@ -4059,7 +4074,13 @@ components:
           description: The owner next action, at most 20 words; ⏳ first for tier 2 or 3
         gap:
           type: boolean
-          description: No tiered task linked (or QM off today)
+          description: "No tiered task linked: the action says who must add one, by when"
+        cos:
+          $ref: "#/components/schemas/PriAgent"
+        request:
+          type: string
+          nullable: true
+          description: "Gap rows: the text to send to the CoS; else null"
         ref:
           type: string
           nullable: true
