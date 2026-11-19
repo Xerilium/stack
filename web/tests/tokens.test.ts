@@ -69,4 +69,10 @@ describe('one token file', () => {
   it('dark control borders keep the old Fluent weight: at least 2.5:1 on panel', () => {
     expect(ratio(dark['line-strong'], dark.panel)).toBeGreaterThanOrEqual(2.5);
   });
+  it('dark hover is visible: at least 1.34:1 on panel, the old Fluent hover', () => {
+    expect(ratio(dark.hover, dark.panel)).toBeGreaterThanOrEqual(1.34);
+  });
+  it.each([['light', light], ['dark', dark]] as const)('%s: text stays 4.5:1 on a hovered row', (_, t) => {
+    for (const k of ['ink', 'ink2', 'muted']) expect(ratio(t[k], t.hover), k).toBeGreaterThanOrEqual(4.5);
+  });
 });
