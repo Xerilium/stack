@@ -1,0 +1,54 @@
+/**
+ * The QM plan keeps the app shell: the rail on desktop, the tab bar on phones, one main landmark, one scroll container.
+ * @req FR:web-shell/nav.pages @req FR:qm-plan/ui.route
+ */
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
+import { mockApi } from './mock';
+
+const PLAN = {
+  version: 1, asOf: '2026-11-18T19:00:00Z',
+  projects: Array.from({ length: 30 }, (_, i) => ({ project: `P${String(i).padStart(2, '0')}`, agent: { name: `agent-${i}` }, tasks: [], weeklyTokens: null, preAckMin: null, postReviewMin: null })),
+};
+async function open(page: Page) {
+  await mockApi(page);
+  await page.route('**/api/qm', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: PLAN }) }));
+  await page.goto('/#/qm');
+  await expect(page.getByRole('heading', { name: 'QM plan' })).toBeVisible();
+}
+
+test('the rail (desktop) or the tab bar (phone) stays, and no nav item is current', async ({ page }, info) => {
+  await open(page);
+  const bar = info.project.name === 'mobile' ? page.locator('.tabbar') : page.locator('nav.rail');
+  await expect(bar).toBeVisible();
+  await expect(bar.locator('[aria-current="page"]')).toHaveCount(0);
+  await expect(page.getByRole('main')).toHaveCount(1);
+  // the nav still works from here
+  await bar.getByRole('button', { name: /^Now/ }).first().click();
+  await expect(page).toHaveURL(/#\/now$/);
+  await expect(page.getByRole('heading', { name: 'QM plan' })).toHaveCount(0);
+  await expect(bar.locator('[aria-current="page"]')).toHaveCount(1);
+});
+
+test('one scroll container: the last row scrolls clear of the phone tab bar', async ({ page }, info) => {
+  await open(page);
+  const inner = await page.locator('.qm').evaluate((e) => getComputedStyle(e).overflowY);
+  expect(inner).toBe('visible');
+  const last = page.locator('.qm-table tbody tr').last();
+  await last.scrollIntoViewIfNeeded();
+  if (info.project.name === 'mobile') {
+    const row = (await last.boundingBox())!;
+    const tab = (await page.locator('.tabbar').boundingBox())!;
+    // scroll the main region to the end: the last row sits above the tab bar
+    await page.locator('.main').evaluate((m) => { m.scrollTop = m.scrollHeight; });
+    const after = (await last.boundingBox())!;
+    expect(after.y + after.height).toBeLessThanOrEqual(tab.y + 1);
+    expect(row).toBeTruthy();
+  }
+});
+
+test('axe: no landmark or contrast issues on the QM page in the shell', async ({ page }) => {
+  await open(page);
+  const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  expect(r.violations.map((v) => v.id)).toEqual([]);
+});
