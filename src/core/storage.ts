@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
 import { dirname, join } from 'path';
-import { AGENT_PATH, ARCHIVE_PATH, ASK_PATH, INBOX_PATH, LOG_PATH, SYSTEM, TASK_PATH, TASKS_DIR, WAKE_PATH } from './task-paths';
+import { AGENT_PATH, ARCHIVE_PATH, ASK_PATH, INBOX_PATH, LOG_PATH, SYSTEM, SYSTEM_PATH, TASK_PATH, TASKS_DIR, WAKE_PATH } from './task-paths';
 
 /** @req FR:storage-git/$errors */
 export class StorageError extends Error {}
@@ -29,6 +29,8 @@ export interface Storage {
   listAsks?(): Promise<string[]>;
   /** Paths of agent files (`tasks/<dir>/.stack/agents/<slug>.md`). @req FR:agent-team/agent.path */
   listAgents?(): Promise<string[]>;
+  /** Every file in every `.stack/` folder under `tasks/`. @req FR:task-ids/mv.refs */
+  listSystem?(): Promise<string[]>;
   /** Paths of Claude agent definitions (`.claude/agents/<slug>.md`), read-only. @req FR:agent-team/agent.path.claude */
   listClaudeAgents?(): Promise<string[]>;
   read(path: string): Promise<StoredFile>;
@@ -117,6 +119,7 @@ export class MemoryStorage implements Storage {
   async list(): Promise<string[]> { return [...this.files.keys()].filter(p => TASK_PATH.test(p)).sort(); }
   async listAsks(): Promise<string[]> { return [...this.files.keys()].filter(p => ASK_PATH.test(p)).sort(); }
   async listAgents(): Promise<string[]> { return [...this.files.keys()].filter(p => AGENT_PATH.test(p)).sort(); }
+  async listSystem(): Promise<string[]> { return [...this.files.keys()].filter(p => SYSTEM_PATH.test(p)).sort(); }
   async listClaudeAgents(): Promise<string[]> { return [...this.files.keys()].filter(p => CLAUDE_AGENT_PATH.test(p)).sort(); }
   /** Puts a file in place without the write rules (fixtures and read-only paths such as Claude agent definitions). */
   seed(path: string, content: string): void { this.files.set(path, content); }
@@ -225,6 +228,7 @@ export class FsStorage implements Storage {
   /** @req FR:task-structure/system.list */
   async listAsks(): Promise<string[]> { return this.listTree(true, ASK_PATH); }
   async listAgents(): Promise<string[]> { return this.listTree(true, AGENT_PATH); }
+  async listSystem(): Promise<string[]> { return this.listTree(true, SYSTEM_PATH); }
   async listClaudeAgents(): Promise<string[]> { return this.listDir(CLAUDE_AGENTS_DIR, CLAUDE_AGENT_PATH); }
 
   /**

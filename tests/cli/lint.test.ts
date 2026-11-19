@@ -132,17 +132,17 @@ describe('writes with the lint', () => {
 
 describe('stack update with the lint', () => {
   // @req FR:task-lint/cli.update
-  it('writes the summaries, then lists the issues on stderr and exits 1', async () => {
+  it('writes the summaries, then lists the issues on stderr and still exits 0', async () => {
     const d = mk();
     const r = await stack(d, 'update');
-    expect(r.code).toBe(1);
+    expect(r.code).toBe(0);
     expect(r.out).toContain('updated README.md');
     expect(r.err).toContain('tasks/bloat.md:5 title-status ');
     expect(r.err.trimEnd().split('\n').pop()).toBe('14 issues in 1 files');
     expect(read(d, 'README.md').length).toBeGreaterThan(0);
     const j = await stack(d, 'update', '--json');
-    expect(j.code).toBe(1);
-    expect(JSON.parse(j.out)).toMatchObject({ ok: false, command: 'update' });
+    expect(j.code).toBe(0);
+    expect(JSON.parse(j.out)).toMatchObject({ ok: true, command: 'update' });
     expect(JSON.parse(j.out).lint).toHaveLength(14);
   });
 
