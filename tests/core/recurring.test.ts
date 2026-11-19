@@ -52,6 +52,18 @@ describe('rollRecurring', () => {
     expect(rollRecurring('- [ ] 📅 Dec 10, 2026: 🔄 Monthly: X', ref)).toBe('- [ ] 📅 Jan 11, 2027: 🔄 Monthly: X <!--nominal:2027-01-10-->');
     expect(rollRecurring('- [ ] 📅 Dec 10: 🔄 Monthly: X', new Date(Date.UTC(2026, 5, 1)))).toBe('- [ ] 📅 Jan 11: 🔄 Monthly: X <!--nominal:2027-01-10-->');
   });
+  // @req FR:recurring-rows/roll.yearless
+  it('reads a year-less date across the new year in the right year', () => {
+    // Done late, on Jan 5 2027: the row meant Dec 15 2026, so next is Fri Jan 15 2027 (not Sat Jan 15 2028)
+    expect(rollRecurring('- [x] 📅 Dec 15: 🔄 Monthly: Pay rent', new Date(Date.UTC(2027, 0, 5)))).toBe('- [ ] 📅 Jan 15: 🔄 Monthly: Pay rent');
+    expect(parseRecurringRow('- [ ] 📅 Dec 15: 🔄 Monthly: Pay rent', new Date(Date.UTC(2027, 0, 5)))?.dueDate).toBe('2026-12-15');
+    // Done early, on Dec 30 2026: the row meant Jan 4 2027, so next is Mon Jan 11 2027 (not Sun Jan 11 2026 shifted to the 12th)
+    expect(rollRecurring('- [x] 📅 Jan 4: 🔄 Weekly: Standup notes', new Date(Date.UTC(2026, 11, 30)))).toBe('- [ ] 📅 Jan 11: 🔄 Weekly: Standup notes');
+    expect(parseRecurringRow('- [ ] 📅 Jan 4: 🔄 Weekly: Standup notes', new Date(Date.UTC(2026, 11, 30)))?.dueDate).toBe('2027-01-04');
+    // Done months late, on Jun 24 2027: still this year's Apr 15, so one step on (not a year too far)
+    expect(parseRecurringRow('- [ ] 📅 Apr 15: 🔄 Yearly: Taxes', new Date(Date.UTC(2027, 5, 24)))?.dueDate).toBe('2027-04-15');
+    expect(parseRecurringRow('- [ ] 📅 Mar 1: 🔄 Monthly: Invoice', new Date(Date.UTC(2027, 4, 10)))?.dueDate).toBe('2027-03-01');
+  });
   // @req FR:recurring-rows/roll.step @req FR:recurring-rows/roll.clamp
   it('handles Feb 29 yearly', () => {
     // Feb 28 2029 is Wed

@@ -38,12 +38,12 @@ Recurring deadlines (bills, tax filings) need one row per obligation. Hand-editi
 
 ### FR:roll: Rolling
 
-- **FR:roll.@function** (P1): Interface: `rollRecurring(block: string, today?: Date, options?: RollOptions): string | null`; `today` supplies the year when the row has none. Existing two-argument calls keep working
+- **FR:roll.@function** (P1): Interface: `rollRecurring(block: string, today?: Date, options?: RollOptions): string | null`; `today` picks the year when the row has none. Existing two-argument calls keep working
 - **FR:roll.step** (P1): Rolling advances the nominal date by one cadence step
 - **FR:roll.clamp** (P1): Month-based steps clamp to month end (Jan 31 + Monthly = Feb 28/29). The intended day is retained so the clamp does not drift (Jan 31 -> Feb 28 -> Mar 31)
 - **FR:roll.weekend** (P1): `options.shiftWeekends` (default true; callers pass `config.shiftWeekends`; task-lifecycle does) shifts Sat/Sun due dates to Monday. Daily rows have no nominal day: they advance from the shown date
 - **FR:roll.nominal** (P1): When the shown date differs from the nominal date (weekend shift or clamp), the row ends with a hidden marker `<!--nominal:YYYY-MM-DD-->`, or `<!--nominal:YYYY-MM-DD day:N-->` when a clamp hides intended day N. The marker is the roll base when present, and removed when no longer needed (Aug 15 Sat -> shown Aug 17 -> next Sep 15). It is ignored when `shiftWeekends` is false except for clamp state
-- **FR:roll.yearless** (P2): Year-less rows take the year from `today` (or the marker); a December row that rolls into January shows no year, so the marker carries the new year (Dec 10 -> `Jan 11 <!--nominal:2027-01-10-->`)
+- **FR:roll.yearless** (P2): Year-less rows take the year from the marker, else the year of `today`, unless the date sits across the new year within 60 days (the ranking overdue window): Dec 15 done on Jan 5 is last December, Jan 4 done on Dec 30 is next January, Apr 15 done in June is this April; a December row that rolls into January shows no year, so the marker carries the new year (Dec 10 -> `Jan 11 <!--nominal:2027-01-10-->`)
 
 ### FR:preserve: Preservation
 

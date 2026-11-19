@@ -1,4 +1,5 @@
 import type { Cadence, IsoDate, Recurrence, Weekday } from './model';
+import { OVERDUE_WINDOW_DAYS } from './scoring';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS: Weekday[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -68,6 +69,19 @@ function eomOrigin(shown: Date): Date | null {
   return null;
 }
 
+/**
+ * The year of a year-less date: today's year, unless the date sits just across the new year, within
+ * `OVERDUE_WINDOW_DAYS` (the window ranking uses): Dec 15 done on Jan 5 is last December, Jan 4 done on Dec 30 is next January.
+ * @req FR:recurring-rows/roll.yearless
+ */
+function yearlessYear(mon: number, day: number, today: Date): number {
+  const y = today.getUTCFullYear();
+  const days = (c: number) => (mk(c, mon, day).getTime() - mk(y, today.getUTCMonth(), today.getUTCDate()).getTime()) / DAY_MS;
+  if (days(y - 1) >= -OVERDUE_WINDOW_DAYS) return y - 1;
+  if (days(y + 1) <= OVERDUE_WINDOW_DAYS) return y + 1;
+  return y;
+}
+
 function parseLine(line: string, today: Date): Parsed | null {
   const text = line.replace(/\r$/, '');
   let form: 'canonical' | 'legacy' = 'canonical';
@@ -109,8 +123,8 @@ function parseLine(line: string, today: Date): Parsed | null {
   const mon = MONTHS.findIndex(x => x.toLowerCase() === g.mon.toLowerCase());
   if (mon < 0) return null;
   const day = Number(g.day);
-  // @req FR:recurring-rows/roll.yearless (year-less rows take today/marker year)
-  const year = p.hasYear ? Number(g.year) : markerDate ? markerDate.getUTCFullYear() : today.getUTCFullYear();
+  // @req FR:recurring-rows/roll.yearless (year-less rows take the marker year, else today's year unless just across the new year)
+  const year = p.hasYear ? Number(g.year) : markerDate ? markerDate.getUTCFullYear() : yearlessYear(mon, day, today);
   const shown = mk(year, mon, day);
   if (shown.getUTCMonth() !== mon || shown.getUTCDate() !== day) return null;
   p.dateText = `${g.mon} ${g.day}${p.hasYear ? ', ' + g.year : ''}`;
