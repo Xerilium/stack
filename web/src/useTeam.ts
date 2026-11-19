@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
+import { errText } from './errtext';
 import type { Toast } from './parts';
 import { agentsFor, ancestorsOf, chipFor, liveAgents, ownerOf as ownerFor, sessionFor, type ChipView, type ReviewItem, type Talk, type TeamAgent } from './team';
 import { fmtTokens } from './sessions';
@@ -89,7 +90,7 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
       await sessions.reload();
       if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId); else toastRef.current(`Sent to ${r.agent ?? 'the agent'}`);
       return true;
-    } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to start', 'err'); return false; }
+    } catch (e) { toastRef.current(errText(e, 'start the agent'), 'err'); return false; }
   }, [api, enabled, sessions, noteStarted]);
 
   /** Assign: the row is claimed for the agent and its session starts with the assign prompt; the chip follows it. @req FR:agent-thread/thread.assign */
@@ -102,7 +103,7 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
       if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
       void sessions.reload();
       return true;
-    } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to assign', 'err'); return false; }
+    } catch (e) { toastRef.current(errText(e, 'assign the agent'), 'err'); return false; }
   }, [api, enabled, sessions, noteStarted]);
 
   /** @req FR:agent-team/web.review */
@@ -124,7 +125,7 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
       es.onerror = () => { if (es.readyState === 2) finish(); };
     } catch (e) {
       setReviewing((s) => { const n = new Set(s); n.delete(ref); return n; });
-      toastRef.current(e instanceof Error ? e.message : 'Review failed', 'err');
+      toastRef.current(errText(e, 'start the review'), 'err');
     }
   }, [api, enabled, sessions, loadReviews]);
 

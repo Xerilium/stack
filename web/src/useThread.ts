@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
+import { errText } from './errtext';
 import type { Toast } from './parts';
 import { emptyThread, followUpSession, type Thread } from './thread';
 import type { Sessions } from './useSessions';
@@ -32,7 +33,7 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
       setThread(t); setPhase('ready');
     } catch (e) {
       if (mine !== seq.current || r !== cur.current) return;
-      setPhase('error'); if (!quiet) toastRef.current(e instanceof Error ? e.message : 'Cannot load the thread', 'err');
+      setPhase('error'); if (!quiet) toastRef.current(errText(e, 'load the thread'), 'err');
     }
   }, [api]);
 
@@ -56,7 +57,7 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
     setBusy(true);
     try {
       // The composer's agent rides along, so no other agent on the project claims it. @req FR:product-reset/ui.thread
-      try { await api.send(ref, text, 'reply', undefined, agent); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to send', 'err'); return false; }
+      try { await api.send(ref, text, 'reply', undefined, agent); } catch (e) { toastRef.current(errText(e, 'send the reply'), 'err'); return false; }
       // From here the message is on the task: the box clears even if the session step fails (a retry would write it twice).
       if (cur.current === ref) setThread((t) => ({ ...t, items: [...t.items, { at: new Date().toISOString(), kind: 'owner', id: `local-${Date.now()}`, text, state: 'open' }] }));
       if (team.enabled !== true) { toastRef.current('Saved on the task; it runs in stack web on your machine'); return true; }
@@ -70,7 +71,7 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
           if (r.sessionId) team.noteStarted(ref, r.sessionId);
           if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
         }
-      } catch (e) { toastRef.current(`Saved on the task, but the agent did not start: ${e instanceof Error ? e.message : 'failed'}`, 'err'); }
+      } catch (e) { toastRef.current(`Saved on the task, but the agent did not start: ${errText(e)}`, 'err'); }
       void sessions.reload();
       void load(ref, true);
       return true;
@@ -91,7 +92,7 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
 
   /** Answer one of the task's asks from the thread. */
   const answer = useCallback(async (key: string, send: Send, label: string) => {
-    try { await api.answerAsk(key, send); toastRef.current(label); if (ref) void load(ref, true); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed', 'err'); }
+    try { await api.answerAsk(key, send); toastRef.current(label); if (ref) void load(ref, true); } catch (e) { toastRef.current(errText(e, 'send the answer'), 'err'); }
   }, [api, ref, load]);
 
   return { thread, phase, busy, ask, assign, answer, reload: () => (ref ? load(ref, true) : Promise.resolve()) };

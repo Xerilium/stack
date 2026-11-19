@@ -731,7 +731,7 @@ test.describe('feedback and mobile', () => {
     m.fail.set('/tasks/set', { status: 500, code: 'internal', message: 'Internal error' });
     await page.locator('.row[data-ref="alpha:9"]').getByRole('button', { name: /Effort/ }).click();
     await page.getByRole('dialog').getByRole('button', { name: /1 hour/ }).click();
-    await expect(page.locator('.toast.err', { hasText: 'Internal error' })).toBeVisible();
+    await expect(page.locator('.toast.err', { hasText: 'Could not update the task. Try again. If it happens again, send feedback (F).' })).toBeVisible(); // @req FR:web-shell/state.errors.code
   });
 
   // @req FR:web-app/ux.responsive

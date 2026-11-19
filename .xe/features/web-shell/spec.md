@@ -82,6 +82,16 @@ Owner needs every connection, permission, and save state to say what is wrong an
   > - @req FR:live-deploy/web.unsaved
   - **FR:state.unsaved.pill** (P2): In live mode the rail footer pill MUST read `Live · <branch>` and the brand `Stack` (no `[DEMO]`)
 - **FR:state.capture** (P1): A capture that fails MUST keep the text and show the reason inline (`FR:state.unreachable` wording when unreachable) with **Retry**
+- **FR:state.errors** (P1): Every error toast and inline error MUST say what happened and what to do next; it MUST never show only `Failed` or a bare API code message. One shared `errText(e, action)` (`web/src/errtext.ts`) builds the text, where `action` is a verb phrase such as `save the task`
+  - **FR:state.errors.code** (P1): Bare API text (`Conflict`, `Not found`, `Validation failed`, `Request cannot be applied`, `Internal error`, `Forbidden`, `Request failed (<status>)`) MUST map by code:
+    - `conflict`: `Changed somewhere else. Reload, then try again.`
+    - `not_found`: `This item no longer exists. Reload to see the latest.`
+    - `invalid`: the first `details[].message`, else `Could not <action>. Check the values and try again.`
+    - `internal`: `Could not <action>. Try again. If it happens again, send feedback (F).`
+    - `network` and `offline`: the client text as-is (`FR:state.unreachable`)
+    - any other code, and any error that is not an API error: `Could not <action>. Try again.`
+  - **FR:state.errors.specific** (P1): A server message that names the cause (for example `No live lane on this host`, `Inbox full`) MUST show as-is; only bare text maps
+  - **FR:state.errors.prefixed** (P1): Where the view already says what failed (for example `Cannot load asks: `), `errText(e)` with no action MUST drop the `Could not <action>.` sentence and keep only the next step (`Try again.`, `Check the values and try again.`)
 
 ## Data Model
 
