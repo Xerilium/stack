@@ -14,7 +14,7 @@ import {
 } from '../core/lifecycle';
 import { parseProject } from '../core/parser';
 import { checkTask } from '../core/quality';
-import { formatCount, formatIssue, lintProject, lintRow, lintTitle, type LintIssue } from '../core/task-lint';
+import { formatCount, formatIssue, isError, lintProject, lintRow, lintTitle, type LintIssue } from '../core/task-lint';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { runInventory } from '../core/session-inventory';
@@ -97,7 +97,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string; s
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)', summary: 'edit a task row text in place' },
-  lint: { flags: ['project'], usage: 'lint [--project name] [--json]', help: 'the task bloat lint on open rows: one <path>:<line> <rule> <message> line per issue (title-length, title-status, title-parens, detail-nesting, id-duplicate, id-dangling, id-slug, meta-emoji, meta-key, note-status); exit 0 with no issue, else 1; read-only (docs/task-rubric.md)', summary: 'fail on bloated task rows' },
+  lint: { flags: ['project'], usage: 'lint [--project name] [--json]', help: 'the task bloat lint on open rows: one <path>:<line> <rule> <message> line per issue (title-length, title-status, title-parens, detail-nesting, id-duplicate, id-dangling, id-slug, meta-emoji, meta-key, note-status); exit 1 on an error rule, else 0 (note-status, meta-key, meta-emoji only warn); read-only (docs/task-rubric.md)', summary: 'fail on bloated task rows' },
   ids: { flags: ['project', 'dry-run'], usage: 'ids assign [--project id] [--dry-run]', help: 'add a "> id: <slug>" line under each task row that has none (task ID T:<project>.<slug>); keeps every other byte; one commit', summary: 'give every task a readable ID' },
   mv: { flags: ['dry-run'], usage: 'mv <from-id> <to-id> [--dry-run]', help: 'move a project file with its logs and inbox, and rewrite every T:, path, and ref: line that names it; one commit', summary: 'move a project and rewrite its refs' },
   check: { flags: [], usage: 'check <ref> [--json]', help: 'the task quality gate: score 0-4 and the missing checks (next, doneWhen, context, single), plus the task lint on the row; exit 0 at 4 with no lint issue, else 1; read-only (docs/task-rubric.md)', summary: 'score one task on the quality gate (read-only)' },
@@ -781,7 +781,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       return {
         json: { ok: true, ref: at, ...q, ...(lint.length ? { lint } : {}) },
         text: `${at} ${q.score}/4 ${q.actionable ? 'actionable' : `missing: ${q.missing.join(', ')}`}${rules.length ? ` lint: ${rules.join(', ')}` : ''}`,
-        code: q.actionable && !lint.length ? EXIT.ok : EXIT.failure,
+        code: q.actionable && !lint.some(isError) ? EXIT.ok : EXIT.failure,
       };
     }
     // @req FR:task-ids/assign.add
@@ -802,9 +802,10 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       extra(0);
       const issues = await lintFiles(storage, flag(f, 'project'));
       return {
-        json: { ok: issues.length === 0, command: 'lint', issues },
+        json: { ok: !issues.some(isError), command: 'lint', issues },
         text: issues.length ? [...issues.map(formatIssue), formatCount(issues)].join('\n') : 'no issues',
-        code: issues.length ? EXIT.failure : EXIT.ok,
+        // @req FR:task-lint/cli.lint.exit: warnings flag old content and never fail.
+        code: issues.some(isError) ? EXIT.failure : EXIT.ok,
       };
     }
     // @req FR:cli/cmd.retitle
@@ -928,7 +929,8 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       // The summaries are written first, so a lint issue never stops them. @req FR:task-lint/cli.update @req FR:task-lint/cli.update.refresh
       const issues = await lintFiles(storage);
       if (!issues.length) return u;
-      return { ...u, json: { ...u.json, ok: false, lint: issues }, err: [...issues.map(formatIssue), formatCount(issues)].join('\n'), code: EXIT.failure };
+      // @req FR:task-lint/cli.update: the daily loop never stops on lint; issues go to stderr.
+      return { ...u, json: { ...u.json, lint: issues }, err: [...issues.map(formatIssue), formatCount(issues)].join('\n') };
     }
     default: throw new UsageError(`Unknown command: ${cmd}`);
   }

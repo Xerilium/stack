@@ -15,6 +15,10 @@ export interface LintFinding { rule: LintRule; message: string }
 /** `line` is 1-based. */
 export interface LintIssue extends LintFinding { path: string; line: number }
 
+/** @req FR:task-lint/cli.lint.exit: rules that flag existing content; they warn and never fail a command. */
+export const WARN_RULES: readonly LintRule[] = ['note-status', 'meta-key', 'meta-emoji'];
+export const isError = (i: LintFinding): boolean => !WARN_RULES.includes(i.rule);
+
 /** @req FR:task-lint/rule.length */
 export const MAX_TITLE = 120;
 const MAX_PARENS = 1;

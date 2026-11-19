@@ -237,6 +237,18 @@ describe('ID lint false positives', () => {
 describe('CLI', () => {
   const dir = () => { const d = mkdtempSync(join(tmpdir(), 'stack-ids-')); mkdirSync(join(d, 'tasks'), { recursive: true }); mkdirSync(join(d, '.xe/config'), { recursive: true }); writeFileSync(join(d, '.xe/config/stack.json'), '{}'); return d; };
   const stack = async (d: string, ...args: string[]) => { const out: string[] = []; const err: string[] = []; const code = await run([...args, '--dir', d, '--no-commit'], { out: (s) => { out.push(s); }, err: (s) => { err.push(s); } }); return { code, out: out.join(''), err: err.join('') }; };
+  // @req FR:task-ids/lint.status-note @req FR:task-ids/meta.retired
+  it('warns on old content without failing lint or update', async () => {
+    const d = dir();
+    writeFileSync(join(d, 'tasks/a.md'), '# A\n\n## S\n\n- [ ] One\n  > owner: me\n  > due: 2026-12-01\n  - Merged as of Nov 3\n');
+    const lint = await stack(d, 'lint');
+    expect(lint.code).toBe(0);
+    expect(lint.out + lint.err).toContain('tasks/a.md:6 meta-key');
+    expect(lint.out + lint.err).toContain('tasks/a.md:7 meta-emoji');
+    expect(lint.out + lint.err).toContain('tasks/a.md:8 note-status');
+    expect((await stack(d, 'update')).code).toBe(0);
+  });
+
   it('assigns, moves, and lints', async () => {
     const d = dir();
     writeFileSync(join(d, 'tasks/a.md'), '# A\n\n## S\n\n- [ ] One\n');

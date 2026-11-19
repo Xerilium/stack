@@ -64,12 +64,12 @@ Agents fill task titles with status, dates, and detail. The owner then cannot sc
 
 - **FR:cli.lint** (P1): `stack lint [--project name] [--json]` MUST lint every file in `tasks/`, or only the file of `--project` (project ID)
   - **FR:cli.lint.out** (P1): Text output MUST be one line per issue, `<path>:<line> <rule> <message>`, then `<n> issues in <m> files`; with no issue it MUST print `no issues`
-  - **FR:cli.lint.exit** (P1): The exit code MUST be 1 when there is an issue, else 0
+  - **FR:cli.lint.exit** (P1): The exit code MUST be 1 when there is an error issue, else 0. Warning rules (`note-status`, `meta-key`, `meta-emoji`) flag existing content and never fail
   - **FR:cli.lint.json** (P1): `--json` MUST print `{ ok, command: 'lint', issues: [...] }`, where `ok` is false when there is an issue
   - **FR:cli.lint.unknown** (P2): An unknown `--project` MUST fail with exit 2
 - **FR:cli.check** (P1): `stack check <ref>` MUST also run the lint on that row: With an issue it MUST exit 1, add ` lint: <rules>` to the text line, and add `lint: [{ line, rule, message }]` to the JSON; with no issue the output MUST NOT change
 - **FR:cli.write** (P1): `stack add`, `stack capture` (not `--dry-run`), and `stack retitle` MUST refuse a new title that breaks a title rule: Exit 2, no write, and one `<rule> <message>` per broken rule in the error
-- **FR:cli.update** (P1): `stack update` MUST write the summaries first, then lint every file in `tasks/`: With an issue it MUST print each issue line and the count line on stderr and exit 1; `--json` MUST set `ok` to false and add `lint: [...]` (the issues)
+- **FR:cli.update** (P1): `stack update` MUST write the summaries first, then lint every file in `tasks/`: With an issue it MUST print each issue line and the count line on stderr and still exit 0, so the daily loop never stops on old content; `--json` MUST add `lint: [...]` (the issues) and keep `ok` true
   - **FR:cli.update.refresh** (P1): The summary refresh that follows a lifecycle command (`start`, `complete`, and the like) MUST NOT run the lint, so old rows never block a status change
 
 ### FR:docs: Agent write guidance
