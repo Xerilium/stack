@@ -1,6 +1,6 @@
 /**
  * The feedback icon and its panel: text, optional screenshot, Send, and Design review.
- * @req FR:feedback-button/ui.icon @req FR:feedback-button/ui.panel @req FR:design-review/ui.button
+ * @req FR:feedback-button/ui.icon @req FR:feedback-button/ui.panel @req FR:feedback-button/ui.panel.cancel @req FR:feedback-button/ui.panel.hint @req FR:design-review/ui.button
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
@@ -152,11 +152,13 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
           : (
             <>
               <h2 class="dialog-title">Send feedback</h2>
-              <textarea class="fb-text" aria-label="Feedback" rows={5} maxLength={4000} value={text} disabled={phase === 'sending'}
+              <textarea class="fb-text" aria-label="Feedback" placeholder="What should change?" rows={5} maxLength={4000} value={text} disabled={phase === 'sending'}
                 onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} />
               <label class="fb-shot"><input type="checkbox" checked={shot} disabled={phase === 'sending'} onChange={(e) => setShot((e.target as HTMLInputElement).checked)} />Include a screenshot of this page</label>
               {error && <p class="fb-err" role="alert">{error}</p>}
               <div class="fb-actions">
+                {/* The way out without a keyboard. @req FR:feedback-button/ui.panel.cancel @req FR:feedback-button/ui.panel.cancel.busy */}
+                <button type="button" class="btn quiet fb-cancel" disabled={phase === 'sending'} onClick={onClose}>Cancel</button>
                 {/* No text needed: only sending turns it off. @req FR:design-review/ui.button.text */}
                 <button type="button" class="btn" disabled={phase === 'sending'} title="Send this page and its goals to ChatGPT and file the reply as a GitHub issue" onClick={() => void review()}>Design review</button>
                 <button type="button" class="btn primary" disabled={!text.trim() || phase === 'sending'} onClick={() => void send()}>{phase === 'sending' ? 'Sending…' : 'Send'}</button>
