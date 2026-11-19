@@ -1,6 +1,6 @@
 /** @req FR:ask-queue/web.card @req FR:ask-queue/web.responsive @req FR:product-reset/ui.askcard */
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi, type MockNeed } from './mock';
+import { mockApi, type MockAsk, type MockNeed } from './mock';
 
 const iso = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
 const late = iso(-160);
@@ -73,5 +73,19 @@ test.describe('Needs you rows: quiet meta that fits a phone (i203)', () => {
     expect(lines).toBe(1);
     await expect(page.locator('.ask-card .btn.primary')).toHaveAttribute('title', /^Approve: ack and resolve/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  });
+
+  test('at 375 px: a primary button that says what it will do stays one line', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const m = await mockApi(page);
+    const long = 'Pay every bill this week before the mortgage is due Friday';
+    m.asks = [{ key: 'q', state: 'open', ask: 'Pay bills first?', kind: 'decide', options: [long, 'Later'], applies: ['set priority=🚨', 'suspend 7d'], recommend: long, from: 'finance-cos', reversible: true, priority: 'normal', blocks: 0, created: iso(-1), updated: iso(-1), score: 90, overdue: false, ref: 'alpha:9' } as MockAsk];
+    m.needs = [];
+    await page.goto('/#/asks');
+    const label = page.locator('.ask-card .btn.primary .btn-label');
+    await expect(label).toHaveText(long);
+    const lines = await label.evaluate((el) => Math.round(el.getBoundingClientRect().height / (parseFloat(getComputedStyle(el).lineHeight) || 20)));
+    expect(lines).toBe(1);
+    await expect(page.locator('.ask-card .btn.primary')).toHaveAttribute('title', long);
   });
 });
