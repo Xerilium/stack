@@ -24,7 +24,6 @@ Owner needs one `stack` binary that finds the task repo and commits what it chan
 - **FR:run.@function** (P1): Interface: `run(argv: string[], io?: { out(s): void; err(s): void }): Promise<number>`
   - Returns the exit code and never calls `process.exit`
 - **FR:run.dir** (P1): `--dir <path>` MUST set the repo root (optional override)
-- **FR:run.flagvalue** (P2): A value flag followed by another `--flag` MUST fail with exit 2 and `--<name> has no value. Use --<name>=<value>, or check the flag name.`
   - Task files are `<dir>/tasks/*.md`; config is `<dir>/.xe/config/stack.json` (defaults when missing)
     > - @req FR:config/load.@function
 - **FR:run.discover** (P1): Without `--dir`, `run` MUST find the repo by walking up from the current directory to a folder with `.xe/config/stack.json` or `tasks/*.md`, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`, else the current directory
@@ -32,6 +31,7 @@ Owner needs one `stack` binary that finds the task repo and commits what it chan
   > - @req FR:storage-git/git.commit
   - **FR:run.git.worktree** (P1): A `--dir` that is not a git work tree MUST fail with exit 1 and a hint to run `stack init`
 - **FR:run.nocommit** (P2): `--no-commit` MUST write files without git (for copies of a task folder)
+- **FR:run.flagvalue** (P2): A value flag followed by another `--flag` MUST fail with exit 2 and `--<name> has no value. Use --<name>=<value>, or check the flag name.`
 - **FR:run.remote** (P2): `--remote <name>` (and optional `--branch <name>`) MUST make writes sync before and push after
   > - @req FR:storage-git/git.remote
 - **FR:run.now** (P3): `--now <ISO instant>` MUST override the clock (tests, parity)

@@ -14,7 +14,7 @@ export const BOOLEAN_FLAGS = new Set(['json', 'force', 'remove', 'sweep', 'queri
 /**
  * Splits argv into the command, positionals, and flags. `--name value` and `--name=value` both work;
  * everything after `--` is positional.
- * @req FR:cli/run.@function
+ * @req FR:cli/run.@function @req FR:cli/run.flagvalue
  */
 export function parseArgs(argv: string[]): Parsed {
   const out: Parsed = { positionals: [], flags: {} };
