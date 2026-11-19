@@ -185,12 +185,16 @@ test.describe('Sessions', () => {
     const m = await mockApi(page);
     await page.goto('/#/sessions');
     await expect(page.getByTestId('sessions-unavailable')).toContainText('Not available on this host');
+    // The shared page header and page states. @req FR:ui-kit/header @req FR:ui-kit/empty
+    await expect(page.locator('h1.ui-head-title')).toHaveText('Agents');
+    await expect(page.getByTestId('sessions-unavailable').getByTestId('empty-state')).toBeVisible();
     m.sessions = [];
     await page.reload();
     await expect(page.getByTestId('sessions-empty')).toContainText('No sessions on this machine yet.');
     m.fail.set('/sessions', { status: 500, code: 'internal', message: 'Internal error' });
     await page.reload();
     await expect(page.getByRole('alert')).toContainText('Cannot load agents');
+    await expect(page.getByTestId('ui-error')).toBeVisible();
     await page.getByRole('button', { name: 'Retry' }).click();
     await expect(page.getByTestId('sessions-empty')).toBeVisible();
   });
@@ -222,6 +226,14 @@ test.describe('Sessions', () => {
     await expect(pane.getByRole('tab')).toHaveCount(0); // one chat: no tabs
     await expect(page.locator('.sess-row')).toHaveCount(0); // no session rows on My team
     if (process.env.SHOOT) await page.screenshot({ path: `../docs/design/screens/agents-team-${process.env.SHOOT}.png`, fullPage: true });
+  });
+
+  // @req FR:agent-sessions/web.drawer.latest @req FR:ui-kit/header
+  test('opening Agents keeps the page at the top: the transcript scrolls, not the page', async ({ page }) => {
+    await open(page, teamSeed(), true);
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect(page.locator('h1.ui-head-title')).toBeInViewport();
   });
 
   // @req FR:agents-team/chat.list @req FR:agents-team/chat.tabs @req FR:agents-team/chart.card
