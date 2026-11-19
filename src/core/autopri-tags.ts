@@ -8,7 +8,7 @@ import { escapeRe } from './regex';
 
 export interface Tags { unblocker?: boolean; due?: string | null }
 
-const DUE_MARK = /📅\s*[A-Za-z]{3}[a-z]*\s+\d{1,2}(?:,\s*\d{4})?\s*(?:-\s*\d{1,2}\s*)?:\s*/u;
+export const DUE_MARK = /📅\s*[A-Za-z]{3}[a-z]*\s+\d{1,2}(?:,\s*\d{4})?\s*(?:-\s*\d{1,2}\s*)?:\s*/u;
 const DUE_FORMAT = /^[A-Za-z]{3} \d{1,2}$/;
 const ROW = /^(\s*- \[[ xX]\] )(.*)$/;
 const clean = (s: string) => s.replace(/\s{2,}/g, ' ').trim();

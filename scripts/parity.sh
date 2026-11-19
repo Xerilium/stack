@@ -52,7 +52,7 @@ for c in "${CLOCKS[@]}"; do
   [ -d "$CASE/.xe" ] && cp -R "$CASE/.xe" "$W/.xe"
   cp "$CASE"/prior/* "$W/" 2>/dev/null || true
   E="$CASE/expected"; [ $i -gt 0 ] && E="$E/c$i"
-  node dist/cli/index.js update --engine legacy --dir "$W" --no-commit --now "$c" >/dev/null
+  node dist/cli/index.js update --engine legacy --dir "$W" --no-commit --now "$c" >/dev/null 2>&1 || true # exit 1 is the task lint; the files are compared below
   same=0; total=0
   for f in README.md stack.md projects.md my-day.md; do
     total=$((total+1))

@@ -14,6 +14,7 @@ import {
 } from '../core/lifecycle';
 import { parseProject } from '../core/parser';
 import { checkTask } from '../core/quality';
+import { formatCount, formatIssue, lintProject, lintRow, lintTitle, type LintIssue } from '../core/task-lint';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { runInventory } from '../core/session-inventory';
@@ -94,7 +95,8 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string; s
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)', summary: 'edit a task row text in place' },
-  check: { flags: [], usage: 'check <ref> [--json]', help: 'the task quality gate: score 0-4 and the missing checks (next, doneWhen, context, single); exit 0 at 4, else 1; read-only (docs/task-rubric.md)', summary: 'score one task on the quality gate (read-only)' },
+  lint: { flags: ['project'], usage: 'lint [--project name] [--json]', help: 'the task bloat lint on open rows: one <path>:<line> <rule> <message> line per issue (title-length, title-status, title-parens, detail-nesting); exit 0 with no issue, else 1; read-only (docs/task-rubric.md)', summary: 'fail on bloated task rows' },
+  check: { flags: [], usage: 'check <ref> [--json]', help: 'the task quality gate: score 0-4 and the missing checks (next, doneWhen, context, single), plus the task lint on the row; exit 0 at 4 with no lint issue, else 1; read-only (docs/task-rubric.md)', summary: 'score one task on the quality gate (read-only)' },
   note: { flags: ['text', 'expect'], usage: 'note add <ref> --text t [--expect t]', help: 'append a nested note bullet under a task (children stay)' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads', summary: 'set the 🔓 unblocker and 📅 due tags' },
   rank: { flags: ['engine', 'explain', 'truth', 'top', 'daily'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]] [--daily]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add; --daily lists each project with its pick and done today', summary: 'ranked tasks the owner must do, and why' },
@@ -121,7 +123,31 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string; s
   update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (default stack: scores and order like `stack next`, with .stack/priorities.json; --engine legacy: the PowerShell output)', summary: 'regenerate README, stack, projects, and my-day' },
 };
 
-interface Outcome { json: Record<string, unknown>; text: string; code?: number }
+interface Outcome { json: Record<string, unknown>; text: string; code?: number; /** Lines for stderr. */ err?: string }
+
+/**
+ * Every lint issue in `tasks/`, or in one project file.
+ * @req FR:task-lint/cli.lint
+ * @req FR:task-lint/cli.lint.unknown
+ */
+async function lintFiles(storage: Storage, project?: string): Promise<LintIssue[]> {
+  const paths = (await storage.list()).filter((p) => project === undefined || p === `tasks/${project}.md`);
+  if (project !== undefined && !paths.length) throw new UsageError(`Project not found: ${project}`);
+  const out: LintIssue[] = [];
+  for (const p of paths) out.push(...lintProject(p, (await storage.read(p)).content));
+  return out;
+}
+
+/**
+ * Refuses a new title that breaks a title rule; the error names the rubric, which states the rules.
+ * @req FR:task-lint/cli.write
+ * @req FR:task-lint/docs.rubric
+ * @req FR:task-lint/docs.cli
+ */
+function assertTitle(text: string): void {
+  const bad = lintTitle(text);
+  if (bad.length) throw new LifecycleError(`The title fails the task lint (docs/task-rubric.md):\n${bad.map((b) => `  ${b.rule} ${b.message}`).join('\n')}`);
+}
 
 const VERBS: Record<string, string> = {
   start: 'started', complete: 'completed', skip: 'skipped', park: 'skipped', resume: 'resumed', suspend: 'suspended', set: 'set', add: 'added', retitle: 'retitled',
@@ -679,6 +705,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     }
     case 'add': {
       if (p.positionals.length < 2) throw new UsageError('add needs <project> <text...>');
+      assertTitle(p.positionals.slice(1).join(' '));
       const parent = flag(f, 'parent');
       return describe('add', await addTask(ctx, {
         project: p.positionals[0], text: p.positionals.slice(1).join(' '), section: flag(f, 'section'), parent: parent ? parseRef(parent) : undefined,
@@ -689,6 +716,8 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       const text = p.positionals.join(' ').trim();
       if (!text) throw new UsageError('capture needs <text...>');
       try {
+        // The lint reads the row capture builds, so parsed dates (now marks) pass.
+        if (f['dry-run'] !== true) assertTitle(taskText((await captureTask(ctx, text, { project: flag(f, 'project'), section: flag(f, 'section'), dryRun: true })).result.after));
         const { result, spec } = await captureTask(ctx, text, { project: flag(f, 'project'), section: flag(f, 'section'), dryRun: f['dry-run'] === true });
         const o = describe('add', result);
         return result.changed ? { ...o, json: { ...o.json, spec } } : { json: { ok: true, changed: false, after: result.after, spec }, text: `would add ${taskText(result.after)}` };
@@ -735,16 +764,35 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     case 'check': {
       if (p.positionals.length !== 1) throw new UsageError('check needs exactly one <ref>');
       const r = parseRef(p.positionals[0]);
-      const q = checkTask(parseProject((await storage.read(r.path)).content), r.line);
+      const src = (await storage.read(r.path)).content;
+      const q = checkTask(parseProject(src), r.line);
       if (!q) throw new LifecycleError('Task not found');
       const at = formatRef(r);
-      return { json: { ok: true, ref: at, ...q }, text: `${at} ${q.score}/4 ${q.actionable ? 'actionable' : `missing: ${q.missing.join(', ')}`}`, code: q.actionable ? EXIT.ok : EXIT.failure };
+      // @req FR:task-lint/cli.check
+      const lint = lintRow(r.path, src, r.line + 1).map(({ line, rule, message }) => ({ line, rule, message }));
+      const rules = [...new Set(lint.map((i) => i.rule))];
+      return {
+        json: { ok: true, ref: at, ...q, ...(lint.length ? { lint } : {}) },
+        text: `${at} ${q.score}/4 ${q.actionable ? 'actionable' : `missing: ${q.missing.join(', ')}`}${rules.length ? ` lint: ${rules.join(', ')}` : ''}`,
+        code: q.actionable && !lint.length ? EXIT.ok : EXIT.failure,
+      };
+    }
+    // @req FR:task-lint/cli.lint @req FR:task-lint/cli.lint.out @req FR:task-lint/cli.lint.exit @req FR:task-lint/cli.lint.json
+    case 'lint': {
+      extra(0);
+      const issues = await lintFiles(storage, flag(f, 'project'));
+      return {
+        json: { ok: issues.length === 0, command: 'lint', issues },
+        text: issues.length ? [...issues.map(formatIssue), formatCount(issues)].join('\n') : 'no issues',
+        code: issues.length ? EXIT.failure : EXIT.ok,
+      };
     }
     // @req FR:cli/cmd.retitle
     case 'retitle': {
       const text = flag(f, 'text');
       if (p.positionals.length !== 1) throw new UsageError('retitle needs exactly one <ref>');
       if (text === undefined) throw new UsageError('retitle needs --text');
+      assertTitle(text);
       const r = parseRef(p.positionals[0]);
       return describe(cmd, await retitleTask(storage, r, text, flag(f, 'expect')));
     }
@@ -856,7 +904,11 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       extra(0);
       const engine = f['engine'] === true ? '' : flag(f, 'engine'); // a bare --engine is an error, not the default
       if (engine !== undefined && engine !== 'legacy' && engine !== 'stack') throw new UsageError('--engine must be legacy or stack');
-      return update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true, engine: engine as 'legacy' | 'stack' | undefined });
+      const u = await update(ctx, storage, { sweep: f['sweep'] === true, queries: f['queries'] === true, engine: engine as 'legacy' | 'stack' | undefined });
+      // The summaries are written first, so a lint issue never stops them. @req FR:task-lint/cli.update @req FR:task-lint/cli.update.refresh
+      const issues = await lintFiles(storage);
+      if (!issues.length) return u;
+      return { ...u, json: { ...u.json, ok: false, lint: issues }, err: [...issues.map(formatIssue), formatCount(issues)].join('\n'), code: EXIT.failure };
     }
     default: throw new UsageError(`Unknown command: ${cmd}`);
   }
@@ -985,6 +1037,8 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'feedback' ? await feedbackCmd(p) : p.command === 'qm' ? qmCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'priorities' ? await prioritiesCmd(p.flags, p.positionals, liveDeps(stackHome(), dir, () => loadConfig(dir), process.env, nowOf(p.flags))) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'app' ? await appCmd(p.positionals[0], p.flags, realAppDeps(home)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
+    const err = (r as Outcome).err;
+    if (!json && err) io.err(`${err}\n`);
     return r.code ?? EXIT.ok;
   } catch (e) {
     const code = exitCodeFor(e);
