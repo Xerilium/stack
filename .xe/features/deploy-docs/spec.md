@@ -16,7 +16,7 @@ Make Stack deployable by its owner and understandable by everyone else. Agents o
 
 ## Scope
 
-- In: Bicep for Static Web Apps (Free) with managed Functions; parameter files; deploy workflow (push to main); e2e workflow; README, runbook, CLI/API/MCP/bots docs, CONTRIBUTING.
+- In: Bicep for Static Web Apps (Free) with managed Functions; parameter files; deploy workflow (push to main); e2e workflow; CI coverage gate; README, runbook, CLI/API/MCP/bots docs, CONTRIBUTING.
 - Out: running a deployment, creating Azure resources or secrets, the Functions host entry, Key Vault.
 
 ## Scenarios
@@ -32,7 +32,8 @@ Make Stack deployable by its owner and understandable by everyone else. Agents o
 
 - **FR:ci.deploy** (P1): `.github/workflows/deploy.yml` runs on push to `main`, builds, and deploys with `Azure/static-web-apps-deploy` using the repo secret `AZURE_STATIC_WEB_APPS_API_TOKEN`; it does nothing when the secret is absent
 - **FR:ci.e2e** (P1): `.github/workflows/e2e.yml` runs the web Playwright suite on pull requests and passes cleanly while `web/` is absent
-- **FR:ci.coverage** (P1): The CI `test` job runs Jest with coverage (`pnpm test:coverage`), so it fails when `src/core/` drops under the `jest.config.js` threshold. CPU budget tests (`perf-budget`) run in a separate step without coverage, since instrumentation inflates CPU time. On failure it uploads `coverage/`
+- **FR:ci.coverage** (P1): The CI `test` job runs Jest with coverage (`pnpm test:coverage`), so it fails when `src/core/` drops under the `jest.config.js` threshold. CPU budget tests (`perf-budget`) run in a separate step without coverage, since instrumentation inflates CPU time
+- **FR:ci.coverage-artifact** (P2): The CI `test` job uploads `coverage/` as an artifact when the job fails
 - **FR:ci.valid** (P1): Workflow files are valid YAML with `name`, `on`, and `jobs`
 
 ### FR:docs: Documentation

@@ -70,7 +70,7 @@ describe('bicep build', () => {
   });
 });
 
-// @req FR:deploy-docs/ci.valid @req FR:deploy-docs/ci.deploy @req FR:deploy-docs/ci.e2e @req FR:deploy-docs/ci.coverage
+// @req FR:deploy-docs/ci.valid @req FR:deploy-docs/ci.deploy @req FR:deploy-docs/ci.e2e @req FR:deploy-docs/ci.coverage @req FR:deploy-docs/ci.coverage-artifact
 describe('workflows', () => {
   const dir = join(root, '.github/workflows');
   const docs = readdirSync(dir).map((f) => [f, parse(read(`.github/workflows/${f}`))] as const);
