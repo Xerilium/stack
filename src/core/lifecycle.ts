@@ -471,18 +471,21 @@ function ancestorTexts(lines: string[], line: number): string[] {
   return out;
 }
 
-/** @req FR:task-lifecycle/doc.guard */
+/** A ref as the user types it: `<path>:<line>`, 1-based. @req FR:task-lifecycle/doc.errors */
+export const formatRef = (r: TaskRef): string => `${r.path}:${r.line + 1}`;
+
+/** @req FR:task-lifecycle/doc.guard @req FR:task-lifecycle/doc.errors */
 function rowAt(doc: Doc, ref: TaskRef): RegExpExecArray {
   const raw = doc.project.lines[ref.line];
   const m = raw === undefined ? null : ROW.exec(stripBom(bare(raw)));
-  if (!m) throw new LifecycleError(`Not a task line: ${ref.path}:${ref.line}`);
+  if (!m) throw new LifecycleError(`Line ${ref.line + 1} of ${ref.path} is not a task. Run stack next to see refs.`);
   if (ref.text !== undefined && collapse(ref.text) !== collapse(m[3])) {
-    throw new ConflictError(`Task changed since the ref was read: ${ref.path}:${ref.line} no longer reads "${brief(ref.text)}"`);
+    throw new ConflictError(`${formatRef(ref)} no longer reads "${brief(ref.text)}". Run stack next to get a fresh ref.`);
   }
   if (ref.chain !== undefined) {
     const now = ancestorTexts(doc.project.lines, ref.line);
     if (now.length !== ref.chain.length || now.some((t, i) => collapse(t) !== collapse(ref.chain![i]))) {
-      throw new ConflictError(`Task moved since the ref was read: ${ref.path}:${ref.line} has different parents`);
+      throw new ConflictError(`${formatRef(ref)} has different parents. Run stack next to get a fresh ref.`);
     }
   }
   return m;
@@ -583,7 +586,7 @@ export async function skipTask(ctx: LifecycleContext, ref?: TaskRef): Promise<Li
   if (has(t.row[3], '🅿️')) return noop(t.ref, 'Task is already parked');
   const line = stripBom(bare(t.doc.project.lines[t.ref.line]));
   const m = /^(\s*- \[ \] )(.+)$/.exec(line);
-  if (!m) throw new LifecycleError(`Only unchecked tasks can be parked: ${t.ref.path}:${t.ref.line}`);
+  if (!m) throw new LifecycleError(`Only unchecked tasks can be parked: ${formatRef(t.ref)}`);
   return editLine(ctx, t, `${m[1]}🅿️ ${m[2]}`, `Park: ${brief(t.row[3])}`);
 }
 
@@ -608,7 +611,7 @@ export async function resumeTask(ctx: LifecycleContext, ref?: TaskRef): Promise<
   if (!t) return { changed: false, message: 'No parked tasks available to resume' };
   const line = stripBom(bare(t.doc.project.lines[t.ref.line]));
   const m = /^(\s*- \[ \] )(.+)$/.exec(line);
-  if (!m) throw new LifecycleError(`Only unchecked tasks can be resumed: ${t.ref.path}:${t.ref.line}`);
+  if (!m) throw new LifecycleError(`Only unchecked tasks can be resumed: ${formatRef(t.ref)}`);
   const r = /^🅿️\s*(.+)$/.exec(m[2]);
   if (!r) return noop(t.ref, 'Parking emoji is not at the start of the task');
   return editLine(ctx, t, `${m[1]}${r[1]}`, `Resume: ${brief(r[1])}`);
@@ -658,7 +661,6 @@ export interface Explained { items: (ExplainRow & { path: string; line: number }
 /** Ranked tasks with autopri score parts; optional ground-truth report. @req FR:auto-priority/explain.cli @req FR:auto-priority/truth.report */
 /** File name plus the `**Aliases:**` line of a project file. */
 const aliasesOf = (d: Doc): string[] => [d.name, ...parseAliases(d.project.lines)];
-const formatRef = (r: TaskRef): string => `${r.path}:${r.line + 1}`;
 
 /** With `pris`, ranks with the `pris` engine over those priorities and adds the `pri` part and link. @req FR:pris-aware-ranking/explain.cli */
 export async function explainAutopri(ctx: LifecycleContext, at?: Date, opts: { top?: number; truth?: string; pris?: Pri[] } = {}): Promise<Explained> {

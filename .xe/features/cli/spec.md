@@ -76,6 +76,7 @@ Owner needs a short, stable way to name a task so that a command acts on exactly
 - **FR:ref.default** (P1): `start`, `complete`, `skip`, `suspend`, and `resume` MUST accept an optional ref and act on the top task when it is omitted (`resume`: first parked task), as in legacy
 - **FR:ref.expect** (P1): Commands that take a ref MUST accept `--expect <text>` and fail with exit 3, changing nothing, when the task text on that line differs
 - **FR:ref.invalid** (P1): A malformed ref MUST be a usage error (exit 2)
+- **FR:run.flag.value** (P2): A value flag followed by another `--flag` MUST fail with exit 2 and `--<name> has no value. Use --<name>=<value>, or check the flag name.`
 
 ### FR:cmd: Commands
 

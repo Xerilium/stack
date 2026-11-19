@@ -18,6 +18,11 @@ describe('cli args', () => {
     expect(() => parseArgs(['add', '--section'])).toThrow(UsageError);
   });
 
+  // @req FR:cli/run.flag.value
+  it('says a value flag followed by another flag has no value', () => {
+    expect(() => parseArgs(['start', '--bogus', '--dir', 'x'])).toThrow('--bogus has no value. Use --bogus=<value>, or check the flag name.');
+  });
+
   it('parses refs as 1-based and returns 0-based core refs', () => {
     expect(parseRef('tasks/a.md:3')).toEqual({ path: 'tasks/a.md', line: 2 });
     expect(() => parseRef('tasks/a.md')).toThrow(UsageError);

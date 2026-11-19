@@ -1,4 +1,4 @@
-import type { TaskRef } from '../core/lifecycle';
+import { formatRef, type TaskRef } from '../core/lifecycle';
 
 export class UsageError extends Error {}
 
@@ -33,7 +33,7 @@ export function parseArgs(argv: string[]): Parsed {
     } else {
       if (i + 1 >= argv.length) throw new UsageError(`--${name} needs a value`);
       const next = argv[i + 1];
-      if (next.startsWith("--") && next.length > 2) throw new UsageError(`--${name} needs a value (got ${next}); use --${name}=<value> for a literal`);
+      if (next.startsWith("--") && next.length > 2) throw new UsageError(`--${name} has no value. Use --${name}=<value>, or check the flag name.`);
       out.flags[name] = argv[++i];
     }
   }
@@ -52,4 +52,4 @@ export function parseRef(text: string): TaskRef {
   return { path: m[1], line: Number(m[2]) - 1 };
 }
 
-export const formatRef = (r: TaskRef): string => `${r.path}:${r.line + 1}`;
+export { formatRef };
