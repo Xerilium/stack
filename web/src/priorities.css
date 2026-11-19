@@ -1,4 +1,4 @@
-/* Now's priorities report: layout on top of the shared kit (kit.css). Muted: neutral surfaces, one accent.
+/* Now's priorities report: layout on top of the shared components (ui/ui.css). Muted: neutral surfaces, one accent.
    @req NFR:priorities-tables/a11y.tokens @req NFR:priorities-tables/a11y.mobile @req NFR:priorities-tables/a11y.color */
 .pri-tables { margin-top: var(--fl-s-xxl); min-width: 0; }
 @media (min-width: 1100px) { .now > .pri-tables { grid-column: 1 / -1; } }
@@ -9,10 +9,15 @@
 .pri-manager { margin: 0 0 var(--fl-s-s); font-size: 12px; line-height: 16px; color: var(--fl-fg2); }
 .pri-manager a { color: var(--fl-brand-fg); text-decoration: underline; text-underline-offset: 2px; }
 .pri-only { display: block; }
+/* Muted cards: the plain surface, a quiet edge; one line per field. @req FR:priorities-tables/web.table.line */
+.pri-card { --ui-soft: var(--fl-bg1); --ui-edge: var(--fl-stroke2); --ui-ink: var(--fl-fg1); --ui-ink2: var(--fl-fg2); }
+.pri-card .ui-card-top, .pri-card .ui-card-title, .pri-card .ui-card-sub { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pri-card .ui-card-top { display: block; }
+.pri-card .ui-card-sub { display: block; }
 .pri-muted, .pri-nolink { color: var(--fl-fg3); }
 .pri-nolink { font-size: 12px; font-weight: 400; }
-.pri-gap .kit-card-title { font-weight: 400; }
-.pri-card .kit-card-top a { color: inherit; }
+.pri-gap .ui-card-title { font-weight: 400; }
+.pri-card .ui-card-top a { color: inherit; }
 .pri-time { font-size: 12px; line-height: 16px; color: var(--fl-fg2); font-variant-numeric: tabular-nums; }
 /* The detail pane. @req FR:priorities-tables/web.detail */
 .pri-d { display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px; }
@@ -26,4 +31,4 @@
 .pri-d-more { color: var(--fl-fg2); }
 .pri-tables a:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; border-radius: var(--fl-r-sm); }
 /* 44 px targets on touch: padding grows link targets without moving the line. @req FR:ux-consolidation/one.layout */
-@media (hover: none) { .pri-tables .kit-card a, .pri-d a { display: inline-block; padding-block: 12px; margin-block: -12px; } }
+@media (hover: none) { .pri-tables .ui-card a, .pri-d a { display: inline-block; padding-block: 12px; margin-block: -12px; } }

@@ -145,10 +145,10 @@ Owner needs the report on the Now page so that he sees it without a new screen.
   - **FR:web.tabs.hash** (P1): The chosen tab MUST be kept in the URL hash (`#/now?pri=prs`) and restored on load.
   - **FR:web.tabs.keys** (P1): Tabs MUST follow the ARIA tabs pattern: arrow keys, Home and End move between tabs.
   - **FR:web.tabs.head** (P1): The stamp `as of <time>` (`, stale` when stale) of the chosen tab MUST sit small at the right end of the tab bar, and the bar MUST stay in view on scroll, with the time in the report's configured time zone.
-- **FR:web.kit** (P1): The report MUST be built from the shared kit (`web/src/kit.tsx`: `Tabs`, `ItemCard`, `Chip`, `SplitView`), which the PR page also uses (`.xe/standards/ui.md`).
+- **FR:web.kit** (P1): The report MUST be built from the shared components (`FR:ui-kit`, `web/src/ui/`: `Tabs`, `SelectCard`, `StatusChip`, `SplitView`, `useWide`), which the PR page also uses (`.xe/standards/ui.md`).
 - **FR:web.table** (P1): Each row MUST be a muted card: project and status on line 1, next action on line 2, agent on line 3. A PR card MUST show PR and Time on line 1, the next action on line 2 and the agent on line 3.
   - **FR:web.table.line** (P1): Each line MUST show one line and end a cut line with `…`.
-  - **FR:web.status.chip** (P1): Status MUST be an outline chip (icon and one word, no fill); a row with no agent MUST show no chip.
+  - **FR:web.status.chip** (P1): Status MUST be a `StatusChip` (`FR:ui-kit/chip`: a dot and one word on a tint); a row with no agent MUST show no chip.
   - **FR:web.card.agent** (P1): The card MUST show the agent name as plain text, with no added emoji and no link.
   - **FR:web.card.open** (P1): The whole card MUST open its detail (one target, ending in `›`); links on the card MUST stay links.
 - **FR:web.detail** (P1): The detail pane MUST show the project (linked), status chip, full next action (linked refs), agent (linked) with `+ N more on this goal`, source `path:line` and the stamp. Wide (900 px or more) it MUST sit beside the list; narrow it MUST replace the list, with Back.

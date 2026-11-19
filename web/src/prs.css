@@ -154,4 +154,3 @@ body:has(.prs-scrim) .toasts { z-index: 70; }
   .prs-tab, .prs-refresh, .prs-close, .pr-num, .pr-miss-open, .prs-fly .fl-btn, .prs-chip { min-height: var(--tap); min-width: var(--tap); }
   .pr-d a:not(.fl-btn) { display: inline-flex; align-items: center; min-height: var(--tap); }
 }
-.kit-chip.pr-act { border-color: transparent; min-height: 0; }

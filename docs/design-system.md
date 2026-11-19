@@ -16,7 +16,7 @@ Applies to every view. Audit and follow-ups: `.xe/features/task-detail-design/au
 8. Editable fields look editable: a labelled control (`Due Nov 2 ▾`), not a tag.
 9. Destructive or irreversible actions confirm first or offer Undo.
 10. 44 px targets on touch; 4.5:1 text contrast; light and dark.
-11. Reuse the shared kit (`web/src/kit.tsx`); never build a card, chip, tab bar or detail pane from scratch. See `.xe/standards/ui.md`.
+11. Reuse the shared components (`web/src/ui/`); never build a card, chip, tab bar or detail pane from scratch. See `.xe/standards/ui.md`.
 
 ## Today (before this change)
 

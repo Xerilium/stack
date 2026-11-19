@@ -40,16 +40,16 @@ const open = async (page: Page, v = view(), hash = '#/now') => {
   await expect(page.getByTestId('pri-tables')).toBeVisible();
   return m;
 };
-const cards = (page: Page, k: string) => page.getByTestId(`pri-${k}`).locator('li.kit-card');
+const cards = (page: Page, k: string) => page.getByTestId(`pri-${k}`).locator('li.ui-card');
 const detail = (page: Page) => page.getByTestId('pri-detail');
 const shot = async (page: Page, name: string) => {
   await page.setViewportSize({ width: page.viewportSize()!.width, height: 1400 });
   await page.getByTestId('pri-tables').screenshot({ path: `e2e/screenshots/priorities-report-${name}.png` });
 };
 /** Text outside links that still looks like a PR or issue ref. */
-const bareRefs = (page: Page) => page.getByTestId('pri-tables').evaluate((el) => [...el.querySelectorAll('.kit-card-title, .kit-card-top, .pri-d')].flatMap((c) => {
+const bareRefs = (page: Page) => page.getByTestId('pri-tables').evaluate((el) => [...el.querySelectorAll('.ui-card-title, .ui-card-top, .pri-d')].flatMap((c) => {
   const x = c.cloneNode(true) as HTMLElement;
-  x.querySelectorAll('a, .pri-nolink, .kit-card-open').forEach((a) => a.remove());
+  x.querySelectorAll('a, .pri-nolink, .ui-card-open').forEach((a) => a.remove());
   return /#\d+|\b(PRs?|issues?) #?\d+\b/i.test(x.textContent ?? '') ? [x.textContent] : [];
 }));
 
@@ -65,11 +65,11 @@ test.describe('Priorities report', () => {
     await expect(page.getByTestId('pri-stamp')).toHaveText('as of 11:00 AM');
     await expect(cards(page, 'now')).toHaveCount(3);
     const fh = cards(page, 'now').nth(1);
-    await expect(fh.locator('.kit-card-top')).toHaveText('FH Premium');
-    await expect(fh.locator('.kit-card-aside')).toContainText('🔄Working');
-    await expect(fh.locator('.kit-card-title')).toContainText('Live-validate PR 430 on the dev hub');
-    await expect(fh.locator('.kit-card-sub')).toContainText('FH backend');
-    await expect(cards(page, 'now').nth(2).locator('.kit-card-title')).toContainText('Gap: No tiered task in tasks/');
+    await expect(fh.locator('.ui-card-top')).toHaveText('FH Premium');
+    await expect(fh.locator('.ui-chip')).toContainText('Working');
+    await expect(fh.locator('.ui-card-title')).toContainText('Live-validate PR 430 on the dev hub');
+    await expect(fh.locator('.ui-card-sub')).toContainText('FH backend');
+    await expect(cards(page, 'now').nth(2).locator('.ui-card-title')).toContainText('Gap: No tiered task in tasks/');
     await expect(page.getByText('Waiting on you')).toHaveCount(0);
     await expect(page.getByRole('navigation').getByText(/priorit/i)).toHaveCount(0);
   });
@@ -85,10 +85,10 @@ test.describe('Priorities report', () => {
     const fh = cards(page, 'now').nth(1);
     await expect(fh.getByRole('link', { name: 'FH Premium' })).toHaveAttribute('href', '#/list?project=allyte');
     // no agent link on the card; it lives in the detail pane
-    expect(await fh.locator('.kit-card-sub a').count()).toBe(0);
+    expect(await fh.locator('.ui-card-sub a').count()).toBe(0);
     await expect(fh.getByRole('link', { name: '430' })).toHaveAttribute('href', U(430));
     const gap = cards(page, 'now').nth(2);
-    await expect(gap.locator('.kit-card-top')).toHaveText('FH 0.11 ⚠ no link');
+    await expect(gap.locator('.ui-card-top')).toHaveText('FH 0.11 ⚠ no link');
     expect(await gap.getByRole('link').count()).toBe(0);
     await fh.getByRole('button', { name: 'Details: FH Premium' }).click();
     await expect(detail(page).getByRole('link', { name: 'FH backend' })).toHaveAttribute('href', 'claude://claude.ai/epitaxy/s1');
@@ -96,7 +96,7 @@ test.describe('Priorities report', () => {
     await cards(page, 'qm').nth(1).getByRole('button').click();
     await expect(detail(page).getByRole('link', { name: 'qm-planner' })).toHaveAttribute('href', '#/agents?file=.claude%2Fagents%2Fqm-planner.md');
     await page.getByTestId('pri-tab-today').click();
-    await expect(cards(page, 'today').nth(1).locator('.kit-card-sub')).toHaveText('ftk-rm');
+    await expect(cards(page, 'today').nth(1).locator('.ui-card-sub')).toHaveText('ftk-rm');
     await cards(page, 'today').nth(1).getByRole('button').click();
     await expect(detail(page)).toContainText('ftk-rm ⚠ no link');
   });
@@ -133,19 +133,19 @@ test.describe('Priorities report', () => {
     v.now.rows[0] = task('adhoc', 'Ad hoc', 'File the weekly unemployment claim and then answer the two open follow-up emails from the state office about the October claim dates and the missing form');
     await open(page, v, '#/now?pri=now');
     const card = cards(page, 'now').first();
-    expect(await card.locator('.kit-card-title').evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    expect(await card.locator('.ui-card-title').evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
     await expect(card.getByRole('button')).toHaveText('›');
-    await expect(cards(page, 'now').nth(1).locator('.kit-chip')).toHaveText('🔄Working');
+    await expect(cards(page, 'now').nth(1).locator('.ui-chip')).toHaveText('Working');
     await card.click({ position: { x: 40, y: 50 } });
     await expect(detail(page)).toContainText('the missing form');
     await expect(detail(page).getByRole('heading')).toHaveText('Ad hoc');
     if (info.project.name === 'mobile') {
-      await expect(page.getByTestId('pri-now').locator('.kit-split-list')).toBeHidden();
+      await expect(page.getByTestId('pri-now').locator('.ui-split-list')).toBeHidden();
       await page.getByRole('button', { name: '‹ Back' }).click();
       await expect(cards(page, 'now')).toHaveCount(3);
     } else {
       await expect(cards(page, 'now')).toHaveCount(3);
-      await expect(card).toHaveAttribute('data-current', 'true');
+      await expect(card).toHaveAttribute('data-selected', 'true');
     }
   });
 
@@ -153,10 +153,10 @@ test.describe('Priorities report', () => {
   test('PRs: quickest first, live links and the Sweep Manager', async ({ page }) => {
     await open(page, view(), '#/now?pri=prs');
     const first = cards(page, 'prs').first();
-    await expect(first.locator('.kit-card-top')).toContainText('🏦 1142');
-    await expect(first.locator('.kit-card-aside')).toContainText('5m');
+    await expect(first.locator('.ui-card-top')).toContainText('🏦 1142');
+    await expect(first.locator('.ui-card-tools')).toContainText('5m');
     await expect(first.getByRole('link', { name: '1142' })).toHaveAttribute('href', 'https://github.com/allytehq/finops-hubs/pull/1142');
-    await expect(cards(page, 'prs').nth(1).locator('.kit-card-title')).toContainText('Live: server, details');
+    await expect(cards(page, 'prs').nth(1).locator('.ui-card-title')).toContainText('Live: server, details');
     await expect(page.getByTestId('pri-prs').getByRole('link', { name: 'server' })).toHaveAttribute('href', 'https://dev.example.test');
     await expect(page.getByTestId('pri-prs').getByRole('link', { name: 'Sweep Manager' })).toHaveAttribute('href', 'claude://claude.ai/epitaxy/sm');
   });
@@ -169,7 +169,7 @@ test.describe('Priorities report', () => {
     await page.getByRole('tab', { name: /^Next 3 days/ }).click();
     await expect(cards(page, 'next')).toHaveText(['Nothing here']);
     await page.getByRole('tab', { name: /^Today/ }).click();
-    await expect(cards(page, 'today').first().locator('.kit-card-top')).toHaveText('FOCUS stale');
+    await expect(cards(page, 'today').first().locator('.ui-card-top')).toHaveText('FOCUS stale');
     await expect(page.getByTestId('pri-stamp')).toHaveText('as of 10:20 AM, stale');
   });
 
@@ -178,7 +178,7 @@ test.describe('Priorities report', () => {
     await open(page, view(), '#/now?pri=now');
     const c = cards(page, 'now').nth(1);
     const top = async (s: string) => (await c.locator(s).boundingBox())!.y;
-    const [project, status, action, agent] = [await top('.kit-card-top'), await top('.kit-card-aside'), await top('.kit-card-title'), await top('.kit-card-sub')];
+    const [project, status, action, agent] = [await top('.ui-card-top'), await top('.ui-card-tools'), await top('.ui-card-title'), await top('.ui-card-sub')];
     expect(Math.abs(project - status)).toBeLessThan(4);
     expect(action).toBeGreaterThan(project + 4);
     expect(agent).toBeGreaterThan(action + 4);

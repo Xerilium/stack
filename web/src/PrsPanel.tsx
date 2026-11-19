@@ -18,6 +18,7 @@ import { store } from './day';
 import { ActionBar, ActionMenu, type ActionItem } from './ui/ActionMenu';
 import { Flag } from './ui/Flag';
 import { SelectCard } from './ui/SelectCard';
+import { useWide } from './ui/useWide';
 import './prs.css';
 
 type Client = ReturnType<typeof createClient>;
@@ -144,18 +145,8 @@ export function PrsFlyoutHost({ api, toast }: { api: Client; toast: ToastFn }) {
 
 /** The details pane beside the list at 1100 px and up, on the page only. @req FR:pr-page/detail.layout */
 const WIDE = '(min-width: 1100px)';
-function useWide(page: boolean): boolean {
-  const q = () => page && typeof window !== 'undefined' && !!window.matchMedia?.(WIDE).matches;
-  const [wide, setWide] = useState(q);
-  useEffect(() => {
-    if (!page || !window.matchMedia) return;
-    const m = window.matchMedia(WIDE);
-    const on = () => setWide(m.matches);
-    m.addEventListener('change', on);
-    return () => m.removeEventListener('change', on);
-  }, [page]);
-  return wide;
-}
+/** The shared split rule, wide only on the page. */
+const useWidePage = (page: boolean) => useWide(WIDE, page);
 
 interface Ctx { board: PrBoard; selected: string | null; select: (r: PrRow) => void; pin: (r: PrRow) => void; quick: (r: PrRow, a: QuickAction) => void; busy: boolean }
 
@@ -392,7 +383,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
   const [now, setNow] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const wide = useWide(page);
+  const wide = useWidePage(page);
   const ref = useRef<HTMLDivElement>(null);
   // The page and the flyout can both be open: every id is page- or flyout-specific.
   const px = page ? 'prs-page' : 'prs';

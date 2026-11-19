@@ -17,6 +17,10 @@
 .ui-card-title { grid-area: title; font-size: 15px; font-weight: 600; line-height: 21px; overflow-wrap: anywhere; }
 .ui-card-sub { grid-area: sub; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-ink2, var(--ink2)); }
 .ui-card-chev { grid-area: chev; font-size: 20px; color: var(--ui-ink2, var(--ink2)); }
+/* With `label`: title and sub line outside the button, so their links stay links above the stretched target. */
+.ui-card-body { grid-area: open; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title chev" "sub chev"; gap: 4px 8px; align-items: center; min-width: 0; }
+.ui-card-body a { position: relative; z-index: 1; }
+.ui-card-open.ui-card-chev-btn { grid-area: chev; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; }
 .ui-card-tools { grid-area: tools; position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; align-items: center; }
 /* An open menu lifts its card's tools above the cards below. */
 .ui-card-tools:has(.ui-menu) { z-index: 30; }
@@ -57,3 +61,21 @@
   .ui-tool, .ui-more-btn, .ui-menu .menu-item, .ui-bar .fl-btn { min-height: var(--tap); min-width: var(--tap); }
   .ui-card-open { min-height: var(--tap); }
 }
+
+/* Tabs (ARIA tabs pattern) with an aside at the end of the bar. @req FR:ui-kit/tabs */
+.ui-tabbar { display: flex; align-items: center; gap: var(--fl-s-s); border-bottom: 1px solid var(--fl-stroke2); }
+.ui-tabs { display: flex; flex: 1; min-width: 0; gap: var(--fl-s-xs); overflow-x: auto; scrollbar-width: none; }
+.ui-tabs::-webkit-scrollbar { display: none; }
+.ui-tab { flex: none; min-height: 44px; padding: 0 var(--fl-s-m); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--fl-fg2); font: 400 var(--fl-body)/var(--fl-body-lh) var(--fl-font); cursor: pointer; white-space: nowrap; }
+.ui-tab:hover { color: var(--fl-fg1); }
+.ui-tab[aria-selected="true"] { color: var(--fl-fg1); font-weight: 600; border-bottom-color: var(--fl-brand); }
+.ui-tab:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: -2px; border-radius: var(--fl-r-sm); }
+.ui-tabbar-aside { flex: none; font-size: 12px; line-height: 16px; color: var(--fl-fg3); white-space: nowrap; }
+
+/* Split view: list and detail side by side when wide; detail replaces the list when narrow. @req FR:ui-kit/split */
+.ui-split { display: block; }
+.ui-split.wide { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: var(--fl-s-l); align-items: start; }
+.ui-split-detail { padding: 16px; background: var(--fl-bg1); border: 1px solid var(--fl-stroke2); border-radius: var(--fl-r-xl); }
+.ui-split.wide .ui-split-detail { position: sticky; top: 56px; }
+.ui-split-empty { margin: 0; color: var(--fl-fg3); }
+.ui-back { margin-bottom: var(--fl-s-s); }
