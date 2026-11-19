@@ -53,7 +53,8 @@ Owner needs the same few places reachable the same way on every screen so that m
   - **FR:nav.pages.scroll** (P1): The main region MUST be the only scroll container
   - **FR:nav.pages.clear** (P1): The page content MUST scroll clear of the phone tab bar
   - **FR:nav.pages.keys** (P1): Only the global keys (palette, help, capture, `g` chords) MUST act on such a page
-  - **FR:nav.pages.overlays** (P1): Opening the page MUST close focus mode and the session drawer
+  - **FR:nav.pages.overlays** (P1): Opening the page MUST close focus mode and the session drawer, and clear the row selection (no bulk bar)
+  - **FR:nav.pages.top** (P1): Opening or leaving the page MUST show the next page at its top
 - **FR:nav.keys** (P1): Chords MUST be `g h` Home, `g d` or `g t` My day, `g k` Needs you, `g s` Sessions, `g p` Projects, `g a` Full stack
   - **FR:nav.keys.hint** (P2): Each rail item MUST name its chord in its tooltip, for example `Now (g n)`; no badge shows
 

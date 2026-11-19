@@ -516,7 +516,10 @@ export function App() {
   useEffect(() => { const on = () => { fixHash(); setNav(parseHash(location.hash)); setQm(isQmHash(location.hash)); }; window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
   /** Opening the QM page closes what sat over the old view. @req FR:web-shell/nav.pages.overlays */
   const closeDrawer = useRef(sessions.closeDrawer); closeDrawer.current = sessions.closeDrawer;
-  useEffect(() => { if (qm) { setFocusRef(null); closeDrawer.current(); } }, [qm]);
+  useEffect(() => {
+    if (qm) { setFocusRef(null); setSelected(new Set()); closeDrawer.current(); } // no bulk bar over a page with no rows
+    document.querySelector('.main')?.scrollTo(0, 0); // in and out, each page opens at its top
+  }, [qm]);
   const setFilters = (patch: Partial<Filters>) => go('list', { ...filters, ...patch });
 
   // ---- writes

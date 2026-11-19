@@ -1,6 +1,6 @@
 /**
  * The QM plan keeps the app shell: the rail on desktop, the tab bar on phones, one main landmark, one scroll container.
- * @req FR:web-shell/nav.pages @req FR:web-shell/nav.pages.current @req FR:web-shell/nav.pages.scroll @req FR:web-shell/nav.pages.keys @req FR:web-shell/nav.pages.leave @req FR:web-shell/nav.pages.clear @req FR:web-shell/nav.pages.overlays @req FR:qm-plan/ui.route
+ * @req FR:web-shell/nav.pages @req FR:web-shell/nav.pages.current @req FR:web-shell/nav.pages.scroll @req FR:web-shell/nav.pages.keys @req FR:web-shell/nav.pages.leave @req FR:web-shell/nav.pages.clear @req FR:web-shell/nav.pages.overlays @req FR:web-shell/nav.pages.top @req FR:qm-plan/ui.route
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -75,4 +75,19 @@ test('opening the QM page closes focus mode', async ({ page }) => {
   await page.evaluate(() => { location.hash = '#/qm'; });
   await expect(page.getByRole('heading', { name: 'QM plan' })).toBeVisible();
   await expect(page.locator('.focus-mode')).toHaveCount(0);
+});
+
+test('opening the QM page clears the row selection (no bulk bar) and opens at the top', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'row selection uses the keyboard');
+  await mockApi(page);
+  await page.route('**/api/qm', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: PLAN }) }));
+  await page.goto('/#/list');
+  await page.locator('.row[data-ref="alpha:9"] .title').click();
+  await page.keyboard.press('x');
+  await expect(page.getByRole('toolbar')).toBeVisible();
+  await page.locator('.main').evaluate((m) => { m.scrollTop = 400; });
+  await page.evaluate(() => { location.hash = '#/qm'; });
+  await expect(page.getByRole('heading', { name: 'QM plan' })).toBeVisible();
+  await expect(page.getByRole('toolbar')).toHaveCount(0);
+  expect(await page.locator('.main').evaluate((m) => m.scrollTop)).toBe(0);
 });
