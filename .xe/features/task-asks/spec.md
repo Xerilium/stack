@@ -10,7 +10,7 @@ dependencies: [ask-queue, task-ids, task-parser, task-structure]
 
 # Feature: Asks as Tasks
 
-> Status: planned (PR 3 of 3; build after `task-ids`). The ask files, `tasks/.stack/asks/`, and the old ask code are deleted in a later PR.
+> Status: built (PR 3 of 3). The ask files, `tasks/.stack/asks/`, and the old ask code are deleted in a later PR.
 
 ## Purpose
 
@@ -93,6 +93,14 @@ The owner needs open ask files turned into ask rows once so that no open ask is 
 ## Data Model
 
 None (ask fields are in "Ask format")
+
+## Decisions
+
+- **Ask keys as IDs**: an ask row's `id` keeps the ask key rule (`[a-z0-9][a-z0-9._-]{0,79}`), not the task slug rule (`[a-z0-9]+(-[a-z0-9]+)*`, up to 40). So every existing key (`perm-<session>-<request>`, `mail-<hash>`, keys with `.` or `_`) stays valid with no rename. The ID lint (`id-slug`) accepts that rule on ask rows only (🙋 with `kind`). A key that is not a slug is not a `T:` ref target; the ID index keeps slugs only.
+- **Row layout**: the row is `- [ ] 🙋 <priority emoji> <ask>`. Metadata follows in a fixed order, and empty or default values are not written (`reversible` only when `yes`, `blocks` only when above 0). Unknown metadata keys are kept.
+- **Placement edge cases**: a `ref` row that is gone, or a project file with no `## ` section, falls through to the next rule. `tasks/asks.md` without a `## ` section gets an `## Open` section.
+- **Archive**: deletes the row with its whole subtree.
+- **Watcher**: the watcher classes do not change. The web page reloads asks on a `tasks` change too, because ask rows are task file lines.
 
 ## Architecture Constraints
 
