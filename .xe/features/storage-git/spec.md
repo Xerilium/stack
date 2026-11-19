@@ -20,7 +20,7 @@ Give every surface one way to list, read, and write task markdown files, with gi
 Stack System needs a backend-neutral contract for task files so that every surface works the same on git, disk, or memory.
 
 - **FR:interface.@type** (P1): Interface: `Storage { list(): Promise<string[]>; read(path): Promise<StoredFile>; write(path, content, opts?): Promise<WriteResult> }`
-- **FR:interface.list** (P1): `list` MUST return sorted repo-relative paths of every task file under `tasks/` at any depth, never under a dot folder (`FR:task-structure/tree.list`)
+- **FR:interface.list** (P1): `list` MUST return sorted repo-relative paths of every task file under `tasks/` at any depth, outside dot folders (`FR:task-structure/tree.list`)
 - **FR:interface.read** (P1): `read` MUST return the exact content and an opaque `version` token (@req FR:$stored-file)
   - **FR:interface.read.missing** (P1): `read` MUST throw `NotFoundError` when the file is missing
 - **FR:interface.bytes** (P1): Content MUST round-trip byte-exact (BOM, CRLF, trailing whitespace, emoji) with no normalization
