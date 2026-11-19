@@ -24,6 +24,9 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 ### FR:card: Selectable card
 
 - **FR:card** (P1): `SelectCard` is one list item: an optional top line (links, flags, chips), a title, an optional sub line, an optional tools column, and a chevron (`›`). One button covers the card; a tap or click anywhere that is not a link or a tool selects it, and Enter or Space on it does the same. Links and tools sit above it. `selected` sets `aria-current` and a focus-colored outline. `sr` is text read after the title by assistive tech only. With `label`, the title and sub line sit outside the button, so links in them stay links, and the button (the chevron, stretched over the card) is named `label`. A view sets the tone with the CSS variables `--ui-edge`, `--ui-soft`, `--ui-strong`, `--ui-ink`, `--ui-ink2`, and the class `strong`. Cards in a `ui-cards` list have 14 px between them and 14 px padding inside
+  - **FR:card.chev** (P1): The chevron MUST sit in a 44 px strip at the right edge that is as tall as the card.
+    - The strip has a hairline on its left side, a light tint on card hover, and the 28 px `›` centred in it.
+    - Tools sit left of the strip.
 
 ### FR:flag: Flag
 
@@ -161,6 +164,17 @@ Owner needs the result of each action in one place so that he sees it and can un
 - **FR:toasts** (P1): `Toasts` MUST show every toast in one polite live region
   - **FR:toasts.dismiss** (P2): `Toasts` MUST give each toast a Dismiss button
   - **FR:toasts.undo** (P2): `Toasts` MUST give a toast an Undo button when the toast has an undo
+
+### FR:server: Server status
+
+The owner needs one look for a local test server so that every view shows its state and controls the same way.
+
+- **FR:server** (P1): `ServerStatus` shows one local server with a `StatusChip`: `Starting` info, `Running` ok, `Failed` bad
+  - After the chip it shows the step word while it starts, a link `Open <host>` to the URL when it runs, or the error after a failure
+  - It ends with one button: `Start server` (`onStart`) with no server or a failed one, else `Stop server` (`onStop`)
+  - With no server it says `No test server runs.`
+  - `busy` disables the button
+  - A state change is said in a polite live region
 
 ### FR:nav: Nav item and nav icons
 

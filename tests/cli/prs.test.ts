@@ -11,7 +11,7 @@ const row = (o: Partial<PrRow>): PrRow => ({
   unresolved: 0, labels: [], state: { owner: 'me', bucket: 'decide', blocker: 'Pick one', link: 'https://github.com/o/r/pull/1#discussion_r1', stalled: false, source: 'rule' },
   healthy: false, agent: false, after: [], rank: null, pinned: false, autopilot: true, mine: true, nextAction: 'signoff', specLines: 4, detail: {}, ...o,
 });
-const board = (rows: PrRow[]): PrBoard => ({ at: '2026-11-11T12:00:00.000Z', user: 'me', agents: { count: 2, source: 'sessions' }, counts: { waiting: 1, processing: 1, pending: 0, paused: 0 }, footer: { running: 2, waiting: 2, parked: 0 }, rows, summary: { live: [], signoff: [rows[0]?.url ?? ''], autopilot: [], missing: [] }, queue: false });
+const board = (rows: PrRow[]): PrBoard => ({ at: '2026-11-11T12:00:00.000Z', user: 'me', agents: { count: 2, source: 'sessions' }, counts: { waiting: 1, processing: 1, pending: 0, paused: 0 }, footer: { running: 2, waiting: 2, parked: 0 }, rows, summary: { live: [], signoff: [rows[0]?.url ?? ''], autopilot: [], missing: [] }, queue: false, servers: false });
 
 // @req FR:pr-page/cli.prs
 describe('stack prs', () => {

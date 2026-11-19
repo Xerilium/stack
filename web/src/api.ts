@@ -8,7 +8,7 @@ import type { NeedItem } from './needs';
 import type { Pri, PrisFile } from './pris';
 import type { Inventory } from './inventory';
 import type { PrioritiesView } from './priorities';
-import type { PrAuthState, PrBoard, SignInSession } from './prs';
+import type { PrAuthState, PrBoard, PrServer, SignInSession } from './prs';
 import type { ReviewItem, TeamAgent } from './team';
 import type { Thread } from './thread';
 import type { UpdateMode, VersionState } from './update';
@@ -83,6 +83,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     /** @req FR:pr-page/api.queue */
     prQueue: (repo: string, number: number, op: 'top' | 'up' | 'down' | 'move' | 'add' | 'pin' | 'unpin' | 'remove' | 'undo', rank?: number) => call<{ rank: number | null; was: number | null; pinned: boolean }>('/prs/queue', { repo, number, op, ...(rank ? { rank } : {}) }),
     /** @req FR:pr-page/api.label */
+    /** Starts or stops the test server of a PR. @req FR:pr-page/api.server */
+    prServer: (repo: string, number: number, op: 'start' | 'stop') => call<{ server: PrServer | null }>('/prs/server', { repo, number, op }),
     prLabel: (repo: string, number: number, op: 'add' | 'remove') => call<{ ok: true }>('/prs/label', { repo, number, op }),
     /** @req FR:pr-page/api.ack */
     prAck: (b: { repo: string; number: number; thread: string; note: string; post?: boolean; text?: string; replyTo?: number }) => call<{ ok: true; posted: boolean; recorded: boolean; message?: string }>('/prs/ack', b),

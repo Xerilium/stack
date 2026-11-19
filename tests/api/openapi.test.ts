@@ -399,6 +399,8 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('prs.rec', 'POST', '/prs/recs/pp-0000000a', { decision: 'accept' }, 409);
     // @req FR:pr-page/api.resolve
     await go('prs.resolve', 'POST', '/prs/resolve', { repo: 'o/r', number: 1, thread: 'PRRT_x', op: 'resolve' }, 404);
+    // @req FR:pr-page/api.server
+    await go('prs.server', 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'start' }, 404);
     // No GitHub sign-in on this host. @req FR:pr-page/auth.signin
     await go('prs.signin.get', 'GET', '/prs/sign-in', undefined, 404);
     await go('prs.signin', 'POST', '/prs/sign-in', {}, 404);

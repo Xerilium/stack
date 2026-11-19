@@ -26,6 +26,7 @@ import type { AppUpdater } from '../core/app-update';
 import { createClaudeJson } from '../email/llm';
 import { createGitHubPrs, githubRepos } from '../api/github';
 import { createLazyPrPage, createPrPage } from '../api/pr-page';
+import { createPrServers } from '../api/pr-server';
 import { createGitHubAuth, type GitHubAuth } from '../api/github-auth';
 import type { PrStatusProvider } from '../core/activity';
 import { storePrQueue } from '../api/pr-queue';
@@ -205,7 +206,7 @@ class BodyTooLarge extends Error {}
 const isOwnerData = (path: string): boolean => path === '/api' || path.startsWith('/api/') || path === '/events' || /^\/sessions\/[^/]+\/events$/.test(path);
 
 /** Headers a remote caller may not pass to the api: identity and credentials are set by the gate only. */
-const REMOTE_DROP = new Set(['x-ms-client-principal', 'authorization', 'x-stack-token', 'cookie']);
+const REMOTE_DROP = new Set(['x-ms-client-principal', 'authorization', 'x-stack-token', 'cookie', 'x-stack-remote']);
 
 /**
  * `remote`: the client's own principal, token and cookie headers are dropped. With `token` the request runs as that device token
@@ -217,6 +218,8 @@ async function toRequest(req: IncomingMessage, origin: string, remote?: { token?
   if (method !== 'GET' && method !== 'HEAD') { let n = 0; for await (const c of req) { n += (c as Buffer).length; if (n > 1_000_000) throw new BodyTooLarge('body too large'); chunks.push(c as Buffer); } }
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !(remote && REMOTE_DROP.has(k))) headers.set(k, Array.isArray(v) ? v.join(', ') : v);
+  // A request from a paired device, not this machine: the api keeps host-only actions from it. @req FR:pr-page/server.host
+  if (remote) headers.set('x-stack-remote', '1');
   if (remote?.token !== undefined) {
     headers.set('authorization', `Bearer ${remote.token}`);
     return new Request(origin + (req.url ?? '/'), { method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
@@ -323,7 +326,10 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   // The PR page polls GitHub only while a page holds a lease; a changed board tells open pages. @req FR:pr-page/live.event
   // Built on the first read that finds a token; signed out, GET /prs answers the sign-in state. @req FR:pr-page/auth.state
   const prQueue = storePrQueue(prPriority);
-  const prPage: ReturnType<typeof createLazyPrPage> | undefined = reposOk ? createLazyPrPage({ auth: ghAuth, queue: prQueue, make: (token) => createPrPage({ token, repos: ghRepos, config, home: stackHome(), inventory, queue: prQueue, adminOrgs: true, live: () => live.view(), onChange: () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['prs'] }); } }) }) : undefined;
+  // Test servers for PRs: worktrees of the local clones under the scan roots (default ~/dev). @req FR:pr-page/server.host @req FR:pr-page/server.clone
+  const tellPrs = () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['prs'] }); };
+  const prServers = reposOk ? createPrServers({ roots: (config.agents?.scanRoots ?? ['~/dev']).map((r) => (r.startsWith('~/') ? join(homedir(), r.slice(2)) : r)), onChange: tellPrs }) : undefined;
+  const prPage: ReturnType<typeof createLazyPrPage> | undefined = reposOk ? createLazyPrPage({ auth: ghAuth, queue: prQueue, make: (token) => createPrPage({ token, repos: ghRepos, config, home: stackHome(), inventory, queue: prQueue, adminOrgs: true, live: () => live.view(), ...(prServers ? { servers: prServers } : {}), onChange: tellPrs }) }) : undefined;
   // The live lane, briefs and PR facts live outside the repo too; a lane write tells open pages (`tasks` reloads Needs you for blocked checks). @req FR:pr-review-lane/lane.api
   const laneHome = o.laneHome ?? stackHome();
   const live = new LiveStore(laneHome);
@@ -340,7 +346,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const dd: DeliveryDeps | undefined = o.delivery === false || o.info?.mode === 'demo' ? undefined : { ctx: { storage, config }, settings: deliverySettings(config, o.dir), store: o.delivery?.store ?? new DeliveryStore(stackHome()), repoDir: o.dir, ...(rawScan ? { agentScan: rawScan } : {}), ...(o.delivery?.run ? { run: o.delivery.run } : {}), ...(o.delivery?.isRepo ? { isRepo: o.delivery.isRepo } : {}) };
   const deliveryLoop = dd && dd.settings.mode === 'claude' ? startDeliveryLoop(dd, { intervalMs: o.delivery ? o.delivery.intervalMs : undefined, onError: (e) => console.error(`delivery: ${e instanceof Error ? e.message : 'error'}`) }) : undefined;
   const delivery = dd ? { status: (ref: string) => deliveryStatus(dd, ref, inventory), summary: () => ({ mode: dd.settings.mode, login: dd.store.read().login.state }), login: () => (o.delivery && o.delivery.login ? o.delivery.login() : startLogin()) } : undefined;
-  const apiDeps = { storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, qm, designReview: o.designReview ?? createDesignReview({ filer: ghIssueFiler() }), ...(prPage ?? {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
+  const apiDeps = { storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, qm, designReview: o.designReview ?? createDesignReview({ filer: ghIssueFiler() }), ...(prPage ?? {}), ...(prServers ? { prServers } : {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
   const api = createApiHandler({ ...apiDeps, authorize: () => true });
   // Device self endpoints (push subscription) run as the device token through the auth-security hook; no owner list, so no session ever matches. @req FR:tailnet-access/gate.scope
   const auth = remoteAuth ? createAuth({ owners: [], tokens: remoteAuth.tokens, devices: remoteAuth.devices, vapidPublicKey: process.env.STACK_VAPID_PUBLIC_KEY?.trim() || undefined }) : undefined;
@@ -570,6 +576,8 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     offReports(); offPrPri(); unwatchPrPri();
     offPris();
     prPage?.prBoard.stop();
+    // @req FR:pr-page/server.stop
+    await prServers?.stopAll();
     offLive();
     offQm(); unwatchQm();
     offDelivery?.();

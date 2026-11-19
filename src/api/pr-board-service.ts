@@ -4,6 +4,7 @@
  */
 import { activeAgents, buildRows, countRows, footerOf, isWip, parseQueue, summaryOf, type BoardCounts, type Escalations, type LiveLane, type PrFacts, type PrRow, type PrSummary } from '../core/pr-board';
 import { parseCheck } from '../core/pr-check';
+import type { PrServerView } from '../core/pr-server';
 import { GitHubRateLimit, type GitHubBoard } from './github-board';
 
 /** @req FR:pr-page/$board */
@@ -15,6 +16,8 @@ export interface PrBoard {
   /** The Summary tab. @req FR:pr-page/summary.@function */
   summary: PrSummary;
   escalations?: Escalations; queue: boolean;
+  /** The host can start a test server for a PR. @req FR:pr-page/server.host */
+  servers: boolean;
   /** While polls are paused for a rate limit or errors. */
   rate?: { until: string };
   error?: string;
@@ -36,6 +39,8 @@ export interface PrBoardServiceOptions {
   files?: () => { queue?: unknown; state?: unknown; config?: unknown };
   /** The raw live check file of a PR, or null (`FR:pr-page/check.file`). */
   check?: (repo: string, number: number) => string | null;
+  /** The test server of a PR; absent on hosts that cannot start one. @req FR:pr-page/server.host */
+  server?: (repo: string, number: number) => PrServerView | undefined;
   /** The live lane (`stack live`); absent on hosts without one. */
   live?: () => LiveLane | undefined;
   myRepos?: string[]; exclude?: string[];
@@ -87,10 +92,11 @@ export function createPrBoardService(o: PrBoardServiceOptions): PrBoardService {
     // A bad or unreadable check file is no check. @req FR:pr-page/check.file
     const check = o.check ? (repo: string, n: number) => { try { const t = o.check!(repo, n); return t ? parseCheck(t) : null; } catch { return null; } } : undefined;
     const ctx = { user, now: new Date(now()), ...(check ? { check } : {}), agentPrs, myRepos: o.myRepos ?? derived, exclude: [...(o.exclude ?? []), ...q.exclude], reports: q.reports, ranks: q.ranks, pinned: q.pinned, recs: q.recs, acks: q.acks, ...(live ? { live } : {}), ...(q.escalations?.live[0] ? { liveFirst: q.escalations.live[0].url } : {}) };
-    const rows = facts ? buildRows(facts, ctx) : [];
+    const serverOf = (r: PrRow): PrServerView | undefined => { try { return o.server?.(r.repo, r.number); } catch { return undefined; } };
+    const rows = (facts ? buildRows(facts, ctx) : []).map((r) => { const server = serverOf(r); return server ? { ...r, server } : r; });
     return {
       at: at === null ? null : new Date(at).toISOString(), user, agents, counts: countRows(rows), footer: footerOf(rows, agents.count), rows, summary: summaryOf(rows, ctx),
-      ...(q.escalations ? { escalations: q.escalations } : {}), queue: queueOk,
+      ...(q.escalations ? { escalations: q.escalations } : {}), queue: queueOk, servers: !!o.server,
       ...(pausedUntil > now() ? { rate: { until: new Date(pausedUntil).toISOString() } } : {}), ...(error ? { error } : {}), ...(truncated ? { truncated } : {}),
     };
   };

@@ -18,6 +18,7 @@ import { MoreButton } from '../src/ui/MoreButton';
 import { SelectCard } from '../src/ui/SelectCard';
 import { SourceLink, sourceOf } from '../src/ui/SourceLink';
 import { Skeleton } from '../src/ui/Skeleton';
+import { ServerStatus } from '../src/ui/ServerStatus';
 import { SplitView } from '../src/ui/SplitView';
 import { StatusChip } from '../src/ui/StatusChip';
 import { Tabs } from '../src/ui/Tabs';
@@ -25,6 +26,53 @@ import { Tabs } from '../src/ui/Tabs';
 const mount = (node: preact.ComponentChild) => { const root = document.createElement('div'); document.body.append(root); act(() => render(node, root)); return root; };
 afterEach(() => { document.body.innerHTML = ''; });
 const key = (k: string) => act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })); });
+
+// @req FR:ui-kit/server
+describe('ServerStatus', () => {
+  const btn = (r: HTMLElement) => r.querySelector<HTMLButtonElement>('button');
+  it('no server: one line and Start server', () => {
+    let n = 0;
+    const r = mount(<ServerStatus onStart={() => n++} onStop={() => undefined} />);
+    expect(r.querySelector('.ui-server')!.textContent).toBe('No test server runs.Start server');
+    expect(r.querySelector('.ui-chip')).toBeNull();
+    act(() => btn(r)!.click());
+    expect(n).toBe(1);
+  });
+  it('starting: the chip, the step word, and Stop server', () => {
+    let n = 0;
+    const r = mount(<ServerStatus server={{ state: 'starting', step: 'build' }} onStart={() => undefined} onStop={() => n++} />);
+    expect(r.querySelector('.ui-chip')!.className).toContain('t-info');
+    expect(r.querySelector('.ui-chip')!.textContent).toBe('Starting');
+    expect(r.querySelector('.ui-server-note')!.textContent).toBe('Building it');
+    expect(btn(r)!.textContent).toBe('Stop server');
+    act(() => btn(r)!.click());
+    expect(n).toBe(1);
+    expect(mount(<ServerStatus server={{ state: 'starting', step: 'checkout' }} onStart={() => undefined} onStop={() => undefined} />).querySelector('.ui-server-note')!.textContent).toBe('Checking out the PR');
+    expect(mount(<ServerStatus server={{ state: 'starting', step: 'run' }} onStart={() => undefined} onStop={() => undefined} />).querySelector('.ui-server-note')!.textContent).toBe('Waiting for the port');
+  });
+  it('running: the chip, a link to the local URL in a new tab, and Stop server', () => {
+    const r = mount(<ServerStatus server={{ state: 'running', url: 'http://localhost:5180' }} onStart={() => undefined} onStop={() => undefined} />);
+    expect(r.querySelector('.ui-chip')!.className).toContain('t-ok');
+    const a = r.querySelector('a')!;
+    expect(a.textContent).toBe('Open localhost:5180');
+    expect(a.getAttribute('href')).toBe('http://localhost:5180');
+    expect(a.getAttribute('target')).toBe('_blank');
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(btn(r)!.textContent).toBe('Stop server');
+    // A URL that is not a local one is never a link.
+    expect(mount(<ServerStatus server={{ state: 'running', url: 'javascript:alert(1)' }} onStart={() => undefined} onStop={() => undefined} />).querySelector('a')).toBeNull();
+  });
+  it('failed: the chip, the error, and Start server; busy disables the button; the state is a polite status', () => {
+    const r = mount(<ServerStatus server={{ state: 'failed', error: 'Build failed: tsc' }} busy onStart={() => undefined} onStop={() => undefined} />);
+    expect(r.querySelector('.ui-chip')!.className).toContain('t-bad');
+    expect(r.querySelector('.ui-server-note')!.textContent).toBe('Build failed: tsc');
+    expect(btn(r)!.textContent).toBe('Start server');
+    expect(btn(r)!.disabled).toBe(true);
+    const live = r.querySelector('[role="status"]')!;
+    expect(live.getAttribute('aria-live')).toBe('polite');
+    expect(live.textContent).toContain('Failed');
+  });
+});
 
 // @req FR:ui-kit/flag
 describe('Flag', () => {

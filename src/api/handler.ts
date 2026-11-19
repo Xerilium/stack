@@ -30,6 +30,7 @@ import { writeGaps } from '../core/priorities-gaps';
 import { readTaskFiles } from '../core/tiered-tasks';
 import type { PrBoardService } from './pr-board-service';
 import type { PrAuth } from './pr-page';
+import type { PrServers } from './pr-server';
 import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write';
 import { QueueRefused, QueueUnavailable, type PrQueue } from './pr-queue';
 import { ITEM_OPS, LiveError, type ItemOp, type LiveStore } from '../core/live-lane';
@@ -110,6 +111,8 @@ export interface ApiDeps {
   prWrites?: GitHubWrites;
   /** Changes the PR priority queue. @req FR:pr-page/api.queue-client */
   prQueue?: PrQueue;
+  /** Test servers for PRs on the local host; absent means POST /prs/server is 404. @req FR:pr-page/server.host */
+  prServers?: PrServers;
   /** The GitHub sign-in of a local host; absent means the board needs GITHUB_TOKEN and /prs/sign-in is 404. @req FR:pr-page/auth.state */
   prAuth?: PrAuth;
   /** The desktop installer: version probe, update mode, restart. Absent means /version is 404. @req FR:devops-installer/version.get */
@@ -315,6 +318,7 @@ const PR_NUM: Spec = { t: 'int', min: 1, max: 9_999_999 };
 export const PR_QUEUE_OPS = ['top', 'up', 'down', 'move', 'add', 'pin', 'unpin', 'remove', 'undo'] as const;
 const PR_QUEUE_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: PR_QUEUE_OPS }, rank: { t: 'int', min: 1, max: 100 } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
 const PR_RESOLVE_BODY = { schema: { repo: PR_REPO, number: PR_NUM, thread: { t: 'str', required: true, max: 100, pattern: /^[A-Za-z0-9_=-]{1,100}$/ }, op: { t: 'enum', values: ['resolve', 'unresolve'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'thread', 'op'] };
+const PR_SERVER_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: ['start', 'stop'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
 const PR_GET_Q: Record<string, Spec> = { refresh: { t: 'enum', values: ['1'] } };
 const PR_LABEL_BODY = { schema: { repo: PR_REPO, number: PR_NUM, op: { t: 'enum', values: ['add', 'remove'] } } satisfies Record<string, Spec>, required: ['repo', 'number', 'op'] };
 const PR_ACK_BODY = {
@@ -447,6 +451,8 @@ async function liveCall<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The request came from a paired device, not this machine (the local host sets the marker). @req FR:pr-page/server.host */
+const isRemote = (c: Ctx) => c.req.headers.get('x-stack-remote') === '1';
 const ownerOnly = (c: Ctx, why: string) => { if (!isOwner(c.req)) throw new ApiError('forbidden', why); };
 const prStore = (c: Ctx): PrPriorityStore => { if (!c.deps.prPriority) throw new ApiError('not_found', 'No PR priority store on this host'); return c.deps.prPriority; };
 /** The list view (cached facts only) plus open recommendations. @req FR:pr-priority/view.item */
@@ -1023,7 +1029,9 @@ export const ROUTES: Route[] = [
       // Signed out: one honest state, never an empty board. @req FR:pr-page/auth.state
       if (c.deps.prAuth && !(await c.deps.prAuth.ready())) return json(200, { auth: await c.deps.prAuth.status() });
       if (refresh) await boardOf(c).refresh();
-      return json(200, await boardOf(c).get());
+      const board = await boardOf(c).get();
+      // A paired device cannot start a server on the host. @req FR:pr-page/server.host
+      return json(200, isRemote(c) ? { ...board, servers: false } : board);
     },
   },
   {
@@ -1123,6 +1131,25 @@ export const ROUTES: Route[] = [
       // Resolving does not always change updatedAt: read this PR's threads again.
       await c.deps.prBoard?.refresh(row.url);
       return json(200, { ok: true, op: b.op });
+    },
+  },
+  {
+    // Starts or stops the test server of a PR on the board; local hosts only. @req FR:pr-page/api.server @req FR:pr-page/server.host
+    method: 'POST', doc: '/prs/server', name: 'prs.server', body: PR_SERVER_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can start a test server');
+      if (isRemote(c)) throw new ApiError('forbidden', 'Start a test server on the computer that runs Stack');
+      const b = validate<{ repo: string; number: number; op: 'start' | 'stop' }>(await readBody(c.req), PR_SERVER_BODY.schema, PR_SERVER_BODY.required);
+      const s = c.deps.prServers;
+      if (!s) throw new ApiError('not_found', 'This host cannot start a test server');
+      // Stop needs no board row: a PR that merged or closed must still stop.
+      if (b.op === 'stop') { await s.stop(b.repo, b.number); return json(200, { server: null }); }
+      const row = await onBoard(c, b);
+      // The command is the Server line of the check file, when it has one. A line the parser cut is not the command. @req FR:pr-page/server.plan
+      const cmd = row.detail.check?.server;
+      if (cmd?.endsWith('…')) throw new ApiError('conflict', 'The Server line is over 200 characters');
+      return json(200, { server: await s.start(row.repo, row.number, cmd) });
     },
   },
   {

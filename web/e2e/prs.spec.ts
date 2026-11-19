@@ -9,6 +9,7 @@
  * @req FR:ui-kit/a11y @req FR:ui-kit/card @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/flag
  * @req FR:pr-page/check.view @req FR:pr-page/check.none @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
  * @req FR:pr-page/pin.toggle @req FR:pr-page/pin.tab @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys @req FR:pr-page/state.view
+ * @req FR:pr-page/server.pane @req FR:pr-page/server.poll @req FR:pr-page/api.server @req FR:ui-kit/server @req FR:ui-kit/card.chev
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
@@ -28,7 +29,7 @@ const hold = (id: string, n: number, text: string) => ({
 });
 const BOARD = () => ({
   at: new Date(Date.now() - 12_000).toISOString(), user: 'me', agents: { count: 3, source: 'sessions' },
-  counts: { waiting: 2, processing: 4, pending: 3, paused: 1 }, footer: { running: 3, waiting: 4, parked: 2 }, queue: true,
+  counts: { waiting: 2, processing: 4, pending: 3, paused: 1 }, footer: { running: 3, waiting: 4, parked: 2 }, queue: true, servers: true,
   rows: [
     row(109, { title: 'Tailnet access for the app', nextAction: 'validate', specLines: 12, pinned: true, rank: 2, detail: { steps: { source: 'lane', state: 'ready-for-michael', serverUrl: 'http://localhost:5174', items: [{ text: 'Open the app on the phone', state: 'open' }, { text: 'Sign in works', state: 'failed' }] }, check: { ask: 'Check the app on the phone', server: 'pnpm web', steps: ['Open the app'], pass: [], fail: [] } } }),
     row(101, { title: 'Pick the API shape for task comments', nextAction: 'signoff', specLines: 40, pinned: true, rank: 1, state: st('me', 'Sign-off: wait for my ack', `${U(101)}#discussion_r9`), detail: { signoff: [hold('PRRT_one', 101, 'Wait for my ack before you merge'), { ...hold('PRRT_two', 101, 'Hold: test it live first'), after: [], commits: [] }] } }),
@@ -48,7 +49,7 @@ const BOARD = () => ({
 });
 const EMPTY_BOARD = () => ({ ...BOARD(), rows: [row(104, { title: 'Healthy agent work' })], summary: { live: [], signoff: [], autopilot: [], missing: [] }, counts: { waiting: 0, processing: 1, pending: 0, paused: 0 } });
 
-async function setup(page: Page, o: { board?: unknown; status?: number; delayMs?: number; signIn?: unknown[] } = {}) {
+async function setup(page: Page, o: { board?: unknown | (() => unknown); status?: number; delayMs?: number; signIn?: unknown[] } = {}) {
   const m = await mockApi(page);
   const posts: { path: string; body: any }[] = [];
   const gets: string[] = [];
@@ -65,11 +66,11 @@ async function setup(page: Page, o: { board?: unknown; status?: number; delayMs?
       gets.push(u.search);
       if (o.delayMs) await new Promise((r) => setTimeout(r, o.delayMs));
       if (o.status) return route.fulfill({ status: o.status, contentType: 'application/json', body: JSON.stringify({ error: { code: 'not_found', message: 'No PR board on this host' } }) });
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o.board ?? BOARD()) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(typeof o.board === 'function' ? o.board() : o.board ?? BOARD()) });
     }
     const body = req.postDataJSON();
     posts.push({ path, body });
-    const reply = path === '/prs/queue' ? { rank: body.rank ?? 1, was: 2, pinned: body.op === 'pin' } : { ok: true, op: body.op };
+    const reply = path === '/prs/queue' ? { rank: body.rank ?? 1, was: 2, pinned: body.op === 'pin' } : path === '/prs/server' ? { server: body.op === 'start' ? { state: 'starting', step: 'checkout', at: new Date().toISOString() } : null } : { ok: true, op: body.op };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(reply) });
   });
   return { m, posts, gets };
@@ -192,11 +193,11 @@ test('tabs: Summary first, clear names, counts; no Live check, no multi-select, 
   expect(text).not.toMatch(/\bhold\b|\bheld\b|escalat|blocked/i);
 });
 
-test('Summary: four clearly separated sections; Nothing else when empty', async ({ page }) => {
+test('Summary: clearly separated sections; Also needs you only when it has lines', async ({ page }) => {
   await setup(page);
   const pg = await openPage(page);
   const secs = pg.locator('section.pr-sec');
-  await expect(secs.locator('h3')).toHaveText(['Needs live validation', 'Needs your sign-off', 'Ready for Autopilot', 'Am I missing anything?']);
+  await expect(secs.locator('h3')).toHaveText(['Needs live validation', 'Needs your sign-off', 'Ready for Autopilot', 'Also needs you']);
   await expect(secs.nth(0).locator('.pr-card')).toHaveCount(1);
   await expect(secs.nth(1).locator('.pr-card')).toHaveCount(2);
   await expect(secs.nth(2).locator('.pr-card')).toHaveCount(1);
@@ -221,11 +222,12 @@ test('Summary: four clearly separated sections; Nothing else when empty', async 
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   await setup(page, { board: EMPTY_BOARD() });
   await page.reload();
-  await expect(pg.locator('section.pr-sec').nth(3)).toContainText('Nothing else.');
+  await expect(pg.locator('section.pr-sec h3')).toHaveText(['Needs live validation', 'Needs your sign-off', 'Ready for Autopilot']);
+  await expect(pg).not.toContainText('Nothing else.');
   await expect(pg.locator('section.pr-sec').nth(0)).toContainText('None now.');
 });
 
-test('one card: repo, # link, title, author, one action flag, spec lines, Pin, Actions; nothing else; owner colors', async ({ page }) => {
+test('one card: repo, # link, title, author, one action flag, spec lines, Actions; nothing else; owner colors', async ({ page }) => {
   await setup(page);
   const pg = await openPage(page);
   const c = card(pg, 1105);
@@ -239,13 +241,15 @@ test('one card: repo, # link, title, author, one action flag, spec lines, Pin, A
   const flag = await c.locator('.ui-flag').evaluate((e) => { const cs = getComputedStyle(e); return { bg: cs.backgroundColor, border: cs.borderTopWidth, cursor: cs.cursor, tab: (e as HTMLElement).tabIndex, role: e.getAttribute('role'), tag: e.tagName, icon: !!e.querySelector('svg') }; });
   expect(flag).toEqual({ bg: 'rgba(0, 0, 0, 0)', border: '0px', cursor: 'default', tab: -1, role: null, tag: 'SPAN', icon: true });
   await expect(c.locator('.pr-spec')).toHaveText('8 spec lines');
-  // The chevron: its 44 px column spans the card height at the right edge; the tools stay clear of it. @req FR:ui-kit/card.chev
+  // The chevron: a 44 px strip as tall as the card at the right edge, with a hairline; the tools stay clear of it. @req FR:ui-kit/card.chev
   const [box, chev, tools] = [(await c.boundingBox())!, (await c.locator('.ui-card-chev').boundingBox())!, (await c.locator('.ui-card-tools').boundingBox())!];
   expect(Math.abs((chev.y + chev.height / 2) - (box.y + box.height / 2))).toBeLessThanOrEqual(1);
   expect([chev.width >= 44, box.x + box.width - (chev.x + chev.width) <= 1, tools.x + tools.width <= chev.x + 1]).toEqual([true, true, true]);
-  await expect(c.getByRole('button')).toHaveCount(3); // select + Pin + Actions
+  expect(Math.abs(chev.height - box.height)).toBeLessThanOrEqual(1);
+  expect(await c.locator('.ui-card-chev').evaluate((e) => getComputedStyle(e).borderLeftWidth)).toBe('1px');
+  await expect(c.getByRole('button')).toHaveCount(2); // select + Actions; Pin is in the menu @req FR:pr-page/pin.toggle
+  await expect(c.getByRole('button', { name: /^(Pin|Unpin) / })).toHaveCount(0);
   await expect(c.getByRole('button', { name: 'Actions for allytehq/finops-hubs#1105' })).toHaveAttribute('aria-haspopup', 'menu');
-  await expect(c.getByRole('button', { name: 'Pin allytehq/finops-hubs#1105' })).toHaveAttribute('aria-pressed', 'false');
   await expect(c).toHaveClass(/tone-auto strong/);
   await pg.getByRole('tab', { name: /Waiting on me/ }).click();
   await expect(card(pg, 102).locator('.pr-author')).toHaveText('roland');
@@ -272,7 +276,7 @@ test('quick actions: one ⋯ menu per card, only what fits, keyboard, and the sa
   await btn.click();
   await expect(btn).toHaveAttribute('aria-expanded', 'true');
   const menu = pg.getByRole('menu', { name: 'Actions for Xerilium/stack#106' });
-  await expect(menu.getByRole('menuitem')).toHaveText(['Sweep next', 'Enable Autopilot', 'Open on GitHub', 'Copy sweep command']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Sweep next', 'Enable Autopilot', 'Start server', 'Pin', 'Open on GitHub', 'Copy sweep command']);
   await expect(menu.getByRole('menuitem', { name: 'Open on GitHub' })).toHaveAttribute('href', U(106));
   await expect(menu.getByRole('menuitem').first()).toBeFocused();
   // Keyboard: arrows move, End jumps, Escape closes and returns focus.
@@ -287,7 +291,7 @@ test('quick actions: one ⋯ menu per card, only what fits, keyboard, and the sa
   await expect(btn).toBeFocused();
   // One menu at a time; a tap outside closes it.
   await card(pg, 107).getByRole('button', { name: /^Actions for/ }).click();
-  await expect(pg.getByRole('menu').getByRole('menuitem')).toHaveText(['Sweep next', 'Open on GitHub', 'Copy sweep command']);
+  await expect(pg.getByRole('menu').getByRole('menuitem')).toHaveText(['Sweep next', 'Start server', 'Pin', 'Open on GitHub', 'Copy sweep command']);
   await btn.click();
   await expect(pg.getByRole('menu')).toHaveCount(1);
   await expect(pg.getByRole('menu')).toHaveAccessibleName('Actions for Xerilium/stack#106');
@@ -312,20 +316,20 @@ test('quick actions: one ⋯ menu per card, only what fits, keyboard, and the sa
   // Someone else's PR: review, and no Autopilot change.
   await pg.getByRole('tab', { name: /Waiting on me/ }).click();
   await card(pg, 102).getByRole('button', { name: /^Actions for/ }).click();
-  await expect(pg.getByRole('menu').getByRole('menuitem')).toHaveText(['Sweep next', 'Open on GitHub', 'Copy sweep command']);
+  await expect(pg.getByRole('menu').getByRole('menuitem')).toHaveText(['Sweep next', 'Start server', 'Pin', 'Open on GitHub', 'Copy sweep command']);
   await page.keyboard.press('Escape');
   // The details pane ends with the same actions.
   await pg.getByRole('tab', { name: /Processing/ }).click();
   await card(pg, 101).locator('.ui-card-open').click();
   const d = pg.getByTestId('prs-detail');
   await expect(d.getByRole('heading', { name: 'Quick actions' })).toBeVisible();
-  await expect(d.locator('.ui-bar').getByRole('button')).toHaveText(['Remove Autopilot', 'Copy sweep command']);
+  await expect(d.locator('.ui-bar').getByRole('button')).toHaveText(['Remove Autopilot', 'Start server', 'Unpin', 'Copy sweep command']);
   await expect(d.locator('.ui-bar').getByRole('link')).toHaveText(['Open on GitHub']);
   await d.locator('.ui-bar').getByRole('button', { name: 'Remove Autopilot' }).click();
   await expect.poll(() => posts.filter((p) => p.path === '/prs/label').map((p) => p.body).at(-1)).toEqual({ repo: 'Xerilium/stack', number: 101, op: 'remove' });
 });
 
-test('live check: Ask, Server with Copy, numbered Steps, Pass, Fail, As of; no file is Not actionable', async ({ page }, info) => {
+test('live check: Ask, Server with Copy, numbered Steps, Pass, Fail, As of; a Validate PR the owner cannot act on is no task', async ({ page }, info) => {
   const mobile = info.project.name === 'mobile';
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   const b = BOARD();
@@ -351,17 +355,74 @@ test('live check: Ask, Server with Copy, numbered Steps, Pass, Fail, As of; no f
   await card(pg, 106).locator('.ui-card-open').click();
   await expect(d.locator('.pr-check-ask')).toHaveText('Check the label copy');
   await expect(d.locator('.pr-check ol')).toHaveCount(0);
-  // Validate with no file: never a bare Validate.
+  // Validate with no file on a host that cannot start a server: no flag, not in the Summary, never the words Not actionable. @req FR:pr-page/check.none
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   const none = BOARD();
   delete (none.rows[0] as any).detail.check;
+  none.servers = false;
   await setup(page, { board: none });
   await page.reload();
   if (mobile && await d.getByRole('button', { name: 'Back' }).isVisible()) await d.getByRole('button', { name: 'Back' }).click();
   await pg.getByRole('tab', { name: /Summary/ }).click();
-  await expect(card(pg, 109).locator('.ui-flag')).toHaveText('Not actionable: no server/steps yet');
+  await expect(pg.locator('section.pr-sec').nth(0)).toContainText('None now.');
+  await expect(pg.locator('.pr-miss')).not.toContainText('Live check failed');
+  await pg.getByRole('tab', { name: /Pinned/ }).click();
+  await expect(card(pg, 109).locator('.ui-flag')).toHaveCount(0);
+  await expect(card(pg, 109)).not.toHaveClass(/strong/);
+  await expect(pg).not.toContainText('Not actionable');
   await card(pg, 109).locator('.ui-card-open').click();
-  await expect(d.getByRole('heading', { level: 3 })).toHaveText('Not actionable: no server/steps yet');
+  await expect(d.getByRole('heading', { level: 3 })).toHaveText('No action');
+  await expect(d.locator('.ui-server')).toHaveCount(0);
+});
+
+test('test server: Start server from the details, status while it starts, the local link, and Stop', async ({ page }, info) => {
+  const mobile = info.project.name === 'mobile';
+  let server: Record<string, unknown> | undefined;
+  const board = () => { const b = BOARD(); delete (b.rows[0] as any).detail.check; delete (b.rows[0] as any).detail.steps.serverUrl; if (server) (b.rows[0] as any).server = server; return b; };
+  const { posts, gets } = await setup(page, { board });
+  const pg = await openPage(page);
+  // No check file, but the host can start a server: Validate is a task. @req FR:pr-page/check.none
+  await expect(card(pg, 109).locator('.ui-flag')).toHaveText('Validate');
+  await card(pg, 109).locator('.ui-card-open').click();
+  const d = pg.getByTestId('prs-detail');
+  const s = d.locator('.ui-server');
+  await expect(s).toContainText('No test server runs.');
+  server = { state: 'starting', step: 'build', at: new Date().toISOString() };
+  await s.getByRole('button', { name: 'Start server' }).click();
+  await expect.poll(() => posts.filter((p) => p.path === '/prs/server').map((p) => p.body)).toEqual([{ repo: 'Xerilium/stack', number: 109, op: 'start' }]);
+  await expect(page.locator('.toasts')).toContainText('Starting a test server for Xerilium/stack#109');
+  await expect(s.locator('.ui-chip')).toHaveText('Starting');
+  await expect(s).toContainText('Building it');
+  await expect(s.getByRole('button', { name: 'Stop server' })).toBeVisible();
+  // While it starts, the board loads again by itself. @req FR:pr-page/server.poll
+  const before = gets.length;
+  server = { state: 'running', url: 'http://localhost:5199', at: new Date().toISOString() };
+  await expect.poll(() => gets.length, { timeout: 8000 }).toBeGreaterThan(before);
+  await expect(s.locator('.ui-chip')).toHaveText('Running');
+  const link = s.getByRole('link', { name: 'Open localhost:5199' });
+  await expect(link).toHaveAttribute('href', 'http://localhost:5199');
+  await expect(link).toHaveAttribute('target', '_blank');
+  await page.screenshot({ path: `e2e/screenshots/prs-server-${info.project.name}.png`, fullPage: true });
+  // Running: no more reloads.
+  const settled = gets.length;
+  await page.waitForTimeout(3500);
+  expect(gets.length).toBe(settled);
+  // The same actions in Quick actions and in the card menu.
+  await expect(d.locator('.ui-bar').getByRole('link', { name: 'Open test server' })).toHaveAttribute('href', 'http://localhost:5199');
+  await expect(d.locator('.ui-bar').getByRole('button', { name: 'Stop server' })).toBeVisible();
+  const { violations } = await new AxeBuilder({ page }).include('[data-testid="prs-detail"]').analyze();
+  expect(violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([]);
+  if (mobile) { const b = (await s.getByRole('button', { name: 'Stop server' }).boundingBox())!; expect(b.height).toBeGreaterThanOrEqual(44); }
+  server = undefined;
+  await s.getByRole('button', { name: 'Stop server' }).click();
+  await expect.poll(() => posts.filter((p) => p.path === '/prs/server').map((p) => p.body.op)).toEqual(['start', 'stop']);
+  await expect(s).toContainText('No test server runs.');
+  // A failed start says why and offers Start again.
+  server = { state: 'failed', error: 'No local clone of Xerilium/stack', at: new Date().toISOString() };
+  await pg.getByRole('button', { name: 'Refresh pull requests' }).click();
+  await expect(s.locator('.ui-chip')).toHaveText('Failed');
+  await expect(s).toContainText('No local clone of Xerilium/stack');
+  await expect(s.getByRole('button', { name: 'Start server' })).toBeVisible();
 });
 
 test('details: wide shows a pane on the right; narrow replaces the list with Back', async ({ page }, info) => {
@@ -445,13 +506,16 @@ test('Approve and Publish review: links only, findings when simple', async ({ pa
   await expect(d).toContainText('Use the short name');
 });
 
-test('Pin on every card; Pinned is sorted by drag and by keyboard', async ({ page }, info) => {
+test('Pin in the ⋯ menu; Pinned is sorted by drag and by keyboard', async ({ page }, info) => {
   const mobile = info.project.name === 'mobile';
   const { posts } = await setup(page);
   const pg = await openPage(page);
-  await card(pg, 1105).getByRole('button', { name: 'Pin allytehq/finops-hubs#1105' }).click();
+  await card(pg, 1105).getByRole('button', { name: 'Actions for allytehq/finops-hubs#1105' }).click();
+  await pg.getByRole('menuitem', { name: 'Pin', exact: true }).click();
+  await expect(page.locator('.toasts')).toContainText('Pinned allytehq/finops-hubs#1105');
   await expect.poll(() => posts.filter((p) => p.path === '/prs/queue').map((p) => p.body)).toEqual([{ repo: 'allytehq/finops-hubs', number: 1105, op: 'pin' }]);
-  await card(pg, 101).getByRole('button', { name: 'Unpin Xerilium/stack#101' }).click();
+  await card(pg, 101).getByRole('button', { name: 'Actions for Xerilium/stack#101' }).click();
+  await pg.getByRole('menuitem', { name: 'Unpin', exact: true }).click();
   await expect.poll(() => posts.filter((p) => p.path === '/prs/queue').length).toBe(2);
   expect(posts.filter((p) => p.path === '/prs/queue')[1].body).toEqual({ repo: 'Xerilium/stack', number: 101, op: 'unpin' });
   await pg.getByRole('tab', { name: /Pinned/ }).click();
