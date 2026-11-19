@@ -1,5 +1,6 @@
 /**
- * Needs you, top and bottom: the owner's Priorities (inline edit) and the Claude sessions that wait on him.
+ * The owner's Priorities (inline edit) and the Claude sessions that wait on him, each on its own page.
+ * @req FR:notifications/pris.route @req FR:notifications/sessions.route
  * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.expand @req FR:pris-sessions-ui/pris.edit
  * @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.archive
  * @req NFR:pris-sessions-ui/a11y.targets @req NFR:pris-sessions-ui/a11y.keys @req NFR:pris-sessions-ui/a11y.calm @req NFR:pris-sessions-ui/a11y.axe
@@ -109,8 +110,19 @@ function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /**
   );
 }
 
-/** @req FR:pris-sessions-ui/pris.block */
-export function PrisBlock({ ctl }: { ctl: PrisCtl }) {
+/**
+ * What a Priorities or Sessions page shows while its data is not ready: loading, failed, or not on this host.
+ * @req FR:notifications/pris.states
+ */
+export function PageNote({ phase, what }: { phase: 'loading' | 'ready' | 'absent' | 'error'; what: string }) {
+  if (phase === 'loading') return <p class="page-note" role="status" data-testid="page-note">Loading {what.toLowerCase()}…</p>;
+  if (phase === 'error') return <p class="page-note" role="alert" data-testid="page-note">Cannot load {what.toLowerCase()}. It tries again by itself.</p>;
+  if (phase === 'absent') return <p class="page-note" data-testid="page-note">{what} are not on this host.</p>;
+  return null;
+}
+
+/** `bare` drops the section heading: the page heading (`#page-h`) names it. @req FR:pris-sessions-ui/pris.block */
+export function PrisBlock({ ctl, bare = false }: { ctl: PrisCtl; bare?: boolean }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -118,8 +130,8 @@ export function PrisBlock({ ctl }: { ctl: PrisCtl }) {
   const { shown, more } = visiblePris(ctl.pris, showAll);
   const canAdd = ctl.pris.length < LIMITS.pris;
   return (
-    <section class="pris" data-testid="pris" aria-labelledby="pris-h">
-      <h2 class="pris-h" id="pris-h">Priorities</h2>
+    <section class="pris" data-testid="pris" aria-labelledby={bare ? 'page-h' : 'pris-h'}>
+      {!bare && <h2 class="pris-h" id="pris-h">Priorities</h2>}
       {ctl.pris.length === 0 && <p class="pris-empty">No priorities yet</p>}
       {shown.length > 0 && (
         <ol class="pri-list">
@@ -152,7 +164,7 @@ function SessionRow({ s, now }: { s: SessionItem; now: Date }) {
  * Sessions that wait on the owner or are stuck, by project, then archive candidates (copy ids only).
  * @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.archive
  */
-export function SessionsBlock({ ctl, toast }: { ctl: InventoryCtl; toast: (t: string, kind?: 'ok' | 'err') => void }) {
+export function SessionsBlock({ ctl, toast, label = 'Sessions' }: { ctl: InventoryCtl; toast: (t: string, kind?: 'ok' | 'err') => void; /** The list heading. */ label?: string }) {
   const [openArchive, setOpenArchive] = useState(false);
   const inv = ctl.inv;
   const now = new Date();
@@ -172,9 +184,11 @@ export function SessionsBlock({ ctl, toast }: { ctl: InventoryCtl; toast: (t: st
   return (
     <>
       {announce}
+      {/* @req FR:pris-sessions-ui/sessions.empty */}
+      {ctl.phase === 'ready' && groups.length === 0 && inv.archive.length === 0 && <p class="sessions-empty" data-testid="sessions-empty">No sessions wait on you.</p>}
       {groups.length > 0 && (
         <section class="sessions-need" data-testid="sessions" aria-labelledby="sessions-h">
-          <h2 class="sessions-h" id="sessions-h">Sessions <span class="count" aria-label={`${inv.needsYou.length} need you`}>{inv.needsYou.length}</span></h2>
+          <h2 class="sessions-h" id="sessions-h">{label} <span class="count" aria-label={`${inv.needsYou.length} need you`}>{inv.needsYou.length}</span></h2>
           {groups.map((g) => (
             <div class="s-group" key={g.project}>
               <h3 class="s-proj">{g.label}</h3>

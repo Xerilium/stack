@@ -100,7 +100,7 @@ Owner needs plain steps on the iPhone so that Stack lands on the Home Screen and
 - **FR:install.gesture** (P1): `Notification.requestPermission` MUST be called only from the `Turn on notifications` click. Rendering, focus and reloads MUST NOT call it
 - **FR:install.subscribe** (P1): After `granted`, the page gets the key (`GET /api/auth/devices/me/push-key`), calls `pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })`, and saves it (`PUT /api/auth/devices/me/push`) with the device token. `denied` shows `Blocked: allow notifications for Stack in Settings > Notifications`; no subscribe
 - **FR:install.pair** (P2): `/#/install?device=<token>` stores the token in browser storage under `stack.device` and replaces the hash with `#/install` at once. The token goes only to `/api/auth/devices/me/*`. Without a token the enable step says `Pair this phone first` and stays disabled
-- **FR:install.sw** (P1): The service worker shows each `push` as a notification (title from the payload, tag = ask key, data url `/#/asks`), so iOS never sees a silent push. A malformed payload shows `Stack: an ask is due soon`
+- **FR:install.sw** (P1): The service worker shows each `push` as a notification (title from the payload, tag = ask key, data url `/#/notifications`), so iOS never sees a silent push. A malformed payload shows `Stack: an ask is due soon`
 
 ### FR:queue: Offline answers (P3, design)
 

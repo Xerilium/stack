@@ -47,7 +47,7 @@ describe('service worker push', () => {
   it('shows the payload title, tagged by ask key, opening the asks view', async () => {
     shown.length = 0;
     await fire({ json: () => ({ key: 'deploy-ok', title: 'Approve deploy' }) });
-    expect(shown).toEqual([{ title: 'Approve deploy', opts: expect.objectContaining({ tag: 'deploy-ok', data: { url: '/#/asks' }, icon: '/icons/icon-192.png' }) }]);
+    expect(shown).toEqual([{ title: 'Approve deploy', opts: expect.objectContaining({ tag: 'deploy-ok', data: { url: '/#/notifications' }, icon: '/icons/icon-192.png' }) }]);
   });
   it('never stays silent on a bad payload', async () => {
     shown.length = 0;

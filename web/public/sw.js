@@ -65,7 +65,7 @@ self.addEventListener('message', (event) => {
 });
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/#/asks';
+  const url = (event.notification.data && event.notification.data.url) || '/#/notifications';
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
     const win = list.find((c) => new URL(c.url).origin === self.location.origin);
     if (win) return win.navigate(url).then((w) => (w || win).focus());
@@ -78,5 +78,5 @@ self.addEventListener('push', (event) => {
   try { p = event.data ? event.data.json() : null; } catch { p = null; }
   const title = p && typeof p.title === 'string' && p.title ? p.title : 'Stack: an ask is due soon';
   const tag = p && typeof p.key === 'string' && p.key ? p.key : 'stack-asks';
-  event.waitUntil(self.registration.showNotification(title, { tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url: '/#/asks' } }));
+  event.waitUntil(self.registration.showNotification(title, { tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url: '/#/notifications' } }));
 });

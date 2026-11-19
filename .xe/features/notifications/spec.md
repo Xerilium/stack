@@ -1,0 +1,59 @@
+---
+id: notifications
+title: Notifications
+author: flanakin
+description: "Needs you becomes Notifications: a bell nav item with a count and one page of only the things that need action. Priorities gets its own page; Sessions moves to More."
+dependencies:
+  [product-reset, ux-consolidation, ask-queue, pris-sessions-ui, web-shell]
+---
+
+<!-- markdownlint-disable single-title -->
+
+# Feature: Notifications
+
+## Purpose
+
+Needs you mixes three things: Priorities, the asks, and the Claude session inventory (issue [152](https://github.com/Xerilium/stack/issues/152), section B). The owner wants one list of things that ask him to act, with a count he sees from anywhere. Priorities stays, on its own page. Sessions stays, behind More.
+
+This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:product-reset/ia.notifications` on the current ask list. Stage 9 of `product-reset` later adds the `AskCard` brief and the mail, needs-context, and stale items. Where this spec and `pris-sessions-ui`, `ux-consolidation`, or `web-shell` disagree on placement, this spec wins. Behavior inside the moved blocks does not change.
+
+## Scenarios
+
+### FR:list: The Notifications page
+
+- **FR:list.route** (P1): `#/notifications` opens the page, heading `Notifications`. Old `#/asks` and `#/needs` open it, and the address becomes `#/notifications` (`FR:product-reset/ia.removed`). `g k` opens it. The palette says `Go to Notifications`
+- **FR:list.what** (P1): The page shows only things that need the owner to act, as one ranked list: agent asks, Chief of Staff escalations, and 🙋 decision rows (`FR:web-shell/state.needs`). An expired sign-in (`FR:web-shell/state.live`, state `signin`) shows first as the notification `Sign-in expired` with `Sign in`
+- **FR:list.not** (P1): The page has no Priorities block and no Sessions or Archive candidates lists
+- **FR:list.actions** (P1): Each notification keeps its direct actions, keys, defer, reply, and Undo (`FR:ask-queue/web.actions`)
+- **FR:list.empty** (P1): With nothing open: `You're all caught up.` and one muted line that says what was checked. No red
+- **FR:list.words** (P1): Owner-facing text that named Needs you names Notifications (`{n} more in Notifications`, `Open in Notifications`)
+
+### FR:bell: The Notifications nav item
+
+- **FR:bell.item** (P1): Notifications is a nav item in the desktop rail and the phone tab bar (`FR:nav.rail`, `FR:nav.tabbar`). It shows a bell icon and the label `Notifications`
+- **FR:bell.count** (P1): The item shows a count badge with the number of open notifications (`FR:list.what`), the expired sign-in included. The badge is absent at 0. The accessible name includes the count (`Notifications, 3 open`)
+
+### FR:pris: Priorities page
+
+- **FR:pris.route** (P1): `#/priorities` opens the page, heading `Priorities`, with the Priorities block of `FR:pris-sessions-ui/pris.block`. Its behavior does not change (expand, inline edit, save, conflict, live re-read). The palette says `Go to Priorities`
+
+- **FR:pris.states** (P1): While its data loads, the Priorities or Sessions page says `Loading priorities…` or `Loading sessions…`. A failed read says `Cannot load priorities.` (or sessions) and that it tries again by itself. A host without the store says `Priorities are not on this host.` (or Sessions)
+
+### FR:sessions: Sessions in More
+
+- **FR:sessions.route** (P1): `#/inventory` opens the Sessions page, heading `Sessions`, with the Sessions and Archive candidates lists of `FR:pris-sessions-ui/sessions.*`. Their behavior does not change. The Agents view keeps `#/agents`, and its old address `#/sessions` still opens Agents
+- **FR:sessions.more** (P1): Sessions is not a rail item or a tab. It is in More: the palette (`Go to Sessions`), which the phone `More` tab and the rail `Commands` item open
+
+### FR:nav: Nav order
+
+- **FR:nav.rail** (P1): The desktop rail: New task, Now, My day, Notifications, Priorities, Pull requests, Inbox, Agents, Projects, Full stack. Settings, Commands, and Shortcuts stay at the bottom. `product-reset` Stage 6 replaces Inbox, Projects, and Full stack
+- **FR:nav.tabbar** (P1): The phone tab bar: Now, My day, New task (centre), Notifications, More (`FR:product-reset/ia.nav`). More holds Priorities, Pull requests, Inbox, Agents, Projects, Full stack, and Sessions
+
+## Non-functional
+
+- **NFR:a11y.axe** (P1): Notifications, Priorities, and Sessions have no axe violations (WCAG 2.2 AA) at 375 px and 1280 px
+- **NFR:calm** (P1): The count badge uses the accent color, never red
+
+## Dependencies
+
+product-reset (IA target), ux-consolidation (nav), ask-queue (answers), pris-sessions-ui (Priorities and Sessions blocks), web-shell (rail, tab bar, palette, live status).

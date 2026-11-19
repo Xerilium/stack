@@ -5,9 +5,14 @@ import type { Task, View } from './types';
 export interface Filters { q: string; project: string; state: 'open' | 'done' | 'all'; status: string; priority: string; effort: string }
 
 export const NO_FILTERS: Filters = { q: '', project: '', state: 'open', status: '', priority: '', effort: '' };
-export const VIEWS: View[] = ['now', 'home', 'asks', 'prs', 'inbox', 'sessions', 'today', 'projects', 'list', 'settings'];
-/** Old view names still open their view; Brief folded into Now. @req FR:web-shell/nav.views @req FR:ux-consolidation/nav.brief */
-export const ALIAS: Record<string, View> = { next: 'home', focus: 'home', brief: 'now', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions' };
+export const VIEWS: View[] = ['now', 'home', 'asks', 'priorities', 'prs', 'inbox', 'sessions', 'inventory', 'today', 'projects', 'list', 'settings'];
+/**
+ * Old view names still open their view; Brief folded into Now; Needs you is Notifications; `#/inventory` is the Sessions page (`#/sessions` stays Agents).
+ * @req FR:web-shell/nav.views @req FR:ux-consolidation/nav.brief @req FR:notifications/list.route @req FR:notifications/sessions.route
+ */
+export const ALIAS: Record<string, View> = { next: 'home', focus: 'home', brief: 'now', capacity: 'projects', all: 'list', stack: 'list', agents: 'sessions', notifications: 'asks', needs: 'asks' };
+/** The address of a view, where it differs from its id. */
+const SLUG: Partial<Record<View, string>> = { sessions: 'agents', asks: 'notifications' };
 const STATES = ['open', 'done', 'all'];
 const KEYS = ['q', 'project', 'state', 'status', 'priority', 'effort'] as const;
 
@@ -29,7 +34,7 @@ export function buildHash(view: View, f: Filters): string {
   const p = new URLSearchParams();
   for (const k of KEYS) if (f[k] !== NO_FILTERS[k]) p.set(k, f[k]);
   const qs = p.toString();
-  return `#/${view === 'sessions' ? 'agents' : view}${qs ? `?${qs}` : ''}`; // the Agents view keeps its old id
+  return `#/${SLUG[view] ?? view}${qs ? `?${qs}` : ''}`;
 }
 
 /** An unknown or empty hash opens Now, the one place. `#/settings/<section>` opens Settings. @req FR:ux-consolidation/one.start @req FR:web-shell/nav.views @req FR:settings/view.route */
@@ -47,4 +52,9 @@ export function parseHash(hash: string): { view: View; filters: Filters } {
     }
   }
   return { view, filters };
+}
+
+/** The new address for an old Needs you address (`#/asks`, `#/needs`), else null. @req FR:notifications/list.route @req FR:product-reset/ia.removed */
+export function redirectHash(hash: string): string | null {
+  return /^#\/(asks|needs)(\?.*)?$/.test(hash) ? buildHash('asks', NO_FILTERS) : null;
 }

@@ -43,7 +43,7 @@ test('desktop app: one click captures, files, and links the issue', async ({ pag
   await expect(panel.getByText('Filed')).toBeVisible();
   await expect(panel.getByRole('link', { name: /issues\/999/ })).toBeFocused();
   await expect(panel.getByRole('link', { name: /issues\/999/ })).toHaveAttribute('href', 'https://github.com/Xerilium/stack/issues/999');
-  expect(posts).toEqual([expect.objectContaining({ route: '/#/asks', shot: 'a'.repeat(24) })]);
+  expect(posts).toEqual([expect.objectContaining({ route: '/#/notifications', shot: 'a'.repeat(24) })]);
   expect(captures).toEqual([0]);
   expect(posts[0].png).toBeUndefined();
 });

@@ -17,7 +17,7 @@ test.describe('layout and nav', () => {
     await expect(page.getByTestId('now')).toBeVisible();
     if (info.project.name === 'mobile') {
       const tabs = page.locator('.tabbar .tab');
-      await expect(tabs).toHaveText(['Now', 'My day', '', 'Needs you2', 'More']); // @req FR:ux-consolidation/nav.tabbar
+      await expect(tabs).toHaveText(['Now', 'My day', '', 'Notifications2', 'More']); // @req FR:ux-consolidation/nav.tabbar
       await expect(page.locator('.tabbar').getByRole('button', { name: 'New task' })).toBeVisible();
       // the + sits in the middle of its circle (optical centering, not just box centering)
       const fab = await center(page, '.tabbar .fab');
@@ -31,7 +31,7 @@ test.describe('layout and nav', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     } else {
       // @req FR:ux-consolidation/nav.rail @req FR:ux-consolidation/nav.brief
-      await expect(page.locator('.rail .tab:not(.add)').filter({ hasNotText: /Commands|Shortcuts|Settings/ })).toHaveText(['Now', 'My day', 'Needs you2', 'Inbox', 'Agents', 'Projects', 'Full stack']);
+      await expect(page.locator('.rail .tab:not(.add)').filter({ hasNotText: /Commands|Shortcuts|Settings/ })).toHaveText(['Now', 'My day', 'Notifications2', 'Priorities', 'Inbox', 'Agents', 'Projects', 'Full stack']);
       await expect(page.locator('.rail .exp')).toHaveCount(0);
       await expect(page.locator('.tabbar')).toBeHidden();
       const main = (await page.locator('.main').boundingBox())!;
@@ -64,7 +64,7 @@ test.describe('layout and nav', () => {
     const chord = async (k: string, re: RegExp) => { await page.keyboard.press('g'); await page.keyboard.press(k); await expect(page).toHaveURL(re); };
     await chord('h', /#\/home/);
     await chord('d', /#\/today/);
-    await chord('k', /#\/asks/);
+    await chord('k', /#\/notifications/);
     await chord('p', /#\/projects/);
     await chord('a', /#\/list/);
     await chord('t', /#\/today/);
@@ -107,7 +107,7 @@ test.describe('honest states', () => {
     await expect(card.locator('.ask-title')).toHaveText('Pick the ADU path');
     await expect(card).toContainText('Studio Shed quote');
     await expect(page.getByTestId('asks-empty')).toHaveCount(0);
-    await expect(page.locator('.rail, .tabbar').getByRole('button', { name: /Needs you/ }).first()).toContainText('2');
+    await expect(page.locator('.rail, .tabbar').getByRole('button', { name: /Notifications/ }).first()).toContainText('2');
     await card.getByRole('button', { name: 'Approve: Studio Shed quote' }).click();
     await expect.poll(() => m.calls.at(-1)).toMatchObject({ path: '/inbox', body: { ref: 'alpha:20', kind: 'decision', expect: '🙋 Pick the ADU path' } });
     // a 🙋 row with no recommendation wants an answer; Details opens the row itself

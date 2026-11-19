@@ -1,6 +1,7 @@
 /**
  * Now's `Waiting on you`: the top asks as cards. The body expands the card in place with the ask's context and every
- * response it supports; answers go through the same calls as Needs you (toast and Undo).
+ * response it supports; answers go through the same calls as Notifications (toast and Undo).
+ * @req FR:notifications/list.words
  * @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.expand @req FR:ux-consolidation/one.answer
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -92,7 +93,7 @@ function Card({ a, i, open, panel, ctl, onToggle, onPanel }: { a: AskItem; i: nu
               <p class="now-ask-hint" id={`${id}-hint`}>End with ? to ask a question; anything else is an instruction.</p>
             </form>
           )}
-          <button type="button" class="now-ask-needs" onClick={() => ctl.openInNeeds(a)}>Open in Needs you</button>
+          <button type="button" class="now-ask-needs" onClick={() => ctl.openInNeeds(a)}>Open in Notifications</button>
         </div>
       )}
     </li>
@@ -116,7 +117,7 @@ export function NowAsks({ rows, more, ctl, onOpenAsks }: { rows: AskItem[]; more
           ))}
         </ul>
       )}
-      {more > 0 && <button type="button" class="now-more" onClick={onOpenAsks}>{more} more in Needs you <span aria-hidden="true">→</span></button>}
+      {more > 0 && <button type="button" class="now-more" onClick={onOpenAsks}>{more} more in Notifications <span aria-hidden="true">→</span></button>}
     </>
   );
 }

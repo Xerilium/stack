@@ -126,7 +126,7 @@ test.describe('Sessions', () => {
   test('a needs-you session points to Asks', async ({ page }) => {
     await open(page);
     await page.locator('.sess-row').nth(0).click();
-    await expect(drawer(page).getByRole('link', { name: 'Answer in Asks' })).toHaveAttribute('href', '#/asks');
+    await expect(drawer(page).getByRole('link', { name: 'Answer in Notifications' })).toHaveAttribute('href', '#/notifications');
   });
 
   test('Usage (c) shows the last days with token bars, per-project totals, the model line, and one list-price line', async ({ page }, info) => {

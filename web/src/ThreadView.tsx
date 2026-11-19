@@ -22,7 +22,7 @@ function AskEntry({ a, th }: { a: AskItem; th: ThreadCtl }) {
       {a.state === 'open' ? (
         <div class="th-actions">
           {actions.map((x) => <button type="button" key={x.id} class={`btn${x.primary ? ' primary' : ''}`} onClick={(e) => { e.stopPropagation(); void th.answer(a.key, x.send!, `Sent to ${a.from}`); }}>{x.label}</button>)}
-          <a href="#/asks" class={`btn${actions.length ? ' quiet' : ''}`} onClick={(e) => e.stopPropagation()}>Reply in Asks</a>
+          <a href="#/notifications" class={`btn${actions.length ? ' quiet' : ''}`} onClick={(e) => e.stopPropagation()}>Reply in Notifications</a>
         </div>
       ) : <p class="th-state">{ANSWERED[a.answer ?? ''] ?? 'Answered'}{a.text ? `: ${a.text}` : ''}</p>}
     </div>
@@ -61,7 +61,7 @@ export function ThreadView({ t, th, team, now, focus = false }: { t: Task; th: T
       {th.phase === 'ready' && items.length === 0 && <p class="th-note">No messages yet.</p>}
       {/* One live line announces the newest agent reply (not the owner's own words or state flips). @req FR:agent-thread/web.a11y */}
       <p class="sr-only" role="status" aria-live="polite">{announce ? `${name(announce.agent)}: ${announce.text}` : ''}</p>
-      {running && th.thread.session && <p class="th-note live" role="status"><span class="dot" aria-hidden="true" />{th.thread.session.state === 'needs-you' ? 'Waiting for you in Asks' : 'Working…'} · <button type="button" class="link" onClick={() => team.openSessionId(th.thread.session!.id)}>Open the session</button></p>}
+      {running && th.thread.session && <p class="th-note live" role="status"><span class="dot" aria-hidden="true" />{th.thread.session.state === 'needs-you' ? 'Waiting for you in Notifications' : 'Working…'} · <button type="button" class="link" onClick={() => team.openSessionId(th.thread.session!.id)}>Open the session</button></p>}
       {/* @req FR:task-detail-design/compose.to */}
       <Composer agents={agents} offline={team.enabled !== true} busy={th.busy} autoFocus={focus}
         onAsk={(text, agent) => th.ask(text, agent)} onDo={(text, agent) => th.assign(agent, false, text)} />

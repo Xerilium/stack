@@ -65,3 +65,8 @@ a.session-row:hover { background: var(--hover); }
   .pri-panel { padding-left: 8px; }
   .pri-side { gap: 6px; }
 }
+/* Priorities and Sessions pages. @req FR:notifications/pris.route @req FR:notifications/sessions.route */
+.page-view { max-width: 720px; }
+.sessions-empty { margin: 8px 0; color: var(--muted); }
+.nav-bell { flex: none; }
+.page-note { margin: 8px 0; color: var(--muted); }
