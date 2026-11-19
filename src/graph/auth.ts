@@ -192,12 +192,17 @@ export function cachePathsWith(dir: string, explicit?: string): string[] {
 const isDir = (p: string): boolean => { try { return statSync(p).isDirectory(); } catch { return false; } };
 /**
  * True when the folder of `path` or a parent is a Stack task repo, which a token must never enter:
- * it holds `.xe/config/stack.json`, or it is a git work tree with a `tasks/` folder.
+ * it holds `.xe/config/stack.json`, or it has a `tasks/` folder at or below a git work tree root.
  * A plain `tasks/` folder (in the home or temp folder) is not a repo: nothing there can be committed.
+ * Looser than `isStackDir` (src/cli/discover.ts) on purpose: a false match only blocks sign-in; a miss can commit a token.
+ * @req FR:graph-signin/cache.file.repo
  */
 function inTaskRepo(path: string): boolean {
+  let sawTasks = false;
   for (let d = dirname(resolve(path)); ; d = dirname(d)) {
-    if (existsSync(join(d, '.xe/config/stack.json')) || (existsSync(join(d, '.git')) && isDir(join(d, 'tasks')))) return true;
+    if (existsSync(join(d, '.xe/config/stack.json'))) return true;
+    sawTasks ||= isDir(join(d, 'tasks'));
+    if (sawTasks && existsSync(join(d, '.git'))) return true;
     if (dirname(d) === d) return false;
   }
 }

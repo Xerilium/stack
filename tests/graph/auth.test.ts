@@ -112,6 +112,7 @@ describe('token cache file', () => {
     await c.clear();
     expect(await c.read()).toBeNull();
   });
+  // @req FR:graph-signin/cache.file.repo
   it('refuses a path inside a Stack task repo', () => {
     // A git work tree with tasks/.
     const repo = tmp();
@@ -119,6 +120,16 @@ describe('token cache file', () => {
     mkdirSync(join(repo, 'tasks'));
     expect(() => new FileTokenCache(join(repo, 'graph-token.json'))).toThrow(/task repo/);
     expect(() => new FileTokenCache(join(repo, 'nested', 'deeper', 'graph-token.json'))).toThrow(/task repo/);
+    // A git worktree: .git is a file.
+    const wt = tmp();
+    writeFileSync(join(wt, '.git'), 'gitdir: /elsewhere\n');
+    mkdirSync(join(wt, 'tasks'));
+    expect(() => new FileTokenCache(join(wt, 'graph-token.json'))).toThrow(/task repo/);
+    // A Stack folder in a subfolder of a git repo (a monorepo): tasks/ below the .git folder.
+    const mono = tmp();
+    mkdirSync(join(mono, '.git'));
+    mkdirSync(join(mono, 'todo', 'tasks'), { recursive: true });
+    expect(() => new FileTokenCache(join(mono, 'todo', 'graph-token.json'))).toThrow(/task repo/);
     // A folder with the Stack config (`stack init`), also before its first task file.
     const fresh = tmp();
     mkdirSync(join(fresh, '.xe', 'config'), { recursive: true });
