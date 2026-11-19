@@ -1,7 +1,7 @@
 /**
  * The shared message composer: who (avatar chips, owner first, others behind `+ Other agent`), what, and Ask | Do it.
  * @req FR:task-detail-design/compose.to @req FR:task-detail-design/compose.text @req FR:task-detail-design/compose.mode
- * @req FR:task-detail-design/compose.doit @req FR:task-detail-design/compose.nokeep @req FR:task-detail-design/a11y.names
+ * @req FR:task-detail-design/compose.doit @req FR:task-detail-design/compose.nokeep @req FR:task-detail-design/compose.draft @req FR:task-detail-design/a11y.names
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Avatar } from './AgentAvatar';
@@ -58,7 +58,9 @@ export function Composer({ agents, offline, busy: outer = false, autoFocus = fal
   const send = async () => {
     if (!canSend || !chosen) return;
     setBusy(true);
-    try { if (await (mode === 'ask' ? onAsk(text.trim(), chosen.slug) : onDo(text.trim(), chosen.slug))) setText(''); } finally { setBusy(false); }
+    const sent = text;
+    // Clear only what was sent: text typed while the send was in flight stays. @req FR:task-detail-design/compose.draft
+    try { if (await (mode === 'ask' ? onAsk(sent.trim(), chosen.slug) : onDo(sent.trim(), chosen.slug))) setText((cur) => (cur === sent ? '' : cur)); } finally { setBusy(false); }
   };
   const pick = (slug: string) => { setTo(slug); setShown((s) => (s.includes(slug) ? s : [...s, slug])); setPicking(false); setTimeout(() => box.current?.focus(), 0); };
   const seg = (m: Mode) => ({
