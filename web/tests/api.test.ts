@@ -44,6 +44,7 @@ describe('api client', () => {
     expect(JSON.parse(calls[0].init.body as string)).toEqual({ ref: 'a:1', priority: '‼️' });
     expect(calls[0].init.credentials).toBe('same-origin');
   });
+  // @req FR:web-app/api.client.errors
   it('turns error bodies into ApiFailure', async () => {
     const { client } = rec(() => res(422, { error: { code: 'invalid', message: 'Bad' } }));
     await expect(client.capture('x')).rejects.toMatchObject({ status: 422, code: 'invalid', message: 'Bad' });
@@ -125,6 +126,7 @@ describe('api client: QM plan and live lane', () => {
     expect(calls.map((c) => c.url)).toEqual(['/api/qm', '/api/live', '/api/live/items']);
     expect(JSON.parse(String(calls[2].init.body))).toEqual({ op: 'check', repo: 'o/r', number: 1, id: 'li-00000001' });
   });
+  // @req FR:web-app/api.client.errors
   it('a 502 text/html body rejects with ApiFailure 502, not SyntaxError', async () => {
     for (const read of [(c: ReturnType<typeof createClient>) => c.qm(), (c: ReturnType<typeof createClient>) => c.live()]) {
       const err = await read(rec(() => html()).client).catch((e: unknown) => e);
@@ -132,6 +134,7 @@ describe('api client: QM plan and live lane', () => {
       expect((err as ApiFailure).status).toBe(502);
     }
   });
+  // @req FR:web-app/api.client.errors
   it('a rejected fetch gives ApiFailure network with the unreachable text', async () => {
     const client = createClient((async () => { throw new TypeError('Failed to fetch'); }) as typeof fetch);
     for (const p of [client.qm(), client.live()]) {
