@@ -111,7 +111,7 @@ test.describe('notifications', () => {
     await page.addInitScript(() => { delete (window as unknown as { Notification?: unknown }).Notification; });
     await mockApi(page);
     await page.goto('/#/asks');
-    await expect(page.getByRole('heading', { name: /Needs you/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Notifications/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Notify me|Notifications on/ })).toHaveCount(0);
   });
 });

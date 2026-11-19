@@ -752,7 +752,7 @@ test.describe('feedback and mobile', () => {
     } else {
       await expect(page.locator('.rail')).toBeVisible();
       await expect(page.locator('.tabbar')).toBeHidden();
-      for (const name of ['Now', 'My day', 'Needs you', 'Projects', 'Full stack']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible(); // @req FR:ux-consolidation/nav.rail
+      for (const name of ['Now', 'My day', 'Notifications', 'Priorities', 'Projects', 'Full stack']) await expect(page.locator('.rail').getByRole('button', { name: new RegExp(name) })).toBeVisible(); // @req FR:ux-consolidation/nav.rail
     }
   });
 
@@ -1144,7 +1144,7 @@ test.describe('today view', () => {
     await expect(email.locator('.when')).toContainText('20m');
     await expect(page.locator('[data-testid="plan"] .block').first().locator('.when')).toContainText('10:20a');
     await email.getByRole('button', { name: /Email · 4 asks/ }).click();
-    await expect(page).toHaveURL(/#\/asks/);
+    await expect(page).toHaveURL(/#\/notifications/);
   });
 
   test('g t / g h / g p / g a move between views', async ({ page }, info) => {

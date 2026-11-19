@@ -174,11 +174,27 @@ export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; 
 /** AI on the ask card: the agent chip in the eyebrow, the composer under the ask, `a` to open it. @req FR:agent-team/web.anything */
 export interface TalkSlot { chip: (a: AskItem) => ComponentChildren; render: (a: AskItem) => ComponentChildren; open: (a: AskItem) => void; isOpen: () => boolean; close: () => void }
 
+/** An expired sign-in is a notification of its own, first in the list. @req FR:notifications/list.what */
+function SignInNotice({ onSignIn }: { onSignIn?: () => void }) {
+  return (
+    <ol class="asks" aria-label="Sign-in">
+      <li class="ask-li" data-key="signin" data-testid="signin-notice">
+        <article class="ask-card" aria-label="Sign-in expired">
+          <h2 class="ask-title">Sign-in expired</h2>
+          <p class="ask-why">Stack cannot read new asks until you sign in again.</p>
+          <div class="ask-actions"><button type="button" class="btn primary" onClick={onSignIn ?? (() => location.assign('/.auth/login/github'))}>Sign in</button></div>
+        </article>
+      </li>
+    </ol>
+  );
+}
+
 /**
- * `top` draws above the heading (Priorities); `after` under the asks (Sessions); `extraCount` items there keep the empty state away.
- * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.empty
+ * Notifications: only the things that need the owner to act. No Priorities, no Sessions.
+ * @req FR:notifications/list.what @req FR:notifications/list.not @req FR:notifications/list.actions @req FR:notifications/list.empty
  */
-export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, after, extraCount = 0 }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void; talk?: TalkSlot; top?: ComponentChildren; after?: ComponentChildren; extraCount?: number }) {
+export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void; talk?: TalkSlot }) {
+  const signin = asks.status === 'signin';
   const { items, cursor } = asks;
   const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
   const [openSent, setOpenSent] = useState(false);
@@ -254,10 +270,9 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, a
   const ghosts = asks.leaving.filter((g) => !leavingKeys.has(g.key));
 
   return (
-    <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Asks">
-      {top}
+    <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Notifications">
       <header class="asks-head">
-        <h1 class="h1">Needs you{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
+        <h1 class="h1">Notifications{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
         <LiveBadge a={asks} unreachable={unreachable} onSignIn={onSignIn} />
         {notify?.supported && (
           <button type="button" class={`notify-btn${notify.on ? ' on' : ''}${notify.blocked && !notify.on ? ' blocked' : ''}`} aria-pressed={notify.on} aria-label={notify.blocked && !notify.on ? 'Notifications blocked' : notify.on ? 'Notifications on' : 'Notify me'} title={notify.blocked && !notify.on ? blockedHelp() : notify.on ? 'Notifications are on: tap to turn off' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>
@@ -276,10 +291,11 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, a
        * The empty state says what was checked.
        * @req FR:web-shell/state.needs.empty
        */}
-      {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && extraCount === 0 && (
+      {signin && <SignInNotice onSignIn={onSignIn} />}
+      {asks.phase === 'ready' && items.length === 0 && ghosts.length === 0 && !signin && (
         <div class="asks-empty" data-testid="asks-empty">
           <div class="tick-art">{Icon.check}</div>
-          <p class="big">Nothing needs you.</p>
+          <p class="big">You're all caught up.</p>
           <p class="sub">No open asks, decisions, or replies · {asks.latest ? `last agent update ${freshness(asks.latest, asks.now)}` : 'no agent has written an ask yet'}</p>
         </div>
       )}
@@ -290,7 +306,6 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk, top, a
         </ol>
       )}
       {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more <kbd aria-hidden="true">m</kbd></button>}
-      {after}
       {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · a agent · u undo</p>}
       {(asks.sent.length > 0 || asks.snoozed.length > 0) && (
         <footer class="asks-foot">

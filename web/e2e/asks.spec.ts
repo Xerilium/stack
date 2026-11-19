@@ -1,4 +1,4 @@
-/** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/web.keys @req FR:ask-queue/web.a11y @req FR:ask-queue/web.responsive @req FR:ask-queue/live.fallback */
+/** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:notifications/list.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/web.keys @req FR:ask-queue/web.a11y @req FR:ask-queue/web.responsive @req FR:ask-queue/live.fallback */
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi, type Mock, type MockAsk } from './mock';
 
@@ -199,7 +199,7 @@ test.describe('Asks', () => {
 
   test('empty state', async ({ page }) => {
     await open(page, []);
-    await expect(page.getByTestId('asks-empty')).toContainText('Nothing needs you.');
+    await expect(page.getByTestId('asks-empty')).toContainText("You're all caught up.");
     await expect(page.getByTestId('asks-empty')).toContainText('No open asks, decisions, or replies · no agent has written an ask yet');
     await expect(page).toHaveTitle('Stack');
   });

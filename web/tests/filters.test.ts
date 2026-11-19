@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFilters, buildHash, parseHash, type Filters } from '../src/filters';
+import { applyFilters, buildHash, parseHash, redirectHash, type Filters } from '../src/filters';
 import type { Task } from '../src/types';
 
 const T = (ref: string, text: string, project = 'alpha', done = false): Task => ({ ref, text, project, section: 'Active', done, depth: 0, notes: [] });
@@ -40,12 +40,28 @@ describe('hash state', () => {
     expect(buildHash('home', F())).toBe('#/home');
     expect(parseHash('')).toEqual({ view: 'now', filters: F() });
     expect(parseHash('#/today')).toEqual({ view: 'today', filters: F() });
-    expect(parseHash('#/sessions')).toEqual({ view: 'sessions', filters: F() });
     expect(parseHash('#/agents').view).toBe('sessions');
     // @req FR:pr-page/nav.page
     expect(parseHash('#/prs')).toEqual({ view: 'prs', filters: F() });
     expect(parseHash('#/nope?state=bogus')).toEqual({ view: 'now', filters: F() });
     expect(parseHash('#/list?state=done').filters.state).toBe('done');
+  });
+  // @req FR:notifications/list.route @req FR:notifications/pris.route @req FR:notifications/sessions.route
+  it('Notifications, Priorities, and Sessions have their own addresses; old Needs you addresses open Notifications', () => {
+    expect(parseHash('#/notifications').view).toBe('asks');
+    expect(parseHash('#/asks').view).toBe('asks');
+    expect(parseHash('#/needs').view).toBe('asks');
+    expect(buildHash('asks', F())).toBe('#/notifications');
+    expect(parseHash('#/priorities').view).toBe('priorities');
+    expect(buildHash('priorities', F())).toBe('#/priorities');
+    expect(parseHash('#/inventory').view).toBe('inventory');
+    expect(buildHash('inventory', F())).toBe('#/inventory');
+    expect(parseHash('#/sessions').view).toBe('sessions'); // Agents keeps its old address
+    expect(buildHash('sessions', F())).toBe('#/agents');
+    expect(redirectHash('#/asks')).toBe('#/notifications');
+    expect(redirectHash('#/needs')).toBe('#/notifications');
+    expect(redirectHash('#/notifications')).toBeNull();
+    expect(redirectHash('#/sessions')).toBeNull();
   });
   // @req FR:ux-consolidation/one.start @req FR:ux-consolidation/nav.brief @req FR:ux-consolidation/nav.home
   it('Now is the start; old view names still open their view; Brief opens Now', () => {
