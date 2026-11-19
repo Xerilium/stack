@@ -53,7 +53,7 @@ const hrefOf = (link: string) => { const m = /^claude:\/\/claude\.ai\/epitaxy\/(
 /** Session, else agent file, else the gap marker. @req FR:priorities-tables/cli.links */
 const agentText = (a: { name: string; link: string | null; file?: string | null } | null) => (!a ? '--' : a.link ? `[${cell(a.name)}](${hrefOf(a.link)})` : a.file ? `[${cell(a.name)}](${a.file})` : `${cell(a.name)} ${NO_LINK}`);
 const projectText = (r: PriRow) => (r.file ? `[${cell(r.project)}](${r.file})` : `${cell(r.project)} ${NO_LINK}`);
-const priLine = (r: PriRow) => `| ${projectText(r)} | ${agentText(r.agent)} | ${r.status ? STATUS_TEXT[r.status] : '--'} | ${r.gap ? 'Gap: ' : ''}${cell(r.action)} |`;
+const priLine = (r: PriRow) => `| ${projectText(r)} | ${agentText(r.agent)} | ${r.status ? STATUS_TEXT[r.status] : '--'} | ${cell(r.action)} |`;
 /** Live rows add the server and details links. @req FR:priorities-tables/pr.cols.live */
 const liveLinks = (r: PrRow) => [r.server ? `[server](${r.server})` : '', r.details ? `[details](${r.details})` : ''].filter(Boolean).join(', ');
 const prLine = (r: PrRow) => `| ${r.emoji ? `${r.emoji} ` : ''}[${r.number}](${r.url}) | ${agentText(r.agent)} | ${liveLinks(r) ? `Live: ${liveLinks(r)}` : r.action} | ${r.minutes}m |`;

@@ -16,9 +16,14 @@ const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
 const prow = (num: number, nextAction: BoardInput['rows'][number]['nextAction'], o: Partial<BoardInput['rows'][number]> = {}): BoardInput['rows'][number] => ({
   url: `https://github.com/o/r/pull/${num}`, repo: 'o/r', number: num, title: `PR ${num}`, project: 'other', nextAction, ...o,
 });
-const GAP = 'No tiered task in tasks/';
+const gapText = (cos: string, by: string, file: string) => `${cos}, ${by}: add a 1️⃣/2️⃣/3️⃣ task in ${file} with (agent: ...)`;
 
 describe('pris.json fields', () => {
+  // @req FR:priorities-tables/$window
+  it('keeps cos; rejects a long one', () => {
+    expect(parsePris([{ id: 'a', title: 'A', status: 'active', cos: 'Xe CoS' }])[0].cos).toBe('Xe CoS');
+    expect(() => parsePris([{ id: 'a', title: 'A', status: 'active', cos: 'x'.repeat(41) }])).toThrow(PrisInvalid);
+  });
   // @req FR:priorities-tables/$window
   it('keeps label, action, session, windows and perProject', () => {
     const [p] = parsePris([{ id: 'qm', title: 'QM', status: 'active', label: 'QM', action: 'work with QM CoS', session: 'local_abc-1', perProject: true, windows: [{ days: ['wed'], from: '15:00' }, { days: ['thu', 'fri'] }] }]);
@@ -54,7 +59,7 @@ describe('project rows', () => {
       task('other', 1, 'Not a priority'),
     ];
     const [r] = view([pri('ftk', { label: 'FTK 16' })], tasks).now.rows;
-    expect(r).toEqual({ id: 'ftk', project: 'FTK 16', file: 'tasks/ftk.md', agent: { name: 'ftk-rm', link: null, file: null }, more: 0, status: 'working', action: 'Today one', gap: false, ref: `tasks/ftk.md:${tasks[1].line}`, at: AT, stale: false });
+    expect(r).toEqual({ id: 'ftk', project: 'FTK 16', file: 'tasks/ftk.md', agent: { name: 'ftk-rm', link: null, file: null, session: null }, more: 0, status: 'working', action: 'Today one', gap: false, cos: null, request: null, ref: `tasks/ftk.md:${tasks[1].line}`, at: AT, stale: false });
   });
   // @req FR:priorities-tables/rows.project
   it('names the project by label, else the title before the first (', () => {
@@ -70,7 +75,28 @@ describe('project rows', () => {
   // @req FR:priorities-tables/rows.gap
   it('shows an explicit gap for a priority with no tiered task, never filler', () => {
     const [r] = view([pri('arc', { items: [{ text: 'old item', status: 'todo' }], weekly: [{ week: '2026-W47', text: 'Michael: old note' }] })]).now.rows;
-    expect(r).toMatchObject({ id: 'arc', agent: null, status: null, action: GAP, gap: true, ref: null });
+    expect(r).toMatchObject({ id: 'arc', agent: null, status: null, gap: true, ref: null });
+    expect(r.action).not.toMatch(/old/);
+  });
+  // @req FR:priorities-tables/rows.gap.cos @req FR:priorities-tables/rows.gap.by @req FR:priorities-tables/rows.gap.action @req FR:priorities-tables/rows.gap.request @req FR:priorities-tables/agent.session
+  it('a gap row says who must act, by when and what, and carries the request for the CoS', () => {
+    const cli = '0b0e7c1a-6f0e-4a57-9d0e-3a1b2c3d4e5f';
+    const sessions = { at: AT, sessions: [{ id: 'x1', title: '🧭 Xe CoS', link: 'claude://claude.ai/epitaxy/x1', cli }, { id: 'c0', title: 'CoS', link: 'claude://claude.ai/epitaxy/c0', cli: 'not-a-uuid' }] };
+    const files = [{ path: 'tasks/stack.md', project: 'Stack', aliases: [], repo: null }];
+    const v = view([pri('stack', { label: 'Stack', cos: 'Xe CoS' }), pri('arc', { label: 'Arc' }), pri('late', { windows: [{ from: '15:00' }] }), pri('thu', { windows: [{ days: ['thu'], from: '09:30' }] }), pri('fri', { windows: [{ days: ['fri'] }] })], [], { sessions, files });
+    const [stack, arc] = v.now.rows;
+    expect(stack.action).toBe(gapText('Xe CoS', 'today', 'tasks/stack.md'));
+    expect(stack.cos).toEqual({ name: 'Xe CoS', link: 'claude://claude.ai/epitaxy/x1', file: null, session: cli });
+    expect(stack.request).toBe('Priority "Stack" has no tiered task. Add a 1️⃣/2️⃣/3️⃣ task in tasks/stack.md with (agent: ...) today.');
+    // No cos in pris.json: the roll-up CoS. No project file: the path to make. A cli id that is not a UUID: no session to prompt.
+    expect(arc.action).toBe(gapText('CoS', 'today', 'tasks/<project>.md'));
+    expect(arc.cos).toEqual({ name: 'CoS', link: 'claude://claude.ai/epitaxy/c0', file: null, session: null });
+    expect(v.today.rows[0].action).toBe(gapText('CoS', 'by 3 PM', 'tasks/<project>.md'));
+    expect(v.next.rows.map((r) => r.action)).toEqual([gapText('CoS', 'by Thu 9:30 AM', 'tasks/<project>.md'), gapText('CoS', 'by Fri', 'tasks/<project>.md')]);
+    expect(v.next.rows[0].request).toBe('Priority "THU" has no tiered task. Add a 1️⃣/2️⃣/3️⃣ task in tasks/<project>.md with (agent: ...) by Thu 9:30 AM.');
+    // A row with a task has no CoS and no request; its agent carries the session id to prompt.
+    const [t] = view([pri('stack')], [task('stack', 1, 'Ship', { agent: 'Xe CoS' })], { sessions }).now.rows;
+    expect(t).toMatchObject({ cos: null, request: null, agent: { name: 'Xe CoS', session: cli } });
   });
   // @req FR:priorities-tables/rows.words
   it('cuts a cell to 20 words', () => {
@@ -93,7 +119,12 @@ describe('QM', () => {
     expect(v.qm?.title).toBe('QM');
     expect(v.qm?.today).toBe(true);
     expect(v.qm?.rows.map((r) => [r.project, r.action, r.agent?.name ?? null])).toEqual([['catalyst', 'Approve the QM 5', null], ['stack', 'QM 3pm final calls on plan PR 119', 'qm-planner']]);
-    expect(v.now.rows.map((r) => [r.id, r.action])).toEqual([['stack', 'Ship v2'], ['catalyst', GAP]]);
+    expect(v.now.rows.map((r) => [r.id, r.action])).toEqual([['stack', 'Ship v2'], ['catalyst', gapText('CoS', 'today', 'tasks/<project>.md')]]);
+  });
+  // @req FR:priorities-tables/rows.gap.by @req FR:priorities-tables/qm.later
+  it('a QM gap row says by when QM opens', () => {
+    const v = view([qm({ windows: [{ from: '15:00' }] })]);
+    expect(v.qm?.rows.map((r) => [r.gap, r.action])).toEqual([[true, gapText('CoS', 'by 3 PM', 'tasks/<project>.md')]]);
   });
   // @req FR:priorities-tables/qm.off @req FR:priorities-tables/qm.today
   it('says Not a priority today on an off day', () => {
@@ -150,7 +181,7 @@ describe('agent', () => {
     const tasks = [task('focus', 1, 'x', { agent: 'focus-cos' }), task('fh', 1, 'y', { agent: 'someone' }), task('ftk', 1, 'z', { agent: 'ftk-rm' })];
     const v = view([pri('focus'), pri('fh', { session: 's2' }), pri('ftk')], tasks, { sessions: inv });
     expect(v.now.rows.map((r) => r.agent)).toEqual([
-      { name: 'focus-cos', link: 'claude://claude.ai/epitaxy/s1', file: null }, { name: 'someone', link: 'claude://claude.ai/epitaxy/s2', file: null }, { name: 'ftk-rm', link: null, file: null },
+      { name: 'focus-cos', link: 'claude://claude.ai/epitaxy/s1', file: null, session: null }, { name: 'someone', link: 'claude://claude.ai/epitaxy/s2', file: null, session: null }, { name: 'ftk-rm', link: null, file: null, session: null },
     ]);
   });
 });
@@ -173,7 +204,7 @@ describe('PRs', () => {
     const p = pri('fh', { refs: ['allytehq/finops-hubs'], session: 's2' });
     const rows = [prow(9, 'approve', { repo: 'allytehq/finops-hubs', url: 'https://github.com/allytehq/finops-hubs/pull/9' }), prow(8, 'approve', { repo: 'x/unknown' })];
     const v = view([p], [], { board: board(rows), sessions: { at: AT, sessions: [{ id: 's2', title: 'FH backend', link: 'claude://claude.ai/epitaxy/s2' }] } });
-    expect(v.prs.rows.map((r) => [r.number, r.emoji, r.agent])).toEqual([[9, '🏦', { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2', file: null }], [8, '', null]]);
+    expect(v.prs.rows.map((r) => [r.number, r.emoji, r.agent])).toEqual([[9, '🏦', { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2', file: null, session: null }], [8, '', null]]);
   });
   // @req FR:priorities-tables/pr.live.none @req FR:priorities-tables/fresh.table
   it('lists no PRs without a good board poll; marks an old poll stale', () => {
@@ -201,7 +232,7 @@ describe('PR live links and Sweep Manager', () => {
     const rows = [prow(1, 'validate', { server: 'https://dev.example.test', details: 'https://github.com/o/r/pull/1#issuecomment-9' }), prow(2, 'approve', { server: 'https://x.test' })];
     const sessions = { at: AT, sessions: [{ id: 'sm', title: '👩‍💻 Sweep Manager', link: 'claude://claude.ai/epitaxy/sm' }] };
     const v = view([], [], { board: { at: AT, rows }, sessions });
-    expect(v.prs.manager).toEqual({ name: 'Sweep Manager', link: 'claude://claude.ai/epitaxy/sm', file: null });
+    expect(v.prs.manager).toEqual({ name: 'Sweep Manager', link: 'claude://claude.ai/epitaxy/sm', file: null, session: null });
     expect(v.prs.rows.map((r) => [r.number, r.server, r.details])).toEqual([[2, null, null], [1, 'https://dev.example.test', 'https://github.com/o/r/pull/1#issuecomment-9']]);
     expect(view([], [], { board: undefined }).prs.manager).toBeNull();
   });
@@ -213,7 +244,7 @@ describe('PR agent fallback', () => {
     const p = pri('fh', { refs: ['allytehq/finops-hubs'] });
     const sessions = { at: AT, sessions: [{ id: 's2', title: 'FH backend', link: 'claude://claude.ai/epitaxy/s2' }] };
     const v = view([p], [task('fh', 1, 'x', { agent: 'FH backend' })], { sessions, board: { at: AT, rows: [prow(9, 'approve', { repo: 'allytehq/finops-hubs', url: 'https://github.com/allytehq/finops-hubs/pull/9' })] } });
-    expect(v.prs.rows[0].agent).toEqual({ name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2', file: null });
+    expect(v.prs.rows[0].agent).toEqual({ name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2', file: null, session: null });
   });
 });
 
@@ -223,6 +254,6 @@ describe('link targets', () => {
     const files = [{ path: 'tasks/finops-toolkit.md', project: 'FinOps toolkit', aliases: ['ftk'], repo: null }, { path: 'tasks/arc.md', project: 'Arc', aliases: [], repo: null }];
     const v = view([pri('ftk', { projects: ['ftk'] }), pri('arc', { projects: ['Arc'] }), pri('zzz', { projects: ['none'] })], [task('ftk', 1, 'x', { path: 'tasks/finops-toolkit.md', agent: '🧰 FTK RM' })], { files, agents: ['tasks/agents/ftk-rm.md', '.claude/agents/cos.md'] });
     expect(v.now.rows.map((r) => [r.id, r.file])).toEqual([['ftk', 'tasks/finops-toolkit.md'], ['arc', 'tasks/arc.md'], ['zzz', null]]);
-    expect(v.now.rows[0].agent).toEqual({ name: '🧰 FTK RM', link: null, file: 'tasks/agents/ftk-rm.md' });
+    expect(v.now.rows[0].agent).toEqual({ name: '🧰 FTK RM', link: null, file: 'tasks/agents/ftk-rm.md', session: null });
   });
 });

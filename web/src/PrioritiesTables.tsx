@@ -9,12 +9,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
+import { MessageBox } from './ui/MessageBox';
 import { SelectCard } from './ui/SelectCard';
 import { SplitView } from './ui/SplitView';
 import { StatusChip, type ChipTone } from './ui/StatusChip';
 import { Tabs } from './ui/Tabs';
 import { useWide } from './ui/useWide';
-import { actionText, agentHref, defaultTab, hashWithTab, linkParts, NO_LINK, projectHref, safeHref, sectionsOf, stampText, STATUS, tabFromHash, tabLabel, type Agent, type PrioritiesView, type PriRow, type PrRow, type TabKey } from './priorities';
+import { agentHref, defaultTab, hashWithTab, linkParts, NO_LINK, projectHref, safeHref, sectionsOf, stampText, STATUS, tabFromHash, tabLabel, type Agent, type PrioritiesView, type PriRow, type PrRow, type TabKey } from './priorities';
 import './priorities.css';
 
 const TICK_MS = 60_000;
@@ -59,22 +60,36 @@ const AgentName = ({ a, more }: { a: Agent | null; more: number }) => (a ? <span
 const LiveLinks = ({ r }: { r: PrRow }) => <>Live: {[r.server && safeHref(r.server) ? <Link key="s" href={r.server} text="server" /> : null, r.details && safeHref(r.details) ? <Link key="d" href={r.details} text="details" /> : null].filter(Boolean).flatMap((x, i) => (i ? [', ', x] : [x]))}</>;
 
 /** The detail pane of a project row: everything, linked. @req FR:priorities-tables/web.detail @req FR:priorities-tables/web.links.agent */
-function PriDetail({ r, tz }: { r: PriRow; tz?: string }) {
+/** Sends a text to a session; rejects with the reason. */
+export type SendToSession = (session: string, text: string) => Promise<void>;
+/** The Message agent box: on with a session id, else off with the reason. @req FR:priorities-tables/web.message @req FR:priorities-tables/web.message.off @req FR:priorities-tables/web.message.result */
+const MessageAgent = ({ a, send }: { a: Agent; send: SendToSession }) => (
+  <MessageBox heading="Message agent" to={a.name} off={a.session ? undefined : 'No live session for this agent'} onSend={(t) => send(a.session!, t)} />
+);
+/** The Ask CoS box of a gap row: the request goes to the CoS session; the owner can change the text first. @req FR:priorities-tables/web.askcos @req FR:priorities-tables/web.askcos.off */
+const AskCos = ({ cos, request, send }: { cos: Agent; request: string; send: SendToSession }) => (
+  <MessageBox heading="Ask CoS" send="Ask CoS" to={cos.name} text={request} off={cos.session ? undefined : `No live session for ${cos.name}`} onSend={(t) => send(cos.session!, t)} />
+);
+
+function PriDetail({ r, tz, send }: { r: PriRow; tz?: string; send: SendToSession }) {
   return (
     <div class="pri-d" data-testid="pri-detail">
       <h3 tabIndex={-1} class="pri-d-h"><LinkOr href={projectHref(r.file)} text={r.project} /></h3>
       {r.status && <p><Status s={r.status} /></p>}
-      <p class={r.gap ? 'pri-muted' : undefined}>{r.gap ? actionText(r) : <Rich text={r.action} />}</p>
+      <p class={r.gap ? 'pri-muted' : undefined}>{r.gap ? r.action : <Rich text={r.action} />}</p>
       <dl class="pri-d-facts">
         <dt>Agent</dt><dd>{r.agent ? <LinkOr href={agentHref(r.agent)} text={r.agent.name} /> : '--'}{r.more ? <span class="pri-d-more"> + {r.more} more on this goal</span> : null}</dd>
+        {r.cos && <><dt>CoS</dt><dd><LinkOr href={agentHref(r.cos)} text={r.cos.name} /></dd></>}
         {r.ref && <><dt>Source</dt><dd><code>{r.ref}</code></dd></>}
         <dt>Checked</dt><dd>{stampText(r, tz)}</dd>
       </dl>
+      {r.agent && <MessageAgent a={r.agent} send={send} />}
+      {r.gap && r.cos && r.request && <AskCos cos={r.cos} request={r.request} send={send} />}
     </div>
   );
 }
 /** The detail pane of a PR row. @req FR:priorities-tables/web.detail */
-function PrDetail({ r }: { r: PrRow }) {
+function PrDetail({ r, send }: { r: PrRow; send: SendToSession }) {
   return (
     <div class="pri-d" data-testid="pri-detail">
       <h3 tabIndex={-1} class="pri-d-h">{r.emoji && <span aria-hidden="true">{r.emoji} </span>}<LinkOr href={r.url} text={String(r.number)} /></h3>
@@ -83,13 +98,14 @@ function PrDetail({ r }: { r: PrRow }) {
         <dt>Agent</dt><dd>{r.agent ? <LinkOr href={agentHref(r.agent)} text={r.agent.name} /> : '--'}</dd>
         <dt>Time</dt><dd>{r.minutes} min</dd>
       </dl>
+      {r.agent && <MessageAgent a={r.agent} send={send} />}
     </div>
   );
 }
 
 const Only = ({ text }: { text: string }) => <li class="ui-card pri-only pri-muted">{text}</li>;
 
-export function PrioritiesTables({ v }: { v: PrioritiesView }) {
+export function PrioritiesTables({ v, send }: { v: PrioritiesView; /** Sends a message to an agent session (`POST /sessions/{id}/prompt`). */ send: SendToSession }) {
   const sections = sectionsOf(v);
   const keys = sections.map((s) => s.key);
   const [tab, setTab] = useState<TabKey>(() => { const h = typeof location === 'undefined' ? undefined : tabFromHash(location.hash); return h && keys.includes(h) ? h : defaultTab(v); });
@@ -119,12 +135,12 @@ export function PrioritiesTables({ v }: { v: PrioritiesView }) {
           <SelectCard key={`${r.id}:${r.ref ?? r.project}`} class={`pri-card${r.gap ? ' pri-gap' : ''}`} label={`Details: ${r.project}`} selected={at === i} onSelect={() => setSel(i)}
             top={<>{r.project}{r.stale && <span class="pri-stale"> stale</span>}</>}
             tools={r.status ? <Status s={r.status} /> : undefined}
-            title={r.gap ? <span class="pri-muted">{actionText(r)}</span> : <Rich text={r.action} />}
+            title={r.gap ? <span class="pri-muted">{r.action}</span> : <Rich text={r.action} />}
             sub={<AgentName a={r.agent} more={0} />} />
         )))}
     </ul>
   );
-  const detail = at === null ? null : s.key === 'prs' ? <PrDetail r={s.t.rows[at]} /> : <PriDetail r={s.t.rows[at]} tz={v.timeZone} />;
+  const detail = at === null ? null : s.key === 'prs' ? <PrDetail key={s.t.rows[at].url} r={s.t.rows[at]} send={send} /> : <PriDetail key={`${cur}:${s.t.rows[at].id}:${s.t.rows[at].ref ?? s.t.rows[at].project}`} r={s.t.rows[at]} tz={v.timeZone} send={send} />;
   return (
     <section class="pri-tables fl" aria-label="Priorities" data-testid="pri-tables">
       <div class="pri-head">

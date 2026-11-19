@@ -33,6 +33,8 @@ export interface Pri {
   days?: Partial<Record<PriDay, number | 'off'>>;
   /** Short project name for the priorities tables; without it, the title before the first `(`. @req FR:priorities-tables/$window */
   label?: string;
+  /** The Chief of Staff who owns the project task file (an agent name); without it, `CoS`. @req FR:priorities-tables/rows.gap.cos */
+  cos?: string;
   /** A fixed next action that wins over the note (`work with FOCUS CoS`). */
   action?: string;
   /** The Claude session id of the agent that works this priority. */
@@ -98,7 +100,7 @@ export function parsePris(body: unknown): Pri[] {
   const out = body.flatMap((raw, i): Pri[] => {
     const f = `[${i}]`;
     if (!isObj(raw)) { bad(f, 'Must be an object'); return []; }
-    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly', ...PRI_LINKS, 'statusAt', 'slot', 'days', 'label', 'action', 'session', 'windows', 'perProject']);
+    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly', ...PRI_LINKS, 'statusAt', 'slot', 'days', 'label', 'cos', 'action', 'session', 'windows', 'perProject']);
     let id: string | undefined;
     if (typeof raw.id !== 'string' || !SLUG.test(raw.id)) bad(`${f}.id`, 'Must match [a-z0-9][a-z0-9-]{0,23}');
     else if (ids.has(raw.id)) bad(`${f}.id`, 'Must be unique');
@@ -144,9 +146,10 @@ export function parsePris(body: unknown): Pri[] {
       }
     }
     // @req FR:priorities-tables/$window
-    const view: Pick<Pri, 'label' | 'action' | 'session' | 'windows' | 'perProject'> = {};
+    const view: Pick<Pri, 'label' | 'cos' | 'action' | 'session' | 'windows' | 'perProject'> = {};
     if (raw.perProject !== undefined) { if (typeof raw.perProject === 'boolean') { if (raw.perProject) view.perProject = true; } else bad(`${f}.perProject`, 'Must be true or false'); }
     if (raw.label !== undefined) { const t = text(`${f}.label`, raw.label, 40); if (t) view.label = t; }
+    if (raw.cos !== undefined) { const t = text(`${f}.cos`, raw.cos, 40); if (t) view.cos = t; }
     if (raw.action !== undefined) { const t = text(`${f}.action`, raw.action, 200); if (t) view.action = t; }
     if (raw.session !== undefined) { if (typeof raw.session === 'string' && SESSION.test(raw.session)) view.session = raw.session; else bad(`${f}.session`, 'Must match [A-Za-z0-9_-]{1,128}'); }
     if (raw.windows !== undefined) {

@@ -1,6 +1,6 @@
 /* The shared component set: card, flag, status chip, actions menu and bar. Tokens only, light and dark.
  * A consumer sets the card tone with --ui-edge, --ui-soft, --ui-strong, --ui-ink, --ui-ink2.
- * @req FR:ui-kit/card @req FR:ui-kit/flag @req FR:ui-kit/chip @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/daygrid */
+ * @req FR:ui-kit/card @req FR:ui-kit/flag @req FR:ui-kit/chip @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/daygrid @req FR:ui-kit/message */
 
 /* Card: the whole card selects; links and tools sit above the stretched target. @req FR:ui-kit/card */
 .ui-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
@@ -58,9 +58,19 @@
 .ui-bar-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .ui-bar a.fl-btn { text-decoration: none; }
 
+/* Message box: one message from a details pane. @req FR:ui-kit/message */
+.ui-msg { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.ui-msg, .ui-msg-form { display: flex; flex-direction: column; gap: 8px; }
+.ui-msg-box { box-sizing: border-box; width: 100%; min-height: 72px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--fl-r-md); background: var(--bg); color: var(--ink); font: inherit; resize: vertical; }
+.ui-msg-box:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ui-msg-box:disabled { opacity: .6; cursor: not-allowed; }
+.ui-msg-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.ui-msg-hint { font-size: 12px; line-height: 16px; color: var(--ink2); overflow-wrap: anywhere; }
+.ui-msg-hint.bad { color: var(--ink); font-weight: 600; }
+
 /* Touch: 44 px targets. */
 @media (pointer: coarse), (max-width: 719px) {
-  .ui-tool, .ui-more-btn, .ui-menu .menu-item, .ui-bar .fl-btn { min-height: var(--tap); min-width: var(--tap); }
+  .ui-tool, .ui-more-btn, .ui-menu .menu-item, .ui-bar .fl-btn, .ui-msg .fl-btn { min-height: var(--tap); min-width: var(--tap); }
   .ui-card-open { min-height: var(--tap); }
 }
 

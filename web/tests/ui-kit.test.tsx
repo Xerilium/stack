@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ActionBar, ActionMenu, type ActionItem } from '../src/ui/ActionMenu';
 import { DayGrid, placeItems } from '../src/ui/DayGrid';
 import { Flag } from '../src/ui/Flag';
+import { MessageBox } from '../src/ui/MessageBox';
 import { SelectCard } from '../src/ui/SelectCard';
 import { SplitView } from '../src/ui/SplitView';
 import { StatusChip } from '../src/ui/StatusChip';
@@ -148,6 +149,30 @@ describe('Tabs and SplitView', () => {
     for (const key of ['ArrowRight', 'ArrowLeft', 'End', 'Home']) act(() => { list.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); });
     expect(picks).toEqual(['b', 'c', 'c', 'a']);
     expect(r.querySelector('.ui-tabbar-aside')?.textContent).toBe('as of 9 AM');
+  });
+  // @req FR:ui-kit/message
+  it('MessageBox: sends the text, says Sent, keeps the text on an error; off with a reason', async () => {
+    const sent: string[] = [];
+    let fail = false;
+    const r = mount(<MessageBox heading="Message agent" to="FH backend" onSend={async (t) => { if (fail) throw new Error('Session is busy'); sent.push(t); }} />);
+    const box = r.querySelector<HTMLTextAreaElement>('textarea')!;
+    const btn = r.querySelector<HTMLButtonElement>('button[type=submit]')!;
+    expect(r.querySelector('h4')?.textContent).toBe('Message agent');
+    expect([box.getAttribute('aria-label'), box.maxLength, btn.textContent, btn.disabled]).toEqual(['Message FH backend', 4000, 'Send', true]);
+    const type = (v: string) => act(() => { box.value = v; box.dispatchEvent(new Event('input', { bubbles: true })); });
+    const submit = async () => { await act(async () => { r.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await Promise.resolve(); }); await act(async () => { await Promise.resolve(); }); };
+    type('  status?  ');
+    expect(btn.disabled).toBe(false);
+    await submit();
+    expect(sent).toEqual(['status?']);
+    expect([box.value, r.querySelector('[role=status]')?.textContent]).toEqual(['', 'Sent to FH backend']);
+    fail = true;
+    type('again');
+    await submit();
+    expect([box.value, r.querySelector('[role=status]')?.textContent]).toEqual(['again', 'Session is busy']);
+    const off = mount(<MessageBox heading="Ask CoS" send="Ask CoS" to="Xe CoS" text="Add a task" off="No live session for Xe CoS" onSend={async () => {}} />);
+    expect([off.querySelector('textarea')!.value, off.querySelector('textarea')!.disabled, off.querySelector<HTMLButtonElement>('button')!.disabled, off.querySelector<HTMLButtonElement>('button')!.textContent]).toEqual(['Add a task', true, true, 'Ask CoS']);
+    expect(off.querySelector('.ui-msg-hint')?.textContent).toBe('No live session for Xe CoS');
   });
   // @req FR:ui-kit/split
   it('SplitView: side by side when wide; when narrow the detail replaces the list, with Back', () => {

@@ -11,16 +11,17 @@ import type { NowTask } from './nowscreen';
 import { NowChat, type NowChatProps } from './NowChat';
 import { NowNext, type CalCtl, type Layer } from './NowNext';
 import type { PrioritiesView } from './priorities';
-import { PrioritiesTables } from './PrioritiesTables';
+import { PrioritiesTables, type SendToSession } from './PrioritiesTables';
 import { TaskContext } from './TaskContext';
 import './nowscreen.css';
 
 export type NowAct = 'done' | 'defer';
 export type { Layer };
-export function NowScreen({ n, done = false, b, layer, busy, onAct, pri, cal, now, chat }: {
+export function NowScreen({ n, done = false, b, layer, busy, onAct, pri, send, cal, now, chat }: {
   n: NowTask | null; /** Done just ran on this task: the card plays the check, then the next task replaces it. @req FR:product-reset/ui.done */ done?: boolean; b: Brief; layer: Layer; busy: boolean; onAct: (a: NowAct) => void;
   /** The message composer under the task. */ chat?: Omit<NowChatProps, 'taskRef' | 'busy'>;
   /** The priorities tables; null hides them (loading, or no store on this host). */ pri: PrioritiesView | null;
+  /** Sends a message to an agent session from the priorities report. @req FR:priorities-tables/web.message */ send: SendToSession;
   /** The calendar source; fixes live in Settings. */ cal: Pick<CalCtl, 'source'>;
   now: Date;
 }) {
@@ -56,7 +57,7 @@ export function NowScreen({ n, done = false, b, layer, busy, onAct, pri, cal, no
       <div class="now-side" data-testid="now-side">
         <NowNext meetings={b.meetings} layer={layer} cal={cal} now={now} />
       </div>
-      {pri && <PrioritiesTables v={pri} />}
+      {pri && <PrioritiesTables v={pri} send={send} />}
     </section>
   );
 }
