@@ -87,6 +87,8 @@ export interface FakeElectron extends ShellElectron {
   badge?: number;
   opened: string[];
   images: string[];
+  /** Error boxes shown, as `title: content`. */
+  errors: string[];
 }
 
 export function fakeElectron(o: { locked?: boolean; shortcutsFree?: boolean } = {}): FakeElectron {
@@ -108,6 +110,8 @@ export function fakeElectron(o: { locked?: boolean; shortcutsFree?: boolean } = 
     shortcuts: new Map(),
     shortcutsFree: o.shortcutsFree ?? true,
     opened: [],
+    errors: [],
+    dialog: { showErrorBox: (title, content) => { e.errors.push(`${title}: ${content}`); } },
     images: [],
     BrowserWindow: class { constructor(options: WindowOptions) { const w = fakeWindow(options); e.windows.push(w); return w; } } as unknown as new (options: WindowOptions) => WindowLike,
     Tray: class {

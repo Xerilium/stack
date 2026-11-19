@@ -81,6 +81,8 @@ export interface ShellElectron {
   globalShortcut: { register(accelerator: string, fn: () => void): boolean; unregisterAll(): void };
   nativeImage: { createFromPath(path: string): unknown };
   shell: { openExternal(url: string): Promise<void> };
+  /** Native error box for a host that cannot start. @req FR:desktop-shell/host.fail.show */
+  dialog?: { showErrorBox(title: string, content: string): void };
   /** System idle seconds for the idle restart. @req FR:devops-installer/idle.check */
   powerMonitor?: { getSystemIdleTime(): number };
 }

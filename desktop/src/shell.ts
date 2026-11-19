@@ -14,6 +14,9 @@ import { setPageCapture } from '../../src/core/feedback';
 /** @req FR:desktop-shell/hotkey.register */
 export const HOTKEY = 'CommandOrControl+Shift+Space';
 
+/** Title of the error box for a host that cannot start. @req FR:desktop-shell/host.fail.show */
+export const START_FAILED = 'Stack cannot start';
+
 export interface ShellDeps {
   electron: ShellElectron;
   startHost: () => Promise<HostHandle>;
@@ -43,7 +46,7 @@ export interface Shell {
 }
 
 export function createShell(deps: ShellDeps): Shell {
-  const { app, BrowserWindow, Tray, Menu, globalShortcut, nativeImage, shell, powerMonitor } = deps.electron;
+  const { app, BrowserWindow, Tray, Menu, globalShortcut, nativeImage, shell, powerMonitor, dialog } = deps.electron;
   const log = deps.log ?? ((l: string) => console.log(l));
   const closeTimeoutMs = deps.closeTimeoutMs ?? 15_000;
   let host: HostHandle | undefined;
@@ -155,8 +158,17 @@ export function createShell(deps: ShellDeps): Shell {
     await app.whenReady();
     // @req FR:desktop-shell/quit.build: a quit before ready starts no host.
     if (stopping) return;
-    // @req FR:desktop-shell/host.fail
-    try { starting = deps.startHost(); host = await starting; } catch (e) { log(`host: ${e instanceof Error ? e.message : String(e)}`); if (!stopping) { done = true; app.quit(); } return; }
+    // @req FR:desktop-shell/host.fail @req FR:desktop-shell/host.fail.show
+    try { starting = deps.startHost(); host = await starting; } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      log(`host: ${why}`);
+      if (stopping) return;
+      // A Finder launch has no console: the box is the only place the owner sees the reason. It never blocks the quit.
+      try { dialog?.showErrorBox(START_FAILED, why); } catch (err) { log(`shell: error box failed: ${err instanceof Error ? err.message : String(err)}`); }
+      done = true;
+      app.quit();
+      return;
+    }
     // @req FR:desktop-shell/quit.early @req FR:desktop-shell/quit.build: quit came first; stop() closes the host, and nothing is built.
     if (stopping) return;
     log(`shell: ${host.url}`);
