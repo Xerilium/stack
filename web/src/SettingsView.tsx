@@ -1,7 +1,7 @@
 /**
  * Settings: the one place for things the owner sets once. Accounts first, then Priorities, Agents delivery, then Updates.
  * Fluent 2 (`.fl`); one line of summary per section; no empty sections.
- * @req FR:settings/view.route @req FR:settings/view.sections @req FR:settings/view.fit
+ * @req FR:settings/view.route @req FR:settings/view.header @req FR:settings/view.sections @req FR:settings/view.fit
  * @req FR:settings/priorities.place @req FR:settings/priorities.absent @req FR:settings/priorities.states
  * @req FR:settings/agents.state @req FR:settings/agents.off @req FR:settings/updates.modes @req FR:settings/updates.builds @req FR:settings/updates.none
  * @req FR:connect-accounts/web.where @req FR:connect-accounts/web.learn

@@ -88,7 +88,7 @@ export function LivePanel({ fetchFn }: { fetchFn?: typeof fetch } = {}) {
       <PageHeader title={<span id="lv-h">Live validation</span>} actions={lane && <span data-testid="lane-chip" role="status" aria-live="polite"><StatusChip label={CHIP[lane.state]} tone={CHIP_TONE[lane.state]} /></span>} />
       {error && <p class="lv-error" role="alert">{error}</p>}
       {!lane && !error && <Loading what="live validation" />}
-      {lane && !a && <EmptyState what="No PR in live validation." next="An agent puts a PR here when it is ready for your check." />}
+      {lane && !a && <EmptyState what="No PR in live validation." />}
       {a && (
         <>
           <section class="lv-pr" aria-label="Live PR">

@@ -42,7 +42,7 @@ const tall = async (page: Page) => {
 };
 
 test.describe('Settings > Accounts', () => {
-  // @req FR:connect-accounts/web.panel @req FR:connect-accounts/web.row @req FR:connect-accounts/web.fix @req FR:connect-accounts/web.fit @req FR:settings/view.sections
+  // @req FR:connect-accounts/web.panel @req FR:connect-accounts/web.row @req FR:connect-accounts/web.fix @req FR:connect-accounts/web.fit @req FR:settings/view.header @req FR:settings/view.sections
   test('all 6 accounts on one screen, each one line with kind, address, dot and one word; Fix only where sign-in helps', async ({ page }, info) => {
     await open(page);
     const rows = page.locator('.acct-row');
