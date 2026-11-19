@@ -47,7 +47,7 @@ describe('classify', () => {
     expect(classify(base({ tail: undefined, lastActivityAt: T - MIN, lastTurnEdgeAt: T - MIN }), T).state).toBe('idle');
   });
 
-  // @req FR:session-inventory/state.wrap-up @req FR:session-inventory/state.wrap-up.ask @req FR:session-inventory/state.wrap-up.choice @req FR:session-inventory/needs.reason
+  // @req FR:session-inventory/state.wrap-up @req FR:session-inventory/state.wrap-up.ask @req FR:session-inventory/needs.reason
   it('wrap-up: a closed turn whose only ask is the closer is idle, not waiting', () => {
     const ask = (a: string, o: Partial<SessionFacts> = {}) => classify(base({ summary: { category: 'blocked', ask: a }, ...o }), T);
     expect(ask('Anything else, or **done**?')).toEqual({ state: 'idle', reason: 'wrap-up' });

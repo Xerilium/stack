@@ -49,7 +49,7 @@ export const STALE_MS = 7 * 24 * 60 * MIN;
 const CLOSER_CHOICES = new Set(['done', 'close']);
 /**
  * The closer ask alone: it starts with `Anything else`, and either says nothing more or offers only bold `done`/`close`.
- * @req FR:session-inventory/state.wrap-up.ask @req FR:session-inventory/state.wrap-up.choice
+ * @req FR:session-inventory/state.wrap-up.ask
  */
 export function isWrapUp(ask: string | undefined): boolean {
   const t = ask?.trim() ?? '';
@@ -171,7 +171,7 @@ export function sessionFacts(raw: unknown): Omit<SessionFacts, 'tail' | 'txMtime
  * The state of one session at `now`, and the rule that set it.
  * @req FR:session-inventory/state.waiting @req FR:session-inventory/state.stuck @req FR:session-inventory/state.running
  * @req FR:session-inventory/state.done @req FR:session-inventory/state.pinned @req FR:session-inventory/state.idle @req FR:session-inventory/state.activity
- * @req FR:session-inventory/state.wrap-up @req FR:session-inventory/state.wrap-up.choice
+ * @req FR:session-inventory/state.wrap-up
  */
 export function classify(f: SessionFacts, now: number): { state: SessionState; reason: SessionReason } {
   const activity = Math.max(f.lastActivityAt, f.txMtimeMs ?? 0, f.subMtimeMs ?? 0);

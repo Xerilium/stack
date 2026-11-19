@@ -43,7 +43,6 @@ The owner needs one state per session so that he knows where to look.
 - **FR:state.pinned** (P1): A pinned session (`isStarred` true) that is otherwise idle is `pinned`. Every session has `pinned` true or false
 - **FR:state.wrap-up** (P1): A closed turn with a `blocked` summary and a wrap-up ask is `idle` (or `pinned`) with reason `wrap-up`
   - **FR:state.wrap-up.ask** (P1): An ask is a wrap-up when it starts with `Anything else` (any case) and either has no other text but punctuation, or offers only bold `done` or `close` choices. Examples: `Anything else?`, `Anything else, or **done**?`, `Anything else, or **done** to wrap up?`
-  - **FR:state.wrap-up.choice** (P1): An ask that offers any other bold choice is not a wrap-up. Example: `Anything else, or **go** to run the cleanup?`
 - **FR:state.idle** (P1): Every other session is `idle`
 - **FR:state.activity** (P1): Activity time is the latest of `lastActivityAt`, the transcript mtime, and, while a `tool` call is pending, the newest file mtime in `<transcript without .jsonl>/subagents/`. A turn is open when the last event is `tool`, `tool-result` or `user`. With no transcript, a turn is open when `lastActivityAt` is more than 1 s after `lastTurnEdgeAt`
 
@@ -62,7 +61,7 @@ The owner needs one ranked list so that he acts on the most important session fi
 The owner needs a short list of sessions to archive so that the sidebar stays small, and Stack must not edit the app's files.
 
 - **FR:archive.list** (P1): Archive candidates are every `done` session, every superseded scheduled run, and every stale session. Stack only lists them; it never changes a session file
-- **FR:archive.stale** (P1): A `waiting` or `stuck` session that is not pinned and has no activity for 7 days or more is stale: it keeps its state, gets reason `stale`, and is an archive candidate
+- **FR:archive.stale** (P1): A `waiting` or `stuck` session that is not pinned and has no activity for 7 days or more is stale. It keeps its state and gets reason `stale`
 - **FR:archive.superseded** (P1): A scheduled run is superseded when a newer run of the same `scheduledTaskId` exists (archived or not) and the run is not pinned and not running
 
 ### FR:store: Inventory result
