@@ -1,4 +1,4 @@
-// @req FR:ui-kit/tokens @req FR:now-screen/tokens.contrast @req FR:now-screen/tokens.scale @req FR:now-screen/tokens.motion
+// @req FR:ui-kit/tokens.contrast @req FR:now-screen/tokens.contrast @req FR:now-screen/tokens.scale @req FR:now-screen/tokens.motion
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -43,7 +43,7 @@ it('reduced motion zeroes the motion tokens', () => {
   expect(css).toMatch(/prefers-reduced-motion:\s*reduce\)\s*\{\s*:root\s*\{[^}]*--t-enter:\s*0ms/);
 });
 
-// @req FR:ui-kit/tokens
+// @req FR:ui-kit/tokens.source @req FR:ui-kit/tokens.alias @req FR:ui-kit/tokens.contrast
 describe('one token file', () => {
   const src = (f: string) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
   it('is loaded first by the app entry', () => {
@@ -65,5 +65,8 @@ describe('one token file', () => {
     expect(ratio(t.danger, t.panel)).toBeGreaterThanOrEqual(4.5);
     expect(ratio(t['accent-fg'], t.panel)).toBeGreaterThanOrEqual(4.5);
     expect(ratio(t['accent-fg'], t['accent-soft'])).toBeGreaterThanOrEqual(4.5);
+  });
+  it('dark control borders keep the old Fluent weight: at least 2.5:1 on panel', () => {
+    expect(ratio(dark['line-strong'], dark.panel)).toBeGreaterThanOrEqual(2.5);
   });
 });

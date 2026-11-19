@@ -2,7 +2,7 @@
 id: ui-kit
 title: Shared UI components
 author: flanakin
-description: "One token file and one component set for every view: card, flag, status chip, actions, tabs, split view, day grid, page header, and page states."
+description: "One token file and one component set for every view: cards, chips, actions, tabs, split view, day grid, header, states."
 dependencies: [web-shell]
 ---
 
@@ -78,23 +78,39 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ### FR:tokens: Design tokens
 
-- **FR:tokens** (P1): `web/src/ui/tokens.css` is the one file that sets design token values: color, type, space, radius, elevation, and motion, in light and dark. No other stylesheet sets a token value on `:root`. The `--fl-*` color names are aliases of the base names, so every view shows one accent, one ink scale, and one focus color. Text tokens are 4.5:1 on each surface token; the accent and the focus ring are 3:1 on the page
+The owner needs one palette and one type ramp on every page so that the app reads as one product.
+
+- **FR:tokens.source** (P1): `web/src/ui/tokens.css` is the only stylesheet that sets color, type, space, radius, elevation, and motion values
+- **FR:tokens.alias** (P1): Each `--fl-*` color name is a `var()` alias of a base role token
+- **FR:tokens.contrast** (P1): Text tokens reach 4.5:1 on each surface token, light and dark
 
 ### FR:header: Page header
 
-- **FR:header** (P1): `PageHeader` is the top of a page: an `h1` title (20 px, 28 px line), an optional muted `meta` after it, an optional `sub` line under it, and optional `actions` at the right. On a narrow screen the actions wrap under the title
+The owner needs every page to start the same way so that the owner finds the title and actions in one place.
+
+- **FR:header** (P1): `PageHeader` shows an `h1` title, an optional muted `meta`, an optional `sub` line, and optional `actions` at the right
+- **FR:header.wrap** (P1): On a narrow screen `PageHeader` wraps the actions under the title
 
 ### FR:empty: Empty state
 
-- **FR:empty** (P1): `EmptyState` says what is empty (`what`) and then the next step (`next`: a key, a button, or a link). It is left-aligned text with no art
+The owner needs an empty view to say what to do next so that the owner never stares at a blank pane.
+
+- **FR:empty** (P1): `EmptyState` shows left-aligned text with no art: what is empty (`what`), then the next step (`next`)
 
 ### FR:loading: Loading state
 
-- **FR:loading** (P1): `Loading` is a block with `role="status"`, `aria-busy="true"`, and the name `Loading {what}`. It shows `rows` gray bars (3 by default) that do not move when the user asks for reduced motion
+The owner needs to see that data is on the way so that a slow load does not look like an empty view.
+
+- **FR:loading** (P1): `Loading` is a `role="status"` block whose text, `Loading {what}`, only assistive tech reads
+- **FR:loading.bars** (P1): `Loading` shows `rows` gray bars, 3 by default, hidden from assistive tech
+- **FR:loading.motion** (P1): The `Loading` bars stay still when the user asks for reduced motion
 
 ### FR:error: Error state
 
-- **FR:error** (P1): `ErrorState` is a block with `role="alert"`: what happened (`what`), an optional next step (`next`), and, with `onRetry`, a `Retry` button
+The owner needs a failed load to say what happened so that the owner can fix it or try again.
+
+- **FR:error** (P1): `ErrorState` is a `role="alert"` block that shows what happened (`what`) and an optional next step (`next`)
+- **FR:error.retry** (P1): With `onRetry`, `ErrorState` shows a `Retry` button that calls `onRetry`
 
 ### FR:a11y: Access
 

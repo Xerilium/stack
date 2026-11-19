@@ -1,7 +1,7 @@
 /*
  * Design tokens: the one file that sets a token value. Light first, dark below. Rules: .xe/standards/design.md.
  * Base names (--ink, --accent, --s-*) are the source; the --fl-* color names are aliases of them, so every view shows one palette.
- * @req FR:ui-kit/tokens @req FR:now-screen/tokens.scale @req FR:now-screen/tokens.motion @req FR:task-detail-design/rules.tokens
+ * @req FR:ui-kit/tokens.source @req FR:ui-kit/tokens.alias @req FR:ui-kit/tokens.contrast @req FR:now-screen/tokens.scale @req FR:now-screen/tokens.motion @req FR:task-detail-design/rules.tokens
  */
 :root {
   /* Surfaces: page, raised panel, nav rail, sunken well. */
@@ -46,7 +46,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #111113; --panel: #1a1a1d; --rail: #0e0e10; --sunken: #141416; --chip: #26262b; --hover: #202024; --pressed: #2c2c31;
-    --ink: #f2f2f3; --ink2: #c4c4c8; --muted: #8a8a92; --line: #2c2c31; --line2: #232327; --line-strong: #4a4a52;
+    --ink: #f2f2f3; --ink2: #c4c4c8; --muted: #8a8a92; --line: #2c2c31; --line2: #232327; --line-strong: #5c5c64;
     --accent: #8b8ff5; --accent-hover: #a3a6ff; --accent-pressed: #7478e0; --accent-ink: #12121c; --accent-fg: #a3a6ff; --accent-soft: #23233a; --focus: #a3a6ff; --muted-on-soft: #a0a0a8; --accent-on-soft: var(--accent);
     --ok: #4ade80; --warn: #fb923c; --danger: #f08a8d;
     --set-ok: #54b054; --set-signin: #f98845; --set-down: #fde300; --set-bad: #e37d80;

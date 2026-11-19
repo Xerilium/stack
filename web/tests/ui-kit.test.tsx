@@ -301,7 +301,7 @@ describe('LinkList', () => {
   });
 });
 
-// @req FR:ui-kit/header
+// @req FR:ui-kit/header @req FR:ui-kit/header.wrap
 describe('PageHeader', () => {
   it('is an h1 title with optional meta, sub line and actions', () => {
     const r = mount(<PageHeader title="Sessions" meta="139 waiting" sub="Every agent session." actions={<button type="button">Refresh</button>} />);
@@ -314,6 +314,13 @@ describe('PageHeader', () => {
   it('draws only the title when given only a title', () => {
     const h = mount(<PageHeader title="Projects" />).querySelector('.ui-head')!;
     expect(h.querySelector('.ui-head-meta, .ui-head-sub, .ui-head-actions')).toBeNull();
+  });
+  it('skips meta, sub and actions passed as null', () => {
+    const h = mount(<PageHeader title="Projects" meta={null} sub={null} actions={null} />).querySelector('.ui-head')!;
+    expect(h.querySelector('.ui-head-meta, .ui-head-sub, .ui-head-actions')).toBeNull();
+  });
+  it('wraps the actions under the title on a narrow screen', () => {
+    expect(readFileSync('src/ui/ui.css', 'utf8')).toMatch(/\.ui-head \{ display: flex; flex-wrap: wrap;/);
   });
 });
 
@@ -329,14 +336,15 @@ describe('EmptyState', () => {
   });
 });
 
-// @req FR:ui-kit/loading
+// @req FR:ui-kit/loading @req FR:ui-kit/loading.bars @req FR:ui-kit/loading.motion
 describe('Loading', () => {
-  it('is a busy status named for what loads, with gray bars', () => {
+  it('is a status whose text says what loads, with gray bars hidden from assistive tech', () => {
     const l = mount(<Loading what="sessions" />).querySelector('.ui-loading')!;
     expect(l.getAttribute('role')).toBe('status');
-    expect(l.getAttribute('aria-busy')).toBe('true');
-    expect(l.getAttribute('aria-label')).toBe('Loading sessions');
+    expect(l.hasAttribute('aria-busy')).toBe(false);
+    expect(l.querySelector('.sr-only')!.textContent).toBe('Loading sessions');
     expect(l.querySelectorAll('.ui-sk')).toHaveLength(3);
+    for (const b of l.querySelectorAll('.ui-sk')) expect(b.getAttribute('aria-hidden')).toBe('true');
     expect(mount(<Loading what="x" rows={5} />).querySelectorAll('.ui-sk')).toHaveLength(5);
   });
   it('does not move with reduced motion', () => {
@@ -345,7 +353,7 @@ describe('Loading', () => {
   });
 });
 
-// @req FR:ui-kit/error
+// @req FR:ui-kit/error @req FR:ui-kit/error.retry
 describe('ErrorState', () => {
   it('is an alert: what happened, the next step, and Retry', () => {
     let n = 0;
