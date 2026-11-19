@@ -42,7 +42,8 @@ test('the three actions fit one line and keep 44 px targets on a phone', async (
 test('Cancel is off while the feedback sends', async ({ page }, info) => {
   const { panel } = await open(page, info.project.name === 'mobile');
   let release = () => {};
-  await page.route('**/api/feedback', async (route) => { await new Promise<void>((r) => { release = r; }); return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'fb-2', at: new Date().toISOString(), screenshot: false }) }); });
+  const held = new Promise<void>((r) => { release = r; });
+  await page.route('**/api/feedback', async (route) => { await held; return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'fb-2', at: new Date().toISOString(), screenshot: false }) }); });
   await panel.getByRole('textbox', { name: 'Feedback' }).fill('Hold on');
   await panel.getByRole('checkbox', { name: 'Include a screenshot of this page' }).uncheck(); // the panel stays in view while it sends
   await panel.getByRole('button', { name: 'Send', exact: true }).click();
