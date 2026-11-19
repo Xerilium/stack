@@ -206,7 +206,7 @@ describe('autopilot workflow', () => {
   const job = wf.jobs.reconcile;
   it('runs from the default branch on the events, a sweep, and manual dispatch', () => {
     expect(Object.keys(wf.on).sort()).toEqual(['issue_comment', 'pull_request_target', 'schedule', 'workflow_dispatch', 'workflow_run']);
-    expect(wf.on.workflow_run.workflows).toEqual(['CI', 'E2E']);
+    expect(wf.on.workflow_run.workflows).toEqual(['CI']);
     expect(wf.on.schedule[0].cron).toBe('*/10 * * * *');
     expect(wf.on.pull_request).toBeUndefined();
   });
@@ -235,8 +235,17 @@ describe('autopilot workflow', () => {
     expect(job.concurrency['cancel-in-progress']).toBe(false);
     expect(job.concurrency.group).toContain("'sweep'");
   });
-  it('uses the workflow_run names CI and E2E', () => {
-    expect(parse(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8')).name).toBe('CI');
-    expect(parse(readFileSync(join(root, '.github/workflows/e2e.yml'), 'utf8')).name).toBe('E2E');
+  it('reruns on CI completion; CI holds the e2e job', () => {
+    const ci = parse(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8'));
+    expect(ci.name).toBe('CI');
+    expect(Object.keys(ci.jobs)).toEqual(expect.arrayContaining(['test', 'e2e']));
+  });
+  // @req FR:autopilot/gates.all.checks
+  it('blocks the merge until the e2e check passes', () => {
+    for (const e2e of [null, 'FAILURE']) {
+      const checks = ap.checksOf([run('test', 'SUCCESS'), run('e2e', e2e)]);
+      expect(ap.mergeBlockers({ ...base, checks })).toContain(e2e === null ? 'checks-pending' : 'checks-failing');
+    }
+    expect(ap.mergeBlockers({ ...base, checks: ap.checksOf([run('test', 'SUCCESS'), run('e2e', 'SUCCESS')]) })).toEqual([]);
   });
 });

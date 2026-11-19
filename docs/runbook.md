@@ -98,7 +98,6 @@ Tasks are markdown in git, so the git history is the backup. Clone the task repo
 - Deploy skipped: the secret is missing.
 - 401 from `/api`: token missing, expired, or lacks the scope.
 - 403 in the browser: your id is not in `STACK_OWNERS`.
-- E2E skipped: `web/package.json` not present.
 
 ## Live calendar and mail (Microsoft Graph, one time)
 

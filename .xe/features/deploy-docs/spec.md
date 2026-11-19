@@ -31,9 +31,9 @@ Make Stack deployable by its owner and understandable by everyone else. Agents o
 ### FR:ci: Workflows
 
 - **FR:ci.deploy** (P1): `.github/workflows/deploy.yml` runs on push to `main`, builds, and deploys with `Azure/static-web-apps-deploy` using the repo secret `AZURE_STATIC_WEB_APPS_API_TOKEN`; it does nothing when the secret is absent
-- **FR:ci.e2e** (P1): `.github/workflows/e2e.yml` runs the web Playwright suite on pull requests and passes cleanly while `web/` is absent
 - **FR:ci.coverage** (P1): The CI `test` job runs Jest with coverage (`pnpm test:coverage`), so it fails when `src/core/` drops under the `jest.config.js` threshold. CPU budget tests (`perf-budget`) run in a separate step without coverage, since instrumentation inflates CPU time
 - **FR:ci.coverage-artifact** (P2): The CI `test` job uploads `coverage/` as an artifact when the job fails
+- **FR:ci.e2e** (P1): The `e2e` job in `.github/workflows/ci.yml` runs the web Playwright suite on pull requests. It is the only Playwright run per PR. On failure it uploads `web/test-results` (traces and screenshots)
 - **FR:ci.valid** (P1): Workflow files are valid YAML with `name`, `on`, and `jobs`
 
 ### FR:docs: Documentation
