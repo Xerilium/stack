@@ -200,7 +200,7 @@ test.describe('Sessions', () => {
     await expect(links.nth(0)).toHaveAccessibleName(/^Session a1, Waiting, Asked a question, 12m ago$/);
   });
 
-  // @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/pris.status
+  // @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.line @req FR:pris-sessions-ui/sessions.name @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/pris.status
   test('the row line renders markdown as text inside the link; state is the same chip as Priorities; oldest wait first', async ({ page }) => {
     const ask = 'Anything else, **done**, or **next** to the `finops-pmm` review? See [PR](https://github.com/x/y/pull/1)';
     await open(page, { needs: [S('n1', 'allyte', { lastActivityAt: iso(5) }), S('o1', 'allyte', { lastActivityAt: iso(90), ask })] }, 'inventory');

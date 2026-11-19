@@ -1,8 +1,8 @@
 /**
  * The owner's Priorities (inline edit) and the Claude sessions that wait on him, each on its own page.
  * @req FR:notifications/pris.route @req FR:notifications/sessions.route
- * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.expand @req FR:pris-sessions-ui/pris.edit
- * @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.archive
+ * @req FR:pris-sessions-ui/pris.block @req FR:pris-sessions-ui/pris.status @req FR:pris-sessions-ui/pris.item-status @req FR:pris-sessions-ui/pris.expand @req FR:pris-sessions-ui/pris.edit
+ * @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.line @req FR:pris-sessions-ui/sessions.name @req FR:pris-sessions-ui/sessions.link @req FR:pris-sessions-ui/sessions.archive
  * @req NFR:pris-sessions-ui/a11y.targets @req NFR:pris-sessions-ui/a11y.keys @req NFR:pris-sessions-ui/a11y.calm @req NFR:pris-sessions-ui/a11y.axe
  */
 import { useEffect, useRef, useState } from 'preact/hooks';

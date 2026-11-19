@@ -1,4 +1,4 @@
-/** @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.reason @req FR:pris-sessions-ui/sessions.archive */
+/** @req FR:pris-sessions-ui/sessions.list @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/sessions.line @req FR:pris-sessions-ui/sessions.name @req FR:pris-sessions-ui/sessions.link @req FR:pris-sessions-ui/sessions.reason @req FR:pris-sessions-ui/sessions.archive */
 import { describe, expect, it } from 'vitest';
 import { ago, groupNeeds, idsText, PROJECT_LABEL, reasonText, rowLine, safeLink, sessionLabel, stateChip, type SessionItem } from '../src/inventory';
 
@@ -44,7 +44,7 @@ describe('row text', () => {
     expect(ago('2026-11-08T10:30:00.000Z', now)).toBe('3d');
     expect(ago('nope', now)).toBe('');
   });
-  // @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/tray.link
+  // @req FR:pris-sessions-ui/sessions.link @req FR:pris-sessions-ui/tray.link
   it('only an epitaxy link is a link', () => {
     expect(safeLink('claude://claude.ai/epitaxy/local_ab-12_CD')).toBe('claude://claude.ai/epitaxy/local_ab-12_CD');
     for (const bad of ['javascript:alert(1)', 'claude://evil.example/epitaxy/x', 'claude://claude.ai/epitaxy/../x', 'claude://claude.ai/epitaxy/', 'https://claude.ai/epitaxy/x', `claude://claude.ai/epitaxy/${'a'.repeat(129)}`]) expect(safeLink(bad)).toBeUndefined();
