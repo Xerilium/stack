@@ -63,7 +63,7 @@ export class GitStorage extends FsStorage {
   /**
    * Runs `fn` under `<git-dir>/stack-write.lock`, so Stack processes on one repo (web host, CLI, MCP, delivery loop) never
    * race on `index.lock` or `HEAD`. Callers are already in the in-process queue. A dead writer's lock is taken over.
-   * @req FR:storage-git/git.concurrency
+   * @req FR:storage-git/git.concurrency @req FR:storage-git/git.concurrency.busy @req FR:storage-git/git.concurrency.stale @req FR:storage-git/git.concurrency.turn
    */
   protected async writeLock<T>(fn: () => Promise<T>): Promise<T> {
     const dir = this.gitDir ??= resolve(this.root, (await this.git('rev-parse', '--git-dir')).trim());

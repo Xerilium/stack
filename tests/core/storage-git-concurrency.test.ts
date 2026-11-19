@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'child_process';
+import { execFileSync, spawn, spawnSync } from 'child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -53,7 +53,7 @@ const run = (mod: string, dir: string, file: string, n: number) => new Promise<{
 });
 
 describe('GitStorage across processes', () => {
-  // @req FR:storage-git/git.concurrency
+  // @req FR:storage-git/git.concurrency @req FR:storage-git/git.concurrency.turn
   it('serializes writes from two processes on one repo: no failures, one commit per write, every line kept', async () => {
     const mod = build();
     const d = freshRepo();
@@ -70,20 +70,23 @@ describe('GitStorage across processes', () => {
     expect(git(d, 'status', '--porcelain')).toBe('');
   }, 120_000);
 
-  // @req FR:storage-git/git.concurrency
+  // @req FR:storage-git/git.concurrency.stale
   it('takes over a stale lock left by a dead process', async () => {
     const d = freshRepo();
-    writeFileSync(join(d, '.git', 'stack-write.lock'), '999999');
+    // the pid of a process that has exited (a fixed number could be a live process)
+    const dead = spawnSync(process.execPath, ['-e', '']).pid;
+    writeFileSync(join(d, '.git', 'stack-write.lock'), String(dead));
     await new GitStorage(d).write('tasks/x.md', 'x');
     expect(git(d, 'show', 'HEAD:tasks/x.md')).toBe('x');
   });
 
-  // @req FR:storage-git/git.concurrency
+  // @req FR:storage-git/git.concurrency.busy
   it('fails with StorageError when another live writer holds the lock past the wait', async () => {
     const d = freshRepo();
     writeFileSync(join(d, '.git', 'stack-write.lock'), String(process.ppid));
     const s = new GitStorage(d, { lockWaitMs: 100 });
     await expect(s.write('tasks/x.md', 'x')).rejects.toThrow(new StorageError('Another Stack process is writing; try again'));
     expect(git(d, 'rev-list', '--count', 'HEAD').trim()).toBe('1');
+    expect(git(d, 'status', '--porcelain')).toBe('');
   });
 });
