@@ -56,3 +56,17 @@ test('a click on the card padding opens the card', async ({ page }) => {
   await expect(body).toHaveAttribute('aria-expanded', 'true');
   await expect(card.getByTestId('now-ask-more')).toBeVisible();
 });
+
+test('a click on the answer button answers and never opens the card; a click on an open card head closes it', async ({ page }) => {
+  const card = await open(page);
+  await card.locator('.now-mini').click();
+  await expect(card).toHaveCount(0); // answered: the card leaves, it never expanded
+  const first = page.getByTestId('now-asks').locator(':scope > li').first();
+  await first.scrollIntoViewIfNeeded();
+  const b = first.locator('.now-ask-body');
+  await b.click();
+  await expect(b).toHaveAttribute('aria-expanded', 'true');
+  const head = (await first.locator('.now-ask-head').boundingBox())!;
+  await page.mouse.click(head.x + 4, head.y + 4); // head padding of the open card
+  await expect(b).toHaveAttribute('aria-expanded', 'false');
+});
