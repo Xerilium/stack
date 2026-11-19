@@ -56,6 +56,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/connect/drafts` | POST turn reply drafts on (new sign-in) or off for an account (owner session only) |
 | `/connect/remove` | POST disconnect an account: deletes its token file (owner session only) |
 | `/inbox-sources` | GET each inbox source (every email account, GitHub, planned Teams and Slack): state, last sync, the exact step to connect it, and N of M connected. `fresh=1` re-probes the local host. Never a token (owner session only) |
+| `/inbox-items/{id}/detail` | GET one inbox item with its full message and thread, read live and never stored (owner session only) |
 | `/inbox-items/{id}/action` | POST run an inbox action; reply-draft makes a draft and never sends (owner session only) |
 | `/brief/summary` | GET the AI daily brief (owner only; `refresh=1` bypasses the cache) |
 | `/asks` | GET ranked asks for the owner (`state=open|answered|done|snoozed|all`) |
