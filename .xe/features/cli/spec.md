@@ -31,6 +31,7 @@ Owner needs one `stack` binary that finds the task repo and commits what it chan
   > - @req FR:storage-git/git.commit
   - **FR:run.git.worktree** (P1): A `--dir` that is not a git work tree MUST fail with exit 1 and a hint to run `stack init`
 - **FR:run.nocommit** (P2): `--no-commit` MUST write files without git (for copies of a task folder)
+- **FR:run.flagvalue** (P2): A value flag followed by another `--flag` MUST fail with exit 2 and `--<name> has no value. Use --<name>=<value>, or check the flag name.`
 - **FR:run.remote** (P2): `--remote <name>` (and optional `--branch <name>`) MUST make writes sync before and push after
   > - @req FR:storage-git/git.remote
 - **FR:run.now** (P3): `--now <ISO instant>` MUST override the clock (tests, parity)
