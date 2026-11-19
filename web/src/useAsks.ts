@@ -18,6 +18,8 @@ const LEAVE_MS = 200;
 export interface AskExtras {
   /** Open 🙋 rows as asks; they rank with the agent asks. @req FR:web-shell/state.needs */
   tasks?: AskItem[];
+  /** False while the task asks (or what hides them) still load; the count waits for them. Default true. @req FR:ask-queue/web.home.count */
+  tasksReady?: boolean;
   /** Answers a task ask through the agent inbox; rejects to put the ask back. */
   onTask?: (a: AskItem, s: Send) => Promise<void>;
   onOpenTask?: (ref: string) => void;
@@ -119,8 +121,12 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const ranked = useMemo(() => mergeNeeds(items, (extras.tasks ?? []).filter((t) => !held(t.key))), [items, extras.tasks, holdTick]); // holdTick stands for the hold map
   itemsRef.current = ranked;
   const total = serverTotal + (ranked.length - items.length);
+  /** The count shows only once both halves loaded, so a cold load shows one value; after that it follows each change. @req FR:ask-queue/web.home.count */
+  const counted = useRef(false);
+  if (phase === 'ready' && (extras.tasksReady ?? true)) counted.current = true;
+  const countReady = counted.current;
 
-  useEffect(() => { document.title = pageTitle(total); }, [total]);
+  useEffect(() => { if (countReady) document.title = pageTitle(total); }, [total, countReady]);
 
   // keep the cursor on the same ask when the order changes
   // A Chief of Staff item outranks everything: when one arrives while the cursor sits on the old top, the cursor follows it.
@@ -218,7 +224,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
 
   return {
     liveTick,
-    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
+    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, countReady, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, retry, answer, reply, defer, retract, edit, takeDraft, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),
   };
