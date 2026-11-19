@@ -101,8 +101,12 @@ describe('workflows', () => {
   });
   it('the test job enforces the core coverage threshold', () => {
     const steps = parse(read('.github/workflows/ci.yml')).jobs.test.steps as Array<{ run?: string; if?: string; with?: { name?: string; path?: string } }>;
-    expect(steps.map((s) => s.run)).toContain('pnpm test:coverage');
-    expect(steps.map((s) => s.run)).not.toContain('pnpm test');
+    const runs = steps.map((s) => s.run ?? '');
+    expect(runs.some((r) => r.startsWith('pnpm test:coverage'))).toBe(true);
+    expect(runs).not.toContain('pnpm test');
+    // CPU budgets run uninstrumented, after the coverage run skips them.
+    expect(runs.find((r) => r.startsWith('pnpm test:coverage'))).toContain('perf-budget');
+    expect(runs).toContain('pnpm exec jest tests/core/perf-budget.test.ts');
     expect(JSON.parse(read('package.json')).scripts['test:coverage']).toMatch(/jest --coverage/);
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const cfg = require(join(root, 'jest.config.js')) as { coverageThreshold: Record<string, Record<string, number>> };

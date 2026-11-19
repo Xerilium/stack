@@ -18,12 +18,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:coverage
+      # Coverage instrumentation inflates CPU time: the CPU budgets (perf-budget) skip this run and run alone below.
+      - run: pnpm test:coverage --testPathIgnorePatterns=/node_modules/ --testPathIgnorePatterns=perf-budget
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
           name: coverage
           path: coverage
+      - run: pnpm exec jest tests/core/perf-budget.test.ts
       - run: pnpm --filter stack-web test
       - run: pnpm lint
       - run: pnpm build
