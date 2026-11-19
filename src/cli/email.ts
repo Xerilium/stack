@@ -4,7 +4,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { MAILBOX } from '../core/config';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { handleAsk, oneLine, putAsk, readAsk } from '../core/asks';
 import { redact } from '../core/triage';
 import type { LifecycleContext } from '../core/lifecycle';
@@ -94,13 +94,13 @@ async function emailAll(ctx: LifecycleContext, action: string | undefined, f: Re
     if (down) { accounts.push({ account, ok: false, skipped: true, error: down }); continue; }
     try {
       const r = await emailOne(ctx, action, { ...rest, project: flag(f, 'project') ?? account }, { ...d, cache });
-      accounts.push({ ...r.json, account, ok: r.json.ok !== false && !r.code, ...(r.code ? { text: r.text } : {}) });
+      accounts.push({ ...r.json, account, ok: r.json.ok !== false && !r.code, ...(r.code || action === 'status' ? { text: r.text } : {}) });
       if (r.json.modelDown) down = `skipped: ${r.text}`;
     } catch (e) { accounts.push({ account, ok: false, error: e instanceof Error ? e.message : String(e) }); }
   }
   if (!accounts.length) return { json: { ok: false, accounts }, text: 'no signed-in mailbox (run: stack graph login --account <address> --with drafts)', code: 4 };
   const bad = accounts.filter((a) => !a.ok);
-  return { json: { ok: !bad.length, accounts }, text: accounts.map((a) => `${String(a.account ?? a.cache)}: ${a.ok ? 'ok' : String(a.error ?? a.text ?? 'failed')}`).join('\n'), ...(bad.length ? { code: 4 } : {}) };
+  return { json: { ok: !bad.length, accounts }, text: accounts.map((a) => (a.ok && action === 'status' ? String(a.text) : `${String(a.account ?? a.cache)}: ${a.ok ? 'ok' : String(a.error ?? a.text ?? 'failed')}`)).join('\n'), ...(bad.length ? { code: 4 } : {}) };
 }
 
 /** @req FR:email-runner/cli.offline */
@@ -163,7 +163,24 @@ export async function emailCmd(ctx: LifecycleContext, action: string | undefined
 async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Record<string, string | true>, d: EmailDeps): Promise<EmailOutcome> {
   if (f.offline !== undefined || f.fixture !== undefined) return emailOffline(ctx, action, f, d);
   // `--account` uses that mailbox's own sign-in (`graph login --account`) when it has one, else the default cache.
-  const cache = d.cache ?? accountCache(flag(f, 'account'), d.cacheDir) ?? new FileTokenCache(process.env.STACK_GRAPH_CACHE ?? defaultCachePath());
+  const legacy = d.cacheDir ? join(d.cacheDir, 'graph-token.json') : process.env.STACK_GRAPH_CACHE ?? defaultCachePath();
+  // No --account and no default cache: status serves every per-mailbox sign-in; other commands use the only one. @req FR:email-runner/cli.status
+  if (!d.cache && !flag(f, 'account') && !existsSync(legacy)) {
+    if (action === 'status') return emailAll(ctx, action, f, d);
+    const mail: string[] = [];
+    const broken: string[] = [];
+    for (const p of listCachePaths(d.cacheDir)) {
+      let t;
+      try { t = await new FileTokenCache(p).read(); } catch (e) { broken.push(`${basename(p)}: ${e instanceof Error ? e.message : String(e)}`); continue; }
+      if (t?.account && (hasScope(t.scopes, 'Mail.Read') || hasScope(t.scopes, 'Mail.ReadWrite'))) mail.push(p);
+    }
+    // A broken cache is named, so the owner fixes it instead of making a default cache that hides the others.
+    if (!mail.length && broken.length) return { json: { ok: false, signedIn: false, errors: broken }, text: `no readable mail sign-in: ${broken.join('; ')}`, code: 4 };
+    if (mail.length > 1) throw new UsageError(`Several mailboxes are signed in: use --account <address>${action === 'run' ? ' or --all' : ''}`);
+    // Same project as `--all` gives this mailbox, so a manual pass and a scheduled one file asks in one place.
+    if (mail.length === 1) { const only = await new FileTokenCache(mail[0]).read(); return emailOne(ctx, action, { ...f, project: flag(f, 'project') ?? String(only?.account) }, { ...d, cache: new FileTokenCache(mail[0]) }); }
+  }
+  const cache = d.cache ?? accountCache(flag(f, 'account'), d.cacheDir) ?? new FileTokenCache(legacy);
   const t = await cache.read();
   if (!t) return { json: { ok: false, signedIn: false }, text: 'not signed in (run: stack graph login --with mail,drafts)', code: 4 };
   const account = (flag(f, 'account') ?? t.account)?.toLowerCase();

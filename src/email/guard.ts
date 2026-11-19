@@ -40,6 +40,9 @@ const QUERY = new Set(['$select', '$top', '$filter', '$orderby', '$skiptoken', '
 const re = (s: string) => new RegExp(`^${s}$`);
 // Graph's own next and delta links spell it `mailfolders`.
 const FOLDER_MESSAGES = re(`/me/mail[Ff]olders/${ID}/messages(/delta)?`);
+/** Graph's delta next and delta links name the folder with OData key syntax: `mailFolders('inbox')`. Delta only, tokens only. @req FR:email-triage/safe.allowlist */
+const FOLDER_DELTA_KEY = re(`/me/mail[Ff]olders\\('${ID}'\\)/messages/delta`);
+const DELTA_QUERY = new Set(['$skiptoken', '$deltatoken']);
 const MESSAGE = re(`/me/messages/${ID}`);
 const CREATE_REPLY = re(`/me/messages/${ID}/createReply`);
 const MOVE = re(`/me/messages/(${ID})/move`);
@@ -73,6 +76,7 @@ export function createGraphGuard(opts: { mode?: WriteMode; approvedMoves?: Reado
     for (const k of u.searchParams.keys()) if (!QUERY.has(k)) return deny(req, `query ${k}`);
 
     if (method === 'GET' && (FOLDER_MESSAGES.test(path) || MESSAGE.test(path))) return;
+    if (method === 'GET' && FOLDER_DELTA_KEY.test(path) && [...u.searchParams.keys()].length > 0 && [...u.searchParams.keys()].every((k) => DELTA_QUERY.has(k))) return;
     if (method === 'POST' && CREATE_REPLY.test(path)) {
       if (mode !== 'drafts') return deny(req, `createReply needs drafts mode (mode is ${mode})`);
       if (!hasOnly(req.body, 'comment') || typeof (req.body as { comment: unknown }).comment !== 'string') return deny(req, 'createReply body is the comment only');

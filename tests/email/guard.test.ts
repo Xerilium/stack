@@ -54,7 +54,32 @@ describe('graph guard allowlist', () => {
     expect(() => guard.check({ method, url: `${G}${p}`, body })).toThrow(GraphDenied);
   });
 
-  it('denies other hosts, schemes, credentials and fragments', () => {
+  // Real Graph links: delta next and delta links name the folder with OData key syntax.
+  it("allows Graph's own delta links that name the folder as mailFolders('id'), GET only", () => {
+    const links = [
+      `${G}/me/mailFolders('inbox')/messages/delta?$skiptoken=wNOSWLB6v-6J_abc.DEF~x`,
+      `${G}/me/mailFolders('sentitems')/messages/delta?$deltatoken=LztZwWjo5IivWBhyxw5rAKvJ`,
+      `${G}/me/mailFolders('AAMkAGI2-x_1=')/messages/delta?$skiptoken=p2`,
+    ];
+    for (const url of links) expect(() => guard.check({ method: "GET", url })).not.toThrow();
+    const observe = createGraphGuard({ mode: "observe" });
+    for (const url of links) expect(() => observe.check({ method: "GET", url })).not.toThrow();
+    for (const [method, url] of [
+      ["POST", links[0]],
+      ["PATCH", links[0]],
+      ["GET", `${G}/me/mailFolders('inbox')/messages`],
+      ["GET", `${G}/me/mailFolders('inbox')/messages/delta`],
+      ["GET", `${G}/me/mailFolders('inbox')/messages/delta?$skiptoken=p2&$top=5`],
+      ["GET", `${G}/me/mailFolders('inbox')/messages/delta?$deltatoken=d1&$select=id`],
+      ["GET", `${G}/me/mailFolders('inbox')/messages/delta?$filter=x`],
+      ["GET", `${G}/me/mailFolders('in/box')/messages/delta?$skiptoken=p2`],
+      ["GET", `${G}/me/mailFolders(inbox)/messages/delta?$skiptoken=p2`],
+      ["GET", `${G}/me/mailFolders('inbox')/messages/delta/../send?$skiptoken=p2`],
+      ["GET", `https://evil.test/v1.0/me/mailFolders('inbox')/messages/delta?$skiptoken=p2`],
+    ]) expect(() => guard.check({ method, url })).toThrow(GraphDenied);
+  });
+
+  it("denies other hosts, schemes, credentials and fragments", () => {
     for (const url of [
       'https://example.test/v1.0/me/messages/AAMk1',
       'http://graph.microsoft.com/v1.0/me/messages/AAMk1',

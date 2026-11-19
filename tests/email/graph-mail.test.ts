@@ -56,6 +56,20 @@ describe('Graph mail adapter: cursor', () => {
     expect((await mail.delta(link)).cursor).toBe(link);
     expect(seen[0].url).toBe(link);
   });
+  // @req FR:email-triage/safe.allowlist: Graph spells the folder mailFolders('inbox') in its next links
+  it("follows and saves next links that name the folder as mailFolders('inbox')", async () => {
+    const next = `${G}/me/mailFolders('inbox')/messages/delta?$skiptoken=wNOSWLB6v-6J`;
+    const last = `${G}/me/mailFolders('inbox')/messages/delta?$deltatoken=d9`;
+    const seen: GraphRequest[] = [];
+    const mail = createGraphMail({ transport: async (r) => { seen.push(r); return seen.length === 1 ? { value: [msg("1")], "@odata.nextLink": next } : { value: [msg("2")], "@odata.deltaLink": last }; } });
+    const r = await mail.delta();
+    expect(seen[1].url).toBe(next);
+    expect(r.messages).toHaveLength(2);
+    expect(r.cursor).toBe(last);
+    seen.length = 0;
+    await mail.delta(last);
+    expect(seen[0].url).toBe(last);
+  });
   it('stopping at the page cap returns the last next link, so the next run resumes', async () => {
     let n = 0;
     const mail = createGraphMail({ transport: async () => ({ value: [msg(String(++n))], '@odata.nextLink': `${G}/me/mailfolders/AAMk=/messages/delta?$skiptoken=s${n}` }) });
