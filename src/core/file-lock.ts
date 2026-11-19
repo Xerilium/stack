@@ -55,6 +55,12 @@ function takeOver(lockFile: string, staleMs: number): boolean {
   } finally { try { unlinkSync(guard); } catch { /* already gone */ } }
 }
 
+/** Drops one leading UTF-8 BOM (Windows editors and PowerShell 5 write one; `JSON.parse` throws on it). @req FR:session-inventory/pris.bom */
+export const stripBom = (t: string): string => (t.charCodeAt(0) === 0xfeff ? t.slice(1) : t);
+
+/** Reads a hand-editable JSON file as UTF-8, with or without a BOM. Throws like `readFileSync` and `JSON.parse`; callers keep their own catch. @req FR:session-inventory/pris.bom */
+export function readJsonFile(file: string): unknown { return JSON.parse(stripBom(readFileSync(file, 'utf8'))); }
+
 /** Writes `text` to `file` atomically: a temp file in the same folder, then a rename. Mode 0600. */
 export function writeAtomic(file: string, text: string | Buffer): void {
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;

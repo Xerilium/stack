@@ -117,6 +117,15 @@ describe('PriStore', () => {
     expect(existsSync(join(dir, 'pris.lock'))).toBe(false);
   });
 
+  // @req FR:session-inventory/pris.bom
+  it('a pris.json with a UTF-8 BOM reads its priorities, and a put does not move it aside', async () => {
+    const { dir, s } = store();
+    writeFileSync(join(dir, 'pris.json'), `\uFEFF${JSON.stringify({ version: 1, rev: 2, pris: [pri()] })}`);
+    expect(s.read()).toMatchObject({ rev: 2, pris: [pri()] });
+    expect((await s.put(2, [pri({ title: 'Two' })])).rev).toBe(3);
+    expect(readdirSync(dir).filter((n) => n.startsWith('pris.json.broken-'))).toHaveLength(0);
+  });
+
   // @req FR:session-inventory/pris.broken
   it('a broken file reads as none, is never seeded over, and a write moves it aside', async () => {
     const { dir, s } = store();

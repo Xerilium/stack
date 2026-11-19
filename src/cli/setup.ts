@@ -7,6 +7,7 @@ import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'http';
 import { dirname, extname, join, normalize, resolve, sep } from 'path';
+import { readJsonFile } from '../core/file-lock';
 import { cachePathsWith, defaultCachePath } from '../graph/auth';
 
 /** The steps, in order. @req FR:first-run-onboarding/step.max */
@@ -32,7 +33,8 @@ const redact = (spec: string): string => spec.replace(/\/\/[^/@]*@/, '//');
 
 /** The user config, or `{}` when missing or broken. */
 export function readConfig(home: string): UserCfg {
-  try { const j = JSON.parse(readFileSync(cfgPath(home), 'utf8')) as unknown; return j && typeof j === 'object' && !Array.isArray(j) ? j as UserCfg : {}; } catch { return {}; }
+  // A BOM (Windows editors) must not read as empty: the next write would drop every key. @req FR:session-inventory/pris.bom
+  try { const j = readJsonFile(cfgPath(home)); return j && typeof j === 'object' && !Array.isArray(j) ? j as UserCfg : {}; } catch { return {}; }
 }
 
 /** Merges `patch` into the user config (an `undefined` value removes the key); atomic, mode 0600. @req FR:first-run-onboarding/state.store */

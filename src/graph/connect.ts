@@ -14,6 +14,7 @@ import { createServer } from 'http';
 import { homedir } from 'os';
 import { basename, join, resolve } from 'path';
 import { MAILBOX } from '../core/config';
+import { readJsonFile } from '../core/file-lock';
 import {
   accountCachePath, authorizeUrl, cacheDir as defaultCacheDir, FileTokenCache, GraphSignInError, GraphSignInRequired, hasScope, idClaims, listCachePaths, MSA_TENANT,
   pkcePair, pollDeviceCode, redeemAuthCode, startDeviceCode, tenantFor, type Granted,
@@ -96,7 +97,7 @@ export function readClientId(o: { env?: NodeJS.ProcessEnv; configPath?: string; 
   const env = guid((o.env ?? process.env).STACK_GRAPH_CLIENT_ID);
   if (env) return env;
   try {
-    const cfg = JSON.parse(readFileSync(o.configPath ?? userConfigPath(), 'utf8')) as { graph?: { clientId?: unknown } };
+    const cfg = readJsonFile(o.configPath ?? userConfigPath()) as { graph?: { clientId?: unknown } };
     const id = guid(cfg?.graph?.clientId);
     if (id) return id;
   } catch { /* no config yet */ }

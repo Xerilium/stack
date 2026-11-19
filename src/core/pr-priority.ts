@@ -6,7 +6,7 @@
 import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, unwatchFile, watchFile } from 'fs';
 import { join } from 'path';
-import { withFileLock, writeAtomic, type LockOptions } from './file-lock';
+import { readJsonFile, withFileLock, writeAtomic, type LockOptions } from './file-lock';
 import type { Issue } from './reports';
 import type { Need } from './needs-you';
 
@@ -305,7 +305,7 @@ export class PrPriorityStore {
   /** Excluded PR keys from `pr-priority.config.json`; none when missing or broken. @req FR:pr-priority/queue.exclude */
   excluded(): Set<string> {
     try {
-      const j = JSON.parse(readFileSync(this.configFile, 'utf8')) as { exclude?: unknown };
+      const j = readJsonFile(this.configFile) as { exclude?: unknown };
       return new Set((Array.isArray(j.exclude) ? j.exclude : []).flatMap((r) => { try { const p = parsePrRef(String(r)); return [keyOf(p.repo, p.number)]; } catch { return []; } }));
     } catch { return new Set(); }
   }

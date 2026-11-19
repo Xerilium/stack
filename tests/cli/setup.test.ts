@@ -34,6 +34,15 @@ describe('user config', () => {
     writeConfig(home, { mode: undefined });
     expect(readConfig(home)).not.toHaveProperty('mode');
   });
+  // @req FR:session-inventory/pris.bom
+  it('reads a config.json saved with a BOM and keeps its keys on the next write', () => {
+    const home = tmp();
+    mkdirSync(join(home, '.config/stack'), { recursive: true });
+    writeFileSync(join(home, '.config/stack/config.json'), `\uFEFF${JSON.stringify({ repo: '/r', batch: 3 })}`);
+    expect(readConfig(home)).toEqual({ repo: '/r', batch: 3 });
+    writeConfig(home, { onboarding: { step: 'mode' } });
+    expect(readConfig(home)).toEqual({ repo: '/r', batch: 3, onboarding: { step: 'mode' } });
+  });
   it('reads a missing or broken file as empty', () => {
     const home = tmp();
     expect(readConfig(home)).toEqual({});
