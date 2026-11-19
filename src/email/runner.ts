@@ -3,8 +3,9 @@
  * @req FR:email-runner/cli.run @req FR:email-runner/cli.lock @req FR:email-runner/state.file
  */
 import { randomBytes } from 'crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync, writeSync } from 'fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeSync } from 'fs';
 import { dirname, join } from 'path';
+import { writeAtomic } from '../core/file-lock';
 import type { LifecycleContext } from '../core/lifecycle';
 import { createGraphActions, createGraphMail, messageDetails } from './graph-mail';
 import type { Transport } from './guard';
@@ -40,9 +41,7 @@ export function readState(path: string): RunnerState {
 /** Atomic write, mode 0600, in a 0700 directory. */
 export function writeState(path: string, s: RunnerState): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const tmp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(s)}\n`, { mode: 0o600 });
-  renameSync(tmp, path);
+  writeAtomic(path, `${JSON.stringify(s)}\n`);
 }
 
 /**

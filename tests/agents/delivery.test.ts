@@ -3,7 +3,7 @@
  * @req FR:agent-delivery/pick.entries @req FR:agent-delivery/pick.agent @req FR:agent-delivery/pick.serial @req FR:agent-delivery/pick.once
  * @req NFR:agent-delivery/delivery.seam
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -241,6 +241,17 @@ describe('runDeliveryPass', () => {
 });
 
 describe('races and changes during a run', () => {
+  /** @req FR:agent-delivery/state.file */
+  it('writes the state file whole, owner-only, and leaves no temp or lock file', () => {
+    const fresh = join(home, 'new', 'state');
+    const s = new DeliveryStore(fresh, () => NOW);
+    s.setLogin('ok');
+    s.setLogin('expired');
+    expect(readdirSync(fresh)).toEqual(['delivery.json']);
+    expect(statSync(s.file).mode & 0o777).toBe(0o600);
+    expect(s.read().login.state).toBe('expired');
+  });
+
   /** @req FR:agent-delivery/pick.serial */
   it('claims an agent under a lock: a fresh claim from another process, even on this entry, blocks', async () => {
     const { ctx, d, prompts, store } = await mk();
