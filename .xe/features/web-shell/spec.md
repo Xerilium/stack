@@ -42,9 +42,11 @@ Owner needs the same few places reachable the same way on every screen so that m
   - **FR:nav.views.default** (P1): An unknown hash MUST open Home; Home is the starting screen
     > - @req FR:web-app/home.one
 - **FR:nav.rail** (P1): The desktop rail MUST list, in order: New task, Home, My day, Needs you (with the open count as a badge, hidden at 0), Sessions, Projects, Full stack, with Commands and Shortcuts at the bottom; labels are these words exactly
+  - **FR:nav.rail.icons** (P1): Each rail item, New task, Settings, Commands, and Shortcuts MUST show its icon beside its label (`FR:ui-kit/nav`)
   - **FR:nav.rail.brand** (P1): The brand at the top MUST be the mark plus `Stack` (`Stack [DEMO]` for a demo copy)
     > - @req FR:web-app/home2.demo
 - **FR:nav.tabbar** (P1): The phone tab bar MUST have five equal slots: Home, My day, New task (the raised circle, in the middle), Needs you (count badge), More (opens the palette)
+  - **FR:nav.tabbar.icons** (P1): Each phone tab MUST show its icon above its label, from the same set as the rail (`FR:ui-kit/nav.icon`)
   - **FR:nav.tabbar.glyph** (P2): The `+` glyph MUST be optically centered in its circle (its box center within 1px of the circle's center)
   - Projects and Full stack are reached through More / the palette
 - **FR:nav.pages** (P1): A page reached only from the palette (the QM plan, `#/qm`) MUST show inside the shell

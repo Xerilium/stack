@@ -519,7 +519,6 @@ html, body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transpare
 .wd-unset { position: absolute; bottom: 0; left: 0; right: 0; border: 1.5px dashed var(--muted); border-radius: 10px; opacity: .6; }
 .wd.off .wd-label { color: var(--muted); font-weight: 500; }
 .wd.off .wd-label small { display: block; text-align: center; }
-.tab-ic { display: none; }
 @media (max-width: 719px) {
   .banner:not(.offline) { font-size: 0; padding: 2px 8px; display: inline-block; margin-bottom: 10px; }
   .banner:not(.offline) strong { font-size: 10.5px; }
@@ -530,7 +529,6 @@ html, body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transpare
   /* five equal slots, the new-task circle in the middle. @req FR:web-shell/nav.tabbar */
   .tabbar { grid-template-columns: repeat(5, 1fr); align-items: stretch; padding-bottom: env(safe-area-inset-bottom); }
   .tabbar .tab { position: relative; flex-direction: column; justify-content: center; gap: 2px; min-height: 52px; font-size: 10.5px; font-weight: 500; color: var(--muted); background: none; padding: 4px 0; }
-  .tabbar .tab .tab-ic { display: block; }
   .tabbar .tab.on { color: var(--accent); background: none; }
   .tabbar .tab .badge { position: absolute; top: 6px; left: calc(50% + 6px); }
   .tabbar .add-fab { align-items: center; }

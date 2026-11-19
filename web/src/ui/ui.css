@@ -209,3 +209,13 @@
 .sk { border-radius: 10px; background: linear-gradient(90deg, var(--chip), var(--hover), var(--chip)); background-size: 200% 100%; animation: sk 1.4s linear infinite; list-style: none; }
 @keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none !important; } }
+
+/* Nav item: a muted line icon, then the label. The rail lays it out in a row; the phone tab bar stacks it. @req FR:ui-kit/nav @req FR:ui-kit/nav.icon.muted */
+.ui-nav-ic { flex: none; display: block; width: 18px; height: 18px; color: var(--muted); }
+.tab:hover .ui-nav-ic { color: var(--ink2); }
+.tab.on .ui-nav-ic { color: inherit; }
+.rail .tab { justify-content: flex-start; gap: 10px; }
+.rail .tab-label { flex: 1; }
+.tabbar .tab .ui-nav-ic { width: 22px; height: 22px; color: inherit; }
+.fab .ui-nav-ic { color: inherit; }
+.fab .ui-nav-ic path { stroke-width: 2.2; }

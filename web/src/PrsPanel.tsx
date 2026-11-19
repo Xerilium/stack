@@ -7,6 +7,7 @@
  * @req FR:pr-page/check.view @req FR:pr-page/check.none @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail @req FR:pr-page/menu.run
  * @req FR:pr-page/detail.layout @req FR:pr-page/pin.toggle @req FR:pr-page/pin.drag @req FR:pr-page/pin.keys @req FR:pr-page/live.age
  */
+import { NavItem } from './ui/Nav';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
 import { errText } from './errtext';
@@ -69,7 +70,7 @@ export function prsNavNow(api: Client): { on: boolean; need: number; signIn: boo
 export function PrsNavItem({ api, active, label, hint, onGo }: { api: Client; active: boolean; label: string; hint: string; onGo: () => void }) {
   const nav = usePrsNav(api);
   if (!nav.on) return null;
-  return <button type="button" class={`tab${active ? ' on' : ''}`} aria-current={active ? 'page' : undefined} title={`${label} (${hint})`} onClick={onGo}><span class="tab-label">{label}<PrsNavBadge nav={nav} /></span></button>;
+  return <NavItem icon="prs" label={label} current={active} title={`${label} (${hint})`} badge={<PrsNavBadge nav={nav} />} onClick={onGo} />;
 }
 
 /** The nav badge: rows with a next action; a dot when signed out. @req FR:pr-page/nav.badge */
