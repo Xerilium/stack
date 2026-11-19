@@ -21,6 +21,7 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 | `MessageBox` | `web/src/ui/MessageBox.tsx` | One message from a detail pane: a heading, a text box and one send button. |
 | `LinkList` | `web/src/ui/LinkList.tsx` | One labelled line of links that wrap. Web links open in a new tab. |
 | `SourceLink` | `web/src/ui/SourceLink.tsx` | A link to where an item came from, named by its kind (PR, issue, session, email, site). |
+| `SourceButton` | `web/src/ui/SourceLink.tsx` | A source inside the app (a task, a session): a button with the look of `SourceLink`. |
 | `PageHeader` | `web/src/ui/PageHeader.tsx` | The top of a page: an `h1` title, a muted note, a sub line and actions at the right. |
 | `EmptyState` | `web/src/ui/States.tsx` | What is empty, then the next step. Text only. |
 | `Loading` | `web/src/ui/States.tsx` | Gray bars with a loading note for assistive tech. |

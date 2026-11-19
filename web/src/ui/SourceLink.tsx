@@ -1,7 +1,7 @@
 /**
  * A link to where an item came from, named by its kind: a pull request, an issue, a session, an email, or a site.
  * @req FR:ui-kit/source
- * @owns class:ui-source legacy: AsksView.tsx=1
+ * @owns class:ui-source
  */
 import './ui.css';
 
@@ -29,4 +29,9 @@ export function SourceLink({ href }: { href: string | undefined }) {
   const s = sourceOf(href);
   if (!s) return null;
   return <a class="ui-source" data-kind={s.kind} href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{s.label}<span aria-hidden="true"> ↗</span></a>;
+}
+
+/** A source inside the app (a task, a session): a button with the look of the link, named by its kind. A click never reaches the row under it. @req FR:ui-kit/source */
+export function SourceButton({ label, onOpen }: { /** The kind of source, for example `Task`. */ label: string; onOpen: () => void }) {
+  return <button type="button" class="ui-source ui-source-btn" onClick={(e) => { e.stopPropagation(); onOpen(); }}>{label}</button>;
 }

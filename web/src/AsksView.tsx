@@ -8,7 +8,7 @@ import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { actionsFor, CONTEXT_ASK, needsContext, reasonOf, sessionOf, whoOf, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AskItem, type RowAction } from './asks';
 import { ActionMenu } from './ui/ActionMenu';
-import { SourceLink } from './ui/SourceLink';
+import { SourceButton, SourceLink } from './ui/SourceLink';
 import { blockedHelp } from './notify';
 import { Md } from './parts';
 import { parseRow } from './row';
@@ -95,8 +95,8 @@ function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask, onOpe
         <span class="ask-who" id={`${ctx}-who`}>{whoOf(a)}</span>
         <span class={`ask-ctx-why${reason ? '' : ' none'}`} id={`${ctx}-why`}>{reason ? <Md text={reason} project={a.project} links={false} /> : 'No reason given'}</span>
         {a.source !== 'task' && <SourceLink href={a.link} />}
-        {taskRef && onOpenTask && <button type="button" class="ui-source ask-task-link" onClick={() => onOpenTask(taskRef)}>Task</button>}
-        {session && onOpenSession && <button type="button" class="ui-source ask-task-link" onClick={() => onOpenSession(session)}>Session</button>}
+        {taskRef && onOpenTask && <SourceButton label="Task" onOpen={() => onOpenTask(taskRef)} />}
+        {session && onOpenSession && <SourceButton label="Session" onOpen={() => onOpenSession(session)} />}
       </p>
       {onAct && <ActionMenu name={`Actions for ${a.ask}`} items={rowActions(a).map((x) => ({ id: x.id, label: x.label, ...(x.action?.open && a.source !== 'task' && a.link ? { href: a.link } : { onSelect: () => onAct(x) }) }))} />}
     </li>
