@@ -47,12 +47,14 @@ describe('classify', () => {
     expect(classify(base({ tail: undefined, lastActivityAt: T - MIN, lastTurnEdgeAt: T - MIN }), T).state).toBe('idle');
   });
 
-  // @req FR:session-inventory/state.wrap-up @req FR:session-inventory/needs.reason
+  // @req FR:session-inventory/state.wrap-up @req FR:session-inventory/state.wrap-up.ask @req FR:session-inventory/state.wrap-up.choice @req FR:session-inventory/needs.reason
   it('wrap-up: a closed turn whose only ask is the closer is idle, not waiting', () => {
     const ask = (a: string, o: Partial<SessionFacts> = {}) => classify(base({ summary: { category: 'blocked', ask: a }, ...o }), T);
     expect(ask('Anything else, or **done**?')).toEqual({ state: 'idle', reason: 'wrap-up' });
     expect(ask('anything else?')).toEqual({ state: 'idle', reason: 'wrap-up' });
     expect(ask('Anything else, **done**, or **close**?')).toEqual({ state: 'idle', reason: 'wrap-up' });
+    expect(ask('Anything else, or **done** to wrap up?')).toEqual({ state: 'idle', reason: 'wrap-up' });
+    expect(ask('Anything else, or should I deploy?')).toEqual({ state: 'waiting', reason: 'blocked' });
     expect(ask('Anything else, or **done**?', { pinned: true })).toEqual({ state: 'pinned', reason: 'wrap-up' });
     // a real choice stays waiting
     expect(ask('Anything else, or **go** to run the cleanup?')).toEqual({ state: 'waiting', reason: 'blocked' });
@@ -171,13 +173,15 @@ describe('runInventory', () => {
     e.put('local_old', { cwd: '/Users/u/dev/todo', lastActivityAt: T - 8 * DAY, lastTurnEdgeAt: T - 8 * DAY - MIN }, [{ type: 'user', message: { content: 'go' } }]);
     e.put('local_oldpin', { isStarred: true, lastActivityAt: T - 8 * DAY, lastTurnEdgeAt: T - 8 * DAY - MIN }, [{ type: 'user', message: { content: 'go' } }]);
     e.put('local_6d', { interruptedAwaitingPerson: true, lastActivityAt: T - 6 * DAY, lastTurnEdgeAt: T - 6 * DAY });
+    // waiting at exactly 7 days is stale too
+    e.put('local_7d', { interruptedAwaitingPerson: true, lastActivityAt: T - 7 * DAY, lastTurnEdgeAt: T - 7 * DAY });
     e.put('local_wrap', { lastActivityAt: T - 5 * MIN, lastTurnEdgeAt: T - 5 * MIN, postTurnSummary: { status_category: 'blocked', needs_action: 'Anything else, or **done**?', summarizes_uuid: 'u1' }, lastAssistantUuid: 'u1' });
     for (const id of ['local_old', 'local_oldpin']) { const tx = join(e.projects, '-Users-u-dev-todo', `cli-${id}.jsonl`); const t = new Date(T - 8 * DAY); utimesSync(tx, t, t); }
     const r = e.run();
     expect(r.needsYou.map((s) => s.id)).toEqual(['local_6d', 'local_oldpin']);
-    expect(r.archive.map((s) => [s.id, s.state, s.reason])).toEqual([['local_old', 'stuck', 'stale']]);
+    expect(r.archive.map((s) => [s.id, s.state, s.reason])).toEqual([['local_7d', 'waiting', 'stale'], ['local_old', 'stuck', 'stale']]);
     expect(r.sessions.find((s) => s.id === 'local_wrap')).toMatchObject({ state: 'idle', reason: 'wrap-up' });
-    expect(r.counts).toMatchObject({ stuck: 2, waiting: 1, idle: 1 });
+    expect(r.counts).toMatchObject({ stuck: 2, waiting: 2, idle: 1 });
   });
 
   // @req FR:session-inventory/read.cache @req FR:session-inventory/store.write

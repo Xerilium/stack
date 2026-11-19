@@ -45,9 +45,18 @@ const PROMPT_MS = 5 * MIN;
 const DEAD_MS = 30 * MIN;
 /** A waiting or stuck session quiet this long is an archive candidate, not a Needs-you row. @req FR:session-inventory/archive.stale */
 export const STALE_MS = 7 * 24 * 60 * MIN;
-/** The closer ask alone: `Anything else` with no choice but `done` or `close`. @req FR:session-inventory/state.wrap-up */
-const WRAP_UP = /^anything else\b(?:[\s,]*(?:or\s+)?\*{0,2}(?:done|close)\*{0,2})*[\s?.!]*$/i;
-export const isWrapUp = (ask: string | undefined): boolean => !!ask && WRAP_UP.test(ask.trim());
+/** Choices a closer may offer and still be only a closer. */
+const CLOSER_CHOICES = new Set(['done', 'close']);
+/**
+ * The closer ask alone: it starts with `Anything else`, and either says nothing more or offers only bold `done`/`close`.
+ * @req FR:session-inventory/state.wrap-up.ask @req FR:session-inventory/state.wrap-up.choice
+ */
+export function isWrapUp(ask: string | undefined): boolean {
+  const t = ask?.trim() ?? '';
+  if (!/^anything else\b/i.test(t)) return false;
+  const choices = [...t.matchAll(/\*\*([^*]+)\*\*/g)].map((m) => m[1].trim().toLowerCase());
+  return choices.length ? choices.every((c) => CLOSER_CHOICES.has(c)) : /^anything else[\s?.!]*$/i.test(t);
+}
 const TAIL_BYTES = 64 * 1024;
 const QUESTION_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
 
@@ -162,7 +171,7 @@ export function sessionFacts(raw: unknown): Omit<SessionFacts, 'tail' | 'txMtime
  * The state of one session at `now`, and the rule that set it.
  * @req FR:session-inventory/state.waiting @req FR:session-inventory/state.stuck @req FR:session-inventory/state.running
  * @req FR:session-inventory/state.done @req FR:session-inventory/state.pinned @req FR:session-inventory/state.idle @req FR:session-inventory/state.activity
- * @req FR:session-inventory/state.wrap-up
+ * @req FR:session-inventory/state.wrap-up @req FR:session-inventory/state.wrap-up.choice
  */
 export function classify(f: SessionFacts, now: number): { state: SessionState; reason: SessionReason } {
   const activity = Math.max(f.lastActivityAt, f.txMtimeMs ?? 0, f.subMtimeMs ?? 0);
@@ -172,8 +181,9 @@ export function classify(f: SessionFacts, now: number): { state: SessionState; r
   if (f.tail === 'question') return { state: 'waiting', reason: 'question' };
   if (f.awaitingPerson || f.wrapUpNeedsUser) return { state: 'waiting', reason: 'needs-user' };
   // A closed turn that only offers the closer is not an ask: it falls through to idle. @req FR:session-inventory/state.wrap-up
-  const wrapUp = !open && f.summary?.category === 'blocked' && isWrapUp(f.summary.ask);
-  if (!open && f.summary?.category === 'blocked' && !wrapUp) return { state: 'waiting', reason: 'blocked' };
+  const blocked = !open && f.summary?.category === 'blocked';
+  const wrapUp = blocked && isWrapUp(f.summary!.ask);
+  if (blocked && !wrapUp) return { state: 'waiting', reason: 'blocked' };
   if (f.tail === 'tool' && quiet >= PROMPT_MS && !scheduled && f.permissionMode !== 'bypassPermissions') return { state: 'waiting', reason: 'permission' };
   if (f.errorAt !== undefined && f.errorAt > (f.lastTurnEdgeAt ?? 0)) return { state: 'stuck', reason: 'error' };
   // A turn the owner interrupted ends at turn-end: it is closed, not stuck.
