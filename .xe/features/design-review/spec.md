@@ -37,7 +37,7 @@ The reviewer needs each page's purpose so that its feedback judges the page agai
 
 The owner needs one click per page so that a review never needs a manual screenshot.
 
-- **FR:ui.button** (P1): Feedback panel MUST show a `Send for design review` button next to `Send`: the label names the effect (`FR:ui-kit/send.decision`)
+- **FR:ui.button** (P1): Feedback panel MUST show a `Send to ChatGPT` button next to `Send`: the label names the effect (`FR:ui-kit/send.decision`)
   - **FR:ui.button.text** (P1): Feedback panel MUST enable the button with no text
 - **FR:ui.shot** (P1): Feedback panel MUST capture the page as feedback does
   - Desktop app: `POST /design-review/capture`. Browser: the Screen Capture API

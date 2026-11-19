@@ -15,7 +15,7 @@ Applies to every view in `web/`. The design language (color, type, space, compon
 
 - Text to an agent, a session or a person goes out only from a form: the text is in a box the owner can change, and the submit button names the effect (`Send to Xe CoS`). Use `MessageBox`.
 - Ready text (a quick prompt, a start text) fills the box. It never goes out on the click that offers it.
-- A button that sends or deletes names its effect: a verb and an object (`Send for design review`, `Remove account`). Never a bare noun.
+- A button that sends or deletes names its effect: a verb and an object (`Send to ChatGPT`, `Remove account`). Never a bare noun.
 - A one-step button may send only a fixed decision (`Approve`, `Done`), and its file must be in the audit list.
 - The send guard (`web/tests/send-guard.test.ts`, `FR:ui-kit/send.guard`) fails when an element handler other than a form submit sends.
 - Work that is not the owner's job (a gap the CoS must fill) goes to the agent in a file or an API. Never add a button for it.

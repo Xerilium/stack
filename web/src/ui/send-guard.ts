@@ -95,7 +95,7 @@ export interface Audit { n: number; why: string }
 export const AUDITED: Record<string, Audit> = {
   'AgentTalk.tsx': { n: 1, why: 'Start review: a fixed command with no owner text; the label names the effect' },
   'AsksView.tsx': { n: 5, why: 'Answer buttons of an ask (Approve, Reject, Done, an option): each sends a fixed decision, its label names it, and the toast has Undo' },
-  'FeedbackPanel.tsx': { n: 3, why: 'Send and Cmd+Enter send the text the owner typed in the box above; Send for design review names its effect' },
+  'FeedbackPanel.tsx': { n: 3, why: 'Send and Cmd+Enter send the text the owner typed in the box above; Send to ChatGPT names its effect' },
   'InboxView.tsx': { n: 4, why: 'Mail actions named by their effect; Create draft saves the typed text as a draft and sends nothing; a request is under Request this action' },
   'NowChat.tsx': { n: 1, why: 'Enter in the message box sends the text the owner typed; the form has the Send button' },
   'SessionsView.tsx': { n: 2, why: 'Enter in the prompt box sends the text the owner typed; the form has the send button' },

@@ -28,7 +28,7 @@ test('Cancel closes the panel, sends nothing, and returns focus to the icon', as
 test('the three actions fit one line and keep 44 px targets on a phone', async ({ page }, info) => {
   const mobile = info.project.name === 'mobile';
   const { panel } = await open(page, mobile);
-  for (const name of ['Cancel', 'Send for design review', 'Send']) await expect(panel.getByRole('button', { name, exact: true })).toBeVisible();
+  for (const name of ['Cancel', 'Send to ChatGPT', 'Send']) await expect(panel.getByRole('button', { name, exact: true })).toBeVisible();
   // One read for all three: the panel fades in, so separate reads can see different frames.
   const boxes = await panel.locator('.fb-actions .btn').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, height: r.height }; }));
   expect(boxes).toHaveLength(3);
