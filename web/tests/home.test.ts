@@ -96,7 +96,6 @@ describe('homeOf', () => {
   });
 });
 
-// @req FR:web-app/home3.dedupe @req FR:ask-queue/needs.dedupe
 // @req FR:now-screen/now.one
 describe('a row shown for its ranked leaf', () => {
   it('takes the leaf time, so the needs text and fit agree', () => {
@@ -108,6 +107,7 @@ describe('a row shown for its ranked leaf', () => {
   });
 });
 
+// @req FR:web-app/home3.dedupe @req FR:ask-queue/needs.dedupe
 describe('no duplicates between Needs you and Home', () => {
   const tasks = [T('alpha:1', 'Decide the vendor 🟡'), T('alpha:2', 'Write docs 🟢'), T('alpha:3', 'Fix the build 🔹'), T('beta:1', 'Plan the trip 🟢', 'beta')];
   const projects = [P('alpha'), P('beta')];
