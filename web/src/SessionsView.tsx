@@ -23,6 +23,7 @@ import { Skeleton } from './ui/Skeleton';
 import { feedbackActive } from './FeedbackPanel';
 import { MdBlock } from './parts';
 import './sessions.css';
+import { MoreButton } from './ui/MoreButton';
 
 const TOP = 20;
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
@@ -406,7 +407,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
           ))}
         </ol>
       )}
-      {!chartMode && split.more > 0 && <button type="button" class="more-btn" onClick={() => s.setShowAll(true)}>Show {split.more} more <kbd aria-hidden="true">m</kbd></button>}
+      {!chartMode && split.more > 0 && <MoreButton count={split.more} keyHint="m" onMore={() => s.setShowAll(true)} />}
       {!chartMode && hiddenNote && ready && <p class="scope-note" data-testid="scope-note">{hiddenNote} · <button type="button" class="link" onClick={() => s.setShowAll(!s.showAll)}>{s.showAll ? 'Only my projects' : 'Show all'}<kbd aria-hidden="true">A</kbd></button></p>}
       {!chartMode && count > 0 && <p class="keys-hint" aria-hidden="true">j k move · Enter open · f pin{hasTeam ? ' · t my team' : ''} · A all repos · s stop · c usage · n new</p>}
       {chartMode && count > 0 && <p class="keys-hint" aria-hidden="true">j k pick an agent · n new · c usage · p other sessions</p>}

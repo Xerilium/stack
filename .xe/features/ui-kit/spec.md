@@ -33,6 +33,20 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 - **FR:chip** (P1): `StatusChip` shows a state word: a dot and the word on a light tint of the tone (`neutral`, `info`, `ok`, `warn`, `bad`). It is a `span`: no border, no hover state, default cursor, not focusable. It is never a button. Text meets WCAG AA in light and dark
 
+### FR:badge: Count badge
+
+Owner needs every count on a nav item to look the same so that he reads it at a glance.
+
+- **FR:badge** (P2): `CountBadge` MUST show the count and say what it counts (`label`)
+  - **FR:badge.hidden** (P3): `CountBadge` MUST hide from assistive tech when it has no `label`
+
+### FR:more: Show more
+
+Owner needs one button that shows the rest of a short list so that it works the same in every view.
+
+- **FR:more** (P2): `MoreButton` MUST say how many more rows there are and call `onMore` on a tap
+  - **FR:more.key** (P3): `MoreButton` MUST show the view's shortcut key (`keyHint`), hidden from assistive tech
+
 ### FR:menu: Actions menu
 
 - **FR:menu** (P1): `ActionMenu` is one quiet icon button `⋯` (name from `name`, `aria-haspopup="menu"`, `aria-expanded`; no fill until hover or open) and a menu (`role=menu`, same name) of `menuitem`s. An item with `href` is a link in a new tab; else a button that runs `onSelect`, or is disabled. Opening moves focus to the first item. ArrowUp and ArrowDown wrap, Home and End jump, and they skip disabled items. Enter or Space runs. Escape closes and returns focus to the button, and does not close a dialog under it. Tab or a pointer down outside closes. The menu opens under the button, or above it when the screen bottom or the phone tab bar leaves no room. An open menu sits above the cards below

@@ -18,6 +18,7 @@ import { Skeleton as LoadingRows } from './ui/Skeleton';
 import type { ComponentChildren } from 'preact';
 import { feedbackActive } from './FeedbackPanel';
 import './asks.css';
+import { MoreButton } from './ui/MoreButton';
 
 const TOP = 5;
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
@@ -362,7 +363,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
           {ghosts.map((g) => <Row key={`gone-${g.key}`} a={g} n={g.rank ?? 0} now={asks.now} fresh={false} leaving onPick={() => undefined} />)}
         </ol>
       )}
-      {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more <kbd aria-hidden="true">m</kbd></button>}
+      {more > 0 && <MoreButton count={more} keyHint="m" onMore={() => asks.setShowAll(true)} />}
       {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · a agent · u undo</p>}
       {asks.stale.length > 0 && (
         <StaleGroup n={asks.stale.length} open={asks.staleOpen} onToggle={() => asks.setStaleOpen(!asks.staleOpen)}>
