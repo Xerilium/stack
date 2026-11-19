@@ -106,7 +106,9 @@ describe('workflows', () => {
     expect(JSON.parse(read('package.json')).scripts['test:coverage']).toMatch(/jest --coverage/);
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const cfg = require(join(root, 'jest.config.js')) as { coverageThreshold: Record<string, Record<string, number>> };
-    expect(cfg.coverageThreshold['./src/core/']).toEqual({ statements: 90, lines: 90, functions: 90, branches: 85 });
+    const core = cfg.coverageThreshold['./src/core/'];
+    for (const k of ['statements', 'lines', 'functions'] as const) expect(core[k]).toBeGreaterThanOrEqual(90);
+    expect(core.branches).toBeGreaterThanOrEqual(85);
     const up = steps.find((s) => s.with?.name === 'coverage');
     expect(up?.if).toBe('failure()');
     expect(up?.with?.path).toBe('coverage');
