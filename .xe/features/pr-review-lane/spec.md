@@ -88,7 +88,7 @@ The live agent needs one short contract so that it works the lane with no report
 The owner needs to tap through the checks on his phone so that live validation takes minutes.
 
 - **FR:panel.view** (P1): `#/live` shows the panel in place of the app shell. It shows the active PR (title link, `repo#n`) (the title comes from the facts cache), an `Open app` link to the server url, the state chip, and the items. With no active PR it says `No PR in live validation.`
-- **FR:panel.chip** (P1): The state chip shows `Preparing`, `Agent working`, `Ready for you`, or `Recheck` (`revalidating`)
+- **FR:panel.chip** (P1): The state chip is a status chip (`FR:ui-kit/chip`). It shows `Preparing`, `Agent working`, `Ready for you`, or `Recheck` (`revalidating`). `Ready for you` and `Recheck` have the `info` tone; the others are neutral
 - **FR:panel.check** (P1): A tap on an item check toggles `passed` and `open`. The item shows its state as text and the author (`by`)
 - **FR:panel.comment** (P1): A long press on an item, or its `Comment` button, opens a comment box. Save sends `comment`
 - **FR:panel.fix** (P1): `Needs fix` on an item sends `needs-fix` with the comment box text

@@ -1,8 +1,8 @@
 /* Settings (Fluent 2). Compact: 6 account rows, Add account and Other ways to connect fit on one 1280x800 screen. */
-.settings { max-width: 760px; margin: 0 auto; padding: var(--fl-s-xl) var(--fl-s-l) var(--fl-s-xxxl); box-sizing: border-box; }
-.set-title { margin: 0 0 var(--fl-s-m); font-size: var(--fl-title); line-height: var(--fl-title-lh); font-weight: 600; }
-.set-sec { padding: var(--fl-s-l) 0; border-top: 1px solid var(--fl-stroke2); scroll-margin-top: var(--fl-s-l); }
-.set-sec h2 { margin: 0; font-size: var(--fl-sub1); line-height: var(--fl-sub1-lh); font-weight: 600; }
+/* The page starts at the same left and top edge as every page; a form reads at 720 px. */
+.main > .settings { max-width: 720px; margin: 0; padding: 0 0 var(--fl-s-xxxl); box-sizing: border-box; }
+.set-sec { padding: var(--fl-s-l) 0 var(--fl-s-xxl); border-top: 1px solid var(--fl-stroke2); scroll-margin-top: var(--fl-s-l); }
+.set-sec h2 { margin: 0; font-size: var(--fl-sub2); line-height: var(--fl-sub2-lh); font-weight: 600; }
 .set-sum { margin: 2px 0 var(--fl-s-m); color: var(--fl-fg2); }
 .set-note { margin: var(--fl-s-xs) 0; color: var(--fl-fg2); }
 .set-note:empty { display: none; }
@@ -28,12 +28,7 @@
 .acct-row + .acct-row { border-top: 1px solid var(--fl-stroke2); }
 .acct-kind { display: inline-flex; color: var(--fl-fg2); }
 .acct-addr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.acct-status { display: inline-flex; align-items: center; gap: 6px; color: var(--fl-fg1); white-space: nowrap; cursor: default; }
-.acct-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--fl-fg3); }
-.acct-dot.connected { background: var(--set-ok); }
-.acct-dot.expired { background: var(--set-signin); }
-.acct-dot.down { background: var(--set-down); }
-.acct-dot.error { background: var(--set-bad); }
+.acct-status { display: inline-flex; align-items: center; white-space: nowrap; cursor: default; }
 .acct-fix { min-width: 56px; }
 .acct-kebab { width: var(--fl-target); padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .acct-more .fl-popover { left: auto; right: 0; min-width: 240px; }
@@ -77,11 +72,10 @@
 .now-cal-go { opacity: .7; }
 
 @media (max-width: 719px) {
-  .settings { padding: var(--fl-s-m) var(--fl-s-l) var(--fl-s-xxxl); }
   .acct-row { grid-template-columns: 20px minmax(0, 1fr) auto var(--fl-target); grid-template-areas: 'k a f m' '. s s .'; row-gap: 0; padding-top: var(--fl-s-xs); padding-bottom: var(--fl-s-xs); }
   .acct-kind { grid-area: k; }
   .acct-addr { grid-area: a; }
-  .acct-status { grid-area: s; font-size: var(--fl-caption); }
+  .acct-status { grid-area: s; padding-bottom: var(--fl-s-xs); }
   .acct-fix, .acct-fix-gap { grid-area: f; }
   .acct-more { grid-area: m; }
   .now-cal-link { min-height: 44px; }

@@ -5,6 +5,8 @@
  * @req FR:connect-accounts/web.panel @req FR:connect-accounts/web.row @req FR:connect-accounts/web.fix @req FR:connect-accounts/web.menu
  * @req FR:connect-accounts/web.manual @req FR:connect-accounts/web.setup @req FR:connect-accounts/web.signin @req FR:connect-accounts/web.nocmd
  */
+import { Loading } from './ui/States';
+import { StatusChip, type ChipTone } from './ui/StatusChip';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
@@ -102,6 +104,9 @@ function RowMenu({ a, busy, onDrafts, onSignIn, onRemove }: { a: AccountRow; bus
   );
 }
 
+/** One tone per account state: the same word never shows in two colors. @req FR:connect-accounts/web.row */
+const STATE_TONE: Record<AccountRow['state'], ChipTone> = { connected: 'ok', expired: 'warn', down: 'warn', error: 'bad' };
+
 function Row({ a, busy, now, onSignIn, onDrafts, onRemove }: { a: AccountRow; busy: boolean; now: Date; onSignIn: () => void; onDrafts: (on: boolean) => void; onRemove: () => void }) {
   const tip = statusTip(a, now);
   const name = a.account || 'Earlier sign-in';
@@ -110,8 +115,7 @@ function Row({ a, busy, now, onSignIn, onDrafts, onRemove }: { a: AccountRow; bu
       <Kind type={a.type} />
       <span class="acct-addr" title={name}>{name}</span>
       <span class="acct-status" title={tip}>
-        <span class={`acct-dot ${a.state}`} aria-hidden="true" />
-        <span class="acct-word">{STATE_TEXT[a.state]}</span>
+        <StatusChip label={STATE_TEXT[a.state]} tone={STATE_TONE[a.state]} />
         <span class="sr-only">. {tip}</span>
       </span>
       {needsFix(a) ? <button type="button" class="fl-btn primary acct-fix" disabled={busy} aria-label={`Fix ${name}`} onClick={onSignIn}>Fix</button> : <span class="acct-fix-gap" aria-hidden="true" />}
@@ -199,7 +203,7 @@ export function ConnectAccounts({ api, onChange, other, now = new Date(), refres
   );
 
   if (missing) return <div class="acct-panel" data-testid="connect-accounts"><p class="acct-note">Connect accounts from Stack on your Mac.</p>{otherWays}</div>;
-  if (!info) return <p class="acct-note" data-testid="connect-accounts" role="status">Loading accounts…</p>;
+  if (!info) return <div data-testid="connect-accounts"><Loading what="accounts" /></div>;
   return (
     <div class="acct-panel" data-testid="connect-accounts">
       <div class="acct-top">

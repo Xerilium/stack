@@ -36,6 +36,8 @@ async function open(page: Page, lane: ReturnType<typeof seed> | { state: string;
 test('shows the live PR, the server link, the chip and the items', async ({ page }) => {
   await open(page);
   await expect(page.getByTestId('lane-chip')).toHaveText('Ready for you');
+  await expect(page.getByTestId('lane-chip').locator('.ui-chip')).toHaveClass(/t-info/);
+  await expect(page.locator('h1.ui-head-title')).toHaveText('Live validation');
   await expect(page.getByRole('link', { name: 'Fix export o/r#12' })).toHaveAttribute('href', 'https://github.com/o/r/pull/12');
   await expect(page.getByRole('link', { name: 'Open app' })).toHaveAttribute('href', 'http://localhost:5176');
   await expect(page.locator('.lv-item')).toHaveCount(2);
