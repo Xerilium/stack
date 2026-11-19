@@ -70,7 +70,7 @@ describe('bicep build', () => {
   });
 });
 
-// @req FR:deploy-docs/ci.valid @req FR:deploy-docs/ci.deploy @req FR:deploy-docs/ci.e2e
+// @req FR:deploy-docs/ci.valid @req FR:deploy-docs/ci.deploy @req FR:deploy-docs/ci.e2e @req FR:deploy-docs/ci.coverage @req FR:deploy-docs/ci.coverage-artifact
 describe('workflows', () => {
   const dir = join(root, '.github/workflows');
   const docs = readdirSync(dir).map((f) => [f, parse(read(`.github/workflows/${f}`))] as const);
@@ -98,6 +98,24 @@ describe('workflows', () => {
       expect(d.permissions).toEqual({ contents: "read" });
       for (const m of read(`.github/workflows/${f}`).matchAll(/\buses:\s*(\S+)/g)) expect(m[1]).toMatch(/@[0-9a-f]{40}$/);
     }
+  });
+  it('the test job enforces the core coverage threshold', () => {
+    const steps = parse(read('.github/workflows/ci.yml')).jobs.test.steps as Array<{ run?: string; if?: string; with?: { name?: string; path?: string } }>;
+    const runs = steps.map((s) => s.run ?? '');
+    expect(runs.some((r) => r.startsWith('pnpm test:coverage'))).toBe(true);
+    expect(runs).not.toContain('pnpm test');
+    // CPU budgets run uninstrumented, after the coverage run skips them.
+    expect(runs.find((r) => r.startsWith('pnpm test:coverage'))).toContain('perf-budget');
+    expect(runs).toContain('pnpm exec jest tests/core/perf-budget.test.ts');
+    expect(JSON.parse(read('package.json')).scripts['test:coverage']).toMatch(/jest --coverage/);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const cfg = require(join(root, 'jest.config.js')) as { coverageThreshold: Record<string, Record<string, number>> };
+    const core = cfg.coverageThreshold['./src/core/'];
+    for (const k of ['statements', 'lines', 'functions'] as const) expect(core[k]).toBeGreaterThanOrEqual(90);
+    expect(core.branches).toBeGreaterThanOrEqual(85);
+    const up = steps.find((s) => s.with?.name === 'coverage');
+    expect(up?.if).toBe('failure()');
+    expect(up?.with?.path).toBe('coverage');
   });
   it('e2e runs Playwright on pull requests and guards on web/', () => {
     const text = read('.github/workflows/e2e.yml');
