@@ -57,7 +57,10 @@ test.describe('first-run onboarding', () => {
     await expect(page.getByTestId('onboarding')).toBeVisible();
     await expect(page.getByText('Step 1 of 5')).toBeVisible();
     await expect(heading(page)).toHaveText('Where do your tasks live?');
-    await page.getByLabel('Folder path or git url').fill('~/tasks');
+    // Product names and acronyms keep their case. @req FR:first-run-onboarding/step.repo.copy
+    await expect(page.getByText('Stack keeps tasks as Markdown files in a Git repo. Point it at yours.', { exact: true })).toBeVisible();
+    await expect(page.getByText('A folder on this computer that is a Git repo, or a URL to clone.', { exact: true })).toBeVisible();
+    await page.getByLabel('Folder path or Git URL', { exact: true }).fill('~/tasks');
     await page.getByRole('button', { name: 'Continue' }).click();
 
     await expect(page.getByText('Step 2 of 5')).toBeVisible();
@@ -105,7 +108,7 @@ test.describe('first-run onboarding', () => {
     await expect(page.getByTestId('live-warning')).toContainText('Live is on: set by --live.');
     await expect(page.getByRole('radio')).toHaveCount(0);
     await page.getByRole('button', { name: 'Back' }).click();
-    await expect(page.getByLabel('Folder path or git url')).toHaveAttribute('readonly', '');
+    await expect(page.getByLabel('Folder path or Git URL')).toHaveAttribute('readonly', '');
     await expect(page.getByText('Set by --repo. Change it there.')).toBeVisible();
     expect(f.posts.at(-1)).toEqual({ go: 'repo' });
   });
@@ -114,7 +117,7 @@ test.describe('first-run onboarding', () => {
     await mockApi(page);
     const f = await fakeSetup(page, { fail: 'Folder not found: /nope' });
     await page.goto('/');
-    await page.getByLabel('Folder path or git url').fill('/nope');
+    await page.getByLabel('Folder path or Git URL').fill('/nope');
     await page.getByRole('button', { name: 'Continue' }).click();
     await expect(page.getByRole('alert')).toHaveText('Folder not found: /nope');
     await expect(page.getByText('Step 1 of 5')).toBeVisible();
@@ -135,7 +138,7 @@ test.describe('first-run onboarding', () => {
     await mockApi(page);
     await fakeSetup(page, { restartOnce: true });
     await page.goto('/');
-    await page.getByLabel('Folder path or git url').fill('/r');
+    await page.getByLabel('Folder path or Git URL').fill('/r');
     await page.getByRole('button', { name: 'Continue' }).click();
     await expect(page.getByText('Step 2 of 5')).toBeVisible();
   });
@@ -145,7 +148,7 @@ test.describe('first-run onboarding', () => {
     await fakeSetup(page, { repo: '/gone', error: '/gone is not a git repo' });
     await page.goto('/');
     await expect(page.getByRole('alert')).toHaveText('Stack could not open this repo: /gone is not a git repo');
-    await expect(page.getByLabel('Folder path or git url')).toHaveValue('/gone');
+    await expect(page.getByLabel('Folder path or Git URL')).toHaveValue('/gone');
   });
 
   test('no setup route (hosted, or an older host): the app shows', async ({ page }) => {

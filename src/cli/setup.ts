@@ -86,7 +86,7 @@ const localPath = (spec: string | undefined) => (spec && !isUrl(spec) ? resolve(
 
 /**
  * Validates and saves one step. `restart` is true when the host must restart to apply it (repo, mode, or calendar changed).
- * @req FR:first-run-onboarding/host.apply @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.mode
+ * @req FR:first-run-onboarding/host.apply @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.repo.copy @req FR:first-run-onboarding/step.mode
  * @req FR:first-run-onboarding/step.mode.tasks @req FR:first-run-onboarding/step.calendar @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone
  */
 export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unknown; locks?: Locks; spec?: string }): ApplyResult {
@@ -121,14 +121,14 @@ export function applySetup(o: { home: string; env: NodeJS.ProcessEnv; body: unkn
       // A flag, the current folder, or an env var sets the repo: confirm and move on, save nothing.
       if (o.locks?.repo ?? envLock(o.env)) return save({}, false);
       const raw = typeof b.repo === 'string' ? b.repo.trim() : '';
-      if (!raw || raw.length > 2048) return fail('Type a folder path or a git url.');
-      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !isUrl(raw)) return fail('Use an https, ssh, file, or git@ url.');
+      if (!raw || raw.length > 2048) return fail('Type a folder path or a Git URL.');
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !isUrl(raw)) return fail('Use an https, ssh, file, or git@ URL.');
       // The page shows the url redacted; sending it back unchanged keeps the saved url and its credentials.
       let value = cfg.repo && raw === redact(cfg.repo) ? cfg.repo : raw;
       if (!isUrl(value)) {
         value = resolve(raw.replace(/^~(?=$|[/\\])/, o.home));
         if (!existsSync(value) || !statSync(value).isDirectory()) return fail(`Folder not found: ${value}`);
-        if (!insideGit(value)) return fail(`${value} is not a git repo. Run git init there first.`);
+        if (!insideGit(value)) return fail(`${value} is not a Git repo. Run git init there first.`);
       }
       const changed = value !== cfg.repo;
       // A folder with no tasks/ cannot serve yet (demo copies tasks/): wait for the mode step.

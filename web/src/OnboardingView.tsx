@@ -1,7 +1,7 @@
 /**
  * First-run setup: one step per screen, at most 5, resumable. Replaces the app shell until done.
  * @req FR:first-run-onboarding/web.gate @req FR:first-run-onboarding/web.a11y @req FR:first-run-onboarding/web.phone
- * @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.mode @req FR:first-run-onboarding/step.calendar
+ * @req FR:first-run-onboarding/step.repo @req FR:first-run-onboarding/step.repo.copy @req FR:first-run-onboarding/step.mode @req FR:first-run-onboarding/step.calendar
  * @req FR:first-run-onboarding/step.email @req FR:first-run-onboarding/step.phone @req FR:first-run-onboarding/state.resume
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -52,10 +52,10 @@ export function Onboarding({ initial, fetch: f = (u, i) => fetch(u, i), onDone }
     case 'repo':
       body = (
         <form class="ob-form" onSubmit={(e) => { e.preventDefault(); void send({ step: 'repo', repo }); }}>
-          <p class="ob-lede">Stack keeps tasks as markdown files in a git repo. Point it at yours.</p>
-          <label class="ob-label" for="ob-repo">Folder path or git url</label>
+          <p class="ob-lede">Stack keeps tasks as Markdown files in a Git repo. Point it at yours.</p>
+          <label class="ob-label" for="ob-repo">Folder path or Git URL</label>
           <input id="ob-repo" class="ob-input" type="text" readOnly={!!s.repoLock} autoComplete="off" spellcheck={false} autoCapitalize="off" placeholder="~/tasks or https://github.com/you/tasks.git" value={repo} onInput={(e) => setRepo((e.target as HTMLInputElement).value)} aria-describedby="ob-repo-hint" aria-invalid={!!error} />
-          <p class="ob-hint" id="ob-repo-hint">{s.repoLock ? <>Set by <code>{s.repoLock}</code>. Change it there.</> : s.repo ? <>Now set to <code>{s.repo}</code>. Continue to keep it.</> : 'A folder on this computer that is a git repo, or a url to clone.'}</p>
+          <p class="ob-hint" id="ob-repo-hint">{s.repoLock ? <>Set by <code>{s.repoLock}</code>. Change it there.</> : s.repo ? <>Now set to <code>{s.repo}</code>. Continue to keep it.</> : 'A folder on this computer that is a Git repo, or a URL to clone.'}</p>
           {errLine}
           <div class="ob-actions">{backBtn}<button type="submit" class="ob-btn primary" disabled={working || !repo.trim()}>Continue</button></div>
         </form>

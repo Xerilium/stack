@@ -98,10 +98,10 @@ describe('applySetup', () => {
     // The same repo again is a confirm: no restart.
     expect(applySetup({ home, env, body: { step: 'repo', repo } })).toEqual({ ok: true, restart: false });
     expect(applySetup({ home: tmp(), env, body: { step: 'repo', repo: 'git@github.com:o/r.git' } })).toEqual({ ok: true, restart: true });
-    expect(applySetup({ home, env, body: { step: 'repo', repo: '' } })).toMatchObject({ ok: false, error: expect.stringMatching(/path or a git url/) });
+    expect(applySetup({ home, env, body: { step: 'repo', repo: '' } })).toMatchObject({ ok: false, error: 'Type a folder path or a Git URL.' });
     expect(applySetup({ home, env, body: { step: 'repo', repo: join(home, 'nope') } })).toMatchObject({ ok: false, error: expect.stringMatching(/not found/) });
-    expect(applySetup({ home, env, body: { step: 'repo', repo: tmp() } })).toMatchObject({ ok: false, error: expect.stringMatching(/not a git repo/) });
-    expect(applySetup({ home, env, body: { step: 'repo', repo: 'ftp://x/y' } })).toMatchObject({ ok: false });
+    expect(applySetup({ home, env, body: { step: 'repo', repo: tmp() } })).toMatchObject({ ok: false, error: expect.stringMatching(/is not a Git repo\. Run git init there first\.$/) }); // @req FR:first-run-onboarding/step.repo.copy
+    expect(applySetup({ home, env, body: { step: 'repo', repo: 'ftp://x/y' } })).toMatchObject({ ok: false, error: 'Use an https, ssh, file, or git@ URL.' });
   });
   // @req FR:first-run-onboarding/step.repo
   it('repo: the redacted url sent back unchanged keeps the saved url', () => {
