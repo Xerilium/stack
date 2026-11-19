@@ -481,9 +481,27 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Error"
+  /design-review/capture:
+    post:
+      summary: Owner only. Capture the desktop window now and hold it for one POST /design-review (docs/design-review.md). 404 on hosts with no reviewer; 422 when the host cannot capture; 503 when ChatGPT is not connected
+      operationId: designReviewCapture
+      responses:
+        "201":
+          description: Captured
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - shot
+                properties:
+                  shot:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
   /design-review:
     post:
-      summary: Owner only. Send the page screenshot and its goals to ChatGPT in a new request and file the reply as a GitHub issue (docs/design-review.md). 404 on hosts with no reviewer; 422 with no screenshot; 503 when ChatGPT is not connected or fails; 502 when the issue fails
+      summary: Owner only. Send the page screenshot and its goals to ChatGPT in a new request and file the reply as a GitHub issue (docs/design-review.md). 404 on hosts with no reviewer; 422 with no screenshot; 409 when the repo is public and STACK_DESIGN_REVIEW_PUBLIC is not 1; 503 when ChatGPT is not connected or fails; 502 when the issue fails
       operationId: designReview
       requestBody:
         required: true
@@ -510,9 +528,11 @@ paths:
                     - light
                     - dark
                   description: The app theme
-                capture:
-                  type: boolean
-                  description: Ask the desktop host to capture the window as the screenshot
+                shot:
+                  type: string
+                  maxLength: 24
+                  pattern: ^[0-9a-f]{24}$
+                  description: A host capture id from POST /design-review/capture (desktop app), used once, kept 10 minutes
                 png:
                   type: string
                   maxLength: 1000000

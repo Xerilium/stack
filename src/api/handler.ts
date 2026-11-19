@@ -183,8 +183,15 @@ const FEEDBACK_BODY = {
   required: ['text'],
 };
 /** Same field rules as feedback, with the route required and no text. @req FR:design-review/api.route */
+/** Design review failures as API errors. @req FR:design-review/api.shot @req FR:design-review/api.down @req FR:design-review/api.issue @req FR:design-review/issue.public */
+const designReviewError = (e: unknown): unknown => {
+  if (!(e instanceof DesignReviewError)) return e;
+  if (e.code === 'shot') return invalid([{ field: 'png', message: e.message }]);
+  if (e.code === 'public') return new ApiError('conflict', e.message);
+  return new ApiError(e.code === 'issue' ? 'bad_gateway' : 'unavailable', e.message);
+};
 const DESIGN_REVIEW_BODY = {
-  schema: { route: { ...FEEDBACK_BODY.schema.route, required: true }, viewport: FEEDBACK_BODY.schema.viewport, theme: FEEDBACK_BODY.schema.theme, capture: FEEDBACK_BODY.schema.capture, png: FEEDBACK_BODY.schema.png } satisfies Record<string, Spec>,
+  schema: { route: { ...FEEDBACK_BODY.schema.route, required: true }, viewport: FEEDBACK_BODY.schema.viewport, theme: FEEDBACK_BODY.schema.theme, shot: { t: 'str', max: 24, pattern: /^[0-9a-f]{24}$/ }, png: FEEDBACK_BODY.schema.png } satisfies Record<string, Spec>,
   required: ['route'],
 };
 const CAPTURE_BODY = {
@@ -669,6 +676,16 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    // Desktop host: capture the window now, before the panel shows progress; the id goes to POST /design-review. @req FR:design-review/api.capture
+    method: 'POST', doc: '/design-review/capture', name: 'designReview.capture',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can run a design review');
+      if (!c.deps.designReview) throw new ApiError('not_found', 'No design review on this host');
+      try { return json(201, await c.deps.designReview.capture()); } catch (e) { throw designReviewError(e); }
+    },
+  },
+  {
     // One click per page: screenshot and goals to ChatGPT, reply filed as an issue. @req FR:design-review/api.route
     method: 'POST', doc: '/design-review', name: 'designReview', body: DESIGN_REVIEW_BODY,
     async run(c) {
@@ -677,17 +694,10 @@ export const ROUTES: Route[] = [
       ownerOnly(c, 'Only the owner can run a design review');
       // @req FR:design-review/api.absent
       if (!c.deps.designReview) throw new ApiError('not_found', 'No design review on this host');
-      const b = validate<{ route: string; viewport?: string; theme?: 'light' | 'dark'; capture?: boolean; png?: string }>(await readBody(c.req, 1_000_000), DESIGN_REVIEW_BODY.schema, DESIGN_REVIEW_BODY.required);
+      const b = validate<{ route: string; viewport?: string; theme?: 'light' | 'dark'; shot?: string; png?: string }>(await readBody(c.req, 1_000_000), DESIGN_REVIEW_BODY.schema, DESIGN_REVIEW_BODY.required);
       try {
-        return json(201, await c.deps.designReview.run({ route: b.route, viewport: b.viewport, theme: b.theme, capture: b.capture, png: b.png ? Buffer.from(b.png, 'base64') : undefined }));
-      } catch (e) {
-        // @req FR:design-review/api.shot @req FR:design-review/api.down @req FR:design-review/api.issue
-        if (e instanceof DesignReviewError) {
-          if (e.code === 'shot') throw invalid([{ field: 'png', message: e.message }]);
-          throw new ApiError(e.code === 'issue' ? 'bad_gateway' : 'unavailable', e.message);
-        }
-        throw e;
-      }
+        return json(201, await c.deps.designReview.run({ route: b.route, viewport: b.viewport, theme: b.theme, shot: b.shot, png: b.png ? Buffer.from(b.png, 'base64') : undefined }));
+      } catch (e) { throw designReviewError(e); }
     },
   },
   ...actionRoutes,

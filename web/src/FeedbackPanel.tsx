@@ -99,21 +99,24 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
       setHidden(false); setReviewing(false); setError(m); setPhase('open');
       setTimeout(() => ref.current?.querySelector<HTMLElement>('textarea')?.focus(), 0);
     };
-    // Back in view with progress once the screenshot is taken: at once for a browser png, after a short pause for the
-    // host capture (it runs when the request lands, well under the pause). @req FR:design-review/ui.progress
-    const show = () => { setHidden(false); setReviewing(true); };
-    // @req FR:design-review/ui.no-shot @req FR:design-review/ui.no-shot.message @req FR:design-review/ui.shot.hide
+    // @req FR:design-review/ui.no-shot @req FR:design-review/ui.no-shot.message
     if (!desktop && !grab) return fail('A screenshot is needed');
+    // Hidden until the screenshot is taken (browser frame, or the host capture call returns). @req FR:design-review/ui.shot.hide
     setHidden(true);
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
-    const png = grab ? await grab() : null;
+    let shot: string | undefined;
+    let png: string | null = null;
+    try {
+      if (desktop) shot = (await api.designReviewCapture()).shot;
+      else png = grab ? await grab() : null;
+    } catch (e) { return fail(e instanceof Error ? e.message : 'A screenshot is needed'); }
     if (!desktop && !png) return fail('A screenshot is needed');
-    let shown: ReturnType<typeof setTimeout> | undefined;
-    if (png) show(); else shown = setTimeout(show, 800);
+    // @req FR:design-review/ui.progress
+    setHidden(false);
+    setReviewing(true);
     try {
       const ctx = pageContext();
-      const r = await api.designReview({ ...ctx, route: ctx.route ?? '/', ...(desktop ? { capture: true } : {}), ...(png ? { png } : {}) });
-      setHidden(false);
+      const r = await api.designReview({ ...ctx, route: ctx.route ?? '/', ...(shot ? { shot } : {}), ...(png ? { png } : {}) });
       setReviewing(false);
       setFiled(r.url);
       setPhase('filed');
@@ -122,7 +125,7 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
     } catch (e) {
       // @req FR:design-review/ui.error @req FR:design-review/ui.error.focus
       fail(e instanceof Error ? e.message : 'Could not run the review');
-    } finally { clearTimeout(shown); }
+    }
   };
 
   if (hidden) return null;

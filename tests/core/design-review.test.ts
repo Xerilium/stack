@@ -1,6 +1,6 @@
 import { setPageCapture } from '../../src/core/feedback';
 import { PAGE_GOALS, PAGE_IDS, pageFromRoute } from '../../src/core/page-goals';
-import { createDesignReview, createOpenAiReviewer, DesignReviewError, issueFor, MAX_BODY } from '../../src/core/design-review';
+import { createDesignReview, createOpenAiReviewer, DesignReviewError, ghRepoVisibility, issueFor, MAX_BODY, reviewPrompt } from '../../src/core/design-review';
 
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
 type Call = { url: string; init: RequestInit & { headers: Record<string, string> } };
@@ -16,7 +16,7 @@ afterEach(() => setPageCapture(undefined));
 describe('page goals', () => {
   // @req FR:design-review/goals.file @req FR:design-review/goals.file.pages @req FR:design-review/goals.file.entry
   it('lists every page with a name and 2 to 5 goals', () => {
-    expect([...PAGE_IDS].sort()).toEqual(['asks', 'home', 'inbox', 'list', 'now', 'projects', 'prs', 'qm', 'sessions', 'settings', 'today']);
+    expect([...PAGE_IDS].sort()).toEqual(['asks', 'home', 'inbox', 'list', 'now', 'projects', 'prs', 'sessions', 'settings', 'today']);
     for (const id of PAGE_IDS) {
       expect(PAGE_GOALS[id].name.length).toBeGreaterThan(0);
       expect(PAGE_GOALS[id].goals.length).toBeGreaterThanOrEqual(2);
@@ -32,7 +32,6 @@ describe('page goals', () => {
     expect(pageFromRoute('/#/agents')).toBe('sessions');
     expect(pageFromRoute('#/next')).toBe('home');
     expect(pageFromRoute('#/stack')).toBe('list');
-    expect(pageFromRoute('#/qm')).toBe('qm');
     expect(pageFromRoute('/')).toBe('now');
     expect(pageFromRoute('')).toBe('now');
     expect(pageFromRoute('/#/nope')).toBe('now');
@@ -84,7 +83,8 @@ describe('OpenAI reviewer', () => {
     const env = { OPENAI_API_KEY: 'k' };
     const args = { page: 'now' as const, name: 'Now', goals: ['a', 'b'], png: PNG };
     await expect(createOpenAiReviewer({ env, fetch: fakeFetch({ output: [] }).f }).review(args)).rejects.toMatchObject({ code: 'down' });
-    await expect(createOpenAiReviewer({ env, fetch: fakeFetch({ error: { message: 'bad key' } }, 401).f }).review(args)).rejects.toMatchObject({ code: 'down', message: expect.stringContaining('401') });
+    await expect(createOpenAiReviewer({ env, fetch: fakeFetch({ error: { message: 'bad key' } }, 401).f }).review(args)).rejects.toMatchObject({ code: 'down', message: expect.stringContaining('401: check STACK_OPENAI_API_KEY') });
+    await expect(createOpenAiReviewer({ env, fetch: fakeFetch({}, 500).f }).review(args)).rejects.toMatchObject({ message: 'ChatGPT returned 500' });
     const boom = (async () => { throw new Error('offline'); }) as unknown as typeof fetch;
     await expect(createOpenAiReviewer({ env, fetch: boom }).review(args)).rejects.toBeInstanceOf(DesignReviewError);
   });
@@ -102,9 +102,9 @@ describe('issue', () => {
     expect(i.body).toContain('gpt-5');
     expect(i.body).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123');
     expect(i.body).toContain('[redacted]');
-    const m = issueFor({ page: 'now', model: 'gpt-5', reply: 'Ask @octocat, mail a@b.c' });
-    expect(m.body).not.toMatch(/@octocat/);
-    expect(m.body).toContain('@\u200boctocat');
+    const m = issueFor({ page: 'now', model: 'gpt-5', reply: 'Ask @octocat about #12' });
+    expect(m.body).not.toMatch(/@octocat|#12/);
+    expect(m.body).toContain('@\u200boctocat about #\u200b12');
   });
   // @req FR:design-review/issue.body.cap
   it('cuts a long reply with a note', () => {
@@ -116,30 +116,61 @@ describe('issue', () => {
 
 describe('design review', () => {
   const reviewer = (reply = 'Looks fine.') => { const seen: unknown[] = []; return { seen, connected: () => true, model: () => 'gpt-5', review: async (x: unknown) => { seen.push(x); return reply; } }; };
+  const priv = async () => 'PRIVATE';
+  const mk = (o: Partial<Parameters<typeof createDesignReview>[0]> = {}) => createDesignReview({ reviewer: reviewer(), filer: filer(), env: {}, visibility: priv, ...o });
 
   // @req FR:design-review/issue.repo @req FR:design-review/api.route
   it('reviews the page and files one issue in the default repo', async () => {
     const fl = filer();
     const rv = reviewer();
-    const d = createDesignReview({ reviewer: rv, filer: fl, env: {} });
+    const repos: string[] = [];
+    const d = mk({ reviewer: rv, filer: fl, visibility: async (r) => { repos.push(r); return 'PRIVATE'; } });
     expect(await d.run({ route: '/#/prs', viewport: '1280x800', theme: 'dark', png: PNG })).toEqual({ page: 'prs', url: 'https://github.com/Xerilium/stack/issues/999' });
     expect(rv.seen).toEqual([expect.objectContaining({ page: 'prs', name: PAGE_GOALS.prs.name, goals: PAGE_GOALS.prs.goals, viewport: '1280x800', theme: 'dark', png: PNG })]);
     expect(fl.filed).toEqual([expect.objectContaining({ repo: 'Xerilium/stack', title: 'design(prs): Design review of Pull requests', labels: [] })]);
+    expect(repos).toEqual(['Xerilium/stack']);
     const other = filer();
-    await createDesignReview({ reviewer: reviewer(), filer: other, env: { STACK_DESIGN_REVIEW_REPO: 'me/repo' } }).run({ route: '#/now', png: PNG });
+    await mk({ filer: other, env: { STACK_DESIGN_REVIEW_REPO: 'me/repo' } }).run({ route: '#/now', png: PNG });
     expect(other.filed[0].repo).toBe('me/repo');
   });
 
-  // @req FR:design-review/api.shot @req FR:design-review/ui.shot
-  it('uses the host capture, and needs a screenshot', async () => {
-    const d = createDesignReview({ reviewer: reviewer(), filer: filer(), env: {} });
+  // @req FR:design-review/issue.public
+  it('files in a public repo only with an explicit yes', async () => {
+    const fl = filer();
+    await expect(mk({ filer: fl, visibility: async () => 'PUBLIC' }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'public' });
+    expect(fl.filed).toHaveLength(0);
+    await expect(mk({ visibility: async () => { throw new Error('gh'); } }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'issue' });
+    expect((await mk({ filer: fl, visibility: async () => 'PUBLIC', env: { STACK_DESIGN_REVIEW_PUBLIC: '1' } }).run({ route: '#/now', png: PNG })).page).toBe('now');
+    expect((await mk({ visibility: async () => 'INTERNAL' }).run({ route: '#/now', png: PNG })).page).toBe('now');
+    const args: string[][] = [];
+    expect(await ghRepoVisibility(async (a) => { args.push(a); return 'private\n'; })('me/repo')).toBe('PRIVATE');
+    expect(args[0]).toEqual(['repo', 'view', 'me/repo', '--json', 'visibility', '-q', '.visibility']);
+  });
+
+  // @req FR:design-review/api.capture @req FR:design-review/api.shot @req FR:design-review/ui.shot
+  it('holds a host capture for one review, and needs a screenshot', async () => {
+    let t = 0;
+    const d = mk({ now: () => t });
     await expect(d.run({ route: '#/now' })).rejects.toMatchObject({ code: 'shot' });
-    await expect(d.run({ route: '#/now', capture: true })).rejects.toMatchObject({ code: 'shot' });
+    await expect(d.capture()).rejects.toMatchObject({ code: 'shot' });
     await expect(d.run({ route: '#/now', png: Buffer.from('nope') })).rejects.toMatchObject({ code: 'shot' });
     setPageCapture(async () => { throw new Error('gone'); });
-    await expect(d.run({ route: '#/now', capture: true })).rejects.toMatchObject({ code: 'shot' });
+    await expect(d.capture()).rejects.toMatchObject({ code: 'shot' });
     setPageCapture(async () => PNG);
-    expect((await d.run({ route: '#/now', capture: true })).page).toBe('now');
+    const { shot } = await d.capture();
+    expect(shot).toMatch(/^[0-9a-f]{24}$/);
+    expect((await d.run({ route: '#/now', shot })).page).toBe('now');
+    // One use only.
+    await expect(d.run({ route: '#/now', shot })).rejects.toMatchObject({ code: 'shot' });
+    // Expired after 10 minutes.
+    const old = (await d.capture()).shot;
+    t += 10 * 60_000 + 1;
+    await expect(d.run({ route: '#/now', shot: old })).rejects.toMatchObject({ code: 'shot' });
+    // Only the newest few are kept.
+    const ids = [];
+    for (let i = 0; i < 6; i++) ids.push((await d.capture()).shot);
+    await expect(d.run({ route: '#/now', shot: ids[0] })).rejects.toMatchObject({ code: 'shot' });
+    expect((await d.run({ route: '#/now', shot: ids[5] })).page).toBe('now');
   });
 
   // @req FR:design-review/api.down @req FR:design-review/api.down.first @req FR:design-review/api.issue
@@ -147,11 +178,17 @@ describe('design review', () => {
     const off = { ...reviewer(), connected: () => false };
     let captured = 0;
     setPageCapture(async () => { captured++; return PNG; });
-    await expect(createDesignReview({ reviewer: off, filer: filer(), env: {} }).run({ route: '#/now', capture: true })).rejects.toMatchObject({ code: 'down' });
+    await expect(mk({ reviewer: off }).capture()).rejects.toMatchObject({ code: 'down' });
+    await expect(mk({ reviewer: off }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'down' });
     expect(captured).toBe(0);
     const bad = { file: async () => { throw new Error('gh failed'); } };
-    await expect(createDesignReview({ reviewer: reviewer(), filer: bad, env: {} }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'issue' });
+    await expect(mk({ filer: bad }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'issue' });
     const throws = { ...reviewer(), review: async () => { throw new Error('raw'); } };
-    await expect(createDesignReview({ reviewer: throws, filer: filer(), env: {} }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'down' });
+    await expect(mk({ reviewer: throws }).run({ route: '#/now', png: PNG })).rejects.toMatchObject({ code: 'down' });
   });
+});
+
+// @req FR:design-review/review.private
+it('tells ChatGPT not to repeat page content', () => {
+  expect(reviewPrompt({ page: 'now', name: 'Now', goals: ['a', 'b'] })).toMatch(/Do not quote, name, or describe any task, person, project, message/);
 });

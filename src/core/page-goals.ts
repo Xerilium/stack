@@ -2,7 +2,7 @@
  * What each Stack page is for, so a design review judges the page against its job.
  * Names match the web nav labels. @req FR:design-review/goals.file @req FR:design-review/goals.file.pages @req FR:design-review/goals.file.entry
  */
-export const PAGE_IDS = ['now', 'home', 'today', 'asks', 'prs', 'inbox', 'sessions', 'projects', 'list', 'settings', 'qm'] as const;
+export const PAGE_IDS = ['now', 'home', 'today', 'asks', 'prs', 'inbox', 'sessions', 'projects', 'list', 'settings'] as const;
 export type PageId = (typeof PAGE_IDS)[number];
 export interface PageGoals { name: string; goals: string[] }
 
@@ -17,7 +17,6 @@ export const PAGE_GOALS: Record<PageId, PageGoals> = {
   projects: { name: 'Projects', goals: ['Show every project with its priority and next task', 'Let the owner open a project and see its tasks', 'Make the balance of work across projects clear'] },
   list: { name: 'Full stack', goals: ['Show every task in ranked order', 'Make filtering and finding a task fast', 'Let the owner edit a task in place'] },
   settings: { name: 'Settings', goals: ['Group settings so each is easy to find', 'Show which accounts and agents are connected', 'Make each change safe and clear about its effect'] },
-  qm: { name: 'QM plan', goals: ['Show the weekly quota-maxxing plan per project in one table', 'Show token and human-time estimates so the owner can judge the plan', 'Make it easy to sort and compare projects'] },
 };
 
 /** Old and alternate hash names the web app also serves (web/src/filters.ts ALIAS). @req FR:design-review/goals.route.alias */

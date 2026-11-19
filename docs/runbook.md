@@ -62,6 +62,7 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 | `STACK_OPENAI_API_KEY` | `stack web` and the desktop host: the OpenAI API key for design review (falls back to `OPENAI_API_KEY`). Absent means design review is not connected. See [design-review.md](design-review.md) |
 | `STACK_DESIGN_REVIEW_MODEL` | Design review: the OpenAI model, default `gpt-5` |
 | `STACK_DESIGN_REVIEW_REPO` | Design review: the repo that gets the issue (`gh issue create`), default `Xerilium/stack` |
+| `STACK_DESIGN_REVIEW_PUBLIC` | Design review: `1` allows filing in a public repo (refused otherwise, 409) |
 | `STACK_CLAUDE_BIN` | `stack email` only: the Claude Code binary used for model calls (`claude -p`, no tools), default `claude`. Model calls use your Claude login |
 
 ## Owner allow-list

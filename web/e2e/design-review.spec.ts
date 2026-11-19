@@ -14,6 +14,12 @@ async function setup(page: Page, o: { desktop?: boolean; fail?: boolean; slow?: 
   }, !!o.desktop);
   await mockApi(page);
   const posts: any[] = [];
+  const captures: number[] = [];
+  // The host capture runs while the panel is hidden. @req FR:design-review/ui.shot.hide
+  await page.route('**/api/design-review/capture', async (route) => {
+    captures.push(await page.locator('.fb-panel').count());
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ shot: 'a'.repeat(24) }) });
+  });
   await page.route('**/api/design-review', async (route) => {
     posts.push(route.request().postDataJSON());
     if (o.slow) await new Promise((r) => setTimeout(r, 2500));
@@ -21,6 +27,7 @@ async function setup(page: Page, o: { desktop?: boolean; fail?: boolean; slow?: 
     return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ page: 'asks', url: 'https://github.com/Xerilium/stack/issues/999' }) });
   });
   await page.goto('/#/asks');
+  (setup as { captures?: number[] }).captures = captures;
   return posts;
 }
 const open = async (page: Page, mobile: boolean) => {
@@ -37,7 +44,8 @@ test('desktop app: one click captures, files, and links the issue', async ({ pag
   await expect(panel.getByText('Filed')).toBeVisible();
   await expect(panel.getByRole('link', { name: /issues\/999/ })).toBeFocused();
   await expect(panel.getByRole('link', { name: /issues\/999/ })).toHaveAttribute('href', 'https://github.com/Xerilium/stack/issues/999');
-  expect(posts).toEqual([expect.objectContaining({ route: '/#/asks', capture: true })]);
+  expect(posts).toEqual([expect.objectContaining({ route: '/#/asks', shot: 'a'.repeat(24) })]);
+  expect((setup as { captures?: number[] }).captures).toEqual([0]);
   expect(posts[0].png).toBeUndefined();
 });
 
