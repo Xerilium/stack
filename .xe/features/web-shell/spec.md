@@ -48,9 +48,12 @@ Owner needs the same few places reachable the same way on every screen so that m
   - **FR:nav.tabbar.glyph** (P2): The `+` glyph MUST be optically centered in its circle (its box center within 1px of the circle's center)
   - Projects and Full stack are reached through More / the palette
 - **FR:nav.pages** (P1): A page reached only from the palette (the QM plan, `#/qm`) MUST show inside the shell: the rail on desktop and the tab bar on phones stay
-  - **FR:nav.pages.current** (P1): On such a page no nav item MUST be current; any nav item leaves the page
-  - **FR:nav.pages.scroll** (P1): The main region MUST be the only scroll container, and the page content MUST scroll clear of the phone tab bar
-  - **FR:nav.pages.keys** (P1): Row keys (for example `d`, `n`, `Shift+A` on Now) MUST do nothing there; the palette, help, capture, and `g` chords still work
+  - **FR:nav.pages.current** (P1): The nav MUST mark no item current on such a page
+  - **FR:nav.pages.leave** (P1): Each nav item MUST leave the page
+  - **FR:nav.pages.scroll** (P1): The main region MUST be the only scroll container
+  - **FR:nav.pages.clear** (P1): The page content MUST scroll clear of the phone tab bar
+  - **FR:nav.pages.keys** (P1): Only the global keys (palette, help, capture, `g` chords) MUST act on such a page
+  - **FR:nav.pages.overlays** (P1): Opening the page MUST close focus mode and the session drawer
 - **FR:nav.keys** (P1): Chords MUST be `g h` Home, `g d` or `g t` My day, `g k` Needs you, `g s` Sessions, `g p` Projects, `g a` Full stack
   - **FR:nav.keys.hint** (P2): Each rail item MUST name its chord in its tooltip, for example `Now (g n)`; no badge shows
 

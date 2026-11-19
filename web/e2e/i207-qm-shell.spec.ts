@@ -1,6 +1,6 @@
 /**
  * The QM plan keeps the app shell: the rail on desktop, the tab bar on phones, one main landmark, one scroll container.
- * @req FR:web-shell/nav.pages @req FR:web-shell/nav.pages.current @req FR:web-shell/nav.pages.scroll @req FR:web-shell/nav.pages.keys @req FR:qm-plan/ui.route
+ * @req FR:web-shell/nav.pages @req FR:web-shell/nav.pages.current @req FR:web-shell/nav.pages.scroll @req FR:web-shell/nav.pages.keys @req FR:web-shell/nav.pages.leave @req FR:web-shell/nav.pages.clear @req FR:web-shell/nav.pages.overlays @req FR:qm-plan/ui.route
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -63,4 +63,16 @@ test('axe: no landmark or contrast issues on the QM page in the shell', async ({
   await open(page);
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(r.violations.map((v) => v.id)).toEqual([]);
+});
+
+test('opening the QM page closes focus mode', async ({ page }) => {
+  await mockApi(page);
+  await page.route('**/api/qm', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: PLAN }) }));
+  await page.goto('/#/list');
+  await page.locator('.row').first().click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.focus-mode')).toBeVisible();
+  await page.evaluate(() => { location.hash = '#/qm'; });
+  await expect(page.getByRole('heading', { name: 'QM plan' })).toBeVisible();
+  await expect(page.locator('.focus-mode')).toHaveCount(0);
 });

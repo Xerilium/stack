@@ -514,6 +514,9 @@ export function App() {
   const fixHash = () => { const to = redirectHash(location.hash); if (to) history.replaceState(null, '', to); };
   useEffect(fixHash, []);
   useEffect(() => { const on = () => { fixHash(); setNav(parseHash(location.hash)); setQm(isQmHash(location.hash)); }; window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
+  /** Opening the QM page closes what sat over the old view. @req FR:web-shell/nav.pages.overlays */
+  const closeDrawer = useRef(sessions.closeDrawer); closeDrawer.current = sessions.closeDrawer;
+  useEffect(() => { if (qm) { setFocusRef(null); closeDrawer.current(); } }, [qm]);
   const setFilters = (patch: Partial<Filters>) => go('list', { ...filters, ...patch });
 
   // ---- writes
