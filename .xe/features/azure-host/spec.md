@@ -25,7 +25,8 @@ Run Stack on Azure Static Web Apps managed Functions: one deployable `host/` tha
 
 - **FR:routes.register** (P1): One catch-all function is registered with `registerAzure(app, handler, 'api')` (route `{*route}`, anonymous at the Functions layer; the code does the real auth). The entry only registers; all logic is in `src/host/` and testable without `@azure/functions`
 - **FR:routes.map** (P1): `/api/health` health; `/api/mcp` MCP handler (`basePath` `/api/mcp`); `/api/bots/{slack,webhook,github,imessage}` bot handler (`basePath` `/api/bots`); every other `/api/**` the authorizing API handler with token admin. Paths outside `/api` answer `404`
-- **FR:routes.paths** (P1): Dispatch uses one canonical path (trailing slashes stripped) for every area, including bots (`/api/bots/webhook/` works). Doubled slashes, case changes, encoded dots/segments, and `/api/bots` without a subpath never reach a handler they do not belong to; bot routes in degraded mode answer `503`. The slash strip never buffers the body: the bot 64 KiB stream cap applies on every path
+- **FR:routes.paths** (P1): Dispatch uses one canonical path (trailing slashes stripped) for every area, including bots (`/api/bots/webhook/` works). Doubled slashes, case changes, encoded dots/segments, and `/api/bots` without a subpath never reach a handler they do not belong to; bot routes in degraded mode answer `503`
+- **FR:routes.body** (P1): Bot routes read the body through the bot handler stream cap on every path, with or without a trailing slash; the host does not read the body first
 - **FR:routes.errors** (P1): Unexpected failures answer fixed `500 {error:{code:'internal'}}`; nothing from the error is sent to the caller
 
 ### FR:health: Health

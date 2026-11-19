@@ -181,7 +181,7 @@ describe('azure-host path confusion and failure handling', () => {
     expect(r.status).toBe(200);
   });
 
-  /** @req FR:azure-host/routes.paths @req FR:chat-bots/webhook.shape */
+  /** @req FR:azure-host/routes.body @req FR:chat-bots/webhook.shape */
   it.each(['/api/bots/webhook/', '/api/bots/nope/'])('trailing-slash bot path %s stops reading a large body at the cap', async (p) => {
     const h = await setup();
     const chunk = new Uint8Array(64 * 1024);

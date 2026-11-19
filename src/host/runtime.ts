@@ -97,7 +97,7 @@ const inApi = (req: Request) => { const p = pathOf(req); return p === '/api' || 
 
 /**
  * Providers may append a slash to webhook URLs: dispatch on the canonical path. The body stream passes through
- * unread, so the bot handler's 64 KiB cap still stops an unsigned upload. @req FR:azure-host/routes.paths
+ * unread, so the bot handler's body cap still stops an unsigned upload. @req FR:azure-host/routes.paths @req FR:azure-host/routes.body
  */
 function stripSlash(req: Request, path: string): Request {
   const u = new URL(req.url);
