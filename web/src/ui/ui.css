@@ -1,7 +1,6 @@
 /* The shared component set: card, flag, status chip, actions menu and bar. Tokens only, light and dark.
  * A consumer sets the card tone with --ui-edge, --ui-soft, --ui-strong, --ui-ink, --ui-ink2.
- * @req FR:ui-kit/card @req FR:ui-kit/flag @req FR:ui-kit/chip @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/daygrid */
- * @req FR:ui-kit/card @req FR:ui-kit/flag @req FR:ui-kit/chip @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/message */
+ * @req FR:ui-kit/card @req FR:ui-kit/flag @req FR:ui-kit/chip @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/daygrid @req FR:ui-kit/message */
 
 /* Card: the whole card selects; links and tools sit above the stretched target. @req FR:ui-kit/card */
 .ui-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }

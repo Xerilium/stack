@@ -98,7 +98,7 @@ test.describe('Priorities report', () => {
     await expect(gap.locator('.ui-card-top')).toHaveText('FH 0.11');
     expect(await gap.getByRole('link').count()).toBe(0);
     await gap.getByRole('button', { name: 'Details: FH 0.11' }).click();
-    await expect(detail(page).getByRole('heading')).toHaveText('FH 0.11 ⚠ no link');
+    await expect(detail(page).getByRole('heading', { level: 3 })).toHaveText('FH 0.11 ⚠ no link');
     await back(page);
     await fh.getByRole('button', { name: 'Details: FH Premium' }).click();
     await expect(detail(page).getByRole('link', { name: 'FH Premium' })).toHaveAttribute('href', '#/list?project=allyte');
@@ -216,7 +216,9 @@ test.describe('Priorities report', () => {
     }
     const [bar, stamp] = [(await page.locator('.pri-head .ui-tabbar').boundingBox())!, (await page.getByTestId('pri-stamp').boundingBox())!];
     expect(bar.x + bar.width - (stamp.x + stamp.width)).toBeGreaterThanOrEqual(12);
-  // @req FR:priorities-tables/web.message @req FR:priorities-tables/web.message.off @req FR:priorities-tables/web.message.result @req FR:ui-kit/message
+  });
+
+  // @req FR:priorities-tables/web.message@req FR:priorities-tables/web.message.off @req FR:priorities-tables/web.message.result @req FR:ui-kit/message
   test('Message agent: sends the text to the agent session; off with no session', async ({ page }, info) => {
     const m = await open(page, view(), '#/now?pri=now');
     await cards(page, 'now').nth(1).getByRole('button', { name: 'Details: FH Premium' }).click();
