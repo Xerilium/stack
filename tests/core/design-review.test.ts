@@ -136,6 +136,13 @@ describe('design review', () => {
     expect(other.filed[0].repo).toBe('me/repo');
   });
 
+  // @req FR:design-review/issue.label
+  it('adds the label from STACK_DESIGN_REVIEW_LABEL when set', async () => {
+    const fl = filer();
+    await mk({ filer: fl, env: { STACK_DESIGN_REVIEW_LABEL: 'design' } }).run({ route: '#/now', png: PNG });
+    expect(fl.filed[0].labels).toEqual(['design']);
+  });
+
   // @req FR:design-review/issue.public
   it('files in a public repo only with an explicit yes', async () => {
     const fl = filer();
