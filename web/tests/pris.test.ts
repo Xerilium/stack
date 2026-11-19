@@ -232,7 +232,7 @@ describe('move among the shown', () => {
 });
 
 describe('contextOf', () => {
-  const row = (id: string, o: Partial<PriRow> = {}): PriRow => ({ id, project: id, file: `tasks/${id}.md`, agent: null, more: 0, status: null, action: 'x', gap: false, cos: null, request: null, ref: null, at: '2026-11-18T19:00:00Z', stale: false, ...o });
+  const row = (id: string, o: Partial<PriRow> = {}): PriRow => ({ id, project: id, file: `tasks/${id}.md`, agent: null, more: 0, status: null, action: 'x', gap: false, cos: null, ref: null, at: '2026-11-18T19:00:00Z', stale: false, ...o });
   const t = (rows: PriRow[]) => ({ at: '2026-11-18T19:00:00Z', stale: false, rows });
   const report = (o: Partial<PrioritiesView> = {}): PrioritiesView => ({ at: '2026-11-18T19:00:00Z', qm: null, now: t([]), today: t([]), next: t([]), prs: { ...t([]), verified: true, manager: null, rows: [] }, ...o });
   const S = 'claude://claude.ai/epitaxy/';

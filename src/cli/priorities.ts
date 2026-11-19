@@ -7,6 +7,7 @@ import { createGitHubAuth } from '../api/github-auth';
 import { createPrPage } from '../api/pr-page';
 import type { StackConfig } from '../core/config';
 import { LiveStore } from '../core/live-lane';
+import { writeGaps } from '../core/priorities-gaps';
 import { boardInput, prioritiesView, timeText, type BoardInput, type PriRow, type PrRow, type SessionsInput } from '../core/priorities-view';
 import { PriStore } from '../core/pris';
 import { runInventory } from '../core/session-inventory';
@@ -68,6 +69,7 @@ export async function prioritiesCmd(_flags: Record<string, string | true>, posit
   if (positionals.length) throw new UsageError(`Unexpected argument: ${positionals[0]}`);
   const [board, files, sessions] = [await d.board(), await d.tasks(), d.inventory()];
   const v = prioritiesView({ pris: new PriStore(d.home).read().pris, ...files, now: d.now(), timeZone: d.timeZone, ...(sessions ? { sessions } : {}), ...(board ? { board } : {}) });
+  writeGaps(d.home, v); // the CoS reads the gaps from the file @req FR:priorities-tables/gaps.file
   const pri = (rows: PriRow[]) => (rows.length ? [...PRI_HEAD, ...rows.map(priLine)] : ['Nothing here']);
   const parts = [
     ...(v.qm ? [section(v.qm.title, v.qm, pri(v.qm.rows), d.timeZone)] : []),

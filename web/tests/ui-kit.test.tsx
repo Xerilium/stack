@@ -211,7 +211,7 @@ describe('Tabs and SplitView', () => {
     expect(css).toMatch(/\.ui-pill\[aria-pressed="true"\]::before \{[^}]*background: var\(--accent-soft\);[^}]*border-color: var\(--accent\);/);
     expect(css).toMatch(/\.ui-pill \{ min-height: var\(--tap\); \}\s*\.ui-pill::before \{ inset: 6px 0; \}/);
   });
-  // @req FR:ui-kit/message
+  // @req FR:ui-kit/message @req FR:ui-kit/message.label
   it('MessageBox: sends the text, says Sent, keeps the text on an error; off with a reason', async () => {
     const sent: string[] = [];
     let fail = false;
@@ -219,7 +219,7 @@ describe('Tabs and SplitView', () => {
     const box = r.querySelector<HTMLTextAreaElement>('textarea')!;
     const btn = r.querySelector<HTMLButtonElement>('button[type=submit]')!;
     expect(r.querySelector('h4')?.textContent).toBe('Message agent');
-    expect([box.getAttribute('aria-label'), box.maxLength, btn.textContent, btn.disabled]).toEqual(['Message FH backend', 4000, 'Send', true]);
+    expect([box.getAttribute('aria-label'), box.maxLength, btn.textContent, btn.disabled]).toEqual(['Message FH backend', 4000, 'Send to FH backend', true]);
     const type = (v: string) => act(() => { box.value = v; box.dispatchEvent(new Event('input', { bubbles: true })); });
     const submit = async () => { await act(async () => { r.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await Promise.resolve(); }); await act(async () => { await Promise.resolve(); }); };
     type('  status?  ');
@@ -231,9 +231,24 @@ describe('Tabs and SplitView', () => {
     type('again');
     await submit();
     expect([box.value, r.querySelector('[role=status]')?.textContent]).toEqual(['again', 'Session is busy']);
-    const off = mount(<MessageBox heading="Ask CoS" send="Ask CoS" to="Xe CoS" text="Add a task" off="No live session for Xe CoS" onSend={async () => {}} />);
-    expect([off.querySelector('textarea')!.value, off.querySelector('textarea')!.disabled, off.querySelector<HTMLButtonElement>('button')!.disabled, off.querySelector<HTMLButtonElement>('button')!.textContent]).toEqual(['Add a task', true, true, 'Ask CoS']);
+    const off = mount(<MessageBox heading="Message CoS" to="Xe CoS" text="Add a task" off="No live session for Xe CoS" onSend={async () => {}} />);
+    expect([off.querySelector('textarea')!.value, off.querySelector('textarea')!.disabled, off.querySelector<HTMLButtonElement>('button')!.disabled, off.querySelector<HTMLButtonElement>('button')!.textContent]).toEqual(['Add a task', true, true, 'Send to Xe CoS']);
     expect(off.querySelector('.ui-msg-hint')?.textContent).toBe('No live session for Xe CoS');
+  });
+  // @req FR:ui-kit/message.exact @req FR:ui-kit/message.label @req FR:ui-kit/send.box
+  it('MessageBox: start text shows in the box and waits; the send carries the text as changed', async () => {
+    const sent: string[] = [];
+    const r = mount(<MessageBox heading="Message agent" to="Xe CoS" text="Start text" onSend={async (t) => { sent.push(t); }} />);
+    const box = r.querySelector<HTMLTextAreaElement>('textarea')!;
+    const btn = r.querySelector<HTMLButtonElement>('button[type=submit]')!;
+    await act(async () => { await Promise.resolve(); });
+    expect([box.value, box.disabled, btn.textContent, btn.disabled, sent]).toEqual(['Start text', false, 'Send to Xe CoS', false, []]);
+    expect(r.querySelectorAll('button')).toHaveLength(1); // one control sends, and its label names the effect
+    for (const type of ['focus', 'click', 'input']) act(() => { box.dispatchEvent(new Event(type, { bubbles: true })); });
+    expect(sent).toEqual([]);
+    act(() => { box.value = 'My text'; box.dispatchEvent(new Event('input', { bubbles: true })); });
+    await act(async () => { r.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await Promise.resolve(); });
+    expect(sent).toEqual(['My text']);
   });
   // @req FR:ui-kit/split
   it('SplitView: side by side when wide; when narrow the detail replaces the list, with Back', () => {

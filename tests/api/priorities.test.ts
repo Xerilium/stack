@@ -37,7 +37,7 @@ async function mk(withPris = true, get: () => Promise<PrBoard> = async () => BOA
     const t = await res.text();
     return { status: res.status, json: t ? JSON.parse(t) : undefined };
   };
-  return { call, tokens };
+  return { call, tokens, dir, storage };
 }
 
 // @req FR:priorities-tables/api.@api
@@ -53,7 +53,7 @@ it('builds the report from the store, the task files, the inventory and the boar
   const r = await call('owner', '/priorities');
   expect(r.status).toBe(200);
   expect(r.json.now.rows).toEqual([{
-    id: 'stack', project: 'Stack', file: 'tasks/stack.md', agent: { name: 'Stack agent', link: 'claude://claude.ai/epitaxy/s1', file: null, session: null }, more: 0, status: 'working', action: 'Ship the report', gap: false, cos: null, request: null, ref: 'tasks/stack.md:4', at: NOW.toISOString(), stale: false,
+    id: 'stack', project: 'Stack', file: 'tasks/stack.md', agent: { name: 'Stack agent', link: 'claude://claude.ai/epitaxy/s1', file: null, session: null }, more: 0, status: 'working', action: 'Ship the report', gap: false, cos: null, ref: 'tasks/stack.md:4', at: NOW.toISOString(), stale: false,
   }]);
   expect(r.json.prs.rows).toEqual([{ emoji: '🥞', number: 9, url: 'https://github.com/Xerilium/stack/pull/9', agent: { name: 'Stack agent', link: 'claude://claude.ai/epitaxy/s1', file: null, session: null }, pri: 'stack', action: 'Autopilot: promote', minutes: 5, server: null, details: null }]);
   const t = (await tokens.create({ name: 'cos', scopes: ['tasks:read'] as never })).token;
@@ -72,3 +72,21 @@ it('does not wait long for a slow first board poll; the PR table is stale', asyn
   expect(r.json.now.rows).toHaveLength(1);
   expect(r.json.prs).toMatchObject({ stale: true, verified: false, rows: [] });
 }, 10_000);
+
+// @req FR:priorities-tables/gaps.file @req FR:priorities-tables/gaps.file.change @req FR:priorities-tables/gaps.silent
+it('writes the gap list for the CoS to gaps.json in the store folder, and only when the list changes', async () => {
+  const { call, dir, storage } = await mk();
+  const file = join(dir, 'gaps.json');
+  expect((await call('owner', '/priorities')).status).toBe(200);
+  expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 1, at: NOW.toISOString(), gaps: [] });
+  await storage.write('tasks/stack.md', '# 🥞 Stack\n\n## Active\n\n- [ ] Ship the report\n');
+  const r = await call('owner', '/priorities');
+  const gaps = [{ id: 'stack', project: 'Stack', file: 'tasks/stack.md', cos: 'CoS', section: 'now', action: 'CoS will add a task today: 1️⃣/2️⃣/3️⃣ in tasks/stack.md with (agent: ...)' }];
+  expect(r.json.now.rows[0]).toMatchObject({ gap: true, action: gaps[0].action });
+  expect(r.json.now.rows[0]).not.toHaveProperty('request');
+  expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 1, at: NOW.toISOString(), gaps });
+  // The same list again: the file is not written.
+  writeFileSync(file, JSON.stringify({ version: 1, at: 'earlier', gaps }));
+  await call('owner', '/priorities');
+  expect(JSON.parse(readFileSync(file, 'utf8')).at).toBe('earlier');
+});

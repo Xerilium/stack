@@ -101,7 +101,11 @@ Owner needs filters that look like filters, not like action buttons, so that he 
 
 ### FR:message: Message box
 
-- **FR:message** (P1): `MessageBox` sends one message from a details pane: a heading, a text box named `Message <to>` (at most 4000 characters, optional start text), and one button (`Send`, or `send`). The button is off while the text is empty or a send runs. After `onSend` resolves it clears the text and says `Sent to <to>` in a status line; after it rejects it keeps the text and says the error. With `off` (a reason), the box and button are off and the reason shows
+- **FR:message** (P1): `MessageBox` sends one message from a details pane: a heading, a text box named `Message <to>` (at most 4000 characters, optional start text), and one button. The button is off while the text is empty or a send runs. After `onSend` resolves it clears the text and says `Sent to <to>` in a status line; after it rejects it keeps the text and says the error. With `off` (a reason), the box and button are off and the reason shows
+  - **FR:message.label** (P1): The button MUST say the effect: `Send to <to>`
+    - **FR:message.label.fixed** (P1): A caller MUST NOT give the button a different label
+  - **FR:message.exact** (P1): `MessageBox` MUST send the box text as shown, and only on the button or Enter in the form
+    - **FR:message.exact.start** (P1): Start text MUST NOT go out until the owner sends it
 
 ### FR:tokens: Design tokens
 
@@ -162,6 +166,28 @@ Owner needs the result of each action in one place so that he sees it and can un
 
 - **FR:a11y** (P1): Every target is at least 44 px on touch and 24 px on desktop. Axe finds no serious or critical violation where a view uses them
 
+### FR:send: Send safety
+
+Owner needs every send to show its text and wait for his word, so that no agent or person gets text he did not write or read.
+
+- **FR:send.box** (P1): Text to an agent, a session or a person MUST go out only from a form
+  - **FR:send.box.edit** (P1): The form MUST show the text in a box the owner can change
+  - **FR:send.box.label** (P1): The form's submit button MUST name the effect (`Send to <name>`)
+  - **FR:send.box.fill** (P1): A control that offers ready text (a quick prompt, `Ask for context`) MUST put the text in the box
+    - **FR:send.box.fill.nosend** (P1): The control MUST NOT send the ready text
+- **FR:send.decision** (P1): A button MAY send a fixed decision (`Approve`, `Reject`, `Done`) in one step only when both conditions hold
+  - Its label names the effect
+  - The audit list names its file
+- **FR:send.guard** (P1): A guard test MUST fail on a send that has no confirm step
+  - **FR:send.guard.names** (P2): The guard MUST hold the list of names that send
+    - Client methods that give text or a decision to an agent, a session, a person or GitHub
+    - Hooks and props that pass those methods on
+  - **FR:send.guard.fail** (P1): The guard MUST fail when a file has more one-step sends than its audit list entry allows
+    - A one-step send: an element handler other than a form submit (`onClick`, `onKeyDown`, `onChange`) that calls a name that sends
+    - The call counts when it is direct or goes through a function of the same file
+  - **FR:send.guard.audit** (P2): The audit list MUST give, per file, the count it may keep and why each one is safe
+  - **FR:send.guard.message** (P3): The guard MUST name the file, each line, the handler and the call, and say to send from a form
+
 ### FR:guard: Reuse guard
 
 Developer needs a failing test when a view builds markup a shared component owns, so that one-off copies never reach the owner.
@@ -180,5 +206,5 @@ Developer needs one page that says which component to use so that he finds it be
 
 ## Architecture Constraints
 
-- Each component is its own file in `web/src/ui/` with tests in `web/tests/ui-*.test.tsx`. The reuse guard is `web/tests/ui-reuse.test.ts`. Styles live in `web/src/ui/ui.css`, tokens only.
+- Each component is its own file in `web/src/ui/` with tests in `web/tests/ui-*.test.tsx`. The reuse guard is `web/tests/ui-reuse.test.ts`. The send guard is `web/src/ui/send-guard.ts` with `web/tests/send-guard.test.ts`. Styles live in `web/src/ui/ui.css`, tokens only.
 - A view adds a component here when it needs new UI that another view could use. Only UI that no other view could use stays in the view.

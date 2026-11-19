@@ -169,7 +169,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
               <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>
               <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply<kbd aria-hidden="true">r</kbd></button>
               {/* The selected notification has the row's actions too. @req FR:notifications/list.rowactions.card */}
-              {needsContext(a) && <button type="button" class="btn quiet" onClick={() => void asks.reply(a, CONTEXT_ASK)}>Ask for context</button>}
+              {needsContext(a) && <button type="button" class="btn quiet" onClick={() => { setText(CONTEXT_ASK); asks.setPanel('reply'); }}>Ask for context</button>}
             </div>
           )
         )}
@@ -265,7 +265,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
    */
   const act = (a: AskItem, x: RowAction) => {
     focusCard.current = true;
-    if (x.context) { void asks.reply(a, CONTEXT_ASK); return; }
+    if (x.context) { asks.draftReply(a, CONTEXT_ASK); return; } // ready text fills the reply box; it never sends @req FR:ui-kit/send.box.fill
     if (x.action) { run(x.action, a); return; }
     asks.setCursor(a.key); asks.setDetail(false);
     asks.setPanel(x.panel ?? 'none');

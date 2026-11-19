@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { run } from '../../src/cli/run';
@@ -33,12 +33,17 @@ describe('stack priorities', () => {
       '| [Allyte](tasks/allyte.md) | [qm-planner](.claude/agents/qm-planner.md) | ❓ Unknown | QM: approve plan |', '',
       '---', '## Now (as of 11:00 AM)', '', '| Project | Agent | 🤖 Status | 👱‍♂️ Next action |', '| --- | --- | --- | --- |',
       '| [FH.com](tasks/allyte.md) | [FH backend](#s1) | 🔄 Working | Live-validate 430 |',
-      '| Arc ⚠ no link | -- | -- | CoS, today: add a 1️⃣/2️⃣/3️⃣ task in tasks/<project>.md with (agent: ...) |', '',
+      '| Arc ⚠ no link | -- | -- | CoS will add a task today: 1️⃣/2️⃣/3️⃣ in tasks/<project>.md with (agent: ...) |', '',
       '---', '## PRs (as of 11:00 AM)', '', '| PR | Agent | 👱‍♂️ Next action | Time |', '| --- | --- | --- | --- |',
       '| 🏦 [1142](https://github.com/allytehq/finops-hubs/pull/1142) | [FH backend](#s1) | Autopilot: promote | 5m |', '',
       '---', '## Today (as of 11:00 AM)', '', 'Nothing here', '',
       '---', '## Next 3 days (as of 11:00 AM)', '', 'Nothing here',
     ]);
+  });
+  // @req FR:priorities-tables/gaps.file
+  it('writes the gap list to gaps.json in the store folder', async () => {
+    await prioritiesCmd({}, [], deps(home));
+    expect(JSON.parse(readFileSync(join(home, 'gaps.json'), 'utf8')).gaps.map((g: { id: string; cos: string; section: string }) => [g.id, g.cos, g.section])).toContainEqual(['arc', 'CoS', 'now']);
   });
   // @req FR:priorities-tables/cli.json
   it('gives the report as JSON', async () => {

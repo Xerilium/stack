@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { agentHref, linkParts, projectHref, countOf, defaultTab, hashWithTab, PR_COLS, PRI_COLS, safeHref, sectionsOf, stampText, statusText, tabFromHash, tabLabel, type PrioritiesView, type PriRow } from '../src/priorities';
 
-const r = (gap: boolean): PriRow => ({ id: 'a', project: 'A', file: null, agent: null, more: 0, status: null, action: 'x', gap, cos: null, request: null, ref: null, at: '2026-11-18T19:00:00Z', stale: false });
+const r = (gap: boolean): PriRow => ({ id: 'a', project: 'A', file: null, agent: null, more: 0, status: null, action: 'x', gap, cos: null, ref: null, at: '2026-11-18T19:00:00Z', stale: false });
 const t = (rows: PriRow[] = []) => ({ at: '2026-11-18T19:00:00Z', stale: false, rows });
 const v = (qm: PrioritiesView['qm'], now = t()): PrioritiesView => ({ at: '2026-11-18T19:00:00Z', qm, now, today: t(), next: t(), prs: { at: '2026-11-18T19:00:00Z', stale: false, verified: true, manager: null, rows: [] } });
 

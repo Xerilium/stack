@@ -228,7 +228,9 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     try { await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); setPanel('reply'); }
     catch (e) { draft.current = null; toastRef.current(errText(e, 'reopen the answer'), 'err'); }
   }, [api, load]);
-  /** The text a Card starts with when it opens the reply box after Edit (read once). */
+  /** Ready text for a reply: selects the notification and opens its reply box with the text. It never sends: the owner sends it. @req FR:ui-kit/send.box.fill @req FR:notifications/list.rowactions.context */
+  const draftReply = useCallback((a: AskItem, text: string) => { draft.current = { key: a.key, text }; setCursor(a.key); setDetail(false); setPanel('reply'); }, []);
+  /** The text a Card starts with when it opens the reply box after Edit or with ready text (read once). */
   const takeDraft = (key: string) => { const d = draft.current; if (d && d.key === key) { draft.current = null; return d.text; } return ''; };
   const retract = useCallback(async (a: AskItem) => {
     try { await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); toastRef.current('Restored'); }
@@ -239,7 +241,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     liveTick,
     /** The main list only; stale CoS items are in `stale` (and in `itemsRef` while their group is open, for the keys). */
     items: main, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, countReady, stale, staleOpen, setStaleOpen, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
-    reload: load, retry, answer, reply, defer, retract, edit, takeDraft, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
+    reload: load, retry, answer, reply, defer, retract, edit, takeDraft, draftReply, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),
     /** Null when the host runs no sessions: the row then shows no session link. */
     openSession: extras.onOpenSession ? (idStart: string) => extrasRef.current.onOpenSession?.(idStart) : null,

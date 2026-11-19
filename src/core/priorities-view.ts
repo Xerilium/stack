@@ -24,7 +24,7 @@ export interface ViewInput {
 
 /** `link`: the session; `file`: the agent file when no session matches; `session`: the id `POST /sessions/{id}/prompt` takes, or null. @req FR:priorities-tables/agent.session */
 export interface Agent { name: string; link: string | null; file: string | null; session: string | null }
-export interface PriRow { id: string; project: string; /** The project task file. */ file: string | null; agent: Agent | null; /** More agents on the same goal (`+N` in the task). @req FR:priorities-tables/rows.cols.more */ more: number; status: AgentStatus | null; action: string; gap: boolean; /** Gap rows: the Chief of Staff who must add the task. @req FR:priorities-tables/rows.gap.cos */ cos: Agent | null; /** Gap rows: the text to send to the CoS. @req FR:priorities-tables/rows.gap.request */ request: string | null; ref: string | null; at: string; stale: boolean }
+export interface PriRow { id: string; project: string; /** The project task file. */ file: string | null; agent: Agent | null; /** More agents on the same goal (`+N` in the task). @req FR:priorities-tables/rows.cols.more */ more: number; status: AgentStatus | null; action: string; gap: boolean; /** Gap rows: the Chief of Staff who must add the task. @req FR:priorities-tables/rows.gap.cos */ cos: Agent | null; ref: string | null; at: string; stale: boolean }
 export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string; /** QM is a priority today (its day order and windows keep it in). @req FR:priorities-tables/qm.today */ today: boolean }
 export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; /** The id of the priority the PR links to. @req FR:priorities-tables/pr.cols.pri */ pri: string | null; action: string; minutes: number; server: string | null; details: string | null }
@@ -38,8 +38,8 @@ const STALE_MS = 30 * 60_000;
 const DAY_MS = 86_400_000;
 /** The CoS when the priority names none: the roll-up. */
 export const COS = 'CoS';
-/** What a gap row asks for. @req FR:priorities-tables/rows.gap.action */
-const gapTask = (file: string | null) => `add a 1️⃣/2️⃣/3️⃣ task in ${file ?? 'tasks/<project>.md'} with (agent: ...)`;
+/** What the owner can expect from the CoS on a gap row. @req FR:priorities-tables/rows.gap.action */
+const gapTask = (file: string | null) => `1️⃣/2️⃣/3️⃣ in ${file ?? 'tasks/<project>.md'} with (agent: ...)`;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const OFF_TODAY = 'Not a priority today';
 
@@ -137,10 +137,10 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
   const agentOf = (name: string, s?: { link: string; cli?: string }): Agent => ({ name: cut(name), link: s?.link ?? null, session: s?.cli && UUID.test(s.cli) ? s.cli : null, file: s ? null : input.agents?.find((a) => (a.split('/').pop() ?? '').replace(/\.md$/, '') === slug(name)) ?? null });
   const byName = (name: string) => (sessions?.sessions ?? []).find((s) => norm(s.title) === norm(name));
   /** A row that is not a task: QM off today. */
-  const noteRow = (p: Pri, action: string): PriRow => ({ id: p.id, project: projectOf(p), file: fileOf(p), agent: null, more: 0, status: null, action, gap: false, cos: null, request: null, ref: null, ...stamp(now, []) });
+  const noteRow = (p: Pri, action: string): PriRow => ({ id: p.id, project: projectOf(p), file: fileOf(p), agent: null, more: 0, status: null, action, gap: false, cos: null, ref: null, ...stamp(now, []) });
   /**
-   * No tiered task: who must act (the CoS), by when (today, else the start of the row) and what.
-   * @req FR:priorities-tables/rows.gap @req FR:priorities-tables/rows.gap.cos @req FR:priorities-tables/rows.gap.by @req FR:priorities-tables/rows.gap.action @req FR:priorities-tables/rows.gap.request
+   * No tiered task: who will act (the CoS), by when (today, else the start of the row) and what to expect. The row carries no text to send.
+   * @req FR:priorities-tables/rows.gap @req FR:priorities-tables/rows.gap.cos @req FR:priorities-tables/rows.gap.by @req FR:priorities-tables/rows.gap.action @req FR:priorities-tables/rows.gap.silent
    */
   const gapRow = (p: Pri, when = '', project = projectOf(p)): PriRow => {
     const file = fileOf(p);
@@ -148,8 +148,8 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
     const cos = agentOf(p.cos ?? COS, s);
     const by = when ? `by ${when.replace(/: $/, '')}` : 'today';
     return {
-      id: p.id, project, file, agent: null, more: 0, status: null, action: cut(`${cos.name}, ${by}: ${gapTask(file)}`), gap: true, cos,
-      request: `Priority "${project}" has no tiered task. ${gapTask(file).replace(/^a/, 'A')} ${by}.`, ref: null, ...stamp(now, s ? [Date.parse(sessions!.at)] : []),
+      id: p.id, project, file, agent: null, more: 0, status: null, action: cut(`${cos.name} will add a task ${by}: ${gapTask(file)}`), gap: true, cos,
+      ref: null, ...stamp(now, s ? [Date.parse(sessions!.at)] : []),
     };
   };
   /**
@@ -161,7 +161,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
     const s = t.agent ? sessionOf(t.agent, p) : undefined;
     const agent = t.agent ? agentOf(t.agent, s) : null;
     const action = cut(`${when}${t.tier > 1 ? '⏳ ' : ''}${p.action ?? t.text}${t.more ? ` + ${t.more} more` : ''}`);
-    return { id: p.id, project, file: t.path, agent, more: t.more, status: t.status, action, gap: false, cos: null, request: null, ref: `${t.path}:${t.line}`, ...stamp(now, s ? [Date.parse(sessions!.at)] : []) };
+    return { id: p.id, project, file: t.path, agent, more: t.more, status: t.status, action, gap: false, cos: null, ref: `${t.path}:${t.line}`, ...stamp(now, s ? [Date.parse(sessions!.at)] : []) };
   };
   /** @req FR:priorities-tables/fresh.table */
   const table = (rows: PriRow[]): PriTable => ({ ...stamp(now, rows.map((r) => Date.parse(r.at))), rows });

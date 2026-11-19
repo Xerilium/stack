@@ -160,7 +160,7 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
                 {/* The way out without a keyboard. @req FR:feedback-button/ui.panel.cancel @req FR:feedback-button/ui.panel.cancel.busy */}
                 <button type="button" class="btn quiet fb-cancel" disabled={phase === 'sending'} onClick={onClose}>Cancel</button>
                 {/* No text needed: only sending turns it off. @req FR:design-review/ui.button.text */}
-                <button type="button" class="btn" disabled={phase === 'sending'} title="Send this page and its goals to ChatGPT and file the reply as a GitHub issue" onClick={() => void review()}>Design review</button>
+                <button type="button" class="btn" disabled={phase === 'sending'} title="Send this page and its goals to ChatGPT and file the reply as a GitHub issue" onClick={() => void review()}>Send to ChatGPT</button>
                 <button type="button" class="btn primary" disabled={!text.trim() || phase === 'sending'} onClick={() => void send()}>{phase === 'sending' ? 'Sending…' : 'Send'}</button>
               </div>
             </>

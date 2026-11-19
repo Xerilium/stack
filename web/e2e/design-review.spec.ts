@@ -37,7 +37,7 @@ const open = async (page: Page, mobile: boolean) => {
 test('desktop app: one click captures, files, and links the issue', async ({ page }, info) => {
   const { posts, captures } = await setup(page, { desktop: true });
   const panel = await open(page, info.project.name === 'mobile');
-  const btn = panel.getByRole('button', { name: 'Design review' });
+  const btn = panel.getByRole('button', { name: 'Send to ChatGPT' });
   await expect(btn).toBeEnabled();
   await btn.click();
   await expect(panel.getByText('Filed')).toBeVisible();
@@ -51,7 +51,7 @@ test('desktop app: one click captures, files, and links the issue', async ({ pag
 test('desktop app: a failure shows the error and keeps the panel', async ({ page }, info) => {
   await setup(page, { desktop: true, fail: true });
   const panel = await open(page, info.project.name === 'mobile');
-  await panel.getByRole('button', { name: 'Design review' }).click();
+  await panel.getByRole('button', { name: 'Send to ChatGPT' }).click();
   await expect(panel.getByRole('alert')).toHaveText('ChatGPT is not connected');
   await expect(panel.getByRole('textbox', { name: 'Feedback' })).toBeFocused();
 });
@@ -59,7 +59,7 @@ test('desktop app: a failure shows the error and keeps the panel', async ({ page
 test('browser with no screenshot sends nothing', async ({ page }, info) => {
   const { posts } = await setup(page);
   const panel = await open(page, info.project.name === 'mobile');
-  await panel.getByRole('button', { name: 'Design review' }).click();
+  await panel.getByRole('button', { name: 'Send to ChatGPT' }).click();
   await expect(panel.getByRole('alert')).toHaveText('A screenshot is needed');
   expect(posts).toHaveLength(0);
 });
@@ -67,7 +67,7 @@ test('browser with no screenshot sends nothing', async ({ page }, info) => {
 test('desktop app: shows progress while ChatGPT reviews', async ({ page }, info) => {
   await setup(page, { desktop: true, slow: true });
   const panel = await open(page, info.project.name === 'mobile');
-  await panel.getByRole('button', { name: 'Design review' }).click();
+  await panel.getByRole('button', { name: 'Send to ChatGPT' }).click();
   await expect(panel.getByRole('status')).toHaveText('Reviewing with ChatGPT…');
   await expect(panel.getByText('Filed')).toBeVisible({ timeout: 5000 });
 });

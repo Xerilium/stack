@@ -169,7 +169,7 @@ test.describe('Notifications: context and actions on every row', () => {
     expect(ctx.height).toBeLessThanOrEqual(44 + 2 * 18 + 6); // one tap line, at most two why lines, the padding
   });
 
-  test('Reply from the row opens that notification with the reply box; Ask for context asks the sender', async ({ page }) => {
+  test('Reply from the row opens that notification with the reply box; Ask for context fills the box and sends only on Send', async ({ page }) => {
     const m = await setup(page, rich());
     await page.goto('/#/notifications');
     await page.getByRole('button', { name: /Show 1 more/ }).click();
@@ -180,8 +180,13 @@ test.describe('Notifications: context and actions on every row', () => {
     await page.keyboard.press('Escape');
     await row(page, 'bare').getByRole('button', { name: /^Actions for/ }).click();
     await page.getByRole('menuitem', { name: 'Ask for context' }).click();
-    await expect.poll(() => m.calls.find((c) => c.path === '/asks/bare/answer')?.body).toMatchObject({ answer: 'ask', text: expect.stringMatching(/context/) });
-    await expect(row(page, 'mail').locator('.ask-card')).toBeVisible(); // the open notification stays
+    // Ready text goes into the reply box of that notification and waits. @req FR:notifications/list.rowactions.context @req FR:ui-kit/send.box.fill
+    const box = row(page, 'bare').getByRole('textbox', { name: /^Reply to/ });
+    await expect(box).toHaveValue(/What is the context/);
+    expect(m.calls.filter((c) => c.path === '/asks/bare/answer')).toEqual([]);
+    await box.fill('What is the context? Where is the source?');
+    await row(page, 'bare').getByRole('button', { name: /^Send/ }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/asks/bare/answer')?.body).toMatchObject({ answer: 'ask', text: 'What is the context? Where is the source?' });
   });
 });
 

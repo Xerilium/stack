@@ -16,7 +16,7 @@ const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
 const prow = (num: number, nextAction: BoardInput['rows'][number]['nextAction'], o: Partial<BoardInput['rows'][number]> = {}): BoardInput['rows'][number] => ({
   url: `https://github.com/o/r/pull/${num}`, repo: 'o/r', number: num, title: `PR ${num}`, project: 'other', nextAction, ...o,
 });
-const gapText = (cos: string, by: string, file: string) => `${cos}, ${by}: add a 1️⃣/2️⃣/3️⃣ task in ${file} with (agent: ...)`;
+const gapText = (cos: string, by: string, file: string) => `${cos} will add a task ${by}: 1️⃣/2️⃣/3️⃣ in ${file} with (agent: ...)`;
 
 describe('pris.json fields', () => {
   // @req FR:priorities-tables/$window
@@ -59,7 +59,7 @@ describe('project rows', () => {
       task('other', 1, 'Not a priority'),
     ];
     const [r] = view([pri('ftk', { label: 'FTK 16' })], tasks).now.rows;
-    expect(r).toEqual({ id: 'ftk', project: 'FTK 16', file: 'tasks/ftk.md', agent: { name: 'ftk-rm', link: null, file: null, session: null }, more: 0, status: 'working', action: 'Today one', gap: false, cos: null, request: null, ref: `tasks/ftk.md:${tasks[1].line}`, at: AT, stale: false });
+    expect(r).toEqual({ id: 'ftk', project: 'FTK 16', file: 'tasks/ftk.md', agent: { name: 'ftk-rm', link: null, file: null, session: null }, more: 0, status: 'working', action: 'Today one', gap: false, cos: null, ref: `tasks/ftk.md:${tasks[1].line}`, at: AT, stale: false });
   });
   // @req FR:priorities-tables/rows.project
   it('names the project by label, else the title before the first (', () => {
@@ -78,8 +78,8 @@ describe('project rows', () => {
     expect(r).toMatchObject({ id: 'arc', agent: null, status: null, gap: true, ref: null });
     expect(r.action).not.toMatch(/old/);
   });
-  // @req FR:priorities-tables/rows.gap.cos @req FR:priorities-tables/rows.gap.by @req FR:priorities-tables/rows.gap.action @req FR:priorities-tables/rows.gap.request @req FR:priorities-tables/agent.session
-  it('a gap row says who must act, by when and what, and carries the request for the CoS', () => {
+  // @req FR:priorities-tables/rows.gap.cos @req FR:priorities-tables/rows.gap.by @req FR:priorities-tables/rows.gap.action @req FR:priorities-tables/rows.gap.silent @req FR:priorities-tables/agent.session
+  it('a gap row says who will act, by when and what, and carries no text to send', () => {
     const cli = '0b0e7c1a-6f0e-4a57-9d0e-3a1b2c3d4e5f';
     const sessions = { at: AT, sessions: [{ id: 'x1', title: '🧭 Xe CoS', link: 'claude://claude.ai/epitaxy/x1', cli }, { id: 'c0', title: 'CoS', link: 'claude://claude.ai/epitaxy/c0', cli: 'not-a-uuid' }] };
     const files = [{ path: 'tasks/stack.md', project: 'Stack', aliases: [], repo: null }];
@@ -87,16 +87,15 @@ describe('project rows', () => {
     const [stack, arc] = v.now.rows;
     expect(stack.action).toBe(gapText('Xe CoS', 'today', 'tasks/stack.md'));
     expect(stack.cos).toEqual({ name: 'Xe CoS', link: 'claude://claude.ai/epitaxy/x1', file: null, session: cli });
-    expect(stack.request).toBe('Priority "Stack" has no tiered task. Add a 1️⃣/2️⃣/3️⃣ task in tasks/stack.md with (agent: ...) today.');
+    expect(stack).not.toHaveProperty('request');
     // No cos in pris.json: the roll-up CoS. No project file: the path to make. A cli id that is not a UUID: no session to prompt.
     expect(arc.action).toBe(gapText('CoS', 'today', 'tasks/<project>.md'));
     expect(arc.cos).toEqual({ name: 'CoS', link: 'claude://claude.ai/epitaxy/c0', file: null, session: null });
     expect(v.today.rows[0].action).toBe(gapText('CoS', 'by 3 PM', 'tasks/<project>.md'));
     expect(v.next.rows.map((r) => r.action)).toEqual([gapText('CoS', 'by Thu 9:30 AM', 'tasks/<project>.md'), gapText('CoS', 'by Fri', 'tasks/<project>.md')]);
-    expect(v.next.rows[0].request).toBe('Priority "THU" has no tiered task. Add a 1️⃣/2️⃣/3️⃣ task in tasks/<project>.md with (agent: ...) by Thu 9:30 AM.');
-    // A row with a task has no CoS and no request; its agent carries the session id to prompt.
+    // A row with a task has no CoS; its agent carries the session id to prompt.
     const [t] = view([pri('stack')], [task('stack', 1, 'Ship', { agent: 'Xe CoS' })], { sessions }).now.rows;
-    expect(t).toMatchObject({ cos: null, request: null, agent: { name: 'Xe CoS', session: cli } });
+    expect(t).toMatchObject({ cos: null, agent: { name: 'Xe CoS', session: cli } });
   });
   // @req FR:priorities-tables/rows.words
   it('cuts a cell to 20 words', () => {

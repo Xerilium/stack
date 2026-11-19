@@ -668,12 +668,12 @@ export function buildOpenApi(): J {
         },
         PriAgent: { type: 'object', nullable: true, required: ['name', 'link', 'file', 'session'], properties: { name: { type: 'string' }, link: { type: 'string', nullable: true, description: 'Session link; null when no session matches' }, file: { type: 'string', nullable: true, description: 'Agent file when no session matches' }, session: { type: 'string', nullable: true, description: 'The id POST /sessions/{id}/prompt takes; null when the session has none' } } },
         PriRow: {
-          type: 'object', required: ['id', 'project', 'file', 'agent', 'more', 'status', 'action', 'gap', 'cos', 'request', 'ref', 'at', 'stale'],
+          type: 'object', required: ['id', 'project', 'file', 'agent', 'more', 'status', 'action', 'gap', 'cos', 'ref', 'at', 'stale'],
           properties: {
             id: { type: 'string' }, project: { type: 'string' }, file: { type: 'string', nullable: true, description: 'Project task file' }, agent: ref('PriAgent'), more: { type: 'integer', description: 'More agents on the same goal' },
             status: { type: 'string', nullable: true, enum: ['working', 'pairing', 'done', 'idle', 'blocked', 'queued', 'unknown'], description: 'Agent status from the task line; null with no agent' },
             action: { type: 'string', description: 'The owner next action, at most 20 words; ⏳ first for tier 2 or 3' },
-            gap: { type: 'boolean', description: 'No tiered task linked: the action says who must add one, by when' }, cos: ref('PriAgent'), request: { type: 'string', nullable: true, description: 'Gap rows: the text to send to the CoS; else null' }, ref: { type: 'string', nullable: true, description: 'tasks/<file>.md:<line> of the task' },
+            gap: { type: 'boolean', description: 'No tiered task linked: the action says who will add one, by when. The gap list also goes to gaps.json in the store folder for the CoS; no message is sent' }, cos: ref('PriAgent'), ref: { type: 'string', nullable: true, description: 'tasks/<file>.md:<line> of the task' },
             at: { type: 'string', format: 'date-time', description: 'The oldest live check the row used' }, stale: { type: 'boolean' },
           },
         },
