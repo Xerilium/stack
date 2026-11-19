@@ -28,7 +28,7 @@ export function NowScreen({ n: task, action = null, done = false, b, layer, busy
   /** The calendar source; fixes live in Settings. */ cal: Pick<CalCtl, 'source'>;
   now: Date;
 }) {
-  // With a priority action the task waits: no Done, no Defer, no composer for it. @req FR:now-screen/now.action.none
+  // With a priority action the task waits: no Done, no Defer, no composer for it. @req FR:now-screen/now.action.none @req FR:now-screen/now.action.then
   const n = action ? null : task;
   return (
     <section class="now" aria-label="Now" data-testid="now">
@@ -39,7 +39,6 @@ export function NowScreen({ n: task, action = null, done = false, b, layer, busy
             <article class="now-card" key={`pri:${action.pri.id}`} data-pri={action.pri.id}>
               <h1 class="now-title" id="now-title" aria-describedby="now-why" title={action.text}><Md text={action.text} /></h1>
               <p class="now-why" id="now-why" data-testid="now-why">priority {action.pri.rank}: {action.pri.title}</p>
-              {/* @req FR:now-screen/now.action.then */}
               {task && <p class="now-why now-then" data-testid="now-then">Then: <Md text={task.title} links={false} /></p>}
             </article>
           ) : n ? (
