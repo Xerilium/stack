@@ -115,6 +115,7 @@ Owner needs the Chief of Staff to put only what truly needs him in front of him,
 - **FR:needs.web** (P1): Needs you MUST list every open item (no `answer`, or a `defer` past its `until`) before agent asks, in file order
   - **FR:needs.web.card** (P1): An item MUST show its title, the recommendation as the primary action (`Go with it`), `If you do nothing: <default>` when set, and its link as `Open`; `Reply` and `Defer…` stay as for asks
   - **FR:needs.web.answered** (P1): An answered item MUST leave the list at once and show an Undo toast that clears the answer
+  - **FR:needs.web.stale** (P1): An open item whose `by` is more than 48 h past MUST be stale. A stale item MUST leave the main list and the nav badge count, and show in one collapsed group at the end: `Stale · n · CoS must re-verify`. Opening the group MUST list the stale items with their actions unchanged. An item 48 h or less past `by` stays in the main list as overdue; an item with no `by` is never stale. The 48 h limit is one constant
 - **FR:needs.dedupe** (P1): A task shown in Needs you (an open item's `ref`, or an open 🙋 row) MUST NOT appear on Home (NOW, Top asks)
 - **FR:needs.api** (P1): `GET /needs-you` MUST return `{items}` (@req FR:$need) and `POST /needs-you/{id}/answer` `{choice,text?,until?}` MUST record the owner's answer (`go`, `defer`, `reply`) or clear it (`undo`), owner only
 

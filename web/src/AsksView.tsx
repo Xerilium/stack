@@ -212,13 +212,25 @@ function SignInNotice({ onSignIn }: { onSignIn?: () => void }) {
   );
 }
 
+/** CoS items past their date by more than 48 h: one collapsed group at the end; open, the items keep their actions. @req FR:ask-queue/needs.web.stale */
+function StaleGroup({ n, open, onToggle, children }: { n: number; open: boolean; onToggle: () => void; children: ComponentChildren }) {
+  return (
+    <section class="stale-group" aria-label="Stale" data-testid="stale-group">
+      <button type="button" class="foot-btn" aria-expanded={open} onClick={onToggle}>Stale · {n}<span class="hint"> · CoS must re-verify</span></button>
+      {open && <ol class="asks" aria-label="Stale asks">{children}</ol>}
+    </section>
+  );
+}
+
 /**
  * Notifications: only the things that need the owner to act. No Priorities, no Sessions.
  * @req FR:notifications/list.what @req FR:notifications/list.not @req FR:notifications/list.actions @req FR:notifications/list.empty
  */
 export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void; talk?: TalkSlot }) {
   const signin = asks.status === 'signin';
-  const { items, cursor } = asks;
+  const { cursor } = asks;
+  /** Stale CoS items sit in their own group, never in the main list. @req FR:ask-queue/needs.web.stale */
+  const items = asks.items.filter((a) => !asks.staleKeys.has(a.key));
   const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
@@ -351,6 +363,11 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
       )}
       {more > 0 && <button type="button" class="more-btn" onClick={() => asks.setShowAll(true)}>Show {more} more <kbd aria-hidden="true">m</kbd></button>}
       {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · a agent · u undo</p>}
+      {asks.stale.length > 0 && (
+        <StaleGroup n={asks.stale.length} open={asks.staleOpen} onToggle={() => asks.setStaleOpen(!asks.staleOpen)}>
+          {asks.stale.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.stale.length} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={false} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} />))}
+        </StaleGroup>
+      )}
       {(asks.sent.length > 0 || asks.snoozed.length > 0) && (
         <footer class="asks-foot">
           {asks.sent.length > 0 && (

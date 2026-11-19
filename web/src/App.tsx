@@ -40,7 +40,7 @@ import type { RankItem } from './home';
 import { useSessions } from './useSessions';
 import { createInstall, isStandalone, type InstallEvent } from './install';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
-import { fromDecisions, fromNeeds, type NeedItem } from './needs';
+import { fromDecisions, fromNeeds, staleNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
 import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
 import { SettingsView } from './SettingsView';
@@ -259,8 +259,9 @@ export function App() {
    */
   const taskAsks = useMemo(() => fromDecisions(decisions.filter((d) => repliesFor(inbox, d.task).length === 0), titles, clockNow), [decisions, inbox, titles, clockNow]);
   const needAsks = useMemo(() => fromNeeds(needs, clockNow), [needs, clockNow]);
+  const staleAsks = useMemo(() => staleNeeds(needs, clockNow), [needs, clockNow]); // @req FR:ask-queue/needs.web.stale
   const needRows = useMemo(() => [...needAsks, ...taskAsks], [needAsks, taskAsks]); // one stable list: a new array every render would reset the Asks cursor
-  const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks]);
+  const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks, ...staleAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks, staleAsks]);
   const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}), ...(doneToday ? { done: doneToday } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow, doneToday]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
   const liveNow = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
@@ -382,6 +383,7 @@ export function App() {
   }, {
     tasks: needRows,
     tasksReady: phase !== 'loading' && needsRead && inboxRead,
+    stale: staleAsks,
     onTask: (a, s) => answerTask(a, s),
     onOpenTask: (ref) => { setFocusRef(ref); },
     onSync: () => void unsaved.check(),
