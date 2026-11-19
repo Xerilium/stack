@@ -232,14 +232,14 @@ describe('move among the shown', () => {
 });
 
 describe('contextOf', () => {
-  const row = (id: string, o: Partial<PriRow> = {}): PriRow => ({ id, project: id, file: `tasks/${id}.md`, agent: null, more: 0, status: null, action: 'x', gap: false, ref: null, at: '2026-11-18T19:00:00Z', stale: false, ...o });
+  const row = (id: string, o: Partial<PriRow> = {}): PriRow => ({ id, project: id, file: `tasks/${id}.md`, agent: null, more: 0, status: null, action: 'x', gap: false, cos: null, request: null, ref: null, at: '2026-11-18T19:00:00Z', stale: false, ...o });
   const t = (rows: PriRow[]) => ({ at: '2026-11-18T19:00:00Z', stale: false, rows });
   const report = (o: Partial<PrioritiesView> = {}): PrioritiesView => ({ at: '2026-11-18T19:00:00Z', qm: null, now: t([]), today: t([]), next: t([]), prs: { ...t([]), verified: true, manager: null, rows: [] }, ...o });
   const S = 'claude://claude.ai/epitaxy/';
   // @req FR:pris-sessions-ui/pris.context
   it('links the project file, the agent, the refs of the action, the PRs and the URLs, each once, in order', () => {
     const v = report({
-      now: t([row('fh', { project: 'FinOps hubs', file: 'tasks/finops-hubs.md', agent: { name: 'FH backend', link: `${S}s2`, file: null }, action: 'Ship [119](https://github.com/o/r/pull/119) and [7](https://github.com/o/r/issues/7)' }), row('other')]),
+      now: t([row('fh', { project: 'FinOps hubs', file: 'tasks/finops-hubs.md', agent: { name: 'FH backend', link: `${S}s2`, file: null, session: null }, action: 'Ship [119](https://github.com/o/r/pull/119) and [7](https://github.com/o/r/issues/7)' }), row('other')]),
       today: t([row('fh', { project: 'FinOps hubs', file: 'tasks/finops-hubs.md' })]),
       prs: { ...t([]), verified: true, manager: null, rows: [
         { emoji: '', number: 119, url: 'https://github.com/o/r/pull/119', agent: null, pri: 'fh', action: 'Approve', minutes: 5, server: null, details: null },
@@ -263,7 +263,7 @@ describe('contextOf', () => {
     expect(contextOf(P('a', 'A', { session: 's9' }), null)).toEqual([{ text: 'Agent session', href: `${S}s9` }]);
     expect(contextOf(P('a', 'A', { session: 'bad id!' }), null)).toEqual([]);
     expect(contextOf(P('a', 'A'), report())).toEqual([]);
-    const v = report({ now: t([row('a', { file: null, agent: { name: 'X', link: 'javascript:alert(1)', file: null }, action: '[x](javascript:alert(1))' })]) });
+    const v = report({ now: t([row('a', { file: null, agent: { name: 'X', link: 'javascript:alert(1)', file: null, session: null }, action: '[x](javascript:alert(1))' })]) });
     expect(contextOf(P('a', 'A javascript:alert(1)'), v)).toEqual([]);
   });
 });
