@@ -6,7 +6,7 @@
 import { randomBytes } from 'crypto';
 import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { pidAlive, withFileLock, writeAtomic, type LockOptions } from './file-lock';
+import { pidAlive, readJsonFile, withFileLock, writeAtomic, type LockOptions } from './file-lock';
 import type { Need, NeedAnswerInput } from './needs-you';
 import { parsePrRef, refKey, refText, type PrRef } from './pr-review';
 
@@ -37,7 +37,7 @@ export const LIVE_DEFAULTS: LiveConfig = { lockPath: '/tmp/fh-server.lock', port
 /** `<home>/live.config.json` over the defaults; a missing or broken file is the defaults. @req FR:pr-review-lane/lane.config */
 export function readLiveConfig(home: string): LiveConfig {
   let raw: Record<string, unknown> = {};
-  try { const v = JSON.parse(readFileSync(join(home, 'live.config.json'), 'utf8')); if (v && typeof v === 'object' && !Array.isArray(v)) raw = v; } catch { /* defaults */ }
+  try { const v = readJsonFile(join(home, 'live.config.json')) as Record<string, unknown>; if (v && typeof v === 'object' && !Array.isArray(v)) raw = v; } catch { /* defaults */ }
   const port = (v: unknown, d: number) => (Number.isInteger(v) && (v as number) > 0 && (v as number) < 65536 ? v as number : d);
   const ints = (v: unknown, d: number[]) => (Array.isArray(v) && v.every((x) => Number.isInteger(x)) ? v as number[] : d);
   const strs = (v: unknown, d: string[]) => (Array.isArray(v) && v.every((x) => typeof x === 'string') ? v as string[] : d);

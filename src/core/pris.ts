@@ -5,7 +5,7 @@
 import { createHash } from 'crypto';
 import { mkdirSync, readFileSync, renameSync } from 'fs';
 import { join } from 'path';
-import { withFileLock, writeAtomic, type LockOptions } from './file-lock';
+import { stripBom, withFileLock, writeAtomic, type LockOptions } from './file-lock';
 import type { Issue } from './reports';
 
 export const PRI_STATUSES = ['active', 'paused', 'blocked', 'done'] as const;
@@ -193,7 +193,8 @@ export class PriStore {
     let t: string;
     try { t = readFileSync(this.file, 'utf8'); } catch { return { data: { ...EMPTY, pris: [] }, exists: false }; }
     try {
-      const j = JSON.parse(t) as Partial<PrisFile>;
+      // A leading BOM (Windows editors) is not broken. @req FR:session-inventory/pris.bom
+      const j = JSON.parse(stripBom(t)) as Partial<PrisFile>;
       // A hand-edited file must still pass the schema, or it is broken.
       if (isObj(j) && Number.isInteger(j.rev) && (j.rev as number) >= 0) return { data: { ...(j as PrisFile), pris: parsePris(j.pris) }, exists: true };
     } catch { /* broken */ }

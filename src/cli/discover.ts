@@ -2,8 +2,9 @@
  * Finds the task repo so commands need no `--dir`: walk up from cwd, then $STACK_DIR, then ~/.config/stack/config.json `dir`.
  * @req FR:cli/run.discover
  */
-import { existsSync, readdirSync, readFileSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { dirname, join, resolve } from 'path';
+import { readJsonFile } from '../core/file-lock';
 
 export interface DiscoverOpts { cwd: string; env: NodeJS.ProcessEnv; home: string }
 
@@ -15,7 +16,7 @@ const isStackDir = (d: string): boolean => {
 
 /** `~/.config/stack/config.json`: `repo`/`dir` (discovery), `mode: live`, `branch`, `remote`, `batch` (minutes), `bind` (`loopback` or `tailnet`) for `stack web`. @req FR:cli/web.live @req FR:cli/web.batch.idle @req FR:tailnet-access/bind.@cli */
 export function userConfig(home: string): { repo?: string; dir?: string; mode?: string; branch?: string; remote?: string; batch?: number; bind?: unknown } {
-  try { return JSON.parse(readFileSync(join(home, '.config/stack/config.json'), 'utf8')); } catch { return {}; }
+  try { return readJsonFile(join(home, '.config/stack/config.json')) as ReturnType<typeof userConfig>; } catch { return {}; }
 }
 
 /** The first Stack repo at or above `cwd` (the walk-up part of discovery only). */
