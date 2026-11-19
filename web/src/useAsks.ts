@@ -126,7 +126,6 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   /** Stale CoS items join the list only while their group is open, after everything else; they never count. @req FR:ask-queue/needs.web.stale.count */
   const [staleOpen, setStaleOpen] = useState(false);
   const stale = useMemo(() => (extras.stale ?? []).filter((t) => !held(t.key)).map((a, i) => ({ ...a, rank: i + 1 })), [extras.stale, holdTick]); // ranked within the group
-  const staleKeys = useMemo(() => new Set(stale.map((a) => a.key)), [stale]);
   const ranked = useMemo(() => (staleOpen ? [...main, ...stale] : main), [main, stale, staleOpen]);
   itemsRef.current = ranked;
   const total = serverTotal + (main.length - items.length);
@@ -234,7 +233,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
 
   return {
     liveTick,
-    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, countReady, stale, staleKeys, staleOpen, setStaleOpen, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
+    /** The main list only; stale CoS items are in `stale` (and in `itemsRef` while their group is open, for the keys). */
+    items: main, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, countReady, stale, staleOpen, setStaleOpen, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, retry, answer, reply, defer, retract, edit, takeDraft, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),
   };

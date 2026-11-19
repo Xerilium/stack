@@ -229,8 +229,7 @@ function StaleGroup({ n, open, onToggle, children }: { n: number; open: boolean;
 export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { asks: Asks; notify?: NotifyCtl; offline?: boolean; onSignIn?: () => void; talk?: TalkSlot }) {
   const signin = asks.status === 'signin';
   const { cursor } = asks;
-  /** Stale CoS items sit in their own group, never in the main list. @req FR:ask-queue/needs.web.stale */
-  const items = asks.items.filter((a) => !asks.staleKeys.has(a.key));
+  const items = asks.items; // the main list; stale CoS items render in their own group @req FR:ask-queue/needs.web.stale.group
   const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
