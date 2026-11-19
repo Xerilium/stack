@@ -69,6 +69,26 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { project: 'File base name, title, or alias', section: 'Default Active', text: 'One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy)', expect: 'Expected current parent row text; 409 conflict when the parent row differs (stale line number)' },
     responses: mutation('201'),
   },
+  // @req FR:design-review/api.route
+  // @req FR:design-review/api.capture
+  'designReview.capture': {
+    operationId: 'designReviewCapture', summary: 'Owner only. Capture the desktop window now and hold it for one POST /design-review (docs/design-review.md). 404 on hosts with no reviewer; 422 when the host cannot capture; 503 when ChatGPT is not connected',
+    responses: {
+      '201': { description: 'Captured', content: { 'application/json': { schema: { type: 'object', required: ['shot'], properties: { shot: { type: 'string' } } } } } },
+      default: ref('Error', 'responses'),
+    },
+  },
+  designReview: {
+    operationId: 'designReview', summary: 'Owner only. Send the page screenshot and its goals to ChatGPT in a new request and file the reply as a GitHub issue (docs/design-review.md). 404 on hosts with no reviewer; 422 with no screenshot; 409 when the repo is public and STACK_DESIGN_REVIEW_PUBLIC is not 1; 503 when ChatGPT is not connected or fails; 502 when the issue fails',
+    desc: {
+      route: 'The app route; its hash names the page', viewport: 'Width x height, such as 1280x800', theme: 'The app theme',
+      shot: 'A host capture id from POST /design-review/capture (desktop app), used once, kept 10 minutes', png: 'A base64 PNG screenshot (browser), at most 700 KB decoded',
+    },
+    responses: {
+      '201': { description: 'Filed', content: { 'application/json': { schema: { type: 'object', required: ['page', 'url'], properties: { page: { type: 'string' }, url: { type: 'string', format: 'uri' } } } } } },
+      default: ref('Error', 'responses'),
+    },
+  },
   feedback: {
     operationId: 'sendFeedback', summary: 'Owner only. Append one feedback line to ~/.stack/feedback.jsonl (docs/feedback.md) for an agent to tail. Tokens in text and the route query are removed. 404 on hosts with no store',
     desc: {

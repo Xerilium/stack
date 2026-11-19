@@ -59,6 +59,11 @@ Fastest path: [setup-live.md](setup-live.md) (one script). The steps below are t
 | `STACK_UPDATE_SOURCE`, `STACK_UPDATE_TARGET`, `STACK_UPDATE_PID`, `STACK_UPDATE_QUIT`, `STACK_UPDATE_RELAUNCH`, `STACK_UPDATE_LOG`, `STACK_UPDATE_RESULT`, `STACK_UPDATE_OPEN`, `STACK_UPDATE_WAIT_S`, `STACK_UPDATE_SHA`, `STACK_UPDATE_BUILT`, `STACK_UPDATE_QUITTER` | Internal: inputs the installer passes to its swap helper (`~/.stack/app/update.sh`). Do not set them yourself |
 | `STACK_MCP_SCOPES` | Scopes for `stack-mcp` (stdio only), default `read,write` |
 | `STACK_DATA_DIR` | Owner-only local data (email voice profile and mail state), default `~/Library/Application Support/stack`. Never inside a repo: it holds learned writing samples |
+| `STACK_OPENAI_API_KEY` | `stack web` and the desktop host: the OpenAI API key for design review (falls back to `OPENAI_API_KEY`). Absent means design review is not connected. See [design-review.md](design-review.md) |
+| `STACK_DESIGN_REVIEW_MODEL` | Design review: the OpenAI model, default `gpt-5` |
+| `STACK_DESIGN_REVIEW_REPO` | Design review: the repo that gets the issue (`gh issue create`), default `Xerilium/stack` |
+| `STACK_DESIGN_REVIEW_LABEL` | Design review: a label added to each issue (it must exist in the repo); unset adds none |
+| `STACK_DESIGN_REVIEW_PUBLIC` | Design review: `1` allows filing in a public repo (refused otherwise, 409) |
 | `STACK_CLAUDE_BIN` | `stack email` only: the Claude Code binary used for model calls (`claude -p`, no tools), default `claude`. Model calls use your Claude login |
 
 ## Owner allow-list

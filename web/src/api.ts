@@ -56,6 +56,10 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     rank: async (limit = 100, blocks: 'now' | 'any' = 'now') => (await call<{ items: RankItem[] }>(`/rank?limit=${limit}${blocks === 'any' ? '&blocks=any' : ''}`)).items,
     /** Owner feedback to ~/.stack/feedback.jsonl. @req FR:feedback-button/api.route */
     feedback: (b: FeedbackBody) => call<{ id: string; at: string; screenshot: boolean }>('/feedback', b),
+    /** ChatGPT design review of this page, filed as a GitHub issue. @req FR:design-review/api.route */
+    designReview: (b: DesignReviewBody) => call<{ page: string; url: string }>('/design-review', b),
+    /** The desktop host captures its window and holds it for one review. @req FR:design-review/api.capture */
+    designReviewCapture: () => call<{ shot: string }>('/design-review/capture', {}),
     /** The owner's priorities. @req FR:pris-sessions-ui/pris.block */
     pris: () => call<PrisFile>('/pris'),
     /** Replaces the priorities when `rev` is current; 409 when not. @req FR:pris-sessions-ui/pris.save */
@@ -163,6 +167,9 @@ export type Client = ReturnType<typeof createClient>;
 export interface SyncState { rev: string | null; pending?: number; since?: string | null; live?: string }
 /** `POST /api/sync`. */
 export interface FlushResult { flushed: number; rev: string | null }
+
+/** The body of `POST /design-review`. @req FR:design-review/api.route */
+export type DesignReviewBody = Omit<FeedbackBody, 'text' | 'capture'> & { route: string; shot?: string };
 
 /** The body of `POST /feedback`. @req FR:feedback-button/api.route */
 export interface FeedbackBody { text: string; route?: string; viewport?: string; theme?: 'light' | 'dark'; capture?: boolean; png?: string }

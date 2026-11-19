@@ -43,7 +43,13 @@ const cleanRoute = (r: string): string => r.replace(/\?[^#]*/g, '');
 let capturePage: (() => Promise<Buffer | null>) | undefined;
 export const setPageCapture = (fn: (() => Promise<Buffer | null>) | undefined): void => { capturePage = fn; };
 
-const isPng = (b: Buffer) => b.length > PNG_MAGIC.length && b.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC);
+export const isPng = (b: Buffer): boolean => b.length > PNG_MAGIC.length && b.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC);
+
+/** One host capture as a PNG; null when there is no capture, it fails, or it is not a PNG. @req FR:design-review/ui.shot */
+export async function capturePageNow(): Promise<Buffer | null> {
+  if (!capturePage) return null;
+  try { const b = await capturePage(); return b && isPng(b) ? b : null; } catch { return null; }
+}
 
 /** Appends `line` in one write (O_APPEND), then fsyncs: a tailing reader sees all of it or none. @req FR:feedback-button/store.atomic */
 function appendLine(file: string, obj: object): void {

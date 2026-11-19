@@ -481,6 +481,81 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Error"
+  /design-review/capture:
+    post:
+      summary: Owner only. Capture the desktop window now and hold it for one POST /design-review (docs/design-review.md). 404 on hosts with no reviewer; 422 when the host cannot capture; 503 when ChatGPT is not connected
+      operationId: designReviewCapture
+      responses:
+        "201":
+          description: Captured
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - shot
+                properties:
+                  shot:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+  /design-review:
+    post:
+      summary: Owner only. Send the page screenshot and its goals to ChatGPT in a new request and file the reply as a GitHub issue (docs/design-review.md). 404 on hosts with no reviewer; 422 with no screenshot; 409 when the repo is public and STACK_DESIGN_REVIEW_PUBLIC is not 1; 503 when ChatGPT is not connected or fails; 502 when the issue fails
+      operationId: designReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - route
+              properties:
+                route:
+                  type: string
+                  maxLength: 500
+                  description: The app route; its hash names the page Single line.
+                viewport:
+                  type: string
+                  maxLength: 11
+                  pattern: ^\d{2,5}x\d{2,5}$
+                  description: Width x height, such as 1280x800
+                theme:
+                  type: string
+                  enum:
+                    - light
+                    - dark
+                  description: The app theme
+                shot:
+                  type: string
+                  maxLength: 24
+                  pattern: ^[0-9a-f]{24}$
+                  description: A host capture id from POST /design-review/capture (desktop app), used once, kept 10 minutes
+                png:
+                  type: string
+                  maxLength: 1000000
+                  pattern: ^[A-Za-z0-9+/]+={0,2}$
+                  description: A base64 PNG screenshot (browser), at most 700 KB decoded
+      responses:
+        "201":
+          description: Filed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - page
+                  - url
+                properties:
+                  page:
+                    type: string
+                  url:
+                    type: string
+                    format: uri
+        default:
+          $ref: "#/components/responses/Error"
   /tasks/start:
     post:
       summary: "Start a task (ref omitted means the next task). Tokens: ref required, autonomy assist or higher; 403 otherwise"
@@ -3659,7 +3734,7 @@ components:
               message:
                 type: string
     Error:
-      description: "Error. Codes: bad_request 400, unauthorized 401, forbidden 403, not_found 404, method_not_allowed 405, conflict 409, payload_too_large 413, unsupported_media_type 415, invalid 422, internal 500."
+      description: "Error. Codes: bad_request 400, unauthorized 401, forbidden 403, not_found 404, method_not_allowed 405, conflict 409, payload_too_large 413, unsupported_media_type 415, invalid 422, internal 500, bad_gateway 502, unavailable 503."
       content:
         application/json:
           schema:
@@ -4508,6 +4583,8 @@ components:
                 - unsupported_media_type
                 - invalid
                 - internal
+                - bad_gateway
+                - unavailable
             message:
               type: string
             details:

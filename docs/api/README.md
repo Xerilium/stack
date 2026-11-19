@@ -31,6 +31,8 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/live` | GET the live validation lane: state, the one live PR, its checklist, done PRs |
 | `/live/items` | POST change one checklist item (`add`, `check`, `uncheck`, `fail`, `needs-fix`, `fixed`, `block`, `comment`, `edit`); owner calls are by owner, token calls by the token name. See [live-validation-agent.md](../live-validation-agent.md) |
 | `/feedback` | POST (owner only) one feedback line to `~/.stack/feedback.jsonl` `{text, route?, viewport?, theme?, capture?, png?}`; see [feedback.md](../feedback.md) |
+| `/design-review/capture` | POST (owner only) capture the desktop window now → `{shot}` for one review |
+| `/design-review` | POST (owner only) the page screenshot and goals to ChatGPT, reply filed as a GitHub issue `{route, viewport?, theme?, shot?, png?}` → `{page, url}`; see [design-review.md](../design-review.md) |
 | `/tasks` | GET list tasks; POST add a task |
 | `/tasks/{ref}` | GET one task |
 | `/capture` | POST add a task from a phrase |

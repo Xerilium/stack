@@ -12,6 +12,7 @@ import { ReportStore } from '../../src/core/reports';
 import { PriStore } from '../../src/core/pris';
 import { PrPriorityStore } from '../../src/core/pr-priority';
 import { FeedbackStore } from '../../src/core/feedback';
+import { DesignReviewError } from '../../src/core/design-review';
 import { QmStore } from '../../src/core/qm-plan';
 import { LiveStore } from '../../src/core/live-lane';
 import { BriefStore, FactsStore } from '../../src/core/pr-review';
@@ -249,7 +250,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
   const laneStore = new LiveStore(laneHome, { now: () => NOW });
   const calendar = fixtureCalendar([{ id: 'e1', subject: 'Sync', start: '2026-10-28T15:00:00.000Z', end: '2026-10-28T15:30:00.000Z', allDay: false, showAs: 'busy', cancelled: false, online: true, organizer: 'Ann', webLink: 'https://outlook.office.com/e/1', joinUrl: 'https://teams.microsoft.com/l/1' }]);
   const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, calendar, reports: new ReportStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))),
-    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), live: laneStore, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), feedback: new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), qm: new QmStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))), app: oaApp(),
+    inventory: () => runInventory({ sessionsDir: sessionFixture(), projectsDir: '/none', home: mkdtempSync(join(tmpdir(), 'stack-oa-')), now: () => NOW }), pris: new PriStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), prPriority: new PrPriorityStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), live: laneStore, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), feedback: new FeedbackStore(mkdtempSync(join(tmpdir(), 'stack-oa-')), { now: () => NOW }), qm: new QmStore(mkdtempSync(join(tmpdir(), 'stack-oa-'))), designReview: { capture: async () => ({ shot: 'c'.repeat(24) }), run: async (r: { route: string }) => { if (!r.route.includes('#')) throw new DesignReviewError('shot', 'A screenshot is needed'); return { page: 'now' as const, url: 'https://github.com/Xerilium/stack/issues/1' }; } }, app: oaApp(),
     // Connect with fakes: no listener port, no browser, no network. @req FR:connect-accounts/api.get
     connect: createConnect({ clientId: () => '11111111-2222-3333-4444-555555555555', cacheDir: mkdtempSync(join(tmpdir(), 'stack-oa-')), listen: async () => ({ port: 50000, close: () => undefined }), openUrl: async () => undefined, setup: async () => ({ state: 'needs-azure-signin' }) }) });
   const OWNER_HDR = { 'x-ms-client-principal': Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64') };
@@ -313,6 +314,10 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha' }, 201);
     await go('feedback', 'POST', '/feedback', { text: 'Rail too wide', route: '/#list', viewport: '1280x800', theme: 'dark' }, 201);
     await go('feedback', 'POST', '/feedback', { text: '' }, 422);
+    // @req FR:design-review/api.route
+    await go('designReview', 'POST', '/design-review', { route: '/#/now', png: 'iVBORw0KGgo=' }, 201);
+    await go('designReview', 'POST', '/design-review', { route: '/' }, 422);
+    await go('designReview.capture', 'POST', '/design-review/capture', undefined, 201);
     await go('tasks.start', 'POST', '/tasks/start', { ref }, 200);
     await go('tasks.suspend', 'POST', '/tasks/suspend', { ref, days: 1 }, 200);
     await go('tasks.resume', 'POST', '/tasks/resume', { ref }, 200);

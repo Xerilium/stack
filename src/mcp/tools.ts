@@ -193,7 +193,7 @@ export function buildRequest(t: ToolDef, args: Args, base: string, headers: Reco
 
 // ------------------------------------------------------------------ replies
 
-const CODES = new Set(['bad_request', 'unauthorized', 'forbidden', 'not_found', 'method_not_allowed', 'conflict', 'payload_too_large', 'unsupported_media_type', 'invalid', 'internal']);
+const CODES = new Set(['bad_request', 'unauthorized', 'forbidden', 'not_found', 'method_not_allowed', 'conflict', 'payload_too_large', 'unsupported_media_type', 'invalid', 'internal', 'bad_gateway', 'unavailable']);
 const isCtl = (c: number) => c < 0x20 || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029;
 export const clean = (s: unknown) => [...String(s)].map((ch) => (isCtl(ch.codePointAt(0)!) ? " " : ch)).join("");
 
