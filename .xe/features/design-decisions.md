@@ -298,7 +298,7 @@
 
 ## Now: priorities tables replace the ask cards
 
-**Decision**: Now shows four plain tables (Now top 3, Promote to Autopilot, Today, Next 3 days) in place of Waiting on you. Asks stay in Needs you. Time windows, labels and fixed actions live in `pris.json`.
+**Decision**: Now shows the priorities report (QM, Now top 3, PRs, Today, Next 3 days) in place of Waiting on you. Project rows come only from tiered tasks in `tasks/*.md` (one store; the report only reads); a priority with none shows a gap. Asks stay in Needs you. Time windows, labels, fixed actions and `perProject` live in `pris.json`.
 
 **Date**: 2026-11-18
 

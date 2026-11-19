@@ -896,7 +896,7 @@ export const ROUTES: Route[] = [
       let sessions: SessionsInput | undefined;
       try { const i = c.deps.inventory?.(); if (i) sessions = { at: i.at, sessions: i.sessions }; } catch { sessions = undefined; }
       let board: BoardInput | undefined;
-      // A first GitHub poll can take long: wait at most 2 s, then show the tables with the PR table stale. @req FR:priorities-tables/pr.stale
+      // A first GitHub poll can take long: wait at most 2 s, then show the tables with the PR table stale. @req FR:priorities-tables/pr.live.none
       try { if (c.deps.prBoard && (!c.deps.prAuth || await c.deps.prAuth.ready())) { const b = await Promise.race([c.deps.prBoard.get(), new Promise<undefined>((ok) => { setTimeout(() => ok(undefined), BOARD_WAIT_MS).unref?.(); })]); if (b) board = boardInput(b); } } catch { board = undefined; }
       const now = (c.deps.now ?? (() => new Date()))();
       const tasks = await readTieredTasks(c.deps.storage);

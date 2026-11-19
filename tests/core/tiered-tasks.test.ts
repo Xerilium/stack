@@ -37,6 +37,7 @@ describe('tieredTasks', () => {
   it('reads the agent status from the glyphs, Unknown by default, none with no agent', () => {
     expect(t.map((x) => x.status)).toEqual(['working', 'pairing', null, 'idle', 'blocked', 'queued', 'done']);
     expect(tieredTasks('tasks/x.md', '# X\n## A\n- [ ] 1️⃣ Plain (agent: z)')[0].status).toBe('unknown');
+    expect(tieredTasks('tasks/x.md', '1️⃣ Pair (agent: a + b, c)')[0]).toMatchObject({ agent: 'a', more: 2 });
   });
   // @req FR:priorities-tables/tasks.text
   it('strips the tier, status glyphs and agent text from the action', () => {

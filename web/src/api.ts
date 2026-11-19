@@ -65,7 +65,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     pris: () => call<PrisFile>('/pris'),
     /** Replaces the priorities when `rev` is current; 409 when not. @req FR:pris-sessions-ui/pris.save */
     putPris: (rev: number, pris: Pri[]) => call<PrisFile>('/pris', { rev, pris }),
-    /** The priorities tables (Now, Promote to Autopilot, Today, Next 3 days). @req FR:priorities-tables/web.live */
+    /** The priorities report (QM, Now, PRs, Today, Next 3 days). @req FR:priorities-tables/web.live */
     priorities: () => call<PrioritiesView>('/priorities'),
     /** The Claude app session inventory. @req FR:pris-sessions-ui/sessions.list */
     inventory: () => call<Inventory>('/session-inventory'),

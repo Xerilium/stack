@@ -141,7 +141,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
   if (qmPri) {
     const t = order.includes(qmPri) ? todayOf(qmPri, day, min) : { state: 'past' as const };
     let rows: PriRow[];
-    if (t.state === 'past') rows = [gapRow(qmPri, OFF_TODAY)];
+    if (t.state === 'past') rows = [{ ...gapRow(qmPri, OFF_TODAY), gap: false }];
     else {
       const when = t.state === 'later' ? `${clockText(t.from)}: ` : '';
       const files = new Map<string, TieredTask[]>();
@@ -193,10 +193,13 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
         const a = PR_ACTION[r.nextAction!];
         const l = link({ text: `${r.title} ${r.url} ${r.repo}#${r.number}`, project: r.project, aliases: [] });
         const p = l ? byId.get(l.id) : undefined;
+        // The priority session, else the agent of the project row the PR's priority shows. @req FR:priorities-tables/pr.cols.agent
         const s = p ? sessionOf(null, p) : undefined;
+        const top = p ? pick(byPri.get(p.id) ?? []) : undefined;
+        const ts = !s && top?.agent ? sessionOf(top.agent, p!) : undefined;
         const row: PrRow = {
           emoji: REPO_EMOJI[(r.repo.split('/').pop() ?? '').toLowerCase()] ?? '', number: r.number, url: r.url,
-          agent: s ? { name: cut(s.title), link: s.link } : null, action: a.text,
+          agent: s ? { name: cut(s.title), link: s.link } : top?.agent ? { name: cut(top.agent), link: ts?.link ?? null } : null, action: a.text,
           minutes: a.minutes + Math.floor((typeof r.specLines === 'number' ? r.specLines : 0) / SPEC_LINES_PER_MIN),
           // @req FR:priorities-tables/pr.cols.live
           server: r.nextAction === 'validate' ? r.server ?? null : null, details: r.nextAction === 'validate' ? r.details ?? null : null,

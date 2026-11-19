@@ -98,7 +98,7 @@ describe('QM', () => {
   it('says Not a priority today on an off day', () => {
     const thu = new Date('2026-11-19T19:00:00Z');
     const v = view([qm(), pri('stack')], tasks(), { now: thu });
-    expect(v.qm?.rows).toMatchObject([{ id: 'qm', project: 'QM', action: 'Not a priority today', gap: true }]);
+    expect(v.qm?.rows).toMatchObject([{ id: 'qm', project: 'QM', action: 'Not a priority today', gap: false, agent: null, status: null }]);
   });
   // @req FR:priorities-tables/qm.later
   it('starts each action with the start time when it opens later today', () => {
@@ -202,5 +202,15 @@ describe('PR live links and Sweep Manager', () => {
     expect(v.prs.manager).toEqual({ name: 'Sweep Manager', link: 'claude://claude.ai/epitaxy/sm' });
     expect(v.prs.rows.map((r) => [r.number, r.server, r.details])).toEqual([[2, null, null], [1, 'https://dev.example.test', 'https://github.com/o/r/pull/1#issuecomment-9']]);
     expect(view([], [], { board: undefined }).prs.manager).toBeNull();
+  });
+});
+
+describe('PR agent fallback', () => {
+  // @req FR:priorities-tables/pr.cols.agent
+  it('uses the agent of the linked project row when the priority has no session', () => {
+    const p = pri('fh', { refs: ['allytehq/finops-hubs'] });
+    const sessions = { at: AT, sessions: [{ id: 's2', title: 'FH backend', link: 'claude://claude.ai/epitaxy/s2' }] };
+    const v = view([p], [task('fh', 1, 'x', { agent: 'FH backend' })], { sessions, board: { at: AT, rows: [prow(9, 'approve', { repo: 'allytehq/finops-hubs', url: 'https://github.com/allytehq/finops-hubs/pull/9' })] } });
+    expect(v.prs.rows[0].agent).toEqual({ name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2' });
   });
 });

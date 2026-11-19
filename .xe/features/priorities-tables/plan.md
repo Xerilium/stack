@@ -1,6 +1,6 @@
 # Plan: Priorities report
 
-Base: PR 179 (`xe/pri-first-ranking`, day order). Rebase on main when 179 merges.
+Base: `main` (day order from PR 179).
 
 1. `src/core/pris.ts`: parse `perProject` (with `label`, `action`, `session`, `windows`; `FR:$window`).
 2. `src/core/tiered-tasks.ts`: pure `tieredTasks(path, src)` (`FR:tasks.*`). Reads tier, agent, more agents, status, text, project and aliases.

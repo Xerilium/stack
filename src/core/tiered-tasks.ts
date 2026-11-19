@@ -29,10 +29,11 @@ function agentOf(text: string): { agent: string | null; more: number } {
   const m = AGENT.exec(text);
   if (!m) return { agent: null, more: 0 };
   const body = m[1];
-  const agent = body.split(/[,;]/)[0].trim();
-  // `+2 PR agents: a, b` counts 2; else each extra comma-separated name counts 1.
-  const plus = /\+\s*(\d+)/.exec(body);
-  const more = plus ? Number(plus[1]) : body.split(';')[0].split(',').slice(1).filter((s) => s.trim()).length;
+  const names = body.split(';')[0];
+  const agent = names.split(/[,+]/)[0].trim();
+  // `+2 PR agents: a, b` counts 2; else each extra name after a `,` or `+` counts 1.
+  const plus = /\+\s*(\d+)/.exec(names);
+  const more = plus ? Number(plus[1]) : names.split(/[,+]/).slice(1).filter((s) => s.trim()).length;
   return { agent: agent || null, more };
 }
 

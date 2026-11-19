@@ -48,7 +48,9 @@ export const STATUS_TEXT: Record<AgentStatus, string> = { working: '🔄 Working
 const PRI_HEAD = ['| Project | Agent | 🤖 Status | 👱‍♂️ Next action |', '| --- | --- | --- | --- |'];
 const PR_HEAD = ['| PR | Agent | 👱‍♂️ Next action | Time |', '| --- | --- | --- | --- |'];
 const cell = (s: string) => s.replace(/\|/g, '\\|');
-const agentText = (a: { name: string; link: string | null } | null) => (!a ? '--' : a.link ? `[${cell(a.name)}](${a.link})` : cell(a.name));
+/** Session links as `#<session-id>`, the form Claude chats open. */
+const hrefOf = (link: string) => { const m = /^claude:\/\/claude\.ai\/epitaxy\/([A-Za-z0-9_-]+)$/.exec(link); return m ? `#${m[1]}` : link; };
+const agentText = (a: { name: string; link: string | null } | null) => (!a ? '--' : a.link ? `[${cell(a.name)}](${hrefOf(a.link)})` : cell(a.name));
 const priLine = (r: PriRow) => `| ${cell(r.project)} | ${agentText(r.agent)} | ${r.status ? STATUS_TEXT[r.status] : '--'} | ${r.gap ? 'Gap: ' : ''}${cell(r.action)} |`;
 /** Live rows add the server and details links. @req FR:priorities-tables/pr.cols.live */
 const liveLinks = (r: PrRow) => [r.server ? `[server](${r.server})` : '', r.details ? `[details](${r.details})` : ''].filter(Boolean).join(', ');

@@ -29,7 +29,7 @@ Owner needs the report to use only what each project owner wrote so that no row 
 - **FR:tasks.tier** (P1): A tiered task (@req FR:$tiered) is a line whose first token, after an optional `- `, `* ` or `- [ ] `, is `1️⃣` (today), `2️⃣` (this week) or `3️⃣` (this month).
   - **FR:tasks.tier.goal** (P1): Tiers are goals, not due dates: the report MUST NOT read a date as a tier.
   - **FR:tasks.tier.skip** (P1): Report MUST skip checked lines (`- [x]`), headings and lines with no tier.
-- **FR:tasks.agent** (P1): Report MUST take the agent from the first `(agent: ...)`: the text up to the first `,`, `;` or `)`. Each more name after a `+` or `,` counts as one more agent.
+- **FR:tasks.agent** (P1): Report MUST take the agent from the first `(agent: ...)`: the text up to the first `,`, `+`, `;` or `)`. A `+N` counts N more agents; else each more name after a `,` or `+` (before a `;`) counts one.
 - **FR:tasks.status** (P1): Report MUST take the agent status from the line: `🤝` or the word `pairing` is Pairing; `🔄` is Working; `🚫` or `🔴` is Blocked; `⏸️` is Idle; `🕓` is Queued; `✅` is Done; else Unknown. A line with no agent has no status.
 - **FR:tasks.text** (P1): Report MUST take the action from the line with the tier, the status glyphs and the `(agent: ...)` text removed.
 - **FR:tasks.project** (P1): Report MUST name the project of a file by its `# ` title with leading emoji removed, and MUST use its `**Aliases:**` to link it.
@@ -63,7 +63,7 @@ Owner needs QM in its own section on QM days so that he sees each project's QM s
 - **FR:qm.pri** (P1): A priority with `perProject: true` (QM) MUST get its own section, titled with its project name, first in the report.
 - **FR:qm.link** (P1): A task that matches the terms of a `perProject` priority MUST link to it before the other priorities.
 - **FR:qm.rows** (P1): The section MUST show one row per project file with a linked task, in file name order, named by the file's project.
-- **FR:qm.off** (P1): When the day order leaves the priority out today, or all its windows today have ended, the section MUST show one row with the action `Not a priority today`.
+- **FR:qm.off** (P1): When the day order leaves the priority out today, or all its windows today have ended, the section MUST show one row with the action `Not a priority today` (not a gap).
 - **FR:qm.later** (P1): When it opens later today, each action MUST start with its start time (`3 PM: `).
 
 ### FR:order: Order the sections by day and time
@@ -98,7 +98,7 @@ Owner needs one PR table, quickest first, so that he clears PRs in short gaps.
 - **FR:pr.cols** (P1): A PR row (@req FR:$pr) MUST have PR (repo emoji, then the number as a link), Agent, Next action and Time.
   - **FR:pr.cols.action** (P1): Next action MUST be `Autopilot: promote`, `Live: validate`, `Thread: sign off`, `Approve` or `Publish review`.
   - **FR:pr.cols.time** (P1): Time MUST be the minutes the owner needs: 5 for promote, approve and sign off, 10 for publish review, 15 for live validate, plus 1 for each 20 changed spec lines.
-  - **FR:pr.cols.agent** (P1): Agent MUST be the agent of the priority the PR links to, else `--`.
+  - **FR:pr.cols.agent** (P1): Agent MUST be the session of the priority the PR links to, else the agent of that priority's project row, else `--`.
   - **FR:pr.cols.emoji** (P1): Repo emoji MUST come from the repo name: 🏦 finops-hubs, 🧰 finops-toolkit, 👓 FOCUS_Spec, 🎧 f4-music, 🖨️ printer, 🥞 stack, ⚛️ catalyst, 🌐 allyte-web, 🏭 prime; else none.
   - **FR:pr.cols.live** (P1): A live validate row MUST link the test server and the details (agent thread or comment): `Live: [server](url), [details](url)`.
 - **FR:pr.order** (P1): Report MUST sort PR rows by Time, then the board order.
@@ -119,7 +119,7 @@ Agents need the same rows in JSON so that they report the owner's priorities wit
 - **FR:cli.@cli** (P1): Interface: `stack priorities [--json]`
 - **FR:cli.read** (P1): CLI MUST read the priorities, the task files, the session inventory and the PR board live, then build the report.
   - **FR:cli.read.board** (P2): CLI MUST build the report with no board when there is no GitHub sign-in.
-- **FR:cli.text** (P1): CLI MUST print each section as `---`, then `## <Section> (as of <time>[, stale])`, then a markdown table with the section columns.
+- **FR:cli.text** (P1): CLI MUST print each section as `---`, then `## <Section> (as of <time>[, stale])`, then a markdown table with the section columns. Session links MUST use the `#<session-id>` form.
 - **FR:cli.json** (P1): CLI MUST print the report (@req FR:$view) with `--json`.
 
 ### FR:api: Serve the report

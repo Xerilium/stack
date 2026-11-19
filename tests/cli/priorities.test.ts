@@ -32,10 +32,10 @@ describe('stack priorities', () => {
       '---', '## QM (as of 11:00 AM)', '', '| Project | Agent | 🤖 Status | 👱‍♂️ Next action |', '| --- | --- | --- | --- |',
       '| Allyte | qm-planner | ❓ Unknown | QM: approve plan |', '',
       '---', '## Now (as of 11:00 AM)', '', '| Project | Agent | 🤖 Status | 👱‍♂️ Next action |', '| --- | --- | --- | --- |',
-      '| FH.com | [FH backend](claude://claude.ai/epitaxy/s1) | 🔄 Working | Live-validate 430 |',
+      '| FH.com | [FH backend](#s1) | 🔄 Working | Live-validate 430 |',
       '| Arc | -- | -- | Gap: No tiered task in tasks/ |', '',
       '---', '## PRs (as of 11:00 AM)', '', '| PR | Agent | 👱‍♂️ Next action | Time |', '| --- | --- | --- | --- |',
-      '| 🏦 [1142](https://github.com/allytehq/finops-hubs/pull/1142) | [FH backend](claude://claude.ai/epitaxy/s1) | Autopilot: promote | 5m |', '',
+      '| 🏦 [1142](https://github.com/allytehq/finops-hubs/pull/1142) | [FH backend](#s1) | Autopilot: promote | 5m |', '',
       '---', '## Today (as of 11:00 AM)', '', 'Nothing here', '',
       '---', '## Next 3 days (as of 11:00 AM)', '', 'Nothing here',
     ]);

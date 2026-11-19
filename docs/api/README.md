@@ -27,7 +27,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/prs/resolve` | POST (owner only) resolve or reopen a review thread (`thread` node id, `op`) of a PR on the board |
 | `/prs/sign-in` | GET (owner only) the GitHub sign-in session (code and device link, never a token); POST starts `gh auth login --web`; 404 where the host has no sign-in |
 | `/pris` | GET or POST (owner only) the owner priorities with sub-items, backlog and weekly progress; POST sends `{rev, pris}`, a stale rev is 409 |
-| `/priorities` | GET (owner only) the priorities tables, read live: `now` (first 3 open), `autopilot` (PRs to promote, fewest spec lines first), `today`, `next` (3 days); each row and table has `at` and `stale` (30 min) |
+| `/priorities` | GET (owner only) the priorities report, read live: `qm` (one row per project, or null), `now` (first 3 open), `prs` (live PRs that need the owner, quickest first, with `manager` and `verified`), `today`, `next` (3 days). Project rows come only from tiered tasks in `tasks/*.md`; each row and section has `at` and `stale` (30 min) |
 | `/pr-review` | GET cached PR facts (`specLines`, `live`, head SHA) and agent briefs with `stale`. No GitHub call |
 | `/live` | GET the live validation lane: state, the one live PR, its checklist, done PRs |
 | `/live/items` | POST change one checklist item (`add`, `check`, `uncheck`, `fail`, `needs-fix`, `fixed`, `block`, `comment`, `edit`); owner calls are by owner, token calls by the token name. See [live-validation-agent.md](../live-validation-agent.md) |
