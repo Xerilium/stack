@@ -17,11 +17,12 @@ describe('docs/cli.md task refs', () => {
   it('has only task ref examples that parseRef accepts', () => {
     const refs = [...doc.matchAll(/\btasks\/[\w./-]+\.md:\d+\b/g)].map((m) => m[0]);
     expect(refs.length).toBeGreaterThan(0);
-    for (const r of refs) expect(() => parseRef(r)).not.toThrow();
+    for (const r of refs) expect(parseRef(r).path).toMatch(/^tasks\/[\w./-]+\.md$/);
   });
 
   // @req FR:cli/ref.docs
   it('never shows a bare project:line example as a CLI task ref', () => {
-    expect(doc).not.toMatch(/for example `[a-z][\w-]*:\d+`/);
+    const bare = [...doc.matchAll(/`([^`\s]*:\d+)`/g)].map((m) => m[1]).filter((r) => !r.startsWith('tasks/'));
+    expect(bare).toEqual([]);
   });
 });
