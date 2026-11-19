@@ -24,6 +24,18 @@
 
 **Why**: A long build can hold a tool call for minutes. 5 minutes keeps builds out of Needs you; 30 minutes catches dead turns the same day.
 
+## Stale after 7 days
+
+**Decision**: A `waiting` or `stuck` session with no activity for 7 days (`STALE_MS`) moves from Needs you to the archive list, unless it is pinned.
+
+**Why**: On 2026-11-18, 102 of 140 Needs-you rows were older than 7 days, so the owner stopped reading the list. A week covers a long weekend plus slack; a pin keeps a session the owner still wants.
+
+## Closer-only asks are not asks
+
+**Decision**: A closed turn whose ask is only the closer (`Anything else, or **done**?`) is `idle` with reason `wrap-up`.
+
+**Why**: 53 of 140 rows were the closer. It needs no decision; a real choice (a bold word other than `done` or `close`) stays `waiting`.
+
 ## Cache facts, classify every time
 
 **Decision**: `~/.stack/sessions.json` caches facts per file (mtime, size, transcript mtime). The state is computed on each run from the facts and the current time.

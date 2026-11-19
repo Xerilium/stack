@@ -3801,7 +3801,9 @@ components:
             - dead-turn
             - pr-merged
             - superseded
+            - stale
             - turn-open
+            - wrap-up
             - idle
         pinned:
           type: boolean
