@@ -16,17 +16,17 @@ dependencies: [agent-sessions, ask-queue, agent-inbox, ai-triage-assist, api, au
 
 ## Scope
 
-- In: agent definition files (`tasks/agents/<slug>.md` and `.claude/agents/<slug>.md`), scope and reporting-line resolution, the team route, per-prompt options on the agent driver (persona, model, title, tool limits, JSON answer), starting a session for an agent on a task or in a project's repo, task review with a JSON verdict recorded in the result log and needs written as asks, the reviews route, CLI `stack agents`, and the web: the agent chip on rows, the inline talk composer, review verdict chips, the org tree on the Agents page, the agent picker in the new-session composer, agents' sessions counted as owned.
+- In: agent definition files (`tasks/.stack/agents/<slug>.md` and `.claude/agents/<slug>.md`), scope and reporting-line resolution, the team route, per-prompt options on the agent driver (persona, model, title, tool limits, JSON answer), starting a session for an agent on a task or in a project's repo, task review with a JSON verdict recorded in the result log and needs written as asks, the reviews route, CLI `stack agents`, and the web: the agent chip on rows, the inline talk composer, review verdict chips, the org tree on the Agents page, the agent picker in the new-session composer, agents' sessions counted as owned.
 - Out: automatic review of every task (one keystroke, one read-only session each; a session start costs about 50k context tokens), a second runner (ACP; the driver interface is ready), agents on the Azure host (no runner there: the page says so), editing `.claude/agents/*.md` from Stack (they belong to Claude; Stack reads them).
 
 ## Agent file formats
 
-**Stack format (v1)**, one file per agent at `tasks/agents/<slug>.md` (slug `[a-z0-9][a-z0-9._-]{0,39}`). Fields are `- key: value` lines; the body under `## Prompt` is the system prompt addition.
+**Stack format (v1)**, one file per agent at `tasks/.stack/agents/<slug>.md` (slug `[a-z0-9][a-z0-9._-]{0,39}`). Fields are `- key: value` lines; the body under `## Prompt` is the system prompt addition.
 
 ```markdown
 # Agent: cid-manager
 
-<!-- stack-agent v1. Scope is a list of project or project/section prefixes; `*` is everything. -->
+<!-- stack-agent v1. Scope is a list of folder, project, or project/section prefixes; `*` is everything. -->
 
 - name: 🎧 Cid Manager
 - role: Label manager and F4 chief of staff
@@ -50,10 +50,10 @@ A project's `- **Agents:**` metadata (existing) names its team; an agent named t
 
 Owner needs every agent he has defined, in the task repo or for Claude, known to Stack with its scope and who it reports to so that the team on the page is the team he actually runs.
 
-- **FR:agent.path** (P1): Storage accepts `tasks/agents/<slug>.md` and lists the folder (`listAgents`, filesystem and memory adapters). Agent files are never listed as projects
+- **FR:agent.path** (P1): Storage accepts `tasks/.stack/agents/<slug>.md` and lists the folder (`listAgents`, filesystem and memory adapters). Agent files are never listed as projects
   > - @req FR:storage-git/interface.paths
   - **FR:agent.path.claude** (P1): Storage MUST read and list `.claude/agents/<slug>.md` (`listClaudeAgents`, filesystem and memory adapters) and refuse to write there
-- **FR:agent.format** (P1): `formatAgent`/`parseAgent` round-trip the v1 format: `name` (1-60 chars), `role` (one line), `scope` (comma-separated prefixes `project` or `project/section` or `*`; default: the projects whose `Agents` metadata names the agent, else none), `reports-to` (a slug), `model` (`sonnet`, `opus`, `haiku`, or a model id), `tools` (comma list), `mode` (`long-running` or `ad-hoc`, default `ad-hoc`), then `## Prompt`. Unknown lines kept; bad values dropped
+- **FR:agent.format** (P1): `formatAgent`/`parseAgent` round-trip the v1 format: `name` (1-60 chars), `role` (one line), `scope` (comma-separated prefixes: a folder, a project ID, `project/section`, or `*`, `FR:task-structure/id.scope`; default: the projects whose `Agents` metadata names the agent, else none), `reports-to` (a slug), `model` (`sonnet`, `opus`, `haiku`, or a model id), `tools` (comma list), `mode` (`long-running` or `ad-hoc`, default `ad-hoc`), then `## Prompt`. Unknown lines kept; bad values dropped
   - **FR:agent.format.claude** (P1): `parseClaudeAgent` MUST read the Claude format: `slug` from the file name, `name` from the first H1 (the text after a `:` when present: `CoS: Chief of Staff` is `Chief of Staff`), else the frontmatter `name` (a name equal to the slug reads as title case words: `cid-divine-manager` is `Cid Divine Manager`; a word with no vowel or a known acronym (`sre`, `cos`, `qa`, `ui`, `ai`, `api`, `pr`, `pmm`) reads as one: `focus-cos` is `Focus CoS`, `sre` is `SRE`); `role` from the first sentence of `description` (cut at 80); `model`, `tools` (comma list), `scope`, `reports-to`, `mode` from the frontmatter; the body as `prompt`
     - A file without frontmatter is an agent with the file name as its name and the whole file as its prompt
 - **FR:agent.icon** (P2): An agent MAY set `icon` (`- icon: 🎧` in a Stack file, `icon:` in Claude frontmatter): an emoji (at most 16 code units; no letters or digits in any script, spaces, or slashes), a Fluent Emoji name (`fluent:headphone`: `fluent:` then 1-60 lower case letters, digits, or `_`), or an image path on the Stack web origin (`/agents/cid.png`: starts with one `/`, no `..`, png/jpg/gif/webp/svg). Any other value, including plain ASCII punctuation, is dropped. Image files go in `web/public/agents/`; a missing image falls back to the monogram. `listTeam` returns it
@@ -72,7 +72,7 @@ Owner needs every agent he has defined, in the task repo or for Claude, known to
   - **FR:agent.team.reports** (P1): `listTeam` MUST set `reportsTo` to the agent's `reports-to` when that slug exists, else to the narrowest other agent with a definition file whose projects strictly contain the agent's projects (fewest projects, then team order), else to the roll-up; the roll-up itself reports to no one
     - A metadata-only agent never manages by default: a project line naming a broad worker (a PR sweeper across five projects) is not a reporting line
     - A cycle in `reports-to` lines (`a → b → a`) breaks at the agent that sorts first in team order, which then reports to the roll-up
-- **FR:agent.resolve** (P1): `agentFor(team, project, section?)` returns the agents whose scope covers the task, the roll-up first, then most specific first: `project/section` beats `project` beats `*`; ties keep team order. The first is the active agent and the default `To` of a talk. A task with no match has none (the page says so)
+- **FR:agent.resolve** (P1): `agentFor(team, project, section?)` returns the agents whose scope covers the task, the roll-up first, then most specific first: `project/section` beats `project` beats folder beats `*`; ties keep team order. The first is the active agent and the default `To` of a talk. A task with no match has none (the page says so)
   - The roll-up owns every task (the owner's model: his Chief of Staff delegates); a specialist that also covers the task is second
 
 ### FR:driver: Per-prompt options (additive to agent-sessions)
@@ -171,7 +171,7 @@ Owner needs to start a session by picking one of his agents and writing the brie
   - `slug` (string) — `[a-z0-9][a-z0-9._-]{0,39}`
   - `name` (string) — display name, 1-60 characters, may start with an emoji
   - `role` (string?) — one line
-  - `scope` (string[]) — `project`, `project/section`, or `*`
+  - `scope` (string[]) — folder, `project`, `project/section`, or `*`
   - `reportsTo` (string?) — the slug of the manager; absent on the roll-up
   - `model` (string?)
   - `tools` (string[]?)

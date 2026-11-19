@@ -64,7 +64,7 @@ describe('GET /api/sync', () => {
     const host = createHost({ ...ENV, STACK_REPO_URL: 'https://github.com/flanakin/todo' }, { fetch: gh.fetch, log: () => undefined, freshMs: 0 });
     const rev = async () => ((await (await host(new Request(`${BASE}/api/sync`, { headers: owner }))).json()) as { rev: string }).rev;
     expect(await rev()).toBe(gh.refs.get('main'));
-    const sha = gh.push({ 'tasks/asks/new.md': '# Ask: new\n' });
+    const sha = gh.push({ 'tasks/.stack/asks/new.md': '# Ask: new\n' });
     expect(await rev()).toBe(sha);
   });
   it('needs a session or a tasks:read token', async () => {

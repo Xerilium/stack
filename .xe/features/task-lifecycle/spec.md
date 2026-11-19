@@ -30,7 +30,7 @@ Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-St
   - **FR:doc.errors.line** (P2): The line number MUST be 1-based, the same number the user typed
   - **FR:doc.errors.next** (P2): The message MUST end with the next step
 - **FR:doc.result** (P1): Operations MUST return `{ changed, ref?, before?, after?, message? }`; when nothing applies (no tasks, already in state) they return `changed: false` with a message and MUST NOT throw
-- **FR:doc.json** (P1): A surface that prints a lifecycle result as JSON (`--json`) MUST add `command` (canonical name: `park` is `skip`), `project` (base name of `ref.path` without `.md`), and `text` (task text after the checkbox, from `after`) to the `FR:doc.result` fields, and `ref.line` MUST be 1-based. A no-op keeps `command` and `project` when a ref exists
+- **FR:doc.json** (P1): A surface that prints a lifecycle result as JSON (`--json`) MUST add `command` (canonical name: `park` is `skip`), `project` (project ID of `ref.path`), and `text` (task text after the checkbox, from `after`) to the `FR:doc.result` fields, and `ref.line` MUST be 1-based. A no-op keeps `command` and `project` when a ref exists
 
 ### FR:next: Next-task selection
 
@@ -99,7 +99,7 @@ Owner needs one ranked list of what to do next so that the CLI, the API, the `/n
 
 ### FR:remove: Remove completed
 
-- **FR:remove.blocks** (P1): `removeCompleted` MUST delete every `- [x] ` row (any section, any depth) with all following blank or deeper-indented lines, in all files or only `opts.project` (file base name)
+- **FR:remove.blocks** (P1): `removeCompleted` MUST delete every `- [x] ` row (any section, any depth) with all following blank or deeper-indented lines, in all files or only `opts.project` (project ID)
 - **FR:remove.count** (P1): The result reports `removed` task count and the files changed. Unchanged files are not written
 - **FR:remove.missing** (P2): An unknown `opts.project` MUST throw `LifecycleError`
 

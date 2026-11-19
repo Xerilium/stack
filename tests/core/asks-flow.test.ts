@@ -15,7 +15,7 @@ function mk() {
 }
 const seed = async (storage: MemoryStorage) => { await storage.write('tasks/finance.md', FILE); };
 const row = async (storage: MemoryStorage, n: number) => (await storage.read('tasks/finance.md')).content.split('\n')[n - 1];
-const askOf = async (storage: MemoryStorage, key: string) => parseAsk(key, (await storage.read(`tasks/asks/${key}.md`)).content);
+const askOf = async (storage: MemoryStorage, key: string) => parseAsk(key, (await storage.read(`tasks/.stack/asks/${key}.md`)).content);
 const base = { from: 'finance-cos', project: 'finance' };
 
 describe('flow fields', () => {

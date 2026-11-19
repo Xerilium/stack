@@ -47,13 +47,13 @@ Let an external agent (the MCP client) triage tasks and do the work it is allowe
 
 ### FR:result: Results and completion
 
-- **FR:result.log** (P1): Recording a result appends an entry to `tasks/logs/<project>.md` (markdown, in the repo, append-only; a file over 256 KiB rolls to `<name>.2.md`, `.3.md`, ... up to 5 files; slugs never contain dots, so a rollover cannot equal another project's log; unusual project names map to a safe file name) with time, actor, ref, level, outcome (`done|partial|blocked|needs-human`), one-line summary, and whether completion happened. Needs `triage` or higher
+- **FR:result.log** (P1): Recording a result appends an entry to `tasks/.stack/logs/<project>.md` (markdown, in the repo, append-only; a file over 256 KiB rolls to `<name>.2.md`, `.3.md`, ... up to 5 files; slugs never contain dots, so a rollover cannot equal another project's log; unusual project names map to a safe file name) with time, actor, ref, level, outcome (`done|partial|blocked|needs-human`), one-line summary, and whether completion happened. Needs `triage` or higher
 - **FR:result.noleak** (P1): Log fields are one line and capped; secrets (bearer and API tokens, private keys, JWTs, `key=value` and `password x` credentials, cookies, `sig=`, `sk_live_` keys, any `ghX_` token, `?key=` params, quoted values, URL credentials, long random strings) are replaced with `[redacted]` after zero-width characters are removed. Fields are folded (NFKC, Cyrillic/Greek lookalikes) before matching, and `< > [ ] \` |` are escaped so rendered markdown cannot beacon or link. Best effort: agents are told not to send secrets
 - **FR:result.nosilent** (P1): Completion happens only when requested, the outcome is `done`, the autonomy allows it (`assist` for a 🪄 subtask, `full` otherwise), the row is not 🙋 or held, it has no open 🙋 child, and no new 🙋 is being added. A row is a 🪄 subtask only when 🪄 is its leading token (after status or priority emoji) Otherwise the row stays open, a 🙋 review subtask is added, and the log says `completion: deferred`. Nothing completes silently
 - **FR:result.noblock** (P1): Outcomes `blocked` and `needs-human` add a 🙋 subtask (the given `human` text or a default, validated like any subtask) and return normally; the agent never waits. The hand-off is written before the log, so a full log never stops it
 - **FR:result.actor** (P1): The API derives the actor from the authenticated request (`token:<id>`, `owner`, or `api`); no route or tool takes an `actor`
 - **FR:result.cap** (P1): A full log never blocks `claim` or `record-result`. When all 5 files are full, the oldest file is dropped and the others shift down (`.2.md` becomes the base file, and so on), so the newest entries are always kept. Dropped entries stay in storage history
-- **FR:result.path** (P1): Log files live under `tasks/logs/`, are never listed as projects, and are accepted by storage only at that path
+- **FR:result.path** (P1): Log files live under `tasks/.stack/logs/`, are never listed as projects, and are accepted by storage only at that path
 
 ### FR:api: API and MCP
 

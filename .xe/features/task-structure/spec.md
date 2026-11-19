@@ -42,7 +42,7 @@ The owner groups goals by company and product in folders (`tasks/xerilium/stack/
 - **FR:system.path** (P1): Stack system files MUST live in a `.stack/` folder at any level under `tasks/`: `<dir>/.stack/{asks,asks/archive,agents,logs,inbox,wake}/<name>.md`, same name rules as before
 - **FR:system.list** (P1): `listAsks` and `listAgents` MUST return the files from every `.stack/` level, sorted
 - **FR:system.beside** (P1): A project's result logs and inbox MUST live in the `.stack/` folder beside the project file (`tasks/a/b.md` uses `tasks/a/.stack/logs/b.md` and `tasks/a/.stack/inbox/b.md`)
-- **FR:system.root** (P1): Stack MUST write new asks, agent files, wake files, and the session log in `tasks/.stack/`
+- **FR:system.root** (P1): Stack MUST write new asks, agent files, wake files, and the session log in `tasks/.stack/`; an existing ask or agent file at any level is updated where it is
 - **FR:system.ask-key** (P1): An ask key MUST resolve to its file at any level; a key in more than one folder resolves to the first path in sort order. Archive moves an ask to `archive/` in its own `.stack/` folder
 - **FR:system.watch** (P2): The file watcher MUST report a change under any `tasks/**/.stack/asks/` folder as `asks`
 

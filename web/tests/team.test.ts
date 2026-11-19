@@ -37,6 +37,13 @@ describe('agentsFor', () => {
     expect(agentsFor(team, 'other').map((a) => a.slug)).toEqual(['cos']);
     expect(agentsFor(team.slice(1), 'other')).toEqual([]);
   });
+  // @req FR:task-structure/id.scope
+  it('covers nested projects by folder, project, and section', () => {
+    const nested = [ag('cos', ['*']), ag('folder', ['x']), ag('proj', ['x/stack/goal']), ag('sect', ['x/stack/goal/Labels'])];
+    expect(agentsFor(nested, 'x/stack/goal', '🏷️ Labels').map((a) => a.slug)).toEqual(['cos', 'sect', 'proj', 'folder']);
+    expect(agentsFor(nested, 'x/other', 'Active').map((a) => a.slug)).toEqual(['cos', 'folder']);
+    expect(agentsFor(nested, 'xy').map((a) => a.slug)).toEqual(['cos']);
+  });
   // @req FR:agent-team/web.chip.live
   it('drops metadata-only agents no session has matched in 7 days; file agents stay', () => {
     const t = [...team, ag('sweep-manager', ['f4'], { name: '🔄 Sweep Manager', defined: false, source: 'metadata' }), ag('pr-sweep-worker-f4-music', ['f4'], { name: 'PR sweep worker: f4-music', defined: false, source: 'metadata' })];

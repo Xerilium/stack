@@ -11,7 +11,8 @@ export interface DiscoverOpts { cwd: string; env: NodeJS.ProcessEnv; home: strin
 const isStackDir = (d: string): boolean => {
   if (existsSync(join(d, '.xe/config/stack.json'))) return true;
   // A bare tasks/ folder only counts inside a git repo, so ~ or an unrelated project is never picked up.
-  try { return existsSync(join(d, '.git')) && readdirSync(join(d, 'tasks')).some((f) => f.endsWith('.md')); } catch { return false; }
+  // A task file at any depth counts. @req FR:task-structure/tree.discover
+  try { return existsSync(join(d, '.git')) && readdirSync(join(d, 'tasks'), { recursive: true }).some((f) => String(f).endsWith('.md')); } catch { return false; }
 };
 
 /** `~/.config/stack/config.json`: `repo`/`dir` (discovery), `mode: live`, `branch`, `remote`, `batch` (minutes), `bind` (`loopback` or `tailnet`) for `stack web`. @req FR:cli/web.live @req FR:cli/web.batch.idle @req FR:tailnet-access/bind.@cli */

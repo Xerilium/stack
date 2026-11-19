@@ -361,7 +361,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
-  // A new message is a task file change (tasks/inbox): deliver it now instead of at the next tick.
+  // A new message is a task file change (tasks/.stack/inbox): deliver it now instead of at the next tick.
   const offDelivery = deliveryLoop ? watcher.on((c) => { if (c.kinds.includes('tasks')) deliveryLoop.kick(); }) : undefined;
   const beat = o.watch?.heartbeatMs ?? 20_000;
   const who = o.label ?? 'local';

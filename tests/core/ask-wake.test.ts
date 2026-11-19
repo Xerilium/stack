@@ -10,14 +10,14 @@ function mk() {
   return { storage, ctx: { storage, now: () => new Date(NOW.getTime() + 1000 * tick++) } };
 }
 const base = { ask: 'Approve PR 879', kind: 'approve' as const, from: 'Allyte CoS' };
-const wake = async (s: MemoryStorage, slug = 'allyte-cos') => { try { return (await s.read(`tasks/wake/${slug}.md`)).content; } catch { return null; } };
+const wake = async (s: MemoryStorage, slug = 'allyte-cos') => { try { return (await s.read(`tasks/.stack/wake/${slug}.md`)).content; } catch { return null; } };
 
 describe('wake path', () => {
   it('slugs the agent and is a valid storage path', () => {
-    expect(wakePath('Allyte CoS')).toBe('tasks/wake/allyte-cos.md');
-    expect(validatePath('tasks/wake/allyte-cos.md')).toBe('tasks/wake/allyte-cos.md');
-    expect(() => validatePath('tasks/wake/../x.md')).toThrow(PathError);
-    expect(() => validatePath('tasks/wake/README.md')).toThrow(PathError);
+    expect(wakePath('Allyte CoS')).toBe('tasks/.stack/wake/allyte-cos.md');
+    expect(validatePath('tasks/.stack/wake/allyte-cos.md')).toBe('tasks/.stack/wake/allyte-cos.md');
+    expect(() => validatePath('tasks/.stack/wake/../x.md')).toThrow(PathError);
+    expect(() => validatePath('tasks/.stack/wake/README.md')).toThrow(PathError);
   });
   it('is never a project', async () => {
     const { storage, ctx } = mk();
@@ -82,8 +82,8 @@ describe('wake fail', () => {
     const { storage, ctx } = mk();
     await putAsk(ctx, 'k1', base, 'cos');
     const w = storage.write.bind(storage);
-    storage.write = (async (p: string, ...r: any[]) => { if (p.startsWith('tasks/wake/')) throw new Error('disk'); return (w as any)(p, ...r); }) as any;
+    storage.write = (async (p: string, ...r: any[]) => { if (p.startsWith('tasks/.stack/wake/')) throw new Error('disk'); return (w as any)(p, ...r); }) as any;
     await expect(answerAsk(ctx, 'k1', { answer: 'go' })).resolves.toEqual({ changed: true });
-    expect((await storage.read('tasks/asks/k1.md')).content).toContain('state: answered');
+    expect((await storage.read('tasks/.stack/asks/k1.md')).content).toContain('state: answered');
   });
 });

@@ -62,7 +62,7 @@ Agents fill task titles with status, dates, and detail. The owner then cannot sc
 
 ### FR:cli: Commands
 
-- **FR:cli.lint** (P1): `stack lint [--project name] [--json]` MUST lint every file in `tasks/`, or only the file of `--project` (file base name)
+- **FR:cli.lint** (P1): `stack lint [--project name] [--json]` MUST lint every file in `tasks/`, or only the file of `--project` (project ID)
   - **FR:cli.lint.out** (P1): Text output MUST be one line per issue, `<path>:<line> <rule> <message>`, then `<n> issues in <m> files`; with no issue it MUST print `no issues`
   - **FR:cli.lint.exit** (P1): The exit code MUST be 1 when there is an issue, else 0
   - **FR:cli.lint.json** (P1): `--json` MUST print `{ ok, command: 'lint', issues: [...] }`, where `ok` is false when there is an issue

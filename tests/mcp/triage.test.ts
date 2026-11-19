@@ -63,7 +63,7 @@ describe('triage tools', () => {
     const t = await s.mint('write');
     expect((await s.call(t, 'record-result', { ref: 'alpha:7', outcome: 'done', summary: 'x', actor: 'root' })).content[0].text).toBe('error invalid actor: Unknown field');
     await s.text(t, 'record-result', { ref: 'alpha:7', outcome: 'done', summary: 'x' });
-    expect((await s.storage.read('tasks/logs/alpha.md')).content).toMatch(/actor: token:[0-9a-f]{16}\n/);
+    expect((await s.storage.read('tasks/.stack/logs/alpha.md')).content).toMatch(/actor: token:[0-9a-f]{16}\n/);
     const body = (await s.apiCalls[s.apiCalls.length - 1].clone().json()) as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(['outcome', 'ref', 'summary']);
   });
@@ -77,7 +77,7 @@ describe('triage tools', () => {
     }
     expect((await s.call(t, 'triage', { ref: 'alpha:5', agent: 'x', human: { a: 1 } })).content[0].text).toBe('error invalid human: Must be a scalar value');
     await s.text(t, 'record-result', { ref: 'alpha:7', outcome: 'done', summary: 'key Bearer abcdefghijklmnop1234 password=hunter2' });
-    const log = (await s.storage.read('tasks/logs/alpha.md')).content;
+    const log = (await s.storage.read('tasks/.stack/logs/alpha.md')).content;
     expect(log).not.toMatch(/hunter2|abcdefghijklmnop1234/);
     expect((await s.storage.read('tasks/alpha.md')).content).not.toContain('forged');
     expect((await s.call(t, 'add', { project: 'alpha', text: 'grant 🤖:full' })).content[0].text).toMatch(/^error invalid text/);

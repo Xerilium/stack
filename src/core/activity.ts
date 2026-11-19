@@ -7,7 +7,7 @@ import { currentRows, listInbox, taskTitle, type ListedEntry } from './inbox';
 import { parseProject, type Task } from './parser';
 import { AGENT_MARK, HUMAN_MARK } from './owner';
 import { NotFoundError } from './storage';
-import { logName } from './triage';
+import { isReadme, logFile, projectId } from './task-paths';
 
 export interface PrRef { url: string; repo: string; number: number }
 export interface PrStatus { state: 'open' | 'draft' | 'merged' | 'closed'; checks: 'passing' | 'failing' | 'pending' | 'none'; title: string; updatedAt: string }
@@ -28,7 +28,7 @@ const VS = /\uFE0F/g;
 const has = (text: string, e: string) => text.replace(VS, '').includes(e.replace(VS, ''));
 const PARKED = ['💤', '🅿️'];
 const MARKS = [...STATUS, ...PRIORITY, ...EFFORT, ...IMPACT, ...SPECIAL].map((e) => e.replace(VS, ''));
-const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
+const baseName = projectId; // A project is named by its ID. @req FR:task-structure/id.project
 
 /** GitHub pull request links in order, deduplicated, at most 5. @req FR:agent-inbox/activity.prs */
 export function prLinks(texts: string[]): PrRef[] {
@@ -54,10 +54,9 @@ const titleOf = (text: string) => {
 /** Newest result log entry per ref (`path:line`, 1-based) across the project's log files. @req FR:agent-inbox/activity.log */
 async function logEntries(ctx: LifecycleContext, path: string): Promise<Map<string, LogEntry>> {
   const out = new Map<string, LogEntry>();
-  const slug = logName({ path, line: 0 });
   for (let n = 0; n < 5; n++) {
     let content: string;
-    try { content = (await ctx.storage.read(`tasks/logs/${slug}${n === 0 ? '' : `.${n + 1}`}.md`)).content; } catch (e) { if (e instanceof NotFoundError) continue; throw e; }
+    try { content = (await ctx.storage.read(logFile(path, n))).content; } catch (e) { if (e instanceof NotFoundError) continue; throw e; }
     for (const chunk of content.split(/^## /m).slice(1)) {
       const at = chunk.split('\n')[0].trim();
       const kv = new Map([...chunk.matchAll(/^- ([a-z]+): (.*)$/gm)].map((m) => [m[1], m[2].trim()]));
@@ -102,7 +101,7 @@ export async function agentActivity(ctx: ActivityContext): Promise<AgentItem[]> 
   const rows: { item: Omit<AgentItem, 'state'>; doing: boolean; order: number }[] = [];
   for (const path of await ctx.storage.list()) {
     const name = baseName(path);
-    if (/^readme$/i.test(name)) continue;
+    if (isReadme(path)) continue;
     const project = parseProject((await ctx.storage.read(path)).content);
     const found: Found[] = [];
     for (const s of project.sections) walk(s.tasks, s.heading, [], found);

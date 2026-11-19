@@ -6,6 +6,7 @@ import { oneLine } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
 import { ownerOf, projectRepos } from '../core/repos';
 import { NotFoundError } from '../core/storage';
+import { ROOT_SYSTEM } from '../core/task-paths';
 import { createPermissionBroker, type PermissionBroker } from './broker';
 import { projectOf, SessionBusy, sessionState, STATE_ORDER, type AgentDriver, type PromptOptions, type Session, type SessionState, type Turn, type Update } from './driver';
 
@@ -37,7 +38,8 @@ export interface AgentRuns {
 }
 
 interface RunState { id: string; sessionId: string | null; text: string; buffer: Update[]; done: boolean; subs: Set<{ u: (x: Update) => void; c: () => void }>; startedAt: Date }
-const LOG = 'tasks/logs/sessions.md';
+/** The session log in the root system folder. @req FR:task-structure/system.root */
+const LOG = `${ROOT_SYSTEM}/logs/sessions.md`;
 /** `YYYY-MM-DD` of an instant in a timezone (the owner's configured one, else UTC). */
 export function dayIn(iso: string | Date, timeZone: string): string {
   try { return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(typeof iso === 'string' ? new Date(iso) : iso); } catch { return (typeof iso === 'string' ? new Date(iso) : iso).toISOString().slice(0, 10); }

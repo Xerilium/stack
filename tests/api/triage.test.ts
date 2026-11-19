@@ -73,7 +73,7 @@ describe('triage routes', () => {
     const r = await call(t, '/tasks/result', { ref: 'alpha:7', outcome: 'done', summary: 'did it', complete: true });
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ logged: true, completed: true, deferred: false });
-    expect((await storage.read('tasks/logs/alpha.md')).content).toContain('did it');
+    expect((await storage.read('tasks/.stack/logs/alpha.md')).content).toContain('did it');
     const d = await call(t, '/tasks/result', { ref: 'alpha:6', outcome: 'done', summary: 'parent', complete: true });
     expect(d.json).toMatchObject({ completed: false, deferred: true });
     expect(d.json.human).toMatch(/^alpha:\d+$/);
@@ -101,7 +101,7 @@ describe('triage routes', () => {
     const { call, mint, storage } = await mk();
     const t = await mint('write');
     await call(t, '/tasks/result', { ref: 'alpha:7', outcome: 'done', summary: 'x' });
-    const log = (await storage.read('tasks/logs/alpha.md')).content;
+    const log = (await storage.read('tasks/.stack/logs/alpha.md')).content;
     expect(log).toMatch(/- actor: token:[0-9a-f]{16}\n/);
     expect(log).toContain(`token:${t.slice(4, 20)}`);
   });

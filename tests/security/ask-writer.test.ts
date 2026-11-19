@@ -29,7 +29,7 @@ describe("an ask is updated only by the token that wrote it", () => {
     ).toBe(200);
     const r = await put(s, "a-q1", s.b, { ask: "Ship v1?" });
     expect(r.status).toBe(403);
-    expect((await s.storage.read("tasks/asks/a-q1.md")).content).toContain(
+    expect((await s.storage.read("tasks/.stack/asks/a-q1.md")).content).toContain(
       "Ship v2?",
     );
   });
@@ -59,7 +59,7 @@ describe("an ask is updated only by the token that wrote it", () => {
         })
       ).status,
     ).toBe(200);
-    const c = (await s.storage.read("tasks/asks/a-q2.md")).content;
+    const c = (await s.storage.read("tasks/.stack/asks/a-q2.md")).content;
     expect(c).toContain("Tests pass");
     expect(c).toContain("priority: high");
     expect(c).toContain("writer: token:agent-a");

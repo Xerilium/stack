@@ -16,7 +16,7 @@ Michael runs three companies through Chief of Staff (CoS) agents. Chat messages 
 
 ## Data model
 
-One markdown file per ask: `tasks/asks/<key>.md` (`- key: value` lines, optional `## Detail`, `## Thread`). The key is chosen by the agent and stable, so re-writing it updates the ask (idempotent agents; email conversation id is the key).
+One markdown file per ask: `tasks/.stack/asks/<key>.md` (`- key: value` lines, optional `## Detail`, `## Thread`). The key is chosen by the agent and stable, so re-writing it updates the ask (idempotent agents; email conversation id is the key).
 
 States: `open` (visible unless snoozed) → `answered` (owner replied; waiting on the agent) → `done` (agent `handled`, `resolved`, or `defaulted`). An agent can `reopen` with a one-line reply to a question.
 
@@ -27,7 +27,7 @@ Rank is a deterministic score computed by Stack (`scoreAsk`): priority + deadlin
 ```text
 agent (CoS, email module)           todo repo / served folder                 stack web                          browser
         │ stack asks put / POST /asks/<key>   │                                  │                                  │
-        ├────────────────────────────────────▶ tasks/asks/<key>.md  ────────────▶ fs.watch (150 ms coalesce)       │
+        ├────────────────────────────────────▶ tasks/.stack/asks/<key>.md  ────────────▶ fs.watch (150 ms coalesce)       │
         │                                      │                                  ├── SSE change {rev, kinds:[asks]} ▶ refetch GET /asks, re-render in place
         │                                      │                                  │                                  │ owner presses Enter / types a reply
         │                                      │ ◀── POST /asks/<key>/answer ◀────┤◀─────────────────────────────────┤ (row leaves at once, Undo 8 s)

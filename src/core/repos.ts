@@ -5,6 +5,7 @@
  */
 import type { LifecycleContext } from './lifecycle';
 import { parseProject } from './parser';
+import { baseName, isReadme, projectId } from './task-paths';
 
 /** One project and every folder name that belongs to it (the project name first). */
 export interface RepoEntry { project: string; names: string[] }
@@ -23,7 +24,6 @@ export function repoOf(cwd: string): string {
   return (wtd >= 0 ? parts[wtd] : (parts[parts.length - 1] ?? '')).replace(/-wt-[^/]+$/, '');
 }
 
-const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1).replace(/\.md$/, '');
 /** `owner/name`, a GitHub url, or a bare folder name → the folder name. */
 const folderOf = (raw: string): string => {
   const s = raw.trim().replace(/^\[([^\]]*)\]\([^)]*\)$/, '$1').replace(/^`|`$/g, '').replace(/^https?:\/\/[^/]+\//, '').replace(/\.git$/, '').replace(/\/+$/, '');
@@ -34,10 +34,10 @@ const folderOf = (raw: string): string => {
 export async function projectRepos(ctx: Pick<LifecycleContext, 'storage'>): Promise<RepoMap> {
   const out: RepoMap = [];
   for (const path of await ctx.storage.list()) {
-    const name = baseName(path);
-    if (/^readme$/i.test(name)) continue;
+    const name = projectId(path);
+    if (isReadme(path)) continue;
     const p = parseProject((await ctx.storage.read(path)).content);
-    const names = [name];
+    const names = [baseName(path)];
     const add = (v: string) => { const f = folderOf(v); if (f && !names.includes(f)) names.push(f); };
     (p.metadata['Aliases'] ?? '').split(',').forEach(add);
     if (p.metadata['Repository']) add(p.metadata['Repository']);

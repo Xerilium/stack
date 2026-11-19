@@ -6,6 +6,7 @@ import { listTeam } from '../core/agents';
 import { currentRows, listInbox, sendToInbox } from '../core/inbox';
 import type { LifecycleContext, TaskRef } from '../core/lifecycle';
 import { parseProject } from '../core/parser';
+import { projectId } from '../core/task-paths';
 import { checkTask, type Check } from '../core/quality';
 import { ConflictError, NotFoundError } from '../core/storage';
 import { deliveryAgent } from './delivery';
@@ -13,7 +14,7 @@ import { taskContext } from './team';
 
 export interface EnrichResult { id: string; agent: string; missing: Check[] }
 
-const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
+const baseName = projectId; // A project is named by its ID. @req FR:task-structure/id.project
 
 /** The one-line message the agent gets: the missing checks, the rubric, and the gate to run. */
 export const enrichText = (ref: TaskRef, missing: Check[]): string =>

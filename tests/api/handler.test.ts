@@ -453,7 +453,7 @@ describe('input', () => {
   // @req FR:api/input.ref
   it('rejects malformed refs', async () => {
     const m = mk();
-    for (const ref of ['alpha', 'alpha:-1', 'alpha:x', ':3', '../x:1', 'a/b:1', '.hid:1', 5]) {
+    for (const ref of ['alpha', 'alpha:-1', 'alpha:x', ':3', '../x:1', 'a/../b:1', 'a/:1', 'a/README:1', '.hid:1', 5]) {
       expect([ref, (await m.call('POST', '/api/tasks/start', { ref })).status]).toEqual([ref, 422]);
     }
   });

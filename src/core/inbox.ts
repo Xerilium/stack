@@ -1,5 +1,5 @@
 /**
- * Owner-to-agent inbox: one append-only markdown file per project (`tasks/inbox/<slug>.md`) that agents read and mark handled.
+ * Owner-to-agent inbox: one append-only markdown file per project (`tasks/.stack/inbox/<slug>.md`) that agents read and mark handled.
  * The task files are never changed by a reply.
  * @req FR:agent-inbox/inbox.format @req FR:agent-inbox/inbox.send @req FR:agent-inbox/inbox.list @req FR:agent-inbox/inbox.handle
  */
@@ -7,7 +7,8 @@ import { randomBytes } from 'crypto';
 import { LifecycleError, type LifecycleContext, type TaskRef } from './lifecycle';
 import { parseProject, type Task } from './parser';
 import { ConflictError, NotFoundError } from './storage';
-import { logName, md, redact } from './triage';
+import { md, redact } from './triage';
+import { inboxFile, isReadme, projectId } from './task-paths';
 
 /** `instruction`: work the owner asks of the agent on a row. `enrich`: add the missing context to the row (always to the agent). @req FR:agent-inbox/inbox.kinds @req FR:product-reset/quality.enrich */
 export type InboxKind = 'reply' | 'decision' | 'instruction' | 'enrich';
@@ -52,9 +53,10 @@ const CONTROL_RUN = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 const INVISIBLE = /[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g;
 const KEYS = ['at', 'state', 'kind', 'to', 'from', 'agent', 'ref', 'task', 'parent', 'text', 'handled', 'note'] as const;
 const HEAD = /^## (in-[0-9TZ]+-[0-9a-f]{4,})\s*$/;
-const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
+const baseName = projectId;
 
-export const inboxPath = (ref: Pick<TaskRef, 'path'>): string => `tasks/inbox/${logName({ path: ref.path, line: 0 })}.md`;
+/** The inbox beside the project file. @req FR:task-structure/system.beside */
+export const inboxPath = (ref: Pick<TaskRef, 'path'>): string => inboxFile(ref.path);
 
 /** First lines of a new inbox file. */
 export const INBOX_HEADER = (title: string): string =>
@@ -272,7 +274,7 @@ export async function listInbox(ctx: LifecycleContext, o: { project?: string; st
   for (const p of await ctx.storage.list()) {
     const name = baseName(p);
     const inProject = !o.project || o.project.toLowerCase() === name.toLowerCase();
-    if (/^readme$/i.test(name) || (!inProject && !o.agent)) continue;
+    if (isReadme(p) || (!inProject && !o.agent)) continue;
     const f = await readOrNull(ctx, inboxPath({ path: p }));
     if (!f) continue;
     for (const full of parseInbox(f.content)) {

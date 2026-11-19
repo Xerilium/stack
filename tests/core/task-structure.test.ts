@@ -12,13 +12,14 @@ import { parseTaskRef } from '../../src/core/ask-actions';
 import { classify } from '../../src/cli/watch';
 import { walkStackDir } from '../../src/cli/discover';
 import { rankStack } from '../../src/core/lifecycle';
+import { createApiHandler } from '../../src/api/handler';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'stack-ts-')); dirs.push(d); return d; };
 afterAll(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 const put = (root: string, rel: string, body = '# T\n') => { mkdirSync(join(root, rel, '..'), { recursive: true }); writeFileSync(join(root, rel), body); };
 
-const PROJECT = '# Goal\n\n## 🔥 Active\n\n- [ ] Ship it\n';
+const PROJECT = '# Goal\n\n## 🔄 Active\n\n- [ ] Ship it\n';
 const NOW = new Date('2026-11-19T12:00:00Z');
 
 // @req FR:task-structure/tree.list @req FR:task-structure/tree.dot
@@ -99,6 +100,23 @@ describe('project IDs', () => {
   });
 });
 
+// @req FR:task-structure/id.project @req FR:task-structure/id.ref
+describe('API with nested IDs', () => {
+  const OWNER = Buffer.from(JSON.stringify({ identityProvider: 'github', userId: 'o', userRoles: ['authenticated'] })).toString('base64');
+  it('reads a nested project by encoded ID and starts a task by nested ref', async () => {
+    const storage = new MemoryStorage();
+    storage.seed('tasks/x/stack/goal.md', PROJECT);
+    const h = createApiHandler({ storage, authorize: () => true, now: () => NOW });
+    const call = (method: string, path: string, body?: unknown) => h(new Request(`https://x.test${path}`, { method, headers: { 'x-ms-client-principal': OWNER, ...(body ? { 'content-type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }));
+    const list = await (await call('GET', '/api/projects')).json();
+    expect(JSON.stringify(list)).toContain('x/stack/goal');
+    expect((await call('GET', `/api/projects/${encodeURIComponent('x/stack/goal')}`)).status).toBe(200);
+    const r = await call('POST', '/api/tasks/start', { ref: 'x/stack/goal:4' });
+    expect(r.status).toBe(200);
+    expect((await storage.read('tasks/x/stack/goal.md')).content).not.toBe(PROJECT);
+  });
+});
+
 // @req FR:task-structure/id.ref
 describe('refs with nested IDs', () => {
   it('parses and formats nested refs', () => {
@@ -113,7 +131,7 @@ describe('refs with nested IDs', () => {
 describe('agent scopes with nested IDs', () => {
   it('covers folders, projects, and sections, most specific first', async () => {
     const s = new MemoryStorage();
-    s.seed('tasks/x/stack/goal.md', '# Goal\n\n## 🔥 Active\n\n- [ ] A\n\n## 🏷️ Labels\n\n- [ ] B\n');
+    s.seed('tasks/x/stack/goal.md', '# Goal\n\n## 🔄 Active\n\n- [ ] A\n\n## 🏷️ Labels\n\n- [ ] B\n');
     s.seed('tasks/y.md', PROJECT);
     const ctx = { storage: s, now: () => NOW };
     await putAgent(ctx, 'folder', { name: 'Folder', scope: ['x'] });
@@ -180,6 +198,13 @@ describe('root system writes', () => {
     expect(await s.listAgents()).toEqual(['tasks/.stack/agents/ag.md']);
     expect(wakePath('Allyte CoS')).toBe('tasks/.stack/wake/allyte-cos.md');
   });
+
+  it('updates a nested agent file in place', async () => {
+    const s = new MemoryStorage();
+    s.seed('tasks/x/.stack/agents/qa.md', '# Agent: qa\n\n- name: QA\n');
+    expect(await putAgent({ storage: s, now: () => NOW }, 'qa', { role: 'Tests' })).toEqual({ slug: 'qa', created: false });
+    expect(await s.listAgents()).toEqual(['tasks/x/.stack/agents/qa.md']);
+  });
 });
 
 // @req FR:task-structure/system.ask-key
@@ -187,7 +212,7 @@ describe('ask key at any level', () => {
   const ASK = '# Ask: k2\n\n- state: done\n- ask: Approve it\n- kind: approve\n- from: cos\n- created: 2026-10-01T00:00:00.000Z\n- updated: 2026-10-01T00:00:00.000Z\n';
   it('reads, updates, and archives a nested ask in its own folder', async () => {
     const s = new MemoryStorage();
-    s.seed('tasks/x/.stack/asks/k2.md', ASK);
+    s.seed('tasks/x/.stack/asks/k2.md', ASK.replace('state: done', 'state: open'));
     const ctx = { storage: s, now: () => NOW };
     expect((await readAsk(ctx, 'k2'))?.ask.ask).toBe('Approve it');
     expect((await listAsks(ctx, { state: 'all' })).items.map((a) => a.key)).toEqual(['k2']);

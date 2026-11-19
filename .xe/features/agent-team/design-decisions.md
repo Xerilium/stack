@@ -26,13 +26,13 @@
 
 ## Claude agent definitions are read, never written
 
-**Decision**: `.claude/agents/<slug>.md` files join the team through `listClaudeAgents` and `parseClaudeAgent` (frontmatter `name`, `description`, `model`, `tools`, plus Stack's `scope`, `reports-to`, `mode`); the display name is the first H1. Storage refuses writes there; `stack agents add` keeps writing `tasks/agents/`.
+**Decision**: `.claude/agents/<slug>.md` files join the team through `listClaudeAgents` and `parseClaudeAgent` (frontmatter `name`, `description`, `model`, `tools`, plus Stack's `scope`, `reports-to`, `mode`); the display name is the first H1. Storage refuses writes there; `stack agents add` keeps writing `tasks/.stack/agents/`.
 
 **Date**: 2026-11-01
 
 **Why**: The owner's real agents live where Claude Code reads them, and the team must be the team he runs. Those files belong to Claude: Stack writing them would race the editor and the CLI.
 
-**Rejected**: Asking the owner to duplicate each agent as `tasks/agents/<slug>.md` (two copies drift); a one-off import (same drift after the first edit).
+**Rejected**: Asking the owner to duplicate each agent as `tasks/.stack/agents/<slug>.md` (two copies drift); a one-off import (same drift after the first edit).
 
 ## Metadata-only agents drop off a task after 7 days without a session
 

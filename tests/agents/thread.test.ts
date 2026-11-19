@@ -150,7 +150,7 @@ describe('assignTask', () => {
     expect(prompts[0].text).toContain('This task is yours now');
     expect(prompts[0].text).toContain('--ref');
     expect((await storage.read('tasks/flantastic-4.md')).content).toContain('🚧');
-    const log = (await storage.read('tasks/logs/flantastic-4.md')).content;
+    const log = (await storage.read('tasks/.stack/logs/flantastic-4.md')).content;
     expect(log).toContain('- actor: agent:cid-manager');
     expect(log).toContain('- action: claimed');
     await expect(assignTask(runs, ctx, 'flantastic-4:10')).rejects.toThrow(/Needs a human/);
@@ -167,7 +167,7 @@ describe('assignTask', () => {
     // One inbox write, already handled: a polling agent never sees the note open.
     const inboxWrites: string[] = [];
     const write = storage.write.bind(storage);
-    storage.write = (async (path: string, content: string, o?: unknown) => { if (path.startsWith('tasks/inbox/')) inboxWrites.push(content); return write(path, content, o as never); }) as typeof storage.write;
+    storage.write = (async (path: string, content: string, o?: unknown) => { if (path.startsWith('tasks/.stack/inbox/')) inboxWrites.push(content); return write(path, content, o as never); }) as typeof storage.write;
     await assignTask(runs, ctx, 'flantastic-4:7', undefined, '  Use the short version  ');
     expect(inboxWrites).toHaveLength(1);
     expect(inboxWrites[0]).toMatch(/- state: handled[\s\S]*- handled: \S+ by owner\n- note: Sent with Do it/);

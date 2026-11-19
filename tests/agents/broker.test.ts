@@ -83,6 +83,7 @@ describe('permission broker', () => {
     expect((await listAsks(ctx)).items).toHaveLength(1);
     broker.release('run-2');
     expect(await other).toEqual({ optionId: 'deny', message: 'Run cancelled' });
+    await wait(10); // the ask closes in the background
     expect((await listAsks(ctx, { state: 'done' })).items.find((x) => x.key.endsWith('req-3'))).toMatchObject({ outcome: 'resolved' });
   });
   it('times out to deny and marks the ask defaulted', async () => {

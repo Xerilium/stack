@@ -28,9 +28,9 @@ const entry = (over: Partial<InboxEntry> = {}): InboxEntry => ({
 
 // @req FR:agent-inbox/inbox.path
 describe('inbox path', () => {
-  it('accepts tasks/inbox/<name>.md and never lists it as a project', async () => {
-    expect(validatePath('tasks/inbox/alpha.md')).toBe('tasks/inbox/alpha.md');
-    for (const bad of ['tasks/inbox/../x.md', 'tasks/inbox/.x.md', 'tasks/inbox/a/b.md', 'tasks/inbox/README.md']) expect(() => validatePath(bad)).toThrow(PathError);
+  it('accepts tasks/.stack/inbox/<name>.md and never lists it as a project', async () => {
+    expect(validatePath('tasks/.stack/inbox/alpha.md')).toBe('tasks/.stack/inbox/alpha.md');
+    for (const bad of ['tasks/.stack/inbox/../x.md', 'tasks/.stack/inbox/.x.md', 'tasks/.stack/inbox/a/b.md', 'tasks/.stack/inbox/README.md']) expect(() => validatePath(bad)).toThrow(PathError);
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'hi', 'reply');
     expect(await storage.list()).toEqual(['tasks/alpha.md']);
@@ -68,20 +68,20 @@ describe('send', () => {
     const { storage, ctx } = await mk();
     const r = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'Keep it short.', 'reply');
     expect(r.id).toMatch(/^in-20261028T140311Z-[0-9a-f]{4}$/);
-    expect(r.path).toBe('tasks/inbox/alpha.md');
-    const f = (await storage.read('tasks/inbox/alpha.md')).content;
+    expect(r.path).toBe('tasks/.stack/inbox/alpha.md');
+    const f = (await storage.read('tasks/.stack/inbox/alpha.md')).content;
     expect(f.startsWith('# Alpha inbox\n')).toBe(true);
     expect(parseInbox(f)).toEqual([expect.objectContaining({ id: r.id, kind: 'reply', to: 'agent', ref: 'tasks/alpha.md:6', task: 'Draft the release notes https://github.com/o/r/pull/7', parent: 'Ship the web app', text: 'Keep it short.', state: 'open' })]);
     expect((await storage.read('tasks/alpha.md')).content).toBe(DOC);
     const r2 = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 6 }, 'June 3', 'decision');
     expect(r2.id).not.toBe(r.id);
-    expect(parseInbox((await storage.read('tasks/inbox/alpha.md')).content).map((e) => [e.kind, e.to])).toEqual([['reply', 'agent'], ['decision', 'human']]);
+    expect(parseInbox((await storage.read('tasks/.stack/inbox/alpha.md')).content).map((e) => [e.kind, e.to])).toEqual([['reply', 'agent'], ['decision', 'human']]);
   });
   // @req FR:agent-inbox/inbox.kinds
   it('stores an instruction in the same format', async () => {
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'Draft it from the changelog / keep it short', 'instruction');
-    const f = (await storage.read('tasks/inbox/alpha.md')).content;
+    const f = (await storage.read('tasks/.stack/inbox/alpha.md')).content;
     expect(f).toContain('- kind: instruction\n- to: agent');
     expect(parseInbox(f)[0]).toMatchObject({ kind: 'instruction', state: 'open' });
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x', 'nope' as never)).rejects.toThrow(LifecycleError);
@@ -90,7 +90,7 @@ describe('send', () => {
   it('stores the agent an owner message is for, and reads it back without marking it from an agent', async () => {
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'Take this one', 'instruction', undefined, undefined, 'cid-manager');
-    const f = (await storage.read('tasks/inbox/alpha.md')).content;
+    const f = (await storage.read('tasks/.stack/inbox/alpha.md')).content;
     expect(f).toContain('- to: agent\n- agent: cid-manager\n- ref:');
     const [e] = parseInbox(f);
     expect(e).toMatchObject({ agent: 'cid-manager', to: 'agent' });
@@ -101,7 +101,7 @@ describe('send', () => {
   it('marks plain rows as to: none', async () => {
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply');
-    const [e] = parseInbox((await storage.read('tasks/inbox/alpha.md')).content);
+    const [e] = parseInbox((await storage.read('tasks/.stack/inbox/alpha.md')).content);
     expect(e.to).toBe('none');
     expect(e).not.toHaveProperty('parent'); // top-level row
   });
@@ -117,7 +117,7 @@ describe('send', () => {
     const doc = '# Alpha\n\n## Active\n\n- [ ]  🤖 Two spaces\n';
     const { ctx } = await mk(doc);
     const row = parseProject(doc).sections.flatMap((x) => x.tasks)[0];
-    await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply', row.text)).resolves.toMatchObject({ path: 'tasks/inbox/alpha.md' });
+    await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 4 }, 'x', 'reply', row.text)).resolves.toMatchObject({ path: 'tasks/.stack/inbox/alpha.md' });
   });
   it('follows rows by title through moves, new marks, redaction, and long titles; the stored line breaks ties', async () => {
     const secret = 'ghp_' + 'a'.repeat(36);
@@ -153,15 +153,15 @@ describe('send', () => {
   it('skips entries with a missing or bad ref instead of failing the rest', async () => {
     const { storage, ctx } = await mk();
     const sent = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'x', 'reply');
-    const good = (await storage.read('tasks/inbox/alpha.md')).content;
-    await storage.write('tasks/inbox/alpha.md', good + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-aaaa', ref: 'alpha:6' })) + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-bbbb', ref: '' })) + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-cccc', ref: 'tasks/../x.md:1' })));
+    const good = (await storage.read('tasks/.stack/inbox/alpha.md')).content;
+    await storage.write('tasks/.stack/inbox/alpha.md', good + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-aaaa', ref: 'alpha:6' })) + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-bbbb', ref: '' })) + '\n' + formatEntry(entry({ id: 'in-20261028T000000Z-cccc', ref: 'tasks/../x.md:1' })));
     const rows = await currentRows(ctx, await listInbox(ctx));
     expect([...rows.keys()]).toEqual([sent.id]);
   });
   it('redacts secrets and escapes markdown', async () => {
     const { storage, ctx } = await mk();
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'use token ghp_abcdefghijklmnop and ![x](https://evil.test/a.png)', 'reply');
-    const f = (await storage.read('tasks/inbox/alpha.md')).content;
+    const f = (await storage.read('tasks/.stack/inbox/alpha.md')).content;
     expect(f).not.toContain('ghp_');
     expect(f).toContain('\\[x\\]');
   });
@@ -199,9 +199,9 @@ describe('handle', () => {
     const { storage, ctx } = await mk();
     const a = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'one', 'reply');
     const b = await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 6 }, 'two', 'decision');
-    const before = (await storage.read('tasks/inbox/alpha.md')).content;
+    const before = (await storage.read('tasks/.stack/inbox/alpha.md')).content;
     expect(await handleEntry(ctx, b.id, 'token:x', 'Booked')).toEqual({ changed: true });
-    const after = (await storage.read('tasks/inbox/alpha.md')).content;
+    const after = (await storage.read('tasks/.stack/inbox/alpha.md')).content;
     const es = parseInbox(after);
     expect(es[0]).toEqual(parseInbox(before)[0]);
     expect(es[1]).toMatchObject({ id: b.id, state: 'handled', note: 'Booked', handled: expect.stringMatching(/ by token:x$/) });
@@ -219,7 +219,7 @@ describe('withdraw', () => {
     const a = await sendToInbox(ctx, { path: "tasks/alpha.md", line: 5 }, "one", "instruction");
     const b = await sendToInbox(ctx, { path: "tasks/alpha.md", line: 6 }, "two", "instruction");
     expect(await handleEntry(ctx, a.id, "owner", "Withdrawn by the owner", { withdrawn: true })).toEqual({ changed: true });
-    expect(parseInbox((await storage.read("tasks/inbox/alpha.md")).content)[0]).toMatchObject({ id: a.id, state: "handled", withdrawn: true, note: "Withdrawn by the owner" });
+    expect(parseInbox((await storage.read("tasks/.stack/inbox/alpha.md")).content)[0]).toMatchObject({ id: a.id, state: "handled", withdrawn: true, note: "Withdrawn by the owner" });
     expect((await listInbox(ctx, { state: "all" })).map((e) => e.id)).toEqual([b.id]);
     expect((await listInbox(ctx, { state: "all", withdrawn: true })).map((e) => [e.id, e.withdrawn ?? false])).toEqual([[a.id, true], [b.id, false]]);
     expect(formatEntry(entry({ state: "handled", withdrawn: true }))).toContain("- withdrawn: true");
@@ -233,12 +233,12 @@ describe('cap', () => {
     const big = 'x'.repeat(900);
     const head = '# Alpha inbox\n\n';
     const many = (state: 'open' | 'handled') => Array.from({ length: 300 }, (_, i) => formatEntry(entry({ id: `in-20261028T000000Z-${i.toString(16).padStart(4, '0')}`, state, text: big }))).join('\n');
-    await storage.write('tasks/inbox/alpha.md', head + many('handled'));
+    await storage.write('tasks/.stack/inbox/alpha.md', head + many('handled'));
     await sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'fits', 'reply');
-    const kept = parseInbox((await storage.read('tasks/inbox/alpha.md')).content);
+    const kept = parseInbox((await storage.read('tasks/.stack/inbox/alpha.md')).content);
     expect(kept.at(-1)!.text).toBe('fits');
     expect(kept.length).toBeLessThan(300);
-    await storage.write('tasks/inbox/alpha.md', head + many('open'));
+    await storage.write('tasks/.stack/inbox/alpha.md', head + many('open'));
     await expect(sendToInbox(ctx, { path: 'tasks/alpha.md', line: 5 }, 'no room', 'reply')).rejects.toThrow('Inbox is full');
   });
 });

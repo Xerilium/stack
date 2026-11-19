@@ -19,15 +19,15 @@ export const QUICK: { id: 'review' | 'do' | 'plan'; label: string; text: string 
   { id: 'plan', label: 'Plan', text: 'Plan this task in steps with a rough estimate each; do not start it.' },
 ];
 
-/** How specific a scope entry is for a task: 3 project/section, 2 project, 1 everything, 0 no match (mirrors the server). */
+/** How specific a scope entry is for a task: 4 project/section, 3 project, 2 folder, 1 everything, 0 no match (mirrors the server). @req FR:task-structure/id.scope */
 function specificity(scope: string, project: string, section?: string): number {
   if (scope === '*') return 1;
-  const [p, ...rest] = scope.split('/');
-  if (p !== project) return 0;
-  if (rest.length === 0) return 2;
+  if (scope === project) return 3;
+  if (project.startsWith(`${scope}/`)) return 2;
+  if (!scope.startsWith(`${project}/`)) return 0;
   const words = (h: string) => h.trim().toLowerCase().replace(/^[^\p{L}\p{N}]+/u, '').split(/\s+/).filter(Boolean);
-  const a = words(rest.join('/')), b = section === undefined ? [] : words(section);
-  return a.length > 0 && a.length <= b.length && a.every((w, i) => w === b[i]) ? 3 : 0;
+  const a = words(scope.slice(project.length + 1)), b = section === undefined ? [] : words(section);
+  return a.length > 0 && a.length <= b.length && a.every((w, i) => w === b[i]) ? 4 : 0;
 }
 
 /** What `ownerOf` reads from a task or an ancestor. */
@@ -92,7 +92,7 @@ export const local = (a: Pick<TeamAgent, 'home'>): boolean => !a.home;
 export function agentsFor(team: TeamAgent[], project: string, section?: string, live?: Set<string>): TeamAgent[] {
   const rollup = rollupOf(team.filter(local));
   return team
-    .map((a, i) => ({ a, i, s: a === rollup ? 4 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
+    .map((a, i) => ({ a, i, s: a === rollup ? 5 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
     .filter((x) => x.s > 0 && (!live || x.a.defined || live.has(x.a.slug)))
     .sort((x, y) => y.s - x.s || x.i - y.i)
     .map((x) => x.a);
@@ -146,7 +146,7 @@ export function chipFor(o: { agent?: TeamAgent; review?: ReviewItem; session?: S
     const tone = o.review.verdict === 'cannot' ? 'warn' : o.review.verdict === 'can' ? 'ok' : o.review.needs.length ? 'warn' : 'ok';
     return { text: verdictLabel(o.review), tone, title: `${o.review.agent}: ${o.review.plan}${o.review.estimate ? ` (${o.review.estimate})` : ''}`, state: true, ...(o.review.needs.length ? { needs: o.review.needs.length } : {}) };
   }
-  if (!o.agent) return { text: 'No agent', tone: 'muted', title: 'No agent covers this task. Add one in tasks/agents/ or the project Agents line' };
+  if (!o.agent) return { text: 'No agent', tone: 'muted', title: 'No agent covers this task. Add one in tasks/.stack/agents/ or the project Agents line' };
   const chain = o.chain && o.chain.length > 1 ? o.chain.map((a) => a.name).join(' › ') : `${o.agent.name}${o.agent.role ? `: ${o.agent.role}` : ''}`;
   return { text: o.agent.name, tone: 'plain', title: `${chain}. Talk to it (a)`, agent: o.agent };
 }

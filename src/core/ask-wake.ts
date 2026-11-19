@@ -4,14 +4,15 @@
  */
 import type { LifecycleContext } from './lifecycle';
 import { ConflictError, NotFoundError } from './storage';
+import { ROOT_SYSTEM } from './task-paths';
 
-/** `tasks/wake/<slug>.md` for the ask's `from`. */
+/** `tasks/.stack/wake/<slug>.md` for the ask's `from`. @req FR:task-structure/system.root */
 export function wakePath(from: string): string {
   const slug = from.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 80) || 'agent';
-  return `tasks/wake/${slug}.md`;
+  return `${ROOT_SYSTEM}/wake/${slug}.md`;
 }
 
-const slugOf = (path: string) => path.replace(/^tasks\/wake\//, '').replace(/\.md$/, '');
+const slugOf = (path: string) => path.replace(/^.*\//, '').replace(/\.md$/, '');
 const head = (path: string) => `# Wake: ${slugOf(path)}\n\n<!-- stack-wake v1. One line per answered ask: read it with \`stack asks list --state answered\`, act, then handle it. -->\n`;
 
 /** Sets (`answer`) or removes (`null`) the line for `key`. Never throws: the answer must stand. */

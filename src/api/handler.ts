@@ -9,6 +9,7 @@ import {
   type LifecycleContext, type LifecycleResult, type TaskProps,
 } from '../core/lifecycle';
 import { parseProject, type Project, type Task } from '../core/parser';
+import { isReadme, projectId } from '../core/task-paths';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import type { QmStore } from '../core/qm-plan';
 import { FeedbackError, MAX_TEXT as FEEDBACK_MAX_TEXT, type FeedbackStore } from '../core/feedback';
@@ -369,12 +370,12 @@ const PROJECT_BODY = {
 // ------------------------------------------------------------------ data views
 
 interface Doc { name: string; path: string; content: string; project: Project }
-const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
+const baseName = projectId; // A project is named by its ID. @req FR:task-structure/id.project
 const key = (h: string) => h.replace(/^[^\p{L}\p{N}]+/u, '').trim().toLowerCase();
 
 async function loadDocs(storage: Storage): Promise<Doc[]> {
   // @req FR:perf/load.parallel
-  return Promise.all((await storage.list()).filter((p) => baseName(p).toLowerCase() !== 'readme').map(async (path) => {
+  return Promise.all((await storage.list()).filter((p) => !isReadme(p)).map(async (path) => {
     const f = await storage.read(path);
     return { name: baseName(path), path, content: f.content, project: parseProject(f.content) };
   }));

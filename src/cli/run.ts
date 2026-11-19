@@ -6,7 +6,7 @@
  */
 import { execFileSync } from 'child_process';
 import { existsSync, realpathSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { basename, dirname, join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { getDefaults, loadConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
@@ -35,6 +35,7 @@ import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageErr
 import { PRIORITIES_PATH } from '../core/priorities';
 import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
+import { projectId } from '../core/task-paths';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { inboxSourcesCmd } from './inbox-sources';
 import { inboxRunCmd } from './delivery';
@@ -107,9 +108,9 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string; s
   asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside', summary: 'the ask queue for the owner' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail', summary: 'one triage pass on the mailbox; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes', summary: 'sign in to Microsoft Graph for calendar and mail' },
-  inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all', 'once', 'watch', 'agent'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--agent slug] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | run [--project p] [--once|--watch] [--json] | sources [--json]', help: 'reply on a task as an agent (tasks/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), deliver open messages to their agents (claude -p), or show each inbox source and how to connect it', summary: 'agent replies, owner instructions, and inbox sources' },
+  inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all', 'once', 'watch', 'agent'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--agent slug] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | run [--project p] [--once|--watch] [--json] | sources [--json]', help: 'reply on a task as an agent (tasks/.stack/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), deliver open messages to their agents (claude -p), or show each inbox source and how to connect it', summary: 'agent replies, owner instructions, and inbox sources' },
   agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows', summary: 'run one prompt on an ACP agent' },
-  agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines', summary: 'list or add team agents' },
+  agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/.stack/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines', summary: 'list or add team agents' },
   report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git', summary: 'send an agent status report to the host' },
   prs: { flags: ['group', 'project', 'sort'], usage: 'prs [--group g] [--project p] [--sort spec-lines] [--json]', help: 'open PRs you review or move (--sort spec-lines: no Autopilot rows, fewest spec lines first, 🔬 = needs live validation), by group (blocked, waiting, processing, pending, paused) with who must act; uses GITHUB_TOKEN or the gh sign-in', summary: 'open PRs you review or move, by group' },
   qm: { flags: ['file'], usage: 'qm [--json] | qm put --file plan.json [--json]', help: 'the weekly QM (quota-maxxing) plan (~/.stack/qm-plan.json, never git; schema in .xe/features/qm-plan/spec.md); agents write it with put', summary: 'the weekly QM (quota-maxxing) plan' },
@@ -280,7 +281,7 @@ const canon = (cmd: string): string => (cmd === 'park' ? 'skip' : cmd);
 function describe(cmd: string, r: LifecycleResult): Outcome {
   const json: Record<string, unknown> = {
     ok: true, command: canon(cmd), changed: r.changed,
-    ...(r.ref ? { project: r.ref.path.replace(/^.*\//, '').replace(/\.md$/, '') } : {}),
+    ...(r.ref ? { project: projectId(r.ref.path) } : {}),
     ...(r.ref ? { ref: { path: r.ref.path, line: r.ref.line + 1 } } : {}),
     ...(r.before !== undefined ? { before: r.before } : {}),
     ...(r.after !== undefined ? { after: r.after, text: taskText(r.after) } : {}),
@@ -580,7 +581,7 @@ async function prisCos(store: PriStore, sub: 'link' | 'note' | 'gaps', p: Return
 }
 
 /** A core ref as the api writes it (`<project>:<line>`, 0-based). */
-const apiRef = (r: { path: string; line: number }) => `${basename(r.path).replace(/\.md$/, '')}:${r.line}`;
+const apiRef = (r: { path: string; line: number }) => `${projectId(r.path)}:${r.line}`;
 
 /** @req FR:agent-team/cli.agents */
 async function agentsCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): Promise<Outcome> {

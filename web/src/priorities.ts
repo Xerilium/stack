@@ -67,7 +67,8 @@ export function hashWithTab(hash: string, tab: TabKey): string {
 export const NO_LINK = '⚠ no link';
 /** The project page: the list filtered to the project file. @req FR:priorities-tables/web.links.project */
 export const projectHref = (file: string | null): string | null => {
-  const m = file ? /^tasks\/([^/]+)\.md$/.exec(file) : null;
+  // The project ID may be nested. @req FR:task-structure/id.project
+  const m = file ? /^tasks\/(.+)\.md$/.exec(file) : null;
   return m ? `#/list?project=${encodeURIComponent(m[1])}` : null;
 };
 /** The agent: its session, else its agent file in the Agents view. @req FR:priorities-tables/web.links.agent */

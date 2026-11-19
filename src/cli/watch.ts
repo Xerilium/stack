@@ -27,7 +27,8 @@ export function classify(rel: string): ChangeKind | null {
   if (parts[0] === '.git' || parts.includes('node_modules')) return null;
   if (name.startsWith('.') && parts[0] !== '.stack') return null;
   if (name.startsWith('.') || /(~|\.swp|\.swx|\.tmp)$/.test(name) || !/\.md$/.test(name)) return null;
-  if (parts[0] === 'tasks' && parts[1] === 'asks') return 'asks';
+  // @req FR:task-structure/system.watch
+  if (parts[0] === 'tasks' && parts[parts.lastIndexOf('.stack') + 1] === 'asks' && parts.includes('.stack')) return 'asks';
   if (parts[0] === 'tasks') return 'tasks';
   if (parts[0] === '.stack') return 'state';
   return null;

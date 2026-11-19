@@ -19,7 +19,7 @@ export interface SessionsInput { at: string; sessions: { id: string; title: stri
 export interface ViewInput {
   pris: Pri[]; tasks: TieredTask[];
   /** Every project file (for the project link of gap rows). */ files?: ProjectFile[];
-  /** Agent file paths (`tasks/agents/<slug>.md`, `.claude/agents/<slug>.md`). */ agents?: string[];
+  /** Agent file paths (`tasks/.stack/agents/<slug>.md`, `.claude/agents/<slug>.md`). */ agents?: string[];
   now: Date; timeZone?: string; sessions?: SessionsInput; board?: BoardInput }
 
 /** `link`: the session; `file`: the agent file when no session matches; `session`: the id `POST /sessions/{id}/prompt` takes, or null. @req FR:priorities-tables/agent.session */
