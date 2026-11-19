@@ -90,7 +90,7 @@ export function InstallView() {
       {step === 'blocked' && (
         <>
           <h1 id="inst-h">Notifications are off</h1>
-          <p class="inst-note err" role="status">Blocked: allow notifications for Stack in Settings &gt; Notifications</p>
+          <p class="inst-note err" role="status">Blocked: Allow notifications for Stack in Settings &gt; Notifications</p>
         </>
       )}
       {step === 'on' && (
@@ -106,7 +106,8 @@ export function InstallView() {
         </>
       )}
       {step === 'desktop-done' && <><h1 id="inst-h">You are set</h1><p class="inst-lede">Stack is installed on this device.</p></>}
-      <a class="inst-back" href="#/home">Back to Stack</a>
+      {/* @req FR:iphone-access/install.back */}
+      <a class="inst-back" href="#/now">Back to Stack</a>
     </main>
   );
 }
