@@ -1,6 +1,6 @@
 /**
  * Now's priorities report as tabs: QM (when set), Now, PRs, Today, Next 3 days, each with its count of real rows. One card
- * table at a time; each cell is one line, and a tap on the next action shows the full row. The tab is kept in the hash.
+ * list of muted cards at a time; each field is one line, and the toggle shows the full card. The tab is kept in the hash.
  * Read on load, on each live change and every 60 s while visible; absent when the host has no priority store.
  * @req FR:priorities-tables/web.place @req FR:priorities-tables/web.tabs @req FR:priorities-tables/web.tabs.count @req FR:priorities-tables/web.tabs.default
  * @req FR:priorities-tables/web.tabs.hash @req FR:priorities-tables/web.tabs.keys @req FR:priorities-tables/web.tabs.head @req FR:priorities-tables/web.table
@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
-import { actionText, defaultTab, hashWithTab, PR_COLS, PRI_COLS, safeHref, sectionsOf, stampText, statusText, tabFromHash, tabLabel, type Agent, type PrioritiesView, type PriRow, type PrRow, type TabKey } from './priorities';
+import { actionText, agentHref, defaultTab, hashWithTab, linkParts, NO_LINK, projectHref, safeHref, sectionsOf, stampText, statusText, tabFromHash, tabLabel, type Agent, type PrioritiesView, type PriRow, type PrRow, type TabKey } from './priorities';
 import './priorities.css';
 
 const TICK_MS = 60_000;
@@ -42,43 +42,48 @@ export function usePriorities(api: Pick<Client, 'priorities'>, liveTick: number,
 const Link = ({ href, text }: { href: string; text: string }) => (/^https?:/i.test(href)
   ? <a href={href} target="_blank" rel="noopener noreferrer">{text}</a>
   : <a href={href}>{text}</a>);
-// Explicit roles keep the table semantics when the phone layout turns rows into blocks.
-const Cell = ({ c, children, muted, title }: { c: string; children: preact.ComponentChildren; muted?: boolean; title?: string }) => <td role="cell" title={title} class={`pri-c-${c}${muted ? ' pri-muted' : ''}`}>{children}</td>;
+/** One field of a card; `label` is read by screen readers only. */
+const Cell = ({ c, children, muted, title, label }: { c: string; children: preact.ComponentChildren; muted?: boolean; title?: string; label?: string }) => <span title={title} class={`pri-c-${c}${muted ? ' pri-muted' : ''}`}>{label && <span class="pri-sr">{label}: </span>}{children}</span>;
+/** A link, else the text and the gap marker. @req FR:priorities-tables/web.links.gap */
+const LinkOr = ({ href, text }: { href: string | null; text: string }) => (safeHref(href) ? <Link href={href} text={text} /> : <>{text} <span class="pri-nolink">{NO_LINK}</span></>);
+/** Action text with every PR, issue and URL as a link. @req FR:priorities-tables/web.links.refs */
+const Rich = ({ text }: { text: string }) => <>{linkParts(text).map((p, i) => (p.href && safeHref(p.href) ? <Link key={i} href={p.href} text={p.text} /> : p.gap ? <span key={i} class="pri-nolink">{p.text}</span> : p.text))}</>;
+/** @req FR:priorities-tables/web.links.agent */
 const AgentCell = ({ a }: { a: Agent | null }) => (a
-  ? <Cell c="agent" title={a.name}>{safeHref(a.link) ? <Link href={a.link} text={a.name} /> : a.name}</Cell>
-  : <Cell c="agent" muted>--</Cell>);
-/** The next action: one line; a tap shows the full row. @req FR:priorities-tables/web.table.detail */
+  ? <Cell c="agent" title={a.name} label="Agent"><LinkOr href={agentHref(a)} text={a.name} /></Cell>
+  : <Cell c="agent" muted label="Agent">--</Cell>);
+/** The next action: one line, then a toggle that shows the full row. Links stay outside the toggle. @req FR:priorities-tables/web.table.detail */
 const More = ({ open, toggle, children }: { open: boolean; toggle: () => void; children: preact.ComponentChildren }) => (
-  <button type="button" class="pri-more" aria-expanded={open} onClick={toggle}>{children}</button>
+  <div class="pri-act"><span class="pri-text">{children}</span><button type="button" class="pri-more" aria-expanded={open} aria-label={open ? 'Show less' : 'Show the full row'} title={open ? 'Show less' : 'Show the full row'} onClick={toggle}><span aria-hidden="true">{open ? '▴' : '▾'}</span></button></div>
 );
 
 function PriLine({ r }: { r: PriRow }) {
   const [open, setOpen] = useState(false);
   return (
-    <tr role="row" class={`${r.gap ? 'pri-gap' : ''}${open ? ' pri-open' : ''}`.trim() || undefined}>
-      <Cell c="project" title={r.project}>{r.project}{r.stale && <span class="pri-stale"> stale</span>}</Cell>
+    <li class={`pri-card${r.gap ? ' pri-gap' : ''}${open ? ' pri-open' : ''}`}>
+      <Cell c="project" title={r.project}><LinkOr href={projectHref(r.file)} text={r.project} />{r.stale && <span class="pri-stale"> stale</span>}</Cell>
       <AgentCell a={r.agent} />
-      <Cell c="status" muted={!r.status}>{statusText(r.status)}</Cell>
-      <Cell c="action" muted={r.gap}><More open={open} toggle={() => setOpen(!open)}>{actionText(r)}</More></Cell>
-    </tr>
+      <Cell c="status" muted={!r.status} label="Status">{statusText(r.status)}</Cell>
+      <Cell c="action" muted={r.gap} label="Next action"><More open={open} toggle={() => setOpen(!open)}>{r.gap ? actionText(r) : <Rich text={r.action} />}</More></Cell>
+    </li>
   );
 }
 function PrLine({ r }: { r: PrRow }) {
   const [open, setOpen] = useState(false);
   const live = r.server || r.details;
   return (
-    <tr role="row" class={open ? 'pri-open' : undefined}>
-      <Cell c="pr">{r.emoji && <span aria-hidden="true">{r.emoji} </span>}{safeHref(r.url) ? <Link href={r.url} text={String(r.number)} /> : r.number}</Cell>
+    <li class={`pri-card${open ? ' pri-open' : ''}`}>
+      <Cell c="pr" label="PR">{r.emoji && <span aria-hidden="true">{r.emoji} </span>}{safeHref(r.url) ? <Link href={r.url} text={String(r.number)} /> : r.number}</Cell>
       <AgentCell a={r.agent} />
-      <Cell c="action">{live
+      <Cell c="action" label="Next action">{live
         // Live rows: the server and what to validate. @req FR:priorities-tables/pr.cols.live
         ? <>Live: {[r.server && safeHref(r.server) ? <Link key="s" href={r.server} text="server" /> : null, r.details && safeHref(r.details) ? <Link key="d" href={r.details} text="details" /> : null].filter(Boolean).flatMap((x, i) => (i ? [', ', x] : [x]))}</>
         : <More open={open} toggle={() => setOpen(!open)}>{r.action}</More>}</Cell>
-      <Cell c="time">{r.minutes}m</Cell>
-    </tr>
+      <Cell c="time" label="Time">{r.minutes}m</Cell>
+    </li>
   );
 }
-const Only = ({ n, text }: { n: number; text: string }) => <tr role="row" class="pri-only"><td role="cell" colSpan={n} class="pri-muted">{text}</td></tr>;
+const Only = ({ text }: { text: string }) => <li class="pri-card pri-only pri-muted">{text}</li>;
 
 export function PrioritiesTables({ v }: { v: PrioritiesView }) {
   const sections = sectionsOf(v);
@@ -100,7 +105,6 @@ export function PrioritiesTables({ v }: { v: PrioritiesView }) {
     if (to) { e.preventDefault(); pick(to, true); }
   };
   const s = sections.find((x) => x.key === cur)!;
-  const cols = s.key === 'prs' ? PR_COLS : PRI_COLS;
   return (
     <section class="pri-tables fl" aria-label="Priorities" data-testid="pri-tables">
       <div class="pri-tabs" role="tablist" aria-label="Priorities" onKeyDown={onKey}>
@@ -112,14 +116,11 @@ export function PrioritiesTables({ v }: { v: PrioritiesView }) {
       <div class="pri-tabpanel" id="pri-tabpanel" role="tabpanel" aria-labelledby={`pri-tab-${cur}`} data-testid={`pri-${cur}`}>
         <p class={`pri-stamp${s.t.stale ? ' stale' : ''}`}>{stampText(s.t, v.timeZone)}</p>
         {s.key === 'prs' && s.t.manager && safeHref(s.t.manager.link) && <p class="pri-manager"><span aria-hidden="true">👩‍💻 </span><Link href={s.t.manager.link} text={s.t.manager.name} /></p>}
-        <table class={`pri-table ${s.key === 'prs' ? 'pri-prs' : 'pri-pri'}`} role="table" aria-labelledby={`pri-tab-${cur}`}>
-          <thead role="rowgroup"><tr role="row">{cols.map((c) => <th role="columnheader" scope="col" key={c}>{c}</th>)}</tr></thead>
-          <tbody role="rowgroup">
-            {s.key === 'prs'
-              ? (!s.t.verified ? <Only n={cols.length} text="Not verified live" /> : !s.t.rows.length ? <Only n={cols.length} text="Nothing here" /> : s.t.rows.map((r) => <PrLine key={r.url} r={r} />))
-              : (!s.t.rows.length ? <Only n={cols.length} text="Nothing here" /> : s.t.rows.map((r) => <PriLine key={`${r.id}:${r.ref ?? r.project}`} r={r} />))}
-          </tbody>
-        </table>
+        <ul class={`pri-cards ${s.key === 'prs' ? 'pri-prs' : 'pri-pri'}`} aria-labelledby={`pri-tab-${cur}`}>
+          {s.key === 'prs'
+            ? (!s.t.verified ? <Only text="Not verified live" /> : !s.t.rows.length ? <Only text="Nothing here" /> : s.t.rows.map((r) => <PrLine key={r.url} r={r} />))
+            : (!s.t.rows.length ? <Only text="Nothing here" /> : s.t.rows.map((r) => <PriLine key={`${r.id}:${r.ref ?? r.project}`} r={r} />))}
+        </ul>
       </div>
     </section>
   );

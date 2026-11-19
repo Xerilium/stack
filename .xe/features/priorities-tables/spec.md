@@ -33,6 +33,8 @@ Owner needs the report to use only what each project owner wrote so that no row 
 - **FR:tasks.status** (P1): Report MUST take the agent status from the line: `🤝` or the word `pairing` is Pairing; `🔄` is Working; `🚫` or `🔴` is Blocked; `⏸️` is Idle; `🕓` is Queued; `✅` is Done; else Unknown. A line with no agent has no status.
 - **FR:tasks.text** (P1): Report MUST take the action from the line with the tier, the status glyphs and the `(agent: ...)` text removed.
 - **FR:tasks.project** (P1): Report MUST name the project of a file by its `# ` title with leading emoji removed, and MUST use its `**Aliases:**` to link it.
+- **FR:tasks.refs** (P1): Report MUST turn each PR or issue mention in the action (`#12`, `PR 12`, `PRs 12, 13`, `issue 12`) into a full markdown link to its GitHub URL, with the repo from the file's `**Repository:**`. Existing links and URLs MUST stay.
+  - **FR:tasks.refs.gap** (P1): With no repo, each mention MUST end with the gap marker `⚠ no link`.
 
 ### FR:rows: Build the project rows
 
@@ -49,6 +51,7 @@ Owner needs one row per priority so that each project shows once with his next s
 - **FR:rows.link** (P1): Report MUST link each tiered task to one priority with the priority linker (@req FR:pris-aware-ranking/link.best), with the file's project name and aliases.
 - **FR:rows.pick** (P1): A project row MUST show the linked task with the lowest tier, then the first in file order.
 - **FR:rows.project** (P1): Report MUST name the row with the priority `label`, else the title before the first `(`.
+- **FR:rows.file** (P1): Each row MUST name its project task file: the file of its task, else the file whose name or alias matches the priority projects, label or title, else null.
 - **FR:rows.cols** (P1): A project row (@req FR:$row) MUST have Project, Agent, Status and Next action.
   - **FR:rows.cols.action** (P1): The priority `action` MUST win over the task text (`work with FOCUS CoS`).
   - **FR:rows.cols.later** (P1): A task with tier `2️⃣` or `3️⃣` MUST start its action with `⏳ `.
@@ -88,6 +91,7 @@ Owner needs the sections to follow his day so that each hour shows only work he 
 Owner needs each agent one tap away so that he can talk to it.
 
 - **FR:agent.link** (P1): Report MUST link the agent to the inventory session whose title matches the agent name (case, emoji and punctuation ignored), else to the session in the priority `session`.
+- **FR:agent.file** (P1): With no session, Report MUST name the agent file (`tasks/agents/<slug>.md` or `.claude/agents/<slug>.md`) whose slug matches the agent name.
 - **FR:agent.plain** (P1): Report MUST show the agent name with no link when no session matches.
 
 ### FR:pr: List the PRs that need the owner
@@ -121,6 +125,7 @@ Agents need the same rows in JSON so that they report the owner's priorities wit
 - **FR:cli.read** (P1): CLI MUST read the priorities, the task files, the session inventory and the PR board live, then build the report.
   - **FR:cli.read.board** (P2): CLI MUST build the report with no board when there is no GitHub sign-in.
 - **FR:cli.text** (P1): CLI MUST print each section as `---`, then `## <Section> (as of <time>[, stale])`, then a markdown table with the section columns. Session links MUST use the `#<session-id>` form.
+- **FR:cli.links** (P1): CLI MUST link the project to its task file and the agent to its session, else its agent file; with neither, it MUST print the gap marker `⚠ no link`.
 - **FR:cli.json** (P1): CLI MUST print the report (@req FR:$view) with `--json`.
 
 ### FR:api: Serve the report
@@ -140,29 +145,34 @@ Owner needs the report on the Now page so that he sees it without a new screen.
   - **FR:web.tabs.hash** (P1): The chosen tab MUST be kept in the URL hash (`#/now?pri=prs`) and restored on load.
   - **FR:web.tabs.keys** (P1): Tabs MUST follow the ARIA tabs pattern: arrow keys, Home and End move between tabs.
   - **FR:web.tabs.head** (P1): Each panel MUST start with its stamp `as of <time>` (`, stale` when stale), with the time in the report's configured time zone.
-- **FR:web.table** (P1): Project tables MUST have the columns **Project**, **Agent**, **🤖 Status**, **👱‍♂️ Next action**; the PR table **PR**, **Agent**, **👱‍♂️ Next action**, **Time**.
-  - **FR:web.table.line** (P1): Each cell MUST show one line and end a cut line with `…`.
-  - **FR:web.table.detail** (P1): A tap on the next action (or Enter or Space on it) MUST show the full row; a second tap MUST fold it.
+- **FR:web.table** (P1): Each row MUST be a muted card (no table) in the PR page layout: project and 🤖 status on line 1, 👱‍♂️ next action on line 2, agent on line 3. A PR card MUST show PR and Time on line 1, the next action on line 2 and the agent on line 3.
+  - **FR:web.table.line** (P1): Each field MUST show one line and end a cut line with `…`.
+  - **FR:web.table.detail** (P1): A toggle after the next action (a button: tap, Enter or Space) MUST show the full card; a second press MUST fold it.
   - **FR:web.table.gap** (P1): A gap row MUST show its action in muted text with the word `Gap:` first.
-  - **FR:web.table.empty** (P1): An empty table MUST show one row `Nothing here`.
-- **FR:web.links** (P1): Each linked agent and each PR number MUST be a link.
+  - **FR:web.table.empty** (P1): An empty tab MUST show one card `Nothing here`.
+- **FR:web.links** (P1): Every row MUST link its targets.
+  - **FR:web.links.project** (P1): The project MUST link to its project page (`#/list?project=<file>`).
+  - **FR:web.links.agent** (P1): The agent MUST link to its session, else to its agent file in the Agents view.
+  - **FR:web.links.refs** (P1): Each PR, issue and URL in the action MUST be a link; no bare `#12` or `PR 12` MUST show.
+  - **FR:web.links.gap** (P1): A project or agent with no link target MUST show the gap marker `⚠ no link`, never plain text alone.
   - **FR:web.links.none** (P1): `--` MUST be plain text.
 - **FR:web.live** (P1): Now MUST read `GET /priorities` on load, on each live change and every 60 s while visible.
   - **FR:web.live.absent** (P2): Now MUST hide the report when `GET /priorities` answers 404.
 
 ### NFR:a11y: Design and access
 
-- **NFR:a11y.tokens** (P1): The report MUST use the Fluent 2 tokens (`docs/design-system.md`) in light and dark: a card table, 12 px headers, 10 px by 12 px cells.
+- **NFR:a11y.tokens** (P1): The report MUST use the Fluent 2 tokens (`docs/design-system.md`) in light and dark.
 - **NFR:a11y.keys** (P1): Each tab, link and detail toggle MUST work by keyboard with a visible focus ring.
 - **NFR:a11y.target** (P1): Each tab and detail toggle MUST be at least 44 px tall on touch.
-- **NFR:a11y.mobile** (P1): Below 600 px each row MUST show as a block (project and status on line 1, next action on line 2, agent on line 3); the tab list MUST scroll inside its own box; the page MUST NOT scroll sideways.
+- **NFR:a11y.mobile** (P1): The cards MUST be the same at every width; at 375 px the tab list MUST scroll inside its own box and the page MUST NOT scroll sideways.
+- **NFR:a11y.color** (P1): The report MUST use neutral surfaces and one accent (brand: links, the chosen tab, focus). Status MUST be text and icon, with no fills.
 - **NFR:a11y.axe** (P1): Now with the report MUST have no axe violations (WCAG 2.2 AA) at 375 px and 1280 px.
 
 ## Data Model
 
 - **FR:$window** (P1): **`PriWindow`** — `days` (optional list of `mon`..`sun`), `from` and `to` (optional `HH:MM`, local time). A `pris.json` priority gets `windows` (optional, at most 7), `label` (optional, at most 40 characters), `action` (optional, at most 200 characters), `session` (optional session id) and `perProject` (optional boolean).
-- **FR:$tiered** (P1): **`TieredTask`** — `path`, `line` (0-based), `project`, `aliases`, `tier` (1, 2 or 3), `text`, `agent` (string or null), `more` (count of more agents), `status` (`working`, `pairing`, `done`, `idle`, `blocked`, `queued`, `unknown`, or null with no agent).
-- **FR:$row** (P1): **`PriRow`** — `id`, `project`, `agent` (`{ name, link }`, link null when unlinked, or null), `status` (as in `TieredTask`), `action`, `gap` (boolean), `ref` (`path:line` or null), `at`, `stale`.
+- **FR:$tiered** (P1): **`TieredTask`** — `path`, `line` (0-based), `project`, `aliases`, `tier` (1, 2 or 3), `text`, `agent` (string or null), `more` (count of more agents), `status` (`working`, `pairing`, `done`, `idle`, `blocked`, `queued`, `unknown`, or null with no agent), `repo` (`owner/repo` or null).
+- **FR:$row** (P1): **`PriRow`** — `id`, `project`, `file` (project task file or null), `agent` (`{ name, link, file }`: session link or null, agent file or null; or null), `status` (as in `TieredTask`), `action`, `gap` (boolean), `ref` (`path:line` or null), `at`, `stale`.
 - **FR:$pr** (P1): **`PrRow`** — `emoji`, `number`, `url`, `agent` (as in `PriRow`), `action`, `minutes`, `server` and `details` (links, null unless a live row).
 - **FR:$view** (P1): **`PrioritiesView`** — `at` (the clock), `timeZone` (optional IANA zone), `qm` (a `PriTable` with `title` and `today`, or null), `now`, `today`, `next` (each a `PriTable`: `at`, `stale`, `rows`) and `prs` (a `PrTable`: `at`, `stale`, `verified`, `manager`, `rows`).
 

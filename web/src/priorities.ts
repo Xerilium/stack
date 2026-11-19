@@ -4,8 +4,8 @@
  * @req FR:priorities-tables/web.tabs @req FR:priorities-tables/web.links @req FR:priorities-tables/web.tabs.head
  */
 export type AgentStatus = 'working' | 'pairing' | 'done' | 'idle' | 'blocked' | 'queued' | 'unknown';
-export interface Agent { name: string; link: string | null }
-export interface PriRow { id: string; project: string; agent: Agent | null; status: AgentStatus | null; action: string; gap: boolean; ref: string | null; at: string; stale: boolean }
+export interface Agent { name: string; link: string | null; file: string | null }
+export interface PriRow { id: string; project: string; file: string | null; agent: Agent | null; status: AgentStatus | null; action: string; gap: boolean; ref: string | null; at: string; stale: boolean }
 export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string; today: boolean }
 export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; action: string; minutes: number; server: string | null; details: string | null }
@@ -34,7 +34,7 @@ export const statusText = (s: AgentStatus | null): string => (s ? STATUS[s] : '-
 export const actionText = (r: Pick<PriRow, 'action' | 'gap'>): string => (r.gap ? `Gap: ${r.action}` : r.action);
 
 /** Links the page may draw: the web or a Claude session. @req FR:priorities-tables/web.links */
-export const safeHref = (h: string | null | undefined): h is string => !!h && (/^https?:\/\//i.test(h) || /^claude:\/\/claude\.ai\/epitaxy\/[A-Za-z0-9_-]{1,128}$/.test(h));
+export const safeHref = (h: string | null | undefined): h is string => !!h && (/^https?:\/\//i.test(h) || /^#\/[a-z]+(\?[\w=&%./-]*)?$/.test(h) || /^claude:\/\/claude\.ai\/epitaxy\/[A-Za-z0-9_-]{1,128}$/.test(h));
 
 /** `as of 11:05 AM`, plus `, stale` when stale. @req FR:priorities-tables/web.tabs.head */
 export function stampText(t: { at: string; stale: boolean }, timeZone?: string): string {
@@ -62,4 +62,29 @@ export function hashWithTab(hash: string, tab: TabKey): string {
   const p = new URLSearchParams(q < 0 ? '' : hash.slice(q + 1));
   p.set('pri', tab);
   return `${base}?${p.toString()}`;
+}
+
+/** The gap marker for a missing link target. @req FR:priorities-tables/web.links.gap */
+export const NO_LINK = '⚠ no link';
+/** The project page: the list filtered to the project file. @req FR:priorities-tables/web.links.project */
+export const projectHref = (file: string | null): string | null => {
+  const m = file ? /^tasks\/([^/]+)\.md$/.exec(file) : null;
+  return m ? `#/list?project=${encodeURIComponent(m[1])}` : null;
+};
+/** The agent: its session, else its agent file in the Agents view. @req FR:priorities-tables/web.links.agent */
+export const agentHref = (a: Agent): string | null => a.link ?? (a.file ? `#/agents?file=${encodeURIComponent(a.file)}` : null);
+export interface Part { text: string; href?: string; gap?: boolean }
+/** Markdown links and URLs become links; the gap marker stays a marker. @req FR:priorities-tables/web.links.refs */
+export function linkParts(text: string): Part[] {
+  const out: Part[] = [];
+  for (const [i, s] of text.split(/(\[[^\]]*\]\([^)\s]*\)|https?:\/\/\S+)/g).entries()) {
+    if (!s) continue;
+    if (i % 2) {
+      const m = /^\[([^\]]*)\]\(([^)\s]*)\)$/.exec(s);
+      out.push(m ? { text: m[1], href: m[2] } : { text: s, href: s });
+      continue;
+    }
+    s.split(NO_LINK).forEach((t, j) => { if (j) out.push({ text: NO_LINK, gap: true }); if (t) out.push({ text: t }); });
+  }
+  return out;
 }

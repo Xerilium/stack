@@ -3991,6 +3991,7 @@ components:
       required:
         - name
         - link
+        - file
       properties:
         name:
           type: string
@@ -3998,11 +3999,16 @@ components:
           type: string
           nullable: true
           description: Session link; null when no session matches
+        file:
+          type: string
+          nullable: true
+          description: Agent file when no session matches
     PriRow:
       type: object
       required:
         - id
         - project
+        - file
         - agent
         - status
         - action
@@ -4015,6 +4021,10 @@ components:
           type: string
         project:
           type: string
+        file:
+          type: string
+          nullable: true
+          description: Project task file
         agent:
           $ref: "#/components/schemas/PriAgent"
         status:

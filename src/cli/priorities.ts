@@ -11,13 +11,13 @@ import { boardInput, prioritiesView, timeText, type BoardInput, type PriRow, typ
 import { PriStore } from '../core/pris';
 import { runInventory } from '../core/session-inventory';
 import { FsStorage } from '../core/storage';
-import { readTieredTasks, type AgentStatus, type TieredTask } from '../core/tiered-tasks';
+import { NO_LINK, readTaskFiles, type AgentStatus, type ProjectFile, type TieredTask } from '../core/tiered-tasks';
 import { UsageError } from './args';
 
 export interface PrioritiesDeps {
   home: string; timeZone?: string; now: () => Date;
   /** Tiered tasks from every task file. */
-  tasks: () => Promise<TieredTask[]>;
+  tasks: () => Promise<{ tasks: TieredTask[]; files: ProjectFile[]; agents: string[] }>;
   /** The session inventory; undefined when it cannot be read. */
   inventory: () => SessionsInput | undefined;
   /** The PR board; undefined with no GitHub sign-in or on a failed read. */
@@ -33,7 +33,7 @@ export function liveDeps(home: string, dir: string, config: () => StackConfig | 
   try { cfg = config(); } catch { cfg = undefined; }
   return {
     home, timeZone: cfg?.timezone, now: () => at ?? new Date(),
-    tasks: () => readTieredTasks(new FsStorage(dir)),
+    tasks: () => readTaskFiles(new FsStorage(dir)),
     inventory: () => { try { const i = runInventory({ home }); return { at: i.at, sessions: i.sessions }; } catch { return undefined; } },
     board: async () => {
       const tok = await createGitHubAuth({ env }).token();
@@ -50,8 +50,10 @@ const PR_HEAD = ['| PR | Agent | 👱‍♂️ Next action | Time |', '| --- | -
 const cell = (s: string) => s.replace(/\|/g, '\\|');
 /** Session links as `#<session-id>`, the form Claude chats open. */
 const hrefOf = (link: string) => { const m = /^claude:\/\/claude\.ai\/epitaxy\/([A-Za-z0-9_-]+)$/.exec(link); return m ? `#${m[1]}` : link; };
-const agentText = (a: { name: string; link: string | null } | null) => (!a ? '--' : a.link ? `[${cell(a.name)}](${hrefOf(a.link)})` : cell(a.name));
-const priLine = (r: PriRow) => `| ${cell(r.project)} | ${agentText(r.agent)} | ${r.status ? STATUS_TEXT[r.status] : '--'} | ${r.gap ? 'Gap: ' : ''}${cell(r.action)} |`;
+/** Session, else agent file, else the gap marker. @req FR:priorities-tables/cli.links */
+const agentText = (a: { name: string; link: string | null; file?: string | null } | null) => (!a ? '--' : a.link ? `[${cell(a.name)}](${hrefOf(a.link)})` : a.file ? `[${cell(a.name)}](${a.file})` : `${cell(a.name)} ${NO_LINK}`);
+const projectText = (r: PriRow) => (r.file ? `[${cell(r.project)}](${r.file})` : `${cell(r.project)} ${NO_LINK}`);
+const priLine = (r: PriRow) => `| ${projectText(r)} | ${agentText(r.agent)} | ${r.status ? STATUS_TEXT[r.status] : '--'} | ${r.gap ? 'Gap: ' : ''}${cell(r.action)} |`;
 /** Live rows add the server and details links. @req FR:priorities-tables/pr.cols.live */
 const liveLinks = (r: PrRow) => [r.server ? `[server](${r.server})` : '', r.details ? `[details](${r.details})` : ''].filter(Boolean).join(', ');
 const prLine = (r: PrRow) => `| ${r.emoji ? `${r.emoji} ` : ''}[${r.number}](${r.url}) | ${agentText(r.agent)} | ${liveLinks(r) ? `Live: ${liveLinks(r)}` : r.action} | ${r.minutes}m |`;
@@ -64,8 +66,8 @@ function section(title: string, t: { at: string; stale: boolean }, body: string[
 /** @req FR:priorities-tables/cli.read @req FR:priorities-tables/cli.text @req FR:priorities-tables/cli.json */
 export async function prioritiesCmd(_flags: Record<string, string | true>, positionals: string[], d: PrioritiesDeps): Promise<{ json: Record<string, unknown>; text: string; code?: number }> {
   if (positionals.length) throw new UsageError(`Unexpected argument: ${positionals[0]}`);
-  const [board, tasks, sessions] = [await d.board(), await d.tasks(), d.inventory()];
-  const v = prioritiesView({ pris: new PriStore(d.home).read().pris, tasks, now: d.now(), timeZone: d.timeZone, ...(sessions ? { sessions } : {}), ...(board ? { board } : {}) });
+  const [board, files, sessions] = [await d.board(), await d.tasks(), d.inventory()];
+  const v = prioritiesView({ pris: new PriStore(d.home).read().pris, ...files, now: d.now(), timeZone: d.timeZone, ...(sessions ? { sessions } : {}), ...(board ? { board } : {}) });
   const pri = (rows: PriRow[]) => (rows.length ? [...PRI_HEAD, ...rows.map(priLine)] : ['Nothing here']);
   const parts = [
     ...(v.qm ? [section(v.qm.title, v.qm, pri(v.qm.rows), d.timeZone)] : []),

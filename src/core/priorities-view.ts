@@ -8,7 +8,7 @@
 import type { NextAction, PrDetail } from './pr-board';
 import type { Pri, PriDay, PriWindow } from './pris';
 import { linker, priOrder, type LinkRow } from './pris-rank';
-import type { AgentStatus, TieredTask } from './tiered-tasks';
+import type { AgentStatus, ProjectFile, TieredTask } from './tiered-tasks';
 
 /** One PR board row, as the report needs it. `specLines` is the changed spec lines (null when unknown). */
 export interface BoardRowInput { url: string; repo: string; number: number; title: string; project: string; nextAction: NextAction | null; specLines?: number | null; /** Live test server, for validate rows. */ server?: string | null; /** Where it says what to validate (agent thread or comment). */ details?: string | null }
@@ -16,10 +16,15 @@ export interface BoardRowInput { url: string; repo: string; number: number; titl
 export interface BoardInput { at: string | null; rows: BoardRowInput[] }
 /** The session inventory: `at` is its last read. */
 export interface SessionsInput { at: string; sessions: { id: string; title: string; link: string }[] }
-export interface ViewInput { pris: Pri[]; tasks: TieredTask[]; now: Date; timeZone?: string; sessions?: SessionsInput; board?: BoardInput }
+export interface ViewInput {
+  pris: Pri[]; tasks: TieredTask[];
+  /** Every project file (for the project link of gap rows). */ files?: ProjectFile[];
+  /** Agent file paths (`tasks/agents/<slug>.md`, `.claude/agents/<slug>.md`). */ agents?: string[];
+  now: Date; timeZone?: string; sessions?: SessionsInput; board?: BoardInput }
 
-export interface Agent { name: string; link: string | null }
-export interface PriRow { id: string; project: string; agent: Agent | null; status: AgentStatus | null; action: string; gap: boolean; ref: string | null; at: string; stale: boolean }
+/** `link`: the session; `file`: the agent file when no session matches. */
+export interface Agent { name: string; link: string | null; file: string | null }
+export interface PriRow { id: string; project: string; /** The project task file. */ file: string | null; agent: Agent | null; status: AgentStatus | null; action: string; gap: boolean; ref: string | null; at: string; stale: boolean }
 export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string; /** QM is a priority today (its day order and windows keep it in). @req FR:priorities-tables/qm.today */ today: boolean }
 export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; action: string; minutes: number; server: string | null; details: string | null }
@@ -118,7 +123,15 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
     return (agent ? list.find((s) => norm(s.title) === norm(agent)) : undefined) ?? (p.session ? list.find((s) => s.id === p.session) : undefined);
   };
   /** @req FR:priorities-tables/fresh.row @req FR:priorities-tables/fresh.stale */
-  const gapRow = (p: Pri, action: string, project = projectOf(p)): PriRow => ({ id: p.id, project, agent: null, status: null, action, gap: true, ref: null, ...stamp(now, []) });
+  /** The project file: by the priority projects, else by its name. @req FR:priorities-tables/rows.file */
+  const fileOf = (p: Pri): string | null => {
+    const want = new Set([...(p.projects ?? []), projectOf(p), p.title].map((x) => x.toLowerCase()));
+    return input.files?.find((f) => [f.project, ...f.aliases].some((n) => want.has(n.toLowerCase())))?.path ?? null;
+  };
+  /** The agent: its session, else its agent file. @req FR:priorities-tables/agent.link @req FR:priorities-tables/agent.file @req FR:priorities-tables/agent.plain */
+  const slug = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+  const agentOf = (name: string, s?: { link: string }): Agent => ({ name: cut(name), link: s?.link ?? null, file: s ? null : input.agents?.find((a) => (a.split('/').pop() ?? '').replace(/\.md$/, '') === slug(name)) ?? null });
+  const gapRow = (p: Pri, action: string, project = projectOf(p)): PriRow => ({ id: p.id, project, file: fileOf(p), agent: null, status: null, action, gap: true, ref: null, ...stamp(now, []) });
   /**
    * @req FR:priorities-tables/rows.cols @req FR:priorities-tables/rows.cols.action @req FR:priorities-tables/rows.cols.later @req FR:priorities-tables/rows.cols.more
    * @req FR:priorities-tables/rows.gap @req FR:priorities-tables/fresh.row
@@ -126,9 +139,9 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
   const rowOf = (p: Pri, t: TieredTask | undefined, when = '', project = projectOf(p)): PriRow => {
     if (!t) return gapRow(p, GAP, project);
     const s = t.agent ? sessionOf(t.agent, p) : undefined;
-    const agent = t.agent ? { name: cut(t.agent), link: s?.link ?? null } : null;
+    const agent = t.agent ? agentOf(t.agent, s) : null;
     const action = cut(`${when}${t.tier > 1 ? '⏳ ' : ''}${p.action ?? t.text}${t.more ? ` + ${t.more} more` : ''}`);
-    return { id: p.id, project, agent, status: t.status, action, gap: false, ref: `${t.path}:${t.line}`, ...stamp(now, s ? [Date.parse(sessions!.at)] : []) };
+    return { id: p.id, project, file: t.path, agent, status: t.status, action, gap: false, ref: `${t.path}:${t.line}`, ...stamp(now, s ? [Date.parse(sessions!.at)] : []) };
   };
   /** @req FR:priorities-tables/fresh.table */
   const table = (rows: PriRow[]): PriTable => ({ ...stamp(now, rows.map((r) => Date.parse(r.at))), rows });
@@ -185,7 +198,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
   const prsOf = (): PrTable => {
     // @req FR:priorities-tables/pr.manager
     const m = sessions?.sessions.find((s) => norm(s.title).includes('sweepmanager'));
-    const manager = m ? { name: 'Sweep Manager', link: m.link } : null;
+    const manager = m ? { name: 'Sweep Manager', link: m.link, file: null } : null;
     if (!board?.at) return { at: now.toISOString(), stale: true, verified: false, manager, rows: [] };
     const byId = new Map(live.map((p) => [p.id, p]));
     const link = linker(live, names);
@@ -200,7 +213,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
         const ts = !s && top?.agent ? sessionOf(top.agent, p!) : undefined;
         const row: PrRow = {
           emoji: REPO_EMOJI[(r.repo.split('/').pop() ?? '').toLowerCase()] ?? '', number: r.number, url: r.url,
-          agent: s ? { name: cut(s.title), link: s.link } : top?.agent ? { name: cut(top.agent), link: ts?.link ?? null } : null, action: a.text,
+          agent: s ? { name: cut(s.title), link: s.link, file: null } : top?.agent ? agentOf(top.agent, ts) : null, action: a.text,
           minutes: a.minutes + Math.floor((typeof r.specLines === 'number' ? r.specLines : 0) / SPEC_LINES_PER_MIN),
           // @req FR:priorities-tables/pr.cols.live
           server: r.nextAction === 'validate' ? r.server ?? null : null, details: r.nextAction === 'validate' ? r.details ?? null : null,

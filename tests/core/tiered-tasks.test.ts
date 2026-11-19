@@ -1,4 +1,4 @@
-import { tieredTasks } from '../../src/core/tiered-tasks';
+import { linkRefs, projectFile, tieredTasks } from '../../src/core/tiered-tasks';
 
 const FILE = [
   '﻿# 👓 FOCUS',
@@ -49,5 +49,27 @@ describe('tieredTasks', () => {
   // @req FR:priorities-tables/tasks.project
   it('falls back to the file name with no title', () => {
     expect(tieredTasks('tasks/my-proj.md', '1️⃣ X')[0]).toMatchObject({ project: 'my-proj', aliases: [] });
+  });
+});
+
+describe('PR and issue links', () => {
+  const R = 'o/r';
+  const u = (n: number) => `https://github.com/o/r/issues/${n}`;
+  // @req FR:priorities-tables/tasks.refs
+  it('links every #N, PR N, PRs N, M and issue N to its full URL; keeps links and URLs', () => {
+    expect(linkRefs('Review #12 and PR 13, PRs 14, #15 and 16; issue 17', R)).toBe(`Review [12](${u(12)}) and PR [13](${u(13)}), PRs [14](${u(14)}), [15](${u(15)}) and [16](${u(16)}); issue [17](${u(17)})`);
+    expect(linkRefs('See [2826](https://github.com/x/y/pull/2826) and https://github.com/x/y/pull/9#issuecomment-1', R)).toBe('See [2826](https://github.com/x/y/pull/2826) and https://github.com/x/y/pull/9#issuecomment-1');
+    const t = tieredTasks('tasks/f.md', '# F\n- **Repository:** [o/r](https://github.com/o/r)\n## A\n- [ ] 1️⃣ Ship PR 119 (agent: a)')[0];
+    expect(t).toMatchObject({ repo: 'o/r', text: `Ship PR [119](${u(119)})` });
+    // no bare refs are left
+    expect(t.text.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(/#\d+|\bPR \d+/);
+  });
+  // @req FR:priorities-tables/tasks.refs.gap
+  it('marks each mention with no repo as a link gap', () => {
+    expect(linkRefs('Ship PR 119 and #12', null)).toBe('Ship PR 119 ⚠ no link and 12 ⚠ no link');
+  });
+  // @req FR:priorities-tables/tasks.project
+  it('reads the project file name, aliases and repo', () => {
+    expect(projectFile('tasks/f.md', '# 👓 F\n- **Aliases:** f1, f2\n- **Repository:** [o/r](https://github.com/o/r)\n')).toEqual({ path: 'tasks/f.md', project: 'F', aliases: ['f1', 'f2'], repo: 'o/r' });
   });
 });

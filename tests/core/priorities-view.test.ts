@@ -9,7 +9,7 @@ const AT = WED_11.toISOString();
 const pri = (id: string, o: Partial<Pri> = {}): Pri => ({ id, title: id.toUpperCase(), status: 'active', items: [], backlog: [], weekly: [], projects: [id], ...o });
 let n = 0;
 const task = (project: string, tier: 1 | 2 | 3, text: string, o: Partial<TieredTask> = {}): TieredTask => ({
-  path: `tasks/${project}.md`, line: n++, project, aliases: [], tier, text, agent: null, more: 0, status: null, ...o,
+  path: `tasks/${project}.md`, line: n++, project, aliases: [], tier, text, agent: null, more: 0, status: null, repo: null, ...o,
 });
 const view = (pris: Pri[], tasks: TieredTask[] = [], o: Partial<ViewInput> = {}) => prioritiesView({ pris, tasks, now: WED_11, timeZone: TZ, board: { at: AT, rows: [] }, ...o });
 const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
@@ -54,7 +54,7 @@ describe('project rows', () => {
       task('other', 1, 'Not a priority'),
     ];
     const [r] = view([pri('ftk', { label: 'FTK 16' })], tasks).now.rows;
-    expect(r).toEqual({ id: 'ftk', project: 'FTK 16', agent: { name: 'ftk-rm', link: null }, status: 'working', action: 'Today one', gap: false, ref: `tasks/ftk.md:${tasks[1].line}`, at: AT, stale: false });
+    expect(r).toEqual({ id: 'ftk', project: 'FTK 16', file: 'tasks/ftk.md', agent: { name: 'ftk-rm', link: null, file: null }, status: 'working', action: 'Today one', gap: false, ref: `tasks/ftk.md:${tasks[1].line}`, at: AT, stale: false });
   });
   // @req FR:priorities-tables/rows.project
   it('names the project by label, else the title before the first (', () => {
@@ -150,7 +150,7 @@ describe('agent', () => {
     const tasks = [task('focus', 1, 'x', { agent: 'focus-cos' }), task('fh', 1, 'y', { agent: 'someone' }), task('ftk', 1, 'z', { agent: 'ftk-rm' })];
     const v = view([pri('focus'), pri('fh', { session: 's2' }), pri('ftk')], tasks, { sessions: inv });
     expect(v.now.rows.map((r) => r.agent)).toEqual([
-      { name: 'focus-cos', link: 'claude://claude.ai/epitaxy/s1' }, { name: 'someone', link: 'claude://claude.ai/epitaxy/s2' }, { name: 'ftk-rm', link: null },
+      { name: 'focus-cos', link: 'claude://claude.ai/epitaxy/s1', file: null }, { name: 'someone', link: 'claude://claude.ai/epitaxy/s2', file: null }, { name: 'ftk-rm', link: null, file: null },
     ]);
   });
 });
@@ -173,7 +173,7 @@ describe('PRs', () => {
     const p = pri('fh', { refs: ['allytehq/finops-hubs'], session: 's2' });
     const rows = [prow(9, 'approve', { repo: 'allytehq/finops-hubs', url: 'https://github.com/allytehq/finops-hubs/pull/9' }), prow(8, 'approve', { repo: 'x/unknown' })];
     const v = view([p], [], { board: board(rows), sessions: { at: AT, sessions: [{ id: 's2', title: 'FH backend', link: 'claude://claude.ai/epitaxy/s2' }] } });
-    expect(v.prs.rows.map((r) => [r.number, r.emoji, r.agent])).toEqual([[9, '🏦', { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2' }], [8, '', null]]);
+    expect(v.prs.rows.map((r) => [r.number, r.emoji, r.agent])).toEqual([[9, '🏦', { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2', file: null }], [8, '', null]]);
   });
   // @req FR:priorities-tables/pr.live.none @req FR:priorities-tables/fresh.table
   it('lists no PRs without a good board poll; marks an old poll stale', () => {
@@ -201,7 +201,7 @@ describe('PR live links and Sweep Manager', () => {
     const rows = [prow(1, 'validate', { server: 'https://dev.example.test', details: 'https://github.com/o/r/pull/1#issuecomment-9' }), prow(2, 'approve', { server: 'https://x.test' })];
     const sessions = { at: AT, sessions: [{ id: 'sm', title: '👩‍💻 Sweep Manager', link: 'claude://claude.ai/epitaxy/sm' }] };
     const v = view([], [], { board: { at: AT, rows }, sessions });
-    expect(v.prs.manager).toEqual({ name: 'Sweep Manager', link: 'claude://claude.ai/epitaxy/sm' });
+    expect(v.prs.manager).toEqual({ name: 'Sweep Manager', link: 'claude://claude.ai/epitaxy/sm', file: null });
     expect(v.prs.rows.map((r) => [r.number, r.server, r.details])).toEqual([[2, null, null], [1, 'https://dev.example.test', 'https://github.com/o/r/pull/1#issuecomment-9']]);
     expect(view([], [], { board: undefined }).prs.manager).toBeNull();
   });
@@ -213,6 +213,16 @@ describe('PR agent fallback', () => {
     const p = pri('fh', { refs: ['allytehq/finops-hubs'] });
     const sessions = { at: AT, sessions: [{ id: 's2', title: 'FH backend', link: 'claude://claude.ai/epitaxy/s2' }] };
     const v = view([p], [task('fh', 1, 'x', { agent: 'FH backend' })], { sessions, board: { at: AT, rows: [prow(9, 'approve', { repo: 'allytehq/finops-hubs', url: 'https://github.com/allytehq/finops-hubs/pull/9' })] } });
-    expect(v.prs.rows[0].agent).toEqual({ name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2' });
+    expect(v.prs.rows[0].agent).toEqual({ name: 'FH backend', link: 'claude://claude.ai/epitaxy/s2', file: null });
+  });
+});
+
+describe('link targets', () => {
+  // @req FR:priorities-tables/rows.file @req FR:priorities-tables/agent.file
+  it('names the project file (gap rows by project name) and the agent file when no session matches', () => {
+    const files = [{ path: 'tasks/finops-toolkit.md', project: 'FinOps toolkit', aliases: ['ftk'], repo: null }, { path: 'tasks/arc.md', project: 'Arc', aliases: [], repo: null }];
+    const v = view([pri('ftk', { projects: ['ftk'] }), pri('arc', { projects: ['Arc'] }), pri('zzz', { projects: ['none'] })], [task('ftk', 1, 'x', { path: 'tasks/finops-toolkit.md', agent: '🧰 FTK RM' })], { files, agents: ['tasks/agents/ftk-rm.md', '.claude/agents/cos.md'] });
+    expect(v.now.rows.map((r) => [r.id, r.file])).toEqual([['ftk', 'tasks/finops-toolkit.md'], ['arc', 'tasks/arc.md'], ['zzz', null]]);
+    expect(v.now.rows[0].agent).toEqual({ name: '🧰 FTK RM', link: null, file: 'tasks/agents/ftk-rm.md' });
   });
 });

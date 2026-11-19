@@ -53,9 +53,9 @@ it('builds the report from the store, the task files, the inventory and the boar
   const r = await call('owner', '/priorities');
   expect(r.status).toBe(200);
   expect(r.json.now.rows).toEqual([{
-    id: 'stack', project: 'Stack', agent: { name: 'Stack agent', link: 'claude://claude.ai/epitaxy/s1' }, status: 'working', action: 'Ship the report', gap: false, ref: 'tasks/stack.md:4', at: NOW.toISOString(), stale: false,
+    id: 'stack', project: 'Stack', file: 'tasks/stack.md', agent: { name: 'Stack agent', link: 'claude://claude.ai/epitaxy/s1', file: null }, status: 'working', action: 'Ship the report', gap: false, ref: 'tasks/stack.md:4', at: NOW.toISOString(), stale: false,
   }]);
-  expect(r.json.prs.rows).toEqual([{ emoji: '🥞', number: 9, url: 'https://github.com/Xerilium/stack/pull/9', agent: { name: 'Stack agent', link: 'claude://claude.ai/epitaxy/s1' }, action: 'Autopilot: promote', minutes: 5, server: null, details: null }]);
+  expect(r.json.prs.rows).toEqual([{ emoji: '🥞', number: 9, url: 'https://github.com/Xerilium/stack/pull/9', agent: { name: 'Stack agent', link: 'claude://claude.ai/epitaxy/s1', file: null }, action: 'Autopilot: promote', minutes: 5, server: null, details: null }]);
   const t = (await tokens.create({ name: 'cos', scopes: ['tasks:read'] as never })).token;
   expect((await call(t, '/priorities')).status).toBe(403);
 });
