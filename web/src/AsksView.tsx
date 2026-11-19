@@ -244,16 +244,20 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
     const card = document.querySelector<HTMLElement>('.ask-card[data-kind]');
     if (card && !card.contains(document.activeElement)) card.focus({ preventScroll: true });
   });
-  /** A row menu action: select the row, then act on it. @req FR:notifications/list.rowactions.select */
+  /**
+   * A row menu action. Reply and Defer select the row and open its panel; an answer acts on the row and keeps the open notification, so the card does not jump.
+   * @req FR:notifications/list.rowactions.select @req FR:notifications/list.rowactions.keep
+   */
   const act = (a: AskItem, x: RowAction) => {
     focusCard.current = true;
+    if (x.context) { void asks.reply(a, CONTEXT_ASK); return; }
+    if (x.action) { run(x.action, a); return; }
     asks.setCursor(a.key); asks.setDetail(false);
-    if (x.context) { asks.setPanel('none'); void asks.reply(a, CONTEXT_ASK); return; }
     asks.setPanel(x.panel ?? 'none');
-    if (x.action) run(x.action);
   };
-  const run = (x: Action) => {
-    const a = asks.itemsRef.current.find((i) => i.key === asks.cursorRef.current) ?? asks.current;
+  /** Runs an action on `target`, or on the selected notification. */
+  const run = (x: Action, target?: AskItem) => {
+    const a = target ?? asks.itemsRef.current.find((i) => i.key === asks.cursorRef.current) ?? asks.current;
     if (!a) return;
     if (x.open) { if (a.source === 'task' && a.ref) asks.openTask(a.ref); else if (a.link) window.open(a.link, '_blank', 'noopener,noreferrer'); return; }
     if (x.reply) { asks.setPanel('reply'); return; }

@@ -6,7 +6,7 @@
  * @req FR:notifications/sessions.route @req FR:notifications/sessions.more @req FR:notifications/nav.rail @req FR:notifications/nav.tabbar
  * @req FR:notifications/list.context @req FR:notifications/list.context.why @req FR:notifications/list.context.pick @req FR:notifications/list.context.read
  * @req FR:notifications/list.context.card @req FR:notifications/list.source @req FR:notifications/list.source.task @req FR:notifications/list.rowactions @req FR:notifications/list.rowactions.items @req FR:notifications/list.rowactions.context
- * @req FR:notifications/list.rowactions.select @req FR:notifications/list.rowactions.focus @req FR:notifications/list.rowactions.card @req FR:notifications/list.drop @req FR:notifications/list.drop.count
+ * @req FR:notifications/list.rowactions.select @req FR:notifications/list.rowactions.keep @req FR:notifications/list.context.phone @req FR:notifications/list.rowactions.focus @req FR:notifications/list.rowactions.card @req FR:notifications/list.drop @req FR:notifications/list.drop.count
  * @req NFR:notifications/a11y.axe @req NFR:notifications/calm
  */
 import AxeBuilder from '@axe-core/playwright';
@@ -139,15 +139,34 @@ test.describe('Notifications: context and actions on every row', () => {
     expect(await names('bare')).toEqual(['Done', 'Reply', 'Defer', 'Ask for context']);
     await row(page, 'pr').getByRole('button', { name: 'Actions for Approve merging PR 158 into main' }).click();
     await expect(page.getByRole('menuitem', { name: 'Open' })).toHaveAttribute('href', 'https://github.com/Xerilium/stack/pull/158');
+    await page.evaluate(() => window.scrollTo(0, 120));
+    const y = await page.evaluate(() => window.scrollY);
     await page.getByRole('menuitem', { name: 'Approve' }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/pr/answer')?.body).toEqual({ answer: 'go' });
     await expect(row(page, 'pr')).toHaveCount(0);
-    // focus moves to the selected notification, never to the page body
-    await expect(page.locator('.ask-card')).toBeFocused();
+    // an answer from the row keeps the open notification, its focus, and the scroll position
+    await expect(row(page, 'top').locator('.ask-card')).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(y);
     await row(page, 'bare').getByRole('button', { name: /^Actions for/ }).click();
     await page.getByRole('menuitem', { name: 'Defer' }).click();
     await expect(row(page, 'bare').locator('.ask-card')).toBeFocused();
     await expect(row(page, 'bare').getByRole('group', { name: 'Defer until' })).toBeVisible();
+  });
+
+  test('on a phone, who and the source link share a line; the why sits under them', async ({ page }, info) => {
+    test.skip(info.project.name !== 'mobile', 'phone layout');
+    await setup(page, rich());
+    await page.goto('/#/notifications');
+    const pr = row(page, 'pr');
+    const who = (await pr.locator('.ask-who').boundingBox())!;
+    const link = (await pr.getByRole('link', { name: /PR stack#158/ }).boundingBox())!;
+    const why = (await pr.locator('.ask-ctx-why').boundingBox())!;
+    expect(Math.abs((who.y + who.height / 2) - (link.y + link.height / 2))).toBeLessThan(2); // one line
+    expect(link.x).toBeGreaterThan(who.x + who.width);
+    expect(why.y).toBeGreaterThanOrEqual(link.y + link.height - 1); // the why is under them
+    expect(link.height).toBeGreaterThanOrEqual(44);
+    const ctx = (await pr.locator('.ask-ctx').boundingBox())!;
+    expect(ctx.height).toBeLessThanOrEqual(44 + 2 * 18 + 6); // one tap line, at most two why lines, the padding
   });
 
   test('Reply from the row opens that notification with the reply box; Ask for context asks the sender', async ({ page }) => {
@@ -162,6 +181,7 @@ test.describe('Notifications: context and actions on every row', () => {
     await row(page, 'bare').getByRole('button', { name: /^Actions for/ }).click();
     await page.getByRole('menuitem', { name: 'Ask for context' }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/bare/answer')?.body).toMatchObject({ answer: 'ask', text: expect.stringMatching(/context/) });
+    await expect(row(page, 'mail').locator('.ask-card')).toBeVisible(); // the open notification stays
   });
 });
 
