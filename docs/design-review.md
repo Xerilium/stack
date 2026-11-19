@@ -13,6 +13,7 @@ Set an OpenAI API key where the Stack host (desktop app or `stack web`) starts:
 | `STACK_OPENAI_API_KEY`       | `OPENAI_API_KEY` | The OpenAI API key                 |
 | `STACK_DESIGN_REVIEW_MODEL`  | `gpt-5`          | The model that reviews the page    |
 | `STACK_DESIGN_REVIEW_REPO`   | `Xerilium/stack` | The repo that gets the issue       |
+| `STACK_DESIGN_REVIEW_LABEL`  | none             | Optional label (must exist) added to each issue |
 | `STACK_DESIGN_REVIEW_PUBLIC` | unset            | `1` allows filing in a public repo |
 
 The issue is filed with `gh issue create`, so `gh` must be signed in.
